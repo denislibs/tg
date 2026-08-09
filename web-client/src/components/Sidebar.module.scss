@@ -30,6 +30,31 @@
   margin-inline-end: var(--page-chats-padding);
 }
 
+// Узлы каркаса tweb: слайдер сайдбара и его активный item. Геометрию даёт
+// _leftSidebar.scss (`.sidebar-slider { height: 100% }`, `.item-main`), здесь —
+// колоночная раскладка, которой в партиале нет (у tweb её даёт грид .tabs-container,
+// а он у нас переопределён под чат-колонку).
+.slider {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.sliderItem {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// tweb .sidebar-content — слой чатлиста/поиска/FAB.
+.content {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
 // tweb .sidebar-header (_sidebar.scss) + .main-search-sidebar-header (_leftSidebar.scss).
 // Высота — из $header-height (3.5rem), горизонтальный padding 1rem (слева под бургер);
 // справа .5rem — модификатор is-input-the-last-child (у нас инпут всегда последний).
@@ -59,6 +84,7 @@
   position: relative;
   min-height: 0;
   max-height: 100%;
+  display: flex;
   background-color: var(--surface-color);
 }
 

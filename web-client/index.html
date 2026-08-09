@@ -51,8 +51,10 @@
   <!-- Классы <body> как в tweb (index.html:41 + appImManager.ts:2209-2211):
        animation-level-2 — гейт CSS-анимаций портированных партиалов (миксин
        animation-level), переключение по настройке reduceMotion — фаза 7;
-       rounded-sections — из разметки tweb, живой DOM его подтверждает. -->
-  <body class="rounded-sections animation-level-2">
+       rounded-sections — из разметки tweb, живой DOM его подтверждает;
+       has-horizontal-folders — папки табами над списком (а не вертикальной
+       колонкой): от него зависит показ .folders-tabs-scrollable. -->
+  <body class="rounded-sections animation-level-2 has-horizontal-folders">
     <div id="initial-loader"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

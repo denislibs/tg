@@ -58,7 +58,7 @@ export function Tabs({
 
 // Ряд табов (tweb .menu-horizontal-div). `framed` оборачивает в карточку-скролл
 // (tweb .menu-horizontal-scrollable: surface-фон, скруглённый, с тенью).
-function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
+function List({ children, framed, className }: { children: ReactNode; framed?: boolean; className?: string }) {
   const { value, items, bgs } = useTabs()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevRef = useRef<TabValue | null>(null)
@@ -84,15 +84,15 @@ function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
       const prevItem = items.current.get(prevV)
       const prevBg = bgs.current.get(prevV)
       if (prevItem && prevBg) {
-        prevBg.classList.remove(s.animate)
-        activeBg.classList.remove(s.animate)
+        prevBg.classList.remove('animate')
+        activeBg.classList.remove('animate')
         const shiftLeft = prevItem.offsetLeft - activeItem.offsetLeft
         const width = activeBg.clientWidth
         const scaleFactor = prevBg.clientWidth / width
         activeBg.style.transform = `translate3d(${shiftLeft}px, 0, 0)`
         activeBg.style.width = `${width * scaleFactor}px`
         requestAnimationFrame(() => {
-          activeBg.classList.add(s.animate)
+          activeBg.classList.add('animate')
           activeBg.style.transform = 'none'
           activeBg.style.width = ''
         })
@@ -101,13 +101,15 @@ function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
     prevRef.current = value
   }, [value, items, bgs])
 
+  // Дерево tweb (_slider.scss `.menu-horizontal-*`):
+  //   [.menu-horizontal-scrollable] > .scrollable.scrollable-x > .menu-horizontal-div
   const row = (
-    <div ref={scrollRef} className={s.scrollableX}>
-      <div className={s.div}>{children}</div>
+    <div ref={scrollRef} className={classNames('scrollable', 'scrollable-x', s.scrollableX)}>
+      <div className="menu-horizontal-div">{children}</div>
     </div>
   )
   if (!framed) return row
-  return <div className={s.scrollable}>{row}</div>
+  return <div className={classNames('menu-horizontal-scrollable', className ?? '')}>{row}</div>
 }
 
 function Tab({
@@ -132,18 +134,22 @@ function Tab({
       }}
       onClick={() => select(value)}
       onContextMenu={onContextMenu}
-      className={classNames(s.item, isActive ? s.active : '')}
+      className={classNames('menu-horizontal-div-item', isActive ? 'active' : '')}
     >
-      <span className={s.span}>
+      <span className="menu-horizontal-div-item-span">
         {children}
-        {badge != null && badge > 0 && <span className={s.badge}>{badge > 99 ? '99+' : badge}</span>}
+        {badge != null && badge > 0 && (
+          // Неактивный таб — серый бейдж; `.menu-horizontal-div-item.active .badge`
+          // сам перекрашивает его в акцент (_slider.scss:87).
+          <span className={classNames('badge', 'badge-20', 'badge-gray')}>{badge > 99 ? '99+' : badge}</span>
+        )}
       </span>
       <div
         ref={(el) => {
           if (el) bgs.current.set(value, el)
           else bgs.current.delete(value)
         }}
-        className={s.background}
+        className="menu-horizontal-div-item-background"
       />
     </div>
   )

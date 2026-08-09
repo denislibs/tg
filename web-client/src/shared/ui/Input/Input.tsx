@@ -50,17 +50,21 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   if (mask) {
     return <MaskedInput value={value} onChange={onChange} label={label} wrapClassName={wrapClassName} mask={mask} inputRef={ref} rest={rest} />
   }
+  // Разметка tweb `.input-field` (_input.scss): input + оверлей акцентной рамки
+  // + label ПОСЛЕ инпута — всплытие лейбла держится на соседних селекторах
+  // (`.input-field-input:focus ~ label`, `:not(.is-empty) ~ label`).
   return (
-    <div className={classNames(s.field, wrapClassName ?? '')}>
+    <div className={classNames('input-field', s.field, wrapClassName ?? '')}>
       <input
         ref={ref}
-        className={s.input}
+        className={classNames('input-field-input', value ? '' : 'is-empty', s.input)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? ' '}
         {...rest}
       />
-      {label && <label className={s.label}>{label}</label>}
+      <div className="input-field-border" />
+      {label && <label>{label}</label>}
     </div>
   )
 })
@@ -111,10 +115,10 @@ function MaskedInput({
   }
 
   return (
-    <div className={classNames(s.field, s.masked, wrapClassName ?? '')}>
+    <div className={classNames('input-field', s.field, s.masked, wrapClassName ?? '')}>
       <input
         ref={setRefs}
-        className={s.input}
+        className={classNames('input-field-input', s.input)}
         value={display}
         inputMode="numeric"
         onKeyDown={onKeyDown}
@@ -127,7 +131,8 @@ function MaskedInput({
           <span key={i} className={ch === ph ? s.maskDash : undefined}>{ch}</span>
         ))}
       </div>
-      {label && <label className={s.label}>{label}</label>}
+      <div className="input-field-border" />
+      {label && <label>{label}</label>}
     </div>
   )
 }

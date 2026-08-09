@@ -1,0 +1,105 @@
+// `.peer-title` и `.chatlist-chat` — выдержка из tweb `src/scss/base.scss:1600-1697`
+// (типографика строки чат-листа и слоты имени пира). Целиком base.scss не
+// портируем: это глобальный ресет, конфликтующий с нашим styles/index.scss —
+// та же причина, что у `_code.scss`, `_page.scss`, `_progressLine.scss`.
+// Скопировано дословно.
+@use "../foundation" as *;
+
+.peer-title {
+  &.with-icons {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+
+    .sparkles-container {
+      transform: translateY(-0.5rem);
+    }
+  }
+
+  &-inner {
+    @include text-overflow();
+  }
+
+  &-bot-verification {
+    --custom-emoji-size: 1rem;
+    margin-inline-end: .25rem;
+  }
+
+  &-direct-badge {
+    margin-inline-start: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+
+    text-transform: uppercase;
+
+    line-height: 1;
+    font-size: 12px;
+    border-radius: 4px;
+    padding: 3px 4px;
+
+    color: var(--secondary-text-color);
+    background-color: rgba(var(--secondary-text-color-rgb) , 0.2);
+  }
+}
+
+.chatlist-chat {
+  &.row-with-padding {
+    padding-inline-start: 4.5rem !important;
+  }
+
+  // span {
+  //   @include text-overflow(true);
+  // }
+
+  .row {
+    &-title {
+      font-size: var(--font-size-16) !important;
+      line-height: 1.375rem;
+
+      &-right-secondary {
+        display: flex;
+        align-items: center;
+        height: 1.25rem;
+        margin-top: -.4375rem;
+        font-size: var(--font-size-12) !important;
+        line-height: var(--line-height-12) !important;
+      }
+
+      // .peer-title {
+      //   font-weight: var(--font-weight-bold);
+      // }
+    }
+
+    &-row {
+      height: 1.375rem;
+    }
+  }
+
+  &.chatlist-chat-abitbigger {
+    .row {
+      &-subtitle {
+        margin-top: 0;
+      }
+    }
+  }
+
+  &.chatlist-chat-bigger {
+    .row {
+      &-subtitle {
+        margin-top: 0;
+        font-size: var(--font-size-16) !important;
+        line-height: 1.375rem;
+
+        &-row {
+          margin-top: .125rem;
+        }
+      }
+
+      &-title {
+        .peer-title {
+          font-weight: var(--font-weight-bold);
+        }
+      }
+    }
+  }
+}

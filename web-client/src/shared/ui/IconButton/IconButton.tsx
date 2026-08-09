@@ -19,7 +19,8 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
   ref,
 ) {
   const { onPointerDown: rippleDown, ripple } = useRipple()
-  const cls = classNames(s.root, size === 'small' ? s.small : '', className ?? '')
+  // Классы tweb: `.btn-icon` — форма/паддинг/hover, `.rp` — клип ripple (_button.scss).
+  const cls = classNames('btn-icon', 'rp', s.root, size === 'small' ? s.small : '', className ?? '')
   const st = color ? ({ '--ib-color': color, ...style } as CSSProperties) : style
   const handlePointerDown = (e: PointerEvent<HTMLButtonElement>) => {
     rippleDown(e)

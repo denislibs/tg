@@ -1,23 +1,20 @@
-// Menu — общая «плашка» меню (контекст-меню/дропдаун). Значения 1:1 из tweb
-// .btn-menu: padding .25rem, radius $border-radius-medium, min-width 11.25rem,
-// backdrop blur 50px. overflow:hidden — чтобы ховер пунктов на всю ширину клипался
-// по скруглённым углам. Анимация открытия/закрытия едина для всех мест (Menu.tsx).
-@use '../../../styles/foundation' as *;
-
+// Menu рендерит глобальный `.btn-menu[.active]` (_button.scss:98): min-width,
+// padding var(--btn-menu-padding), radius, --menu-box-shadow, width:max-content,
+// фон/backdrop-filter и весь показ/скрытие (visibility + opacity + scale(.8)
+// с переходом --btn-menu-transition). От --btn-menu-padding считается инсетный
+// ховер пунктов, поэтому класс на панели обязателен.
+//
+// Здесь — только позиционирование: у tweb меню лежит абсолютом внутри
+// `.btn-menu-toggle`-хоста (`top: 100%`) и угол выбирается классом; у нас
+// вызывающий даёт fixed-координаты точки клика, панель живёт в портале.
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 2000;
 }
 
-.panel {
+.panel.panel {
   position: fixed;
+  top: auto;
   z-index: 2001;
-  min-width: 11.25rem;
-  padding: 0.25rem 0; // tweb --btn-menu-padding (items are inset via their own margin)
-  border-radius: $border-radius-medium; // 16px (tweb .btn-menu)
-  background: var(--menu-background-color);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
-  box-shadow: var(--menu-box-shadow);
 }

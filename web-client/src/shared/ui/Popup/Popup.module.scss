@@ -1,40 +1,22 @@
-// Popup (tweb .popup): затемняющий overlay-флекс, карточка по центру (margin auto).
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4090;
-  background: rgba(0, 0, 0, 0.3); // tweb .popup background-color
-  display: flex;
-  overflow: auto;
-  padding: 30px; // tweb .popup padding 1.875rem
-}
+// Popup рендерит глобальные `.popup[.active]` / `.popup-container` /
+// `.popup-header` / `.popup-close` / `.popup-title` (popups/_popup.scss):
+// скрим, паддинг, радиус карточки, фон, показ/скрытие и выезд снизу.
+// Здесь — только то, чего в партиале нет.
 
-.card {
+.popup.popup {
   // Поверхность для нотча плавающих лейблов внутри попапа (иначе лейбл рисуется
-  // на дефолтном --surface-color → «белая плашка» на серой карточке).
-  --input-bg: var(--background-color);
-  margin: auto;
+  // на дефолтном --surface-color → «белая плашка» на карточке).
+  --input-bg: var(--popup-background-color);
+  // tweb ставит z-index 4 (попап живёт внутри своего слоя); у нас портал в
+  // общий контейнер, поэтому нужен собственный уровень над меню (2001).
+  z-index: 4090;
+}
+
+// tweb-карточка тянется по --popup-width/--popup-height, которые задаёт каждый
+// конкретный попап; у нас ширина приходит пропом, высота — по контенту, но с
+// потолком, чтобы длинный список не выпирал за экран.
+.container {
   max-height: min(86vh, 720px);
-  display: flex;
-  flex-direction: column;
-  border-radius: 2.5rem; // tweb --popup-border-radius
-  background: var(--background-color); // tweb --popup-background-color
-  box-shadow: var(--menu-box-shadow);
-  padding: 12px 16px 16px;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 10px;
-  flex: 0 0 auto;
-}
-
-// заголовок занимает всё между × и правым слотом (tweb .popup-title flex:1)
-.title {
-  flex: 1;
-  min-width: 0;
 }
 
 .body {
@@ -44,28 +26,26 @@
 }
 
 // широкая accent-кнопка снизу (КОПИРОВАТЬ ССЫЛКУ / СОХРАНИТЬ / ...)
+// tweb $popup-footer-abitlarger-button-size: 48px
 .action {
   flex: 0 0 auto;
-  margin-top: 14px;
+  margin: 14px 16px 16px;
   text-align: center;
-  // tweb $popup-footer-abitlarger-button-size: 48px
   height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 24px;
-  // tweb `.btn-primary` — сплошной акцент, а не градиент (градиент был нашей
-  // отсебятиной); наведение затемняет его до --dark-primary-color.
   background: var(--primary-color);
   color: #fff;
   font-size: var(--font-size-15);
   font-weight: 600;
   letter-spacing: 0.5px;
   transition: background-color 0.15s ease-out;
+  text-transform: uppercase;
+  cursor: pointer;
 
   &:hover {
     background: var(--dark-primary-color);
   }
-  text-transform: uppercase;
-  cursor: pointer;
 }

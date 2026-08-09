@@ -39,8 +39,11 @@ export default function TabsBar({
       : undefined
   return (
     <div ref={barRef} className={classNames(s.bar, mode === 'overlay' ? s.overlay : s.sticky, className ?? '')} style={style}>
-      <div className={s.gradientContainer}>
-        <div className={s.gradient} />
+      {/* tweb: градиентные края под табами папок —
+          .menu-horizontal-gradient-container.folders-tabs-gradient-container
+          (_slider.scss + _leftSidebar.scss), z-index -1 под самой карточкой. */}
+      <div className={classNames('menu-horizontal-gradient-container', 'folders-tabs-gradient-container', s.gradientContainer)}>
+        <div className={classNames('menu-horizontal-gradient', 'folders-tabs-gradient', s.gradient)} />
       </div>
       {children}
     </div>

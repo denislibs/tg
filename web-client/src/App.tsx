@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
+import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
@@ -109,7 +110,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
-  // Ключ вкладки чата: его смена ремаунтит колонку (и весь её стейт).
+  // Ключ вкладки чата: его смена ремаунтит колонку — как в tweb, где на переход
+  // между чатами из списка предыдущий `.chat` УДАЛЯЕТСЯ из DOM (см. ниже).
   const tabKey = openThread && threadChat
     ? `thread-${openThread.chatId}-${openThread.thread.rootMsgId}`
     : selected
@@ -153,6 +155,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
           при этом остаются локально в колонке (Chat). */}
+      <SvgDefs />
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
       <div className="sidebar-left-overlay" />

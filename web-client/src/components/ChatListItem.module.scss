@@ -1,74 +1,31 @@
-// ChatListItem — строка диалога. Метрики из tweb (.row/_row.scss + .chatlist-chat/
-// _chatlist.scss): padding-block .4375rem, radius $row-border-radius, боковой инсет
-// как у ul.chatlist (.5rem). Цвета контента — CSS-переменные на .row, чтобы дети
-// (Avatar/Text/TgIcon) не тянули тему из JS; в выбранной строке ([data-selected])
-// переменные переключаются на «на акценте». Ripple — useRipple (tweb).
+// ChatListItem — почти всё на классах tweb: `.row`/`.row-big`/`.row-with-padding`
+// (_row.scss), `.chatlist-chat`/`.chatlist-chat-bigger` (_chatlist.scss +
+// выдержка base.scss в _chatlistRow.scss), `.badge` (_badge.scss),
+// `.row-media-bigger` (слот аватара). Здесь — только то, чего в партиалах нет.
 @use '../styles/foundation' as *;
 
 .row {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.4375rem 0.75rem; // tweb .row padding-block .4375rem
-  margin: 0 0.5rem; // tweb ul.chatlist padding: 0 .5rem
-  border-radius: $border-radius-medium; // tweb $row-border-radius
+  // tweb рисует ряды в виртуальном списке абсолютом; у нас обычный поток.
   cursor: pointer;
-  transition: background 0.18s ease;
-
-  // Палитра контента строки (обычное состояние).
-  --cl-title: var(--primary-text-color);
-  --cl-subtitle: var(--secondary-text-color);
-  --cl-meta: var(--secondary-text-color);
-  --cl-accent: var(--primary-color);
-  --cl-muted: var(--secondary-text-color);
-  --cl-ring: var(--surface-color);
-  --cl-check: #fff;
-
-  color: var(--primary-text-color);
-  background: transparent;
-
-  // контент (аватар + тело) над абсолютным слоем ripple
-  & > div {
-    position: relative;
-    z-index: 1;
-  }
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
-
-  // Выбранный диалог: акцентный градиент, «на акценте» палитра (tweb .active).
-  &[data-selected] {
-    background: var(--tg-accentGradient);
-    --ripple-color: rgba(255, 255, 255, 0.25);
-    --cl-title: #fff;
-    --cl-subtitle: rgba(255, 255, 255, 0.9);
-    --cl-meta: rgba(255, 255, 255, 0.85);
-    --cl-accent: #fff;
-    --cl-muted: rgba(255, 255, 255, 0.7);
-    --cl-ring: var(--primary-color);
-    --cl-check: var(--primary-color);
-
-    &:hover {
-      background: var(--tg-accentGradient);
-    }
-  }
+  // Ripple у нас свой (tweb `.c-ripple` не портирован) — режем его по радиусу ряда.
+  overflow: hidden;
+  // Ссылка не должна выглядеть ссылкой: цвет и подчёркивание — от `.row`.
+  color: inherit;
+  text-decoration: none;
 }
 
 // Свёрнутый ряд (tweb .is-collapsed .chatlist-chat): аватар прижат к inset 13px,
-// текст скрыт, без бокового margin и радиуса — колонка аватаров при открытом форуме.
+// текст скрыт — колонка аватаров при открытом форуме.
 .rowCollapsed {
-  margin: 0;
-  padding: 0.4375rem 0 0.4375rem 13px;
+  padding-inline: 0 !important;
   border-radius: 0;
-  gap: 0;
 
-  .body {
+  :global(.row-row) {
     display: none;
+  }
+
+  :global(.dialog-avatar) {
+    inset-inline-start: 13px !important;
   }
 }
 
@@ -88,7 +45,7 @@
   min-width: 20px;
   padding: 0 6px;
   border-radius: 10px;
-  background-color: var(--primary-color, var(--primary-color));
+  background-color: var(--primary-color);
   color: #fff;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -101,21 +58,33 @@
   background-color: var(--secondary-text-color);
 }
 
-.body {
-  min-width: 0;
-  flex: 1;
-}
-
-.titleRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
+// Строка превью: у tweb это чистый флекс без гэпа, но у нас перед текстом могут
+// стоять иконка форварда и thumb — им нужен зазор.
 .subtitleRow {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+// Иконка «переслано» перед превью (tweb .dialog-subtitle-ico).
+.subtitleIco {
+  flex-shrink: 0;
+  color: var(--secondary-text-color);
+}
+
+// Секретный чат (tweb .is-secret): замок и зелёное имя.
+.secretLock {
+  flex-shrink: 0;
+  margin-right: 3px;
+  color: var(--green-color);
+}
+
+.secretTitle {
+  color: var(--green-color);
+}
+
+.secretInvite {
+  color: var(--green-color);
 }
 
 // Мелкий скруглённый превью-thumb последнего фото (background-image задаётся инлайн).
@@ -128,5 +97,3 @@
   background-size: cover;
   background-position: center;
 }
-
-// поверхность/строки контекст-меню — из shared/ui/Menu + MenuItem.

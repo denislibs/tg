@@ -2,97 +2,54 @@
 // tweb, но без которых уже перестроенная поверхность рендерится неверно.
 // Каждое правило — дословная копия с указанием источника; блок уходит, когда
 // его партиал будет портирован.
+//
+// После фазы 4 здесь остались только выдержки из `scss/components/_global.scss` —
+// это не партиал, а набор утилит, который целиком тянуть незачем.
 @use "../foundation" as *;
 
-// tweb partials/_button.scss:51-95 — угловая плавающая кнопка (у нас это
-// «вниз» под лентой). Уйдёт с портом _button.scss.
-.btn-corner {
-  --offset: 1.25rem;
-  --translateY: calc(54px + var(--offset));
-  position: absolute !important;
-  bottom: var(--offset);
-  inset-inline-end: var(--offset);
-  transition: transform var(--btn-corner-transition) !important;
-  transform: translate3d(0, var(--translateY), 0);
-  z-index: 1;
-  background-color: var(--primary-color);
-  text-align: center;
-  font-size: 1.5rem;
-  color: #fff;
-  border: none;
-  outline: none;
-  cursor: pointer;
-  box-shadow: none !important;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 !important;
-
-  @include hover() {
-    background-color: var(--dark-primary-color);
-  }
-
-  &.is-visible {
-    --translateY: 0;
-  }
-
-  body.animation-level-0 & {
-    transition: none !important;
-  }
-
-  &:disabled {
-    opacity: 1 !important;
-    pointer-events: all !important;
-  }
-}
-
-// tweb scss/components/_global.scss:57-61 — материал-тень 2dp.
+// tweb scss/components/_global.scss:57-61 — материал-тень 2dp (её носит
+// `.btn-corner`-кнопка «вниз»).
 .z-depth-1 {
   box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
   0 3px 1px -2px rgba(0, 0, 0, 0.12),
   0 1px 5px 0 rgba(0, 0, 0, 0.2);
 }
 
-// tweb partials/_button.scss:1181-1191 — круглая кнопка (в ленте это .video-play).
-// Уйдёт с портом _button.scss.
-.btn-circle {
-  --size: 54px;
-  border-radius: 50%;
-  height: var(--size);
-  width: var(--size);
-  line-height: var(--size);
-
-  @include respond-to(handhelds) {
-    --size: 46px;
-  }
+// tweb scss/components/_global.scss:187-193 — утилиты переноса строк. `.no-wrap`
+// висит на строке чат-листа и на её title/subtitle: без него длинное превью
+// разъезжается на несколько строк вместо многоточия.
+.pre-wrap {
+  white-space: pre-wrap !important;
 }
 
-// tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера.
+.no-wrap {
+  white-space: nowrap !important;
+}
+
+// tweb base.scss:554-558 — базовые цвета текста и каретки в полях ввода.
+// base.scss целиком не портируем (глобальный ресет), но без этого правила
+// набранный текст в поле поиска остаётся браузерно-чёрным и на тёмной теме
+// не читается.
+input,
+[contenteditable="true"] {
+  caret-color: var(--primary-color);
+  color: var(--primary-text-color);
+  background-color: transparent;
+}
+
+// tweb scss/components/_global.scss:40-43 — снятие браузерного фокус-кольца.
+// Без него поверх акцентной рамки поля поиска (`.input-field-border`) Chrome
+// рисует свой синий/белый outline и получается двойной контур.
+input:focus,
+button:focus {
+  outline: none;
+}
+
+// tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера
+// (в ленте это кнопка play поверх видео).
 .position-center {
   position: absolute !important;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-}
-
-// tweb partials/_slider.scss:164-184 — `.tabs-container` (grid 100%×100%) даёт
-// `.chats-container` ширину, а `.chat.tabs-tab` — высоту строки. Целиком блок не
-// портируем: его `display: grid` рассчитан на переопределение в pages/_chats.scss
-// (`#main-columns { display: flex }`), которого у нас нет, — без него оболочка
-// схлопывается. Берём только размеры. Уйдёт с портом _slider.scss + pages.
-.chats-container.tabs-container {
-  min-width: 100%;
-  width: 100%;
-
-  > .chat {
-    height: 100%;
-  }
-}
-
-// tweb partials/_chatlist.scss:69-71 — #column-left несёт класс
-// `chatlist-container`, и именно эта строчка делает колонку контейнером для
-// абсолютов внутри (кнопка «новый чат», оверлеи). Уйдёт с портом _chatlist.scss.
-.chatlist-container {
-  position: relative;
 }

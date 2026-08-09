@@ -1,89 +1,20 @@
-// InputSearch — порт tweb .input-search.old-style: pill 44px (radius height/2),
-// заполненный фон, иконка поиска слева (~16px), placeholder, кнопка очистки справа,
-// акцентная рамка/иконка в фокусе. Геометрия 1:1 из tweb _inputSearch.scss.
-.root {
-  --height: 44px;
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-}
-
-.input {
-  width: 100%;
-  height: var(--height);
-  box-sizing: border-box;
-  padding: 0 44px 0 48px; // место под иконку слева и clear справа
-  border-radius: calc(var(--height) / 2);
-  border: 1.5px solid transparent;
-  background: var(--input-search-background-color);
-  color: var(--primary-text-color);
-  font-size: var(--font-size-16);
-  line-height: 21px;
-  outline: none;
-  transition: border-color 0.18s ease, background 0.18s ease;
-
-  &::placeholder {
-    color: transparent; // настоящий placeholder рисуем своим .placeholder (tweb)
+// InputSearch рендерит глобальные классы tweb — вся геометрия и цвета теперь
+// из `_inputSearch.scss` + `_input.scss` (радиус/рамка живут у `.input-field-input`).
+// Вертикальное центрирование иконки/плейсхолдера в tweb делает не `top: 50%`,
+// а статическая позиция абсолютных детей во флекс-контейнере
+// (`.input-search { display: flex; align-items: center }`) — свой `translateY`
+// сюда ставить нельзя: его затирает анимация `grow-input` у `.will-animate`.
+//
+// Здесь — только «залипающий» фокус: у tweb акцентная рамка есть лишь по
+// `:focus`, а у нас поле остаётся подсвеченным на всё время открытого поиска.
+.root.focused {
+  .input {
+    background-color: transparent;
+    border-color: var(--primary-color);
   }
 
-  @media (hover: hover) {
-    &:not(:focus):hover {
-      border-color: var(--secondary-text-color);
-    }
+  :global(.input-search-part) {
+    --max-opacity: 1;
+    color: var(--primary-color);
   }
-}
-
-// search icon + clear share .part positioning helpers
-.icon {
-  position: absolute;
-  inset-inline-start: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  color: var(--secondary-text-color);
-  opacity: 0.6;
-  pointer-events: none;
-  z-index: 1;
-  transition: color 0.18s ease, opacity 0.18s ease;
-}
-
-.placeholder {
-  position: absolute;
-  inset-inline-start: 48px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--secondary-text-color);
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.clear {
-  position: absolute;
-  inset-inline-end: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-}
-
-// right-side slot (e.g. folded stories) when not searching
-.right {
-  position: absolute;
-  inset-inline-end: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  display: flex;
-}
-
-// Focused/active (parent-controlled "searching"): accent border + accent icon.
-.root.focused .input,
-.input:focus {
-  border-color: var(--primary-color);
-}
-.root.focused .icon {
-  color: var(--primary-color);
-  opacity: 1;
 }

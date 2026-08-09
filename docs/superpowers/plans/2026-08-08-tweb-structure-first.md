@@ -456,25 +456,44 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 `_badge.scss` уже портирован (фаза 3, вместе с угловыми кнопками).
 
-- [ ] **Step 1:** Копирование + починка импортов + сборка.
+- [x] **Step 1:** Портированы дословно `_ripple`, `_button`, `_chatlist`, `_slider`,
+      `_leftSidebar`, `_avatar`, `_row`, `_transition`, `_stackedAvatars`; `_index.scss`
+      выстроен в порядке tweb `style.scss` (номера строк проставлены комментариями).
 - [ ] **Step 2:** Сверка с живым референсом §2 (строка 72px, порядок узлов, пилюли-табы папок).
-- [ ] **Step 3:** С портом `_slider.scss` вернуть **переход между чатами** (Task 3.5 Step 2,
-      откачен): `.tabs-container` становится гридом 100%×100%, оба `.chat` ложатся в одну
-      ячейку — уходящий перестаёт наезжать на сайдбар. Проверить, что `pages/_chats.scss`
-      перебивает грид на `display:flex` у `#main-columns`, а `#column-left/-center/-right`
-      не схлопываются в `display:none` от `.tabs-tab`.
-- [ ] **Step 4:** Убрать из `styles/tweb/_bridge.scss` то, что перекрыто портами
-      (`.btn-corner`, `.btn-circle`, `.chatlist-container`, `.chats-container.tabs-container`).
-- [ ] **Step 5:** Проверки.
+- [x] **Step 3:** Переход между чатами — **НЕ ДЕЛАЕМ, и вот почему** (закрываю вопрос
+      окончательно, я пытался вернуть его дважды и оба раза ошибался).
+      Замер на живом tweb: в `.chats-container` в любой момент РОВНО ОДИН `.chat`
+      (`count: 1` после сессии с десятками переключений). Переключение чата из списка
+      идёт через `appImManager.setInnerPeer` → `spliceChats(0, false, false, spliced)`,
+      который делает `chat.container.remove()` СИНХРОННО, — к моменту вызова
+      `chatsSelectTab` прежнего узла в дереве уже нет, анимировать нечего.
+      Правило `.chat:not(.active) { transform: translate3d(∓200px) }` из `_chat.scss`
+      относится к СТЕКУ чатов (открытие треда/комментариев и возврат назад), где два
+      контейнера действительно сосуществуют, — а не к смене чата в списке.
+      Вывод по процессу: поведение нельзя выводить из чтения CSS — только замер живого
+      tweb. Если когда-нибудь понадобится анимация стека тредов — снимать её отдельно.
+- [x] **Step 4:** Мост очищен: `.btn-corner`, `.btn-circle`, `.chatlist-container`,
+      `.chats-container.tabs-container` теперь приходят из настоящих партиалов. Остались
+      только выдержки из `scss/components/_global.scss` (`.z-depth-1`, `.position-center`).
+- [x] **Step 5:** typecheck / 793 теста / build зелёные; на стенде замерены колонки,
+      топбар, лента, композер, кнопка «вниз» и FAB сайдбара — без сдвигов.
 
 ### Task 4.2: `ChatListItem` на дерево tweb
 
 **Files:** Modify `ChatListItem.tsx`, `ChatList.tsx`, `ArchiveRow.tsx`; удалить их модули.
 
-- [ ] **Step 1:** Дерево `a.row.chatlist-chat.chatlist-chat-bigger > .avatar.dialog-avatar + .row-row.row-title-row + .row-row.row-subtitle-row` — **включая порядок узлов из живого DOM** (референс §2: subtitle→title→avatar в исходном порядке, визуальный порядок задаёт CSS).
-- [ ] **Step 2:** Иконка mute — в титуле сразу после имени; галочки статуса 20px с `--chatlist-status-color`.
-- [ ] **Step 3:** Бейджи: `dialog-subtitle-badge` с CSS-order (reaction 1 → mention 2 → unread 3 → pinned 4), scale-анимация появления через `--chatlist-badge-transition-*`.
-- [ ] **Step 4:** DOM-diff строки + проверки.
+- [x] **Step 1:** Дерево собрано в порядке живого DOM (subtitle → title → avatar),
+      строка — `a.row.no-wrap.row-with-padding.row-clickable.hover-effect.rp.chatlist-chat
+      .chatlist-chat-bigger.row-big`, выбранная несёт `active` (в tweb это она красит
+      строку в акцент и весь текст в белый), замьюченная — `is-muted`.
+      Портированы `_row`/`_chatlist`/`_avatar` + выдержка `base.scss:1600-1697`
+      (`.peer-title`, `.chatlist-chat`) в `_chatlistRow.scss`.
+- [x] **Step 2:** Mute-иконка в титуле после имени (`dialog-muted-icon`), статус —
+      `span.message-status.sending-status` 20px (цвет из `--chatlist-status-color`).
+- [x] **Step 3:** Бейджи на классах tweb (`dialog-subtitle-badge badge badge-22` +
+      `-reaction`/`-mention`/`-unread`/`-pinned`, размер 22 как BADGE_SIZE в
+      appDialogsManager); порядок в DOM — реакции → упоминания → непрочитанные → пин.
+- [ ] **Step 4:** DOM-diff строки (эталон строки в дампах есть — снять и сверить).
 
 ### Task 4.3: Сториз-fold (P0 №13)
 

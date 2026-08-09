@@ -446,8 +446,6 @@ export default function MessageContent({
           <CallBubble
             m={m}
             out={out}
-            firstInGroup={firstInGroup}
-            lastInGroup={lastInGroup}
             time={showReactions ? undefined : timeNode('inline')}
             reactions={reactionsInside}
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}

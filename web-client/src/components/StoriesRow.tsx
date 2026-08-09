@@ -1,15 +1,37 @@
-import type { CSSProperties } from 'react'
-import { AnimatePresence, motion, type Variants } from 'framer-motion'
+// Ряд историй — порт tweb `src/components/stories/list.tsx`.
+//
+// Дерево (живой DOM §2): `.stories-list > .ListContainer > .scrollable.scrollable-x > .List > .ListItem`.
+// `.stories-list` высотой 0 (styles/tweb/_storiesList.scss) — место под ряд
+// освобождает `.connection-status-bottom`, сдвигаясь на `92px - --stories-scrolled`.
+//
+// Сворачивание (useCollapsable, прогресс 0..1, на практике 0/1):
+//   • контейнер едет вверх на `progress * MOVE_Y`;
+//   • на `setScrolledOn` (#chatlist-container) пишется
+//     `--stories-scrolled: progress * CONTAINER_HEIGHT` — это опускает/поднимает список;
+//   • аватары летят в правый край поля поиска (`foldInto`) и уменьшаются:
+//     те, что попадают в стек — до 26.67/48, остальные — до 0.2.
+// Формулы `calculateMovement` перенесены из tweb дословно.
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import classNames from '../shared/lib/classNames'
 import TgIcon from './TgIcon'
-import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
+import useCollapsable, { STATE_UNFOLDED, type CollapsableOptions } from '../core/hooks/useCollapsable'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import s from './StoriesRow.module.scss'
 
-export const FULL_H = 92
+// tweb list.tsx: ITEM_WIDTH = 74 + ITEM_MARGIN * 2, ITEM_AVATAR_SIZE = 54,
+// STACKED_LENGTH = 3, SMALL_SIDEBAR_WIDTH = 348, MOVE_Y = -69,
+// CONTAINER_PADDING = 6, CONTAINER_HEIGHT = 92.
+const ITEM_WIDTH = 74
+const ITEM_AVATAR_SIZE = 54
+const STACKED_LENGTH = 3
+const SMALL_SIDEBAR_WIDTH = 348
+const MOVE_Y = -69
+const CONTAINER_PADDING = 6
+const CONTAINER_HEIGHT = 92
 
 const UNSEEN_RING = 'linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%)'
 
@@ -78,148 +100,197 @@ export function buildStoryItems(groups: StoryGroup[], meId: number | null): Stor
   return items
 }
 
-/**
- * The full stories row. `progress` (0..1) collapses it as the chat list scrolls;
- * at 1 it's fully folded away (height 0) — the compact stack lives in the search
- * bar (see StoriesStack), matching tweb's foldInto: the search input.
- *
- * The avatar/ring markup + collapse behaviour mirror tweb; only the data source
- * is real now (the stories feed). `onAddStory` opens the add-story flow.
- */
-export default function StoriesRow({
-  onOpen,
-  onAddStory,
-  animated = false,
-}: {
-  onOpen: (index: number) => void
-  onAddStory?: () => void
-  // when true, the collapse transitions (desktop reveal); when false it tracks the
-  // scroll position 1:1 (mobile fold). The progress itself is the --stories-fold
-  // CSS var (set imperatively by the Sidebar scroll handler — no re-render).
-  animated?: boolean
-}) {
-  const groups = useStoriesStore((s) => s.groups)
-  const meId = useChatsStore((s) => s.meId)
-  const items = buildStoryItems(groups, meId)
-
-  // height driven by FULL_H (exported const) + transition toggled by `animated` — runtime
-  const rowStyle: CSSProperties = {
-    '--stories-full-h': `${FULL_H}px`,
-    transition: animated
-      ? 'height .26s cubic-bezier(.4,0,.2,1), opacity .26s ease, transform .26s cubic-bezier(.4,0,.2,1)'
-      : 'none',
-  } as CSSProperties
-
-  return (
-    <div className={s.row} style={rowStyle}>
-      {items.map((item) => {
-        const isAdd = item.isMe && item.groupIndex === null
-        const seen = !item.hasUnseen
-        const ringBg = isAdd ? 'transparent' : seen ? 'var(--secondary-text-color)' : UNSEEN_RING
-        const onClick = () => {
-          if (isAdd) onAddStory?.()
-          else if (item.groupIndex !== null) onOpen(item.groupIndex)
-        }
-        return (
-          <div key={item.key} onClick={onClick} className={s.item}>
-            <div className={s.ring} style={{ background: ringBg, opacity: seen && !isAdd ? 0.45 : 1 }}>
-              <div className={s.ringInner}>
-                <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size="dialog" />
-              </div>
-              {/* "+" add badge on the self avatar (always available to post a story) */}
-              {item.isMe && !isAdd && onAddStory && (
-                <div
-                  className={s.addBadge}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddStory()
-                  }}
-                  aria-label="Добавить историю"
-                >
-                  <TgIcon name="add" size={13} />
-                </div>
-              )}
-            </div>
-            <Text noWrap size={12} color="var(--secondary-text-color)" className={s.label}>
-              {item.name}
-            </Text>
-          </div>
-        )
-      })}
-    </div>
-  )
+interface Rects {
+  /** foldInto (input) — куда летят аватары */
+  to: DOMRect
+  /** foldInto.parentElement (.input-search) — от чьего левого края tweb считает путь */
+  from: DOMRect
+  /** foldInto.parentElement.parentElement (.sidebar-header) — ширина колонки */
+  container: DOMRect
 }
 
-/**
- * Compact stacked avatars shown inside the search bar once the stories row is
- * folded (tweb folds the row into the search input). `progress` fades/scales it in.
- */
-export function StoriesStack({
-  onOpen,
-  show,
-}: {
+/** tweb `calculateMovement` внутри Item — дословно. */
+function itemMovement(
+  index: number,
+  value: number,
+  rects: Rects,
+  peersLength: number,
+  myIndex: number,
+  offsetX: number,
+): { isOut: boolean; style: CSSProperties } | undefined {
+  const { to: toRect, from: fromRect, container: rect } = rects
+
+  const marginEvenly = rect.width > peersLength * ITEM_WIDTH
+    ? (rect.width - peersLength * ITEM_WIDTH) / (peersLength + 1)
+    : 0
+  const containerPadding = marginEvenly ? 0 : CONTAINER_PADDING
+
+  const maxStackedItems = rect.width > SMALL_SIDEBAR_WIDTH ? STACKED_LENGTH : 1
+  const foldedLength = Math.min(maxStackedItems, peersLength - (myIndex !== -1 ? 1 : 0))
+  const minIndex = myIndex === 0 && peersLength > 1 ? 1 : 0
+  const maxIndex = myIndex === 0 ? foldedLength : foldedLength - 1
+
+  const isOut = index < minIndex || index > maxIndex
+  const fromLeft = fromRect.left + containerPadding
+  const left = fromLeft + index * ITEM_WIDTH + marginEvenly * (index + 1)
+  const realLeft = rect.left + containerPadding + index * ITEM_WIDTH + marginEvenly * (index + 1)
+  if (realLeft > rect.right) {
+    return undefined
+  }
+
+  const style: CSSProperties = {}
+  style.zIndex = isOut ? 100 - index : 100 + foldedLength + 1 - index
+
+  const desiredX = toRect.right + offsetX
+  const indexOffsetX = isOut ? 0 : (maxIndex - index) * 16
+  let distanceX = desiredX - left + 5 - indexOffsetX
+
+  let scale: number
+  if (isOut) {
+    style.transformOrigin = 'center 43.75%'
+    distanceX += 8 * (index < minIndex ? 1 : -1)
+    scale = 0.2
+  } else {
+    scale = 26.67 / 48
+  }
+
+  const translateX = distanceX * value
+  const scaleValue = 1 - (value * (1 - scale))
+  style.transform = `translateX(calc(var(--stories-additional-offset, 0px) * ${value} + ${translateX}px)) scale(${scaleValue})`
+  return { isOut, style }
+}
+
+export interface StoriesRowProps {
   onOpen: (index: number) => void
-  // shown once the row has folded enough (the Sidebar flips this on threshold
-  // crossing, not per scroll frame).
-  show: boolean
-}) {
-  const groups = useStoriesStore((s) => s.groups)
-  const meId = useChatsStore((s) => s.meId)
-  // only the avatars that map to a real group (skip the "+" add affordance)
-  const items = buildStoryItems(groups, meId)
-    .filter((it) => it.groupIndex !== null)
-    .slice(0, 3)
+  onAddStory?: () => void
+  /** поле поиска — цель, в которую сворачивается ряд (tweb foldInto) */
+  foldInto: () => HTMLElement | null
+  /** узел, на который пишется --stories-scrolled (tweb setScrolledOn = #chatlist-container) */
+  setScrolledOn: () => HTMLElement | null
+  /** прокручиваемый список под рядом */
+  getScrollable: CollapsableOptions['scrollable']
+  /** узел-приёмник колеса (tweb listenWheelOn = .connection-status-bottom) */
+  listenWheelOn: CollapsableOptions['listenWheelOn']
+  /** tweb передаёт -1 */
+  offsetX?: number
+  /** развернули ряд кликом — tweb дополнительно прокручивает список к началу */
+  onExpand?: () => void
+}
 
-  // each avatar grows and flies up into place from below, staggered
-  // Аннотация Variants обязательна (framer-motion 12): без неё TS расширяет
-  // transition.type 'spring' до string и variants-проп не принимает объект.
-  const container: Variants = {
-    hidden: { transition: { staggerChildren: 0.05, staggerDirection: -1 } },
-    show: { transition: { staggerChildren: 0.07, delayChildren: 0.02 } },
+export default function StoriesRow({
+  onOpen, onAddStory, foldInto, setScrolledOn, getScrollable, listenWheelOn, offsetX = -1, onExpand,
+}: StoriesRowProps) {
+  const groups = useStoriesStore((st) => st.groups)
+  const meId = useChatsStore((st) => st.meId)
+  const items = useMemo(() => buildStoryItems(groups, meId), [groups, meId])
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [rects, setRects] = useState<Rects | null>(null)
+
+  const { progress, folded, isTransition, unfold, fold } = useCollapsable({
+    scrollable: getScrollable,
+    listenWheelOn,
+    container: () => containerRef.current,
+    shouldIgnore: () => items.length === 0,
+  })
+
+  // tweb onResize: три прямоугольника вокруг поля поиска.
+  const measure = useCallback(() => {
+    const input = foldInto()
+    const from = input?.parentElement
+    const container = from?.parentElement
+    if (!input || !from || !container) return
+    setRects({
+      to: input.getBoundingClientRect(),
+      from: from.getBoundingClientRect(),
+      container: container.getBoundingClientRect(),
+    })
+  }, [foldInto])
+
+  useEffect(() => {
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
+
+  // tweb: `props.setScrolledOn.style.setProperty('--stories-scrolled', value * CONTAINER_HEIGHT + 'px')`
+  // — прямо в calculateMovement, то есть на каждый пересчёт прогресса.
+  useEffect(() => {
+    setScrolledOn()?.style.setProperty('--stories-scrolled', `${progress * CONTAINER_HEIGHT}px`)
+  }, [progress, setScrolledOn])
+
+  // tweb: «свернуть, когда истории пропали»
+  useEffect(() => {
+    if (items.length === 0) fold()
+  }, [items.length, fold])
+
+  const myIndex = items.findIndex((it) => it.isMe)
+  const spaceEvenly = rects != null && rects.container.width > items.length * ITEM_WIDTH
+
+  const containerStyle: CSSProperties = {
+    transform: `translateY(${progress * MOVE_Y}px)`,
+    ['--progress' as string]: String(progress),
   }
-  const item: Variants = {
-    hidden: { opacity: 0, y: 16, scale: 0.2 },
-    show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 520, damping: 24 } },
-  }
 
-  if (items.length === 0) return null
-
-  // searchBg (обводка стека) зависит от темы — задаётся через CSS var с фолбэком для day
   return (
-    <AnimatePresence>
-      {show && (
-        <motion.div
-          key="stories-stack"
-          className={s.stack}
-          variants={container}
-          initial="hidden"
-          animate="show"
-          exit="hidden"
-          onClick={(e) => {
-            e.stopPropagation()
-            onOpen(items[0].groupIndex!)
-          }}
-        >
-          {items.map((it, i) => {
-            const ringBg = !it.hasUnseen ? 'var(--secondary-text-color)' : UNSEEN_RING
+    <div
+      ref={containerRef}
+      className={classNames(s.container, folded || isTransition ? s.disableHover : '')}
+      style={containerStyle}
+      onClick={(e) => {
+        if (progress === STATE_UNFOLDED) return
+        unfold(e)
+        onExpand?.()
+      }}
+    >
+      <div className="scrollable scrollable-x">
+        <div className={classNames(s.list, spaceEvenly ? s.spaceEvenly : '')}>
+          {items.map((item, index) => {
+            const movement = rects ? itemMovement(index, progress, rects, items.length, myIndex, offsetX) : undefined
+            // tweb <Show when={calculateMovement() || !folded()}> — элемент,
+            // который в свёрнутом виде уехал бы за правый край, просто не рисуем.
+            if (!movement && folded) return null
+
+            const isAdd = item.isMe && item.groupIndex === null
+            const seen = !item.hasUnseen
+            const ringBg = isAdd ? 'transparent' : seen ? 'var(--secondary-text-color)' : UNSEEN_RING
+            const onClick = () => {
+              // tweb onItemClick: в свёрнутом виде клик по элементу = клик по контейнеру.
+              if (progress !== STATE_UNFOLDED) return
+              if (isAdd) onAddStory?.()
+              else if (item.groupIndex !== null) onOpen(item.groupIndex)
+            }
             return (
-              <motion.div
-                key={it.key}
-                className={s.stackItem}
-                variants={item}
-                style={{
-                  background: ringBg,
-                  marginLeft: i === 0 ? 0 : '-10px',
-                  zIndex: 3 - i,
-                  boxShadow: '0 0 0 2px var(--input-search-background-color)',
-                }}
+              <div
+                key={item.key}
+                className={classNames(s.item, seen && !isAdd ? s.isRead : '')}
+                style={movement?.style}
+                onClick={onClick}
               >
-                <Avatar background={it.bg} text={it.text} size={20} />
-              </motion.div>
+                <div className={s.ring} style={{ background: ringBg, opacity: seen && !isAdd ? 0.45 : 1 }}>
+                  <div className={s.ringInner}>
+                    <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size={ITEM_AVATAR_SIZE} />
+                  </div>
+                  {/* "+" add badge on the self avatar (always available to post a story) */}
+                  {item.isMe && !isAdd && onAddStory && (
+                    <div
+                      className={s.addBadge}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onAddStory()
+                      }}
+                      aria-label="Добавить историю"
+                    >
+                      <TgIcon name="add" size={13} />
+                    </div>
+                  )}
+                </div>
+                <div className={s.name}>{item.name}</div>
+              </div>
             )
           })}
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </div>
+      </div>
+    </div>
   )
 }

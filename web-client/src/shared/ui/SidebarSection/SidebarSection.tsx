@@ -18,8 +18,12 @@ interface SidebarSectionProps {
   children: ReactNode
 }
 
-// Карточка-секция левого сайдбара (tweb .sidebar-left-section): surface-фон,
-// скруглённая, с тенью; опциональные заголовок и действие справа.
+// Карточка-секция левого сайдбара — классы tweb (_section.scss):
+//   .sidebar-left-section-container > .sidebar-left-section[.no-shadow][.no-margin-bottom]
+//     > [.sidebar-left-section-name > span + span.sidebar-left-section-name-right]
+//     + .sidebar-left-section-content[.full-width]
+// Фон, радиус, тень, отступы (--section-padding-inline / --section-margin-inline /
+// --section-padding-bottom) — из партиала.
 export default function SidebarSection({
   title,
   action,
@@ -31,26 +35,26 @@ export default function SidebarSection({
   children,
 }: SidebarSectionProps) {
   return (
-    <div className={s.container}>
+    <div className="sidebar-left-section-container">
       <div
         className={classNames(
-          s.section,
-          noShadow ? s.noShadow : '',
-          noMargin ? s.noMargin : '',
+          'sidebar-left-section',
+          noShadow ? 'no-shadow' : '',
+          noMargin ? 'no-margin-bottom' : '',
           className ?? '',
         )}
       >
         {title != null && (
-          <div className={s.name}>
+          <div className={classNames('sidebar-left-section-name', s.name)}>
             <span>{title}</span>
             {action != null && (
-              <span className={s.nameRight} onClick={onActionClick}>
+              <span className={classNames('sidebar-left-section-name-right', s.nameRight)} onClick={onActionClick}>
                 {action}
               </span>
             )}
           </div>
         )}
-        <div className={classNames(s.content, fullWidth ? s.fullWidth : '')}>{children}</div>
+        <div className={classNames('sidebar-left-section-content', fullWidth ? 'full-width' : '')}>{children}</div>
       </div>
     </div>
   )

@@ -1,7 +1,6 @@
 import { memo, useState, type CSSProperties, type ReactNode } from 'react'
-import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
-import Badge from '../shared/ui/Badge'
+import classNames from '../shared/lib/classNames'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
@@ -128,16 +127,122 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
     { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
   ]
 
+  // Бейджи подзаголовка — классы tweb (appDialogsManager.create*Badge): все несут
+  // `dialog-subtitle-badge badge badge-22`, размер 22 задаётся базовым `.badge`
+  // (в _badge.scss шкалы 22 нет — как и в tweb, там BADGE_SIZE = 22).
+  // `.dialog-subtitle-badge` в tweb по умолчанию `transform: scale(0)`
+  // (_chatlist.scss:651, миксин dialog-badge-transition под animation-level-2),
+  // а показывает его JS, добавляя `is-visible forwards`. У нас бейдж рендерится
+  // декларативно — раз он в дереве, значит виден: ставим оба класса сразу.
+  // Без них не видно НИ ОДНОГО бейджа строки (непрочитанные, реакции, пин).
+  const badgeCls = (...extra: string[]) =>
+    classNames('dialog-subtitle-badge', 'badge', 'badge-22', 'is-visible', 'forwards', ...extra)
+
   return (
     <>
-      <div
-        className={collapsed ? `${s.row} ${s.rowCollapsed}` : s.row}
-        data-selected={selected || undefined}
-        onClick={onClick}
+      {/* Строка диалога — дерево tweb (живой DOM §2): порядок детей
+          subtitle → title → avatar, визуальный порядок задаёт CSS
+          (`.row-subtitle-row { order: 1 }`). Выбранная строка — класс `active`. */}
+      <a
+        className={classNames(
+          'row', 'no-wrap', 'row-with-padding', 'row-clickable', 'hover-effect', 'rp',
+          'chatlist-chat', 'chatlist-chat-bigger', 'row-big',
+          selected ? 'active' : '',
+          chat.muted ? 'is-muted' : '',
+          s.row,
+          collapsed ? s.rowCollapsed : '',
+        )}
+        href={`#${chat.id}`}
+        data-peer-id={chat.peerId}
+        onClick={(e) => { e.preventDefault(); onClick() }}
         onPointerDown={onPointerDown}
         onContextMenu={openMenu}
       >
         {ripple}
+
+        <div className={classNames('row-row', 'row-subtitle-row', 'dialog-subtitle')}>
+          <div className={classNames('row-subtitle', 'no-wrap', 'dialog-subtitle-flex', s.subtitleRow)}>
+            {secretStatus === 'requested' || secretStatus === 'awaiting' || secretStatus === 'rejected' ? (
+              /* Секретный чат до завершения handshake: pending-превью вместо
+                 последнего сообщения. Заявка получателю — зелёным (акцент tweb). */
+              <span className={secretStatus === 'requested' ? s.secretInvite : undefined}>
+                {secretStatus === 'requested'
+                  ? t('Приглашение в секретный чат')
+                  : secretStatus === 'rejected'
+                    ? t('Секретный чат отклонён')
+                    : t('Ожидание, пока собеседник примет секретный чат…')}
+              </span>
+            ) : typingLabel.active ? (
+              <span className="peer-typing-container">
+                <TypingIndicator kind={typingLabel.kind} color="var(--color)" />
+                {typingLabel.label}
+              </span>
+            ) : chat.draftPreview ? (
+              /* Облачный черновик: «Черновик:» — tweb .danger */
+              <>
+                <span className="danger">{t('Draft')}: </span>
+                {chat.draftPreview}
+              </>
+            ) : (
+              <>
+                {chat.forwarded && (
+                  <TgIcon name="forward_filled" size={18} className={s.subtitleIco} />
+                )}
+                {chat.previewMediaId != null && <SidebarThumb id={chat.previewMediaId} />}
+                {/* tweb режет превью на несколько .dialog-subtitle-span; последний
+                    несёт `-last`, который возвращает nowrap поверх `white-space: pre`
+                    у `-overflow` (_chatlist.scss:497-513). У нас спан один — значит
+                    он одновременно и overflow-, и last-. */}
+                <span className={classNames('dialog-subtitle-span', 'dialog-subtitle-span-overflow', 'dialog-subtitle-span-last')}>
+                  {chat.preview}
+                </span>
+              </>
+            )}
+          </div>
+          {/* Порядок бейджей в tweb — реакции → упоминания → непрочитанные → пин */}
+          {chat.unreadReactions ? (
+            <div className={badgeCls('reaction-badge', 'dialog-subtitle-badge-reaction')}>
+              <TgIcon name="reactions_filled" size={16} />
+            </div>
+          ) : null}
+          {chat.unreadMentions ? (
+            <div className={badgeCls('mention', 'mention-badge', 'dialog-subtitle-badge-mention')}>@</div>
+          ) : null}
+          {chat.unread != null ? (
+            <div className={badgeCls('unread', 'dialog-subtitle-badge-unread')}>{chat.unread}</div>
+          ) : chat.pinned ? (
+            <div className={badgeCls('badge-icon', 'dialog-subtitle-badge-pinned')}>
+              <TgIcon name="chatspinned" size={19} />
+            </div>
+          ) : null}
+        </div>
+
+        <div className={classNames('row-row', 'row-title-row', 'dialog-title')}>
+          <div className={classNames('row-title', 'no-wrap', 'user-title')}>
+            {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
+            {chat.type === 'secret' && (
+              <TgIcon name="lock" size={16} className={s.secretLock} />
+            )}
+            <span className={classNames('peer-title', chat.type === 'secret' ? s.secretTitle : '')}>
+              {chat.name}
+            </span>
+            {chat.verified && <VerifiedBadge size={20} className="verified-icon" />}
+            {chat.premium && <PremiumBadge size={18} className="premium-icon" />}
+            {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
+            {chat.muted && <TgIcon name="muted" size={17} className="dialog-muted-icon" />}
+          </div>
+          <div className={classNames('row-title', 'row-title-right', 'row-title-right-secondary', 'dialog-title-details')}>
+            {chat.sent && (
+              <span className={classNames('message-status', 'sending-status')}>
+                <TgIcon name={chat.read ? 'checks' : 'check'} size={20} />
+              </span>
+            )}
+            <span className="message-time">
+              <span className="i18n">{fmtTime(chat.date)}</span>
+            </span>
+          </div>
+        </div>
+
         <Avatar
           background={chat.avatar}
           text={chat.avatarText}
@@ -147,101 +252,8 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
           // правый угол занимает бейдж непрочитанного (как в Telegram).
           online={collapsed ? false : chat.online || presence?.online}
-          ringColor="var(--cl-ring)"
+          className={classNames('dialog-avatar', 'row-media', 'row-media-bigger')}
         />
-
-        <div className={s.body}>
-          <div className={s.titleRow}>
-            {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
-            {chat.type === 'secret' && (
-              <TgIcon name="lock" size={16} color="var(--green-color)" style={{ flexShrink: 0, marginRight: 3 }} />
-            )}
-            {/* Имя не растягивается (flex:0 1 auto): иначе оно занимает всё
-                свободное место и отбрасывает бейдж/статус к правому краю.
-                Бейджи стоят сразу после имени (gap .titleRow), а время/галочка
-                уходят вправо своим кластером (margin-left:auto). */}
-            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--green-color)' : 'var(--cl-title)'} style={{ flex: '0 1 auto', minWidth: 0 }}>
-              {chat.name}
-            </Text>
-            {chat.verified && (
-              <VerifiedBadge size={20} color="var(--cl-accent)" checkColor="var(--cl-check)" />
-            )}
-            {chat.premium && <PremiumBadge size={18} />}
-            {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
-            {/* Правый кластер: mute + галочка отправки + время (tweb
-                .dialog-title-details, margin-inline-start: auto). */}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              {chat.muted && <TgIcon name="muted" size={17} color="var(--cl-muted)" />}
-              {chat.sent && (
-                <TgIcon name={chat.read ? 'checks' : 'check'} size={18} color="var(--cl-accent)" />
-              )}
-              <Text size={12} color="var(--cl-meta)">
-                {fmtTime(chat.date)}
-              </Text>
-            </div>
-          </div>
-
-          <div className={s.subtitleRow}>
-            {secretStatus === 'requested' || secretStatus === 'awaiting' || secretStatus === 'rejected' ? (
-              /* Секретный чат до завершения handshake: pending-превью вместо
-                 последнего сообщения. Заявка получателю — зелёным (акцент tweb). */
-              <Text
-                noWrap
-                size={16}
-                color={secretStatus === 'requested' ? 'var(--green-color)' : 'var(--cl-subtitle)'}
-                style={{ flex: 1 }}
-              >
-                {secretStatus === 'requested'
-                  ? t('Приглашение в секретный чат')
-                  : secretStatus === 'rejected'
-                    ? t('Секретный чат отклонён')
-                    : t('Ожидание, пока собеседник примет секретный чат…')}
-              </Text>
-            ) : typingLabel.active ? (
-              <Text noWrap size={16} color="var(--cl-accent)" style={{ flex: 1 }}>
-                <TypingIndicator kind={typingLabel.kind} color="var(--cl-accent)" />
-                {typingLabel.label}
-              </Text>
-            ) : chat.draftPreview ? (
-              /* Облачный черновик: красный «Черновик: » + текст (tweb .danger) */
-              <Text noWrap size={16} color="var(--cl-subtitle)" style={{ flex: 1 }}>
-                <span style={{ color: '#ff595a' }}>{t('Draft')}: </span>
-                {chat.draftPreview}
-              </Text>
-            ) : (
-              <>
-                {chat.forwarded && (
-                  <TgIcon
-                    name="forward_filled"
-                    size={18}
-                    color="var(--cl-subtitle)"
-                    style={{ flexShrink: 0, marginRight: 4 }}
-                  />
-                )}
-                {chat.previewMediaId != null && <SidebarThumb id={chat.previewMediaId} />}
-                <Text noWrap size={16} color="var(--cl-subtitle)" style={{ flex: 1 }}>
-                  {chat.preview}
-                </Text>
-              </>
-            )}
-            {/* Непрочитанные упоминания: отдельный круглый бейдж «@» слева от
-                счётчика непрочитанных (tweb .dialog-subtitle-badge.mention). */}
-            {chat.unreadMentions ? <Badge muted={chat.muted}>@</Badge> : null}
-            {/* Непрочитанные реакции: круглый бейдж-сердце (tweb
-                .dialog-subtitle-badge.reaction, Icon('reactions_filled')). */}
-            {chat.unreadReactions ? (
-              <Badge muted={chat.muted}>
-                <TgIcon name="reactions_filled" size={16} color="#fff" />
-              </Badge>
-            ) : null}
-            {chat.unread != null ? (
-              <Badge muted={chat.muted}>{chat.unread}</Badge>
-            ) : chat.pinned ? (
-              /* tweb dialog-subtitle-badge-pinned: иконка пина вместо бейджа у прочитанного */
-              <TgIcon name="chatspinned" size={19} color="var(--cl-muted)" style={{ flexShrink: 0 }} />
-            ) : null}
-          </div>
-        </div>
 
         {/* Свёрнутый ряд (форум открыт): компактный бейдж непрочитанного в нижнем
             правом углу аватара, как в Telegram (текст ряда скрыт). */}
@@ -250,7 +262,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
             {chat.unread != null ? chat.unread : '@'}
           </span>
         ) : null}
-      </div>
+      </a>
 
       <Menu open={!!menuPos} onClose={() => setMenuPos(null)} style={menuPos ?? undefined}>
         {menuItems.map((it) => (

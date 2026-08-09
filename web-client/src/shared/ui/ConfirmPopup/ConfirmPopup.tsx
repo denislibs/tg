@@ -57,7 +57,7 @@ function ConfirmButton({ text, danger, onClick }: { text: string; danger?: boole
   return (
     <button
       type="button"
-      className={classNames(s.button, danger ? s.danger : '')}
+      className={classNames('rp', 'rp-overflow', s.button, danger ? s.danger : '')}
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
@@ -72,7 +72,7 @@ function CheckboxRow({ text, checked, onToggle }: { text: ReactNode; checked: bo
   const { onPointerDown, ripple } = useRipple()
   return (
     <div
-      className={s.checkboxRow}
+      className={classNames('rp', 'rp-overflow', s.checkboxRow)}
       role="checkbox"
       aria-checked={checked}
       onPointerDown={onPointerDown}

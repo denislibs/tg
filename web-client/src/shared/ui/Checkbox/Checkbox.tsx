@@ -1,17 +1,24 @@
-// Круглый чекбокс выбора — порт tweb .checkbox-field-round: невыбранное кольцо;
-// при выборе акцентный круг вкатывается (.2s, задержка .05s, ease-in-out), затем
-// рисуется белая галочка (.15s, задержка .15s). Используется в мультивыборе.
+// Чекбокс — разметка tweb `checkboxField.ts:134-155`:
+//   .checkbox-field[.checkbox-field-round][.checkbox-disabled]
+//     > input.checkbox-field-input
+//     + .checkbox-box > .checkbox-box-border + .checkbox-box-background
+//                     + svg.checkbox-box-check > use[href="#check"]
+// Вся анимация — CSS из `_checkbox.scss`: акцентный круг вкатывается
+// (transform: scale(0)→1, .2s ease-in-out), галочка дорисовывается через
+// stroke-dasharray (.1s с задержкой .15s). framer-motion больше не нужен.
+//
+// Отступление: у tweb корень — `<label>`, у нас `<div>`: компонент
+// «только отображение», клик обрабатывает строка-владелец, а label
+// переключал бы input мимо React.
 import { type CSSProperties } from 'react'
-import { motion } from 'framer-motion'
+import classNames from '../../lib/classNames'
 import s from './Checkbox.module.scss'
-
-const EASE = 'easeInOut' as const
 
 export interface CheckboxProps {
   checked: boolean
   /** цвет заливки (по умолчанию --primary-color) */
   accent?: string
-  /** цвет кольца (по умолчанию --secondary-text-color) */
+  /** цвет кольца (по умолчанию --secondary-color, как в tweb) */
   ring?: string
   size?: number
   /** square — квадрат со скруглением (tweb .checkbox-field, add members) */
@@ -20,34 +27,25 @@ export interface CheckboxProps {
   disabled?: boolean
 }
 
-export default function Checkbox({ checked, accent = 'var(--primary-color)', ring = 'var(--secondary-text-color)', size = 18, shape = 'round', disabled = false }: CheckboxProps) {
+export default function Checkbox({ checked, accent, ring, size = 18, shape = 'round', disabled = false }: CheckboxProps) {
   const style = {
-    width: size, height: size, '--cb-accent': accent, '--cb-ring': ring,
-    '--cb-radius': shape === 'square' ? '31%' : '50%',
-    opacity: disabled ? 0.45 : 1,
+    '--size': `${size}px`,
+    ...(accent ? { '--primary-color': accent } : {}),
+    ...(ring ? { '--secondary-color': ring } : {}),
   } as CSSProperties
   return (
-    <div className={s.root} style={style}>
-      <div className={s.ring} />
-      <motion.div
-        className={s.fill}
-        initial={false}
-        animate={{ scale: checked ? 1 : 0 }}
-        transition={{ duration: 0.2, delay: checked ? 0.05 : 0, ease: EASE }}
-      />
-      <svg className={s.svg} viewBox="0 0 24 24" width={size} height={size}>
-        <motion.path
-          d="M7 12.5 L10.5 16 L17 8.5"
-          fill="none"
-          stroke="#fff"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={false}
-          animate={{ pathLength: checked ? 1 : 0, opacity: checked ? 1 : 0 }}
-          transition={{ duration: 0.15, delay: checked ? 0.15 : 0, ease: EASE }}
-        />
-      </svg>
+    <div
+      className={classNames('checkbox-field', shape === 'round' ? 'checkbox-field-round' : '', disabled ? 'checkbox-disabled' : '', s.root)}
+      style={style}
+    >
+      <input className="checkbox-field-input" type="checkbox" checked={checked} disabled={disabled} readOnly tabIndex={-1} />
+      <div className="checkbox-box">
+        <div className="checkbox-box-border" />
+        <div className="checkbox-box-background" />
+        <svg className="checkbox-box-check" viewBox="0 0 24 24">
+          <use href="#check" x="-1" />
+        </svg>
+      </div>
     </div>
   )
 }

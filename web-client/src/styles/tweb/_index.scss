@@ -11,38 +11,57 @@
 // Правила для классов, которые мы ещё не рендерим, НЕ вырезаем: они не матчатся,
 // но включатся сами, когда появится фича.
 //
-// @use добавляется по мере перестройки поверхностей (фаза 2 — лента и баблы).
+// ПОРЯДОК ВАЖЕН: у tweb полно правил с одинаковой специфичностью, где решает
+// только позиция в каскаде (`.btn-corner` vs `.bubbles-corner-button`,
+// `.progress-line` vs `.pinned-audio-progress`). Держим ту же
+// последовательность, что в style.scss, и не переставляем «как удобнее».
 
-// Мост: правила из ещё не портированных партиалов (_button, _chatlist, _slider).
-// Идёт ПЕРВЫМ — в tweb эти партиалы подключаются до _chat*, и порядок решает,
-// когда специфичность одинаковая (например .btn-corner vs .bubbles-corner-button).
+// Мост: правила из ещё не портированных партиалов. Идёт первым — их оригиналы
+// в tweb подключаются раньше всего портированного.
 @use "bridge";
 
-// `.progress-line` (выдержка из _ckin.scss). В tweb style.scss ckin идёт ДО
-// chat*/chatPinned — порядок важен: `.pinned-audio-progress` (absolute, к низу
-// плашки) обязан перебивать `.progress-line` (position: relative).
-@use "progressLine";
+// --- Порядок как в tweb style.scss (номер — строка там) ---
+@use "ripple"; // :6
+@use "section"; // :7
+@use "input"; // :8
+@use "inputSearch"; // :9
+@use "button"; // :10
+@use "animatedIcon"; // :11
+@use "badge"; // :14
+@use "progressLine"; // :15 (выдержка из ckin)
+@use "checkbox"; // :16
+@use "chatlist"; // :17
+@use "chat"; // :18
+@use "chatTopbar"; // :19
+@use "chatBubble"; // :20
+@use "chatPinned"; // :21
+@use "sidebar"; // :32
+@use "slider"; // :34
+@use "leftSidebar"; // :35
+@use "scrollable"; // :40
+@use "preloader"; // :44
+@use "avatar"; // :45
+@use "document"; // :46
+@use "audio"; // :47
+@use "peerTyping"; // :49
+@use "transition"; // :51
+@use "row"; // :52
+@use "spoiler"; // :55
+@use "reactions"; // :57
+@use "reaction"; // :58
+@use "stackedAvatars"; // :59
+@use "markup"; // :69
+@use "quote"; // :70
+@use "animatedSuper"; // :77
 
-// --- Фаза 2: лента и баблы ---
-@use "chatBubble";
-@use "quote";
+// Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).
+@use "popups/popup"; // :83
+@use "popups/confirmation"; // :114
+
+// Выдержки из base.scss (целиком не портируем — это глобальный ресет,
+// конфликтующий с нашим styles/index.scss) и страничные партиалы.
 @use "code";
-@use "markup";
-@use "spoiler";
-@use "reaction";
-@use "reactions";
-@use "document";
-@use "audio";
-@use "peerTyping";
-
-// --- Фаза 3: каркас чата ---
+@use "chatlistRow";
+@use "storiesList";
 @use "page";
 @use "pages/chats";
-@use "scrollable";
-@use "sidebar";
-@use "chat";
-@use "chatTopbar";
-@use "chatPinned";
-@use "animatedSuper";
-@use "badge";
-

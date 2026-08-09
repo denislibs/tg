@@ -223,12 +223,13 @@
 // ── лог звонка (tweb .bubble-call) ──
 // ── лог звонка (tweb `.bubble-call`, _chatBubble.scss:1354-1400) ──
 // Бабл — просто фон и радиус (`.bubble-content`), отступы даёт тело сообщения.
+// Бабл звонка. Фон, скругления и тень рисует `.bubble-content` (tweb
+// _chatBubble.scss:357-372) — здесь их дублировать НЕЛЬЗЯ, иначе тень ложится
+// дважды и из-под бабла торчит второй контур.
 .callBubble {
   position: relative;
   min-width: 200px; // tweb --min-content-width: 200px
-  background: var(--b-bg);
   color: var(--b-text);
-  box-shadow: var(--bubble-box-shadow);
 }
 
 // tweb `.message` — то же тело сообщения, что и в текстовом бабле: его margin
