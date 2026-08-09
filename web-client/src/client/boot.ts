@@ -8,6 +8,9 @@ import { initPwaInstall } from '../core/pwa'
 import { getInitial, loadLang } from '../i18n'
 import { setBootData } from './bootData'
 import { hydrateDialogsFromPersist } from '../stores/dialogsPersist'
+import { loadStateOnce, resetStateCache } from '../core/state/loadState'
+import { initialState, STATE_VERSION } from '../core/state/state'
+import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appState'
 import { persistScope } from '../core/store/persist'
 import { idbGet } from '../core/store/idbKv'
 import { useSettingsStore } from '../settings'
@@ -48,16 +51,30 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   const me: Promise<User | null> = locked ? Promise.resolve(null) : managers.auth.me()
   const dialogs: Promise<Dialog[]> = locked ? Promise.resolve([]) : managers.chats.listDialogs()
 
-  // #2 — offline-first кэш чатов + словарь языка + наличие токена: всё до первого
-  // кадра, чтобы сразу показать последний известный UI без мигания и решить authed
-  // локально (по токену), а не по сети. persistScope до hydrate стирает данные
+  // #2 — offline-first кэш чатов + State + словарь языка + наличие токена: всё до
+  // первого кадра, чтобы сразу показать последний известный UI без мигания и решить
+  // authed локально (по токену), а не по сети. persistScope до hydrate стирает данные
   // предыдущего аккаунта (мультиаккаунт), чтобы стор не поднял чужой список.
+  //
+  // State (папки/черновики/прочий конфиг) читается ОДНИМ батчем за одну транзакцию —
+  // как в tweb, где `await apiManagerProxy.loadAllStates()` стоит до построения UI
+  // (index.ts:455). Диалоги — свой стор: в tweb они тоже вне State.
+  // resetStateCache перед чтением: persistScope мог стереть данные прошлого
+  // аккаунта, и мемоизированный промис прошлого входа отдал бы чужой State.
   const token = await idbGet<string>(TOKEN_KEY)
   await persistScope(token ?? null)
-  const [hydratedFromCache] = await Promise.all([
+  setStateWriter(managers.persist)
+  resetStateCache()
+  const [hydratedFromCache, state] = await Promise.all([
     locked ? Promise.resolve(false) : hydrateDialogsFromPersist(),
+    locked ? Promise.resolve(initialState()) : loadStateOnce(),
     loadLang(getInitial()),
   ])
+  // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
+  setAppStateSilent(state)
+  // Схема была чужой версии (или базы не было) — фиксируем текущую, чтобы
+  // следующий старт прошёл версионный гейт (tweb пушит STATE_INIT при смене версии).
+  if (!locked && state.version !== STATE_VERSION) setAppState('version', STATE_VERSION)
   setBootData({ me, dialogs, hydratedFromCache, hasToken: !!token, locked })
 
   return { managers }
