@@ -107,13 +107,17 @@ function ChatFeed({
       // а баблы лежат прямо в .bubbles-group без промежуточной колонки.
       body().push(
         <div key={`grp-${g.key}`} className="bubbles-group">
+          {/* Аватар — САМ узел .avatar несёт `bubbles-group-avatar user-avatar`
+              (tweb bubbleGroups.ts:137-146: контейнер без стилей, sticky/scale
+              висят на самом аватаре). Клик по нему — открыть профиль. */}
           <div className="bubbles-group-avatar-container">
-            <div
-              className="bubbles-group-avatar"
+            <Avatar
+              className="bubbles-group-avatar user-avatar"
+              background={g.senderId != null ? gradientFor(g.senderId) : g.color}
+              text={g.sender[0]}
+              size="sm"
               onClick={g.senderId != null ? () => feedFns.openSender(g.senderId!, g.sender) : undefined}
-            >
-              <Avatar background={g.senderId != null ? gradientFor(g.senderId) : g.color} text={g.sender[0]} size="sm" />
-            </div>
+            />
           </div>
           {rows}
         </div>,

@@ -24,6 +24,7 @@ import { uiEvents } from '../core/hooks/uiEvents'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
+import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
@@ -414,6 +415,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
     useChatSelection(scrollRef)
   // Enter selection mode from the header menu with nothing selected yet.
   const startSelectMode = () => setSelectionMode(true)
+  // Классы режима выделения на `.bubbles` — ровно как tweb SetTransition в
+  // ChatSelection.onToggleSelection (selection.ts:1019-1030): `is-selecting` +
+  // `forwards`/`backwards` + `animating` на 200 мс. От `forwards` зависят сдвиг
+  // входящих баблов и масштаб аватарки группы (_chat.scss:1181-1204).
+  const selectingCls = useSetTransition(selecting, 'is-selecting', 200)
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
@@ -581,6 +587,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const openSenderE = useEvent(openSender)
   const playVoiceE = useEvent(playVoice)
   const toggleSelectE = useEvent(toggleSelect)
+  // Клик по баблу-контейнеру альбома выделяет/снимает всю группу разом
+  // (tweb selection.ts:906-920).
+  const selectAlbumE = useEvent((ids: number[], select: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) select ? next.add(id) : next.delete(id)
+      return next
+    })
+  })
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
   // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3058-3090 →
@@ -650,6 +665,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
       openSender: openSenderE,
       playVoice: playVoiceE,
       toggleSelect: toggleSelectE,
+      selectAlbum: selectAlbumE,
       openMsgMenu: openMsgMenuE,
       jumpToSeq: jumpToSeqE,
       openDatePicker: openDatePickerE,
@@ -664,7 +680,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
       unlockPaid: unlockPaidE,
       forwardMsg: forwardMsgE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
+    [openSenderE, playVoiceE, toggleSelectE, selectAlbumE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -1072,7 +1088,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
             .bubbles-padding-top + .bubbles-inner + .bubbles-padding-bottom
             (bubbles.ts:4178-4186). Распорки заменяют паддинги контента: их высота
             меняется вместе с плейтами, и скролл компенсируется по дельте. */}
-        <div ref={bubblesRef} className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'is-selecting' : '')}>
+        {/* `no-select` — как в tweb (selection.ts:433): гасит `user-select: text`
+            у .bubble-content, чтобы drag-выделение не красило текст. */}
+        <div
+          ref={bubblesRef}
+          className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'no-select' : '', selectingCls)}
+        >
         <div
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
@@ -1124,7 +1145,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             bottom 0 внутри #column-center) > .chat-input-container (max-width
             --chat-width, центрируется). Высота этого узла задаёт
             --chat-input-height-surplus и нижнюю распорку ленты. */}
-        <div ref={chatInputRef} className="chat-input chat-input-main">
+        <div ref={chatInputRef} className={classNames('chat-input', 'chat-input-main', selectingCls)}>
         <div className="chat-input-container chat-input-main-container">
         {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
         {scrollDownFab}

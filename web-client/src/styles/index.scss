@@ -128,14 +128,6 @@ samp {
   z-index: 0;
 }
 
-/* While drag-selecting messages, suppress the native text selection the drag would
-   otherwise paint across bubbles (tweb adds body.no-select for the same reason). */
-body.rt-no-select,
-body.rt-no-select * {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-}
-
 /* Telegram icon font (tgico) — ported 1:1 from tweb (icomoon export). Glyphs are
    addressed by codepoint via the <TgIcon> component / tgico-icons map. */
 @font-face {

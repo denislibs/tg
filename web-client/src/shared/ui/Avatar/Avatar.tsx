@@ -35,6 +35,8 @@ interface AvatarProps {
   ringColor?: string
   /** дополнительные классы на корне (например .person-avatar из tweb-топбара) */
   className?: string
+  /** клик по самому аватару (tweb вешает обработчик на узел .avatar) */
+  onClick?: () => void
 }
 
 // Аватар — разметка tweb (avatarNew.tsx:1073): один узел
@@ -56,6 +58,7 @@ export default function Avatar({
   online = false,
   ringColor,
   className,
+  onClick,
 }: AvatarProps) {
   const px = typeof size === 'number' ? size : AVATAR_SIZE[size]
   const known = TWEB_AVATAR_SIZES.has(px)
@@ -69,6 +72,7 @@ export default function Avatar({
     <div
       className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', online ? 'is-online' : '', s.root, className ?? '')}
       style={style}
+      onClick={onClick}
     >
       {src ? (
         <img className="avatar-photo" src={src} alt="" loading="lazy" decoding="async" />

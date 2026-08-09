@@ -32,6 +32,9 @@ export interface FeedFns {
   openSender: (senderId: number, fallbackName: string) => void
   playVoice: (mediaId: number) => void
   toggleSelect: (id: number) => void
+  /** выделить/снять весь альбом разом — клик по баблу-контейнеру группы
+   *  (tweb selection.ts:906-920 toggleByElement для .is-grouped) */
+  selectAlbum: (ids: number[], select: boolean) => void
   openMsgMenu: (e: MouseEvent, m: ConvMsg) => void
   jumpToSeq: (seq?: number) => void
   /** клик по дате-разделителю — открыть пикер даты на этом дне (мс) */
@@ -120,6 +123,22 @@ function MessageRow({
     ((m.reactions?.length ?? 0) > 0 || (!!m.starReaction && m.starReaction.total > 0)) &&
     m.id != null && !selecting
 
+  // Что можно выделять — tweb ChatSelection.canSelectBubble (selection.ts:999-1006):
+  // сервисные (у нас рендерятся не через MessageRow), неотправленные (is-outgoing)
+  // и ошибочные баблы чекбокса не получают.
+  const canSelect = selecting && m.id != null && m.status !== 'sending' && m.status !== 'error'
+
+  // Альбом — «групповой» бабл (tweb is-grouped): его чекбокс отмечен, только
+  // когда выделены ВСЕ элементы (selection.ts:972-976 isGroupedMidsSelected),
+  // а клик по нему выделяет/снимает группу целиком (selection.ts:906-920).
+  const albumIds = m.type === 'album'
+    ? (m.albumItems ?? []).map((x) => x.id).filter((id): id is number => id != null)
+    : []
+  const albumPicked = new Set((albumSelectedKey ?? '').split(',').filter(Boolean).map(Number))
+  const rowSelected = m.type === 'album'
+    ? albumIds.length > 0 && albumIds.every((id) => albumPicked.has(id))
+    : isSelected
+
   // Модификаторы бабла — единой функцией на классах tweb (см. bubbleClasses.ts).
   // Подсветка перехода и полоса выделения теперь рисуются CSS'ом самого бабла
   // (_chatBubble.scss `.is-highlighted:after` / `.is-selected:after`), поэтому
@@ -130,7 +149,7 @@ function MessageRow({
     lastInGroup,
     showName,
     isChannel,
-    isSelected: selecting && m.id != null && isSelected,
+    isSelected: canSelect && rowSelected,
     isHighlighted,
     isFirstUnread,
     bigEmojiCount,
@@ -150,19 +169,21 @@ function MessageRow({
       onContextMenu={selecting ? undefined : (e: MouseEvent) => feedFns.openMsgMenu(e, m)}
       // Обычный клик по error-баблу открывает то же меню (Переотправить/Удалить).
       onClick={
-        selecting && m.id != null && m.type !== 'album' // альбом тогглится по-элементно
-          ? () => feedFns.toggleSelect(m.id!)
+        canSelect
+          ? m.type === 'album'
+            ? () => feedFns.selectAlbum(albumIds, !rowSelected)
+            : () => feedFns.toggleSelect(m.id!)
           : m.status === 'error'
             ? (e: MouseEvent) => feedFns.openMsgMenu(e, m)
             : undefined
       }
       style={rowStyle}
     >
-      {selecting && m.id != null && m.type !== 'album' && (
-        <div className="bubble-select-checkbox">
-          <Checkbox checked={isSelected} />
-        </div>
-      )}
+      {/* Чекбокс выделения — САМ label первым ребёнком .bubble (tweb
+          selection.ts:342-344 `element.prepend(checkboxField.label)` +
+          :823-831 `label.classList.add('bubble-select-checkbox')`).
+          Размер/позиция целиком из партиала (_chatBubble.scss:306-334). */}
+      {canSelect && <Checkbox className="bubble-select-checkbox" checked={rowSelected} />}
 
       {/* Каркас tweb — одинаковый у ВСЕХ типов (живой DOM §3): контент бабла
           всегда лежит в .bubble-content-wrapper > .bubble-content. */}

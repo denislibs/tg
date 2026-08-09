@@ -128,12 +128,15 @@ export default function StarReactionPopup({
             </div>
           )}
 
-          <label className={s.anon}>
+          {/* корень Checkbox теперь <label> (как в tweb) — обёртка тут div,
+              чтобы не получить вложенные label */}
+          <div className={s.anon}>
             <div onClick={() => setShowName((v) => !v)} style={{ cursor: 'pointer' }}>
-              <Checkbox checked={showName} />
+              {/* tweb popups/starReaction.tsx:112 — обычный (не round) CheckboxField */}
+              <Checkbox checked={showName} shape="square" />
             </div>
             <Text size={14.5} color="var(--primary-text-color)">{t('Show my name')}</Text>
-          </label>
+          </div>
         </div>
       </Popup>
       <StarsPopup open={topupOpen} onClose={() => setTopupOpen(false)} />

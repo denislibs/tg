@@ -64,7 +64,7 @@ export function useDragSelect({ scrollRef, enabled, selectedRef, setSelected, su
         if (!moved) {
           moved = true
           suppressClickRef.current = true
-          document.body.classList.add('rt-no-select')
+          document.body.classList.add('no-select')
         }
         const mid = midOf(document.elementFromPoint(ev.clientX, ev.clientY))
         if (mid != null) applyTo(mid)
@@ -72,7 +72,7 @@ export function useDragSelect({ scrollRef, enabled, selectedRef, setSelected, su
       const onUp = () => {
         document.removeEventListener('mousemove', onMove)
         document.removeEventListener('mouseup', onUp)
-        document.body.classList.remove('rt-no-select')
+        document.body.classList.remove('no-select')
         // let the trailing click (if any) fire and be ignored, then re-arm clicks
         if (moved) setTimeout(() => { suppressClickRef.current = false }, 0)
       }

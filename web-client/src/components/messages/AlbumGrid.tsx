@@ -83,7 +83,10 @@ export default function AlbumGrid({
         return (
           <div
             key={m.id ?? m.clientId ?? i}
-            className={classNames('album-item', 'grouped-item', s.item)}
+            // is-selected + forwards — как tweb SetTransition в
+            // updateElementSelection (selection.ts:498-503): от `.forwards`
+            // зависит сжатие медиа (scale .883333, _chatBubble.scss:962-971).
+            className={classNames('album-item', 'grouped-item', isSel ? 'is-selected forwards' : '', s.item)}
             style={{
               left: `${(g.x / width) * 100}%`,
               top: `${(g.y / height) * 100}%`,
@@ -99,13 +102,11 @@ export default function AlbumGrid({
               if (m.mediaId != null) onOpen?.(m.mediaId, e.currentTarget)
             }}
           >
+            {/* Чекбокс элемента — тот же label.bubble-select-checkbox, что и у
+                бабла (tweb selection.ts:342-344 prepend на .grouped-item);
+                правый верхний угол задаёт партиал (_chatBubble.scss:939-943). */}
+            {selecting && m.id != null && <Checkbox className="bubble-select-checkbox" checked={isSel} />}
             {src && <img className={classNames('album-item-media', s.img)} src={src} alt="" loading="lazy" decoding="async" />}
-            {isSel && <div className={s.selectedDim} />}
-            {selecting && m.id != null && (
-              <div className={s.check}>
-                <Checkbox checked={isSel} ring="#fff" size={24} />
-              </div>
-            )}
             {uploadProgress != null ? (
               <div className={s.play}>
                 <RadialProgress progress={uploadProgress} size={44} />

@@ -1,8 +1,10 @@
 // Checkbox рендерит глобальные `.checkbox-field[.checkbox-field-round]`
 // (_checkbox.scss): размеры от --size, кольцо, вкатывающийся круг, галочка.
-// Здесь — только раскладка: у tweb `.checkbox-field` — это ЦЕЛАЯ строка формы
-// (display:block, margin 1.5rem 1.1875rem, подпись через .checkbox-caption),
-// а у нас Checkbox — самостоятельный маленький контрол внутри чужой строки.
+// Здесь — только раскладка ОДИНОЧНОГО контрола: у tweb `.checkbox-field` —
+// это ЦЕЛАЯ строка формы (display:block, margin 1.5rem 1.1875rem, подпись через
+// .checkbox-caption), а у нас Checkbox — маленький контрол внутри чужой строки.
+// Когда раскладку задаёт tweb-модификатор (`bubble-select-checkbox`), этот
+// класс не применяется — см. проп `className`.
 .root {
   margin: 0;
   display: inline-block;
