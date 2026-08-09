@@ -62,6 +62,29 @@
   }
 }
 
+// Разделитель под пунктом даты прочтения (tweb contextMenu.ts:1514
+// `element.after(document.createElement('hr'))`). Отступы/opacity/display даёт
+// портированное `.btn-menu hr` (_button.scss:633), а сама линия — базовое
+// правило `hr` из tweb base.scss:784.
+// отступление от tweb: base.scss целиком не портируем (глобальный ресет
+// конфликтует с нашим styles/index.scss), поэтому нужные две строки держим
+// здесь — у единственного меню, которое рендерит `hr`.
+.panel hr {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border-color);
+}
+
+// Плашка «показать когда» в ветке YOUR_PRIVACY_RESTRICTED — tweb base.scss:2064
+// `.show-when` ($hover-alpha = .08). Причина выноса та же, что у `hr` выше.
+.panel :global(.show-when) {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 0 6px;
+  line-height: 18px;
+  display: inline-block;
+}
+
 // Полный пикер на месте меню: гасим абсолютное позиционирование дефолта
 // (над композером) — ставит эта колонка.
 .pickerInMenu {
