@@ -1,25 +1,27 @@
 // Появление мессенджера (tweb #main-columns fade-in). При возврате к прежнему
 // аккаунту / после смены — scale-enter (флаг ANIMATE_MAIN, main-screen-enter);
-// при обычном показе — короткий fade. useLayoutEffect выполняется до первого
-// paint — как в tweb, где main-screen-enter вешается на #page-chats ДО построения
-// UI (src/index.ts, ветка signed-in), так что билд идёт уже скрытым/масштабированным.
+// при обычном показе — fade по готовности шрифтов (tweb src/index.ts:615,
+// fadeInWhenFontsReady). useLayoutEffect выполняется до первого paint — как
+// в tweb, где main-screen-enter вешается на #page-chats ДО построения UI
+// (src/index.ts, ветка signed-in), так что билд идёт уже скрытым/масштабированным.
 import { useLayoutEffect } from 'react'
 import { ANIMATE_MAIN_KEY, playMainScreenEnter } from '../accountTransition'
+import { fadeInWhenFontsReady } from '../dom/loadFonts'
 
 export function useShellEnterAnimation(): void {
   useLayoutEffect(() => {
-    const el = document.getElementById('page-chats')
-    if (!el) return
-
     // Флаг читаем один раз и сразу удаляем: scale-enter — только на первый показ
     // после смены/возврата аккаунта.
     if (!localStorage.getItem(ANIMATE_MAIN_KEY)) {
-      // Обычный показ — короткий fade-in. WAAPI без fill не оставляет остаточного
-      // состояния: по завершении элемент возвращается к базовому стилю (opacity 1).
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.4,0,.2,1)' })
+      // Обычный показ: прячем #main-columns (opacity 0) до готовности шрифтов
+      // (кап 1с) — проявление отдаёт CSS-переход (_pages.scss), не WAAPI.
+      void fadeInWhenFontsReady(document.getElementById('main-columns'))
       return
     }
     localStorage.removeItem(ANIMATE_MAIN_KEY)
+
+    const el = document.getElementById('page-chats')
+    if (!el) return
 
     // Стартовое состояние (scale 1.75 / opacity 0) вешаем СИНХРОННО и с погашенным
     // transition. layout-эффекты детей Shell могли форснуть reflow и «зафиксировать»
