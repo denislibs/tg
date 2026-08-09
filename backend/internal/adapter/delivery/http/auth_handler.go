@@ -298,6 +298,54 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 	writeSignInResult(w, res)
 }
 
+// ResetAccount — «забыли пароль?» при облачном пароле без привязанной почты:
+// восстанавливать нечем, аккаунт удаляется (анонимизируется) и вход начинается
+// заново. Публичная ручка: авторизует сам одноразовый password_token.
+func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
+	var body passwordTokenBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Анти-перебор password_token по реальному IP — тот же бюджет, что у остальных
+	// ветвей шага пароля (check_password, password/recover).
+	if !h.limiter.allow("reset-ip:"+clientIP(r), 0.2, 5) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+	err := h.svc.ResetAccount(r.Context(), body.PasswordToken)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusUnauthorized, "password_token_expired")
+		return
+	case errors.Is(err, usecaseauth.ErrRecoveryAvailable):
+		writeError(w, http.StatusConflict, "recovery_available")
+		return
+	case errors.Is(err, usecaseauth.ErrLoginStepsUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "account reset unavailable")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "account reset failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// NearestCountry — страна клиента по его IP (Telegram help.getNearestDc): экран
+// входа преднастраивает по ней выбор страны. Определить не удалось — пустая
+// строка со статусом 200, это штатный исход, а не ошибка.
+func (h *AuthHandler) NearestCountry(w http.ResponseWriter, r *http.Request) {
+	// Щадящий лимит: ручка дёргается на каждом открытии экрана входа, а утечки
+	// в ней нет — только защита от флуда.
+	if !h.limiter.allow("nearest-ip:"+clientIP(r), 1, 20) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+	// Тот же путь IP → GeoIP, что наполняет местоположение активных сессий.
+	ctx := usecaseauth.WithClientInfo(r.Context(), usecaseauth.ClientInfo{IP: clientIP(r)})
+	writeJSON(w, http.StatusOK, map[string]string{"country_code": h.svc.NearestCountry(ctx)})
+}
+
 type signImportBody struct {
 	WebAuthToken string `json:"web_auth_token"`
 	Device       string `json:"device"`

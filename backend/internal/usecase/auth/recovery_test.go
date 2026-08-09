@@ -184,3 +184,92 @@ func TestPasswordRecovery_DevCodeWithoutMailer(t *testing.T) {
 		t.Fatalf("подтверждение dev-кодом = %+v, %v", res, err)
 	}
 }
+
+// Восстановление невозможно (почта не привязана) → сброс аккаунта: единственный
+// выход в Telegram, tweb зовёт account.deleteAccount после PASSWORD_RECOVERY_NA.
+// Аккаунт анонимизируется, номер освобождается, все сессии отзываются, шаг
+// пароля сгорает.
+func TestResetAccount_NoRecoveryEmail(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, codes := newInteractor()
+	cache := newFakeCache()
+	rev := &fakeRevoker{}
+	i.SetCache(cache)
+	i.SetRevocationNotifier(rev)
+
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020010", "")
+	// Сессия, выданная до включения 2FA, должна быть отозвана вместе с аккаунтом.
+	sessions, _ := i.ListSessions(ctx, userID)
+	if len(sessions) == 0 {
+		t.Fatal("нет активных сессий до сброса — тест бессмысленен")
+	}
+
+	if err := i.ResetAccount(ctx, pwToken); err != nil {
+		t.Fatalf("ResetAccount: %v", err)
+	}
+
+	u, err := users.GetByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetByID после сброса: %v", err)
+	}
+	if u.Phone != "" || u.DisplayName != "Deleted Account" {
+		t.Fatalf("аккаунт не анонимизирован: %+v", u)
+	}
+	if sessions, _ := i.ListSessions(ctx, userID); len(sessions) != 0 {
+		t.Fatalf("остались сессии после сброса: %d", len(sessions))
+	}
+	if len(cache.m) != 0 {
+		t.Fatalf("кэш сессий не вычищен: %d записей", len(cache.m))
+	}
+	if len(rev.revoked) == 0 {
+		t.Fatal("сокеты удалённых сессий не закрыты (NotifyRevoked не вызван)")
+	}
+	// Облачный пароль снят: строка 2FA живёт отдельно от users и пережила бы
+	// анонимизацию.
+	if st, err := i.PasswordState(ctx, userID); err != nil || st.Enabled || st.Email != "" {
+		t.Fatalf("PasswordState после сброса = %+v, %v", st, err)
+	}
+	// Токен шага пароля одноразовый.
+	if err := i.ResetAccount(ctx, pwToken); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("повторный сброс = %v, want ErrNotFound", err)
+	}
+	// Номер освобождён — по нему заводится новый аккаунт.
+	fresh := registerUser(t, i, "+79990020010", "Заново", "", "web", "browser")
+	if fresh.User.ID == userID {
+		t.Fatal("новый вход по освобождённому номеру вернул старый аккаунт")
+	}
+}
+
+// Почта к паролю привязана — сбрасывать нельзя: иначе знание номера и SMS-кода
+// давало бы удаление чужого аккаунта в обход второго фактора. Аккаунт цел.
+func TestResetAccount_RecoveryAvailable(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, codes := newInteractor()
+
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020011", "denis@example.com")
+
+	if err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrRecoveryAvailable) {
+		t.Fatalf("ResetAccount с почтой = %v, want ErrRecoveryAvailable", err)
+	}
+	u, err := users.GetByID(ctx, userID)
+	if err != nil || u.Phone != "+79990020011" || u.DisplayName == "Deleted Account" {
+		t.Fatalf("аккаунт пострадал при отказе: %+v, %v", u, err)
+	}
+	if st, err := i.PasswordState(ctx, userID); err != nil || !st.Enabled {
+		t.Fatalf("облачный пароль снят при отказе: %+v, %v", st, err)
+	}
+	// Отказ не сжигает шаг пароля — пользователь возвращается к восстановлению.
+	if _, err := i.RequestPasswordRecovery(ctx, pwToken); err != nil {
+		t.Fatalf("восстановление после отказа: %v", err)
+	}
+}
+
+// Истёкший / неизвестный password_token — ErrNotFound (401), ничего не удаляется.
+func TestResetAccount_ExpiredToken(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+
+	if err := i.ResetAccount(ctx, "неизвестный-токен"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("неизвестный токен = %v, want ErrNotFound", err)
+	}
+}

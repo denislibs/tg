@@ -80,3 +80,48 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 	}
 	return nil
 }
+
+// ErrRecoveryAvailable — сброс аккаунта запрошен, хотя к облачному паролю
+// привязана почта: восстановление возможно, значит удалять нечего. Обратная
+// сторона ErrRecoveryUnavailable (Telegram PASSWORD_RECOVERY_NA).
+var ErrRecoveryAvailable = errors.New("password recovery available")
+
+// ResetAccount — «забыли пароль?» при облачном пароле БЕЗ привязанной почты:
+// восстановить его нечем, и единственный выход в Telegram — удалить аккаунт и
+// начать заново (в tweb — account.deleteAccount('Forgot password') после
+// PASSWORD_RECOVERY_NA).
+//
+// Авторизует сам одноразовый password_token из SignIn: сессии на этом шаге ещё
+// нет. Разрешено ТОЛЬКО когда почта не привязана — иначе знание номера и SMS-кода
+// давало бы удаление чужого аккаунта в обход второго фактора.
+func (i *Interactor) ResetAccount(ctx context.Context, rawPasswordToken string) error {
+	if i.pw == nil {
+		return ErrLoginStepsUnavailable
+	}
+	tokenHash := domain.HashToken(rawPasswordToken)
+	userID, err := i.pw.PasswordTokenUser(ctx, tokenHash)
+	if err != nil {
+		return err // ErrNotFound → токен истёк/использован/неизвестен
+	}
+	hash, _, email, err := i.pw.Password(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if hash != nil && email != "" {
+		return ErrRecoveryAvailable
+	}
+	// Снимаем облачный пароль до удаления: строка 2FA живёт отдельно от users и
+	// пережила бы анонимизацию, оставив хеш и подсказку от мёртвого аккаунта.
+	if err := i.pw.SetPassword(ctx, userID, nil, "", ""); err != nil {
+		return err
+	}
+	// Анонимизация + отзыв всех сессий — общий путь с удалением из настроек.
+	if err := i.DeleteAccount(ctx, userID); err != nil {
+		return err
+	}
+	i.pwFails.clear(tokenHash)
+	_ = i.pw.DeletePasswordToken(ctx, tokenHash) // шаг пароля сгорает
+	// Токен не логируем — только факт сброса.
+	i.logf("[auth] account reset (no recovery email) user=%d", userID)
+	return nil
+}

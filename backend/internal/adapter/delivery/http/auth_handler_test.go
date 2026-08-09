@@ -448,3 +448,129 @@ func TestSignImport_HTTP(t *testing.T) {
 		t.Fatalf("чужой токен: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// HTTP-контракт сброса аккаунта: «забыли пароль?» при облачном пароле БЕЗ
+// привязанной почты. 200 {"ok":true} → аккаунт удалён, шаг пароля сгорел.
+func TestAccountReset_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	token, userID := loginViaHTTP(t, h, "+79990040010")
+	// Пароль без почты восстановления — единственный выход остаётся сброс.
+	if rec := postJSONAuth(t, h, "/me/password", map[string]string{
+		"new_password": "s3cret", "hint": "hint",
+	}, token); rec.Code != http.StatusOK {
+		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	pwToken := passwordStep(t, h, "+79990040010")
+	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset: %d %s", rec.Code, rec.Body.String())
+	}
+	var ok struct {
+		OK bool `json:"ok"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &ok)
+	if !ok.OK {
+		t.Fatalf("reset тело = %s", rec.Body.String())
+	}
+
+	// Сессия удалённого аккаунта отозвана.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("сессия пережила сброс: %d %s", rec.Code, rec.Body.String())
+	}
+	// Токен шага пароля одноразовый → 401 password_token_expired.
+	rec = postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("повторный сброс: %d %s", rec.Code, rec.Body.String())
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Error != "password_token_expired" {
+		t.Fatalf("401 тело = %s", rec.Body.String())
+	}
+
+	// Номер освобождён: вход по нему заводит НОВЫЙ аккаунт (шаг регистрации).
+	_, newID := loginViaHTTP(t, h, "+79990040010")
+	if newID == userID {
+		t.Fatalf("вход по освобождённому номеру вернул старый аккаунт %d", userID)
+	}
+}
+
+// Почта восстановления привязана → сброс запрещён (409 recovery_available):
+// иначе номер + SMS-код давали бы удаление чужого аккаунта в обход 2FA.
+func TestAccountReset_RecoveryAvailable_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	token, _ := loginViaHTTP(t, h, "+79990040011")
+	if rec := postJSONAuth(t, h, "/me/password", map[string]string{
+		"new_password": "s3cret", "hint": "hint", "email": "denis@example.com",
+	}, token); rec.Code != http.StatusOK {
+		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	pwToken := passwordStep(t, h, "+79990040011")
+	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("reset с почтой: %d %s", rec.Code, rec.Body.String())
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Error != "recovery_available" {
+		t.Fatalf("409 тело = %s", rec.Body.String())
+	}
+	// Отказ не тронул аккаунт: шаг пароля жив, восстановление по почте доступно.
+	if rec := postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": pwToken}); rec.Code != http.StatusOK {
+		t.Fatalf("восстановление после 409: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// passwordStep доводит вход по номеру с включённым облачным паролем до шага
+// пароля и возвращает одноразовый password_token.
+func passwordStep(t *testing.T, h http.Handler, phone string) string {
+	t.Helper()
+	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone})
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{"phone": phone, "code": "12345"})
+	var step struct {
+		PasswordNeeded bool   `json:"password_needed"`
+		PasswordToken  string `json:"password_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &step)
+	if !step.PasswordNeeded || step.PasswordToken == "" {
+		t.Fatalf("sign_in с паролем = %s", rec.Body.String())
+	}
+	return step.PasswordToken
+}
+
+// Страна для экрана входа: публичная ручка, без GeoIP отвечает 200 с пустым
+// кодом — мягкая деградация, а не 500 (клиент оставляет свой выбор).
+func TestNearestCountry_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/nearest_country", nil)
+	req.Header.Set("X-Real-IP", "81.2.69.142")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nearest_country: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		CountryCode string `json:"country_code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("тело не JSON: %s", rec.Body.String())
+	}
+	// GeoIP в тестовом роутере не подключён (SetGeoResolver не вызывался).
+	if out.CountryCode != "" {
+		t.Fatalf("без GeoIP country_code = %q, want empty", out.CountryCode)
+	}
+	// Поле присутствует всегда — фронт читает его без проверки на undefined.
+	if !strings.Contains(rec.Body.String(), "country_code") {
+		t.Fatalf("в ответе нет country_code: %s", rec.Body.String())
+	}
+}

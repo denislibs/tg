@@ -36,6 +36,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	r.Post("/auth/check_password", authH.CheckPassword)
 	r.Post("/auth/password/recover", authH.RequestPasswordRecovery)
 	r.Post("/auth/password/recover/confirm", authH.ConfirmPasswordRecovery)
+	// Восстановление невозможно (почта не привязана) — сброс аккаунта по тому же
+	// одноразовому password_token.
+	r.Post("/auth/account/reset", authH.ResetAccount)
+	// Страна клиента для экрана входа (аналог help.getNearestDc).
+	r.Get("/auth/nearest_country", authH.NearestCountry)
 	r.Post("/auth/sign_import", authH.SignImport)
 	if passkeyH != nil {
 		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)

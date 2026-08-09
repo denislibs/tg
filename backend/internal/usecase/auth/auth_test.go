@@ -781,3 +781,39 @@ func TestDeleteAccount(t *testing.T) {
 		t.Fatalf("expected 0 sessions after delete, got %d", len(sessions))
 	}
 }
+
+// fakeGeo — GeoIP в памяти: IP → (место, ISO-код страны).
+type fakeGeo struct{ byIP map[string][2]string }
+
+func (g *fakeGeo) Locate(ip string) string  { return g.byIP[ip][0] }
+func (g *fakeGeo) Country(ip string) string { return g.byIP[ip][1] }
+
+// Страна для экрана входа (аналог help.getNearestDc): резолвится по тому же
+// ClientInfo.IP из контекста, что наполняет местоположение активных сессий.
+// Всё, что определить нельзя, — пустая строка, а не ошибка.
+func TestNearestCountry(t *testing.T) {
+	i, _, _, _ := newInteractor()
+
+	// GeoIP не подключён (GEOIP_DB_PATH не задан) — пусто.
+	ctx := WithClientInfo(context.Background(), ClientInfo{IP: "81.2.69.142"})
+	if got := i.NearestCountry(ctx); got != "" {
+		t.Fatalf("без GeoIP NearestCountry = %q, want empty", got)
+	}
+
+	i.SetGeoResolver(&fakeGeo{byIP: map[string][2]string{
+		"81.2.69.142": {"Лондон, Великобритания", "GB"},
+	}})
+	if got := i.NearestCountry(ctx); got != "GB" {
+		t.Fatalf("NearestCountry = %q, want GB", got)
+	}
+
+	// Нет IP в контексте (прямой запрос без прокси/заголовков) — пусто.
+	if got := i.NearestCountry(context.Background()); got != "" {
+		t.Fatalf("без IP NearestCountry = %q, want empty", got)
+	}
+	// IP есть, но записи по нему нет (приватный адрес, дыра в базе) — пусто.
+	priv := WithClientInfo(context.Background(), ClientInfo{IP: "192.168.1.5"})
+	if got := i.NearestCountry(priv); got != "" {
+		t.Fatalf("приватный IP NearestCountry = %q, want empty", got)
+	}
+}

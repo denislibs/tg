@@ -59,10 +59,12 @@ type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 }
 
-// GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
-// MaxMind GeoLite2 lookup; optional, so auth runs without it (returns "").
+// GeoResolver turns an IP into a human place ("Москва, Россия") and into an ISO
+// 3166-1 alpha-2 country code ("RU"). Backed by a MaxMind GeoLite2 lookup;
+// optional, so auth runs without it (both return "").
 type GeoResolver interface {
 	Locate(ip string) string
+	Country(ip string) string
 }
 
 // ServiceNotifier delivers a system message into a user's official-service chat.
@@ -92,6 +94,25 @@ func WithClientInfo(ctx context.Context, ci ClientInfo) context.Context {
 func clientInfoFromContext(ctx context.Context) ClientInfo {
 	ci, _ := ctx.Value(clientInfoKey{}).(ClientInfo)
 	return ci
+}
+
+// NearestCountry — страна, из которой пришёл клиент, ISO 3166-1 alpha-2 в
+// верхнем регистре (Telegram help.getNearestDc.country): экран входа
+// преднастраивает по ней выбор страны в поле телефона.
+//
+// IP берётся из ClientInfo в контексте — тот же механизм, что наполняет
+// местоположение сессии на экране активных сеансов. Определить не удалось (нет
+// базы GeoIP, нет IP, приватный/петлевой адрес, нет записи) — это НЕ ошибка:
+// возвращается "", клиент оставляет свой выбор по умолчанию.
+func (i *Interactor) NearestCountry(ctx context.Context) string {
+	if i.geo == nil {
+		return ""
+	}
+	ip := clientInfoFromContext(ctx).IP
+	if ip == "" {
+		return ""
+	}
+	return i.geo.Country(ip)
 }
 
 // buildLoginText composes the "new login" service message from whatever client
