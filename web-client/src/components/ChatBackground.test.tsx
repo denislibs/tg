@@ -4,7 +4,7 @@
 // opacity:0 (весь слой обоев пропадал на сессию). Проверяем, что onerror тоже
 // активирует слот — и для узора (pattern.svg), и для оверлей-картинки.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, render, waitFor } from '@testing-library/react'
 import { useSettingsStore } from '../settings'
 import s from './ChatBackground.module.scss'
 
@@ -113,5 +113,37 @@ describe('ChatBackground: готовность слота — первый по�
     const slot = document.body.querySelector(`.${s.Slot}`)
     expect(slot?.classList.contains(s.SlotActive)).toBe(true)
     expect(slot?.classList.contains(s.SlotFade)).toBe(false)
+  })
+})
+
+// Регрессия: `setTheme` вызывается в layout-эффекте ThemedApp (useThemeToggle),
+// а React прогоняет layout-эффекты снизу вверх — на рендере, вызванном сменой
+// темы, переменные на <html> ещё старые, и градиент инициализировался цветами
+// ПРОШЛОЙ темы. На шелле это маскировали последующие перерисовки, на статичном
+// экране входа обои так и оставались от предыдущей темы.
+describe('ChatBackground: обои следуют за сменой темы', () => {
+  const setThemeVars = (theme: string, grad: string[]) => {
+    const el = document.documentElement
+    el.setAttribute('data-theme', theme)
+    grad.forEach((c, i) => el.style.setProperty(`--tg-bgGrad${i}`, c))
+  }
+
+  it('после смены data-theme градиент перечитывает цвета новой темы', async () => {
+    vi.stubGlobal('Image', FakeImage)
+    useSettingsStore.setState({ wallpaper: { kind: 'default' } })
+    setThemeVars('day', ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'])
+
+    render(<ChatBackground />)
+
+    const canvas = () => document.body.querySelector('canvas') as HTMLCanvasElement | null
+    expect(canvas()?.dataset.colors).toBe('#dbddbb,#6ba587,#d5d88d,#88b884')
+
+    // Так тему применяет themeController: пишет переменные и переставляет
+    // data-theme на <html> — уже ПОСЛЕ того, как React отрисовал компонент.
+    setThemeVars('night', ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'])
+
+    await waitFor(() => {
+      expect(canvas()?.dataset.colors).toBe('#fec496,#dd6cb9,#962fbf,#4f5bd5')
+    })
   })
 })
