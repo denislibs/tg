@@ -13,7 +13,7 @@ function harness(diffs: ChannelDiff[] = []) {
     return diffs[diffIdx++] ?? { updates: [], pts: _since, slice: false }
   })
   const funnel = newChannelFunnel({
-    dispatch: (t, d) => dispatched.push({ t, d }),
+    dispatch: (t, d) => dispatched.push({ t, d }),  // meta проверяется отдельным тестом ниже
     getDifference,
     loadPts: async (id) => stored.get(id) ?? null,
     savePts: (id, pts) => saved.set(id, pts),
@@ -80,6 +80,23 @@ describe('channelFunnel.open', () => {
     const h = harness()
     await h.funnel.open(1)
     expect(h.getDifference).not.toHaveBeenCalled()
+  })
+})
+
+describe('channelFunnel meta', () => {
+  it('живой кадр помечается catchUp:false, кадр из difference — catchUp:true', async () => {
+    const seen: Array<{ t: string; catchUp?: boolean }> = []
+    const funnel = newChannelFunnel({
+      dispatch: (t, _d, meta) => { seen.push({ t, catchUp: meta?.catchUp }) },
+      getDifference: async () => ({ updates: [{ t: 'new_message', pts: 2, d: {} }], pts: 2, slice: false }),
+      loadPts: async () => 1,
+      savePts: () => {},
+    })
+    funnel.applyLive(1, 'new_message', 5, {})
+    expect(seen).toEqual([{ t: 'new_message', catchUp: false }])
+    seen.length = 0
+    await funnel.open(2)
+    expect(seen.some((x) => x.catchUp === true)).toBe(true)
   })
 })
 

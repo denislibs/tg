@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { SuperMessagePort, type Endpoint, type EventMeta } from '../rpc/superMessagePort'
 import { registerManagers } from '../rpc/managersProxy'
 import { RestClient } from './net/restClient'
 import { createTransport } from './net/createTransport'
@@ -124,7 +124,7 @@ const persist = newPersistManager((key, value) => broadcast('state:mirror', { ke
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
-const broadcast = (event: string, payload: unknown) => { for (const p of ports) p.emit(event, payload) }
+const broadcast = (event: string, payload: unknown, meta?: EventMeta) => { for (const p of ports) p.emit(event, payload, meta) }
 
 // ── Wave 3 funnel ────────────────────────────────────────────────────────────
 // Единая точка применения ВСЕХ логируемых апдейтов (и live-кадр, и элемент /sync).
@@ -175,20 +175,20 @@ const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => void }> = 
 // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
 // applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
 // item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
-function dispatch(t: string, d: unknown): void {
-  if (t === 'new_message') { routeNewMessage(d as NewMessageEvt); return }
+function dispatch(t: string, d: unknown, meta?: EventMeta): void {
+  if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, meta); return }
   const h = APPLY[t as LoggedWsType]
   if (!h) return
   h.cache?.(d as never)
-  broadcast(h.rt, d)
+  broadcast(h.rt, d, meta)
 }
 
 // Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate
 // (дубль с pts<=cursor сюда уже не доходит), поэтому спец-belt'ов дедупа сообщений
 // больше нет: catch-up-реплей отсекается funnel'ом до этой точки.
-function routeNewMessage(e: NewMessageEvt): void {
+function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
   messages.cacheLive(e as never)
-  broadcast(RT.newMessage, e)
+  broadcast(RT.newMessage, e, meta)
 }
 
 // Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
@@ -218,7 +218,9 @@ function clearPtsSync(): void {
 function drainPending(): void {
   if (!pendingPts.has()) return
   pendingPts.drain(() => cursor.get().pts, (item) => {
-    dispatch(item.t, item.d)
+    // Кадр в буфере — живой (пришёл по WS, лишь придержан переупорядочиванием),
+    // поэтому catchUp:false — происхождение не меняется от факта буферизации.
+    dispatch(item.t, item.d, { pts: item.pts, catchUp: false })
     cursor.advance(item.pts)
   })
   if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
@@ -246,14 +248,14 @@ function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boole
       schedulePtsSync()
       return
     }
-    dispatch(t, d)
+    dispatch(t, d, { pts, catchUp: false })
     cursor.advance(pts)
     drainPending()
     return
   }
   // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
   if (classifyPts(cursor.get().pts, pts) === 'dup') return
-  dispatch(t, d)
+  dispatch(t, d, { pts, catchUp: true })
   cursor.advance(pts)
 }
 

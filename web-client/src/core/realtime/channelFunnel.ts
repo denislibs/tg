@@ -14,6 +14,7 @@
 
 import { classifyPts } from './cursor'
 import { newPendingPts, type NewPendingPts } from './pendingPts'
+import type { EventMeta } from '../../rpc/superMessagePort'
 
 // Типизированный конверт канального апдейта — форма живого кадра и строки difference.
 export interface ChannelUpdate { t: string; pts: number; d: unknown }
@@ -29,7 +30,9 @@ interface ChannelState {
 
 export interface ChannelFunnelDeps {
   // Отражение апдейта в SSOT + broadcast (тот же dispatch, что и глобальный funnel).
-  dispatch: (t: string, d: unknown) => void
+  // meta — происхождение кадра (pts/catchUp); funnel — единственное место, которое
+  // его знает, поэтому проставляет здесь, а не выше по стеку.
+  dispatch: (t: string, d: unknown, meta?: EventMeta) => void
   // GET /channels/{id}/difference?pts=sincePts — типизированный конверт.
   getDifference: (chatId: number, sincePts: number) => Promise<ChannelDiff>
   loadPts: (chatId: number) => Promise<number | null>
@@ -60,11 +63,13 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     if (st.timer) { clearTimeout(st.timer); st.timer = null }
   }
 
-  // Слить подряд идущие буферные кадры после того, как next закрыл дыру.
+  // Слить подряд идущие буферные кадры после того, как next закрыл дыру. Кадры
+  // в буфере — живые (пришли по WS, просто придержаны из-за переупорядочивания),
+  // поэтому catchUp:false, даже если слив происходит после catchUp() (ветка ниже).
   function drainPending(chatId: number, st: ChannelState): void {
     if (!st.pending.has()) return
     st.pending.drain(() => st.pts, (item) => {
-      deps.dispatch(item.t, item.d)
+      deps.dispatch(item.t, item.d, { pts: item.pts, catchUp: false })
       advance(chatId, st, item.pts)
     })
     if (!st.pending.has()) clearTimer(st)
@@ -92,7 +97,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
         const r = await deps.getDifference(chatId, since)
         for (const u of r.updates) {
           if (u.pts <= st.pts) continue     // дубль (live уже применил)
-          deps.dispatch(u.t, u.d)
+          deps.dispatch(u.t, u.d, { pts: u.pts, catchUp: true })
           advance(chatId, st, u.pts)
         }
         st.seeded = true
@@ -113,7 +118,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       // история — из REST-окна; funnel гейтит только живой хвост). Без реплея лога.
       if (!st.seeded) {
         st.seeded = true
-        deps.dispatch(t, d)
+        deps.dispatch(t, d, { pts, catchUp: false })
         advance(chatId, st, pts)
         return
       }
@@ -125,7 +130,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
         scheduleSync(chatId, st)
         return
       }
-      deps.dispatch(t, d)
+      deps.dispatch(t, d, { pts, catchUp: false })
       advance(chatId, st, pts)
       drainPending(chatId, st)
     },
