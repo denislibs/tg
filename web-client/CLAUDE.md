@@ -210,8 +210,16 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   пин к низу выглядел бы как ручной скролл пользователя). Пишет `scrollTop` НЕ
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
-  обслуживает и вертикальный, и горизонтальный скролл). Инстанцирован в
-  `core/hooks/useChatScroll.ts` (лента сообщений) и `components/composer/MessageInput.tsx`.
+  обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован
+  РОВНО в одном месте** — `core/hooks/useChatScroll.ts` (лента сообщений),
+  `grep -rn "new Scrollable(" src` держит это число. `MessageInput.tsx` несёт
+  только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
+  над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
+  чужого инстанса, не свой; как и ещё ~14 других `.scrollable`-элементов
+  приложения (`ChatList`, `EmojiDropdown`/`StickersTab`/`GifsTab`,
+  `MentionsHelper`, `TopbarSearch`, `StoriesRow`, …), это часть TODO в
+  `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
+  задача.
 - **`helpers/scrollSaver.ts`** (`ScrollSaver`, порт `TWEB/src/helpers/scrollSaver.ts`)
   — сохранение/восстановление позиции при подгрузке контента НАД вьюпортом
   (`loadOlder`): якорится по `DOMRect` первого видимого сообщения, а не по
@@ -228,12 +236,13 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   Перевод остальных плавных скроллов приложения (`scrollTo({behavior:'smooth'})`)
   на него — отдельная, ещё не начатая работа, вне периметра этапа 2.1.
 
-**Единственный владелец `scrollTop` — Scrollable/ScrollSaver.** Держит
-`core/scrollWriters.test.ts` (по образцу `core/state/noAdHocReads.test.ts` /
-`stores/noManualOrder.test.ts`): считает буквальные записи `.scrollTop = ` по
-исходникам и падает на новом писателе или росте числа записей у известного.
-Обоснованные исключения (каждое разобрано и не дублирует Scrollable/ScrollSaver
-по задаче — тест держит их число):
+**Единственный владелец прямой (числовой, event-bypassing) записи `scrollTop`
+— Scrollable/ScrollSaver.** Держит `core/scrollWriters.test.ts` (по образцу
+`core/state/noAdHocReads.test.ts` / `stores/noManualOrder.test.ts`): считает
+буквальные `.scrollTop = `/`+=`/`-=`/`*=`/`/=` по исходникам и падает на новом
+писателе или росте числа записей у известного. Обоснованные исключения
+(каждое разобрано и не дублирует Scrollable/ScrollSaver по задаче — тест
+держит их число):
 
 | Файл | Что делает | Почему не через Scrollable/ScrollSaver |
 |---|---|---|
@@ -242,6 +251,16 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 | `core/hooks/useSidebarFolders.tsx:59` | Сброс списка чатов на верх при смене таба папки | У нас один общий скролл-контейнер на все папки (не отдельный `.folders-scrollable` на каждую, как в tweb, см. `ChatList.tsx`) — строка замещает то, что tweb получает бесплатно (новый контейнер стартует с `scrollTop=0`); список — не лента с подгрузкой контента |
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
+
+**Вне скана `scrollWriters.test.ts` намеренно**: `scrollTo(...)`/`scrollIntoView(...)`
+(по приложению — 12/7 вызовов). Это другая категория писателя — нативные API,
+которые сами рождают настоящие `scroll`-события по ходу анимации, поэтому
+`Scrollable.onScroll` видит их как обычный скролл (throttled
+`onAdditionalScroll`/`checkForTriggers` отрабатывают штатно, в т.ч. в самой
+ленте — `useChatScroll.ts`'s `scrollToBottom`/`smoothCenterToSeq`). Они не
+тихие и не конкурируют за корректирующую запись с
+`setScrollPositionSilently`/`ScrollSaver.restore()`, которые тихие по
+построению, — поэтому не тот класс писателя, который держит этот пин.
 
 ## Связь с бэком
 
