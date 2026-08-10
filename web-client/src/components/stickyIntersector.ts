@@ -6,23 +6,26 @@
 //     под `.oxlintrc.json` этого репозитория, чинится `oxlint --fix`; логика
 //     не менялась ни на строку;
 //   • `strictNullChecks` у нас включён (tweb в своём tsconfig явно его
-//     выключает — см. TWEB/tsconfig.json), поэтому в колбэках наблюдателей
-//     добавлены `!`: rootBounds/target.parentElement у наблюдателя с явно
-//     заданным root-контейнером не бывают null в рантайме (sentinel всегда
-//     внутри своего контейнера);
-//   • `IntersectionObserver` в happy-dom (наши тесты) отсутствует — как и в
-//     `components/animationIntersector.ts`, наблюдатели создаются мягко:
-//     без глобального IO конструктор не падает, а `observe`/`disconnect`
-//     просто ничего не делают (`?.`), только сентинел-нода в DOM остаётся
-//     настоящей (её создание не зависит от IO).
+//     выключает — см. TWEB/tsconfig.json), поэтому добавлены `!`:
+//     headersObserver/elementsObserver всегда присваиваются в
+//     createObservers() (вызывается из конструктора, но TS не анализирует
+//     сквозь вызов метода), а rootBounds/target.parentElement у наблюдателя
+//     с явно заданным root-контейнером не бывают null в рантайме (sentinel
+//     всегда внутри своего контейнера).
+//
+// Гард на отсутствие глобального IntersectionObserver (happy-dom) сюда
+// намеренно НЕ добавлен: класс конструируется только внутри useEffect в
+// Chat.tsx, а Chat нигде не рендерится в тестах — в отличие от
+// components/animationIntersector.ts, который создаёт наблюдатель уже при
+// импорте модуля-синглтона и поэтому такой гард ему нужен по-настоящему.
 
 export type StickyIntersectorOptions = {
   rootMargin?: string
 }
 
 export default class StickyIntersector {
-  private headersObserver: IntersectionObserver | undefined
-  private elementsObserver: IntersectionObserver | undefined
+  private headersObserver!: IntersectionObserver
+  private elementsObserver!: IntersectionObserver
   private observed = new Map<HTMLElement, HTMLElement>() // sticky-target element → its top sentinel
   private rootMargin: string | undefined
 
@@ -36,10 +39,6 @@ export default class StickyIntersector {
   }
 
   private createObservers() {
-    if(typeof IntersectionObserver === 'undefined') {
-      return
-    }
-
     this.headersObserver = new IntersectionObserver((entries) => {
       for(const entry of entries) {
         const targetInfo = entry.boundingClientRect
@@ -67,12 +66,12 @@ export default class StickyIntersector {
   public setRootMargin(rootMargin: string | undefined) {
     if(this.rootMargin === rootMargin) return
     this.rootMargin = rootMargin
-    this.headersObserver?.disconnect()
-    this.elementsObserver?.disconnect()
+    this.headersObserver.disconnect()
+    this.elementsObserver.disconnect()
     this.createObservers()
     for(const [element, sentinel] of this.observed) {
-      this.headersObserver?.observe(sentinel)
-      this.elementsObserver?.observe(element)
+      this.headersObserver.observe(sentinel)
+      this.elementsObserver.observe(element)
     }
   }
 
@@ -94,21 +93,21 @@ export default class StickyIntersector {
   public observeStickyHeaderChanges(element: HTMLElement) {
     const headerSentinel = this.addSentinel(element, 'sticky_sentinel--top')
     this.observed.set(element, headerSentinel)
-    this.headersObserver?.observe(headerSentinel)
-    this.elementsObserver?.observe(element)
+    this.headersObserver.observe(headerSentinel)
+    this.elementsObserver.observe(element)
   }
 
   public disconnect() {
-    this.headersObserver?.disconnect()
-    this.elementsObserver?.disconnect()
+    this.headersObserver.disconnect()
+    this.elementsObserver.disconnect()
     this.observed.clear()
   }
 
   public unobserve(element: HTMLElement, headerSentinel?: HTMLElement) {
-    this.elementsObserver?.unobserve(element)
+    this.elementsObserver.unobserve(element)
     const sentinel = this.observed.get(element) ?? headerSentinel
     if(sentinel) {
-      this.headersObserver?.unobserve(sentinel)
+      this.headersObserver.unobserve(sentinel)
     }
     this.observed.delete(element)
   }

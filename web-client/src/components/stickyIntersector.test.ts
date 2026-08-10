@@ -127,22 +127,4 @@ describe('stickyIntersector', () => {
     intersect(section2, { boundingClientRect: { top: -50, bottom: 200 }, rootBounds: { top: 0 }, isIntersecting: true })
     expect(handler).toHaveBeenCalledWith(true, section2)
   })
-
-  it('отсутствие IntersectionObserver не роняет конструктор и методы', () => {
-    vi.stubGlobal('IntersectionObserver', undefined)
-    let intersector: InstanceType<typeof StickyIntersector> | undefined
-    expect(() => {
-      intersector = new StickyIntersector(document.createElement('div'), vi.fn())
-    }).not.toThrow()
-
-    const section = document.createElement('section')
-    expect(() => intersector!.observeStickyHeaderChanges(section)).not.toThrow()
-    // сентинел-нода всё равно создаётся — это чистый DOM, IO тут ни при чём
-    expect(section.querySelector('.sticky_sentinel--top')).not.toBeNull()
-    expect(() => intersector!.setRootMargin('-10px 0px 0px 0px')).not.toThrow()
-    expect(() => intersector!.unobserve(section)).not.toThrow()
-    expect(() => intersector!.disconnect()).not.toThrow()
-
-    vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
-  })
 })

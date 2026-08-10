@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import StickyIntersector from './stickyIntersector'
+import { observeNewSections, pickStickyDateKey } from './chatStickyDates'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
@@ -1065,42 +1066,63 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (observeStickyHeaderChanges на каждой `.bubbles-date-group`) — какая дата
   // прилипла, считает портированный StickyIntersector по sentinel-узлам, а не
   // обход `.bubble.is-date` с getBoundingClientRect на каждое событие скролла.
-  // ChatFeed рендерит секции `.bubbles-date-group` прямыми детьми contentRef —
-  // наблюдаем их напрямую (у нас нет реестра секций по timestamp, как
-  // this.dateMessages в tweb, поэтому «нижней» застрявшей датой считаем
-  // последнюю в document order — секции и так лежат по возрастанию дня).
+  // ChatFeed рендерит секции `.bubbles-date-group` прямыми детьми contentRef;
+  // выбор «нижней» застрявшей секции и обвязка «наблюдать новую секцию ровно
+  // один раз» вынесены в chatStickyDates.ts (там же — почему они тестируемы
+  // отдельно от Chat, который нигде не рендерится в vitest).
+  //
+  // Инстанс интерсектора живёт в рефе на весь срок жизни scrollRef/contentRef
+  // (как this.stickyIntersector в tweb — заводится один раз в setListeners,
+  // а не пересоздаётся на каждое сообщение): пересоздание на каждый ререндер
+  // плодило бы новые sentinel-узлы поверх старых в каждой уже наблюдаемой
+  // секции (StickyIntersector.observeStickyHeaderChanges не идемпотентна —
+  // см. chatStickyDates.test.ts).
+  const stickyIntersectorRef = useRef<StickyIntersector | null>(null)
+  const stickyObservedRef = useRef<Set<HTMLElement>>(new Set())
+  const stuckSectionsRef = useRef<Set<HTMLElement>>(new Set())
+
   useEffect(() => {
     const sc = scrollRef.current
     const inner = contentRef.current
     if (!sc || !inner) return
 
-    const stuckSections = new Set<HTMLElement>()
-    const recompute = () => {
-      let key: string | null = null
-      for (const child of inner.children) {
-        if (stuckSections.has(child as HTMLElement)) {
-          key = child.querySelector<HTMLElement>('.bubble.is-date')?.dataset.date ?? key
-        }
-      }
-      setStickyDateKey((prev) => (prev === key ? prev : key))
-    }
-
-    // tweb bubbles.ts:4900-4905 (updateStickyIntersectorRootMargin) — тот же
-    // паддинг топбара/инпута, что резервируют распорки `.bubbles-padding-top/bottom`.
+    const stuckSections = stuckSectionsRef.current
+    const observedSections = stickyObservedRef.current
     const intersector = new StickyIntersector(sc, (stuck, target) => {
       if (stuck) stuckSections.add(target)
       else stuckSections.delete(target)
-      recompute()
-    }, { rootMargin: `-${padTopPx}px 0px -${padBottomPx}px 0px` })
+      setStickyDateKey((prev) => {
+        const key = pickStickyDateKey(inner.children, stuckSections)
+        return prev === key ? prev : key
+      })
+    })
+    stickyIntersectorRef.current = intersector
 
-    for (const child of inner.children) {
-      if ((child as HTMLElement).classList.contains('bubbles-date-group')) {
-        intersector.observeStickyHeaderChanges(child as HTMLElement)
-      }
+    return () => {
+      intersector.disconnect()
+      stickyIntersectorRef.current = null
+      stuckSections.clear()
+      observedSections.clear()
     }
+  }, [scrollRef, contentRef])
 
-    return () => intersector.disconnect()
-  }, [scrollRef, contentRef, feedMsgs, feedLoading, padTopPx, padBottomPx])
+  // Новые дата-секции (загрузка страницы истории, новое сообщение сменило
+  // день) — наблюдаем только те, что ещё не видели; уже наблюдаемые трогать
+  // нельзя (см. комментарий выше).
+  useEffect(() => {
+    const inner = contentRef.current
+    const intersector = stickyIntersectorRef.current
+    if (!inner || !intersector) return
+    observeNewSections(inner, intersector, stickyObservedRef.current)
+  }, [contentRef, feedMsgs, feedLoading])
+
+  // tweb bubbles.ts:4900-4905 (updateStickyIntersectorRootMargin) — тот же
+  // паддинг топбара/инпута, что резервируют распорки `.bubbles-padding-top/bottom`;
+  // меняется независимо от ленты, поэтому отдельный эффект и `setRootMargin`
+  // (переподписывает существующие сентинелы, а не плодит новые).
+  useEffect(() => {
+    stickyIntersectorRef.current?.setRootMargin(`-${padTopPx}px 0px -${padBottomPx}px 0px`)
+  }, [padTopPx, padBottomPx])
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
