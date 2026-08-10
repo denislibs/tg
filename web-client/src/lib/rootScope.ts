@@ -131,5 +131,13 @@ export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
   }
 }
 
+/** Фабрика для воркерного инстанса (Stage 1C.1): воркеру нужна СВОЯ шина того же
+ *  класса, не главнопоточный синглтон ниже — иначе события воркера утекли бы в UI
+ *  того же процесса (в SharedWorker классов вообще один на всех вкладок, но для
+ *  dedicated-воркера/тестов инстанс должен быть отдельным). */
+export function createRootScope(): RootScope {
+  return new RootScope()
+}
+
 const rootScope = new RootScope()
 export default rootScope

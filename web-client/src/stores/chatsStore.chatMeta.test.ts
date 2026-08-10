@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatsStore } from './chatsStore'
-import { registerRefetchSubscriber } from '../client/realtime/refetchSubscriber'
+import { __resetChatsReloadTimerForTests, registerRefetchSubscriber } from '../client/realtime/refetchSubscriber'
 import rootScope from '@lib/rootScope'
 import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
@@ -117,6 +117,19 @@ describe('applyChatMeta', () => {
 })
 
 describe('refetchSubscriber: chat_update без похода в сеть', () => {
+  // Уборка: каждый it() ниже зовёт registerRefetchSubscriber() заново, а
+  // слушатели предыдущих кейсов на rootScope не отписываются — без явной
+  // очистки они копятся и реагируют на кадры следующих кейсов своими
+  // (уже неактуальными) моками. Раньше это было безопасно, потому что дебаунс
+  // на /chats был закрытым замыканием per-регистрация; теперь это единый
+  // модульный таймер (см. scheduleChatsReload в refetchSubscriber.ts) —
+  // более ранний слушатель мог бы застолбить его первым. rootScope.cleanup()
+  // снимает все слушатели, __resetChatsReloadTimerForTests() обнуляет таймер.
+  afterEach(() => {
+    rootScope.cleanup()
+    __resetChatsReloadTimerForTests()
+  })
+
   it('кадр chat_update применяется снимком, managers.chats.listDialogs НЕ зовётся', () => {
     // Фейковые таймеры: прежний обработчик уходил в сеть через дебаунсер (300 мс),
     // поэтому «не позвали» надо проверять ПОСЛЕ прокрутки таймеров, иначе тест

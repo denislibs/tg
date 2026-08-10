@@ -2,7 +2,7 @@
 // воркера в Zustand-сторы (единственный источник истины для UI). Один из равноправных
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
-import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
@@ -22,22 +22,12 @@ import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
 import type { Managers } from '../bootstrap'
+import { scheduleChatsReload } from './refetchSubscriber'
 
 // A typing indicator with no follow-up clears itself after this long (the server
 // emits no "stopped typing" frame; the client re-sends every ~3s while active).
 const TYPING_TTL = 6000
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-// Debounced dialog-list refetch for messages arriving into unknown chats (a burst
-// of frames after being added to a group must not spawn N parallel reloads).
-let chatsReloadTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
-  if (chatsReloadTimer) return
-  chatsReloadTimer = setTimeout(() => {
-    chatsReloadTimer = null
-    void loadChats(managers)
-  }, 300)
-}
 
 // Реестр «1:1» — типы аргументов приходят из BroadcastEventsListeners, ручные
 // касты не нужны; пропущенное/переименованное событие ловит компилятор.
