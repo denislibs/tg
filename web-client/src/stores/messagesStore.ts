@@ -13,7 +13,7 @@ import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
-import { dedupAsc } from '../core/realtime/messageOps'
+import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
@@ -109,6 +109,12 @@ interface MessagesState {
   removeOptimisticByClient: (clientMsgId: string) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
+  /** Stage 1B.2 (Task 4): переигрывает операции воркера (rt:message_op) поверх
+   * окон — единственный писатель окна для входящих сообщений (заменяет прямой
+   * вызов applyIncoming из RT.newMessage). Окно, не загруженное на этой вкладке
+   * (`!byKey[op.key]`), пропускается — та же гарантия, что и у applyIncoming
+   * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
+  applyOps: (ops: MessageOp[]) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
@@ -324,6 +330,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
         const base = optimistic ? w.msgs.filter((x) => x !== optimistic) : w.msgs
         out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...base, merged]) }))
+        cur = { ...cur, ...out }
+      }
+      return out
+    }),
+
+  // Stage 1B.2 (Task 4): переигрывание операций воркера (rt:message_op) вместо
+  // самостоятельного разбора кадра. applyOp — та же чистая функция (insert/replace/
+  // remove), что и applyIncoming использовала внутри себя (semantics 1:1, см.
+  // core/realtime/messageOps.ts); здесь только маршрутизация по ключу окна + тот
+  // же гейт «окно не загружено на этой вкладке — пропустить», что и в applyIncoming.
+  applyOps: (ops) =>
+    set((s) => {
+      let out: Pick<MessagesState, 'byKey'> | Record<string, never> = {}
+      let cur = s
+      for (const op of ops) {
+        if (!cur.byKey[op.key]) continue
+        out = patch(cur as MessagesState, op.key, (w) => ({ msgs: applyOp(w.msgs, op) }))
         cur = { ...cur, ...out }
       }
       return out
