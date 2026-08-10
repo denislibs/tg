@@ -4,6 +4,10 @@ import type { Dialog } from '../core/models'
 import type { User } from '../core/managers/authManager'
 import type { ChatUpdateEvt, NewMessageEvt, ReadEvt, PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
+import { dialogIndex } from '../core/dialogs/dialogIndex'
+import { draftFor } from './draftsStore'
+import { ALL_FOLDER_ID } from './foldersStore'
+import { useAppStateStore, setAppState } from './appState'
 
 // Per-chat typing state: chatId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
@@ -42,6 +46,66 @@ interface ChatsState {
   clearTyping: (chatId: number, userId: number) => void
 }
 
+/**
+ * ЕДИНСТВЕННЫЙ путь изменения списка диалогов.
+ *
+ * Раньше правил порядка было ДВА и они расходились: `setDialogs` брал порядок из
+ * входного массива (как пришло от сети/из персиста), а `upsertDialog`/
+ * `applyNewMessage` двигали строки вручную (`firstUnpinned` + `slice`). Из-за
+ * этого кэш давал один порядок, ответ сети другой, и список перетасовывался через
+ * ~250 мс после первого кадра.
+ *
+ * Теперь порядок — ПРОИЗВОДНАЯ ОТ ДАННЫХ (`dialogIndex`, порт tweb
+ * `generateDialogIndex`, dialogs.ts:605-608): из одних и тех же данных всегда
+ * получается один и тот же список, поэтому кэш и сеть сходятся. Слияние — через
+ * `reconcileById`: неизменившиеся диалоги сохраняют ССЫЛКИ, а совпавший с памятью
+ * ответ возвращает ИСХОДНЫЙ массив (ни перерисовки, ни записи в IDB).
+ *
+ * `incoming` строят вызывающие через `map` по текущему списку (без перестановок):
+ * при равных индексах сортировка стабильна (ES2019), и относительный порядок
+ * ничьих не зависит от того, какой сеттер сработал.
+ *
+ * Папка: `pinnedOrders` в tweb — по одной записи на папку, у нас закрепление
+ * пер-юзерное и на весь список сразу (бэкенд `PinDialog` → `chat_members.pinned`,
+ * usecase/chat/dialog_flags.go:18-38; папка — только фильтр той же коллекции, своего
+ * пин-состояния у неё нет). Поэтому запись одна — `ALL_FOLDER_ID`.
+ */
+function applyDialogs(prev: Dialog[], incoming: Dialog[]): Dialog[] {
+  const pinnedOrder = useAppStateStore.getState().pinnedOrders[ALL_FOLDER_ID] ?? []
+  const sorted = incoming
+    // Черновик передаём третьим аргументом: у нас он лежит не в диалоге, а в
+    // AppState (tweb — `dialog.draft`, dialogs.ts:904-910). Свежий черновик
+    // поднимает диалог, как в оригинале.
+    .map((d) => [d, dialogIndex(d, pinnedOrder, draftFor(d.chatId))] as const)
+    .sort((a, b) => b[1] - a[1])
+    .map(([d]) => d)
+  syncPinnedOrder(sorted, pinnedOrder)
+  return reconcileById(prev, sorted, (d) => d.chatId).list
+}
+
+/**
+ * Досеять `pinnedOrders` порядком закреплённых из получившегося списка — порт
+ * tweb `generateDialogPinnedDate` (dialogs.ts:934-936), где отсутствующий в
+ * порядке закреплённый тут же в него добавляется (`order.unshift`) и порядок
+ * сохраняется (`savePinnedOrders`).
+ *
+ * Зачем: `pinned_at` сервер наружу не отдаёт (в `Dialog` только флаг `pinned`),
+ * он выражен лишь ПОРЯДКОМ ответа `/chats` (ORDER BY m.pinned_at DESC,
+ * chatsrepo.go:225). Первый применённый список этот порядок и фиксирует, дальше
+ * он берётся из State — иначе закреплённые с одинаковым индексом (никого нет в
+ * порядке) зависели бы от порядка входного массива, то есть от того же
+ * расхождения кэш/сеть, ради которого всё и затевалось.
+ */
+function syncPinnedOrder(sorted: readonly Dialog[], prevOrder: readonly number[]): void {
+  const next = sorted.filter((d) => d.pinned).map((d) => d.chatId)
+  if (next.length === prevOrder.length && next.every((id, i) => id === prevOrder[i])) return
+  setAppState('pinnedOrders', { ...useAppStateStore.getState().pinnedOrders, [ALL_FOLDER_ID]: next })
+}
+
+/** Заменить один диалог, НЕ переставляя список: порядок посчитает `applyDialogs`. */
+const replace = (dialogs: Dialog[], chatId: number, d: Dialog): Dialog[] =>
+  dialogs.map((x) => (x.chatId === chatId ? d : x))
+
 export const useChatsStore = create<ChatsState>((set) => ({
   dialogs: [],
   me: null,
@@ -50,65 +114,51 @@ export const useChatsStore = create<ChatsState>((set) => ({
   activeChatId: null,
   presence: {},
   typing: {},
-  setDialogs: (dialogs) => set({ dialogs, loaded: true }),
+  setDialogs: (dialogs) => set((s) => ({ dialogs: applyDialogs(s.dialogs, dialogs), loaded: true })),
   setMe: (me) => set({ me, meId: me?.id ?? null }),
   upsertDialog: (d) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((x) => x.chatId === d.chatId)
-      if (idx === -1) return { dialogs: [d, ...s.dialogs] }
-      const next = s.dialogs.slice()
-      next[idx] = d
-      return { dialogs: next }
+      const known = s.dialogs.some((x) => x.chatId === d.chatId)
+      // Новый диалог просто добавляем в конец — место ему найдёт applyDialogs.
+      return { dialogs: applyDialogs(s.dialogs, known ? replace(s.dialogs, d.chatId, d) : [...s.dialogs, d]) }
     }),
   setActiveChat: (activeChatId) => set({ activeChatId }),
   setDialogMuted: (chatId, muted) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const next = s.dialogs.slice()
-      next[idx] = { ...next[idx], muted }
-      return { dialogs: next }
+      const cur = s.dialogs.find((d) => d.chatId === chatId)
+      if (!cur) return {}
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, muted })) }
     }),
   setDialogTheme: (chatId, themeId) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const next = s.dialogs.slice()
-      next[idx] = { ...next[idx], themeId: themeId || undefined }
-      return { dialogs: next }
+      const cur = s.dialogs.find((d) => d.chatId === chatId)
+      if (!cur) return {}
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, themeId: themeId || undefined })) }
     }),
-  // Закрепить/открепить: пин ставит диалог первым (свежий пин — выше, tweb),
-  // анпин возвращает на место по дате последнего сообщения среди незакреплённых.
+  // Закрепить/открепить. Позицию считает dialogIndex по `pinnedOrders`, поэтому
+  // здесь обновляется именно порядок: свежий пин встаёт первым (tweb dialogs.ts:934
+  // `order.unshift`), анпин выпадает из порядка и возвращается к дате активности.
   setDialogPinned: (chatId, pinned) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const d = { ...s.dialogs[idx], pinned }
-      const rest = s.dialogs.filter((_, i) => i !== idx)
-      if (pinned) return { dialogs: [d, ...rest] }
-      const at = d.lastMessage?.at ?? ''
-      let insert = rest.length
-      for (let i = 0; i < rest.length; i++) {
-        if (!rest[i].pinned && (rest[i].lastMessage?.at ?? '') <= at) {
-          insert = i
-          break
-        }
-      }
-      return { dialogs: [...rest.slice(0, insert), d, ...rest.slice(insert)] }
+      const cur = s.dialogs.find((d) => d.chatId === chatId)
+      if (!cur) return {}
+      const orders = useAppStateStore.getState().pinnedOrders
+      const order = orders[ALL_FOLDER_ID] ?? []
+      const rest = order.filter((id) => id !== chatId)
+      setAppState('pinnedOrders', { ...orders, [ALL_FOLDER_ID]: pinned ? [chatId, ...rest] : rest })
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, pinned })) }
     }),
   // В архив / из архива; пин при переносе сбрасывается (как на бэке).
   setDialogArchived: (chatId, archived) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const next = s.dialogs.slice()
-      next[idx] = { ...next[idx], archived, pinned: false }
-      return { dialogs: next }
+      const cur = s.dialogs.find((d) => d.chatId === chatId)
+      if (!cur) return {}
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, archived, pinned: false })) }
     }),
   // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.
   removeDialog: (chatId) =>
     set((s) => ({
-      dialogs: s.dialogs.filter((d) => d.chatId !== chatId),
+      dialogs: applyDialogs(s.dialogs, s.dialogs.filter((d) => d.chatId !== chatId)),
       activeChatId: s.activeChatId === chatId ? null : s.activeChatId,
     })),
   // Бэкенд шлёт в `chat_update` АБСОЛЮТНЫЙ снимок метаданных чата
@@ -119,13 +169,12 @@ export const useChatsStore = create<ChatsState>((set) => ({
   // и рефетч прилетал КАЖДОМУ участнику чата.
   applyChatMeta: (m) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === m.chat_id)
-      if (idx === -1) return {} // чата нет в списке — приедет со следующей загрузкой
-      const next = s.dialogs.slice()
+      const cur = s.dialogs.find((d) => d.chatId === m.chat_id)
+      if (!cur) return {} // чата нет в списке — приедет со следующей загрузкой
       // Пишем только те поля, что реально пришли в снимке: '' и null — это
       // «сброшено» (снимок абсолютный), отсутствие ключа — «не про это событие».
-      next[idx] = {
-        ...s.dialogs[idx],
+      const updated: Dialog = {
+        ...cur,
         ...(m.title !== undefined && { title: m.title }),
         // username кладём verbatim — ровно как маппинг ответа /chats (models.ts:675),
         // где пустая строка остаётся пустой строкой.
@@ -137,11 +186,10 @@ export const useChatsStore = create<ChatsState>((set) => ({
           photoUrl: m.photo_media_id === null ? undefined : `/media/${m.photo_media_id}/content`,
         }),
       }
-      // Через реконсайл (Task 1): совпавший с памятью снимок вернёт ИСХОДНЫЙ массив,
+      // Общим путём (Task 5): совпавший с памятью снимок вернёт ИСХОДНЫЙ массив,
       // ссылки соседних диалогов не меняются — перерисуется только эта строка.
-      // Порядок берётся из `next`, а метаданные на сортировку не влияют, поэтому он
-      // сохраняется; когда появится общий `applyDialogs`, переключить сюда его.
-      return { dialogs: reconcileById(s.dialogs, next, (d) => d.chatId).list }
+      // Метаданные в dialogIndex не участвуют, поэтому порядок остаётся прежним.
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, m.chat_id, updated)) }
     }),
   setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: { online: p.online, lastSeen: p.last_seen } } })),
   setTyping: (chatId, userId, action, at) =>
@@ -158,9 +206,8 @@ export const useChatsStore = create<ChatsState>((set) => ({
     }),
   applyNewMessage: (m) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === m.chat_id)
-      if (idx === -1) return {} // unknown chat (will surface on next dialog reload)
-      const d = s.dialogs[idx]
+      const d = s.dialogs.find((x) => x.chatId === m.chat_id)
+      if (!d) return {} // unknown chat (will surface on next dialog reload)
       const incoming = m.sender_id !== s.meId
       const bumpUnread = incoming && s.activeChatId !== m.chat_id
       // Wave 3: сервер шлёт авторитетный unread получателям — берём verbatim; локальный
@@ -185,7 +232,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
         },
         unread: nextUnread,
       }
-      const rest = s.dialogs.filter((_, i) => i !== idx)
       // A message from a user clears their typing indicator in that chat.
       let typing = s.typing
       const chatTyping = typing[m.chat_id]
@@ -194,27 +240,15 @@ export const useChatsStore = create<ChatsState>((set) => ({
         delete next[m.sender_id]
         typing = { ...typing, [m.chat_id]: next }
       }
-      // Закреплённые не двигаются: свой пин-порядок держит их сверху; обычный
-      // диалог с новым сообщением встаёт сразу после блока закреплённых.
-      if (updated.pinned) {
-        const inPlace = s.dialogs.slice()
-        inPlace[idx] = updated
-        return { dialogs: inPlace, typing }
-      }
-      let firstUnpinned = rest.length
-      for (let i = 0; i < rest.length; i++) {
-        if (!rest[i].pinned) {
-          firstUnpinned = i
-          break
-        }
-      }
-      return { dialogs: [...rest.slice(0, firstUnpinned), updated, ...rest.slice(firstUnpinned)], typing }
+      // Диалог поднимается САМ: свежая `lastMessage.at` даёт больший индекс.
+      // Закреплённые при этом не смешиваются с обычными (PINNED_BASE) и между
+      // собой не переставляются (их порядок — `pinnedOrders`).
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, m.chat_id, updated)), typing }
     }),
   applyRead: (r) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === r.chat_id)
-      if (idx === -1) return {}
-      const cur = s.dialogs[idx]
+      const cur = s.dialogs.find((d) => d.chatId === r.chat_id)
+      if (!cur) return {}
       let updated: typeof cur
       if (r.user_id === s.meId) {
         // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon.
@@ -232,20 +266,16 @@ export const useChatsStore = create<ChatsState>((set) => ({
         if (peerReadSeq === cur.peerReadSeq) return {} // no advance → no-op (без нового dialogs)
         updated = { ...cur, peerReadSeq }
       }
-      const next = s.dialogs.slice()
-      next[idx] = updated
-      return { dialogs: next }
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, r.chat_id, updated)) }
     }),
   bumpUnreadReactions: (chatId, count) =>
     set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const next = s.dialogs.slice()
+      const cur = s.dialogs.find((d) => d.chatId === chatId)
+      if (!cur) return {}
       // Авторитетный счётчик из кадра (reaction.unread_reactions) — verbatim, как
       // unread у new_message/read; локальный +1 — fallback, если поля нет.
-      const value = typeof count === 'number' ? count : (next[idx].unreadReactions ?? 0) + 1
-      next[idx] = { ...next[idx], unreadReactions: value }
-      return { dialogs: next }
+      const value = typeof count === 'number' ? count : (cur.unreadReactions ?? 0) + 1
+      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, unreadReactions: value })) }
     }),
 }))
 

@@ -36,11 +36,15 @@ describe('chatsStore', () => {
   })
 
   it('applyNewMessage bumps preview, unread (incoming, not active), moves to top', () => {
+    // У chatId 1 более свежая дата: без бампа он и остался бы сверху (порядок —
+    // производная от lastMessage.at, см. chatsStore.order.test.ts).
     useChatsStore.setState({ dialogs: [
-      { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false },
-      { chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false },
+      { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
+        lastMessage: { seq: 1, text: 'x', senderId: 5, at: '2026-08-09T12:00:00Z' } },
+      { chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
+        lastMessage: { seq: 1, text: 'x', senderId: 5, at: '2026-08-09T10:00:00Z' } },
     ], meId: 7, activeChatId: null })
-    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: 'now' })
+    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: '2026-08-09T13:00:00Z' })
     const s = useChatsStore.getState()
     expect(s.dialogs[0].chatId).toBe(2)
     expect(s.dialogs[0].unread).toBe(1)
@@ -78,9 +82,11 @@ describe('chatsStore', () => {
       { chatId: 2, type: 'group', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false },
     ] })
     useChatsStore.getState().setDialogMuted(1, true)
+    // Ищем по chatId, а не по позиции: порядок теперь производный (dialogIndex),
+    // и у диалогов без lastMessage ничью разводит chatId — «первый» тут не chatId 1.
     const s = useChatsStore.getState()
-    expect(s.dialogs[0].muted).toBe(true)
-    expect(s.dialogs[1].muted).toBe(false)
+    expect(s.dialogs.find((d) => d.chatId === 1)?.muted).toBe(true)
+    expect(s.dialogs.find((d) => d.chatId === 2)?.muted).toBe(false)
   })
 
   it('setDialogMuted is a no-op for an unknown chatId', () => {

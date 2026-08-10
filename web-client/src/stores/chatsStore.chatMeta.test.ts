@@ -21,7 +21,11 @@ const dlg = (chatId: number, title: string, extra: Partial<Dialog> = {}): Dialog
   title,
   username: '',
   photoUrl: undefined,
-  lastMessage: { seq: 1, text: 'привет', senderId: 5, at: '2026-08-09T10:00:00Z' },
+  // Даты у чатов РАЗНЫЕ и убывают с chatId, чтобы порядок фикстуры [1, 2] совпадал
+  // с каноническим (dialogIndex): при одинаковых датах ничью разводит chatId, и
+  // канонический порядок был бы [2, 1] — тесты про сохранение ссылок проверяли бы
+  // тогда не то (список пересортировался бы на первом же applyChatMeta).
+  lastMessage: { seq: 1, text: 'привет', senderId: 5, at: chatId === 1 ? '2026-08-09T11:00:00Z' : '2026-08-09T10:00:00Z' },
   ...extra,
 })
 
