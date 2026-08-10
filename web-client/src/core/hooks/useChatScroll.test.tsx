@@ -14,6 +14,16 @@
 // геометрию нужно резолвить по data-атрибуту (`data-seq`/`data-scroll-container`)
 // В МОМЕНТ вызова getBoundingClientRect, а не проставлять заранее на конкретный
 // узел.
+//
+// Задача 4 (components/scrollable.ts): триггер loadOlder() теперь идёт через
+// Scrollable.onScrolledTop, а не через синхронный addEventListener этого хука —
+// throttleMeasurement (scrollable.ts) откладывает измерение на SCROLL_THROTTLE
+// (24мс setTimeout при поддержке overlay-скролла, иначе requestAnimationFrame).
+// `flushScrollThrottle()` ждёт реальным таймером после каждого dispatchEvent,
+// с запасом покрывая оба варианта — иначе два синхронных scroll-события подряд
+// схлопнутся в одно измерение (onScroll видит "onScrollMeasure ещё висит" и
+// выходит рано), теряя промежуточное значение scrollTop, по которому
+// вычисляется lastScrollDirection.
 import { createElement, type ReactNode } from 'react'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
@@ -21,6 +31,10 @@ import { useChatScroll } from './useChatScroll'
 import { ManagersProvider } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 import type { Message } from '../models'
+
+async function flushScrollThrottle() {
+  await new Promise((resolve) => setTimeout(resolve, 50))
+}
 
 function msg(seq: number): Message {
   return {
@@ -154,17 +168,32 @@ describe('useChatScroll ↔ ScrollSaver (подключение)', () => {
     })
     const { scrollEl, rerender } = mount(win)
 
+    // Прогрев: на монтировании atBottomRef по умолчанию true → correctScroll() уже
+    // пином к низу вызвал setScrollPositionSilently → ignoreNextScrollEvent() снял
+    // реальный listener и повесил one-time, который проглотит САМОЕ БЛИЖАЙШЕЕ
+    // scroll-событие. В настоящем браузере им стало бы нативное 'scroll' от того же
+    // программного присваивания scrollTop; happy-dom его не эмулирует (программная
+    // запись scrollTop не рождает событие) — слот остаётся висеть и без прогрева
+    // проглотил бы шаг 1 теста. Один пустой dispatch here снимает его штатно, тем же
+    // путём, каким это закрылось бы в реальном браузере.
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+
     // Шаг 1 — просто зафиксировать lastScrollTopRef, вниз не триггерит save().
-    act(() => {
+    await act(async () => {
       scrollEl.scrollTop = 800
       scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
     })
     expect(loadOlderCalls).toBe(0)
 
     // Шаг 2 — скролл вверх (800 → 200) в зоне подгрузки: save() + loadOlder().
-    act(() => {
+    await act(async () => {
       scrollEl.scrollTop = 200
       scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
     })
     expect(loadOlderCalls).toBe(1)
 

@@ -26,6 +26,7 @@ import { RT, type NewMessageEvt } from '../realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
+import Scrollable from '@components/scrollable'
 
 interface UseChatScrollArgs {
   numericChatId: number
@@ -72,6 +73,22 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // when messages arrived between sessions) — loadNewer chases the latest while the
   // pin follows it. Set on a real upward scroll / a jump; reset on chat change.
   const userScrolledUpRef = useRef(false)
+  // The real, ported tweb Scrollable (components/scrollable.ts) wrapping scrollRef's native
+  // div as its `container` (constructed with no `el`, so it does NOT move/own React's children —
+  // see the mount effect below). Gives us the throttled onScroll, the onScrolledTop/onScrolledBottom
+  // pagination triggers, and — the piece Task 3 (ScrollSaver) explicitly deferred here —
+  // setScrollPositionSilently/ignoreNextScrollEvent: a corrective scrollTop write that actually
+  // skips its own next 'scroll' event, instead of relying on direction heuristics that a
+  // scrollTop-decreasing restore() near the top could fool into "user scrolled up".
+  const scrollableRef = useRef<Scrollable | null>(null)
+  // Route every corrective (non-user) scrollTop write through it once mounted; before that (there's
+  // one commit's gap before the mount effect below runs) fall back to a raw write.
+  const setScrollTopSilently = (value: number) => {
+    const s = scrollableRef.current
+    if (s) { s.setScrollPositionSilently(value); return }
+    const el = scrollRef.current
+    if (el) el.scrollTop = value
+  }
   // Position restore across a loadOlder prepend — tweb's ScrollSaver (helpers/scrollSaver.ts):
   // anchors on the topmost visible message's DOMRect instead of a raw scrollHeight delta, so
   // it stays correct when something OTHER than the prepended chunk resizes mid-settle (e.g. an
@@ -83,19 +100,19 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   const scrollSaverRef = useRef<ScrollSaver | null>(null)
   if (!scrollSaverRef.current) {
     // Minimal ScrollSaverTarget adapter over the native scroll div (see scrollSaver.ts header for
-    // why there's no vendored Scrollable class here). '[data-seq]' is our message-row anchor
-    // selector (MessageRow.tsx), the direct counterpart of tweb's '.bubble:not(...)'. reverse:
-    // true — this instance only serves the loadOlder (prepend-at-top) restore, matching tweb's
-    // createScrollSaver(reverse=true) for the same call site.
+    // why there's no Scrollable-owned container here — React, not Scrollable's constructor, owns
+    // scrollRef's children). '[data-seq]' is our message-row anchor selector (MessageRow.tsx), the
+    // direct counterpart of tweb's '.bubble:not(...)'. reverse: true — this instance only serves
+    // the loadOlder (prepend-at-top) restore, matching tweb's createScrollSaver(reverse=true) for
+    // the same call site. setScrollPositionSilently now genuinely silences (see setScrollTopSilently
+    // above) — this is the fix for the bug Task 3 flagged and deferred here: restore() shrinking
+    // scrollTop near the top used to be indistinguishable from the user scrolling up.
     const target: ScrollSaverTarget = {
       get container() { return scrollRef.current as HTMLElement },
       get scrollPosition() { return scrollRef.current?.scrollTop ?? 0 },
       get scrollSize() { return scrollRef.current?.scrollHeight ?? 0 },
       onSizeChange() {},
-      setScrollPositionSilently(value) {
-        const el = scrollRef.current
-        if (el) el.scrollTop = value
-      },
+      setScrollPositionSilently: setScrollTopSilently,
     }
     scrollSaverRef.current = new ScrollSaver(target, '[data-seq]', true)
   }
@@ -109,75 +126,108 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // the still-at-top scroll position the instant the new page renders.
   const pinBottomNext = useRef(false)
 
-  // Show the "scroll to bottom" button once the user scrolls up away from the latest messages
+  // Chat-specific per-scroll reactions (badge, atBottom pin/gate, markRead, "scrolled away
+  // from the open-time bottom" detection) — the tweb counterpart of bubbles.ts wiring its OWN
+  // onScroll as `scrollable.onAdditionalScroll` (Scrollable's throttled onScroll calls it after
+  // updating lastScrollDirection — scrollable.ts:210-244). useEvent gives this a stable identity
+  // so the mount effect below can assign it to the Scrollable instance exactly once while it
+  // keeps reading the latest win/isRealChat/managers/numericChatId.
+  const onAdditionalScroll = useEvent(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const st = el.scrollTop
+    const dist = el.scrollHeight - st - el.clientHeight
+    // A genuine upward scroll away from the bottom means the user is now browsing
+    // history — release the open-time bottom anchor.
+    if (st < lastScrollTopRef.current - 1 && dist > 240) userScrolledUpRef.current = true
+    // Show the down-arrow when scrolled up OR when we jumped mid-history and the
+    // true bottom of the chat isn't loaded yet (tweb: visible while !loadedAll.bottom).
+    setShowScrollDown(dist > 240 || (isRealChat && win.msgs.length > 0 && !win.reachedBottom))
+    // Track whether we're pinned to the bottom — the content ResizeObserver
+    // re-pins while this holds (so async media/height growth never strands the
+    // view in the middle or jitters it on incoming messages). For a real chat,
+    // require the REAL chat bottom to be loaded (tweb: scrolledDown needs
+    // loadedAll.bottom): otherwise a short mid-history window (e.g. a jump near
+    // the chat top) sits within 240px of the LOADED bottom, flips this true, and
+    // the re-pin + loadNewer feed each other into a cascade that loads the whole
+    // history. While a real chat is still loading (no msgs yet) leave atBottomRef
+    // at its open-time default so the initial scroll-to-bottom isn't cancelled.
+    if (!isRealChat) {
+      atBottomRef.current = dist < 240
+    } else if (win.msgs.length > 0) {
+      const atRealBottom = dist < 240 && win.reachedBottom
+      // Stay pinned to the bottom from open until the user scrolls up. Once they
+      // have, fall back to the strict real-bottom gate (prevents a mid-history
+      // jump from false-pinning + cascading loadNewer).
+      atBottomRef.current = !userScrolledUpRef.current || atRealBottom
+      // markRead at the real bottom advances lastReadSeq → the derived
+      // unread-below badge falls to 0 (no manual reset needed).
+      if (atRealBottom && document.hasFocus()) {
+        void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
+      }
+    }
+    lastScrollTopRef.current = st
+  })
+
+  // Pagination triggers — tweb Scrollable.checkForTriggers (scrollable.ts:433-457): fires
+  // onScrolledTop/onScrolledBottom unconditionally once within onScrollOffset (300px, tweb
+  // bubbles.ts's own `new Scrollable(null, 'IM', 300)`, matched below) of the respective edge.
+  // loadedAll ISN'T read inside Scrollable itself (scrollable.ts:374 only declares the field) —
+  // tweb's bubbles.ts reads it in the CALLBACK (loadMoreHistory), same as here. This replaces the
+  // homemade `goingUp && st < 300 && !win.reachedTop` / `dist < clientHeight * 0.75` thresholds
+  // this hook used to compute itself (Task 3 explicitly deferred the fix for the former to here —
+  // see scrollSaverRef's header comment above).
+  const onScrolledTop = useEvent(() => {
+    if (!isRealChat || win.msgs.length === 0) return
+    const s = scrollableRef.current
+    if (!s || s.loadedAll.top || win.loadingOlder) return
+    // Preserve the user's place across the prepend: ScrollSaver.save() snapshots the
+    // topmost visible message's DOMRect NOW, before the prepend touches the DOM (rects
+    // must be measured pre-mutation). The layout effect restores it after the new chunk
+    // commits, and the content observer keeps restoring it while the prepended media
+    // settles (a single restore landed before the DOM/heights were final → the view
+    // jumped onto the freshly-loaded older messages).
+    scrollSaverRef.current!.save()
+    scrollSaved.current = true
+    if (restoreTimer.current) clearTimeout(restoreTimer.current)
+    restoreTimer.current = window.setTimeout(() => { scrollSaved.current = false }, 1500)
+    void win.loadOlder()
+  })
+  const onScrolledBottom = useEvent(() => {
+    const s = scrollableRef.current
+    if (!s || s.loadedAll.bottom || win.loadingNewer) return
+    void win.loadNewer()
+  })
+
+  // Mount the real, ported Scrollable once (this hook's whole component remounts per chat via
+  // key={selectedId} — see the "chat change" reset effect below, so one instance per chat is
+  // correct). `container: el`, no `el` argument — Scrollable's constructor only moves/owns
+  // children when given one (scrollable.ts's `if(el) {...}` branch); here it just wraps the div
+  // React already renders and owns, replacing the raw `el.addEventListener('scroll', ...)` this
+  // hook used to own directly.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => {
-      const st = el.scrollTop
-      const dist = el.scrollHeight - st - el.clientHeight
-      // A genuine upward scroll away from the bottom means the user is now browsing
-      // history — release the open-time bottom anchor.
-      if (st < lastScrollTopRef.current - 1 && dist > 240) userScrolledUpRef.current = true
-      // Show the down-arrow when scrolled up OR when we jumped mid-history and the
-      // true bottom of the chat isn't loaded yet (tweb: visible while !loadedAll.bottom).
-      setShowScrollDown(dist > 240 || (isRealChat && win.msgs.length > 0 && !win.reachedBottom))
-      // Track whether we're pinned to the bottom — the content ResizeObserver
-      // re-pins while this holds (so async media/height growth never strands the
-      // view in the middle or jitters it on incoming messages). For a real chat,
-      // require the REAL chat bottom to be loaded (tweb: scrolledDown needs
-      // loadedAll.bottom): otherwise a short mid-history window (e.g. a jump near
-      // the chat top) sits within 240px of the LOADED bottom, flips this true, and
-      // the re-pin + loadNewer feed each other into a cascade that loads the whole
-      // history. While a real chat is still loading (no msgs yet) leave atBottomRef
-      // at its open-time default so the initial scroll-to-bottom isn't cancelled.
-      if (!isRealChat) {
-        atBottomRef.current = dist < 240
-      } else if (win.msgs.length > 0) {
-        const atRealBottom = dist < 240 && win.reachedBottom
-        // Stay pinned to the bottom from open until the user scrolls up. Once they
-        // have, fall back to the strict real-bottom gate (prevents a mid-history
-        // jump from false-pinning + cascading loadNewer).
-        atBottomRef.current = !userScrolledUpRef.current || atRealBottom
-        // markRead at the real bottom advances lastReadSeq → the derived
-        // unread-below badge falls to 0 (no manual reset needed).
-        if (atRealBottom && document.hasFocus()) {
-          void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
-        }
-      }
-      // Only page on genuine USER scrolls: programmatic bottom-pinning scrolls
-      // DOWN (st increases), so requiring an upward delta prevents the open-time
-      // cascade that would otherwise load the whole history and strand the view.
-      const goingUp = st < lastScrollTopRef.current - 1
-      lastScrollTopRef.current = st
-      if (!isRealChat || win.msgs.length === 0) return
-      if (goingUp && st < 300 && !win.reachedTop && !win.loadingOlder) {
-        // Preserve the user's place across the prepend: ScrollSaver.save() snapshots the
-        // topmost visible message's DOMRect NOW, before the prepend touches the DOM (rects
-        // must be measured pre-mutation). The layout effect restores it after the new chunk
-        // commits, and the content observer keeps restoring it while the prepended media
-        // settles (a single restore landed before the DOM/heights were final → the view
-        // jumped onto the freshly-loaded older messages).
-        scrollSaverRef.current!.save()
-        scrollSaved.current = true
-        if (restoreTimer.current) clearTimeout(restoreTimer.current)
-        restoreTimer.current = window.setTimeout(() => { scrollSaved.current = false }, 1500)
-        void win.loadOlder()
-      }
-      // Load newer when within ~a viewport of the loaded bottom, in EITHER scroll
-      // direction. We must NOT require a downward delta here: at the exact loaded
-      // bottom scrollTop is maxed, so wheeling down fires no scroll event and the
-      // user gets stranded (the "scroll up a bit then back down to load" bug).
-      // Triggering a viewport early also keeps content ready ahead of the read.
-      // reachedBottom (+ atBottomRef gating) already prevents an open-time cascade.
-      if (dist < el.clientHeight * 0.75 && !win.reachedBottom && !win.loadingNewer) {
-        void win.loadNewer()
-      }
+    const scrollable = new Scrollable(undefined, 'chat', 300, undefined, el)
+    scrollableRef.current = scrollable
+    scrollable.onAdditionalScroll = onAdditionalScroll
+    scrollable.onScrolledTop = onScrolledTop
+    scrollable.onScrolledBottom = onScrolledBottom
+    onAdditionalScroll() // eager run — seeds showScrollDown/atBottomRef from the mount scrollTop
+    return () => {
+      scrollable.destroy()
+      scrollableRef.current = null
     }
-    onScroll()
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [isRealChat, win, managers, numericChatId])
+  }, [onAdditionalScroll, onScrolledTop, onScrolledBottom])
+  // Keep loadedAll in sync with the window's real top/bottom (tweb: bubbles.ts' setLoaded()
+  // writes scrollable.loadedAll[side] on every window-state change) — onScrolledTop/
+  // onScrolledBottom above read it at trigger time.
+  useEffect(() => {
+    const s = scrollableRef.current
+    if (!s) return
+    s.loadedAll.top = win.reachedTop
+    s.loadedAll.bottom = win.reachedBottom
+  }, [win.reachedTop, win.reachedBottom])
   // Screen-size safety net: if the loaded window doesn't overflow the viewport
   // there's nothing to scroll, so the scroll-driven loadNewer above can never
   // fire — on a very tall screen a single page can fit entirely. Pull more until
@@ -259,7 +309,9 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   const correctScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    if (atBottomRef.current) el.scrollTop = el.scrollHeight
+    // tweb bubbles.ts:2276 — `scrollable.setScrollPositionSilently(scrollable.scrollSize) //
+    // keep the chat pinned to the bottom`, same silent write for the same reason here.
+    if (atBottomRef.current) setScrollTopSilently(el.scrollHeight)
     else if (scrollSaved.current) scrollSaverRef.current!.restore()
   }
   useEffect(() => {
@@ -293,7 +345,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
       const sc = scrollRef.current
       if (!sc || !document.contains(target)) return
       const d = target.getBoundingClientRect().top - sc.getBoundingClientRect().top - offset
-      if (Math.abs(d) > 24) sc.scrollTop += d
+      if (Math.abs(d) > 24) setScrollTopSilently(sc.scrollTop + d)
     }
     const tryPosition = () => {
       if (unreadScrolled.current) return
@@ -303,7 +355,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
         unreadScrolled.current = true
         atBottomRef.current = false
         userScrolledUpRef.current = true // плашка выше низа — якорь к низу снят
-        sc.scrollTop += target.getBoundingClientRect().top - sc.getBoundingClientRect().top - offset
+        setScrollTopSilently(sc.scrollTop + target.getBoundingClientRect().top - sc.getBoundingClientRect().top - offset)
         window.setTimeout(() => reassert(target), 350)
         window.setTimeout(() => reassert(target), 900)
         return
@@ -338,7 +390,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   useLayoutEffect(() => {
     if (!pinBottomNext.current) return
     const el = scrollRef.current
-    if (el) { atBottomRef.current = true; userScrolledUpRef.current = false; el.scrollTop = el.scrollHeight }
+    if (el) { atBottomRef.current = true; userScrolledUpRef.current = false; setScrollTopSilently(el.scrollHeight) }
     pinBottomNext.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win.msgs])
@@ -351,7 +403,8 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     const el = scrollRef.current
     const delta = paddingTop - prevPaddingTop.current
     prevPaddingTop.current = paddingTop
-    if (el && delta !== 0) el.scrollTop += delta
+    // tweb bubbles.ts:2285 — `scrollable.setScrollPositionSilently(scrollable.scrollPosition + delta)`.
+    if (el && delta !== 0) setScrollTopSilently(el.scrollTop + delta)
   }, [paddingTop])
 
   // Read-marker for a live message in THIS open chat: mark read if the user is at
