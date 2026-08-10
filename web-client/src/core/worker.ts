@@ -127,9 +127,9 @@ const ports: SuperMessagePort[] = []
 const broadcast = (event: string, payload: unknown, meta?: EventMeta) => { for (const p of ports) p.emit(event, payload, meta) }
 
 // ── Wave 3 funnel ────────────────────────────────────────────────────────────
-// Единая точка применения ВСЕХ логируемых апдейтов (и live-кадр, и элемент /sync).
-// Плотный монотонный pts из курсора решает: дубль / следующий / дыра. Эфемерные
-// кадры (typing/presence/calls/…) сюда НЕ заходят — их onFrame транслирует как есть.
+// Точка применения: реестр APPLY + dispatch (логируемые апдейты: SSOT + broadcast).
+// Арифметика pts (дубль/следующий/дыра, буфер, таймер) — в realtime/globalFunnel.ts.
+// Эфемерные кадры (typing/presence/calls/…) сюда НЕ заходят — их onFrame транслирует как есть.
 const cursor = newCursor({ get: idbGet, set: idbSet })
 let cursorReady = false
 void cursor.ready().then(() => { cursorReady = true })
