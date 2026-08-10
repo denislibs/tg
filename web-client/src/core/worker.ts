@@ -51,6 +51,7 @@ import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
+import { createRootScope, type BroadcastEventsListeners } from '../lib/rootScope'
 
 const tokens = new TokenStore()
 // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
@@ -127,7 +128,16 @@ const persist = newPersistManager((key, value) => broadcast('state:mirror', { ke
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
-const broadcast = (event: string, payload: unknown, meta?: EventMeta) => { for (const p of ports) p.emit(event, payload, meta) }
+// Воркерный инстанс RootScope (Stage 1C.1) вместо голой функции broadcast — та же
+// шина, что и на главном потоке (src/lib/rootScope.ts), со своим портом-веером по
+// всем подключённым вкладкам. workerScope создаётся ЗДЕСЬ, там же, где раньше был
+// broadcast: менеджеры выше получают его лениво через стрелки (см. комментарии на
+// строках 82,87,98,122) — порядок инициализации сохранён, стрелки теперь дёргают
+// workerScope.dispatchEvent через тонкую обёртку broadcast ниже.
+const workerScope = createRootScope()
+workerScope.setPort({ emit: (event, payload, meta) => { for (const p of ports) p.emit(event, payload, meta) } })
+const broadcast = (event: string, payload: unknown, meta?: EventMeta) =>
+  workerScope.dispatchEvent(event as keyof BroadcastEventsListeners, payload as never, meta as never)
 
 // ── Wave 3 funnel ────────────────────────────────────────────────────────────
 // Точка применения: реестр APPLY + dispatch (логируемые апдейты: SSOT + broadcast).
@@ -339,10 +349,14 @@ function bind(ep: Endpoint) {
   const smp = new SuperMessagePort(ep)
   ports.push(smp)
   registerManagers(smp, registry)
-  // Событие, порождённое вкладкой (rootScope.dispatchEvent), ретранслируем всем
-  // ОСТАЛЬНЫМ вкладкам — порт tweb index.worker.ts:116-119 (invokeExceptSource).
-  // Источнику не шлём: у него оно уже доставлено локально, иначе кольцо.
+  // Событие, порождённое вкладкой (rootScope.dispatchEvent на главном потоке),
+  // сначала применяем ЛОКАЛЬНО (dispatchEventSingle — только воркерные подписчики,
+  // БЕЗ обратной отправки в порт, иначе кольцо), затем ретранслируем ОСТАЛЬНЫМ
+  // вкладкам — порт tweb index.worker.ts:116-119 (invokeExceptSource). Источнику не
+  // шлём: у него оно уже доставлено локально на вкладке. Порядок важен: локальный
+  // слушатель может поправить SSOT воркера до того, как соседние вкладки увидят кадр.
   smp.onAny((event, payload, meta) => {
+    workerScope.dispatchEventSingle(event as keyof BroadcastEventsListeners, payload as never, meta as never)
     for (const p of ports) if (p !== smp) p.emit(event, payload, meta)
   })
   // SW↔SharedWorker мост (§ PR-2a): окно (PR-2c) шлёт по этому же порту control-кадр
