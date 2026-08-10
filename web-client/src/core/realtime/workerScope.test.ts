@@ -47,17 +47,27 @@ describe('newWorkerScope', () => {
     expect(portB.emit).toHaveBeenCalledWith('rt:resync', null, undefined)
   })
 
-  it('кадр от вкладки A (receiveFrom): локальный подписчик воркера вызван РОВНО один раз; порт B получил; порт A — нет', () => {
+  it('кадр от вкладки A (receiveFrom): сначала локальный подписчик воркера, потом ретрансляция; локальный вызван РОВНО один раз, порт B получил, порт A — нет', () => {
     const ports: FakePort[] = []
     const ws = newWorkerScope({ ports })
     const portA = makeFakePort()
-    const portB = makeFakePort()
-    ports.push(portA, portB)
-    const local = vi.fn()
+    ports.push(portA)
+
+    // Общий журнал последовательности — пин ПОРЯДКА (не только факта вызова), как
+    // требует бриф: локальный слушатель воркера должен поправить SSOT ДО того, как
+    // соседние вкладки увидят кадр (receiveFrom — сначала dispatchEventSingle, потом
+    // ретрансляция). Одного toHaveBeenCalledTimes недостаточно: переставленные
+    // местами строки в receiveFrom дают тот же набор вызовов, только в другом
+    // порядке, — без журнала тест этого не ловит.
+    const log: string[] = []
+    const local = vi.fn(() => log.push('local'))
     ws.scope.addEventListener('rt:resync', local)
+    const portB: FakePort = { emit: vi.fn(() => log.push('relay')) }
+    ports.push(portB)
 
     ws.receiveFrom(portA, 'rt:resync', null)
 
+    expect(log).toEqual(['local', 'relay'])
     expect(local).toHaveBeenCalledTimes(1)
     expect(portB.emit).toHaveBeenCalledTimes(1)
     expect(portB.emit).toHaveBeenCalledWith('rt:resync', null, undefined)
@@ -79,7 +89,7 @@ describe('newWorkerScope', () => {
     expect(portB.emit).toHaveBeenCalledWith(RT.dialogPin, { chat_id: 2, pinned: false }, { pts: 11 })
   })
 
-  it('локальный воркерный подписчик, который сам зовёт broadcast, не порождает бесконечного кольца', () => {
+  it('локальный воркерный подписчик, который сам зовёт scope.dispatchEvent, не порождает бесконечного кольца', () => {
     const ports: FakePort[] = []
     const ws = newWorkerScope({ ports })
     const portA = makeFakePort()

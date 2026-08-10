@@ -135,7 +135,7 @@ const ports: SuperMessagePort[] = []
 // же вынесен globalFunnel: worker.ts неимпортируем в тестах (индексед-дб на верхнем
 // уровне), а логику нужно тестировать напрямую. workerScope создаётся ЗДЕСЬ, там же,
 // где раньше был broadcast: менеджеры выше получают его лениво через стрелки (см.
-// комментарии на строках 82,87,98,122) — порядок инициализации сохранён, стрелки
+// комментарии на строках 83,88,99,123) — порядок инициализации сохранён, стрелки
 // теперь дёргают workerScope.broadcast через тонкую обёртку broadcast ниже.
 const workerScope = newWorkerScope({ ports })
 const broadcast = (event: string, payload: unknown, meta?: EventMeta) => workerScope.broadcast(event, payload, meta)
