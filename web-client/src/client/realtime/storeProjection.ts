@@ -6,6 +6,8 @@ import { loadChats, useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
+import { applyStateMirror } from '../../stores/appState'
+import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -245,5 +247,19 @@ export function registerStoreProjection(managers: Managers): void {
   eventBus.subscribe('media:upload_progress', (raw) => {
     const e = raw as { id: string; loaded: number; total: number }
     if (e.total > 0) useUploadsStore.getState().setProgress(e.id, e.loaded / e.total)
+  })
+
+  // Ключ State изменила ДРУГАЯ вкладка: воркер разослал зеркало всем портам
+  // (порт tweb apiManagerProxy.processMirrorTaskMap.state, :235-241). Применяем
+  // молча — обратная запись замкнула бы цикл вкладка → воркер → вкладка, а диск
+  // уже записан инициатором.
+  //
+  // Ключ сверяем со схемой: через RPC-границу приходит строка, и чужой ключ
+  // положил бы в State мусор, который потом уехал бы на диск первым же
+  // write-through соседнего ключа.
+  eventBus.subscribe('state:mirror', (raw) => {
+    const e = raw as { key?: string; value?: unknown }
+    if (!e.key || !STATE_KEYS.includes(e.key as keyof AppState)) return
+    applyStateMirror(e.key as keyof AppState, e.value as AppState[keyof AppState])
   })
 }
