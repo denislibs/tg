@@ -99,9 +99,10 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // it stays correct when something OTHER than the prepended chunk resizes mid-settle (e.g. an
   // unrelated bubble below the fold reflows) — a plain distance-from-bottom would wrongly move
   // the viewport in that case. `scrollSaved` gates restore()/correctScroll to the prepend-settle
-  // window only (mirrors the old pendingRestore-active window): ScrollSaver has no live container
-  // class in this codebase (no JS scrollbar thumb — see the adapter below), so restore() must not
-  // run before the first save() or long after the chunk it belongs to has settled.
+  // window only (mirrors the old pendingRestore-active window): ScrollSaver itself has no notion of
+  // "is a restore still pending" (see scrollSaver.ts — it's a pure save/restore pair, no settle-window
+  // state of its own), so this ref is what stops restore() from running before the first save() or
+  // long after the chunk it belongs to has settled.
   const scrollSaverRef = useRef<ScrollSaver | null>(null)
   if (!scrollSaverRef.current) {
     // Minimal ScrollSaverTarget adapter over the native scroll div (see scrollSaver.ts header for
@@ -334,6 +335,14 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     userScrolledUpRef.current = false
     scrollSaved.current = false
     if (restoreTimer.current) clearTimeout(restoreTimer.current)
+    // Cleanup, not just init: key={selectedId} means a chat switch fully unmounts this
+    // hook instance rather than re-running this effect ([numericChatId] is fixed for the
+    // instance's whole lifetime) — so the ONLY way to catch a restoreTimer left pending by
+    // onScrolledTop (set after this effect's init run already happened, e.g. the user
+    // scrolled up right before switching chats) is a real unmount cleanup here. Without it
+    // the timer fires ~1.5s after unmount and writes into a dead instance's scrollSaved ref
+    // — harmless (no crash, no visible effect), but still a stray timer outliving its owner.
+    return () => { if (restoreTimer.current) clearTimeout(restoreTimer.current) }
   }, [numericChatId])
 
   // The single scroll corrector. Real nodes ⇒ real scrollHeight ⇒ stable, no
@@ -353,6 +362,27 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     // keep the chat pinned to the bottom`, same silent write for the same reason here.
     if (atBottomRef.current) setScrollTopSilently(el.scrollHeight)
     else if (scrollSaved.current) scrollSaverRef.current!.restore()
+    // The write above (if any) went through setScrollPositionSilently — BY DESIGN no
+    // 'scroll' event, so Scrollable.onScroll never runs and neither of its two jobs
+    // happens on its own:
+    //   • onAdditionalScroll recomputing showScrollDown/atBottomRef from the NEW
+    //     scrollTop. Without this, a cache-open that commits with msgs already in the
+    //     store renders scrollTop=0 on the first paint (dist huge → showScrollDown=true),
+    //     THEN this effect silently pins to the bottom — the down-arrow never gets a
+    //     chance to re-evaluate and is stuck lit until the user scrolls by hand (review
+    //     C-1: reproduced with a real hook harness, scrollTop=5000 yet
+    //     data-show-scroll-down='1').
+    //   • checkForTriggers, which is the ONLY place onScrolledBottom/onScrolledTop live —
+    //     it otherwise fires exclusively from the throttled onScroll. A silent pin gives
+    //     it neither, so a cache-open landing mid-history (reachedBottom=false, but the
+    //     LOADED window already fills/exceeds the viewport) never calls loadNewer() to
+    //     chase the real bottom — the "catch up on fresh messages" path from this hook's
+    //     own header comment breaks silently (review C-2). tweb has no equivalent gap by
+    //     construction: bubbles.ts re-checks after every render (:2239, :11532) and after
+    //     every history load (:11348-11354, :11556-11560) — the two calls below are the
+    //     same idea applied at our one silent-write choke point instead.
+    onAdditionalScroll()
+    scrollableRef.current?.checkForTriggers()
   }
   useEffect(() => {
     const content = contentRef.current

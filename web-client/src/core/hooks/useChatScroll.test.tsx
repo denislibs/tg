@@ -132,14 +132,20 @@ beforeEach(() => {
 
 const fakeManagers = { realtime: { markRead: async () => {} } }
 
-function Harness({ win }: { win: MessageWindow }) {
-  const { scrollRef, contentRef, showScrollDown } = useChatScroll({
-    numericChatId: 1, isRealChat: true, win, paddingTop: 0, unreadDividerSeq: null, unreadStickyTop: 0,
+function Harness({ win, paddingTop = 0 }: { win: MessageWindow, paddingTop?: number }) {
+  const { scrollRef, contentRef, showScrollDown, userScrolledUpRef } = useChatScroll({
+    numericChatId: 1, isRealChat: true, win, paddingTop, unreadDividerSeq: null, unreadStickyTop: 0,
   })
   return (
-    // data-show-scroll-down зеркалит состояние хука наружу — снаружи React-состояние
-    // не пощупать, а тест ниже проверяет именно ЕГО (не голый scrollTop).
-    <div ref={scrollRef} data-scroll-container="1" data-show-scroll-down={showScrollDown ? '1' : '0'}>
+    // data-show-scroll-down/data-user-scrolled-up зеркалят состояние хука наружу —
+    // снаружи React-состояние (и рефы) не пощупать иначе; читаются на каждом
+    // рендере, так что отражают САМОЕ СВЕЖЕЕ значение ref на момент рендера.
+    <div
+      ref={scrollRef}
+      data-scroll-container="1"
+      data-show-scroll-down={showScrollDown ? '1' : '0'}
+      data-user-scrolled-up={userScrolledUpRef.current ? '1' : '0'}
+    >
       <div ref={contentRef}>
         {win.msgs.map((m) => <div key={m.id} data-seq={m.seq} />)}
       </div>
@@ -257,6 +263,42 @@ describe('useChatScroll ↔ ScrollSaver (подключение)', () => {
     expect(loadOlderCalls).toBe(0)
   })
 
+  // Финальное ревью ветки (I-5, симметрия): тест выше держит loadedAll.top, но
+  // его близнец — useChatScroll.ts's `s.loadedAll.bottom = win.reachedBottom`
+  // (та же строка сихронизации, соседняя половина) — тестом не был покрыт
+  // вообще: снятие ЭТОЙ строки оставляло весь набор зелёным, потому что
+  // Scrollable's дефолт (`loadedAll: {top:true, bottom:false}`) без синхронизации
+  // так и остаётся `false` — само по себе НЕ блокирует триггер низа (гейт
+  // читает `s.loadedAll.bottom` — не заблокировано, а не «заблокировано
+  // неверно»), поэтому баг был бы виден только в реальном браузере на
+  // кэш-открытии с уже загруженным низом (лишний loadNewer при каждом подходе
+  // к нижнему краю). Тот же приём: реальный хук, реальный React-эффект-цикл.
+  it('win.reachedBottom=true блокирует loadNewer() у нижнего края (loadedAll.bottom в РЕАЛЬНОМ хуке, не в тестовом колбэке)', async () => {
+    let loadNewerCalls = 0
+    const win = makeWin([msg(1), msg(2)], {
+      reachedBottom: true, // низ УЖЕ загружен целиком — loadedAll.bottom должно стать true
+      loadNewer: async () => { loadNewerCalls++ },
+    })
+    const { scrollEl } = mount(win)
+
+    // Прогрев + подъём в зону триггера низа (containerScrollHeight=1000 по
+    // умолчанию, clientHeight=500 → maxScrollPosition=500; порог 300 →
+    // scrollTop>=200 уже в зоне «близко к низу»).
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+    await act(async () => {
+      scrollEl.scrollTop = 250
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+
+    // Без гейта loadedAll.bottom это вызвало бы loadNewer() — окно уже в
+    // пределах порога 300px от низа контейнера.
+    expect(loadNewerCalls).toBe(0)
+  })
+
   // Ревью Задачи 4 (Б-1, вторая часть): мутация «убрать делегирование в
   // s.setScrollPositionSilently(), оставить голое el.scrollTop = value»
   // тоже оставляла все тесты зелёными — ни один не проверял, ЧЕРЕЗ ЧТО
@@ -308,5 +350,115 @@ describe('useChatScroll: стрелка «вниз» гаснет сама', () 
     await act(async () => { rerender(createElement(Harness, { win: newWin })) })
 
     expect(scrollEl.dataset.showScrollDown).toBe('0')
+  })
+})
+
+// Финальное ревью ветки (раунд после Задачи 5): C-1/C-2. Задача 4 заглушила
+// setScrollPositionSilently (правильно), раунд 3 сузил deps эффекта выше до
+// [win.msgs, win.reachedBottom] (тоже правильно) — вместе они сняли ОБА пути,
+// которыми база пересчитывала состояние после программного пина: реальное
+// scroll-событие (глушится тихой записью by design) и eager-эффект на КАЖДЫЙ
+// ререндер (сужен намеренно). На кэш-открытии (окно уже в сторе ПЕРВЫМ
+// коммитом, win.msgs/win.reachedBottom не МЕНЯЮТСЯ между рендерами — эффект
+// молчит) не остаётся ни одного пути пересчёта. Фикс — correctScroll() зовёт
+// onAdditionalScroll()/checkForTriggers() сама, после своей же тихой записи.
+describe('useChatScroll: тихий пин корректно пересчитывает состояние (C-1/C-2)', () => {
+  it('C-1: кэш-открытие первым коммитом — стрелка «вниз» не залипает после тихого пина', () => {
+    // Окно уже в сторе ДО первого рендера (кэш-открытие/возврат в чат) — Harness
+    // монтируется сразу с msgs, а не догоняет их отдельным rerender. scrollTop
+    // стартует 0 (React ещё не успел ничего написать), scrollHeight/clientHeight
+    // задают большой dist — ровно сценарий ревью, воспроизведённый численно:
+    // "scrollTop = 5000, при этом data-show-scroll-down = '1'".
+    containerScrollHeight = 5000
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2)], { reachedBottom: true }) // реальный низ уже загружен
+    const { scrollEl } = mount(win)
+
+    // Тихий пин из correctScroll() (ResizeObserver-эффект монтирования) должен
+    // был случиться...
+    expect(scrollEl.scrollTop).toBe(5000)
+    // ...и то же correctScroll() обязано было пересчитать showScrollDown ПОСЛЕ
+    // записи — иначе тут осталось бы стухшее значение с первого прохода
+    // onAdditionalScroll(), снятое при scrollTop=0.
+    expect(scrollEl.dataset.showScrollDown).toBe('0')
+  })
+
+  it('C-2: кэш-открытие мид-history — тихий пин запускает checkForTriggers → loadNewer', () => {
+    // win.reachedBottom=false — мы прыгнули в середину истории, реальный низ
+    // чата ещё не загружен. Тихий пин ставит scrollTop на границу загруженного
+    // окна (dist=0 от НЕГО) — ровно порог onScrolledBottom. Без вызова
+    // checkForTriggers() из correctScroll() это никогда бы не всплыло: триггер
+    // живёт только внутри checkForTriggers, а её зовёт исключительно throttled
+    // onScroll, которого тихая запись не рождает.
+    let loadNewerCalls = 0
+    containerScrollHeight = 5000
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2)], {
+      reachedBottom: false,
+      loadNewer: async () => { loadNewerCalls++ },
+    })
+    mount(win)
+
+    expect(loadNewerCalls).toBe(1)
+  })
+})
+
+// Финальное ревью ветки (I-5): `setScrollTopSilently`'s `lastScrollTopRef.current
+// = value` (useChatScroll.ts:91, фикс Б-6 из task-4-report.md) не был покрыт
+// тестом — снятие этой строки оставляло весь набор зелёным. Смысл строки: КАЖДАЯ
+// тихая корректирующая запись обязана двигать вперёд базу, от которой
+// onAdditionalScroll считает "пользователь ушёл вверх" (`st < lastScrollTopRef.current
+// - 1`), иначе следующий РЕАЛЬНЫЙ маленький скролл пользователя сверяется с
+// устаревшей ДОкоррекционной точкой отсчёта и детекция молча пропадает. Пин к
+// низу/restore() (через correctScroll) не годятся для теста — C-1/C-2 выше
+// научили correctScroll звать onAdditionalScroll() сразу следом, а он САМ
+// безусловно переписывает lastScrollTopRef в конце (`lastScrollTopRef.current =
+// st`) — маскирует баг этой строки. Компенсация paddingTop — единственный
+// вызывающий site, который НЕ сопровождается таким пересчётом, поэтому он и
+// показывает строку 91 в чистом виде.
+describe('useChatScroll: тихая запись двигает базу для детекции "ушёл вверх" (lastScrollTopRef)', () => {
+  it('компенсация paddingTop обновляет базу — следующий маленький реальный скролл вверх засчитывается', async () => {
+    containerScrollHeight = 500
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2)], { reachedBottom: true })
+    const { scrollEl, rerender } = mount(win)
+
+    // Прогрев: гасит swallow-listener от тихого пина при монтировании (см.
+    // комментарий у первого теста файла).
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+    expect(scrollEl.scrollTop).toBe(500) // тихий пин при монтировании случился
+
+    // "Пришли новые сообщения" — увеличиваем доступный overflow, не трогая
+    // сам scrollTop; нужно только для dist>240 у финальной проверки ниже.
+    containerScrollHeight = 5000
+
+    // Компенсация paddingTop (useChatScroll.ts, `setScrollTopSilently(el.scrollTop
+    // + delta)`) — тихая запись БЕЗ сопровождающего onAdditionalScroll (в отличие
+    // от correctScroll после фикса C-1/C-2) — чистый сценарий для строки 91.
+    await act(async () => { rerender(createElement(Harness, { win, paddingTop: 1000 })) })
+    expect(scrollEl.scrollTop).toBe(1500) // 500 (было) + 1000 (delta paddingTop)
+
+    // Прогрев swallow-listener'а ОТ ЭТОЙ силентной записи — иначе следующий
+    // dispatch проглотится вхолостую, как и после мутационного пина.
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+
+    // РЕАЛЬНОЕ движение пользователя вверх на 20px от скорректированной позиции
+    // (1500 → 1480) — маленький, но настоящий скролл, обязанный засчитаться как
+    // "пользователь ушёл от низа". Без строки 91 lastScrollTopRef остался бы на
+    // устаревшей ДОкоррекционной базе (500) — 1480 < 500-1 ложно, детекция
+    // пропала бы молча.
+    await act(async () => {
+      scrollEl.scrollTop = 1480
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+
+    expect(scrollEl.dataset.userScrolledUp).toBe('1')
   })
 })
