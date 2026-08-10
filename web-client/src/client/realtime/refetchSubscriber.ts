@@ -13,17 +13,31 @@ import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersSto
 import type { Managers } from '../bootstrap'
 
 // Дебаунс полного /chats-рефетча: несколько триггеров подряд → один запрос.
-function makeChatsReload(managers: Parameters<typeof loadChats>[0]): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  return () => {
-    if (timer) return
-    timer = setTimeout(() => { timer = null; void loadChats(managers) }, 300)
-  }
+// Единственный на модуль (а не замыкание внутри registerRefetchSubscriber) —
+// storeProjection.ts дёргает тот же таймер на свои триггеры (сообщение в
+// неизвестный чат / входящий secret-запрос), иначе у двух зон были бы два
+// независимых 300мс-таймера на один и тот же loadChats (было так до задачи T3
+// стадии 1C.1 — два триггера в одном окне давали два параллельных /chats).
+let chatsReloadTimer: ReturnType<typeof setTimeout> | null = null
+export function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
+  if (chatsReloadTimer) return
+  chatsReloadTimer = setTimeout(() => {
+    chatsReloadTimer = null
+    void loadChats(managers)
+  }, 300)
+}
+
+// Только для тестов: сбросить модульный таймер между кейсами. Состояние модуля
+// переживает между it()-блоками одного файла (один и тот же модуль-синглтон),
+// а vi.useRealTimers() в afterEach не отменяет незавершённый fake-таймер сам —
+// без явного сброса следующий кейс молча получил бы chatsReloadTimer !== null
+// от прошлого и его первый триггер был бы проглочен.
+export function __resetChatsReloadTimerForTests(): void {
+  if (chatsReloadTimer) clearTimeout(chatsReloadTimer)
+  chatsReloadTimer = null
 }
 
 export function registerRefetchSubscriber(managers: Managers): void {
-  const reloadChats = makeChatsReload(managers)
-
   // Pin/unpin: перечитать пины чата (usePinnedBar читает из стора).
   rootScope.addEventListener(RT.pinMessage, (raw) => {
     const e = raw as PinMessageEvt
@@ -43,7 +57,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
     if (useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
       useChatsStore.getState().applyChatMeta(evt)
     } else {
-      reloadChats()
+      scheduleChatsReload(managers)
     }
   })
   // Папки изменились на другом устройстве/вкладке. Бэкенд шлёт АБСОЛЮТНЫЙ снимок
