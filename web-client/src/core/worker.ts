@@ -42,9 +42,9 @@ import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
-import { newCursor, classifyPts } from './realtime/cursor'
-import { newPendingPts } from './realtime/pendingPts'
+import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
+import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type NewMessageEvt } from './realtime/events'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
@@ -191,74 +191,6 @@ function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
   broadcast(RT.newMessage, e, meta)
 }
 
-// Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
-// гоним сразу в /sync — придерживаем кадр и ждём, пока её закроют следующие живые
-// кадры (наш источник переупорядочивания — async-decrypt секретов, см. onFrame).
-const pendingPts = newPendingPts()
-// tweb: SYNC_DELAY=6мс — там апдейты синхронны, «дырка» закрывается в том же тике.
-// У нас переупорядочивание даёт асинхронная расшифровка (WebCrypto, десятки мс),
-// поэтому ждём дольше, прежде чем уйти в catch-up. Реальную потерю кадра (publish
-// упал) буфер пересидеть не сможет — по таймауту чистимся и добираем через /sync.
-const PTS_SYNC_DELAY = 250
-let ptsSyncTimer: ReturnType<typeof setTimeout> | null = null
-function schedulePtsSync(): void {
-  if (ptsSyncTimer) return
-  ptsSyncTimer = setTimeout(() => {
-    ptsSyncTimer = null
-    if (!pendingPts.has()) return
-    pendingPts.clear()      // как tweb: getDifference сбрасывает pendingPtsUpdates
-    void sync.catchUp()
-  }, PTS_SYNC_DELAY)
-}
-function clearPtsSync(): void {
-  if (ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
-  pendingPts.clear()
-}
-// Слить подряд идущие буферные кадры после того, как живой next закрыл дыру.
-function drainPending(): void {
-  if (!pendingPts.has()) return
-  pendingPts.drain(() => cursor.get().pts, (item) => {
-    // Кадр в буфере — живой (пришёл по WS, лишь придержан переупорядочиванием),
-    // поэтому catchUp:false — происхождение не меняется от факта буферизации.
-    dispatch(item.t, item.d, { pts: item.pts, catchUp: false })
-    cursor.advance(item.pts)
-  })
-  if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
-}
-
-// Единый funnel. live=true — WS-кадр (pts внутри payload), live=false — элемент /sync
-// (pts сверху). Арифметика курсора: dup→drop, next→apply+advance, gap(live)→буфер.
-function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boolean): void {
-  // Без pts — эфемерный/устаревший бэк: транслируем как есть, не гейтим.
-  if (typeof pts !== 'number') { dispatch(t, d); return }
-  if (live) {
-    // Гейт гидратации: до загрузки курсора из IDB не применяем вслепую — catch-up
-    // (он ждёт cursor.ready()) добёрет по порядку.
-    if (!cursorReady) { void sync.catchUp(); return }
-    // Гейт syncLoading: пока идёт catch-up, живые кадры с pts отбрасываем — diff
-    // переотдаст их по порядку; после catch-up pts===cursor+1 продолжит live.
-    if (sync.isSyncing()) return
-    const cls = classifyPts(cursor.get().pts, pts)
-    if (cls === 'dup') return
-    if (cls === 'gap') {
-      // Out-of-order живой кадр: буферизуем и ждём, что дыру закроют следующие
-      // кадры (тогда drainPending применит по порядку без round-trip). Переполнение
-      // буфера — дыра слишком велика, чтобы пересидеть → сразу catch-up.
-      if (!pendingPts.push({ t, pts, d })) { clearPtsSync(); void sync.catchUp(); return }
-      schedulePtsSync()
-      return
-    }
-    dispatch(t, d, { pts, catchUp: false })
-    cursor.advance(pts)
-    drainPending()
-    return
-  }
-  // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
-  if (classifyPts(cursor.get().pts, pts) === 'dup') return
-  dispatch(t, d, { pts, catchUp: true })
-  cursor.advance(pts)
-}
-
 // Per-channel pts-конверт (Волна 5): каналы гейтятся против собственного
 // channel_pts, а не общего пер-юзерного курсора. dispatch — тот же (SSOT+broadcast),
 // difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
@@ -271,11 +203,21 @@ const channelFunnel = newChannelFunnel({
 
 const sync = newSyncEngine({
   rest, cursor,
-  onUpdate: (item) => applyUpdate(item.t, item.pts, item.d, false),
+  onUpdate: (item) => funnel.applyUpdate(item.t, item.pts, item.d, false),
   // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
   // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
   // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
-  onResync: () => { clearPtsSync(); channelFunnel.reset(); broadcast('rt:resync', null) },
+  onResync: () => { funnel.clear(); channelFunnel.reset(); broadcast('rt:resync', null) },
+})
+// Единый (пер-юзерный) funnel — арифметика dup/next/gap + буфер придержанных кадров
+// (Wave 3), вынесенная в модуль с явными зависимостями (Task 1). dispatch остаётся
+// здесь (знает про APPLY/routeNewMessage/broadcast), funnel про менеджеры не знает.
+const funnel = newGlobalFunnel({
+  dispatch,
+  cursor,
+  isCursorReady: () => cursorReady,
+  isSyncing: () => sync.isSyncing(),
+  catchUp: () => { void sync.catchUp() },
 })
 const conn = newConnectionManager({
   ws, getToken: () => tokens.get(),
@@ -300,7 +242,7 @@ const conn = newConnectionManager({
         // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
         // out-of-order кадры теперь оторваны от новой базы, сбрасываем (инвариант
         // tweb: getDifference чистит pendingPtsUpdates), чтобы не всплыли позже.
-        void cursor.ready().then(() => { if (want !== cursor.get().pts) { clearPtsSync(); void sync.catchUp() } })
+        void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); void sync.catchUp() } })
       }
       return
     }
@@ -321,15 +263,15 @@ const conn = newConnectionManager({
       if (p.enc_body && p.chat_id) {
         void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
           if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
-          applyUpdate('new_message', p.pts, payload, true)
+          funnel.applyUpdate('new_message', p.pts, payload, true)
         })
       } else {
-        applyUpdate('new_message', p.pts, payload, true)
+        funnel.applyUpdate('new_message', p.pts, payload, true)
       }
       return
     }
     // Логируемый кадр (несёт pts) → единый funnel: дедуп/gap/cache/broadcast.
-    if (APPLY[type as LoggedWsType]) { applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
+    if (APPLY[type as LoggedWsType]) { funnel.applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
     // Секретный handshake: криптообработка в воркере до/вместо трансляции.
     if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }
