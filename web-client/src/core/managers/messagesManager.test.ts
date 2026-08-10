@@ -153,4 +153,25 @@ describe('MessagesManager.cacheLive', () => {
     expect(live?.replySnapshotName).toBe('Алиса')
     expect(live?.replySnapshotText).toBe('из другого чата')
   })
+
+  // Task 6: new_message несёт client_msg_id (эхо своей отправки), и на главном
+  // потоке applyIncoming/reconcileAck матчат оптимистичный бабл именно по нему
+  // (mapMessage → msg.clientId, см. models.ts:799). cacheLive собирал модель
+  // без этого поля — переоткрытие чата из кэша воркера отдавало эхо-сообщение
+  // БЕЗ clientId, и слияние с ещё не сверенным баблом (если ack/echo по сети
+  // пока не пришли) не срабатывало бы.
+  it('preserves client_msg_id (clientId) of a live message for cache reopen', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    mgr.cacheLive({
+      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
+      media_id: null, created_at: '2026-06-24T10:00:00Z',
+      client_msg_id: 'c-live-1',
+    } as NewMessageEvt)
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const live = r.messages.find((m) => m.id === 4)
+    expect(live).toBeTruthy()
+    expect(live?.clientId).toBe('c-live-1')
+  })
 })

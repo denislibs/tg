@@ -489,6 +489,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       // secret_media на фрейм (не проводное поле) — переносим в кэш-модель, чтобы
       // переоткрытие чата из кэша тоже отдавало расшифровываемое медиа.
       if (evt.secret_media) { m.secretMedia = evt.secret_media; m.secret = true }
+      // Эхо своей отправки несёт client_msg_id (mapMessage его не принимает —
+      // RawMessage такого поля не знает); без него applyIncoming/reconcileAck на
+      // главном потоке не смогли бы сматчить сообщение из кэша с оптимистичным
+      // баблом по clientId (Task 6).
+      if (evt.client_msg_id) m.clientId = evt.client_msg_id
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
