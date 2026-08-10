@@ -13,6 +13,7 @@ export interface CalendarDay {
   has_thumb: boolean
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapReplyMarkup } from './botsManager'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
@@ -544,19 +545,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
     },
 
     // Live-правка от любого участника → единый объект в SSOT.
-    // Stage 1B.3 (Task 3): НЕ переведено на операции — сознательно. cacheEdit не
-    // патчит reply_markup (карта обогащений, docs/research/2026-08-10-message-
-    // enrichments.md §4), хотя стор его применяет — но применяет из СЫРОГО кадра
-    // (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ? ...)),
-    // а не из SSOT воркера. Если убрать этот тип из реестра APPLY проектора (как
-    // остальные шесть — единственный писатель окна станет applyOps), клавиатура
-    // бота перестанет обновляться на живой правке ВООБЩЕ (а не только в кэше
-    // воркера, как сегодня) — patch унаследовал бы пробел cacheEdit и сделал бы
-    // его user-visible регрессией. Оставлено на прежнем пути (сырой кадр в APPLY
-    // storeProjection); перевод — отдельная задача после решения по reply_markup.
+    // Stage 1B.3 (Task 3): НЕ переведено на операции — но уже не из-за пробела в
+    // cacheEdit (тот чинили отдельно: reply_markup теперь мапится сюда же тем же
+    // правилом, что и витрина — mapReplyMarkup при наличии поля, снятие клавиатуры
+    // при его отсутствии, backend/internal/usecase/chat/frame.go:243 шлёт поле
+    // абсолютным значением). Других обогащений у edit_message нет, так что
+    // структурных препятствий к переводу на patch не осталось — перевод остаётся
+    // отдельной задачей (вне объёма этой), а не решением проблемы с данными.
     cacheEdit(evt: EditMessageEvt): void {
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
-        (m) => ({ ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at }))
+        (m) => ({
+          ...m,
+          text: evt.text,
+          entities: evt.entities ?? undefined,
+          editedAt: evt.edited_at,
+          replyMarkup: evt.reply_markup ? mapReplyMarkup(evt.reply_markup) : undefined,
+        }))
     },
 
     // Live-обновление координат гео-трансляции → SSOT.
