@@ -49,7 +49,7 @@ afterEach(() => {
 })
 
 describe('Scrollable — onScrolledTop/onScrolledBottom + loadedAll', () => {
-  it('триггер верха срабатывает при подходе к краю и НЕ срабатывает при loadedAll.top', async () => {
+  it('триггер верха срабатывает при подходе к краю', async () => {
     // scrollHeight 1000, clientHeight 500 → maxScrollPosition 500. onScrollOffset
     // по умолчанию 300 (как реальный tweb bubbles.ts: new Scrollable(null,'IM',300)).
     // Стартуем с scrollTop=0, СИММЕТРИЧНО lastScrollPosition-у Scrollable (тоже 0
@@ -62,19 +62,19 @@ describe('Scrollable — onScrolledTop/onScrolledBottom + loadedAll', () => {
     // событиями, как в жизни.
     const container = makeContainer(1000, 500, 0)
     const scrollable = makeScrollable(container)
-    // Scrollable's own default is `loadedAll = {top: true, bottom: false}` (scrollable.ts:374) —
-    // "top already reached" until a caller says otherwise, matching tweb's bubbles.ts explicitly
-    // calling `setLoaded('top', false, false)` on chat open (there IS more history above to load).
-    scrollable.loadedAll.top = false
 
-    // loadedAll НЕ читается внутри Scrollable (scrollable.ts:374 — только поле);
-    // гейт — забота ВЫЗЫВАЮЩЕГО кода (tweb bubbles.ts's loadMoreHistory), тот же
-    // паттерн, что useChatScroll.ts's onScrolledTop. Воспроизводим его здесь.
+    // Проверяем ТОЛЬКО собственную триггер-арифметику Scrollable — direction/
+    // threshold в checkForTriggers (scrollable.ts:433-457). loadedAll здесь
+    // намеренно не участвует: он не читается внутри Scrollable (scrollable.ts:374 —
+    // только поле, гейт — забота ВЫЗЫВАЮЩЕГО кода, tweb bubbles.ts's
+    // loadMoreHistory), и колбэк-с-собственным-if внутри ЭТОГО файла проверял бы
+    // только сам себя, а не Scrollable — такой тест раньше стоял здесь и был
+    // убран по ревью (Задача 4, блокер Б-1): настоящую проверку гейта см. в
+    // useChatScroll.test.tsx ('win.reachedTop=true блокирует loadOlder() у
+    // верхнего края') — она бьёт по РЕАЛЬНОМУ производственному колбэку через
+    // реальный React-эффект-цикл, дублировать эту проверку здесь нечего.
     let topCalls = 0
-    scrollable.onScrolledTop = () => {
-      if (scrollable.loadedAll.top) return
-      topCalls++
-    }
+    scrollable.onScrolledTop = () => { topCalls++ }
 
     // Сначала вниз, подальше от обоих краёв — устанавливает lastScrollPosition=800
     // штатно, через реальное измерение (не триггерит ни один из краёв).
@@ -88,17 +88,6 @@ describe('Scrollable — onScrolledTop/onScrolledBottom + loadedAll', () => {
     container.dispatchEvent(new Event('scroll'))
     await flushThrottle()
     expect(topCalls).toBe(1)
-
-    // Обратно вниз, затем снова в зону триггера — но теперь loadedAll.top=true
-    // (верх истории уже загружен целиком, как tweb setLoaded('top', true)).
-    scrollable.loadedAll.top = true
-    container.scrollTop = 800
-    container.dispatchEvent(new Event('scroll'))
-    await flushThrottle()
-    container.scrollTop = 200
-    container.dispatchEvent(new Event('scroll'))
-    await flushThrottle()
-    expect(topCalls).toBe(1) // не выросло
   })
 
   it('триггер низа симметричен: срабатывает у края, гасится loadedAll.bottom', async () => {

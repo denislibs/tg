@@ -246,18 +246,28 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     s.loadedAll.top = win.reachedTop
     s.loadedAll.bottom = win.reachedBottom
   }, [win.reachedTop, win.reachedBottom])
-  // Re-derive showScrollDown/atBottomRef eagerly on every window change — NOT only from
-  // throttled scroll events. The pre-Scrollable onScroll ran this synchronously at the top of
-  // its own `[isRealChat, win, managers, numericChatId]`-deps effect on every win change; that
-  // eager call is what this restores (onAdditionalScroll has a stable identity via useEvent, so
-  // this only re-runs when `win` itself changes). Needed because corrective writes now go
-  // through setScrollPositionSilently, which BY DESIGN produces no scroll event — e.g.
-  // onScrollDownClick's reloadNewest() + pinBottomNext silently pins to the bottom once the new
-  // page commits; without this eager re-run, win.reachedBottom flipping true wouldn't reach
+  // Re-derive showScrollDown/atBottomRef eagerly whenever the window's msgs/reachedBottom
+  // actually change — NOT only from throttled scroll events. The pre-Scrollable onScroll ran
+  // this synchronously at the top of its own `[isRealChat, win, managers, numericChatId]`-deps
+  // effect on every win change; that eager call is what this restores. Needed because corrective
+  // writes now go through setScrollPositionSilently, which BY DESIGN produces no scroll event —
+  // e.g. onScrollDownClick's reloadNewest() + pinBottomNext silently pins to the bottom once the
+  // new page commits; without this eager re-run, win.reachedBottom flipping true wouldn't reach
   // setShowScrollDown until the user scrolled by hand (review blocker Б-3).
+  //
+  // Deps are `win.msgs`/`win.reachedBottom` (the only two `win` fields onAdditionalScroll's body
+  // actually reads), NOT the whole `win` object: useMessageWindow.ts's `return {...}` builds a
+  // FRESH wrapper object literal on every call, so `win` itself changes reference on every
+  // render of Chat.tsx — including ones with nothing to do with scroll (theme toggle, unrelated
+  // store update). That would fire this effect (and its markRead call, when pinned to the bottom
+  // and focused) on every such re-render — a real, avoidable network call, not just a wasted
+  // recompute. `win.msgs`/`win.reachedBottom` are direct fields of the STORE's window record
+  // (useMessageWindow.ts: `useMessagesStore((s) => s.byKey[key])`) and stay reference-stable
+  // across renders that don't touch that store key — same narrowing already used by the "mark
+  // read on open/at the bottom" effect below (`[isRealChat, win.reachedBottom, win.msgs, ...]`).
   useEffect(() => {
     onAdditionalScroll()
-  }, [win, onAdditionalScroll])
+  }, [win.msgs, win.reachedBottom, onAdditionalScroll])
   // Screen-size safety net: if the loaded window doesn't overflow the viewport
   // there's nothing to scroll, so the scroll-driven loadNewer above can never
   // fire — on a very tall screen a single page can fit entirely. Pull more until
