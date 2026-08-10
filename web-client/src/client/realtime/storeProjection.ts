@@ -6,7 +6,7 @@ import { loadChats, useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
-import { useStarsStore } from '../../stores/starsStore'
+import { setStarsBalance } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
@@ -61,7 +61,7 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.webPageUpdate]: (raw) => { const e = raw as WebPageUpdateEvt; useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page)) },
   [RT.factCheckUpdate]: (raw) => { const e = raw as FactCheckUpdateEvt; useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined) },
   // Новый баланс звёзд; удаление истории.
-  [RT.balanceUpdate]: (raw) => { const b = (raw as { balance: number }).balance; if (typeof b === 'number') useStarsStore.getState().setBalance(b) },
+  [RT.balanceUpdate]: (raw) => { const b = (raw as { balance: number }).balance; if (typeof b === 'number') setStarsBalance(b) },
   [RT.storyDeleted]: (raw) => { const e = raw as StoryDeletedEvt; useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
   // Оптимистичная отправка (воркер — funnel): вставка/медиа/ошибка/ретрай/удаление
   // бабла. storeProjection единственный писатель окна; reconcile ack/err — ниже.

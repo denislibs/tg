@@ -7,7 +7,7 @@ import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsStore } from '../../stores/starsStore'
+import { setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { fmtWhen } from '../../core/dialogToChat'
 import { useT } from '../../i18n'
@@ -46,7 +46,7 @@ export default function GiftInfoPopup({
     setBusy(true)
     try {
       const bal = await managers.stars.convert(gift.id)
-      useStarsStore.getState().setBalance(bal)
+      setStarsBalance(bal)
       onChanged?.()
       onClose()
     } finally { setBusy(false) }

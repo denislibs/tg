@@ -85,7 +85,9 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
   }
 
   const onAddlistJoined = (folderTitle: string) => {
-    void loadChats(managers).then(() => loadFolders(managers))
+    // Вступили в папку по ссылке — на сервере появилась новая папка, в памяти её
+    // нет: cache-first обходим overwrite'ом (tweb getDialogFilters(true)).
+    void loadChats(managers).then(() => loadFolders(managers, { overwrite: true }))
     showToast(`${t('Folder added')}: ${folderTitle}`)
   }
 

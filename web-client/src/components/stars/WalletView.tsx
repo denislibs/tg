@@ -1,14 +1,14 @@
 // Экран «Кошелёк» (Telegram Stars): крупный баланс, покупка звёзд и история
 // транзакций. Полноэкранный слайд-скрин поверх списка чатов (как Настройки).
 // Пополнение — dev-операция (реального провайдера нет), баланс живёт в
-// starsStore (единый источник, обновляется и WS-фреймом balance_update).
+// State (`starsBalance`, единый источник, обновляется и WS-фреймом balance_update).
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section } from '../settings/kit'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useNavLayer } from '../../core/hooks/useNavLayer'
-import { useStarsStore } from '../../stores/starsStore'
+import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { useT, useLang } from '../../i18n'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import type { StarTransaction } from '../../core/managers/starsManager'
@@ -34,7 +34,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
   const [lang] = useLang()
   const managers = useManagers()
   useNavLayer(true, onBack) // Back закрывает «Кошелёк»
-  const balance = useStarsStore((st) => st.balance)
+  const balance = useStarsBalance()
   const [busy, setBusy] = useState(false)
   const [txs, setTxs] = useState<StarTransaction[]>([])
 
@@ -46,7 +46,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
     setBusy(true)
     try {
       const bal = await managers.stars.topUp(amount)
-      useStarsStore.getState().setBalance(bal)
+      setStarsBalance(bal)
       loadTxs() // подтянуть свежую запись в историю
     } finally {
       setBusy(false)

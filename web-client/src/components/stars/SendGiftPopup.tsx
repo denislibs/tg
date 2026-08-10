@@ -10,7 +10,7 @@ import Text from '../../shared/ui/Text'
 import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsStore } from '../../stores/starsStore'
+import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import type { StarGift } from '../../core/managers/starsManager'
@@ -32,7 +32,7 @@ export default function SendGiftPopup({
 }) {
   const t = useT()
   const managers = useManagers()
-  const balance = useStarsStore((st) => st.balance)
+  const balance = useStarsBalance()
   const [catalog, setCatalog] = useState<StarGift[]>([])
   const [chosen, setChosen] = useState<StarGift | null>(null)
   const [message, setMessage] = useState('')
@@ -65,7 +65,7 @@ export default function SendGiftPopup({
     setBusy(true)
     try {
       const { balance: bal } = await managers.stars.send(toUserId, chosen.id, message.trim(), anonymous)
-      useStarsStore.getState().setBalance(bal)
+      setStarsBalance(bal)
       onSent?.()
       onClose()
     } finally {

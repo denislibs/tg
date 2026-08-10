@@ -33,7 +33,17 @@ export function setAllDrafts(list: Draft[]): void {
 
 export async function loadDrafts(managers: { drafts: { list(): Promise<Draft[]> } }): Promise<void> {
   // Персист тут больше НЕ читаем: State уже поднят в boot.ts до рендера.
-  // Остаётся только реконсайл поверх свежими данными сети.
+  //
+  // Cache-first (порт намерения tweb `getDialogFilters`, filters.ts:475-484):
+  // черновики уже в памяти — в сеть не идём. Изменения приходят событием
+  // draft_update, которое логируется с плотным pts и попадает в /difference
+  // (backend wave2_updates_test.go:221-224), то есть пропуски после оффлайна
+  // догоняются догоном апдейт-лога, а не опросом на старте.
+  //
+  // Оговорка та же, что у tweb с папками: «пусто» и «не загружено» мы не
+  // различаем, поэтому у пользователя без черновиков запрос уйдёт на каждом
+  // старте. Он дешёвый, и отдельный флаг «загружено» того не стоит.
+  if (useAppStateStore.getState().drafts.length) return
   try {
     setAllDrafts(await managers.drafts.list())
   } catch {

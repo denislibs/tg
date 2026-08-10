@@ -616,6 +616,12 @@ function upsertSorted(folders: Folder[], incoming: Folder): Folder[] {
 
 Проверить фактическую форму payload перед реализацией: `grep -n "folderJSON" -A 12 backend/internal/usecase/folders/folders.go` и как его раскладывает воркер (`web-client/src/core/worker.ts:159`). Имена полей брать оттуда, не выдумывать: в снимке `id/title/pos/contacts/non_contacts/groups/broadcasts/bots/exclude_muted/exclude_read/include_chats/exclude_chats`, а у удаления — `{folder_id, deleted: true}`.
 
+**Оговорка, которую надо проверить до реализации.** Снимок приходит на ОДНУ папку, но мутация одной папки может сдвинуть `pos` у остальных (создание/удаление/переупорядочивание). Тогда применения одного снимка мало — остальные папки останутся со старыми позициями и порядок табов разъедется.
+
+Порядок действий: сначала выяснить по бэкенду, шлёт ли он `folder_update` **на каждую** затронутую папку при сдвиге позиций (посмотреть все вызовы `emitFolderUpdate` в `backend/internal/usecase/folders/folders.go` — на создании, удалении и переупорядочивании). Если да — применения снимков достаточно, round trip не нужен. Если нет — оставить рефетч списка **только** для случая, когда пришедший `pos` не совпал с ожидаемым, а простое изменение полей папки применять снимком без сети.
+
+Не угадывать: это ровно то место, где «оптимизировали» и сломали порядок табов.
+
 Если формы разойдутся с нашим типом `Folder` — привести маппинг в одном месте, а не растаскивать по обработчику.
 
 - [ ] **Шаг 5: Прогнать тесты и тайпчек**
@@ -792,7 +798,11 @@ git commit -m "perf(chats): chat_update применяется снимком, �
 
 **Interfaces:**
 - Consumes: `AppState` (план State).
-- Produces: `dialogIndex(dialog, pinnedOrder): number`, `PINNED_BASE`.
+- Produces: `dialogIndex(dialog, pinnedOrder, draft?): number`, `PINNED_BASE`.
+
+> **Поправка по факту реализации.** В плане ниже фигурировало поле `dialog.draftAt` — **его не существует**. Черновики живут не в `Dialog`, а в `AppState.drafts`; дата — `Draft.updatedAt` (`core/models.ts:639-645`). Поэтому у `dialogIndex` появился третий необязательный параметр `draft?: Pick<Draft, 'updatedAt'>`, чтобы модуль остался чистым.
+>
+> **Из этого следует требование к Task 5:** в `applyDialogs` третьим аргументом надо передавать черновик чата (`draftsByChat[d.chatId]`), иначе поднятие диалога свежим черновиком окажется мёртвой веткой — компилироваться будет, работать нет.
 
 - [ ] **Шаг 1: Добавить ключ pinnedOrders в State**
 

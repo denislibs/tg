@@ -18,7 +18,13 @@ export interface Folder {
 
 export type FolderInput = Omit<Folder, 'id' | 'pos'>
 
-interface RawFolder {
+/**
+ * Снимок папки «как его отдаёт бэкенд» — один и тот же JSON у REST
+ * (`folders_handler.go:44-59`) и у realtime-кадра `folder_update`
+ * (`usecase/folders/folders.go:94-102`). Экспортируется, чтобы раскладка
+ * снимка жила в одном месте (`mapFolder`), а не дублировалась в подписчике.
+ */
+export interface RawFolder {
   id: number
   title: string
   pos: number
@@ -33,7 +39,7 @@ interface RawFolder {
   exclude_chats: number[]
 }
 
-const mapFolder = (r: RawFolder): Folder => ({
+export const mapFolder = (r: RawFolder): Folder => ({
   id: r.id,
   title: r.title,
   pos: r.pos,
