@@ -25,6 +25,7 @@ import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
+import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
 
 interface UseChatScrollArgs {
   numericChatId: number
@@ -71,8 +72,34 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // when messages arrived between sessions) — loadNewer chases the latest while the
   // pin follows it. Set on a real upward scroll / a jump; reset on chat change.
   const userScrolledUpRef = useRef(false)
-  // Distance-from-bottom to hold across a loadOlder prepend (null = not prepending).
-  const pendingRestore = useRef<number | null>(null)
+  // Position restore across a loadOlder prepend — tweb's ScrollSaver (helpers/scrollSaver.ts):
+  // anchors on the topmost visible message's DOMRect instead of a raw scrollHeight delta, so
+  // it stays correct when something OTHER than the prepended chunk resizes mid-settle (e.g. an
+  // unrelated bubble below the fold reflows) — a plain distance-from-bottom would wrongly move
+  // the viewport in that case. `scrollSaved` gates restore()/correctScroll to the prepend-settle
+  // window only (mirrors the old pendingRestore-active window): ScrollSaver has no live container
+  // class in this codebase (no JS scrollbar thumb — see the adapter below), so restore() must not
+  // run before the first save() or long after the chunk it belongs to has settled.
+  const scrollSaverRef = useRef<ScrollSaver | null>(null)
+  if (!scrollSaverRef.current) {
+    // Minimal ScrollSaverTarget adapter over the native scroll div (see scrollSaver.ts header for
+    // why there's no vendored Scrollable class here). '[data-seq]' is our message-row anchor
+    // selector (MessageRow.tsx), the direct counterpart of tweb's '.bubble:not(...)'. reverse:
+    // true — this instance only serves the loadOlder (prepend-at-top) restore, matching tweb's
+    // createScrollSaver(reverse=true) for the same call site.
+    const target: ScrollSaverTarget = {
+      get container() { return scrollRef.current as HTMLElement },
+      get scrollPosition() { return scrollRef.current?.scrollTop ?? 0 },
+      get scrollSize() { return scrollRef.current?.scrollHeight ?? 0 },
+      onSizeChange() {},
+      setScrollPositionSilently(value) {
+        const el = scrollRef.current
+        if (el) el.scrollTop = value
+      },
+    }
+    scrollSaverRef.current = new ScrollSaver(target, '[data-seq]', true)
+  }
+  const scrollSaved = useRef(false)
   const restoreTimer = useRef<number | undefined>(undefined)
   // Jump-to-message: target seq awaiting its window to mount before we scroll to it.
   const pendingJumpSeq = useRef<number | null>(null)
@@ -125,14 +152,16 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
       lastScrollTopRef.current = st
       if (!isRealChat || win.msgs.length === 0) return
       if (goingUp && st < 300 && !win.reachedTop && !win.loadingOlder) {
-        // Preserve the user's place across the prepend: record distance-from-bottom
-        // now; the layout effect restores it after the new chunk commits, and the
-        // content observer keeps restoring it while the prepended media settles
-        // (single rAF restore landed before the DOM/heights were final → the view
+        // Preserve the user's place across the prepend: ScrollSaver.save() snapshots the
+        // topmost visible message's DOMRect NOW, before the prepend touches the DOM (rects
+        // must be measured pre-mutation). The layout effect restores it after the new chunk
+        // commits, and the content observer keeps restoring it while the prepended media
+        // settles (a single restore landed before the DOM/heights were final → the view
         // jumped onto the freshly-loaded older messages).
-        pendingRestore.current = el.scrollHeight - el.scrollTop
+        scrollSaverRef.current!.save()
+        scrollSaved.current = true
         if (restoreTimer.current) clearTimeout(restoreTimer.current)
-        restoreTimer.current = window.setTimeout(() => { pendingRestore.current = null }, 1500)
+        restoreTimer.current = window.setTimeout(() => { scrollSaved.current = false }, 1500)
         void win.loadOlder()
       }
       // Load newer when within ~a viewport of the loaded bottom, in EITHER scroll
@@ -210,21 +239,28 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
 
   // Reset scroll intent on chat change. (The component remounts on chat switch via
   // key={selectedId}, so this is belt-and-braces; kept here as scroll-state init.)
-  useEffect(() => { atBottomRef.current = true; userScrolledUpRef.current = false; pendingRestore.current = null }, [numericChatId])
+  useEffect(() => {
+    atBottomRef.current = true
+    userScrolledUpRef.current = false
+    scrollSaved.current = false
+    if (restoreTimer.current) clearTimeout(restoreTimer.current)
+  }, [numericChatId])
 
   // The single scroll corrector. Real nodes ⇒ real scrollHeight ⇒ stable, no
   // spacers/anchor math, no competing writers:
   //   • atBottomRef (tweb scrolledDown) → follow the bottom as content grows
   //     (open, live/sent messages, async media reserving its box);
-  //   • else if a prepend is settling → hold distance-from-bottom so the user's
-  //     place (e.g. the image they were viewing) stays put while the older chunk
-  //     and its media finish laying out.
+  //   • else if a prepend is settling → ScrollSaver.restore() re-anchors on the saved
+  //     message's DOMRect so the user's place (e.g. the image they were viewing) stays
+  //     put while the older chunk and its media finish laying out. restore() is safe to
+  //     call repeatedly (idempotent once settled — diff goes to 0), which is what lets
+  //     the ResizeObserver below call it on every resize during the settle window.
   // Runs on every content resize AND right after a prepend commits (layout effect).
   const correctScroll = () => {
     const el = scrollRef.current
     if (!el) return
     if (atBottomRef.current) el.scrollTop = el.scrollHeight
-    else if (pendingRestore.current != null) el.scrollTop = el.scrollHeight - pendingRestore.current
+    else if (scrollSaved.current) scrollSaverRef.current!.restore()
   }
   useEffect(() => {
     const content = contentRef.current
@@ -237,7 +273,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   }, [numericChatId])
   // Restore the prepend position synchronously after the new chunk commits.
   useLayoutEffect(() => {
-    if (pendingRestore.current != null) correctScroll()
+    if (scrollSaved.current) correctScroll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win.msgs])
 
