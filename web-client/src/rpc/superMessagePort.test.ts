@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { SuperMessagePort, type Endpoint } from './superMessagePort'
+import { SuperMessagePort, type Endpoint, type EventMeta } from './superMessagePort'
+
+// Пара связанных эндпоинтов поверх колбэков с синхронной доставкой — в happy-dom
+// MessageChannel не гарантирован (см. брифы задачи 3), а для этих тестов важна
+// детерминированная доставка без ожидания макротаска. postMessage на одном конце
+// сразу вызывает listener, зарегистрированный на другом.
+function pair(): [Endpoint, Endpoint] {
+  let listenerA: (ev: MessageEvent) => void = () => {}
+  let listenerB: (ev: MessageEvent) => void = () => {}
+  const epA: Endpoint = {
+    postMessage: (m) => listenerB({ data: m } as MessageEvent),
+    addEventListener: (_t, l) => { listenerA = l },
+  }
+  const epB: Endpoint = {
+    postMessage: (m) => listenerA({ data: m } as MessageEvent),
+    addEventListener: (_t, l) => { listenerB = l },
+  }
+  return [epA, epB]
+}
 
 describe('SuperMessagePort', () => {
   it('invokes a handler on the other end and resolves with its result', async () => {
@@ -32,6 +50,72 @@ describe('SuperMessagePort', () => {
     b.emit('tick', 7)
     await new Promise((r) => setTimeout(r, 10))
     expect(got).toEqual([7])
+  })
+})
+
+describe('SuperMessagePort — meta во втором аргументе кадра события', () => {
+  it('meta доезжает вторым аргументом подписчику', () => {
+    const [epA, epB] = pair()
+    const a = new SuperMessagePort(epA)
+    const b = new SuperMessagePort(epB)
+    const got: Array<[number, EventMeta | undefined]> = []
+    b.on<number>('tick', (n, meta) => got.push([n, meta]))
+    a.emit('tick', 7, { pts: 42, catchUp: true })
+    expect(got).toEqual([[7, { pts: 42, catchUp: true }]])
+  })
+
+  it('без meta подписчик получает undefined вторым аргументом', () => {
+    const [epA, epB] = pair()
+    const a = new SuperMessagePort(epA)
+    const b = new SuperMessagePort(epB)
+    let receivedMeta: EventMeta | undefined
+    let called = false
+    b.on<number>('tick', (_n, meta) => { called = true; receivedMeta = meta })
+    a.emit('tick', 1)
+    expect(called).toBe(true)
+    expect(receivedMeta).toBeUndefined()
+  })
+
+  it('подписчик-одноаргументник (не читает meta) продолжает работать — обратная совместимость', () => {
+    const [epA, epB] = pair()
+    const a = new SuperMessagePort(epA)
+    const b = new SuperMessagePort(epB)
+    const got: number[] = []
+    b.on<number>('tick', (n) => got.push(n)) // второй аргумент игнорируется, как раньше
+    a.emit('tick', 9, { pts: 1 })
+    expect(got).toEqual([9])
+  })
+})
+
+describe('SuperMessagePort — ретрансляция воркером (invokeExceptSource)', () => {
+  it('событие, пришедшее в воркер от вкладки A, доезжает до вкладки B и НЕ возвращается в A', () => {
+    // Имитация проводки core/worker.ts:bind() — на воркере по одному SMP на
+    // каждую подключённую вкладку; onAny + рассылка всем портам, кроме источника.
+    const [epWA, epAW] = pair()
+    const [epWB, epBW] = pair()
+    const a = new SuperMessagePort(epAW)
+    const b = new SuperMessagePort(epBW)
+    const portOnWorkerForA = new SuperMessagePort(epWA)
+    const portOnWorkerForB = new SuperMessagePort(epWB)
+    const ports = [portOnWorkerForA, portOnWorkerForB]
+    for (const p of ports) {
+      p.onAny((event, payload, meta) => {
+        for (const other of ports) if (other !== p) other.emit(event, payload, meta)
+      })
+    }
+
+    const receivedByA: unknown[] = []
+    const receivedByB: unknown[] = []
+    a.on('rt:test', (p) => receivedByA.push(p))
+    b.on('rt:test', (p) => receivedByB.push(p))
+
+    a.emit('rt:test', { hello: 1 }, { pts: 5 })
+
+    // B получил событие источника A...
+    expect(receivedByB).toEqual([{ hello: 1 }])
+    // ...а сам источник A не получил обратно то же событие (иначе — кольцо;
+    // без исключения источника этот ассерт первым бы поймал регресс).
+    expect(receivedByA).toEqual([])
   })
 })
 

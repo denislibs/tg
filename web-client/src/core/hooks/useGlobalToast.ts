@@ -1,8 +1,8 @@
 // Глобальный транзиентный тост (лимит закреплённых, deep-link баннеры и т.п.).
-// Один источник: подписка на uiEvents('ui:toast') + императивный showToast для
+// Один источник: подписка на rootScope('ui:toast') + императивный showToast для
 // прямых вызовов (deep-links). Авто-скрытие через 4с.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { uiEvents } from './uiEvents'
+import rootScope from '@lib/rootScope'
 
 export interface GlobalToast {
   toast: string | null
@@ -20,9 +20,10 @@ export function useGlobalToast(): GlobalToast {
   }, [])
 
   useEffect(() => {
-    const off = uiEvents.on('ui:toast', (p) => showToast(String(p)))
+    const onToast = (p: string) => showToast(String(p))
+    rootScope.addEventListener('ui:toast', onToast)
     return () => {
-      off()
+      rootScope.removeEventListener('ui:toast', onToast)
       if (timer.current) clearTimeout(timer.current)
     }
   }, [showToast])

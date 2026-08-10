@@ -11,7 +11,7 @@
 // (useChatSend) can pin to the bottom when the user sends.
 //
 // Known exception to the "only realtimeBridge subscribes to the socket" rule: this
-// hook listens to eventBus(RT.newMessage) to markRead a live message when the
+// hook listens to rootScope(RT.newMessage) to markRead a live message when the
 // viewport is pinned to the bottom and focused — that decision needs scroll/focus
 // state that only lives here. The message DATA path is still realtimeBridge →
 // messagesStore; this is a pure UI reaction. The unread-below badge count is NOT
@@ -21,8 +21,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
-import { eventBus } from '../realtime/eventBus'
-import { RT } from '../realtime/events'
+import rootScope from '@lib/rootScope'
+import { RT, type NewMessageEvt } from '../realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 
@@ -325,15 +325,17 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // DATA path is realtimeBridge → messagesStore; this stays a pure UI reaction.
   useEffect(() => {
     if (!isRealChat) return
-    // Подписка на eventBus напрямую (типизированный payload). storeProjection
+    // Подписка на rootScope напрямую (типизированный payload). storeProjection
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
-    return eventBus.subscribe(RT.newMessage, (m) => {
+    const onNewMessage = (m: NewMessageEvt) => {
       if (m.chat_id !== numericChatId) return
       if (atBottomRef.current && document.hasFocus()) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: m.seq })
       }
-    })
+    }
+    rootScope.addEventListener(RT.newMessage, onNewMessage)
+    return () => rootScope.removeEventListener(RT.newMessage, onNewMessage)
   }, [isRealChat, numericChatId, managers])
 
   // Mark read on open / at the bottom — when the newest is loaded, focused, and the

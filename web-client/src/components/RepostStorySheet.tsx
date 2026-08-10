@@ -4,7 +4,7 @@
 import { createPortal } from 'react-dom'
 import AddStorySheet from './AddStorySheet'
 import { useManagers } from '../core/hooks/useManagers'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { loadStories } from '../stores/storiesStore'
 
 export default function RepostStorySheet({
@@ -25,9 +25,9 @@ export default function RepostStorySheet({
           try {
             await managers.stories.repost({ sourceAuthorId, sourceStoryId, ...args })
             await loadStories(managers)
-            uiEvents.emit('ui:toast', 'История репостнута')
+            rootScope.dispatchEvent('ui:toast', 'История репостнута')
           } catch {
-            uiEvents.emit('ui:toast', 'Не удалось репостнуть историю')
+            rootScope.dispatchEvent('ui:toast', 'Не удалось репостнуть историю')
           }
           onClose()
         }}

@@ -22,7 +22,7 @@ const REACTIONS_USER_MAX_DEFAULT = 1
 const REACTIONS_USER_MAX_PREMIUM = 3
 import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
-import { uiEvents } from './uiEvents'
+import rootScope from '@lib/rootScope'
 import { isGifLike } from '../gifs'
 import { parseMarkdown } from '../richtext/markdown'
 import type { FactCheck } from '../models'
@@ -359,7 +359,7 @@ export function useMessageActions({
     closeMsgMenu()
     if (raw?.mediaId == null) return
     void managers.stickers.saveGif(raw.mediaId)
-      .then(() => uiEvents.emit('ui:toast', t('GIF saved to your GIFs.')))
+      .then(() => rootScope.dispatchEvent('ui:toast', t('GIF saved to your GIFs.')))
       .catch(() => {})
   }
 
@@ -421,7 +421,7 @@ export function useMessageActions({
     )
     // В «Избранном» реакция = тег: пусть панель тегов пересчитает список/счётчики
     // (слушатель есть только когда открыт самочат).
-    uiEvents.emit('ui:savedTagsChanged', undefined)
+    rootScope.dispatchEvent('ui:savedTagsChanged', undefined)
   })
 
   // Кто отреагировал (long-press / правый клик по чипу реакции): попап со списком

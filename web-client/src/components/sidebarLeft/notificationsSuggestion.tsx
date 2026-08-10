@@ -3,7 +3,7 @@
 // пока пользователь не отмахнулся и разрешение на уведомления не выдано
 // (tweb notificationsSuggestion.tsx:44).
 import { setupPush } from '../../client/pushSetup'
-import { uiEvents } from '../../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../../i18n'
 import { useSettingsStore } from '../../settings'
 import type { PendingSuggestionController, PendingSuggestionProps } from './pendingSuggestionController'
@@ -19,7 +19,7 @@ function NotificationsSuggestion({ collapsed }: PendingSuggestionProps) {
   // tweb: setAppSettings('notifications', 'suggested', true) + тост.
   const onDismissed = () => {
     update({ notifySuggested: true })
-    uiEvents.emit('ui:toast', t('You can turn notifications back on in the settings.'))
+    rootScope.dispatchEvent('ui:toast', t('You can turn notifications back on in the settings.'))
   }
 
   // tweb: granted → запомнить и пересобрать push-подписку

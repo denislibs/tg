@@ -10,7 +10,7 @@ import Input from '../shared/ui/Input'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
 import { useReportStore } from '../stores/reportStore'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import type { ReportReason } from '../core/managers/reportManager'
 import s from './ReportPopup.module.scss'
@@ -49,11 +49,11 @@ export default function ReportPopup() {
         reason,
         comment: comment.trim() || undefined,
       })
-      uiEvents.emit('ui:toast', t('Report sent'))
+      rootScope.dispatchEvent('ui:toast', t('Report sent'))
       clear()
     } catch {
       setBusy(false)
-      uiEvents.emit('ui:toast', t('Could not send report'))
+      rootScope.dispatchEvent('ui:toast', t('Could not send report'))
     }
   }
 

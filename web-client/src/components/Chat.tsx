@@ -20,7 +20,7 @@ import { useNavigationStore } from '../stores/navigationStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
@@ -763,7 +763,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     try {
       await managers.stars.unlockPaidMedia(msgId)
     } catch {
-      uiEvents.emit('ui:toast', t('Not enough Stars to unlock'))
+      rootScope.dispatchEvent('ui:toast', t('Not enough Stars to unlock'))
     }
   })
   // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).

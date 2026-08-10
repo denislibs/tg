@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import { uiEvents } from './uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../../i18n'
 
 // Редактор списка близких друзей (постинг-сторона): грузит текущий список,
 // держит выбор и сохраняет его целиком (managers.stories.setCloseFriends).
-// Read/command-путь; выбор — локальный Set id, тост о результате через uiEvents.
+// Read/command-путь; выбор — локальный Set id, тост о результате через rootScope.
 export function useCloseFriends(onClose: () => void): {
   selected: Set<number>
   loaded: boolean
@@ -42,10 +42,10 @@ export function useCloseFriends(onClose: () => void): {
     setBusy(true)
     try {
       await managers.stories.setCloseFriends([...selected])
-      uiEvents.emit('ui:toast', t('Close friends list updated'))
+      rootScope.dispatchEvent('ui:toast', t('Close friends list updated'))
       onClose()
     } catch {
-      uiEvents.emit('ui:toast', t('Something went wrong'))
+      rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
     } finally {
       setBusy(false)
     }

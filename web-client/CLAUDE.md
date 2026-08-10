@@ -55,7 +55,7 @@ npx vite build --outDir ../client-build
 [`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md).
 
 ```
-вверх (данные):  сервер → smp → eventBus → {Store-проектор, Sound, Notifications, …} → селектор → View
+вверх (данные):  сервер → smp → rootScope → {Store-проектор, Sound, Notifications, Call, Refetch, …} → селектор → View
 вниз (команды):  View → хук (use*) → managers → сервер
 ```
 
@@ -63,17 +63,31 @@ npx vite build --outDir ../client-build
 - **View** (`components/*`) — только рендер + колбэки. Не фетчит, не слушает сокет, не держит данные.
 - **ViewModel-хуки** (`core/hooks/use*`) — presentation logic: читают стор селектором, отдают данные + действия.
 - **Store** (`stores/*`) — нормализованное хранилище сущностей по id, единственный источник истины.
-- **eventBus** (`core/realtime/eventBus.ts`) — шина realtime-событий воркера. Насос в
-  `realtimeBridge` (единственный потребитель `smp`) публикует в неё; кросс-каттинг-подписчики
-  (Store-проектор, `client/realtime/soundSubscriber`, `notificationSubscriber`, будущие Analytics/Logger)
-  подписываются на неё через `eventBus.subscribe`.
-- **realtimeBridge** (`client/realtimeBridge.ts`) — насос `smp → eventBus` + Store-проектор
-  (событие → мутация стора: реестр `APPLY` + особые обработчики).
+- **rootScope** (`src/lib/rootScope.ts`) — вендорный (порт tweb) каталог realtime-событий
+  (`BroadcastEvents`/`BroadcastEventsListeners`) + шина поверх `EventListenerBase`
+  (`src/helpers/eventListenerBase.ts`, вендор 1:1). Насос в `realtimeBridge` (единственный
+  потребитель `smp`) ре-эмитит принятое от воркера через `dispatchEventSingle`; кросс-каттинг-
+  подписчики (`client/realtime/storeProjection`, `soundSubscriber`, `notificationSubscriber`,
+  `callSubscriber`, `refetchSubscriber`) подписываются на неё через `rootScope.addEventListener`
+  (пачкой — `addMultipleEventsListeners`). Порождённое вкладкой событие (`dispatchEvent`) уходит
+  и локальным подписчикам, и в воркер — тот ретранслирует его остальным вкладкам.
+- **realtimeBridge** (`client/realtimeBridge.ts`) — только насос `smp → rootScope` +
+  регистрация подписчиков (`registerStoreProjection`/`registerSoundSubscriber`/
+  `registerNotificationSubscriber`/`registerCallSubscriber`/`registerRefetchSubscriber`);
+  сам обработчиков не содержит.
 - **managers** (`core/managers/*`) — команды/запросы к бэку; не знают про React/DOM.
 
 **НЕЛЬЗЯ:**
 - Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
-  в новом модуле — подписывайся на `eventBus.subscribe`, а не на `smp`. Компоненты/хуки **читают из стора**.
+  в новом модуле — подписывайся на `rootScope.addEventListener`, а не на `smp`. Компоненты/хуки
+  **читают из стора**.
+- Ре-эмитить принятое из воркера событие через `dispatchEvent` — только
+  `dispatchEventSingle` (иначе событие уйдёт обратно в воркер и закольцуется;
+  инвариант tweb: `apiManagerProxy` ре-эмитит принятое строго локально).
+- Сочинять `meta` события вне funnel'а воркера. Происхождение кадра
+  (`pts`, `catchUp`) знает только он; подписчику, которому важно отличать живой
+  кадр от catch-up (звук, нотификации), читать `meta.catchUp`, а не полагаться
+  на побочный эффект дедупа по pts.
 - Читать персист (`core/store/persist`) из `stores/`, `components/`, `core/hooks/`. Модель tweb: одно
   батч-чтение `State` до первого рендера (`client/boot.ts` → `loadStateOnce`), дальше только
   синхронные чтения из `stores/appState` и write-through записи через `setAppState`. Асинхронное

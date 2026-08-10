@@ -15,7 +15,7 @@
 //     оставляет `body.resizing-*` и `.is-active` навсегда;
 //   • возвращаем функцию снятия слушателей — вызывающий код React'овый и
 //     обязан убирать за собой в cleanup эффекта.
-import { uiEvents } from '../hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useI18nStore } from '../../i18n'
 import { useSettingsStore } from '../../settings'
 import {
@@ -109,7 +109,7 @@ export default function installColumnResize(opts: InstallColumnResizeOptions): (
     document.body.style.setProperty('cursor', 'col-resize', 'important')
     if (!useSettingsStore.getState().seenSidebarResizeTip) {
       useSettingsStore.getState().update({ seenSidebarResizeTip: true })
-      uiEvents.emit('ui:toast', useI18nStore.getState().t('Hold Shift to resize both columns at once'))
+      rootScope.dispatchEvent('ui:toast', useI18nStore.getState().t('Hold Shift to resize both columns at once'))
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)

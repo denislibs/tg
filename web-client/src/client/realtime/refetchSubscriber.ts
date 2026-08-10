@@ -5,7 +5,7 @@
 // сеть/команда, отдельная забота (как в tweb: рефетч решают менеджеры-слушатели,
 // а не сам updates-manager). Все рефетчи независимы/дебаунснуты — порядок с
 // проектором не важен.
-import { eventBus } from '../../core/realtime/eventBus'
+import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
@@ -25,7 +25,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   const reloadChats = makeChatsReload(managers)
 
   // Pin/unpin: перечитать пины чата (usePinnedBar читает из стора).
-  eventBus.subscribe(RT.pinMessage, (raw) => {
+  rootScope.addEventListener(RT.pinMessage, (raw) => {
     const e = raw as PinMessageEvt
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
@@ -39,7 +39,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // узнать про новый диалог у нас — /chats. Тогда, и только тогда, дебаунснутый
   // рефетч. Раньше он уходил на КАЖДЫЙ chat_update, а publishChatUpdate зовётся
   // из 13 мест бэкенда — и рефетч прилетал каждому участнику чата.
-  eventBus.subscribe(RT.chatUpdate, (evt) => {
+  rootScope.addEventListener(RT.chatUpdate, (evt) => {
     if (useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
       useChatsStore.getState().applyChatMeta(evt)
     } else {
@@ -51,9 +51,9 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // из события (обоснование, почему одного снимка хватает по `pos`, — в
   // applyFolderUpdate). tweb здесь вынужден перезапрашивать список
   // (filters.ts:167): апдейт MTProto самих фильтров не несёт.
-  eventBus.subscribe(RT.folderUpdate, (raw) => {
+  rootScope.addEventListener(RT.folderUpdate, (raw) => {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
-  eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
+  rootScope.addEventListener('rt:resync', () => { void loadChats(managers) })
 }

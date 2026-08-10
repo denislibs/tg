@@ -19,7 +19,7 @@ import { ForwardPicker } from './messages/ChatDialogs'
 import { useChatsStore } from '../stores/chatsStore'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useManagers } from '../core/hooks/useManagers'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
 import type { StoryTargetGetter } from './StoriesRow'
@@ -596,8 +596,8 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
             setShareOpen(false)
             if (!chatIds.length) return
             void managers.stories.share(vm.story!.id, chatIds).then((n) => {
-              uiEvents.emit('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
-            }).catch(() => uiEvents.emit('ui:toast', 'Не удалось отправить'))
+              rootScope.dispatchEvent('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
+            }).catch(() => rootScope.dispatchEvent('ui:toast', 'Не удалось отправить'))
           }}
         />
       )}

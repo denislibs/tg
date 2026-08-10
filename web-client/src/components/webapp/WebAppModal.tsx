@@ -9,7 +9,7 @@ import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
 import { usePortalContainer } from '../../core/pip'
 import { useWebAppStore, closeWebApp, webAppTheme } from '../../core/webapp'
-import { uiEvents } from '../../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useT } from '../../i18n'
 import s from './WebAppModal.module.scss'
@@ -219,7 +219,7 @@ function WebAppInner() {
         case 'web_app_data_send':
           // Доставляем данные боту-владельцу (web_app_data) + тост, затем закрываем.
           if (botId) void managers.bots.sendWebAppData(botId, String(d.data ?? ''), botName).catch(() => {})
-          uiEvents.emit('ui:toast', `${botName}: ${t('Data sent')}`)
+          rootScope.dispatchEvent('ui:toast', `${botName}: ${t('Data sent')}`)
           closeWebApp()
           break
         case 'web_app_open_popup':

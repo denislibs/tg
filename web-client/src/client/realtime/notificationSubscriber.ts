@@ -1,12 +1,15 @@
 // Подписчик браузерных уведомлений на realtime-события. Независим от Store-проектора.
-import { eventBus } from '../../core/realtime/eventBus'
+import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { notifyIncomingMessage } from '../uiNotifications'
 
 export function registerNotificationSubscriber(): void {
   // Уведомление о входящем, гейтинг как в tweb: per-chat mute → глобальные настройки
   // типа чата → клиентские настройки (см. uiNotifications).
-  eventBus.subscribe(RT.newMessage, (evt) => {
+  rootScope.addEventListener(RT.newMessage, (evt, meta) => {
+    // Кадр из catch-up (reconnect/backfill) — уже «прошлое»: звук и нотификация не
+    // играют. Раньше это держалось только на дедупе funnel'а по pts.
+    if (meta?.catchUp) return
     notifyIncomingMessage(evt)
   })
 }
