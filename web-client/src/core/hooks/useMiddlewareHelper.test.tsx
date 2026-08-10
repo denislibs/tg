@@ -30,10 +30,26 @@ describe('useMiddlewareHelper', () => {
     expect(mb()).toBe(false)
   })
 
-  it('переживает StrictMode-двойной маунт: после ремаунта middleware живой', () => {
-    const { result } = renderHook(() => useMiddlewareHelper(), {
+  it('переживает StrictMode: ссылка стабильна, cleanup разрушает, воскрешение работает', () => {
+    // Рычаг 1: ссылка хелпера стабильна между рендерами (ловит забытый ??=)
+    const { result, rerender } = renderHook(() => useMiddlewareHelper(), {
       wrapper: ({ children }) => <StrictMode>{children}</StrictMode>,
     })
-    expect(result.current.get()()).toBe(true)
+    const helperBeforeCycle = result.current
+    rerender()
+    expect(result.current).toBe(helperBeforeCycle)
+
+    // Рычаг 2: cleanup должен вызвать destroy(), гасящий старое поколение
+    // (ловит забытый destroy() в cleanup)
+    const { result: result2, unmount } = renderHook(() => useMiddlewareHelper())
+    const middleware = result2.current.get()
+    expect(middleware()).toBe(true)
+    unmount()
+    expect(middleware()).toBe(false) // cleanup вызвал destroy()
+
+    // Воскрешение: после destroy() хелпер может выдать новое поколение
+    // (пин из middleware.test.ts: destroy() + clean() пересоздают details)
+    const freshHook = renderHook(() => useMiddlewareHelper())
+    expect(freshHook.result.current.get()()).toBe(true)
   })
 })
