@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
@@ -117,28 +117,22 @@ interface MessagesState {
   applyOps: (ops: MessageOp[]) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
-  /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
-  applyWebPage: (chatId: number, msgId: number, webPage: WebPageData) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
   applyFactCheck: (chatId: number, msgId: number, factCheck: FactCheck | undefined) => void
-  /** Платное медиа разблокировано (paid_media_unlock) → раскрываем баббл: полное
-   * медиа + снятый флаг locked приезжают в готовом сообщении. */
-  applyPaidUnlock: (chatId: number, msg: Message) => void
   applyDelete: (chatId: number, msgId: number) => void
-  /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
-  applyMediaRead: (chatId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (chatId: number, views: Map<number, number>) => void
-  /** Live-агрегаты опроса (poll_update): свой выбор (myVotes) сохраняем локальный. */
-  applyPollUpdate: (chatId: number, poll: Poll) => void
-  /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
+  /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). Live-
+   * агрегат (poll_update) больше сюда не идёт — окно правит операция patch
+   * (Stage 1B.3, Task 4: cachePoll → RT.messageOp → applyOps), myVotes
+   * сохраняется слиянием патча (core/realtime/messageOps.ts). */
   setPoll: (chatId: number, poll: Poll) => void
-  /** Обновление чек-листа (checklist_update / ответ на toggle/add): отметки
-   * глобальны (видно, кто отметил) — локального состояния нет, полная замена. */
+  /** Обновление чек-листа (ответ на toggle/add): отметки глобальны (видно, кто
+   * отметил) — локального состояния нет, полная замена. Live-агрегат
+   * (checklist_update) идёт через операцию patch (см. setPoll выше). */
   applyChecklistUpdate: (chatId: number, checklist: Checklist) => void
-  /** Live-статус розыгрыша (giveaway_update): своё участие сохраняем локально. */
-  applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
-  /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
+  /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon).
+   * Live-агрегат (giveaway_update) — операцией patch, см. setPoll выше. */
   setGiveaway: (chatId: number, giveaway: Giveaway) => void
   /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction c counts / catch-up): ставим counts
    * verbatim. `mine` деривим — сохраняем для не затронутых emoji; для emoji своего
@@ -352,14 +346,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       return out
     }),
 
-  applyPollUpdate: (chatId, poll) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.poll?.id === poll.id)
-          ? w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll: { ...poll, myVotes: m.poll.myVotes } } : m))
-          : null,
-      )),
-
   setPoll: (chatId, poll) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
@@ -373,18 +359,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.checklist?.id === checklist.id)
           ? w.msgs.map((m) => (m.checklist?.id === checklist.id ? { ...m, checklist } : m))
-          : null,
-      )),
-
-  applyGiveawayUpdate: (chatId, giveaway) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
-          ? w.msgs.map((m) =>
-              m.giveaway?.id === giveaway.id
-                ? { ...m, giveaway: { ...giveaway, participating: m.giveaway.participating, iWon: m.giveaway.iWon } }
-                : m,
-            )
           : null,
       )),
 
@@ -416,14 +390,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyWebPage: (chatId, msgId, webPage) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msgId)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, webPage } : m))
-          : null,
-      )),
-
   applyFactCheck: (chatId, msgId, factCheck) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
@@ -432,42 +398,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyPaidUnlock: (chatId, msg) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msg.id)
-          ? w.msgs.map((m) =>
-              m.id === msg.id
-                ? {
-                    ...m,
-                    mediaId: msg.mediaId,
-                    mediaWidth: msg.mediaWidth,
-                    mediaHeight: msg.mediaHeight,
-                    mediaMime: msg.mediaMime,
-                    mediaBlur: msg.mediaBlur,
-                    mediaHasThumb: msg.mediaHasThumb,
-                    mediaDuration: msg.mediaDuration,
-                    mediaSize: msg.mediaSize,
-                    mediaName: msg.mediaName,
-                    paidMedia: msg.paidMedia,
-                  }
-                : m,
-            )
-          : null,
-      )),
-
   applyDelete: (chatId, msgId) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId) ? w.msgs.filter((m) => m.id !== msgId) : null,
-      )),
-
-  applyMediaRead: (chatId, msgId) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msgId && m.mediaUnread)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, mediaUnread: false } : m))
-          : null,
       )),
 
   patchViews: (chatId, views) =>

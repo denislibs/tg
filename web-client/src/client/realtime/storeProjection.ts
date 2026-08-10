@@ -9,7 +9,7 @@ import { usePeersStore } from '../../stores/peersStore'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost } from '../../core/models'
+import { mapDraft, mapGeo, mapBoostStatus, mapSuggestedPost } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
@@ -50,26 +50,31 @@ const APPLY: Projector = {
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
+  // Stage 1B.3 (Task 3): media_read/delete_message/web_page_update/factcheck_update/
+  // paid_media_unlock тоже переехали на эту операцию (patch/remove) — их прежние
+  // 1:1-строки убраны отсюда (и отдельный addEventListener(RT.paidMediaUnlock) ниже),
+  // окно правит только applyOps. Stage 1B.3 (Task 4): poll_update/checklist_update/
+  // giveaway_update — туда же (см. комментарий у cachePoll/cacheChecklist/
+  // cacheGiveaway, pollMethods.ts); их прежние 1:1-строки [RT.pollUpdate]/
+  // [RT.checklistUpdate]/[RT.giveawayUpdate] тоже убраны отсюда — иначе вышло бы
+  // двойное применение (patch операцией ЗДЕСЬ + applyXUpdate той же строкой).
+  // edit_message/geo_live_update НЕ переведены — см. комментарии у
+  // messages.cacheEdit/cacheGeoLive (messagesManager.ts). reaction/star_reaction —
+  // тоже НЕ переведены (Stage 1B.3, Task 5), обработчики ниже остаются на сыром кадре.
   [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
-  [RT.mediaRead]: (e) => { useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
   [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
-  // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
-  [RT.pollUpdate]: (e) => { useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
-  [RT.checklistUpdate]: (e) => { useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
+  // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
-  [RT.giveawayUpdate]: (e) => { useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
   // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
   [RT.chatThemeUpdate]: (e) => { useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
   [RT.dialogPin]: (e) => { useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned) },
   [RT.dialogArchive]: (e) => { useChatsStore.getState().setDialogArchived(e.chat_id, e.archived) },
   [RT.dialogMute]: (e) => { useChatsStore.getState().setDialogMuted(e.chat_id, e.muted) },
-  // Edit/delete/гео-трансляция/web-page/fact-check → окно сообщений чата.
+  // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
+  // выше), окно правят из сырого кадра, как раньше.
   [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },
-  [RT.deleteMessage]: (e) => { useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id) },
   [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
-  [RT.webPageUpdate]: (e) => { useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page)) },
-  [RT.factCheckUpdate]: (e) => { useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
@@ -193,13 +198,10 @@ export function registerStoreProjection(managers: Managers): void {
     // Платное сообщение отвергнуто из-за нехватки звёзд — тост (Telegram paid messages).
     if (err.reason === 'paid_required') rootScope.dispatchEvent('ui:toast', 'Недостаточно звёзд для отправки сообщения')
   })
-  // Платное медиа разблокировано покупателем (на всех его вкладках): раскрываем
-  // баббл — полное медиа приезжает готовым сообщением (тот же payload, что new_message).
-  rootScope.addEventListener(RT.paidMediaUnlock, (raw) => {
-    const e = raw as NewMessageEvt
-    const incoming = fromNewMessageEvt(e)
-    useMessagesStore.getState().applyPaidUnlock(e.chat_id, incoming)
-  })
+  // RT.paidMediaUnlock: раньше отдельный addEventListener строил incoming через
+  // fromNewMessageEvt и звал applyPaidUnlock — теперь окно правит operation-based
+  // патч (cachePaidUnlock → RT.messageOp → applyOps), см. комментарий у RT.messageOp
+  // выше (Stage 1B.3, Task 3).
   // Поздний ответ бота на callback (после таймаута синхронного ожидания) — тост.
   rootScope.addEventListener(RT.botCallbackAnswer, (raw) => {
     const a = raw as BotCallbackAnswerEvt

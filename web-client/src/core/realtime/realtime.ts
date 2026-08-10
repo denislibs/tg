@@ -14,13 +14,19 @@ import type { newConnectionManager } from './connectionManager'
 import type { SendArgs } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
 import { RT, type TypingAction, type PendingNewEvt } from './events'
+import type { MessageOp } from './messageOps'
 
 type Conn = ReturnType<typeof newConnectionManager>
 
 export interface RealtimeDeps {
   conn: Conn
   tokens: { load(): Promise<unknown> }
-  messages: { cacheMediaRead(p: { chat_id: number; msg_id: number }): void }
+  // Тип — MessageOp[], а не void: cacheMediaRead порождает операции (Stage 1B.3
+  // сняла media_read с сырого кадра, окно правит только applyOps), и void здесь
+  // однажды уже дал компилятору молча проглотить их потерю (Regression 1,
+  // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
+  // выбрасывал результат.
+  messages: { cacheMediaRead(p: { chat_id: number; msg_id: number }): MessageOp[] }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
 }
@@ -31,9 +37,12 @@ export function newRealtime({ conn, tokens, messages, broadcast, channelFunnel }
     async sendMessage(args: SendArgs) { conn.sendMessage(args); return { ok: true } },
     async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
     async markMediaRead(args: { chatId: number; msgId: number }) {
-      // Локально гасим точку media_unread в SSOT + эхо всем вкладкам (у отправителя
-      // точка гаснет по его серверному media_read-кадру), затем шлём read_media серверу.
-      messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
+      // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
+      // (окно теперь правит ТОЛЬКО applyOps(RT.messageOp) — сырой rt:media_read
+      // проектор больше не слушает), затем шлём read_media серверу (у отправителя
+      // точка гаснет по его серверному media_read-кадру).
+      const ops = messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
+      if (ops.length) broadcast(RT.messageOp, { ops })
       broadcast(RT.mediaRead, { chat_id: args.chatId, msg_id: args.msgId })
       conn.markMediaRead(args.chatId, args.msgId)
       return { ok: true }

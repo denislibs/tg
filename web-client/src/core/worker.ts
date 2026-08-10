@@ -47,6 +47,7 @@ import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type NewMessageEvt } from './realtime/events'
+import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
@@ -79,8 +80,10 @@ void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
 // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
-// tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам).
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
+// tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
+// deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
+// remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -140,7 +143,15 @@ void cursor.ready().then(() => { cursorReady = true })
 // + cacheLive), см. routeNewMessage.
 // Ключи APPLY типизированы как LoggedWsType (из eventCatalog) — пропуск/лишний
 // логируемый тип ловит компилятор, реестры не дрейфуют.
-const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => void }> = {
+// cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/web_page_update/
+// factcheck_update/paid_media_unlock/delete_message; Task 4: poll_update/
+// checklist_update/giveaway_update — по образцу cacheLive, см. dispatch ниже) —
+// тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как routeNewMessage.
+// edit_message/geo_live_update оставлены на прежнем пути (сырой кадр) — см.
+// комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction/
+// star_reaction — тоже НЕ переведены (Task 5), см. комментарий у
+// newReactionMethods в messages/reactionMethods.ts.
+const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => MessageOp[] | void }> = {
   read:              { rt: RT.read },
   media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
   edit_message:      { rt: RT.editMessage,     cache: (p) => messages.cacheEdit(p) },
@@ -175,11 +186,16 @@ const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => void }> = 
 // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
 // applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
 // item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
+// Stage 1B.3 (Task 3): если cache() вернул операции — рассылаем их ДО сырого кадра
+// (тот же порядок, что у routeNewMessage): проектор берёт окно операцией, сырой
+// кадр остаётся параллельно для того, что операциями не покрыто (переключение
+// обратимо одной строкой, как и было в 1B.2).
 function dispatch(t: string, d: unknown, meta?: EventMeta): void {
   if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, meta); return }
   const h = APPLY[t as LoggedWsType]
   if (!h) return
-  h.cache?.(d as never)
+  const ops = h.cache?.(d as never)
+  if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
   broadcast(h.rt, d, meta)
 }
 

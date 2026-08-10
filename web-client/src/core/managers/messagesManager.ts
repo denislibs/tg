@@ -14,6 +14,7 @@ export interface CalendarDay {
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
@@ -62,9 +63,14 @@ export interface MessagesDeps {
    * (событие reaction несёт user_id реагирующего, а не флаг «моё»). Разрешается
    * лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
+  /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
+   * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
+   * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
+   * тесты кэш-методов (cacheX) его не используют. */
+  broadcast?: (event: string, payload: unknown) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
@@ -141,6 +147,32 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     for (const k of winKeysOf(chatId)) slices.get(k)?.delete(seq)
     void deletePersistedMessage(chatId, seq)
   }
+  // Ключи ВСЕХ окон чата (основное + треды), где сообщение сейчас видно (его seq
+  // есть в срезе) — нужно операциям patch/remove (Stage 1B.3, Task 3). Важный
+  // нюанс: patchMsg выше мутирует ОДНУ копию в единой SSOT-Map чата и
+  // останавливается на первом совпадении, а сторный patchChat переигрывает
+  // мутацию по ВСЕМ окнам чата (основному и тредам) — без этого перечисления
+  // операция дошла бы только до окна из первого совпавшего среза, и окно треда
+  // осталось бы со старыми данными до следующей перезагрузки.
+  const opWindowsFor = (chatId: number, msgId: number): string[] => {
+    const c = msgsByChat.get(chatId)
+    if (!c) return []
+    let seq: number | undefined
+    for (const [s, m] of c) if (m.id === msgId) { seq = s; break }
+    if (seq === undefined) return []
+    return winKeysOf(chatId).filter((k) => slices.get(k)?.findSlice(seq!))
+  }
+  // Удаление сообщения → remove-операции по всем окнам, где оно было видно.
+  // Общая точка входа для WS-пути (cacheDelete, funnel воркера) и RPC-пути
+  // (deleteMessage, эта же вкладка удалила): обе обязаны вычислить ключи окон ДО
+  // evictMsg — после эвикции seq уже выкинут из срезов, opWindowsFor не найдёт
+  // ничего (Regression 2, финальное ревью feat/remaining-ops: deleteMessage звал
+  // evictMsg напрямую и терял ops для остальных вкладок).
+  const evictAndBuildRemoveOps = (chatId: number, msgId: number): MessageOp[] => {
+    const keys = opWindowsFor(chatId, msgId)
+    evictMsg(chatId, msgId)
+    return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
+  }
 
   // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): apply-хелперы
   // реакций/чек-листов живут в под-модулях. main-стор двигают клиентские вызыватели/
@@ -149,7 +181,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
   // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши, перевод/транскрипция и
   // реакции/теги/⭐ выделены в отдельные файлы, спредятся сюда — публичный API
   // messages.* не меняется.
-  const ctx = { rest, patchMsg, getMeId }
+  const ctx = { rest, patchMsg, getMeId, opWindowsFor }
 
   return {
     ...newReactionMethods(ctx),
@@ -302,13 +334,19 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     // messages are never shown, so evict from the SSOT (+ all window slices) too,
     // or a later cache hit would resurrect it.
     async deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }> {
-      // После УСПЕХА сети: эхо всем вкладкам + eviction из SSOT (storeProjection —
-      // единственный писатель). Не оптимистично до REST: сервер может отклонить
-      // удаление (напр. «для всех» после окна времени), а откат eviction+persist
-      // сложен и рисковен — мгновенность удаления тут не критична (tweb-компромисс).
+      // После УСПЕХА сети: eviction из SSOT + рассылка remove-операций остальным
+      // вкладкам (Regression 2, финальное ревью feat/remaining-ops: [RT.deleteMessage]
+      // убран из реестра APPLY проектора — окно правит только applyOps, а WS
+      // delete_message придёт по уже опустевшему SSOT воркера и cacheDelete отдаст
+      // пустой список, если не разослать ops здесь). Вкладка-инициатор чинит своё
+      // окно сама (useMessageActions → applyDelete), поэтому себе не шлём. Не
+      // оптимистично до REST: сервер может отклонить удаление (напр. «для всех»
+      // после окна времени), а откат eviction+persist сложен и рисковен —
+      // мгновенность удаления тут не критична (tweb-компромисс).
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
-      evictMsg(chatId, msgId) // eviction из SSOT воркера; main-стор обновит вызыватель
-      return r                // (applyDelete), а WS delete_message реконсилит.
+      const ops = evictAndBuildRemoveOps(chatId, msgId)
+      if (ops.length) broadcast?.(RT.messageOp, { ops })
+      return r
     },
 
     // Forward messages from one chat into another; returns the created copies.
@@ -506,51 +544,79 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     },
 
     // Live-правка от любого участника → единый объект в SSOT.
+    // Stage 1B.3 (Task 3): НЕ переведено на операции — сознательно. cacheEdit не
+    // патчит reply_markup (карта обогащений, docs/research/2026-08-10-message-
+    // enrichments.md §4), хотя стор его применяет — но применяет из СЫРОГО кадра
+    // (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ? ...)),
+    // а не из SSOT воркера. Если убрать этот тип из реестра APPLY проектора (как
+    // остальные шесть — единственный писатель окна станет applyOps), клавиатура
+    // бота перестанет обновляться на живой правке ВООБЩЕ (а не только в кэше
+    // воркера, как сегодня) — patch унаследовал бы пробел cacheEdit и сделал бы
+    // его user-visible регрессией. Оставлено на прежнем пути (сырой кадр в APPLY
+    // storeProjection); перевод — отдельная задача после решения по reply_markup.
     cacheEdit(evt: EditMessageEvt): void {
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
         (m) => ({ ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at }))
     },
 
     // Live-обновление координат гео-трансляции → SSOT.
+    // Stage 1B.3 (Task 3): НЕ переведено на операции — сознательно. geo_live_update
+    // классифицирован в eventCatalog.ts как 'ephemeral' (без pts), поэтому идёт
+    // мимо funnel/APPLY воркера напрямую в PASS_THROUGH — cacheGeoLive НИКОГДА не
+    // вызывается (мёртвый код уже сегодня, независимо от этой задачи). Единственный
+    // применяющий путь — сырой кадр в storeProjection (RT.geoLiveUpdate → applyGeoLive).
+    // Перевод на операции потребовал бы структурного решения за рамками этой
+    // задачи (переклассифицировать тип в 'logged', завести pts на бэке) — оставлено
+    // как есть; и cache, и проекция не тронуты.
     cacheGeoLive(evt: GeoLiveUpdateEvt): void {
       const geo = mapGeo(evt.geo)
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, geo }))
     },
 
-    // Догоняющее серверное превью ссылки → SSOT.
-    cacheWebPage(evt: WebPageUpdateEvt): void {
+    // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной
+    // операции 'patch' на каждое окно чата, где сообщение видно (Stage 1B.3, Task 3).
+    cacheWebPage(evt: WebPageUpdateEvt): MessageOp[] {
       const webPage = mapWebPage(evt.web_page)
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, webPage }))
+      return opWindowsFor(evt.chat_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { webPage } }))
     },
 
-    // «Проверка фактов» прикреплена/изменена/снята → SSOT.
-    cacheFactCheck(evt: FactCheckUpdateEvt): void {
+    // «Проверка фактов» прикреплена/изменена/снята → SSOT + операции по всем окнам.
+    cacheFactCheck(evt: FactCheckUpdateEvt): MessageOp[] {
       const factCheck = evt.factcheck ? mapFactCheck(evt.factcheck) : undefined
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, factCheck }))
+      return opWindowsFor(evt.chat_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { factCheck } }))
     },
 
     // Платное медиа разблокировано: раскрываем баббл в SSOT — возвращаем ссылку на
-    // контент + метаданные и снимаем флаг locked.
-    cachePaidUnlock(evt: NewMessageEvt): void {
-      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({
-        ...m,
+    // контент + метаданные и снимаем флаг locked. Операции несут только эти поля
+    // (не полный объект — см. карту обогащений); сторный applyPaidUnlock, резавший
+    // те же поля вручную, стал недостижим и удалён (Task 6).
+    cachePaidUnlock(evt: NewMessageEvt): MessageOp[] {
+      const fields: Partial<Message> = {
         mediaId: evt.media_id ?? null,
         mediaWidth: evt.media_w, mediaHeight: evt.media_h,
         mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
         mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
         mediaSize: evt.media_size, mediaName: evt.media_name,
         paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
-      }))
+      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, ...fields }))
+      return opWindowsFor(evt.chat_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields }))
     },
 
-    cacheDelete(evt: DeleteMessageEvt): void {
-      evictMsg(evt.chat_id, evt.msg_id)
+    cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
+      return evictAndBuildRemoveOps(evt.chat_id, evt.msg_id)
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие
-    // чата из кэша возвращало точку (P0-1).
-    cacheMediaRead(evt: MediaReadEvt): void {
-      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => ({ ...m, mediaUnread: false }))
+    // чата из кэша возвращало точку (P0-1). matched — тот же гейт, что у patchMsg
+    // (уже прочитанное сообщение не патчим и операцию на него не порождаем).
+    cacheMediaRead(evt: MediaReadEvt): MessageOp[] {
+      let matched = false
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => { matched = true; return { ...m, mediaUnread: false } })
+      if (!matched) return []
+      return opWindowsFor(evt.chat_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { mediaUnread: false } }))
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,

@@ -88,6 +88,28 @@ npx vite build --outDir ../client-build
   для резолва превью ответа (`replyTo`) из уже загруженного окна — эта информация
   есть лишь на вкладке, воркер её не знает. Всё остальное применение к окну
   остаётся за операциями воркера.
+
+  Stage 1B.3 перевела на операции ещё восемь типов кадров: `media_read`,
+  `web_page_update`, `factcheck_update`, `paid_media_unlock` → `patch`;
+  `delete_message` → `remove`; `poll_update`, `checklist_update`,
+  `giveaway_update` → `patch` (для poll/giveaway — с исключением в `patch()`
+  из `core/realtime/messageOps.ts`, которое безусловно подставляет вложенный
+  локальный выбор ОКНА — `poll.myVotes`, `giveaway.participating`/`iWon` —
+  поверх значения из операции, а не наоборот). Карта того, что осталось
+  применяться из сырого кадра (не операцией), и почему:
+
+  | Кадр | Применяется через | Почему не операция |
+  |---|---|---|
+  | `edit_message` | `APPLY[RT.editMessage]` → `applyEdit` | `cacheEdit` не патчит `reply_markup` (обогащение витрины, которого нет в SSOT воркера) — перевод унаследовал бы этот пробел операции и снял бы обновление клавиатуры бота на живой правке, а не только в кэше воркера, как сегодня |
+  | `geo_live_update` | `APPLY[RT.geoLiveUpdate]` → `applyGeoLive` | тип помечен в `eventCatalog.ts` как `ephemeral` (кадр без `pts`) — идёт мимо funnel/`APPLY` воркера напрямую в `PASS_THROUGH`; `cacheGeoLive` никогда не вызывается, применение из сырого кадра здесь — единственный путь, а не альтернатива операции |
+  | `reaction` | отдельный `rootScope.addEventListener(RT.reaction)` → `applyReaction`/`applyReactionOptimistic` | деривация `mine` — поэлементное слияние массива `ReactionCount[]` по emoji двумя сигналами вне самого агрегата (`myEmoji`/`myAction`), не выражается как значение поля `patch`; плюс независимый оптимистичный путь клика и риск затереть его чужой копией с другой вкладки (разбор — `docs/research/2026-08-10-message-enrichments.md`, задача 5) |
+  | `star_reaction` | отдельный `rootScope.addEventListener(RT.starReaction)` → `applyStarReaction` | тот же класс причин, что у `reaction` — `mine` обновляется только у отправителя, деривация не сводится к готовому полю |
+
+  Кадры `pending_new`/`pending_media`/`pending_fail`/`pending_retry`/`pending_remove`
+  (оптимистичная отправка) и `ack`/`message_error` тоже пишут в окно сообщений, но
+  это не операции над серверным SSOT, а funnel собственной отправки вкладки —
+  вне периметра `messageOps` по построению (нет кадра-первоисточника с `pts`,
+  который воркер мог бы зеркалить).
 - Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
   в новом модуле — подписывайся на `rootScope.addEventListener`, а не на `smp`. Компоненты/хуки
   **читают из стора**.

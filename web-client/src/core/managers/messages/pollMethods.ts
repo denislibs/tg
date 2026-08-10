@@ -4,13 +4,18 @@
 // messagesManager: зависит только от rest и точечного патча SSOT (patchMsg через
 // ctx). Публичный API не меняется — методы спредятся в объект messagesManager.
 import { mapMessage, mapPoll, mapChecklist, mapGiveaway, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
+import type { MessageOp } from '../../realtime/messageOps'
 import type { MessagesCtx } from './ctx'
 
-export function newPollMethods({ rest, patchMsg }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, opWindowsFor }: MessagesCtx) {
   // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
-  const applyChecklistToCache = (chatId: number, raw: RawChecklist): void => {
+  // Возвращает id патченного сообщения (для построения операций у cacheChecklist) —
+  // undefined, если чек-лист ни на одном сообщении SSOT не найден.
+  const applyChecklistToCache = (chatId: number, raw: RawChecklist): number | undefined => {
     const checklist = mapChecklist(raw)
-    patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => ({ ...m, checklist }))
+    let msgId: number | undefined
+    patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
+    return msgId
   }
 
   return {
@@ -70,19 +75,37 @@ export function newPollMethods({ rest, patchMsg }: MessagesCtx) {
       return giveaway
     },
 
-    // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT ──
-    // Опрос: свой выбор (myVotes) локальный — сохраняем (WS его не несёт).
-    cachePoll(evt: { chat_id: number; poll: RawPoll }): void {
+    // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT + операции ──
+    // Опрос: свой выбор (myVotes) — локальный, WS его не несёт (poll_update шлёт
+    // только агрегат). SSOT воркера всё равно сохраняем как раньше (m.poll!.myVotes
+    // из своей же копии — эта мутация не про операцию, а про офлайн-кэш воркера).
+    // Операция же (Stage 1B.3, Task 4) несёт ТОЛЬКО агрегат mapPoll(evt.poll), БЕЗ
+    // myVotes — окно вкладки сохраняет свой локальный выбор само при слиянии патча
+    // (см. patch() в core/realtime/messageOps.ts и карту обогащений §3.1): если бы
+    // операция несла myVotes из SSOT воркера, в многовкладочном сценарии она
+    // навязала бы окну чужую (воркерную) копию локального выбора.
+    cachePoll(evt: { chat_id: number; poll: RawPoll }): MessageOp[] {
       const poll = mapPoll(evt.poll)
-      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll: { ...poll, myVotes: m.poll!.myVotes } }))
+      let msgId: number | undefined
+      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: m.poll!.myVotes } } })
+      if (msgId === undefined) return []
+      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { poll } }))
     },
-    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): void {
-      applyChecklistToCache(evt.chat_id, evt.checklist)
+    // Чек-лист: отметки глобальны — локального выбора нет, полная замена агрегата.
+    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): MessageOp[] {
+      const checklist = mapChecklist(evt.checklist)
+      const msgId = applyChecklistToCache(evt.chat_id, evt.checklist)
+      if (msgId === undefined) return []
+      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { checklist } }))
     },
-    // Розыгрыш: своё участие (participating/iWon) локальное — сохраняем.
-    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): void {
+    // Розыгрыш: своё участие (participating/iWon) — локальное, симметрично опросу
+    // (см. комментарий у cachePoll выше и карту обогащений §3.2).
+    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): MessageOp[] {
       const giveaway = mapGiveaway(evt.giveaway)
-      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } }))
+      let msgId: number | undefined
+      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } } })
+      if (msgId === undefined) return []
+      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { giveaway } }))
     },
   }
 }

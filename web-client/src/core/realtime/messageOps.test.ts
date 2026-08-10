@@ -100,4 +100,89 @@ describe('applyOp', () => {
     const next = applyOp(base, { op: 'remove', key: KEY, msgId: 999 })
     expect(next).toBe(base)
   })
+
+  // patch: точечное слияние полей поверх существующего сообщения (Stage 1B.3) —
+  // в отличие от replace НЕ подменяет весь объект, поэтому не может стереть
+  // обогащение витрины, которого нет в fields (см. docs/research/
+  // 2026-08-10-message-enrichments.md, §2) — localUrl/replyTo/clientId и т.п.
+  // остаются нетронутыми, если patch их не перечисляет.
+  it('patch существующего → перечисленные поля слились, остальные целы, позиция по seq сохранена', () => {
+    const base = [
+      msg(1, 1, { text: 'a' }),
+      msg(2, 2, { text: 'b', editedAt: null, localUrl: 'blob:keep-me' }),
+      msg(3, 3, { text: 'c' }),
+    ]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 2, fields: { text: 'edited', editedAt: '2026-08-10T12:05:00Z' } })
+    expect(next.map((m) => m.seq)).toEqual([1, 2, 3])
+    expect(next[1].text).toBe('edited')
+    expect(next[1].editedAt).toBe('2026-08-10T12:05:00Z')
+    // поле, не перечисленное в fields, не тронуто (тест ловит регрессию до replace-семантики)
+    expect(next[1].localUrl).toBe('blob:keep-me')
+    // соседи не задеты
+    expect(next[0].text).toBe('a')
+    expect(next[2].text).toBe('c')
+  })
+
+  it('patch отсутствующего сообщения → no-op, та же ссылка на массив', () => {
+    const base = [msg(1, 1)]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 999, fields: { text: 'nope' } })
+    expect(next).toBe(base)
+  })
+
+  // Патч, не меняющий значений (те же поля, те же значения): та же ссылка на
+  // массив — согласовано с прецедентом applyReaction/patchViews в
+  // messagesStore.ts (сравнение перед записью, см. отчёт Task 2), чтобы
+  // идемпотентный реплей (catch-up/дубль кадра) не дёргал лишний ре-рендер.
+  it('patch, не меняющий значений → no-op, та же ссылка на массив (нет лишнего ре-рендера)', () => {
+    const base = [msg(1, 1, { text: 'a', editedAt: '2026-08-10T12:00:00Z' })]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { text: 'a', editedAt: '2026-08-10T12:00:00Z' } })
+    expect(next).toBe(base)
+  })
+
+  // Частичное совпадение — если хоть одно поле реально меняется, применяем и
+  // строим новый массив (иначе половина патча молча потерялась бы).
+  it('patch, где часть полей совпадает, а часть меняется → применено целиком, новая ссылка', () => {
+    const base = [msg(1, 1, { text: 'a', editedAt: '2026-08-10T12:00:00Z' })]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { text: 'a', editedAt: '2026-08-10T12:05:00Z' } })
+    expect(next).not.toBe(base)
+    expect(next[0].editedAt).toBe('2026-08-10T12:05:00Z')
+  })
+
+  // Task 4 (Stage 1B.3): опрос/розыгрыш несут вложенный локальный выбор
+  // (poll.myVotes, giveaway.participating/iWon), которого операция сознательно
+  // НЕ несёт (cachePoll/cacheGiveaway строят fields.poll/fields.giveaway из
+  // голого агрегата, см. pollMethods.ts) — patch обязан подставить его из
+  // ТЕКУЩЕГО сообщения окна. Это ГЛАВНЫЙ ПИН задачи: он обязан краснеть, если
+  // patch() (или вызывающий код) собирал бы операцию как replace всего
+  // сообщения — тогда локальный выбор окна стёрся бы вместе с остальным.
+  it('patch агрегата опроса → totalVoters/counts обновились, myVotes окна сохранён', () => {
+    const poll = {
+      id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
+      quiz: false, closed: false, counts: [1, 0], totalVoters: 1, myVotes: [0],
+    }
+    const base = [msg(1, 1, { poll })]
+    // Операция несёт НОВЫЙ агрегат (кто-то ещё проголосовал), но БЕЗ myVotes
+    // окна (у операции своё значение myVotes — то, что успел насчитать воркер,
+    // не обязано совпадать с локальным выбором именно этой вкладки).
+    const incomingPoll = { ...poll, counts: [1, 1], totalVoters: 2, myVotes: [] }
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { poll: incomingPoll } })
+    expect(next[0].poll?.totalVoters).toBe(2)
+    expect(next[0].poll?.counts).toEqual([1, 1])
+    // локальный выбор ЭТОГО окна — на месте, а не затёрт значением из операции
+    expect(next[0].poll?.myVotes).toEqual([0])
+  })
+
+  it('patch агрегата розыгрыша → participants обновился, participating/iWon окна сохранены', () => {
+    const giveaway = {
+      id: 9, chatId: CHAT, prizeKind: 'premium' as const, months: 3, stars: 0,
+      winnersCount: 1, untilDate: 0, status: 'active' as const, participants: 4,
+      participating: true, winnerIds: [], iWon: false,
+    }
+    const base = [msg(1, 1, { giveaway })]
+    const incoming = { ...giveaway, participants: 5, participating: false, iWon: true }
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { giveaway: incoming } })
+    expect(next[0].giveaway?.participants).toBe(5)
+    expect(next[0].giveaway?.participating).toBe(true) // окна, не из операции
+    expect(next[0].giveaway?.iWon).toBe(false) // окна, не из операции
+  })
 })

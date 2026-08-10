@@ -13,6 +13,7 @@ export type MessageOp =
   | { op: 'insert'; key: string; msg: Message }
   | { op: 'replace'; key: string; msg: Message }
   | { op: 'remove'; key: string; msgId: number }
+  | { op: 'patch'; key: string; msgId: number; fields: Partial<Message> }
 
 // Ключ дедупа: оптимистичный бабл (временный id < 0, ещё не сверен с сервером)
 // ключуется по clientId — его seq лишь выдумка клиента (appendOptimistic:
@@ -68,6 +69,50 @@ function remove(msgs: Message[], msgId: number): Message[] {
   return msgs.filter((x) => x.id !== msgId)
 }
 
+// patch: точечное слияние перечисленных полей поверх существующего сообщения
+// (Stage 1B.3) — в отличие от replace НЕ подменяет весь объект, поэтому не
+// стирает обогащение витрины (localUrl/replyTo/clientId/деривированные mine
+// и т.п.), которого нет в fields — воркерная SSOT-копия его либо не знает,
+// либо хранит независимо (см. docs/research/2026-08-10-message-enrichments.md).
+// Не найдено → та же ссылка на массив (как у remove — важно для мемоизации).
+// Ничего не меняется (все значения fields совпадают с текущими) — тоже та же
+// ссылка: согласовано с прецедентом applyReaction/patchViews в
+// messagesStore.ts (сравнение перед записью), чтобы идемпотентный реплей
+// (catch-up/дубль кадра) не дёргал лишний ре-рендер.
+function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Message[] {
+  const idx = msgs.findIndex((x) => x.id === msgId)
+  if (idx === -1) return msgs
+  const cur = msgs[idx]
+  // Опрос/розыгрыш несут вложенный локальный выбор (poll.myVotes,
+  // giveaway.participating/iWon), которого fields.poll/fields.giveaway
+  // сознательно НЕ несёт (cachePoll/cacheGiveaway строят операцию из голого
+  // агрегата — см. карту обогащений §3.1/3.2, docs/research/2026-08-10-message-
+  // enrichments.md). Это единственный случай, где patch трогает ключ верхнего
+  // уровня (poll/giveaway), внутри которого есть поле, требующее точечного
+  // сохранения — обычный shallow-merge {...cur, ...fields} заменил бы объект
+  // целиком и стёр бы локальный выбор ОКНА (в многовкладочном сценарии —
+  // не факт что совпадающий с тем, что успел насчитать воркер). Подставляем
+  // текущее значение окна, если оно уже есть; иначе (первая загрузка агрегата)
+  // используем то, что пришло в операции.
+  let f = fields
+  if (f.poll) f = { ...f, poll: { ...f.poll, myVotes: cur.poll ? cur.poll.myVotes : f.poll.myVotes } }
+  if (f.giveaway) {
+    f = {
+      ...f,
+      giveaway: {
+        ...f.giveaway,
+        participating: cur.giveaway ? cur.giveaway.participating : f.giveaway.participating,
+        iWon: cur.giveaway ? cur.giveaway.iWon : f.giveaway.iWon,
+      },
+    }
+  }
+  const keys = Object.keys(f) as (keyof Message)[]
+  if (keys.every((k) => Object.is(cur[k], f[k]))) return msgs
+  const next = msgs.slice()
+  next[idx] = { ...cur, ...f }
+  return next
+}
+
 /** Применить операцию к списку сообщений окна. Чистая функция — вся семантика
  *  дедупа/слияния живёт здесь, поэтому её можно тестировать без стора. */
 export function applyOp(msgs: Message[], op: MessageOp): Message[] {
@@ -75,5 +120,6 @@ export function applyOp(msgs: Message[], op: MessageOp): Message[] {
     case 'insert': return insert(msgs, op.msg)
     case 'replace': return replace(msgs, op.msg)
     case 'remove': return remove(msgs, op.msgId)
+    case 'patch': return patch(msgs, op.msgId, op.fields)
   }
 }
