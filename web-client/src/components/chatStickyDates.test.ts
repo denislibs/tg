@@ -3,6 +3,8 @@
 // нигде не рендерится в vitest, так что логика внутри его useEffect иначе не
 // ловится вообще никаким тестом.
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { isDateGroupSection, observeNewSections, pickStickyDateKey } from './chatStickyDates'
 import StickyIntersector from './stickyIntersector'
 
@@ -112,5 +114,26 @@ describe('observeNewSections', () => {
     observeNewSections(container, { observeStickyHeaderChanges }, new Set())
 
     expect(observeStickyHeaderChanges).not.toHaveBeenCalled()
+  })
+})
+
+// Финальное ревью ветки (I-5): всё выше тестирует ЛОГИКУ observeNewSections как
+// чистую функцию — это не ловит регрессию в её ПРОВОДКЕ внутри Chat.tsx. Chat
+// нигде не рендерится в vitest (см. шапку chatStickyDates.ts — тяжёлое дерево
+// зависимостей), поэтому единственный способ поймать «вызов тихо снят из
+// useEffect» — прочитать исходник текстом, тем же приёмом, что
+// core/scrollWriters.test.ts/stores/noManualOrder.test.ts. Ревьюер проверил
+// мутацией: снятие строки `observeNewSections(inner, intersector,
+// stickyObservedRef.current)` из Chat.tsx переживает и npm test, и typecheck
+// (TS6133 «unused var» гасится одним `void`) — без этого пина такая регрессия
+// молча ломает липкие даты в реальном приложении.
+describe('Chat.tsx: наблюдение новых секций реально подключено', () => {
+  it('useEffect на [contentRef, feedMsgs, feedLoading] реально зовёт observeNewSections', () => {
+    const src = readFileSync(join(__dirname, 'Chat.tsx'), 'utf8')
+    const depsIdx = src.indexOf('[contentRef, feedMsgs, feedLoading]')
+    // Deps-массив переименовали/убрали — почини тест осознанно, а не подгоняй.
+    expect(depsIdx).toBeGreaterThan(-1)
+    const effectBody = src.slice(Math.max(0, depsIdx - 400), depsIdx)
+    expect(effectBody).toMatch(/observeNewSections\(\s*inner\s*,\s*intersector\s*,\s*stickyObservedRef\.current\s*\)/)
   })
 })
