@@ -100,7 +100,7 @@ npx vite build --outDir ../client-build
 
   | Кадр | Применяется через | Почему не операция |
   |---|---|---|
-  | `edit_message` | `APPLY[RT.editMessage]` → `applyEdit` | `cacheEdit` не патчит `reply_markup` (обогащение витрины, которого нет в SSOT воркера) — перевод унаследовал бы этот пробел операции и снял бы обновление клавиатуры бота на живой правке, а не только в кэше воркера, как сегодня |
+  | `edit_message` | `APPLY[RT.editMessage]` → `applyEdit` | данных, которых нет в SSOT воркера, больше нет (`cacheEdit` мапит `reply_markup` тем же правилом, что и витрина); перевод на операции структурно ничем не блокирован, но остаётся отдельной задачей — здесь не сделан просто пока не взят в работу |
   | `geo_live_update` | `APPLY[RT.geoLiveUpdate]` → `applyGeoLive` | тип помечен в `eventCatalog.ts` как `ephemeral` (кадр без `pts`) — идёт мимо funnel/`APPLY` воркера напрямую в `PASS_THROUGH`; `cacheGeoLive` никогда не вызывается, применение из сырого кадра здесь — единственный путь, а не альтернатива операции |
   | `reaction` | отдельный `rootScope.addEventListener(RT.reaction)` → `applyReaction`/`applyReactionOptimistic` | деривация `mine` — поэлементное слияние массива `ReactionCount[]` по emoji двумя сигналами вне самого агрегата (`myEmoji`/`myAction`), не выражается как значение поля `patch`; плюс независимый оптимистичный путь клика и риск затереть его чужой копией с другой вкладки (разбор — `docs/research/2026-08-10-message-enrichments.md`, задача 5) |
   | `star_reaction` | отдельный `rootScope.addEventListener(RT.starReaction)` → `applyStarReaction` | тот же класс причин, что у `reaction` — `mine` обновляется только у отправителя, деривация не сводится к готовому полю |

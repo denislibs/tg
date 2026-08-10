@@ -299,12 +299,56 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
   })
 })
 
+// Баг (см. BRIEF.md): cacheEdit патчил только text/entities/editedAt и молча
+// игнорировал reply_markup из кадра edit_message, хотя витрина применяет его
+// (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ? mapReplyMarkup(...) : null)).
+// Значит живая правка клавиатуры бота выглядела правильно (витрина её ловила
+// из сырого кадра мимо SSOT), а SSOT воркера оставался со старой клавиатурой —
+// расхождение всплывало только при переоткрытии чата/второй вкладке, поднимающей
+// окно из кэша воркера. Правило то же, что у витрины: поле есть → маппить
+// mapReplyMarkup, поля нет → клавиатура снята (бэк шлёт reply_markup абсолютным
+// значением, backend/internal/usecase/chat/frame.go:243).
+describe('MessagesManager.cacheEdit — reply_markup', () => {
+  function pageWithMarkup(): { messages: RawMessage[]; count: number } {
+    const messages = [3, 2, 1].map((seq) => ({
+      id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
+      reply_markup: seq === 2 ? { inline: [[{ text: 'Old', callback: 'old' }]] } : undefined,
+    }) as RawMessage)
+    return { messages, count: messages.length }
+  }
+
+  it('maps reply_markup into the SSOT when the edit carries a new keyboard', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    mgr.cacheEdit({
+      chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
+      reply_markup: { inline: [[{ text: 'New', callback: 'new' }]] },
+    })
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const edited = r.messages.find((m) => m.id === 2)
+    expect(edited?.replyMarkup).toEqual({ inline: [[{ text: 'New', callback: 'new' }]] } )
+  })
+
+  it('clears replyMarkup in the SSOT when the edit carries no reply_markup (removed)', async () => {
+    const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
+    const mgr = newMessagesManager({ rest })
+    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
+    mgr.cacheEdit({ chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z' })
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const edited = r.messages.find((m) => m.id === 2)
+    expect(edited?.replyMarkup).toBeUndefined()
+  })
+})
+
 // Stage 1B.3 (Task 3): простые правки сообщения (без обогащений витрины, см.
 // docs/research/2026-08-10-message-enrichments.md) переведены на операции — по
 // одной 'patch'/'remove' на каждое окно, где сообщение видно. rawPage([id...])
 // заводит id===seq, поэтому msg_id ниже совпадает с seq тестовых фикстур.
 // edit_message/geo_live_update намеренно НЕ переведены (см. комментарии у
-// messages.cacheEdit/cacheGeoLive) — тестов на них здесь нет.
+// messages.cacheEdit/cacheGeoLive) — тестов на op-перевод для них здесь нет.
 
 // Тред-фикстура (порт паттерна из describe('MessagesManager.cacheLive') выше):
 // сообщение id=2/seq=2 видно и в основном окне чата (rawPage[3,2,1]), и в окне
