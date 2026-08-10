@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
-import type { RawMessage } from '../models'
+import { fromNewMessageEvt, type RawMessage } from '../models'
 import type { NewMessageEvt } from '../realtime/events'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
@@ -232,5 +232,67 @@ describe('MessagesManager.cacheLive', () => {
       media_id: null, created_at: '2026-06-24T10:00:00Z',
     } as NewMessageEvt)
     expect(ops).toEqual([])
+  })
+})
+
+// Fix (пост-ревью Task 4): пин паритета полей между cacheLive и fromNewMessageEvt
+// (единый маппер live-кадра, models.ts). До фикса cacheLive держал СВОЙ, независимый
+// mapMessage()-литерал — он молча отставал полями (fwd_from_*/gift/reply_markup/
+// effect/media_title/media_performer/reply_to) от fromNewMessageEvt, которым
+// раньше вставлял сообщение в окно applyIncoming на главном потоке. Пока applyIncoming
+// был единственным писателем окна, расхождение было не видно — рендерился полный
+// вариант из fromNewMessageEvt. После Task 4 (проектор переигрывает ОПЕРАЦИЮ, а
+// cacheLive — единственный источник её msg) обеднённая модель стала бы молчаливой
+// регрессией данных на самом горячем пути (только что пришедшее сообщение). Фикс —
+// cacheLive теперь зовёт fromNewMessageEvt напрямую, поэтому расхождение полей
+// невозможно by construction; этот тест — регрессионный пин на СПОСОБ (не завести
+// параллельный литерал снова), красный на старой (докоммитной) реализации.
+describe('MessagesManager.cacheLive — паритет полей с fromNewMessageEvt', () => {
+  // Кадр с ВСЕМИ полями Message-модели, какие несёт NewMessageEvt (кроме тех, что
+  // резолвит main-thread — replyTo, и не относящихся к модели Message — pts/unread/
+  // sender_name/reply_quote_*, funnel/UI-only поля, не отображаемые в Message).
+  const fullEvt: NewMessageEvt = {
+    chat_id: 3, msg_id: 42, seq: 7, sender_id: 9, type: 'photo', text: 'caption',
+    entities: [{ type: 'bold', offset: 0, length: 3 }],
+    media_id: 555, created_at: '2026-08-10T13:00:00Z',
+    thread_root_id: 100,
+    reply_to_id: 41, reply_to_peer_id: 2, reply_snapshot_name: 'Алиса', reply_snapshot_text: 'оригинал',
+    fwd_from_user_id: 11, fwd_from_chat_id: 12, fwd_from_msg_id: 13, fwd_date: '2026-08-09T10:00:00Z',
+    media_unread: true, grouped_id: 'g-1',
+    geo: { lat: 1.5, lng: 2.5, title: 'Point', address: 'Addr', live_period: 900 },
+    contact: { user_id: 77, name: 'Bob', phone: '+1' },
+    gift: { id: 1, gift: { id: 2, emoji: '🎁', title: 'Gift', price_stars: 100, convert_stars: 50, total: null, remains: null, sold_out: false }, from_id: 9, anonymous: false, hidden: false, converted: false, convert_stars: 50 },
+    reply_markup: { inline: [[{ text: 'Click', callback: 'cb' }]] },
+    media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
+    media_has_thumb: true, media_duration: 12, media_size: 2048, media_name: 'photo.jpg',
+    media_title: 'Track', media_performer: 'Artist',
+    secret_media: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
+    effect: 'confetti',
+    paid_media: { price: 10, locked: false },
+    client_msg_id: 'c-parity-1',
+  }
+
+  it('cacheLive(fullEvt).msg равен fromNewMessageEvt(fullEvt) без исключений', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
+    const ops = mgr.cacheLive(fullEvt)
+    const main = ops.find((o) => o.key === '3')
+    expect(main?.op).toBe('insert')
+    // Исключений нет: fromNewMessageEvt уже сама делает то, что раньше cacheLive
+    // дублировал вручную (инжект secretMedia/secret, clientId) — единственный
+    // источник вставки теперь один и тот же маппер, вызванный один раз.
+    expect(main && main.op === 'insert' ? main.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+  })
+
+  it('тред-ключ той же операции тоже несёт полный (не урезанный) msg', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const ops = mgr.cacheLive(fullEvt)
+    const thread = ops.find((o) => o.key === '3:100')
+    expect(thread?.op).toBe('insert')
+    expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(fromNewMessageEvt(fullEvt))
   })
 })
