@@ -2,8 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
-import { fromNewMessageEvt, type RawMessage } from '../models'
-import type { NewMessageEvt } from '../realtime/events'
+import { fromNewMessageEvt, mapFactCheck, mapWebPage, type RawMessage } from '../models'
+import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
@@ -294,5 +294,203 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     const thread = ops.find((o) => o.key === '3:100')
     expect(thread?.op).toBe('insert')
     expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+  })
+})
+
+// Stage 1B.3 (Task 3): простые правки сообщения (без обогащений витрины, см.
+// docs/research/2026-08-10-message-enrichments.md) переведены на операции — по
+// одной 'patch'/'remove' на каждое окно, где сообщение видно. rawPage([id...])
+// заводит id===seq, поэтому msg_id ниже совпадает с seq тестовых фикстур.
+// edit_message/geo_live_update намеренно НЕ переведены (см. комментарии у
+// messages.cacheEdit/cacheGeoLive) — тестов на них здесь нет.
+
+// Тред-фикстура (порт паттерна из describe('MessagesManager.cacheLive') выше):
+// сообщение id=2/seq=2 видно и в основном окне чата (rawPage[3,2,1]), и в окне
+// треда (thread_root=100) — оба среза ссылаются на ОДНУ запись SSOT (карта по
+// чату, не по окну), поэтому это годный фикстур для проверки многооконности.
+function restWithThreadOverlap(): RestClient {
+  const threadPage = {
+    messages: [{
+      id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply',
+      thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
+    } as RawMessage],
+    count: 1,
+  }
+  return {
+    get: async (_path: string, q?: Record<string, string | number>) => {
+      if (q?.thread_root === 100) return threadPage
+      return rawPage([3, 2, 1])
+    },
+    post: async () => ({}),
+  } as unknown as RestClient
+}
+
+describe('MessagesManager.cacheWebPage', () => {
+  it('returns a patch op carrying the mapped web page for an existing message', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { url: 'https://x', site_name: 'X', title: 'Title' } }
+    const ops = mgr.cacheWebPage(evt)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { webPage: mapWebPage(evt.web_page) } }])
+  })
+
+  it('produces no op for a message absent from the SSOT', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheWebPage({ chat_id: 1, msg_id: 999, seq: 999, web_page: { title: 'Title' } })
+    expect(ops).toEqual([])
+  })
+
+  // Многооконность: воркерный patchMsg мутирует ОДНУ копию в SSOT (единая Map на
+  // чат) и останавливается на первом совпадении — но сторный patchChat проходит по
+  // ВСЕМ окнам чата. Без явного перечисления окон операция дошла бы только до
+  // одного, и окно треда осталось бы со старыми данными.
+  it('returns one patch op per window when the message is visible in both the main and thread windows', async () => {
+    const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { title: 'Title' } }
+    const ops = mgr.cacheWebPage(evt)
+    expect(ops).toHaveLength(2)
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    for (const op of ops) {
+      expect(op.op).toBe('patch')
+      if (op.op === 'patch') expect(op.fields).toEqual({ webPage: mapWebPage(evt.web_page) })
+    }
+  })
+})
+
+describe('MessagesManager.cacheFactCheck', () => {
+  it('returns a patch op carrying the mapped fact-check for an existing message', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: FactCheckUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, factcheck: { text: 'проверено', country: 'RU' } }
+    const ops = mgr.cacheFactCheck(evt)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: mapFactCheck(evt.factcheck!) } }])
+  })
+
+  // factcheck: null — проверка снята, fields.factCheck обязан быть undefined
+  // (а не отсутствовать/null), как и cacheX/applyX в сторе (см. карту обогащений).
+  it('returns fields.factCheck: undefined when the fact-check is removed', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 2, seq: 2, factcheck: null })
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: undefined } }])
+  })
+
+  it('produces no op for a message absent from the SSOT', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 999, seq: 999, factcheck: null })
+    expect(ops).toEqual([])
+  })
+})
+
+describe('MessagesManager.cacheMediaRead', () => {
+  function voicePage(unread: boolean) {
+    return {
+      messages: [{
+        id: 7, chat_id: 1, seq: 7, sender_id: 1, type: 'voice', text: '',
+        reply_to_id: null, media_id: 5, created_at: '2026-06-24T10:00:00Z', media_unread: unread,
+      } as RawMessage],
+      count: 1,
+    }
+  }
+
+  it('returns a patch op clearing mediaUnread for an unread voice message', async () => {
+    const { rest } = countingRest({ '0:0:40': voicePage(true) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: MediaReadEvt = { chat_id: 1, msg_id: 7 }
+    const ops = mgr.cacheMediaRead(evt)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }])
+  })
+
+  // Гейт паритетен воркерному patchMsg: уже прочитанное сообщение не патчится в
+  // SSOT — значит и операция на него порождаться не должна (иначе повторный/
+  // задвоенный кадр слал бы избыточный, хоть и no-op на сторной стороне, патч).
+  it('produces no op when the message is already read (idempotent replay)', async () => {
+    const { rest } = countingRest({ '0:0:40': voicePage(false) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 7 })
+    expect(ops).toEqual([])
+  })
+
+  it('produces no op for a message absent from the SSOT', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 999 })
+    expect(ops).toEqual([])
+  })
+})
+
+describe('MessagesManager.cachePaidUnlock', () => {
+  it('returns a patch op carrying the media fields + paidMedia (not a whole-message replace)', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = {
+      chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
+      media_id: 55, created_at: '2026-06-24T10:00:00Z',
+      media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
+      media_has_thumb: true, media_duration: undefined, media_size: 2048, media_name: 'p.jpg',
+      paid_media: { price: 10, locked: false },
+    } as unknown as NewMessageEvt
+    const ops = mgr.cachePaidUnlock(evt)
+    expect(ops).toEqual([{
+      op: 'patch', key: '1', msgId: 2,
+      fields: {
+        mediaId: 55, mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
+        mediaHasThumb: true, mediaDuration: undefined, mediaSize: 2048, mediaName: 'p.jpg',
+        paidMedia: { price: 10, locked: false },
+      },
+    }])
+  })
+
+  it('produces no op for a message absent from the SSOT', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePaidUnlock({ chat_id: 1, msg_id: 999, seq: 999, sender_id: 1, type: 'photo', text: '', media_id: null, created_at: '2026-06-24T10:00:00Z' } as NewMessageEvt)
+    expect(ops).toEqual([])
+  })
+})
+
+describe('MessagesManager.cacheDelete', () => {
+  it('returns a remove op for the window holding the deleted message', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: DeleteMessageEvt = { chat_id: 1, msg_id: 2, seq: 2, for_me: false }
+    const ops = mgr.cacheDelete(evt)
+    expect(ops).toEqual([{ op: 'remove', key: '1', msgId: 2 }])
+  })
+
+  it('produces no op for a message absent from the SSOT', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 999, seq: 999, for_me: false })
+    expect(ops).toEqual([])
+  })
+
+  // Многооконность для remove: ключи окон обязаны вычисляться ДО evictMsg — после
+  // удаления seq уже выкинут из всех срезов, и второй проход не нашёл бы ни
+  // основное окно, ни окно треда (регресс, который эта проверка ловит).
+  it('returns one remove op per window when the message is visible in both the main and thread windows', async () => {
+    const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 2, seq: 2, for_me: false })
+    expect(ops).toHaveLength(2)
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
   })
 })
