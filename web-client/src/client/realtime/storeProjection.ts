@@ -9,14 +9,14 @@ import { usePeersStore } from '../../stores/peersStore'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
+import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt, type UserUpdateEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt, type UserUpdateEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -38,56 +38,58 @@ function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
   }, 300)
 }
 
+// Реестр «1:1» — типы аргументов приходят из BroadcastEventsListeners, ручные
+// касты не нужны; пропущенное/переименованное событие ловит компилятор.
+type Projector = { [K in keyof BroadcastEventsListeners]?: BroadcastEventsListeners[K] }
+
 // Реестр «1:1» обработчиков: событие → одна мутация стора, без побочных эффектов.
-// Добавить такое событие = одна строка здесь (подписка — циклом в registerStoreProjection).
+// Добавить такое событие = одна строка здесь (подписка — addMultipleEventsListeners).
 // Обработчики с таймерами/тостами/meId/сетью/движками остаются явными ниже.
-const APPLY: Record<string, (raw: unknown) => void> = {
-  [RT.mediaRead]: (raw) => { const e = raw as MediaReadEvt; useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
-  [RT.chatRemoved]: (raw) => useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id),
+const APPLY: Projector = {
+  [RT.mediaRead]: (e) => { useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
+  [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
   // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
-  [RT.pollUpdate]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
-  [RT.checklistUpdate]: (raw) => { const e = raw as { chat_id: number; checklist: RawChecklist }; useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
-  [RT.boostUpdate]: (raw) => { const e = raw as { chat_id: number; status: RawBoostStatus }; useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
-  [RT.giveawayUpdate]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
-  [RT.suggestedPost]: (raw) => { const e = raw as SuggestedPostEvt; useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
+  [RT.pollUpdate]: (e) => { useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
+  [RT.checklistUpdate]: (e) => { useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
+  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
+  [RT.giveawayUpdate]: (e) => { useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
+  [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
   // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
-  [RT.chatThemeUpdate]: (raw) => { const e = raw as ChatThemeUpdateEvt; useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
-  [RT.dialogPin]: (raw) => { const e = raw as { chat_id: number; pinned: boolean }; useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned) },
-  [RT.dialogArchive]: (raw) => { const e = raw as { chat_id: number; archived: boolean }; useChatsStore.getState().setDialogArchived(e.chat_id, e.archived) },
-  [RT.dialogMute]: (raw) => { const e = raw as { chat_id: number; muted: boolean }; useChatsStore.getState().setDialogMuted(e.chat_id, e.muted) },
+  [RT.chatThemeUpdate]: (e) => { useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
+  [RT.dialogPin]: (e) => { useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned) },
+  [RT.dialogArchive]: (e) => { useChatsStore.getState().setDialogArchived(e.chat_id, e.archived) },
+  [RT.dialogMute]: (e) => { useChatsStore.getState().setDialogMuted(e.chat_id, e.muted) },
   // Edit/delete/гео-трансляция/web-page/fact-check → окно сообщений чата.
-  [RT.editMessage]: (raw) => { const e = raw as EditMessageEvt; useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },
-  [RT.deleteMessage]: (raw) => { const e = raw as DeleteMessageEvt; useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id) },
-  [RT.geoLiveUpdate]: (raw) => { const e = raw as GeoLiveUpdateEvt; useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
-  [RT.webPageUpdate]: (raw) => { const e = raw as WebPageUpdateEvt; useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page)) },
-  [RT.factCheckUpdate]: (raw) => { const e = raw as FactCheckUpdateEvt; useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined) },
+  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },
+  [RT.deleteMessage]: (e) => { useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id) },
+  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
+  [RT.webPageUpdate]: (e) => { useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page)) },
+  [RT.factCheckUpdate]: (e) => { useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined) },
   // Новый баланс звёзд; удаление истории.
-  [RT.balanceUpdate]: (raw) => { const b = (raw as { balance: number }).balance; if (typeof b === 'number') setStarsBalance(b) },
-  [RT.storyDeleted]: (raw) => { const e = raw as StoryDeletedEvt; useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
+  [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
+  [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
   // Оптимистичная отправка (воркер — funnel): вставка/медиа/ошибка/ретрай/удаление
   // бабла. storeProjection единственный писатель окна; reconcile ack/err — ниже.
-  [RT.pendingNew]: (raw) => {
-    const e = raw as PendingNewEvt
+  [RT.pendingNew]: (e) => {
     // localUrl (blob-URL) валиден только во вкладке-инициаторе — в остальных
     // вырезаем, иначе битый превью-бабл навсегда (localUrl приоритетнее mediaId и
     // не очищается). В своей вкладке — оставляем для мгновенного превью.
     const media = e.media && e.origin_tab !== tabId ? { ...e.media, localUrl: undefined } : e.media
     useMessagesStore.getState().appendOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.text, e.sender_id, e.client_msg_id, e.media_id ?? undefined, e.type, e.entities, e.grouped_id, media, { geo: e.geo, contact: e.contact, threadRootId: e.thread_root_id ?? undefined, secret: e.secret, sendAs: e.send_as })
   },
-  [RT.pendingMedia]: (raw) => { const e = raw as PendingMediaEvt; useMessagesStore.getState().setOptimisticMedia(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id, e.media_id) },
-  [RT.pendingFail]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().failOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
-  [RT.pendingRetry]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().retryOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
-  [RT.pendingRemove]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().removeOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
+  [RT.pendingMedia]: (e) => { useMessagesStore.getState().setOptimisticMedia(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id, e.media_id) },
+  [RT.pendingFail]: (e) => { useMessagesStore.getState().failOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
+  [RT.pendingRetry]: (e) => { useMessagesStore.getState().retryOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
+  [RT.pendingRemove]: (e) => { useMessagesStore.getState().removeOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
 }
 
 // Регистрирует все стор-подписки на rootScope. Вызывается один раз из realtimeBridge.
 export function registerStoreProjection(managers: Managers): void {
   const store = useChatsStore.getState()
 
-  // 1:1-события (см. APPLY) — одним циклом; ниже только обработчики с побочными эффектами.
-  for (const [ev, fn] of Object.entries(APPLY)) {
-    rootScope.addEventListener(ev as keyof BroadcastEventsListeners, fn)
-  }
+  // 1:1-события (см. APPLY) — пачкой штатным методом tweb; ниже только
+  // обработчики с побочными эффектами.
+  rootScope.addMultipleEventsListeners(APPLY)
 
   rootScope.addEventListener(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
