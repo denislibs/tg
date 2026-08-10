@@ -19,6 +19,7 @@ import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useNavigationStore } from '../stores/navigationStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
+import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
@@ -213,6 +214,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   )
   const muted = dialogMuted ?? !!chat.muted
   const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
 
   // Секретный чат: наблюдаемый статус E2E-handshake (secretChatStore ← realtimeBridge).
   // При открытии чата восстанавливаем состояние с сервера (reload-safe): secret.sync
@@ -338,7 +340,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   useEffect(() => {
     setScheduledCount(0)
     if (!isRealChat) return
-    void managers.messages.listScheduled(numericChatId).then((l) => setScheduledCount(l.length)).catch(() => undefined)
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
+    void managers.messages.listScheduled(numericChatId)
+      .then((l) => { if (middleware()) setScheduledCount(l.length) })
+      .catch(() => undefined)
+    return () => scope.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericChatId, isRealChat])
   // Идущий видеочат этого чата (для баннера Join): снимок при открытии + live
@@ -346,9 +353,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const myGroupCallChat = useGroupCallStore((st) => st.chatId)
   useEffect(() => {
     if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
     void managers.messages.groupCallParticipants(numericChatId)
-      .then((ids) => useGroupCallStore.getState().setActive(numericChatId, ids))
+      .then((ids) => { if (middleware()) useGroupCallStore.getState().setActive(numericChatId, ids) })
       .catch(() => undefined)
+    return () => scope.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericChatId, isRealChat])
 
@@ -357,9 +367,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const myWatchingChat = useLivestreamStore((st) => st.watchingChatId)
   useEffect(() => {
     if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
     void managers.livestream.status(numericChatId)
-      .then((st) => useLivestreamStore.getState().setActive(numericChatId, st.active))
+      .then((st) => { if (middleware()) useLivestreamStore.getState().setActive(numericChatId, st.active) })
       .catch(() => undefined)
+    return () => scope.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericChatId, isRealChat])
 
