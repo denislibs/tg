@@ -1,48 +1,5 @@
-// @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
-// import { MOUNT_CLASS_TO } from "@config/debug";
+// @ts-nocheck — вендорено из tweb 1:1 (src/helpers/eventListenerBase.ts)
 import type {ArgumentTypes, SuperReturnType} from '@types';
-
-// class EventSystem {
-//   wm: WeakMap<any, Record<any, Set<any>>> = new WeakMap();
-
-//   add(target: any, event: any, listener: any) {
-//     let listeners = this.wm.get(target);
-//     if (listeners === undefined) {
-//         listeners = {};
-//     }
-//     let listenersForEvent = listeners[event];
-//     if (listenersForEvent === undefined) {
-//         listenersForEvent = new Set();
-//     }
-//     listenersForEvent.add(listener);
-//     listeners[event] = listenersForEvent;
-//     //target.addEventListener(event, listener);
-//     this.wm.set(target, listeners);
-//   };
-
-//   remove(target: any, event: any, listener: any) {
-//     let listeners = this.wm.get(target);
-//     if (!listeners) return;
-//     let listenersForEvent = listeners[event];
-//     if (!listenersForEvent) return;
-//     listenersForEvent.delete(listener);
-//   };
-
-//   /* fire(target, event) {
-//      let listeners = this.wm.get(target);
-//      if (!listeners) return;
-//      let listenersForEvent = listeners[event];
-//      if (!listenersForEvent) return;
-//      for (let handler of handlers) {
-//          setTimeout(handler, 0, event, target); // we use a setTimeout here because we want event triggering to be asynchronous.
-//      }
-//   }; */
-// }
-
-// console.log = () => {};
-
-// const e = new EventSystem();
-// MOUNT_CLASS_TO.e = e;
 
 export type EventListenerListeners = Record<string, Function>;
 // export type EventListenerListeners = Record<string, (...args: any[]) => any>;
