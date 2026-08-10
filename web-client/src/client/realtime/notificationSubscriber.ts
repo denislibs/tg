@@ -6,7 +6,10 @@ import { notifyIncomingMessage } from '../uiNotifications'
 export function registerNotificationSubscriber(): void {
   // Уведомление о входящем, гейтинг как в tweb: per-chat mute → глобальные настройки
   // типа чата → клиентские настройки (см. uiNotifications).
-  rootScope.addEventListener(RT.newMessage, (evt) => {
+  rootScope.addEventListener(RT.newMessage, (evt, meta) => {
+    // Кадр из catch-up (reconnect/backfill) — уже «прошлое»: звук и нотификация не
+    // играют. Раньше это держалось только на дедупе funnel'а по pts.
+    if (meta?.catchUp) return
     notifyIncomingMessage(evt)
   })
 }
