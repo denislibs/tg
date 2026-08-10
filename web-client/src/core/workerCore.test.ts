@@ -15,7 +15,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createWorkerCore } from './workerCore'
-import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { SuperMessagePort, USE_LOCKS, type Endpoint } from '../rpc/superMessagePort'
 
 // createWorkerCore() держит модульные синглтоны (persist.ts: dbPromise/lockedCache;
 // secret/keyStore, AppConfig) — несколько инстансов фабрики в одном процессе делят
@@ -111,10 +111,20 @@ describe('createWorkerCore().bind — проводка портов (замен�
     // handleLockTask в superMessagePort.ts) — тот же кадр, что шлёт bootstrap.ts.
     tabA.sendLock('')
 
-    expect(core.ports.length).toBe(0)
+    // I-3 (ревью worker-importable): гейт ассерта на USE_LOCKS, а не жёсткое
+    // ожидание отключения. Рубильник superMessagePort.ts гасит ВЕСЬ
+    // handleLockTask, включая пустой id (гейт стоит до ветки `!id` намеренно —
+    // см. докблок USE_LOCKS) — при USE_LOCKS=false кадр `lock` игнорируется, порт
+    // остаётся висеть (задокументированная деградация «утечка, но безопасная»).
+    // Без этого гейта флип константы в false красил бы этот тест и нарушал
+    // обещание докблока «правится эта строка, без отката веток» — здесь и был
+    // сломан флип (см. REPORT.md, красный прогон при USE_LOCKS=false). Ассерт
+    // подстраивается под текущее значение константы вместо того, чтобы требовать
+    // от прода держать её true ради зелёного CI.
+    expect(core.ports.length).toBe(USE_LOCKS ? 0 : 1)
 
     core.workerScope.broadcast('rt:resync', { after: 'disconnect' })
-    expect(gotA).toEqual([])
+    expect(gotA).toEqual(USE_LOCKS ? [] : [{ after: 'disconnect' }])
   })
 
   // Пятый пункт (добавлен по итогам ревью первого прогона этого файла): проводки в
@@ -134,5 +144,41 @@ describe('createWorkerCore().bind — проводка портов (замен�
     await expect(
       tab.invoke('manager', { name: 'persist', method: 'stateKey', args: ['recentSearch', ['x']] }),
     ).resolves.toBeUndefined()
+  })
+})
+
+// C-1 (ревью worker-importable): start() — единственная строка, которая реально
+// монтирует bind() на глобальный скоуп (onconnect в SharedWorker / голый self в
+// воркерном фолбэке без SharedWorker). До этого теста она не вызывалась НИГДЕ в
+// наборе: worker.ts (не импортируем в тестах) делает `createWorkerCore().start()`
+// и всё. Без этой строки ни одна вкладка не подключается — приложение мертво на
+// 100%, а полный прогон (177 файлов/1173 теста) этого не замечал (мутация,
+// вырезающая if('onconnect' in g){...}else{...} целиком, красит 0 тестов — см.
+// REPORT.md). В happy-dom (тестовое окружение, vitest.config.ts) `'onconnect' in
+// self` — false (onconnect есть только у SharedWorkerGlobalScope, не у Window),
+// поэтому start() идёт веткой `bind(g as unknown as Endpoint)`, где g — self:
+// у него есть addEventListener/postMessage, то есть он годится как Endpoint без
+// единого мока — ровно то же самое понижение, что и в фолбэке без SharedWorker
+// (Chrome for Android), которым worker.ts пользуется в проде.
+describe('createWorkerCore().start — проводка bind() к глобальному скоупу (C-1)', () => {
+  it('start() монтирует bind() на глобальный объект — единственный путь, которым SharedWorker/воркер реально подключает вкладку', () => {
+    const core = createWorkerCore()
+
+    expect(core.ports.length).toBe(0)
+    core.start()
+    expect(core.ports.length).toBe(1)
+  })
+
+  // Второй ассерт по BRIEF.md: start() НЕ идемпотентна — повторный вызов снова
+  // проходит ветку bind(g) и удваивает порт на том же глобальном эндпоинте. Это
+  // законный текущий результат (worker.ts зовёт start() ровно один раз за жизнь
+  // модуля — двойного вызова в проде не бывает), фиксируем как есть, а не чиним.
+  it('повторный start() не идемпотентен — второй вызов снова монтирует bind() и удваивает порт (зафиксировано как есть, не идемпотентность — не гарантия)', () => {
+    const core = createWorkerCore()
+
+    core.start()
+    expect(core.ports.length).toBe(1)
+    core.start()
+    expect(core.ports.length).toBe(2)
   })
 })
