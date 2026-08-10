@@ -142,10 +142,13 @@ void cursor.ready().then(() => { cursorReady = true })
 // Ключи APPLY типизированы как LoggedWsType (из eventCatalog) — пропуск/лишний
 // логируемый тип ловит компилятор, реестры не дрейфуют.
 // cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/web_page_update/
-// factcheck_update/paid_media_unlock/delete_message — по образцу cacheLive, см.
-// dispatch ниже) — тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как
-// routeNewMessage. edit_message/geo_live_update оставлены на прежнем пути (сырой
-// кадр) — см. комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts.
+// factcheck_update/paid_media_unlock/delete_message; Task 4: poll_update/
+// checklist_update/giveaway_update — по образцу cacheLive, см. dispatch ниже) —
+// тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как routeNewMessage.
+// edit_message/geo_live_update оставлены на прежнем пути (сырой кадр) — см.
+// комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction/
+// star_reaction — тоже НЕ переведены (Task 5), см. комментарий у
+// newReactionMethods в messages/reactionMethods.ts.
 const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => MessageOp[] | void }> = {
   read:              { rt: RT.read },
   media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },

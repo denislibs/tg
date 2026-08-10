@@ -14,4 +14,7 @@ export interface MessagesCtx {
   patchMsg: PatchMsg
   /** id текущего пользователя (для деривации `mine`) — лениво, геттер. */
   getMeId?: () => number | null
+  /** Ключи ВСЕХ окон чата, где сообщение сейчас видно (см. messagesManager.opWindowsFor) —
+   * нужно под-модулям, которые сами порождают операции patch/remove (Stage 1B.3, Task 4). */
+  opWindowsFor: (chatId: number, msgId: number) => string[]
 }

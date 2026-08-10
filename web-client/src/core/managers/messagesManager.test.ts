@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
-import { fromNewMessageEvt, mapFactCheck, mapWebPage, type RawMessage } from '../models'
+import { fromNewMessageEvt, mapFactCheck, mapWebPage, mapPoll, mapChecklist, mapGiveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
@@ -492,5 +492,123 @@ describe('MessagesManager.cacheDelete', () => {
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
     for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
+  })
+})
+
+// Task 4 (Stage 1B.3): опросы / чек-листы / розыгрыши. cachePoll/cacheGiveaway
+// продолжают мутировать SSOT воркера как раньше (сохраняя myVotes/participating/
+// iWon из своей же копии — это отдельный, не связанный с операцией офлайн-кэш),
+// но операция несёт ГОЛЫЙ агрегат mapX(evt.x) — БЕЗ этого локального поля.
+// Слияние патча поверх окна (core/realtime/messageOps.ts) подставляет локальный
+// выбор ИЗ ОКНА — эти тесты проверяют именно op.fields, а сохранение проверяет
+// messageOps.test.ts (applyOp).
+const rawPoll = (overrides?: Partial<RawPoll>): RawPoll => ({
+  id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
+  quiz: false, closed: false, counts: [1, 0], total_voters: 1, my_votes: [],
+  ...overrides,
+})
+
+function pollPage(msgId: number, poll: RawPoll) {
+  return {
+    messages: [{
+      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'poll', text: '',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', poll,
+    } as RawMessage],
+    count: 1,
+  }
+}
+
+describe('MessagesManager.cachePoll', () => {
+  it('returns a patch op carrying the голый агрегат опроса (myVotes из события, не из SSOT)', async () => {
+    // SSOT уже держит МОЙ выбор (voted вариант 0) — live-кадр его не несёт.
+    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ my_votes: [0] })) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { chat_id: 1, poll: rawPoll({ counts: [1, 1], total_voters: 2, my_votes: [] }) }
+    const ops = mgr.cachePoll(evt)
+    // Операция несёт ровно mapPoll(evt.poll) — миллионном myVotes СВОЕГО события
+    // (пустой, как обычно шлёт сервер в общем broadcast), а НЕ [0] из SSOT.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { poll: mapPoll(evt.poll) } }])
+    expect(ops[0].op === 'patch' && ops[0].fields.poll?.myVotes).toEqual([])
+  })
+
+  it('produces no op when no message in the SSOT carries this poll id', async () => {
+    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ id: 5 })) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePoll({ chat_id: 1, poll: rawPoll({ id: 999 }) })
+    expect(ops).toEqual([])
+  })
+})
+
+const rawChecklist = (overrides?: Partial<RawChecklist>): RawChecklist => ({
+  id: 8, title: 't', items: [{ id: 1, text: 'i1', marked_by: [] }],
+  others_can_add: false, others_can_mark: true,
+  ...overrides,
+})
+
+function checklistPage(msgId: number, checklist: RawChecklist) {
+  return {
+    messages: [{
+      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'checklist', text: '',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', checklist,
+    } as RawMessage],
+    count: 1,
+  }
+}
+
+describe('MessagesManager.cacheChecklist', () => {
+  it('returns a patch op carrying the mapped checklist (no local field — full replace is correct here)', async () => {
+    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist()) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { chat_id: 1, checklist: rawChecklist({ items: [{ id: 1, text: 'i1', marked_by: [1] }] }) }
+    const ops = mgr.cacheChecklist(evt)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 3, fields: { checklist: mapChecklist(evt.checklist) } }])
+  })
+
+  it('produces no op when no message in the SSOT carries this checklist id', async () => {
+    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist({ id: 8 })) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheChecklist({ chat_id: 1, checklist: rawChecklist({ id: 999 }) })
+    expect(ops).toEqual([])
+  })
+})
+
+const rawGiveaway = (overrides?: Partial<RawGiveaway>): RawGiveaway => ({
+  id: 9, chat_id: 1, prize_kind: 'premium', months: 3, stars: 0, winners_count: 1,
+  until_date: 0, status: 'active', participants: 4, participating: false, i_won: false,
+  ...overrides,
+})
+
+function giveawayPage(msgId: number, giveaway: RawGiveaway) {
+  return {
+    messages: [{
+      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'giveaway', text: '',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', giveaway,
+    } as RawMessage],
+    count: 1,
+  }
+}
+
+describe('MessagesManager.cacheGiveaway', () => {
+  it('returns a patch op carrying the голый агрегат розыгрыша (participating/iWon из события, не из SSOT)', async () => {
+    // SSOT уже держит МОЁ участие — live-кадр его не несёт (обычный broadcast без персонализации).
+    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ participating: true, i_won: false })) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { chat_id: 1, giveaway: rawGiveaway({ participants: 5, participating: false, i_won: false }) }
+    const ops = mgr.cacheGiveaway(evt)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 4, fields: { giveaway: mapGiveaway(evt.giveaway) } }])
+    expect(ops[0].op === 'patch' && ops[0].fields.giveaway?.participating).toBe(false)
+  })
+
+  it('produces no op when no message in the SSOT carries this giveaway id', async () => {
+    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ id: 9 })) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheGiveaway({ chat_id: 1, giveaway: rawGiveaway({ id: 999 }) })
+    expect(ops).toEqual([])
   })
 })

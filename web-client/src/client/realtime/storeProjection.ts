@@ -9,7 +9,7 @@ import { usePeersStore } from '../../stores/peersStore'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraft, mapPoll, mapChecklist, mapGeo, mapBoostStatus, mapGiveaway, mapSuggestedPost } from '../../core/models'
+import { mapDraft, mapGeo, mapBoostStatus, mapSuggestedPost } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
@@ -53,15 +53,18 @@ const APPLY: Projector = {
   // Stage 1B.3 (Task 3): media_read/delete_message/web_page_update/factcheck_update/
   // paid_media_unlock тоже переехали на эту операцию (patch/remove) — их прежние
   // 1:1-строки убраны отсюда (и отдельный addEventListener(RT.paidMediaUnlock) ниже),
-  // окно правит только applyOps. edit_message/geo_live_update НЕ переведены —
-  // см. комментарии у messages.cacheEdit/cacheGeoLive (messagesManager.ts).
+  // окно правит только applyOps. Stage 1B.3 (Task 4): poll_update/checklist_update/
+  // giveaway_update — туда же (см. комментарий у cachePoll/cacheChecklist/
+  // cacheGiveaway, pollMethods.ts); их прежние 1:1-строки [RT.pollUpdate]/
+  // [RT.checklistUpdate]/[RT.giveawayUpdate] тоже убраны отсюда — иначе вышло бы
+  // двойное применение (patch операцией ЗДЕСЬ + applyXUpdate той же строкой).
+  // edit_message/geo_live_update НЕ переведены — см. комментарии у
+  // messages.cacheEdit/cacheGeoLive (messagesManager.ts). reaction/star_reaction —
+  // тоже НЕ переведены (Stage 1B.3, Task 5), обработчики ниже остаются на сыром кадре.
   [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
   [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
-  // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
-  [RT.pollUpdate]: (e) => { useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
-  [RT.checklistUpdate]: (e) => { useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
+  // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
-  [RT.giveawayUpdate]: (e) => { useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
   // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
   [RT.chatThemeUpdate]: (e) => { useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },

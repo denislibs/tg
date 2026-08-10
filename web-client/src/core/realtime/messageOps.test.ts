@@ -147,4 +147,42 @@ describe('applyOp', () => {
     expect(next).not.toBe(base)
     expect(next[0].editedAt).toBe('2026-08-10T12:05:00Z')
   })
+
+  // Task 4 (Stage 1B.3): опрос/розыгрыш несут вложенный локальный выбор
+  // (poll.myVotes, giveaway.participating/iWon), которого операция сознательно
+  // НЕ несёт (cachePoll/cacheGiveaway строят fields.poll/fields.giveaway из
+  // голого агрегата, см. pollMethods.ts) — patch обязан подставить его из
+  // ТЕКУЩЕГО сообщения окна. Это ГЛАВНЫЙ ПИН задачи: он обязан краснеть, если
+  // patch() (или вызывающий код) собирал бы операцию как replace всего
+  // сообщения — тогда локальный выбор окна стёрся бы вместе с остальным.
+  it('patch агрегата опроса → totalVoters/counts обновились, myVotes окна сохранён', () => {
+    const poll = {
+      id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
+      quiz: false, closed: false, counts: [1, 0], totalVoters: 1, myVotes: [0],
+    }
+    const base = [msg(1, 1, { poll })]
+    // Операция несёт НОВЫЙ агрегат (кто-то ещё проголосовал), но БЕЗ myVotes
+    // окна (у операции своё значение myVotes — то, что успел насчитать воркер,
+    // не обязано совпадать с локальным выбором именно этой вкладки).
+    const incomingPoll = { ...poll, counts: [1, 1], totalVoters: 2, myVotes: [] }
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { poll: incomingPoll } })
+    expect(next[0].poll?.totalVoters).toBe(2)
+    expect(next[0].poll?.counts).toEqual([1, 1])
+    // локальный выбор ЭТОГО окна — на месте, а не затёрт значением из операции
+    expect(next[0].poll?.myVotes).toEqual([0])
+  })
+
+  it('patch агрегата розыгрыша → participants обновился, participating/iWon окна сохранены', () => {
+    const giveaway = {
+      id: 9, chatId: CHAT, prizeKind: 'premium' as const, months: 3, stars: 0,
+      winnersCount: 1, untilDate: 0, status: 'active' as const, participants: 4,
+      participating: true, winnerIds: [], iWon: false,
+    }
+    const base = [msg(1, 1, { giveaway })]
+    const incoming = { ...giveaway, participants: 5, participating: false, iWon: true }
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { giveaway: incoming } })
+    expect(next[0].giveaway?.participants).toBe(5)
+    expect(next[0].giveaway?.participating).toBe(true) // окна, не из операции
+    expect(next[0].giveaway?.iWon).toBe(false) // окна, не из операции
+  })
 })

@@ -164,7 +164,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
   // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши, перевод/транскрипция и
   // реакции/теги/⭐ выделены в отдельные файлы, спредятся сюда — публичный API
   // messages.* не меняется.
-  const ctx = { rest, patchMsg, getMeId }
+  const ctx = { rest, patchMsg, getMeId, opWindowsFor }
 
   return {
     ...newReactionMethods(ctx),

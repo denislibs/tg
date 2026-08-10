@@ -83,10 +83,33 @@ function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Messag
   const idx = msgs.findIndex((x) => x.id === msgId)
   if (idx === -1) return msgs
   const cur = msgs[idx]
-  const keys = Object.keys(fields) as (keyof Message)[]
-  if (keys.every((k) => Object.is(cur[k], fields[k]))) return msgs
+  // Опрос/розыгрыш несут вложенный локальный выбор (poll.myVotes,
+  // giveaway.participating/iWon), которого fields.poll/fields.giveaway
+  // сознательно НЕ несёт (cachePoll/cacheGiveaway строят операцию из голого
+  // агрегата — см. карту обогащений §3.1/3.2, docs/research/2026-08-10-message-
+  // enrichments.md). Это единственный случай, где patch трогает ключ верхнего
+  // уровня (poll/giveaway), внутри которого есть поле, требующее точечного
+  // сохранения — обычный shallow-merge {...cur, ...fields} заменил бы объект
+  // целиком и стёр бы локальный выбор ОКНА (в многовкладочном сценарии —
+  // не факт что совпадающий с тем, что успел насчитать воркер). Подставляем
+  // текущее значение окна, если оно уже есть; иначе (первая загрузка агрегата)
+  // используем то, что пришло в операции.
+  let f = fields
+  if (f.poll) f = { ...f, poll: { ...f.poll, myVotes: cur.poll ? cur.poll.myVotes : f.poll.myVotes } }
+  if (f.giveaway) {
+    f = {
+      ...f,
+      giveaway: {
+        ...f.giveaway,
+        participating: cur.giveaway ? cur.giveaway.participating : f.giveaway.participating,
+        iWon: cur.giveaway ? cur.giveaway.iWon : f.giveaway.iWon,
+      },
+    }
+  }
+  const keys = Object.keys(f) as (keyof Message)[]
+  if (keys.every((k) => Object.is(cur[k], f[k]))) return msgs
   const next = msgs.slice()
-  next[idx] = { ...cur, ...fields }
+  next[idx] = { ...cur, ...f }
   return next
 }
 
