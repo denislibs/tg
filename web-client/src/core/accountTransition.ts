@@ -7,12 +7,13 @@
 // - переключение аккаунта из меню: список чатов уезжает chatlist-exit
 //   (translateY(18px) scale(1.01) + fade, 200мс).
 // Флаги — в localStorage (tweb: sessionStorage should_animate_auth/main).
+import { doubleRaf } from '@helpers/schedulers'
+
 export const ANIMATE_AUTH_KEY = 'msgr_animate_auth'
 export const ANIMATE_MAIN_KEY = 'msgr_animate_main'
 export const PREV_ACCOUNT_KEY = 'msgr_prev_account'
 
-export const doubleRaf = () =>
-  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+export { doubleRaf }
 export const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 // tweb sidebarLeft.addAccount: exit чата перед уходом на экран входа

@@ -22,6 +22,7 @@ import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
 import { useManagers } from '../core/hooks/useManagers'
+import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useT, useLang } from '../i18n'
 import type { CalendarDay } from '../core/managers/messagesManager'
 import s from './DatePickerPopup.module.scss'
@@ -143,6 +144,7 @@ export default function DatePickerPopup({
 }: DatePickerPopupProps) {
   const t = useT()
   const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
   // Язык берём из приложения (как tweb I18n), а не из navigator — иначе месяцы
   // и дни недели рисуются на языке браузера, а не интерфейса.
   const [lang] = useLang()
@@ -228,19 +230,23 @@ export default function DatePickerPopup({
   const requested = useRef(new Set<string>())
   useEffect(() => {
     if (chatId == null) return
+    const middleware = middlewareHelper.get()
     for (const section of visible) {
       if (requested.current.has(section.key)) continue
       requested.current.add(section.key)
       void managers.messages.calendarMonth(chatId, Math.floor(section.date.getTime() / 1000)).then((days) => {
-        if (!days.length) return
+        if (!middleware() || !days.length) return
         setMediaByDay((prev) => {
           const next = new Map(prev)
           for (const d of days) next.set(dayKey(new Date(d.day * 1000)), d)
           return next
         })
-      })
+      }).catch(() => {})
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, chatId, managers])
+  // Запросы копятся между прогонами эффекта — гасим только на unmount
+  useEffect(() => () => middlewareHelper.clean(), [middlewareHelper])
 
   const weekend = useMemo(() => getWeekendDays(lang), [lang])
   const weekdays = useMemo(() => {

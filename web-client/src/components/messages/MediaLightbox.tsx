@@ -53,6 +53,7 @@ import type { MessageEntity } from '../../core/models'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
 import { pushEsc } from '../../core/hotkeys'
 import { useSettingsStore } from '../../settings'
+import { doubleRaf } from '@helpers/schedulers'
 import VideoPlayer from './VideoPlayer'
 import s from './MediaLightbox.module.scss'
 
@@ -115,8 +116,6 @@ function cornerRadii(el?: HTMLElement): number[] {
 }
 const ellipticalRadius = (radii: number[], sx: number, sy: number) =>
   `${radii.map((r) => `${r / sx}px`).join(' ')} / ${radii.map((r) => `${r / sy}px`).join(' ')}`
-
-const doubleRaf = () => new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())))
 
 // tweb setFullAspect: та же высота, ширина по аспекту медиа — морф кропа.
 function setFullAspect(a: HTMLElement, box: { width: number; height: number }, rect: { width: number; height: number }) {

@@ -10,6 +10,7 @@ import { setActiveGradientRenderer } from '../core/chat/activeGradient'
 import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
 import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
 import { resolveTransition } from './chatBackgroundTransition'
+import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import s from './ChatBackground.module.scss'
 
 /**
@@ -67,6 +68,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const rendererRef = useRef<ChatBackgroundGradientRenderer | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   useMediaTokenVersion()
+  const middlewareHelper = useMiddlewareHelper()
 
   // Портал-контейнер обоев: создаётся один раз на инстанс, вставляется первым
   // потомком body в layout-эффекте (эквивалент tweb insertBefore(..., firstChild)).
@@ -83,8 +85,6 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientReadyRef = useRef(false)
   const patternReadyRef = useRef(false)
   const patternCachedRef = useRef(false)
-  // Счётчик прогонов эффекта отрисовки узора — см. `superseded` ниже.
-  const patternRunRef = useRef(0)
 
   const activateSlot = (cached: boolean) => {
     if (hadPreviousRef.current) return
@@ -222,21 +222,13 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       })
     }
 
-    // Токен прогона: у tweb стратегия (`mask`) вшита в инстанс рендерера в момент
-    // сборки контента (chatBackground.tsx:242-248 `getInstance({… mask: isDarkPattern
-    // && !useOverlayRender})`), а обогнанный прогон эффекта явно выбрасывается —
-    // `disposeBuilt`, chatBackground.tsx:299 «used when an effect run is superseded».
-    // У нас `paint` звался из `img.onload`, и опоздавший колбэк красил холст своим,
-    // уже неверным `mask`. Первый рендер идёт до применения темы (setTheme — layout-
-    // эффект ThemedApp, а они бегут снизу вверх), там dataTheme ещё null → mask=false;
-    // тик темы перезапускает эффект, но `imgRef` пуст, поэтому заводится ВТОРОЙ Image:
-    // он берётся из memory-кэша и красит маской сразу, а первый (сетевой) доезжает
-    // позже и перекрывает результат светлой стратегией. В night это давало вместо
-    // чёрной маски с прорезями-дудлами полностью открытый яркий градиент (замерено на
-    // живой странице: 6.5% непрозрачных пикселей холста вместо 92.9%; любой resize
-    // «чинил» фон, потому что resize зовёт уже актуальное замыкание).
-    const run = ++patternRunRef.current
-    const superseded = () => run !== patternRunRef.current
+    // Актуальность прогона — @helpers/middleware (аналог tweb disposeBuilt,
+    // chatBackground.tsx:299 «used when an effect run is superseded»): cleanup
+    // эффекта протухает middleware, опоздавшие onload/onerror прошлого прогона
+    // (например, сетевой pattern.svg, обогнанный memory-кэшем после тика темы)
+    // холст не трогают. История бага — коммит eba3646 и тест
+    // «опоздавшая загрузка узора…» в ChatBackground.test.tsx.
+    const middleware = middlewareHelper.get()
 
     // Ленивая загрузка дудла (один раз), затем перерисовки — синхронные. cached —
     // синхронная готовность (img.complete сразу после простановки src: браузер уже
@@ -244,7 +236,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     if (!imgRef.current) {
       const img = new Image()
       img.onload = () => {
-        if (superseded()) return
+        if (!middleware()) return
         imgRef.current = img
         paint()
         patternReadyRef.current = true
@@ -253,6 +245,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       // Сбой загрузки узора не должен навсегда запереть слот на opacity:0 —
       // активируем без паттерна (canvas останется пустым, градиент всё равно виден).
       img.onerror = () => {
+        if (!middleware()) return
         patternReadyRef.current = true
         maybeActivateSlot()
       }
@@ -271,7 +264,10 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     }
 
     window.addEventListener('resize', paint)
-    return () => window.removeEventListener('resize', paint)
+    return () => {
+      window.removeEventListener('resize', paint)
+      middlewareHelper.clean()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeChoice, themeTick, colors.join(), mode.mask, !!overlay])
 
