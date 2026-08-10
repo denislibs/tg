@@ -17,8 +17,12 @@ export interface AppState {
   drafts: Draft[]
   /** свёрнутые пользователем пин-плашки: chatId → msgId (tweb `hiddenPinnedMessages`) */
   hiddenPinnedMessages: Record<number, number>
-  /** недавние в глобальном поиске (tweb `recentSearch`) */
-  recentSearch: number[]
+  /**
+   * недавние в глобальном поиске (tweb `recentSearch`). У tweb там числовые
+   * `PeerId[]`, у нас id чата — строка (`Chat.id`, data.ts:134), поэтому и
+   * храним строки: разница модели, не поведения.
+   */
+  recentSearch: string[]
   /** порядок закреплённых по папкам: folderId → chatId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**

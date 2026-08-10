@@ -11,6 +11,7 @@ import { hydrateDialogsFromPersist } from '../stores/dialogsPersist'
 import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
 import { initialState, STATE_VERSION } from '../core/state/state'
 import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appState'
+import { migrateRecentSearchFromLocalStorage } from '../core/state/migrateRecentSearch'
 import { persistScope } from '../core/store/persist'
 import { idbGet } from '../core/store/idbKv'
 import { useSettingsStore } from '../settings'
@@ -78,6 +79,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // ней «сошлось» неотличимо от «сбросили» — без этого ключ не писался бы никогда,
   // а State сбрасывался бы к дефолтам на КАЖДОМ старте.
   if (!locked && stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
+  if (!locked) migrateRecentSearchFromLocalStorage()
   setBootData({ me, dialogs, hydratedFromCache, hasToken: !!token, locked })
 
   return { managers }

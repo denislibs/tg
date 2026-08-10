@@ -16,18 +16,18 @@ beforeEach(async () => {
 
 describe('persist: стор state', () => {
   it('пишет и читает ключи State', async () => {
-    await saveStateKey('recentSearch', [1, 2, 3])
+    await saveStateKey('recentSearch', ['1', '2', '3'])
     await saveStateKey('hiddenPinnedMessages', { 5: 42 })
 
     const all = await loadStateAll()
-    expect(all.recentSearch).toEqual([1, 2, 3])
+    expect(all.recentSearch).toEqual(['1', '2', '3'])
     expect(all.hiddenPinnedMessages).toEqual({ 5: 42 })
   })
 
   it('читает ВСЕ записанные ключи (один батч)', async () => {
     await saveStateKey('version', 1)
     await saveStateKey('folders', [])
-    await saveStateKey('recentSearch', [7])
+    await saveStateKey('recentSearch', ['7'])
 
     const all = await loadStateAll()
     expect(Object.keys(all).sort()).toEqual(
@@ -37,9 +37,9 @@ describe('persist: стор state', () => {
   })
 
   it('перезапись ключа отдаёт последнее значение', async () => {
-    await saveStateKey('recentSearch', [1])
-    await saveStateKey('recentSearch', [9, 8])
+    await saveStateKey('recentSearch', ['1'])
+    await saveStateKey('recentSearch', ['9', '8'])
 
-    expect((await loadStateAll()).recentSearch).toEqual([9, 8])
+    expect((await loadStateAll()).recentSearch).toEqual(['9', '8'])
   })
 })

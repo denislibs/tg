@@ -10,7 +10,7 @@ describe('loadStateOnce', () => {
   beforeEach(() => { resetStateCache(); loadStateAll.mockReset() })
 
   it('читает базу ОДИН раз даже при нескольких вызовах', async () => {
-    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: [1] })
+    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: ['1'] })
 
     const [a, b] = await Promise.all([loadStateOnce(), loadStateOnce()])
 
@@ -19,17 +19,17 @@ describe('loadStateOnce', () => {
   })
 
   it('недостающие ключи добираются из STATE_INIT', async () => {
-    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: [7] })
+    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: ['7'] })
 
     const state = await loadStateOnce()
 
-    expect(state.recentSearch).toEqual([7])
+    expect(state.recentSearch).toEqual(['7'])
     expect(state.folders).toEqual([])
     expect(state.hiddenPinnedMessages).toEqual({})
   })
 
   it('чужая версия схемы — стартуем с чистого STATE_INIT', async () => {
-    loadStateAll.mockResolvedValue({ version: 0, recentSearch: [1, 2, 3] })
+    loadStateAll.mockResolvedValue({ version: 0, recentSearch: ['1', '2', '3'] })
 
     expect(await loadStateOnce()).toEqual(STATE_INIT)
   })
@@ -62,7 +62,7 @@ describe('loadStateOnce', () => {
   // не попадал на диск, и следующий старт снова видел несовпадение и выбрасывал
   // весь прочитанный State. Папки и черновики терялись на каждой перезагрузке.
   it('сообщает, что состояние сброшено к дефолтам', async () => {
-    loadStateAll.mockResolvedValue({ version: 0, recentSearch: [1] })
+    loadStateAll.mockResolvedValue({ version: 0, recentSearch: ['1'] })
 
     await loadStateOnce()
 
@@ -70,7 +70,7 @@ describe('loadStateOnce', () => {
   })
 
   it('версия сошлась — сброса не было', async () => {
-    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: [1] })
+    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: ['1'] })
 
     await loadStateOnce()
 
