@@ -5,7 +5,7 @@
 // indexOfAndSplice из вендореного helpers/array/indexOfAndSplice, как в
 // продакшене, — мутация любого из двух ловится этими тестами (Шаг 6 брифа).
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { SuperMessagePort, type Endpoint } from './superMessagePort'
+import { SuperMessagePort, USE_LOCKS, type Endpoint } from './superMessagePort'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
 // Пара эндпоинтов с синхронной доставкой (как в superMessagePort.test.ts).
@@ -68,7 +68,32 @@ function uninstallFakeLocks() {
 
 afterEach(() => { uninstallFakeLocks() })
 
-describe('SuperMessagePort — Web Locks (отключение вкладки)', () => {
+// I-3 (ревью worker-importable): весь файл — про механику, которую целиком
+// гасит `if (!USE_LOCKS) return` В НАЧАЛЕ handleLockTask (гейт стоит ДО ветки
+// `!id` намеренно — см. докблок USE_LOCKS в superMessagePort.ts). При
+// USE_LOCKS=false кейсы этого файла не «падают» в смысле найденного бага — они
+// проверяют поведение, которого в этом состоянии константы не существует:
+// запрос лока не уходит (тест 1), disconnectPort не срабатывает НИ по release
+// (тесты 2-3), НИ по пустому id (тест 4). Хуже — в последнем тесте
+// `fake.release()` дёргает колбэк, которого нет в `cbs` (request() не звался,
+// т.к. гейт отсёк вызов до него): grant молчит, `worker.invoke(...)` никогда
+// не реджектится, тест висит до testTimeout (реально наблюдалось: 5017ms
+// вместо мгновенного red). Гейтить assert'ы по одному, как в
+// workerCore.test.ts, здесь не подходит: два кейса («у воркера нет
+// navigator.locks» и «живая вкладка не отцепляется») формально проходят при
+// любом значении константы, но это совпадение исхода, а не то, что они
+// проверяют — обе истории про нюансы РАБОТАЮЩЕЙ механики (что происходит
+// ВНУТРИ handleLockTask, когда id непустой), а не про её выключенное
+// состояние. Оставлять их незагейченными означало бы держать в зелёном два
+// теста, чей заголовок и смысл всё равно перестают быть про то, что
+// происходит при USE_LOCKS=false. Честнее — весь файл как один предмет
+// проверки: включена механика — все семь кейсов актуальны; выключена — ни
+// один не имеет смысла, `skipIf` это явно показывает вместо того, чтобы
+// множить точечные гейты. Именно ложный «зелёный» (или, того хуже, зависший
+// на таймауте) обесценивал бы обещание докблока «правится эта строка, без
+// отката веток»: флип обязан быть безопасен для CI — здесь это означает
+// быстрый и явный skip.
+describe.skipIf(!USE_LOCKS)('SuperMessagePort — Web Locks (отключение вкладки)', () => {
   it('вкладка подключилась → воркер запросил лок с тем же id', () => {
     const fake = installFakeLocks()
     const [epTab, epWorker] = pair()
