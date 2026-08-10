@@ -210,6 +210,10 @@ export class ScrollableBase {
 
     window.removeEventListener('resize', this.onScroll)
     if(this.thumb) {
+      // Унаследованный баг апстрима (см. task-4-report.md): снимается 'mousedown' с
+      // `this.onMouseMove`, а не с `this.onMouseDown` (которым он был повешен в
+      // конструкторе Scrollable) — реального снятия не происходит. Дословность
+      // важнее самодеятельного фикса, не трогать.
       this.thumb.removeEventListener('mousedown', this.onMouseMove)
       window.removeEventListener('mousemove', this.onMouseMove)
       window.removeEventListener('mouseup', this.onMouseUp)

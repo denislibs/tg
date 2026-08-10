@@ -82,8 +82,13 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // scrollTop-decreasing restore() near the top could fool into "user scrolled up".
   const scrollableRef = useRef<Scrollable | null>(null)
   // Route every corrective (non-user) scrollTop write through it once mounted; before that (there's
-  // one commit's gap before the mount effect below runs) fall back to a raw write.
+  // one commit's gap before the mount effect below runs) fall back to a raw write. Also updates
+  // lastScrollTopRef — the write is silent (no 'scroll' event, so onAdditionalScroll's own
+  // `lastScrollTopRef.current = st` never runs for it); without this the NEXT real scroll event's
+  // "went up" delta (`st < lastScrollTopRef.current - 1`) would be computed against a stale
+  // pre-jump baseline and could misfire on an unrelated corrective jump (review Б-6).
   const setScrollTopSilently = (value: number) => {
+    lastScrollTopRef.current = value
     const s = scrollableRef.current
     if (s) { s.setScrollPositionSilently(value); return }
     const el = scrollRef.current
@@ -194,6 +199,12 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     void win.loadOlder()
   })
   const onScrolledBottom = useEvent(() => {
+    // Same explicit gate as onScrolledTop above — the pre-refactor code had this implicitly (one
+    // shared `if (!isRealChat || win.msgs.length === 0) return` above BOTH triggers in a single
+    // onScroll function); splitting into two Scrollable callbacks dropped it from this one
+    // (review Б-5). win.loadNewer() itself no-ops on an empty/non-real window regardless, but
+    // keeping the gate explicit here matches onScrolledTop and avoids relying on that internally.
+    if (!isRealChat || win.msgs.length === 0) return
     const s = scrollableRef.current
     if (!s || s.loadedAll.bottom || win.loadingNewer) return
     void win.loadNewer()
@@ -216,6 +227,13 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     onAdditionalScroll() // eager run — seeds showScrollDown/atBottomRef from the mount scrollTop
     return () => {
       scrollable.destroy()
+      // destroy() doesn't remove the thumb container it may have prepended (thumb/thumbContainer
+      // are `protected`, unset — tweb's own container is throwaway, so it never needed to; ours is
+      // React's persistent scrollRef div, so under StrictMode's dev mount→unmount→mount a leftover
+      // node would double up — review Б-4). `.scrollable-thumb-container` only exists when
+      // !IS_OVERLAY_SCROLL_SUPPORTED() created it (scrollable.ts's constructor); harmless no-op
+      // query otherwise.
+      el.querySelector(':scope > .scrollable-thumb-container')?.remove()
       scrollableRef.current = null
     }
   }, [onAdditionalScroll, onScrolledTop, onScrolledBottom])
@@ -228,6 +246,18 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     s.loadedAll.top = win.reachedTop
     s.loadedAll.bottom = win.reachedBottom
   }, [win.reachedTop, win.reachedBottom])
+  // Re-derive showScrollDown/atBottomRef eagerly on every window change — NOT only from
+  // throttled scroll events. The pre-Scrollable onScroll ran this synchronously at the top of
+  // its own `[isRealChat, win, managers, numericChatId]`-deps effect on every win change; that
+  // eager call is what this restores (onAdditionalScroll has a stable identity via useEvent, so
+  // this only re-runs when `win` itself changes). Needed because corrective writes now go
+  // through setScrollPositionSilently, which BY DESIGN produces no scroll event — e.g.
+  // onScrollDownClick's reloadNewest() + pinBottomNext silently pins to the bottom once the new
+  // page commits; without this eager re-run, win.reachedBottom flipping true wouldn't reach
+  // setShowScrollDown until the user scrolled by hand (review blocker Б-3).
+  useEffect(() => {
+    onAdditionalScroll()
+  }, [win, onAdditionalScroll])
   // Screen-size safety net: if the loaded window doesn't overflow the viewport
   // there's nothing to scroll, so the scroll-driven loadNewer above can never
   // fire — on a very tall screen a single page can fit entirely. Pull more until

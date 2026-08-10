@@ -25,12 +25,13 @@
 // выходит рано), теряя промежуточное значение scrollTop, по которому
 // вычисляется lastScrollDirection.
 import { createElement, type ReactNode } from 'react'
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useChatScroll } from './useChatScroll'
 import { ManagersProvider } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 import type { Message } from '../models'
+import Scrollable from '@components/scrollable'
 
 async function flushScrollThrottle() {
   await new Promise((resolve) => setTimeout(resolve, 50))
@@ -210,5 +211,68 @@ describe('useChatScroll ↔ ScrollSaver (подключение)', () => {
     // restore() должен был подвинуть scrollTop на +100 (200 → 300), чтобы
     // якорь остался в той же экранной позиции.
     expect(scrollEl.scrollTop).toBe(300)
+  })
+
+  // Ревью Задачи 4 (Б-1): предыдущая версия этого файла доказывала гейт
+  // loadedAll.top ТОЛЬКО внутри scrollable.test.ts, колбэком, который
+  // ПРОВЕРЯЛ САМ СЕБЯ (`onScrolledTop = () => { if (scrollable.loadedAll.top)
+  // return; topCalls++ }`) — это тест собственного if теста, не подключения.
+  // Реальный "укус" (Шаг 6 брифа) был показан временной мутацией и временным
+  // тестом, оба откатывались — защиты в дереве не оставалось. Мутация
+  // ревьюера подтвердила: без гейта в PRODUCTION-колбэке (`useChatScroll.ts`'s
+  // onScrolledTop) весь набор тестов оставался зелёным. Этот тест бьёт по
+  // РЕАЛЬНОМУ хуку через РЕАЛЬНЫЙ React-эффект-цикл, как и тест выше.
+  it('win.reachedTop=true блокирует loadOlder() у верхнего края (loadedAll.top в РЕАЛЬНОМ хуке, не в тестовом колбэке)', async () => {
+    let loadOlderCalls = 0
+    seqRects.set(1, { top: -100, bottom: 100 })
+    seqRects.set(2, { top: 100, bottom: 300 })
+    const win = makeWin([msg(1), msg(2)], {
+      reachedTop: true, // верх истории УЖЕ загружен целиком — loadedAll.top должно стать true
+      loadOlder: async () => { loadOlderCalls++ },
+    })
+    const { scrollEl } = mount(win)
+
+    // Прогрев (см. коммент у первого теста) + спуск подальше от края, чтобы
+    // lastScrollDirection посчитался штатно от реального прошлого значения,
+    // а не от default 0.
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+    await act(async () => {
+      scrollEl.scrollTop = 800
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+
+    // Подъём в зону триггера верха (<=onScrollOffset=300) — без гейта loadedAll.top
+    // это вызвало бы save()+loadOlder() ровно как в сценарии первого теста.
+    await act(async () => {
+      scrollEl.scrollTop = 200
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+    expect(loadOlderCalls).toBe(0)
+  })
+
+  // Ревью Задачи 4 (Б-1, вторая часть): мутация «убрать делегирование в
+  // s.setScrollPositionSilently(), оставить голое el.scrollTop = value»
+  // тоже оставляла все тесты зелёными — ни один не проверял, ЧЕРЕЗ ЧТО
+  // именно идёт корректирующая запись, только куда она в итоге приводит
+  // scrollTop (а голая запись даёт то же самое числовое значение). Спай на
+  // Scrollable.prototype ловит именно способ записи, независимо от того,
+  // какой из пяти вызывающих site'ов (пин к низу, restore(), компенсация
+  // paddingTop, позиционирование непрочитанных, pinBottomNext) сработал
+  // первым — здесь это пин к низу при монтировании (atBottomRef=true по
+  // умолчанию → ResizeObserver-эффект зовёт correctScroll() синхронно).
+  it('корректирующая запись при монтировании идёт через Scrollable.setScrollPositionSilently, не голым el.scrollTop', () => {
+    const spy = vi.spyOn(Scrollable.prototype, 'setScrollPositionSilently')
+    try {
+      const win = makeWin([msg(1)])
+      mount(win)
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
