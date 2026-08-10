@@ -21,6 +21,7 @@ import type { RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/m
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
+import type { MessageOp } from '@core/realtime/messageOps'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -33,6 +34,9 @@ import type { EventMeta } from '@rpc/superMessagePort'
 export type BroadcastEvents = {
   // ── funnel курсора (logged, несут pts) — второй элемент кортежа EventMeta? ──
   [RT.newMessage]: [NewMessageEvt, EventMeta?]
+  // Операции над окнами сообщений (Stage 1B.2, Task 3) — летит РЯДОМ с
+  // RT.newMessage, тем же meta (та же точка funnel'а курсора).
+  [RT.messageOp]: [{ ops: MessageOp[] }, EventMeta?]
   [RT.editMessage]: [EditMessageEvt, EventMeta?]
   [RT.deleteMessage]: [DeleteMessageEvt, EventMeta?]
   [RT.pinMessage]: [PinMessageEvt, EventMeta?]

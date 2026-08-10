@@ -12,8 +12,9 @@ export interface CalendarDay {
   /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
   has_thumb: boolean
 }
-import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
@@ -468,40 +469,40 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,
     // в ключ треда). Без этого переоткрытие чата/треда попадало в устаревший
     // кэш-срез без свежих сообщений (свои комментарии «пропадали» до F5).
-    cacheLive(evt: NewMessageEvt): void {
-      const m = mapMessage({
-        id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id,
-        type: evt.type, text: evt.text, entities: evt.entities ?? null,
-        reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id ?? null,
-        // Кросс-чат-ответ: снимок превью (имя автора + текст/лейбл) — иначе при
-        // переоткрытии чата из кэша превью кросс-чат-reply не восстанавливается.
-        reply_to_peer_id: evt.reply_to_peer_id ?? null,
-        reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text,
-        created_at: evt.created_at, thread_root_id: evt.thread_root_id ?? null,
-        grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
-        geo: evt.geo ?? null, contact: evt.contact ?? null,
-        media_w: evt.media_w, media_h: evt.media_h, media_mime: evt.media_mime,
-        media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
-        media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
-        paid_media: evt.paid_media ?? null,
-      })
-      // E2E-медиа секретного чата: воркер уже расшифровал enc_body и положил
-      // secret_media на фрейм (не проводное поле) — переносим в кэш-модель, чтобы
-      // переоткрытие чата из кэша тоже отдавало расшифровываемое медиа.
-      if (evt.secret_media) { m.secretMedia = evt.secret_media; m.secret = true }
-      // Эхо своей отправки несёт client_msg_id (mapMessage его не принимает —
-      // RawMessage такого поля не знает); без него applyIncoming/reconcileAck на
-      // главном потоке не смогли бы сматчить сообщение из кэша с оптимистичным
-      // баблом по clientId (Task 6).
-      if (evt.client_msg_id) m.clientId = evt.client_msg_id
+    // Помимо мутации SSOT возвращает MessageOp[] — по одной операции 'insert' на
+    // затронутое окно (Stage 1B.2, Task 3): воркер зеркалит их проектору главного
+    // потока (routeNewMessage → RT.messageOp), тот переигрывает поверх стора вместо
+    // самостоятельного разбора кадра.
+    cacheLive(evt: NewMessageEvt): MessageOp[] {
+      // Fix (пост-ревью Task 4): раньше здесь жил собственный литерал mapMessage(),
+      // независимый от fromNewMessageEvt (единый маппер live-кадра, models.ts) — он
+      // отставал полями (не было fwd_from_*/gift/reply_markup/effect/media_title/
+      // media_performer/reply_to). Пока вставку в окно на главном потоке делал
+      // applyIncoming(fromNewMessageEvt(...)), расхождение было не видно —
+      // рендерился полный вариант. После Task 4 (проектор переигрывает ОПЕРАЦИЮ,
+      // а не разбирает кадр сам) обеднённый вариант стал единственным источником
+      // вставки — расхождение сделалось бы молчаливой регрессией данных на
+      // горячем пути. Переиспользуем fromNewMessageEvt напрямую: один маппер вместо
+      // двух, расхождение невозможно by construction. `replyTo` не передаём (второй
+      // параметр) — резолв превью ответа нужен уже загруженное окно (main-thread
+      // забота, см. storeProjection.ts), у воркера его нет; сама fromNewMessageEvt
+      // уже делает то же, что раньше делал этот метод вручную: инжект secretMedia/
+      // secret расшифрованного E2E-медиа и clientId эха своей отправки.
+      const m = fromNewMessageEvt(evt)
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
+      const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
+        // Тот же гейт решает, породится ли операция: пропущенное здесь окно не
+        // должно получить вставку и на главном потоке — иначе представления
+        // разъедутся (ради устранения этого расхождения и вводится replay).
         const sa = slices.get(key)
         if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
         put(key, [m])
         if (!sa.findSlice(m.seq)) sa.unshift(m.seq)
+        ops.push({ op: 'insert', key, msg: m })
       }
+      return ops
     },
 
     // Live-правка от любого участника → единый объект в SSOT.

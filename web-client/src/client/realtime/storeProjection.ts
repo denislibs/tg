@@ -17,6 +17,7 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt, type UserUpdateEvt } from '../../core/realtime/events'
+import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -46,6 +47,10 @@ type Projector = { [K in keyof BroadcastEventsListeners]?: BroadcastEventsListen
 // Добавить такое событие = одна строка здесь (подписка — addMultipleEventsListeners).
 // Обработчики с таймерами/тостами/meId/сетью/движками остаются явными ниже.
 const APPLY: Projector = {
+  // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
+  // переигрываются поверх окон — единственный писатель окна для входящих
+  // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
+  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
   [RT.mediaRead]: (e) => { useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
   [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
   // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
@@ -93,18 +98,30 @@ export function registerStoreProjection(managers: Managers): void {
 
   rootScope.addEventListener(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
-    // Append to the chat's message window (single source of truth). Resolve the
-    // reply preview from the already-loaded window so a reply shows its quote
-    // immediately (applyIncoming no-ops if the window isn't loaded). markRead /
-    // unread-below is decided in Chat (it needs scroll/focus state).
+    // Stage 1B.2 (Task 4): вставку/дедуп/слияние с оптимистикой по clientId уже
+    // сделала операция RT.messageOp — routeNewMessage шлёт её ПЕРВЫМ кадром, до
+    // этого события (worker.ts:routeNewMessage), и APPLY[RT.messageOp] выше уже
+    // применил её к окну. applyIncoming здесь больше не зовём — единственный
+    // писатель окна для входящих теперь applyOps. markRead/unread-below решает
+    // Chat (нужны scroll/focus, которых тут нет).
     const ms = useMessagesStore.getState()
+    // Резолв превью ответа операция не несёт (в кадре только reply_to_id, не
+    // текст/тип/автор оригинала — воркер не знает, что отрисовано на вкладке).
+    // Точечно накладываем его поверх уже вставленного сообщения (по id), не
+    // трогая остальные поля (localUrl/clientId/secret — их корректно перенесла
+    // операция вставки).
     const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
-    // Резолвим превью ответа из уже загруженного окна, чтобы ответ показал цитату
-    // сразу (в кадре её нет). Маппинг кадра → Message + инжект secret_media внутри
-    // fromNewMessageEvt (единый источник, см. models.ts).
-    const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type, quote_text: evt.reply_quote_text || undefined } : null
-    const incoming = fromNewMessageEvt(evt, replyTo)
-    ms.applyIncoming(evt.chat_id, incoming) // дедупит по seq (окно), belt поверх курсора
+    if (rt) {
+      const replyTo = { msgId: rt.id, seq: rt.seq, senderId: rt.senderId, text: rt.text, type: rt.type, quoteText: evt.reply_quote_text || undefined }
+      const keys = evt.thread_root_id != null ? [winKey(evt.chat_id), winKey(evt.chat_id, evt.thread_root_id)] : [winKey(evt.chat_id)]
+      const ops = keys
+        .map((key): MessageOp | null => {
+          const cur = ms.byKey[key]?.msgs.find((x) => x.id === evt.msg_id)
+          return cur ? { op: 'replace', key, msg: { ...cur, replyTo } } : null
+        })
+        .filter((op): op is MessageOp => op !== null)
+      if (ops.length) ms.applyOps(ops)
+    }
     // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
     // сообщение / сервисное «создал группу») → подтянуть список диалогов.
     // Сервисное сообщение в известный чат — признак смены метаданных группы

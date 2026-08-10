@@ -4,6 +4,10 @@ import type { MessageEntity, RawGeo } from '../models'
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
   newMessage: 'rt:new_message',
+  // Stage 1B.2 (Task 3): операции над окнами сообщений (MessageOp[]) — порождает
+  // ТОЛЬКО воркер (cacheLive), рассылается в ДОПОЛНЕНИЕ к rt:new_message. Проектор
+  // переигрывает их поверх стора вместо разбора сырого кадра (Task 4).
+  messageOp: 'rt:message_op',
   editMessage: 'rt:edit_message',
   deleteMessage: 'rt:delete_message',
   pinMessage: 'rt:pin_message',

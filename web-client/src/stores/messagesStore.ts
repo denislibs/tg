@@ -13,6 +13,7 @@ import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
+import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
@@ -51,23 +52,8 @@ export const EMPTY_WINDOW: ChatWindow = {
 // поэтому tentative-seq индекс больше не нужен — остался только этот reverse-индекс.
 const clientToWin = new Map<string, string>()
 
-// Ключ дедупа: оптимистичный бабл (временный id < 0, ещё не сверен с сервером)
-// ключуется по clientId — его seq лишь выдумка клиента (appendOptimistic:
-// maxSeq + 1) для порядка внизу окна, не настоящая позиция в истории чата.
-// Серверные сообщения (включая уже сверенные баблы — reconcileAck переставляет
-// id на положительный) по-прежнему ключуются по seq. Так пространства ключей не
-// пересекаются: чужое входящее с тем же tentativeSeq, что и у бабла, не может
-// вытеснить его из Map (Task 5 — до фикса dedupAsc ключевал всё по seq, и
-// последний вставленный побеждал, молча стирая бабл без ack/error).
-function dedupKey(m: Message): string {
-  return m.clientId && m.id < 0 ? `c:${m.clientId}` : `s:${m.seq}`
-}
-
-function dedupAsc(list: Message[]): Message[] {
-  const byKey = new Map<string, Message>()
-  for (const m of list) byKey.set(dedupKey(m), m)
-  return Array.from(byKey.values()).sort((a, b) => a.seq - b.seq)
-}
+// dedupAsc/dedupKey вынесены в core/realtime/messageOps.ts (Stage 1B.2, Task 2) —
+// та же семантика нужна чистой applyOp над окном без стора; см. комментарий там.
 
 // Абсолютный агрегат реакций из серверного counts. `mine` не приходит с сервера
 // (counts безличный) → деривим: сохраняем прежний mine для не затронутых emoji,
@@ -123,6 +109,12 @@ interface MessagesState {
   removeOptimisticByClient: (clientMsgId: string) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
+  /** Stage 1B.2 (Task 4): переигрывает операции воркера (rt:message_op) поверх
+   * окон — единственный писатель окна для входящих сообщений (заменяет прямой
+   * вызов applyIncoming из RT.newMessage). Окно, не загруженное на этой вкладке
+   * (`!byKey[op.key]`), пропускается — та же гарантия, что и у applyIncoming
+   * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
+  applyOps: (ops: MessageOp[]) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
@@ -338,6 +330,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
         const base = optimistic ? w.msgs.filter((x) => x !== optimistic) : w.msgs
         out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...base, merged]) }))
+        cur = { ...cur, ...out }
+      }
+      return out
+    }),
+
+  // Stage 1B.2 (Task 4): переигрывание операций воркера (rt:message_op) вместо
+  // самостоятельного разбора кадра. applyOp — та же чистая функция (insert/replace/
+  // remove), что и applyIncoming использовала внутри себя (semantics 1:1, см.
+  // core/realtime/messageOps.ts); здесь только маршрутизация по ключу окна + тот
+  // же гейт «окно не загружено на этой вкладке — пропустить», что и в applyIncoming.
+  applyOps: (ops) =>
+    set((s) => {
+      let out: Pick<MessagesState, 'byKey'> | Record<string, never> = {}
+      let cur = s
+      for (const op of ops) {
+        if (!cur.byKey[op.key]) continue
+        out = patch(cur as MessagesState, op.key, (w) => ({ msgs: applyOp(w.msgs, op) }))
         cur = { ...cur, ...out }
       }
       return out

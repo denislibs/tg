@@ -186,8 +186,14 @@ function dispatch(t: string, d: unknown, meta?: EventMeta): void {
 // Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate
 // (дубль с pts<=cursor сюда уже не доходит), поэтому спец-belt'ов дедупа сообщений
 // больше нет: catch-up-реплей отсекается funnel'ом до этой точки.
+// Stage 1B.2 (Task 3): cacheLive теперь возвращает операции, породившиеся в SSOT
+// (по одной на затронутое окно) — рассылаем их ОТДЕЛЬНЫМ кадром RT.messageOp В
+// ДОПОЛНЕНИЕ к rt:new_message. Оба кадра пока летят: старый путь (разбор кадра на
+// главном потоке) остаётся рабочим, новый (replay операций) переключается отдельной
+// задачей — откат одной строкой, если что-то пойдёт не так.
 function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
-  messages.cacheLive(e as never)
+  const ops = messages.cacheLive(e as never)
+  broadcast(RT.messageOp, { ops }, meta)
   broadcast(RT.newMessage, e, meta)
 }
 
