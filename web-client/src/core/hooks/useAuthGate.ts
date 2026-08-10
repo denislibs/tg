@@ -10,6 +10,9 @@ import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData } from '../../client/bootData'
 import { clearDialogsPersist } from '../../stores/dialogsPersist'
+import { resetAppState } from '../../stores/appState'
+import { resetStateCache } from '../state/loadState'
+import { useChatsStore } from '../../stores/chatsStore'
 import { runWhenUnlocked } from '../../stores/lockStore'
 
 export interface AuthGate {
@@ -52,8 +55,19 @@ export function useAuthGate(): AuthGate {
     void clearDialogsPersist(managers)
     void managers.auth.logout().then((r) => {
       // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
-      if (r.switched) location.reload()
-      else setAuthed(false)
+      if (r.switched) { location.reload(); return }
+      // Перезагрузки НЕ будет, значит boot.ts второй раз не отработает — а он
+      // единственное место, где State поднимается с диска в память. Без сброса
+      // конфиг прошлого аккаунта дожил бы до входа под следующим, и cache-first
+      // (папки/черновики/баланс) ОТМЕНИЛ бы запрос к сети, показав чужие данные.
+      // clearDialogsPersist выше чистит только диск.
+      resetStateCache()
+      resetAppState()
+      // Список диалогов тоже держится в памяти: без сброса чужие чаты видны до
+      // ответа /chats под новым аккаунтом.
+      useChatsStore.getState().setDialogs([])
+      useChatsStore.getState().setMe(null)
+      setAuthed(false)
     })
   }
 

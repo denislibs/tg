@@ -44,6 +44,24 @@ export function setAppStateSilent(patch: Partial<AppState>): void {
   useAppStateStore.setState(patch)
 }
 
+/**
+ * Забыть State текущего аккаунта. Зовётся на логауте БЕЗ перезагрузки страницы
+ * (`useAuthGate.logout`, ветка без мультиаккаунта): `boot.ts` второй раз не
+ * отработает, значит и `setAppStateSilent` больше не вызовется, и в памяти
+ * остался бы конфиг прошлого аккаунта.
+ *
+ * Раньше это частично маскировалось тем, что `loadFolders`/`loadDrafts` всё
+ * равно ходили в сеть и затирали результат. После перехода на cache-first
+ * непустая память ОТМЕНЯЕТ запрос — и следующий аккаунт увидел бы чужие папки,
+ * черновики и баланс, а write-through записал бы их под его скоуп.
+ *
+ * `true` вторым аргументом — замена состояния целиком, а не слияние: иначе
+ * ключи, которых нет в дефолтах, пережили бы сброс.
+ */
+export function resetAppState(): void {
+  useAppStateStore.setState(initialState(), true)
+}
+
 /** Реактивное чтение одного ключа — аналог `appState.folders` в tweb. */
 export function useAppStateKey<K extends keyof AppState>(key: K): AppState[K] {
   return useAppStateStore((s) => s[key])

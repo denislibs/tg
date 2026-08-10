@@ -71,10 +71,11 @@ describe('chatsStore: порядок производный', () => {
     expect(ids()).toEqual([2, 1])
   })
 
-  it('upsert живого сообщения поднимает диалог тем же правилом', () => {
+  it('повторное применение списка со свежей датой поднимает диалог', () => {
     useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
 
-    useChatsStore.getState().upsertDialog(dlg(1, '2026-08-09T13:00:00Z'))
+    // тот же путь, что у ответа сети: список применяется целиком
+    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T13:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
 
     expect(ids()).toEqual([1, 2])
   })
