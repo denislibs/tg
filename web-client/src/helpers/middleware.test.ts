@@ -39,12 +39,40 @@ describe('MiddlewareHelper: пины семантики tweb', () => {
     expect(childMiddleware()).toBe(false)
   })
 
-  it('destroy() дочернего отцепляет его от родителя, родитель живёт', () => {
+  it('destroy() дочернего отцепляет: parent.clean() уничтожает только оставшихся детей', () => {
     const parent = getMiddleware()
     const parentMiddleware = parent.get()
-    const child = parentMiddleware.create()
-    child.destroy()
-    expect(parentMiddleware()).toBe(true)
+
+    // Создаём двух детей
+    const child1 = parentMiddleware.create()
+    const child1Middleware = child1.get()
+
+    const child2 = parentMiddleware.create()
+    const child2Middleware = child2.get()
+
+    expect(child1Middleware()).toBe(true)
+    expect(child2Middleware()).toBe(true)
+
+    // Уничтожаем первого ребёнка явно (должен отцепиться от родителя)
+    const onDestroy1 = vi.fn()
+    child1.onDestroy(onDestroy1)
+    child1.destroy()
+    expect(onDestroy1).toHaveBeenCalledTimes(1)
+    expect(child1Middleware()).toBe(false)
+
+    // Во время parent.clean():
+    // - Если отцепление работало: iterates только над [child2], вызывает destroy только на child2
+    // - Если отцепления не было: iterates над [child1, child2], вызывает destroy дважды
+    // Проверяем через onDestroy1, который НЕ должен быть вызван повторно
+    parent.clean()
+
+    // Если отцепление сработало, onDestroy1 был вызван только один раз
+    expect(onDestroy1).toHaveBeenCalledTimes(1)
+
+    // Оба дети должны быть мертвы
+    expect(child1Middleware()).toBe(false)
+    expect(child2Middleware()).toBe(false)
+    expect(parentMiddleware()).toBe(false)
   })
 
   it('create() на протухшем middleware бросает {type: MIDDLEWARE}', () => {
