@@ -133,11 +133,13 @@ beforeEach(() => {
 const fakeManagers = { realtime: { markRead: async () => {} } }
 
 function Harness({ win }: { win: MessageWindow }) {
-  const { scrollRef, contentRef } = useChatScroll({
+  const { scrollRef, contentRef, showScrollDown } = useChatScroll({
     numericChatId: 1, isRealChat: true, win, paddingTop: 0, unreadDividerSeq: null, unreadStickyTop: 0,
   })
   return (
-    <div ref={scrollRef} data-scroll-container="1">
+    // data-show-scroll-down зеркалит состояние хука наружу — снаружи React-состояние
+    // не пощупать, а тест ниже проверяет именно ЕГО (не голый scrollTop).
+    <div ref={scrollRef} data-scroll-container="1" data-show-scroll-down={showScrollDown ? '1' : '0'}>
       <div ref={contentRef}>
         {win.msgs.map((m) => <div key={m.id} data-seq={m.seq} />)}
       </div>
@@ -274,5 +276,37 @@ describe('useChatScroll ↔ ScrollSaver (подключение)', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+// Долг Задачи 4: починка залипшей стрелки «вниз» (пин к низу стал молчаливым —
+// setScrollPositionSilently не рождает 'scroll', а showScrollDown раньше пересчитывался
+// ТОЛЬКО из обработчика скролла) была сделана без теста. Этот тест ловит именно её:
+// пин уходит из React-эффекта на изменение win (строка `useEffect(() => onAdditionalScroll(),
+// [win.msgs, win.reachedBottom, onAdditionalScroll])` в useChatScroll.ts), а не из
+// какого-либо scroll-события — убери этот эффект, и тест ниже покраснеет, потому что
+// НИКАКОГО дальнейшего вызова onAdditionalScroll не будет.
+describe('useChatScroll: стрелка «вниз» гаснет сама', () => {
+  it('win.reachedBottom: false → true БЕЗ scroll-события гасит showScrollDown', async () => {
+    // Окно уже во весь загруженный низ (dist=0), но реальный низ чата ещё не
+    // подтверждён — ровно сценарий tweb «прыгнули в середину истории»: стрелка
+    // видна, хотя scrollTop уже у низа ЗАГРУЖЕННОГО окна.
+    containerScrollHeight = 500
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2)], { reachedBottom: false })
+    const { scrollEl, rerender } = mount(win)
+
+    await act(async () => {
+      scrollEl.dispatchEvent(new Event('scroll'))
+      await flushScrollThrottle()
+    })
+    expect(scrollEl.dataset.showScrollDown).toBe('1')
+
+    // Пришла страница, подтвердившая реальный низ чата — БЕЗ единого scroll-события
+    // (ни пользователь не скроллил, ни setScrollPositionSilently его не родил).
+    const newWin = makeWin([msg(1), msg(2)], { reachedBottom: true })
+    await act(async () => { rerender(createElement(Harness, { win: newWin })) })
+
+    expect(scrollEl.dataset.showScrollDown).toBe('0')
   })
 })
