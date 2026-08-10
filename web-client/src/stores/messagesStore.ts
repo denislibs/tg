@@ -13,6 +13,7 @@ import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
+import { dedupAsc } from '../core/realtime/messageOps'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
@@ -51,23 +52,8 @@ export const EMPTY_WINDOW: ChatWindow = {
 // поэтому tentative-seq индекс больше не нужен — остался только этот reverse-индекс.
 const clientToWin = new Map<string, string>()
 
-// Ключ дедупа: оптимистичный бабл (временный id < 0, ещё не сверен с сервером)
-// ключуется по clientId — его seq лишь выдумка клиента (appendOptimistic:
-// maxSeq + 1) для порядка внизу окна, не настоящая позиция в истории чата.
-// Серверные сообщения (включая уже сверенные баблы — reconcileAck переставляет
-// id на положительный) по-прежнему ключуются по seq. Так пространства ключей не
-// пересекаются: чужое входящее с тем же tentativeSeq, что и у бабла, не может
-// вытеснить его из Map (Task 5 — до фикса dedupAsc ключевал всё по seq, и
-// последний вставленный побеждал, молча стирая бабл без ack/error).
-function dedupKey(m: Message): string {
-  return m.clientId && m.id < 0 ? `c:${m.clientId}` : `s:${m.seq}`
-}
-
-function dedupAsc(list: Message[]): Message[] {
-  const byKey = new Map<string, Message>()
-  for (const m of list) byKey.set(dedupKey(m), m)
-  return Array.from(byKey.values()).sort((a, b) => a.seq - b.seq)
-}
+// dedupAsc/dedupKey вынесены в core/realtime/messageOps.ts (Stage 1B.2, Task 2) —
+// та же семантика нужна чистой applyOp над окном без стора; см. комментарий там.
 
 // Абсолютный агрегат реакций из серверного counts. `mine` не приходит с сервера
 // (counts безличный) → деривим: сохраняем прежний mine для не затронутых emoji,
