@@ -12,6 +12,10 @@ type Task =
   | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number }
   | { kind: 'event'; event: string; payload: unknown }
 
+/** Метаданные realtime-события. Заполняются ТОЛЬКО funnel'ом воркера —
+ *  единственным местом, которое знает происхождение кадра. */
+export interface EventMeta { pts?: number; catchUp?: boolean }
+
 interface Awaiting {
   resolve: (v: unknown) => void
   reject: (e: Error) => void
