@@ -1,9 +1,11 @@
-// Task 4 (страховочная сетка перед replay-рефактором): пины tentativeSeq —
-// appendOptimistic присваивает баблу seq = maxSeq + 1 (messagesStore.ts:~224),
-// dedupAsc схлопывает список по seq, где последний вставленный побеждает
-// (messagesStore.ts:~54). Один тест здесь фиксирует ИЗВЕСТНЫЙ ДЕФЕКТ (не
-// желаемое поведение!) — коллизия tentativeSeq с seq чужого входящего съедает
-// оптимистичный бабл; чинит это задача 5. Остальные два — пины на здоровые
+// Task 4/5 (страховочная сетка перед replay-рефактором): пины tentativeSeq —
+// appendOptimistic присваивает баблу seq = maxSeq + 1 (messagesStore.ts:~224).
+// Раньше dedupAsc ключевал ВЕСЬ список по seq (последний вставленный побеждает,
+// messagesStore.ts:~54), и коллизия tentativeSeq с seq чужого входящего съедала
+// оптимистичный бабл молча (без ack/error) — задача 5 это починила: оптимистичный
+// бабл (clientId + временный id < 0) ключуется по clientId, серверные сообщения —
+// по seq, так что пространства ключей не пересекаются. Тест ниже пинит ИСПРАВНОЕ
+// поведение: бабл переживает коллизию seq. Остальные два теста — пины на здоровые
 // сценарии (два оптимистичных подряд, ack одного не ломает другой).
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useMessagesStore } from './messagesStore'
@@ -12,13 +14,6 @@ import type { Message } from '../core/models'
 const CHAT = 9
 const ME = 1
 const OTHER = 2
-
-function seedMsg(seq: number, id: number): Message {
-  return {
-    id, chatId: CHAT, seq, senderId: OTHER, type: 'text', text: 'seed',
-    replyToId: null, mediaId: null, createdAt: '2026-08-10T09:00:00Z', threadRootId: null,
-  }
-}
 
 // Чужое входящее (НЕ эхо своей отправки) — без clientId, как реальный new_message
 // от другого пользователя.
@@ -39,29 +34,24 @@ describe('tentativeSeq pins', () => {
     useMessagesStore.getState().setWindow(String(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
   })
 
-  it('ДЕФЕКТ (см. задачу 5): чужое входящее с тем же tentativeSeq стирает оптимистичный бабл', () => {
+  it('чужое входящее с тем же tentativeSeq не вытесняет оптимистичный бабл (задача 5)', () => {
     const st = useMessagesStore.getState()
-    st.setWindow(String(CHAT), { msgs: [seedMsg(10, 500)], reachedTop: true, reachedBottom: true })
     st.appendOptimistic(String(CHAT), 'my draft', ME, 'c-opt')
 
-    // До коллизии: seed(seq=10) + оптимистичный бабл (tentativeSeq=11).
-    expect(bubbles()).toHaveLength(2)
-    expect(bubbles().some((m) => m.clientId === 'c-opt')).toBe(true)
+    // Пустое окно → tentativeSeq бабла = maxSeq(0) + 1 = 1.
+    expect(bubbles()).toHaveLength(1)
+    expect(bubbles()[0]!.clientId).toBe('c-opt')
 
-    // Чужое входящее занимает тот же seq=11, что и tentativeSeq оптимистичного бабла.
-    st.applyIncoming(CHAT, foreignIncoming(11, 501))
+    // Чужое входящее занимает тот же seq=1, что и tentativeSeq оптимистичного бабла.
+    st.applyIncoming(CHAT, foreignIncoming(1, 501))
 
-    // ФАКТИЧЕСКИЙ (дефектный) результат: dedupAsc схлопывает по seq — последний
-    // вставленный (чужое входящее) побеждает над оптимистичным баблом. Проверяем
-    // не просто длину окна, а КТО именно остался на месте seq=11.
-    expect(bubbles()).toHaveLength(2)
-    const atSeq11 = bubbles().find((m) => m.seq === 11)
-    expect(atSeq11?.id).toBe(501) // выжило чужое входящее...
-    expect(atSeq11?.clientId).toBeUndefined() // ...а не оптимистичный бабл
-    expect(bubbles().some((m) => m.clientId === 'c-opt')).toBe(false) // бабл потерян
-
-    // Наблюдаемо для пользователя: он отправил сообщение, оно на миг появилось,
-    // а затем БЕЗ ack/error молча исчезло с экрана — заменено чужим сообщением.
+    // ИСПРАВНОЕ поведение: оптимистичный бабл (ключ дедупа — clientId, у него нет
+    // серверного id) и чужое входящее (ключ дедупа — seq) не конкурируют за одну
+    // ячейку — оба остаются в окне.
+    const list = bubbles()
+    expect(list).toHaveLength(2)
+    expect(list.some((m) => m.clientId === 'c-opt')).toBe(true)
+    expect(list.some((m) => m.id === 501)).toBe(true)
   })
 
   it('два оптимистичных подряд без ack между ними: оба присутствуют, seq различны', () => {
