@@ -1,11 +1,12 @@
 // src/core/realtime/workerScope.ts
 //
-// Воркерный инстанс RootScope (Stage 1C.1) — вынесен из worker.ts в модуль с явными
-// зависимостями, той же формы, что globalFunnel.ts/channelFunnel.ts: worker.ts
-// неимпортируем в тестах (грузит токен через IndexedDB на верхнем уровне модуля —
-// «ReferenceError: indexedDB is not defined» в happy-dom/vitest), поэтому проводка
-// события (создание RootScope, порт-веер, приём кадра от вкладки) живёт здесь и
-// тестируется напрямую; worker.ts лишь собирает зависимости (ports) и делегирует.
+// Воркерный инстанс RootScope (Stage 1C.1) — вынесен из bind() (сейчас — workerCore.ts,
+// исторически — тело worker.ts) в модуль с явными зависимостями, той же формы, что
+// globalFunnel.ts/channelFunnel.ts: тестируется здесь напрямую фейковыми портами, без
+// конструирования всего createWorkerCore() (а значит и без синхронных обращений к
+// IndexedDB в newCursor()/newConnectionManager(), которые в реальности и требовали
+// полифилла — не токен, как ошибочно утверждала прежняя версия этого комментария).
+// workerCore.ts::bind() лишь собирает зависимости (ports) и делегирует сюда.
 
 import { createRootScope, type RootScope, type BroadcastEventsListeners } from '../../lib/rootScope'
 import type { EventMeta } from '../../rpc/superMessagePort'

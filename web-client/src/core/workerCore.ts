@@ -346,6 +346,12 @@ export function createWorkerCore() {
   function bind(ep: Endpoint) {
     const smp = new SuperMessagePort(ep)
     ports.push(smp)
+    // Вешает RPC-хендлер 'manager' (managersProxy.ts) — без вызова ни один из 32
+    // менеджеров не отвечает вкладке, приложение мертво на старте, а полный прогон
+    // тестов этого не заметит (сам registerManagers юнит-тестируется в
+    // managersProxy.test.ts, но что bind() её ЗОВЁТ — нет). Покрыто отдельно:
+    // workerCore.test.ts зовёт настоящий bind() и invoke()-ит менеджер через фейковый
+    // порт, проверяя, что ответ реально доезжает.
     registerManagers(smp, registry)
     // Задача 2 (worker-rootscope): вкладка закрылась (Web Lock освободился, либо
     // фолбэк beforeunload) — снять мёртвый порт из ports[], иначе он копится там
@@ -361,6 +367,9 @@ export function createWorkerCore() {
     // SW↔SharedWorker мост (§ PR-2a): окно (PR-2c) шлёт по этому же порту control-кадр
     // dnp-bridge-port с переданным MessagePort к SW. SMP такой кадр игнорит (нет kind) —
     // ловим сырым слушателем и подключаем мост к каналу. Активно лишь при DNP-ON.
+    // Сознательно НЕ покрыто (CLAUDE.md «Тесты»): AppConfig.dnp.enabled в тестовом
+    // окружении false по умолчанию (VITE_DNP_ENABLED нигде не задан), ветка ниже не
+    // исполняется ни в workerCore.test.ts, ни где-либо ещё в наборе.
     if (fileDownload) {
       ep.addEventListener('message', (ev: MessageEvent) => {
         const d = ev.data as { t?: string } | null

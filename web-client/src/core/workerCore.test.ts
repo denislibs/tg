@@ -4,6 +4,8 @@
 // см. workerCore.ts). Раньше bind() нельзя было ВЫЗВАТЬ в тесте — только читать
 // исходник текстом; теперь зовём настоящий прод-код (тот же bind(), что worker.ts
 // делегирует в start()) через фейковые эндпоинты и проверяем эффект, а не текст.
+// Покрыты ВСЕ строки проводки bind(), включая обнаруженную ревью четвёртую
+// (registerManagers) — см. CLAUDE.md «Тесты» про критерий приёмки для таких файлов.
 //
 // fake-indexeddb — ПЕРВАЯ строка модуля: newCursor()/newConnectionManager()
 // (вызываются синхронно внутри createWorkerCore()) читают IndexedDB при
@@ -113,5 +115,24 @@ describe('createWorkerCore().bind — проводка портов (замен�
 
     core.workerScope.broadcast('rt:resync', { after: 'disconnect' })
     expect(gotA).toEqual([])
+  })
+
+  // Пятый пункт (добавлен по итогам ревью первого прогона этого файла): проводки в
+  // bind() на самом деле ЧЕТЫРЕ строки, не три — регистрация RPC-хендлера 'manager'
+  // (registerManagers) осталась незамеченной обоими предыдущими списками (брифом
+  // Задачи 2 и текстовым инвариантом, который эта задача заменяет). Без неё ни один
+  // из 32 менеджеров не отвечает вкладке — RPC-мост мёртв, но полный прогон тестов
+  // молчит: registerManagers юнит-тестируется в managersProxy.test.ts, а что bind()
+  // её ЗОВЁТ — нет. persist.stateKey взят как дешёвый метод (пишет в уже
+  // полифилленный IndexedDB, без мокания REST/сети).
+  it('bind(ep) регистрирует RPC-хендлер «manager» (registerManagers) — invoke с вкладки реально доезжает до менеджера и обратно', async () => {
+    const core = createWorkerCore()
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    const tab = new SuperMessagePort(epTab)
+
+    await expect(
+      tab.invoke('manager', { name: 'persist', method: 'stateKey', args: ['recentSearch', ['x']] }),
+    ).resolves.toBeUndefined()
   })
 })
