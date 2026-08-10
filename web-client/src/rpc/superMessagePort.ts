@@ -4,6 +4,12 @@
 export interface Endpoint {
   postMessage(message: unknown, transfer?: Transferable[]): void
   addEventListener(type: 'message', listener: (ev: MessageEvent) => void): void
+  /** Опциональны: MessagePort/SharedWorker-порт их умеют, «сырой» self воркера
+   *  (фолбэк без SharedWorker, worker.ts) — тоже (self.close() корректен там,
+   *  т.к. в этом режиме воркер эксклюзивно принадлежит одной вкладке). Нужны
+   *  только disconnectPort() ниже — снять слушатель тихо, если API нет. */
+  removeEventListener?(type: 'message', listener: (ev: MessageEvent) => void): void
+  close?(): void
   start?: () => void
 }
 
@@ -11,6 +17,12 @@ type Task =
   | { kind: 'invoke'; id: number; type: string; payload: unknown }
   | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number }
   | { kind: 'event'; event: string; payload: unknown; meta?: EventMeta }
+  /** Web Locks (порт tweb superMessagePort.ts:220-236 + :505-515). Отправитель —
+   *  вкладка: id взятого navigator.locks-лока сразу после подключения порта, либо
+   *  '' — фолбэк без Web Locks API (кадр beforeunload, см. bootstrap.ts). Приёмник —
+   *  воркер: непустой id → сам запрашивает тот же лок и ждёт, пока он не освободится
+   *  (вкладка умерла); пустой id → трактует как немедленное отключение. */
+  | { kind: 'lock'; id: string }
 
 /** Метаданные realtime-события. Заполняются ТОЛЬКО funnel'ом воркера —
  *  единственным местом, которое знает происхождение кадра. */
@@ -32,6 +44,11 @@ export class SuperMessagePort {
    *  слушателей (on). Единственный текущий потребитель — воркер, который
    *  ретранслирует кадр вкладки остальным вкладкам (см. onAny). */
   private anyListeners: Array<(event: string, payload: unknown, meta?: EventMeta) => void> = []
+  /** Задача 2 (worker-rootscope): колбэк отключения порта — worker.ts вешает на
+   *  него снятие из ports[] (indexOfAndSplice). Срабатывает РОВНО один раз — см.
+   *  disconnectPort. */
+  private onPortDisconnect: (() => void) | undefined
+  private portDisconnected = false
 
   constructor(private ep: Endpoint) {
     ep.addEventListener('message', this.onMessage)
@@ -98,6 +115,51 @@ export class SuperMessagePort {
     this.post({ kind: 'event', event, payload, meta })
   }
 
+  /** Tab side (bootstrap.ts): сообщить воркеру id взятого Web Lock — сразу после
+   *  подключения порта. Пустая строка — фолбэк без Web Locks API (beforeunload):
+   *  приёмник трактует её как немедленное отключение, см. handleLockTask. */
+  sendLock(id: string): void {
+    this.post({ kind: 'lock', id })
+  }
+
+  /** Worker side (Задача 2): подписка на отключение ЭТОГО порта (лок вкладки
+   *  освободился — вкладка умерла). worker.ts вешает снятие из ports[]. */
+  setOnPortDisconnect(cb: () => void): void {
+    this.onPortDisconnect = cb
+  }
+
+  /**
+   * Идемпотентное отключение порта (порт tweb detachPort, superMessagePort.ts:287-309, без
+   * ping/heldLocks — их у нас нет): снять слушатель, закрыть эндпоинт (если
+   * умеет), отклонить зависшие invoke (dispose) и дёрнуть onPortDisconnect
+   * РОВНО один раз. Повторный вызов (двойное срабатывание лока, гонка close+lock)
+   * — no-op, флаг portDisconnected гарантирует однократность колбэка.
+   */
+  private disconnectPort(): void {
+    if (this.portDisconnected) return
+    this.portDisconnected = true
+    this.ep.removeEventListener?.('message', this.onMessage)
+    this.ep.close?.()
+    this.dispose('port disconnected (lock released)')
+    this.onPortDisconnect?.()
+  }
+
+  /**
+   * Worker side: обработка кадра `lock` от вкладки (порт tweb processLockTask,
+   * :503-515). Непустой id — запрашиваем ТОТ ЖЕ Web Lock: колбэк выполнится
+   * только когда вкладка (держатель) умрёт и лок освободится — тогда отключаем
+   * порт. Пустой id — фолбэк beforeunload (нет Web Locks API на стороне вкладки)
+   * ИЛИ сам воркер лишён navigator.locks — трактуем как немедленное отключение,
+   * ждать нечего (комментарий tweb :250 — на пинг намеренно не полагаемся).
+   */
+  private handleLockTask(id: string): void {
+    if (!id || typeof navigator === 'undefined' || !('locks' in navigator)) {
+      this.disconnectPort()
+      return
+    }
+    void navigator.locks.request(id, () => { this.disconnectPort() })
+  }
+
   private post(task: Task, transfer?: Transferable[]) {
     this.ep.postMessage(task, transfer)
   }
@@ -131,6 +193,8 @@ export class SuperMessagePort {
       for (const cb of this.listeners.get(task.event) ?? []) cb(task.payload, task.meta)
       // catch-all — после адресных, чтобы порядок доставки был предсказуем.
       for (const cb of this.anyListeners) cb(task.event, task.payload, task.meta)
+    } else if (task.kind === 'lock') {
+      this.handleLockTask(task.id)
     }
   }
 }

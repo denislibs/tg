@@ -31,7 +31,34 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: 
     ep = new Worker(new URL('../core/worker.ts', import.meta.url), { type: 'module' }) as unknown as Endpoint
   }
   const smp = new SuperMessagePort(ep)
+  attachLock(smp)
   const managers = createManagers<Managers>(smp)
   cached = { smp, managers, ep }
   return cached
+}
+
+/**
+ * Web Locks (порт tweb superMessagePort.ts:220-236) — вкладка сигнализирует
+ * воркеру, что она жива, держа лок со случайным id: пока лок удерживается,
+ * воркерный navigator.locks.request(id, cb) (см. handleLockTask в
+ * superMessagePort.ts) не срабатывает. Промис колбэка НИКОГДА не резолвится
+ * сам — лок держится до тех пор, пока жив browsing context вкладки; браузер
+ * освобождает его автоматически при закрытии/навигации, будильник воркера
+ * дёргается только тогда и порт снимается с ports[] (Задача 2, worker.ts:bind).
+ * Фолбэк без Web Locks API — beforeunload шлёт кадр `lock` с пустым id,
+ * приёмник трактует его как немедленное отключение (см. комментарий в
+ * handleLockTask). Отсутствие ОБОИХ (нет ни locks, ни window) не роняет
+ * вкладку — просто порт останется в ports[] воркера до его перезапуска, как и
+ * было до Задачи 2.
+ */
+function attachLock(smp: SuperMessagePort): void {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator) {
+    const id = `smp-${Math.random().toString(36).slice(2)}`
+    void navigator.locks.request(id, () => new Promise<void>(() => {
+      // Никогда не резолвится намеренно — лок живёт, пока жива вкладка.
+    }))
+    smp.sendLock(id)
+  } else if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => { smp.sendLock('') })
+  }
 }

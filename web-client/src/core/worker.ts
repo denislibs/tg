@@ -52,6 +52,7 @@ import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
 import { newWorkerScope } from './realtime/workerScope'
+import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
 const tokens = new TokenStore()
 // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
@@ -350,6 +351,12 @@ function bind(ep: Endpoint) {
   const smp = new SuperMessagePort(ep)
   ports.push(smp)
   registerManagers(smp, registry)
+  // Задача 2 (worker-rootscope): вкладка закрылась (Web Lock освободился, либо
+  // фолбэк beforeunload) — снять мёртвый порт из ports[], иначе он копится там
+  // до конца жизни воркера и получает все broadcast/receiveFrom вечно. Сам лок
+  // берёт и держит вкладка (src/client/bootstrap.ts); superMessagePort.ts здесь
+  // лишь запрашивает тот же лок и ждёт его освобождения (handleLockTask).
+  smp.setOnPortDisconnect(() => { indexOfAndSplice(ports, smp) })
   // Событие, порождённое вкладкой (rootScope.dispatchEvent на главном потоке) —
   // workerScope.receiveFrom: сначала ЛОКАЛЬНО (только воркерные подписчики, БЕЗ
   // обратной отправки в порт), затем ретрансляция ОСТАЛЬНЫМ вкладкам (источнику не
