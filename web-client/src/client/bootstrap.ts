@@ -50,14 +50,38 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: 
  * handleLockTask). Отсутствие ОБОИХ (нет ни locks, ни window) не роняет
  * вкладку — просто порт останется в ports[] воркера до его перезапуска, как и
  * было до Задачи 2.
+ *
+ * Ревью (Б-1): sendLock(id) шлётся ТОЛЬКО изнутри колбэка гранта — 1:1 с tweb
+ * (:226-229, resendLockTask вызывается там же). Если слать кадр ДО гранта, а
+ * request() затем отклонится или лок достанется не этой вкладке (opaque
+ * origin/sandboxed iframe → SecurityError, отказ в storage-доступе), воркер
+ * получит лок ПЕРВЫМ и его колбэк сработает немедленно на ЖИВОЙ вкладке —
+ * disconnectPort() снимет порт, invoke зависнут без дефолтного таймаута,
+ * реконнекта нет. Экспортирован ради теста (bootstrap.lock.test.ts) — без
+ * экспорта мутация тела/вызова этой функции не ловится НИ ОДНИМ тестом
+ * (обнаружено ревью, Б-3).
  */
-function attachLock(smp: SuperMessagePort): void {
-  if (typeof navigator !== 'undefined' && 'locks' in navigator) {
+export function attachLock(smp: SuperMessagePort): void {
+  // Проверяем ЗНАЧЕНИЕ navigator.locks, не `'locks' in navigator` — happy-dom
+  // (bootstrap.lock.test.ts) объявляет его геттером-заглушкой, который ЕСТЬ
+  // (`in` даёт true), но возвращает null; truthy-проверка покрывает и это, и
+  // реальные браузеры без Web Locks (свойства там нет вовсе).
+  if (typeof navigator !== 'undefined' && navigator.locks) {
     const id = `smp-${Math.random().toString(36).slice(2)}`
-    void navigator.locks.request(id, () => new Promise<void>(() => {
-      // Никогда не резолвится намеренно — лок живёт, пока жива вкладка.
-    }))
-    smp.sendLock(id)
+    navigator.locks.request(id, () => {
+      // Грант получен — вкладка реально держит лок. Только теперь безопасно
+      // сообщить id воркеру.
+      smp.sendLock(id)
+      return new Promise<void>(() => {
+        // Никогда не резолвится намеренно — лок живёт, пока жива вкладка.
+      })
+    }).catch((e: unknown) => {
+      // request() может отклониться, не выдав лок вообще (SecurityError и
+      // т.п.) — тогда кадр lock просто не уходит, порт останется в ports[]
+      // воркера до его перезапуска (деградация к поведению «до Задачи 2»,
+      // не отказ живой вкладке). Не глотать молча — хотя бы в консоль.
+      console.warn('[bootstrap] navigator.locks.request отклонён — Web Lock не взят, порт не будет автоматически снят при закрытии вкладки', e)
+    })
   } else if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => { smp.sendLock('') })
   }

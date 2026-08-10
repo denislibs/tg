@@ -8,23 +8,31 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { SuperMessagePort, type Endpoint } from './superMessagePort'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
-// Пара эндпоинтов с синхронной доставкой (как в superMessagePort.test.ts), плюс
-// removeEventListener: снимает слушатель СВОЕЙ стороны — постMessage от другой
-// стороны после этого превращается в no-op (модель реального MessagePort после
-// removeEventListener/close). Этим мы проверяем сценарий 2 брифа («последующий
-// dispatchEvent в него не пишет») на транспортном уровне, а не только в ports[].
+// Пара эндпоинтов с синхронной доставкой (как в superMessagePort.test.ts).
+// removeEventListener снимает слушатель СВОЕЙ стороны; close() (Б-4 ревью —
+// фейк ОБЯЗАН его иметь, иначе disconnectPort()'ный `this.ep.close?.()`
+// (самая опасная строка правки) не выполняется НИ В ОДНОМ тесте) закрывает
+// канал в ОБЕ стороны — модель реального MessagePort.close(): закрытый порт
+// не шлёт и не принимает. Этим мы проверяем сценарий 2 брифа («последующий
+// dispatchEvent в него не пишет») по-настоящему на транспортном уровне, а не
+// как следствие уже проверенной пустоты ports[] (Б-5 ревью — прежняя версия
+// гоняла emit по уже пустому ports[], что тавтологично: цикл с нуля итераций
+// ничего не доказывает сверх того, что доказала пустота массива).
 function pair(): [Endpoint, Endpoint] {
   let listenerA: ((ev: MessageEvent) => void) | undefined
   let listenerB: ((ev: MessageEvent) => void) | undefined
+  let closed = false
   const epA: Endpoint = {
-    postMessage: (m) => listenerB?.({ data: m } as MessageEvent),
+    postMessage: (m) => { if (!closed) listenerB?.({ data: m } as MessageEvent) },
     addEventListener: (_t, l) => { listenerA = l },
     removeEventListener: () => { listenerA = undefined },
+    close: () => { closed = true },
   }
   const epB: Endpoint = {
-    postMessage: (m) => listenerA?.({ data: m } as MessageEvent),
+    postMessage: (m) => { if (!closed) listenerA?.({ data: m } as MessageEvent) },
     addEventListener: (_t, l) => { listenerB = l },
     removeEventListener: () => { listenerB = undefined },
+    close: () => { closed = true },
   }
   return [epA, epB]
 }
@@ -89,9 +97,13 @@ describe('SuperMessagePort — Web Locks (отключение вкладки)',
     fake.release('lock-1')
 
     expect(ports).toEqual([])
-    // Веер workerScope.broadcast читает deps.ports на каждой отправке (см.
-    // workerScope.ts) — раз порта в массиве больше нет, emit на него не зовётся.
-    for (const p of ports) p.emit('tick', 1)
+    // Прямой emit НА САМ отключённый порт (не цикл по уже опустевшему ports[] —
+    // это было бы тавтологией, см. комментарий у pair() / Б-5 ревью): реальная
+    // проверка транспортного уровня — disconnectPort() закрыл epWorker
+    // (`this.ep.close?.()`), закрытый канал по фейку не доставляет НИ В ОДНУ
+    // сторону, поэтому даже прямой вызов emit на уже отключённом worker не
+    // достигает tab-слушателя.
+    worker.emit('tick', 1)
     expect(received).toEqual([])
   })
 
@@ -125,6 +137,24 @@ describe('SuperMessagePort — Web Locks (отключение вкладки)',
     tab.sendLock('')
 
     expect(ports).toEqual([])
+  })
+
+  it('непустой id, но у воркера нет navigator.locks → порт НЕ отключается (Б-2: деградация, а не отказ живой вкладке)', () => {
+    uninstallFakeLocks() // воркер лишён Web Locks API — но вкладка id всё же прислала
+    const [epTab, epWorker] = pair()
+    const tab = new SuperMessagePort(epTab)
+    const worker = new SuperMessagePort(epWorker)
+    const ports: SuperMessagePort[] = [worker]
+    const onDisconnect = vi.fn(() => { indexOfAndSplice(ports, worker) })
+    worker.setOnPortDisconnect(onDisconnect)
+
+    // Непустой id доказывает, что вкладка ЖИВА (см. attachLock — кадр уходит
+    // только из колбэка гранта) — воркер не умеет проверить лок сам, но это
+    // НЕ повод рвать живое соединение (в отличие от пустого id — см. тест выше).
+    tab.sendLock('lock-7')
+
+    expect(onDisconnect).not.toHaveBeenCalled()
+    expect(ports).toEqual([worker])
   })
 
   it('живая вкладка не отцепляется — лок удерживается, disconnect не срабатывает', () => {
