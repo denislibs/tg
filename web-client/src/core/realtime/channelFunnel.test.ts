@@ -5,7 +5,7 @@ import { newChannelFunnel, type ChannelDiff } from './channelFunnel'
 // Тестовый жгут: записываем dispatch(t,pts?), храним курсоры в памяти, difference —
 // программируемая очередь ответов.
 function harness(diffs: ChannelDiff[] = []) {
-  const dispatched: { t: string; d: unknown }[] = []
+  const dispatched: { t: string; d: unknown; pts?: number; catchUp?: boolean }[] = []
   const saved = new Map<number, number>()
   const stored = new Map<number, number>()
   let diffIdx = 0
@@ -13,7 +13,7 @@ function harness(diffs: ChannelDiff[] = []) {
     return diffs[diffIdx++] ?? { updates: [], pts: _since, slice: false }
   })
   const funnel = newChannelFunnel({
-    dispatch: (t, d) => dispatched.push({ t, d }),  // meta проверяется отдельным тестом ниже
+    dispatch: (t, d, meta) => dispatched.push({ t, d, pts: meta?.pts, catchUp: meta?.catchUp }),
     getDifference,
     loadPts: async (id) => stored.get(id) ?? null,
     savePts: (id, pts) => saved.set(id, pts),
@@ -113,5 +113,25 @@ describe('channelFunnel gap → difference', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// Добор пропусков (ревью Этапа 1A): meta-тест выше проверял только seed-ветку и
+// difference; основная ветка applyLive (курсор уже сидирован) и drainPending
+// оставались непокрытыми — мутация catchUp в них проскакивала бы мимо тестов.
+describe('channelFunnel meta — основная ветка и drainPending', () => {
+  it('основная ветка applyLive (курсор сидирован, pts===cursor+1) помечает catchUp:false', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, {})   // seed — отдельная ветка, не эта
+    h.funnel.applyLive(1, 'new_message', 6, {})   // основная ветка: pts===cursor+1
+    expect(h.dispatched[1]).toMatchObject({ t: 'new_message', pts: 6, catchUp: false })
+  })
+
+  it('drainPending: придержанный из-за дыры кадр после её закрытия применяется с catchUp:false', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, {})            // seed → cursor 5
+    h.funnel.applyLive(1, 'new_message', 7, { hole: true }) // gap → буфер, не применён
+    h.funnel.applyLive(1, 'new_message', 6, {})             // next закрывает дыру → дренаж 7
+    expect(h.dispatched[2]).toMatchObject({ t: 'new_message', pts: 7, catchUp: false })
   })
 })
