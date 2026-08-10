@@ -89,7 +89,7 @@ describe('SuperMessagePort — meta во втором аргументе кад�
 
 describe('SuperMessagePort — ретрансляция воркером (invokeExceptSource)', () => {
   it('событие, пришедшее в воркер от вкладки A, доезжает до вкладки B и НЕ возвращается в A', () => {
-    // Имитация проводки core/worker.ts:bind() — на воркере по одному SMP на
+    // Имитация проводки core/workerCore.ts:bind() — на воркере по одному SMP на
     // каждую подключённую вкладку; onAny + рассылка всем портам, кроме источника.
     const [epWA, epAW] = pair()
     const [epWB, epBW] = pair()

@@ -74,7 +74,7 @@ export interface MessagesDeps {
 export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
-  // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
+  // (UI покажет плейсхолдер). Живые сообщения дешифруются в workerCore.ts.
   async function decryptPage(list: Message[]): Promise<Message[]> {
     if (!decryptSecret) return list
     return Promise.all(list.map(async (m) => {

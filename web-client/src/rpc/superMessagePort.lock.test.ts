@@ -1,7 +1,7 @@
 // Задача 2 (worker-rootscope): отключение вкладки через Web Locks, порт tweb
 // superMessagePort.ts:220-236 (вкладка берёт лок) + :503-515 (воркер ждёт его
 // освобождения). Тестируем реальный SuperMessagePort — не копию: приёмник
-// (симулирует worker.ts:bind()) реально зовёт setOnPortDisconnect и
+// (симулирует workerCore.ts:bind()) реально зовёт setOnPortDisconnect и
 // indexOfAndSplice из вендореного helpers/array/indexOfAndSplice, как в
 // продакшене, — мутация любого из двух ловится этими тестами (Шаг 6 брифа).
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -87,7 +87,7 @@ describe('SuperMessagePort — Web Locks (отключение вкладки)',
     const [epTab, epWorker] = pair()
     const tab = new SuperMessagePort(epTab)
     const worker = new SuperMessagePort(epWorker)
-    // Ровно та проводка, что worker.ts:bind() вешает на каждый подключённый порт.
+    // Ровно та проводка, что workerCore.ts:bind() вешает на каждый подключённый порт.
     const ports: SuperMessagePort[] = [worker]
     worker.setOnPortDisconnect(() => { indexOfAndSplice(ports, worker) })
     const received: unknown[] = []

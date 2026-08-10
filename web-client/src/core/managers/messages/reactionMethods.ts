@@ -81,7 +81,7 @@ function mapStarSenders(rows: RawStarSender[] | undefined): StarSender[] {
 }
 
 // Stage 1B.3 (Task 5): cacheReaction/cacheStarReaction ниже СОЗНАТЕЛЬНО НЕ
-// переведены на операцию patch (worker.ts: типы reaction/star_reaction остаются
+// переведены на операцию patch (workerCore.ts: типы reaction/star_reaction остаются
 // без cache в APPLY-реестре, окно правит storeProjection.ts из сырого кадра —
 // RT.reaction/RT.starReaction → applyReaction/applyReactionOptimistic/
 // applyStarReaction). Карта обогащений (docs/research/2026-08-10-message-

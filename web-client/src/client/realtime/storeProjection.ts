@@ -95,7 +95,7 @@ export function registerStoreProjection(managers: Managers): void {
     const evt = m as NewMessageEvt
     // Stage 1B.2 (Task 4): вставку/дедуп/слияние с оптимистикой по clientId уже
     // сделала операция RT.messageOp — routeNewMessage шлёт её ПЕРВЫМ кадром, до
-    // этого события (worker.ts:routeNewMessage), и APPLY[RT.messageOp] выше уже
+    // этого события (workerCore.ts:routeNewMessage), и APPLY[RT.messageOp] выше уже
     // применил её к окну. applyIncoming здесь больше не зовём — единственный
     // писатель окна для входящих теперь applyOps. markRead/unread-below решает
     // Chat (нужны scroll/focus, которых тут нет).

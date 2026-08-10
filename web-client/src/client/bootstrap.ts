@@ -44,7 +44,7 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: 
  * superMessagePort.ts) не срабатывает. Промис колбэка НИКОГДА не резолвится
  * сам — лок держится до тех пор, пока жив browsing context вкладки; браузер
  * освобождает его автоматически при закрытии/навигации, будильник воркера
- * дёргается только тогда и порт снимается с ports[] (Задача 2, worker.ts:bind).
+ * дёргается только тогда и порт снимается с ports[] (Задача 2, workerCore.ts:bind).
  * Фолбэк без Web Locks API — beforeunload шлёт кадр `lock` с пустым id,
  * приёмник трактует его как немедленное отключение (см. комментарий в
  * handleLockTask). Отсутствие ОБОИХ (нет ни locks, ни window) не роняет

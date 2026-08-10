@@ -1,9 +1,10 @@
 // Пины воркерной проводки RootScope (Stage 1C.1, задача 1): newWorkerScope —
 // единственный держатель воркерного инстанса RootScope + порта-веера по всем
-// подключённым вкладкам, вынесенный из worker.ts (та же причина, что у
-// globalFunnel.ts/channelFunnel.ts — worker.ts неимпортируем в тестах, см.
-// комментарий в начале workerScope.ts). Здесь тестируется НАСТОЯЩИЙ прод-код
-// (worker.ts делегирует в этот же newWorkerScope), а не его копия.
+// подключённым вкладкам, вынесенный из bind() (сейчас — workerCore.ts, исторически —
+// тело worker.ts), той же формы, что globalFunnel.ts/channelFunnel.ts — см.
+// комментарий в начале workerScope.ts. Здесь тестируется НАСТОЯЩИЙ прод-код
+// (workerCore.ts делегирует в этот же newWorkerScope; worker.ts — тонкая точка
+// входа поверх createWorkerCore(), см. CLAUDE.md «Тесты»), а не его копия.
 //
 // broadcast/receiveFrom не деструктурируются из возвращённого объекта: оба
 // объявлены в newWorkerScope как method-shorthand (по спецификации задачи) —
