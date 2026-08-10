@@ -5,7 +5,7 @@ import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { useStealthState } from '../core/hooks/useStealthState'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { HttpError } from '../core/net/restClient'
 
 // tweb appConfig stories_stealth_past/future_period.
@@ -39,15 +39,15 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
     setBusy(true)
     try {
       await managers.stories.activateStealth()
-      uiEvents.emit('ui:toast', t('Stealth Mode On'))
+      rootScope.dispatchEvent('ui:toast', t('Stealth Mode On'))
       onClose()
     } catch (e) {
       if (e instanceof HttpError && e.status === 409) {
-        uiEvents.emit('ui:toast', t('Stealth Mode is on a cooldown'))
+        rootScope.dispatchEvent('ui:toast', t('Stealth Mode is on a cooldown'))
       } else if (e instanceof HttpError && e.status === 503) {
         setUnavailable(true)
       } else {
-        uiEvents.emit('ui:toast', t('Something went wrong'))
+        rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
       }
     } finally {
       setBusy(false)

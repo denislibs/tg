@@ -25,10 +25,11 @@ import type { FolderUpdateEvt } from '@stores/foldersStore'
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
 
-// Каталог 1:1 переносит src/core/realtime/eventBus.ts:RtEventMap (ключ за ключом),
-// дополненный: pending*-событиями оптимистичной отправки, RT.folderUpdate/userUpdate
-// (в RtEventMap их не было), служебными rt:resync/media:upload_progress/state:mirror
-// и UI-командами из src/core/hooks/uiEvents.ts (toast, savedTagsChanged).
+// Каталог 1:1 переносит бывший core/realtime/eventBus.ts:RtEventMap (ключ за ключом,
+// удалён — все потребители переведены на rootScope), дополненный: pending*-событиями
+// оптимистичной отправки, RT.folderUpdate/userUpdate (в RtEventMap их не было),
+// служебными rt:resync/media:upload_progress/state:mirror и бывшими UI-командами
+// core/hooks/uiEvents.ts (toast, savedTagsChanged; тоже удалён).
 export type BroadcastEvents = {
   // ── funnel курсора (logged, несут pts) — второй элемент кортежа EventMeta? ──
   [RT.newMessage]: [NewMessageEvt, EventMeta?]
@@ -89,7 +90,7 @@ export type BroadcastEvents = {
   'media:upload_progress': [{ id: string; loaded: number; total: number }]
   'state:mirror': [{ key: string; value: unknown }]
 
-  // ── UI-команды (src/core/hooks/uiEvents.ts) ──
+  // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
 }

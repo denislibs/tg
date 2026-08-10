@@ -50,7 +50,7 @@ import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffe
 import type { EntityType, MessageEntity } from '../core/models'
 import { type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { useT } from '../i18n'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useSettingsStore } from '../settings'
 import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
@@ -518,7 +518,7 @@ function Composer({
               onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => canSendMedia
                 ? onOpenAttach(e.currentTarget.getBoundingClientRect())
-                : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
+                : rootScope.dispatchEvent('ui:toast', t('Media is not allowed in this group'))}
             >
               <TgIcon name="attach" className="button-icon" size="inherit" />
             </IconButton>

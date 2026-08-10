@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatsStore } from './chatsStore'
 import { registerRefetchSubscriber } from '../client/realtime/refetchSubscriber'
-import { eventBus } from '../core/realtime/eventBus'
+import rootScope from '@lib/rootScope'
 import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
@@ -130,7 +130,7 @@ describe('refetchSubscriber: chat_update без похода в сеть', () =>
       folders: { list: vi.fn() },
     } as unknown as Managers)
 
-    eventBus.publish(RT.chatUpdate, { chat_id: 2, title: 'Бета+', username: 'beta' })
+    rootScope.dispatchEventSingle(RT.chatUpdate, { chat_id: 2, title: 'Бета+', username: 'beta' })
     vi.advanceTimersByTime(1000)
     vi.useRealTimers()
 
@@ -152,8 +152,8 @@ describe('refetchSubscriber: chat_update без похода в сеть', () =>
       folders: { list: vi.fn() },
     } as unknown as Managers)
 
-    eventBus.publish(RT.chatUpdate, { chat_id: 777, title: 'Новая группа' })
-    eventBus.publish(RT.chatUpdate, { chat_id: 778, title: 'И ещё одна' })
+    rootScope.dispatchEventSingle(RT.chatUpdate, { chat_id: 777, title: 'Новая группа' })
+    rootScope.dispatchEventSingle(RT.chatUpdate, { chat_id: 778, title: 'И ещё одна' })
     vi.advanceTimersByTime(1000)
     vi.useRealTimers()
 
@@ -169,7 +169,7 @@ describe('refetchSubscriber: chat_update без похода в сеть', () =>
       folders: { list: vi.fn() },
     } as unknown as Managers)
 
-    eventBus.publish('rt:resync', undefined)
+    rootScope.dispatchEventSingle('rt:resync', null)
 
     expect(listDialogs).toHaveBeenCalledTimes(1)
   })

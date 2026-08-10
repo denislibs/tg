@@ -10,7 +10,7 @@ import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import TypingIndicator from './conversation/TypingIndicator'
 import VerifiedBadge from './VerifiedBadge'
 import PremiumBadge from './PremiumBadge'
@@ -90,7 +90,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
     void managers.groups.setPin(chatId, pinned).catch((e: unknown) => {
       setDialogPinned(chatId, !pinned)
       if (String(e).includes('pin limit')) {
-        uiEvents.emit('ui:toast', t("Sorry, you can't pin any more chats to the top."))
+        rootScope.dispatchEvent('ui:toast', t("Sorry, you can't pin any more chats to the top."))
       }
     })
   }

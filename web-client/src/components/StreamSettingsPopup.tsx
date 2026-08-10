@@ -9,7 +9,7 @@ import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon, { type IconName } from './TgIcon'
 import { useLivestreamSettings } from '../core/hooks/useLivestreamSettings'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import s from './StreamSettingsPopup.module.scss'
 
@@ -49,7 +49,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
 
   const copy = (value: string, toast: string) => {
     if (!value) return
-    void navigator.clipboard?.writeText(value).then(() => uiEvents.emit('ui:toast', t(toast))).catch(() => {})
+    void navigator.clipboard?.writeText(value).then(() => rootScope.dispatchEvent('ui:toast', t(toast))).catch(() => {})
   }
 
   // ключ маскируется точками (tweb: первые 20 символов → middot)

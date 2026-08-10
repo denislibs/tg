@@ -17,7 +17,7 @@ import classNames from '../shared/lib/classNames'
 import { useT, useLang, LANGS } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useSettings } from '../settings'
 import { resolvePreset, PRESET_MODE } from '../theme'
@@ -124,7 +124,7 @@ export default function SettingsView({
             translate={false}
             onClick={me?.phone ? () => {
               void navigator.clipboard?.writeText(formatPhone(me.phone).replace(/\s/g, '')).catch(() => {})
-              uiEvents.emit('ui:toast', t('Phone copied to clipboard'))
+              rootScope.dispatchEvent('ui:toast', t('Phone copied to clipboard'))
             } : undefined}
           />
           {me?.username && (

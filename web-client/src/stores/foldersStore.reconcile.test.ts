@@ -3,7 +3,7 @@ import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
 import { applyFolderUpdate, loadFolders } from './foldersStore'
 import { registerRefetchSubscriber } from '../client/realtime/refetchSubscriber'
-import { eventBus } from '../core/realtime/eventBus'
+import rootScope from '@lib/rootScope'
 import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
 import type { Folder } from '../core/managers/foldersManager'
@@ -208,7 +208,7 @@ describe('refetchSubscriber: folder_update без похода в сеть', () 
       chats: { listDialogs: vi.fn() },
     } as unknown as Managers)
 
-    eventBus.publish(RT.folderUpdate, { folder: snapshot({ ...fun, title: 'Отдых!' }) })
+    rootScope.dispatchEventSingle(RT.folderUpdate, { folder: snapshot({ ...fun, title: 'Отдых!' }) })
 
     expect(list).not.toHaveBeenCalled()
     expect(useAppStateStore.getState().folders.map((f) => f.title)).toEqual(['Работа', 'Отдых!'])

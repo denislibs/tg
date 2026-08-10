@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import type { InlineButton } from '../../core/managers/botsManager'
 import { useManagers } from '../../core/hooks/useManagers'
-import { uiEvents } from '../../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import ConfirmDialog from '../settings/ConfirmDialog'
 import classNames from '../../shared/lib/classNames'
 import { openWebApp } from '../../core/webapp'
@@ -26,7 +26,7 @@ export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: I
       const ans = await managers.bots.callback(botId, chatId, b.callback, msgId)
       if (ans.text) {
         if (ans.alert) setAlert(ans.text)
-        else uiEvents.emit('ui:toast', ans.text)
+        else rootScope.dispatchEvent('ui:toast', ans.text)
       }
     } finally { setBusy(false) }
   }

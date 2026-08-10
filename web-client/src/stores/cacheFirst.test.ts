@@ -8,7 +8,7 @@ import { useAppStateStore, setStateWriter } from './appState'
 import { loadDrafts } from './draftsStore'
 import { loadStars } from './starsStore'
 import { registerStoreProjection } from '../client/realtime/storeProjection'
-import { eventBus } from '../core/realtime/eventBus'
+import rootScope from '@lib/rootScope'
 import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
 import type { Draft } from '../core/models'
@@ -83,7 +83,7 @@ describe('звёзды: cache-first', () => {
     // Managers обработчику balanceUpdate не нужны (нужны только рефетчу чатов).
     registerStoreProjection({} as unknown as Managers)
 
-    eventBus.publish(RT.balanceUpdate, { balance: 15 })
+    rootScope.dispatchEventSingle(RT.balanceUpdate, { balance: 15 })
 
     expect(useAppStateStore.getState().starsBalance).toBe(15)
   })

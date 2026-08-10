@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useStoriesStore } from '../../stores/storiesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
-import { uiEvents } from './uiEvents'
+import rootScope from '@lib/rootScope'
 import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
 
 interface Viewer {
@@ -200,7 +200,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     const chatId = await managers.chats.createPrivate(group.author.id)
     const clientMsgId = `story-${chatId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
     await managers.realtime.sendMessage({ chatId, text: t, clientMsgId })
-    uiEvents.emit('ui:toast', 'Сообщение отправлено')
+    rootScope.dispatchEvent('ui:toast', 'Сообщение отправлено')
   }
 
   // Удаление своей истории (tweb DeleteStory): ждём ответ бэка, затем убираем из
@@ -213,7 +213,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
       await managers.stories.del(story.id)
       removeStory(group.author.id, story.id)
     } catch {
-      uiEvents.emit('ui:toast', 'Не удалось удалить историю')
+      rootScope.dispatchEvent('ui:toast', 'Не удалось удалить историю')
     }
   }
 
@@ -225,7 +225,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     setStoryPinned(story.id, next)
     void managers.stories.pin(story.id, next).catch(() => {
       setStoryPinned(story.id, !next)
-      uiEvents.emit('ui:toast', 'Не удалось обновить закрепление')
+      rootScope.dispatchEvent('ui:toast', 'Не удалось обновить закрепление')
     })
   }
 

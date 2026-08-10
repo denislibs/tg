@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import QrModal from './QrModal'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import TgIcon from './TgIcon'
 import AnimatedSuper from './conversation/AnimatedSuper'
 import ChannelStats from './ChannelStats'
@@ -291,7 +291,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)).
   const copyInfo = (value: string, toastKey: string) => {
     void navigator.clipboard.writeText(value)
-    uiEvents.emit('ui:toast', t(toastKey))
+    rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
   const infoPhone = profile?.phone
   const infoUsername = profile?.username ?? chat.username

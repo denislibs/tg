@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import Emoji from '../emoji/Emoji'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { uiEvents } from '../../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../../i18n'
 import type { SavedTag } from '../../core/managers/messagesManager'
 import s from './SavedTagsPanel.module.scss'
@@ -32,8 +32,8 @@ function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
   // (пометка/снятие/переименование эмитят 'ui:savedTagsChanged').
   useEffect(() => {
     reload()
-    const off = uiEvents.on('ui:savedTagsChanged', reload)
-    return off
+    rootScope.addEventListener('ui:savedTagsChanged', reload)
+    return () => rootScope.removeEventListener('ui:savedTagsChanged', reload)
   }, [reload])
 
   useEffect(() => {

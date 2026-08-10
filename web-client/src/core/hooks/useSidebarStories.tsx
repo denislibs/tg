@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { loadStories } from '../../stores/storiesStore'
-import { uiEvents } from './uiEvents'
+import rootScope from '@lib/rootScope'
 import StoryViewer from '../../components/StoryViewer'
 import AddStorySheet from '../../components/AddStorySheet'
 import CloseFriendsSheet from '../../components/CloseFriendsSheet'
@@ -48,7 +48,7 @@ export function useSidebarStories() {
       // Аплоад сорвался — сбрасываем флоу (лист подписи не откроется) и даём
       // повторить; тост сообщает об ошибке.
       setStoryMediaId(null)
-      uiEvents.emit('ui:toast', 'Не удалось загрузить историю')
+      rootScope.dispatchEvent('ui:toast', 'Не удалось загрузить историю')
     }
   }
   const publishStory = async (args: { caption: string; privacy: 'everyone' | 'contacts' | 'close' | 'selected'; allowIds: number[]; period: number; mediaAreas?: MediaArea[] }) => {

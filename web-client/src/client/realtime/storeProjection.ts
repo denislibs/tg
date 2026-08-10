@@ -1,4 +1,4 @@
-// Store-проектор: подписчик eventBus, чья задача — спроецировать realtime-события
+// Store-проектор: подписчик rootScope, чья задача — спроецировать realtime-события
 // воркера в Zustand-сторы (единственный источник истины для UI). Один из равноправных
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
@@ -14,13 +14,12 @@ import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
-import { uiEvents } from '../../core/hooks/uiEvents'
+import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt, type UserUpdateEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
-import { eventBus } from '../../core/realtime/eventBus'
 import type { Managers } from '../bootstrap'
 
 // A typing indicator with no follow-up clears itself after this long (the server
@@ -41,7 +40,7 @@ function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
 
 // Реестр «1:1» обработчиков: событие → одна мутация стора, без побочных эффектов.
 // Добавить такое событие = одна строка здесь (подписка — циклом в registerStoreProjection).
-// Обработчики с таймерами/uiEvents/meId/сетью/движками остаются явными ниже.
+// Обработчики с таймерами/тостами/meId/сетью/движками остаются явными ниже.
 const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.mediaRead]: (raw) => { const e = raw as MediaReadEvt; useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
   [RT.chatRemoved]: (raw) => useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id),
@@ -81,14 +80,16 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.pendingRemove]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().removeOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
 }
 
-// Регистрирует все стор-подписки на eventBus. Вызывается один раз из realtimeBridge.
+// Регистрирует все стор-подписки на rootScope. Вызывается один раз из realtimeBridge.
 export function registerStoreProjection(managers: Managers): void {
   const store = useChatsStore.getState()
 
   // 1:1-события (см. APPLY) — одним циклом; ниже только обработчики с побочными эффектами.
-  for (const [ev, fn] of Object.entries(APPLY)) eventBus.subscribe(ev, fn)
+  for (const [ev, fn] of Object.entries(APPLY)) {
+    rootScope.addEventListener(ev as keyof BroadcastEventsListeners, fn)
+  }
 
-  eventBus.subscribe(RT.newMessage, (m) => {
+  rootScope.addEventListener(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
     // Append to the chat's message window (single source of truth). Resolve the
     // reply preview from the already-loaded window so a reply shows its quote
@@ -111,18 +112,18 @@ export function registerStoreProjection(managers: Managers): void {
     }
     store.applyNewMessage(evt) // dialog-list preview (chatsStore)
     // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
-    // звук, нотификация) — отдельные подписчики eventBus напрямую, без ре-эмита
-    // в нетипизированную uiEvents.
+    // звук, нотификация) — отдельные подписчики rootScope напрямую, без
+    // дублирующего тоста.
   })
-  eventBus.subscribe(RT.read, (r) => { store.applyRead(r as ReadEvt) })
+  rootScope.addEventListener(RT.read, (r) => { store.applyRead(r as ReadEvt) })
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
-  eventBus.subscribe(RT.draftUpdate, (raw) => {
+  rootScope.addEventListener(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
     if (e.draft) setDraft(mapDraft(e.draft))
     else removeDraft(e.chat_id)
   })
-  eventBus.subscribe(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
-  eventBus.subscribe(RT.typing, (raw) => {
+  rootScope.addEventListener(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
+  rootScope.addEventListener(RT.typing, (raw) => {
     const t = raw as TypingEvt
     const action = t.action ?? 'typing'
     store.setTyping(t.chat_id, t.user_id, action, Date.now())
@@ -139,7 +140,7 @@ export function registerStoreProjection(managers: Managers): void {
   })
   // Реакция → окно сообщений. Серверное эхо (live/catch-up) несёт АБСОЛЮТНЫЙ агрегат
   // (counts) → set verbatim; поверх оптимистичного клика (хук) даёт тот же результат.
-  eventBus.subscribe(RT.reaction, (raw) => {
+  rootScope.addEventListener(RT.reaction, (raw) => {
     const e = raw as ReactionEvt
     const meId = useChatsStore.getState().meId
     const isMine = e.user_id === meId
@@ -156,37 +157,37 @@ export function registerStoreProjection(managers: Managers): void {
   })
   // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
   // обновляем только у самого отправителя (эхо своего действия), иначе не трогаем.
-  eventBus.subscribe(RT.starReaction, (raw) => {
+  rootScope.addEventListener(RT.starReaction, (raw) => {
     const e = raw as StarReactionEvt
     const meId = useChatsStore.getState().meId
     useMessagesStore.getState().applyStarReaction(e.chat_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
   })
   // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
-  eventBus.subscribe(RT.ack, (raw) => {
+  rootScope.addEventListener(RT.ack, (raw) => {
     const a = raw as AckEvt
     useMessagesStore.getState().reconcileAckByClient(a.client_msg_id, { msgId: a.msg_id, seq: a.seq, createdAt: a.created_at })
-    // Звук подтверждения отправки («пак») — отдельный подписчик eventBus (sound).
+    // Звук подтверждения отправки («пак») — отдельный подписчик rootScope (sound).
   })
-  eventBus.subscribe(RT.messageError, (raw) => {
+  rootScope.addEventListener(RT.messageError, (raw) => {
     const err = raw as MessageErrorEvt
     useMessagesStore.getState().failOptimisticByClient(err.client_msg_id)
     // Платное сообщение отвергнуто из-за нехватки звёзд — тост (Telegram paid messages).
-    if (err.reason === 'paid_required') uiEvents.emit('ui:toast', 'Недостаточно звёзд для отправки сообщения')
+    if (err.reason === 'paid_required') rootScope.dispatchEvent('ui:toast', 'Недостаточно звёзд для отправки сообщения')
   })
   // Платное медиа разблокировано покупателем (на всех его вкладках): раскрываем
   // баббл — полное медиа приезжает готовым сообщением (тот же payload, что new_message).
-  eventBus.subscribe(RT.paidMediaUnlock, (raw) => {
+  rootScope.addEventListener(RT.paidMediaUnlock, (raw) => {
     const e = raw as NewMessageEvt
     const incoming = fromNewMessageEvt(e)
     useMessagesStore.getState().applyPaidUnlock(e.chat_id, incoming)
   })
   // Поздний ответ бота на callback (после таймаута синхронного ожидания) — тост.
-  eventBus.subscribe(RT.botCallbackAnswer, (raw) => {
+  rootScope.addEventListener(RT.botCallbackAnswer, (raw) => {
     const a = raw as BotCallbackAnswerEvt
-    if (a.text) uiEvents.emit('ui:toast', a.text)
+    if (a.text) rootScope.dispatchEvent('ui:toast', a.text)
   })
   // Секретный чат: handshake-события из воркера → secretChatStore.
-  eventBus.subscribe(RT.secretRequest, (raw) => {
+  rootScope.addEventListener(RT.secretRequest, (raw) => {
     const r = raw as { chat_id: number; initiator_id: number; responder_id: number }
     const meId = useChatsStore.getState().meId
     // Роль решает статус: получатель видит входящий запрос ('requested' → бар с
@@ -204,19 +205,19 @@ export function registerStoreProjection(managers: Managers): void {
       useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
     }
   })
-  eventBus.subscribe(RT.secretAccept, (raw) => {
+  rootScope.addEventListener(RT.secretAccept, (raw) => {
     const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }
     useSecretChatStore.getState().setStatus(r.chat_id, 'established')
     if (r.fingerprint) useSecretChatStore.getState().setFingerprint(r.chat_id, r.fingerprint)
   })
-  eventBus.subscribe(RT.secretReject, (raw) => {
+  rootScope.addEventListener(RT.secretReject, (raw) => {
     const r = raw as { chat_id: number }
     useSecretChatStore.getState().setStatus(r.chat_id, 'rejected')
   })
   // Истории (Stories realtime) → storiesStore. Новая история известного автора
   // добавляется в его группу; для нового автора (группы ещё нет) — полный рефетч
   // ленты (нужны имя/аватар автора). Удаление и реакции правят стор точечно.
-  eventBus.subscribe(RT.storyNew, (raw) => {
+  rootScope.addEventListener(RT.storyNew, (raw) => {
     const e = raw as StoryNewEvt
     const st = useStoriesStore.getState()
     const hasGroup = st.groups.some((g) => g.author.id === e.author_id)
@@ -226,7 +227,7 @@ export function registerStoreProjection(managers: Managers): void {
       void loadStories(managers)
     }
   })
-  eventBus.subscribe(RT.storyReaction, (raw) => {
+  rootScope.addEventListener(RT.storyReaction, (raw) => {
     const e = raw as StoryReactionEvt
     const meId = useChatsStore.getState().meId
     // myReaction обновляем только для эха собственного действия (user_id === me).
@@ -235,7 +236,7 @@ export function registerStoreProjection(managers: Managers): void {
   // Юзер сменил имя/username/аватар → патчим карточку пира в peersStore (все места,
   // где он нарисован, перерисуются). Неизвестного пира не заводим. avatar_changed —
   // до-фетч /users (url приватен per-viewer, сервер применит PrivacyProfilePhoto).
-  eventBus.subscribe(RT.userUpdate, (raw) => {
+  rootScope.addEventListener(RT.userUpdate, (raw) => {
     const e = raw as UserUpdateEvt
     if (!usePeersStore.getState().byId[e.id]) return
     usePeersStore.getState().patch(e.id, { username: e.username, displayName: e.display_name })
@@ -244,7 +245,7 @@ export function registerStoreProjection(managers: Managers): void {
     }
   })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
-  eventBus.subscribe('media:upload_progress', (raw) => {
+  rootScope.addEventListener('media:upload_progress', (raw) => {
     const e = raw as { id: string; loaded: number; total: number }
     if (e.total > 0) useUploadsStore.getState().setProgress(e.id, e.loaded / e.total)
   })
@@ -257,7 +258,7 @@ export function registerStoreProjection(managers: Managers): void {
   // Ключ сверяем со схемой: через RPC-границу приходит строка, и чужой ключ
   // положил бы в State мусор, который потом уехал бы на диск первым же
   // write-through соседнего ключа.
-  eventBus.subscribe('state:mirror', (raw) => {
+  rootScope.addEventListener('state:mirror', (raw) => {
     const e = raw as { key?: string; value?: unknown }
     if (!e.key || !STATE_KEYS.includes(e.key as keyof AppState)) return
     applyStateMirror(e.key as keyof AppState, e.value as AppState[keyof AppState])

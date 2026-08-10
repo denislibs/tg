@@ -11,7 +11,7 @@ import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExi
 import { useSettings } from '../settings'
 import { usePwaStore } from '../core/pwa'
 import { enterAppPip, pipSupported } from '../core/pip'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
 
@@ -123,7 +123,7 @@ export default function MainMenu({
           hint: t('To return to the tab, click the button here or the icon in the floating window.'),
           back: t('Back to Tab'),
         }
-        void enterAppPip(labels).then((ok) => { if (!ok) uiEvents.emit('ui:toast', t('Picture-in-Picture is not supported in this browser.')) })
+        void enterAppPip(labels).then((ok) => { if (!ok) rootScope.dispatchEvent('ui:toast', t('Picture-in-Picture is not supported in this browser.')) })
         close()
       },
       show: pipSupported(),

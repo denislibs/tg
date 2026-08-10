@@ -8,7 +8,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { useStoriesStore } from '../stores/storiesStore'
 import { gradientFor } from '../core/dialogToChat'
-import { uiEvents } from '../core/hooks/uiEvents'
+import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import type { StoryItem, StoryPrivacy } from '../core/managers/storiesManager'
@@ -82,10 +82,10 @@ export default function EditStorySheet({
         privacy: sendPrivacy ? privacy : undefined,
         allowIds: sendAllow ? [...allow] : undefined,
       })
-      uiEvents.emit('ui:toast', t('Story edited'))
+      rootScope.dispatchEvent('ui:toast', t('Story edited'))
       onClose()
     } catch {
-      uiEvents.emit('ui:toast', t('Something went wrong'))
+      rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
     } finally {
       setBusy(false)
     }
