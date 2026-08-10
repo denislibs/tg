@@ -39,39 +39,26 @@ describe('MiddlewareHelper: пины семантики tweb', () => {
     expect(childMiddleware()).toBe(false)
   })
 
-  it('destroy() дочернего отцепляет: parent.clean() уничтожает только оставшихся детей', () => {
+  it('destroy() отцепляет дочернего из parent.details.inner: новое поколение живо после parent.clean()', () => {
     const parent = getMiddleware()
     const parentMiddleware = parent.get()
+    const child = parentMiddleware.create()
 
-    // Создаём двух детей
-    const child1 = parentMiddleware.create()
-    const child1Middleware = child1.get()
+    // Уничтожаем дочернего — создаёт свежее поколение details
+    child.destroy()
+    expect(parentMiddleware()).toBe(true) // родитель остаётся живо
 
-    const child2 = parentMiddleware.create()
-    const child2Middleware = child2.get()
+    // Берём свежее поколение после destroy
+    const afterDestroyMiddleware = child.get()
+    expect(afterDestroyMiddleware()).toBe(true) // живо, закрывает новые details
 
-    expect(child1Middleware()).toBe(true)
-    expect(child2Middleware()).toBe(true)
-
-    // Уничтожаем первого ребёнка явно (должен отцепиться от родителя)
-    const onDestroy1 = vi.fn()
-    child1.onDestroy(onDestroy1)
-    child1.destroy()
-    expect(onDestroy1).toHaveBeenCalledTimes(1)
-    expect(child1Middleware()).toBe(false)
-
-    // Во время parent.clean():
-    // - Если отцепление работало: iterates только над [child2], вызывает destroy только на child2
-    // - Если отцепления не было: iterates над [child1, child2], вызывает destroy дважды
-    // Проверяем через onDestroy1, который НЕ должен быть вызван повторно
+    // Если отцепление работает: child больше не в parent.details.inner,
+    // parent.clean() не трогает его, свежее поколение остаётся живо
+    // Если отцепления нет: child остаётся в parent.details.inner,
+    // parent.clean() вызывает child.destroy() повторно, clean() помечает новые details.cleaned,
+    // afterDestroyMiddleware() вернёт false
     parent.clean()
-
-    // Если отцепление сработало, onDestroy1 был вызван только один раз
-    expect(onDestroy1).toHaveBeenCalledTimes(1)
-
-    // Оба дети должны быть мертвы
-    expect(child1Middleware()).toBe(false)
-    expect(child2Middleware()).toBe(false)
+    expect(afterDestroyMiddleware()).toBe(true) // ← укус теста: падает без отцепления
     expect(parentMiddleware()).toBe(false)
   })
 
