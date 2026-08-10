@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import StickyIntersector from './stickyIntersector'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
@@ -1044,37 +1045,62 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // tweb bubbles.ts:4207-4230 — во время скролла на `.bubbles-inner` висит
   // `is-scrolling`, и только тогда липкая дата видна (_chat.scss:1345:
   // `.is-scrolling .is-sticky { opacity: .99999 }`); через 1.35s после
-  // последнего события класс снимается и дата плавно гаснет.
+  // последнего события класс снимается и дата плавно гаснет. Само прилипание
+  // (какая дата is-sticky) считает отдельный эффект ниже, на StickyIntersector.
   useEffect(() => {
     const sc = scrollRef.current
     const inner = contentRef.current
     if (!sc || !inner) return
     let timer: ReturnType<typeof setTimeout> | undefined
-    // Прилипшая дата помечается `is-sticky` (в tweb это делает sticky-intersector
-    // по sentinel-узлам): в паре с `is-scrolling` она видна только при скролле,
-    // а в покое гаснет (_chatBubble.scss:497 opacity .00001 → _chat.scss:1343).
-    const markSticky = () => {
-      const scTop = sc.getBoundingClientRect().top
-      const dates = inner.querySelectorAll<HTMLElement>('.bubble.is-date')
-      let stuck: string | null = null
-      for (const d of dates) {
-        // прилипла = её верх дошёл до собственного sticky-порога (`top` из
-        // _chatBubble.scss:480 — calc(--chat-padding-top + overflow))
-        const stickyTop = parseFloat(getComputedStyle(d).top) || 0
-        if (d.getBoundingClientRect().top - scTop <= stickyTop + 2) stuck = d.dataset.date ?? null
-      }
-      setStickyDateKey((prev) => (prev === stuck ? prev : stuck))
-    }
     const onScroll = () => {
       inner.classList.add('is-scrolling')
-      markSticky()
       clearTimeout(timer)
       timer = setTimeout(() => inner.classList.remove('is-scrolling'), 1350)
     }
-    markSticky()
     sc.addEventListener('scroll', onScroll, { passive: true })
     return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
-  }, [scrollRef, contentRef, feedLoading])
+  }, [scrollRef, contentRef])
+
+  // tweb bubbles.ts:1382-1408 (колбэк StickyIntersector) + 4867
+  // (observeStickyHeaderChanges на каждой `.bubbles-date-group`) — какая дата
+  // прилипла, считает портированный StickyIntersector по sentinel-узлам, а не
+  // обход `.bubble.is-date` с getBoundingClientRect на каждое событие скролла.
+  // ChatFeed рендерит секции `.bubbles-date-group` прямыми детьми contentRef —
+  // наблюдаем их напрямую (у нас нет реестра секций по timestamp, как
+  // this.dateMessages в tweb, поэтому «нижней» застрявшей датой считаем
+  // последнюю в document order — секции и так лежат по возрастанию дня).
+  useEffect(() => {
+    const sc = scrollRef.current
+    const inner = contentRef.current
+    if (!sc || !inner) return
+
+    const stuckSections = new Set<HTMLElement>()
+    const recompute = () => {
+      let key: string | null = null
+      for (const child of inner.children) {
+        if (stuckSections.has(child as HTMLElement)) {
+          key = child.querySelector<HTMLElement>('.bubble.is-date')?.dataset.date ?? key
+        }
+      }
+      setStickyDateKey((prev) => (prev === key ? prev : key))
+    }
+
+    // tweb bubbles.ts:4900-4905 (updateStickyIntersectorRootMargin) — тот же
+    // паддинг топбара/инпута, что резервируют распорки `.bubbles-padding-top/bottom`.
+    const intersector = new StickyIntersector(sc, (stuck, target) => {
+      if (stuck) stuckSections.add(target)
+      else stuckSections.delete(target)
+      recompute()
+    }, { rootMargin: `-${padTopPx}px 0px -${padBottomPx}px 0px` })
+
+    for (const child of inner.children) {
+      if ((child as HTMLElement).classList.contains('bubbles-date-group')) {
+        intersector.observeStickyHeaderChanges(child as HTMLElement)
+      }
+    }
+
+    return () => intersector.disconnect()
+  }, [scrollRef, contentRef, feedMsgs, feedLoading, padTopPx, padBottomPx])
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
