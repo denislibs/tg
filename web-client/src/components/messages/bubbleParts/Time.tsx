@@ -103,8 +103,6 @@ export interface TimeProps {
   pinned?: boolean
   /** Просмотры поста канала (tweb .post-views + иконка channelviews). */
   views?: number
-  /** Пересылки поста канала (у tweb только в тултипе, у нас — видимый счётчик). */
-  forwards?: number
   /** Эффект сообщения — кликабельный глиф повтора (tweb .time-effect). */
   effect?: EmojiEffectKind
   /** Секретное сообщение: таймер самоуничтожения перед временем. */
@@ -124,7 +122,7 @@ export interface TimeProps {
  * контейнера бабла — видимая копия прибивается к его нижне-правому углу.
  */
 export default function Time({
-  time, status, out, edited, pinned, views, forwards, effect,
+  time, status, out, edited, pinned, views, effect,
   destructAt, ttlSeconds, title, mode = 'inline', corner = 'default', justMedia, className,
 }: TimeProps) {
   const fmtTime = useTimeFormatter()
@@ -133,7 +131,12 @@ export default function Time({
 
   // Части в порядке tweb (messageRender.ts): тик статуса prepend-ом первым в DOM
   // (визуально уезжает в конец через order:5), затем пин, «изменено», просмотры,
-  // пересылки, таймер секретки, эффект и последним — само время.
+  // таймер секретки, эффект и последним — само время.
+  //
+  // Счётчика ПЕРЕСЫЛОК здесь нет намеренно: в tweb их число попадает только в
+  // подсказку при наведении (messageRender.ts:281-283, SharesTooltip), и лишь
+  // внутри ветки `if (message.views)`, то есть у постов канала. Видимого элемента
+  // с иконкой стрелки в оригинале не существует.
   const parts = (interactive: boolean): ReactNode => (
     <>
       {out && status && (
@@ -150,12 +153,6 @@ export default function Time({
         <span className={classNames('post-views', s.views)}>
           {fmtViews(views)}
           <TgIcon name="channelviews" className="time-icon time-part time-icon-views" size="1.125rem" />
-        </span>
-      ) : null}
-      {forwards ? (
-        <span className={s.views}>
-          {fmtViews(forwards)}
-          <TgIcon name="forward" className="time-icon time-part time-icon-views" size="1.125rem" />
         </span>
       ) : null}
       {ttl?.armed ? (

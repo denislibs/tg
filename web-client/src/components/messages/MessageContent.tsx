@@ -213,7 +213,6 @@ export default function MessageContent({
       edited={m.edited}
       pinned={m.pinned}
       views={m.views}
-      forwards={m.forwards}
       effect={m.effect}
       destructAt={m.secret ? m.destructAt : undefined}
       ttlSeconds={m.secret ? m.ttlSeconds : undefined}

@@ -3035,8 +3035,10 @@ JS-порт `slideNavigation` сделан (`core/dom/navigationTransition.ts`) 
 - ✅ «Keep me signed in», corner-back на внутренних auth-шагах — в коде отсутствуют (экран входа переписан, PR #159/#161). Обои+тень на auth-карточке — **не проверено** (обои экрана входа с тех пор переделаны по tweb).
 - ⚠️ Счётчик символов у инпута, slowmode-текст в кнопке, paidBar-плашка, Location/Contact в attach-меню.
   → счётчика символов и Location/Contact нет; **slowmode-текст жив** (`Composer.tsx:153-154`), **paidBar жив** (`messages/SendMediaPopup.tsx`).
-- ❌ forwards-счётчик в Time, hover сервис-пилюли, headerScrolled-состояние шапки профиля, «Night Mode»-строка в настройках, rowActive-подсветка.
-  → живы: `bubbleParts/Time.tsx:155`, `UserInfoPanel.module.scss:81`, `SettingsView.tsx:148`, `SettingsView.module.scss:69` + `TopicsPanel.module.scss:52`. Hover сервис-пилюли — не проверено.
+- ⚠️ forwards-счётчик в Time, hover сервис-пилюли, headerScrolled-состояние шапки профиля, «Night Mode»-строка в настройках, rowActive-подсветка.
+  → **forwards-счётчик удалён** (2026-08-10): в tweb число пересылок попадает только в подсказку `title` и только внутри ветки `if (message.views)`, то есть у постов канала (`messageRender.ts:281-283`, `SharesTooltip`); видимого элемента со стрелкой в оригинале нет. У нас он рисовался в том числе в личных чатах.
+  Остальные живы: `UserInfoPanel.module.scss:81`, `SettingsView.tsx:148`, `SettingsView.module.scss:69` + `TopicsPanel.module.scss:52`. Hover сервис-пилюли — не проверено.
+  **Хвост:** подсказки `ViewsTooltip`/`SharesTooltip` у нас нет вообще — `title` на `.time-inner` содержит только полную дату. Это шире счётчика (просмотры тоже без подсказки) и требует интерполяции в `i18n` (`makeT` сейчас без неё) — отдельная задача.
 - ❌ PlayPauseGlyph (framer-морф), Spinner (border-кольцо), `IconButton.small`.
   → все три на месте: `components/PlayPauseGlyph.tsx` (уже без framer, но сам компонент — отсебятина), `shared/ui/Spinner/`, `shared/ui/IconButton/IconButton.tsx:8-9`.
 - ❌ Хардкод-цвета мимо токенов: `#ff595a`, `#ff3b30`, `#ff5a5a`, `#fff`/`#212121`/`#2b2b2b` в хелперах/тултипе, `#9275ff` у PremiumBadge, `#4dcd5e` у online-точки.
