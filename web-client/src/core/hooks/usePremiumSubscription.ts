@@ -22,7 +22,7 @@ export function usePremiumSubscription(): {
         setSub(s)
         setLoading(false)
       }
-    })
+    }).catch(() => { if (alive) setLoading(false) })
     return () => {
       alive = false
     }

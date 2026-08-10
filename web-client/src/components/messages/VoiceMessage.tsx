@@ -77,7 +77,7 @@ export default function VoiceMessage({
       if (!alive) return
       setMetaDur(m.duration || 0)
       setMetaWaveform(m.waveform || '')
-    })
+    }).catch(() => {})
     return () => {
       alive = false
     }

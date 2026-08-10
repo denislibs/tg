@@ -12,6 +12,7 @@ import IconButton from '../shared/ui/IconButton'
 import Popup from '../shared/ui/Popup'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useManagers } from '../core/hooks/useManagers'
+import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import type { TopicRow } from '../core/managers/groupsManager'
 import { fmtWhen, mediaLabel } from '../core/dialogToChat'
 import { useT } from '../i18n'
@@ -61,6 +62,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
 }) {
   const t = useT()
   const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
   const [topics, setTopics] = useState<TopicRow[] | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<TopicRow | null>(null)
@@ -74,14 +76,20 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const [canManage, setCanManage] = useState(false)
 
   const reload = () => {
-    void managers.groups.listTopics(chatId).then(setTopics).catch(() => setTopics([]))
+    const middleware = middlewareHelper.get()
+    void managers.groups.listTopics(chatId)
+      .then((t) => { if (middleware()) setTopics(t) })
+      .catch(() => { if (middleware()) setTopics([]) })
   }
   useEffect(() => {
     setTopics(null)
     reload()
+    const middleware = middlewareHelper.get()
     void managers.groups.card(chatId).then((c) => {
-      setCanManage(c.myRole === 'creator' || (c.myRights & CHANGE_INFO) !== 0)
-    }).catch(() => setCanManage(false))
+      if (middleware()) setCanManage(c.myRole === 'creator' || (c.myRights & CHANGE_INFO) !== 0)
+    }).catch(() => { if (middleware()) setCanManage(false) })
+    // Смена chatId/unmount гасит и висящий reload() из меню — одна зона актуальности.
+    return () => middlewareHelper.clean()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId])
 
