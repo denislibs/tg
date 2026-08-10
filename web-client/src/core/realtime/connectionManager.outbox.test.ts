@@ -50,8 +50,24 @@ async function flushRestore() {
   for (let i = 0; i < 8; i++) await Promise.resolve()
 }
 
+// NOTE: vitest 4.1.9 в этом репо дедлочится, если `vi.useRealTimers()` вызвать
+// внутри `afterEach` при активных фейковых таймерах. Восстановление реальных
+// таймеров в НАЧАЛЕ `beforeEach` (перед повторным useFakeTimers) даёт ту же
+// изоляцию без зависания хука (см. connectionManager.test.ts:25-28 — тот же приём).
 beforeEach(() => { vi.useRealTimers(); vi.useFakeTimers() })
 
+// Честная карта покрытия для гонки «реконнект во время незавершённого
+// outboxStore.load()» (асинхронная ветка connectionManager.ts:57 —
+// `void outboxRestoredP?.then(() => { if (ws.isOpen()) resend() })`): ни тест 5,
+// ни тест 6 её НЕ покрывают. Тест 5 вообще не передаёт outboxStore, поэтому
+// outboxRestored синхронно true (см. комментарий внутри теста). Тест 6 делает
+// `await flushRestore()` ДО `cm.start(); ws.fireOpen()` — к моменту открытия
+// restore-промис уже зарезолвлен, outboxRestored уже true, и resend на onOpen
+// идёт по СИНХРОННОЙ ветке (:56), а не по той, что ждёт `outboxRestoredP`.
+// Саму гонку (реконнект случается ДО того, как load() успел зарезолвиться)
+// держит предсуществующий `connectionManager.test.ts:75-101` — там
+// `cm.start(); ws.fireOpen()` идут до любого `await`, поэтому промис
+// восстановления в момент открытия сокета ещё висит.
 describe('ConnectionManager outbox pins', () => {
   it('1. sendMessage при открытом сокете: кадр ушёл и запись легла в outbox', () => {
     const ws = fakeWs(true)
