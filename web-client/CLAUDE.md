@@ -253,7 +253,8 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
 
 **Вне скана `scrollWriters.test.ts` намеренно**: `scrollTo(...)`/`scrollIntoView(...)`
-(по приложению — 12/7 вызовов). Это другая категория писателя — нативные API,
+(по приложению — 12/8 вызовов, восьмой `scrollIntoView` — вендорный
+`helpers/fastSmoothScroll.ts:109`). Это другая категория писателя — нативные API,
 которые сами рождают настоящие `scroll`-события по ходу анимации, поэтому
 `Scrollable.onScroll` видит их как обычный скролл (throttled
 `onAdditionalScroll`/`checkForTriggers` отрабатывают штатно, в т.ч. в самой

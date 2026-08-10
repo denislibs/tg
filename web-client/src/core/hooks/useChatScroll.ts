@@ -87,12 +87,43 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // `lastScrollTopRef.current = st` never runs for it); without this the NEXT real scroll event's
   // "went up" delta (`st < lastScrollTopRef.current - 1`) would be computed against a stale
   // pre-jump baseline and could misfire on an unrelated corrective jump (review Б-6).
-  const setScrollTopSilently = (value: number) => {
+  //
+  // `recompute` (default true): re-run onAdditionalScroll()/checkForTriggers() right after the
+  // write. This is THE choke point for "a silent write happened, showScrollDown/atBottomRef/
+  // pagination triggers may now be stale" — moved here (review round after C-1/C-2) from
+  // correctScroll, which only covered the writes IT made. Every OTHER silent writer had the exact
+  // same gap: the unread-divider positioning below moves the viewport from the bottom to the
+  // middle of history — thousands of pixels — and nothing recomputed after it, so the down-arrow
+  // stayed OFF while the user sat mid-history (the C-1 bug's mirror image, on a different call
+  // site). Tying the recompute to the write itself, not to whichever effect happened to make it,
+  // means the NEXT silent writer added to this hook gets it for free instead of reintroducing the
+  // same class of bug a seventh time.
+  //
+  // `false` is for paddingTop compensation ONLY (see that effect below): it moves scrollTop and
+  // scrollHeight by the exact same delta (the padding spacer is itself part of the scrollable
+  // content, so it grows scrollHeight before this effect even runs) — `dist` provably doesn't
+  // change, so recomputing would be a guaranteed no-op. Skipping it also keeps this the one path
+  // useChatScroll.test.tsx's lastScrollTopRef test can isolate line 91 (`lastScrollTopRef.current =
+  // value`, review Б-6) in — every OTHER path now self-recomputes, and onAdditionalScroll's own
+  // trailing `lastScrollTopRef.current = st` would silently re-sync it regardless of line 91,
+  // masking a regression there (see that test's own header comment for the full trace).
+  //
+  // Not a recursion risk: onAdditionalScroll only reads scroll geometry and writes React
+  // state/refs — no scrollTop write anywhere in its body. checkForTriggers can call onScrolledTop/
+  // onScrolledBottom, which only scrollSaverRef.save()/win.loadOlder()/win.loadNewer() — loadOlder/
+  // loadNewer are async, so any resulting scrollTop write (via a LATER win.msgs commit) lands on a
+  // separate render, never synchronously inside this call.
+  const setScrollTopSilently = (value: number, recompute = true) => {
     lastScrollTopRef.current = value
     const s = scrollableRef.current
-    if (s) { s.setScrollPositionSilently(value); return }
-    const el = scrollRef.current
-    if (el) el.scrollTop = value
+    if (s) { s.setScrollPositionSilently(value) } else {
+      const el = scrollRef.current
+      if (el) el.scrollTop = value
+    }
+    if (recompute) {
+      onAdditionalScroll()
+      scrollableRef.current?.checkForTriggers()
+    }
   }
   // Position restore across a loadOlder prepend — tweb's ScrollSaver (helpers/scrollSaver.ts):
   // anchors on the topmost visible message's DOMRect instead of a raw scrollHeight delta, so
@@ -360,29 +391,12 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     if (!el) return
     // tweb bubbles.ts:2276 — `scrollable.setScrollPositionSilently(scrollable.scrollSize) //
     // keep the chat pinned to the bottom`, same silent write for the same reason here.
+    // setScrollTopSilently recomputes showScrollDown/atBottomRef/pagination triggers itself now
+    // (see its own header comment, review round after C-1/C-2) — this function used to duplicate
+    // that recompute here, which only covered the two writes IT makes; moved to the write itself
+    // so every OTHER silent writer in this hook gets the same fix, not just these two.
     if (atBottomRef.current) setScrollTopSilently(el.scrollHeight)
     else if (scrollSaved.current) scrollSaverRef.current!.restore()
-    // The write above (if any) went through setScrollPositionSilently — BY DESIGN no
-    // 'scroll' event, so Scrollable.onScroll never runs and neither of its two jobs
-    // happens on its own:
-    //   • onAdditionalScroll recomputing showScrollDown/atBottomRef from the NEW
-    //     scrollTop. Without this, a cache-open that commits with msgs already in the
-    //     store renders scrollTop=0 on the first paint (dist huge → showScrollDown=true),
-    //     THEN this effect silently pins to the bottom — the down-arrow never gets a
-    //     chance to re-evaluate and is stuck lit until the user scrolls by hand (review
-    //     C-1: reproduced with a real hook harness, scrollTop=5000 yet
-    //     data-show-scroll-down='1').
-    //   • checkForTriggers, which is the ONLY place onScrolledBottom/onScrolledTop live —
-    //     it otherwise fires exclusively from the throttled onScroll. A silent pin gives
-    //     it neither, so a cache-open landing mid-history (reachedBottom=false, but the
-    //     LOADED window already fills/exceeds the viewport) never calls loadNewer() to
-    //     chase the real bottom — the "catch up on fresh messages" path from this hook's
-    //     own header comment breaks silently (review C-2). tweb has no equivalent gap by
-    //     construction: bubbles.ts re-checks after every render (:2239, :11532) and after
-    //     every history load (:11348-11354, :11556-11560) — the two calls below are the
-    //     same idea applied at our one silent-write choke point instead.
-    onAdditionalScroll()
-    scrollableRef.current?.checkForTriggers()
   }
   useEffect(() => {
     const content = contentRef.current
@@ -474,7 +488,12 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     const delta = paddingTop - prevPaddingTop.current
     prevPaddingTop.current = paddingTop
     // tweb bubbles.ts:2285 — `scrollable.setScrollPositionSilently(scrollable.scrollPosition + delta)`.
-    if (el && delta !== 0) setScrollTopSilently(el.scrollTop + delta)
+    // recompute=false: the padding spacer is itself scrollable content, so scrollHeight already grew
+    // by the same `delta` before this effect ran — dist = scrollHeight-scrollTop-clientHeight is
+    // unchanged by this write, recomputing would be a no-op (see setScrollTopSilently's own header
+    // comment for why this is the one path deliberately excluded).
+    if (el && delta !== 0) setScrollTopSilently(el.scrollTop + delta, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paddingTop])
 
   // Read-marker for a live message in THIS open chat: mark read if the user is at

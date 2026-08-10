@@ -132,9 +132,11 @@ beforeEach(() => {
 
 const fakeManagers = { realtime: { markRead: async () => {} } }
 
-function Harness({ win, paddingTop = 0 }: { win: MessageWindow, paddingTop?: number }) {
+function Harness({ win, paddingTop = 0, unreadDividerSeq = null }: {
+  win: MessageWindow, paddingTop?: number, unreadDividerSeq?: number | null,
+}) {
   const { scrollRef, contentRef, showScrollDown, userScrolledUpRef } = useChatScroll({
-    numericChatId: 1, isRealChat: true, win, paddingTop, unreadDividerSeq: null, unreadStickyTop: 0,
+    numericChatId: 1, isRealChat: true, win, paddingTop, unreadDividerSeq, unreadStickyTop: 0,
   })
   return (
     // data-show-scroll-down/data-user-scrolled-up зеркалят состояние хука наружу —
@@ -147,16 +149,21 @@ function Harness({ win, paddingTop = 0 }: { win: MessageWindow, paddingTop?: num
       data-user-scrolled-up={userScrolledUpRef.current ? '1' : '0'}
     >
       <div ref={contentRef}>
-        {win.msgs.map((m) => <div key={m.id} data-seq={m.seq} />)}
+        {win.msgs.map((m) => (
+          // data-unread-divider — маркер плашки «Непрочитанные сообщения»
+          // (реальный ряд её несёт в UnreadDivider.tsx); хук ищет её через
+          // `sc?.querySelector('[data-unread-divider]')`.
+          <div key={m.id} data-seq={m.seq} {...(m.seq === unreadDividerSeq ? { 'data-unread-divider': '' } : {})} />
+        ))}
       </div>
     </div>
   )
 }
 
-function mount(win: MessageWindow) {
+function mount(win: MessageWindow, extra: { paddingTop?: number, unreadDividerSeq?: number | null } = {}) {
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(ManagersProvider, { managers: fakeManagers as never, children })
-  const rendered = render(createElement(Harness, { win }), { wrapper })
+  const rendered = render(createElement(Harness, { win, ...extra }), { wrapper })
   const scrollEl = rendered.container.querySelector('[data-scroll-container]') as HTMLDivElement
   return { ...rendered, scrollEl }
 }
@@ -400,6 +407,47 @@ describe('useChatScroll: тихий пин корректно пересчиты
     mount(win)
 
     expect(loadNewerCalls).toBe(1)
+  })
+
+  // Ре-ревью после I-4/I-5 (перенос choke point'а с correctScroll на
+  // setScrollTopSilently): координатор нашёл ЗЕРКАЛЬНУЮ дыру C-1 на ДРУГОМ
+  // тихом писателе — начальном позиционировании плашки «Непрочитанные
+  // сообщения» (открытие чата с unreadDividerSeq). Запись двигает вьюпорт с
+  // низа (открытие чата пином к низу) на плашку где-то в середине истории —
+  // тысячи пикселей — и раньше НИКТО не пересчитывал состояние после нёе:
+  // событие заглушено (setScrollPositionSilently), win.msgs/reachedBottom не
+  // менялись (эффект висит на unreadDividerSeq, не на них), correctScroll не
+  // звался (это отдельный эффект). Стрелка «вниз» оставалась ПОГАШЕННОЙ, пока
+  // пользователь стоял в середине истории.
+  it('C-1 (зеркало): начальное позиционирование плашки непрочитанных зажигает стрелку «вниз»', async () => {
+    containerScrollHeight = 5000
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2), msg(3)], { reachedBottom: true })
+
+    // Шаг 1 — монтируем БЕЗ плашки (unreadDividerSeq: null, дефолт Harness):
+    // эффект плашки — no-op (гейт `unreadDividerSeq == null`), единственный
+    // писатель — тихий пин к низу из correctScroll. Проверяем, что ОН сам по
+    // себе уже корректно гасит стрелку (тот же факт, что доказывает тест C-1
+    // выше) — так шаг 2 ниже проверяет ИЗОЛИРОВАННО эффект плашки, а не
+    // случайно унаследованное «застряло true» с самого начала монтирования.
+    const { scrollEl, rerender } = mount(win)
+    expect(scrollEl.scrollTop).toBe(5000)
+    expect(scrollEl.dataset.showScrollDown).toBe('0')
+
+    // Шаг 2 — плашка (seq=2) СЕЙЧАС (при scrollTop у низа) лежит далеко ВЫШЕ
+    // вьюпорта — как и было бы у сообщения из начала истории при открытии
+    // чата пином к низу. Дописываем unreadDividerSeq РЕРЕНДЕРОМ (не в
+    // изначальном mount) — ровно чтобы шаг 1 успел зафиксировать «было
+    // корректно 0» ДО того, как плашка что-то сдвинула.
+    seqRects.set(2, { top: -4000, bottom: -3980 })
+    await act(async () => { rerender(createElement(Harness, { win, unreadDividerSeq: 2 })) })
+
+    // scrollTop должен был уйти с низа (5000) далеко в середину истории...
+    expect(scrollEl.scrollTop).toBeLessThan(2000)
+    // ...и стрелка «вниз» обязана загореться — БЕЗ единого scroll-события
+    // (запись тихая) и без изменения win.msgs/win.reachedBottom (которые эту
+    // стрелку тоже умеют пересчитать, но здесь не менялись).
+    expect(scrollEl.dataset.showScrollDown).toBe('1')
   })
 })
 
