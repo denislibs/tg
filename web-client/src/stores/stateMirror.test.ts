@@ -61,10 +61,10 @@ describe('persistManager рассылает зеркало после запис
     const mirror = vi.fn(() => { order.push('mirror') })
     const pm = newPersistManager(mirror)
 
-    await pm.stateKey('recentSearch', [1, 2])
+    await pm.stateKey('recentSearch', ['1', '2'])
     order.push('after-await')
 
-    expect(mirror).toHaveBeenCalledWith('recentSearch', [1, 2])
+    expect(mirror).toHaveBeenCalledWith('recentSearch', ['1', '2'])
     // Зеркало должно уйти до того, как промис записи отдан вызывающему:
     // вкладка, поднявшаяся сразу после кадра, прочитает с диска уже актуальное.
     expect(order).toEqual(['mirror', 'after-await'])
@@ -73,6 +73,6 @@ describe('persistManager рассылает зеркало после запис
   it('без broadcaster-а не падает (тесты/воркер без портов)', async () => {
     const pm = newPersistManager()
 
-    await expect(pm.stateKey('recentSearch', [3])).resolves.toBeUndefined()
+    await expect(pm.stateKey('recentSearch', ['3'])).resolves.toBeUndefined()
   })
 })

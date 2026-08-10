@@ -30,7 +30,7 @@ describe('resetAppState', () => {
     setAppState('folders', [folder])
     setAppState('drafts', [{ chatId: 1, text: 'чужой черновик', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }])
     setAppState('starsBalance', 500)
-    setAppState('recentSearch', [1, 2, 3])
+    setAppState('recentSearch', ['1', '2', '3'])
 
     resetAppState()
 

@@ -10,9 +10,9 @@ describe('persistManager.stateKey', () => {
   it('пишет ключ State, и он читается общим батч-ридером', async () => {
     const pm = newPersistManager()
 
-    await pm.stateKey('recentSearch', [4, 5, 6])
+    await pm.stateKey('recentSearch', ['4', '5', '6'])
 
-    expect((await loadStateAll()).recentSearch).toEqual([4, 5, 6])
+    expect((await loadStateAll()).recentSearch).toEqual(['4', '5', '6'])
   })
 
   it('повторная запись того же ключа перекрывает предыдущую', async () => {

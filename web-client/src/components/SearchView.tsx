@@ -18,6 +18,7 @@ import type { SearchResult } from '../core/managers/channelsManager'
 import type { Message } from '../core/models'
 import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
+import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appState'
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
@@ -36,14 +37,15 @@ const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' |
   2: 'media', 3: 'links', 4: 'files', 5: 'music', 6: 'voice',
 }
 
-// ── недавние запросы (tweb recentSearch: peerId[], cap 20, в состоянии клиента) ──
-const RECENT_KEY = 'recentSearch'
-const loadRecent = (): string[] => {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[] } catch { return [] }
-}
+// ── недавние запросы (tweb `recentSearch` в State, cap 20) ──────────────────
+// Живут в AppState, а не в localStorage: State поднимается одним батчем до
+// первого рендера и синхронизируется между вкладками зеркалом из воркера.
+// Отдельное хранилище дублировало бы ключ схемы и обходило обе эти механики.
+const RECENT_CAP = 20
+
 const pushRecent = (id: string) => {
-  const next = [id, ...loadRecent().filter((x) => x !== id)].slice(0, 20)
-  localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  const cur = useAppStateStore.getState().recentSearch
+  setAppState('recentSearch', [id, ...cur.filter((x) => x !== id)].slice(0, RECENT_CAP))
 }
 
 interface Props {
@@ -76,7 +78,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const [lang] = useLang()
   const [tab, setTab] = useState(0)
   const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
-  const [recentIds, setRecentIds] = useState<string[]>(loadRecent)
+  const recentIds = useAppStateKey('recentSearch')
   const [confirmClear, setConfirmClear] = useState(false)
 
   const q = query.trim()
@@ -106,7 +108,6 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const byId = new Map(chats.map((c) => [c.id, c]))
   const openDialog = (id: string) => {
     pushRecent(id)
-    setRecentIds(loadRecent())
     onSelect(id)
   }
   // Результат-чат из директории: свой диалог → открыть; чужой → вступить по @username.
@@ -157,10 +158,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const myChannels = chats.filter((c) => c.type === 'channel')
   const recentChats = recentIds.map((id) => byId.get(id)).filter((c): c is Chat => !!c)
 
-  const clearRecent = () => {
-    localStorage.removeItem(RECENT_KEY)
-    setRecentIds([])
-  }
+  const clearRecent = () => { setAppState('recentSearch', []) }
 
   // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
   const MsgRow = ({ m }: { m: Message }) => {
