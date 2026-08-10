@@ -169,6 +169,16 @@ export class SuperMessagePort {
     if (typeof navigator === 'undefined' || !navigator.locks) {
       return
     }
+    // Осознанное расхождение с tweb: у них тут дедуп `requestedLocks`
+    // (superMessagePort.ts:505-513 — `if (this.requestedLocks.has(id)) return`
+    // перед `navigator.locks.request`), нужный потому, что `resendLockTask`
+    // (:241-248) может переслать ТОТ ЖЕ id повторно (например, при
+    // переподключении отправляющего порта) — без дедупа на один id ушло бы
+    // несколько параллельных request(). Мы `resendLockTask` не портировали
+    // (bootstrap.ts шлёт lock ровно один раз, из колбэка гранта, см. attachLock)
+    // — id физически приходит один раз за жизнь порта, дублирующий вызов
+    // request() с тем же id недостижим. Если resendLockTask когда-нибудь
+    // появится — этот комментарий и есть напоминание вернуть дедуп.
     void navigator.locks.request(id, () => { this.disconnectPort() })
   }
 

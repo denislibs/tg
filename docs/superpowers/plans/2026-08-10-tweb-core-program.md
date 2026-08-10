@@ -162,14 +162,31 @@ ServiceWorker.
 `worker.ts:137-139`, сохраняется).
 
 **1.2 Единая шина (rootScope-аналог).**
-`eventBus` (realtime) и `uiEvents` (UI) сливаются в один типизированный каталог
-событий с опциональным `reuseResults` (sticky, как `EventListenerBase`,
-`eventListenerBase.ts:67-85`). Кросс-таб — уже есть через broadcast воркера
-(`worker.ts:126-127`); конверт события получает `accountScope` на будущее.
-Ликвидируется задокументированная стирающаяся граница «проектор эмитит в
-uiEvents» (`storeProjection.ts:174,186`) и зависимость от порядка регистрации
-подписчиков (`useChatScroll.ts:328-330` — заменяется на подписку на шину с
-гарантированным порядком «ops применены → событие опубликовано»).
+**Слияние `eventBus`/`uiEvents` — сделано в Этапе 1A** (эта ветка застала уже
+готовым): `core/realtime/eventBus.ts` и `core/hooks/uiEvents.ts` удалены,
+единый типизированный каталог — вендорный `src/lib/rootScope.ts`
+(`BroadcastEvents`/`BroadcastEventsListeners` + `EventListenerBase`,
+`eventListenerBase.ts:67-85`, sticky `reuseResults` — оттуда же). Насос
+`smp → rootScope` — `client/realtimeBridge.ts` (единственный потребитель
+`smp`, ре-эмитит `dispatchEventSingle`); подписчики (`storeProjection`,
+`soundSubscriber`, `notificationSubscriber`, `callSubscriber`,
+`refetchSubscriber`) висят на `rootScope.addEventListener`. Референс —
+`web-client/CLAUDE.md`, раздел «Архитектура клиента». Ссылка «проектор эмитит
+в uiEvents» (`storeProjection.ts:174,186`) — из удалённого файла, дальше не
+актуальна.
+
+Кросс-таб — через broadcast воркера, теперь `worker.ts:141-142`
+(`newWorkerScope`/`workerScope.broadcast` — Stage 1C.1 сделала его не голой
+функцией, а обёрткой над воркерным инстансом того же `RootScope`, со своим
+портом-веером по подключённым вкладкам; проводка — `core/realtime/workerScope.ts`).
+
+**Ещё не сделано:** зависимость от порядка регистрации подписчиков всё ещё
+есть — `useChatScroll.ts` читает `rootScope` напрямую и полагается на то, что
+`storeProjection` зарегистрировался раньше (комментарий на месте: «storeProjection
+пишет стор раньше… поэтому к моменту этого обработчика окно/диалог уже
+обновлены»). Гарантированный порядок «ops применены → событие опубликовано»
+(вместо неявной зависимости от порядка `addEventListener`) в rootScope не
+реализован — остаётся открытым пунктом этого подраздела.
 
 **1.3 Проектор → чистый replay, домен за доменом.**
 Порядок миграции: **messages** (худший: тройное представление) → **dialogs** →
@@ -188,8 +205,11 @@ uiEvents» (`storeProjection.ts:174,186`) и зависимость от пор�
 - `pinnedOrders`/`drafts`/`folders`: один писатель через ops; кросс-табовое
   зеркало State (`appState.ts:44-68` с ручным циклобрейкером) переезжает на тот
   же op-канал — самодельный `applyStateMirror`/`STATE_KEYS`-фильтр удаляется;
-- дубль-дебаунсы рефетча `/chats` (`storeProjection.ts:33-40` +
-  `refetchSubscriber.ts:16-22`) — один.
+- ~~дубль-дебаунсы рефетча `/chats` (`storeProjection.ts:33-40` +
+  `refetchSubscriber.ts:16-22`) — один.~~ **Сделано** (коммит `83bd78e`,
+  ветка `feat/worker-rootscope`): единственный модульный `scheduleChatsReload`,
+  владелец — `refetchSubscriber`; `storeProjection` зовёт импортированную
+  функцию, свой таймер убран.
 
 **1.5 Порядок как структурное свойство (снос PTS_SYNC_DELAY).**
 - E2E-расшифровка переносится **до** funnel'а: per-chat очередь decrypt в

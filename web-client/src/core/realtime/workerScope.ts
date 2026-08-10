@@ -34,7 +34,20 @@ export function newWorkerScope(deps: WorkerScopeDeps): {
   // Порт-веер: рассылает во ВСЕ подключённые вкладки. Читаем deps.ports на каждый
   // emit, а не захватываем копию в замыкание при создании — массив живой (bind()
   // пушит в него по мере подключения вкладок уже ПОСЛЕ вызова newWorkerScope).
-  scope.setPort({ emit: (event, payload, meta) => { for (const p of deps.ports) p.emit(event, payload, meta) } })
+  //
+  // .slice() — снимок массива ПЕРЕД обходом, порт tweb superMessagePort.ts:687-693
+  // (invokeExceptSource: `const ports = this.sendPorts.slice()`, потом уже из
+  // копии индексОфAndSplice источник). Мотив тот же: мутация ports[] ВО ВРЕМЯ
+  // обхода (disconnectPort splice'ит элемент, пока цикл ещё бежит) пропустила бы
+  // соседний элемент — splice сдвигает индексы под ногами forEach/for-of. До
+  // Задачи 2 (worker-rootscope) массив вообще не сокращался — обоснованный
+  // повод отступить от tweb не было; теперь сокращается (indexOfAndSplice в
+  // setOnPortDisconnect), риск стал реальным. Сегодня недостижимо: p.emit()
+  // это postMessage — синхронный вызов без реентрантности, disconnectPort() не
+  // может сработать МЕЖДУ итерациями этого цикла (только в отдельном тике, уже
+  // после его завершения) — но снимок стоит дёшево и убирает саму категорию
+  // бага, а не полагается на то, что сегодняшняя асинхронность останется такой.
+  scope.setPort({ emit: (event, payload, meta) => { for (const p of deps.ports.slice()) p.emit(event, payload, meta) } })
 
   function broadcast(event: string, payload: unknown, meta?: EventMeta): void {
     scope.dispatchEvent(event as keyof BroadcastEventsListeners, payload as never, meta as never)
@@ -43,9 +56,11 @@ export function newWorkerScope(deps: WorkerScopeDeps): {
   // Порт tweb index.worker.ts:116-119 (invokeExceptSource). Порядок важен: локальный
   // слушатель воркера может поправить SSOT до того, как соседние вкладки увидят кадр.
   // dispatchEvent здесь НЕ звать — он ушёл бы в веер и вернулся источнику (кольцо).
+  // .slice() — тот же снимок-перед-обходом, что и в веере broadcast выше (см.
+  // комментарий там же, tweb superMessagePort.ts:687-693).
   function receiveFrom(source: WorkerScopePort, event: string, payload: unknown, meta?: EventMeta): void {
     scope.dispatchEventSingle(event as keyof BroadcastEventsListeners, payload as never, meta as never)
-    for (const p of deps.ports) if (p !== source) p.emit(event, payload, meta)
+    for (const p of deps.ports.slice()) if (p !== source) p.emit(event, payload, meta)
   }
 
   return { scope, broadcast, receiveFrom }
