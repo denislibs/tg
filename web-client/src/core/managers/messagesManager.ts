@@ -566,8 +566,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     },
 
     // Платное медиа разблокировано: раскрываем баббл в SSOT — возвращаем ссылку на
-    // контент + метаданные и снимаем флаг locked. Операции покрывают те же поля,
-    // что уже режет applyPaidUnlock в сторе (не полный объект — см. карту обогащений).
+    // контент + метаданные и снимаем флаг locked. Операции несут только эти поля
+    // (не полный объект — см. карту обогащений); сторный applyPaidUnlock, резавший
+    // те же поля вручную, стал недостижим и удалён (Task 6).
     cachePaidUnlock(evt: NewMessageEvt): MessageOp[] {
       const fields: Partial<Message> = {
         mediaId: evt.media_id ?? null,

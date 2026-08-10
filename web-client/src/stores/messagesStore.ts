@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
@@ -117,16 +117,9 @@ interface MessagesState {
   applyOps: (ops: MessageOp[]) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
-  /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
-  applyWebPage: (chatId: number, msgId: number, webPage: WebPageData) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
   applyFactCheck: (chatId: number, msgId: number, factCheck: FactCheck | undefined) => void
-  /** Платное медиа разблокировано (paid_media_unlock) → раскрываем баббл: полное
-   * медиа + снятый флаг locked приезжают в готовом сообщении. */
-  applyPaidUnlock: (chatId: number, msg: Message) => void
   applyDelete: (chatId: number, msgId: number) => void
-  /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
-  applyMediaRead: (chatId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (chatId: number, views: Map<number, number>) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). Live-
@@ -397,14 +390,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyWebPage: (chatId, msgId, webPage) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msgId)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, webPage } : m))
-          : null,
-      )),
-
   applyFactCheck: (chatId, msgId, factCheck) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
@@ -413,42 +398,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyPaidUnlock: (chatId, msg) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msg.id)
-          ? w.msgs.map((m) =>
-              m.id === msg.id
-                ? {
-                    ...m,
-                    mediaId: msg.mediaId,
-                    mediaWidth: msg.mediaWidth,
-                    mediaHeight: msg.mediaHeight,
-                    mediaMime: msg.mediaMime,
-                    mediaBlur: msg.mediaBlur,
-                    mediaHasThumb: msg.mediaHasThumb,
-                    mediaDuration: msg.mediaDuration,
-                    mediaSize: msg.mediaSize,
-                    mediaName: msg.mediaName,
-                    paidMedia: msg.paidMedia,
-                  }
-                : m,
-            )
-          : null,
-      )),
-
   applyDelete: (chatId, msgId) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId) ? w.msgs.filter((m) => m.id !== msgId) : null,
-      )),
-
-  applyMediaRead: (chatId, msgId) =>
-    set((s) =>
-      patchChat(s, chatId, (w) =>
-        w.msgs.some((m) => m.id === msgId && m.mediaUnread)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, mediaUnread: false } : m))
-          : null,
       )),
 
   patchViews: (chatId, views) =>
