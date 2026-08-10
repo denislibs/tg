@@ -1,4 +1,4 @@
-import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { SuperMessagePort, USE_LOCKS, type Endpoint } from '../rpc/superMessagePort'
 import { createManagers } from '../rpc/managersProxy'
 // Единый источник правды по составу и сигнатурам менеджеров — реестр воркера
 // (WorkerRegistry). import type стирается при сборке, поэтому рантайм-код воркера
@@ -62,6 +62,10 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: 
  * (обнаружено ревью, Б-3).
  */
 export function attachLock(smp: SuperMessagePort): void {
+  // Аварийный рубильник (порт tweb USE_LOCKS, superMessagePort.ts:91): выключен —
+  // вкладка не берёт лок и не шлёт кадр `lock` ни в основной ветке, ни в
+  // beforeunload-фолбэке. Обоснование и цена деградации — у самой константы.
+  if (!USE_LOCKS) return
   // Проверяем ЗНАЧЕНИЕ navigator.locks, не `'locks' in navigator` — happy-dom
   // (bootstrap.lock.test.ts) объявляет его геттером-заглушкой, который ЕСТЬ
   // (`in` даёт true), но возвращает null; truthy-проверка покрывает и это, и
