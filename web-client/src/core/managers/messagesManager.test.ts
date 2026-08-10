@@ -319,16 +319,21 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
   }
 
   it('maps reply_markup into the SSOT when the edit carries a new keyboard', async () => {
-    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
     mgr.cacheEdit({
       chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
-      reply_markup: { inline: [[{ text: 'New', callback: 'new' }]] },
+      // one_time — поле, которого нет в фикстурах старой клавиатуры (только
+      // inline). Без него toEqual не отличил бы смаппленный ReplyMarkup от
+      // сырого RawMarkup: обе стороны несли бы один и тот же {inline}, а
+      // отсутствующие oneTime/one_time читаются toEqual как равные undefined.
+      reply_markup: { inline: [[{ text: 'New', callback: 'new' }]], one_time: true },
     })
     const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const edited = r.messages.find((m) => m.id === 2)
-    expect(edited?.replyMarkup).toEqual({ inline: [[{ text: 'New', callback: 'new' }]] } )
+    expect(edited?.replyMarkup).toEqual({ inline: [[{ text: 'New', callback: 'new' }]], oneTime: true })
   })
 
   it('clears replyMarkup in the SSOT when the edit carries no reply_markup (removed)', async () => {
