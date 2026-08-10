@@ -30,26 +30,24 @@ describe('useMiddlewareHelper', () => {
     expect(mb()).toBe(false)
   })
 
-  it('переживает StrictMode: ссылка стабильна, cleanup разрушает, воскрешение работает', () => {
-    // Рычаг 1: ссылка хелпера стабильна между рендерами (ловит забытый ??=)
-    const { result, rerender } = renderHook(() => useMiddlewareHelper(), {
+  it('переживает StrictMode-цикл: фантомный destroy не ломает хелпер', () => {
+    const { result, rerender, unmount } = renderHook(() => useMiddlewareHelper(), {
       wrapper: ({ children }) => <StrictMode>{children}</StrictMode>,
     })
-    const helperBeforeCycle = result.current
+
+    // Контрольная точка 1: после маунта (после фантомного цикла)
+    // хелпер РАБОЧИЙ (destroy→clean() пересоздают details, get() выдаёт живой middleware)
+    const helper = result.current
+    expect(helper.get()()).toBe(true)
+
+    // Контрольная точка 2: идентичность ссылки через rerender (ловит мутацию A: нет ??=)
+    const middleware = helper.get()
     rerender()
-    expect(result.current).toBe(helperBeforeCycle)
+    expect(result.current).toBe(helper)
+    expect(result.current.get()()).toBe(true)
 
-    // Рычаг 2: cleanup должен вызвать destroy(), гасящий старое поколение
-    // (ловит забытый destroy() в cleanup)
-    const { result: result2, unmount } = renderHook(() => useMiddlewareHelper())
-    const middleware = result2.current.get()
-    expect(middleware()).toBe(true)
+    // Контрольная точка 3: cleanup вызовет destroy(), гасящий старое поколение (ловит мутацию B: нет destroy())
     unmount()
-    expect(middleware()).toBe(false) // cleanup вызвал destroy()
-
-    // Воскрешение: после destroy() хелпер может выдать новое поколение
-    // (пин из middleware.test.ts: destroy() + clean() пересоздают details)
-    const freshHook = renderHook(() => useMiddlewareHelper())
-    expect(freshHook.result.current.get()()).toBe(true)
+    expect(middleware()).toBe(false)
   })
 })
