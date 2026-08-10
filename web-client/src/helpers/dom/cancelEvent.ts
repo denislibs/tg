@@ -20,7 +20,6 @@
 
 export default function cancelEvent(event?: Event) {
   event ||= window.event
-
   if(event) {
     // 'input' event will have cancelable=false, but we still need to preventDefault
     // if(!event.cancelable) {

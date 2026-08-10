@@ -29,6 +29,7 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice';
 import {fastRaf} from '@helpers/schedulers';
 import {useSettingsStore} from '@/settings';
 import {onHeavyAnimation} from '@core/dom/heavyAnimation';
+import isInDOM from '@helpers/dom/isInDOM';
 
 export type AnimationItemGroup = '' | 'none' | 'chat' | 'lock' |
   'STICKERS-POPUP' | 'emoticons-dropdown' | 'STICKERS-SEARCH' | 'GIFS-SEARCH' |
@@ -57,11 +58,6 @@ export interface AnimationItem {
   controlled?: boolean | Middleware,
   type: AnimationItemType,
   locked?: boolean
-}
-
-/** tweb `helpers/dom/isInDOM` */
-function isInDOM(element: Element): boolean {
-  return !!element?.isConnected;
 }
 
 /** tweb `helpers/array/forEachReverse` — обход с конца, чтобы splice по ходу не сбивал индексы */

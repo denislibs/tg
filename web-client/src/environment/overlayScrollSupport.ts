@@ -7,25 +7,26 @@
 // `number | undefined`; `!` компилируется в ничто — `undefined < 113`/
 // `undefined >= 145` и без ассершна дают `false`, поведение не меняется.
 //
-// Единственная замена — solid-js `createMemo` на обычную функцию с кэшем в
-// замыкании (вычисляется один раз при первом вызове, дальше отдаёт
-// сохранённое значение): solid-js не входит в зависимости этого проекта,
-// программа сознательно отказалась его вводить (см. `helpers/mediaSizes.ts`,
-// `helpers/solid/readValue.ts`; закреплено в `docs/superpowers/plans/
-// 2026-08-10-tweb-core-program.md`, решение координатора по блокеру Задачи 2
-// — см. `task-2-report.md`). Место вызова не меняется: и Solid-мемо, и
-// обычная функция вызываются как `IS_OVERLAY_SCROLL_SUPPORTED()`
+// Единственная замена — solid-js `createMemo` на обычную функцию:
+// `IS_OVERLAY_SCROLL_SUPPORTED`/`USE_CUSTOM_SCROLL` просто пересчитывают своё
+// выражение при каждом вызове, без кэша. Место вызова не меняется: и
+// Solid-мемо, и обычная функция вызываются как `IS_OVERLAY_SCROLL_SUPPORTED()`
 // (`scrollable.ts` зовёт их именно так, без разницы для потребителя).
 //
-// Отличие в поведении: настоящий Solid-мемо у tweb реактивно пересчитался бы,
-// если `scrollbarWidth()` (тоже сигнал) сменится посреди сессии — например,
-// если пользователь на macOS живьём переключит режим отображения скроллбара
-// в системных настройках. Наш кэш-в-замыкании это не подхватит: посчитан
-// один раз и отдаёт то же значение до перезагрузки страницы. Компромисс
-// принят координатором осознанно (см. тот же report) — случай редкий, а сама
-// величина `scrollbarWidth()` в tweb тоже, по сути, измеряется один раз (её
-// `observeResize`-колбэк переизмеряет тот же скрытый `div`, а не отслеживает
-// реальные пользовательские действия).
+// **Почему без кэша, хотя первая версия этого шима его заводила** (см. правку
+// по итогам ревью Задачи 2, `task-2-report.md`): `scrollbarWidth()` — НЕ
+// статичное значение, оно намеренно живое. В `helpers/dom/scrollbarWidth.ts`
+// зашит переизмеритель на `ResizeObserver` с комментарием апстрима «When
+// macOS switches scrollbar mode, inner div resizes → callback fires» — то
+// есть tweb специально сделал так, чтобы значение менялось во времени (macOS
+// System Settings → Appearance → «Show scroll bars»: «Always» ↔ «When
+// scrolling» посреди открытой вкладки), а `createMemo` специально сделан,
+// чтобы это подхватывать. Кэш-в-замыкании из первой версии залипал бы на
+// первом прочитанном значении до перезагрузки страницы — расхождение с tweb,
+// а не эквивалент. `STATIC_OVERLAY_SCROLL && scrollbarWidth() === 0` —
+// булево «и» плюс чтение уже посчитанного поля (сама лень — внутри
+// `scrollbarWidth()`, не здесь), пересчитывать на каждый вызов дешевле, чем
+// проверять и поддерживать кэш.
 import { CHROMIUM_VERSION, IS_CHROMIUM, IS_MOBILE, IS_MOBILE_SAFARI, IS_SAFARI } from '@environment/userAgent'
 import scrollbarWidth from '@helpers/dom/scrollbarWidth'
 
@@ -36,18 +37,5 @@ const STATIC_OVERLAY_SCROLL = IS_MOBILE ||
   CHROMIUM_VERSION! < 113 ||
   CHROMIUM_VERSION! >= 145
 
-let _isOverlayScrollSupported: boolean | undefined
-export const IS_OVERLAY_SCROLL_SUPPORTED = (): boolean => {
-  if(_isOverlayScrollSupported === undefined) {
-    _isOverlayScrollSupported = STATIC_OVERLAY_SCROLL && scrollbarWidth() === 0
-  }
-  return _isOverlayScrollSupported
-}
-
-let _useCustomScroll: boolean | undefined
-export const USE_CUSTOM_SCROLL = (): boolean => {
-  if(_useCustomScroll === undefined) {
-    _useCustomScroll = !USE_NATIVE_SCROLL && !IS_OVERLAY_SCROLL_SUPPORTED()
-  }
-  return _useCustomScroll
-}
+export const IS_OVERLAY_SCROLL_SUPPORTED = (): boolean => STATIC_OVERLAY_SCROLL && scrollbarWidth() === 0
+export const USE_CUSTOM_SCROLL = (): boolean => !USE_NATIVE_SCROLL && !IS_OVERLAY_SCROLL_SUPPORTED()

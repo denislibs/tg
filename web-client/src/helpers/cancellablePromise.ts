@@ -5,7 +5,14 @@
 //   • `any` → `unknown`/`unknown[]` в сигнатурах callback-аргументов
 //     (`typescript/no-explicit-any`; значения только форвардятся дальше, не
 //     анализируются по типу — сужение безопасно);
-//   • `void` перед fire-and-forget промисами (`typescript/no-floating-promises`);
+//   • `void` перед РЕАЛЬНО fire-and-forget промисом в `bindPromiseToDeferred`
+//     (`typescript/no-floating-promises`). `Object.assign(deferred,
+//     deferredHelper)` в `deferredPromise()` — НЕ промис по смыслу (обычный
+//     merge объекта), `void` там раньше стоял ошибочно и убран по ревью:
+//     линтер путает его с промисом только потому, что `deferred:
+//     CancellablePromise<T>` структурно расширяет `Promise<T>`, и
+//     `no-floating-promises` от этого даёт предупреждение (не ошибку) —
+//     принято как есть, не маскируется;
 //   • `resolve = _resolve, reject = _reject` (comma-expression statement)
 //     разбит на два присваивания (`eslint/no-unused-expressions`);
 //   • `!` на `_resolve`/`_reject`/`onFinish` внутри `deferredHelper` и на
@@ -102,7 +109,7 @@ export default function deferredPromise<T>() {
     reject = _reject
   })
 
-  void Object.assign(deferred, deferredHelper)
+  Object.assign(deferred, deferredHelper)
   deferred._resolve = resolve
   deferred._reject = reject
 
