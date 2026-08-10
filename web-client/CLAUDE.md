@@ -45,7 +45,7 @@ npx vite build --outDir ../client-build
   `animation: :global(name)` не компилируется.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
-  @lib @helpers @components @config @environment @vendor @customEmoji @/*`. Раскладка кросс-каттинга:
+  @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
   `shared/lib` — чистые переиспользуемые утилиты; `lib` — толстые вендор-подсистемы (lottie,
   customEmoji, `twebMessagePort`); `helpers` — легаси-корзина, новое туда не класть.
 
@@ -58,6 +58,15 @@ npx vite build --outDir ../client-build
 вверх (данные):  сервер → smp → rootScope → {Store-проектор, Sound, Notifications, Call, Refetch, …} → селектор → View
 вниз (команды):  View → хук (use*) → managers → сервер
 ```
+
+Воркерная сторона (`сервер →`) собрана в `core/workerCore.ts` (фабрика `createWorkerCore()`:
+менеджеры, funnel, реестр RPC, `bind()`) — `core/worker.ts` лишь вызывает её и `.start()`,
+это не место для логики.
+
+Порты закрытых вкладок снимаются не по событию `close`, а Web Locks-механикой (порт tweb):
+вкладка держит лок (`attachLock` в `client/bootstrap.ts`), воркер запрашивает тот же лок и
+получает его только когда вкладка реально умерла (включая крэш/kill, не только штатный
+`beforeunload`). Аварийный рубильник — константа `USE_LOCKS` в `rpc/superMessagePort.ts`.
 
 **Слои и кто за что:**
 - **View** (`components/*`) — только рендер + колбэки. Не фетчит, не слушает сокет, не держит данные.
@@ -189,7 +198,7 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 - Ссылки — только по allow-list схем (`http/https/mailto/tel/tg`); остальное отбрасывать.
 - Лимит длины кода в prism (ReDoS), лимит числа entities (O(n²) рендер) — не убирать.
 
-## Rich-text (`src/core/markdown.ts`)
+## Rich-text (`src/core/richtext/markdown.ts`)
 
 - Модель `MessageEntity` совпадает с бэком: offset/length в **UTF-16** (обычные индексы JS-строки).
 - Инпут хранит **сырые** markdown-маркеры; разбор — на **отправке** (`parseMarkdown`), как в tweb.
