@@ -1,9 +1,11 @@
 // src/core/managers/messagesManager.test.ts
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
 import { fromNewMessageEvt, mapFactCheck, mapWebPage, mapPoll, mapChecklist, mapGiveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
+import { RT } from '../realtime/events'
+import type { MessageOp } from '../realtime/messageOps'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
@@ -492,6 +494,46 @@ describe('MessagesManager.cacheDelete', () => {
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
     for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
+  })
+})
+
+// Регрессия (финальное ревью feat/remaining-ops, Regression 2): deleteMessage
+// (RPC-путь удаления из меню сообщения) после REST зовёт evictMsg НАПРЯМУЮ, минуя
+// cacheDelete — окна опустошаются в SSOT, но операции remove не рассылаются.
+// [RT.deleteMessage] убран из реестра APPLY проектора (storeProjection.ts) —
+// окно теперь правит ТОЛЬКО applyOps(RT.messageOp), поэтому другие вкладки того
+// же пользователя не удаляют сообщение из открытых окон, пока не перезагрузятся.
+// Вкладка-инициатор чинит своё окно сама (useMessageActions → applyDelete) — эти
+// тесты бьют именно по RPC-пути, который должен разослать ops остальным вкладкам.
+describe('MessagesManager.deleteMessage (RPC path)', () => {
+  it('broadcasts one remove op per window where the message was visible, computed BEFORE eviction', async () => {
+    const overlap = restWithThreadOverlap() as unknown as { get: RestClient['get']; post: RestClient['post'] }
+    const rest = { ...overlap, del: async () => ({ ok: true }) } as unknown as RestClient
+    const broadcast = vi.fn()
+    const mgr = newMessagesManager({ rest, broadcast })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+
+    await mgr.deleteMessage(1, 2, false)
+
+    expect(broadcast).toHaveBeenCalledTimes(1)
+    const [event, payload] = broadcast.mock.calls[0] as [string, { ops: MessageOp[] }]
+    expect(event).toBe(RT.messageOp)
+    expect(payload.ops).toHaveLength(2)
+    expect(payload.ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    for (const op of payload.ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
+  })
+
+  it('does not broadcast when the message is absent from every window', async () => {
+    const { rest: base } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const rest = { ...(base as unknown as { get: RestClient['get']; post: RestClient['post'] }), del: async () => ({ ok: true }) } as unknown as RestClient
+    const broadcast = vi.fn()
+    const mgr = newMessagesManager({ rest, broadcast })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+
+    await mgr.deleteMessage(1, 999, false)
+
+    expect(broadcast).not.toHaveBeenCalled()
   })
 })
 

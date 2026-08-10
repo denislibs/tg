@@ -14,6 +14,7 @@ export interface CalendarDay {
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
@@ -62,9 +63,14 @@ export interface MessagesDeps {
    * (событие reaction несёт user_id реагирующего, а не флаг «моё»). Разрешается
    * лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
+  /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
+   * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
+   * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
+   * тесты кэш-методов (cacheX) его не используют. */
+  broadcast?: (event: string, payload: unknown) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
@@ -155,6 +161,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     for (const [s, m] of c) if (m.id === msgId) { seq = s; break }
     if (seq === undefined) return []
     return winKeysOf(chatId).filter((k) => slices.get(k)?.findSlice(seq!))
+  }
+  // Удаление сообщения → remove-операции по всем окнам, где оно было видно.
+  // Общая точка входа для WS-пути (cacheDelete, funnel воркера) и RPC-пути
+  // (deleteMessage, эта же вкладка удалила): обе обязаны вычислить ключи окон ДО
+  // evictMsg — после эвикции seq уже выкинут из срезов, opWindowsFor не найдёт
+  // ничего (Regression 2, финальное ревью feat/remaining-ops: deleteMessage звал
+  // evictMsg напрямую и терял ops для остальных вкладок).
+  const evictAndBuildRemoveOps = (chatId: number, msgId: number): MessageOp[] => {
+    const keys = opWindowsFor(chatId, msgId)
+    evictMsg(chatId, msgId)
+    return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
   }
 
   // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): apply-хелперы
@@ -317,13 +334,19 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     // messages are never shown, so evict from the SSOT (+ all window slices) too,
     // or a later cache hit would resurrect it.
     async deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }> {
-      // После УСПЕХА сети: эхо всем вкладкам + eviction из SSOT (storeProjection —
-      // единственный писатель). Не оптимистично до REST: сервер может отклонить
-      // удаление (напр. «для всех» после окна времени), а откат eviction+persist
-      // сложен и рисковен — мгновенность удаления тут не критична (tweb-компромисс).
+      // После УСПЕХА сети: eviction из SSOT + рассылка remove-операций остальным
+      // вкладкам (Regression 2, финальное ревью feat/remaining-ops: [RT.deleteMessage]
+      // убран из реестра APPLY проектора — окно правит только applyOps, а WS
+      // delete_message придёт по уже опустевшему SSOT воркера и cacheDelete отдаст
+      // пустой список, если не разослать ops здесь). Вкладка-инициатор чинит своё
+      // окно сама (useMessageActions → applyDelete), поэтому себе не шлём. Не
+      // оптимистично до REST: сервер может отклонить удаление (напр. «для всех»
+      // после окна времени), а откат eviction+persist сложен и рисковен —
+      // мгновенность удаления тут не критична (tweb-компромисс).
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
-      evictMsg(chatId, msgId) // eviction из SSOT воркера; main-стор обновит вызыватель
-      return r                // (applyDelete), а WS delete_message реконсилит.
+      const ops = evictAndBuildRemoveOps(chatId, msgId)
+      if (ops.length) broadcast?.(RT.messageOp, { ops })
+      return r
     },
 
     // Forward messages from one chat into another; returns the created copies.
@@ -582,12 +605,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       return opWindowsFor(evt.chat_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields }))
     },
 
-    // Ключи окон вычисляем ДО evictMsg — после удаления seq уже выкинут из срезов,
-    // и opWindowsFor ничего не нашёл бы.
     cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
-      const keys = opWindowsFor(evt.chat_id, evt.msg_id)
-      evictMsg(evt.chat_id, evt.msg_id)
-      return keys.map((key): MessageOp => ({ op: 'remove', key, msgId: evt.msg_id }))
+      return evictAndBuildRemoveOps(evt.chat_id, evt.msg_id)
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие

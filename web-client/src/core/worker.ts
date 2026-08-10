@@ -80,8 +80,10 @@ void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
 // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
-// tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам).
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
+// tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
+// deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
+// remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
