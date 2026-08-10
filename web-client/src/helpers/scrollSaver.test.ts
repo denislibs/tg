@@ -140,19 +140,17 @@ describe('ScrollSaver', () => {
 
     // Экранная позиция якоря не изменилась (top/bottom те же) → restore()
     // видит newPosition === position и НЕ трогает scrollTop.
-    expect(container.scrollTop).toBe(200)
-
+    //
     // "Укус" (см. Step 6 брифа): старый самодельный pendingRestore в
     // useChatScroll.ts держал ЧИСТУЮ дельту "расстояние от низа" —
-    // scrollHeight-scrollTop зафиксированное при save. Тот же сценарий по
+    // scrollHeight-scrollTop, зафиксированное при save. Тот же сценарий по
     // этой формуле даёт: newScrollTop = newScrollHeight - (scrollHeightAtSave
     // - scrollTopAtSave) = 1500 - (1000-200) = 700 — вьюпорт спрыгнул бы на
     // 500px вниз, хотя визуально ничего рядом с якорем не изменилось. Это
-    // ровно тот баг, который ScrollSaver чинит структурно (см. README теста
-    // и task-3-report.md, где этот же сценарий прогнан против реально
-    // урезанного до дельты restore() — с красным выводом).
-    const deltaFormulaResult = 1500 - (1000 - 200)
-    expect(deltaFormulaResult).toBe(700)
-    expect(deltaFormulaResult).not.toBe(container.scrollTop)
+    // ровно тот баг, который ScrollSaver чинит структурно — не заявление в
+    // комментарии, а реально прогнанная мутация (см. task-3-report.md:
+    // временный откат restore() на чистую дельту красит этот тест ровно с
+    // такими числами, 700 вместо 200).
+    expect(container.scrollTop).toBe(200)
   })
 })
