@@ -4,7 +4,7 @@
 // как сообщения). Ряды 64px без аватара (tweb topic-dialogs-override): иконка
 // топика в строке названия, превью последнего сообщения, время. Клик по теме
 // открывает её тред в колонке чата (tweb setPeer({peerId, threadId})).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Badge from '../shared/ui/Badge'
@@ -63,7 +63,8 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const t = useT()
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
-  const middleware = middlewareHelper.get()
+  const chatIdRef = useRef(chatId)
+  chatIdRef.current = chatId
   const [topics, setTopics] = useState<TopicRow[] | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<TopicRow | null>(null)
@@ -77,17 +78,22 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const [canManage, setCanManage] = useState(false)
 
   const reload = () => {
-    void managers.groups.listTopics(chatId)
+    const forChat = chatId
+    // Если к моменту позднего вызова из меню чат уже сменился — выходим
+    if (forChat !== chatIdRef.current) return
+    const middleware = middlewareHelper.get()
+    void managers.groups.listTopics(forChat)
       .then((t) => { if (middleware()) setTopics(t) })
       .catch(() => { if (middleware()) setTopics([]) })
   }
   useEffect(() => {
     setTopics(null)
     reload()
+    const middleware = middlewareHelper.get()
     void managers.groups.card(chatId).then((c) => {
       if (middleware()) setCanManage(c.myRole === 'creator' || (c.myRights & CHANGE_INFO) !== 0)
     }).catch(() => { if (middleware()) setCanManage(false) })
-    // Смена chatId/unmount гасит и висящий reload() из меню — одна зона актуальности.
+    // Смена chatId/unmount гасит висящий reload() из меню и ответы эффекта.
     return () => middlewareHelper.clean()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId])
