@@ -16,6 +16,7 @@
 // перерисовываются.
 import { create } from 'zustand'
 import { initialState, type AppState } from '../core/state/state'
+import { reconcileEntity } from '../core/store/reconcile'
 
 /** Писатель персиста — фасад воркера (persistManager). Ставит boot.ts. */
 export interface StateWriter { stateKey(key: string, value: unknown): Promise<void> }
@@ -42,6 +43,45 @@ export function setAppState<K extends keyof AppState>(key: K, value: AppState[K]
 /** Гидрация с диска: только память (tweb setAppStateSilent). */
 export function setAppStateSilent(patch: Partial<AppState>): void {
   useAppStateStore.setState(patch)
+}
+
+/**
+ * Применить зеркало ключа, пришедшее из воркера (правку сделала другая вкладка).
+ * Порт tweb `apiManagerProxy.processMirrorTaskMap.state` (:235-241):
+ *
+ *   state: (payload) => { if(payload.key) setAppStateSilent(payload.key, payload.value); }
+ *
+ * Именно SILENT: обратная запись здесь замкнула бы цикл вкладка → воркер →
+ * вкладка. Диск уже записан той вкладкой, которая инициировала изменение.
+ *
+ * `reconcileEntity` — наш аналог solid-овского `reconcile`, который tweb
+ * применяет внутри `setAppStateSilent`. Он нужен не только ради экономии: кадр
+ * приходит и в ТУ ЖЕ вкладку, что его послала, а после structured clone это уже
+ * другой объект — без сверки собственное эхо перерисовывало бы подписчиков.
+ */
+export function applyStateMirror<K extends keyof AppState>(key: K, value: AppState[K]): void {
+  const cur = useAppStateStore.getState()[key]
+  const next = reconcileEntity(cur, value)
+  if (next === cur) return
+  useAppStateStore.setState({ [key]: next } as Pick<AppState, K>)
+}
+
+/**
+ * Забыть State текущего аккаунта. Зовётся на логауте БЕЗ перезагрузки страницы
+ * (`useAuthGate.logout`, ветка без мультиаккаунта): `boot.ts` второй раз не
+ * отработает, значит и `setAppStateSilent` больше не вызовется, и в памяти
+ * остался бы конфиг прошлого аккаунта.
+ *
+ * Раньше это частично маскировалось тем, что `loadFolders`/`loadDrafts` всё
+ * равно ходили в сеть и затирали результат. После перехода на cache-first
+ * непустая память ОТМЕНЯЕТ запрос — и следующий аккаунт увидел бы чужие папки,
+ * черновики и баланс, а write-through записал бы их под его скоуп.
+ *
+ * `true` вторым аргументом — замена состояния целиком, а не слияние: иначе
+ * ключи, которых нет в дефолтах, пережили бы сброс.
+ */
+export function resetAppState(): void {
+  useAppStateStore.setState(initialState(), true)
 }
 
 /** Реактивное чтение одного ключа — аналог `appState.folders` в tweb. */

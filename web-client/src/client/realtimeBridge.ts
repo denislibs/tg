@@ -15,7 +15,7 @@ let started = false
 
 // Полный каталог событий, которые может прислать воркер. Насос перекачивает каждое
 // в eventBus; новое событие достаточно добавить в RT — оно будет транслироваться.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

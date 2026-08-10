@@ -27,7 +27,6 @@ interface ChatsState {
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
    * профиль не расходились. */
   setMe: (u: User | null) => void
-  upsertDialog: (d: Dialog) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
   setDialogPinned: (chatId: number, pinned: boolean) => void
@@ -50,8 +49,8 @@ interface ChatsState {
  * ЕДИНСТВЕННЫЙ путь изменения списка диалогов.
  *
  * Раньше правил порядка было ДВА и они расходились: `setDialogs` брал порядок из
- * входного массива (как пришло от сети/из персиста), а `upsertDialog`/
- * `applyNewMessage` двигали строки вручную (`firstUnpinned` + `slice`). Из-за
+ * входного массива (как пришло от сети/из персиста), а живые апдейты
+ * двигали строки вручную (`firstUnpinned` + `slice`). Из-за
  * этого кэш давал один порядок, ответ сети другой, и список перетасовывался через
  * ~250 мс после первого кадра.
  *
@@ -116,12 +115,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
   typing: {},
   setDialogs: (dialogs) => set((s) => ({ dialogs: applyDialogs(s.dialogs, dialogs), loaded: true })),
   setMe: (me) => set({ me, meId: me?.id ?? null }),
-  upsertDialog: (d) =>
-    set((s) => {
-      const known = s.dialogs.some((x) => x.chatId === d.chatId)
-      // Новый диалог просто добавляем в конец — место ему найдёт applyDialogs.
-      return { dialogs: applyDialogs(s.dialogs, known ? replace(s.dialogs, d.chatId, d) : [...s.dialogs, d]) }
-    }),
   setActiveChat: (activeChatId) => set({ activeChatId }),
   setDialogMuted: (chatId, muted) =>
     set((s) => {

@@ -116,7 +116,11 @@ const iv = newIVManager({ rest })
 const health = newHealthManager(rest)
 // Единый writer офлайн-стора: диалоги/me/папки/черновики теперь пишет воркер (не
 // каждая вкладка со своего main-соединения). Без rest — чистый IndexedDB.
-const persist = newPersistManager()
+// broadcast объявлен ниже — стрелка дергает его лениво (к моменту первой записи
+// State порты уже подключены). Зеркало ключа уходит ВО ВСЕ вкладки: порт tweb
+// appStateManager.setKeyValueToStorage → invokeVoid('mirror', …), которая без
+// указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
+const persist = newPersistManager((key, value) => broadcast('state:mirror', { key, value }))
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []

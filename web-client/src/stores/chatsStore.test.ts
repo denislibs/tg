@@ -26,15 +26,6 @@ describe('chatsStore', () => {
     expect(s.loaded).toBe(true)
   })
 
-  it('upsertDialogs replaces an existing dialog by chatId, prepends new', () => {
-    useChatsStore.setState({ dialogs })
-    useChatsStore.getState().upsertDialog({
-      chatId: 1, type: 'private', lastReadSeq: 5, peerReadSeq: 0, unread: 1, muted: false, pinned: false, archived: false,
-    })
-    expect(useChatsStore.getState().dialogs[0].lastReadSeq).toBe(5)
-    expect(useChatsStore.getState().dialogs).toHaveLength(1)
-  })
-
   it('applyNewMessage bumps preview, unread (incoming, not active), moves to top', () => {
     // У chatId 1 более свежая дата: без бампа он и остался бы сверху (порядок —
     // производная от lastMessage.at, см. chatsStore.order.test.ts).
