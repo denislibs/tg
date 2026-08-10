@@ -1103,6 +1103,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
       stickyIntersectorRef.current = null
       stuckSections.clear()
       observedSections.clear()
+      // Same class of leak as Б-4 (useChatScroll.ts's `.scrollable-thumb-container`
+      // cleanup): StickyIntersector.disconnect() clears its own element→sentinel Map
+      // but doesn't remove the `.sticky_sentinel` divs addSentinel() appended into
+      // each date-group section — tweb's own container is throwaway so it never
+      // needed to; ours (`inner`) is React's persistent node. Belt-and-braces against
+      // StrictMode's dev mount→unmount→mount doubling up leftover sentinels.
+      inner.querySelectorAll('.sticky_sentinel').forEach((el) => el.remove())
     }
   }, [scrollRef, contentRef])
 
