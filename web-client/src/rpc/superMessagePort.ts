@@ -10,7 +10,7 @@ export interface Endpoint {
 type Task =
   | { kind: 'invoke'; id: number; type: string; payload: unknown }
   | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number }
-  | { kind: 'event'; event: string; payload: unknown }
+  | { kind: 'event'; event: string; payload: unknown; meta?: EventMeta }
 
 /** Метаданные realtime-события. Заполняются ТОЛЬКО funnel'ом воркера —
  *  единственным местом, которое знает происхождение кадра. */
@@ -27,7 +27,11 @@ export class SuperMessagePort {
   private nextId = 1
   private awaiting = new Map<number, Awaiting>()
   private handlers = new Map<string, (payload: unknown) => unknown>()
-  private listeners = new Map<string, Array<(payload: unknown) => void>>()
+  private listeners = new Map<string, Array<(payload: unknown, meta?: EventMeta) => void>>()
+  /** catch-all: срабатывает на ЛЮБОЕ входящее событие, после адресных
+   *  слушателей (on). Единственный текущий потребитель — воркер, который
+   *  ретранслирует кадр вкладки остальным вкладкам (см. onAny). */
+  private anyListeners: Array<(event: string, payload: unknown, meta?: EventMeta) => void> = []
 
   constructor(private ep: Endpoint) {
     ep.addEventListener('message', this.onMessage)
@@ -75,16 +79,23 @@ export class SuperMessagePort {
     this.handlers.set(type, fn)
   }
 
-  /** Subscribe to pushed events. */
-  on<T = unknown>(event: string, cb: (payload: T) => void): void {
+  /** Subscribe to pushed events. meta (второй аргумент) заполнен только для
+   *  событий funnel'а курсора (pts/catchUp) — остальные подписчики его не
+   *  читают и продолжают работать (обратная совместимость кадра). */
+  on<T = unknown>(event: string, cb: (payload: T, meta?: EventMeta) => void): void {
     const arr = this.listeners.get(event) ?? []
-    arr.push(cb as (p: unknown) => void)
+    arr.push(cb as (p: unknown, meta?: EventMeta) => void)
     this.listeners.set(event, arr)
   }
 
+  /** Подписка на любое событие (catch-all) — см. anyListeners. */
+  onAny(cb: (event: string, payload: unknown, meta?: EventMeta) => void): void {
+    this.anyListeners.push(cb)
+  }
+
   /** Push an event to the other end. */
-  emit(event: string, payload: unknown): void {
-    this.post({ kind: 'event', event, payload })
+  emit(event: string, payload: unknown, meta?: EventMeta): void {
+    this.post({ kind: 'event', event, payload, meta })
   }
 
   private post(task: Task, transfer?: Transferable[]) {
@@ -117,7 +128,9 @@ export class SuperMessagePort {
         d.reject(err)
       } else d.resolve(task.result)
     } else if (task.kind === 'event') {
-      for (const cb of this.listeners.get(task.event) ?? []) cb(task.payload)
+      for (const cb of this.listeners.get(task.event) ?? []) cb(task.payload, task.meta)
+      // catch-all — после адресных, чтобы порядок доставки был предсказуем.
+      for (const cb of this.anyListeners) cb(task.event, task.payload, task.meta)
     }
   }
 }

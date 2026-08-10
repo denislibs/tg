@@ -373,6 +373,12 @@ function bind(ep: Endpoint) {
   const smp = new SuperMessagePort(ep)
   ports.push(smp)
   registerManagers(smp, registry)
+  // Событие, порождённое вкладкой (rootScope.dispatchEvent), ретранслируем всем
+  // ОСТАЛЬНЫМ вкладкам — порт tweb index.worker.ts:116-119 (invokeExceptSource).
+  // Источнику не шлём: у него оно уже доставлено локально, иначе кольцо.
+  smp.onAny((event, payload, meta) => {
+    for (const p of ports) if (p !== smp) p.emit(event, payload, meta)
+  })
   // SW↔SharedWorker мост (§ PR-2a): окно (PR-2c) шлёт по этому же порту control-кадр
   // dnp-bridge-port с переданным MessagePort к SW. SMP такой кадр игнорит (нет kind) —
   // ловим сырым слушателем и подключаем мост к каналу. Активно лишь при DNP-ON.
