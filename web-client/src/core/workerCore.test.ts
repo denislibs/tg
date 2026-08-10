@@ -13,7 +13,7 @@
 // пустоту вместо ошибки — тест позеленел бы по неверной причине.
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, USE_LOCKS, type Endpoint } from '../rpc/superMessagePort'
 
@@ -115,12 +115,14 @@ describe('createWorkerCore().bind — проводка портов (замен�
     // ожидание отключения. Рубильник superMessagePort.ts гасит ВЕСЬ
     // handleLockTask, включая пустой id (гейт стоит до ветки `!id` намеренно —
     // см. докблок USE_LOCKS) — при USE_LOCKS=false кадр `lock` игнорируется, порт
-    // остаётся висеть (задокументированная деградация «утечка, но безопасная»).
-    // Без этого гейта флип константы в false красил бы этот тест и нарушал
-    // обещание докблока «правится эта строка, без отката веток» — здесь и был
-    // сломан флип (см. REPORT.md, красный прогон при USE_LOCKS=false). Ассерт
-    // подстраивается под текущее значение константы вместо того, чтобы требовать
-    // от прода держать её true ради зелёного CI.
+    // остаётся висеть. До этого гейта флип константы в false красил именно этот
+    // ассерт (`ports.length` ожидался 0, реально оставался 1) и нарушал обещание
+    // докблока «правится эта строка, без отката веток». Ассерт подстраивается под
+    // текущее значение константы вместо того, чтобы требовать от прода держать её
+    // true ради зелёного CI — и это не просто «не мешает» флипу: при
+    // USE_LOCKS=false он утверждает, что порт остаётся и broadcast до него всё
+    // ещё доезжает, то есть деградация «утечка, но безопасная» из докблока
+    // константы становится проверяемым фактом, а не декларацией.
     expect(core.ports.length).toBe(USE_LOCKS ? 0 : 1)
 
     core.workerScope.broadcast('rt:resync', { after: 'disconnect' })
@@ -148,18 +150,28 @@ describe('createWorkerCore().bind — проводка портов (замен�
 })
 
 // C-1 (ревью worker-importable): start() — единственная строка, которая реально
-// монтирует bind() на глобальный скоуп (onconnect в SharedWorker / голый self в
-// воркерном фолбэке без SharedWorker). До этого теста она не вызывалась НИГДЕ в
-// наборе: worker.ts (не импортируем в тестах) делает `createWorkerCore().start()`
-// и всё. Без этой строки ни одна вкладка не подключается — приложение мертво на
-// 100%, а полный прогон (177 файлов/1173 теста) этого не замечал (мутация,
-// вырезающая if('onconnect' in g){...}else{...} целиком, красит 0 тестов — см.
-// REPORT.md). В happy-dom (тестовое окружение, vitest.config.ts) `'onconnect' in
-// self` — false (onconnect есть только у SharedWorkerGlobalScope, не у Window),
-// поэтому start() идёт веткой `bind(g as unknown as Endpoint)`, где g — self:
-// у него есть addEventListener/postMessage, то есть он годится как Endpoint без
-// единого мока — ровно то же самое понижение, что и в фолбэке без SharedWorker
-// (Chrome for Android), которым worker.ts пользуется в проде.
+// монтирует bind() на глобальный скоуп: SharedWorker.onconnect (прод-путь всех
+// десктопных браузеров) либо голый self в фолбэке без SharedWorker (Chrome for
+// Android). До первого теста в этом файле start() не вызывалась НИГДЕ в наборе:
+// worker.ts (не импортируем в тестах) делает `createWorkerCore().start()` и
+// всё. Без этой строки ни одна вкладка не подключается — приложение мертво на
+// 100%, а полный прогон (177 файлов/1173 теста) этого не замечал: мутация,
+// вырезающая if('onconnect' in g){...}else{...} целиком, красила 0 тестов
+// (воспроизведено и подтверждено красным выводом при добавлении теста ниже —
+// вывод приведён в описании PR).
+//
+// Ветку else (фолбэк без SharedWorker) покрывают два теста сразу под этим
+// комментарием: в happy-dom (тестовое окружение, vitest.config.ts) `'onconnect'
+// in self` — false (onconnect есть только у SharedWorkerGlobalScope, не у
+// Window), поэтому `core.start()` без единого стаба идёт именно веткой
+// `bind(g as unknown as Endpoint)`, где g — self (есть addEventListener/
+// postMessage, годится как Endpoint). Ветку if (SharedWorker.onconnect) без
+// стаба не достать — happy-dom онеconnect не даёт вовсе; её покрывает
+// отдельный тест `start() в SharedWorker-окружении` ниже через
+// `vi.stubGlobal('self', ...)`. Обе ветки нужны порознь: старый набор ловил
+// только else, а мутации именно в if-ветке (путаница индекса `ports[0]` →
+// `ports[1]`, опустошение тела обработчика) полный прогон не замечал —
+// найдено повторным ревью.
 describe('createWorkerCore().start — проводка bind() к глобальному скоупу (C-1)', () => {
   it('start() монтирует bind() на глобальный объект — единственный путь, которым SharedWorker/воркер реально подключает вкладку', () => {
     const core = createWorkerCore()
@@ -180,5 +192,49 @@ describe('createWorkerCore().start — проводка bind() к глобаль
     expect(core.ports.length).toBe(1)
     core.start()
     expect(core.ports.length).toBe(2)
+  })
+
+  // Ревью повторного прогона: два теста выше ходят ТОЛЬКО веткой else — в
+  // happy-dom `'onconnect' in self` false, эта ветка недостижима без стаба.
+  // А `if` — это SharedWorker.onconnect, прод-путь ВСЕХ десктопных браузеров
+  // (else — фолбэк-путь только Chrome for Android). Мутации ревьюера, обе
+  // зелёные на полном прогоне ДО этого теста: подмена `ports[0]` на `ports[1]`
+  // в обработчике onconnect и опустошение тела ветки (`void bind` вместо
+  // вызова) — рефактор мог сломать обработчик подключения на всех десктопах,
+  // и ни один тест бы этого не заметил.
+  it('start() в SharedWorker-окружении (onconnect есть в глобале) реально монтирует обработчик подключения — прод-путь всех десктопных браузеров', () => {
+    const core = createWorkerCore()
+    const scope: {
+      onconnect: ((e: MessageEvent) => void) | null
+      addEventListener: (t: string, cb: (e: MessageEvent) => void) => void
+      postMessage: () => void
+    } = {
+      onconnect: null,
+      addEventListener: () => {},
+      postMessage: () => {},
+    }
+    vi.stubGlobal('self', scope)
+
+    core.start()
+
+    // Обработчик реально повешен на глобальный onconnect — не просто «start()
+    // не упал», а именно эта ветка (`'onconnect' in g` true у стаба) сработала.
+    expect(typeof scope.onconnect).toBe('function')
+
+    const [right] = pair()
+    // "wrong" — ловушка на путаницу индекса (ports[0] → ports[1] и любую
+    // другую): если обработчик подключит НЕ ports[0], конструктор
+    // SuperMessagePort бросит на addEventListener раньше, чем тест дойдёт до
+    // ассерта ниже, — красный тест на брошенном исключении, а не тихое
+    // совпадение по одинаковому количеству портов.
+    const wrong = {
+      addEventListener: () => { throw new Error('bind() использовал НЕ ports[0] — ловушка мутации индекса onconnect-обработчика') },
+      postMessage: () => {},
+    } as unknown as Endpoint
+    scope.onconnect?.({ ports: [right, wrong] } as unknown as MessageEvent)
+
+    expect(core.ports.length).toBe(1)
+
+    vi.unstubAllGlobals()
   })
 })
