@@ -174,4 +174,63 @@ describe('MessagesManager.cacheLive', () => {
     expect(live).toBeTruthy()
     expect(live?.clientId).toBe('c-live-1')
   })
+
+  // Task 3 (Stage 1B.2): cacheLive должен возвращать MessageOp[] — операции для
+  // проектора на главном потоке. Обычное сообщение → одна операция insert с
+  // ключом основного окна (тот же формат, что hkey/winKey — просто String(chatId)).
+  it('returns one insert op keyed to the main window for an ordinary message', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheLive({
+      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
+      media_id: null, created_at: '2026-06-24T10:00:00Z',
+    } as NewMessageEvt)
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toEqual({ op: 'insert', key: '1', msg: expect.objectContaining({ id: 4, seq: 4 }) })
+  })
+
+  // Тред-сообщение при обоих загруженных срезах (основное окно чата + окно
+  // треда) → ДВЕ операции, по одной на каждое затронутое окно (порт applyIncoming,
+  // который пишет в оба ключа при threadRootId).
+  it('returns two insert ops (main + thread window) when both slices are loaded', async () => {
+    // thread window — свой ключ истории (thread_root=100), тоже полная «нижняя»
+    // страница (offsetSeq=0 → всегда держит низ).
+    const threadPage = { messages: [{ id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply', thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' } as RawMessage], count: 1 }
+    const rest = {
+      get: async (_path: string, q?: Record<string, string | number>) => {
+        if (q?.thread_root === 100) return threadPage
+        return rawPage([3, 2, 1])
+      },
+      post: async () => ({}),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const ops = mgr.cacheLive({
+      chat_id: 1, msg_id: 5, seq: 5, sender_id: 1, type: 'text', text: 'thread hi',
+      media_id: null, created_at: '2026-06-24T10:00:00Z', thread_root_id: 100,
+    } as NewMessageEvt)
+    expect(ops).toHaveLength(2)
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    for (const op of ops) {
+      expect(op.op).toBe('insert')
+      if (op.op === 'insert') expect(op.msg.id).toBe(5)
+    }
+  })
+
+  // КРИТИЧНО: окно, не державшее низ истории (сохранена только «средняя»/старая
+  // страница, offsetSeq!==0 без short-page), должно дать НОЛЬ операций — та же
+  // семантика, что и сам гейт вставки в SSOT (messagesManager.ts:~500-501). Иначе
+  // главный поток вставит туда, где воркер не вставлял, и представления разъедутся.
+  it('produces no op for a window that did not hold the bottom of history', async () => {
+    const { rest } = countingRest({ '10:1:3': rawPage([9, 8, 7]) }) // paging older, full (non-short) page
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 2, offsetSeq: 10, addOffset: 1, limit: 3 })
+    const ops = mgr.cacheLive({
+      chat_id: 2, msg_id: 99, seq: 99, sender_id: 1, type: 'text', text: 'x',
+      media_id: null, created_at: '2026-06-24T10:00:00Z',
+    } as NewMessageEvt)
+    expect(ops).toEqual([])
+  })
 })

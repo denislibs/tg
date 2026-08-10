@@ -14,6 +14,7 @@ export interface CalendarDay {
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
@@ -468,7 +469,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,
     // в ключ треда). Без этого переоткрытие чата/треда попадало в устаревший
     // кэш-срез без свежих сообщений (свои комментарии «пропадали» до F5).
-    cacheLive(evt: NewMessageEvt): void {
+    // Помимо мутации SSOT возвращает MessageOp[] — по одной операции 'insert' на
+    // затронутое окно (Stage 1B.2, Task 3): воркер зеркалит их проектору главного
+    // потока (routeNewMessage → RT.messageOp), тот переигрывает поверх стора вместо
+    // самостоятельного разбора кадра.
+    cacheLive(evt: NewMessageEvt): MessageOp[] {
       const m = mapMessage({
         id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id,
         type: evt.type, text: evt.text, entities: evt.entities ?? null,
@@ -495,13 +500,19 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       // баблом по clientId (Task 6).
       if (evt.client_msg_id) m.clientId = evt.client_msg_id
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
+      const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
+        // Тот же гейт решает, породится ли операция: пропущенное здесь окно не
+        // должно получить вставку и на главном потоке — иначе представления
+        // разъедутся (ради устранения этого расхождения и вводится replay).
         const sa = slices.get(key)
         if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
         put(key, [m])
         if (!sa.findSlice(m.seq)) sa.unshift(m.seq)
+        ops.push({ op: 'insert', key, msg: m })
       }
+      return ops
     },
 
     // Live-правка от любого участника → единый объект в SSOT.
