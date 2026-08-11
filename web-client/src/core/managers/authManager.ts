@@ -149,6 +149,9 @@ interface SignInWire {
 
 export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
+  // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
+  // signImport/passkeyLoginFinish/qrStatus(confirmed) — все шесть путей входа
+  // заводят сессию через неё.
   const persist = async (token: string, u: User) => {
     await store.set(token)
     await upsertAccount({
@@ -158,6 +161,16 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       avatarUrl: u.avatarUrl,
       phone: u.phone,
     })
+    // Фикс ревью п.2 (Stage 1C.2, Task 1): без этой строки воркер узнавал о
+    // новом пользователе ТОЛЬКО на старте (tokens.ready → auth.me, один раз за
+    // жизнь воркера) — вход после старта (обычный случай: пустой токен на
+    // холодном старте, boot-цепочка уже отработала с null) не публиковал `me`
+    // вовсе, и `useAuthGate.login()` не перезагружает страницу (App.tsx), так
+    // что boot-цепочка не переигрывается. Следствие было тихим: `getMe()` для
+    // `profileManager.addPhoto` отдавал null (мердж аватара не рассылался
+    // соседним вкладкам), `getMeId()` для `messagesManager` отдавал null (кэш
+    // «моих» реакций не работал) — весь остаток сессии после логина.
+    onMeChanged?.(u)
   }
   // Разбор общего ответа шагов входа (`writeSignInResult` на бэке): сессия |
   // облачный пароль | регистрация. Общий для sign_in, sign_up, recover/confirm и

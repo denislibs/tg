@@ -82,6 +82,36 @@ describe('AuthManager', () => {
     await expect(auth.logout()).resolves.toEqual({ switched: false })
   })
 
+  // Фикс ревью п.2 (Stage 1C.2, Task 1): вход заводит сессию через persist() —
+  // без onMeChanged там воркер узнавал о новом пользователе ТОЛЬКО на старте
+  // (once), а вход после старта (обычный случай — App.tsx не перезагружает
+  // страницу после login(), см. useAuthGate.ts) не публиковал `me` вовсе.
+  it('signIn зовёт onMeChanged со свежим пользователем (persist — общая точка входа)', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps()
+    const auth = newAuthManager({ ...d, onMeChanged })
+    const r = await auth.signIn('+7 700', '12345', 'web', 'browser')
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(r.user)
+  })
+
+  // Второй путь через persist() (не toOutcome) — qrStatus(confirmed): доказывает,
+  // что фикс на самой persist(), а не на одном конкретном вызывающем методе.
+  it('qrStatus(confirmed) тоже зовёт onMeChanged (тот же persist(), другой вызывающий)', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps({ qrConfirmed: true })
+    const auth = newAuthManager({ ...d, onMeChanged })
+    await auth.qrStatus('tok123')
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }))
+  })
+
+  it('onMeChanged опционален — signIn() без него не падает', async () => {
+    const { d } = deps()
+    const auth = newAuthManager(d)
+    await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { id: 1 } })
+  })
+
   it('qrNew returns the token + url + expiresAt', async () => {
     const { d } = deps()
     const auth = newAuthManager(d)
