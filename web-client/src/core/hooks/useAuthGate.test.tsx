@@ -191,6 +191,24 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
+  // Отказ команды логаута (сбой IndexedDB при работе с реестром аккаунтов):
+  // без .catch реакции нет вовсе — вкладка остаётся в интерфейсе уже вышедшего
+  // аккаунта, плюс unhandled rejection. Исход неизвестен, поэтому reload:
+  // состояние выведется с диска заново.
+  it('logout() при отказе команды — reload (исход неизвестен)', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    const managers = {
+      auth: { me: () => new Promise<null>(() => {}), logout: vi.fn().mockRejectedValue(new Error('idb')) },
+      persist: { clearAll: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as Managers
+    const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.login() })
+    await act(async () => { result.current.logout(); await Promise.resolve() })
+
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   // Фикс минорного пункта ревью: старая версия этого теста («размонтирование
   // снимает подписку») пиновала не то — setAuthed на размонтированном хуке
   // не бросает в React 19, поэтому not.toThrow() проходил и с утечкой

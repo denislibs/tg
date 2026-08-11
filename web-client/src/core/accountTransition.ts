@@ -16,6 +16,28 @@ export const PREV_ACCOUNT_KEY = 'msgr_prev_account'
 export { doubleRaf }
 export const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
+/**
+ * Команда перехода воркеру + перезагрузка ПОСЛЕ неё, чем бы команда ни
+ * кончилась. Общая точка для всех вкладок-инициаторов (меню аккаунтов,
+ * «добавить аккаунт», возврат к прежнему аккаунту, логаут с экрана пасскода).
+ *
+ * Отказ глотаем сознательно: команды перехода больше не реджектятся из-за
+ * сети (`authManager.fetchMe(rederive)` не бросает наружу), остаётся сбой
+ * IndexedDB при работе с реестром аккаунтов. Его исход неизвестен — токен мог
+ * смениться, а мог и нет. Без перезагрузки вкладка застревала бы в интерфейсе
+ * покинутого аккаунта (а на экране пасскода — прямо на нём, там кадр
+ * rt:logging_out до неё не долетает: насос `smp.on` регистрируется в
+ * `startRealtime()`, а тот гейтится `runWhenUnlocked`); reload же выводит
+ * состояние с диска заново и потому верен при любом исходе. Тот же приём, что
+ * у tweb `logOut()`: `.catch(error => error.handled = true).finally(clear)`
+ * (`lib/appManagers/apiManager.ts:341-345`) — очистка доводится до конца, а
+ * ошибка наружу не идёт.
+ */
+export async function commandThenReload(command: Promise<unknown>): Promise<void> {
+  try { await command } catch { /* исход неизвестен — см. докблок */ }
+  location.reload()
+}
+
 // tweb sidebarLeft.addAccount: exit чата перед уходом на экран входа
 export async function playMainScreenExit(el: HTMLElement | null): Promise<void> {
   if (!el) return

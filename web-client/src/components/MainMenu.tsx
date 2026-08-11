@@ -7,7 +7,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import type { PublicAccount } from '../core/auth/accounts'
-import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
+import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, commandThenReload, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
 import { useSettings } from '../settings'
 import { usePwaStore } from '../core/pwa'
 import { enterAppPip, pipSupported } from '../core/pip'
@@ -91,8 +91,7 @@ export default function MainMenu({
   const switchTo = async (id: number) => {
     onClose()
     await playChatlistExit(document.getElementById('chatlist-column'))
-    await managers.auth.switchAccount(id).catch(() => false)
-    location.reload()
+    await commandThenReload(managers.auth.switchAccount(id))
   }
   // «Добавить аккаунт» (tweb sidebarLeft.addAccount): текущий остаётся в
   // реестре; чат уезжает main-screen-exit, флаги «prev account» и «анимировать
@@ -104,10 +103,9 @@ export default function MainMenu({
     localStorage.setItem(ANIMATE_AUTH_KEY, '1')
     // Анимация — до команды, как в tweb (`sidebarLeft/index.ts:1643-1652`) и
     // по той же причине, что в switchTo выше: rt:logging_out прилетает и этой
-    // вкладке. Отказ RPC глотаем — reload выведет состояние заново.
+    // вкладке.
     await playMainScreenExit(document.getElementById('page-chats'))
-    await managers.auth.addAccount().catch(() => {})
-    location.reload()
+    await commandThenReload(managers.auth.addAccount())
   }
 
   const close = () => { setMoreOpen(false); onClose() }

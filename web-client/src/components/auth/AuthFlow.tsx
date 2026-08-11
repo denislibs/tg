@@ -23,6 +23,7 @@ import {
   ANIMATE_AUTH_KEY,
   ANIMATE_MAIN_KEY,
   PREV_ACCOUNT_KEY,
+  commandThenReload,
   doubleRaf,
   playAuthHostEnter,
   playAuthHostExit,
@@ -344,11 +345,7 @@ export default function AuthFlow({
     localStorage.setItem(ANIMATE_MAIN_KEY, '1')
     localStorage.removeItem(PREV_ACCOUNT_KEY)
     await playAuthHostExit(hostRef.current)
-    // Отказ RPC (сбой IDB) не должен оставлять пользователя на экране входа
-    // без реакции: перезагружаемся в любом случае — состояние выведется с
-    // диска заново (Important 2 раунда 4).
-    await managers.auth.switchAccount(prevAccount).catch(() => false)
-    location.reload()
+    await commandThenReload(managers.auth.switchAccount(prevAccount))
   }
 
   // tweb toggleTheme: центр волны — центр иконки, а не точка клика.

@@ -11,6 +11,7 @@ import PasswordMonkey from './PasswordMonkey'
 import Popup from '../shared/ui/Popup'
 import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
+import { commandThenReload } from '../core/accountTransition'
 import { useLockStore } from '../stores/lockStore'
 import { isMyPasscode, MAX_ATTEMPTS, ATTEMPTS_TIMEOUT_MS } from '../core/passcode'
 import s from './PasscodeLockScreen.module.scss'
@@ -96,7 +97,14 @@ export default function PasscodeLockScreen() {
         action={{
           label: t('Log Out'),
           onClick: () => {
-            void managers.auth.logout().then(() => location.reload())
+            // Четвёртый инициатор перехода — и единственный, кому кадр
+            // rt:logging_out не поможет: под локом насос `smp.on`
+            // (`realtimeBridge.startRealtime`) не зарегистрирован, он гейтится
+            // `runWhenUnlocked`, так что событие сюда не долетает по
+            // построению. Перезагрузку делаем сами, при любом исходе команды
+            // (см. докблок commandThenReload): при отказе `.then` не
+            // исполнялся и пользователь оставался запертым на экране пасскода.
+            void commandThenReload(managers.auth.logout())
           },
         }}
       >
