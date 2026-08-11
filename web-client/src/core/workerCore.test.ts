@@ -272,7 +272,7 @@ describe('createWorkerCore().start — проводка bind() к глобаль
 // что `local` разбухал до сотен тысяч фантомных элементов чужих экземпляров
 // раньше, чем логаут этого теста успевал дописать свой (см. task-1-report.md,
 // раздел про ревью).
-describe('createWorkerCore(): `me` — воркер публикует rt:me на старте, при мутации профиля и на логауте (Stage 1C.2, Task 1)', () => {
+describe('createWorkerCore(): `me` — воркер публикует rt:me на старте, при мутации профиля/премиума и на логауте (Stage 1C.2, Task 1)', () => {
   // Один core, один self-стаб, одна последовательность вызовов — НЕ ради
   // экономии строк: два НЕЗАВИСИМЫХ self-стаб-цикла (`vi.stubGlobal('self',
   // …)`/`vi.unstubAllGlobals()` в двух разных it()) в этом файле воспроизводимо
@@ -283,16 +283,29 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
   // один self-стаб — рабочий обходной путь, а не маскировка: обе проводки
   // (boot, addPhoto/getMe, logout) по-прежнему реально исполняются и
   // проверяются, просто одним core вместо двух.
-  it('boot .then(setMe) публикует rt:me; addPhoto() мерджит поверх РЕАЛЬНОГО кэша (getMe: () => me); logout() публикует rt:me(null)', async () => {
+  it('boot .then(setMe) публикует rt:me; addPhoto() мерджит поверх РЕАЛЬНОГО кэша (getMe: () => me); premium.checkout() публикует premium:true; logout() публикует rt:me(null)', async () => {
     // Единственный, кто реально монтирует bind() на self (`core.start()`) —
     // стаб обязателен именно и только здесь.
     vi.stubGlobal('self', { addEventListener: () => {}, postMessage: () => {} })
-    // Единственный живой fetch в этом файле: addPhoto реально бьёт в REST
-    // (`/me/photos`), которого не избежать без правки прод-кода.
+    // Единственный живой fetch в этом файле: addPhoto/premium.checkout реально
+    // бьют в REST (`/me/photos`, `/me/premium/checkout`), которого не избежать
+    // без правки прод-кода.
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       const u = String(url)
       if (u.endsWith('/me/photos')) {
         return new Response(JSON.stringify({ id: 9, url: '/media/9/content', video_url: null, created_at: 'x' }), { status: 200 })
+      }
+      if (u.endsWith('/me/premium/checkout')) {
+        // Сырой snake_case с проволоки — менеджер сам зовёт mapUser/mapSubscription
+        // (premiumManager.ts:44-52), не подсовываем ему уже смапленное.
+        return new Response(JSON.stringify({
+          user: {
+            id: 1, phone: '+7', username: null, first_name: '', last_name: '', display_name: 'Д',
+            bio: '', birthday: null, avatar_url: '/media/9/content', phone_visibility: 'contacts',
+            premium: true, emoji_status: '',
+          },
+          subscription: { plan: '1m', price_cents: 100, started_at: 'x', expires_at: 'y', auto_renew: true },
+        }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + u)
     }))
@@ -325,11 +338,23 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
       expect(local).toHaveLength(2)
       expect(local[1]).toMatchObject({ id: 1, displayName: 'Д', avatarUrl: '/media/9/content' })
 
-      // logout() не ждёт REST в этой ветке (без активной сессии — store.get()
-      // пуст) — та же проводка onMeChanged, что боевая, третий независимый вход.
-      await core.registry.auth.logout()
+      // Второе ревью (мутационная батарея по всем трём deps.onMeChanged этого
+      // файла): profile и auth красят СВОИ тесты при снятии `onMeChanged: setMe`
+      // (проверено), а `newPremiumManager(...)` — нет, полный набор оставался
+      // зелёным. Единственная реально непокрытая строка — эта: без неё
+      // воркерный кэш `me` после покупки премиума остаётся с `premium: false`,
+      // ни одна вкладка не узнаёт о смене, а `getMe()` для следующего addPhoto
+      // смердживал бы поверх устаревшего пользователя — тот самый класс
+      // расхождения, который и убирает вся задача.
+      await core.registry.premium.checkout('1m', { number: '4242424242424242', expiry: '12/30', cvc: '123' })
       expect(local).toHaveLength(3)
-      expect(local[2]).toBeNull()
+      expect(local[2]).toMatchObject({ id: 1, premium: true, avatarUrl: '/media/9/content' })
+
+      // logout() не ждёт REST в этой ветке (без активной сессии — store.get()
+      // пуст) — та же проводка onMeChanged, что боевая, четвёртый независимый вход.
+      await core.registry.auth.logout()
+      expect(local).toHaveLength(4)
+      expect(local[3]).toBeNull()
     } finally {
       vi.unstubAllGlobals()
     }
