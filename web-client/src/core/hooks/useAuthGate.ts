@@ -14,6 +14,9 @@ import { resetAppState } from '../../stores/appState'
 import { resetStateCache } from '../state/loadState'
 import { useChatsStore } from '../../stores/chatsStore'
 import { runWhenUnlocked } from '../../stores/lockStore'
+import rootScope from '@lib/rootScope'
+import { RT } from '../realtime/events'
+import type { User } from '../managers/authManager'
 
 export interface AuthGate {
   authed: boolean
@@ -42,7 +45,20 @@ export function useAuthGate(): AuthGate {
           if (!bootData?.hasToken) setAuthed(false)
         })
     }
-    return runWhenUnlocked(confirm)
+    const cleanupConfirm = runWhenUnlocked(confirm)
+
+    // Кросс-табовый логаут (фикс ревью после Stage 1C.2, Task 1): воркер
+    // рассылает rt:me:null всем вкладкам сессии (authManager.logout →
+    // onMeChanged) — эта вкладка могла НЕ быть инициатором. Без синхронизации
+    // authed соседняя вкладка осталась бы authed=true с meId уже null:
+    // собственные сообщения перестают быть «своими» (сравнение по meId),
+    // ломаются send-as и «мои» реакции — хуже, чем раньше (когда вкладка
+    // просто ничего не знала о чужом логауте). Не гейтим runWhenUnlocked —
+    // под локом воркер/RPC не подняты, rt:me оттуда не придёт.
+    const onMe = (u: User | null) => { if (!u) setAuthed(false) }
+    rootScope.addEventListener(RT.me, onMe)
+
+    return () => { cleanupConfirm(); rootScope.removeEventListener(RT.me, onMe) }
   }, [managers])
 
   const login = () => {
