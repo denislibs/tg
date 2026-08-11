@@ -41,4 +41,6 @@ docker compose up -d --build          # приложение на http://localho
 - **Rich-text:** `MessageEntity` (bold/italic/underline/strike/code/pre/spoiler/blockquote/text_link),
   offset/length в **UTF-16**. Инпут хранит сырые markdown-маркеры, разбор — на отправке; на бэке сущности санитизируются.
 - **Realtime:** WebSocket `/ws?token=` с кадрами `{t, d}`; `send_message` → `message_ack`/`message_error`.
+  На фронте кадр применяется к окну сообщений один раз — в воркере, главный поток лишь переигрывает
+  готовые типизированные операции; подробности — в [`web-client/CLAUDE.md`](web-client/CLAUDE.md).
 - В dev OTP-код входа — `12345` (`DEV_OTP_CODE`).
