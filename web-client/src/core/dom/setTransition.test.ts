@@ -5,14 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { setTransition, transitionClasses } from './setTransition'
 import { useSetTransition } from '../hooks/useSetTransition'
+import { useSettingsStore } from '../../settings'
 
 beforeEach(() => {
-  document.body.classList.add('animation-level-2')
   vi.useFakeTimers()
 })
 
 afterEach(() => {
-  document.body.classList.remove('animation-level-2')
+  // гейт анимаций — `liteMode.isAvailable('animations')`, т.е. настройка «Без анимаций»
+  useSettingsStore.setState({ reduceMotion: false })
   vi.useRealTimers()
 })
 
@@ -31,6 +32,14 @@ describe('transitionClasses', () => {
 
   it('обратный ход НЕ навешивает className, которого не было (tweb singleTransition.ts:50)', () => {
     expect(transitionClasses([], 'is-connecting', false, true)).toEqual(['backwards', 'animating'])
+  })
+
+  it('прямой ход снимает backwards, оставшийся от прерванного обратного (tweb :75)', () => {
+    // `toggle('backwards', !forwards)` у tweb — симметрично `toggle('forwards', forwards)`:
+    // `forwards` и `backwards` на узле одновременно быть не могут, а `.backwards` —
+    // живой селектор у потребителей useSetTransition
+    expect(transitionClasses(['is-visible', 'backwards', 'animating'], 'is-visible', true, true))
+      .toEqual(['is-visible', 'animating', 'forwards'])
   })
 
   it('посторонние классы узла не трогает', () => {
@@ -65,8 +74,20 @@ describe('setTransition', () => {
     expect([...element.classList]).toEqual([])
   })
 
-  it('без body.animation-level-2 применяет конечное состояние синхронно', () => {
-    document.body.classList.remove('animation-level-2')
+  it('прерванный обратный ход не оставляет backwards вместе с forwards', () => {
+    const element = document.createElement('div')
+    setTransition({ element, className: 'is-connecting', forwards: true, duration: 250 })
+    vi.advanceTimersByTime(250)
+    setTransition({ element, className: 'is-connecting', forwards: false, duration: 250 })
+    vi.advanceTimersByTime(100)
+    expect([...element.classList]).toContain('backwards')
+
+    setTransition({ element, className: 'is-connecting', forwards: true, duration: 250 })
+    expect([...element.classList]).toEqual(['is-connecting', 'animating', 'forwards'])
+  })
+
+  it('при выключенных анимациях применяет конечное состояние синхронно', () => {
+    useSettingsStore.setState({ reduceMotion: true })
     const element = document.createElement('div')
     const onTransitionEnd = vi.fn()
     setTransition({ element, className: 'is-connecting', forwards: true, duration: 250, onTransitionEnd })

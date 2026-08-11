@@ -6,6 +6,7 @@ import { createRef } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from './InputSearch'
 import { MemberPicker } from '../../../components/group/screens/shared'
+import { useSettingsStore } from '../../../settings'
 
 function renderInput(props: Partial<Parameters<typeof InputSearch>[0]> = {}) {
   const statusRef = createRef<InputSearchStatus>()
@@ -17,15 +18,15 @@ function renderInput(props: Partial<Parameters<typeof InputSearch>[0]> = {}) {
 const placeholders = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('.input-search-placeholder')]
 
 beforeEach(() => {
-  // гейт анимаций приложения (index.html / App.tsx); без него setTransition
-  // применяет переход синхронно — см. отдельный тест ниже
-  document.body.classList.add('animation-level-2')
   vi.useFakeTimers()
 })
 
 afterEach(() => {
   cleanup()
-  document.body.classList.remove('animation-level-2')
+  // гейт анимаций (`liteMode.isAvailable('animations')` → настройка «Без анимаций»):
+  // при выключенных анимациях setTransition применяет переход синхронно,
+  // см. отдельный тест ниже
+  useSettingsStore.setState({ reduceMotion: false })
   vi.useRealTimers()
 })
 
@@ -86,10 +87,36 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
 
     act(() => statusRef.current!.toggleLoading(true))
     expect(icon.classList.contains('is-hiding')).toBe(true)
-    expect(icon.classList.contains('will-animate')).toBe(true)
 
     act(() => statusRef.current!.toggleLoading(false))
     expect(icon.classList.contains('is-hiding')).toBe(false)
+  })
+
+  it('will-animate появляется на лупе только с первой загрузкой (tweb :154, createIcon его не ставит)', () => {
+    const { statusRef, root } = renderInput()
+    const icon = root.querySelector<HTMLElement>('.input-search-icon')!
+    // до первого toggleLoading лупа не должна проигрывать grow-input при монтировании
+    expect(icon.classList.contains('will-animate')).toBe(false)
+
+    act(() => statusRef.current!.toggleLoading(true))
+    expect(icon.classList.contains('will-animate')).toBe(true)
+  })
+
+  it('повторный вход в загрузку не перевешивает спиннер в конец контейнера (tweb :157)', () => {
+    // `root.append` на уже вставленном узле — это remove+insert, то есть перезапуск
+    // CSS-анимации grow-input; автомат зовёт toggleLoading(true) на каждом переходе,
+    // пока идёт коннект, и спиннер дёргался бы на каждом
+    const { statusRef, root } = renderInput()
+    act(() => statusRef.current!.toggleLoading(true))
+    act(() => statusRef.current!.setPlaceholder('Подключение…'))
+    const preloader = root.querySelector<HTMLElement>('.preloader-container')!
+    const placeholder = root.querySelector<HTMLElement>('.input-search-placeholder')!
+    expect(root.lastElementChild).toBe(placeholder)
+
+    act(() => statusRef.current!.toggleLoading(true))
+
+    expect(root.lastElementChild).toBe(placeholder)
+    expect(preloader.nextElementSibling).toBe(placeholder)
   })
 
   it('toggleLoading(false) без предшествующего входа не зажигает is-connecting даже на время анимации', () => {
@@ -102,8 +129,8 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
     expect(statusRef.current!.isLoading()).toBe(false)
   })
 
-  it('без анимаций (нет body.animation-level-2) спиннер снимается сразу, без таймера', () => {
-    document.body.classList.remove('animation-level-2')
+  it('при выключенных анимациях спиннер снимается сразу, без таймера', () => {
+    useSettingsStore.setState({ reduceMotion: true })
     const { statusRef, root } = renderInput()
     act(() => statusRef.current!.toggleLoading(true))
     expect(root.querySelector('.preloader-container')).toBeTruthy()
@@ -122,6 +149,31 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
 
     expect(root.classList.contains('is-connecting')).toBe(true)
     expect(root.classList.contains('input-search')).toBe(true)
+  })
+
+  it('снятие focused убирает свой токен с корня', () => {
+    // обратная половина диффа: без неё акцентная рамка залипает навсегда —
+    // `Sidebar.tsx` передаёт `focused={searching}` и снимает его по closeSearch
+    const { statusRef, root, view } = renderInput({ focused: true })
+    const focusedToken = [...root.classList].find((token) => token !== 'input-search')
+    expect(focusedToken).toBeTruthy()
+
+    view.rerender(<InputSearch value="" onChange={() => {}} statusRef={statusRef} focused={false} />)
+
+    expect(root.classList.contains(focusedToken!)).toBe(false)
+    expect(root.classList.contains('input-search')).toBe(true)
+  })
+
+  it('смена className вызывающим снимает старый токен, а не копит их', () => {
+    const { statusRef, root, view } = renderInput({ className: 'old-style' })
+    expect(root.classList.contains('old-style')).toBe(true)
+
+    view.rerender(
+      <InputSearch value="" onChange={() => {}} statusRef={statusRef} className="emoticons-search-input-container" />,
+    )
+
+    expect(root.classList.contains('old-style')).toBe(false)
+    expect(root.classList.contains('emoticons-search-input-container')).toBe(true)
   })
 })
 

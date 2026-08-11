@@ -18,6 +18,8 @@
 // ничего не зажигает. Для `InputSearch` это существенно: иначе `isLoading()`
 // врал бы `true` все 250 мс после первого же `toggleLoading(false)`.
 
+import liteMode from '@helpers/liteMode'
+
 // Таймер незавершённого перехода живёт на самом узле (tweb :3, `$TRANSITION_TIMEOUT`),
 // а не в общей карте — узел уносит его с собой, когда его удаляют из DOM.
 const TRANSITION_TIMEOUT = Symbol('TRANSITION_TIMEOUT')
@@ -63,11 +65,6 @@ export function transitionClasses(
   return [...set]
 }
 
-// Аналог `liteMode.isAvailable('animations')` из tweb: у нас гейт анимаций — класс
-// `body.animation-level-2` (ставит `index.html` статикой и `App.tsx` по настройке
-// «Без анимаций»). Тот же приём уже применён в `core/hooks/useCollapsable.ts:47`.
-const animationsAvailable = () => document.body.classList.contains('animation-level-2')
-
 export type SetTransitionOptions = {
   element: HTMLElement
   className: string
@@ -104,8 +101,11 @@ export function setTransition({ element, className, forwards, duration, onTransi
   }
 
   // tweb :67-71 — без анимаций (или с нулевой длительностью) переход применяется
-  // целиком и синхронно, `onTransitionEnd` зовётся тут же
-  if (!animationsAvailable() || !duration) {
+  // целиком и синхронно, `onTransitionEnd` зовётся тут же. Гейт — тот же
+  // `liteMode.isAvailable('animations')`, что и в оригинале (`singleTransition.ts:38,67`);
+  // у нас он читает настройку «Без анимаций», из которой `App.tsx:272-274` выводит
+  // и классы `body.animation-level-*` для CSS.
+  if (!liteMode.isAvailable('animations') || !duration) {
     afterTimeout()
     return
   }

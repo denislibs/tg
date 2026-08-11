@@ -52,16 +52,26 @@ interface InputSearchProps {
 }
 
 // Разметка прелоадера — tweb `ProgressivePreloader.constructContainer({color:
-// 'transparent', bold: true})` + `construct()` при `cancelable: false`
-// (preloader.ts:50-97,131). Строится императивно, а не через `shared/ui/Spinner`:
+// 'transparent', bold: true})` (preloader.ts:50-68) + `construct()` при
+// `cancelable: false`: тело крутилки `:94-100`, класс `preloader-swing` — ветка
+// `else` от `if(this.cancelable)`, `:108` и `:125-127`.
+//
+// Строится императивно, а не через `shared/ui/Spinner`, и это не долг, а решение
+// с двумя независимыми причинами:
 //   1) узел живёт вне рендера React — он добавляется при входе в загрузку и
-//      удаляется только по окончании ОБРАТНОЙ анимации (tweb inputSearch.ts:168-170);
+//      удаляется только по окончании ОБРАТНОЙ анимации (tweb inputSearch.ts:168-170),
+//      то есть в момент, когда React ничего не рендерит;
 //   2) `Spinner.module.scss` намеренно ломает позиционирование tweb-контейнера
 //      (`position: relative; inset: auto; margin: 0`), потому что рассчитан на
 //      поток, а `_inputSearch.scss:156-161` ставит `.preloader-container`
 //      абсолютом по `inset-inline-start: var(--icon-left-offset)` — поверх лупы.
 //      Там же `opacity: 1; transform: none; transition: none` гасят состояние
-//      покоя `.preloader-container` из `_preloader.scss:38-39`.
+//      покоя `.preloader-container` из `_preloader.scss:43-44` и его переход `:46-47`.
+// Свести к одному владельцу разметки можно было бы только через `innerHTML`/
+// `renderToStaticMarkup` (против правила безопасности «DOM строить через
+// createElement») либо превратив чистый презентационный `Spinner` в
+// эффект-монтируемую обёртку над императивной фабрикой ради четырёх статических
+// узлов. Оба хуже дубля из четырёх `createElement`.
 function createStatusPreloader(): HTMLDivElement {
   const preloader = document.createElement('div')
   preloader.classList.add('preloader-container', 'preloader-transparent', 'preloader-bold', 'preloader-swing')
@@ -90,9 +100,16 @@ function createStatusPreloader(): HTMLDivElement {
 
 // Поле поиска — разметка tweb `.input-search.old-style` (живой DOM §2):
 //   input.input-field-input.input-search-input[.is-empty] + .input-field-border
-//   + span.tgico.input-search-part.input-search-icon.will-animate
+//   + span.tgico.input-search-part.input-search-icon
 //   + button.btn-icon.input-search-clear.input-search-part.input-search-button
 //   + span.i18n.input-search-placeholder.will-animate
+// В снимке живого DOM у лупы есть ещё и `will-animate`, но это НЕ разметка
+// конструктора: `createIcon` его не ставит (`inputSearch.ts:139-141` → `icon.ts:28-37`),
+// класс появляется от первого `toggleLoading` — в сайдбаре tweb его успевает
+// позвать `ConnectionStatusComponent`. Держать его в JSX значит гонять
+// `grow-input` на лупе при каждом монтировании поля и во всех семи местах,
+// где никакой загрузки не бывает; поэтому здесь его нет, а вешает его
+// `toggleLoading`, как в оригинале.
 // Корень компонента И ЕСТЬ `.input-search` — модификаторы (`old-style` и пр.)
 // докидывает вызывающий через className. Важно не заводить лишнюю обёртку:
 // сворачивание сториз меряет `input.parentElement` (= .input-search) и
@@ -164,7 +181,9 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
       // создаётся лениво и ровно один раз (tweb :149-155)
       const preloader = createStatusPreloader()
       preloader.classList.add('is-visible', 'will-animate')
-      // у нас `will-animate` уже в разметке лупы (живой DOM tweb) — add идемпотентен
+      // `will-animate` появляется на лупе ТОЛЬКО здесь: `createIcon` в tweb
+      // (`inputSearch.ts:139-141` → `icon.ts:28-37`) его не ставит, поэтому до
+      // первой загрузки лупа не проигрывает `grow-input` при монтировании поля
       another.classList.add('will-animate')
       preloaderRef.current = preloader
     }
@@ -200,6 +219,13 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
   // Декларативный проп — та же императивная процедура (tweb :96-99 зовёт
   // `setPlaceholder` из конструктора). Слой раскладки — чтобы плейсхолдер был
   // на месте до первой отрисовки, как когда он рендерился из JSX.
+  //
+  // Сознательное расхождение с прежней React-формой: `placeholder` → `undefined`
+  // больше НЕ снимает узел (раньше `{!has && placeholder && …}` убирал его из DOM).
+  // У tweb «снять плейсхолдер» не выражается вовсе — `setPlaceholder` принимает
+  // только ключ, обратной операции нет; заводить её значит придумывать поверх
+  // оригинала. Живого вызывающего нет: все семь мест с этим пропом всегда передают
+  // строку (`t(…)`), а `EmoticonsTab` не передаёт его ни разу.
   useLayoutEffect(() => {
     if (placeholder) setPlaceholder(placeholder)
   }, [placeholder, setPlaceholder])
@@ -219,7 +245,7 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         onBlur={onBlur}
       />
       <div className="input-field-border" />
-      <span ref={iconRef} className={classNames('tgico', 'input-search-part', 'input-search-icon', 'will-animate')}>
+      <span ref={iconRef} className={classNames('tgico', 'input-search-part', 'input-search-icon')}>
         <TgIcon name="search" size={24} />
       </span>
       {has && onClear && (
