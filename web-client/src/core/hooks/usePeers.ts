@@ -14,6 +14,22 @@ export function peersKey(ids: number[]): string {
 // Resolve a set of user ids to a name map. Reads the shared peersStore (SSOT),
 // fetching only the ids not yet cached. Realtime user_update patches the store,
 // so every usePeers consumer of a changed peer re-renders automatically.
+//
+// Stage 1C.2 (Task 2): хук объявляет ПРОБЕЛ зеркала (каких id нет в peersStore) —
+// он единственный, кто этот пробел видит. Что за карточка и какой операцией её
+// внести, решает владелец (peersManager), применяет проектор по rt:peer_op.
+// Прежний `.then(upsert)` был вторым писателем стора и вторым походом в /users
+// в паре с до-фетчем из storeProjection.
+//
+// ЧИТАЕШЬ peersStore ИЗ НОВОГО МЕСТА — сначала прочти это. Наполнить зеркало
+// может только объявленный пробел (`peers.fillMirror`) либо объявление
+// изменившегося факта. Обычные чтения карточек (`peers.getUsers` — двенадцать
+// вызовов: инфо группы, права, закреплённые, звонки, тосты) в стор НЕ пишут:
+// они рисуют по возвращённому массиву, а веером слали бы всем вкладкам карточки,
+// которых ни одно зеркало не просило. Раньше слали — и это попутно наполняло стор,
+// маскируя забытое объявление. Теперь не маскирует: пир, прочитанный из стора по
+// id, который не проходил через usePeers, будет молча пустым. Либо бери его этим
+// хуком, либо объяви пробел сам. На сегодня читатель стора ровно один — этот хук.
 export function usePeers(ids: number[]): Map<number, Peer> {
   const managers = useManagers()
   const key = peersKey(ids)
@@ -22,9 +38,7 @@ export function usePeers(ids: number[]): Map<number, Peer> {
   useEffect(() => {
     if (ids.length === 0) return
     const missing = ids.filter((id) => !usePeersStore.getState().byId[id])
-    if (missing.length) {
-      void managers.peers.getUsers(missing).then((peers) => usePeersStore.getState().upsert(peers))
-    }
+    if (missing.length) void managers.peers.fillMirror(missing)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 

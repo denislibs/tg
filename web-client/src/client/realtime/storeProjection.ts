@@ -16,7 +16,7 @@ import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt, type UserUpdateEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
@@ -59,6 +59,20 @@ const APPLY: Projector = {
   // messages.cacheEdit/cacheGeoLive (messagesManager.ts). reaction/star_reaction —
   // тоже НЕ переведены (Stage 1B.3, Task 5), обработчики ниже остаются на сыром кадре.
   [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
+  // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
+  // считает, что изменилось, и публикует операцию. Здесь только применение:
+  // проектор — ЕДИНСТВЕННЫЙ писатель peersStore (пин — stores/noDuplicatePeers.test.ts).
+  // Прежний обработчик RT.userUpdate (patch имени + refresh().then(upsert)) убран:
+  // это был второй, независимый вывод того же факта, расходившийся с воркерным
+  // на упавшем до-фетче аватара. Один кадр несёт одну операцию, а upsert батчевый
+  // сам по себе (op.peers) — на событие приходится один set(), как и раньше.
+  [RT.peerOp]: (e) => {
+    const st = usePeersStore.getState()
+    for (const op of e.ops) {
+      if (op.op === 'upsert') st.upsert(op.peers)
+      else st.patch(op.id, op.fields)
+    }
+  },
   [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
@@ -250,17 +264,6 @@ export function registerStoreProjection(managers: Managers): void {
     const meId = useChatsStore.getState().meId
     // myReaction обновляем только для эха собственного действия (user_id === me).
     useStoriesStore.getState().applyStoryReaction(e.story_id, e.reactions_count, e.user_id === meId ? e.reaction : undefined)
-  })
-  // Юзер сменил имя/username/аватар → патчим карточку пира в peersStore (все места,
-  // где он нарисован, перерисуются). Неизвестного пира не заводим. avatar_changed —
-  // до-фетч /users (url приватен per-viewer, сервер применит PrivacyProfilePhoto).
-  rootScope.addEventListener(RT.userUpdate, (raw) => {
-    const e = raw as UserUpdateEvt
-    if (!usePeersStore.getState().byId[e.id]) return
-    usePeersStore.getState().patch(e.id, { username: e.username, displayName: e.display_name })
-    if (e.avatar_changed) {
-      void managers.peers.refresh([e.id]).then((peers) => usePeersStore.getState().upsert(peers))
-    }
   })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
   rootScope.addEventListener('media:upload_progress', (raw) => {

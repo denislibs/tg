@@ -119,7 +119,11 @@ export function createWorkerCore() {
   const folders = newFoldersManager({ rest })
   const groups = newGroupsManager({ rest })
   const channels = newChannelsManager({ rest })
-  const peers = newPeersManager({ rest })
+  // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
+  // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
+  // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
+  // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
+  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
@@ -205,8 +209,11 @@ export function createWorkerCore() {
     web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
     paid_media_unlock: { rt: RT.paidMediaUnlock, cache: (p) => messages.cachePaidUnlock(p) },
     balance_update:    { rt: RT.balanceUpdate },
-    // Юзер сменил профиль: чиним кэш пиров воркера ДО broadcast, иначе прямые
-    // getUsers (мимо peersStore) отдавали бы устаревшую карточку.
+    // Юзер сменил профиль: кадр интерпретирует владелец карточек (peersManager) —
+    // он правит свой кэш и публикует изменение операцией (rt:peer_op). Витрина
+    // сырой rt:user_update не разбирает; кадр рассылается дальше как есть, чтобы
+    // не заводить исключение в общей проводке логируемых типов (потребителей у
+    // него на витрине сейчас нет).
     user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate(p) },
   }
   // Эфемерные кадры (PASS_THROUGH) и логируемые (APPLY) выводятся из eventCatalog —
