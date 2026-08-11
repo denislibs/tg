@@ -63,27 +63,11 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
       }
     },
 
-    async setAvatar(mediaId: number): Promise<User> {
-      // Не зовём onMeChanged: метод не вызывается ниоткуда в витрине (мёртвый
-      // путь — аватар всегда идёт через addPhoto, см. EditProfile.tsx). Оставлен
-      // как есть (вне периметра задачи), но и владением не притворяется.
-      return mapUser(await rest.put<RawUser>('/me/avatar', { media_id: mediaId }))
-    },
-
     // setEmojiStatus sets (or clears with '') the current user's emoji status.
     async setEmojiStatus(emoji: string): Promise<User> {
       const mapped = mapUser(await rest.put<RawUser>('/me/emoji_status', { emoji }))
       onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return mapped
-    },
-
-    // activatePremium flips the Telegram Premium flag on (fake purchase — clone).
-    // Не зовём onMeChanged, тем же обоснованием, что setAvatar выше: метод
-    // мёртвый (не вызывается из витрины нигде — реальная покупка идёт через
-    // premiumManager.checkout, см. PremiumCheckout.tsx). Не удалил в рамках
-    // этой задачи (вне периметра «дублей me»), но и владением не притворяется.
-    async activatePremium(): Promise<User> {
-      return mapUser(await rest.post<RawUser>('/me/premium', {}))
     },
 
     // addPhoto adds a photo to the current user's gallery and promotes it to the

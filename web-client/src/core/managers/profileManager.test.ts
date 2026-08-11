@@ -91,16 +91,6 @@ describe('ProfileManager.setUsername', () => {
   })
 })
 
-describe('ProfileManager.setAvatar', () => {
-  it('PUTs /me/avatar with the media id', async () => {
-    const put = vi.fn(async () => RAW)
-    const mgr = newProfileManager({ rest: { put } as unknown as RestClient })
-    const u = await mgr.setAvatar(42)
-    expect(put).toHaveBeenCalledWith('/me/avatar', { media_id: 42 })
-    expect(u.avatarUrl).toBe('/media/42/content')
-  })
-})
-
 describe('ProfileManager.setEmojiStatus', () => {
   // Stage 1C.2 (Task 1): эмоджи-статус тоже часть `me` — тот же контракт, что update().
   it('зовёт onMeChanged со свежим пользователем', async () => {
