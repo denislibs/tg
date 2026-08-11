@@ -391,6 +391,43 @@ describe('AuthManager: rt:logging_out — намерение перехода а
     expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: null })
   })
 
+  // Вход — восьмой (и до раунда 4 единственный необъявленный) переход активного
+  // токена. Без кадра соседняя вкладка навсегда оставалась бы на экране входа
+  // при живой сессии, а вкладка под другим аккаунтом молча продолжала бы слать
+  // запросы с НОВЫМ токеном под старым интерфейсом.
+  it('signIn объявляет вход (userId вошедшего) — persist(), общая точка всех путей', async () => {
+    const onLoggedIn = vi.fn()
+    const { d } = deps()
+    const auth = newAuthManager({ ...d, onLoggedIn })
+
+    const r = await auth.signIn('+7 700', '12345', 'web', 'browser')
+
+    expect(onLoggedIn).toHaveBeenCalledTimes(1)
+    expect(onLoggedIn).toHaveBeenCalledWith({ userId: r.user!.id })
+  })
+
+  // Второй путь через ту же persist() — доказывает, что кадр висит на общей
+  // точке, а не на одном методе (тот же приём, что у onMeChanged выше).
+  it('qrStatus(confirmed) объявляет вход тем же кадром (другой вызывающий, та же persist)', async () => {
+    const onLoggedIn = vi.fn()
+    const { d } = deps({ qrConfirmed: true })
+    await newAuthManager({ ...d, onLoggedIn }).qrStatus('tok123')
+    expect(onLoggedIn).toHaveBeenCalledWith({ userId: 7 })
+  })
+
+  it('вход НЕ объявляется как логаут: onLoggingOut при signIn молчит', async () => {
+    const onLoggingOut = vi.fn()
+    const { d } = deps()
+    await newAuthManager({ ...d, onLoggingOut }).signIn('+7 700', '12345', 'web', 'browser')
+    expect(onLoggingOut).not.toHaveBeenCalled()
+  })
+
+  it('onLoggedIn опционален — вход без него не падает', async () => {
+    const { d } = deps()
+    await expect(newAuthManager(d).signIn('+7 700', '12345', 'web', 'browser'))
+      .resolves.toMatchObject({ user: { id: 1 } })
+  })
+
   it('onLoggingOut опционален — переход без него не падает', async () => {
     await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
     await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })

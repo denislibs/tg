@@ -88,6 +88,9 @@ export type BroadcastEvents = {
   // `logging_out`, см. докблок в core/realtime/events.ts). `migrateTo` — id
   // аккаунта, на который переехала сессия; null — активного не осталось.
   [RT.loggingOut]: [{ migrateTo: number | null }]
+  // Симметричный кадр входа (порт tweb `account_logged_in`): активная сессия
+  // ПОЯВИЛАСЬ, `userId` — кто вошёл.
+  [RT.loggedIn]: [{ userId: number }]
 
   // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
   //    клиентские события — вне funnel'а сервера, meta не несут ──

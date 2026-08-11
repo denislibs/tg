@@ -7,7 +7,7 @@
 // bootData.hasToken), а не по сети — поэтому промежуточного null нет, приложение
 // (или экран входа) рисуется сразу, без стартового спиннера. Сетевой me() в фоне
 // подтверждает/опровергает: истёкшая сессия → logout (миг пустого Shell, как в tweb).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData } from '../../client/bootData'
@@ -44,6 +44,12 @@ export function useAuthGate(): AuthGate {
   const managers = useManagers()
   // Локальное решение: есть токен → оптимистично Shell, нет → экран входа.
   const [authed, setAuthed] = useState<boolean>(!!bootData?.hasToken)
+  // Актуальный authed для обработчиков событий. Эффект подписки зависит только
+  // от managers — вешать его заново на каждую смену authed нельзя (перевесилась
+  // бы подписка и повторно запустился бы confirm()), поэтому замыкание внутри
+  // видит значение первого рендера. Ref обходит это, не трогая зависимости.
+  const authedRef = useRef(authed)
+  authedRef.current = authed
 
   useEffect(() => {
     // Под passcode-локом сетевой me() НЕ шлём (RPC не летят до разблокировки):
@@ -104,6 +110,27 @@ export function useAuthGate(): AuthGate {
       resetAccountStateInMemory()
       setAuthed(false)
     }
+    // Симметричный кадр входа (порт tweb `account_logged_in`). Вход — такой же
+    // переход активного токена, как логаут и переезд: пока его не было, вкладка,
+    // не нажимавшая «Войти», о новой сессии не узнавала вовсе. Реакция
+    // считается из объявленного намерения ПЛЮС собственного состояния вкладки —
+    // ровно как у tweb `onLoggedOut`, который сверяет payload со своим
+    // `getCurrentAccount()` (`apiManagerProxy.ts:565-585`):
+    //  - вкладка была на экране входа (`authed === false`) — просто поднимаем
+    //    Shell. Это в точности то, что делает login() ниже у вкладки, которая
+    //    сама вошла: обе стартовали boot без токена, обе догружают чаты/State
+    //    сетью, разницы между ними нет. Перезагружать незачем.
+    //  - вкладка уже держала сессию (`authed === true`) — под ней сменился
+    //    активный токен (её собственный кадр входа сюда попасть не может:
+    //    вошедшая вкладка к этому моменту на экране входа). Нужен полноценный
+    //    подъём под новым токеном — reload, тот же путь, что у переезда выше.
+    // По `userId` не разветвляемся сознательно: любой успешный вход выдаёт
+    // НОВЫЙ токен, включая повторный вход того же пользователя, — переход
+    // одинаков в обоих случаях.
+    const onLoggedIn = () => {
+      if (authedRef.current) { location.reload(); return }
+      setAuthed(true)
+    }
     // Подписку НЕ гейтим runWhenUnlocked (в отличие от confirm() выше) — не
     // потому что воркер/RPC не подняты под локом (это не так: `client/
     // boot.ts` зовёт `startClient()` безусловно, ДО решения о локе, и
@@ -118,8 +145,13 @@ export function useAuthGate(): AuthGate {
     // просто не долетит, кем бы его ни встречала эта подписка — регистрировать
     // её здесь синхронно дёшево и безопасно.
     rootScope.addEventListener(RT.loggingOut, onLoggingOut)
+    rootScope.addEventListener(RT.loggedIn, onLoggedIn)
 
-    return () => { cleanupConfirm(); rootScope.removeEventListener(RT.loggingOut, onLoggingOut) }
+    return () => {
+      cleanupConfirm()
+      rootScope.removeEventListener(RT.loggingOut, onLoggingOut)
+      rootScope.removeEventListener(RT.loggedIn, onLoggedIn)
+    }
   }, [managers])
 
   const login = () => {

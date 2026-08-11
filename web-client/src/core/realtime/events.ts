@@ -84,6 +84,15 @@ export const RT = {
   // сессия). Публикует authManager (единственный владелец активного токена),
   // рассылает workerCore всем вкладкам, включая инициатора.
   loggingOut: 'rt:logging_out',
+  // Второй, симметричный кадр того же владельца — порт tweb `account_logged_in`
+  // (`lib/rootScope.ts:211` — `{accountNumber, userId}`, шлёт
+  // `appManagers/apiManagerMethods.ts:78` из `setUser()`, тоже общий для всех
+  // вкладок: `apiManagerProxy.ts:332` в commonEventNames). Публикует
+  // authManager из persist() — единой точки всех семи путей входа. `userId` —
+  // кто вошёл; реакция вкладки по нему НЕ разветвляется: любой успешный вход
+  // выдаёт НОВЫЙ активный токен, включая повторный вход того же пользователя,
+  // так что переход одинаков в любом случае (см. useAuthGate).
+  loggedIn: 'rt:logged_in',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

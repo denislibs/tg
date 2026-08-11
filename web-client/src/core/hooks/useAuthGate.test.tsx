@@ -160,6 +160,37 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     expect(result.current.authed).toBe(false)
   })
 
+  // Critical раунда 4-бис: вход — такой же переход, как логаут, и должен
+  // доходить до вкладки, которая его не инициировала. Без кадра вкладка,
+  // стоящая на экране входа, оставалась бы там навсегда при живой сессии.
+  it('rt:logged_in вкладке на экране входа — поднимает Shell без reload', () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+
+    // Экран входа: логаут увёл сюда обе вкладки («добавить аккаунт»).
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+    expect(result.current.authed).toBe(false)
+
+    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+
+    expect(result.current.authed).toBe(true)
+    expect(reload).not.toHaveBeenCalled() // boot был без токена — как у вошедшей вкладки
+  })
+
+  // Вторая половина того же Critical: вкладка, уже работавшая под аккаунтом,
+  // при чужом входе получает НОВЫЙ активный токен под собой. Без реакции она
+  // осталась бы в интерфейсе прежнего аккаунта, отправляя запросы с чужим
+  // токеном, а её `me` тем временем перезаписал бы rt:me чужой личностью.
+  it('rt:logged_in вкладке с живой сессией — reload (под ней сменился активный токен)', () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+
+    act(() => { result.current.login() }) // вкладка в Shell
+    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   // Фикс минорного пункта ревью: старая версия этого теста («размонтирование
   // снимает подписку») пиновала не то — setAuthed на размонтированном хуке
   // не бросает в React 19, поэтому not.toThrow() проходил и с утечкой

@@ -142,6 +142,12 @@ export interface AuthDeps {
    * явно. `migrateTo` — id аккаунта, ставшего активным; null — активного не
    * осталось. Опционально по той же причине, что onMeChanged. */
   onLoggingOut?: (e: { migrateTo: number | null }) => void
+  /** Симметричное намерение входа — порт tweb `account_logged_in`
+   * (`apiManagerMethods.ts:78`). Зовём из persist(), единой точки всех семи
+   * путей входа: активный токен появился/сменился, и соседние вкладки обязаны
+   * узнать об этом так же явно, как об уходе. Опционально по той же причине,
+   * что onMeChanged. */
+  onLoggedIn?: (e: { userId: number }) => void
 }
 
 // Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
@@ -155,7 +161,7 @@ interface SignInWire {
   signup_token?: string
 }
 
-export function newAuthManager({ rest, store, onMeChanged, onLoggingOut }: AuthDeps) {
+export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLoggedIn }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
   // signImport/passkeyLoginFinish/qrStatus(confirmed) — все шесть путей входа
@@ -179,6 +185,15 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut }: AuthD
     // соседним вкладкам), `getMeId()` для `messagesManager` отдавал null (кэш
     // «моих» реакций не работал) — весь остаток сессии после логина.
     onMeChanged?.(u)
+    // Вход — такой же переход активного токена, как логаут и переезд, и
+    // объявляется так же явно (порт tweb `account_logged_in`). Без этого
+    // кадра соседняя вкладка навсегда оставалась бы на экране входа при живой
+    // сессии, а вкладка, уже работавшая под другим аккаунтом, молча продолжала
+    // бы слать запросы с НОВЫМ токеном под старым интерфейсом (её `me` при
+    // этом перезаписал бы rt:me выше — чужой личностью). Порядок важен:
+    // сначала значение (`rt:me`), потом намерение — вкладка, поднимающая
+    // Shell по этому кадру, застаёт `me` уже применённым проектором.
+    onLoggedIn?.({ userId: u.id })
   }
   // Общий REST-фетч текущего /me — используется публичным me() (прогрев/
   // loadChats) И внутренними переходами активного токена (switchAccount/

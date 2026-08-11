@@ -93,6 +93,8 @@ export function createWorkerCore() {
     // под другим аккаунтом). Кэш `me` здесь не трогаем — им управляет
     // onMeChanged, отдельным каналом значения.
     onLoggingOut: (e) => { broadcast(RT.loggingOut, e) },
+    // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером.
+    onLoggedIn: (e) => { broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })

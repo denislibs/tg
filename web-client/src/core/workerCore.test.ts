@@ -384,4 +384,28 @@ describe('createWorkerCore(): намерение перехода сессии �
 
     expect(got).toEqual([{ migrateTo: null }])
   })
+
+  it('authManager.onLoggedIn → broadcast(rt:logged_in)', async () => {
+    const core = createWorkerCore()
+    const got: unknown[] = []
+    core.workerScope.scope.addEventListener('rt:logged_in', (p) => got.push(p))
+
+    // signIn идёт в REST — фейковый fetch отдаёт токен+пользователя, дальше
+    // persist() (общая точка всех путей входа) объявляет кадр.
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      if (String(url).endsWith('/auth/sign_in')) {
+        return new Response(JSON.stringify({
+          token: 'TOK', user: { id: 42, phone: '+7', display_name: '+7' },
+        }), { status: 200 })
+      }
+      throw new Error('unexpected fetch ' + String(url))
+    }))
+    try {
+      await core.registry.auth.signIn('+7', '12345', 'web', 'browser')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(got).toEqual([{ userId: 42 }])
+  })
 })
