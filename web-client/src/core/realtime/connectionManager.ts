@@ -39,6 +39,11 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let missedPongs = 0
   let wired = false
+  // Дедуп markRead по чату: раньше единственным источником был троттленный
+  // скролл, теперь пересчёт идёт после КАЖДОЙ тихой записи scrollTop (Task 4),
+  // включая резайз контента, — на медиа-тяжёлом открытии чата это десятки
+  // одинаковых кадров подряд для одного и того же upToSeq.
+  const lastReadSeq = new Map<number, number>()
 
   const setState = (s: ConnState) => { state = s; onState(s) }
 
@@ -47,6 +52,16 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     wired = true
     ws.onOpen(() => {
       attempt = 0; missedPongs = 0
+      // Сброс на реконнект — тот же повод, что двигает resend outbox'а чуть
+      // ниже: 'read' не подтверждается (нет ack/outbox для этого кадра), так
+      // что попытка, оборвавшаяся посреди отправки, могла не дойти до сервера.
+      // Без сброса дедуп молча похоронил бы повторную отправку ТОГО ЖЕ upToSeq
+      // после реконнекта — чат остался бы непрочитанным на сервере, хотя
+      // клиент уверен, что уже отправил. Отдельного хука на смену аккаунта в
+      // этом файле нет ни у одного метода (outbox переживает её нарочно, через
+      // IDB, см. его комментарий выше) — единственная точка, где стоит
+      // полагаться на пересоздание состояния, это реконнект WS.
+      lastReadSeq.clear()
       setState('ready')
       startHeartbeat()
       // resend unacked (incl. entries restored from the durable store); sync when
@@ -105,7 +120,16 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     state: () => state,
     outboxSize: () => outbox.size,
     sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); persistOutbox(); if (ws.isOpen()) sendFrame(m) },
-    markRead(chatId: number, upToSeq: number) { if (ws.isOpen()) ws.send('read', { chat_id: chatId, up_to_seq: upToSeq }) },
+    markRead(chatId: number, upToSeq: number) {
+      if (!ws.isOpen()) return
+      // Не шлём, если для этого чата уже отправлен такой же или больший upToSeq —
+      // повторный кадр на тот же прочитанный рубеж серверу не нужен. Растущий
+      // upToSeq (реально прочитали дальше) дедуп не гасит: last=5 не блокирует 7.
+      const last = lastReadSeq.get(chatId)
+      if (last != null && upToSeq <= last) return
+      lastReadSeq.set(chatId, upToSeq)
+      ws.send('read', { chat_id: chatId, up_to_seq: upToSeq })
+    },
     // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
     markMediaRead(chatId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { chat_id: chatId, msg_id: msgId }) },
     sendTyping(chatId: number, action: TypingAction = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
