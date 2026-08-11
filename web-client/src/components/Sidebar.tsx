@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
@@ -66,16 +66,19 @@ export default function Sidebar({
   // здесь нет: единственный писатель — автомат. Хэндл трёх его методов приезжает
   // отдельным `statusRef` (основной `ref` — сам input, его берёт useSidebarSearch).
   const searchStatusRef = useRef<InputSearchStatus>(null)
-  // НЕПОКРЫТАЯ ПРОВОДКА (норма построчная, web-client/CLAUDE.md → «Тесты»): эти
-  // три строки — ref, эффект ниже и проп `statusRef` у InputSearch — сознательно
-  // без краснеющего теста. Sidebar не поднимается ни одним тестом (оркестратор
-  // на два десятка хуков; чтобы срендерить его, пришлось бы замокать весь слой
-  // менеджеров), а текстовый пин по исходнику дал бы ложную уверенность: он
-  // зелёный и тогда, когда `searchStatusRef.current` пуст. Сам автомат и его
-  // единственная нетривиальная предпосылка — что к моменту эффекта РОДИТЕЛЯ
-  // хэндл дочернего useImperativeHandle уже выставлен — покрыты на таком же
-  // хосте в `connectionStatus.test.ts` («монтирование хостом»).
-  useEffect(() => {
+  // Эффект слоя РАСКЛАДКИ, а не обычный: `construct()` ставит плейсхолдер
+  // (tweb :45 делает это синхронно в конструкторе), и он должен быть на узле до
+  // первой отрисовки — из пассивного эффекта поле поиска на первом кадре пустое.
+  // Тем же слоем и по той же причине его ставил прежний layout-эффект самого
+  // InputSearch. Порядок гарантирован React'ом: эффекты бегут снизу вверх,
+  // поэтому `useImperativeHandle` ребёнка уже выставил хэндл (пин — в
+  // `connectionStatus.test.ts`, «монтирование хостом»), а вся проводка целиком —
+  // в `Sidebar.connectionStatus.test.tsx` (краснеет и на снятом `statusRef`, и
+  // на снятом эффекте, и на снятом cleanup). Непокрыт ровно один оттенок: сама
+  // подмена слоя на пассивный `useEffect` тестом не ловится — `act()` прогоняет
+  // до возврата `render()` оба вида эффектов, а момент отрисовки в happy-dom не
+  // наблюдаем. Держится этим комментарием.
+  useLayoutEffect(() => {
     const status = searchStatusRef.current
     if (!status) return
     const connectionStatus = new ConnectionStatusComponent()
