@@ -434,7 +434,11 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     const tryPosition = () => {
       if (unreadScrolled.current) return
       const sc = scrollRef.current
-      const target = sc?.querySelector('[data-unread-divider]') as HTMLElement | null
+      // Плашка — не отдельный узел, а модификатор бабла (ChatFeed.tsx's
+      // isFirstUnread, tweb bubbles.ts:11609 is-first-unread); бабл несёт
+      // data-seq (MessageRow.tsx), поэтому якорь ищется по нему, а не по
+      // отдельному атрибуту плашки — такого узла в разметке нет.
+      const target = sc?.querySelector(`[data-seq="${unreadDividerSeq}"]`) as HTMLElement | null
       if (sc && target) {
         unreadScrolled.current = true
         atBottomRef.current = false
@@ -480,14 +484,36 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   }, [win.msgs])
 
   // Появление/исчезновение плейтов (пин, теги) меняет высоту верхней распорки
-  // ленты. Компенсируем scrollTop на дельту, чтобы вьюпорт остался на месте
-  // (tweb chat.ts preservePaddingScroll) — и в середине истории, и у низа.
+  // ленты. Компенсируем scrollTop на дельту безусловно — и в середине истории,
+  // и у низа.
+  //
+  // НЕ порт tweb chat.ts preservePaddingScroll (ссылка была ошибочной, см. ревью
+  // бэклога 2.1 п.2) — та функция вообще про другую распорку (нижний «излишек»
+  // композера, updateChatInputHeight), гоняет 250-мс поллинг-цикл (animateSingle)
+  // и работает только пока isScrolledToEnd. Ближайший реальный аналог ЭТОЙ
+  // распорки (верхней, из-за плейтов пина/тегов) — chat.ts's
+  // updatePinnedFloatingHeight (:286-304), и там поведение ДРУГОЕ: правку
+  // scrollPosition делают, только когда `wasAtEnd && delta > 0` — комментарий
+  // рядом прямо говорит, что середину истории НЕ трогают вообще ни в какую
+  // сторону: рост верхней распорки там отдают нативному scroll anchoring
+  // браузера (контент visually остаётся на месте сам, без JS), а ручной пин
+  // нужен только у низа, потому что там якорить не на что.
+  //
+  // Мы этой развилки не делаем — пишем дельту всегда, независимо от
+  // atBottomRef и знака delta. `overflow-anchor` при этом не отключён нигде
+  // (ни здесь, ни в tweb — проверено грепом), т.е. нативное scroll anchoring
+  // браузера по умолчанию включено и для нашего скролл-контейнера тоже.
+  // Значит для случая mid-history эта запись потенциально СКЛАДЫВАЕТСЯ с уже
+  // отработавшим анкорингом браузера — двойной сдвиг того же кадра. Это
+  // осталось нерешённым: подтвердить или опровергнуть можно только в реальном
+  // браузере (happy-dom, которым покрыт этот хук, geometry не считает и такой
+  // баг в принципе не увидит) — оставлено как есть до отдельной задачи с
+  // визуальной проверкой, не чинится вслепую в рамках этого бэклога.
   const prevPaddingTop = useRef(paddingTop)
   useLayoutEffect(() => {
     const el = scrollRef.current
     const delta = paddingTop - prevPaddingTop.current
     prevPaddingTop.current = paddingTop
-    // tweb bubbles.ts:2285 — `scrollable.setScrollPositionSilently(scrollable.scrollPosition + delta)`.
     // recompute=false: the padding spacer is itself scrollable content, so scrollHeight already grew
     // by the same `delta` before this effect ran — dist = scrollHeight-scrollTop-clientHeight is
     // unchanged by this write, recomputing would be a no-op (see setScrollTopSilently's own header

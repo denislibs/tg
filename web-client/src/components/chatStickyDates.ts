@@ -54,3 +54,33 @@ export function observeNewSections(container: Element, intersector: Observer, ob
     }
   }
 }
+
+type Unobserver = { unobserve(element: HTMLElement, headerSentinel?: HTMLElement): void }
+
+/**
+ * Секции, которых больше нет в DOM, — снять с обоих IntersectionObserver'ов
+ * StickyIntersector'а (`unobserve`) и вычистить из внешних реестров (`observed`,
+ * `stuck`). Без этого `observed`/`stuck` бессрочно удерживают отсоединённые
+ * секции, а оба observer'а внутри StickyIntersector продолжают их наблюдать —
+ * утечка памяти.
+ *
+ * Путь удаления секций есть уже сегодня, не только после виртуализации:
+ * `useMessageWindow.jumpTo`/`reloadNewest` (useMessageWindow.ts:136-149) делают
+ * ПОЛНУЮ подмену `win.msgs` (не merge), а `ChatFeed.tsx` рендерит секции по
+ * `key={sec.key}` — день, которого нет в новом окне, размонтируется React'ом
+ * тем же коммитом.
+ *
+ * Проверяем принадлежность именно `container` (тому же элементу, что и
+ * `observeNewSections`), а не глобальному `document`, — секция может быть
+ * отсоединена от контейнера и всё ещё технически валидным DOM-узлом; в тестах
+ * (в отличие от прод-дерева) `container` к тому же не обязан быть примонтирован
+ * к `document` вовсе.
+ */
+export function pruneEvictedSections(container: Element, intersector: Unobserver, observed: Set<HTMLElement>, stuck: Set<HTMLElement>): void {
+  for (const el of observed) {
+    if (container.contains(el)) continue
+    intersector.unobserve(el)
+    observed.delete(el)
+    stuck.delete(el)
+  }
+}
