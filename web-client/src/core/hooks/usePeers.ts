@@ -15,10 +15,11 @@ export function peersKey(ids: number[]): string {
 // fetching only the ids not yet cached. Realtime user_update patches the store,
 // so every usePeers consumer of a changed peer re-renders automatically.
 //
-// Stage 1C.2 (Task 2): запрос карточек остаётся здесь (это read-путь), а вот
-// ПРИМЕНЕНИЕ ответа — нет: карточки кладёт в стор проектор по rt:peer_op, который
-// публикует владелец (peersManager). Прежний `.then(upsert)` был вторым писателем
-// стора и вторым походом в /users в паре с до-фетчем из storeProjection.
+// Stage 1C.2 (Task 2): хук объявляет ПРОБЕЛ зеркала (каких id нет в peersStore) —
+// он единственный, кто этот пробел видит. Что за карточка и какой операцией её
+// внести, решает владелец (peersManager), применяет проектор по rt:peer_op.
+// Прежний `.then(upsert)` был вторым писателем стора и вторым походом в /users
+// в паре с до-фетчем из storeProjection.
 export function usePeers(ids: number[]): Map<number, Peer> {
   const managers = useManagers()
   const key = peersKey(ids)
@@ -27,7 +28,7 @@ export function usePeers(ids: number[]): Map<number, Peer> {
   useEffect(() => {
     if (ids.length === 0) return
     const missing = ids.filter((id) => !usePeersStore.getState().byId[id])
-    if (missing.length) void managers.peers.getUsers(missing)
+    if (missing.length) void managers.peers.fillMirror(missing)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 

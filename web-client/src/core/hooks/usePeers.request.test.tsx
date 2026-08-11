@@ -1,7 +1,7 @@
 // Stage 1C.2 (Task 2): владелец карточек пиров — воркерный peersManager. За
 // хуком остаётся ЗАПРОС недостающих (read-путь), применение ответа — за
 // проектором по rt:peer_op. Обе стороны этого разделения и пинятся здесь:
-// строка запроса иначе не покрыта ничем (её удаление оставляет приложение без
+// строка объявления пробела иначе не покрыта ничем (её удаление оставляет приложение без
 // имён и аватаров, не покрасив ни одного теста — построчная норма,
 // web-client/CLAUDE.md «Тесты»), а возврат прежнего `.then(upsert)` вернул бы
 // второго писателя стора.
@@ -27,7 +27,7 @@ describe('usePeers — запрос недостающих карточек', ()
   it('спрашивает у воркера ровно те id, которых нет в сторе', async () => {
     usePeersStore.setState({ byId: { 2: { id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '' } } })
     const asked: number[][] = []
-    const managers = { peers: { getUsers: async (ids: number[]) => { asked.push(ids); return [] } } }
+    const managers = { peers: { fillMirror: async (ids: number[]) => { asked.push(ids) } } }
 
     renderHook(() => usePeers([2, 3]), { wrapper: wrapper(managers) })
     await act(async () => {})
@@ -35,9 +35,8 @@ describe('usePeers — запрос недостающих карточек', ()
     expect(asked).toEqual([[3]])
   })
 
-  it('ответ getUsers сам по себе стор не меняет — это делает проектор по операции', async () => {
-    const peer = { id: 3, username: 'eve', displayName: 'Ева', avatarUrl: '/e.png' }
-    const managers = { peers: { getUsers: async () => [peer] } }
+  it('хук сам в стор не пишет — это делает проектор по операции', async () => {
+    const managers = { peers: { fillMirror: async () => {} } }
 
     renderHook(() => usePeers([3]), { wrapper: wrapper(managers) })
     await act(async () => {})

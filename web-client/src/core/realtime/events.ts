@@ -50,10 +50,12 @@ export const RT = {
   // Stage 1C.2 (Task 2): карточки пиров — воркерный peersManager единственный
   // владелец. Он же решает, что карточка изменилась, и публикует это ОПЕРАЦИЕЙ
   // (PeerOp: upsert/patch — см. managers/peersManager.ts), а не снимком кэша и
-  // не сигналом «сходи перечитай». Рассылается всем вкладкам: карточка пира —
-  // общий факт сессии (avatar_url приватен per-viewer, но зритель у всех вкладок
-  // один). peersStore зеркалит операции через storeProjection и больше ниоткуда
-  // не пишется (пин — stores/noDuplicatePeers.test.ts).
+  // не сигналом «сходи перечитай». Два повода, оба про зеркало: витрина объявила
+  // пробел (fillMirror) либо изменился сам факт (user_update). Обычные чтения
+  // карточек (getUsers) кадров не порождают. Рассылается всем вкладкам: карточка
+  // пира — общий факт сессии (avatar_url приватен per-viewer, но зритель у всех
+  // вкладок один). peersStore зеркалит операции через storeProjection и больше
+  // ниоткуда не пишется (пин — stores/noDuplicatePeers.test.ts).
   peerOp: 'rt:peer_op',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',

@@ -1,6 +1,6 @@
 // src/core/managers/peersManager.test.ts
 import { describe, it, expect } from 'vitest'
-import { newPeersManager } from './peersManager'
+import { newPeersManager, type PeerOp } from './peersManager'
 import type { RestClient } from '../net/restClient'
 
 function fakeRest(users: { id: number; username: string; display_name: string; avatar_url: string }[]) {
@@ -124,5 +124,50 @@ describe('PeersManager — метка «протухла» снимается у
     await mgr.getUsers([2])
 
     expect(calls).toHaveLength(2)
+  })
+})
+
+// Трафик веера. `getUsers` зовут не только из витрины: инфо группы, права,
+// закреплённые, звонки, тосты уведомлений — двенадцать мест, которые рисуют по
+// возвращённому массиву и в peersStore не смотрят. Каждый опубликованный кадр
+// уходит structured-clone'ом в КАЖДЫЙ порт и заставляет каждую вкладку
+// продиффить пачку, поэтому «объёмные» чтения обязаны молчать: разъехаться с
+// зеркалом на впервые заведённой карточке невозможно (зеркало — подмножество
+// кэша), а на повторном открытии не меняется вообще ничего.
+describe('PeersManager — объёмные чтения не создают трафика веера', () => {
+  const members = Array.from({ length: 500 }, (_, i) => ({
+    id: i + 1, username: `u${i + 1}`, display_name: `Участник ${i + 1}`, avatar_url: `/a/${i + 1}.png`,
+  }))
+
+  it('открытие экрана на 500 участников — ноль кадров, повторное — тоже ноль', async () => {
+    const { rest } = fakeRest(members)
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    const ids = members.map((m) => m.id)
+
+    await mgr.getUsers(ids) // первое открытие: 500 карточек заводятся впервые
+    expect(ops).toEqual([])
+
+    await mgr.getUsers(ids) // повторное: попадание в кэш, менять нечего
+    expect(ops).toEqual([])
+  })
+
+  // Обратная сторона того же правила: ЗАМЕНУ уже лежавшей карточки объявить
+  // обязаны — только на ней зеркало и может разъехаться с кэшем. Публикуется
+  // ровно изменившееся, а не вся пачка.
+  it('перечитывание пачки объявляет только реально изменившиеся карточки', async () => {
+    const { rest } = fakeRest(members)
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    const ids = members.map((m) => m.id)
+    await mgr.getUsers(ids)
+
+    // Один участник сменил аватар: кадр помечает карточку протухшей, до-фетч
+    // приносит новую — и объявлена должна быть она одна.
+    members[41].avatar_url = '/a/42-new.png'
+    mgr.applyUserUpdate({ id: 42, username: 'u42', display_name: 'Участник 42', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 42, username: 'u42', displayName: 'Участник 42', avatarUrl: '/a/42-new.png' }] }])
   })
 })

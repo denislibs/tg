@@ -418,7 +418,7 @@ describe('createWorkerCore(): намерение перехода сессии �
 // в приложении исчезают. Тест зовёт настоящий менеджер из реестра и ловит кадр
 // на воркерном RootScope (тем же способом, что тест rt:me выше).
 describe('createWorkerCore(): карточки пиров — воркер публикует rt:peer_op (Stage 1C.2, Task 2)', () => {
-  it('ответ /users уходит вкладкам операцией upsert', async () => {
+  it('ответ на объявленный пробел зеркала уходит вкладкам операцией upsert', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).includes('/users?ids=2')) {
         return new Response(JSON.stringify({
@@ -432,7 +432,7 @@ describe('createWorkerCore(): карточки пиров — воркер пу�
       const got: unknown[] = []
       core.workerScope.scope.addEventListener('rt:peer_op', (p) => got.push(p))
 
-      await core.registry.peers.getUsers([2])
+      await core.registry.peers.fillMirror([2])
 
       expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' }] }] }])
     } finally {

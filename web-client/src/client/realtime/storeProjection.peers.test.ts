@@ -47,26 +47,27 @@ describe('storeProjection — карточки пиров: воркер влад
 
   beforeEach(() => { usePeersStore.setState({ byId: {} }) })
 
-  // Базовый канал: ответ /users доезжает до витрины сам, без `.then(upsert)` на
-  // вызывающей стороне (тот второй писатель убран из usePeers).
-  it('getUsers → карточка легла в стор через операцию', async () => {
+  // Базовый канал: витрина объявила пробел — карточка доезжает сама, без
+  // `.then(upsert)` на вызывающей стороне (тот второй писатель убран из usePeers).
+  it('fillMirror → карточка легла в стор через операцию', async () => {
     const { mgr } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
 
-    await mgr.getUsers([2])
+    await mgr.fillMirror([2])
 
     expect(usePeersStore.getState().byId[2]).toEqual({ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' })
   })
 
   // Полнота канала: карточку мог уже вытянуть другой хук или другая вкладка —
   // тогда в кэше воркера попадание, менять нечего, и публикация «только
-  // изменений кэша» не доехала бы до витрины НИКОГДА. Публикуем весь ответ.
-  it('повторный getUsers при попадании в кэш воркера всё равно наполняет пустую витрину', async () => {
+  // изменившегося» не доехала бы до витрины НИКОГДА. На объявленный пробел
+  // отвечаем всегда — это и есть сценарий второй вкладки, открытой позже.
+  it('пробел зеркала при попадании в кэш воркера всё равно наполняет пустую витрину', async () => {
     const { mgr, net } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
     await mgr.getUsers([2])
     // Витрина «второй вкладки»: кэш воркера уже прогрет, стор пуст.
     usePeersStore.setState({ byId: {} })
 
-    await mgr.getUsers([2])
+    await mgr.fillMirror([2])
 
     expect(net.calls).toBe(1)
     expect(usePeersStore.getState().byId[2]).toMatchObject({ displayName: 'Боб' })
@@ -79,7 +80,7 @@ describe('storeProjection — карточки пиров: воркер влад
       { id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' },
       { id: 3, username: 'eve', display_name: 'Ева', avatar_url: '/e.png' },
     ])
-    await mgr.getUsers([2, 3])
+    await mgr.fillMirror([2, 3])
     const before = usePeersStore.getState().byId
 
     mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
@@ -99,7 +100,7 @@ describe('storeProjection — карточки пиров: воркер влад
   // протухшей, но остаётся отданной — обе стороны показывают одно и то же.
   it('avatar_changed при упавшем до-фетче: воркер и витрина держат ОДНУ И ТУ ЖЕ карточку', async () => {
     const { mgr, net, users } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/old.png' }])
-    await mgr.getUsers([2])
+    await mgr.fillMirror([2])
 
     net.offline = true
     mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
@@ -130,7 +131,7 @@ describe('storeProjection — карточки пиров: воркер влад
   // число запросов не изменилось, значит в сеть за ним не ходили.
   it('user_update без аватара: воркер и витрина держат ОДНУ И ТУ ЖЕ карточку', async () => {
     const { mgr, net } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
-    await mgr.getUsers([2])
+    await mgr.fillMirror([2])
 
     mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
 
@@ -144,7 +145,7 @@ describe('storeProjection — карточки пиров: воркер влад
   // своей стороны (раньше в /users ходили двое — usePeers и проектор).
   it('avatar_changed при живой сети → новый аватар доезжает до витрины сам', async () => {
     const { mgr, net, users } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/old.png' }])
-    await mgr.getUsers([2])
+    await mgr.fillMirror([2])
     users[0].avatar_url = '/new.png'
 
     mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
