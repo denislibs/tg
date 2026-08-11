@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { newAuthManager, type AuthDeps } from './authManager'
 import { HttpError } from '../net/restClient'
 
@@ -61,6 +61,25 @@ describe('AuthManager', () => {
     await auth.logout()
     expect(token()).toBeNull()
     await expect(auth.me()).resolves.toBeNull()
+  })
+
+  // Stage 1C.2 (Task 1): `me` — воркер единственный владелец; logout() обязан
+  // публиковать null всем вкладкам (rt:me), а не оставлять только вкладку-
+  // инициатора чистить свой стор локально (useAuthGate.ts) — иначе сиблинг-
+  // вкладки/окна той же сессии остались бы с профилем разлогиненного юзера.
+  it('logout зовёт onMeChanged(null), даже без активной сессии', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps() // без токена — store.get() пуст, /auth/logout не идёт
+    const auth = newAuthManager({ ...d, onMeChanged })
+    await auth.logout()
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(null)
+  })
+
+  it('onMeChanged опционален — logout() без него не падает', async () => {
+    const { d } = deps({ token: 'TOK' })
+    const auth = newAuthManager(d)
+    await expect(auth.logout()).resolves.toEqual({ switched: false })
   })
 
   it('qrNew returns the token + url + expiresAt', async () => {

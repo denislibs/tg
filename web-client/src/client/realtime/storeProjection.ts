@@ -37,6 +37,13 @@ type Projector = { [K in keyof BroadcastEventsListeners]?: BroadcastEventsListen
 // Добавить такое событие = одна строка здесь (подписка — addMultipleEventsListeners).
 // Обработчики с таймерами/тостами/meId/сетью/движками остаются явными ниже.
 const APPLY: Projector = {
+  // Stage 1C.2 (Task 1): `me`/`meId` — воркер единственный владелец
+  // (workerCore.ts::setMe), публикует на старте и на каждой RPC-мутации
+  // профиля/премиума/логаута. chatsStore.setMe — единый писатель (meId
+  // выводится из me внутри него же); прямые вызовы из компонентов вне этого
+  // проектора допустимы только как allow-listed оптимистичное исключение (см.
+  // stores/noDuplicateMe.test.ts).
+  [RT.me]: (u) => { useChatsStore.getState().setMe(u) },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).

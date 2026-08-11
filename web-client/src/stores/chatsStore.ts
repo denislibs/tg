@@ -25,7 +25,10 @@ interface ChatsState {
   typing: Record<number, ChatTyping>
   setDialogs: (d: Dialog[]) => void
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
-   * профиль не расходились. */
+   * профиль не расходились. Сам факт `me` вычисляет ТОЛЬКО воркер
+   * (workerCore.ts::setMe → rt:me, Stage 1C.2 Task 1); канонический вызывающий —
+   * storeProjection (APPLY[RT.me]). Прямые вызовы из витрины — allow-listed
+   * исключения (оптимистика/гидратация), см. stores/noDuplicateMe.test.ts. */
   setMe: (u: User | null) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
@@ -294,6 +297,12 @@ export async function loadChats(
   ])
   await decryptSecretPreviews(managers, dialogs)
   const st = useChatsStore.getState()
+  // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
+  // setMe в ChatsState выше и stores/noDuplicateMe.test.ts): loadChats зовётся
+  // из ~20 мест как рефетч ДИАЛОГОВ и тестируется в изоляции без живого
+  // воркера/rootScope (chatsStore.test.ts: «loadChats populates dialogs +
+  // meId»), поэтому не может полагаться на rt:me. Значение сходится с тем, что
+  // разошлёт воркер (тот же /me), расхождения не даёт.
   st.setMe(me) // meId выводится из me внутри setMe
   st.setDialogs(dialogs)
 }

@@ -10,7 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
-import { newAuthManager } from './managers/authManager'
+import { newAuthManager, type User } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
@@ -68,21 +68,32 @@ export function createWorkerCore() {
   // fileUpload активен только при DNP-ON: загрузка медиа чанками через канал (media.upload).
   const fileUpload = AppConfig.dnp.enabled ? newFileUpload(ws) : undefined
   const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
-  const auth = newAuthManager({ rest, store: tokens })
-  const profile = newProfileManager({ rest })
-  const premium = newPremiumManager({ rest })
+  // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
+  // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
+  // «мои» реакций) — теперь кэшируем полного User и рассылаем его вкладкам
+  // (rt:me) через setMe при каждом изменении, а не только держим id при себе.
+  let me: User | null = null
+  // Публикует свежий `me` всем вкладкам + обновляет локальный кэш. Зовётся на
+  // старте (auth.me() ниже) и как onMeChanged профиля/премиума/логаута.
+  // `broadcast` объявлен ниже — функция дёргает его лениво (тот же приём, что
+  // у messages/media ниже: onMeChanged передаётся менеджерам ДО того, как
+  // broadcast существует, но реально исполняется только после первого RPC/boot,
+  // когда broadcast уже назначен).
+  function setMe(u: User | null): void {
+    me = u
+    broadcast(RT.me, u)
+  }
+  const auth = newAuthManager({ rest, store: tokens, onMeChanged: setMe })
+  const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
+  const premium = newPremiumManager({ rest, onMeChanged: setMe })
   const chats = newChatsManager({ rest })
-  // id текущего пользователя в воркере: нужен, чтобы кэшировать `mine` реакций
-  // (событие reaction несёт user_id реагирующего). Разрешаем лениво через /me после
-  // загрузки токена; при смене аккаунта перезагрузка воркера обнулит его заново.
-  let meId: number | null = null
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
   // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
-  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
+  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => me?.id ?? null, broadcast: (event, payload) => broadcast(event, payload) })
   // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
   // аплоада порты уже подняты)
   const media = newMediaManager({
@@ -382,7 +393,12 @@ export function createWorkerCore() {
     // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
     // предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
     void tokens.load().then(() => persistScope(tokens.get()))
-    void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).catch(() => {})
+    // Первый вывод `me` (Stage 1C.2, Task 1): успешный /me публикует rt:me всем
+    // вкладкам через setMe. На сетевой ошибке (не «неавторизован» — auth.me()
+    // сам мапит 401 в null, тут ловим именно транспортный сбой) НЕ зовём setMe:
+    // это временный офлайн-фолбэк, а не «разлогинен» — ложный null разослал бы
+    // остальным вкладкам неверный сигнал логаута.
+    void tokens.ready().then(() => auth.me()).then((u) => { setMe(u) }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {
       onconnect?: (e: MessageEvent) => void

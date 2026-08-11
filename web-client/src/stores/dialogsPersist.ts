@@ -32,6 +32,12 @@ export async function hydrateDialogsFromPersist(): Promise<boolean> {
     if (!dialogs.length) return false
     const st = useChatsStore.getState()
     if (st.loaded) return false // сеть уже успела — не затираем
+    // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
+    // setMe в chatsStore.ts, stores/noDuplicateMe.test.ts): гидратация с диска
+    // ДО поднятия воркера/rootScope — красим последний закоммиченный снимок
+    // мгновенно, до сети. Не независимый ВЫВОД факта, а чтение вчерашнего кэша
+    // (тот же приём, что setDialogs ниже); воркерный rt:me поправит поверх, как
+    // только придёт.
     st.setMe(me) // meId выводится из me внутри setMe
     st.setDialogs(dialogs)
     return true

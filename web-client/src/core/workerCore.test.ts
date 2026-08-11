@@ -238,3 +238,53 @@ describe('createWorkerCore().start — проводка bind() к глобаль
     vi.unstubAllGlobals()
   })
 })
+
+// Stage 1C.2 (Task 1): `me` — воркер единственный владелец. Раньше здесь жил
+// голый meId для внутренних нужд, ниоткуда не выходивший наружу; теперь
+// setMe() (см. workerCore.ts) публикует полного пользователя всем подключённым
+// вкладкам (rt:me) — на старте и на каждой RPC-мутации профиля/премиума/
+// логаута. Слушаем ЛОКАЛЬНО через core.workerScope.scope (тот же приём, что у
+// теста «кадр от вкладки A применяется локально…» выше) — без реального
+// REST/fetch: полный createWorkerCore() поднимает WS-транспорт и RestClient, и
+// живой fetch-стаб на /me поверх него оказался нестабилен в этом окружении
+// (воркер vitest падал между тестами — воспроизведено, не догадка); подмена
+// auth.me()/безтокенный logout() даёт тот же сигнал о проводке (setMe реально
+// вызван с нужным значением) без этого риска.
+describe('createWorkerCore(): `me` — воркер публикует rt:me (Stage 1C.2, Task 1)', () => {
+  // Один core на оба шага (не по одному на it()): каждый createWorkerCore()
+  // поднимает WS-транспорт + несколько IDB-соединений (cursor/outbox/tokens),
+  // ничего не закрывая явно — с 8 существующими экземплярами в этом файле
+  // десятый-одиннадцатый (по одному на новый it()) сталкивал воркер vitest в
+  // таймаут при завершении форка (воспроизведено: 10/10 тестов зелёные, затем
+  // «Timeout terminating forks worker» → OOM при попытке добить процесс под
+  // давлением памяти). Один общий core для обоих шагов держит прежние 9.
+  it('boot .then(setMe) публикует rt:me; logout() публикует rt:me(null) — обе проводки живы', async () => {
+    const core = createWorkerCore()
+    const local: unknown[] = []
+    core.workerScope.scope.addEventListener('rt:me', (p) => local.push(p))
+    // auth.me() и registry.auth — ОДИН и тот же объект (registry = {..., auth}),
+    // подмена метода на нём — то, что реально вызовет boot-цепочка внутри start().
+    core.registry.auth.me = async () => ({ id: 42 } as never)
+
+    core.start()
+    await vi.waitFor(() => { expect(local.length).toBeGreaterThan(0) })
+    expect(local[0]).toEqual({ id: 42 })
+
+    // logout() не ждёт REST в этой ветке (без активной сессии — store.get()
+    // пуст) — та же проводка onMeChanged, что боевая, второй независимый вход.
+    await core.registry.auth.logout()
+    expect(local[1]).toBeNull()
+  })
+})
+
+// Проводка `onMeChanged: setMe` у newProfileManager(...)/newPremiumManager(...)
+// (workerCore.ts) — СОЗНАТЕЛЬНО без отдельного end-to-end теста здесь: обе
+// зовут реальный REST (rest.patch/rest.post), и живой fetch-стаб поверх
+// полного createWorkerCore() оказался нестабилен в этом окружении (см. докблок
+// выше). Сам факт «менеджер зовёт onMeChanged с правильным пользователем»
+// покрыт БЕЗ сети — profileManager.test.ts/premiumManager.test.ts (fake rest +
+// spy onMeChanged); сам факт «rt:me из setMe доходит до стора» — cold-start
+// тест выше + storeProjection.me.test.ts. Строка вида
+// `onMeChanged: setMe` — прямая передача уже покрытой функции, того же вида,
+// что непокрытая по этой же причине `getMeId: () => me?.id ?? null` для
+// messagesManager чуть выше по файлу (см. её докблок).

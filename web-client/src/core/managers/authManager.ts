@@ -130,6 +130,10 @@ interface TokenStoreLike {
 export interface AuthDeps {
   rest: RestClient
   store: TokenStoreLike
+  /** Stage 1C.2 (Task 1): `me` — воркер единственный владелец, зовём после
+   * логаута с null (workerCore.ts публикует его вкладкам как rt:me).
+   * Опционально: юнит-тесты менеджера конструируют его без воркера. */
+  onMeChanged?: (u: User | null) => void
 }
 
 // Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
@@ -143,7 +147,7 @@ interface SignInWire {
   signup_token?: string
 }
 
-export function newAuthManager({ rest, store }: AuthDeps) {
+export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   const persist = async (token: string, u: User) => {
     await store.set(token)
@@ -406,11 +410,17 @@ export function newAuthManager({ rest, store }: AuthDeps) {
       const all = await listAccounts()
       const activeAcc = all.find((a) => a.token === active)
       const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
+      // Stage 1C.2 (Task 1): в обеих ветках текущий аккаунт больше не активен —
+      // `me` этой сессии стал null (при switched === true за этим следует
+      // location.reload() в useAuthGate, но воркер того же процесса разошлёт
+      // rt:me:null остальным вкладкам ДО перезагрузки).
       if (remaining.length > 0) {
         await store.set(remaining[0].token)
+        onMeChanged?.(null)
         return { switched: true }
       }
       await store.clear()
+      onMeChanged?.(null)
       return { switched: false }
     },
 

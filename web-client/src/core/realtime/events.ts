@@ -66,6 +66,11 @@ export const RT = {
   storyDeleted: 'rt:story_deleted',
   storyReaction: 'rt:story_reaction',
   state: 'rt:state',
+  // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец
+  // (workerCore.ts::setMe). Публикуется на старте (tokens.ready → auth.me) и
+  // после каждой RPC-мутации профиля/премиума/логаута; payload — полный
+  // User | null (null — разлогинен). storeProjection зеркалит в chatsStore.setMe.
+  me: 'rt:me',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

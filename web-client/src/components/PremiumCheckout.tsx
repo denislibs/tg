@@ -50,6 +50,12 @@ export default function PremiumCheckout({
     setError(null)
     try {
       const { user } = await managers.premium.checkout(plan.id, card)
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // сразу после успешной оплаты попап закрывается — ждать rt:me из воркера
+      // заметно замедлило бы отклик. Воркер (premiumManager.checkout →
+      // onMeChanged) ТОЖЕ разошлёт тот же снимок остальным вкладкам —
+      // повторное применение здесь идемпотентно, флика не даёт.
       setMe(user)
       onSuccess?.()
       onClose()

@@ -66,6 +66,12 @@ export function useAuthGate(): AuthGate {
       // Список диалогов тоже держится в памяти: без сброса чужие чаты видны до
       // ответа /chats под новым аккаунтом.
       useChatsStore.getState().setDialogs([])
+      // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
+      // setMe в chatsStore.ts, stores/noDuplicateMe.test.ts): логаут подтверждён
+      // RPC, но `me` чистим синхронно тем же блоком, что dialogs/State — единый
+      // локальный сброс перед reload/экраном входа, ждать сетевой round-trip
+      // ради null незачем. Воркер (authManager.logout → onMeChanged(null))
+      // отдельно разошлёт rt:me:null остальным вкладкам той же сессии.
       useChatsStore.getState().setMe(null)
       setAuthed(false)
     })

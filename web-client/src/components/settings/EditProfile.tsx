@@ -105,6 +105,12 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       // Add to the profile-photo gallery; the backend promotes it to the current
       // avatar, so we reflect the new avatar_url in the store optimistically.
       const photo = await managers.profile.addPhoto(mediaId)
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // кроппер закрывается сразу — ждать rt:me из воркера заметно замедлило бы
+      // отклик. Воркер (profileManager.addPhoto → onMeChanged, тот же merge
+      // {...me, avatarUrl}) ТОЖЕ разошлёт снимок остальным вкладкам —
+      // повторное применение здесь идемпотентно, флика не даёт.
       if (me) setMe({ ...me, avatarUrl: photo.url })
     } finally {
       setUploading(false)
@@ -151,6 +157,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       const videoBytes = await file.arrayBuffer()
       const videoId = await managers.media.upload({ bytes: videoBytes, mime: file.type, size: file.size, width: w, height: h, duration })
       const photo = await managers.profile.addPhoto(posterId, videoId)
+      // Оптимистичное исключение — то же обоснование, что у onCropConfirm выше.
       if (me) setMe({ ...me, avatarUrl: photo.url })
     } catch {
       setAvatarError(t('Could not process this video.'))
@@ -184,6 +191,12 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         birthday,
         phoneVisibility: phoneVis,
       })
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // экран сразу закрывается (onBack) — ждать rt:me из воркера заметно
+      // замедлило бы отклик. Воркер (profileManager.update → onMeChanged) ТОЖЕ
+      // разошлёт тот же снимок остальным вкладкам — повторное применение здесь
+      // идемпотентно, флика не даёт.
       setMe(updated)
       onBack()
     } catch {
