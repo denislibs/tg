@@ -36,8 +36,8 @@ export async function hydrateDialogsFromPersist(): Promise<boolean> {
     // setMe в chatsStore.ts, stores/noDuplicateMe.test.ts): гидратация с диска
     // ДО поднятия воркера/rootScope — красим последний закоммиченный снимок
     // мгновенно, до сети. Не независимый ВЫВОД факта, а чтение вчерашнего кэша
-    // (тот же приём, что setDialogs ниже); воркерный rt:me поправит поверх, как
-    // только придёт.
+    // (тот же приём, что setDialogs ниже и `setAppStateSilent` в boot.ts для
+    // State); воркерный rt:me поправит поверх, как только придёт.
     st.setMe(me) // meId выводится из me внутри setMe
     st.setDialogs(dialogs)
     return true

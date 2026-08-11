@@ -78,6 +78,10 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
     },
 
     // activatePremium flips the Telegram Premium flag on (fake purchase — clone).
+    // Не зовём onMeChanged, тем же обоснованием, что setAvatar выше: метод
+    // мёртвый (не вызывается из витрины нигде — реальная покупка идёт через
+    // premiumManager.checkout, см. PremiumCheckout.tsx). Не удалил в рамках
+    // этой задачи (вне периметра «дублей me»), но и владением не притворяется.
     async activatePremium(): Promise<User> {
       return mapUser(await rest.post<RawUser>('/me/premium', {}))
     },

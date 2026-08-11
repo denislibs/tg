@@ -27,10 +27,15 @@ function walk(dir: string, acc: string[] = []): string[] {
  * Единственный безусловный писатель: `client/realtime/storeProjection.ts`
  * (APPLY[RT.me] — применяет rt:me от воркера). Остальные — allow-listed
  * исключения; обоснование у каждого — комментарий прямо у вызова в файле:
- *  - `stores/chatsStore.ts` (loadChats): тестируется в изоляции без живого
- *    воркера/rootScope (chatsStore.test.ts: «loadChats populates dialogs +
- *    meId»), зовётся из ~20 мест как рефетч диалогов; значение сходится с
- *    воркерным (тот же /me).
+ *  - `stores/chatsStore.ts` (loadChats): НЕ второй вывод факта, а
+ *    альтернативный путь ЗАПРОСА уже посчитанного воркером значения —
+ *    `managers.auth.me()` бьёт в тот же `authManager`, тот же токен, что и
+ *    boot-цепочка воркера. Единственный надёжный канал холодного старта:
+ *    `SuperMessagePort` не буферизует события, а подписка на `rt:me`
+ *    (`startRealtime()`) подключается из эффекта ПОСЛЕ первого рендера —
+ *    воркерный `/me` может разрешиться раньше и разослать `rt:me` в пустоту.
+ *    Заодно тестируется в изоляции без живого воркера/rootScope
+ *    (chatsStore.test.ts: «loadChats populates dialogs + meId»).
  *  - `stores/dialogsPersist.ts` (hydrateDialogsFromPersist): гидратация с
  *    диска до поднятия воркера — чтение вчерашнего кэша, не независимый
  *    вывод факта.

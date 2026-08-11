@@ -298,11 +298,18 @@ export async function loadChats(
   await decryptSecretPreviews(managers, dialogs)
   const st = useChatsStore.getState()
   // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
-  // setMe в ChatsState выше и stores/noDuplicateMe.test.ts): loadChats зовётся
-  // из ~20 мест как рефетч ДИАЛОГОВ и тестируется в изоляции без живого
-  // воркера/rootScope (chatsStore.test.ts: «loadChats populates dialogs +
-  // meId»), поэтому не может полагаться на rt:me. Значение сходится с тем, что
-  // разошлёт воркер (тот же /me), расхождения не даёт.
+  // setMe в ChatsState выше и stores/noDuplicateMe.test.ts) — НЕ уступка
+  // тесту, а единственный надёжный канал холодного старта: `SuperMessagePort`
+  // не буферизует события (`rpc/superMessagePort.ts`), а `smp.on(RT.me, ...)`
+  // подключается в `startRealtime()`, из эффекта — ПОСЛЕ первого рендера
+  // (`useAppBootstrap.ts`). Воркерный `/me` вполне может разрешиться и
+  // разослать `rt:me` РАНЬШЕ, чем эта вкладка вообще успела подписаться —
+  // тогда стартовый broadcast просто не доедет, и `me` в сторе не выставится
+  // никогда. Прямой RPC здесь (`managers.auth.me()`, тот же `authManager`,
+  // тот же токен, что и в boot-цепочке воркера) — не второй вывод факта, а
+  // альтернативный путь ЗАПРОСА уже посчитанного значения, устойчивый к
+  // порядку подписки. `loadChats` тестируется в изоляции без воркера/rootScope
+  // (chatsStore.test.ts: «loadChats populates dialogs + meId») — не выпиливать.
   st.setMe(me) // meId выводится из me внутри setMe
   st.setDialogs(dialogs)
 }
