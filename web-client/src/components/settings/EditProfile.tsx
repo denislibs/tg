@@ -111,11 +111,18 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       // отклик. Воркер (profileManager.addPhoto → onMeChanged, тот же merge
       // {...me, avatarUrl}) ТОЖЕ разошлёт снимок остальным вкладкам —
       // повторное применение здесь идемпотентно, флика не даёт.
-      // Мердж — поверх СВЕЖЕГО me из стора (useChatsStore.getState()), а не
-      // замыкания рендера, в котором был вызван onCropConfirm: закрытие могло
-      // устареть за время аплоада/кроппера (профиль поменяли из соседней
-      // вкладки, пока кроппер был открыт) — иначе эта вкладка своим
-      // оптимистичным применением затёрла бы чужие поля устаревшими.
+      // Читаем useChatsStore.getState() здесь, а не замыкание рендера, где
+      // вызван onCropConfirm — так короче писать, но ЗАЩИТЫ от гонки это
+      // почти не даёт (повторное ревью): broadcast профиля уходит внутри
+      // менеджера ДО ответа RPC, кадры идут одним портом по порядку — к
+      // моменту, когда этот код выполнится, проектор обычно уже успел
+      // положить в стор тот же мердж, так что «свежее» здесь и «из замыкания»
+      // почти всегда совпадают. Настоящая защита от чужого-устаревшего
+      // мерджа — не здесь, а в authManager.ts: fetchMe() публикует свежего
+      // пользователя на КАЖДЫЙ успешный /me (не только явные мутации),
+      // поэтому кэш ВОРКЕРА (который реально мерджит profileManager.addPhoto)
+      // не протухает даже если профиль поменяли с другого устройства между
+      // loadChats() и этим addPhoto — см. task-1-report.md.
       const cur = useChatsStore.getState().me
       if (cur) setMe({ ...cur, avatarUrl: photo.url })
     } finally {
@@ -163,8 +170,8 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       const videoBytes = await file.arrayBuffer()
       const videoId = await managers.media.upload({ bytes: videoBytes, mime: file.type, size: file.size, width: w, height: h, duration })
       const photo = await managers.profile.addPhoto(posterId, videoId)
-      // Оптимистичное исключение — то же обоснование, что у onCropConfirm выше;
-      // мердж тоже поверх свежего me из стора, не замыкания рендера.
+      // Оптимистичное исключение — то же обоснование, что у onCropConfirm выше
+      // (включая то, чего чтение стора здесь НЕ гарантирует — см. комментарий там).
       const cur = useChatsStore.getState().me
       if (cur) setMe({ ...cur, avatarUrl: photo.url })
     } catch {
