@@ -14,6 +14,7 @@ import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
+import { applyMediaToken } from '../../core/mediaUrl'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt, type UserUpdateEvt } from '../../core/realtime/events'
@@ -44,6 +45,11 @@ const APPLY: Projector = {
   // проектора допустимы только как allow-listed оптимистичное исключение (см.
   // stores/noDuplicateMe.test.ts).
   [RT.me]: (u) => { useChatsStore.getState().setMe(u) },
+  // Stage 1C.2 (Task 3): медиа-токен — воркер единственный владелец
+  // (mediaManager::fetchToken публикует при получении и при каждом плановом
+  // обновлении). core/mediaUrl.ts — зеркало: applyMediaToken кладёт снимок и
+  // будит медиа-баблы, чтобы те пересобрали <img src> со свежим токеном.
+  [RT.mediaToken]: (t) => { applyMediaToken(t) },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).

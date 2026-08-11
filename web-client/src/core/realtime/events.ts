@@ -106,6 +106,14 @@ export const RT = {
   // выдаёт НОВЫЙ активный токен, включая повторный вход того же пользователя,
   // так что переход одинаков в любом случае (см. useAuthGate).
   loggedIn: 'rt:logged_in',
+  // Stage 1C.2 (Task 3): короткоживущий медиа-токен — воркер единственный
+  // владелец (core/managers/mediaManager.ts). Публикуется при КАЖДОМ получении
+  // токена — и на ленивом первом запросе, и на плановом обновлении за минуту до
+  // истечения; payload — MediaTokenInfo. storeProjection зеркалит его в
+  // core/mediaUrl.ts, откуда медиа-баблы синхронно собирают <img src>.
+  // Прямого аналога в tweb нет: там медиа тянутся байтами через appDownloadManager,
+  // а не URL'ом с токеном, — это наше расширение, не порт.
+  mediaToken: 'rt:media_token',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

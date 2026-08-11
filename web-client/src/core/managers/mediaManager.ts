@@ -8,6 +8,10 @@ import type { FileUpload } from '../net/dnp/fileUpload'
 // above CHUNK_THRESHOLD with a `blob` take the chunked/resumable path.
 export interface UploadArgs { bytes?: ArrayBuffer; blob?: Blob; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string; progressId?: string; waveform?: Uint8Array }
 export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean; waveform: string }
+/** Снимок короткоживущего медиа-токена: значение + момент истечения (ms epoch).
+ * Владелец — воркер; вкладки получают этот же объект и ответом tokenInfo(), и
+ * событием rt:media_token (Stage 1C.2, Task 3). */
+export interface MediaTokenInfo { token: string; expiresAt: number }
 
 interface RestLike {
   post: RestClient['post']
@@ -27,11 +31,21 @@ const PART_CONCURRENCY = 3
 const PART_ATTEMPTS = 3
 const RESUME_ROUNDS = 3
 
-export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUpload }: {
+// Единственный запас свежести медиа-токена (TTL на бэке — 15 мин): и гейт
+// ensureToken, и момент планового обновления. Stage 1C.2 (Task 3): раньше рядом
+// жил второй, витринный — core/mediaUrl.ts крутил свой таймер за ~90 с до
+// истечения; две копии одного расписания разъезжались по построению.
+const TOKEN_MARGIN = 60_000
+
+export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload, fileUpload }: {
   rest: RestLike
   // Прогресс отгрузки байтов (tweb ProgressivePreloader) — воркер транслирует
   // его вкладкам событием media:upload_progress.
   onUploadProgress?: (id: string, loaded: number, total: number) => void
+  // Свежий медиа-токен — воркер публикует его всем вкладкам (rt:media_token),
+  // витрина (core/mediaUrl.ts) только зеркалит. Опционально: юнит-тесты
+  // менеджера конструируют его без воркера.
+  onToken?: (t: MediaTokenInfo) => void
   fileDownload?: FileDownload // задан только при DNP-ON: скачивание медиа через канал
   fileUpload?: FileUpload // задан только при DNP-ON: загрузка медиа стримом чанков через канал
 }) {
@@ -43,12 +57,38 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUplo
   // authorizes media reads, so it's safe to put in URLs (unlike the session token).
   let mediaToken = ''
   let mediaTokenExp = 0
+  let tokenTimer: ReturnType<typeof setTimeout> | null = null
+  let tokenFetch: Promise<string> | null = null
+  // Единственное расписание обновления токена (Stage 1C.2, Task 3): перезапрос
+  // за TOKEN_MARGIN до истечения — ровно там, где ensureToken перестаёт считать
+  // токен свежим. Раньше это делала витрина своим таймером, и токен обновлялся
+  // столько раз, сколько открыто вкладок. Пол в 5 с — на случай почти истёкшего
+  // ответа сервера: крутить таймер в ноль незачем.
+  function scheduleTokenRefresh(): void {
+    if (tokenTimer) clearTimeout(tokenTimer)
+    tokenTimer = setTimeout(() => { void fetchToken().catch(() => {}) }, Math.max(5_000, mediaTokenExp - Date.now() - TOKEN_MARGIN))
+  }
+  // ЕДИНСТВЕННАЯ точка, где токен появляется и обновляется: сюда сходятся и
+  // ленивый путь (ensureToken из contentUrl/streamUrl/thumbUrl/tokenInfo), и
+  // плановый таймер — поэтому и публикация вкладкам ровно одна. tokenFetch
+  // склеивает параллельные запросы (N вкладок на холодном старте + сработавший
+  // таймер) в один поход в сеть.
+  function fetchToken(): Promise<string> {
+    if (tokenFetch) return tokenFetch
+    tokenFetch = rest.get<{ token: string; expires_at: string }>('/media/token')
+      .then((r) => {
+        mediaToken = r.token
+        mediaTokenExp = new Date(r.expires_at).getTime()
+        scheduleTokenRefresh()
+        onToken?.({ token: mediaToken, expiresAt: mediaTokenExp })
+        return mediaToken
+      })
+      .finally(() => { tokenFetch = null })
+    return tokenFetch
+  }
   async function ensureToken(): Promise<string> {
-    if (mediaToken && Date.now() < mediaTokenExp - 60_000) return mediaToken
-    const r = await rest.get<{ token: string; expires_at: string }>('/media/token')
-    mediaToken = r.token
-    mediaTokenExp = new Date(r.expires_at).getTime()
-    return mediaToken
+    if (mediaToken && Date.now() < mediaTokenExp - TOKEN_MARGIN) return mediaToken
+    return fetchToken()
   }
   // Тело meta() — вынесено, чтобы streamUrl тоже мог достать size/mime без
   // повторной реализации кэша (metaCache не кэширует, пока сервер не проставил thumb).
@@ -198,8 +238,13 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUplo
       return fileDownload.downloadMedia(id)
     },
     // The cached media token + its expiry, so the MAIN thread can build media URLs
-    // synchronously (no per-image RPC round-trip → no scroll jitter). Primed once.
-    async tokenInfo(): Promise<{ token: string; expiresAt: number }> {
+    // synchronously (no per-image RPC round-trip → no scroll jitter).
+    // Stage 1C.2 (Task 3): единственный путь ЗАПРОСА токена для витрины (её
+    // расписания больше нет). Он же — канал поздней вкладки: SuperMessagePort
+    // события не буферизует, поэтому подключившаяся к живому воркеру вкладка
+    // узнаёт текущий токен ответом этого RPC (из кэша, без похода в сеть), а не
+    // ждёт следующего планового обновления.
+    async tokenInfo(): Promise<MediaTokenInfo> {
       const token = await ensureToken()
       return { token, expiresAt: mediaTokenExp }
     },

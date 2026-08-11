@@ -111,6 +111,11 @@ export function createWorkerCore() {
   const media = newMediaManager({
     rest,
     onUploadProgress: (id, loaded, total) => broadcast('media:upload_progress', { id, loaded, total }),
+    // Stage 1C.2 (Task 3): медиа-токен — воркер единственный владелец. Менеджер
+    // зовёт onToken из единственной точки, где токен появляется (ленивый первый
+    // запрос) и обновляется (свой таймер за минуту до истечения), — веер тот же,
+    // что у rt:me. Витрина (core/mediaUrl.ts) своего расписания не держит.
+    onToken: (t) => broadcast(RT.mediaToken, t),
     fileDownload,
     fileUpload,
   })
