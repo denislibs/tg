@@ -5,7 +5,7 @@
 // `statusRef`. Иначе пришлось бы продублировать в фейке ранний выход
 // `setPlaceholder` по ключу (`InputSearch.tsx:151`), от которого зависит вся
 // механика отсчёта, — и дубль разъехался бы с оригиналом молча.
-import { createElement, createRef, useEffect, useRef } from 'react'
+import { createElement, createRef, useLayoutEffect, useRef } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
@@ -14,6 +14,7 @@ import { RT, type ConnState } from '../core/realtime/events'
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from '../shared/ui/InputSearch/InputSearch'
 import ConnectionStatusComponent from './connectionStatus'
 import ru from '../i18n/dict.ru'
+import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 
 // Кадр rAF у фейковых таймеров vitest — 16 мс (проверено отдельно: на 15 мс
@@ -79,11 +80,22 @@ async function haveConnected(h: ReturnType<typeof setup>) {
   h.flushShow()
 }
 
-beforeEach(() => { vi.useFakeTimers() })
+/** Так же, как `loadLang`: подменяет `t` догруженным словарём. */
+const switchToRussian = () => act(() => { useI18nStore.setState({ lang: 'ru', t: (s) => ru[s] ?? s }) })
+
+let englishT: I18nSnapshot
+type I18nSnapshot = { lang: ReturnType<typeof useI18nStore.getState>['lang']; t: ReturnType<typeof useI18nStore.getState>['t'] }
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  const { lang, t } = useI18nStore.getState()
+  englishT = { lang, t }
+})
 
 afterEach(() => {
   for (const component of live.splice(0)) component.destroy()
   cleanup()
+  useI18nStore.setState(englishT)
   vi.useRealTimers()
 })
 
@@ -251,6 +263,31 @@ describe('ConnectionStatusComponent — механика показа (tweb :182
     expect(h.text()).toBe('Search')
   })
 
+  it('видимость читается в кадре, а не при вызове setState (tweb :187)', async () => {
+    // Окно, в котором это различимо, одно: отложенный показ успевает сработать
+    // МЕЖДУ вызовом setState и его кадром. Тогда к моменту кадра индикатор уже
+    // виден, и следующее состояние обязано примениться сразу; чтение видимости,
+    // вынесенное перед requestAnimationFrame, увидело бы ещё скрытый индикатор
+    // и отложило бы текст ещё на 400 мс.
+    const h = setup({ state: 'ready', syncing: false })
+    await haveConnected(h)
+
+    h.set({ state: 'reconnecting', retryAt: undefined })
+    await notifyState()
+    h.flushFrame() // кадр отработал, показ отложен на 400 мс
+
+    // за 11 мс до срабатывания отложенного показа: его кадр придёт уже ПОСЛЕ
+    act(() => { vi.advanceTimersByTime(ConnectionStatusComponent.CHANGE_STATE_DELAY - 11) })
+    expect(h.isLoading()).toBe(false)
+
+    h.set({ state: 'ready', syncing: true })
+    await notifyState()
+    h.flushFrame()
+
+    expect(h.isLoading()).toBe(true)
+    expect(h.text()).toBe('Updating...')
+  })
+
   it('длинный разрыв (>= CHANGE_STATE_DELAY) показывает спиннер и текст', async () => {
     const h = setup({ state: 'ready', syncing: false })
     await haveConnected(h)
@@ -340,6 +377,52 @@ describe('ConnectionStatusComponent — destroy снимает всё, чем в
   })
 })
 
+describe('ConnectionStatusComponent — смена языка', () => {
+  // У tweb живые `.i18n`-узлы обновляет сам langPack (:328-335); у нас такого
+  // механизма нет, и без подписки автомата плейсхолдер застревал бы на прежнем
+  // языке до следующей смены состояния соединения — то есть до перезагрузки.
+  it('«Search» превращается в «Поиск» без смены состояния соединения', () => {
+    const h = setup({ state: 'ready', syncing: false })
+    expect(h.text()).toBe('Search')
+
+    switchToRussian()
+    expect(h.text()).toBe('Поиск')
+  })
+
+  it('перерисовывается текущее состояние, а не «Search»', async () => {
+    const h = setup({ state: 'connecting', syncing: false })
+    await notifyState()
+    h.flushShow()
+    expect(h.text()).toBe('Waiting for network...')
+
+    switchToRussian()
+    expect(h.text()).toBe('Ожидание сети...')
+  })
+
+  it('отсчёт переживает смену языка: тот же живой span продолжает тикать', async () => {
+    const h = setup({ state: 'ready', syncing: false })
+    await haveConnected(h)
+
+    h.set({ state: 'reconnecting', retryAt: Date.now() + 5000 })
+    await notifyState()
+    h.flushShow()
+    expect(h.text()).toBe('Reconnect in 5s')
+
+    switchToRussian()
+    expect(h.text()).toBe('Переподключение через 5 с')
+    act(() => { vi.advanceTimersByTime(2000) })
+    expect(h.text()).toBe('Переподключение через 3 с')
+  })
+
+  it('после destroy смена языка ничего не трогает', () => {
+    const h = setup({ state: 'ready', syncing: false })
+    h.component.destroy()
+
+    switchToRussian()
+    expect(h.text()).toBe('Search')
+  })
+})
+
 describe('ConnectionStatusComponent — монтирование хостом', () => {
   // Sidebar конструирует автомат из своего useEffect, а хэндл `statusRef`
   // выставляет useImperativeHandle внутри InputSearch. Проводку самого Sidebar
@@ -352,7 +435,8 @@ describe('ConnectionStatusComponent — монтирование хостом', 
 
     function Host() {
       const statusRef = useRef<InputSearchStatus>(null)
-      useEffect(() => {
+      // слой раскладки — как в Sidebar (плейсхолдер должен быть до отрисовки)
+      useLayoutEffect(() => {
         seen = statusRef.current
         if (!statusRef.current) return
         const component = new ConnectionStatusComponent()
