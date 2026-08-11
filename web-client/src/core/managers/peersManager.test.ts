@@ -105,3 +105,24 @@ describe('PeersManager — правило инвалидации (владеле
     expect(calls).toHaveLength(2) // первичный getUsers + один до-фетч
   })
 })
+
+// Метка «протухла» (замена прежнего cache.delete) — состояние, и снимать его
+// обязан успешный до-фетч. Не снять — не «чуть медленнее»: пир, ОДИН РАЗ
+// сменивший аватар, до конца жизни воркера остаётся протухшим, и КАЖДЫЙ
+// последующий getUsers с этим id заново бьёт в /users. В списке чатов и ленте
+// это происходит постоянно. Результат при этом всегда верный, поэтому ловить
+// надо не карточку, а число походов в сеть.
+describe('PeersManager — метка «протухла» снимается успешным перечитыванием', () => {
+  it('после avatar_changed повторные getUsers идут из кэша, а не в сеть', async () => {
+    const { rest, calls } = fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/old.png' }])
+    const mgr = newPeersManager({ rest })
+    await mgr.getUsers([2]) // запрос 1: первичный
+    mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0)) // запрос 2: до-фетч аватара
+
+    await mgr.getUsers([2])
+    await mgr.getUsers([2])
+
+    expect(calls).toHaveLength(2)
+  })
+})

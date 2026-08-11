@@ -121,6 +121,25 @@ describe('storeProjection — карточки пиров: воркер влад
     expect(usePeersStore.getState().byId[2]).toEqual(refreshed)
   })
 
+  // Тот же инвариант «не расходятся», но по оси ИМЕНИ, а не аватара, и он
+  // отдельный: на name-only-кадре до-фетча нет, поэтому разойтись стороны могут
+  // навсегда и молча. Проверять надо не витрину (её патч виден в тесте выше), а
+  // то, что кадр лёг В КЭШ ВЛАДЕЛЬЦА: иначе прямые потребители getUsers
+  // (useGroupInfo, тост уведомления) до конца жизни воркера рисуют старое имя,
+  // пока витрина показывает новое. Ответ владельца берём заведомо из кэша —
+  // число запросов не изменилось, значит в сеть за ним не ходили.
+  it('user_update без аватара: воркер и витрина держат ОДНУ И ТУ ЖЕ карточку', async () => {
+    const { mgr, net } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
+    await mgr.getUsers([2])
+
+    mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
+
+    const [fromWorker] = await mgr.getUsers([2])
+    expect(net.calls).toBe(1)
+    expect(fromWorker).toEqual(usePeersStore.getState().byId[2])
+    expect(fromWorker).toMatchObject({ displayName: 'Бобби' })
+  })
+
   // Успешный до-фетч аватара: витрина получает новый url без единого запроса со
   // своей стороны (раньше в /users ходили двое — usePeers и проектор).
   it('avatar_changed при живой сети → новый аватар доезжает до витрины сам', async () => {
