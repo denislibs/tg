@@ -5,6 +5,7 @@
 import { startClient } from './bootstrap'
 import { RT } from '../core/realtime/events'
 import rootScope from '@lib/rootScope'
+import { primeMediaToken } from '../core/mediaUrl'
 import { registerStoreProjection } from './realtime/storeProjection'
 import { registerSoundSubscriber } from './realtime/soundSubscriber'
 import { registerNotificationSubscriber } from './realtime/notificationSubscriber'
@@ -33,6 +34,20 @@ export function startRealtime(): void {
   }
   // Порт для событий, порождённых этой вкладкой (rootScope.dispatchEvent).
   rootScope.setPort(smp)
+
+  // Всё, что воркер публиковал ДО этой строки, мимо вкладки: SuperMessagePort
+  // кадры не буферизует, а насос выше только что поднялся. Для медиа-токена это
+  // дыра с зубами: под passcode-локом startRealtime() отложен runWhenUnlocked,
+  // при этом Shell под экраном блокировки отрисован и медиа-баблы токен уже
+  // спраймили (useMediaTokenVersion) — сменись за это время активная сессия,
+  // сбрасывающий кадр rt:logging_out до зеркала не долетит, и оно останется с
+  // ключом прошлого пользователя до самого истечения. Поэтому накопленный до
+  // подъёма насоса снимок перепроверяем у владельца принудительно: он
+  // единственный знает текущую сессию. Отзывчивость не страдает — зеркало
+  // продолжает отдавать удержанный снимок синхронно, а на обычном старте этот
+  // вызов склеивается с primeMediaToken() из useAppBootstrap (тот же priming,
+  // тот же единственный RPC).
+  void primeMediaToken(true)
 
   // Подписчики шины (порядок не важен — события независимы).
   registerStoreProjection(managers)

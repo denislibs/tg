@@ -15,6 +15,11 @@
 // Единственное, что зеркало решает само, — годится ли удержанный снимок для
 // сборки URL прямо сейчас (URL_SAFETY_MARGIN ниже): это защита от потерянного
 // кадра обновления, а не второе расписание.
+//
+// Второй кадр владельца, который зеркало обязано применить, — уход активной
+// сессии (rt:logging_out → resetMediaToken): токен подписан на id пользователя
+// и живёт до 15 минут, поэтому пережить переход он не может ни у владельца, ни
+// здесь.
 import { useSyncExternalStore } from 'react'
 import { startClient } from '../client/bootstrap'
 import { AppConfig } from '../config/app'
@@ -25,6 +30,10 @@ let token = ''
 let expiresAt = 0
 let version = 0
 let priming: Promise<void> | null = null
+// Поколение сессии зеркала: растёт на каждом resetMediaToken(). Ответ на уже
+// улетевший tokenInfo() принадлежит той сессии, под которой запрос ушёл (см.
+// primeMediaToken).
+let gen = 0
 const subs = new Set<() => void>()
 
 function notify() {
@@ -40,6 +49,24 @@ export function applyMediaToken(t: MediaTokenInfo): void {
   if (t.token === token && t.expiresAt === expiresAt) return
   token = t.token
   expiresAt = t.expiresAt
+  notify()
+}
+
+// Активная сессия сменилась (кадр rt:logging_out — единственный вызывающий,
+// client/realtime/storeProjection.ts). Владелец свой токен уже выбросил, но
+// зеркало он не спрашивает: оно отдаёт снимок синхронно на рендере, пока тот
+// годен, — то есть без этого сброса вкладка продолжала бы строить URL ключом
+// прошлого пользователя (токен подписан на его id и живёт до 15 минут).
+// Пробуждение подписчиков здесь обязательно: медиа-баблы пересобирают src, а
+// заодно их подписка сама идёт к владельцу за токеном текущей сессии
+// (useMediaTokenVersion) — «застрять на подложке» им не даёт именно оно.
+export function resetMediaToken(): void {
+  token = ''
+  // Летящий ответ владельца был запрошен ПРОШЛОЙ сессией — обесцениваем его
+  // (иначе он приземлится уже после сброса) и снимаем склейку, чтобы
+  // следующий потребитель начал новый запрос, а не ждал мёртвого.
+  gen++
+  priming = null
   notify()
 }
 
@@ -73,11 +100,13 @@ export const hasMediaToken = (): boolean => !!token && Date.now() < expiresAt - 
 export function primeMediaToken(force = false): Promise<void> {
   if (!force && hasMediaToken()) return Promise.resolve()
   if (priming) return priming
-  priming = startClient().managers.media
+  const g = gen
+  const p = startClient().managers.media
     .tokenInfo()
-    .then(applyMediaToken)
-    .finally(() => { priming = null })
-  return priming
+    .then((t) => { if (g === gen) applyMediaToken(t) })
+    .finally(() => { if (g === gen) priming = null })
+  priming = p
+  return p
 }
 
 export function mediaContentUrl(id: number): string {
