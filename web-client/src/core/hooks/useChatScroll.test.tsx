@@ -510,3 +510,47 @@ describe('useChatScroll: тихая запись двигает базу для 
     expect(scrollEl.dataset.userScrolledUp).toBe('1')
   })
 })
+
+// Регрессия (бэклог этапа 2.1, п.1): реальная разметка бабла (ChatFeed.tsx +
+// MessageRow.tsx) несёт ТОЛЬКО data-seq — граница «непрочитанные» это модификатор
+// is-first-unread на самом бабле, а не отдельный узел с data-unread-divider.
+// Атрибута data-unread-divider в продовом коде нет нигде — коммит 448ff52 убрал
+// отдельную плашку-<div>, а хук продолжал искать её по старому селектору. Harness
+// выше подмешивает фиктивный data-unread-divider РЯДОМ с data-seq у того же узла,
+// поэтому не мог поймать регрессию: до фикса хук искал бы селектор, которого в
+// проде не существует, тратя весь 3с rAF-таймаут вхолостую. Этот харнес — точный
+// слепок продовой разметки (только data-seq) — доказывает, что якорь держится
+// именно на нём.
+function HarnessRealMarkup({ win, unreadDividerSeq }: { win: MessageWindow, unreadDividerSeq: number | null }) {
+  const { scrollRef, contentRef, showScrollDown } = useChatScroll({
+    numericChatId: 1, isRealChat: true, win, paddingTop: 0, unreadDividerSeq, unreadStickyTop: 0,
+  })
+  return (
+    <div ref={scrollRef} data-scroll-container="1" data-show-scroll-down={showScrollDown ? '1' : '0'}>
+      <div ref={contentRef}>
+        {win.msgs.map((m) => <div key={m.id} data-seq={m.seq} />)}
+      </div>
+    </div>
+  )
+}
+
+describe('useChatScroll: якорь плашки непрочитанных — по data-seq, разметка без фиктивного маркера', () => {
+  it('позиционирует вьюпорт на бабле с data-seq===unreadDividerSeq (продовая разметка, без data-unread-divider)', () => {
+    containerScrollHeight = 5000
+    containerClientHeight = 500
+    const win = makeWin([msg(1), msg(2), msg(3)], { reachedBottom: true })
+    // Плашка (seq=2) лежит далеко ВЫШЕ вьюпорта, как у сообщения из начала
+    // истории при открытии чата, который пином к низу отвёл бы viewport на 5000.
+    seqRects.set(2, { top: -4000, bottom: -3980 })
+
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(ManagersProvider, { managers: fakeManagers as never, children })
+    const rendered = render(createElement(HarnessRealMarkup, { win, unreadDividerSeq: 2 }), { wrapper })
+    const scrollEl = rendered.container.querySelector('[data-scroll-container]') as HTMLDivElement
+
+    // Без селектора по data-seq хук не нашёл бы цель вовсе — scrollTop остался
+    // бы на пине к низу (5000, см. correctScroll). С фиксом якорь уводит
+    // viewport в середину истории, к бабблу-плашке.
+    expect(scrollEl.scrollTop).toBeLessThan(2000)
+  })
+})

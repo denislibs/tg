@@ -434,7 +434,11 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     const tryPosition = () => {
       if (unreadScrolled.current) return
       const sc = scrollRef.current
-      const target = sc?.querySelector('[data-unread-divider]') as HTMLElement | null
+      // Плашка — не отдельный узел, а модификатор бабла (ChatFeed.tsx's
+      // isFirstUnread, tweb bubbles.ts:11609 is-first-unread); бабл несёт
+      // data-seq (MessageRow.tsx), поэтому якорь ищется по нему, а не по
+      // отдельному атрибуту плашки — такого узла в разметке нет.
+      const target = sc?.querySelector(`[data-seq="${unreadDividerSeq}"]`) as HTMLElement | null
       if (sc && target) {
         unreadScrolled.current = true
         atBottomRef.current = false
