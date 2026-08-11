@@ -22,6 +22,7 @@ import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
 import type { MessageOp } from '@core/realtime/messageOps'
+import type { User } from '@core/managers/authManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -80,6 +81,16 @@ export type BroadcastEvents = {
   [RT.storyDeleted]: [StoryDeletedEvt]
   [RT.storyReaction]: [StoryReactionEvt]
   [RT.state]: [{ state: ConnState }]
+  // Stage 1C.2 (Task 1): `me` — воркер единственный владелец (workerCore.ts::
+  // setMe), payload — полный снимок пользователя (null — разлогинен).
+  [RT.me]: [User | null]
+  // Stage 1C.2 (Task 1, раунд 4): намерение перехода сессии (порт tweb
+  // `logging_out`, см. докблок в core/realtime/events.ts). `migrateTo` — id
+  // аккаунта, на который переехала сессия; null — активного не осталось.
+  [RT.loggingOut]: [{ migrateTo: number | null }]
+  // Симметричный кадр входа (порт tweb `account_logged_in`): активная сессия
+  // ПОЯВИЛАСЬ, `userId` — кто вошёл.
+  [RT.loggedIn]: [{ userId: number }]
 
   // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
   //    клиентские события — вне funnel'а сервера, meta не несут ──

@@ -13,6 +13,16 @@ export interface ProfileUpdate {
 
 export interface ProfileDeps {
   rest: RestClient
+  /** Stage 1C.2 (Task 1): `me` — воркер единственный владелец; зовём на каждую
+   * успешную мутацию профиля, воркер публикует свежего пользователя всем
+   * вкладкам (rt:me). Опционально: юнит-тесты менеджера конструируют его без
+   * воркера (см. profileManager.test.ts). */
+  onMeChanged?: (u: User) => void
+  /** Текущий кэш `me` воркера. Нужен addPhoto: сервер возвращает только фото
+   * (id/url), не всего пользователя, — broadcast обязан нести полный снимок,
+   * поэтому merge делаем здесь тем же способом, что раньше делала витрина
+   * (`{ ...me, avatarUrl: photo.url }`, см. EditProfile.tsx). */
+  getMe?: () => User | null
 }
 
 // SetUsernameResult is a discriminated outcome so the 409/400 cases survive the
@@ -22,7 +32,7 @@ export type SetUsernameResult =
   | { taken: true }
   | { invalid: true }
 
-export function newProfileManager({ rest }: ProfileDeps) {
+export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
   return {
     async update(u: ProfileUpdate): Promise<User> {
       const body: Record<string, unknown> = {}
@@ -31,7 +41,9 @@ export function newProfileManager({ rest }: ProfileDeps) {
       if (u.bio !== undefined) body.bio = u.bio
       if (u.phoneVisibility !== undefined) body.phone_visibility = u.phoneVisibility
       if (u.birthday !== undefined) body.birthday = u.birthday // object or null
-      return mapUser(await rest.patch<RawUser>('/me', body))
+      const mapped = mapUser(await rest.patch<RawUser>('/me', body))
+      onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+      return mapped
     },
 
     async checkUsername(username: string): Promise<{ available: boolean; reason?: string }> {
@@ -41,7 +53,9 @@ export function newProfileManager({ rest }: ProfileDeps) {
     async setUsername(username: string): Promise<SetUsernameResult> {
       try {
         const u = await rest.put<RawUser>('/me/username', { username })
-        return { user: mapUser(u) }
+        const mapped = mapUser(u)
+        onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+        return { user: mapped }
       } catch (e) {
         if (e instanceof HttpError && e.status === 409) return { taken: true }
         if (e instanceof HttpError && e.status === 400) return { invalid: true }
@@ -49,18 +63,11 @@ export function newProfileManager({ rest }: ProfileDeps) {
       }
     },
 
-    async setAvatar(mediaId: number): Promise<User> {
-      return mapUser(await rest.put<RawUser>('/me/avatar', { media_id: mediaId }))
-    },
-
     // setEmojiStatus sets (or clears with '') the current user's emoji status.
     async setEmojiStatus(emoji: string): Promise<User> {
-      return mapUser(await rest.put<RawUser>('/me/emoji_status', { emoji }))
-    },
-
-    // activatePremium flips the Telegram Premium flag on (fake purchase — clone).
-    async activatePremium(): Promise<User> {
-      return mapUser(await rest.post<RawUser>('/me/premium', {}))
+      const mapped = mapUser(await rest.put<RawUser>('/me/emoji_status', { emoji }))
+      onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+      return mapped
     },
 
     // addPhoto adds a photo to the current user's gallery and promotes it to the
@@ -68,7 +75,15 @@ export function newProfileManager({ rest }: ProfileDeps) {
     async addPhoto(mediaId: number, videoMediaId?: number): Promise<ProfilePhoto> {
       const body: Record<string, unknown> = { media_id: mediaId }
       if (videoMediaId) body.video_media_id = videoMediaId
-      return mapProfilePhoto(await rest.post<RawProfilePhoto>('/me/photos', body))
+      const photo = mapProfilePhoto(await rest.post<RawProfilePhoto>('/me/photos', body))
+      // Сервер возвращает только фото (id/url), не всего пользователя — merge
+      // поверх кэша воркера тем же способом, что раньше делала витрина
+      // (`{ ...me, avatarUrl: photo.url }`, EditProfile.tsx). Без getMe() (или
+      // до первого auth.me() на старте) кэш ещё пуст — молча пропускаем,
+      // ближайший rt:me с сервера/следующего действия догонит.
+      const cur = getMe?.()
+      if (cur) onMeChanged?.({ ...cur, avatarUrl: photo.url }) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+      return photo
     },
 
     // listPhotos returns a user's profile-photo gallery, newest first.

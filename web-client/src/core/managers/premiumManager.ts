@@ -32,9 +32,13 @@ function mapSubscription(r: RawSubscription): PremiumSubscription {
 
 export interface PremiumDeps {
   rest: RestClient
+  /** Stage 1C.2 (Task 1): `me` — воркер единственный владелец; зовём после
+   * успешной покупки, воркер публикует свежего пользователя всем вкладкам
+   * (rt:me). Опционально: юнит-тесты менеджера конструируют его без воркера. */
+  onMeChanged?: (u: User) => void
 }
 
-export function newPremiumManager({ rest }: PremiumDeps) {
+export function newPremiumManager({ rest, onMeChanged }: PremiumDeps) {
   return {
     // checkout runs the mock card payment for a plan. The server ignores the card
     // data (any well-formed card is a success) and returns the fresh user +
@@ -44,7 +48,9 @@ export function newPremiumManager({ rest }: PremiumDeps) {
         plan,
         card: { number: card.number, expiry: card.expiry, cvc: card.cvc },
       })
-      return { user: mapUser(res.user), subscription: mapSubscription(res.subscription) }
+      const user = mapUser(res.user)
+      onMeChanged?.(user) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+      return { user, subscription: mapSubscription(res.subscription) }
     },
 
     // getSubscription returns the current subscription, or null when the user has

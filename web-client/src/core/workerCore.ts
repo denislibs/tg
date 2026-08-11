@@ -10,7 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
-import { newAuthManager } from './managers/authManager'
+import { newAuthManager, type User } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
@@ -68,21 +68,44 @@ export function createWorkerCore() {
   // fileUpload активен только при DNP-ON: загрузка медиа чанками через канал (media.upload).
   const fileUpload = AppConfig.dnp.enabled ? newFileUpload(ws) : undefined
   const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
-  const auth = newAuthManager({ rest, store: tokens })
-  const profile = newProfileManager({ rest })
-  const premium = newPremiumManager({ rest })
+  // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
+  // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
+  // «мои» реакций) — теперь кэшируем полного User и рассылаем его вкладкам
+  // (rt:me) через setMe при каждом изменении, а не только держим id при себе.
+  let me: User | null = null
+  // Публикует свежий `me` всем вкладкам + обновляет локальный кэш. Зовётся на
+  // старте (auth.me() ниже) и как onMeChanged профиля/премиума/логаута.
+  // `broadcast` объявлен ниже — функция дёргает его лениво (тот же приём, что
+  // у messages/media ниже: onMeChanged передаётся менеджерам ДО того, как
+  // broadcast существует, но реально исполняется только после первого RPC/boot,
+  // когда broadcast уже назначен).
+  function setMe(u: User | null): void {
+    me = u
+    broadcast(RT.me, u)
+  }
+  const auth = newAuthManager({
+    rest,
+    store: tokens,
+    onMeChanged: setMe,
+    // Намерение перехода сессии (порт tweb `logging_out`) — рассылаем всем
+    // вкладкам, включая инициатора: у tweb этот кадр тоже общий для всех
+    // (`apiManagerProxy.ts:330` — commonEventNames, доставляется вкладке даже
+    // под другим аккаунтом). Кэш `me` здесь не трогаем — им управляет
+    // onMeChanged, отдельным каналом значения.
+    onLoggingOut: (e) => { broadcast(RT.loggingOut, e) },
+    // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером.
+    onLoggedIn: (e) => { broadcast(RT.loggedIn, e) },
+  })
+  const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
+  const premium = newPremiumManager({ rest, onMeChanged: setMe })
   const chats = newChatsManager({ rest })
-  // id текущего пользователя в воркере: нужен, чтобы кэшировать `mine` реакций
-  // (событие reaction несёт user_id реагирующего). Разрешаем лениво через /me после
-  // загрузки токена; при смене аккаунта перезагрузка воркера обнулит его заново.
-  let meId: number | null = null
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
   // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
-  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
+  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => me?.id ?? null, broadcast: (event, payload) => broadcast(event, payload) })
   // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
   // аплоада порты уже подняты)
   const media = newMediaManager({
@@ -382,7 +405,22 @@ export function createWorkerCore() {
     // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
     // предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
     void tokens.load().then(() => persistScope(tokens.get()))
-    void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).catch(() => {})
+    // Первый вывод `me` (Stage 1C.2, Task 1). Публикует сам auth.me()
+    // (authManager::fetchMe зовёт onMeChanged на любой свежий ответ сервера и
+    // на 401), поэтому здесь остаётся ровно один непокрытый им случай —
+    // офлайн-фолбэк: fetchMe отдаёт последний профиль с диска БЕЗ публикации,
+    // потому что «воркерный кэш и так держит то же самое или лучше». На старте
+    // это неверно: кэш ещё пуст, и `getMe()`/`getMeId()` (мердж аватара, кэш
+    // «моих» реакций) остались бы без личности до первого удачного /me. Гейт
+    // `!me` — и есть «кэш пуст»; он же убирает двойную публикацию одного и
+    // того же снимка на успешном пути (Minor 7 раунда 4). Сам гейт отдельным
+    // тестом сознательно не покрыт: без него публикация лишь повторяется тем
+    // же значением (проектор идемпотентен) — приложение не ломается, а
+    // единственный способ развести два случая в тесте требует второго
+    // self-стаб-цикла с core.start(), который в этом файле воспроизводимо
+    // ронял воркер vitest (см. докблок в workerCore.test.ts). Ошибку глотаем:
+    // упавший /me на старте — штатный офлайн, не повод для unhandled rejection.
+    void tokens.ready().then(() => auth.me()).then((u) => { if (u && !me) setMe(u) }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {
       onconnect?: (e: MessageEvent) => void
