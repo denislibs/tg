@@ -13,9 +13,24 @@ export interface SyncDeps {
   /** Единый funnel применения: и live-кадр, и элемент /sync проходят через него. */
   onUpdate: (item: SyncItem) => void
   onResync: () => void
+  /** tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
+   * начало/конец catch-up для индикатора «Обновление…» в поиске. Парность
+   * гарантирует catchUp() через try/finally-эквивалент (.finally на run()): даже
+   * если run() отклонится (сетевая ошибка /sync), onSyncEnd всё равно придёт —
+   * иначе автомат (Задача 3) навсегда застрянет в «синхронизирую».
+   *
+   * СОЗНАТЕЛЬНОЕ РАСХОЖДЕНИЕ С TWEB (не «неверно портировали»): в оригинале эта
+   * гарантия отсутствует — error-ветка apiUpdatesManager.ts:460-469 лишь чистит
+   * state.syncLoading и state_synchronized не шлёт вовсе, там баг/недоделка
+   * оригинала. Наш .finally() — сознательное улучшение поверх 1:1: без него пара
+   * технически может залипнуть на упавшем synced (буквально как в tweb), и
+   * автомат (Задача 3) навсегда застрянет в «синхронизирую» — обоснование в самом
+   * последствии для UI, а не в отдельно процитированном требовании плана/брифа. */
+  onSyncStart?: () => void
+  onSyncEnd?: () => void
 }
 
-export function newSyncEngine({ rest, cursor, onUpdate, onResync }: SyncDeps) {
+export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, onSyncEnd }: SyncDeps) {
   let running: Promise<void> | null = null
 
   async function run(): Promise<void> {
@@ -46,7 +61,10 @@ export function newSyncEngine({ rest, cursor, onUpdate, onResync }: SyncDeps) {
     // serialize concurrent calls; a reconnect mid-sync just awaits the in-flight run
     catchUp(): Promise<void> {
       if (running) return running
-      running = run().finally(() => { running = null })
+      onSyncStart?.()
+      // .finally запускает onSyncEnd И при резолве, И при реджекте run() — пара
+      // start/end не залипает даже на упавшем catch-up (см. докблок onSyncEnd).
+      running = run().finally(() => { running = null; onSyncEnd?.() })
       return running
     },
     /** Идёт ли catch-up прямо сейчас — live-кадры с pts гейтятся, пока true. */

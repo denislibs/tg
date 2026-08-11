@@ -9,12 +9,19 @@
 // `.bubbles.is-selecting` (выход) даёт разные transition-кривые, а класс
 // остаётся на узле до конца обратной анимации.
 //
-// Хук возвращает готовую строку классов состояния — компонент подмешивает её
-// в className своего узла.
+// Сами правила живут не здесь, а в `core/dom/setTransition.ts`
+// (`transitionClasses`) — один экземпляр на React-обёртку и на императивный
+// `setTransition`, который ведёт те же классы прямо на узле. Хук — надстройка:
+// он лишь хранит фазу в состоянии и отдаёт готовую строку классов, которую
+// компонент подмешивает в className своего узла.
 import { useEffect, useRef, useState } from 'react'
+import { transitionClasses } from '../dom/setTransition'
+
+const next = (current: string, className: string, forwards: boolean, animating: boolean) =>
+  transitionClasses(current ? current.split(' ') : [], className, forwards, animating).join(' ')
 
 export function useSetTransition(forwards: boolean, className: string, duration = 200): string {
-  const [cls, setCls] = useState(forwards ? `${className} forwards` : '')
+  const [cls, setCls] = useState(() => next('', className, forwards, false))
   const mounted = useRef(false)
 
   useEffect(() => {
@@ -24,10 +31,8 @@ export function useSetTransition(forwards: boolean, className: string, duration 
       return
     }
 
-    setCls(forwards ? `${className} forwards animating` : `${className} backwards animating`)
-    const id = window.setTimeout(() => {
-      setCls(forwards ? `${className} forwards` : '')
-    }, duration)
+    setCls((prev) => next(prev, className, forwards, true))
+    const id = window.setTimeout(() => setCls((prev) => next(prev, className, forwards, false)), duration)
     return () => window.clearTimeout(id)
   }, [forwards, className, duration])
 

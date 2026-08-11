@@ -87,6 +87,12 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
 
   // Добор пропущенных апдейтов через типизированный difference (по порядку pts).
   // Сериализован per-channel флагом syncing; страхуемся от отсутствия прогресса.
+  //
+  // Сознательно НЕ шлёт rt:state_synchronizing/synchronized (Задача 1, ревью): в
+  // tweb оба dispatch'а индикатора «Обновление…» гейтятся `!channelId &&`
+  // (apiUpdatesManager.ts:462, :466) — канальный догон намеренно не зажигает этот
+  // индикатор, только пер-юзерный /sync (см. syncEngine.onSyncStart/onSyncEnd).
+  // Не добавлять сюда onSyncStart/onSyncEnd — это было бы отсебятиной сверх tweb.
   async function catchUp(chatId: number): Promise<void> {
     const st = state(chatId)
     if (st.syncing) return

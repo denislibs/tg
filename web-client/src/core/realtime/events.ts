@@ -65,7 +65,20 @@ export const RT = {
   storyNew: 'rt:story_new',
   storyDeleted: 'rt:story_deleted',
   storyReaction: 'rt:story_reaction',
+  // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
+  // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
+  // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
+  // что из этой pull-дисциплины 1:1 с tweb, а что наше расширение поверх него;
+  // для rt:state — 1:1, connectionStatus.ts:47-51/:87-91). Не читать поля этих
+  // событий как факт.
   state: 'rt:state',
+  // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
+  // начало/конец catch-up (/sync), пара для индикатора «Обновление…» в поиске
+  // (порт ConnectionStatusComponent, Задача 1). syncEngine.catchUp() гарантирует
+  // парность: «конец» уходит и по успеху, и по ошибке catch-up'а (сознательное
+  // расхождение с tweb — см. докблок onSyncEnd в syncEngine.ts).
+  stateSynchronizing: 'rt:state_synchronizing',
+  stateSynchronized: 'rt:state_synchronized',
   // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец
   // (workerCore.ts::setMe). Публикуется на старте (tokens.ready → auth.me) и
   // после каждой RPC-мутации профиля/премиума/логаута; payload — полный

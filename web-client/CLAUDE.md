@@ -277,6 +277,17 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 - REST + WS через `core/net/*`; реалтайм и outbox — `core/realtime/connectionManager.ts`.
 - Оптимистичная отправка: бабл сразу (`client_msg_id`), затем `reconcileAck`/`failOptimistic` по ответу WS.
 - Dev ходит на бэкенд `:38080` (за nginx) через прокси Vite.
+- **Индикатор в поле поиска сайдбара показывает состояние соединения, а не загрузку списка
+  диалогов.** Автомат — `src/components/connectionStatus.ts` (порт tweb
+  `src/components/connectionStatus.ts`); хост — `Sidebar.tsx`, монтирует и уничтожает его
+  layout-эффектом, показывает автомат через три метода `shared/ui/InputSearch`
+  (`isLoading`/`toggleLoading`/`setPlaceholder`, приезжают пропом `statusRef`). Значение всегда
+  берётся pull-ом — `realtime.getStatus()` → `{state, retryAt, syncing}`; события `RT.state`,
+  `RT.stateSynchronizing`, `RT.stateSynchronized` — только уведомления «дёрни pull», их payload
+  читать нельзя (причина — в докблоке `getStatus`, `core/realtime/realtime.ts`).
+  Второй индикатор с тем же классом `is-connecting` — в `components/conversation/TopbarSearch.tsx`:
+  это загрузка выдачи поиска ПО ЧАТУ (порт `toggleLoading` из tweb `chat/topbarSearch.tsx`),
+  к состоянию соединения отношения не имеет.
 
 ## Тесты
 

@@ -285,6 +285,17 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
         <div className="topbar-search-left-background" />
 
         {/* поле ввода (tweb InputSearch с классами topbar-search-input*) */}
+        {/* `is-connecting` ниже — НЕ автомат состояния соединения (тот живёт в
+            components/connectionStatus.ts и ведёт поле поиска сайдбара). Здесь
+            другая семантика: загрузка выдачи поиска по чату — порт своих же
+            вызовов tweb `inputSearch.toggleLoading(true/false)` в
+            chat/topbarSearch.tsx (:841 старт поиска, :800 первая пачка выдачи),
+            источник — `s.loading` из useChatHeaderSearch. Сам класс инертен: CSS
+            под него нет ни у нас, ни в tweb (единственное правило,
+            _chatPinned.scss:971, про топбар звонка), а читает его в tweb только
+            `InputSearch.isLoading()` — здесь поле собрано разметкой, а не
+            компонентом, так что класс держим ради совпадения DOM с оригиналом.
+            Видимостью управляют `is-hiding` на лупе и `.preloader-container`. */}
         <div
           className={classNames(
             'input-search', 'topbar-search-input-container',

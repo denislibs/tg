@@ -80,7 +80,28 @@ export type BroadcastEvents = {
   [RT.storyNew]: [StoryNewEvt]
   [RT.storyDeleted]: [StoryDeletedEvt]
   [RT.storyReaction]: [StoryReactionEvt]
-  [RT.state]: [{ state: ConnState }]
+  // ВНИМАНИЕ читающему payload любого из трёх событий ниже: он НЕ источник правды
+  // (см. events.ts:RT.state и докблок realtime.ts:getStatus — там же точная
+  // граница, что тут 1:1 с tweb, а что нет). Автомат (Задача 3) обязан на
+  // получение ЛЮБОГО из трёх звать managers.realtime.getStatus() и брать значение
+  // оттуда — иначе получим два источника факта, ровно тот дубль, который
+  // параллельно вычищает этап 1C.2.
+  //
+  // Для RT.state эта pull-дисциплина 1:1 с tweb: `connectionStatus.ts:47-51` на
+  // `connection_status_change` игнорирует payload и пуллит getConnectionStatus()
+  // (:87-91) отдельным запросом. Для RT.stateSynchronizing/RT.stateSynchronized —
+  // НЕ порт: у tweb (:53-64) `this.updating` берётся из самого факта события
+  // (никакого pull), `updating` вообще не входит в getConnectionStatus()
+  // (`rootScope.ts:293` отдаёт только карту `connectionStatus`). Пуллить и здесь
+  // тоже — наше сознательное расширение той же дисциплины на вторую ось
+  // (обоснование — докблок getStatus в realtime.ts), не факт оригинала.
+  [RT.state]: [{ state: ConnState; retryAt?: number }]
+  // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
+  // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
+  // Payload — null (1:1 с tweb rootScope.ts:131-132: 'state_synchronized' объявлен
+  // как `void`, без payload — обработчики только переключают флаг).
+  [RT.stateSynchronizing]: [null]
+  [RT.stateSynchronized]: [null]
   // Stage 1C.2 (Task 1): `me` — воркер единственный владелец (workerCore.ts::
   // setMe), payload — полный снимок пользователя (null — разлогинен).
   [RT.me]: [User | null]

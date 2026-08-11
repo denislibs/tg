@@ -10,11 +10,21 @@ export interface CMDeps {
   ws: Transport
   getToken: () => string | null
   onReady: () => void
-  onState: (s: ConnState) => void
+  // retryAt — момент следующей попытки, читает витрина tweb connectionStatus.ts:114
+  // (обратный отсчёт :150-158); производитель по таймеру — networker.ts:835-838
+  // (checkConnectionRetryAt = Date.now() + delay → setConnectionStatus(Closed, …));
+  // networker.ts:976 — сигнатура ПРИЁМНИКА setConnectionStatus(status, retryAt?, …),
+  // не таймер. onClose тоже производит его — tcpObfuscated.ts:111-123
+  // (setConnectionStatus(Closed, retryAt)).
+  // Передаётся вторым аргументом ТОЛЬКО когда есть (scheduleReconnect); остальные
+  // переходы состояния зовут onState одним аргументом — так же, как раньше.
+  onState: (s: ConnState, retryAt?: number) => void
   onFrame: (type: string, payload: unknown) => void // new_message/read/typing/presence/reaction/message_ack
   /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
    * page reload and are resent on the next connect. */
   outboxStore?: { load: () => Promise<SendArgs[] | undefined>; save: (list: SendArgs[]) => void }
+  /** Часы, из которых считается retryAt (Date.now() по умолчанию) — подменяются в
+   * тесте ради детерминированного значения вместо `toBeGreaterThan(before)`. */
   now?: () => number
 }
 
@@ -22,7 +32,7 @@ const HEARTBEAT_MS = 20_000
 const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
 
-export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore }: CMDeps) {
+export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore, now = Date.now }: CMDeps) {
   const outbox = new Map<string, SendArgs>()
   const persistOutbox = () => { outboxStore?.save([...outbox.values()]) }
   // Restore unacked sends from the previous session; entries queued this session
@@ -34,6 +44,14 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
       }).catch(() => {}).finally(() => { outboxRestored = true })
     : null
   let state: ConnState = 'offline'
+  // Снимок последнего опубликованного retryAt — НЕ источник новой информации, а
+  // ровно то, что видел бы подписчик onState на последнем push. Нужен для
+  // getStatus() (Задача 1, ревью): вкладка/сама виджет-разметка, подключившаяся
+  // ПОСЛЕ перехода в 'reconnecting', иначе не узнаёт retryAt вплоть до следующего
+  // события (до 30с backoff'а) — в tweb этой дыры нет, там канал pull-овый для
+  // самого статуса соединения (connectionStatus.ts:87-91 тянет getConnectionStatus()
+  // на connection_status_change; подробности и граница расширения — realtime.ts).
+  let lastRetryAt: number | undefined
   let attempt = 0
   let hbTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -45,7 +63,17 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   // одинаковых кадров подряд для одного и того же upToSeq.
   const lastReadSeq = new Map<number, number>()
 
-  const setState = (s: ConnState) => { state = s; onState(s) }
+  // Арность вызова onState сохраняется как раньше (один аргумент), когда retryAt не
+  // задан — это держит совместимость с существующими проверками
+  // `toHaveBeenCalledWith('ready')` (connectionManager.test.ts) без их правки.
+  const setState = (s: ConnState, retryAt?: number) => {
+    state = s
+    // Зеркалит арность onState 1:1: retryAt сбрасывается на ЛЮБОМ переходе, который
+    // его не несёт — снимок не должен знать больше, чем узнал бы push-подписчик.
+    lastRetryAt = retryAt
+    if (retryAt !== undefined) onState(s, retryAt)
+    else onState(s)
+  }
 
   function wireOnce() {
     if (wired) return
@@ -96,15 +124,26 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   function stopHeartbeat() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null } }
 
   function scheduleReconnect() {
-    setState('reconnecting')
     const base = Math.min(MAX_BACKOFF, 500 * 2 ** attempt++)
     const delay = base / 2 + Math.floor(Math.random() * (base / 2 + 1)) // jitter
+    // Витрина tweb рисует по retryAt обратный отсчёт «Переподключение через N»
+    // (connectionStatus.ts:114 читает, :150-158 отсчёт) — раньше delay считался и
+    // терялся (см. план задачи).
+    setState('reconnecting', now() + delay)
     reconnectTimer = setTimeout(connect, delay)
   }
 
   function connect() {
     const token = getToken()
     if (!token) { setState('offline'); return }
+    // Промежуточный 'reconnecting' здесь сознательно БЕЗ retryAt — это буквальный
+    // tweb, не недосмотр: tcpObfuscated.ts:175 на попытке соединения зовёт
+    // setConnectionStatus(Connecting) без retryAt, rootScope.ts:277 кладёт статус
+    // целиком → старое значение стирается в undefined. НЕ делать retryAt липким на
+    // этом переходе — это как раз сломало бы 1:1 (реальная последовательность:
+    // connecting(—) → ready(—) → reconnecting(+274мс) → reconnecting(—) →
+    // reconnecting(+552мс) → reconnecting(—); автомат витрины (Задача 3) обязан
+    // отработать именно её — отсчёт → «Переподключение» → новый отсчёт).
     setState(state === 'reconnecting' ? 'reconnecting' : 'connecting')
     wireOnce()
     ws.connect(token)
@@ -116,8 +155,18 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
 
   return {
     start() { if (state === 'offline') connect() },
-    stop() { if (reconnectTimer) clearTimeout(reconnectTimer); stopHeartbeat(); state = 'offline'; ws.close() },
+    // Через setState (не прямым `state = 'offline'`) — иначе lastRetryAt протухал
+    // бы: ws.onClose → reconnecting(+delay) → stop() без setState оставил бы
+    // старый будущий retryAt висеть на снимке при уже снятом таймере, и
+    // getStatus() вернул бы {state:'offline', retryAt:<в будущем>} — ревью нашло
+    // это несоответствие инварианту «lastRetryAt зеркалит push 1:1». Сегодня
+    // недостижимо в проде (нет продакшен-вызовов stop() — только тест), но раз
+    // уж инвариант заявлен, код обязан его держать, а не только комментарий.
+    stop() { if (reconnectTimer) clearTimeout(reconnectTimer); stopHeartbeat(); setState('offline'); ws.close() },
     state: () => state,
+    // Снимок последнего опубликованного retryAt (см. lastRetryAt выше) — питает
+    // realtime.getStatus() для позднего подписчика (новая вкладка/перезагрузка).
+    retryAt: () => lastRetryAt,
     outboxSize: () => outbox.size,
     sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); persistOutbox(); if (ws.isOpen()) sendFrame(m) },
     markRead(chatId: number, upToSeq: number) {

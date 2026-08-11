@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
@@ -35,7 +35,8 @@ import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
-import { useConnectionStatusLabel } from '../core/hooks/useConnectionStatusLabel'
+import ConnectionStatusComponent from './connectionStatus'
+import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -59,8 +60,31 @@ export default function Sidebar({
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
-  const showUpdating = useConnectionStatusLabel(loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
+  // Плейсхолдер и спиннер поля поиска ведёт автомат состояния соединения (порт
+  // tweb ConnectionStatusComponent), поэтому пропа `placeholder` у InputSearch
+  // здесь нет: единственный писатель — автомат. Хэндл трёх его методов приезжает
+  // отдельным `statusRef` (основной `ref` — сам input, его берёт useSidebarSearch).
+  const searchStatusRef = useRef<InputSearchStatus>(null)
+  // Эффект слоя РАСКЛАДКИ, а не обычный: `construct()` ставит плейсхолдер
+  // (tweb :45 делает это синхронно в конструкторе), и он должен быть на узле до
+  // первой отрисовки — из пассивного эффекта поле поиска на первом кадре пустое.
+  // Тем же слоем и по той же причине его ставил прежний layout-эффект самого
+  // InputSearch. Порядок гарантирован React'ом: эффекты бегут снизу вверх,
+  // поэтому `useImperativeHandle` ребёнка уже выставил хэндл (пин — в
+  // `connectionStatus.test.ts`, «монтирование хостом»), а вся проводка целиком —
+  // в `Sidebar.connectionStatus.test.tsx` (краснеет и на снятом `statusRef`, и
+  // на снятом эффекте, и на снятом cleanup). Непокрыт ровно один оттенок: сама
+  // подмена слоя на пассивный `useEffect` тестом не ловится — `act()` прогоняет
+  // до возврата `render()` оба вида эффектов, а момент отрисовки в happy-dom не
+  // наблюдаем. Держится этим комментарием.
+  useLayoutEffect(() => {
+    const status = searchStatusRef.current
+    if (!status) return
+    const connectionStatus = new ConnectionStatusComponent()
+    connectionStatus.construct(managers, status)
+    return () => connectionStatus.destroy()
+  }, [managers])
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
   const chatlistContainerRef = useRef<HTMLDivElement>(null)
@@ -205,12 +229,12 @@ export default function Sidebar({
         )}
         <InputSearch
           ref={inputRef}
+          statusRef={searchStatusRef}
           className={classNames('old-style', s.search)}
           value={query}
           onChange={setQuery}
           onFocus={() => setSearching(true)}
           onClear={() => setQuery('')}
-          placeholder={showUpdating ? t('Updating…') : t('Search')}
           focused={searching}
         />
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
