@@ -100,7 +100,7 @@ describe('storeProjection — RT.messageOp переигрывается пове
       chat_id: CHAT, msg_id: 999, seq: 9, sender_id: OTHER, type: 'text', text: 'hello',
       media_id: null, created_at: '2026-08-10T12:00:10Z',
     }
-    // В реальности RT.messageOp летит первым (см. worker.ts:routeNewMessage) —
+    // В реальности RT.messageOp летит первым (см. workerCore.ts:routeNewMessage) —
     // воспроизводим тот же порядок, чтобы окно уже содержало сообщение к
     // моменту RT.newMessage (иначе резолв превью ответа отдельного теста ниже
     // не нашёл бы вставленное сообщение).

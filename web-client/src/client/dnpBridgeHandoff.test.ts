@@ -13,7 +13,7 @@ describe('handoffBridgePort', () => {
     const [eMsg, eTransfer] = ep.postMessage.mock.calls[0]
     // sw.js (message-хэндлер) читает event.data.type
     expect((cMsg as { type: string }).type).toBe('dnp-bridge-port')
-    // worker.ts (bind, raw-слушатель) читает ev.data.t
+    // workerCore.ts (bind, raw-слушатель) читает ev.data.t
     expect((eMsg as { t: string }).t).toBe('dnp-bridge-port')
     expect(cTransfer).toHaveLength(1)
     expect(eTransfer).toHaveLength(1)

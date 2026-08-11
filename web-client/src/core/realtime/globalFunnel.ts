@@ -1,9 +1,10 @@
 // src/core/realtime/globalFunnel.ts
 //
 // Глобальный (пер-юзерный) pts-funnel — арифметика dup/next/gap + буфер придержанных
-// кадров, вынесенная из worker.ts (Wave 3) в модуль с явными зависимостями, той же
-// формы, что и channelFunnel.ts. dispatch (реестр APPLY, routeNewMessage, broadcast)
-// остаётся в worker.ts и приходит сюда зависимостью — funnel не знает про менеджеры.
+// кадров, вынесенная из createWorkerCore() (workerCore.ts; исторически — тело
+// worker.ts) в модуль с явными зависимостями, той же формы, что и channelFunnel.ts.
+// dispatch (реестр APPLY, routeNewMessage, broadcast) остаётся в workerCore.ts и
+// приходит сюда зависимостью — funnel не знает про менеджеры.
 
 import { classifyPts, type Cursor } from './cursor'
 import { newPendingPts } from './pendingPts'

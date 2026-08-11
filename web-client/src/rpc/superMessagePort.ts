@@ -5,7 +5,7 @@ export interface Endpoint {
   postMessage(message: unknown, transfer?: Transferable[]): void
   addEventListener(type: 'message', listener: (ev: MessageEvent) => void): void
   /** Опциональны: MessagePort/SharedWorker-порт их умеют, «сырой» self воркера
-   *  (фолбэк без SharedWorker, worker.ts) — тоже (self.close() корректен там,
+   *  (фолбэк без SharedWorker, workerCore.ts::start()) — тоже (self.close() корректен там,
    *  т.к. в этом режиме воркер эксклюзивно принадлежит одной вкладке). Нужны
    *  только disconnectPort() ниже — снять слушатель тихо, если API нет. */
   removeEventListener?(type: 'message', listener: (ev: MessageEvent) => void): void
@@ -65,9 +65,9 @@ export class SuperMessagePort {
    *  слушателей (on). Единственный текущий потребитель — воркер, который
    *  ретранслирует кадр вкладки остальным вкладкам (см. onAny). */
   private anyListeners: Array<(event: string, payload: unknown, meta?: EventMeta) => void> = []
-  /** Задача 2 (worker-rootscope): колбэк отключения порта — worker.ts вешает на
-   *  него снятие из ports[] (indexOfAndSplice). Срабатывает РОВНО один раз — см.
-   *  disconnectPort. */
+  /** Задача 2 (worker-rootscope): колбэк отключения порта — workerCore.ts::bind()
+   *  вешает на него снятие из ports[] (indexOfAndSplice). Срабатывает РОВНО один
+   *  раз — см. disconnectPort. */
   private onPortDisconnect: (() => void) | undefined
   private portDisconnected = false
 
@@ -144,7 +144,7 @@ export class SuperMessagePort {
   }
 
   /** Worker side (Задача 2): подписка на отключение ЭТОГО порта (лок вкладки
-   *  освободился — вкладка умерла). worker.ts вешает снятие из ports[]. */
+   *  освободился — вкладка умерла). workerCore.ts::bind() вешает снятие из ports[]. */
   setOnPortDisconnect(cb: () => void): void {
     this.onPortDisconnect = cb
   }

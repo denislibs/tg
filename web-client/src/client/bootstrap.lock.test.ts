@@ -6,7 +6,7 @@
 // экспортированный attachLock из bootstrap.ts, а не его копия.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { attachLock, startClient } from './bootstrap'
-import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { SuperMessagePort, USE_LOCKS, type Endpoint } from '../rpc/superMessagePort'
 
 // Дубль фейкового navigator.locks из superMessagePort.lock.test.ts (маленький
 // локальный хелпер — как и pair() там же дублируется по файлам, см. этот же паттерн).
@@ -49,7 +49,18 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('bootstrap.attachLock (вкладочная сторона Web Locks)', () => {
+// I-3 (ревью worker-importable, санкция расширена на любой тест-файл про
+// механику Web Locks — не только superMessagePort.lock.test.ts): attachLock
+// (bootstrap.ts:68) начинается с того же `if (!USE_LOCKS) return`, что и
+// handleLockTask на воркерной стороне — вкладка при выключенном рубильнике не
+// берёт лок и не шлёт кадр `lock` вообще, ни основной веткой, ни
+// beforeunload-фолбэком. Все четыре кейса ниже (оба describe) проверяют
+// именно то, что происходит ПОСЛЕ этой точки — при USE_LOCKS=false её
+// содержимое не выполняется, и утверждать что-либо про request()/sendLock()
+// здесь так же бессмысленно, как в superMessagePort.lock.test.ts (см.
+// комментарий там для полного обоснования выбора skipIf вместо погейсного
+// гейта на assert).
+describe.skipIf(!USE_LOCKS)('bootstrap.attachLock (вкладочная сторона Web Locks)', () => {
   it('вкладка реально берёт Web Lock сразу при подключении порта', () => {
     const fake = installFakeLocks()
     const { smp } = makeSmp()
@@ -111,7 +122,9 @@ describe('bootstrap.attachLock (вкладочная сторона Web Locks)',
 // вызов attachLock(smp) — тот же результат»). SharedWorker/Worker в happy-dom
 // не определены — стабим Worker минимальной заглушкой (Endpoint-совместимой),
 // чтобы startClient() дошёл до реальной проводки, включая вызов attachLock.
-describe('bootstrap.startClient — реальная проводка вызывает attachLock', () => {
+// Тот же гейт, что и выше: единственный кейс здесь тоже проверяет request(),
+// который attachLock не сделает при USE_LOCKS=false.
+describe.skipIf(!USE_LOCKS)('bootstrap.startClient — реальная проводка вызывает attachLock', () => {
   it('startClient() действительно берёт Web Lock (не просто существование attachLock где-то в файле)', () => {
     class FakeWorker implements Endpoint {
       postMessage(): void {}

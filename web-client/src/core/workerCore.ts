@@ -94,8 +94,6 @@ export function createWorkerCore() {
   const push = newPushManager({ rest })
   const notify = newNotifyManager({ rest })
   const folders = newFoldersManager({ rest })
-  // broadcast объявлен ниже — стрелка дергает его лениво (к моменту первой мутации
-  // порты уже подняты), как у media. Кросс-таб-эхо REST-мутаций без WS-эха бэка.
   const groups = newGroupsManager({ rest })
   const channels = newChannelsManager({ rest })
   const peers = newPeersManager({ rest })

@@ -15,7 +15,7 @@ export interface WorkerScopePort { emit(event: string, payload: unknown, meta?: 
 
 export interface WorkerScopeDeps {
   /** Живой список подключённых портов — тот же массив, что мутирует push'ем bind()
-   *  в worker.ts. Веер обязан читать его на каждой отправке (не копировать при
+   *  в workerCore.ts. Веер обязан читать его на каждой отправке (не копировать при
    *  создании фабрики): подключение новой вкладки после старта воркера — обычный
    *  случай, а Задача 2 начнёт ещё и удалять из него отключившиеся вкладки. */
   ports: readonly WorkerScopePort[]

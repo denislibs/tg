@@ -8,7 +8,7 @@ type Poster = { postMessage(message: unknown, transfer?: Transferable[]): void }
 // SharedWorker и переживает закрытие вкладки-брокера (§ PR-2a).
 //
 // ВАЖНО: у приёмников РАЗНЫЕ ключи control-кадра — sw.js (message-хэндлер) читает
-// event.data.type, а worker.ts (bind, сырой слушатель) читает ev.data.t. Поэтому
+// event.data.type, а workerCore.ts (bind, сырой слушатель) читает ev.data.t. Поэтому
 // SW и SharedWorker получают структурно разные сообщения (проверено по исходникам).
 export function handoffBridgePort(controller: Poster, ep: Poster): void {
   const ch = new MessageChannel()
