@@ -44,8 +44,17 @@ export const RT = {
   // logged, pts. Клиент перечитывает список папок.
   folderUpdate: 'rt:folder_update',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
-  // сессиям). peersStore патчит карточку пира; avatar_changed → до-фетч /users.
+  // сессиям). Кадр интерпретирует ВОРКЕР (peersManager.applyUserUpdate) и
+  // публикует результат через rt:peer_op ниже — витрина сырой кадр не разбирает.
   userUpdate: 'rt:user_update',
+  // Stage 1C.2 (Task 2): карточки пиров — воркерный peersManager единственный
+  // владелец. Он же решает, что карточка изменилась, и публикует это ОПЕРАЦИЕЙ
+  // (PeerOp: upsert/patch — см. managers/peersManager.ts), а не снимком кэша и
+  // не сигналом «сходи перечитай». Рассылается всем вкладкам: карточка пира —
+  // общий факт сессии (avatar_url приватен per-viewer, но зритель у всех вкладок
+  // один). peersStore зеркалит операции через storeProjection и больше ниоткуда
+  // не пишется (пин — stores/noDuplicatePeers.test.ts).
+  peerOp: 'rt:peer_op',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',

@@ -53,3 +53,55 @@ describe('PeersManager', () => {
     expect(calls[1].query).toEqual({ ids: '2' })
   })
 })
+
+// Stage 1C.2 (Task 2): менеджер — владелец карточек, он же решает, что карточка
+// изменилась. Правило инвалидации теперь ОДНО и живёт здесь; проверяем его
+// границы прямо на владельце (сквозной сценарий «воркер и витрина не
+// расходятся» — в client/realtime/storeProjection.peers.test.ts).
+describe('PeersManager — правило инвалидации (владелец карточек)', () => {
+  function stand(users: { id: number; username: string; display_name: string; avatar_url: string }[]) {
+    const { rest, calls } = fakeRest(users)
+    const ops: unknown[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    return { mgr, calls, ops }
+  }
+
+  it('имя не изменилось → операция не публикуется (витрина не пересобирается впустую)', async () => {
+    const { mgr, ops } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '' }])
+    await mgr.getUsers([2])
+    ops.length = 0
+
+    mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: false })
+
+    expect(ops).toEqual([])
+  })
+
+  it('пир неизвестен воркеру → ни операции, ни похода в сеть', async () => {
+    const { mgr, calls, ops } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '' }])
+
+    mgr.applyUserUpdate({ id: 404, username: 'x', display_name: 'X', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ops).toEqual([])
+    expect(calls).toEqual([])
+  })
+
+  it('avatar_changed: имя патчится из кадра, аватар до-фетчится одним запросом', async () => {
+    const users = [{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/old.png' }]
+    const { mgr, calls, ops } = stand(users)
+    await mgr.getUsers([2])
+    ops.length = 0
+    // Кадр несёт новое имя, /users отдаст его же вместе с новым аватаром —
+    // до-фетч приходит ПОСЛЕ патча и перекрывает его карточкой сервера.
+    Object.assign(users[0], { avatar_url: '/new.png', username: 'bobby', display_name: 'Бобби' })
+
+    mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ops).toEqual([
+      { op: 'patch', id: 2, fields: { username: 'bobby', displayName: 'Бобби' } },
+      { op: 'upsert', peers: [{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png' }] },
+    ])
+    expect(calls).toHaveLength(2) // первичный getUsers + один до-фетч
+  })
+})

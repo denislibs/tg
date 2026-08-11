@@ -14,6 +14,11 @@ export function peersKey(ids: number[]): string {
 // Resolve a set of user ids to a name map. Reads the shared peersStore (SSOT),
 // fetching only the ids not yet cached. Realtime user_update patches the store,
 // so every usePeers consumer of a changed peer re-renders automatically.
+//
+// Stage 1C.2 (Task 2): запрос карточек остаётся здесь (это read-путь), а вот
+// ПРИМЕНЕНИЕ ответа — нет: карточки кладёт в стор проектор по rt:peer_op, который
+// публикует владелец (peersManager). Прежний `.then(upsert)` был вторым писателем
+// стора и вторым походом в /users в паре с до-фетчем из storeProjection.
 export function usePeers(ids: number[]): Map<number, Peer> {
   const managers = useManagers()
   const key = peersKey(ids)
@@ -22,9 +27,7 @@ export function usePeers(ids: number[]): Map<number, Peer> {
   useEffect(() => {
     if (ids.length === 0) return
     const missing = ids.filter((id) => !usePeersStore.getState().byId[id])
-    if (missing.length) {
-      void managers.peers.getUsers(missing).then((peers) => usePeersStore.getState().upsert(peers))
-    }
+    if (missing.length) void managers.peers.getUsers(missing)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 

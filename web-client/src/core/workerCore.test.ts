@@ -409,3 +409,34 @@ describe('createWorkerCore(): намерение перехода сессии �
     expect(got).toEqual([{ userId: 42 }])
   })
 })
+
+// Stage 1C.2 (Task 2): карточки пиров — воркерный peersManager единственный
+// владелец, а `peersStore` витрины — зеркало. Проводка веера (`onPeerOps` →
+// `broadcast(RT.peerOp, …)` в workerCore.ts) подпадает под построчную норму: без
+// неё менеджер по-прежнему честно ходит в /users и наполняет свой кэш, RPC
+// возвращает вкладке карточки — а стор не наполняется ничем и все имена/аватары
+// в приложении исчезают. Тест зовёт настоящий менеджер из реестра и ловит кадр
+// на воркерном RootScope (тем же способом, что тест rt:me выше).
+describe('createWorkerCore(): карточки пиров — воркер публикует rt:peer_op (Stage 1C.2, Task 2)', () => {
+  it('ответ /users уходит вкладкам операцией upsert', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      if (String(url).includes('/users?ids=2')) {
+        return new Response(JSON.stringify({
+          users: [{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }],
+        }), { status: 200 })
+      }
+      throw new Error('unexpected fetch ' + String(url))
+    }))
+    try {
+      const core = createWorkerCore()
+      const got: unknown[] = []
+      core.workerScope.scope.addEventListener('rt:peer_op', (p) => got.push(p))
+
+      await core.registry.peers.getUsers([2])
+
+      expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' }] }] }])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
