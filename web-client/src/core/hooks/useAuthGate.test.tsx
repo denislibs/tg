@@ -1,20 +1,20 @@
 // src/core/hooks/useAuthGate.test.tsx
 //
-// Фикс повторного ревью (Stage 1C.2, Task 1): rt:me теперь публикуется не
-// только на логаут, но и на смену/удаление активного аккаунта
-// (authManager.ts: logout/switchAccount/deleteAccount) — эта вкладка могла
-// НЕ быть инициатором. useAuthGate реагирует по-разному в зависимости от
-// того, ЧТО пришло (см. докблок onMe в useAuthGate.ts):
-//  - первое rt:me этой вкладке — только база, не реакция (иначе КАЖДЫЙ
-//    холодный старт получал бы «reload» на собственном же boot-подтверждении);
-//  - id не изменился — просто обновилось поле профиля, ничего не делаем
-//    (storeProjection уже применил мердж);
-//  - id сменился на null — настоящий логаут: общие сбросы
+// Переход активной сессии (Stage 1C.2, Task 1). Раунд 4 сменил КАНАЛ, которым
+// вкладка узнаёт о переходе: раньше она выводила намерение из значения `me`
+// (rt:me + базовая строка «первое событие — не реакция»), теперь слушает
+// объявленное владельцем намерение rt:logging_out (порт tweb `logging_out`).
+// Сценарии сохранены те же, добавился первый — он и был дырой:
+//  - rt:me НЕ управляет сессией вовсе (это канал значения): ни базовой
+//    строки, ни гонки «успела ли вкладка увидеть своё boot-подтверждение» —
+//    именно из-за них кросс-табовый логаут срабатывал через раз (Critical 1
+//    в task-1-findings-round4.md);
+//  - migrateTo === null — настоящий логаут: общие сбросы
 //    (resetAccountStateInMemory + clearDialogsPersist) + authed=false, БЕЗ
 //    reload;
-//  - id сменился на ДРУГОЙ (не null) — активный токен переключился на
-//    другой аккаунт: reload (полноценный подъём под новым токеном не
-//    рассчитан на повторный прогон без него).
+//  - migrateTo !== null — активный токен переехал на другой аккаунт: reload
+//    (полноценный подъём под новым токеном не рассчитан на повторный прогон
+//    без него), authed не трогаем — сессия жива, просто другая.
 //
 // Тем же приёмом, что useChatScroll.test.tsx: рендерим настоящий хук через
 // ManagersProvider, шлём событие через rootScope.dispatchEventSingle — как
@@ -58,7 +58,7 @@ const folder = {
   broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
-describe('useAuthGate: кросс-табовый переход между аккаунтами (rt:me)', () => {
+describe('useAuthGate: переход активной сессии (rt:logging_out)', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
@@ -66,33 +66,42 @@ describe('useAuthGate: кросс-табовый переход между ак�
     useChatsStore.setState({ dialogs: [] })
   })
 
-  it('первое rt:me этой вкладке — только база: authed не трогает, reload не зовёт', () => {
+  // Ключевой пин раунда 4: канал ЗНАЧЕНИЯ сессией не управляет. Любая
+  // последовательность rt:me (своё boot-подтверждение, обновлённое поле
+  // профиля, чужая личность, null «данных нет») не должна ни перезагружать
+  // вкладку, ни ронять authed — иначе возвращается вся эвристика раундов 2-3
+  // вместе с её гонкой.
+  it('rt:me не управляет сессией: ни authed, ни reload — что бы ни пришло', () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() })
-    act(() => { rootScope.dispatchEventSingle(RT.me, ME) }) // первое — база
+    act(() => { rootScope.dispatchEventSingle(RT.me, ME) })                          // boot-подтверждение
+    act(() => { rootScope.dispatchEventSingle(RT.me, { ...ME, avatarUrl: '/n.jpg' }) }) // поле профиля
+    act(() => { rootScope.dispatchEventSingle(RT.me, OTHER) })                        // чужая личность
+    act(() => { rootScope.dispatchEventSingle(RT.me, null) })                         // «данных нет»
 
     expect(result.current.authed).toBe(true)
     expect(reload).not.toHaveBeenCalled()
   })
 
-  it('тот же id вторым rt:me (поле профиля обновилось) — authed не трогает, reload не зовёт', () => {
-    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+  // Critical 1: вкладка, которая НЕ видела ни одного rt:me (стартовый /me не
+  // удался — офлайн/5xx, либо её подписка ещё не была зарегистрирована к
+  // моменту ответа boot-префетча), обязана отработать чужой логаут. Раньше
+  // первое событие уходило в базовую строку и логаут глотался.
+  it('логаут доходит до вкладки, не видевшей ни одного rt:me', () => {
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() })
-    act(() => { rootScope.dispatchEventSingle(RT.me, ME) }) // база
-    act(() => { rootScope.dispatchEventSingle(RT.me, { ...ME, avatarUrl: '/new.jpg' }) }) // тот же id
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
 
-    expect(result.current.authed).toBe(true)
-    expect(reload).not.toHaveBeenCalled()
+    expect(result.current.authed).toBe(false)
   })
 
   // Что ломается без реакции на null: соседняя вкладка остаётся authed=true
   // с meId уже null — свои сообщения перестают быть «своими», send-as и «мои»
   // реакции ломаются.
-  it('id сменился на null (настоящий логаут) — authed=false, общие сбросы, БЕЗ reload', async () => {
+  it('migrateTo: null (настоящий логаут) — authed=false, общие сбросы, БЕЗ reload', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     setAppState('folders', [folder])
     useChatsStore.setState({ dialogs: [{ chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
@@ -100,8 +109,7 @@ describe('useAuthGate: кросс-табовый переход между ак�
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers(clearAll)) })
 
     act(() => { result.current.login() })
-    act(() => { rootScope.dispatchEventSingle(RT.me, ME) }) // база
-    act(() => { rootScope.dispatchEventSingle(RT.me, null) }) // реальный логаут
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
 
     expect(result.current.authed).toBe(false)
     expect(reload).not.toHaveBeenCalled()
@@ -117,13 +125,12 @@ describe('useAuthGate: кросс-табовый переход между ак�
   // ушла бы на AuthFlow, если бы обработчик наивно ставил authed=false для
   // ЛЮБОГО не-своего id) при живой сессии другого аккаунта — вернуть можно
   // было бы только ручной перезагрузкой.
-  it('id сменился на ДРУГОЙ (не null) — переключение на другой аккаунт: reload, authed не трогает', () => {
+  it('migrateTo: id — переезд на другой аккаунт: reload, authed не трогает', () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() })
-    act(() => { rootScope.dispatchEventSingle(RT.me, ME) }) // база — аккаунт 1
-    act(() => { rootScope.dispatchEventSingle(RT.me, OTHER) }) // переключились на аккаунт 2
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: OTHER.id }) })
 
     expect(reload).toHaveBeenCalledTimes(1)
     expect(result.current.authed).toBe(true) // не сброшен — сессия жива, просто другая
@@ -135,17 +142,17 @@ describe('useAuthGate: кросс-табовый переход между ак�
   // подписки (мутация проверена: cleanup без removeEventListener — тесты
   // остаются зелёными). Пинит саму проводку — вызов removeEventListener с
   // ТЕМ ЖЕ обработчиком, что был передан в addEventListener.
-  it('размонтирование реально снимает подписку — removeEventListener(RT.me, тот же handler)', () => {
+  it('размонтирование реально снимает подписку — removeEventListener(RT.loggingOut, тот же handler)', () => {
     const addSpy = vi.spyOn(rootScope, 'addEventListener')
     const removeSpy = vi.spyOn(rootScope, 'removeEventListener')
     const { unmount } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
-    const meCall = addSpy.mock.calls.find(([event]) => event === RT.me)
-    expect(meCall).toBeDefined()
-    const handler = meCall![1]
+    const call = addSpy.mock.calls.find(([event]) => event === RT.loggingOut)
+    expect(call).toBeDefined()
+    const handler = call![1]
 
     unmount()
 
-    expect(removeSpy).toHaveBeenCalledWith(RT.me, handler)
+    expect(removeSpy).toHaveBeenCalledWith(RT.loggingOut, handler)
   })
 })

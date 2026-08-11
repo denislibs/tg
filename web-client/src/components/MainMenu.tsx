@@ -78,12 +78,20 @@ export default function MainMenu({
   }, [open, managers])
   const others = accounts.filter((a) => a.id !== me?.id)
   // Переключение аккаунта = смена активного токена в воркере + перезагрузка.
-  // Перед reload список чатов уезжает (tweb меню аккаунтов: chatlist-exit).
+  // Порядок 1:1 с tweb (`sidebarLeft/index.ts:828-837`): сначала список чатов
+  // уезжает chatlist-exit, и только потом идёт команда смены аккаунта. Не
+  // наоборот (Important 3 раунда 4): воркер объявляет rt:logging_out ДО ответа
+  // RPC и той же очередью порта, кадр приходит и инициатору — при обратном
+  // порядке reload из обработчика срезал бы анимацию, которая ещё даже не
+  // начиналась. Успех switchAccount заранее не проверяем — как и tweb, который
+  // зовёт changeAccount() без проверок: id взят из только что прочитанного
+  // реестра, а если аккаунт всё же исчез, reload просто вернёт эту же вкладку
+  // под текущим аккаунтом. Отказ RPC (сбой IDB) глотаем по той же причине:
+  // reload выведет состояние с диска заново, что бы ни случилось.
   const switchTo = async (id: number) => {
     onClose()
-    const ok = await managers.auth.switchAccount(id)
-    if (!ok) return
     await playChatlistExit(document.getElementById('chatlist-column'))
+    await managers.auth.switchAccount(id).catch(() => false)
     location.reload()
   }
   // «Добавить аккаунт» (tweb sidebarLeft.addAccount): текущий остаётся в
@@ -94,8 +102,11 @@ export default function MainMenu({
     onClose()
     if (me?.id != null) localStorage.setItem(PREV_ACCOUNT_KEY, String(me.id))
     localStorage.setItem(ANIMATE_AUTH_KEY, '1')
+    // Анимация — до команды, как в tweb (`sidebarLeft/index.ts:1643-1652`) и
+    // по той же причине, что в switchTo выше: rt:logging_out прилетает и этой
+    // вкладке. Отказ RPC глотаем — reload выведет состояние заново.
     await playMainScreenExit(document.getElementById('page-chats'))
-    await managers.auth.addAccount()
+    await managers.auth.addAccount().catch(() => {})
     location.reload()
   }
 

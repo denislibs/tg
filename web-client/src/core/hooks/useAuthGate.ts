@@ -5,7 +5,7 @@
 // bootData.hasToken), а не по сети — поэтому промежуточного null нет, приложение
 // (или экран входа) рисуется сразу, без стартового спиннера. Сетевой me() в фоне
 // подтверждает/опровергает: истёкшая сессия → logout (миг пустого Shell, как в tweb).
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData } from '../../client/bootData'
@@ -16,7 +16,6 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { runWhenUnlocked } from '../../stores/lockStore'
 import rootScope from '@lib/rootScope'
 import { RT } from '../realtime/events'
-import type { User } from '../managers/authManager'
 
 export interface AuthGate {
   authed: boolean
@@ -43,16 +42,6 @@ export function useAuthGate(): AuthGate {
   const managers = useManagers()
   // Локальное решение: есть токен → оптимистично Shell, нет → экран входа.
   const [authed, setAuthed] = useState<boolean>(!!bootData?.hasToken)
-  // Идентичность, которую эта вкладка уже видела через rt:me. `undefined` —
-  // ни одного rt:me ещё не было: намеренно НЕ сеется из
-  // useChatsStore.getState().meId (гидратация с диска) — гидратации может не
-  // быть вовсе (первая сессия на устройстве, passcode-лок), и тогда null
-  // «нет данных с диска» неотличим от null «аккаунтов не осталось», а вторая
-  // вкладка с authed=true и уже протухшим `meId` — ровно тот баг, который эта
-  // проверка обязана ловить. Первое rt:me этой вкладке (от её же boot-цепочки
-  // воркера, подтверждающее ТЕКУЩИЙ аккаунт) — только база, не реакция; любое
-  // ПОСЛЕДУЮЩЕЕ, отличное от базы — реальная смена (см. onMe ниже).
-  const lastMeId = useRef<number | null | undefined>(undefined)
 
   useEffect(() => {
     // Под passcode-локом сетевой me() НЕ шлём (RPC не летят до разблокировки):
@@ -72,38 +61,36 @@ export function useAuthGate(): AuthGate {
     }
     const cleanupConfirm = runWhenUnlocked(confirm)
 
-    // Кросс-табовый переход между аккаунтами (Stage 1C.2, фикс повторного
-    // ревью, п.1-п.3): rt:me теперь публикуется не только на логаут, но и на
-    // смену/удаление активного аккаунта (authManager.ts: logout/
-    // switchAccount/deleteAccount) — эта вкладка могла НЕ быть инициатором.
-    // Реакция зависит от того, ЧТО пришло:
-    //  - id совпал с уже известным этой вкладке — просто поле профиля
-    //    обновилось (аватар/имя/премиум), не смена личности; storeProjection
-    //    уже применил мердж в стор — здесь делать нечего.
-    //  - id сменился на ДРУГОЙ (не null) — активный токен переключился на
-    //    другой уже вошедший аккаунт (switchAccount/deleteAccount с
-    //    остающимся аккаунтом, либо логаут этой сессии при живой B). authed
-    //    здесь НЕЛЬЗЯ ставить в false (сессия B активна) — нужен полноценный
-    //    подъём под новым токеном (dialogs/folders/State), а
+    // Переход активной сессии (Stage 1C.2, Task 1, раунд 4). Слушаем
+    // НАМЕРЕНИЕ (rt:logging_out — порт tweb `logging_out`, публикует
+    // authManager, единственный владелец активного токена), а не значение
+    // `me`. Раньше здесь стояла реакция на rt:me с базовой строкой
+    // «первое событие — не реакция»: из одного снимка пользователя намерение
+    // не выводится (null одинаков у логаута, у «данных ещё нет» и у
+    // офлайн-старта; не-null id — у чужого переезда и у собственного
+    // boot-подтверждения), и любая эвристика поверх этого промахивалась —
+    // Critical 1 / Important 3-4 в task-1-findings-round4.md. Владелец знает
+    // намерение точно и объявляет его сам:
+    //  - migrateTo !== null — активный токен переехал на другой уже вошедший
+    //    аккаунт (switchAccount / logout / deleteAccount с остающимся).
+    //    authed сбрасывать НЕЛЬЗЯ (сессия жива, просто другая) — нужен
+    //    полноценный подъём под новым токеном (dialogs/folders/State), а
     //    useAppBootstrap на повторный прогон без перезагрузки не рассчитан
     //    (`boot.ts` — единственное место, где State поднимается с диска в
-    //    память) — reload, тем же способом, что делает инициирующая вкладка
-    //    (MainMenu.switchTo/PrivacySecuritySettings). Та вкладка ещё и играет
-    //    exit-анимацию перед reload — здесь её нет (не инициатор), поэтому
-    //    кадр может смениться на долю секунды раньше; повторный
-    //    location.reload() из инициирующей вкладки после уже идущей
-    //    навигации — no-op, не баг.
-    //  - id стал null — аккаунтов не осталось, настоящий логаут: те же
-    //    сбросы, что local logout() ниже (resetAccountStateInMemory), без
-    //    reload — Shell снимется сам через authed=false.
-    const onMe = (u: User | null) => {
-      const id = u?.id ?? null
-      // Первое rt:me этой вкладке — только база (см. докблок у lastMeId), не
-      // повод перезагружаться/сбрасываться.
-      if (lastMeId.current === undefined) { lastMeId.current = id; return }
-      if (id === lastMeId.current) return
-      lastMeId.current = id
-      if (id !== null) { location.reload(); return }
+    //    память). Как в tweb: смена аккаунта — это reload
+    //    (`lib/accounts/changeAccount.ts` → appNavigationController.reload).
+    //  - migrateTo === null — активного аккаунта не осталось (логаут,
+    //    удаление последнего, «добавить аккаунт», отозванная сессия): те же
+    //    сбросы, что у local logout() ниже, без reload — Shell снимется сам
+    //    через authed=false.
+    // Кадр приходит и вкладке-ИНИЦИАТОРУ (workerScope шлёт во все порты; у
+    // tweb `logging_out` тоже общий для всех вкладок — apiManagerProxy.ts:330
+    // commonEventNames). Это не мешает её exit-анимации: все инициаторы, как
+    // и в tweb (`sidebarLeft/index.ts:830-837`, `:1643-1652`), играют её ДО
+    // команды, а не после, и их собственный reload после уже идущей навигации
+    // — no-op.
+    const onLoggingOut = ({ migrateTo }: { migrateTo: number | null }) => {
+      if (migrateTo !== null) { location.reload(); return }
       void clearDialogsPersist(managers)
       resetAccountStateInMemory()
       setAuthed(false)
@@ -118,12 +105,12 @@ export function useAuthGate(): AuthGate {
     // гейтится `runWhenUnlocked` (`useAppBootstrap.ts`); `SuperMessagePort`
     // без слушателя на конкретное событие молча его роняет
     // (`superMessagePort.ts`: `for (const cb of this.listeners.get(...) ?? [])`
-    // — пустой массив, тела цикла не будет). Под локом rt:me до rootScope
-    // просто не долетит, кем бы её ни встречала эта подписка — регистрировать
+    // — пустой массив, тела цикла не будет). Под локом кадр до rootScope
+    // просто не долетит, кем бы его ни встречала эта подписка — регистрировать
     // её здесь синхронно дёшево и безопасно.
-    rootScope.addEventListener(RT.me, onMe)
+    rootScope.addEventListener(RT.loggingOut, onLoggingOut)
 
-    return () => { cleanupConfirm(); rootScope.removeEventListener(RT.me, onMe) }
+    return () => { cleanupConfirm(); rootScope.removeEventListener(RT.loggingOut, onLoggingOut) }
   }, [managers])
 
   const login = () => {
@@ -132,26 +119,39 @@ export function useAuthGate(): AuthGate {
     setAuthed(true)
   }
 
+  // Локальный путь логаута. То же самое (и в этой вкладке тоже) делает
+  // обработчик rt:logging_out выше — воркер объявляет намерение раньше, чем
+  // резолвится этот RPC, и обе ветки идемпотентны. Держим локальный путь как
+  // подтверждение действия, не зависящее от эха воркера: пользователь нажал
+  // «Выйти» ЗДЕСЬ, и экран входа не должен ждать доставки кадра.
   const logout = () => {
     void clearDialogsPersist(managers)
-    void managers.auth.logout().then((r) => {
-      // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
-      if (r.switched) { location.reload(); return }
-      // Перезагрузки НЕ будет, значит boot.ts второй раз не отработает — а он
-      // единственное место, где State поднимается с диска в память. Без сброса
-      // конфиг прошлого аккаунта дожил бы до входа под следующим, и cache-first
-      // (папки/черновики/баланс) ОТМЕНИЛ бы запрос к сети, показав чужие данные.
-      // clearDialogsPersist выше чистит только диск.
-      resetAccountStateInMemory()
-      // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
-      // setMe в chatsStore.ts, stores/noDuplicateMe.test.ts): логаут подтверждён
-      // RPC, но `me` чистим синхронно тем же блоком, что dialogs/State — единый
-      // локальный сброс перед экраном входа, ждать сетевой round-trip ради null
-      // незачем. Воркер (authManager.logout → onMeChanged(null)) отдельно
-      // разошлёт rt:me:null остальным вкладкам той же сессии (см. onMe выше).
-      useChatsStore.getState().setMe(null)
-      setAuthed(false)
-    })
+    void managers.auth.logout()
+      .then((r) => {
+        // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
+        if (r.switched) { location.reload(); return }
+        // Перезагрузки НЕ будет, значит boot.ts второй раз не отработает — а он
+        // единственное место, где State поднимается с диска в память. Без сброса
+        // конфиг прошлого аккаунта дожил бы до входа под следующим, и cache-first
+        // (папки/черновики/баланс) ОТМЕНИЛ бы запрос к сети, показав чужие данные.
+        // clearDialogsPersist выше чистит только диск.
+        resetAccountStateInMemory()
+        // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
+        // setMe в chatsStore.ts, stores/noDuplicateMe.test.ts): логаут подтверждён
+        // RPC, но `me` чистим синхронно тем же блоком, что dialogs/State — единый
+        // локальный сброс перед экраном входа, ждать сетевой round-trip ради null
+        // незачем. Воркер (authManager.logout → onMeChanged(null)) отдельно
+        // разошлёт rt:me:null остальным вкладкам той же сессии.
+        useChatsStore.getState().setMe(null)
+        setAuthed(false)
+      })
+      // Important 2 раунда 4: без .catch отказ RPC (IDB-сбой при работе с
+      // реестром аккаунтов) оставлял вкладку в интерфейсе уже вышедшего
+      // аккаунта — плюс unhandled rejection. Исход неизвестен: токен мог быть
+      // снят, а мог и нет, — перезагружаемся и выводим состояние с диска
+      // заново (tweb в logOut() тоже доводит очистку через finally, а не
+      // бросает наружу: apiManager.ts:341-345).
+      .catch(() => { location.reload() })
   }
 
   return { authed, login, logout }
