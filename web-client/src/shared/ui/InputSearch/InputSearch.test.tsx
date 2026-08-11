@@ -87,6 +87,7 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
 
     act(() => statusRef.current!.toggleLoading(true))
     expect(icon.classList.contains('is-hiding')).toBe(true)
+    expect(icon.classList.contains('will-animate')).toBe(true)
 
     act(() => statusRef.current!.toggleLoading(false))
     expect(icon.classList.contains('is-hiding')).toBe(false)

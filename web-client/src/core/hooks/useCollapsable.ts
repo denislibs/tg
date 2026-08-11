@@ -42,8 +42,24 @@ export interface Collapsable {
   fold: () => void
 }
 
-// tweb `liteMode.isAvailable('animations')` — у нас гейт CSS-анимаций это
-// класс `body.animation-level-2` (index.html).
+// ДОЛГ: это ВТОРОЙ механизм того же гейта. Канонический — `liteMode.isAvailable('animations')`
+// (`helpers/liteMode.ts`), ровно то, что зовёт оригинал (`singleTransition.ts:67`); на нём
+// уже сидит `core/dom/setTransition.ts`. Сведение отложено: у этого хука свои тесты, они
+// ставят/снимают класс на body, и перевод на liteMode потребовал бы их правки.
+//
+// Цена долга — окно до гидрации, где механизмы РАСХОДЯТСЯ. `index.html:28` держит
+// `animation-level-2` статикой на `<body>` безусловно, а `App.tsx:271-275` приводит класс
+// к настройке `reduceMotion` только в `useLayoutEffect`. Store же читает localStorage
+// синхронно при создании (`settings.tsx:154-170`, `load()`), поэтому у пользователя с
+// «Без анимаций» в этом окне `liteMode.isAvailable('animations')` уже false, а проверка
+// ниже — ещё true.
+//
+// Строго говоря, в этом окне они отвечают на разные вопросы: класс на body — «играет ли
+// CSS-анимация прямо сейчас» (он же гейтит партиалы, так что проверка ниже согласована с
+// экраном), liteMode — «разрешены ли анимации настройкой». Здесь нужен первый смысл
+// (`isTransition` снимается по `transitionend`, а его не будет, если перехода нет),
+// поэтому до сведения поведение хука остаётся верным. После эффекта в `App.tsx`
+// механизмы сходятся.
 const animationsAvailable = () => document.body.classList.contains('animation-level-2')
 
 export default function useCollapsable(props: CollapsableOptions): Collapsable {
