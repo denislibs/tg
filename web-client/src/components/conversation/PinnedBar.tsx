@@ -43,13 +43,6 @@ export interface PinnedBarProps {
   onOpenList: () => void
 }
 
-/** Превью медиа пина: размеры/радиус/клип даёт ряд `.pinned-message-media`
- *  (_chatPinned.scss:141-165 + :390-392), картинке остаётся `> img` внутри него. */
-function PinnedMedia({ mediaId }: { mediaId: number }) {
-  const url = useMediaThumb(mediaId)
-  return <img src={url || undefined} alt="" />
-}
-
 function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: PinnedBarProps) {
   const t = useT()
   // tweb TopbarPlate.Body — это RippleElement: клик и ripple живут на wrapper,
@@ -59,7 +52,14 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
   const shown = pins[index]
   const badge = pinBadgeNumber(index, pins.length)
   const isMany = pins.length > 1
-  const mediaId = shown?.mediaId ?? null
+  // tweb рисует превью и вешает `is-media` по ОДНОМУ признаку — `isMediaSet`,
+  // который вернул wrapReplyDivAndCaption (pinnedMessage.tsx:546 → :561
+  // `setIsMedia(isMediaSet)`, класс плашки — :223 `isMedia() && 'is-media'`;
+  // при false ряд медиа ещё и снимается, :571-575 `animatedMedia.clearRows()`).
+  // А false он у медиа без миниатюры — replyContainer.ts:79-81. Здесь тот же
+  // признак — резолвнутый URL миниатюры: '' у голосового/аудио/файла без превью,
+  // и тогда нет ни `<img>`, ни класса.
+  const thumb = useMediaThumb(shown?.mediaId ?? null)
 
   if (searchOpen || pins.length === 0) return null
 
@@ -68,7 +68,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
       className={classNames(
         'pinned-container', 'pinned-message',
         isMany ? 'is-many' : '',
-        mediaId ? 'is-media' : '',
+        thumb ? 'is-media' : '',
       )}
       data-mid={shown?.id}
     >
@@ -98,7 +98,9 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
             className="pinned-message-media-container"
             rowClassName="pinned-message-media"
           >
-            {mediaId ? <PinnedMedia mediaId={mediaId} /> : null}
+            {/* размеры/радиус/клип даёт ряд `.pinned-message-media`
+                (_chatPinned.scss:141-165 + :390-392), картинке остаётся `> img` */}
+            {thumb ? <img src={thumb} alt="" /> : null}
           </AnimatedSuper>
           <div className="pinned-container-title pinned-message-title">
             <span className="i18n">{t('Pinned Message')}</span>
