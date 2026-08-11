@@ -160,10 +160,14 @@ function Harness({ win, paddingTop = 0, unreadDividerSeq = null }: {
   )
 }
 
+// Общий wrapper для render(..., { wrapper }) — вынесен один раз, чтобы новый
+// харнес (HarnessRealMarkup ниже) не плодил второй такой же inline-литерал.
+function managersWrapper({ children }: { children: ReactNode }) {
+  return createElement(ManagersProvider, { managers: fakeManagers as never, children })
+}
+
 function mount(win: MessageWindow, extra: { paddingTop?: number, unreadDividerSeq?: number | null } = {}) {
-  const wrapper = ({ children }: { children: ReactNode }) =>
-    createElement(ManagersProvider, { managers: fakeManagers as never, children })
-  const rendered = render(createElement(Harness, { win, ...extra }), { wrapper })
+  const rendered = render(createElement(Harness, { win, ...extra }), { wrapper: managersWrapper })
   const scrollEl = rendered.container.querySelector('[data-scroll-container]') as HTMLDivElement
   return { ...rendered, scrollEl }
 }
@@ -543,9 +547,7 @@ describe('useChatScroll: якорь плашки непрочитанных — 
     // истории при открытии чата, который пином к низу отвёл бы viewport на 5000.
     seqRects.set(2, { top: -4000, bottom: -3980 })
 
-    const wrapper = ({ children }: { children: ReactNode }) =>
-      createElement(ManagersProvider, { managers: fakeManagers as never, children })
-    const rendered = render(createElement(HarnessRealMarkup, { win, unreadDividerSeq: 2 }), { wrapper })
+    const rendered = render(createElement(HarnessRealMarkup, { win, unreadDividerSeq: 2 }), { wrapper: managersWrapper })
     const scrollEl = rendered.container.querySelector('[data-scroll-container]') as HTMLDivElement
 
     // Без селектора по data-seq хук не нашёл бы цель вовсе — scrollTop остался
