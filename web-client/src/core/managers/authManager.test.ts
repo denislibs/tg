@@ -416,6 +416,7 @@ describe('AuthManager: /me отвечает ошибкой', () => {
     const rest = {
       get: async (path: string) => { if (path === '/me') throw err; throw new Error('unexpected ' + path) },
       post: async () => ({ ok: true }),
+      del: async () => ({ ok: true }),
     }
     return { d: { rest, store } as unknown as AuthDeps, token: () => tok }
   }
@@ -448,6 +449,25 @@ describe('AuthManager: /me отвечает ошибкой', () => {
 
     expect(token()).toBe('TOK_B')
     expect(onMeChanged).toHaveBeenCalledWith(null)
+  })
+
+  // Тот же перевывод и те же два его свойства — у logout()/deleteAccount() с
+  // остающимся аккаунтом: это тоже смена активного токена. Без rederive обе
+  // ветки реджектили бы ответ RPC на 5xx и подставляли бы в кэш профиль с
+  // диска (= личность СТАРОГО аккаунта).
+  it('logout()/deleteAccount() с остающимся аккаунтом: 5xx на /me не реджектит и обнуляет `me`', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onLogout = vi.fn()
+    const { d } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
+    await expect(newAuthManager({ ...d, onMeChanged: onLogout }).logout()).resolves.toEqual({ switched: true })
+    expect(onLogout).toHaveBeenCalledWith(null)
+
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    const onDelete = vi.fn()
+    const { d: d2 } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
+    await expect(newAuthManager({ ...d2, onMeChanged: onDelete }).deleteAccount()).resolves.toEqual({ switched: true })
+    expect(onDelete).toHaveBeenCalledWith(null)
   })
 
   // Тот же путь при сетевом сбое: публичный me() отдал бы кэш с диска, но при
