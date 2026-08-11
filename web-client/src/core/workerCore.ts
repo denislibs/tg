@@ -339,7 +339,10 @@ export function createWorkerCore() {
     upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
   })
 
-  const realtime = newRealtime({ conn, tokens, messages, broadcast, channelFunnel })
+  // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
+  // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
+  // питает pull-снимок для позднего подписчика.
+  const realtime = newRealtime({ conn, sync, tokens, messages, broadcast, channelFunnel })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

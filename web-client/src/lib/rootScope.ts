@@ -79,12 +79,19 @@ export type BroadcastEvents = {
   [RT.storyNew]: [StoryNewEvt]
   [RT.storyDeleted]: [StoryDeletedEvt]
   [RT.storyReaction]: [StoryReactionEvt]
-  // retryAt (Задача 1 порта ConnectionStatusComponent) — момент следующей попытки
-  // реконнекта (мс, Date.now()), присутствует только при переходе в 'reconnecting'
-  // с уже вычисленным backoff'ом (connectionManager.ts:scheduleReconnect).
+  // ВНИМАНИЕ читающему payload: он НЕ источник правды (см. events.ts:RT.state и
+  // realtime.ts:getStatus). Событие — сигнал «что-то изменилось» 1:1 с tweb
+  // (connectionStatus.ts:86-89 читает не payload, а пуллит getConnectionStatus()
+  // отдельным RPC на каждое событие). Поля здесь оставлены не для удобства чтения
+  // потребителем, а потому что не мешают; автомат (Задача 3) обязан на получение
+  // ЛЮБОГО из трёх событий ниже звать managers.realtime.getStatus() и брать
+  // значение оттуда — иначе получим два источника факта, ровно тот дубль, который
+  // параллельно вычищает этап 1C.2.
   [RT.state]: [{ state: ConnState; retryAt?: number }]
-  // tweb apiUpdatesManager.ts:459-467 (state_synchronizing/state_synchronized) —
+  // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
   // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
+  // Payload — null (1:1 с tweb rootScope.ts:131-132: 'state_synchronized' объявлен
+  // как `void`, без payload — обработчики только переключают флаг).
   [RT.stateSynchronizing]: [null]
   [RT.stateSynchronized]: [null]
 

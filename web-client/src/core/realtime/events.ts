@@ -65,11 +65,17 @@ export const RT = {
   storyNew: 'rt:story_new',
   storyDeleted: 'rt:story_deleted',
   storyReaction: 'rt:story_reaction',
+  // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
+  // «что-то изменилось», НЕ источник значения (1:1 с tweb, connectionStatus.ts:
+  // 86-89 читает не из payload события, а из отдельного pull-запроса). Значение —
+  // всегда через RPC managers.realtime.getStatus() (realtime.ts, докблок метода).
+  // Не читать поля этих событий как факт — см. норму в realtime.ts.
   state: 'rt:state',
-  // tweb apiUpdatesManager.ts:459-467 (state_synchronizing/state_synchronized) —
+  // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
   // начало/конец catch-up (/sync), пара для индикатора «Обновление…» в поиске
   // (порт ConnectionStatusComponent, Задача 1). syncEngine.catchUp() гарантирует
-  // парность: «конец» уходит и по успеху, и по ошибке catch-up'а.
+  // парность: «конец» уходит и по успеху, и по ошибке catch-up'а (сознательное
+  // расхождение с tweb — см. докблок onSyncEnd в syncEngine.ts).
   stateSynchronizing: 'rt:state_synchronizing',
   stateSynchronized: 'rt:state_synchronized',
 } as const

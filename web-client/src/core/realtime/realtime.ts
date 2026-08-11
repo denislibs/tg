@@ -20,6 +20,10 @@ type Conn = ReturnType<typeof newConnectionManager>
 
 export interface RealtimeDeps {
   conn: Conn
+  // Задача 1 (ревью): «сигнал только push — новая вкладка слепа». isSyncing уже
+  // существовал (funnel гейтит по нему живые кадры); getStatus ниже — первый
+  // потребитель, которому нужен pull, а не только push onSyncStart/onSyncEnd.
+  sync: { isSyncing(): boolean }
   tokens: { load(): Promise<unknown> }
   // Тип — MessageOp[], а не void: cacheMediaRead порождает операции (Stage 1B.3
   // сняла media_read с сырого кадра, окно правит только applyOps), и void здесь
@@ -31,9 +35,35 @@ export interface RealtimeDeps {
   channelFunnel: ChannelFunnel
 }
 
-export function newRealtime({ conn, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
+export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
+    // ЕДИНСТВЕННЫЙ источник правды о состоянии соединения — модель 1:1 с tweb, не
+    // разовый снапшот. У tweb (connectionStatus.ts:86-89) компонент на КАЖДОЕ
+    // событие 'connection_status_change' тянет getConnectionStatus() и читает
+    // состояние ОТТУДА, а не из payload события — плюс отдельный стартовый pull по
+    // INITIAL_DELAY (:66-69), если события ещё не было. Событие там — лишь «что-то
+    // изменилось, дёрни pull», значение всегда приходит запросом.
+    //
+    // У нас то же самое: RT.state/RT.stateSynchronizing/synchronized (rootScope.ts)
+    // остаются событиями-УВЕДОМЛЕНИЯМИ (автомату нужно знать МОМЕНТ изменения), но
+    // их payload — не источник правды и не должен читаться напрямую; при получении
+    // любого из них следует звать getStatus() и брать значение оттуда. Это делает
+    // модель иммунной к потере события by construction: SuperMessagePort не
+    // буферизует кадры, а `smp.on(...)` вешается в realtimeBridge из эффекта, ПОСЛЕ
+    // первого рендера — ранние события физически теряются (тот же класс дыры, что
+    // у loadChats vs push для `me`). Пропущенное уведомление не страшно: следующее
+    // всё равно дёрнет актуальный pull; если не было ни одного — see примечание
+    // Задаче 3 про стартовый INITIAL_DELAY-pull (tweb connectionStatus.ts:66-69).
+    //
+    // Осознанное отступление от tweb: там карта статусов живёт в ВОРКЕРНОМ rootScope
+    // (rootScope.ts:254 `connectionStatus`, ключ `'NET-'+baseDcId` — у них
+    // мультидатацентровость MTProto), у нас источник — connectionManager (`state`+
+    // `lastRetryAt`) и syncEngine (`isSyncing()`), потому что состояние соединения
+    // у нас изначально там и живёт, а мультидатацентровости нет (одно WS-соединение
+    // → плоский объект, без карты по DC). Форма (pull из воркера через RPC) та же,
+    // владелец другой — сверяющий не должен читать это как расхождение с оригиналом.
+    async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
     async sendMessage(args: SendArgs) { conn.sendMessage(args); return { ok: true } },
     async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
     async markMediaRead(args: { chatId: number; msgId: number }) {

@@ -103,22 +103,26 @@ describe('ConnectionManager', () => {
   // Задача 1 (порт ConnectionStatusComponent из tweb): scheduleReconnect считал
   // delay и терял его — retryAt должен уйти вторым аргументом onState вместе с
   // состоянием 'reconnecting', чтобы витрина умела рисовать обратный отсчёт
-  // (tweb connectionStatus.ts:110-111).
-  it('publishes retryAt in the future when scheduling a reconnect after a real connection drop', () => {
+  // (tweb connectionStatus.ts:114, отсчёт :150-158).
+  it('publishes retryAt = now() + delay when scheduling a reconnect after a real connection drop', () => {
     const ws = fakeWs()
     const onState = vi.fn()
-    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState, onFrame: () => {} })
+    const now = vi.fn(() => 1_000_000)
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState, onFrame: () => {}, now })
     cm.start(); ws.fireOpen() // reach 'ready' first — a close only reconnects when state !== 'offline'
     onState.mockClear()
-    const before = Date.now()
 
     ws.fireClose()
 
     const reconnectingCalls = onState.mock.calls.filter(([s]) => s === 'reconnecting')
     expect(reconnectingCalls).toHaveLength(1)
     const [, retryAt] = reconnectingCalls[0]
-    expect(typeof retryAt).toBe('number')
-    expect(retryAt as number).toBeGreaterThan(before)
+    // Детерминировано через инъекцию now() — не `toBeGreaterThan(before)` — CMDeps.now
+    // существовал, но был мёртв (ничего его не звало); теперь и scheduleReconnect,
+    // и cm.retryAt() читают именно его. Диапазон — base=500 (attempt 0) со
+    // случайным jitter в [base/2, base]: retryAt = now() + delay ∈ [now()+250, now()+500].
+    expect(retryAt as number).toBeGreaterThanOrEqual(1_000_000 + 250)
+    expect(retryAt as number).toBeLessThanOrEqual(1_000_000 + 500)
   })
 
   // Транзиции без пересчитанного backoff (ready/connecting) не несут retryAt — та
@@ -129,5 +133,36 @@ describe('ConnectionManager', () => {
     const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState, onFrame: () => {} })
     cm.start(); ws.fireOpen()
     expect(onState).toHaveBeenCalledWith('ready')
+  })
+
+  // Ревью Задачи 1: «сигнал только push — новая вкладка слепа» — connectionManager
+  // теперь держит снимок последнего опубликованного retryAt (lastRetryAt), которым
+  // питается realtime.getStatus() для позднего подписчика.
+  describe('retryAt() snapshot', () => {
+    it('is undefined before any reconnect is scheduled', () => {
+      const ws = fakeWs()
+      const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+      cm.start(); ws.fireOpen()
+      expect(cm.retryAt()).toBeUndefined()
+    })
+
+    it('mirrors the retryAt published on scheduleReconnect', () => {
+      const ws = fakeWs()
+      const now = vi.fn(() => 2_000_000)
+      const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {}, now })
+      cm.start(); ws.fireOpen()
+      ws.fireClose() // schedules a reconnect → 'reconnecting' with retryAt
+      expect(cm.retryAt()).toBeGreaterThanOrEqual(2_000_000)
+    })
+
+    it('resets to undefined on the next transition that carries no retryAt (attempt reaches connect())', () => {
+      const ws = fakeWs()
+      const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+      cm.start(); ws.fireOpen()
+      ws.fireClose()
+      expect(cm.retryAt()).toBeDefined()
+      vi.advanceTimersByTime(1000) // backoff elapses → connect() fires setState('reconnecting') WITHOUT retryAt
+      expect(cm.retryAt()).toBeUndefined()
+    })
   })
 })

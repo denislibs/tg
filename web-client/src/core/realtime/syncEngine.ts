@@ -13,11 +13,17 @@ export interface SyncDeps {
   /** Единый funnel применения: и live-кадр, и элемент /sync проходят через него. */
   onUpdate: (item: SyncItem) => void
   onResync: () => void
-  /** tweb apiUpdatesManager.ts:459-467 (state_synchronizing/state_synchronized) —
+  /** tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
    * начало/конец catch-up для индикатора «Обновление…» в поиске. Парность
    * гарантирует catchUp() через try/finally-эквивалент (.finally на run()): даже
    * если run() отклонится (сетевая ошибка /sync), onSyncEnd всё равно придёт —
-   * иначе автомат (Задача 3) навсегда застрянет в «синхронизирую». */
+   * иначе автомат (Задача 3) навсегда застрянет в «синхронизирую».
+   *
+   * СОЗНАТЕЛЬНОЕ РАСХОЖДЕНИЕ С TWEB (не «неверно портировали»): в оригинале эта
+   * гарантия отсутствует — error-ветка apiUpdatesManager.ts:460-469 не шлёт
+   * state_synchronized вовсе, там баг/недоделка. Наш .finally() — осознанное
+   * улучшение поверх 1:1, требование брифа Задачи 1, а не то, что нужно
+   * «подровнять» под оригинал при следующей сверке. */
   onSyncStart?: () => void
   onSyncEnd?: () => void
 }
