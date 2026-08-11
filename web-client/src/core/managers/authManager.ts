@@ -172,6 +172,45 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
     // «моих» реакций не работал) — весь остаток сессии после логина.
     onMeChanged?.(u)
   }
+  // Общий REST-фетч текущего /me — используется публичным me() (прогрев/
+  // loadChats) И внутренними переходами активного токена (switchAccount/
+  // deleteAccount/logout со сменой аккаунта), где нужно вывести свежего
+  // пользователя НОВОГО активного токена и опубликовать его, а не просто
+  // дёрнуть RPC. Инвариант (повторное ревью Stage 1C.2, п.1/п.6): воркерный
+  // `me` не может быть протухшим относительно активного токена — ЛЮБОЙ
+  // успешный /me (включая обычный прогрев, не только явные мутации/вход)
+  // обновляет кэш воркера и рассылает rt:me. Без этого: (а) смена активного
+  // токена оставляла бы кэш с личностью СТАРОГО аккаунта, и следующая
+  // мутация профиля смерджила бы и разослала чужую личность всем вкладкам
+  // (имя/username/телефон/meId — см. task-1-report.md); (б) профиль,
+  // изменённый в обход этого воркера (другая сессия того же аккаунта), не
+  // долетал бы до кэша — loadChats() кладёт свежее значение только в СВОЙ
+  // стор, а следующий addPhoto()/update() смерджил бы поверх устаревшего
+  // снимка воркера и разослал бы его всем вкладкам, затерев уже показанное
+  // свежее значение.
+  const fetchMe = async (): Promise<User | null> => {
+    await store.ready()
+    if (!store.get()) return null
+    try {
+      const u = mapUser(await rest.get<RawUser>('/me'))
+      onMeChanged?.(u)
+      return u
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 401) {
+        await store.clear()
+        onMeChanged?.(null) // сессия невалидна — тот же сигнал, что у явного logout()
+        return null
+      }
+      // Сеть недоступна (fetch reject, не HttpError) — отдаём последний известный
+      // профиль из офлайн-стора; НЕ публикуем — это не свежие данные с сервера,
+      // а локальный фолбэк (воркерный кэш и так уже держит то же самое или лучше).
+      if (!(e instanceof HttpError)) {
+        const cached = await loadMe()
+        if (cached) return cached
+      }
+      throw e
+    }
+  }
   // Разбор общего ответа шагов входа (`writeSignInResult` на бэке): сессия |
   // облачный пароль | регистрация. Общий для sign_in, sign_up, recover/confirm и
   // sign_import — держим в одном месте, чтобы ветки не разъезжались.
@@ -374,24 +413,11 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       await rest.post('/auth/qr/confirm', { token })
     },
 
+    // Публичный /me — используется прогревом/loadChats. Тело — fetchMe() (см.
+    // выше): любой успешный вызов заодно освежает кэш воркера и рассылает
+    // rt:me (фикс п.6), не только явные RPC-мутации/вход.
     async me(): Promise<User | null> {
-      await store.ready()
-      if (!store.get()) return null
-      try {
-        return mapUser(await rest.get<RawUser>('/me'))
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 401) {
-          await store.clear()
-          return null
-        }
-        // Сеть недоступна (fetch reject, не HttpError) — отдаём последний известный
-        // профиль из офлайн-стора, чтобы UI не терял себя (аватар/имя) без сети.
-        if (!(e instanceof HttpError)) {
-          const cached = await loadMe()
-          if (cached) return cached
-        }
-        throw e
-      }
+      return fetchMe()
     },
 
     // Удаление аккаунта: сервер анонимизирует профиль и отзывает все сессии.
@@ -407,9 +433,17 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
       if (remaining.length > 0) {
         await store.set(remaining[0].token)
+        // Фикс повторного ревью, п.1: активный токен сменился на ДРУГОЙ живой
+        // аккаунт — это не логаут. Перевывести `me` под НОВЫМ токеном (см.
+        // докблок fetchMe): без этого кэш воркера остаётся с личностью
+        // удалённого аккаунта, и следующая мутация профиля (addPhoto/update/
+        // premium) смерджит и разошлёт её всем вкладкам вместо личности того,
+        // на кого реально переключились.
+        await fetchMe()
         return { switched: true }
       }
       await store.clear()
+      onMeChanged?.(null) // аккаунтов не осталось — настоящий логаут
       return { switched: false }
     },
 
@@ -423,16 +457,21 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       const all = await listAccounts()
       const activeAcc = all.find((a) => a.token === active)
       const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
-      // Stage 1C.2 (Task 1): в обеих ветках текущий аккаунт больше не активен —
-      // `me` этой сессии стал null (при switched === true за этим следует
-      // location.reload() в useAuthGate, но воркер того же процесса разошлёт
-      // rt:me:null остальным вкладкам ДО перезагрузки).
       if (remaining.length > 0) {
         await store.set(remaining[0].token)
-        onMeChanged?.(null)
+        // Фикс повторного ревью, п.1/п.2: раньше здесь стоял onMeChanged(null).
+        // switched === true — НЕ логаут, а смена активного аккаунта на другой
+        // уже вошедший; null ложно сигналил остальным вкладкам «никто не
+        // вошёл», хотя сессия B жива и активна — соседняя вкладка получала
+        // это и уходила на экран входа (useAuthGate), хотя bootData.hasToken
+        // истинен и вернуть её можно было только ручной перезагрузкой. Теперь
+        // перевывести `me` под НОВЫМ активным токеном — та же проводка, что
+        // switchAccount/deleteAccount (см. докблок fetchMe).
+        await fetchMe()
         return { switched: true }
       }
       await store.clear()
+      // Аккаунтов не осталось — настоящий логаут, null корректен и здесь.
       onMeChanged?.(null)
       return { switched: false }
     },
@@ -446,12 +485,25 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       const tok = await tokenOf(id)
       if (!tok) return false
       await store.set(tok)
+      // Фикс повторного ревью, п.1: активный токен сменился — обязаны
+      // перевывести `me` СРАЗУ под новым токеном (см. докблок fetchMe), а не
+      // оставлять кэш воркера с личностью старого аккаунта. Достижимая
+      // последовательность без этой строки: вкладка 1 переключается A → B и
+      // перезагружается, вкладка 2 (жива, держит SharedWorker) остаётся с
+      // кэшем A; пользователь меняет аватар из вкладки 2 →
+      // profileManager.addPhoto мерджит {...A, avatarUrl} → rt:me →
+      // проектор перезаписывает `me` (имя/username/телефон/meId) личностью A
+      // ВО ВСЕХ вкладках, хотя обе уже под B.
+      await fetchMe()
       return true
     },
     // «Добавить аккаунт»: текущий остаётся в реестре, активный токен снимается —
     // после reload покажется экран входа; новый вход добавит ещё один аккаунт.
     async addAccount(): Promise<void> {
       await store.clear()
+      // Активный токен снят — активного пользователя больше нет, тем же
+      // инвариантом, что у switchAccount/deleteAccount/logout выше.
+      onMeChanged?.(null)
     },
   }
 }

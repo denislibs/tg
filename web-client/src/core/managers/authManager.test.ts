@@ -1,6 +1,17 @@
-import { describe, it, expect, vi } from 'vitest'
+// fake-indexeddb — нужна только для switchAccount()/deleteAccount() ниже: они
+// реально ищут аккаунт через ../auth/accounts (listAccounts/tokenOf/
+// removeAccount), а те тихо деградируют до пустого списка без реального IDB
+// (см. accounts.ts). Остальные тесты файла (сигнатура AuthDeps не меняется)
+// работали и без полифилла — деградация давала им пустой список аккаунтов,
+// тот же результат, что и свежая IDBFactory ниже.
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { newAuthManager, type AuthDeps } from './authManager'
 import { HttpError } from '../net/restClient'
+import { upsertAccount } from '../auth/accounts'
+
+beforeEach(() => { indexedDB = new IDBFactory() })
 
 function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }> = {}) {
   let token: string | null = overrides.token ?? null
@@ -55,6 +66,28 @@ describe('AuthManager', () => {
     await expect(auth.me()).resolves.toBeNull()
   })
 
+  // Фикс повторного ревью, п.6: раньше me() (прогрев/loadChats) НЕ обновляла
+  // кэш воркера вовсе — только явные RPC-мутации/вход. Профиль, изменённый в
+  // обход этого воркера (другая сессия того же аккаунта), не долетал бы до
+  // кэша: следующая мутация профиля смерджила бы поверх устаревшего снимка и
+  // разослала бы его всем вкладкам, затерев уже показанное свежее значение.
+  it('me() зовёт onMeChanged со свежим пользователем при успехе', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps({ token: 'TOK' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+    const u = await auth.me()
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(u)
+  })
+
+  it('me() без токена НЕ зовёт onMeChanged (не новая информация с сервера)', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps()
+    const auth = newAuthManager({ ...d, onMeChanged })
+    await auth.me()
+    expect(onMeChanged).not.toHaveBeenCalled()
+  })
+
   it('logout clears the token; me() then null', async () => {
     const { d, token } = deps({ token: 'TOK' })
     const auth = newAuthManager(d)
@@ -80,6 +113,94 @@ describe('AuthManager', () => {
     const { d } = deps({ token: 'TOK' })
     const auth = newAuthManager(d)
     await expect(auth.logout()).resolves.toEqual({ switched: false })
+  })
+
+  // Фикс повторного ревью, п.1/п.2: logout() с остающимся аккаунтом — это
+  // смена активного токена, не логаут. Раньше эта ветка звала
+  // onMeChanged(null) — ложный сигнал «никто не вошёл» всем вкладкам, хотя
+  // сессия B жива. Теперь — fetchMe() под НОВЫМ токеном, тот же результат,
+  // что видит и сама эта вкладка после reload.
+  it('logout() с остающимся аккаунтом зовёт onMeChanged свежим пользователем НОВОГО токена, не null', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onMeChanged = vi.fn()
+    const { d, token } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    const r = await auth.logout()
+
+    expect(r).toEqual({ switched: true })
+    expect(token()).toBe('TOK_B') // переключились на оставшийся аккаунт
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).not.toHaveBeenCalledWith(null)
+  })
+
+  // Фикс повторного ревью, п.1: switchAccount() менял только токен — кэш
+  // воркера оставался с личностью СТАРОГО аккаунта до следующей мутации
+  // профиля, которая смерджила бы и разослала бы её всем вкладкам вместо
+  // личности того, на кого реально переключились.
+  it('switchAccount() перевыводит `me` под новым токеном', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onMeChanged = vi.fn()
+    const { d, token } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    const ok = await auth.switchAccount(2)
+
+    expect(ok).toBe(true)
+    expect(token()).toBe('TOK_B')
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).not.toHaveBeenCalledWith(null)
+  })
+
+  it('switchAccount() с неизвестным id — false, onMeChanged не зовётся', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+    await expect(auth.switchAccount(999)).resolves.toBe(false)
+    expect(onMeChanged).not.toHaveBeenCalled()
+  })
+
+  // deleteAccount(): тот же инвариант — с остающимся аккаунтом это тоже смена
+  // активного токена, не логаут.
+  it('deleteAccount() с остающимся аккаунтом зовёт onMeChanged свежим пользователем НОВОГО токена', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onMeChanged = vi.fn()
+    const { d, token } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    const r = await auth.deleteAccount()
+
+    expect(r).toEqual({ switched: true })
+    expect(token()).toBe('TOK_B')
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).not.toHaveBeenCalledWith(null)
+  })
+
+  it('deleteAccount() без остающихся аккаунтов зовёт onMeChanged(null) — настоящий логаут', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps() // без аккаунтов в реестре
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    const r = await auth.deleteAccount()
+
+    expect(r).toEqual({ switched: false })
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(null)
+  })
+
+  // addAccount(): активный токен снимается (готовим экран входа для нового
+  // аккаунта) — тем же инвариантом кэш воркера обязан узнать, что активного
+  // пользователя больше нет.
+  it('addAccount() зовёт onMeChanged(null) — активный токен снят', async () => {
+    const onMeChanged = vi.fn()
+    const { d } = deps({ token: 'TOK' })
+    const auth = newAuthManager({ ...d, onMeChanged })
+    await auth.addAccount()
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(null)
   })
 
   // Фикс ревью п.2 (Stage 1C.2, Task 1): вход заводит сессию через persist() —
