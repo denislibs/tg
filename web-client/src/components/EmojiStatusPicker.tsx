@@ -28,6 +28,12 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
   const set = async (emoji: string) => {
     try {
       const user = await managers.profile.setEmojiStatus(emoji)
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // попап закрывается сразу, ждать rt:me из воркера — заметная задержка
+      // отклика. Воркер (profileManager.setEmojiStatus → onMeChanged) ТОЖЕ
+      // разошлёт тот же снимок остальным вкладкам — повторное применение здесь
+      // идемпотентно, флика не даёт.
       setMe(user)
     } finally {
       onClose()

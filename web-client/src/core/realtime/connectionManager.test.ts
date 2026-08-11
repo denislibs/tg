@@ -166,3 +166,73 @@ describe('ConnectionManager', () => {
     })
   })
 })
+
+// Бэклог этапа 2.1, п.4: markRead раньше слался без дедупа — источником был
+// только троттленный скролл, терпимо. С пересчётом после КАЖДОЙ тихой записи
+// scrollTop (Task 4) один и тот же upToSeq мог уйти десятками кадров подряд на
+// медиа-тяжёлом открытии чата.
+describe('ConnectionManager.markRead — дедуп по upToSeq', () => {
+  it('два подряд markRead с одинаковым upToSeq — один кадр', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markRead(1, 5)
+    cm.markRead(1, 5)
+
+    expect(ws.frames.filter(f => f.t === 'read')).toHaveLength(1)
+    expect(ws.frames.find(f => f.t === 'read')?.d).toEqual({ chat_id: 1, up_to_seq: 5 })
+  })
+
+  it('markRead с бо́льшим upToSeq для того же чата — второй кадр', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markRead(1, 5)
+    cm.markRead(1, 7)
+
+    const reads = ws.frames.filter(f => f.t === 'read')
+    expect(reads).toHaveLength(2)
+    expect(reads.map(f => f.d)).toEqual([{ chat_id: 1, up_to_seq: 5 }, { chat_id: 1, up_to_seq: 7 }])
+  })
+
+  it('меньший или равный upToSeq после большего — не шлётся (дедуп не только на точное совпадение)', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markRead(1, 7)
+    cm.markRead(1, 5) // меньше уже отправленного — не шлётся
+    cm.markRead(1, 7) // равно уже отправленному — не шлётся
+
+    expect(ws.frames.filter(f => f.t === 'read')).toHaveLength(1)
+  })
+
+  it('дедуп по чату независим — тот же upToSeq в другом чате шлётся', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markRead(1, 5)
+    cm.markRead(2, 5)
+
+    const reads = ws.frames.filter(f => f.t === 'read')
+    expect(reads).toHaveLength(2)
+    expect(reads.map(f => f.d)).toEqual([{ chat_id: 1, up_to_seq: 5 }, { chat_id: 2, up_to_seq: 5 }])
+  })
+
+  it('реконнект сбрасывает дедуп — тот же upToSeq после разрыва шлётся заново (кадр read не подтверждается outbox-ом)', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markRead(1, 5)
+    ws.fireClose()
+    vi.advanceTimersByTime(1000) // backoff elapses → reconnect
+    ws.fireOpen()
+    cm.markRead(1, 5) // тот же рубеж — но предыдущая отправка могла не дойти
+
+    expect(ws.frames.filter(f => f.t === 'read')).toHaveLength(2)
+  })
+})

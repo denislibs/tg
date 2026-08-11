@@ -79,6 +79,33 @@ export const RT = {
   // расхождение с tweb — см. докблок onSyncEnd в syncEngine.ts).
   stateSynchronizing: 'rt:state_synchronizing',
   stateSynchronized: 'rt:state_synchronized',
+  // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец
+  // (workerCore.ts::setMe). Публикуется на старте (tokens.ready → auth.me) и
+  // после каждой RPC-мутации профиля/премиума/логаута; payload — полный
+  // User | null (null — разлогинен). storeProjection зеркалит в chatsStore.setMe.
+  // Это канал ЗНАЧЕНИЯ, а не намерения: по нему нельзя отличить «сменили
+  // аккаунт» от «вышли» — для этого есть rt:logging_out ниже.
+  me: 'rt:me',
+  // Stage 1C.2 (Task 1, раунд 4): НАМЕРЕНИЕ перехода активной сессии. Порт
+  // tweb `logging_out` (`lib/rootScope.ts:191` — `{accountNumber?,
+  // migrateTo?}`, шлёт `appManagers/apiManager.ts:335`, принимает
+  // `apiManagerProxy.ts:508` → `onLoggedOut`): владелец сессии сам объявляет,
+  // ЧТО происходит, а вкладки не выводят это из снимка пользователя.
+  // `migrateTo` — id аккаунта, на который переехала активная сессия (у tweb —
+  // номер слота 1..4, у нас id пользователя), `null` — активного аккаунта не
+  // осталось (логаут, удаление последнего, «добавить аккаунт», отозванная
+  // сессия). Публикует authManager (единственный владелец активного токена),
+  // рассылает workerCore всем вкладкам, включая инициатора.
+  loggingOut: 'rt:logging_out',
+  // Второй, симметричный кадр того же владельца — порт tweb `account_logged_in`
+  // (`lib/rootScope.ts:211` — `{accountNumber, userId}`, шлёт
+  // `appManagers/apiManagerMethods.ts:78` из `setUser()`, тоже общий для всех
+  // вкладок: `apiManagerProxy.ts:332` в commonEventNames). Публикует
+  // authManager из persist() — единой точки всех семи путей входа. `userId` —
+  // кто вошёл; реакция вкладки по нему НЕ разветвляется: любой успешный вход
+  // выдаёт НОВЫЙ активный токен, включая повторный вход того же пользователя,
+  // так что переход одинаков в любом случае (см. useAuthGate).
+  loggedIn: 'rt:logged_in',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

@@ -8,7 +8,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import StickyIntersector from './stickyIntersector'
-import { observeNewSections, pickStickyDateKey } from './chatStickyDates'
+import { observeNewSections, pickStickyDateKey, pruneEvictedSections } from './chatStickyDates'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
@@ -1121,11 +1121,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Новые дата-секции (загрузка страницы истории, новое сообщение сменило
   // день) — наблюдаем только те, что ещё не видели; уже наблюдаемые трогать
-  // нельзя (см. комментарий выше).
+  // нельзя (см. комментарий выше). Перед этим — секции, которых больше нет в
+  // DOM (jumpTo/reloadNewest подменяют win.msgs целиком, см.
+  // chatStickyDates.ts's pruneEvictedSections): снять с обоих observer'ов и
+  // вычистить из реестров, иначе они удерживаются бессрочно (утечка).
   useEffect(() => {
     const inner = contentRef.current
     const intersector = stickyIntersectorRef.current
     if (!inner || !intersector) return
+    pruneEvictedSections(inner, intersector, stickyObservedRef.current, stuckSectionsRef.current)
     observeNewSections(inner, intersector, stickyObservedRef.current)
   }, [contentRef, feedMsgs, feedLoading])
 

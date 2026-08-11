@@ -105,7 +105,26 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       // Add to the profile-photo gallery; the backend promotes it to the current
       // avatar, so we reflect the new avatar_url in the store optimistically.
       const photo = await managers.profile.addPhoto(mediaId)
-      if (me) setMe({ ...me, avatarUrl: photo.url })
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // кроппер закрывается сразу — ждать rt:me из воркера заметно замедлило бы
+      // отклик. Воркер (profileManager.addPhoto → onMeChanged, тот же merge
+      // {...me, avatarUrl}) ТОЖЕ разошлёт снимок остальным вкладкам —
+      // повторное применение здесь идемпотентно, флика не даёт.
+      // Читаем useChatsStore.getState() здесь, а не замыкание рендера, где
+      // вызван onCropConfirm — так короче писать, но ЗАЩИТЫ от гонки это
+      // почти не даёт (повторное ревью): broadcast профиля уходит внутри
+      // менеджера ДО ответа RPC, кадры идут одним портом по порядку — к
+      // моменту, когда этот код выполнится, проектор обычно уже успел
+      // положить в стор тот же мердж, так что «свежее» здесь и «из замыкания»
+      // почти всегда совпадают. Настоящая защита от чужого-устаревшего
+      // мерджа — не здесь, а в authManager.ts: fetchMe() публикует свежего
+      // пользователя на КАЖДЫЙ успешный /me (не только явные мутации),
+      // поэтому кэш ВОРКЕРА (который реально мерджит profileManager.addPhoto)
+      // не протухает даже если профиль поменяли с другого устройства между
+      // loadChats() и этим addPhoto — см. task-1-report.md.
+      const cur = useChatsStore.getState().me
+      if (cur) setMe({ ...cur, avatarUrl: photo.url })
     } finally {
       setUploading(false)
     }
@@ -151,7 +170,10 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       const videoBytes = await file.arrayBuffer()
       const videoId = await managers.media.upload({ bytes: videoBytes, mime: file.type, size: file.size, width: w, height: h, duration })
       const photo = await managers.profile.addPhoto(posterId, videoId)
-      if (me) setMe({ ...me, avatarUrl: photo.url })
+      // Оптимистичное исключение — то же обоснование, что у onCropConfirm выше
+      // (включая то, чего чтение стора здесь НЕ гарантирует — см. комментарий там).
+      const cur = useChatsStore.getState().me
+      if (cur) setMe({ ...cur, avatarUrl: photo.url })
     } catch {
       setAvatarError(t('Could not process this video.'))
     } finally {
@@ -184,6 +206,12 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         birthday,
         phoneVisibility: phoneVis,
       })
+      // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
+      // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
+      // экран сразу закрывается (onBack) — ждать rt:me из воркера заметно
+      // замедлило бы отклик. Воркер (profileManager.update → onMeChanged) ТОЖЕ
+      // разошлёт тот же снимок остальным вкладкам — повторное применение здесь
+      // идемпотентно, флика не даёт.
       setMe(updated)
       onBack()
     } catch {

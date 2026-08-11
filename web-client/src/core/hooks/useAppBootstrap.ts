@@ -19,7 +19,7 @@ import { startRealtime } from '../../client/realtimeBridge'
 import { setupPush } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
-import { bootData } from '../../client/bootData'
+import { bootPrefetch } from '../../client/bootData'
 
 export function useAppBootstrap(): void {
   const managers = useManagers()
@@ -28,9 +28,11 @@ export function useAppBootstrap(): void {
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
     // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
     const run = () => {
-      // Префетч (me/listDialogs из main.tsx) переиспользуем только если старт был
-      // НЕ под локом — иначе это пустышки, тянем свежие (см. bootData.locked).
-      const prefetch = bootData && !bootData.locked ? { me: bootData.me, dialogs: bootData.dialogs } : undefined
+      // Префетч (me/listDialogs из main.tsx) берём ТОЛЬКО через bootPrefetch():
+      // он одноразовый по смыслу (данные аккаунта, под которым страница
+      // загрузилась), а этот эффект отрабатывает заново на каждое монтирование
+      // Shell — см. докблок bootPrefetch. null → идём в сеть под текущим токеном.
+      const prefetch = bootPrefetch() ?? undefined
       void loadChats(managers, prefetch).then(() => loadPresence(managers))
       void loadStories(managers)
       void loadNotifySettings(managers)
