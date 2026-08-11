@@ -30,6 +30,7 @@ import { RT } from '../realtime/events'
 import type { User } from '../managers/authManager'
 import { useAppStateStore, setAppState } from '../../stores/appState'
 import { useChatsStore } from '../../stores/chatsStore'
+import { bootPrefetch, setBootData } from '../../client/bootData'
 
 const ME: User = {
   id: 1, phone: '+7', username: null, firstName: 'Д', lastName: '', displayName: 'Д',
@@ -207,6 +208,80 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     await act(async () => { result.current.logout(); await Promise.resolve() })
 
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  // Critical: обе достижимые последовательности порчи `me`/чатов префетчем
+  // ПРОШЛОГО аккаунта. Общий корень — префетч старта одноразовый по смыслу, но
+  // живёт до перезагрузки, а Shell монтируется заново на каждое
+  // authed: false → true (App.tsx), вместе с ним useAppBootstrap. Пинится
+  // наблюдаемо: после перехода bootPrefetch() обязан отдавать null, иначе
+  // повторный loadChats запишет личность и чаты прошлого аккаунта поверх
+  // только что приехавшего rt:me нового.
+  describe('префетч старта не переживает смену сессии', () => {
+    const prefetch = { me: Promise.resolve(null), dialogs: Promise.resolve([]) }
+    const boot = () => setBootData({ ...prefetch, hydratedFromCache: false, hasToken: true, locked: false })
+
+    it('кросс-табовый: «добавить аккаунт» в соседней вкладке, затем вход там же', () => {
+      boot()
+      const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+
+      // соседняя вкладка нажала «Добавить аккаунт» — эта уходит на экран входа
+      act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+      expect(bootPrefetch()).toBeNull()
+
+      // там же вошли под другим аккаунтом — Shell поднимется БЕЗ перезагрузки
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+      expect(result.current.authed).toBe(true)
+      expect(bootPrefetch()).toBeNull() // useAppBootstrap пойдёт в сеть, а не в префетч A
+    })
+
+    // Тот же дефект существовал и до появления кадров: логаут без остающихся
+    // аккаунтов намеренно обходится без перезагрузки, поэтому вход в той же
+    // жизни страницы переигрывал useAppBootstrap с тем же протухшим префетчем.
+    it('локальный: логаут без остающихся аккаунтов, затем вход в той же жизни страницы', () => {
+      boot()
+      renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+
+      act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.id }) })
+
+      expect(bootPrefetch()).toBeNull()
+    })
+
+    // Третий вход в тот же дефект, где кадра ухода эта вкладка не видела
+    // вовсе: её открыли, когда сессии уже не было (boot без токена), и вошли в
+    // другой вкладке. Префетч тут разрешён пустышками «нет сессии» — повторный
+    // loadChats записал бы me=null и пустой список поверх приехавшего rt:me.
+    it('вкладка, открытая уже на экране входа: вход в соседней (кадра ухода не было)', () => {
+      setBootData({ ...prefetch, hydratedFromCache: false, hasToken: false, locked: false })
+      const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+      expect(result.current.authed).toBe(false) // boot без токена
+
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.id }) })
+
+      expect(result.current.authed).toBe(true)
+      expect(bootPrefetch()).toBeNull()
+    })
+  })
+
+  // Important: успешный логаут без остающихся аккаунтов обязан обойтись БЕЗ
+  // перезагрузки — Shell снимается через authed=false. Именно поэтому logout()
+  // не переведён на общую точку commandThenReload (она перезагружает при любом
+  // исходе); без этого пина подмена тела на неё проходила зелёной.
+  it('успешный логаут без остающихся аккаунтов не перезагружает вкладку', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    const managers = {
+      auth: { me: () => new Promise<null>(() => {}), logout: vi.fn().mockResolvedValue({ switched: false }) },
+      persist: { clearAll: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as Managers
+    const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.login() })
+    await act(async () => { result.current.logout(); await Promise.resolve() })
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+
+    expect(result.current.authed).toBe(false)
+    expect(reload).not.toHaveBeenCalled()
   })
 
   // Фикс минорного пункта ревью: старая версия этого теста («размонтирование

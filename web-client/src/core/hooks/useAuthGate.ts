@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
-import { bootData } from '../../client/bootData'
+import { bootData, bootPrefetch, invalidateBootPrefetch } from '../../client/bootData'
 import { clearDialogsPersist } from '../../stores/dialogsPersist'
 import { resetAppState } from '../../stores/appState'
 import { resetStateCache } from '../state/loadState'
@@ -56,7 +56,7 @@ export function useAuthGate(): AuthGate {
     // подтверждаем сессию сразу после unlock. Префетч bootData.me переиспользуем
     // только если старт был не под локом — иначе это пустышка, тянем свежий me().
     const confirm = () => {
-      ;((bootData && !bootData.locked && bootData.me) || managers.auth.me())
+      ;(bootPrefetch()?.me ?? managers.auth.me())
         .then((u) => {
           if (u) setAuthed(true)
           else { setAuthed(false); void clearDialogsPersist(managers) } // сессия истекла — сбрасываем персист
@@ -105,6 +105,9 @@ export function useAuthGate(): AuthGate {
     // команды, а не после, и их собственный reload после уже идущей навигации
     // — no-op.
     const onLoggingOut = ({ migrateTo }: { migrateTo: number | null }) => {
+      // Активный токен под страницей уже не тот, при котором поднимали префетч
+      // старта, — обесценить его ДО любой реакции (см. докблок bootPrefetch).
+      invalidateBootPrefetch()
       if (migrateTo !== null) { location.reload(); return }
       void clearDialogsPersist(managers)
       resetAccountStateInMemory()
@@ -117,9 +120,13 @@ export function useAuthGate(): AuthGate {
     // ровно как у tweb `onLoggedOut`, который сверяет payload со своим
     // `getCurrentAccount()` (`apiManagerProxy.ts:565-585`):
     //  - вкладка была на экране входа (`authed === false`) — просто поднимаем
-    //    Shell. Это в точности то, что делает login() ниже у вкладки, которая
-    //    сама вошла: обе стартовали boot без токена, обе догружают чаты/State
-    //    сетью, разницы между ними нет. Перезагружать незачем.
+    //    Shell, ровно как login() ниже у вкладки, которая вошла сама.
+    //    Перезагружать незачем: всё, чем эта вкладка отличается от вошедшей, —
+    //    префетч старта, поднятый под ПРОШЛЫМ токеном (она-то страницу не
+    //    перезагружала), и он обесценен строкой ниже. Остальное монтирующийся
+    //    Shell догружает сетью под текущим токеном, а конфиг/диалоги прошлого
+    //    аккаунта из памяти снял `resetAccountStateInMemory` выше, когда эта
+    //    вкладка уходила на экран входа.
     //  - вкладка уже держала сессию (`authed === true`) — под ней сменился
     //    активный токен (её собственный кадр входа сюда попасть не может:
     //    вошедшая вкладка к этому моменту на экране входа). Нужен полноценный
@@ -128,6 +135,11 @@ export function useAuthGate(): AuthGate {
     // НОВЫЙ токен, включая повторный вход того же пользователя, — переход
     // одинаков в обоих случаях.
     const onLoggedIn = () => {
+      // То же, что и на уходе: сессия сменилась — префетч старта недействителен.
+      // Здесь это прямо обязательное условие ветки ниже: она поднимает Shell БЕЗ
+      // перезагрузки, то есть useAppBootstrap отработает повторно в той же жизни
+      // страницы и без этой строки взял бы префетч ПРОШЛОГО аккаунта.
+      invalidateBootPrefetch()
       if (authedRef.current) { location.reload(); return }
       setAuthed(true)
     }

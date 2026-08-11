@@ -164,8 +164,9 @@ interface SignInWire {
 export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLoggedIn }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
-  // signImport/passkeyLoginFinish/qrStatus(confirmed) — все шесть путей входа
-  // заводят сессию через неё.
+  // signImport/passkeyLoginFinish/qrStatus(confirmed) — все семь путей входа
+  // заводят сессию через неё (вызовов persist() шесть: signIn и signImport
+  // делят общий toOutcome).
   const persist = async (token: string, u: User) => {
     await store.set(token)
     await upsertAccount({
