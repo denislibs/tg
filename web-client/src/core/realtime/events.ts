@@ -66,6 +66,12 @@ export const RT = {
   storyDeleted: 'rt:story_deleted',
   storyReaction: 'rt:story_reaction',
   state: 'rt:state',
+  // tweb apiUpdatesManager.ts:459-467 (state_synchronizing/state_synchronized) —
+  // начало/конец catch-up (/sync), пара для индикатора «Обновление…» в поиске
+  // (порт ConnectionStatusComponent, Задача 1). syncEngine.catchUp() гарантирует
+  // парность: «конец» уходит и по успеху, и по ошибке catch-up'а.
+  stateSynchronizing: 'rt:state_synchronizing',
+  stateSynchronized: 'rt:state_synchronized',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

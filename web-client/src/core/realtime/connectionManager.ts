@@ -10,7 +10,10 @@ export interface CMDeps {
   ws: Transport
   getToken: () => string | null
   onReady: () => void
-  onState: (s: ConnState) => void
+  // retryAt — момент следующей попытки (tweb connectionStatus.ts:110, поле status.retryAt),
+  // передаётся вторым аргументом ТОЛЬКО когда есть (scheduleReconnect); остальные переходы
+  // состояния зовут onState одним аргументом — так же, как раньше.
+  onState: (s: ConnState, retryAt?: number) => void
   onFrame: (type: string, payload: unknown) => void // new_message/read/typing/presence/reaction/message_ack
   /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
    * page reload and are resent on the next connect. */
@@ -40,7 +43,14 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   let missedPongs = 0
   let wired = false
 
-  const setState = (s: ConnState) => { state = s; onState(s) }
+  // Арность вызова onState сохраняется как раньше (один аргумент), когда retryAt не
+  // задан — это держит совместимость с существующими проверками
+  // `toHaveBeenCalledWith('ready')` (connectionManager.test.ts) без их правки.
+  const setState = (s: ConnState, retryAt?: number) => {
+    state = s
+    if (retryAt !== undefined) onState(s, retryAt)
+    else onState(s)
+  }
 
   function wireOnce() {
     if (wired) return
@@ -81,9 +91,11 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   function stopHeartbeat() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null } }
 
   function scheduleReconnect() {
-    setState('reconnecting')
     const base = Math.min(MAX_BACKOFF, 500 * 2 ** attempt++)
     const delay = base / 2 + Math.floor(Math.random() * (base / 2 + 1)) // jitter
+    // tweb connectionStatus.ts:110-111 — витрина рисует по retryAt обратный отсчёт
+    // «Переподключение через N»; раньше delay считался и терялся (см. план задачи).
+    setState('reconnecting', Date.now() + delay)
     reconnectTimer = setTimeout(connect, delay)
   }
 

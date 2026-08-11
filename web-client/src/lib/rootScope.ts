@@ -79,7 +79,14 @@ export type BroadcastEvents = {
   [RT.storyNew]: [StoryNewEvt]
   [RT.storyDeleted]: [StoryDeletedEvt]
   [RT.storyReaction]: [StoryReactionEvt]
-  [RT.state]: [{ state: ConnState }]
+  // retryAt (Задача 1 порта ConnectionStatusComponent) — момент следующей попытки
+  // реконнекта (мс, Date.now()), присутствует только при переходе в 'reconnecting'
+  // с уже вычисленным backoff'ом (connectionManager.ts:scheduleReconnect).
+  [RT.state]: [{ state: ConnState; retryAt?: number }]
+  // tweb apiUpdatesManager.ts:459-467 (state_synchronizing/state_synchronized) —
+  // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
+  [RT.stateSynchronizing]: [null]
+  [RT.stateSynchronized]: [null]
 
   // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
   //    клиентские события — вне funnel'а сервера, meta не несут ──

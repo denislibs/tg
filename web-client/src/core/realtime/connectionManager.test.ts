@@ -99,4 +99,35 @@ describe('ConnectionManager', () => {
     expect(saved[saved.length - 1]).toHaveLength(0)
     expect(cm.outboxSize()).toBe(0)
   })
+
+  // Задача 1 (порт ConnectionStatusComponent из tweb): scheduleReconnect считал
+  // delay и терял его — retryAt должен уйти вторым аргументом onState вместе с
+  // состоянием 'reconnecting', чтобы витрина умела рисовать обратный отсчёт
+  // (tweb connectionStatus.ts:110-111).
+  it('publishes retryAt in the future when scheduling a reconnect after a real connection drop', () => {
+    const ws = fakeWs()
+    const onState = vi.fn()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState, onFrame: () => {} })
+    cm.start(); ws.fireOpen() // reach 'ready' first — a close only reconnects when state !== 'offline'
+    onState.mockClear()
+    const before = Date.now()
+
+    ws.fireClose()
+
+    const reconnectingCalls = onState.mock.calls.filter(([s]) => s === 'reconnecting')
+    expect(reconnectingCalls).toHaveLength(1)
+    const [, retryAt] = reconnectingCalls[0]
+    expect(typeof retryAt).toBe('number')
+    expect(retryAt as number).toBeGreaterThan(before)
+  })
+
+  // Транзиции без пересчитанного backoff (ready/connecting) не несут retryAt — та
+  // же арность вызова, что была до Задачи 1 (см. коммент у setState).
+  it('does not attach retryAt to a plain "ready" transition', () => {
+    const ws = fakeWs()
+    const onState = vi.fn()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+    expect(onState).toHaveBeenCalledWith('ready')
+  })
 })

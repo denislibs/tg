@@ -237,6 +237,13 @@ export function createWorkerCore() {
     // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
     // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
     onResync: () => { funnel.clear(); channelFunnel.reset(); broadcast('rt:resync', null) },
+    // Задача 1 (порт ConnectionStatusComponent из tweb): пара rt:state_synchronizing/
+    // synchronized — автомат витрины (Задача 3) переключает текст «Обновление…» на
+    // время catch-up'а. Проводка проверена workerCore.connectionStatus.test.ts
+    // (перехватывает эти колбэки в реальном syncEngine и ловит их выполнение на
+    // подключённой вкладке через broadcast).
+    onSyncStart: () => broadcast(RT.stateSynchronizing, null),
+    onSyncEnd: () => broadcast(RT.stateSynchronized, null),
   })
   // Единый (пер-юзерный) funnel — арифметика dup/next/gap + буфер придержанных кадров
   // (Wave 3), вынесенная в модуль с явными зависимостями (Task 1). dispatch остаётся
@@ -260,7 +267,10 @@ export function createWorkerCore() {
     // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
     // если pts совпал).
     onReady: () => { void cursor.ready() },
-    onState: (s) => broadcast(RT.state, { state: s }),
+    // retryAt (Задача 1): scheduleReconnect зовёт onState с ВТОРЫМ аргументом только
+    // при реконнекте (connectionManager.ts) — здесь он просто прокидывается дальше в
+    // payload. Проверено workerCore.connectionStatus.test.ts.
+    onState: (s, retryAt) => broadcast(RT.state, { state: s, retryAt }),
     onFrame: (type, payload) => {
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.

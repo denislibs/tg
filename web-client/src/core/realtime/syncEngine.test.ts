@@ -69,4 +69,45 @@ describe('SyncEngine.catchUp', () => {
     await p
     expect(se.isSyncing()).toBe(false)
   })
+
+  // Задача 1 (порт ConnectionStatusComponent): аналог tweb state_synchronizing/
+  // state_synchronized — начало и конец catch-up ровно по разу на успешный прогон.
+  it('onSyncStart/onSyncEnd fire exactly once each on a successful catch-up', async () => {
+    const rest = fakeRest([{ new_messages: [], other_updates: [], state: { pts: 1, date: 1 }, slice: false }])
+    const onSyncStart = vi.fn(); const onSyncEnd = vi.fn()
+    const se = newSyncEngine({ rest, cursor: fakeCursor(), onUpdate: vi.fn(), onResync: vi.fn(), onSyncStart, onSyncEnd })
+    await se.catchUp()
+    expect(onSyncStart).toHaveBeenCalledTimes(1)
+    expect(onSyncEnd).toHaveBeenCalledTimes(1)
+  })
+
+  // Пара не должна залипать: если /sync упал с ошибкой, «конец» обязан прийти
+  // всё равно — иначе автомат витрины (Задача 3) навсегда застрянет в
+  // «синхронизирую» (см. докблок onSyncEnd в syncEngine.ts).
+  it('onSyncEnd still fires when the catch-up rejects (no stuck "synchronizing")', async () => {
+    const rest = { get: vi.fn(async () => { throw new Error('network down') }) } as never
+    const onSyncStart = vi.fn(); const onSyncEnd = vi.fn()
+    const se = newSyncEngine({ rest, cursor: fakeCursor(), onUpdate: vi.fn(), onResync: vi.fn(), onSyncStart, onSyncEnd })
+    await expect(se.catchUp()).rejects.toThrow('network down')
+    expect(onSyncStart).toHaveBeenCalledTimes(1)
+    expect(onSyncEnd).toHaveBeenCalledTimes(1)
+    expect(se.isSyncing()).toBe(false)
+  })
+
+  // Вызовы catchUp() во время уже идущего прогона схлопываются в один run() (см.
+  // `if (running) return running`) — start/end тоже должны быть по разу, а не по
+  // разу на каждый вызов catchUp().
+  it('concurrent catchUp() calls share one run — start/end still fire exactly once', async () => {
+    let resolveGet: ((v: Page) => void) | null = null
+    const rest = { get: vi.fn(() => new Promise<Page>((r) => { resolveGet = r })) } as never
+    const onSyncStart = vi.fn(); const onSyncEnd = vi.fn()
+    const se = newSyncEngine({ rest, cursor: fakeCursor(), onUpdate: vi.fn(), onResync: vi.fn(), onSyncStart, onSyncEnd })
+    const p1 = se.catchUp()
+    await vi.waitFor(() => expect(resolveGet).not.toBeNull())
+    const p2 = se.catchUp()
+    resolveGet!({ new_messages: [], other_updates: [], state: { pts: 0, date: 0 }, slice: false })
+    await Promise.all([p1, p2])
+    expect(onSyncStart).toHaveBeenCalledTimes(1)
+    expect(onSyncEnd).toHaveBeenCalledTimes(1)
+  })
 })
