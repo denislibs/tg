@@ -145,6 +145,21 @@ describe('mediaUrl — зеркало токена владельца', () => {
     expect(tokenInfo).toHaveBeenCalled()
   })
 
+  // Окно безопасности зеркала (URL_SAFETY_MARGIN). Не второе расписание —
+  // обновляет владелец; это запас на полёт запроса для случая, когда кадр
+  // обновления потерялся (упал плановый перезапрос владельца — он переарминает
+  // таймер только на успехе; или у вкладки не поднят насос под passcode-локом).
+  // Пин двусторонний: снятие запаса красит первый ассерт, раздувание — второй.
+  it('токен на последних секундах жизни не годен для сборки URL, а с запасом — годен', () => {
+    m.applyMediaToken({ token: 'almost-dead', expiresAt: Date.now() + 30_000 })
+    expect(m.hasMediaToken()).toBe(false)
+    m.mediaContentUrl(3)
+    expect(tokenInfo).toHaveBeenCalled() // это состояние само тянет свежий токен
+
+    m.applyMediaToken({ token: 'live', expiresAt: Date.now() + 90_000 })
+    expect(m.hasMediaToken()).toBe(true)
+  })
+
   // Параллельные баблы на одном кадре не должны порождать N запросов к воркеру.
   it('параллельные запросы склеиваются в один поход к владельцу', async () => {
     await Promise.all([m.primeMediaToken(), m.primeMediaToken(), m.primeMediaToken()])
