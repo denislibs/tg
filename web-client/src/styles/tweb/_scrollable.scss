@@ -51,6 +51,14 @@ html.custom-scroll {
     height: 0;
   }
 
+  // Финальное ревью ветки (I-4): интерактивность пальца включаем ТОЛЬКО здесь,
+  // вместе с его единственной точкой видимости (см. `pointer-events: none` на
+  // базовом `&-thumb` ниже и обоснование там) — под `html.custom-scroll` палец
+  // и виден, и кликабелен, ровно как в tweb.
+  .scrollable-thumb {
+    pointer-events: auto;
+  }
+
   .scrollable:hover .scrollable-thumb,
   .scrollable-thumb.is-focused {
     opacity: 1;
@@ -171,6 +179,23 @@ html.custom-scroll {
     opacity: 0;
     border-radius: $border-radius;
     // z-index: 5;
+
+    // Финальное ревью ветки (I-4, отступление от дословности — обоснование
+    // здесь, а не молча): `Scrollable`'s конструктор (components/scrollable.ts)
+    // создаёт этот узел на ЛЮБОЙ платформе без overlay-скролла
+    // (`!IS_OVERLAY_SCROLL_SUPPORTED()`), независимо от того, ставим ли мы
+    // `html.custom-scroll` на `<html>` — а мы намеренно НЕ ставим (см. TODO в
+    // `core/dom/rootClasses.ts`: инстансов `Scrollable` в приложении пока
+    // один). Без `html.custom-scroll` opacity выше никогда не станет 1
+    // (единственный переключатель — `html.custom-scroll .scrollable:hover
+    // .scrollable-thumb`/`.is-focused`, см. ниже) — но `opacity: 0` НЕ снимает
+    // hit-testing, значит на правом краю ленты чата постоянно висела бы
+    // невидимая, но кликабельная 5px-полоса, перехватывающая mousedown у
+    // выделения текста. `pointer-events: none` здесь — палец декоративный,
+    // пока не включён `custom-scroll`; `auto` возвращается вместе с
+    // видимостью (`html.custom-scroll .scrollable-thumb`, см. выше) — оба
+    // свойства меняются синхронно с одним и тем же переключателем.
+    pointer-events: none;
 
     @include animation-level(2) {
       transition: opacity .1s ease-in-out;

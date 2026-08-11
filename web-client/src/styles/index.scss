@@ -219,3 +219,16 @@ samp {
   width: 100%;
   height: 100%;
 }
+
+// tweb base.scss:986-992 — базовое правило сентинел-узлов components/stickyIntersector.ts
+// (наши: src/components/stickyIntersector.ts). Без position:absolute здесь `top: 0` из
+// `_chatBubble.scss` .sticky_sentinel--top (position он не переопределяет) игнорируется:
+// сентинел остаётся блоком в потоке, в конце дата-секции, а не невидимой полоской у её
+// верха — и headersObserver перестаёт видеть пересечение с верхней границей root.
+.sticky_sentinel {
+  position: absolute;
+  left: 0;
+  right: 0; /* needs dimensions */
+  visibility: hidden;
+  pointer-events: none;
+}

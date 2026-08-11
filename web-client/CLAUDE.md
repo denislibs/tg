@@ -206,6 +206,72 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 - Язык блока кода = текст **до первого перевода строки** во fence (точное правило tweb), не угадывать по содержимому.
 - Большая вставка — одним text-node через Range, **не** `execCommand('insertText', …)` (иначе фриз на тысячах нод).
 
+## Скролл
+
+Этап 2.1 заменил самодельные скролл-механики портированными из tweb 1:1. Позицией
+скролла владеют:
+
+- **`components/scrollable.ts`** (`Scrollable`/`ScrollableX`, порт
+  `TWEB/src/components/scrollable.ts`) — throttled `onScroll`,
+  `onScrolledTop`/`onScrolledBottom` (триггеры пагинации по `onScrollOffset`),
+  `setScrollPositionSilently`/`ignoreNextScrollEvent` (корректирующая запись
+  `scrollTop`, которая не рождает своё же `scroll`-событие — иначе программный
+  пин к низу выглядел бы как ручной скролл пользователя). Пишет `scrollTop` НЕ
+  буквальным присваиванием, а через динамическое свойство
+  (`this.container[this.scrollPositionProperty] = value` — один класс
+  обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован
+  РОВНО в одном месте** — `core/hooks/useChatScroll.ts` (лента сообщений),
+  `grep -rn "new Scrollable(" src` держит это число. `MessageInput.tsx` несёт
+  только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
+  над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
+  чужого инстанса, не свой; как и ещё ~14 других `.scrollable`-элементов
+  приложения (`ChatList`, `EmojiDropdown`/`StickersTab`/`GifsTab`,
+  `MentionsHelper`, `TopbarSearch`, `StoriesRow`, …), это часть TODO в
+  `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
+  задача.
+- **`helpers/scrollSaver.ts`** (`ScrollSaver`, порт `TWEB/src/helpers/scrollSaver.ts`)
+  — сохранение/восстановление позиции при подгрузке контента НАД вьюпортом
+  (`loadOlder`): якорится по `DOMRect` первого видимого сообщения, а не по
+  дельте `scrollHeight` — остаётся верным, если во время доводки резайзится
+  что-то, кроме самого добавленного чанка (например, media ниже по ленте).
+  Подключён в `useChatScroll.ts` (`onScrolledTop` → `save()`, коммит нового
+  окна → `restore()`).
+- **`components/stickyIntersector.ts`** (порт `TWEB/src/components/stickyIntersector.ts`)
+  — sticky-даты в ленте (`components/chatStickyDates.ts`), на IntersectionObserver,
+  не на ручном скролл-листенере.
+- **`helpers/fastSmoothScroll.ts`** (порт `TWEB/src/helpers/fastSmoothScroll.ts`)
+  — JS-анимированный скролл с учётом паузы тяжёлых анимаций
+  (`dispatchHeavyAnimationEvent`); используется `Scrollable.scrollIntoViewNew`.
+  Перевод остальных плавных скроллов приложения (`scrollTo({behavior:'smooth'})`)
+  на него — отдельная, ещё не начатая работа, вне периметра этапа 2.1.
+
+**Единственный владелец прямой (числовой, event-bypassing) записи `scrollTop`
+— Scrollable/ScrollSaver.** Держит `core/scrollWriters.test.ts` (по образцу
+`core/state/noAdHocReads.test.ts` / `stores/noManualOrder.test.ts`): считает
+буквальные `.scrollTop = `/`+=`/`-=`/`*=`/`/=` по исходникам и падает на новом
+писателе или росте числа записей у известного. Обоснованные исключения
+(каждое разобрано и не дублирует Scrollable/ScrollSaver по задаче — тест
+держит их число):
+
+| Файл | Что делает | Почему не через Scrollable/ScrollSaver |
+|---|---|---|
+| `core/hooks/useChatScroll.ts:95` | Фолбэк `setScrollTopSilently` в единственном кадре между монтированием React-узла и коммитом эффекта, создающего `Scrollable` | Как только `scrollableRef.current` появляется, вся корректирующая запись уходит в `Scrollable.setScrollPositionSilently` |
+| `core/dom/smoothScrollToElement.ts:15` | Cap-прыжок перед нативным `scrollTo({behavior:'smooth'})` при центрировании бабла (jump-to-message) | Одноразовая анимация к цели, не хранение/восстановление позиции; свести к `fastSmoothScroll` — отдельная работа (см. выше) |
+| `core/hooks/useSidebarFolders.tsx:59` | Сброс списка чатов на верх при смене таба папки | У нас один общий скролл-контейнер на все папки (не отдельный `.folders-scrollable` на каждую, как в tweb, см. `ChatList.tsx`) — строка замещает то, что tweb получает бесплатно (новый контейнер стартует с `scrollTop=0`); список — не лента с подгрузкой контента |
+| `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
+| `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
+
+**Вне скана `scrollWriters.test.ts` намеренно**: `scrollTo(...)`/`scrollIntoView(...)`
+(по приложению — 12/8 вызовов, восьмой `scrollIntoView` — вендорный
+`helpers/fastSmoothScroll.ts:109`). Это другая категория писателя — нативные API,
+которые сами рождают настоящие `scroll`-события по ходу анимации, поэтому
+`Scrollable.onScroll` видит их как обычный скролл (throttled
+`onAdditionalScroll`/`checkForTriggers` отрабатывают штатно, в т.ч. в самой
+ленте — `useChatScroll.ts`'s `scrollToBottom`/`smoothCenterToSeq`). Они не
+тихие и не конкурируют за корректирующую запись с
+`setScrollPositionSilently`/`ScrollSaver.restore()`, которые тихие по
+построению, — поэтому не тот класс писателя, который держит этот пин.
+
 ## Связь с бэком
 
 - REST + WS через `core/net/*`; реалтайм и outbox — `core/realtime/connectionManager.ts`.

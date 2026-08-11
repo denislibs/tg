@@ -13,7 +13,13 @@
 //
 // Если аватарки-источника нет (или она уехала из своего скроллера), полёта нет:
 // анимируются только сам вьюер и контейнер — opacity 0 → 1 (viewer.tsx:3258-3263).
-import getVisibleRect from '../core/dom/getVisibleRect'
+// Задача 4: переведено на вендорный `@helpers/dom/getVisibleRect` (порт tweb 1:1) —
+// локальный `core/dom/getVisibleRect.ts` удалён. Вызов ниже двухаргументный
+// (element, overflowElement) — совпадает с обеими сигнатурами дословно, разницы
+// нет: используется только `.overflow.horizontal`/`.vertical`, а их булева
+// логика у вендорного идентична старому при lookForSticky/ignoreBoundaries не
+// заданных (оба default undefined ⇒ те же условия `rect.X < oX && oX !== 0`).
+import getVisibleRect from '@helpers/dom/getVisibleRect'
 
 /** tweb viewer.tsx:3199-3202 */
 const DURATION = 250

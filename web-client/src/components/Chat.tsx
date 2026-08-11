@@ -7,6 +7,8 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import StickyIntersector from './stickyIntersector'
+import { observeNewSections, pickStickyDateKey } from './chatStickyDates'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
@@ -1050,37 +1052,90 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // tweb bubbles.ts:4207-4230 — во время скролла на `.bubbles-inner` висит
   // `is-scrolling`, и только тогда липкая дата видна (_chat.scss:1345:
   // `.is-scrolling .is-sticky { opacity: .99999 }`); через 1.35s после
-  // последнего события класс снимается и дата плавно гаснет.
+  // последнего события класс снимается и дата плавно гаснет. Само прилипание
+  // (какая дата is-sticky) считает отдельный эффект ниже, на StickyIntersector.
   useEffect(() => {
     const sc = scrollRef.current
     const inner = contentRef.current
     if (!sc || !inner) return
     let timer: ReturnType<typeof setTimeout> | undefined
-    // Прилипшая дата помечается `is-sticky` (в tweb это делает sticky-intersector
-    // по sentinel-узлам): в паре с `is-scrolling` она видна только при скролле,
-    // а в покое гаснет (_chatBubble.scss:497 opacity .00001 → _chat.scss:1343).
-    const markSticky = () => {
-      const scTop = sc.getBoundingClientRect().top
-      const dates = inner.querySelectorAll<HTMLElement>('.bubble.is-date')
-      let stuck: string | null = null
-      for (const d of dates) {
-        // прилипла = её верх дошёл до собственного sticky-порога (`top` из
-        // _chatBubble.scss:480 — calc(--chat-padding-top + overflow))
-        const stickyTop = parseFloat(getComputedStyle(d).top) || 0
-        if (d.getBoundingClientRect().top - scTop <= stickyTop + 2) stuck = d.dataset.date ?? null
-      }
-      setStickyDateKey((prev) => (prev === stuck ? prev : stuck))
-    }
     const onScroll = () => {
       inner.classList.add('is-scrolling')
-      markSticky()
       clearTimeout(timer)
       timer = setTimeout(() => inner.classList.remove('is-scrolling'), 1350)
     }
-    markSticky()
     sc.addEventListener('scroll', onScroll, { passive: true })
     return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
-  }, [scrollRef, contentRef, feedLoading])
+  }, [scrollRef, contentRef])
+
+  // tweb bubbles.ts:1382-1408 (колбэк StickyIntersector) + 4867
+  // (observeStickyHeaderChanges на каждой `.bubbles-date-group`) — какая дата
+  // прилипла, считает портированный StickyIntersector по sentinel-узлам, а не
+  // обход `.bubble.is-date` с getBoundingClientRect на каждое событие скролла.
+  // ChatFeed рендерит секции `.bubbles-date-group` прямыми детьми contentRef;
+  // выбор «нижней» застрявшей секции и обвязка «наблюдать новую секцию ровно
+  // один раз» вынесены в chatStickyDates.ts (там же — почему они тестируемы
+  // отдельно от Chat, который нигде не рендерится в vitest).
+  //
+  // Инстанс интерсектора живёт в рефе на весь срок жизни scrollRef/contentRef
+  // (как this.stickyIntersector в tweb — заводится один раз в setListeners,
+  // а не пересоздаётся на каждое сообщение): пересоздание на каждый ререндер
+  // плодило бы новые sentinel-узлы поверх старых в каждой уже наблюдаемой
+  // секции (StickyIntersector.observeStickyHeaderChanges не идемпотентна —
+  // см. chatStickyDates.test.ts).
+  const stickyIntersectorRef = useRef<StickyIntersector | null>(null)
+  const stickyObservedRef = useRef<Set<HTMLElement>>(new Set())
+  const stuckSectionsRef = useRef<Set<HTMLElement>>(new Set())
+
+  useEffect(() => {
+    const sc = scrollRef.current
+    const inner = contentRef.current
+    if (!sc || !inner) return
+
+    const stuckSections = stuckSectionsRef.current
+    const observedSections = stickyObservedRef.current
+    const intersector = new StickyIntersector(sc, (stuck, target) => {
+      if (stuck) stuckSections.add(target)
+      else stuckSections.delete(target)
+      setStickyDateKey((prev) => {
+        const key = pickStickyDateKey(inner.children, stuckSections)
+        return prev === key ? prev : key
+      })
+    })
+    stickyIntersectorRef.current = intersector
+
+    return () => {
+      intersector.disconnect()
+      stickyIntersectorRef.current = null
+      stuckSections.clear()
+      observedSections.clear()
+      // Same class of leak as Б-4 (useChatScroll.ts's `.scrollable-thumb-container`
+      // cleanup): StickyIntersector.disconnect() clears its own element→sentinel Map
+      // but doesn't remove the `.sticky_sentinel` divs addSentinel() appended into
+      // each date-group section — tweb's own container is throwaway so it never
+      // needed to; ours (`inner`) is React's persistent node. Belt-and-braces against
+      // StrictMode's dev mount→unmount→mount doubling up leftover sentinels.
+      inner.querySelectorAll('.sticky_sentinel').forEach((el) => el.remove())
+    }
+  }, [scrollRef, contentRef])
+
+  // Новые дата-секции (загрузка страницы истории, новое сообщение сменило
+  // день) — наблюдаем только те, что ещё не видели; уже наблюдаемые трогать
+  // нельзя (см. комментарий выше).
+  useEffect(() => {
+    const inner = contentRef.current
+    const intersector = stickyIntersectorRef.current
+    if (!inner || !intersector) return
+    observeNewSections(inner, intersector, stickyObservedRef.current)
+  }, [contentRef, feedMsgs, feedLoading])
+
+  // tweb bubbles.ts:4900-4905 (updateStickyIntersectorRootMargin) — тот же
+  // паддинг топбара/инпута, что резервируют распорки `.bubbles-padding-top/bottom`;
+  // меняется независимо от ленты, поэтому отдельный эффект и `setRootMargin`
+  // (переподписывает существующие сентинелы, а не плодит новые).
+  useEffect(() => {
+    stickyIntersectorRef.current?.setRootMargin(`-${padTopPx}px 0px -${padBottomPx}px 0px`)
+  }, [padTopPx, padBottomPx])
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
