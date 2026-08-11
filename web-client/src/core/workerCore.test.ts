@@ -360,3 +360,28 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
     }
   })
 })
+
+// Stage 1C.2 (Task 1, раунд 4): второй канал того же владельца — НАМЕРЕНИЕ
+// перехода сессии (rt:logging_out, порт tweb `logging_out`). Отдельная
+// проводка от `me`: authManager объявляет намерение, workerCore разносит его
+// вкладкам. Без неё витрине снова пришлось бы угадывать «логаут или смена
+// аккаунта» по одному лишь снимку `me` — ровно то, на чём разъезжались
+// раунды 2-3 (см. task-1-findings-round4.md).
+//
+// core.start() здесь НЕ зовём (и потому не нужен стаб self): broadcast живёт
+// в самой фабрике (workerCore.ts: `const broadcast = ...` рядом с
+// newWorkerScope), а второй независимый self-стаб-цикл в этом файле
+// воспроизводимо ронял воркер vitest — см. докблок describe про `me` выше.
+describe('createWorkerCore(): намерение перехода сессии уезжает вкладкам (rt:logging_out)', () => {
+  it('authManager.onLoggingOut → broadcast(rt:logging_out)', async () => {
+    const core = createWorkerCore()
+    const got: unknown[] = []
+    core.workerScope.scope.addEventListener('rt:logging_out', (p) => got.push(p))
+
+    // Без активной сессии logout() не ходит в REST (store.get() пуст) и не
+    // находит аккаунтов в реестре — ветка «аккаунтов не осталось».
+    await core.registry.auth.logout()
+
+    expect(got).toEqual([{ migrateTo: null }])
+  })
+})

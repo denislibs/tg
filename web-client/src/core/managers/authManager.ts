@@ -134,6 +134,14 @@ export interface AuthDeps {
    * логаута с null (workerCore.ts публикует его вкладкам как rt:me).
    * Опционально: юнит-тесты менеджера конструируют его без воркера. */
   onMeChanged?: (u: User | null) => void
+  /** Stage 1C.2 (Task 1, раунд 4): НАМЕРЕНИЕ перехода активной сессии — порт
+   * tweb `logging_out` (`apiManager.ts:335` → `apiManagerProxy.ts:508`).
+   * Владелец активного токена здесь один — этот менеджер, и только он знает,
+   * логаут это или переезд на другой аккаунт; витрине выводить это из `me`
+   * нечем (одинаковый null у логаута и у «нет данных»), поэтому объявляем
+   * явно. `migrateTo` — id аккаунта, ставшего активным; null — активного не
+   * осталось. Опционально по той же причине, что onMeChanged. */
+  onLoggingOut?: (e: { migrateTo: number | null }) => void
 }
 
 // Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
@@ -147,7 +155,7 @@ interface SignInWire {
   signup_token?: string
 }
 
-export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
+export function newAuthManager({ rest, store, onMeChanged, onLoggingOut }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
   // signImport/passkeyLoginFinish/qrStatus(confirmed) — все шесть путей входа
@@ -188,7 +196,22 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
   // стор, а следующий addPhoto()/update() смерджил бы поверх устаревшего
   // снимка воркера и разослал бы его всем вкладкам, затерев уже показанное
   // свежее значение.
-  const fetchMe = async (): Promise<User | null> => {
+  //
+  // `rederive` — вызов из перехода активного токена (switchAccount/logout/
+  // deleteAccount со сменой аккаунта). Отличий два, оба обязательные:
+  //  1. Офлайн-фолбэк на диск ЗАПРЕЩЁН. На диске лежит профиль СТАРОГО
+  //     аккаунта (persistScope переезжает только при рестарте воркера), и
+  //     вернуть его — значит оставить владельца с чужой личностью: следующий
+  //     profileManager.addPhoto/update смерджил бы её и разослал всем вкладкам
+  //     (Minor 6 раунда 4). Не получили свежий ответ — публикуем null: «не
+  //     знаем, кто мы» (addPhoto при пустом getMe() молча пропускает мердж).
+  //  2. Наружу не бросаем. Ответ RPC перехода не должен реджектиться: на нём
+  //     вызывающая вкладка строит навигацию (MainMenu.switchTo, AuthFlow.
+  //     backToAccount, useAuthGate.logout), а ошибка переживает границу
+  //     worker-RPC (superMessagePort реджектит ожидающий промис) — до раунда 3
+  //     в этих ветках падать было нечему, и .catch там никто не ставил
+  //     (Important 2 раунда 4).
+  const fetchMe = async (rederive = false): Promise<User | null> => {
     await store.ready()
     if (!store.get()) return null
     try {
@@ -199,6 +222,15 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       if (e instanceof HttpError && e.status === 401) {
         await store.clear()
         onMeChanged?.(null) // сессия невалидна — тот же сигнал, что у явного logout()
+        // Сессию отозвали с другого устройства: активного аккаунта не осталось.
+        // Тот же переход, что явный logout, — вкладки обязаны узнать о нём, иначе
+        // остаются authed=true с мёртвой сессией (порт tweb: AUTH_KEY_UNREGISTERED
+        // → apiManager.logOut() → 'logging_out').
+        onLoggingOut?.({ migrateTo: null })
+        return null
+      }
+      if (rederive) {
+        onMeChanged?.(null) // см. п.1 докблока
         return null
       }
       // Сеть недоступна (fetch reject, не HttpError) — отдаём последний известный
@@ -433,17 +465,20 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
       if (remaining.length > 0) {
         await store.set(remaining[0].token)
-        // Фикс повторного ревью, п.1: активный токен сменился на ДРУГОЙ живой
-        // аккаунт — это не логаут. Перевывести `me` под НОВЫМ токеном (см.
+        // Активный токен сменился на ДРУГОЙ живой аккаунт — это не логаут, а
+        // переезд: объявляем намерение (вкладки поднимутся под новым токеном).
+        onLoggingOut?.({ migrateTo: remaining[0].id })
+        // Фикс повторного ревью, п.1: перевывести `me` под НОВЫМ токеном (см.
         // докблок fetchMe): без этого кэш воркера остаётся с личностью
         // удалённого аккаунта, и следующая мутация профиля (addPhoto/update/
         // premium) смерджит и разошлёт её всем вкладкам вместо личности того,
         // на кого реально переключились.
-        await fetchMe()
+        await fetchMe(true)
         return { switched: true }
       }
       await store.clear()
       onMeChanged?.(null) // аккаунтов не осталось — настоящий логаут
+      onLoggingOut?.({ migrateTo: null })
       return { switched: false }
     },
 
@@ -465,14 +500,17 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
         // вошёл», хотя сессия B жива и активна — соседняя вкладка получала
         // это и уходила на экран входа (useAuthGate), хотя bootData.hasToken
         // истинен и вернуть её можно было только ручной перезагрузкой. Теперь
-        // перевывести `me` под НОВЫМ активным токеном — та же проводка, что
-        // switchAccount/deleteAccount (см. докблок fetchMe).
-        await fetchMe()
+        // намерение объявлено явно (migrateTo), а `me` перевыводится под
+        // НОВЫМ активным токеном — та же проводка, что у switchAccount/
+        // deleteAccount (см. докблок fetchMe).
+        onLoggingOut?.({ migrateTo: remaining[0].id })
+        await fetchMe(true)
         return { switched: true }
       }
       await store.clear()
       // Аккаунтов не осталось — настоящий логаут, null корректен и здесь.
       onMeChanged?.(null)
+      onLoggingOut?.({ migrateTo: null })
       return { switched: false }
     },
 
@@ -485,6 +523,10 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       const tok = await tokenOf(id)
       if (!tok) return false
       await store.set(tok)
+      // Токен уже переключён — объявляем намерение ДО сетевого перевывода
+      // ниже: соседние вкладки должны подняться под новым аккаунтом сразу, а
+      // не ждать лишний round-trip /me (Important 2 раунда 4).
+      onLoggingOut?.({ migrateTo: id })
       // Фикс повторного ревью, п.1: активный токен сменился — обязаны
       // перевывести `me` СРАЗУ под новым токеном (см. докблок fetchMe), а не
       // оставлять кэш воркера с личностью старого аккаунта. Достижимая
@@ -494,7 +536,7 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       // profileManager.addPhoto мерджит {...A, avatarUrl} → rt:me →
       // проектор перезаписывает `me` (имя/username/телефон/meId) личностью A
       // ВО ВСЕХ вкладках, хотя обе уже под B.
-      await fetchMe()
+      await fetchMe(true)
       return true
     },
     // «Добавить аккаунт»: текущий остаётся в реестре, активный токен снимается —
@@ -504,6 +546,17 @@ export function newAuthManager({ rest, store, onMeChanged }: AuthDeps) {
       // Активный токен снят — активного пользователя больше нет, тем же
       // инвариантом, что у switchAccount/deleteAccount/logout выше.
       onMeChanged?.(null)
+      // Осознанное расхождение с tweb (Minor 10 раунда 4). Там «добавить
+      // аккаунт» — открытие СВОБОДНОГО слота (`sidebarLeft/index.ts:1652`:
+      // changeAccount(totalAccounts + 1)), соседние вкладки не трогаются:
+      // аккаунт живёт в URL вкладки и в её sessionStorage-скоупе. У нас
+      // активный токен ОДИН на весь SharedWorker и общий для всех вкладок —
+      // сняв его, мы реально обрываем сессию соседям, и промолчать нельзя:
+      // они остались бы с authed=true и мёртвым токеном (ровно дефект, ради
+      // которого заведён этот сигнал). Цена расхождения — соседняя вкладка
+      // уходит на экран входа; убрать её можно только пер-вкладочным
+      // аккаунтом, то есть переделкой мультиаккаунта целиком.
+      onLoggingOut?.({ migrateTo: null })
     },
   }
 }

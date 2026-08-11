@@ -309,3 +309,159 @@ describe('AuthManager', () => {
       .resolves.toEqual({ error: 'failed' })
   })
 })
+
+// Stage 1C.2 (Task 1, раунд 4): НАМЕРЕНИЕ перехода активной сессии —
+// отдельный канал (rt:logging_out, порт tweb `logging_out`), а не догадка
+// витрины по снимку `me`. Из одного значения намерение не выводится: null
+// одинаков у логаута, у «ещё не знаем» и у офлайн-старта, а не-null id
+// одинаков у подтверждения своего же аккаунта и у чужого переезда — на этом
+// и разъезжались раунды 2-3 (Critical 1 / Important 3-4 в
+// task-1-findings-round4.md). Владелец активного токена здесь один и знает
+// намерение точно — он его и объявляет.
+describe('AuthManager: rt:logging_out — намерение перехода активной сессии', () => {
+  it('switchAccount() объявляет переезд на выбранный аккаунт (migrateTo = его id)', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onLoggingOut = vi.fn()
+    const { d } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onLoggingOut })
+
+    await auth.switchAccount(2)
+
+    expect(onLoggingOut).toHaveBeenCalledTimes(1)
+    expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: 2 })
+  })
+
+  it('switchAccount() с неизвестным id ничего не объявляет — перехода не было', async () => {
+    const onLoggingOut = vi.fn()
+    const { d } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onLoggingOut })
+    await expect(auth.switchAccount(999)).resolves.toBe(false)
+    expect(onLoggingOut).not.toHaveBeenCalled()
+  })
+
+  // Ровно то, что витрина по `me` отличить не могла: и здесь, и в тесте ниже
+  // приходит не-null пользователь, но в одном случае это переезд (нужен
+  // подъём под новым токеном), а в другом — логаут (нужен экран входа).
+  it('logout() с остающимся аккаунтом — переезд (migrateTo = id оставшегося), не логаут', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onLoggingOut = vi.fn()
+    const { d } = deps({ token: 'TOK_A' })
+    const auth = newAuthManager({ ...d, onLoggingOut })
+
+    await auth.logout()
+
+    expect(onLoggingOut).toHaveBeenCalledTimes(1)
+    expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: 2 })
+  })
+
+  it('logout() без остающихся аккаунтов — настоящий логаут (migrateTo: null)', async () => {
+    const onLoggingOut = vi.fn()
+    const { d } = deps({ token: 'TOK' })
+    const auth = newAuthManager({ ...d, onLoggingOut })
+    await auth.logout()
+    expect(onLoggingOut).toHaveBeenCalledTimes(1)
+    expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: null })
+  })
+
+  it('deleteAccount() с остающимся аккаунтом — переезд; без остающихся — логаут', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const migrated = vi.fn()
+    const { d } = deps({ token: 'TOK_A' })
+    await newAuthManager({ ...d, onLoggingOut: migrated }).deleteAccount()
+    expect(migrated).toHaveBeenCalledWith({ migrateTo: 2 })
+
+    const loggedOut = vi.fn()
+    const { d: d2 } = deps({ token: 'TOK_B' })
+    await newAuthManager({ ...d2, onLoggingOut: loggedOut }).deleteAccount()
+    expect(loggedOut).toHaveBeenCalledWith({ migrateTo: null })
+  })
+
+  // Расхождение с tweb названо в комментарии у самой строки (Minor 10): там
+  // «добавить аккаунт» открывает свободный слот и соседей не трогает, у нас
+  // общий активный токен снимается глобально — промолчать нельзя.
+  it('addAccount() объявляет логаут соседним вкладкам (активный токен снят глобально)', async () => {
+    const onLoggingOut = vi.fn()
+    const { d } = deps({ token: 'TOK' })
+    const auth = newAuthManager({ ...d, onLoggingOut })
+    await auth.addAccount()
+    expect(onLoggingOut).toHaveBeenCalledTimes(1)
+    expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: null })
+  })
+
+  it('onLoggingOut опционален — переход без него не падает', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const { d } = deps({ token: 'TOK_A' })
+    await expect(newAuthManager(d).switchAccount(2)).resolves.toBe(true)
+  })
+})
+
+// Отозванная сессия (401 на /me) и провал перевывода `me` при смене токена.
+// Отдельный describe: `deps()` выше мокает /me ошибкой БЕЗ HttpError
+// (`Object.assign(new Error, {status:401})`), поэтому ветка `e instanceof
+// HttpError` из того файла недостижима в принципе — именно поэтому строка
+// onMeChanged(null) в ней и осталась непокрытой (Important 5 раунда 4).
+describe('AuthManager: /me отвечает ошибкой', () => {
+  function failingDeps(err: unknown, token: string | null = 'TOK') {
+    let tok = token
+    const store = {
+      get: () => tok,
+      set: async (t: string) => { tok = t },
+      clear: async () => { tok = null },
+      ready: async () => {},
+    }
+    const rest = {
+      get: async (path: string) => { if (path === '/me') throw err; throw new Error('unexpected ' + path) },
+      post: async () => ({ ok: true }),
+    }
+    return { d: { rest, store } as unknown as AuthDeps, token: () => tok }
+  }
+
+  it('401: токен снят, `me` обнулён, соседние вкладки узнают о логауте (migrateTo: null)', async () => {
+    const onMeChanged = vi.fn()
+    const onLoggingOut = vi.fn()
+    const { d, token } = failingDeps(new HttpError(401, 'unauthorized'))
+    const auth = newAuthManager({ ...d, onMeChanged, onLoggingOut })
+
+    await expect(auth.me()).resolves.toBeNull()
+
+    expect(token()).toBeNull()
+    expect(onMeChanged).toHaveBeenCalledWith(null)
+    expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: null })
+  })
+
+  // Important 2 раунда 4: до этого фикса 5xx на /me из switchAccount реджектил
+  // ответ RPC (ошибка переживает границу воркера), а вызывающие .catch не
+  // ставили — вкладка молча оставалась под интерфейсом СТАРОГО аккаунта, хотя
+  // активный токен уже новый.
+  it('5xx при смене токена: switchAccount не реджектится и обнуляет `me` (чужой личности в кэше быть не должно)', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onMeChanged = vi.fn()
+    const { d, token } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    await expect(auth.switchAccount(2)).resolves.toBe(true)
+
+    expect(token()).toBe('TOK_B')
+    expect(onMeChanged).toHaveBeenCalledWith(null)
+  })
+
+  // Тот же путь при сетевом сбое: публичный me() отдал бы кэш с диска, но при
+  // СМЕНЕ токена на диске лежит профиль старого аккаунта (Minor 6 раунда 4).
+  it('сетевой сбой при смене токена: switchAccount не реджектится, кэш с диска НЕ подставляется', async () => {
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    const onMeChanged = vi.fn()
+    const { d } = failingDeps(new TypeError('Failed to fetch'), 'TOK_A')
+    const auth = newAuthManager({ ...d, onMeChanged })
+
+    await expect(auth.switchAccount(2)).resolves.toBe(true)
+
+    expect(onMeChanged).toHaveBeenCalledTimes(1)
+    expect(onMeChanged).toHaveBeenCalledWith(null)
+  })
+})

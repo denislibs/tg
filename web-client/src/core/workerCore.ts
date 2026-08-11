@@ -83,7 +83,17 @@ export function createWorkerCore() {
     me = u
     broadcast(RT.me, u)
   }
-  const auth = newAuthManager({ rest, store: tokens, onMeChanged: setMe })
+  const auth = newAuthManager({
+    rest,
+    store: tokens,
+    onMeChanged: setMe,
+    // Намерение перехода сессии (порт tweb `logging_out`) — рассылаем всем
+    // вкладкам, включая инициатора: у tweb этот кадр тоже общий для всех
+    // (`apiManagerProxy.ts:330` — commonEventNames, доставляется вкладке даже
+    // под другим аккаунтом). Кэш `me` здесь не трогаем — им управляет
+    // onMeChanged, отдельным каналом значения.
+    onLoggingOut: (e) => { broadcast(RT.loggingOut, e) },
+  })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
   const chats = newChatsManager({ rest })
@@ -393,12 +403,22 @@ export function createWorkerCore() {
     // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
     // предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
     void tokens.load().then(() => persistScope(tokens.get()))
-    // Первый вывод `me` (Stage 1C.2, Task 1): успешный /me публикует rt:me всем
-    // вкладкам через setMe. На сетевой ошибке (не «неавторизован» — auth.me()
-    // сам мапит 401 в null, тут ловим именно транспортный сбой) НЕ зовём setMe:
-    // это временный офлайн-фолбэк, а не «разлогинен» — ложный null разослал бы
-    // остальным вкладкам неверный сигнал логаута.
-    void tokens.ready().then(() => auth.me()).then((u) => { setMe(u) }).catch(() => {})
+    // Первый вывод `me` (Stage 1C.2, Task 1). Публикует сам auth.me()
+    // (authManager::fetchMe зовёт onMeChanged на любой свежий ответ сервера и
+    // на 401), поэтому здесь остаётся ровно один непокрытый им случай —
+    // офлайн-фолбэк: fetchMe отдаёт последний профиль с диска БЕЗ публикации,
+    // потому что «воркерный кэш и так держит то же самое или лучше». На старте
+    // это неверно: кэш ещё пуст, и `getMe()`/`getMeId()` (мердж аватара, кэш
+    // «моих» реакций) остались бы без личности до первого удачного /me. Гейт
+    // `!me` — и есть «кэш пуст»; он же убирает двойную публикацию одного и
+    // того же снимка на успешном пути (Minor 7 раунда 4). Сам гейт отдельным
+    // тестом сознательно не покрыт: без него публикация лишь повторяется тем
+    // же значением (проектор идемпотентен) — приложение не ломается, а
+    // единственный способ развести два случая в тесте требует второго
+    // self-стаб-цикла с core.start(), который в этом файле воспроизводимо
+    // ронял воркер vitest (см. докблок в workerCore.test.ts). Ошибку глотаем:
+    // упавший /me на старте — штатный офлайн, не повод для unhandled rejection.
+    void tokens.ready().then(() => auth.me()).then((u) => { if (u && !me) setMe(u) }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {
       onconnect?: (e: MessageEvent) => void

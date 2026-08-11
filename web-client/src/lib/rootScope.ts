@@ -84,6 +84,10 @@ export type BroadcastEvents = {
   // Stage 1C.2 (Task 1): `me` — воркер единственный владелец (workerCore.ts::
   // setMe), payload — полный снимок пользователя (null — разлогинен).
   [RT.me]: [User | null]
+  // Stage 1C.2 (Task 1, раунд 4): намерение перехода сессии (порт tweb
+  // `logging_out`, см. докблок в core/realtime/events.ts). `migrateTo` — id
+  // аккаунта, на который переехала сессия; null — активного не осталось.
+  [RT.loggingOut]: [{ migrateTo: number | null }]
 
   // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
   //    клиентские события — вне funnel'а сервера, meta не несут ──
