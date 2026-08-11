@@ -39,8 +39,6 @@ function walk(dir: string, acc: string[] = []): string[] {
  *  - `stores/dialogsPersist.ts` (hydrateDialogsFromPersist): гидратация с
  *    диска до поднятия воркера — чтение вчерашнего кэша, не независимый
  *    вывод факта.
- *  - `core/hooks/useAuthGate.ts` (logout): синхронный локальный сброс тем же
- *    блоком, что dialogs/State; воркер отдельно разошлёт rt:me:null.
  *  - `components/EmojiStatusPicker.tsx`, `components/PremiumCheckout.tsx`,
  *    `components/settings/EditProfile.tsx`: мгновенный отклик на действие
  *    пользователя (попап закрывается/оплата проходит/экран уходит назад) —
@@ -51,7 +49,6 @@ const ALLOWED = [
   'client/realtime/storeProjection.ts',
   'stores/chatsStore.ts',
   'stores/dialogsPersist.ts',
-  'core/hooks/useAuthGate.ts',
   'components/EmojiStatusPicker.tsx',
   'components/PremiumCheckout.tsx',
   'components/settings/EditProfile.tsx',

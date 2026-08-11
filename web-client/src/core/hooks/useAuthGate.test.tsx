@@ -136,6 +136,30 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     expect(result.current.authed).toBe(true) // не сброшен — сессия жива, просто другая
   })
 
+  // Раунд 4: logout() — ТОЛЬКО команда воркеру. Локального дубля реакции здесь
+  // быть не может даже «ради отзывчивости»: authManager публикует намерение
+  // внутри себя, до того как ответ RPC поедет обратно тем же портом, поэтому
+  // обработчик отрабатывает строго раньше, чем резолвится этот промис. Пин
+  // держит оба факта разом — RPC реально зовётся, и до прихода кадра вкладка
+  // сама ничего не решает.
+  it('logout() — только команда: RPC зовётся, authed падает от кадра, а не отсюда', async () => {
+    const logoutRpc = vi.fn().mockResolvedValue({ switched: false })
+    const managers = {
+      auth: { me: () => new Promise<null>(() => {}), logout: logoutRpc },
+      persist: { clearAll: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as Managers
+    const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.login() })
+    await act(async () => { result.current.logout(); await Promise.resolve() })
+
+    expect(logoutRpc).toHaveBeenCalledTimes(1)
+    expect(result.current.authed).toBe(true) // реакции ещё не было — кадр не приходил
+
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+    expect(result.current.authed).toBe(false)
+  })
+
   // Фикс минорного пункта ревью: старая версия этого теста («размонтирование
   // снимает подписку») пиновала не то — setAuthed на размонтированном хуке
   // не бросает в React 19, поэтому not.toThrow() проходил и с утечкой
