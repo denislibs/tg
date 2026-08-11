@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { isDateGroupSection, observeNewSections, pickStickyDateKey } from './chatStickyDates'
+import { isDateGroupSection, observeNewSections, pickStickyDateKey, pruneEvictedSections } from './chatStickyDates'
 import StickyIntersector from './stickyIntersector'
 
 class IntersectionObserverStub {
@@ -114,6 +114,102 @@ describe('observeNewSections', () => {
     observeNewSections(container, { observeStickyHeaderChanges }, new Set())
 
     expect(observeStickyHeaderChanges).not.toHaveBeenCalled()
+  })
+})
+
+// Бэклог этапа 2.1, п.5: StickyIntersector.unobserve() был портирован и покрыт
+// (stickyIntersector.test.ts) но нигде не вызывался — stickyObservedRef/
+// stuckSectionsRef и оба observer'а внутри StickyIntersector удерживали
+// выселенные секции бессрочно. Обоснование «путей удаления секций нет до
+// виртуализации» опровергнуто: useMessageWindow.jumpTo/reloadNewest подменяют
+// win.msgs ПОЛНОСТЬЮ (не merge), а ChatFeed рендерит секции по key={sec.key} —
+// день, которого нет в новом окне, размонтируется React'ом тем же коммитом.
+describe('pruneEvictedSections', () => {
+  it('секция, удалённая из DOM, снимается с обоих observer\'ов (unobserve) и вычищается из observed/stuck', () => {
+    const container = document.createElement('div')
+    const a = makeSection('day-1')
+    const b = makeSection('day-2')
+    container.append(a, b)
+
+    const intersector = new StickyIntersector(container, vi.fn())
+    const unobserveSpy = vi.spyOn(intersector, 'unobserve')
+    const observed = new Set<HTMLElement>()
+    observeNewSections(container, intersector, observed)
+    expect(observed.size).toBe(2)
+    const stuck = new Set<HTMLElement>([a]) // 'a' была застрявшей на момент подмены
+
+    // Полная подмена окна (jumpTo/reloadNewest) убрала день 'a' из ленты —
+    // ChatFeed её больше не рендерит, React снимает узел из DOM.
+    a.remove()
+
+    pruneEvictedSections(container, intersector, observed, stuck)
+
+    expect(unobserveSpy).toHaveBeenCalledExactlyOnceWith(a)
+    expect(observed.has(a)).toBe(false)
+    expect(observed.has(b)).toBe(true) // живая секция не тронута
+    expect(stuck.has(a)).toBe(false)
+  })
+
+  it('секция, оставшаяся в DOM, не трогается', () => {
+    const container = document.createElement('div')
+    const a = makeSection('day-1')
+    container.append(a)
+
+    const intersector = new StickyIntersector(container, vi.fn())
+    const unobserveSpy = vi.spyOn(intersector, 'unobserve')
+    const observed = new Set<HTMLElement>([a])
+    const stuck = new Set<HTMLElement>([a])
+
+    pruneEvictedSections(container, intersector, observed, stuck)
+
+    expect(unobserveSpy).not.toHaveBeenCalled()
+    expect(observed.has(a)).toBe(true)
+    expect(stuck.has(a)).toBe(true)
+  })
+
+  it('реестр не растёт после серии подмен окна (несколько jumpTo подряд)', () => {
+    const container = document.createElement('div')
+    const intersector = new StickyIntersector(container, vi.fn())
+    const observed = new Set<HTMLElement>()
+    const stuck = new Set<HTMLElement>()
+
+    let current = makeSection('day-0')
+    container.append(current)
+    pruneEvictedSections(container, intersector, observed, stuck)
+    observeNewSections(container, intersector, observed)
+    expect(observed.size).toBe(1)
+
+    // Имитация 10 подряд полных подмен окна — старая секция каждый раз уходит
+    // из DOM, приходит ровно одна новая (та же схема, что и в проде: секции
+    // размонтируются/монтируются одним React-коммитом на смену win.msgs).
+    for (let i = 1; i <= 10; i++) {
+      current.remove()
+      current = makeSection(`day-${i}`)
+      container.append(current)
+
+      pruneEvictedSections(container, intersector, observed, stuck)
+      observeNewSections(container, intersector, observed)
+
+      // Без pruneEvictedSections observed рос бы на 1 каждую итерацию (11 к
+      // концу цикла) — с ним старая секция вычищается тем же проходом, что
+      // видит новую, реестр держит ровно живые секции.
+      expect(observed.size).toBe(1)
+    }
+  })
+})
+
+// Тот же приём, что и для observeNewSections ниже: Chat нигде не рендерится в
+// vitest, поэтому единственный способ поймать «вызов тихо снят из useEffect» —
+// прочитать исходник текстом.
+describe('Chat.tsx: выселенные секции реально снимаются (pruneEvictedSections подключена)', () => {
+  it('useEffect на [contentRef, feedMsgs, feedLoading] реально зовёт pruneEvictedSections ДО observeNewSections', () => {
+    const src = readFileSync(join(__dirname, 'Chat.tsx'), 'utf8')
+    const depsIdx = src.indexOf('[contentRef, feedMsgs, feedLoading]')
+    expect(depsIdx).toBeGreaterThan(-1)
+    const effectBody = src.slice(Math.max(0, depsIdx - 600), depsIdx)
+    expect(effectBody).toMatch(
+      /pruneEvictedSections\(\s*inner\s*,\s*intersector\s*,\s*stickyObservedRef\.current\s*,\s*stuckSectionsRef\.current\s*\)\s*[\s\S]*?observeNewSections\(/,
+    )
   })
 })
 
