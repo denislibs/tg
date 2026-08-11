@@ -60,24 +60,28 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
   // id совпадают по построению (сравниваем разные версии одной карточки).
   const same = (a: Peer, b: Peer) => a.username === b.username && a.displayName === b.displayName && a.avatarUrl === b.avatarUrl
 
-  async function getUsers(ids: number[]): Promise<Peer[]> {
+  /**
+   * Общее тело чтения (сеть → кэш → офлайн-фолбэк). Само НИЧЕГО не публикует:
+   * поводы объявить у вызывающих разные, и решают они. Возвращает и ответ целиком
+   * (`peers`), и подмножество `changed` — карточки, ЗАМЕНИВШИЕ те, что уже лежали
+   * в кэше. Только на них зеркало и может разъехаться с владельцем.
+   */
+  async function resolve(ids: number[]): Promise<{ peers: Peer[]; changed: Peer[] }> {
     const missing = ids.filter((id) => !cache.has(id) || stale.has(id))
+    const changed: Peer[] = []
     if (missing.length) {
       try {
         const r = await rest.get<{ users: { id: number; username: string; display_name: string; avatar_url: string }[] }>('/users', { ids: missing.join(',') })
         const fetched: Peer[] = (r.users ?? []).map((u) => ({ id: u.id, username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url }))
-        // Публикуем только ЗАМЕНУ уже лежавшей карточки: на ней зеркало могло
-        // разъехаться с кэшем (перечитывание протухшей после avatar_changed —
-        // ровно этот случай). Впервые заведённые карточки зеркалу не адресованы,
-        // см. докблок фабрики.
-        const changed: Peer[] = []
         for (const u of fetched) {
           const prev = cache.get(u.id)
           cache.set(u.id, u); stale.delete(u.id)
+          // Сервер вернул то же самое (перечитали протухшую, а аватар на деле не
+          // менялся) — объявлять нечего: кадр во все вкладки стоит дороже, чем
+          // сравнение четырёх полей.
           if (prev && !same(prev, u)) changed.push(u)
         }
         void saveUsers(fetched) // write-through в офлайн-стор (нормализовано по id)
-        if (changed.length) publish([{ op: 'upsert', peers: changed }])
       } catch (e) {
         // Сеть недоступна — поднимаем персистнутых юзеров в память, чтобы имена/
         // аватары резолвились офлайн. Не глотаем HTTP-ошибки (401/500 и т.п.).
@@ -87,7 +91,16 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
         for (const u of await loadUsers()) if (!cache.has(u.id)) cache.set(u.id, u)
       }
     }
-    return ids.map((id) => cache.get(id)).filter((p): p is Peer => !!p)
+    return { peers: ids.map((id) => cache.get(id)).filter((p): p is Peer => !!p), changed }
+  }
+
+  // Чтение для тех, кто рисует по возвращённому массиву (двенадцать мест, см.
+  // докблок фабрики). Объявляем только замену — впервые заведённая карточка
+  // зеркалу не адресована.
+  async function getUsers(ids: number[]): Promise<Peer[]> {
+    const { peers, changed } = await resolve(ids)
+    if (changed.length) publish([{ op: 'upsert', peers: changed }])
+    return peers
   }
 
   /**
@@ -107,9 +120,20 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
    * получает задним числом, а `usePeers` за уже спрошенным id второй раз не
    * пойдёт (эффект завязан на `key`, пробел считается по стору) — она осталась бы
    * без имён навсегда. Пробел же объявляет тот, кто его наблюдает.
+   *
+   * ВНИМАНИЕ на будущее: наполнить зеркало может ТОЛЬКО этот вызов (и объявление
+   * изменившегося факта). Обычный `getUsers` карточку в стор не кладёт — раньше
+   * клал, и это маскировало бы забытый пробел. Значит новый читатель `peersStore`
+   * обязан либо идти через `usePeers` (тот объявляет пробел сам), либо объявить
+   * его тут же: иначе он молча покажет пустоту. Сегодня читатель ровно один —
+   * `usePeers`, см. пометку у него.
    */
   async function fillMirror(ids: number[]): Promise<void> {
-    const peers = await getUsers(ids)
+    // Ровно один кадр на вызов: ответ на пробел уже содержит всё, что изменилось,
+    // поэтому берём `resolve` напрямую, а не `getUsers` — иначе на одном вызове
+    // публиковались бы два кадра (`changed` внутри и весь ответ здесь), второй из
+    // которых no-op в сторе, но полная сериализация в каждый порт.
+    const { peers } = await resolve(ids)
     if (peers.length) publish([{ op: 'upsert', peers }])
   }
 

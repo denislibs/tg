@@ -171,3 +171,63 @@ describe('PeersManager — объёмные чтения не создают т�
     expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 42, username: 'u42', displayName: 'Участник 42', avatarUrl: '/a/42-new.png' }] }])
   })
 })
+
+// Границы объявления: обе стороны правила, а не одна. «Объявить изменившееся»
+// пинится выше; здесь — «промолчать, когда не изменилось» и «промолчать, когда
+// отвечать нечем». Обе строки одна другую не подстраховывают: приложение
+// переживёт лишний кадр, поэтому без пина они уходят зелёными.
+describe('PeersManager — что владелец НЕ объявляет', () => {
+  it('до-фетч вернул ту же карточку → кадра нет', async () => {
+    // avatar_changed пришёл, но /users отдаёт тот же avatar_url: у сервера
+    // аватар не поменялся (или поменялся обратно), объявлять зеркалу нечего.
+    const { rest, calls } = fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/same.png' }])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    await mgr.getUsers([2])
+
+    mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(calls).toHaveLength(2) // до-фетч был
+    expect(ops).toEqual([])       // а объявлять оказалось нечего
+  })
+
+  it('пробел зеркала не на что закрыть (сервер такого юзера не знает) → кадра нет', async () => {
+    const { rest } = fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+
+    await mgr.fillMirror([404])
+
+    expect(ops).toEqual([])
+  })
+
+  it('на один fillMirror уходит ровно один кадр, даже когда до-фетч что-то изменил', async () => {
+    // Достижимая комбинация: объёмное чтение прогрело кэш (кадра нет, зеркало id
+    // не держит) → avatar_changed → до-фетч упал → позже витрина объявляет пробел
+    // на этот же id. Внутри одного вызова и «замена», и «ответ на пробел».
+    const users = [{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/old.png' }]
+    const net = { offline: false }
+    const rest = {
+      async get<R>(_path: string, query?: Record<string, string | number>): Promise<R> {
+        if (net.offline) throw new TypeError('Failed to fetch')
+        const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
+        return { users: users.filter((u) => requested.has(u.id)) } as unknown as R
+      },
+    } as unknown as RestClient
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    await mgr.getUsers([2])
+
+    net.offline = true
+    mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ops).toEqual([]) // до-фетч упал — объявлять нечего
+
+    users[0].avatar_url = '/new.png'
+    net.offline = false
+    await mgr.fillMirror([2])
+
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/new.png' }] }])
+  })
+})
