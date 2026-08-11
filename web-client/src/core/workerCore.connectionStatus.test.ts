@@ -27,6 +27,13 @@ import type { SyncDeps } from './realtime/syncEngine'
 
 let capturedConnDeps: CMDeps | null = null
 let capturedSyncDeps: SyncDeps | null = null
+// Ревью (раунд 3): проводка `sync` в `newRealtime({ conn, sync, ... })`
+// (workerCore.ts) не имела теста — мутация `sync: { isSyncing: () => false }`
+// проходила полным прогоном зелёной. Deps одни не докажут строку: подмени `sync`
+// на заглушку и `capturedSyncDeps` всё равно будет настоящим объектом (deps
+// передаются В newSyncEngine, а не ИЗ него в newRealtime). Нужен именно
+// ВОЗВРАЩЁННЫЙ инстанс — та же ссылка, что workerCore.ts кладёт в newRealtime.
+let capturedSyncInstance: ReturnType<typeof import('./realtime/syncEngine').newSyncEngine> | null = null
 
 vi.mock('./realtime/connectionManager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./realtime/connectionManager')>()
@@ -45,7 +52,9 @@ vi.mock('./realtime/syncEngine', async (importOriginal) => {
     ...actual,
     newSyncEngine: (deps: SyncDeps) => {
       capturedSyncDeps = deps
-      return actual.newSyncEngine(deps)
+      const instance = actual.newSyncEngine(deps)
+      capturedSyncInstance = instance
+      return instance
     },
   }
 })
@@ -75,6 +84,7 @@ beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
   capturedConnDeps = null
   capturedSyncDeps = null
+  capturedSyncInstance = null
 })
 
 describe('createWorkerCore() — проводка retryAt и событий синхронизации в RT.state/RT.stateSynchronizing/RT.stateSynchronized', () => {
@@ -115,5 +125,41 @@ describe('createWorkerCore() — проводка retryAt и событий си
 
     capturedSyncDeps!.onSyncEnd?.()
     expect(endEvents).toEqual([null])
+  })
+
+  // Ревью (раунд 3), находка 5: `const realtime = newRealtime({ conn, sync, ... })`
+  // (workerCore.ts) не была покрыта — мутация `sync: { isSyncing: () => false }`
+  // проходила полным прогоном зелёной (getStatus().syncing навсегда false, «Обновление…»
+  // у Задачи 3 не зажигается никогда, CI молчит). Гоняем НАСТОЯЩИЙ sync.catchUp()
+  // (тот самый инстанс, что workerCore.ts передал в newRealtime — capturedSyncInstance,
+  // не deps) через RPC до вкладки (managers.realtime.getStatus()) — если бы эта
+  // проводка была заменена заглушкой, isSyncing() во время реального catch-up'а не
+  // стал бы true и тест бы упал.
+  it('managers.realtime.getStatus().syncing отражает РЕАЛЬНЫЙ catch-up (не заглушку sync)', async () => {
+    // fetch замокан на немедленный reject — иначе happy-dom реально пытается
+    // резолвить '/api/sync' и виснет до abort'а на teardown окна (шумный, но
+    // безвредный DOMException в стдерре). Нас интересует переходное isSyncing()
+    // ДО того, как сеть вообще ответит, поэтому важно, что промис settl'ится
+    // быстро и предсказуемо, а не как именно (успех тут не нужен и не проверяется).
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('нет сети в тесте'))))
+
+    const core = createWorkerCore()
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    const tab = new SuperMessagePort(epTab)
+    const getStatus = () => tab.invoke<{ state: string; retryAt?: number; syncing: boolean }>('manager', { name: 'realtime', method: 'getStatus', args: [] })
+
+    expect(capturedSyncInstance).not.toBeNull()
+    await expect(getStatus()).resolves.toMatchObject({ syncing: false })
+
+    // Реальный запуск catch-up (не через deps.onSyncStart — через сам инстанс,
+    // ровно как это сделал бы funnel/hello-путь в проде). running выставляется
+    // синхронно внутри catchUp() (см. syncEngine.ts), поэтому isSyncing() уже
+    // true к моменту следующего await, ДО того как замоканный fetch вообще
+    // среагирует. `.catch` навешен синхронно, чтобы не словить unhandled rejection.
+    const p = capturedSyncInstance!.catchUp()
+    p.catch(() => {})
+
+    await expect(getStatus()).resolves.toMatchObject({ syncing: true })
   })
 })

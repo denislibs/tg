@@ -66,10 +66,11 @@ export const RT = {
   storyDeleted: 'rt:story_deleted',
   storyReaction: 'rt:story_reaction',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
-  // «что-то изменилось», НЕ источник значения (1:1 с tweb, connectionStatus.ts:
-  // 86-89 читает не из payload события, а из отдельного pull-запроса). Значение —
-  // всегда через RPC managers.realtime.getStatus() (realtime.ts, докблок метода).
-  // Не читать поля этих событий как факт — см. норму в realtime.ts.
+  // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
+  // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
+  // что из этой pull-дисциплины 1:1 с tweb, а что наше расширение поверх него;
+  // для rt:state — 1:1, connectionStatus.ts:47-51/:87-91). Не читать поля этих
+  // событий как факт.
   state: 'rt:state',
   // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
   // начало/конец catch-up (/sync), пара для индикатора «Обновление…» в поиске

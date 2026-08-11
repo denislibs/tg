@@ -11,8 +11,11 @@ export interface CMDeps {
   getToken: () => string | null
   onReady: () => void
   // retryAt — момент следующей попытки, читает витрина tweb connectionStatus.ts:114
-  // (обратный отсчёт :150-158); производители статуса — networker.ts:976 (таймер) и
-  // tcpObfuscated.ts:111-123 (onClose → setConnectionStatus(Closed, retryAt)).
+  // (обратный отсчёт :150-158); производитель по таймеру — networker.ts:835-838
+  // (checkConnectionRetryAt = Date.now() + delay → setConnectionStatus(Closed, …));
+  // networker.ts:976 — сигнатура ПРИЁМНИКА setConnectionStatus(status, retryAt?, …),
+  // не таймер. onClose тоже производит его — tcpObfuscated.ts:111-123
+  // (setConnectionStatus(Closed, retryAt)).
   // Передаётся вторым аргументом ТОЛЬКО когда есть (scheduleReconnect); остальные
   // переходы состояния зовут onState одним аргументом — так же, как раньше.
   onState: (s: ConnState, retryAt?: number) => void
@@ -45,8 +48,9 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   // ровно то, что видел бы подписчик onState на последнем push. Нужен для
   // getStatus() (Задача 1, ревью): вкладка/сама виджет-разметка, подключившаяся
   // ПОСЛЕ перехода в 'reconnecting', иначе не узнаёт retryAt вплоть до следующего
-  // события (до 30с backoff'а) — в tweb этой дыры нет, там канал pull-овый
-  // (connectionStatus.ts:86-89 тянет getConnectionStatus() на каждое событие).
+  // события (до 30с backoff'а) — в tweb этой дыры нет, там канал pull-овый для
+  // самого статуса соединения (connectionStatus.ts:87-91 тянет getConnectionStatus()
+  // на connection_status_change; подробности и граница расширения — realtime.ts).
   let lastRetryAt: number | undefined
   let attempt = 0
   let hbTimer: ReturnType<typeof setInterval> | null = null
@@ -136,7 +140,14 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
 
   return {
     start() { if (state === 'offline') connect() },
-    stop() { if (reconnectTimer) clearTimeout(reconnectTimer); stopHeartbeat(); state = 'offline'; ws.close() },
+    // Через setState (не прямым `state = 'offline'`) — иначе lastRetryAt протухал
+    // бы: ws.onClose → reconnecting(+delay) → stop() без setState оставил бы
+    // старый будущий retryAt висеть на снимке при уже снятом таймере, и
+    // getStatus() вернул бы {state:'offline', retryAt:<в будущем>} — ревью нашло
+    // это несоответствие инварианту «lastRetryAt зеркалит push 1:1». Сегодня
+    // недостижимо в проде (нет продакшен-вызовов stop() — только тест), но раз
+    // уж инвариант заявлен, код обязан его держать, а не только комментарий.
+    stop() { if (reconnectTimer) clearTimeout(reconnectTimer); stopHeartbeat(); setState('offline'); ws.close() },
     state: () => state,
     // Снимок последнего опубликованного retryAt (см. lastRetryAt выше) — питает
     // realtime.getStatus() для позднего подписчика (новая вкладка/перезагрузка).

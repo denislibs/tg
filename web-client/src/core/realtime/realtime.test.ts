@@ -59,7 +59,9 @@ describe('realtime.markMediaRead', () => {
 // retryAt/syncing нигде не хранились — вкладка, подключившаяся посреди
 // reconnect-backoff'а (до MAX_BACKOFF=30с), не видела ни одного события RT.state
 // вплоть до следующего перехода. getStatus() — pull-эквивалент tweb
-// getConnectionStatus() (connectionStatus.ts:86-89).
+// getConnectionStatus() (connectionStatus.ts:87-91) для state/retryAt; syncing —
+// наше расширение той же дисциплины (не в getConnectionStatus() у tweb,
+// см. докблок getStatus в realtime.ts).
 describe('realtime.getStatus', () => {
   it('снимает текущее состояние/retryAt/syncing с conn и sync', async () => {
     const conn = {
@@ -85,9 +87,11 @@ describe('realtime.getStatus', () => {
 })
 
 // Уточнение ревью Задачи 1: getStatus() обязан быть ПОЛНОЦЕННЫМ pull (tweb
-// connectionStatus.ts:86-89), а не разовым снапшотом поверх push-канала. Ключевое
-// свойство — иммунность к потере уведомления: SuperMessagePort не буферизует
-// кадры, а realtimeBridge вешает `smp.on(...)` в эффекте ПОСЛЕ первого рендера,
+// connectionStatus.ts:47-51/:87-91 — для state/retryAt, 1:1; syncing — наше
+// расширение, не факт оригинала, см. realtime.ts), а не разовым снапшотом поверх
+// push-канала. Ключевое свойство — иммунность к потере уведомления:
+// SuperMessagePort не буферизует кадры, а realtimeBridge вешает `smp.on(...)` в
+// эффекте ПОСЛЕ первого рендера,
 // поэтому ранний rt:state физически теряется для подписчика, смонтировавшегося
 // позже (тот же класс дыры, что у loadChats vs push для `me`). Этот тест гоняет
 // НАСТОЯЩИЕ connectionManager + syncEngine (не моки функций conn.state/retryAt) и
