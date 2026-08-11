@@ -35,7 +35,8 @@ import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
-import { useConnectionStatusLabel } from '../core/hooks/useConnectionStatusLabel'
+import ConnectionStatusComponent from './connectionStatus'
+import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -59,8 +60,28 @@ export default function Sidebar({
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
-  const showUpdating = useConnectionStatusLabel(loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
+  // Плейсхолдер и спиннер поля поиска ведёт автомат состояния соединения (порт
+  // tweb ConnectionStatusComponent), поэтому пропа `placeholder` у InputSearch
+  // здесь нет: единственный писатель — автомат. Хэндл трёх его методов приезжает
+  // отдельным `statusRef` (основной `ref` — сам input, его берёт useSidebarSearch).
+  const searchStatusRef = useRef<InputSearchStatus>(null)
+  // НЕПОКРЫТАЯ ПРОВОДКА (норма построчная, web-client/CLAUDE.md → «Тесты»): эти
+  // три строки — ref, эффект ниже и проп `statusRef` у InputSearch — сознательно
+  // без краснеющего теста. Sidebar не поднимается ни одним тестом (оркестратор
+  // на два десятка хуков; чтобы срендерить его, пришлось бы замокать весь слой
+  // менеджеров), а текстовый пин по исходнику дал бы ложную уверенность: он
+  // зелёный и тогда, когда `searchStatusRef.current` пуст. Сам автомат и его
+  // единственная нетривиальная предпосылка — что к моменту эффекта РОДИТЕЛЯ
+  // хэндл дочернего useImperativeHandle уже выставлен — покрыты на таком же
+  // хосте в `connectionStatus.test.ts` («монтирование хостом»).
+  useEffect(() => {
+    const status = searchStatusRef.current
+    if (!status) return
+    const connectionStatus = new ConnectionStatusComponent()
+    connectionStatus.construct(managers, status)
+    return () => connectionStatus.destroy()
+  }, [managers])
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
   const chatlistContainerRef = useRef<HTMLDivElement>(null)
@@ -205,12 +226,12 @@ export default function Sidebar({
         )}
         <InputSearch
           ref={inputRef}
+          statusRef={searchStatusRef}
           className={classNames('old-style', s.search)}
           value={query}
           onChange={setQuery}
           onFocus={() => setSearching(true)}
           onClear={() => setQuery('')}
-          placeholder={showUpdating ? t('Updating…') : t('Search')}
           focused={searching}
         />
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}

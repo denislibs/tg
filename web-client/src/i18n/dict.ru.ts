@@ -848,7 +848,16 @@ const ru: Dict = {
   "Birthday": "Дата рождения",
   "In settings you can choose who will see your birthday.": "В настройках можно выбрать, кто будет видеть Ваш день рождения.",
   "Who can see my phone number": "Кто видит мой номер телефона",
-  "Updating…": "Обновление…",
+  // Автомат состояния соединения (components/connectionStatus.ts, порт tweb
+  // ConnectionStatusComponent). Ключи — английские строки ДОСЛОВНО из
+  // tweb/src/lang.ts: 'ConnectionStatus.ReconnectInPlain' (:116),
+  // 'ConnectionStatus.Reconnecting' (:119), 'ConnectionStatus.Waiting' (:121),
+  // 'Updating' (:1663). Прежний ключ "Updating…" (с типографским многоточием) был
+  // нашей вольностью и удалён вместе со своим единственным вызывающим.
+  "Reconnect in %ds": "Переподключение через %d с",
+  "Reconnecting...": "Переподключение...",
+  "Waiting for network...": "Ожидание сети...",
+  "Updating...": "Обновление...",
   "Discard voice message?": "Удалить голосовое сообщение?",
   "Are you sure you want to discard this voice message?": "Вы уверены, что хотите удалить это голосовое сообщение?",
   "Cancel": "Отмена",
