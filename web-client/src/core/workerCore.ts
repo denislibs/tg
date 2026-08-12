@@ -92,9 +92,19 @@ export function createWorkerCore() {
     // (`apiManagerProxy.ts:330` — commonEventNames, доставляется вкладке даже
     // под другим аккаунтом). Кэш `me` здесь не трогаем — им управляет
     // onMeChanged, отдельным каналом значения.
-    onLoggingOut: (e) => { broadcast(RT.loggingOut, e) },
-    // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером.
-    onLoggedIn: (e) => { broadcast(RT.loggedIn, e) },
+    // Медиа-токен здесь же выбрасываем — ДО публикации намерения и синхронно с
+    // ней: он подписан на конкретного пользователя и живёт до 15 минут (бэк:
+    // signMediaToken(userID)), так что переживший переход токен остаётся ключом
+    // к медиа прошлого аккаунта у всех вкладок разом. Порядок обязателен —
+    // вкладка, ответившая на кадр запросом токена, обязана застать владельца уже
+    // сброшенным, иначе получит прежний. Тот же порядок, что у tweb: `clear()`
+    // в `apiManager.logOut()` стирает ключи/кэши и лишь потом диспатчит
+    // `logging_out` (`appManagers/apiManager.ts:289-335`).
+    onLoggingOut: (e) => { media.resetToken(); broadcast(RT.loggingOut, e) },
+    // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
+    // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
+    // до входа, принадлежит прошлой сессии.
+    onLoggedIn: (e) => { media.resetToken(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })

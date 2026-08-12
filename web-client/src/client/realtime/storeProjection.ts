@@ -14,7 +14,7 @@ import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
-import { applyMediaToken } from '../../core/mediaUrl'
+import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
@@ -50,6 +50,17 @@ const APPLY: Projector = {
   // обновлении). core/mediaUrl.ts — зеркало: applyMediaToken кладёт снимок и
   // будит медиа-баблы, чтобы те пересобрали <img src> со свежим токеном.
   [RT.mediaToken]: (t) => { applyMediaToken(t) },
+  // Обратная сторона той же собственности: активная сессия ушла (логаут,
+  // переезд на другой аккаунт, отозванная сессия) — снимок в зеркале подписан
+  // на ПРОШЛОГО пользователя и живёт ещё до 15 минут. Владелец свой токен
+  // выбросил сам (workerCore.ts), а зеркало он не спрашивает — оно отдаёт токен
+  // синхронно на рендере, поэтому переход обязан доехать сюда кадром. Реакция
+  // считается не из значения (`me`), а из объявленного намерения — по той же
+  // причине, что в useAuthGate: из снимка пользователя переход не выводится.
+  // Парного [RT.loggedIn] здесь нет сознательно (у владельца он есть):
+  // активный токен не появляется, не уйдя перед этим, — любой вход идёт с
+  // экрана входа, куда вкладку привёл этот самый кадр, уже сбросивший зеркало.
+  [RT.loggingOut]: () => { resetMediaToken() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).

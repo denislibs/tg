@@ -59,6 +59,10 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
   let mediaTokenExp = 0
   let tokenTimer: ReturnType<typeof setTimeout> | null = null
   let tokenFetch: Promise<string> | null = null
+  // Поколение сессии: растёт на каждом resetToken(). Ответ на УЖЕ УЛЕТЕВШИЙ
+  // GET /media/token принадлежит той сессии, под которой запрос ушёл, — по
+  // возвращении он сверяет своё поколение с текущим (см. fetchToken).
+  let tokenGen = 0
   // Единственное расписание обновления токена (Stage 1C.2, Task 3): перезапрос
   // за TOKEN_MARGIN до истечения — ровно там, где ensureToken перестаёт считать
   // токен свежим. Раньше это делала витрина своим таймером, и токен обновлялся
@@ -75,8 +79,15 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
   // таймер) в один поход в сеть.
   function fetchToken(): Promise<string> {
     if (tokenFetch) return tokenFetch
-    tokenFetch = rest.get<{ token: string; expires_at: string }>('/media/token')
+    const gen = tokenGen
+    const p = rest.get<{ token: string; expires_at: string }>('/media/token')
       .then((r) => {
+        // Пока запрос летел, активная сессия сменилась: пришёл токен ПРОШЛОГО
+        // пользователя (запрос ушёл с прежним session-токеном). Ни кэшировать,
+        // ни публиковать его нельзя — идём за токеном текущей сессии, чтобы
+        // звонящий получил рабочий, а не пустоту (иначе бабл, начавший сборку
+        // URL ровно в момент перехода, застрял бы на подложке).
+        if (gen !== tokenGen) return fetchToken()
         mediaToken = r.token
         mediaTokenExp = new Date(r.expires_at).getTime()
         scheduleTokenRefresh()
@@ -84,7 +95,22 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
         return mediaToken
       })
       .finally(() => { tokenFetch = null })
-    return tokenFetch
+    tokenFetch = p
+    return p
+  }
+  // Смена активной сессии (rt:logging_out / rt:logged_in, workerCore.ts).
+  // Медиа-токен подписан на конкретного пользователя и живёт до 15 минут
+  // (бэк: signMediaToken(userID), mediaTokenTTL), поэтому пережить переход он не
+  // может: иначе владелец продолжал бы раздавать вкладкам ключ к медиа прошлого
+  // аккаунта. Токен не перезапрашиваем — это делает первый же потребитель
+  // (ensureToken); расписание обновления снимаем: у сессии, которой больше нет,
+  // его быть не должно (иначе таймер прошлого аккаунта продолжает дёргать
+  // /media/token в пустоту).
+  function resetToken(): void {
+    mediaToken = ''
+    if (tokenTimer) clearTimeout(tokenTimer)
+    tokenGen++
+    tokenFetch = null
   }
   async function ensureToken(): Promise<string> {
     if (mediaToken && Date.now() < mediaTokenExp - TOKEN_MARGIN) return mediaToken
@@ -248,6 +274,10 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
       const token = await ensureToken()
       return { token, expiresAt: mediaTokenExp }
     },
+    // Выбросить токен прошлой сессии. Зовёт воркер синхронно в момент перехода
+    // (workerCore.ts: onLoggingOut/onLoggedIn) — тем же вызовом, что публикует
+    // намерение вкладкам, и ДО публикации.
+    resetToken,
     // URL of the server-generated thumbnail/poster (jpeg). Same content endpoint
     // with ?v=thumb. Caller should only use it when meta.hasThumb is true.
     async thumbUrl(id: number): Promise<string> {
