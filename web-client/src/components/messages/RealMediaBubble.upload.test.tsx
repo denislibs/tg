@@ -2,19 +2,29 @@
 // крестиком-отменой на иконке, подстрока «отдано / всего», реальное имя файла.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import type { ReactElement } from 'react'
 
 // mediaUrl на импорте стартует SharedWorker (нет в happy-dom) — мокаем.
+// (токен остался только видео-путям бабла; картинки — useMediaUrl, Task 7)
 vi.mock('../../core/mediaUrl', () => ({
   mediaContentUrl: (id: number) => `/media/${id}`,
-  mediaThumbUrl: (id: number) => `/media/${id}?v=thumb`,
   hasMediaToken: () => true,
   primeMediaToken: vi.fn(),
   useMediaTokenVersion: () => 0,
 }))
 
 import RealMediaBubble from './RealMediaBubble'
+import { ManagersProvider } from '../../core/hooks/useManagers'
+import type { Managers } from '../../client/bootstrap'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { useAudioStore } from '../../stores/audioStore'
+
+// Task 7: картинки бабла резолвит useMediaUrl → managers.media.downloadMediaURL.
+// Здесь баблы документ/трек — конвейер не зовётся, но провайдер обязателен.
+const fakeManagers = { media: { downloadMediaURL: vi.fn(async (id: number) => `blob:media-${id}`) } } as unknown as Managers
+const withManagers = (ui: ReactElement) => (
+  <ManagersProvider managers={fakeManagers}>{ui}</ManagersProvider>
+)
 
 describe('RealMediaBubble: аплоад документа', () => {
   beforeEach(() => {
@@ -25,7 +35,7 @@ describe('RealMediaBubble: аплоад документа', () => {
   it('пока грузится: имя файла, «отдано / всего», кольцо и крестик-отмена', () => {
     useUploadsStore.getState().setProgress('c-9', 0.5)
     const onCancel = vi.fn()
-    const { container } = render(
+    const { container } = render(withManagers(
       <RealMediaBubble
         type="document"
         fileName="оферта.pdf"
@@ -33,7 +43,7 @@ describe('RealMediaBubble: аплоад документа', () => {
         clientId="c-9"
         onCancelUpload={onCancel}
       />,
-    )
+    ))
     expect(screen.getByText('оферта.pdf')).toBeTruthy()
     expect(screen.getByText('1.0 МБ / 2.0 МБ')).toBeTruthy()
     const ring = container.querySelector('[data-radial-progress]')
@@ -43,7 +53,7 @@ describe('RealMediaBubble: аплоад документа', () => {
   })
 
   it('после аплоада: обычная иконка расширения и размер, без кольца', () => {
-    const { container } = render(
+    const { container } = render(withManagers(
       <RealMediaBubble
         type="document"
         mediaId={7}
@@ -51,7 +61,7 @@ describe('RealMediaBubble: аплоад документа', () => {
         size={2 * 1024 * 1024}
         clientId="c-10"
       />,
-    )
+    ))
     expect(container.querySelector('[data-radial-progress]')).toBeNull()
     expect(screen.getByText('pdf')).toBeTruthy()
     expect(screen.getByText('2.0 МБ')).toBeTruthy()
@@ -68,7 +78,7 @@ describe('RealMediaBubble: музыкальный бабл', () => {
   })
   afterEach(cleanup)
 
-  const track = (extra: Record<string, unknown> = {}) => (
+  const track = (extra: Record<string, unknown> = {}) => withManagers(
     <RealMediaBubble
       type="document"
       mime="audio/mpeg"
@@ -79,7 +89,7 @@ describe('RealMediaBubble: музыкальный бабл', () => {
       out
       mid={21402}
       {...extra}
-    />
+    />,
   )
 
   it('в покое: заголовок из тега, длительность и исполнитель в описании', () => {

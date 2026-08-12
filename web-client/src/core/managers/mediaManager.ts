@@ -391,6 +391,8 @@ export function newMediaManager({ rest, onUploadProgress, onToken, onMediaUrl, f
     resetDownloads,
     // URL of the server-generated thumbnail/poster (jpeg). Same content endpoint
     // with ?v=thumb. Caller should only use it when meta.hasThumb is true.
+    // Task 7: последний потребитель — MediaLightbox (умирает в стадии E);
+    // остальные превью-картинки ходят downloadMediaURL. Удалить вместе с ним.
     async thumbUrl(id: number): Promise<string> {
       const tok = await ensureToken()
       return rest.mediaUrl(`/media/${id}/content`, tok) + '&v=thumb'

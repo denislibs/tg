@@ -18,11 +18,13 @@ function msg(over: Partial<Message>): Message {
   }
 }
 
-/** media-менеджер, у которого миниатюра есть только у перечисленных id */
+/** media-менеджер, у которого миниатюра есть только у перечисленных id.
+ * Task 7: превью резолвит воркерный конвейер (downloadMediaURL), не токенный thumbUrl. */
 function fakeManagers(withThumb: number[]) {
-  const thumbUrl = vi.fn(async (id: number) => `/api/media/${id}/content?token=t&v=thumb`)
+  const downloadMediaURL = vi.fn(async (id: number, opts?: { thumb?: boolean }) =>
+    `blob:media-${id}${opts?.thumb ? '-thumb' : ''}`)
   const meta = vi.fn(async (id: number) => ({ id, hasThumb: withThumb.includes(id) }))
-  return { managers: { media: { meta, thumbUrl } } as unknown as Managers, thumbUrl }
+  return { managers: { media: { meta, downloadMediaURL } } as unknown as Managers, downloadMediaURL }
 }
 
 function renderBar(managers: Managers, pins: Message[]) {
@@ -39,7 +41,7 @@ afterEach(cleanup)
 
 describe('PinnedBar — превью медиа', () => {
   it('голосовое (миниатюры нет): ни <img>, ни класса is-media', async () => {
-    const { managers, thumbUrl } = fakeManagers([])
+    const { managers, downloadMediaURL } = fakeManagers([])
     const { container } = renderBar(managers, [msg({ type: 'voice', mediaId: 5 })])
 
     // ждём резолва меты, чтобы не поймать «ещё не успело» вместо «решено не рисовать»
@@ -48,15 +50,16 @@ describe('PinnedBar — превью медиа', () => {
 
     expect(container.querySelector('img')).toBeNull()
     expect(plate(container).classList.contains('is-media')).toBe(false)
-    expect(thumbUrl).not.toHaveBeenCalled()
+    expect(downloadMediaURL).not.toHaveBeenCalled()
   })
 
   it('фото (миниатюра есть): <img> с thumb-URL и класс is-media', async () => {
-    const { managers } = fakeManagers([9])
+    const { managers, downloadMediaURL } = fakeManagers([9])
     const { container } = renderBar(managers, [msg({ type: 'photo', mediaId: 9 })])
 
     await waitFor(() => expect(container.querySelector('img')).not.toBeNull())
-    expect(container.querySelector('img')!.getAttribute('src')).toBe('/api/media/9/content?token=t&v=thumb')
+    expect(downloadMediaURL).toHaveBeenCalledWith(9, { thumb: true })
+    expect(container.querySelector('img')!.getAttribute('src')).toBe('blob:media-9-thumb')
     expect(plate(container).classList.contains('is-media')).toBe(true)
   })
 

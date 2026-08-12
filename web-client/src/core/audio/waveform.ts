@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { decryptMedia, b64ToBytes } from '../secret/crypto'
+// mediaContentUrl здесь — БАЙТЫ аудио для декода волны (fetch + decodeAudioData),
+// не картинка: Task 7 (перевод картинок на downloadMediaURL) их не трогает.
 import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
 import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 

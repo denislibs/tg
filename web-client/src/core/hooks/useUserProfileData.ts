@@ -82,10 +82,13 @@ export function useProfilePhotos(args: {
     void managers.profile.listPhotos(peerId).then(async (list) => {
       const items = await Promise.all(list.map(async (p): Promise<HeaderPhoto> => {
         const m = p.url.match(/\/media\/(\d+)\/content/)
-        const src = m ? await managers.media.contentUrl(Number(m[1])) : p.url
-        // Видео-аватар (tweb photo_video): резолвим video_url в токен-URL так же,
-        // как still. Список чатов/сжатая шапка остаются на still — playback
-        // только в развёрнутой шапке-пейджере и просмотрщике.
+        // Still-фото профиля — картинка: воркерным конвейером (Task 7), URL
+        // оседает в кэш-контексте воркера — повторное разворачивание шапки без сети.
+        const src = m ? await managers.media.downloadMediaURL(Number(m[1])) : p.url
+        // Видео-аватар (tweb photo_video) — видео, не картинка: остаётся на
+        // токен-URL до перевода видео-путей (вьювер/стадия E). Список чатов/
+        // сжатая шапка остаются на still — playback только в развёрнутой
+        // шапке-пейджере и просмотрщике.
         if (p.videoUrl) {
           const vm = p.videoUrl.match(/\/media\/(\d+)\/content/)
           const videoSrc = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl

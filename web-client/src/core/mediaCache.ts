@@ -6,37 +6,64 @@ import type { MediaUrlEvt } from './managers/mediaManager'
 
 const CACHED_FILES = 'cachedFiles'
 
-// ── Зеркало факта «URL медиа» (Task 6, стадия C медиа-суперпорта) ────────────
+// ── Зеркало факта «URL медиа» (Task 6/7, стадия C медиа-суперпорта) ──────────
 // Владелец — воркер (core/managers/mediaManager.ts::downloadMediaURL): он качает
 // байты, кладёт их в корзину cachedFiles и минтит blob:-URL прямо в воркере —
 // blob-стор общий на origin, вкладка рисует такой URL в <img> как свой (модель
 // tweb: apiFileManager.ts:1039 + зеркалирование storages/thumbs.ts). Здесь —
-// только применение объявленного (rt:media_url → storeProjection) и синхронное
-// чтение на рендере. Подписки-«версии» (useMediaTokenVersion-стайл) сознательно
-// нет: форму потребления решит Task 7 (перевод потребителей картинок). Поздняя
-// вкладка пробел объявляет сама: RPC downloadMediaURL и есть канал доставки её
-// снимка (стартовый бродкаст она пропустила — SuperMessagePort не буферизует).
+// применение объявленного (rt:media_url → storeProjection; ответ RPC на
+// объявленный пробел — core/hooks/useMediaUrl), синхронное чтение на рендере и
+// подписка-«версия» для useSyncExternalStore (Task 7, по образцу
+// useMediaTokenVersion в core/mediaUrl.ts). Поздняя вкладка пробел объявляет
+// сама: RPC downloadMediaURL и есть канал доставки её снимка (стартовый
+// бродкаст она пропустила — SuperMessagePort не буферизует).
 
-const mediaUrlMirror = new Map<string, { url: string; size: number }>()
+// size из MediaUrlEvt зеркало сознательно не хранит: единственный витринный
+// потребитель факта — URL для <img>/фона (useMediaUrl); прогресс-байты живут
+// своим каналом (media:upload_progress / прелоадер, стадия B).
+const mediaUrlMirror = new Map<string, string>()
 const mirrorKey = (id: number, thumb: boolean) => `${id}${thumb ? '_thumb' : ''}`
 
-// Применить снимок, посчитанный владельцем. Единственный вызывающий — проектор
-// (пин — core/noDuplicateMediaUrl.test.ts).
-export function applyMediaUrl(e: MediaUrlEvt): void {
-  mediaUrlMirror.set(mirrorKey(e.id, e.thumb), { url: e.url, size: e.size })
+// Версии-счётчика у зеркала нет намеренно: снимок per-ключ (cachedMediaUrl)
+// сравнивается самим useSyncExternalStore, notify лишь просит пересчитать.
+const mirrorSubs = new Set<() => void>()
+function notifyMirror() {
+  mirrorSubs.forEach((f) => f())
+}
+
+// Подписка компонента на движение зеркала (useSyncExternalStore в useMediaUrl).
+// Снимок per-ключ берёт сам подписчик (cachedMediaUrl) — глобальный notify не
+// перерисовывает компоненты, чей URL не менялся (Object.is-сравнение снимков).
+export function subscribeMediaUrlMirror(cb: () => void): () => void {
+  mirrorSubs.add(cb)
+  return () => { mirrorSubs.delete(cb) }
+}
+
+// Применить снимок, посчитанный владельцем. Вызывающие — проектор (кадр
+// rt:media_url) и useMediaUrl (ответ RPC на объявленный этим же хуком пробел);
+// пин — core/noDuplicateMediaUrl.test.ts. На холодном старте один URL приезжает
+// обоими путями — повторное применение подписчиков не будит (как applyMediaToken).
+export function applyMediaUrl(e: Pick<MediaUrlEvt, 'id' | 'thumb' | 'url'>): void {
+  const key = mirrorKey(e.id, e.thumb)
+  if (mediaUrlMirror.get(key) === e.url) return
+  mediaUrlMirror.set(key, e.url)
+  notifyMirror()
 }
 
 // Синхронное чтение на рендере: undefined — факт ещё не объявлен (спроси
 // владельца RPC downloadMediaURL).
 export function cachedMediaUrl(id: number, thumb = false): string | undefined {
-  return mediaUrlMirror.get(mirrorKey(id, thumb))?.url
+  return mediaUrlMirror.get(mirrorKey(id, thumb))
 }
 
 // Кадр rt:logging_out (storeProjection): blob:-URL прошлой сессии владелец уже
 // отозвал (resetDownloads) — зеркало обязано перестать их отдавать, иначе <img>
-// держит мёртвый URL (а до отзыва — медиа прошлого аккаунта).
+// держит мёртвый URL (а до отзыва — медиа прошлого аккаунта). Пробуждение
+// подписчиков обязательно: <img> пересобирается на подложку, а его хук сам
+// объявит пробел владельцу текущей сессии.
 export function resetMediaUrlMirror(): void {
   mediaUrlMirror.clear()
+  notifyMirror()
 }
 
 export interface CachedFilesSizes {

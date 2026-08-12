@@ -20,7 +20,7 @@ import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
-import { mediaContentUrl, mediaThumbUrl, useMediaTokenVersion } from '../../core/mediaUrl'
+import MediaGridThumb from '../MediaGridThumb'
 import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
@@ -64,10 +64,6 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
-  // Ре-рендер при (пере)прайме медиа-токена — иначе превью сетки рендерятся с
-  // пустым/протухшим token'ом (401) и залипают серыми плейсхолдерами (как в фиде:
-  // RealMediaBubble/AlbumGrid тоже подписаны на useMediaTokenVersion).
-  useMediaTokenVersion()
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
@@ -390,21 +386,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           {msgs.map((m, i) => (
             <div key={m.id} className={s.mediaTile} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && (
-                <img
-                  className={s.tileImg}
-                  src={mediaThumbUrl(m.mediaId)}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  onError={(e) => {
-                    // превью ещё не сгенерировано → полный контент
-                    const img = e.currentTarget
-                    if (m.mediaId != null && !img.dataset.fb) {
-                      img.dataset.fb = '1'
-                      img.src = mediaContentUrl(m.mediaId)
-                    }
-                  }}
-                />
+                <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
               )}
               {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
             </div>

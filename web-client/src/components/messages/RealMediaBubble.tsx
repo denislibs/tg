@@ -14,7 +14,11 @@ import TgIcon from '../TgIcon'
 import { mediaSizes, setAttachmentSize } from '../../core/dom/mediaSizes'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
-import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+// Токен-механизм остаётся ТОЛЬКО видео-путям этого бабла (инлайн-автоплей
+// <video> и href документа — стрим/байты, не картинки); img-src и thumb с
+// Task 7 идут воркерным конвейером (useMediaUrl → downloadMediaURL).
+import { mediaContentUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { isGifLike } from '../../core/gifs'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
@@ -83,7 +87,9 @@ export default function RealMediaBubble({
   renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
   hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
-  useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
+  // Токен нужен только видео-путям (videoSrc/href ниже) — картинки с Task 7 на
+  // воркерном конвейере и от токена не зависят.
+  useMediaTokenVersion() // re-render when the media token is (re)primed → fresh video URLs
   const t = useT()
   // Платное медиа: пока идёт списание — блокируем повторный клик и крутим кольцо.
   const [unlocking, setUnlocking] = useState(false)
@@ -110,6 +116,31 @@ export default function RealMediaBubble({
   const isImage = !asFile && (type === 'photo' || !!mime?.startsWith('image/'))
   const isVideo = !asFile && (type === 'video' || !!mime?.startsWith('video/'))
   const isAudio = !asFile && (type === 'audio' || isAudioMime)
+
+  const isGif = mime === 'image/gif'
+  // «Гифоподобное» видео (tenor/giphy mp4 или image/gif): автоплей-цикл прямо
+  // в бабле, бейдж GIF, без play-диска (tweb wrapVideo gif-путь). Клик — лайтбокс.
+  const gifLike = isGifLike({ mime, fileName, duration })
+  const gifVideo = gifLike && isVideo
+  // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
+  // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
+  // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
+  // Локальное превью исходящего (localUrl) гейту не подлежит.
+  const blocked = !forced && !localUrl && !!autoDownload
+    && (isVideo || isGif ? autoDownload.video === 0 : autoDownload.photo === 0)
+  // Инлайн-автоплей видео (tweb wrapVideo: canAutoplay = size ≤ 50 МБ и это не
+  // элемент альбома). Автоплей есть → крутится <video muted loop> и в
+  // .video-time добавляется иконка nosound; иначе — большая play-кнопка.
+  const canAutoplay = isVideo && !blocked && (size == null || size <= MAX_VIDEO_AUTOPLAY_SIZE) && !isAlbumItem
+  // URL картинки (Task 7): воркерный конвейер downloadMediaURL, синхронно из
+  // зеркала при повторном рендере. GIF показывает анимированный контент; прочее
+  // предпочитает серверный thumb с фолбэком на оригинал. Инлайн-автоплей без
+  // gif-пути (videoSrc ниже) картинку не рендерит вовсе — id → null, чтобы хук
+  // не скачивал байты, которые никто не покажет; то же для localUrl и гейта
+  // автозагрузки (blocked обязан НЕ ходить в сеть до клика).
+  const needMediaUrl = (isImage || isVideo) && !(canAutoplay && !gifVideo)
+    && !localUrl && !blocked && !paidMedia?.locked && mediaId != null
+  const mediaUrl = useMediaUrl(needMediaUrl ? mediaId! : null, { thumb: !isGif && !gifVideo && !!hasThumb })
 
   // документ/музыка уже на дереве tweb — время позиционируют правила
   // `.document .time` / `.audio .time` из портированных партиалов
@@ -148,31 +179,12 @@ export default function RealMediaBubble({
         </div>
       )
     }
-    const isGif = mime === 'image/gif'
-    // «Гифоподобное» видео (tenor/giphy mp4 или image/gif): автоплей-цикл прямо
-    // в бабле, бейдж GIF, без play-диска (tweb wrapVideo gif-путь). Клик — лайтбокс.
-    const gifLike = isGifLike({ mime, fileName, duration })
-    const gifVideo = gifLike && isVideo
-    // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
-    // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
-    // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
-    // Локальное превью исходящего (localUrl) гейту не подлежит.
-    const blocked = !forced && !localUrl && !!autoDownload
-      && (isVideo || isGif ? autoDownload.video === 0 : autoDownload.photo === 0)
-    // Инлайн-автоплей видео (tweb wrapVideo: canAutoplay = size ≤ 50 МБ и это не
-    // элемент альбома). Автоплей есть → крутится <video muted loop> и в
-    // .video-time добавляется иконка nosound; иначе — большая play-кнопка.
-    const canAutoplay = isVideo && !blocked && (size == null || size <= MAX_VIDEO_AUTOPLAY_SIZE) && !isAlbumItem
     const needPlayButton = isVideo && !gifVideo && !canAutoplay && !blocked
-    // Synchronous src (no RPC). GIFs show the animated content; others prefer the
-    // smaller server thumbnail, falling back to the original.
-    const displaySrc = localUrl
-      ? localUrl
-      : !tokenReady || blocked || mediaId == null
-        ? ''
-        : isGif || gifVideo
-          ? mediaContentUrl(mediaId)
-          : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
+    // Картинка/гиф — из зеркала конвейера (useMediaUrl выше): синхронно при
+    // повторном рендере, '' пока URL не объявлен (рисуется blur-подложка).
+    const displaySrc = localUrl || mediaUrl
+    // Инлайн-автоплей настоящего видео — СТРИМ, не картинка: остаётся на
+    // токен-URL до перевода видео-путей (вьювер/стадия E ходит resolveStreamUrl).
     const videoSrc = canAutoplay && !gifVideo && tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
     // Дерево tweb (живой DOM §3c, wrappers/photo.ts:134-180): контейнер
     // .attachment.media-container; когда бокс пришлось раздвинуть (isFit=false —
@@ -190,6 +202,8 @@ export default function RealMediaBubble({
         onError={() => { void primeMediaToken(true) }}
       />
     ) : displaySrc ? (
+      // blob:-URL конвейера: onError-релечение токена тут больше не о чем —
+      // протухание закрывает сброс зеркала на смене сессии (rt:logging_out).
       gifVideo ? (
         <video
           className="media-video"
@@ -198,10 +212,9 @@ export default function RealMediaBubble({
           muted
           loop
           playsInline
-          onError={() => { void primeMediaToken(true) }}
         />
       ) : (
-        <img ref={imgRef} className="media-photo" src={displaySrc} alt="" loading="lazy" decoding="async" onError={() => { void primeMediaToken(true) }} />
+        <img ref={imgRef} className="media-photo" src={displaySrc} alt="" loading="lazy" decoding="async" />
       )
     ) : null
     return (
@@ -284,6 +297,8 @@ export default function RealMediaBubble({
   // уголком и расширением; pdf/zip/apk — фирменные цвета, остальное акцент) ----
   const name = fileName || `media-${mediaId}`
   // Пока идёт аплоад (mediaId ещё нет) — ссылка неактивна, на иконке кольцо.
+  // Токен-URL сознательно: это БАЙТОВЫЙ стрим-фетч файла с прогрессом (DocRow),
+  // категория «МОЖНО: bytes прямым fetch» (web-client/CLAUDE.md), не картинка.
   const href = tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
   return (
     <DocRow

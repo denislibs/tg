@@ -8,12 +8,6 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { useSettingsStore } from '../settings'
 import s from './ChatBackground.module.scss'
 
-// useMediaTokenVersion дёргает primeMediaToken → startClient() (воркер-бутстрап) —
-// вне скоупа этого теста, мокаем как StickerMedia.test.tsx.
-vi.mock('../core/mediaUrl', () => ({
-  mediaContentUrl: (id: number) => `/media/${id}`,
-  useMediaTokenVersion: () => 0,
-}))
 // Реальный ChatBackgroundGradientRenderer лезет в canvas 2D-контекст, которого
 // нет в happy-dom (getContext('2d') → null) — эта задача рендерер не трогала,
 // подменяем безопасной заглушкой, чтобы не тащить canvas в тест готовности слота.
@@ -34,6 +28,17 @@ vi.mock('../core/chat/patternRenderer', async (importOriginal) => ({
 }))
 
 import ChatBackground from './ChatBackground'
+import { ManagersProvider } from '../core/hooks/useManagers'
+import type { Managers } from '../client/bootstrap'
+
+// Task 7: своё фото обоев резолвит useMediaUrl → managers.media.downloadMediaURL.
+// В этих кейсах кастомного медиа нет — достаточно провайдера с пустым стабом.
+const fakeManagers = { media: { downloadMediaURL: vi.fn(async (id: number) => `blob:media-${id}`) } } as unknown as Managers
+const bg = () => (
+  <ManagersProvider managers={fakeManagers}>
+    <ChatBackground />
+  </ManagersProvider>
+)
 
 class FakeImage {
   onload: (() => void) | null = null
@@ -61,7 +66,7 @@ describe('ChatBackground: onerror не запирает слот навсегд�
       wallpaper: { kind: 'preset', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'] },
     })
 
-    render(<ChatBackground />)
+    render(bg())
 
     const patternImg = FakeImage.instances[0]
     expect(patternImg).toBeTruthy()
@@ -75,7 +80,7 @@ describe('ChatBackground: onerror не запирает слот навсегд�
     vi.stubGlobal('Image', FakeImage)
     useSettingsStore.setState({ wallpaper: { kind: 'image', src: 'https://example.test/photo.jpg' } })
 
-    render(<ChatBackground />)
+    render(bg())
 
     const overlayImg = FakeImage.instances[0]
     expect(overlayImg).toBeTruthy()
@@ -93,7 +98,7 @@ describe('ChatBackground: готовность слота — первый по�
   it('без кэша (pattern.svg грузится) — .SlotFade + .SlotActive', () => {
     vi.stubGlobal('Image', FakeImage)
 
-    render(<ChatBackground />)
+    render(bg())
 
     const patternImg = FakeImage.instances[0]
     expect(patternImg).toBeTruthy()
@@ -112,7 +117,7 @@ describe('ChatBackground: готовность слота — первый по�
     }
     vi.stubGlobal('Image', CachedFakeImage)
 
-    render(<ChatBackground />)
+    render(bg())
 
     const patternImg = FakeImage.instances[0]
     expect(patternImg).toBeTruthy()
@@ -142,7 +147,7 @@ describe('ChatBackground: обои следуют за сменой темы', (
     useSettingsStore.setState({ wallpaper: { kind: 'default' } })
     setThemeVars('day', ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'])
 
-    render(<ChatBackground />)
+    render(bg())
 
     const canvas = () => document.body.querySelector('canvas') as HTMLCanvasElement | null
     expect(canvas()?.dataset.colors).toBe('#dbddbb,#6ba587,#d5d88d,#88b884')
@@ -171,7 +176,7 @@ describe('ChatBackground: обои следуют за сменой темы', (
     setThemeVars('day', ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'])
     renderPatternSpy.mockClear()
 
-    render(<ChatBackground />)
+    render(bg())
 
     // Прогон №1 (тема ещё day) завёл свой Image и ждёт загрузки.
     const stale = FakeImage.instances[0]

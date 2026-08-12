@@ -22,7 +22,7 @@ import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appStat
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
-import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
+import MediaGridThumb from './MediaGridThumb'
 import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
@@ -305,21 +305,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     {msgs.map((m) => (
                       <div key={m.id} className={s.mediaTile} onClick={() => openMessage(m)}>
                         {m.mediaId != null && (
-                          <img
-                            className={s.tileImg}
-                            src={mediaThumbUrl(m.mediaId)}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              // превью ещё не сгенерировано → полный контент
-                              const img = e.currentTarget
-                              if (m.mediaId != null && !img.dataset.fb) {
-                                img.dataset.fb = '1'
-                                img.src = mediaContentUrl(m.mediaId)
-                              }
-                            }}
-                          />
+                          <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
                         )}
                         {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
                       </div>

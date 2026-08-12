@@ -1,4 +1,7 @@
 // src/components/messages/MediaLightbox.tsx
+// Умирает в стадии E медиа-суперпорта (замена — vanilla-ядро вьювера), поэтому
+// Task 7 его на useMediaUrl/downloadMediaURL сознательно НЕ переводит: остаётся
+// на RPC contentUrl/thumbUrl/streamUrl до сноса вместе с useLightbox.
 // Медиавьюер. Дерево и классы — дословно из tweb (`mediaViewer/base.ts:318-435`,
 // живой DOM — `docs/research/2026-08-08-tweb-live-dom-reference.md` §9):
 //

@@ -6,6 +6,8 @@
 // Реактивное состояние (track/queue/playing/currentTime/…) живёт отдельно в
 // audioStore — движок его обновляет через set/_sync, UI читает оттуда. Это
 // разводит «железо» (медиа-элемент) и стейт, как в tweb.
+// mediaContentUrl здесь — байты аудио (fetch ciphertext) и стрим <audio>, не
+// картинки: Task 7 (перевод картинок на downloadMediaURL) их сознательно не трогает.
 import { decryptMedia } from '../secret/crypto'
 import { mediaContentUrl, primeMediaToken, resolveStreamUrl } from '../mediaUrl'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'

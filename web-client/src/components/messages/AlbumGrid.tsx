@@ -9,7 +9,7 @@ import RadialProgress from '../RadialProgress'
 import { Layouter, RectPart } from '../../core/dom/groupedLayout'
 import { mediaSizes } from '../../core/dom/mediaSizes'
 import classNames from '../../shared/lib/classNames'
-import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import type { ConvMsg } from '../../data'
@@ -23,6 +23,21 @@ const SPACING = 1
 
 // Углы элемента — tweb prepareAlbum.ts:42-58: наружные скругления берутся от
 // радиусов бабла минус spacing, внутренние остаются прямыми.
+// Медиа элемента альбома (Task 7): URL — воркерным конвейером (useMediaUrl →
+// downloadMediaURL), синхронно из зеркала при повторном рендере. Оптимистичный
+// аплоад (localUrl) и гейт автозагрузки (blocked) скачивание не запускают —
+// хук получает null.
+function AlbumItemMedia({ mediaId, hasThumb, localUrl, blocked }: {
+  mediaId: number | null
+  hasThumb: boolean
+  localUrl?: string
+  blocked: boolean
+}) {
+  const url = useMediaUrl(localUrl || blocked ? null : mediaId, { thumb: hasThumb })
+  const src = localUrl || url
+  return src ? <img className={classNames('album-item-media', s.img)} src={src} alt="" loading="lazy" decoding="async" /> : null
+}
+
 function cornerRadii(sides: number): Record<string, string> {
   const r: Record<string, string> = {}
   const has = (p: number) => (sides & p) !== 0
@@ -46,8 +61,6 @@ export default function AlbumGrid({
   onOpen?: (mediaId: number, el: HTMLElement) => void
   autoDownload?: ChatAutoDownload
 }) {
-  useMediaTokenVersion()
-  const tokenReady = hasMediaToken()
   const [forced, setForced] = useState(false)
   const selected = useMemo(() => new Set((selectedKey ?? '').split(',').filter(Boolean).map(Number)), [selectedKey])
   // Прогресс аплоада по элементам альбома (кольцо на каждом, пока грузится)
@@ -74,11 +87,6 @@ export default function AlbumGrid({
         const uploadProgress = m.clientId ? uploads[m.clientId] : undefined
         const blocked = !forced && !m.localUrl && !!autoDownload && (isVideo ? autoDownload.video === 0 : autoDownload.photo === 0)
         const lqip = m.mediaBlur ? `url("data:image/jpeg;base64,${m.mediaBlur}")` : undefined
-        const src = m.localUrl
-          ? m.localUrl
-          : !tokenReady || blocked || m.mediaId == null
-            ? ''
-            : m.mediaHasThumb ? mediaThumbUrl(m.mediaId) : mediaContentUrl(m.mediaId)
         const isSel = m.id != null && selected.has(m.id)
         return (
           <div
@@ -106,7 +114,7 @@ export default function AlbumGrid({
                 бабла (tweb selection.ts:342-344 prepend на .grouped-item);
                 правый верхний угол задаёт партиал (_chatBubble.scss:939-943). */}
             {selecting && m.id != null && <Checkbox className="bubble-select-checkbox" checked={isSel} />}
-            {src && <img className={classNames('album-item-media', s.img)} src={src} alt="" loading="lazy" decoding="async" />}
+            <AlbumItemMedia mediaId={m.mediaId ?? null} hasThumb={!!m.mediaHasThumb} localUrl={m.localUrl} blocked={blocked} />
             {uploadProgress != null ? (
               <div className={s.play}>
                 <RadialProgress progress={uploadProgress} size={44} />

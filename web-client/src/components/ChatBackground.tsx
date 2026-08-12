@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import patternUrl from '../assets/pattern.svg'
 import { useSettings } from '../settings'
 import { activeBackground } from '../wallpapers'
-import { mediaContentUrl, useMediaTokenVersion } from '../core/mediaUrl'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
 import ChatBackgroundGradientRenderer from '../core/chat/gradientRenderer'
 import { setActiveGradientRenderer } from '../core/chat/activeGradient'
@@ -67,7 +67,6 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<ChatBackgroundGradientRenderer | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
-  useMediaTokenVersion()
   const middlewareHelper = useMiddlewareHelper()
 
   // Портал-контейнер обоев: создаётся один раз на инстанс, вставляется первым
@@ -130,17 +129,21 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   // Тема активного чата перекрывает глобальные обои; иначе пресет, затем дефолт темы.
   const colors = themeColors ?? (wallpaper.kind === 'preset' ? wallpaper.colors : th.grad)
   const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })
+  // Task 7: своё фото обоев — воркерным конвейером (useMediaUrl →
+  // downloadMediaURL) вместо токен-URL; '' пока URL не объявлен.
+  const customUrl = useMediaUrl(!themeColors && ab.kind === 'custom' ? ab.mediaId : null)
 
   // Своё фото / сплошной цвет / загруженная картинка заменяют градиент+паттерн.
   // overlayImageUrl вынесен отдельно (не только в backgroundImage) — по нему ниже
   // честно отслеживается загрузка через new Image(), как узор ниже по файлу.
   const overlayImageUrl = themeColors ? undefined :
-    ab.kind === 'custom' ? mediaContentUrl(ab.mediaId) :
+    ab.kind === 'custom' ? (customUrl || undefined) :
       wallpaper.kind === 'image' ? wallpaper.src : undefined
   const overlay = themeColors ? null :
     ab.kind === 'custom'
       ? {
-          backgroundImage: `url(${overlayImageUrl})`,
+          // пока конвейер не отдал URL — только blur/transform, фон дорисуется
+          backgroundImage: overlayImageUrl ? `url(${overlayImageUrl})` : undefined,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: ab.blur ? 'blur(10px)' : undefined,
@@ -169,6 +172,10 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   // img.complete сразу после простановки src.
   useEffect(() => {
     if (!overlay || hadPreviousRef.current) return
+    // Своё фото, но конвейер ещё не отдал URL (первый маунт, зеркало пустое):
+    // слот не активируем — дождёмся URL (придёт кадром/ответом RPC → ре-рендер),
+    // затем честно отследим загрузку картинки, как и раньше.
+    if (ab.kind === 'custom' && !overlayImageUrl) return
     if (!overlayImageUrl) {
       activateSlot(true)
       return

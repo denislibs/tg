@@ -5,7 +5,7 @@ import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
-import { useMediaContentUrl } from '../core/hooks/useMediaContentUrl'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
@@ -34,9 +34,10 @@ interface Props {
 }
 
 // Small rounded thumbnail of the last message's photo, shown before the preview
-// text (tweb's dialog-subtitle media). Resolves the content URL via the worker.
+// text (tweb's dialog-subtitle media). URL — из воркерного конвейера
+// downloadMediaURL (Task 7), синхронно из зеркала при повторном рендере.
 function SidebarThumb({ id }: { id: number }) {
-  const url = useMediaContentUrl(id)
+  const url = useMediaUrl(id)
   return <div className={s.thumb} style={{ backgroundImage: url ? `url(${url})` : undefined }} />
 }
 

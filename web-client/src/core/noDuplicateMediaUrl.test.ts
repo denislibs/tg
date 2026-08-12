@@ -27,6 +27,13 @@ function walk(dir: string, acc: string[] = []): string[] {
 const ALLOWED = [
   'core/mediaCache.ts', // сам модуль зеркала: определения applyMediaUrl/resetMediaUrlMirror
   'client/realtime/storeProjection.ts', // APPLY[RT.mediaUrl] + сброс на rt:logging_out
+  // Task 7: ответ RPC downloadMediaURL на объявленный ЭТИМ ЖЕ хуком пробел.
+  // Не второй вывод факта — тот же снимок владельца, доставленный вторым каналом:
+  // URL, уже имевшийся у воркера, кадром не объявляется (rt:media_url публикуется
+  // только при СОЗДАНИИ URL, а SuperMessagePort не буферизует — поздняя вкладка
+  // стартовый бродкаст пропустила), поэтому применить его обязан получатель
+  // ответа (норма «владелец отвечает на объявленный пробел всегда»).
+  'core/hooks/useMediaUrl.ts',
 ]
 
 function offendersOf(call: RegExp): string[] {
