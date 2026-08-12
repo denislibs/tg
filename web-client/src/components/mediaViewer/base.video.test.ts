@@ -178,6 +178,22 @@ describe('_openMedia video: gif-режим (tweb :2597-2602)', () => {
   })
 })
 
+// Пин добивки VIDEO_MIN_WIDTH (tweb :2479-2493): узкое видео С плеером
+// добивается до 420px, gif (без плеера) — нет. Найдено контрольной мутацией
+// при приёмке Task 15: гейт `isVideo && !media.gif` у добивки не был запинен —
+// второй gif-гейт внутри createPlayer маскировал его снятие.
+describe('_openMedia video: добивка VIDEO_MIN_WIDTH (tweb :2479-2493)', () => {
+  it('узкое видео добивается до 420, узкий gif — нет', async () => {
+    const v = makeViewer()
+    await openWithPlayer(v, vid({ width: 100, height: 80 }))
+    expect(parseFloat(v.contentMap.media.style.width)).toBe(420)
+
+    const g = makeViewer()
+    await openWithPlayer(g, vid({ width: 100, height: 80, gif: true }))
+    expect(parseFloat(g.contentMap.media.style.width)).toBeLessThan(420)
+  })
+})
+
 describe('_openMedia video: loop-порог (tweb :2603-2605)', () => {
   it('duration < 60 → loop', async () => {
     const v = makeViewer()
