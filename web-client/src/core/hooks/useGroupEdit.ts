@@ -9,7 +9,6 @@ import type { GroupCard, InviteLink } from '../managers/groupsManager'
 import type { DiscussionCandidate } from '../managers/channelsManager'
 import type { Peer } from '../managers/peersManager'
 import type { User } from '../managers/authManager'
-import { loadChats, useChatsStore } from '../../stores/chatsStore'
 
 // Битовая маска «возможностей участников» (зеркало domain.MemberPerms).
 export const PERMS = [
@@ -105,7 +104,14 @@ interface Managers {
   media: { upload(args: { bytes: ArrayBuffer; mime: string; size: number; width?: number; height?: number }): Promise<number> }
   peers: { getUsers(ids: number[]): Promise<Peer[]> }
   auth: { me(): Promise<User | null> }
-  chats: { listDialogs(): Promise<import('../models').Dialog[]> }
+  // Task 4 (действия без оптимистики, fix ревью Important): self-leave
+  // (removeMember(chatId, me.id)) применяет владельца локально сразу после
+  // успеха — не дожидаясь WS chat_removed (см. deleteOrLeave ниже).
+  // Task 6: `refresh()` — сетевой догон владельца списка диалогов (заменил
+  // `chats.listDialogs()` + `loadChats`, диалоговая половина которого снесена).
+  // `refresh()` отдаёт опубликованную операцию (или null, если ответ совпал с
+  // памятью) — здесь она не нужна, ждём только завершения догона.
+  dialogs: { applyRemoved(chatId: number): Promise<void>; refresh(): Promise<unknown> }
 }
 
 export interface GroupEdit {
@@ -226,7 +232,7 @@ export function useGroupEdit(chatId: number): GroupEdit {
 
   const admins = useMemo(() => members.filter((m) => m.role === 'creator' || m.role === 'admin'), [members])
 
-  const refreshDialogs = () => loadChats(managers)
+  const refreshDialogs = () => managers.dialogs.refresh()
 
   return {
     card, members, admins, invites, revokedInvites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
@@ -354,13 +360,24 @@ export function useGroupEdit(chatId: number): GroupEdit {
       reload()
     },
     deleteOrLeave: async () => {
-      if (isCreator) await managers.groups.deleteGroup(chatId)
-      else {
+      if (isCreator) {
+        // deleteGroup сам зовёт dialogs.applyRemoved после успеха (groupsManager.ts, Task 4).
+        await managers.groups.deleteGroup(chatId)
+      } else {
         const me = await managers.auth.me()
-        if (me) await managers.groups.removeMember(chatId, me.id)
+        if (me) {
+          await managers.groups.removeMember(chatId, me.id)
+          // Fix (ревью Task 4, Important): removeMember обслуживает и кик
+          // ДРУГОГО участника (см. `remove` выше), сам не знает, ушёл ли Я —
+          // здесь контекст однозначен (self-leave: userId===me.id), поэтому
+          // применяем сразу после успеха, не дожидаясь WS chat_removed (порт
+          // tweb appChatsManager.leaveChat/leaveChannel → onChatUpdated).
+          await managers.dialogs.applyRemoved(chatId)
+        }
       }
-      // диалог уберёт кадр chat_removed; на всякий случай — рефетч
-      useChatsStore.getState().removeDialog(chatId)
+      // Рефетч ниже — подстраховка (папки/архив/прочие поля списка, которые
+      // applyRemoved не трогает при уже отсутствующем диалоге): /chats больше
+      // не вернёт этот чат, reconcileById не пересоздаст то, что не изменилось.
       await refreshDialogs()
     },
   }

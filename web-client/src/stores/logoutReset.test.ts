@@ -37,7 +37,7 @@ describe('resetAppState', () => {
     expect(useAppStateStore.getState()).toEqual(initialState())
   })
 
-  it('не пишет сброс на диск: персист чистит logout отдельно (clearDialogsPersist)', () => {
+  it('не пишет сброс на диск: персист чистит logout отдельно (managers.persist.clearAll())', () => {
     setAppState('folders', [folder])
     stateKey.mockClear()
 

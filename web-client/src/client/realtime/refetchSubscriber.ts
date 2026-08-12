@@ -7,7 +7,7 @@
 // проектором не важен.
 import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
-import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import type { Managers } from '../bootstrap'
@@ -16,14 +16,19 @@ import type { Managers } from '../bootstrap'
 // Единственный на модуль (а не замыкание внутри registerRefetchSubscriber) —
 // storeProjection.ts дёргает тот же таймер на свои триггеры (сообщение в
 // неизвестный чат / входящий secret-запрос), иначе у двух зон были бы два
-// независимых 300мс-таймера на один и тот же loadChats (было так до задачи T3
+// независимых 300мс-таймера на один и тот же рефетч (было так до задачи T3
 // стадии 1C.1 — два триггера в одном окне давали два параллельных /chats).
+// Task 6 (перенос владения диалогами): рефетч теперь — `managers.dialogs.
+// refresh()` (владелец списка), не `loadChats` (диалоговая половина которого
+// снесена).
 let chatsReloadTimer: ReturnType<typeof setTimeout> | null = null
-export function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
+export function scheduleChatsReload(managers: Pick<Managers, 'dialogs'>): void {
   if (chatsReloadTimer) return
   chatsReloadTimer = setTimeout(() => {
     chatsReloadTimer = null
-    void loadChats(managers)
+    // `.catch` (Minor #3 финального ревью): дебаунснутый fire-and-forget, а
+    // refresh() пробрасывает HttpError — иначе 401/5xx = unhandled rejection.
+    void managers.dialogs.refresh().catch(() => {})
   }, 300)
 }
 
@@ -44,19 +49,22 @@ export function registerRefetchSubscriber(managers: Managers): void {
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
-  // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42) — применяем его в уже
-  // известный диалог, в сеть не идём. Карточка чата (число участников, права,
-  // настройки) грузится отдельно (useChatInfoCard) и из /chats не приходила.
+  // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число
+  // участников, права, настройки) грузится отдельно (useChatInfoCard) и из
+  // /chats не приходила.
   //
-  // Исключение — чата ещё НЕТ в списке: меня только что добавили в группу
-  // (group.go:145-151 — AddMember → publishChatUpdate), и единственный способ
-  // узнать про новый диалог у нас — /chats. Тогда, и только тогда, дебаунснутый
-  // рефетч. Раньше он уходил на КАЖДЫЙ chat_update, а publishChatUpdate зовётся
-  // из 13 мест бэкенда — и рефетч прилетал каждому участнику чата.
+  // Task 3 (перенос владения диалогами): слияние снимка в уже известный диалог
+  // (applyChatMeta) теперь делает владелец — workerCore.ts::dispatch зовёт
+  // dialogs.applyChatMeta(e) РАНЬШЕ, чем этот сырой кадр вообще доезжает сюда
+  // (см. комментарий у dispatch), и публикует rt:dialog_op сам. Здесь остаётся
+  // только вторая ветка, которую владелец решить не может: чата ещё НЕТ в
+  // списке — меня только что добавили в группу (group.go:145-151 — AddMember →
+  // publishChatUpdate), и единственный способ узнать про новый диалог у нас —
+  // /chats. Тогда, и только тогда, дебаунснутый рефетч. Раньше он уходил на
+  // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
+  // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
-      useChatsStore.getState().applyChatMeta(evt)
-    } else {
+    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
       scheduleChatsReload(managers)
     }
   })
@@ -69,5 +77,5 @@ export function registerRefetchSubscriber(managers: Managers): void {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
-  rootScope.addEventListener('rt:resync', () => { void loadChats(managers) })
+  rootScope.addEventListener('rt:resync', () => { void managers.dialogs.refresh().catch(() => {}) }) // .catch — см. Minor #3 выше
 }

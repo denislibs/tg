@@ -22,6 +22,7 @@ import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
+import { newDialogsManager } from './managers/dialogsManager'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
@@ -46,11 +47,12 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type NewMessageEvt } from './realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe } from './store/persist'
+import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
@@ -79,8 +81,21 @@ export function createWorkerCore() {
   // у messages/media ниже: onMeChanged передаётся менеджерам ДО того, как
   // broadcast существует, но реально исполняется только после первого RPC/boot,
   // когда broadcast уже назначен).
+  //
+  // Task 5 (персист диалогов переезжает к владельцу): раньше `me` персистился
+  // ВМЕСТЕ со списком диалогов — main-thread-подписка `stores/dialogsPersist.ts`
+  // дебаунсила снимок ОБОИХ (`persist.dialogs(dialogs, me)`) и слала его сюда
+  // РАЗОВЫМ RPC. `dialogsPersist.ts` удалён (владелец списка пишет свой кэш
+  // сам, см. dialogsManager.ts/scheduleSave), а честный дом записи `me` —
+  // здесь: воркер и так единственный вычислитель этого факта (см. докблок
+  // выше), `setMe` — единственная точка его изменения. Write-through без
+  // дебаунса, как и у `saveStateKey` (persistManager.ts: «блоб маленький,
+  // дебаунс не нужен») — `me` меняется по явным действиям пользователя
+  // (профиль/премиум/вход/выход), не потоком. Passcode-гейт — тот же, что и
+  // раньше: внутри `saveMe` (core/store/persist.ts), новый путь его не обходит.
   function setMe(u: User | null): void {
     me = u
+    void saveMe(u)
     broadcast(RT.me, u)
   }
   const auth = newAuthManager({
@@ -105,11 +120,25 @@ export function createWorkerCore() {
     // конкретного пользователя, пережить переход они не могут (закрывает
     // остаточный риск PR #191). Синхронная часть (контекст, revoke, поколение)
     // — ДО broadcast; деструкция корзины внутри — void (кадр диска не ждёт).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggingOut, e) },
+    //
+    // Task 5, «Осторожно»: `dialogs.cancelPersist()` тем же порядком и по той
+    // же причине, что и media выше — гасит ОЖИДАЮЩИЙ таймер владельца
+    // (dialogsManager.scheduleSave), пока он ещё не выстрелил, экономя
+    // заведомо бессмысленную запись. От гонки «запись уже в полёте, когда
+    // приходит persist.clearAll()» защищает НЕ этот вызов, а порядок
+    // IndexedDB-транзакций в core/store/persist.ts (enqueue исполняется в
+    // порядке вызова, clear физически не может обогнать уже вызванный
+    // enqueue записи) — подробный разбор гонки в докблоке
+    // `dialogsManager.cancelPersist()`, здесь не дублируем.
+    // `dialogs.resetForLogout()` (Task 6) — сосед по той же причине: сам кэш
+    // (`items`/`hydrated`) владельца переживает переход сессии (SharedWorker
+    // общий на все вкладки), без сброса следующий `fillMirror()` под другим
+    // аккаунтом отдал бы чужой список — см. докблок `resetForLogout()`.
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
-    // до входа, принадлежит прошлой сессии.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggedIn, e) },
+    // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -141,7 +170,60 @@ export function createWorkerCore() {
   const push = newPushManager({ rest })
   const notify = newNotifyManager({ rest })
   const folders = newFoldersManager({ rest })
-  const groups = newGroupsManager({ rest })
+  // Зеркало ключа State во все вкладки (порт tweb apiManagerProxy.processMirrorTaskMap.
+  // state) — общая функция для persistManager.stateKey (сторонние ключи) И
+  // dialogsManager.applyPinned (свой прямой writer pinnedOrders, Task 4): один
+  // канал зеркалирования, не два независимых бродкаста. broadcast объявлен ниже —
+  // дёргается лениво, тот же приём, что и остальные стрелки на этой странице.
+  const mirrorStateKey = (key: string, value: unknown) => broadcast('state:mirror', { key, value })
+  // Task 1 (перенос владения списком диалогов в воркер): список диалогов —
+  // воркер единственный владелец (dialogsManager). Веер тот же приём, что у
+  // peers ниже: менеджер объявляет операцию (rt:dialog_op), витрина (Task 2)
+  // переигрывает её как зеркало. loadCache/loadState — офлайн-кэш и ключи State,
+  // от которых зависит порядок (см. докблок dialogsManager.ts). Определён ДО
+  // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
+  const dialogs = newDialogsManager({
+    rest,
+    onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
+    loadCache: () => loadDialogs(),
+    loadState: async () => {
+      const st = await loadStateAll()
+      // Fix (финальное ревью, Minor #2): тот же версионный гейт, что у main
+      // (core/state/loadState.ts — при несовпадении STATE_VERSION он отдаёт
+      // чистые дефолты, а не склеивает половинки схемы прошлой сборки). Без него
+      // после ближайшего бампа версии main жил бы на дефолтах, а владелец
+      // сортировал бы по СТАРОМУ pinnedOrders/drafts — два разных ответа на один
+      // вопрос. Через `loadStateOnce()` не идём сознательно: он мемоизирует
+      // промис на модуль, а воркер перечитывает State заново после
+      // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
+      const gated = st.version === STATE_VERSION ? st : initialState()
+      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [] }
+    },
+    // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
+    // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
+    // значение: `me` разрешается лениво асинхронным /me).
+    getMeId: () => me?.id ?? null,
+    // Task 4 (действия без оптимистики): applyPinned пишет pinnedOrders на диск и
+    // рассылает зеркало ключа — тот же путь, что persistManager.stateKey ниже
+    // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
+    savePinnedOrders: (value) => saveStateKey('pinnedOrders', value),
+    mirrorStateKey,
+    // Task 5 (персист переезжает к владельцу): физический writer офлайн-кэша
+    // списка — та же `saveDialogs` (core/store/persist.ts), что раньше звал
+    // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
+    // dialogsManager (scheduleSave), не здесь.
+    saveCache: (list) => saveDialogs(list),
+    // Task 6 (диалоговая половина `loadChats` переезжает к владельцу):
+    // дешифровка превью секретных чатов. `secret` объявлен ниже — та же
+    // ленивая forward-ссылка, что у `messages` выше (decryptSecret реально
+    // зовётся только на fillMirror()/refresh(), к тому моменту `secret` уже
+    // проинициализирован).
+    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
+  })
+  // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
+  // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
+  // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
+  const groups = newGroupsManager({ rest, dialogs })
   const channels = newChannelsManager({ rest })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
   // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
@@ -153,7 +235,9 @@ export function createWorkerCore() {
   const contacts = newContactsManager({ rest })
   const privacy = newPrivacyManager({ rest })
   const drafts = newDraftsManager({ rest })
-  const chatThemes = newChatThemesManager({ rest })
+  // Task 4: тема оформления чата — тоже сеть-сначала, applyTheme зовётся после
+  // успешного /theme (см. chatThemesManager.ts).
+  const chatThemes = newChatThemesManager({ rest, dialogs })
   const sessions = newSessionsManager({ rest })
   const calls = newCallsManager({ rest })
   const livestream = newLivestreamManager({ rest })
@@ -171,7 +255,12 @@ export function createWorkerCore() {
   // State порты уже подключены). Зеркало ключа уходит ВО ВСЕ вкладки: порт tweb
   // appStateManager.setKeyValueToStorage → invokeVoid('mirror', …), которая без
   // указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
-  const persist = newPersistManager((key, value) => broadcast('state:mirror', { key, value }))
+  const persist = newPersistManager(
+    mirrorStateKey,
+    // Task 1: порядок диалогов зависит от State-ключей pinnedOrders/drafts —
+    // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
+    (key, value) => dialogs.setStateKey(key, value),
+  )
 
   // every connected tab's port — events broadcast to all
   const ports: SuperMessagePort[] = []
@@ -257,6 +346,34 @@ export function createWorkerCore() {
     if (!h) return
     const ops = h.cache?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
+    // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
+    // влияющие на список диалогов, применяет dialogsManager — публикует свой
+    // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
+    // (тот доезжает витрине как и раньше, если у него остались другие потребители).
+    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.id ?? null)
+    else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
+    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).chat_id)
+    // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
+    // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
+    // устройства владельца/участников) — применяет владелец ровно один раз
+    // (patchDialog внутри applyMute/applyPinned/applyArchived/applyTheme
+    // сравнивает через equal() и не публикует no-op). Раньше эти 4 кадра
+    // разбирала витрина напрямую (storeProjection.ts, setDialogMuted и т.п.) —
+    // тот путь убран вместе с мутаторами chatsStore, второго применения нет.
+    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).chat_id, (d as DialogMuteEvt).muted)
+    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).chat_id, (d as DialogPinEvt).pinned)
+    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).chat_id, (d as DialogArchiveEvt).archived)
+    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).chat_id, (d as ChatThemeUpdateEvt).theme_id)
+    else if (t === 'reaction') {
+      // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
+      // реакций диалога (перенесено из storeProjection.ts вместе с телом
+      // bumpUnreadReactions — окно сообщений эта ветка не трогает, applyReaction
+      // остаётся на main, см. CLAUDE.md «реакции в окне сообщений»).
+      const r = d as ReactionEvt
+      if (r.action === 'add' && r.author_id === me?.id && r.user_id !== me?.id) {
+        dialogs.bumpUnreadReactions(r.chat_id, r.unread_reactions)
+      }
+    }
     broadcast(h.rt, d, meta)
   }
 
@@ -271,6 +388,10 @@ export function createWorkerCore() {
   function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
     const ops = messages.cacheLive(e as never)
     broadcast(RT.messageOp, { ops }, meta)
+    // Task 3: превью/unread диалога в списке — тоже владелец (dialogsManager),
+    // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
+    // read-marker/звука/нотификаций на main — см. storeProjection.ts).
+    dialogs.applyNewMessage(e)
     broadcast(RT.newMessage, e, meta)
   }
 
@@ -403,7 +524,7 @@ export function createWorkerCore() {
   // «забыл в одном списке» невозможен by construction (как Managers в tweb).
   const registry = {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
-    folders, groups, channels, peers, presence, stories, contacts, privacy, drafts,
+    folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
     stickers, iv, secret, persist,
   }

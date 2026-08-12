@@ -19,7 +19,8 @@ import { startRealtime } from '../../client/realtimeBridge'
 import { setupPush } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
-import { bootPrefetch } from '../../client/bootData'
+import { bootPrefetch, bootWasLocked } from '../../client/bootData'
+import { fillDialogsMirror, applyDialogsMirror } from '../../client/boot'
 
 export function useAppBootstrap(): void {
   const managers = useManagers()
@@ -28,12 +29,54 @@ export function useAppBootstrap(): void {
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
     // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
     const run = () => {
-      // Префетч (me/listDialogs из main.tsx) берём ТОЛЬКО через bootPrefetch():
-      // он одноразовый по смыслу (данные аккаунта, под которым страница
+      // Префетч (`me` из main.tsx) берём ТОЛЬКО через bootPrefetch(): он
+      // одноразовый по смыслу (данные аккаунта, под которым страница
       // загрузилась), а этот эффект отрабатывает заново на каждое монтирование
       // Shell — см. докблок bootPrefetch. null → идём в сеть под текущим токеном.
       const prefetch = bootPrefetch() ?? undefined
-      void loadChats(managers, prefetch).then(() => loadPresence(managers))
+      void loadChats(managers, prefetch)
+      // Task 6 (перенос владения диалогами): диалоговая половина `loadChats`
+      // снесена — на холодном старте (prefetch есть) список уже поднят и
+      // применён к зеркалу ДО первого рендера (`client/boot.ts::
+      // applyDialogsMirror`), повторный refresh() здесь плодил бы второй
+      // /chats на каждое монтирование Shell. На тёплом входе БЕЗ reload (та же
+      // жизнь страницы — вход/переезд сессии, useAuthGate.ts::onLoggedIn)
+      // bootPrefetch() уже инвалидирован (invalidateBootPrefetch) — тогда это
+      // единственное место, которое подтягивает диалоги новой сессии (owner
+      // сам решает cache-first/сеть внутри refresh()→hydrate()). Пин (обе
+      // ветки условия, мутацией) — useAppBootstrap.dialogsGate.test.tsx
+      // (Fix, ревью Task 6, Important #2).
+      //
+      // Fix (финальное ревью, Important #3): на холодном старте берём ПРОМИС
+      // догона, запущенного boot'ом (`bootData.dialogsReady`), а не
+      // `Promise.resolve()`. `loadPresence` читает цели из зеркала, и на пустом
+      // кэше (смена аккаунта, очищенное хранилище, вход в соседней вкладке) он
+      // получал пустой список и молча выходил — весь сеанс без онлайн-точек и
+      // «был(а) в сети». Массового сида презенса больше нигде нет (второй вызов
+      // в useNavigationActions.ts — точечный, на одного пира).
+      //
+      // Fix (повторное ревью финальной волны, находка A): boot под passcode-
+      // локом пропускает `fillMirror()` целиком (`client/boot.ts`, `locked`) —
+      // зеркало ЭТОЙ вкладки ни разу не гидрировано владельцем. Обычный
+      // `refresh()` тут не гарантия: он публикует операцию, только если сеть
+      // разошлась с памятью владельца, а на аккаунте с нулём диалогов пустой
+      // ответ сети совпадает с ещё не гидрированным пустым кэшем — операции
+      // нет, `chatsStore.loaded` остаётся `false` навсегда (скелетон висит
+      // вечно, см. `ChatList.tsx`). Досюда (`run()` уже прошёл `runWhenUnlocked`)
+      // лок точно снят, поэтому явно закрываем пробел тем же приёмом, что
+      // холодный старт: `fillDialogsMirror(managers, false)` — гарантированный
+      // `reset` (см. докблок `dialogsManager.fillMirror` — announce
+      // безусловный) — и `applyDialogsMirror` для применения и сетевого
+      // догона поверх, БЕЗ повторного `refresh()` из ветки ниже.
+      const dialogsReady = prefetch
+        ? prefetch.dialogsReady
+        : bootWasLocked()
+          ? fillDialogsMirror(managers, false).then((op) => applyDialogsMirror(op, managers, false))
+          : managers.dialogs.refresh()
+      // `.catch` до loadPresence (Minor #3): refresh() пробрасывает HttpError, а
+      // тут он идёт `void`-ом — 401/5xx не должны стать unhandled rejection и не
+      // должны отменять сид презенса по тому, что уже есть в зеркале.
+      void dialogsReady.catch(() => {}).then(() => loadPresence(managers)).catch(() => {})
       void loadStories(managers)
       void loadNotifySettings(managers)
       void loadFolders(managers)

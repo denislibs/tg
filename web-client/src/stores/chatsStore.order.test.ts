@@ -1,209 +1,113 @@
-// Порядок диалогов — производная от данных (core/dialogs/dialogIndex.ts, порт
-// tweb generateDialogIndex). Здесь проверяется ЕДИНСТВЕННЫЙ путь применения
-// (applyDialogs): из одних и тех же данных всегда получается один и тот же
-// список, независимо от того, порядок какого источника (персист/сеть/апдейт)
-// пришёл первым.
+// Ссылочная стабильность зеркала списка диалогов.
+//
+// Инвариант — web-client/CLAUDE.md, «Применять ответ сети полной подменой
+// коллекции»: сводим через `core/store/reconcile`, и СОВПАВШИЙ с памятью ответ
+// не даёт ни перерисовки, ни записи в IDB (порт tweb `saveDialogFilter`). Файл
+// с этим именем существовал до переноса владения (пин «кэш и сеть с одинаковыми
+// данными дают одинаковый список по ССЫЛКЕ» жил в нём при `setDialogs`/
+// `applyDialogs`), был снесён вместе с легаси-путём — и инвариант остался без
+// красного теста в обеих половинах. Здесь он возвращён для ЗЕРКАЛА: владельца
+// держит `core/managers/dialogsManager.test.ts` (describe «совпавший ответ не
+// даёт ни операции, ни записи на диск»), сценарии порядка (даты/пины/черновики)
+// живут там же — сюда они не возвращаются, порядок main больше не считает
+// (stores/noManualOrder.test.ts).
+//
+// Почему это ловится только так: `sortDialogsByIndex` аллоцирует ВСЕГДА
+// (`[...dialogs].sort(...)`), поэтому даже полностью совпавший `reset` отдавал
+// новую ссылку на массив — а на неё подписан весь список (`ChatList`), то есть
+// каждый `refresh()` перерисовывал все строки.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useChatsStore } from './chatsStore'
-import { useAppStateStore, setAppState } from './appState'
-import { ALL_FOLDER_ID } from './foldersStore'
-import { initialState } from '../core/state/state'
-import type { Dialog, Draft } from '../core/models'
+import type { Dialog } from '../core/models'
+import type { DialogOp } from '../core/dialogs/dialogOps'
 
 const dlg = (chatId: number, at: string, over: Partial<Dialog> = {}): Dialog => ({
   chatId,
   type: 'private',
+  title: 't' + chatId,
   lastReadSeq: 0,
   peerReadSeq: 0,
   unread: 0,
+  unreadMentions: 0,
+  unreadReactions: 0,
   muted: false,
   pinned: false,
   archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 5, at },
   ...over,
-})
+} as Dialog)
 
-const draft = (chatId: number, updatedAt: string): Draft => ({ chatId, text: 'чер', replyToId: null, updatedAt })
+/** Ровно то, что публикует владелец: значения + готовый индекс. */
+const reset = (items: { dialog: Dialog; index: number }[]): DialogOp => ({ op: 'reset', items })
 
-const ids = (): number[] => useChatsStore.getState().dialogs.map((d) => d.chatId)
-const pinnedOrder = (): number[] => useAppStateStore.getState().pinnedOrders[ALL_FOLDER_ID] ?? []
+const apply = (op: DialogOp) => useChatsStore.getState().applyDialogOps([op])
 
 beforeEach(() => {
-  useChatsStore.setState({ dialogs: [], loaded: false, meId: 7, activeChatId: null, typing: {} })
-  useAppStateStore.setState(initialState())
+  useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: false })
 })
 
-describe('chatsStore: порядок производный', () => {
-  it('порядок не зависит от порядка входного массива', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T12:00:00Z'),
-      dlg(3, '2026-08-09T11:00:00Z'),
-    ])
-    const first = ids()
+describe('chatsStore (зеркало): совпавший reset не пересоздаёт список', () => {
+  it('кэш и сеть с одинаковыми данными дают одинаковый список по ССЫЛКЕ', () => {
+    apply(reset([
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+    ]))
+    const before = useChatsStore.getState().dialogs
+    const indexBefore = useChatsStore.getState().dialogIndexById
 
-    useChatsStore.getState().setDialogs([
-      dlg(3, '2026-08-09T11:00:00Z'),
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T12:00:00Z'),
-    ])
+    // Ответ сети: те же данные (другие ОБЪЕКТЫ — они приехали из воркера
+    // структурным клоном), тот же порядок.
+    apply(reset([
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+    ]))
 
-    expect(ids()).toEqual(first)
-    expect(ids()).toEqual([2, 3, 1])
+    expect(useChatsStore.getState().dialogs).toBe(before)
+    expect(useChatsStore.getState().dialogIndexById).toBe(indexBefore)
   })
 
-  it('кэш и сеть с одинаковыми данными дают одинаковый список по ССЫЛКЕ', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
+  it('те же данные, пришедшие в другом порядке массива, — тоже прежняя ссылка (порядок задаёт индекс)', () => {
+    apply(reset([
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+    ]))
     const before = useChatsStore.getState().dialogs
+    expect(before.map((d) => d.chatId)).toEqual([2, 1])
 
-    // тот же набор, но в порядке ответа сети — список не должен пересоздаться
-    useChatsStore.getState().setDialogs([dlg(2, '2026-08-09T12:00:00Z'), dlg(1, '2026-08-09T10:00:00Z')])
+    apply(reset([
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+    ]))
 
     expect(useChatsStore.getState().dialogs).toBe(before)
   })
 
-  it('закреплённые сверху независимо от даты', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T12:00:00Z'),
-      dlg(2, '2020-01-01T00:00:00Z', { pinned: true }),
-    ])
+  it('реально изменившийся reset даёт НОВУЮ ссылку (сверка не «залипает» на первом списке)', () => {
+    apply(reset([{ dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 }]))
+    const before = useChatsStore.getState().dialogs
 
-    expect(ids()).toEqual([2, 1])
+    apply(reset([
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+    ]))
+
+    expect(useChatsStore.getState().dialogs).not.toBe(before)
+    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([2, 1])
   })
 
-  it('повторное применение списка со свежей датой поднимает диалог', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
+  it('изменился только индекс (reindex) — ссылка на список новая, ссылки на диалоги прежние', () => {
+    apply(reset([
+      { dialog: dlg(1, '2026-08-09T10:00:00Z'), index: 10 },
+      { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
+    ]))
+    const before = useChatsStore.getState().dialogs
+    const dialog1 = before.find((d) => d.chatId === 1)!
 
-    // тот же путь, что у ответа сети: список применяется целиком
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T13:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
+    apply({ op: 'reindex', items: [{ chatId: 1, index: 30 }, { chatId: 2, index: 20 }] })
 
-    expect(ids()).toEqual([1, 2])
-  })
-
-  it('applyNewMessage поднимает диалог датой сообщения, а не позицией в массиве', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T12:00:00Z'), dlg(2, '2026-08-09T10:00:00Z')])
-    expect(ids()).toEqual([1, 2])
-
-    useChatsStore.getState().applyNewMessage({
-      chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo',
-      media_id: null, created_at: '2026-08-09T13:00:00Z',
-    })
-
-    expect(ids()).toEqual([2, 1])
-  })
-
-  it('новое сообщение в закреплённом не двигает блок закреплённых', () => {
-    setAppState('pinnedOrders', { [ALL_FOLDER_ID]: [1, 2] })
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z', { pinned: true }),
-      dlg(2, '2026-08-09T11:00:00Z', { pinned: true }),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-    expect(ids()).toEqual([1, 2, 3])
-
-    useChatsStore.getState().applyNewMessage({
-      chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo',
-      media_id: null, created_at: '2026-08-09T23:00:00Z',
-    })
-
-    // закреплённые держатся своим порядком (pinnedOrders), а не датой
-    expect(ids()).toEqual([1, 2, 3])
-  })
-})
-
-describe('chatsStore: черновик поднимает диалог', () => {
-  it('свежий черновик перевешивает более старое последнее сообщение', () => {
-    setAppState('drafts', [draft(1, '2026-08-09T13:00:00Z')])
-
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-
-    expect(ids()).toEqual([1, 2])
-  })
-
-  it('без черновика тот же набор даёт обратный порядок (черновик реально участвует)', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-
-    expect(ids()).toEqual([2, 1])
-  })
-
-  it('старый черновик диалог не поднимает', () => {
-    setAppState('drafts', [draft(1, '2026-08-09T09:00:00Z')])
-
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-
-    expect(ids()).toEqual([2, 1])
-  })
-})
-
-describe('chatsStore: setDialogPinned пишет pinnedOrders', () => {
-  it('свежий пин встаёт первым в порядке (tweb order.unshift) и первым в списке', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T11:00:00Z'),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-
-    useChatsStore.getState().setDialogPinned(1, true)
-    expect(pinnedOrder()).toEqual([1])
-    expect(ids()).toEqual([1, 3, 2])
-
-    useChatsStore.getState().setDialogPinned(2, true)
-    expect(pinnedOrder()).toEqual([2, 1])
-    expect(ids()).toEqual([2, 1, 3])
-  })
-
-  it('анпин убирает чат из порядка и возвращает его к дате активности', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-    useChatsStore.getState().setDialogPinned(1, true)
-    expect(ids()).toEqual([1, 2])
-
-    useChatsStore.getState().setDialogPinned(1, false)
-
-    expect(pinnedOrder()).toEqual([])
-    expect(ids()).toEqual([2, 1])
-  })
-
-  it('порядок закреплённых переживает повторное применение списка (кэш ↔ сеть)', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T11:00:00Z'),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-    useChatsStore.getState().setDialogPinned(1, true)
-    useChatsStore.getState().setDialogPinned(2, true)
-    const before = ids()
-
-    // ответ сети: закреплённые пришли в другом порядке
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z', { pinned: true }),
-      dlg(2, '2026-08-09T11:00:00Z', { pinned: true }),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-
-    expect(ids()).toEqual(before)
-  })
-
-  it('архивация снимает пин и убирает чат из порядка', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-    useChatsStore.getState().setDialogPinned(1, true)
-
-    useChatsStore.getState().setDialogArchived(1, true)
-
-    expect(pinnedOrder()).toEqual([])
-    expect(ids()).toEqual([2, 1])
-  })
-
-  // Порядок закреплённых сервер отдаёт только позицией в ответе /chats
-  // (ORDER BY m.pinned_at DESC, chatsrepo.go:225) — в модели `Dialog` его нет.
-  // Первый применённый список фиксирует его в State, дальше он авторитетен.
-  it('первый список засеивает pinnedOrders порядком ответа сервера', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(2, '2020-01-01T00:00:00Z', { pinned: true }),
-      dlg(1, '2026-08-09T12:00:00Z', { pinned: true }),
-      dlg(3, '2026-08-09T13:00:00Z'),
-    ])
-
-    expect(pinnedOrder()).toEqual([2, 1])
-    expect(ids()).toEqual([2, 1, 3])
+    const after = useChatsStore.getState().dialogs
+    expect(after).not.toBe(before)
+    expect(after.map((d) => d.chatId)).toEqual([1, 2])
+    expect(after.find((d) => d.chatId === 1)).toBe(dialog1) // сами записи не пересозданы
   })
 })

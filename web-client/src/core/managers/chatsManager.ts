@@ -1,7 +1,6 @@
 // src/core/managers/chatsManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapDialog, type Dialog, type RawDialog } from '../models'
-import { loadDialogs, clearPersistedChat } from '../store/persist'
+import { clearPersistedChat } from '../store/persist'
 
 export interface ChatsDeps { rest: RestClient }
 
@@ -12,23 +11,14 @@ export interface ChatsDeps { rest: RestClient }
 // Статус HTTP различаем здесь, в воркере: через RPC-границу он бы потерялся.
 export type ReadDateResult = { readAt: string } | { restricted: true } | null
 
+// Fix (ревью Task 6, Minor): `listDialogs()` отсюда снесён — с переноса
+// владения списком диалогов в `core/managers/dialogsManager.ts` (Tasks 1-6)
+// он больше нигде не звался (`dialogsManager.refresh()` бьёт в `rest.get('/chats')`
+// напрямую, свой собственный офлайн-фолбэк — `loadCache()`/`persist.loadDialogs`,
+// см. dialogsManager.ts). Осиротевший метод + его тест (`chatsManager.test.ts`,
+// целиком про listDialogs) удалены вместе.
 export function newChatsManager({ rest }: ChatsDeps) {
   return {
-    async listDialogs(): Promise<Dialog[]> {
-      try {
-        const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
-        return (r.chats ?? []).map(mapDialog)
-      } catch (e) {
-        // Сеть недоступна (fetch reject, не HttpError) — отдаём последний
-        // персистнутый список (offline-first). Диалоги пишет main-thread-стор.
-        if (!(e instanceof HttpError)) {
-          const cached = await loadDialogs()
-          if (cached.length) return cached
-        }
-        throw e
-      }
-    },
-
     // Resolve (creating if needed) the private chat with a user; returns its id.
     // Idempotent server-side — repeated calls return the same chat.
     async createPrivate(userId: number): Promise<number> {

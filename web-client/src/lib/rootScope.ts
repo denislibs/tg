@@ -23,6 +23,7 @@ import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { PeerOp } from '@core/managers/peersManager'
+import type { DialogOp } from '@core/dialogs/dialogOps'
 import type { User } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 
@@ -57,6 +58,9 @@ export type BroadcastEvents = {
   // воркера. Без EventMeta: кадр порождает не funnel курсора, а сам менеджер (в
   // т.ч. на обычный ответ /users, у которого никакого pts нет).
   [RT.peerOp]: [{ ops: PeerOp[] }]
+  // Stage «владение диалогами» (этап 1) — публикует dialogsManager воркера. Без
+  // EventMeta по той же причине, что и rt:peer_op: не funnel курсора.
+  [RT.dialogOp]: [{ ops: DialogOp[] }]
   [RT.dialogPin]: [{ chat_id: number; pinned: boolean }, EventMeta?]
   [RT.dialogArchive]: [{ chat_id: number; archived: boolean }, EventMeta?]
   [RT.dialogMute]: [{ chat_id: number; muted: boolean }, EventMeta?]

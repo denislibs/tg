@@ -6,7 +6,6 @@ import { ManagersProvider } from './core/hooks/useManagers'
 import { bootstrap } from './client/boot'
 import { loadFonts } from './core/dom/loadFonts'
 import { setRootClasses } from './core/dom/rootClasses'
-import { startDialogsPersist } from './stores/dialogsPersist'
 
 // Шрифты — вне критического рендер-пути: @font-face (@fontsource) уходит в ленивый
 // чанк, глифы Roboto/tgico тёплятся через document.fonts (см. loadFonts). Раньше
@@ -20,7 +19,15 @@ void loadFonts()
 setRootClasses()
 
 // Весь холодный старт — в bootstrap() (client/boot.ts). Здесь остаётся только
-// рендер после того, как критические данные подняты, и запуск персиста кэша.
+// рендер после того, как критические данные подняты.
+//
+// Task 5 (персист диалогов переезжает к владельцу): раньше здесь же
+// запускался `startDialogsPersist(managers)` — main-thread-подписка, которая
+// дебаунсом собирала снимок диалогов+me из зеркала (chatsStore) и слала его
+// воркеру RPC'ом на запись. Удалена: список пишет сам владелец
+// (`core/managers/dialogsManager.ts`, дебаунс внутри), `me` пишет
+// `workerCore.ts::setMe` (write-through) — оба честно у своего источника
+// данных, без промежуточного слоя на главном потоке.
 void bootstrap().then(({ managers }) => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
@@ -29,9 +36,4 @@ void bootstrap().then(({ managers }) => {
       </ManagersProvider>
     </React.StrictMode>,
   )
-  // Персист для мгновенного/офлайн следующего старта: диалоги+me. main лишь
-  // собирает свежий вид и шлёт снапшот воркеру — физически пишет он один
-  // (persistManager), поэтому подписка получает managers. Папки и черновики сюда
-  // не входят: они живут в State и пишутся write-through через setAppState.
-  startDialogsPersist(managers)
 })

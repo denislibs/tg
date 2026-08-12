@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData, bootPrefetch, invalidateBootPrefetch } from '../../client/bootData'
-import { clearDialogsPersist } from '../../stores/dialogsPersist'
 import { resetAppState } from '../../stores/appState'
 import { resetStateCache } from '../state/loadState'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -35,9 +34,16 @@ export interface AuthGate {
 function resetAccountStateInMemory(): void {
   resetStateCache()
   resetAppState()
-  // Список диалогов тоже держится в памяти: без сброса чужие чаты видны до
-  // ответа /chats под новым аккаунтом.
-  useChatsStore.getState().setDialogs([])
+  // ИСКЛЮЧЕНИЕ из «пишет только проектор» (см. stores/noDuplicateDialogs.test.ts,
+  // allow-list) — список диалогов тоже держится в памяти (зеркало): без сброса
+  // чужие чаты видны до ответа владельца под новым аккаунтом. Владелец
+  // (dialogsManager) на этом же переходе чистит СВОЙ кэш (`resetForLogout()`,
+  // workerCore.ts::onLoggingOut), но rt:dialog_op reset НЕ публикует — очистка
+  // зеркала здесь и есть единственный способ снять чужие диалоги с экрана этой
+  // вкладки прямо сейчас, а не после следующего fillMirror()/refresh().
+  // `setDialogs([])` (Task 6 снесла легаси-путь) заменяет пустая операция
+  // reset — тот же метод и тот же вход, что и у storeProjection.
+  useChatsStore.getState().applyDialogOps([{ op: 'reset', items: [] }])
 }
 
 export function useAuthGate(): AuthGate {
@@ -59,7 +65,7 @@ export function useAuthGate(): AuthGate {
       ;(bootPrefetch()?.me ?? managers.auth.me())
         .then((u) => {
           if (u) setAuthed(true)
-          else { setAuthed(false); void clearDialogsPersist(managers) } // сессия истекла — сбрасываем персист
+          else { setAuthed(false); void managers.persist.clearAll() } // сессия истекла — сбрасываем персист
         })
         .catch(() => {
           // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
@@ -109,7 +115,7 @@ export function useAuthGate(): AuthGate {
       // старта, — обесценить его ДО любой реакции (см. докблок bootPrefetch).
       invalidateBootPrefetch()
       if (migrateTo !== null) { location.reload(); return }
-      void clearDialogsPersist(managers)
+      void managers.persist.clearAll()
       resetAccountStateInMemory()
       setAuthed(false)
     }

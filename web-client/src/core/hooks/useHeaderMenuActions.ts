@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import { loadChats } from '../../stores/chatsStore'
 import { usePrivacyStore } from '../../stores/privacyStore'
 
 // Managers-действия ⋮-меню чата (tweb topbar): статус блокировки собеседника +
@@ -38,7 +37,7 @@ export function useHeaderMenuActions(args: {
 
   const setChatTtl = (period: number) => {
     if (Number.isFinite(chatId)) {
-      void managers.privacy.setChatAutoDelete(chatId, period).then(() => loadChats(managers)).catch(() => {})
+      void managers.privacy.setChatAutoDelete(chatId, period).then(() => managers.dialogs.refresh()).catch(() => {})
     }
     close()
   }

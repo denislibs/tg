@@ -18,7 +18,6 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupEdit, PERMS } from '../../core/hooks/useGroupEdit'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { gradientFor } from '../../core/dialogToChat'
-import { loadChats } from '../../stores/chatsStore'
 import type { Chat } from '../../data'
 import { EMOJIS } from './screens/shared'
 import { ChatTypeScreen } from './screens/ChatTypeScreen'
@@ -63,7 +62,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
     const next = !forumOn
     setForumOn(next)
     void managers.groups.setForum(chatId, next)
-      .then(() => loadChats(managers))
+      .then(() => managers.dialogs.refresh())
       .catch(() => setForumOn(!next))
   }
 

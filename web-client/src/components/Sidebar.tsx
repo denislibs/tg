@@ -4,7 +4,7 @@ import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useChatsStore } from '../stores/chatsStore'
 import { ALL_FOLDER_ID } from '../stores/foldersStore'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
@@ -178,7 +178,7 @@ export default function Sidebar({
     onOpenContacts: () => setScreen('contacts'),
     onOpenSaved: async () => {
       const id = await managers.chats.saved()
-      await loadChats(managers)
+      await managers.dialogs.refresh()
       onSelect(String(id))
     },
     onOpenPremium: openPremium,
