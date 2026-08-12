@@ -85,6 +85,21 @@ export class RestClient {
     })
   }
 
+  // Байты медиа worker-fetch'ем с Bearer-заголовком (Task 6, конвейер
+  // downloadMediaURL): сессионный токен идёт заголовком, в URL никакого токена
+  // нет (прежний путь картинок нёс короткоживущий медиа-токен query-параметром —
+  // см. core/mediaUrl.ts). Бинарь остаётся в воркере: blob → CacheStorage →
+  // objectURL, через RPC-границу он не сериализуется.
+  async getBlob(path: string): Promise<Blob> {
+    if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
+    const h: Record<string, string> = {}
+    const tok = this.getToken()
+    if (tok) h.Authorization = `Bearer ${tok}`
+    const res = await fetch(this.base + path, { headers: h })
+    if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`)
+    return res.blob()
+  }
+
   // Build a same-origin, token-carrying URL for browser media elements (img/video).
   contentUrl(path: string): string {
     const tok = this.getToken()

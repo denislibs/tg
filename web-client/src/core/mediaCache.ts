@@ -1,8 +1,43 @@
 // Работа с медиакэшем (CacheStorage 'cachedFiles') из UI-потока — порт
 // tweb dataAndStorage/storageQuota.tsx: подсчёт объёма с разбивкой по
 // content-type, очистка, синк настроек TTL/лимита в service worker.
+// Ниже — второй жилец модуля (Task 6): зеркало objectURL'ов той же корзины.
+import type { MediaUrlEvt } from './managers/mediaManager'
 
 const CACHED_FILES = 'cachedFiles'
+
+// ── Зеркало факта «URL медиа» (Task 6, стадия C медиа-суперпорта) ────────────
+// Владелец — воркер (core/managers/mediaManager.ts::downloadMediaURL): он качает
+// байты, кладёт их в корзину cachedFiles и минтит blob:-URL прямо в воркере —
+// blob-стор общий на origin, вкладка рисует такой URL в <img> как свой (модель
+// tweb: apiFileManager.ts:1039 + зеркалирование storages/thumbs.ts). Здесь —
+// только применение объявленного (rt:media_url → storeProjection) и синхронное
+// чтение на рендере. Подписки-«версии» (useMediaTokenVersion-стайл) сознательно
+// нет: форму потребления решит Task 7 (перевод потребителей картинок). Поздняя
+// вкладка пробел объявляет сама: RPC downloadMediaURL и есть канал доставки её
+// снимка (стартовый бродкаст она пропустила — SuperMessagePort не буферизует).
+
+const mediaUrlMirror = new Map<string, { url: string; size: number }>()
+const mirrorKey = (id: number, thumb: boolean) => `${id}${thumb ? '_thumb' : ''}`
+
+// Применить снимок, посчитанный владельцем. Единственный вызывающий — проектор
+// (пин — core/noDuplicateMediaUrl.test.ts).
+export function applyMediaUrl(e: MediaUrlEvt): void {
+  mediaUrlMirror.set(mirrorKey(e.id, e.thumb), { url: e.url, size: e.size })
+}
+
+// Синхронное чтение на рендере: undefined — факт ещё не объявлен (спроси
+// владельца RPC downloadMediaURL).
+export function cachedMediaUrl(id: number, thumb = false): string | undefined {
+  return mediaUrlMirror.get(mirrorKey(id, thumb))?.url
+}
+
+// Кадр rt:logging_out (storeProjection): blob:-URL прошлой сессии владелец уже
+// отозвал (resetDownloads) — зеркало обязано перестать их отдавать, иначе <img>
+// держит мёртвый URL (а до отзыва — медиа прошлого аккаунта).
+export function resetMediaUrlMirror(): void {
+  mediaUrlMirror.clear()
+}
 
 export interface CachedFilesSizes {
   total: number

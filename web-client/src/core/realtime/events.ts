@@ -125,6 +125,16 @@ export const RT = {
   // Прямого аналога в tweb нет: там медиа тянутся байтами через appDownloadManager,
   // а не URL'ом с токеном, — это наше расширение, не порт.
   mediaToken: 'rt:media_token',
+  // Task 6 (медиа-суперпорт, стадия C): objectURL скачанного медиа — воркер
+  // единственный владелец (mediaManager::downloadMediaURL: кэш-контекст →
+  // корзина CacheStorage → байты → URL.createObjectURL в воркере; модель tweb
+  // apiFileManager.downloadMediaURL + зеркалирование storages/thumbs.ts).
+  // Публикуется при каждом СОЗДАНИИ URL (попадание в контекст кадра не
+  // порождает — вкладкам он уже объявлен); payload — MediaUrlEvt. Витрина
+  // зеркалит в core/mediaCache.ts (cachedMediaUrl) через storeProjection;
+  // поздняя вкладка получает URL ответом самого RPC downloadMediaURL
+  // (пробел объявляет зеркало — Task 7 переведёт потребителей).
+  mediaUrl: 'rt:media_url',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'

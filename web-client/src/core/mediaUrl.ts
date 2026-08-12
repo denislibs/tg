@@ -20,6 +20,12 @@
 // сессии (rt:logging_out → resetMediaToken): токен подписан на id пользователя
 // и живёт до 15 минут, поэтому пережить переход он не может ни у владельца, ни
 // здесь.
+//
+// Task 6 (медиа-суперпорт, стадия C): картинки переезжают с токенного URL на
+// rt:media_url/downloadMediaURL — objectURL из воркерного конвейера
+// (mediaManager) с зеркалом в core/mediaCache.ts; перевод потребителей — Task 7.
+// Токен-механизм здесь остаётся стрим-путям: <video>/<audio> при DNP-OFF всё
+// ещё ходят токенным URL (resolveStreamUrl ниже).
 import { useSyncExternalStore } from 'react'
 import { startClient } from '../client/bootstrap'
 import { AppConfig } from '../config/app'

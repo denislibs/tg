@@ -1,4 +1,6 @@
 import { b64FromBytes } from '../secret/crypto'
+import CacheStorageController from '../files/cacheStorage'
+import { MAX_FILE_SAVE_SIZE } from './constants'
 import type { RestClient } from '../net/restClient'
 import type { FileDownload } from '../net/dnp/fileDownload'
 import type { FileUpload } from '../net/dnp/fileUpload'
@@ -12,6 +14,10 @@ export interface MediaMeta { id: number; mime: string; size: number; width: numb
  * Владелец — воркер; вкладки получают этот же объект и ответом tokenInfo(), и
  * событием rt:media_token (Stage 1C.2, Task 3). */
 export interface MediaTokenInfo { token: string; expiresAt: number }
+/** Факт «URL медиа» (Task 6): objectURL, сминченный воркером после скачивания.
+ * Владелец — воркер (downloadMediaURL); вкладки получают его и RPC-ответом, и
+ * событием rt:media_url (зеркало — core/mediaCache.ts::cachedMediaUrl). */
+export interface MediaUrlEvt { id: number; thumb: boolean; url: string; size: number }
 
 interface RestLike {
   post: RestClient['post']
@@ -19,6 +25,15 @@ interface RestLike {
   putBytes: RestClient['putBytes']
   contentUrl: RestClient['contentUrl']
   mediaUrl: RestClient['mediaUrl']
+  getBlob: RestClient['getBlob']
+}
+
+/** Контракт дисковой корзины медиа (структурная форма CacheStorageController,
+ * чтобы юнит-тесты подставляли Map-бэкенд без Cache API). */
+export interface MediaFilesCache {
+  getFile(fileName: string): Promise<Blob>
+  saveFile(fileName: string, blob: Blob): Promise<Blob>
+  deleteAll(): Promise<boolean>
 }
 
 // Files larger than this use the chunked/resumable upload path (fixed-size parts,
@@ -37,7 +52,7 @@ const RESUME_ROUNDS = 3
 // истечения; две копии одного расписания разъезжались по построению.
 const TOKEN_MARGIN = 60_000
 
-export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload, fileUpload }: {
+export function newMediaManager({ rest, onUploadProgress, onToken, onMediaUrl, files, fileDownload, fileUpload }: {
   rest: RestLike
   // Прогресс отгрузки байтов (tweb ProgressivePreloader) — воркер транслирует
   // его вкладкам событием media:upload_progress.
@@ -46,6 +61,13 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
   // витрина (core/mediaUrl.ts) только зеркалит. Опционально: юнит-тесты
   // менеджера конструируют его без воркера.
   onToken?: (t: MediaTokenInfo) => void
+  // Сминченный objectURL скачанного медиа (Task 6) — воркер публикует его всем
+  // вкладкам (rt:media_url), витрина (core/mediaCache.ts) только зеркалит.
+  onMediaUrl?: (e: MediaUrlEvt) => void
+  // Дисковая корзина медиа. Не задана — лениво создаётся настоящий
+  // CacheStorageController('cachedFiles') (см. getFilesCache ниже); юнит-тесты
+  // подставляют Map-бэкенд.
+  files?: MediaFilesCache
   fileDownload?: FileDownload // задан только при DNP-ON: скачивание медиа через канал
   fileUpload?: FileUpload // задан только при DNP-ON: загрузка медиа стримом чанков через канал
 }) {
@@ -115,6 +137,86 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
   async function ensureToken(): Promise<string> {
     if (mediaToken && Date.now() < mediaTokenExp - TOKEN_MARGIN) return mediaToken
     return fetchToken()
+  }
+
+  // ── Конвейер download→cache→objectURL (Task 6, модель tweb) ────────────────
+  // apiFileManager.downloadMediaURL (apiFileManager.ts:1029-1045): кэш-контекст
+  // в памяти воркера (storages/thumbs.ts: {downloaded, url}) → корзина
+  // CacheStorage → байты; objectURL минтится ЗДЕСЬ, в воркере, — blob-стор общий
+  // на origin, поэтому вкладки рисуют его в <img> как свой (так же живут
+  // зеркалируемые thumbs tweb; прокси createObjectURL в index.worker.ts:130-132
+  // нужен только контекстам БЕЗ этого API — service worker'у, не нам).
+  let filesCache = files
+  // Лениво и под гейтом среды: настоящая корзина создаётся при первом обращении
+  // (и в тестах без Cache API — не создаётся вовсе: happy-dom `caches` не даёт).
+  function getFilesCache(): MediaFilesCache | undefined {
+    if (!filesCache && typeof caches !== 'undefined') filesCache = new CacheStorageController('cachedFiles')
+    return filesCache
+  }
+  // Ключ и корзины, и контекста: media_<id>[ _thumb] (наш аналог tweb fileName.ts).
+  const mediaEntryName = (id: number, thumb: boolean) => `media_${id}${thumb ? '_thumb' : ''}`
+  // Кэш-контекст: владелец факта «URL медиа» (образец — tweb ThumbsStorage.thumbsCache).
+  const urlContext = new Map<string, { downloaded: number; url: string }>()
+  // Дедуп конкурентных запросов одного файла (образец — tweb downloadPromises).
+  const urlInflight = new Map<string, Promise<string>>()
+  // Поколение сессии конвейера — по образцу tokenGen выше: ответ на УЖЕ УЛЕТЕВШЕЕ
+  // скачивание принадлежит той сессии, под которой запрос ушёл.
+  let downloadGen = 0
+
+  // Байты медиа: корзина → сеть. При DNP-ON полное медиа идёт каналом (как
+  // contentBlob ниже); thumb — worker-fetch и там: у file_req-протокола канала
+  // нет thumb-варианта (то же расхождение, что у прежнего токенного thumbUrl).
+  async function loadMediaBlob(id: number, thumb: boolean, key: string): Promise<{ blob: Blob; fromCache: boolean }> {
+    const fc = getFilesCache()
+    if (fc) {
+      try { return { blob: await fc.getFile(key), fromCache: true } }
+      catch { /* NO_ENTRY_FOUND | STORAGE_OFFLINE | таймаут — идём за байтами */ }
+    }
+    if (fileDownload && !thumb) return { blob: await fileDownload.downloadMedia(id), fromCache: false }
+    return { blob: await rest.getBlob(`/media/${id}/content${thumb ? '?v=thumb' : ''}`), fromCache: false }
+  }
+
+  function downloadMediaURL(id: number, opts?: { thumb?: boolean }): Promise<string> {
+    const thumb = !!opts?.thumb
+    const key = mediaEntryName(id, thumb)
+    const ctx = urlContext.get(key)
+    if (ctx) return Promise.resolve(ctx.url)
+    const running = urlInflight.get(key)
+    if (running) return running
+    const gen = downloadGen
+    const p = loadMediaBlob(id, thumb, key)
+      .then(({ blob, fromCache }) => {
+        // Пока байты летели, активная сессия сменилась: ни кэшировать (контекст/
+        // корзину уже сбросил resetDownloads), ни публиковать ответ прошлой
+        // сессии нельзя — идём заново под текущей, чтобы звонящий получил
+        // рабочий URL, а не медиа прошлого аккаунта (образец — гейт tokenGen
+        // в fetchToken выше).
+        if (gen !== downloadGen) return downloadMediaURL(id, opts)
+        // ≤ MAX_FILE_SAVE_SIZE — как tweb (apiFileManager.ts:967); запись
+        // fire-and-forget: URL не ждёт диска, промах следующего чтения из
+        // корзины и так уводит в сеть.
+        if (!fromCache && blob.size <= MAX_FILE_SAVE_SIZE) void getFilesCache()?.saveFile(key, blob).catch(() => {})
+        const url = URL.createObjectURL(blob)
+        urlContext.set(key, { downloaded: blob.size, url })
+        onMediaUrl?.({ id, thumb, url, size: blob.size })
+        return url
+      })
+      .finally(() => { if (urlInflight.get(key) === p) urlInflight.delete(key) })
+    urlInflight.set(key, p)
+    return p
+  }
+
+  // Смена активной сессии — парный к resetToken сброс конвейера: blob:-URL и
+  // корзина cachedFiles тоже подписаны на пользователя. Контекст/поколение
+  // сбрасываются СИНХРОННО (вызывающий — workerCore — публикует намерение
+  // следом); deleteAll — void: broadcast не должен ждать диска, а порядок
+  // «сначала сброс, потом кадр» обеспечен синхронной частью.
+  function resetDownloads(): void {
+    for (const { url } of urlContext.values()) URL.revokeObjectURL(url)
+    urlContext.clear()
+    urlInflight.clear()
+    downloadGen++
+    void getFilesCache()?.deleteAll().catch(() => {})
   }
   // Тело meta() — вынесено, чтобы streamUrl тоже мог достать size/mime без
   // повторной реализации кэша (metaCache не кэширует, пока сервер не проставил thumb).
@@ -257,8 +359,10 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
       if (m.mime.includes('mp4')) u += '&mp4fix=1'
       return u
     },
-    // contentBlob скачивает медиа целиком через DNP-канал (blob создаётся вызывающим
-    // main-потоком: objectURL из воркера в DOM невалиден). Только при DNP-ON.
+    // contentBlob скачивает медиа целиком через DNP-канал и отдаёт Blob вкладке
+    // (objectURL там создаёт вызывающий — исторический контракт этих
+    // потребителей; сам по себе воркерный objectURL в DOM валиден, см.
+    // downloadMediaURL выше). Только при DNP-ON.
     async contentBlob(id: number): Promise<Blob> {
       if (!fileDownload) throw new Error('media: канал недоступен')
       return fileDownload.downloadMedia(id)
@@ -278,6 +382,13 @@ export function newMediaManager({ rest, onUploadProgress, onToken, fileDownload,
     // (workerCore.ts: onLoggingOut/onLoggedIn) — тем же вызовом, что публикует
     // намерение вкладкам, и ДО публикации.
     resetToken,
+    // Конвейер download→cache→objectURL (Task 6): кэш-контекст → корзина
+    // cachedFiles → байты → objectURL с публикацией rt:media_url. RPC-ответ —
+    // канал поздней вкладки (стартовый бродкаст она пропустила, спросит сама).
+    downloadMediaURL,
+    // Сброс конвейера на смене активной сессии — зовёт воркер там же и так же,
+    // как resetToken (см. выше).
+    resetDownloads,
     // URL of the server-generated thumbnail/poster (jpeg). Same content endpoint
     // with ?v=thumb. Caller should only use it when meta.hasThumb is true.
     async thumbUrl(id: number): Promise<string> {
