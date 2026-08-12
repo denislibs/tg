@@ -264,6 +264,13 @@ func (h *MediaHandler) FinalizeUpload(w http.ResponseWriter, r *http.Request) {
 // route authenticates via ?token= (like /ws) and is mounted outside the Bearer group.
 func (h *MediaHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
+	// Browser <img>/<video> pass a media-scoped token via ?token=. The worker's
+	// media pipeline (downloadMediaURL) instead fetches bytes with a session
+	// token in the Authorization header — never in the URL — so pictures carry
+	// no token at all. Accept both: query first, then the Bearer header.
+	if token == "" {
+		token = bearerToken(r)
+	}
 	// Prefer a media-scoped token; fall back to a session token for back-compat.
 	userID, ok := parseMediaToken(h.urlSecret, token, time.Now())
 	if !ok {

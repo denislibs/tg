@@ -220,6 +220,24 @@ func TestGetContent_ValidToken(t *testing.T) {
 	}
 }
 
+// Воркерный конвейер (downloadMediaURL) тянет байты картинок с session-токеном
+// в заголовке Authorization, а не в ?token= — токена в URL картинки нет вовсе.
+// Эндпоинт обязан принять и такой запрос (иначе баблы отдают 401 — поймано на
+// стенде: тесты Task 6 мокали rest.getBlob и это не ловили).
+func TestGetContent_BearerHeader(t *testing.T) {
+	r, _ := contentRouter(7, 7, true)
+	req := httptest.NewRequest(http.MethodGet, "/media/1/content", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "abc" {
+		t.Fatalf("body = %q, want %q", rec.Body.String(), "abc")
+	}
+}
+
 func TestGetContent_NoToken(t *testing.T) {
 	r, _ := contentRouter(7, 7, true)
 	req := httptest.NewRequest(http.MethodGet, "/media/1/content", nil)
