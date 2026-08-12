@@ -11,9 +11,9 @@
 // Task 13 довёз наполнение медиа: `_openMedia` (порт tweb :2320-3005 в объёме
 // фото; видео-ветка — заглушка до Task 15), setAuthorInfo/caption как
 // React-острова (createRoot), прелоадер на мувере, полный close()
-// (tweb :975-1024) и layout-методы (:2195-2235). Класс всё ещё ИНЕРТЕН: его
-// пока никто не создаёт — message-подкласс `AppMediaViewer` с точками входа
-// (он же зовёт setListeners, как tweb index.ts:166) — Task 14.
+// (tweb :975-1024) и layout-методы (:2195-2235). Message-подкласс —
+// `appMediaViewer.ts` (Task 14, он же зовёт setListeners, как tweb
+// index.ts:166); точки входа приложения — Task 16.
 //
 // Порядок append детей `.media-viewer-whole` — load-bearing: правила партиала
 // `styles/tweb/_mediaViewer.scss` построены на соседях
@@ -166,7 +166,8 @@ function createVideo({ middleware }: { middleware: Middleware }): HTMLVideoEleme
 
 // span.tgico — порт tweb `Icon()` (icon.ts:28-37): глиф шрифтом tgico + классы.
 // RTL-отражение (`icon-reflect`) не портировано — RTL-локалей у нас нет.
-function iconSpan(icon: IconName, ...classes: string[]): HTMLSpanElement {
+// Экспорт: подкласс AppMediaViewer строит из них пункты ⋮-меню и кнопку more.
+export function iconSpan(icon: IconName, ...classes: string[]): HTMLSpanElement {
   const span = document.createElement('span')
   span.classList.add('tgico', ...classes)
   span.textContent = glyph(icon)
@@ -176,7 +177,7 @@ function iconSpan(icon: IconName, ...classes: string[]): HTMLSpanElement {
 // button.btn-icon > span.tgico.button-icon — порт tweb `ButtonIcon()` в объёме
 // вьювера (все кнопки топбара в tweb идут с `noRipple: true`; про mobile-close
 // см. шапку файла). `onlyMobile` → `only-handhelds` (button.ts:33-35).
-function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}): HTMLButtonElement {
+export function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}): HTMLButtonElement {
   const button = document.createElement('button')
   button.className = 'btn-icon'
   if (options.onlyMobile) {
@@ -231,9 +232,17 @@ export default class AppMediaViewerBase<
 
   protected isFirstOpen = true
 
-  // Цель полёта закрытия (tweb :2404: `this.target = {element: target}`) —
-  // источник, к которому close() вернёт мувер.
-  protected target?: { element: HTMLElement }
+  // Цель полёта закрытия и текущий элемент листания — геттер/сеттер поверх
+  // listLoader.current (порт tweb :290-296): go() перекладывает current между
+  // previous/next, поэтому цель обязана жить именно там — иначе просмотренный
+  // элемент выпадал бы из списка при листании.
+  protected get target(): TargetType | undefined {
+    return this.listLoader.current
+  }
+
+  protected set target(value: TargetType | undefined) {
+    this.listLoader.current = value
+  }
 
   // React-острова (решение программы: ядро vanilla, React — только через
   // createRoot). Аватарка автора: ОДИН root на жизнь вьювера — повторный
@@ -243,7 +252,7 @@ export default class AppMediaViewerBase<
   private authorRoot: Root | null = null
   private authorHost: HTMLElement | null = null
   protected authorInfo: ViewerAuthor | null = null
-  // Caption-остров: root над scrollable-слотом; RichText-рендер — Task 14.
+  // Caption-остров: root над scrollable-слотом; RichText рендерит подкласс.
   protected captionRoot: Root | null = null
   protected captionScrollable!: HTMLElement
 
@@ -475,12 +484,12 @@ export default class AppMediaViewerBase<
     this.setNewMover()
   }
 
-  // Порт tweb base.ts:447-587 в объёме Task 12 (зовёт конструктор подкласса —
-  // tweb index.ts:166, у нас Task 14). Не портированы здесь:
+  // Порт tweb base.ts:447-587 (зовёт конструктор подкласса — tweb index.ts:166,
+  // у нас appMediaViewer.ts). Не портированы здесь:
   //   • download-кнопка (attachClickEvent + меню качества ButtonMenuToggle,
-  //     tweb :448-459) — вместе с onDownloadClick в Task 14;
-  //   • listLoader.onJump → onPrevClick/onNextClick (tweb :489-492) — поля
-  //     message-подкласса, Task 14.
+  //     tweb :448-459) — onDownloadClick вешает подкласс (setListeners);
+  //   • listLoader.onJump → onPrevClick/onNextClick (tweb :485-489) — поля
+  //     message-подкласса, вешает он же.
   protected setListeners() {
     ;[this.buttons.close, this.buttons['mobile-close'], this.preloaderStreamable.preloader].forEach((el) => {
       attachClickEvent(el, this.close.bind(this))
@@ -1322,9 +1331,9 @@ export default class AppMediaViewerBase<
     this.content.caption.classList.toggle('hide', !node)
   }
 
-  // React-путь caption (Task 14 привезёт сюда RichText): остров в том же
-  // scrollable-слоте. Пути взаимоисключающие — слот принадлежит либо root'у,
-  // либо setCaptionNode (Task 14 выберет один).
+  // React-путь caption: остров в том же scrollable-слоте — им пользуется
+  // message-подкласс (setCaption → RichText). Пути взаимоисключающие — слот
+  // принадлежит либо root'у, либо setCaptionNode.
   public renderCaptionIsland(jsx: ReactNode | null) {
     this.captionRoot ??= createRoot(this.captionScrollable)
     flushSync(() => {
@@ -2268,7 +2277,9 @@ export default class AppMediaViewerBase<
     if (!target || target === container) target = container
     const useContainerAsTarget = target === container
 
-    this.target = { element: target }
+    // tweb :2400: `this.target = {element: target} as any` — цель стартует голым
+    // {element}, поля message-варианта дописывает подкласс (openMedia)
+    this.target = { element: target } as TargetType
     const tempId = ++this.tempId
 
     if (container.firstElementChild) {
