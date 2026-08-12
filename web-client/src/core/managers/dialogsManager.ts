@@ -12,6 +12,7 @@ import { mapDialog, type Dialog, type Draft, type RawDialog } from '../models'
 import { dialogIndex } from '../dialogs/dialogIndex'
 import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
 import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
+import { equal } from '../store/reconcile'
 
 /** Наше закрепление пер-юзерное и на весь список сразу — запись одна (см. chatsStore). */
 const ALL_FOLDER_ID = 0
@@ -70,11 +71,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * Диалога нет в кэше — не ошибка (Task 3, «Осторожно» #3): молча выходим, как
    * раньше выходил `if (!cur) return {}` в chatsStore — он приедет со следующей
    * загрузкой/reset'ом.
+   *
+   * Fix (ревью Task 3, Important): смерженный результат структурно совпал с
+   * текущим значением (напр. бэкенд повторно шлёт идентичный `chat_update` —
+   * `publishChatUpdate` зовётся из 13 мест бэка и прилетает КАЖДОМУ участнику
+   * чата) — `patch` не публикуем вовсе. Раньше (main, chatsStore.applyChatMeta)
+   * это давало бесплатно `reconcileEntity`/`reconcileById` (совпавший ответ
+   * возвращает ИСХОДНЫЙ объект/массив); patch-путь владельца эту сверку не
+   * делал и создавал новую ссылку на диалог/патчил зеркало (`chatsStore.ts`,
+   * ветка `patch`: `{...d, ...op.fields}` МИМО `reconcileById`) при нулевом
+   * изменении данных — лишний ре-рендер мемоизированного `ChatListItem`.
+   * `equal()` — тот же структурный компаратор, что и в `reconcileEntity`.
    */
   function patchDialog(chatId: number, fields: Partial<Dialog>): void {
     const idx = items.findIndex((i) => i.dialog.chatId === chatId)
     if (idx === -1) return
-    const dialog: Dialog = { ...items[idx].dialog, ...fields }
+    const prev = items[idx].dialog
+    const dialog: Dialog = { ...prev, ...fields }
+    if (equal(prev, dialog)) return
     const index = dialogIndex(dialog, pinnedOrder, draftFor(chatId))
     const moved = index !== items[idx].index
     items[idx] = { dialog, index }

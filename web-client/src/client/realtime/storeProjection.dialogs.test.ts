@@ -115,6 +115,30 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     expect(s.dialogs.map((d) => d.chatId)).toEqual([2, 1, 3])
   })
 
+  // Fix (ревью Task 3, Important): владелец публиковал `patch` безусловно —
+  // повторный ИДЕНТИЧНЫЙ chat_update (backend publishChatUpdate зовётся из 13
+  // мест и прилетает КАЖДОМУ участнику чата) пересоздавал и массив
+  // `dialogs`, и объект диалога в зеркале при нулевом изменении данных
+  // (лишний ре-рендер мемоизированного ChatListItem). Портировано по смыслу из
+  // удалённых chatsStore.chatMeta.test.ts («снимок совпал — массив НЕ
+  // пересоздаётся» / «диалог сохраняет ССЫЛКУ») — фикс теперь в источнике
+  // (dialogsManager.patchDialog: patch не публикуется при структурном
+  // совпадении), проверяем СКВОЗНОЙ путь владелец→зеркало.
+  it('повторный идентичный chat_update не пересоздаёт ни массив dialogs, ни объект диалога', async () => {
+    const { mgr } = stand([dialog(1, '2026-08-01T00:00:00Z')])
+    await mgr.fillMirror()
+
+    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' })
+    const dialogsBefore = useChatsStore.getState().dialogs
+    const dialogBefore = dialogsBefore.find((d) => d.chatId === 1)
+
+    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' }) // тот же снимок повторно
+
+    const s = useChatsStore.getState()
+    expect(s.dialogs).toBe(dialogsBefore) // массив НЕ пересоздан
+    expect(s.dialogs.find((d) => d.chatId === 1)).toBe(dialogBefore) // диалог сохранил ССЫЛКУ
+  })
+
   // remove: диалог выпадает из зеркала.
   it('remove убирает диалог из зеркала', () => {
     const st = useChatsStore.getState()

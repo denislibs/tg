@@ -17,8 +17,13 @@
 /** `Object.hasOwn` — ES2022, а тут target/lib ES2020 (tsconfig.json). */
 const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k)
 
-/** Структурное сравнение. Значения — JSON-совместимые (то, что приходит с бэка). */
-function equal(a: unknown, b: unknown): boolean {
+/**
+ * Структурное сравнение. Значения — JSON-совместимые (то, что приходит с бэка).
+ * Экспортирован: тот же приём нужен точечным patch-путям вне reconcileById
+ * (напр. `dialogsManager.patchDialog` — no-op `patch` не должен публиковаться,
+ * если смерженные поля структурно совпали с текущим значением).
+ */
+export function equal(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
 

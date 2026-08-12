@@ -175,6 +175,33 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.photoUrl).toBeUndefined()
   })
 
+  // Fix (ревью Task 3, Important): `patchDialog` публиковал `patch` безусловно —
+  // повторный ИДЕНТИЧНЫЙ `chat_update` (backend publishChatUpdate зовётся из 13
+  // мест и прилетает каждому участнику чата) пересоздавал объект диалога в кэше
+  // владельца при нулевом изменении данных. Патч теперь публикуется, только если
+  // смерженные поля структурно отличаются от текущего значения (`equal()` —
+  // общий структурный компаратор `core/store/reconcile.ts`, тот же, что
+  // `reconcileEntity` использует для сохранения ссылок в зеркале).
+  it('повторный идентичный chat_update НЕ публикует операцию и не пересоздаёт объект диалога', async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+    await mgr.fillMirror()
+
+    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' } as ChatUpdateEvt)
+    const dialogAfterFirst = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog
+    ops.length = 0
+
+    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' } as ChatUpdateEvt) // тот же снимок повторно
+
+    expect(ops).toHaveLength(0) // patch не опубликован
+    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog).toBe(dialogAfterFirst) // ссылка сохранена
+  })
+
   it('bumpUnreadReactions: verbatim из кадра, fallback +1 без поля', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
@@ -191,6 +218,11 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     mgr.bumpUnreadReactions(1, 5) // авторитетный счётчик из кадра — verbatim
     expect((ops[1] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(5)
+
+    // Fix (ревью Task 3, Important): тот же счётчик повторно — patch не публикуется.
+    ops.length = 0
+    mgr.bumpUnreadReactions(1, 5)
+    expect(ops).toHaveLength(0)
   })
 
   it('applyRemoved публикует remove; диалога нет в кэше — тихий no-op', async () => {
