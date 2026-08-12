@@ -63,7 +63,9 @@ func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, er
 // CanAccess reports whether userID may download a media object. Access is granted if any holds:
 //   - they own it;
 //   - the media is the photo of a chat they are a member of;
-//   - they are a member of a chat that has a message referencing it;
+//   - they are a member of a chat that has a message referencing it — either as
+//     the message's own media, or as the picture of its link preview
+//     (messages.web_page_media_id, миграция 0092);
 //   - the media backs an active story they may view — i.e. they authored it, or
 //     they are a chat partner of the author and the story is 'everyone'/'contacts',
 //     or the story is 'selected' and they are on its allowlist.
@@ -89,6 +91,12 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   SELECT 1 FROM messages m
 		     JOIN chat_members cm ON cm.chat_id = m.chat_id
 		     WHERE m.media_id=$1 AND cm.user_id=$2
+		   UNION ALL
+		   -- картинка превью ссылки: скачана нами, владелец — отправитель, но
+		   -- видеть её должны все участники чата
+		   SELECT 1 FROM messages m
+		     JOIN chat_members cm ON cm.chat_id = m.chat_id
+		     WHERE m.web_page_media_id=$1 AND cm.user_id=$2
 		   UNION ALL
 		   SELECT 1 FROM stories s
 		     WHERE s.media_id=$1 AND s.expires_at > now()

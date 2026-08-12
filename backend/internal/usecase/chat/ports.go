@@ -281,10 +281,21 @@ type LinkPreviewer interface {
 	Preview(ctx context.Context, url string) (*domain.WebPagePreview, error)
 }
 
-// BotHTTP — исходящие HTTP-запросы бот-движка (доставка апдейта на webhook +
-// загрузка медиа бота по URL) через SSRF-безопасный клиент адаптера. Держит
-// net/http вне usecase (чистая архитектура). Опционален: без него webhook не
-// доставляется, а sendMedia по URL → ErrNotFound.
+// IVProber отвечает, извлекается ли из страницы статья Instant View. Нужен,
+// чтобы кнопка «Мгновенный просмотр» появлялась только там, где ей есть что
+// открыть (tweb показывает футер лишь при `webPage.cached_page`). Реализуется
+// самим iv-usecase — тем же путём, что и открытие статьи, поэтому проба
+// прогревает его кэш и клик по кнопке отдаёт статью уже из него.
+// Опционален — без него флаг всегда false и кнопки нет.
+type IVProber interface {
+	HasArticle(ctx context.Context, url string) bool
+}
+
+// BotHTTP — исходящие HTTP-запросы через SSRF-безопасный клиент адаптера:
+// доставка апдейта на webhook бота, загрузка медиа бота по URL и загрузка
+// картинки превью ссылки (webpreview.go). Держит net/http вне usecase (чистая
+// архитектура). Опционален: без него webhook не доставляется, sendMedia по URL
+// → ErrNotFound, а карточка превью остаётся без картинки.
 type BotHTTP interface {
 	// PostWebhook доставляет апдейт боту (fire-and-forget; SSRF-невалидный URL
 	// молча отбрасывается адаптером).
@@ -728,9 +739,11 @@ type Translator interface {
 	Translate(ctx context.Context, text, toLang string) (translated, detectedSource string, err error)
 }
 
-// BotMediaStore сохраняет медиа, загруженное ботом (sendPhoto/Document/Video):
-// пишет объект в хранилище от имени бота-владельца и возвращает media_id.
-// Опционален — без него медиа-методы Bot API отключены.
+// BotMediaStore сохраняет байты как наше медиа: пишет объект в хранилище от
+// имени владельца и возвращает media_id. Потребители — медиа-методы Bot API
+// (sendPhoto/Document/Video) и картинка превью ссылки (webpreview.go).
+// Опционален — без него медиа-методы Bot API отключены, а карточка превью
+// остаётся без картинки.
 type BotMediaStore interface {
 	Store(ctx context.Context, ownerID int64, mime, fileName string, data []byte) (int64, error)
 }

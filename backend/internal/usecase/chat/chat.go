@@ -47,6 +47,7 @@ type Interactor struct {
 	secret       SecretRepo
 	stickers     StickerAccess
 	preview      LinkPreviewer
+	ivProbe      IVProber
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
 	suggested    SuggestedPostRepo
@@ -159,6 +160,10 @@ func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
 // SetLinkPreviewer подключает построитель превью ссылок (optional; без него
 // карточек web page под сообщениями нет).
 func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
+
+// SetIVProber подключает пробу Instant View для карточек превью (optional; без
+// неё кнопки «Мгновенный просмотр» на карточках нет).
+func (i *Interactor) SetIVProber(p IVProber) { i.ivProbe = p }
 
 // SetBoosts подключает хранилище бустов каналов (optional; без него → 404).
 func (i *Interactor) SetBoosts(b BoostRepo) { i.boosts = b }

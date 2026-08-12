@@ -35,7 +35,29 @@ type WebPagePreview struct {
 	SiteName    string `json:"site_name,omitempty"`
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
-	ImageURL    string `json:"image_url,omitempty"`
+	// ImageURL — адрес og:image на ЧУЖОМ хосте. Транзитное поле: живёт только
+	// между разбором страницы и загрузкой картинки к нам (см. PhotoID), наружу
+	// не уходит и в jsonb не сохраняется — `json:"-"`. Отдать его клиенту
+	// значило бы, что браузер каждого участника чата сам сходит на i.ytimg.com
+	// и сдаст свой IP владельцу ссылки; Telegram так не делает — картинку
+	// проксирует сервер. Наш CSP (`img-src 'self' data: blob:`) такой запрос и
+	// так режет, поэтому раньше карточка показывала битую иконку.
+	ImageURL string `json:"-"`
+	// PhotoID — картинка превью, УЖЕ скачанная к нам обычным медиа (та же
+	// дорога, что у фото сообщения: объект в MinIO, фоновая обработка даёт
+	// размеры/thumb/stripped-превью). 0 — картинки нет или скачать не вышло.
+	PhotoID int64 `json:"photo_id,omitempty"`
+	// Размеры/подложка/наличие thumb — read-model: заполняются на чтении из
+	// строки media (hydrateMedia), а не хранятся в jsonb: обработка медиа
+	// асинхронная и на момент записи превью их ещё нет.
+	PhotoW        int    `json:"photo_w,omitempty"`
+	PhotoH        int    `json:"photo_h,omitempty"`
+	PhotoBlur     []byte `json:"photo_blur,omitempty"`
+	PhotoHasThumb bool   `json:"photo_has_thumb,omitempty"`
+	// HasIV — из страницы извлеклась статья Instant View. tweb рисует футер
+	// карточки только при `webPage.cached_page` (bubbles.ts:7990), поэтому без
+	// этого флага кнопка «Мгновенный просмотр» висела бы на каждой ссылке.
+	HasIV bool `json:"has_iv,omitempty"`
 }
 
 type Message struct {

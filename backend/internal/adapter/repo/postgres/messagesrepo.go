@@ -518,18 +518,25 @@ func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Mes
 }
 
 // SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
-// после коммита отправки; удалённое сообщение не трогаем.
+// после коммита отправки; удалённое сообщение не трогаем. Картинка превью
+// дублируется в колонку web_page_media_id — по ней проверяется доступ к медиа
+// (MediaAccessRepo.CanAccess), см. миграцию 0092.
 func (r *MessagesRepo) SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error {
 	var param any // jsonb — строкой (см. entitiesParam); nil → NULL
+	var photoID any
 	if wp != nil {
 		b, err := json.Marshal(wp)
 		if err != nil {
 			return err
 		}
 		param = string(b)
+		if wp.PhotoID > 0 {
+			photoID = wp.PhotoID
+		}
 	}
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE messages SET web_page=$2 WHERE id=$1 AND deleted_at IS NULL`, msgID, param)
+		`UPDATE messages SET web_page=$2, web_page_media_id=$3 WHERE id=$1 AND deleted_at IS NULL`,
+		msgID, param, photoID)
 	return err
 }
 

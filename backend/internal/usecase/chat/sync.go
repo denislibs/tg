@@ -219,13 +219,26 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 // hydrateMedia fills width/height/mime on messages that carry media, batch-fetching
 // dims by media id (one query). Lets the client reserve the exact media box before
 // the bytes load (no layout shift). Missing/unprocessed media are left at zero.
+//
+// Картинка превью ссылки (web_page.photo_id) идёт тем же батчем и по той же
+// причине: размеры и stripped-подложка живут в строке media, а обработка после
+// скачивания асинхронная — на момент записи снимка превью их ещё нет, поэтому
+// это read-model, а не часть jsonb.
 func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) error {
 	ids := make([]int64, 0)
 	seen := map[int64]bool{}
+	add := func(id int64) {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
 	for _, m := range msgs {
-		if m.MediaID != nil && *m.MediaID > 0 && !seen[*m.MediaID] {
-			seen[*m.MediaID] = true
-			ids = append(ids, *m.MediaID)
+		if m.MediaID != nil {
+			add(*m.MediaID)
+		}
+		if m.WebPage != nil {
+			add(m.WebPage.PhotoID)
 		}
 	}
 	if len(ids) == 0 {
@@ -236,6 +249,12 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 		return err
 	}
 	for idx := range msgs {
+		if wp := msgs[idx].WebPage; wp != nil && wp.PhotoID > 0 {
+			if d, ok := dims[wp.PhotoID]; ok {
+				wp.PhotoW, wp.PhotoH = d.Width, d.Height
+				wp.PhotoBlur, wp.PhotoHasThumb = d.Blur, d.HasThumb
+			}
+		}
 		if msgs[idx].MediaID == nil {
 			continue
 		}
