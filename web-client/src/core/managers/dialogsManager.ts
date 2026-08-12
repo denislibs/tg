@@ -29,6 +29,17 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState }: D
   let pinnedOrder: number[] = []
   let drafts: Draft[] = []
   let hydrated = false
+  // Промис гидратации в полёте (а не булев флаг): конкурентный fillMirror()/
+  // refresh() — две вкладки поднимают общий SharedWorker одновременно, либо оба
+  // метода зовутся почти сразу друг за другом — обязан ждать РЕЗУЛЬТАТ первого
+  // вызова, а не проскакивать мимо него. Флаг `hydrated=true`, выставленный
+  // синхронно ДО await, давал второму вызову увидеть «уже гидратировано» и
+  // разослать пустой reset раньше, чем первый успел загрузить кэш/State — этот
+  // дефект воспроизведён и закрыт тестом «конкурентный fillMirror не рассылает
+  // пустой reset» (dialogsManager.test.ts). `null` после промаха — гидратация
+  // упавшая (оффлайн/битый IDB) обязана даться повторить, а не залипнуть на
+  // вечно отклонённом промисе (см. тест «упавшая гидратация не залипает»).
+  let hydrating: Promise<void> | null = null
 
   const publish = (ops: DialogOp[]) => onDialogOps?.(ops)
   const draftFor = (chatId: number) => drafts.find((d) => d.chatId === chatId)
@@ -44,13 +55,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState }: D
     return { op: 'reset', items }
   }
 
-  async function hydrate(): Promise<void> {
-    if (hydrated) return
-    hydrated = true
+  async function doHydrate(): Promise<void> {
     const state = await loadState()
     pinnedOrder = state.pinnedOrders[ALL_FOLDER_ID] ?? []
     drafts = state.drafts
     if (!items.length) setAll(await loadCache())
+    hydrated = true
+  }
+
+  function hydrate(): Promise<void> {
+    if (hydrated) return Promise.resolve()
+    hydrating ??= doHydrate().finally(() => { hydrating = null })
+    return hydrating
   }
 
   return {

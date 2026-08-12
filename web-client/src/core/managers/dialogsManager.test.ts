@@ -44,4 +44,45 @@ describe('dialogsManager: владелец порядка', () => {
     const op = await mgr.fillMirror()
     expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([1, 2])
   })
+
+  // Ревью (Important #1): `hydrated = true` ставился СИНХРОННО, до await
+  // loadState()/loadCache(). Конкурентный вызов (две вкладки на общем
+  // SharedWorker стартуют одновременно, или fillMirror()/refresh() идут
+  // параллельно) видел hydrated===true и немедленно возвращался с ПУСТЫМ items —
+  // до того, как первый вызов вообще успел их загрузить. Кэшируем сам промис
+  // гидратации, а не булев флаг: конкурентные вызовы ждут ОДИН И ТОТ ЖЕ промис.
+  it('конкурентный fillMirror не рассылает пустой reset (гонка гидратации)', async () => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => { await sleep(5); return [dialog(1, '2026-08-01T00:00:00Z')] },
+      loadState: async () => { await sleep(5); return { pinnedOrders: {}, drafts: [] } },
+    })
+
+    const [op1, op2] = await Promise.all([mgr.fillMirror(), mgr.fillMirror()])
+
+    expect((op1 as { items: unknown[] }).items).toHaveLength(1)
+    expect((op2 as { items: unknown[] }).items).toHaveLength(1)
+  })
+
+  // Симметричный случай: гидратация упала (сеть/IDB недоступны) — следующий
+  // вызов обязан попробовать снова, а не залипнуть на вечно pending промисе.
+  it('упавшая гидратация не залипает — следующий fillMirror пробует снова', async () => {
+    let attempt = 0
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => {
+        attempt++
+        if (attempt === 1) throw new Error('IDB недоступен')
+        return { pinnedOrders: {}, drafts: [] }
+      },
+    })
+
+    await expect(mgr.fillMirror()).rejects.toThrow('IDB недоступен')
+    const op = await mgr.fillMirror()
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([1])
+  })
 })
