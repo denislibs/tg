@@ -22,7 +22,9 @@ import liteMode from '@helpers/liteMode'
 
 // Таймер незавершённого перехода живёт на самом узле (tweb :3, `$TRANSITION_TIMEOUT`),
 // а не в общей карте — узел уносит его с собой, когда его удаляют из DOM.
+// Так же живёт и id подвешенного raf-отложенного запуска (tweb :3, `$TRANSITION_RAF`).
 const TRANSITION_TIMEOUT = Symbol('TRANSITION_TIMEOUT')
+const TRANSITION_RAF = Symbol('TRANSITION_RAF')
 type WithTimeout = Partial<Record<symbol, number>>
 
 /**
@@ -71,6 +73,7 @@ export type SetTransitionOptions = {
   forwards: boolean
   duration: number
   onTransitionEnd?: () => void
+  useRafs?: number
 }
 
 /**
@@ -78,13 +81,32 @@ export type SetTransitionOptions = {
  * `onTransitionEnd` по окончании. Повторный вызов на том же узле отменяет
  * незавершённый предыдущий переход (таймер живёт на самом узле — tweb :18-22).
  *
- * Не портированы `useRafs` и `onTransitionStart` (tweb :38-48, :65): ни один
- * потребитель их не использует (в самом tweb `useRafs` у `inputSearch` закомментирован
- * — inputSearch.ts:171), а мёртвый код мы не заводим.
+ * `useRafs` (tweb :38-48) — отложить запуск на N кадров: узлу, только что
+ * вставленному в DOM, класс в том же кадре не даст CSS-перехода. Довезён
+ * вместе с потребителем — `ProgressivePreloader` (`components/preloader.ts`,
+ * attach/detach). `onTransitionStart` (tweb :65) по-прежнему не портирован:
+ * потребителей нет, мёртвый код не заводим.
  */
-export function setTransition({ element, className, forwards, duration, onTransitionEnd }: SetTransitionOptions) {
+export function setTransition(options: SetTransitionOptions) {
+  const { element, className, forwards, duration, onTransitionEnd, useRafs } = options
   const pending = (element as unknown as WithTimeout)[TRANSITION_TIMEOUT]
   if (pending !== undefined) clearTimeout(pending)
+
+  // tweb :27-32 — отмена подвешенного raf-отложенного запуска предыдущего вызова
+  const pendingRaf = (element as unknown as WithTimeout)[TRANSITION_RAF]
+  if (pendingRaf !== undefined) {
+    cancelAnimationFrame(pendingRaf)
+    if (!useRafs) delete (element as unknown as WithTimeout)[TRANSITION_RAF]
+  }
+
+  // tweb :38-48 — raf-цепочка: каждый кадр снимает один useRafs, потом запуск
+  if (useRafs && liteMode.isAvailable('animations') && duration) {
+    ;(element as unknown as WithTimeout)[TRANSITION_RAF] = window.requestAnimationFrame(() => {
+      delete (element as unknown as WithTimeout)[TRANSITION_RAF]
+      setTransition({ ...options, useRafs: useRafs - 1 })
+    })
+    return
+  }
 
   const apply = (animating: boolean) => {
     const next = new Set(transitionClasses(element.classList, className, forwards, animating))

@@ -1,8 +1,14 @@
-import s from './Preloader.module.scss'
+import s from './SpinnerArc.module.scss'
 
 // tweb-style circular preloader: a constant 3/4 (75%) arc with round caps that
 // spins at one rotation per second — no growing/shrinking dash.
-export default function Preloader({
+//
+// Переименован из Preloader.tsx: путь `components/preloader.ts` занял порт
+// tweb ProgressivePreloader (кейс-инсенситив ФС не различает Preloader/preloader,
+// extensionless-импорты ломались — TS1149). Этот React-спиннер — временный
+// стенд-ин загрузки медиа в Chat.tsx; Стадия E (медиа-суперпорт) заменит его
+// настоящим ProgressivePreloader и удалит файл.
+export default function SpinnerArc({
   size = 40,
   stroke = 3,
   color = 'currentColor',

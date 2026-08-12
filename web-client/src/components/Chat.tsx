@@ -17,7 +17,7 @@ import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
-import Preloader from './Preloader'
+import SpinnerArc from './SpinnerArc'
 import type { Chat } from '../data'
 import { useT, useLang } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -1284,7 +1284,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         {spinnerMount && (
           <div className={classNames(s.spinnerOverlay, spinnerCls)}>
             <div className={s.spinnerBox}>
-              <Preloader size={30} stroke={2.5} color="#fff" />
+              <SpinnerArc size={30} stroke={2.5} color="#fff" />
             </div>
           </div>
         )}
