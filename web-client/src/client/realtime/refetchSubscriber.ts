@@ -44,19 +44,22 @@ export function registerRefetchSubscriber(managers: Managers): void {
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
-  // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42) — применяем его в уже
-  // известный диалог, в сеть не идём. Карточка чата (число участников, права,
-  // настройки) грузится отдельно (useChatInfoCard) и из /chats не приходила.
+  // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число
+  // участников, права, настройки) грузится отдельно (useChatInfoCard) и из
+  // /chats не приходила.
   //
-  // Исключение — чата ещё НЕТ в списке: меня только что добавили в группу
-  // (group.go:145-151 — AddMember → publishChatUpdate), и единственный способ
-  // узнать про новый диалог у нас — /chats. Тогда, и только тогда, дебаунснутый
-  // рефетч. Раньше он уходил на КАЖДЫЙ chat_update, а publishChatUpdate зовётся
-  // из 13 мест бэкенда — и рефетч прилетал каждому участнику чата.
+  // Task 3 (перенос владения диалогами): слияние снимка в уже известный диалог
+  // (applyChatMeta) теперь делает владелец — workerCore.ts::dispatch зовёт
+  // dialogs.applyChatMeta(e) РАНЬШЕ, чем этот сырой кадр вообще доезжает сюда
+  // (см. комментарий у dispatch), и публикует rt:dialog_op сам. Здесь остаётся
+  // только вторая ветка, которую владелец решить не может: чата ещё НЕТ в
+  // списке — меня только что добавили в группу (group.go:145-151 — AddMember →
+  // publishChatUpdate), и единственный способ узнать про новый диалог у нас —
+  // /chats. Тогда, и только тогда, дебаунснутый рефетч. Раньше он уходил на
+  // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
+  // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
-      useChatsStore.getState().applyChatMeta(evt)
-    } else {
+    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
       scheduleChatsReload(managers)
     }
   })

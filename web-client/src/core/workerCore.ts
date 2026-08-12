@@ -47,7 +47,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type NewMessageEvt } from './realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
@@ -162,6 +162,10 @@ export function createWorkerCore() {
       const st = await loadStateAll()
       return { pinnedOrders: st.pinnedOrders ?? {}, drafts: st.drafts ?? [] }
     },
+    // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
+    // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
+    // значение: `me` разрешается лениво асинхронным /me).
+    getMeId: () => me?.id ?? null,
   })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
@@ -277,6 +281,23 @@ export function createWorkerCore() {
     if (!h) return
     const ops = h.cache?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
+    // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
+    // влияющие на список диалогов, применяет dialogsManager — публикует свой
+    // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
+    // (тот доезжает витрине как и раньше, если у него остались другие потребители).
+    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.id ?? null)
+    else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
+    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).chat_id)
+    else if (t === 'reaction') {
+      // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
+      // реакций диалога (перенесено из storeProjection.ts вместе с телом
+      // bumpUnreadReactions — окно сообщений эта ветка не трогает, applyReaction
+      // остаётся на main, см. CLAUDE.md «реакции в окне сообщений»).
+      const r = d as ReactionEvt
+      if (r.action === 'add' && r.author_id === me?.id && r.user_id !== me?.id) {
+        dialogs.bumpUnreadReactions(r.chat_id, r.unread_reactions)
+      }
+    }
     broadcast(h.rt, d, meta)
   }
 
@@ -291,6 +312,10 @@ export function createWorkerCore() {
   function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
     const ops = messages.cacheLive(e as never)
     broadcast(RT.messageOp, { ops }, meta)
+    // Task 3: превью/unread диалога в списке — тоже владелец (dialogsManager),
+    // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
+    // read-marker/звука/нотификаций на main — см. storeProjection.ts).
+    dialogs.applyNewMessage(e)
     broadcast(RT.newMessage, e, meta)
   }
 

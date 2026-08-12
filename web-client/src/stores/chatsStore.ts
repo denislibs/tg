@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import type { Dialog } from '../core/models'
 import type { User } from '../core/managers/authManager'
-import type { ChatUpdateEvt, NewMessageEvt, ReadEvt, PresenceEvt, TypingAction } from '../core/realtime/events'
+import type { PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
 import { dialogIndex } from '../core/dialogs/dialogIndex'
 import type { DialogOp } from '../core/dialogs/dialogOps'
@@ -54,13 +54,10 @@ interface ChatsState {
   /** тема оформления чата сменилась (chat_theme_update) — '' сбрасывает к дефолту */
   setDialogTheme: (chatId: number, themeId: string) => void
   setDialogArchived: (chatId: number, archived: boolean) => void
-  removeDialog: (chatId: number) => void
-  /** снимок метаданных чата из realtime-кадра `chat_update` (title/username/фото) */
-  applyChatMeta: (m: ChatUpdateEvt) => void
-  applyNewMessage: (m: NewMessageEvt) => void
-  applyRead: (r: ReadEvt) => void
-  /** кто-то отреагировал на моё сообщение → бампим бейдж непрочитанных реакций диалога */
-  bumpUnreadReactions: (chatId: number, count?: number) => void
+  // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta/applyNewMessage/
+  // applyRead/bumpUnreadReactions отсюда убраны — их тела переехали во владельца
+  // (core/managers/dialogsManager.ts), выход теперь операция rt:dialog_op через
+  // applyDialogOps, а не прямая запись в этот стор.
   setPresence: (p: PresenceEvt) => void
   setTyping: (chatId: number, userId: number, action: TypingAction, at: number) => void
   clearTyping: (chatId: number, userId: number) => void
@@ -215,42 +212,11 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (!cur) return {}
       return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, archived, pinned: false })) }
     }),
-  // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.
-  removeDialog: (chatId) =>
-    set((s) => ({
-      dialogs: applyDialogs(s.dialogs, s.dialogs.filter((d) => d.chatId !== chatId)),
-      activeChatId: s.activeChatId === chatId ? null : s.activeChatId,
-    })),
-  // Бэкенд шлёт в `chat_update` АБСОЛЮТНЫЙ снимок метаданных чата
-  // (backend/internal/usecase/chat/chat_update.go:18-42), поэтому перезапрашивать
-  // список диалогов не нужно: сливаем снимок в существующий диалог. Раньше здесь
-  // был дебаунснутый рефетч всего /chats на каждое изменение — а publishChatUpdate
-  // зовётся из 13 мест бэкенда (переименование, фото, участники, права, слоумод),
-  // и рефетч прилетал КАЖДОМУ участнику чата.
-  applyChatMeta: (m) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === m.chat_id)
-      if (!cur) return {} // чата нет в списке — приедет со следующей загрузкой
-      // Пишем только те поля, что реально пришли в снимке: '' и null — это
-      // «сброшено» (снимок абсолютный), отсутствие ключа — «не про это событие».
-      const updated: Dialog = {
-        ...cur,
-        ...(m.title !== undefined && { title: m.title }),
-        // username кладём verbatim — ровно как маппинг ответа /chats (models.ts:675),
-        // где пустая строка остаётся пустой строкой.
-        ...(m.username !== undefined && { username: m.username }),
-        ...(m.photo_media_id !== undefined && {
-          // Тот же путь, что отдаёт /chats (backend chatsrepo.go:190) и который
-          // умеет резолвить useAvatarSrc — НЕ готовый URL с медиа-токеном: токен
-          // живёт ~15 минут, и его нельзя класть в долгоживущую модель.
-          photoUrl: m.photo_media_id === null ? undefined : `/media/${m.photo_media_id}/content`,
-        }),
-      }
-      // Общим путём (Task 5): совпавший с памятью снимок вернёт ИСХОДНЫЙ массив,
-      // ссылки соседних диалогов не меняются — перерисуется только эта строка.
-      // Метаданные в dialogIndex не участвуют, поэтому порядок остаётся прежним.
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, m.chat_id, updated)) }
-    }),
+  // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta ушли
+  // отсюда — их тела переехали в core/managers/dialogsManager.ts
+  // (applyRemoved/applyChatMeta), вызываются из workerCore.ts::dispatch по тем
+  // же кадрам (chat_removed/chat_update) и публикуют rt:dialog_op вместо
+  // прямой записи в этот стор.
   setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: { online: p.online, lastSeen: p.last_seen } } })),
   setTyping: (chatId, userId, action, at) =>
     set((s) => ({
@@ -264,79 +230,11 @@ export const useChatsStore = create<ChatsState>((set) => ({
       delete next[userId]
       return { typing: { ...s.typing, [chatId]: next } }
     }),
-  applyNewMessage: (m) =>
-    set((s) => {
-      const d = s.dialogs.find((x) => x.chatId === m.chat_id)
-      if (!d) return {} // unknown chat (will surface on next dialog reload)
-      const incoming = m.sender_id !== s.meId
-      const bumpUnread = incoming && s.activeChatId !== m.chat_id
-      // Wave 3: сервер шлёт авторитетный unread получателям — берём verbatim; локальный
-      // +1 остаётся fallback (старый бэк без поля). Активный чат не «моргает» бейджем:
-      // мы тут же зовём markRead, поэтому счётчик держим на месте.
-      const nextUnread = bumpUnread
-        ? (m.unread ?? d.unread + 1)
-        : d.unread
-      const updated = {
-        ...d,
-        // carry media so the sidebar preview keeps its thumbnail + type label
-        lastMessage: {
-          seq: m.seq,
-          text: m.text,
-          senderId: m.sender_id,
-          at: m.created_at,
-          mediaId: m.media_id ?? undefined,
-          mediaType: m.type || undefined,
-          senderName: m.sender_name || undefined,
-          // forward arrow in the sidebar preview live (not only on a full reload)
-          forwarded: m.fwd_from_user_id != null || m.fwd_from_chat_id != null || undefined,
-        },
-        unread: nextUnread,
-      }
-      // A message from a user clears their typing indicator in that chat.
-      let typing = s.typing
-      const chatTyping = typing[m.chat_id]
-      if (chatTyping && m.sender_id in chatTyping) {
-        const next = { ...chatTyping }
-        delete next[m.sender_id]
-        typing = { ...typing, [m.chat_id]: next }
-      }
-      // Диалог поднимается САМ: свежая `lastMessage.at` даёт больший индекс.
-      // Закреплённые при этом не смешиваются с обычными (PINNED_BASE) и между
-      // собой не переставляются (их порядок — `pinnedOrders`).
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, m.chat_id, updated)), typing }
-    }),
-  applyRead: (r) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === r.chat_id)
-      if (!cur) return {}
-      let updated: typeof cur
-      if (r.user_id === s.meId) {
-        // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon.
-        // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
-        const unread = r.unread ?? 0
-        const lastReadSeq = Math.max(cur.lastReadSeq, r.up_to_seq)
-        // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
-        // unread уже 0) НЕ должно создавать новый dialogs — иначе mark-read-эффект
-        // (деп win.msgs) перезапускается и получается бесконечный цикл ре-рендера.
-        if (unread === cur.unread && cur.unreadMentions === 0 && cur.unreadReactions === 0 && lastReadSeq === cur.lastReadSeq) return {}
-        updated = { ...cur, unread, unreadMentions: 0, unreadReactions: 0, lastReadSeq }
-      } else {
-        // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
-        const peerReadSeq = Math.max(cur.peerReadSeq, r.up_to_seq)
-        if (peerReadSeq === cur.peerReadSeq) return {} // no advance → no-op (без нового dialogs)
-        updated = { ...cur, peerReadSeq }
-      }
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, r.chat_id, updated)) }
-    }),
-  bumpUnreadReactions: (chatId, count) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === chatId)
-      if (!cur) return {}
-      // Авторитетный счётчик из кадра (reaction.unread_reactions) — verbatim, как
-      // unread у new_message/read; локальный +1 — fallback, если поля нет.
-      const value = typeof count === 'number' ? count : (cur.unreadReactions ?? 0) + 1
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, unreadReactions: value })) }
-    }),
+  // Task 3: applyNewMessage/applyRead/bumpUnreadReactions отсюда убраны — их
+  // тела переехали в dialogsManager (см. докблок setPresence выше). Typing
+  // сюда не входила бы: чистка typing-индикатора отправителя на новом
+  // сообщении — эфемерика, остаётся на main (storeProjection.ts, обработчик
+  // RT.newMessage зовёт store.clearTyping напрямую).
 }))
 
 interface LoadDeps {

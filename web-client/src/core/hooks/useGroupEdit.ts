@@ -9,7 +9,7 @@ import type { GroupCard, InviteLink } from '../managers/groupsManager'
 import type { DiscussionCandidate } from '../managers/channelsManager'
 import type { Peer } from '../managers/peersManager'
 import type { User } from '../managers/authManager'
-import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { loadChats } from '../../stores/chatsStore'
 
 // Битовая маска «возможностей участников» (зеркало domain.MemberPerms).
 export const PERMS = [
@@ -359,8 +359,10 @@ export function useGroupEdit(chatId: number): GroupEdit {
         const me = await managers.auth.me()
         if (me) await managers.groups.removeMember(chatId, me.id)
       }
-      // диалог уберёт кадр chat_removed; на всякий случай — рефетч
-      useChatsStore.getState().removeDialog(chatId)
+      // Диалог уберёт кадр chat_removed (владелец — dialogsManager, Task 3); на
+      // всякий случай — рефетч ниже: /chats больше не вернёт этот чат, а
+      // reconcileById строит список ИЗ ответа сети, так что локальный
+      // removeDialog() перед ним был бы избыточен (тот же итог секундой позже).
       await refreshDialogs()
     },
   }

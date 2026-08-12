@@ -15,6 +15,10 @@ function fakeManagers(over: Partial<{ me: unknown; dialogs: Dialog[] }> = {}) {
   }
 }
 
+// Task 3 (перенос владения диалогами): applyNewMessage/applyRead/bumpUnreadReactions
+// отсюда убраны — их тела переехали в core/managers/dialogsManager.ts, тесты на них —
+// в dialogsManager.test.ts (describe «realtime-кадры применяет владелец»). Здесь
+// остаются mute-мутатор (легаси-путь, Task 4) и loadChats (me/дефолтная гидрация).
 describe('chatsStore', () => {
   beforeEach(() => useChatsStore.setState({ dialogs: [], meId: null, loaded: false }))
 
@@ -24,47 +28,6 @@ describe('chatsStore', () => {
     expect(s.meId).toBe(7)
     expect(s.dialogs).toHaveLength(1)
     expect(s.loaded).toBe(true)
-  })
-
-  it('applyNewMessage bumps preview, unread (incoming, not active), moves to top', () => {
-    // У chatId 1 более свежая дата: без бампа он и остался бы сверху (порядок —
-    // производная от lastMessage.at, см. chatsStore.order.test.ts).
-    useChatsStore.setState({ dialogs: [
-      { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
-        lastMessage: { seq: 1, text: 'x', senderId: 5, at: '2026-08-09T12:00:00Z' } },
-      { chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
-        lastMessage: { seq: 1, text: 'x', senderId: 5, at: '2026-08-09T10:00:00Z' } },
-    ], meId: 7, activeChatId: null })
-    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: '2026-08-09T13:00:00Z' })
-    const s = useChatsStore.getState()
-    expect(s.dialogs[0].chatId).toBe(2)
-    expect(s.dialogs[0].unread).toBe(1)
-    expect(s.dialogs[0].lastMessage?.text).toBe('yo')
-  })
-
-  it('applyNewMessage does not bump unread for my own message or the active chat', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }], meId: 7, activeChatId: 2 })
-    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'hi', media_id: null, created_at: 'now' })
-    expect(useChatsStore.getState().dialogs[0].unread).toBe(0)
-  })
-
-  it('applyNewMessage takes unread from the frame verbatim (Wave 3 projection)', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }], meId: 7, activeChatId: null })
-    // server-authoritative unread=5 wins over the local +1
-    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: 'now', unread: 5 })
-    expect(useChatsStore.getState().dialogs[0].unread).toBe(5)
-  })
-
-  it('applyNewMessage falls back to local +1 when the frame omits unread', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 2, muted: false, pinned: false, archived: false }], meId: 7, activeChatId: null })
-    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: 'now' })
-    expect(useChatsStore.getState().dialogs[0].unread).toBe(3)
-  })
-
-  it('applyRead takes unread from the frame verbatim (fallback 0)', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 5, muted: false, pinned: false, archived: false }], meId: 7 })
-    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 7, up_to_seq: 3, unread: 2 })
-    expect(useChatsStore.getState().dialogs[0].unread).toBe(2)
   })
 
   it('setDialogMuted flips muted on the matching dialog only', () => {
@@ -84,37 +47,5 @@ describe('chatsStore', () => {
     useChatsStore.setState({ dialogs: [{ chatId: 1, type: 'group', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
     useChatsStore.getState().setDialogMuted(99, true)
     expect(useChatsStore.getState().dialogs[0].muted).toBe(false)
-  })
-
-  it('applyRead from me clears unread', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 3, muted: false, pinned: false, archived: false }], meId: 7 })
-    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 7, up_to_seq: 9 })
-    expect(useChatsStore.getState().dialogs[0].unread).toBe(0)
-    expect(useChatsStore.getState().dialogs[0].lastReadSeq).toBe(9)
-  })
-
-  it('applyRead from the peer advances peerReadSeq (not my unread)', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 3, muted: false, pinned: false, archived: false }], meId: 7 })
-    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 5, up_to_seq: 9 })
-    const d = useChatsStore.getState().dialogs[0]
-    expect(d.peerReadSeq).toBe(9) // peer's read horizon advanced → out ticks become ✓✓
-    expect(d.unread).toBe(3) // my unread untouched by the peer's read
-    // a stale (lower) peer read must not regress it
-    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 5, up_to_seq: 4 })
-    expect(useChatsStore.getState().dialogs[0].peerReadSeq).toBe(9)
-  })
-
-  it('bumpUnreadReactions increments the dialog reactions badge', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }], meId: 7 })
-    useChatsStore.getState().bumpUnreadReactions(2)
-    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(1)
-    useChatsStore.getState().bumpUnreadReactions(2)
-    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(2)
-  })
-
-  it('applyRead from me clears the reactions badge too', () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 3, unreadReactions: 2, muted: false, pinned: false, archived: false }], meId: 7 })
-    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 7, up_to_seq: 9 })
-    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(0)
   })
 })

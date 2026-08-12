@@ -18,7 +18,7 @@ import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
@@ -107,7 +107,10 @@ const APPLY: Projector = {
   // пока не заводится (в отличие от peersStore — там альтернативных писателей
   // никогда не было).
   [RT.dialogOp]: (e) => { useChatsStore.getState().applyDialogOps(e.ops) },
-  [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
+  // Task 3 (realtime-кадры применяет владелец): удаление диалога (chat_removed)
+  // теперь тоже операция владельца (dialogsManager.applyRemoved → rt:dialog_op
+  // remove), применённая ДО этого сырого кадра в workerCore.ts::dispatch —
+  // строка [RT.chatRemoved] здесь была вторым, main-side выводом того же факта.
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
@@ -179,12 +182,21 @@ export function registerStoreProjection(managers: Managers): void {
     if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id) || evt.type === 'service') {
       scheduleChatsReload(managers)
     }
-    store.applyNewMessage(evt) // dialog-list preview (chatsStore)
+    // Task 3: превью/unread диалога в списке теперь применяет владелец
+    // (workerCore.ts::routeNewMessage → dialogs.applyNewMessage → rt:dialog_op),
+    // строка store.applyNewMessage здесь была вторым, main-side выводом того же факта.
+    // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
+    // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
+    // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
+    store.clearTyping(evt.chat_id, evt.sender_id)
     // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
     // звук, нотификация) — отдельные подписчики rootScope напрямую, без
     // дублирующего тоста.
   })
-  rootScope.addEventListener(RT.read, (r) => { store.applyRead(r as ReadEvt) })
+  // Task 3: rt:read теперь применяет владелец (workerCore.ts::dispatch →
+  // dialogs.applyRead → rt:dialog_op) — строка store.applyRead здесь была
+  // вторым, main-side выводом того же факта. Кадр rt:read на main больше не
+  // нужен (единственным потребителем и был этот обработчик).
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
   rootScope.addEventListener(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
@@ -218,11 +230,10 @@ export function registerStoreProjection(managers: Managers): void {
     if (e.counts) {
       useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
     }
-    // Кто-то поставил реакцию на МОЁ сообщение → бейдж непрочитанных реакций
-    // диалога (Telegram unread_reactions_count). Сброс — на прочтении чата (applyRead).
-    if (e.action === 'add' && e.author_id === meId && !isMine) {
-      useChatsStore.getState().bumpUnreadReactions(e.chat_id, e.unread_reactions)
-    }
+    // Task 3: бейдж непрочитанных реакций диалога (Telegram unread_reactions_count)
+    // теперь бампит владелец (workerCore.ts::dispatch → dialogs.bumpUnreadReactions →
+    // rt:dialog_op) — строка store.bumpUnreadReactions здесь была вторым, main-side
+    // выводом того же факта. Окно сообщений (applyReaction выше) не трогаем.
   })
   // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
   // обновляем только у самого отправителя (эхо своего действия), иначе не трогаем.

@@ -33,90 +33,14 @@ beforeEach(() => {
   useChatsStore.setState({ dialogs: [dlg(1, 'Альфа'), dlg(2, 'Бета')], loaded: true })
 })
 
-describe('applyChatMeta', () => {
-  it('применяет снимок в существующий диалог', () => {
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа+', username: 'alpha' })
-
-    const d = useChatsStore.getState().dialogs.find((x) => x.chatId === 1)
-    expect(d?.title).toBe('Альфа+')
-    expect(d?.username).toBe('alpha')
-  })
-
-  it('соседний диалог сохраняет ССЫЛКУ (не перерисовывается)', () => {
-    const betaBefore = useChatsStore.getState().dialogs.find((x) => x.chatId === 2)
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа+' })
-
-    expect(useChatsStore.getState().dialogs.find((x) => x.chatId === 2)).toBe(betaBefore)
-  })
-
-  it('снимок совпал с текущим — массив НЕ пересоздаётся', () => {
-    const before = useChatsStore.getState().dialogs
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа', username: '', photo_media_id: null })
-
-    expect(useChatsStore.getState().dialogs).toBe(before)
-  })
-
-  it('снимок совпал — сам диалог тоже сохраняет ССЫЛКУ', () => {
-    const alphaBefore = useChatsStore.getState().dialogs[0]
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа' })
-
-    expect(useChatsStore.getState().dialogs[0]).toBe(alphaBefore)
-  })
-
-  it('чата нет в списке — ничего не делаем и не падаем', () => {
-    const before = useChatsStore.getState().dialogs
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 999, title: 'Чужой' })
-
-    expect(useChatsStore.getState().dialogs).toBe(before)
-  })
-
-  it('порядок не меняется: метаданные не влияют на сортировку', () => {
-    useChatsStore.getState().applyChatMeta({ chat_id: 2, title: 'Бета+' })
-
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1, 2])
-  })
-
-  it('photo_media_id → путь /media/{id}/content (как отдаёт /chats)', () => {
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа', photo_media_id: 42 })
-
-    expect(useChatsStore.getState().dialogs[0].photoUrl).toBe('/media/42/content')
-  })
-
-  it('photo_media_id: null — фото снято', () => {
-    useChatsStore.setState({ dialogs: [dlg(1, 'Альфа', { photoUrl: '/media/42/content' }), dlg(2, 'Бета')] })
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа', photo_media_id: null })
-
-    expect(useChatsStore.getState().dialogs[0].photoUrl).toBeUndefined()
-  })
-
-  // Снимок абсолютный: username снят → в снимке ''. Кладём verbatim, как маппинг
-  // ответа /chats (models.ts:675), чтобы одно и то же поле не имело двух форм.
-  it('пустой username в снимке — публичная ссылка снята', () => {
-    useChatsStore.setState({ dialogs: [dlg(1, 'Альфа', { username: 'alpha' }), dlg(2, 'Бета')] })
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа', username: '' })
-
-    expect(useChatsStore.getState().dialogs[0].username).toBe('')
-  })
-
-  it('поля вне снимка (unread, pinned, lastMessage) не затираются', () => {
-    useChatsStore.setState({ dialogs: [dlg(1, 'Альфа', { unread: 7, pinned: true }), dlg(2, 'Бета')] })
-
-    useChatsStore.getState().applyChatMeta({ chat_id: 1, title: 'Альфа+' })
-
-    const d = useChatsStore.getState().dialogs[0]
-    expect(d.unread).toBe(7)
-    expect(d.pinned).toBe(true)
-    expect(d.lastMessage?.text).toBe('привет')
-  })
-})
-
-describe('refetchSubscriber: chat_update без похода в сеть', () => {
+// Task 3 (перенос владения диалогами): applyChatMeta отсюда убран — тело
+// переехало в core/managers/dialogsManager.ts (тесты на слияние снимка/индекс —
+// dialogsManager.test.ts, describe «realtime-кадры применяет владелец»). Здесь
+// остаётся только вторая половина сценария — refetchSubscriber на main: он
+// применение снимка больше не делает (это теперь workerCore.ts::dispatch ДО
+// того, как сырой rt:chat_update вообще доезжает досюда), а решает единственное,
+// что владелец решить не может — «чата ещё нет в списке → рефетч /chats».
+describe('refetchSubscriber: chat_update', () => {
   // Уборка: каждый it() ниже зовёт registerRefetchSubscriber() заново, а
   // слушатели предыдущих кейсов на rootScope не отписываются — без явной
   // очистки они копятся и реагируют на кадры следующих кейсов своими
@@ -130,8 +54,8 @@ describe('refetchSubscriber: chat_update без похода в сеть', () =>
     __resetChatsReloadTimerForTests()
   })
 
-  it('кадр chat_update применяется снимком, managers.chats.listDialogs НЕ зовётся', () => {
-    // Фейковые таймеры: прежний обработчик уходил в сеть через дебаунсер (300 мс),
+  it('чат уже в списке — managers.chats.listDialogs НЕ зовётся (снимок применяет владелец, не main)', () => {
+    // Фейковые таймеры: обработчик уходит в сеть через дебаунсер (300 мс),
     // поэтому «не позвали» надо проверять ПОСЛЕ прокрутки таймеров, иначе тест
     // прошёл бы и на возвращённом рефетче.
     vi.useFakeTimers()
@@ -148,7 +72,6 @@ describe('refetchSubscriber: chat_update без похода в сеть', () =>
     vi.useRealTimers()
 
     expect(listDialogs).not.toHaveBeenCalled()
-    expect(useChatsStore.getState().dialogs.map((d) => d.title)).toEqual(['Альфа', 'Бета+'])
   })
 
   // Меня добавили в группу (backend group.go:145-151: AddMember → publishChatUpdate):

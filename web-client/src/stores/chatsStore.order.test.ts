@@ -80,35 +80,10 @@ describe('chatsStore: порядок производный', () => {
     expect(ids()).toEqual([1, 2])
   })
 
-  it('applyNewMessage поднимает диалог датой сообщения, а не позицией в массиве', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T12:00:00Z'), dlg(2, '2026-08-09T10:00:00Z')])
-    expect(ids()).toEqual([1, 2])
-
-    useChatsStore.getState().applyNewMessage({
-      chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo',
-      media_id: null, created_at: '2026-08-09T13:00:00Z',
-    })
-
-    expect(ids()).toEqual([2, 1])
-  })
-
-  it('новое сообщение в закреплённом не двигает блок закреплённых', () => {
-    setAppState('pinnedOrders', { [ALL_FOLDER_ID]: [1, 2] })
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z', { pinned: true }),
-      dlg(2, '2026-08-09T11:00:00Z', { pinned: true }),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-    expect(ids()).toEqual([1, 2, 3])
-
-    useChatsStore.getState().applyNewMessage({
-      chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo',
-      media_id: null, created_at: '2026-08-09T23:00:00Z',
-    })
-
-    // закреплённые держатся своим порядком (pinnedOrders), а не датой
-    expect(ids()).toEqual([1, 2, 3])
-  })
+  // Task 3 (перенос владения диалогами): applyNewMessage отсюда убран — тело
+  // переехало в dialogsManager, «поднимает датой» и «закреплённые не мешаются»
+  // перепроверены там же (dialogsManager.test.ts, describe «realtime-кадры
+  // применяет владелец»), с той же чистой dialogIndex().
 })
 
 describe('chatsStore: черновик поднимает диалог', () => {
