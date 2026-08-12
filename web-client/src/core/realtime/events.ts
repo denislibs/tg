@@ -57,6 +57,10 @@ export const RT = {
   // вкладок один). peersStore зеркалит операции через storeProjection и больше
   // ниоткуда не пишется (пин — stores/noDuplicatePeers.test.ts).
   peerOp: 'rt:peer_op',
+  // Stage «владение диалогами» (этап 1): список диалогов — владелец воркерный
+  // dialogsManager, витрина только зеркалит. Событие несёт ЗНАЧЕНИЕ с индексом
+  // (порт tweb dialogs_multiupdate), а не «перечитай».
+  dialogOp: 'rt:dialog_op',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',

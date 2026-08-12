@@ -18,8 +18,14 @@ import type { AppState } from '../state/state'
  *   применяет его через `setAppStateSilent` (apiManagerProxy.ts:235-241).
  *   Без этого правка в одной вкладке доезжала бы до соседних только через
  *   перезагрузку: write-through пишет диск, а чужую ПАМЯТЬ не трогает.
+ * @param onStateKey Task 1 (владение диалогами): dialogsManager обязан узнать
+ *   про смену ключей, от которых зависит порядок (`pinnedOrders`/`drafts`), —
+ *   он сам в стор не ходит, а держит их копией в памяти (см. setStateKey).
  */
-export function newPersistManager(mirrorStateKey?: (key: string, value: unknown) => void) {
+export function newPersistManager(
+  mirrorStateKey?: (key: string, value: unknown) => void,
+  onStateKey?: (key: string, value: unknown) => void,
+) {
   return {
     // Диалоги и me персистятся вместе (их гонит один дебаунс dialogsPersist) — один
     // RPC вместо двух. saveDialogs и saveMe пишут разные сторы (dialogs/meta).
@@ -34,6 +40,9 @@ export function newPersistManager(mirrorStateKey?: (key: string, value: unknown)
       // Зеркало ПОСЛЕ записи: вкладка, поднявшаяся сразу после кадра, прочитает
       // с диска уже актуальное значение и не разойдётся с остальными.
       mirrorStateKey?.(key, value)
+      // Порядок диалогов зависит от pinnedOrders/drafts — владелец пересчитывает
+      // индексы и публикует reindex (сам он в стор не ходит).
+      onStateKey?.(key, value)
     },
     // Полный сброс (logout / истёкшая сессия / включение passcode). Идёт тем же
     // writer'ом — clear сериализуется после любых накопленных воркером записей.

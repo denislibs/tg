@@ -22,6 +22,7 @@ import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
+import { newDialogsManager } from './managers/dialogsManager'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
@@ -50,7 +51,7 @@ import { RT, type NewMessageEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll } from './store/persist'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
@@ -148,6 +149,20 @@ export function createWorkerCore() {
   // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
   // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
   const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
+  // Task 1 (перенос владения списком диалогов в воркер): список диалогов —
+  // воркер единственный владелец (dialogsManager). Веер тот же приём, что у
+  // peers выше: менеджер объявляет операцию (rt:dialog_op), витрина (Task 2)
+  // переигрывает её как зеркало. loadCache/loadState — офлайн-кэш и ключи State,
+  // от которых зависит порядок (см. докблок dialogsManager.ts).
+  const dialogs = newDialogsManager({
+    rest,
+    onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
+    loadCache: () => loadDialogs(),
+    loadState: async () => {
+      const st = await loadStateAll()
+      return { pinnedOrders: st.pinnedOrders ?? {}, drafts: st.drafts ?? [] }
+    },
+  })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
@@ -171,7 +186,12 @@ export function createWorkerCore() {
   // State порты уже подключены). Зеркало ключа уходит ВО ВСЕ вкладки: порт tweb
   // appStateManager.setKeyValueToStorage → invokeVoid('mirror', …), которая без
   // указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
-  const persist = newPersistManager((key, value) => broadcast('state:mirror', { key, value }))
+  const persist = newPersistManager(
+    (key, value) => broadcast('state:mirror', { key, value }),
+    // Task 1: порядок диалогов зависит от State-ключей pinnedOrders/drafts —
+    // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
+    (key, value) => dialogs.setStateKey(key, value),
+  )
 
   // every connected tab's port — events broadcast to all
   const ports: SuperMessagePort[] = []
@@ -403,7 +423,7 @@ export function createWorkerCore() {
   // «забыл в одном списке» невозможен by construction (как Managers в tweb).
   const registry = {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
-    folders, groups, channels, peers, presence, stories, contacts, privacy, drafts,
+    folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
     stickers, iv, secret, persist,
   }
