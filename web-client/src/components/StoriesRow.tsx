@@ -261,18 +261,29 @@ export default function StoriesRow({
     return () => ro.disconnect()
   }, [measure, foldInto])
 
+  // Геттеры узлов приходят инлайн-стрелками (Sidebar.tsx:258-262) и меняют
+  // идентичность на КАЖДОМ рендере родителя, поэтому в deps эффектов ниже им
+  // делать нечего: они не описывают ни одного состояния ряда. Держим их рефом.
+  const setScrolledOnRef = useRef(setScrolledOn)
+  setScrolledOnRef.current = setScrolledOn
+
   // tweb list.tsx:235 — `--stories-scrolled` пишется прямо в calculateMovement,
   // то есть в том же кадре, что и transform контейнера.
   useLayoutEffect(() => {
-    setScrolledOn()?.style.setProperty('--stories-scrolled', `${progress * CONTAINER_HEIGHT}px`)
-  }, [progress, setScrolledOn])
+    setScrolledOnRef.current()?.style.setProperty('--stories-scrolled', `${progress * CONTAINER_HEIGHT}px`)
+  }, [progress])
 
   // отступление от tweb: там ряд из дерева не исчезает, у нас — исчезает (форум).
   // Без сброса на свёрнутое значение список остался бы опущенным на 92px под
   // рядом, которого уже нет.
+  //
+  // Эффект обязан быть ЧИСТО размонтировочным (deps пустые). С `setScrolledOn` в
+  // deps его «сброс» отрабатывал на каждом рендере Sidebar — и под развёрнутым
+  // рядом отступ схлопывался: layout-эффект выше ставил 0px, а следом чистка
+  // этого эффекта возвращала 92px, ряд же оставался развёрнутым.
   useEffect(() => () => {
-    setScrolledOn()?.style.setProperty('--stories-scrolled', `${CONTAINER_HEIGHT}px`)
-  }, [setScrolledOn])
+    setScrolledOnRef.current()?.style.setProperty('--stories-scrolled', `${CONTAINER_HEIGHT}px`)
+  }, [])
 
   // tweb list.tsx:246-256: «свернуть, когда истории пропали»
   useEffect(() => {
