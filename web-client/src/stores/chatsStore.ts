@@ -5,6 +5,7 @@ import type { User } from '../core/managers/authManager'
 import type { ChatUpdateEvt, NewMessageEvt, ReadEvt, PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
 import { dialogIndex } from '../core/dialogs/dialogIndex'
+import type { DialogOp } from '../core/dialogs/dialogOps'
 import { draftFor } from './draftsStore'
 import { ALL_FOLDER_ID } from './foldersStore'
 import { useAppStateStore, setAppState } from './appState'
@@ -17,6 +18,12 @@ export type ChatTyping = Record<number, TypingEntry>
 
 interface ChatsState {
   dialogs: Dialog[]
+  /** Task 2 (перенос владения диалогами): индекс из последней операции воркера
+   * (rt:dialog_op) — хранится В СОСТОЯНИИ стора (не модульной переменной), чтобы
+   * reset и смена аккаунта чистили его естественно тем же set(), что и dialogs.
+   * Читает только sortDialogsByIndex; легаси-мутаторы ниже (setDialogMuted и
+   * т.п.) его не трогают — они по-прежнему сортируют через applyDialogs/dialogIndex. */
+  dialogIndexById: Record<number, number>
   me: User | null
   meId: number | null
   loaded: boolean
@@ -24,6 +31,17 @@ interface ChatsState {
   presence: Record<number, { online: boolean; lastSeen: number }>
   typing: Record<number, ChatTyping>
   setDialogs: (d: Dialog[]) => void
+  /**
+   * Task 2 (перенос владения диалогами): ЕДИНСТВЕННЫЙ вход зеркала для операций
+   * воркера (rt:dialog_op) — пишет проектор (`client/realtime/storeProjection.ts`,
+   * APPLY[RT.dialogOp]) и холодный старт (`client/boot.ts`, ответ fillMirror()
+   * ДО первого рендера). Индекс приходит ГОТОВЫМ в операции — воркерный
+   * dialogsManager уже посчитал его; здесь он только хранится и сортирует
+   * (см. докблок sortDialogsByIndex). Легаси-мутаторы (setDialogMuted,
+   * applyNewMessage, …) пока работают параллельно — их перевод на операции
+   * воркера отдельными задачами (Task 4/6).
+   */
+  applyDialogOps: (ops: DialogOp[]) => void
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
    * профиль не расходились. Сам факт `me` вычисляет ТОЛЬКО воркер
    * (workerCore.ts::setMe → rt:me, Stage 1C.2 Task 1); канонический вызывающий —
@@ -108,8 +126,21 @@ function syncPinnedOrder(sorted: readonly Dialog[], prevOrder: readonly number[]
 const replace = (dialogs: Dialog[], chatId: number, d: Dialog): Dialog[] =>
   dialogs.map((x) => (x.chatId === chatId ? d : x))
 
+/**
+ * Сортировка зеркала (Task 2, перенос владения диалогами в воркер). В отличие
+ * от `applyDialogs` выше, индекс здесь НЕ пересчитывается — он уже готов в
+ * DialogOp (воркерный dialogsManager посчитал его той же чистой dialogIndex(),
+ * см. докблок dialogsManager.ts). Пересчёт dialogIndex на main воссоздал бы
+ * исходный баг applyDialogs (два источника порядка — кэш и сеть/main
+ * расходятся), только теперь между воркером и main.
+ */
+function sortDialogsByIndex(dialogs: Dialog[], indexById: Record<number, number>): Dialog[] {
+  return [...dialogs].sort((a, b) => (indexById[b.chatId] ?? 0) - (indexById[a.chatId] ?? 0))
+}
+
 export const useChatsStore = create<ChatsState>((set) => ({
   dialogs: [],
+  dialogIndexById: {},
   me: null,
   meId: null,
   loaded: false,
@@ -117,6 +148,39 @@ export const useChatsStore = create<ChatsState>((set) => ({
   presence: {},
   typing: {},
   setDialogs: (dialogs) => set((s) => ({ dialogs: applyDialogs(s.dialogs, dialogs), loaded: true })),
+  applyDialogOps: (ops) =>
+    set((s) => {
+      let list = s.dialogs
+      let indexById = s.dialogIndexById
+      for (const op of ops) {
+        if (op.op === 'reset') {
+          indexById = {}
+          for (const it of op.items) indexById[it.dialog.chatId] = it.index
+          list = reconcileById(list, op.items.map((i) => i.dialog), (d) => d.chatId).list
+        } else if (op.op === 'upsert') {
+          indexById = { ...indexById }
+          for (const it of op.items) indexById[it.dialog.chatId] = it.index
+          const byId = new Map(op.items.map((i) => [i.dialog.chatId, i.dialog]))
+          const merged = list.map((d) => byId.get(d.chatId) ?? d)
+          for (const it of op.items) {
+            if (!list.some((d) => d.chatId === it.dialog.chatId)) merged.push(it.dialog)
+          }
+          list = reconcileById(list, merged, (d) => d.chatId).list
+        } else if (op.op === 'patch') {
+          if (op.index !== undefined) indexById = { ...indexById, [op.chatId]: op.index }
+          list = list.map((d) => (d.chatId === op.chatId ? { ...d, ...op.fields } : d))
+        } else if (op.op === 'reindex') {
+          indexById = { ...indexById }
+          for (const it of op.items) indexById[it.chatId] = it.index
+        } else {
+          const nextIndex = { ...indexById }
+          delete nextIndex[op.chatId]
+          indexById = nextIndex
+          list = list.filter((d) => d.chatId !== op.chatId)
+        }
+      }
+      return { dialogs: sortDialogsByIndex(list, indexById), dialogIndexById: indexById, loaded: true }
+    }),
   setMe: (me) => set({ me, meId: me?.id ?? null }),
   setActiveChat: (activeChatId) => set({ activeChatId }),
   setDialogMuted: (chatId, muted) =>

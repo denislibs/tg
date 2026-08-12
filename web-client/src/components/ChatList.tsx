@@ -47,8 +47,10 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
   // IDB-кэша диалогов не было (гейт tweb loadedDialogsAtLeastOnce,
   // autonomousDialogList/base.ts:210-214). Ставим до первой отрисовки, чтобы
   // пустой список не мигнул. `loaded` уже покрывает случай гидрации из кэша:
-  // hydrateDialogsFromPersist зовёт setDialogs → loaded=true (dialogsPersist.ts),
-  // а гидрация awaited в boot.ts до первого рендера — отдельной проверки
+  // Task 2 (перенос владения диалогами) — ответ владельца на fillMirror()
+  // (кэш прошлой сессии, поднятый воркером) applyDialogOps'ится в reset →
+  // loaded=true (chatsStore.ts), а весь холодный старт awaited в boot.ts
+  // (applyDialogsMirror) до первого рендера — отдельной проверки
   // bootData.hydratedFromCache тут не нужно (она недостижима без loaded=true).
   useLayoutEffect(() => {
     if (loaded || !scrollRef.current) return

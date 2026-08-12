@@ -98,6 +98,15 @@ const APPLY: Projector = {
       else st.patch(op.id, op.fields)
     }
   },
+  // Task 2 (перенос владения диалогами): список диалогов — владелец воркерный
+  // dialogsManager (порядок считает единожды он, порт tweb generateDialogIndex).
+  // applyDialogOps — ЕДИНСТВЕННЫЙ вход зеркала для операций воркера; легаси-
+  // мутаторы chatsStore (setDialogMuted и т.п.) пока пишут в dialogs напрямую
+  // параллельно (см. докблок applyDialogOps) — их перевод на операции воркера
+  // отдельными задачами (Task 4/6), поэтому строгий пин «один писатель» здесь
+  // пока не заводится (в отличие от peersStore — там альтернативных писателей
+  // никогда не было).
+  [RT.dialogOp]: (e) => { useChatsStore.getState().applyDialogOps(e.ops) },
   [RT.chatRemoved]: (e) => useChatsStore.getState().removeDialog(e.chat_id),
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
