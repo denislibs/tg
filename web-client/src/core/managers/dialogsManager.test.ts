@@ -634,13 +634,15 @@ describe('dialogsManager: персист списка переезжает к в
     vi.useRealTimers()
   })
 
-  // «Осторожно» (смена аккаунта/логаут): отложенная запись обязана быть
-  // отменяемой — workerCore.ts зовёт `cancelPersist()` из onLoggingOut/
-  // onLoggedIn (тем же приёмом, что media.resetToken/resetDownloads), пока
-  // владелец не завёл полноценный сброс кэша на логаут (Task 6). Без отмены
-  // запоздавшая запись воскресила бы диалоги прошлого аккаунта на диске уже
-  // ПОСЛЕ persistClearAll().
-  it('cancelPersist() отменяет отложенную запись — планов на будущее не остаётся', async () => {
+  // «Осторожно» (смена аккаунта/логаут): workerCore.ts зовёт `cancelPersist()`
+  // из onLoggingOut/onLoggedIn (тем же приёмом, что media.resetToken/
+  // resetDownloads) — гасит ОЖИДАЮЩИЙ (ещё не выстреливший) таймер, экономя
+  // заведомо бессмысленную запись устаревших диалогов. Это НЕ защита от гонки
+  // «запись уже в полёте, когда приходит persistClearAll()» — от неё
+  // защищает порядок IndexedDB-транзакций в core/store/persist.ts (см. докблок
+  // `cancelPersist()` в dialogsManager.ts и интеграционный тест
+  // workerCore.dialogsPersist.test.ts, который гоняет именно этот сценарий).
+  it('cancelPersist() отменяет ОЖИДАЮЩУЮ запись — планов на будущее не остаётся', async () => {
     vi.useFakeTimers()
     const save = vi.fn(async () => {})
     const mgr = newDialogsManager({

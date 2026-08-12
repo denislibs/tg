@@ -8,9 +8,21 @@
 // вызывается и реально пишет в IndexedDB, а также два соседних пина:
 //  - `me` пишется через `workerCore.ts::setMe` (write-through, честный новый
 //    дом записи после удаления dialogsPersist.ts — см. докблок там же);
-//  - `dialogs.cancelPersist()` в onLoggingOut отменяет ОТЛОЖЕННУЮ запись,
-//    чтобы запоздавшая правка не воскресила диалоги прошлого аккаунта на
-//    диске поверх persistClearAll() («Осторожно» в задаче).
+//  - логаут не воскрешает диалоги прошлого аккаунта на диске — ДВА разных
+//    сценария, ДВА разных механизма (ревью Task 5, Important):
+//     1. таймер ещё НЕ выстрелил — `dialogs.cancelPersist()` в onLoggingOut
+//        гасит его, писать вообще нечему (тест «logout() отменяет ОЖИДАЮЩУЮ
+//        запись» ниже);
+//     2. таймер УЖЕ выстрелил, `saveDialogs()` в полёте (после `await
+//        locked()`, уже внутри `enqueue()`) — `cancelPersist()` тут ни при
+//        чём (отменять уже нечего), от гонки защищает порядок IndexedDB-
+//        транзакций в core/store/persist.ts: `persistClearAll()` физически
+//        достижим из воркера только через два кросс-контекстных RPC-раунда
+//        (медленнее пары микротасков внутри воркера), а `enqueue()` исполняет
+//        readwrite-транзакции одного стора в порядке ИХ СОЗДАНИЯ, а не
+//        завершения — клир не может обогнать уже запущенную запись (тест
+//        «таймер уже выстрелил» ниже; подробный разбор — докблок
+//        `dialogsManager.cancelPersist()`).
 //
 // fake-indexeddb — ПЕРВОЙ строкой (см. workerCore.test.ts: newCursor()/
 // newConnectionManager() читают IndexedDB синхронно внутри createWorkerCore()).
@@ -49,13 +61,16 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     expect((await loadDialogs())[0]?.muted).toBe(true) // saveCache реально вызван
   })
 
-  it('logout() отменяет отложенную запись — диалоги прошлого аккаунта не воскресают на диске после persistClearAll()', async () => {
+  // Сценарий 1: таймер ЕЩЁ НЕ выстрелил — cancelPersist() гасит его, писать
+  // вообще нечему (нет гонки с persistClearAll() — отменённый таймер никогда
+  // не вызовет saveDialogs()).
+  it('logout() ДО срабатывания таймера — cancelPersist() гасит ОЖИДАЮЩУЮ запись, диск остаётся очищенным', async () => {
     await saveDialogs([dialog(1)])
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
     const core = createWorkerCore()
     await core.registry.dialogs.fillMirror()
-    core.registry.dialogs.applyMute(1, true) // планирует запись через 1с
+    core.registry.dialogs.applyMute(1, true) // планирует запись через 1с — таймер ещё не сработал
 
     // Без активной сессии logout() не ходит в REST (см. workerCore.test.ts,
     // «authManager.onLoggingOut → broadcast») — резолвится локально, зовёт
@@ -68,6 +83,49 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     await vi.advanceTimersByTimeAsync(5000) // отменённый таймер не должен выстрелить
 
     expect(await loadDialogs()).toEqual([])
+  })
+
+  // Сценарий 2 (ревью Task 5, Important — был непокрыт): таймер УЖЕ выстрелил,
+  // saveDialogs() в полёте (enqueue() уже вызван, транзакция ещё не
+  // закоммичена), и ТОЛЬКО ПОТОМ приходит логаут. cancelPersist() здесь
+  // буквально нечего отменять (saveTimer уже null — таймер сам обнулил его
+  // при срабатывании), поэтому он структурно не может быть причиной
+  // правильного исхода в этом тесте — спасает порядок IndexedDB-транзакций в
+  // core/store/persist.ts (см. докблок файла выше и
+  // `dialogsManager.cancelPersist()`).
+  it('таймер уже выстрелил (запись в полёте) — логаут всё равно даёт очищенный диск, а не воскрешённые данные прошлого аккаунта', async () => {
+    await saveDialogs([dialog(1)]) // греет lockedCache — locked() внутри saveDialogs дальше идёт без реального IDB-round-trip
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+    const core = createWorkerCore()
+    await core.registry.dialogs.fillMirror()
+    core.registry.dialogs.applyMute(1, true) // планирует запись через 1с
+
+    // СИНХРОННЫЙ advance (не Async!): таймер срабатывает прямо здесь, callback
+    // синхронно обнуляет saveTimer и запускает `saveDialogs(items)` — та
+    // синхронно доходит до `await locked()` и приостанавливается. cancelPersist()
+    // вызванный ПОСЛЕ этой строки уже ничего не отменяет — саму отмену здесь не
+    // тестируем (её тестирует сценарий 1 выше).
+    vi.advanceTimersByTime(1000)
+    // Даём РЕАЛЬНЫМ микротаскам шанс продвинуть уже стартовавший saveDialogs()
+    // дальше `await locked()`, до его собственного `enqueue()` — но мы этот
+    // прогресс НЕ ЖДЁМ явно (никакого `await` на промис самой записи): логаут
+    // ниже зовётся, не синхронизируясь с завершением write, — то и есть
+    // «запись в полёте», в чёрном ящике теста. Порядок ниже (сперва logout(),
+    // потом clearAll()) сам по себе даёт как минимум столько же микротасков.
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+
+    vi.useRealTimers() // дальше ничего таймерного не требуется — auth.logout()/persist.clearAll() идут по реальным IDB-промисам
+    await core.registry.auth.logout() // без активной сессии — резолвится локально, cancelPersist() здесь no-op (saveTimer уже null)
+    // persist.clearAll() enqueue'ит clear СТРОГО ПОСЛЕ вызова выше — а значит и
+    // после уже стартовавшего enqueue() записи. IndexedDB исполняет readwrite-
+    // транзакции одного стора в порядке СОЗДАНИЯ, а не завершения (см. докблок
+    // dialogsManager.cancelPersist()), поэтому клир гарантированно ляжет ПОСЛЕ
+    // нашей записи, а не перед ней, независимо от того, какая из двух
+    // транзакций к этому моменту успела физически закоммититься.
+    await core.registry.persist.clearAll()
+
+    expect(await loadDialogs()).toEqual([]) // клир победил — диалог прошлого аккаунта не воскрес
   })
 
   it('setMe() пишет свежего `me` write-through (честный новый дом после удаления dialogsPersist.ts)', async () => {
