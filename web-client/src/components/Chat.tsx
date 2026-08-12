@@ -473,13 +473,24 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
-  // покидается. chat_removed по WS уберёт чат из списка; закрываем колонку.
+  // покидается.
   const owned = !!chat.owned
   const doDeleteChat = () => {
     if (!isRealChat || meId == null) return
+    // Task 4 (действия без оптимистики, fix ревью Important): локальный
+    // апдейт применяет владелец сразу после успеха, не дожидаясь WS
+    // chat_removed (порт tweb appChatsManager.leaveChat/leaveChannel →
+    // onChatUpdated). deleteGroup зовёт dialogs.applyRemoved сам
+    // (groupsManager.ts); здесь — self-leave (removeMember(chatId, meId) —
+    // ВСЕГДА я сам, не кик другого участника), применяем явно. Сознательно
+    // без отдельного теста именно на этой строке — Chat.tsx документирован в
+    // web-client/CLAUDE.md («Тесты», «известное исключение и долг») как файл
+    // без единого теста; идентичная проводка (self-leave → applyRemoved после
+    // успеха, no-op на ошибке) покрыта на уровне того же паттерна —
+    // core/hooks/useGroupEdit.deleteOrLeave.test.tsx.
     const op = owned && (isGroup || isChannel)
       ? managers.groups.deleteGroup(numericChatId)
-      : managers.groups.removeMember(numericChatId, meId)
+      : managers.groups.removeMember(numericChatId, meId).then(() => managers.dialogs.applyRemoved(numericChatId))
     void op.catch(() => {})
     onBack?.()
   }

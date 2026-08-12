@@ -537,4 +537,51 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(ops).toEqual([])
     expect(saved).toEqual([])
   })
+
+  // Fix (ревью Task 4, Critical): бэкенд шлёт dialog_pin на ВСЕ соединения
+  // пользователя, включая инициировавшее действие (hub.go:203-209 — во фрейме
+  // нет id соединения, фильтровать нечем), поэтому вкладка, которая только что
+  // сама успешно запинила чат, гарантированно получает собственное эхо того же
+  // факта позже. Без гварда «факт уже применён» это эхо безусловно двигало
+  // order.unshift заново — воспроизведённый ревьюером баг: чат, запиненный
+  // РАНЬШЕ, задним числом обгонял чат, запиненный ПОЗЖЕ.
+  it('applyPinned идемпотентен: запоздавшее собственное WS-эхо не переставляет уже устоявшийся порядок', async () => {
+    const { mgr, ops, saved, mirrored } = setup([
+      dialog(1, '2026-08-09T10:00:00Z'),
+      dialog(2, '2026-08-09T11:00:00Z'),
+      dialog(3, '2026-08-09T12:00:00Z'),
+    ])
+    await mgr.fillMirror()
+
+    mgr.applyPinned(1, true) // свой apply (после успешного REST, groupsManager.setPin)
+    mgr.applyPinned(2, true) // apply другого чата — встаёт первым (unshift)
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3])
+    ops.length = 0
+    saved.length = 0
+    mirrored.length = 0
+
+    mgr.applyPinned(1, true) // запоздавшее собственное WS-эхо ПЕРВОГО действия (dialog_pin)
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3]) // порядок не меняется
+    expect(ops).toEqual([]) // ни patch, ни reindex не публикуются
+    expect(saved).toEqual([]) // pinnedOrders не пишется на диск повторно
+    expect(mirrored).toEqual([]) // и не зеркалится повторно
+  })
+
+  // Симметричный случай для анпина — то же дублирующее эхо, но для pinned=false.
+  it('applyPinned(false) идемпотентен: повторное эхо анпина уже открепленного чата — no-op', async () => {
+    const { mgr, ops, saved } = setup(
+      [dialog(1, '2026-08-09T10:00:00Z', true), dialog(2, '2026-08-09T12:00:00Z')],
+      { 0: [1] },
+    )
+    await mgr.fillMirror()
+    mgr.applyPinned(1, false)
+    ops.length = 0
+    saved.length = 0
+
+    mgr.applyPinned(1, false) // повторное эхо того же анпина
+
+    expect(ops).toEqual([])
+    expect(saved).toEqual([])
+  })
 })

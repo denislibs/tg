@@ -295,16 +295,43 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * Пишем на диск и рассылаем зеркало ключа тем же путём, что
      * `persistManager.stateKey` (`saveStateKey` + `mirrorStateKey` в
      * workerCore.ts) — второй писатель того же ключа не заводится.
+     *
+     * Fix (ревью Task 4, Critical): пин/анпин — ФАКТ (булево поле диалога), а не
+     * команда «переставь». `order.unshift` оправдан только при РЕАЛЬНОМ переходе
+     * `pinned` false↔true; повторный/запоздавший кадр того же уже применённого
+     * факта (собственное WS-эхо — бэкенд шлёт `dialog_pin` на ВСЕ соединения
+     * пользователя, включая инициировавшее: `backend/internal/adapter/delivery/
+     * ws/hub.go:203-209`, во фрейме нет id соединения, фильтровать нечем) не
+     * должен трогать уже устоявшийся `pinnedOrder` — иначе чат, запиненный
+     * РАНЬШЕ, задним числом обгоняет чат, запиненный ПОЗЖЕ (порядок событий:
+     * apply(1,true) → apply(2,true) → запоздавшее эхо apply(1,true) снова
+     * бросало бы 1 на вершину, ломая [2,1,…] обратно на [1,2,…]). Гвард —
+     * ровно та же идея, что `equal()` в `patchDialog`: нечего менять — не
+     * трогаем ни кэш, ни диск, ни зеркало.
+     *
+     * Отличимость от «легитимного перепина уже закреплённого чата» (чтобы
+     * снова всплыть наверх): такого действия в продукте НЕТ — UI показывает
+     * либо «Pin» у незакреплённого чата, либо «Unpin» у закреплённого
+     * (`ChatListItem.tsx`: `chat.pinned ? 'Unpin' : 'Pin'`), кнопки «запинить
+     * заново уже запиненный, чтобы поднять его» не существует ни у нас, ни в
+     * tweb (порядок закреплённых меняется явным drag'ом, которого в этом
+     * клиенте тоже нет). Единственный путь получить `applyPinned(id, true)` с
+     * уже `pinned===true` — дубль/эхо ОДНОГО И ТОГО ЖЕ действия. Различить
+     * «дубль» от «легитимного намерения поднять» по одним лишь текущим данным
+     * (без монотонного номера действия в кадре) НЕЛЬЗЯ — если такая фича
+     * появится, `dialog_pin` придётся снабдить версией/меткой времени.
      */
     applyPinned(chatId: number, pinned: boolean): void {
       const idx = items.findIndex((i) => i.dialog.chatId === chatId)
       if (idx === -1) return
+      const cur = items[idx].dialog
+      if (cur.pinned === pinned) return // факт уже применён — не переставляем и не пишем повторно
       const others = pinnedOrder.filter((id) => id !== chatId)
       pinnedOrder = pinned ? [chatId, ...others] : others
       pinnedOrders = { ...pinnedOrders, [ALL_FOLDER_ID]: pinnedOrder }
       void savePinnedOrders?.(pinnedOrders)
       mirrorStateKey?.('pinnedOrders', pinnedOrders)
-      const dialog: Dialog = { ...items[idx].dialog, pinned }
+      const dialog: Dialog = { ...cur, pinned }
       items = sort(items.map((i) => (i.dialog.chatId === chatId ? dialog : i.dialog)))
       publish([
         { op: 'patch', chatId, fields: { pinned } },

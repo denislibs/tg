@@ -105,6 +105,10 @@ interface Managers {
   media: { upload(args: { bytes: ArrayBuffer; mime: string; size: number; width?: number; height?: number }): Promise<number> }
   peers: { getUsers(ids: number[]): Promise<Peer[]> }
   auth: { me(): Promise<User | null> }
+  // Task 4 (действия без оптимистики, fix ревью Important): self-leave
+  // (removeMember(chatId, me.id)) применяет владельца локально сразу после
+  // успеха — не дожидаясь WS chat_removed (см. deleteOrLeave ниже).
+  dialogs: { applyRemoved(chatId: number): Promise<void> }
   chats: { listDialogs(): Promise<import('../models').Dialog[]> }
 }
 
@@ -354,15 +358,24 @@ export function useGroupEdit(chatId: number): GroupEdit {
       reload()
     },
     deleteOrLeave: async () => {
-      if (isCreator) await managers.groups.deleteGroup(chatId)
-      else {
+      if (isCreator) {
+        // deleteGroup сам зовёт dialogs.applyRemoved после успеха (groupsManager.ts, Task 4).
+        await managers.groups.deleteGroup(chatId)
+      } else {
         const me = await managers.auth.me()
-        if (me) await managers.groups.removeMember(chatId, me.id)
+        if (me) {
+          await managers.groups.removeMember(chatId, me.id)
+          // Fix (ревью Task 4, Important): removeMember обслуживает и кик
+          // ДРУГОГО участника (см. `remove` выше), сам не знает, ушёл ли Я —
+          // здесь контекст однозначен (self-leave: userId===me.id), поэтому
+          // применяем сразу после успеха, не дожидаясь WS chat_removed (порт
+          // tweb appChatsManager.leaveChat/leaveChannel → onChatUpdated).
+          await managers.dialogs.applyRemoved(chatId)
+        }
       }
-      // Диалог уберёт кадр chat_removed (владелец — dialogsManager, Task 3); на
-      // всякий случай — рефетч ниже: /chats больше не вернёт этот чат, а
-      // reconcileById строит список ИЗ ответа сети, так что локальный
-      // removeDialog() перед ним был бы избыточен (тот же итог секундой позже).
+      // Рефетч ниже — подстраховка (папки/архив/прочие поля списка, которые
+      // applyRemoved не трогает при уже отсутствующем диалоге): /chats больше
+      // не вернёт этот чат, reconcileById не пересоздаст то, что не изменилось.
       await refreshDialogs()
     },
   }
