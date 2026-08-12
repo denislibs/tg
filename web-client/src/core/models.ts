@@ -81,7 +81,8 @@ export interface RawDialog {
   title?: string
   username?: string
   photo_url?: string
-  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean; premium?: boolean; emoji_status?: string; is_bot?: boolean }
+  photo_preview?: string | null
+  peer?: { id: number; display_name: string; avatar_url: string; avatar_preview?: string | null; verified?: boolean; premium?: boolean; emoji_status?: string; is_bot?: boolean }
   last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string; enc_body?: string }
 }
 
@@ -113,7 +114,9 @@ export interface Dialog {
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
   photoUrl?: string
-  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string; isBot?: boolean }
+  /** stripped-превью фото группы/канала (base64 JPEG media.blur_preview джойном) */
+  photoPreview?: string
+  peer?: { id: number; displayName: string; avatarUrl: string; avatarPreview?: string; verified?: boolean; premium?: boolean; emojiStatus?: string; isBot?: boolean }
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string; encBody?: string }
 }
 
@@ -674,8 +677,9 @@ export function mapDialog(r: RawDialog): Dialog {
     title: r.title,
     username: r.username,
     photoUrl: r.photo_url || undefined,
+    photoPreview: r.photo_preview || undefined,
     peer: r.peer
-      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status, isBot: r.peer.is_bot }
+      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, avatarPreview: r.peer.avatar_preview || undefined, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status, isBot: r.peer.is_bot }
       : undefined,
     lastMessage: r.last_message
       ? {

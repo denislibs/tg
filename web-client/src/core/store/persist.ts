@@ -38,7 +38,9 @@ const S_STATE = 'state'
 
 // Нормализованный peer (то, что отдаёт peersManager) — минимум для офлайн-резолва
 // имени/аватара при отсутствии сети.
-export interface PersistUser { id: number; username: string; displayName: string; avatarUrl: string }
+// avatarPreview опционален: записи, легшие в IDB до Task 9, поля не имеют
+// (читатель — peersManager — нормализует его в '' при подъёме).
+export interface PersistUser { id: number; username: string; displayName: string; avatarUrl: string; avatarPreview?: string }
 
 interface StoredMessage extends Message { pk: string }
 
@@ -273,7 +275,12 @@ export async function saveMe(me: User | null): Promise<void> {
 
 export async function loadMe(): Promise<User | null> {
   if (await locked()) return null
-  try { return (await read<User | undefined>(S_META, (s) => s.get('me'))) ?? null } catch { return null }
+  try {
+    const me = (await read<User | undefined>(S_META, (s) => s.get('me'))) ?? null
+    // Записи, легшие в IDB до Task 9, поля avatarPreview не имеют — нормализуем,
+    // чтобы тип User (string) не врал читателям.
+    return me ? { ...me, avatarPreview: me.avatarPreview ?? '' } : null
+  } catch { return null }
 }
 
 // ── Папки + черновики (снапшот собирает подписка на main, пишет воркер) ─────────

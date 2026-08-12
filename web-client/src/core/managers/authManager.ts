@@ -16,6 +16,8 @@ export interface User {
   bio: string
   birthday: Birthday | null
   avatarUrl: string
+  /** stripped-превью аватарки (base64 JPEG, `avatar_preview`; '' у старых аватарок) */
+  avatarPreview: string
   phoneVisibility: PhoneVisibility
   /** Telegram Premium subscriber → gold star badge next to the name */
   premium: boolean
@@ -34,6 +36,7 @@ export interface RawUser {
   bio?: string
   birthday?: Birthday | null
   avatar_url?: string
+  avatar_preview?: string | null
   phone_visibility?: string
   premium?: boolean
   emoji_status?: string
@@ -51,6 +54,7 @@ export function mapUser(r: RawUser): User {
     bio: r.bio ?? '',
     birthday: r.birthday ?? null,
     avatarUrl: r.avatar_url ?? '',
+    avatarPreview: r.avatar_preview ?? '',
     phoneVisibility: (r.phone_visibility as PhoneVisibility) || 'contacts',
     premium: !!r.premium,
     emojiStatus: r.emoji_status ?? '',

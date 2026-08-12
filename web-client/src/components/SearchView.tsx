@@ -419,7 +419,7 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
   const avatarSrc = useAvatarSrc(chat.avatarUrl)
   return (
     <div className={s.row} onClick={onClick}>
-      <Avatar background={chat.avatar} src={avatarSrc} text={chat.avatarText} emoji={chat.avatarEmoji} size="lg" />
+      <Avatar background={chat.avatar} src={avatarSrc} preview={chat.avatarPreview} text={chat.avatarText} emoji={chat.avatarEmoji} size="lg" />
       <div className={s.body}>
         <div className={s.top}>
           <Text noWrap size={16} weight={600} color="var(--primary-text-color)">

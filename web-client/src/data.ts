@@ -137,6 +137,8 @@ export interface Chat {
   avatarText?: string
   avatarEmoji?: string
   avatarUrl?: string // resolved/stored peer avatar (real chats)
+  /** stripped-превью аватарки/фото чата (base64 JPEG) — слой до загрузки полной */
+  avatarPreview?: string
   peerId?: number // private-chat peer's user id (for presence/last-seen)
   isBot?: boolean // peer — бот: скрыть звонок, не давать секрет/группу/контакт
   date: string

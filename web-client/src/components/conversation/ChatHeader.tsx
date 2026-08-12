@@ -130,6 +130,7 @@ function ChatHeader({
                   text={chat.avatarText}
                   emoji={chat.avatarEmoji}
                   src={avatarSrc}
+                  preview={chat.avatarPreview}
                   size="sm"
                   online={chat.online || peerOnline}
                   ringColor="var(--surface-color)"

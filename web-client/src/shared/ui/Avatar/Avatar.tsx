@@ -32,7 +32,13 @@ type PhotoPhase = 'pending' | 'animating' | 'shown' | 'error'
 // что у tweb, где `putAvatar` каждый раз создаёт новый `image = document.
 // createElement('img')`: класс `fade-in`, снятый императивно после предыдущей
 // загрузки, не может «залипнуть» и не вернуться при смене src на старом узле.
-function AvatarPhoto({ src }: { src: string }) {
+function AvatarPhoto({ src, preview, onThumbVisible }: {
+  src: string
+  /** stripped-превью аватарки (base64 JPEG, `avatar_preview` бэка) */
+  preview?: string
+  /** сообщает родителю, виден ли слой превью (класс avatar-relative на корне) */
+  onThumbVisible?: (visible: boolean) => void
+}) {
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [phase, setPhase] = useState<PhotoPhase>('pending')
 
@@ -65,23 +71,43 @@ function AvatarPhoto({ src }: { src: string }) {
   // подложка видна), но состояние теперь осмысленное, а не залипший «грузится».
   const handleError = () => setPhase('error')
 
+  // Слой stripped-превью — 1:1 tweb avatarNew.tsx:574-590: рендерится КАК ЕСТЬ
+  // (обычный <img>, БЕЗ блюра — в отличие от медиа-баблов), классы
+  // `avatar-photo avatar-photo-thumbnail`, ПОД полной картинкой. Снимается
+  // после загрузки полной и FADE_IN_DURATION (avatarNew.tsx:598-604 —
+  // setThumb() в том же setTimeout, что снимает fade-in) — у нас это ровно
+  // переход фазы в 'shown'. Кэшированная полная (phase 'shown' сразу) превью
+  // не показывает (avatarNew.tsx:584 — `if(media()) return`), ошибка полной
+  // ('error') превью оставляет (в tweb setThumb() при ошибке не зовётся).
+  const thumbVisible = !!preview && phase !== 'shown'
+  useLayoutEffect(() => { onThumbVisible?.(thumbVisible) }, [thumbVisible, onThumbVisible])
+
   return (
-    <img
-      key={src}
-      ref={imgRef}
-      className={classNames('avatar-photo', phase === 'animating' ? 'fade-in' : '')}
-      src={src}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      style={phase === 'pending' || phase === 'error' ? { opacity: 0 } : undefined}
-      // Атрибут только для наблюдаемости состояния (тесты/отладка): без него
-      // 'pending' (грузится) и 'error' (сбой, но такая же скрытая картинка)
-      // визуально неотличимы — и до фикса это было единственное состояние навсегда.
-      data-photo-phase={phase}
-      onLoad={handleLoad}
-      onError={handleError}
-    />
+    <>
+      {thumbVisible && (
+        <img
+          className="avatar-photo avatar-photo-thumbnail"
+          src={`data:image/jpeg;base64,${preview}`}
+          alt=""
+        />
+      )}
+      <img
+        key={src}
+        ref={imgRef}
+        className={classNames('avatar-photo', phase === 'animating' ? 'fade-in' : '')}
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        style={phase === 'pending' || phase === 'error' ? { opacity: 0 } : undefined}
+        // Атрибут только для наблюдаемости состояния (тесты/отладка): без него
+        // 'pending' (грузится) и 'error' (сбой, но такая же скрытая картинка)
+        // визуально неотличимы — и до фикса это было единственное состояние навсегда.
+        data-photo-phase={phase}
+        onLoad={handleLoad}
+        onError={handleError}
+      />
+    </>
   )
 }
 
@@ -111,6 +137,9 @@ interface AvatarProps {
   emoji?: string
   /** resolved image URL; when set it replaces the initials/emoji */
   src?: string
+  /** stripped-превью (base64 JPEG `avatar_preview`) — слой под полной картинкой
+   * до её загрузки, 1:1 tweb avatarNew.tsx:574-590 (без блюра) */
+  preview?: string
   /** a named size from AVATAR_SIZE, or a raw px number for one-offs */
   size?: AvatarSize | number
   online?: boolean
@@ -144,6 +173,7 @@ export default function Avatar({
   text,
   emoji,
   src,
+  preview,
   size = 'dialog',
   online = false,
   ringColor,
@@ -151,6 +181,10 @@ export default function Avatar({
   peerId,
   onClick,
 }: AvatarProps) {
+  // Слой превью виден → на корне `avatar-relative` (tweb avatarNew.tsx:1003:
+  // `'avatar-relative': !!thumb()` — от него .avatar-photo становится absolute
+  // и превью с полной картинкой стакаются, _avatar.scss:439-445).
+  const [thumbShown, setThumbShown] = useState(false)
   const px = typeof size === 'number' ? size : AVATAR_SIZE[size]
   const known = TWEB_AVATAR_SIZES.has(px)
   const style = {
@@ -161,13 +195,13 @@ export default function Avatar({
 
   return (
     <div
-      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', 'avatar-gradient', online ? 'is-online' : '', s.root, className ?? '')}
+      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', 'avatar-gradient', online ? 'is-online' : '', src && thumbShown ? 'avatar-relative' : '', s.root, className ?? '')}
       style={style}
       data-peer-id={peerId}
       onClick={onClick}
     >
       {src ? (
-        <AvatarPhoto src={src} />
+        <AvatarPhoto src={src} preview={preview} onThumbVisible={setThumbShown} />
       ) : emoji === 'tg-logo' ? (
         // отступление от tweb: в оригинале у сервисного аккаунта (id 777000)
         // обычная фотография пира — `img.avatar-photo`, никакого отдельного

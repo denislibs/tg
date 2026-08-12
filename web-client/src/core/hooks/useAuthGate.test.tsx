@@ -34,7 +34,7 @@ import { bootPrefetch, setBootData } from '../../client/bootData'
 
 const ME: User = {
   id: 1, phone: '+7', username: null, firstName: 'Д', lastName: '', displayName: 'Д',
-  bio: '', birthday: null, avatarUrl: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '',
+  bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '',
 }
 const OTHER: User = { ...ME, id: 2, displayName: 'Другой' }
 

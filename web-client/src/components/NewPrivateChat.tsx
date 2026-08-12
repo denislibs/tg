@@ -14,7 +14,7 @@ function ContactRow({ c, onPick }: { c: Chat; onPick: () => void }) {
   const src = useAvatarSrc(c.avatarUrl)
   return (
     <div className={s.row} onClick={onPick}>
-      <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} size="lg" />
+      <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} preview={c.avatarPreview} size="lg" />
       <div className={s.rowText}>
         <Text noWrap size={16} weight={500} color="var(--primary-text-color)">{c.name}</Text>
         <Text noWrap size={14} color="var(--secondary-text-color)">{c.status}</Text>

@@ -106,7 +106,7 @@ export function useChatPopups(d: ChatPopupDeps) {
       onClose={p.requestClose}
       onExitComplete={p.onExitComplete}
       onMute={(seconds) => d.applyMute(true, seconds)}
-      avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={chatAvatarSrc} size={32} />}
+      avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={chatAvatarSrc} preview={chat.avatarPreview} size={32} />}
     />
   ))
 

@@ -31,7 +31,7 @@ export const usePeersStore = create<PeersState>((set) => ({
       let next: Record<number, Peer> | null = null
       for (const p of peers) {
         const cur = s.byId[p.id]
-        if (cur && cur.username === p.username && cur.displayName === p.displayName && cur.avatarUrl === p.avatarUrl) continue
+        if (cur && cur.username === p.username && cur.displayName === p.displayName && cur.avatarUrl === p.avatarUrl && cur.avatarPreview === p.avatarPreview) continue
         if (!next) next = { ...s.byId }
         next[p.id] = cur ? { ...cur, ...p } : p
       }

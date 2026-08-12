@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { newPeersManager, type PeerOp } from './peersManager'
 import type { RestClient } from '../net/restClient'
 
-function fakeRest(users: { id: number; username: string; display_name: string; avatar_url: string }[]) {
+function fakeRest(users: { id: number; username: string; display_name: string; avatar_url: string; avatar_preview?: string }[]) {
   const calls: { path: string; query?: Record<string, string | number> }[] = []
   const rest = {
     async get<R>(path: string, query?: Record<string, string | number>): Promise<R> {
@@ -19,13 +19,13 @@ function fakeRest(users: { id: number; username: string; display_name: string; a
 describe('PeersManager', () => {
   it('maps GET /users payload snake->camel', async () => {
     const { rest, calls } = fakeRest([
-      { id: 2, username: 'bob', display_name: 'Bob', avatar_url: 'a.png' },
+      { id: 2, username: 'bob', display_name: 'Bob', avatar_url: 'a.png', avatar_preview: 'QUJD' },
     ])
     const mgr = newPeersManager({ rest })
     const peers = await mgr.getUsers([2])
     expect(calls[0].path).toBe('/users')
     expect(calls[0].query).toEqual({ ids: '2' })
-    expect(peers).toEqual([{ id: 2, username: 'bob', displayName: 'Bob', avatarUrl: 'a.png' }])
+    expect(peers).toEqual([{ id: 2, username: 'bob', displayName: 'Bob', avatarUrl: 'a.png', avatarPreview: 'QUJD' }])
   })
 
   it('caches: two calls for the same id => one GET /users', async () => {
@@ -100,7 +100,7 @@ describe('PeersManager — правило инвалидации (владеле
 
     expect(ops).toEqual([
       { op: 'patch', id: 2, fields: { username: 'bobby', displayName: 'Бобби' } },
-      { op: 'upsert', peers: [{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png' }] },
+      { op: 'upsert', peers: [{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png', avatarPreview: '' }] },
     ])
     expect(calls).toHaveLength(2) // первичный getUsers + один до-фетч
   })
@@ -168,7 +168,7 @@ describe('PeersManager — объёмные чтения не создают т�
     mgr.applyUserUpdate({ id: 42, username: 'u42', display_name: 'Участник 42', avatar_changed: true })
     await new Promise((r) => setTimeout(r, 0))
 
-    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 42, username: 'u42', displayName: 'Участник 42', avatarUrl: '/a/42-new.png' }] }])
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 42, username: 'u42', displayName: 'Участник 42', avatarUrl: '/a/42-new.png', avatarPreview: '' }] }])
   })
 })
 
@@ -228,6 +228,6 @@ describe('PeersManager — что владелец НЕ объявляет', () 
     net.offline = false
     await mgr.fillMirror([2])
 
-    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/new.png' }] }])
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/new.png', avatarPreview: '' }] }])
   })
 })

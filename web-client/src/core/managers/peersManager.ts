@@ -2,7 +2,14 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers, loadUsers } from '../store/persist'
 
-export interface Peer { id: number; username: string; displayName: string; avatarUrl: string }
+export interface Peer {
+  id: number
+  username: string
+  displayName: string
+  avatarUrl: string
+  /** stripped-превью аватарки (base64 JPEG, `avatar_preview`; '' у старых аватарок) */
+  avatarPreview: string
+}
 
 // Stage 1C.2 (Task 2): операция над карточками пиров — ЧТО изменилось в кэше
 // владельца, а не снимок кэша. Форма взята у операций над окном сообщений
@@ -58,7 +65,7 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
 
   const publish = (ops: PeerOp[]) => onPeerOps?.(ops)
   // id совпадают по построению (сравниваем разные версии одной карточки).
-  const same = (a: Peer, b: Peer) => a.username === b.username && a.displayName === b.displayName && a.avatarUrl === b.avatarUrl
+  const same = (a: Peer, b: Peer) => a.username === b.username && a.displayName === b.displayName && a.avatarUrl === b.avatarUrl && a.avatarPreview === b.avatarPreview
 
   /**
    * Общее тело чтения (сеть → кэш → офлайн-фолбэк). Само НИЧЕГО не публикует:
@@ -71,8 +78,8 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     const changed: Peer[] = []
     if (missing.length) {
       try {
-        const r = await rest.get<{ users: { id: number; username: string; display_name: string; avatar_url: string }[] }>('/users', { ids: missing.join(',') })
-        const fetched: Peer[] = (r.users ?? []).map((u) => ({ id: u.id, username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url }))
+        const r = await rest.get<{ users: { id: number; username: string; display_name: string; avatar_url: string; avatar_preview?: string | null }[] }>('/users', { ids: missing.join(',') })
+        const fetched: Peer[] = (r.users ?? []).map((u) => ({ id: u.id, username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url, avatarPreview: u.avatar_preview ?? '' }))
         for (const u of fetched) {
           const prev = cache.get(u.id)
           cache.set(u.id, u); stale.delete(u.id)
@@ -88,7 +95,8 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
         // Протухшую карточку персист не чинит (там лежит тот же старый аватар),
         // поэтому метку в stale не снимаем — следующий getUsers сходит снова.
         if (e instanceof HttpError) throw e
-        for (const u of await loadUsers()) if (!cache.has(u.id)) cache.set(u.id, u)
+        // avatarPreview нормализуем: записи, персистнутые до Task 9, поля не имеют.
+        for (const u of await loadUsers()) if (!cache.has(u.id)) cache.set(u.id, { ...u, avatarPreview: u.avatarPreview ?? '' })
       }
     }
     return { peers: ids.map((id) => cache.get(id)).filter((p): p is Peer => !!p), changed }

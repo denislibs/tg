@@ -100,7 +100,7 @@ export default function SettingsView({
       <div className={s.body}>
         {/* Avatar + name */}
         <div className={s.profile}>
-          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={130} />
+          <Avatar background={avatarBg} src={avatarSrc} preview={me?.avatarPreview} text={avatarText} size={130} />
           <div className={s.profileName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Text size={21} weight={600} color="var(--primary-text-color)">
               {name}

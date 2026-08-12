@@ -249,6 +249,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           text={chat.avatarText}
           emoji={chat.avatarEmoji}
           src={avatarSrc}
+          preview={chat.avatarPreview}
           size="dialog"
           // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
           // правый угол занимает бейдж непрочитанного (как в Telegram).
@@ -286,7 +287,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           onClose={() => setMuteOpen(false)}
           onExitComplete={() => setMuteOpen(null)}
           onMute={(seconds) => applyMute(true, seconds)}
-          avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={avatarSrc} size={32} />}
+          avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={avatarSrc} preview={chat.avatarPreview} size={32} />}
         />
       )}
     </>

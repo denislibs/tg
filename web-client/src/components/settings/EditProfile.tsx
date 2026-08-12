@@ -232,7 +232,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       {/* avatar with camera overlay */}
       <div className={s.avatarWrap}>
         <div className={s.avatar} onClick={() => fileInputRef.current?.click()}>
-          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size="profile" />
+          <Avatar background={avatarBg} src={avatarSrc} preview={me?.avatarPreview} text={avatarText} size="profile" />
           <div className={s.avatarOverlay}>
             {uploading ? <Spinner size={36} color="#fff" /> : <TgIcon name="camera" size={40} color="#fff" />}
           </div>

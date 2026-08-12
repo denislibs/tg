@@ -43,6 +43,8 @@ export interface UserProfile {
   bio: string
   birthday: string | null
   avatarUrl: string
+  /** stripped-превью аватарки (гасится privacy вместе с avatarUrl; '' у старых) */
+  avatarPreview: string
   phone: string
   verified: boolean
   premium: boolean
@@ -124,6 +126,7 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
         bio: string
         birthday: string | null
         avatar_url: string
+        avatar_preview?: string | null
         phone: string
         verified: boolean
         premium?: boolean
@@ -143,6 +146,7 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
         bio: res.bio,
         birthday: res.birthday,
         avatarUrl: res.avatar_url,
+        avatarPreview: res.avatar_preview ?? '',
         phone: res.phone,
         verified: res.verified,
         premium: !!res.premium,
