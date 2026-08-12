@@ -19,6 +19,7 @@ import { useAudioStore } from '../../stores/audioStore'
 // Task 7 идут воркерным конвейером (useMediaUrl → downloadMediaURL).
 import { mediaContentUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
+import { useBlurThumb } from './useBlurThumb'
 import { isGifLike } from '../../core/gifs'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
@@ -105,7 +106,7 @@ export default function RealMediaBubble({
   const uploadProgress = useUploadsStore((s) => (clientId ? s.byId[clientId] : undefined))
   const cancelUpload = clientId && onCancelUpload ? () => onCancelUpload(clientId) : undefined
   // Наш shimmer поверх blur-превью убран: в tweb его нет — картинка просто
-  // проявляется поверх подложки (blur как background-image контейнера).
+  // проявляется поверх канвас-превью (useBlurThumb ниже).
   const imgRef = useRef<HTMLImageElement>(null)
   useLayoutEffect(() => { setForced(false) }, [mediaId])
 
@@ -141,6 +142,16 @@ export default function RealMediaBubble({
   const needMediaUrl = (isImage || isVideo) && !(canAutoplay && !gifVideo)
     && !localUrl && !blocked && !paidMedia?.locked && mediaId != null
   const mediaUrl = useMediaUrl(needMediaUrl ? mediaId! : null, { thumb: !isGif && !gifVideo && !!hasThumb })
+  // Канвас-превью (tweb-модель, Task 9): blur() → canvas-thumbnail prepend'ом в
+  // контейнер медиа; НЕ монтируется, если полный URL известен уже на этом
+  // рендере (localUrl / синхронное попадание в зеркало конвейера) — аналог
+  // tweb `cacheContext.downloaded`.
+  const blurHostRef = useBlurThumb(
+    (isImage || isVideo) && !paidMedia?.locked ? blur : undefined,
+    !!localUrl || !!mediaUrl,
+  )
+  // Платное медиа: кроме blur у нас ничего нет — превью монтируется всегда.
+  const paidBlurHostRef = useBlurThumb(paidMedia?.locked ? blur : undefined)
 
   // документ/музыка уже на дереве tweb — время позиционируют правила
   // `.document .time` / `.audio .time` из портированных партиалов
@@ -159,15 +170,15 @@ export default function RealMediaBubble({
       hasMessageBlock,
       isVideoWithPlayer: canHavePlayer,
     })
-    const lqip = blur ? `url("data:image/jpeg;base64,${blur}")` : undefined
     // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —
-    // размытый плейсхолдер (blur) с оверлеем «Разблокировать за N ⭐». media_id
-    // сервер не отдал, поэтому кроме blur/размеров у нас ничего нет.
+    // размытый плейсхолдер (канвас-превью) с оверлеем «Разблокировать за N ⭐».
+    // media_id сервер не отдал, поэтому кроме blur/размеров у нас ничего нет.
     if (paidMedia?.locked) {
       return (
         <div
+          ref={paidBlurHostRef}
           className={classNames('attachment', 'media-container', 'no-background', s.paidLocked)}
-          style={{ width: box.width, height: box.height, backgroundImage: lqip }}
+          style={{ width: box.width, height: box.height }}
         >
           <button className={s.paidUnlockBtn} onClick={handleUnlock} disabled={unlocking} type="button">
             {unlocking ? (
@@ -181,7 +192,7 @@ export default function RealMediaBubble({
     }
     const needPlayButton = isVideo && !gifVideo && !canAutoplay && !blocked
     // Картинка/гиф — из зеркала конвейера (useMediaUrl выше): синхронно при
-    // повторном рендере, '' пока URL не объявлен (рисуется blur-подложка).
+    // повторном рендере, '' пока URL не объявлен (виден канвас-превью).
     const displaySrc = localUrl || mediaUrl
     // Инлайн-автоплей настоящего видео — СТРИМ, не картинка: остаётся на
     // токен-URL до перевода видео-путей (вьювер/стадия E ходит resolveStreamUrl).
@@ -219,13 +230,14 @@ export default function RealMediaBubble({
     ) : null
     return (
       <div
+        ref={blurHostRef}
         className={classNames(
           'attachment', 'media-container', 'no-background',
           hasMessageBlock ? 'no-brb' : '',
           isFit ? '' : 'media-container-fitted',
         )}
         onClick={(e) => (blocked ? setForced(true) : mediaId != null ? onOpen?.(mediaId, e.currentTarget) : undefined)}
-        style={{ width: box.width, height: box.height, backgroundImage: lqip }}
+        style={{ width: box.width, height: box.height }}
       >
         {(gifLike || (isVideo && !!duration)) && (
           <span className="video-time">

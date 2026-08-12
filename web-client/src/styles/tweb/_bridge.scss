@@ -537,3 +537,12 @@ button:focus {
     filter: brightness(0.7);
   }
 }
+
+// tweb base.scss:1244-1248 — канвас stripped-превью (`helpers/blur.ts`):
+// растягивается на контейнер медиа; радиусы/слои добавляют партиалы
+// (`_chatBubble.scss:698` — border-radius: inherit).
+.canvas-thumbnail {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}

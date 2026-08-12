@@ -1,12 +1,7 @@
 // Грид альбома. Контейнер и элементы живут на классах tweb
 // (.attachment.media-container / .album-item.grouped-item / .album-item-media,
-// _chatBubble.scss:864-975) — здесь только blur-подложка элемента и заливка
-// медиа, которых в партиале нет.
-.item {
-  background-size: cover;
-  background-position: center;
-}
-
+// _chatBubble.scss:864-975) — здесь только заливка медиа, которой в партиале
+// нет (blur-подложка с Task 9 — канвас useBlurThumb, не background).
 .img {
   width: 100%;
   height: 100%;
