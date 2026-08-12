@@ -210,15 +210,15 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
-  // Critical: обе достижимые последовательности порчи `me`/чатов префетчем
+  // Critical: обе достижимые последовательности порчи `me` префетчем
   // ПРОШЛОГО аккаунта. Общий корень — префетч старта одноразовый по смыслу, но
   // живёт до перезагрузки, а Shell монтируется заново на каждое
   // authed: false → true (App.tsx), вместе с ним useAppBootstrap. Пинится
   // наблюдаемо: после перехода bootPrefetch() обязан отдавать null, иначе
-  // повторный loadChats запишет личность и чаты прошлого аккаунта поверх
-  // только что приехавшего rt:me нового.
+  // повторный loadChats запишет личность прошлого аккаунта поверх только что
+  // приехавшего rt:me нового.
   describe('префетч старта не переживает смену сессии', () => {
-    const prefetch = { me: Promise.resolve(null), dialogs: Promise.resolve([]) }
+    const prefetch = { me: Promise.resolve(null) }
     const boot = () => setBootData({ ...prefetch, hydratedFromCache: false, hasToken: true, locked: false })
 
     it('кросс-табовый: «добавить аккаунт» в соседней вкладке, затем вход там же', () => {
@@ -250,8 +250,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
 
     // Третий вход в тот же дефект, где кадра ухода эта вкладка не видела
     // вовсе: её открыли, когда сессии уже не было (boot без токена), и вошли в
-    // другой вкладке. Префетч тут разрешён пустышками «нет сессии» — повторный
-    // loadChats записал бы me=null и пустой список поверх приехавшего rt:me.
+    // другой вкладке. Префетч тут разрешён пустышкой «нет сессии» — повторный
+    // loadChats записал бы me=null поверх приехавшего rt:me.
     it('вкладка, открытая уже на экране входа: вход в соседней (кадра ухода не было)', () => {
       setBootData({ ...prefetch, hydratedFromCache: false, hasToken: false, locked: false })
       const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })

@@ -205,7 +205,6 @@ describe('refetchSubscriber: folder_update без похода в сеть', () 
     registerRefetchSubscriber({
       folders: { list },
       messages: { listPins: vi.fn() },
-      chats: { listDialogs: vi.fn() },
     } as unknown as Managers)
 
     rootScope.dispatchEventSingle(RT.folderUpdate, { folder: snapshot({ ...fun, title: 'Отдых!' }) })

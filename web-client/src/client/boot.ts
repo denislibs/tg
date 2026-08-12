@@ -19,7 +19,6 @@ import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { User } from '../core/managers/authManager'
-import type { Dialog } from '../core/models'
 
 const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
 
@@ -125,16 +124,15 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // здесь просто дожидаемся уже летящего промиса, а не начинаем round-trip заново.
   const op = await dialogsOp
   await applyDialogsMirror(op, managers, locked)
-  // bootData.dialogs/hydratedFromCache — тот же снимок, что уже применили к
-  // витрине (op), для остальных потребителей префетча (useAppBootstrap →
-  // loadChats(managers, prefetch), см. bootData.ts): не второй вывод факта, а
-  // переиспользование уже посчитанного значения, чтобы не дублировать round-trip.
-  // fillMirror() всегда отвечает reset'ом (dialogsManager.ts) — узкий тип
-  // DialogOp здесь просто отражает форму канала целиком (общую с patch/upsert/…).
-  const items = op?.op === 'reset' ? op.items : []
-  const dialogs: Promise<Dialog[]> = Promise.resolve(items.map((i) => i.dialog))
-  const hydratedFromCache = items.length > 0
-  setBootData({ me, dialogs, hydratedFromCache, hasToken: !!token, locked })
+  // Fix (ревью Task 6, Important #1): `bootData` больше не несёт `dialogs` —
+  // диалоги уже применены к зеркалу СТРОКОЙ ВЫШЕ (applyDialogsMirror), второго
+  // потребителя этого снимка (старый `useAppBootstrap → loadChats(managers,
+  // prefetch).dialogs`) нет с самой правки Task 6 (диалоговая половина
+  // `loadChats` снесена — см. `stores/chatsStore.ts`). `hydratedFromCache`
+  // (единственное, что реально бралось из `op` для bootData) считаем прямо
+  // здесь, не заводя лишний Promise.
+  const hydratedFromCache = op?.op === 'reset' && op.items.length > 0
+  setBootData({ me, hydratedFromCache, hasToken: !!token, locked })
 
   return { managers }
 }

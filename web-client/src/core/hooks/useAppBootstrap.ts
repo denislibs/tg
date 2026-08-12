@@ -28,8 +28,8 @@ export function useAppBootstrap(): void {
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
     // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
     const run = () => {
-      // Префетч (me/диалоги из main.tsx) берём ТОЛЬКО через bootPrefetch():
-      // он одноразовый по смыслу (данные аккаунта, под которым страница
+      // Префетч (`me` из main.tsx) берём ТОЛЬКО через bootPrefetch(): он
+      // одноразовый по смыслу (данные аккаунта, под которым страница
       // загрузилась), а этот эффект отрабатывает заново на каждое монтирование
       // Shell — см. докблок bootPrefetch. null → идём в сеть под текущим токеном.
       const prefetch = bootPrefetch() ?? undefined
@@ -42,7 +42,9 @@ export function useAppBootstrap(): void {
       // жизнь страницы — вход/переезд сессии, useAuthGate.ts::onLoggedIn)
       // bootPrefetch() уже инвалидирован (invalidateBootPrefetch) — тогда это
       // единственное место, которое подтягивает диалоги новой сессии (owner
-      // сам решает cache-first/сеть внутри refresh()→hydrate()).
+      // сам решает cache-first/сеть внутри refresh()→hydrate()). Пин (обе
+      // ветки условия, мутацией) — useAppBootstrap.dialogsGate.test.tsx
+      // (Fix, ревью Task 6, Important #2).
       const dialogsReady = prefetch ? Promise.resolve() : managers.dialogs.refresh()
       void dialogsReady.then(() => loadPresence(managers))
       void loadStories(managers)
