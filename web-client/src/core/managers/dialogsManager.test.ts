@@ -585,3 +585,78 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(saved).toEqual([])
   })
 })
+
+// Task 5 (персист диалогов переезжает к владельцу): раньше снапшот собирала
+// main-thread-подписка `stores/dialogsPersist.ts` (дебаунс 800мс поверх
+// зеркала chatsStore) и слала RPC `persist.dialogs(...)` воркеру — теперь
+// владелец пишет СВОЙ кэш сам, дебаунсом, после каждой публикации операций.
+// `saveCache` — та же роль, что `savePinnedOrders`/`mirrorStateKey` выше:
+// опциональная зависимость, подставляемая в workerCore.ts (`saveDialogs`).
+describe('dialogsManager: персист списка переезжает к владельцу (Task 5)', () => {
+  it('после операции список пишется на диск с дебаунсом (один вызов на серию)', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+
+    mgr.applyMute(1, true); mgr.applyMute(1, false); mgr.applyMute(1, true)
+
+    expect(save).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(save).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('дебаунс не теряет последнюю правку — пишет актуальный снимок списка', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async (_dialogs: Dialog[]) => {})
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+
+    mgr.applyMute(1, true)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(save).toHaveBeenCalledTimes(1)
+    const written = save.mock.calls[0][0]
+    expect(written.find((d) => d.chatId === 1)?.muted).toBe(true)
+    vi.useRealTimers()
+  })
+
+  // «Осторожно» (смена аккаунта/логаут): отложенная запись обязана быть
+  // отменяемой — workerCore.ts зовёт `cancelPersist()` из onLoggingOut/
+  // onLoggedIn (тем же приёмом, что media.resetToken/resetDownloads), пока
+  // владелец не завёл полноценный сброс кэша на логаут (Task 6). Без отмены
+  // запоздавшая запись воскресила бы диалоги прошлого аккаунта на диске уже
+  // ПОСЛЕ persistClearAll().
+  it('cancelPersist() отменяет отложенную запись — планов на будущее не остаётся', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+    mgr.applyMute(1, true)
+
+    mgr.cancelPersist()
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(save).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})

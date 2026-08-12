@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData, bootPrefetch, invalidateBootPrefetch } from '../../client/bootData'
-import { clearDialogsPersist } from '../../stores/dialogsPersist'
 import { resetAppState } from '../../stores/appState'
 import { resetStateCache } from '../state/loadState'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -59,7 +58,7 @@ export function useAuthGate(): AuthGate {
       ;(bootPrefetch()?.me ?? managers.auth.me())
         .then((u) => {
           if (u) setAuthed(true)
-          else { setAuthed(false); void clearDialogsPersist(managers) } // сессия истекла — сбрасываем персист
+          else { setAuthed(false); void managers.persist.clearAll() } // сессия истекла — сбрасываем персист
         })
         .catch(() => {
           // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
@@ -109,7 +108,7 @@ export function useAuthGate(): AuthGate {
       // старта, — обесценить его ДО любой реакции (см. докблок bootPrefetch).
       invalidateBootPrefetch()
       if (migrateTo !== null) { location.reload(); return }
-      void clearDialogsPersist(managers)
+      void managers.persist.clearAll()
       resetAccountStateInMemory()
       setAuthed(false)
     }

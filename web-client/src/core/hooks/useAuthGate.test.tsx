@@ -10,8 +10,8 @@
 //    именно из-за них кросс-табовый логаут срабатывал через раз (Critical 1
 //    в task-1-findings-round4.md);
 //  - migrateTo === null — настоящий логаут: общие сбросы
-//    (resetAccountStateInMemory + clearDialogsPersist) + authed=false, БЕЗ
-//    reload;
+//    (resetAccountStateInMemory + managers.persist.clearAll()) + authed=false,
+//    БЕЗ reload;
 //  - migrateTo !== null — активный токен переехал на другой аккаунт: reload
 //    (полноценный подъём под новым токеном не рассчитан на повторный прогон
 //    без него), authed не трогаем — сессия жива, просто другая.
@@ -118,7 +118,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     // аккаунта не должны дожить до входа под следующим.
     expect(useAppStateStore.getState().folders).toEqual([])
     expect(useChatsStore.getState().dialogs).toEqual([])
-    await act(async () => { await Promise.resolve() }) // clearDialogsPersist — микротаска
+    await act(async () => { await Promise.resolve() }) // managers.persist.clearAll() — микротаска
     expect(clearAll).toHaveBeenCalled()
   })
 

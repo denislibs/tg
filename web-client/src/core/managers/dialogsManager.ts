@@ -38,9 +38,26 @@ export interface DialogsDeps {
    */
   savePinnedOrders?: (value: Record<number, number[]>) => Promise<void>
   mirrorStateKey?: (key: string, value: unknown) => void
+  /**
+   * Task 5 (персист переезжает к владельцу): физический writer офлайн-кэша
+   * списка (`persist.saveDialogs`, подставляется в workerCore.ts). Раньше
+   * снапшот собирала main-thread-подписка `stores/dialogsPersist.ts`
+   * (дебаунс поверх зеркала chatsStore) и слала его воркеру RPC'ом; теперь
+   * владелец — источник данных — пишет сам, тем же дебаунсом, что был там
+   * (см. `scheduleSave` ниже). Опционален по тому же приёму, что и
+   * `savePinnedOrders`/`mirrorStateKey`: тесты, которых персист не касается,
+   * его не задают.
+   */
+  saveCache?: (dialogs: Dialog[]) => Promise<void>
 }
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey }: DialogsDeps) {
+/** Тот же интервал, что был у main-thread-дебаунса `dialogsPersist.ts` (800мс)
+ * — с запасом округлён до секунды, чтобы серия частых patch'ей (realtime-
+ * поток) схлопывалась в одну запись, а не открывала readwrite-транзакцию на
+ * каждое изменение. */
+const PERSIST_DEBOUNCE_MS = 1000
+
+export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -61,8 +78,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   // упавшая (оффлайн/битый IDB) обязана даться повторить, а не залипнуть на
   // вечно отклонённом промисе (см. тест «упавшая гидратация не залипает»).
   let hydrating: Promise<void> | null = null
+  // Task 5: таймер отложенной записи кэша (см. scheduleSave/cancelPersist).
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-  const publish = (ops: DialogOp[]) => onDialogOps?.(ops)
+  /** Схлопнуть серию публикаций в одну запись на диск (см. докблок `saveCache`
+   * в DialogsDeps). Каждый publish() двигает окно — итоговая запись случится
+   * один раз, через PERSIST_DEBOUNCE_MS ПОСЛЕ ПОСЛЕДНЕЙ операции серии,
+   * последняя правка при этом не теряется (пишем `items` в момент срабатывания
+   * таймера, а не в момент планирования). */
+  function scheduleSave(): void {
+    if (!saveCache) return
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void saveCache(items.map((i) => i.dialog))
+    }, PERSIST_DEBOUNCE_MS)
+  }
+
+  const publish = (ops: DialogOp[]) => { onDialogOps?.(ops); scheduleSave() }
   const draftFor = (chatId: number) => drafts.find((d) => d.chatId === chatId)
 
   /** Порядок — производная от данных (tweb generateDialogIndex, dialogs.ts:605-608). */
@@ -151,6 +184,20 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     getSnapshot: (): DialogItem[] => items,
+
+    /**
+     * Task 5, «Осторожно» (смена аккаунта/логаут): отменяет отложенную запись
+     * без немедленного флаша. Зовётся из workerCore.ts (onLoggingOut/
+     * onLoggedIn) тем же приёмом, что `media.resetToken`/`resetDownloads` —
+     * синхронно, ДО broadcast намерения перехода. Без этого запоздавшая
+     * запись (действие, чей REST-ответ прилетел уже ПОСЛЕ логаута) воскресила
+     * бы диалоги прошлого аккаунта на диске поверх свежего `persistClearAll()`.
+     * Полный сброс самого кэша (`items`/`hydrated`) на логаут — Task 6 (пины
+     * владения), здесь не делаем.
+     */
+    cancelPersist(): void {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    },
 
     /**
      * Ключ State, от которого зависит порядок, изменился (пишет persistManager).

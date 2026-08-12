@@ -7,12 +7,14 @@
 //   • messages — история чатов (keyPath `${chatId}:${seq}`, индекс byChat);
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
 //
-// ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера
-// (peersManager/messagesManager напрямую; dialogs/me — по снапшоту с main, ключи
-// State (folders/drafts/…) — write-through, всё через persistManager):
-// один SharedWorker = одно readwrite-соединение
-// на все вкладки, без конкуренции за транзакции одной БД. main — только READER
-// (loadX на холодном старте). persistScope зовётся и там, и там (идемпотентно).
+// ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера:
+// peersManager/messagesManager — напрямую; dialogs — из `dialogsManager.ts`
+// (владелец списка, дебаунс после каждой публикации операций, Task 5); me — из
+// `workerCore.ts::setMe` (write-through, тот же воркерный владелец факта); ключи
+// State (folders/drafts/…) — write-through через persistManager. Один SharedWorker
+// = одно readwrite-соединение на все вкладки, без конкуренции за транзакции одной
+// БД. main — только READER (loadX на холодном старте, State — `loadStateOnce` в
+// `client/boot.ts`). persistScope зовётся и там, и там (идемпотентно).
 //
 // Инварианты безопасности (как в chats_cache):
 //   • скоуп по session_token — при смене аккаунта данные предыдущего стираются;
@@ -244,7 +246,7 @@ export async function persistClearAll(): Promise<void> {
   } catch { /* idb недоступен */ }
 }
 
-// ── Диалоги + me (снапшот собирает dialogsPersist на main, пишет воркер) ───────────
+// ── Диалоги + me (пишет владелец факта в воркере — dialogsManager/setMe, Task 5) ──
 
 // Секретные чаты: не персистим расшифрованный текст/шифр-блоб превью (E2E).
 function sanitizeDialog(d: Dialog): Dialog {

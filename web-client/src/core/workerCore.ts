@@ -51,7 +51,7 @@ import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemo
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope, loadDialogs, loadStateAll, saveStateKey } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe } from './store/persist'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
@@ -80,8 +80,21 @@ export function createWorkerCore() {
   // у messages/media ниже: onMeChanged передаётся менеджерам ДО того, как
   // broadcast существует, но реально исполняется только после первого RPC/boot,
   // когда broadcast уже назначен).
+  //
+  // Task 5 (персист диалогов переезжает к владельцу): раньше `me` персистился
+  // ВМЕСТЕ со списком диалогов — main-thread-подписка `stores/dialogsPersist.ts`
+  // дебаунсила снимок ОБОИХ (`persist.dialogs(dialogs, me)`) и слала его сюда
+  // РАЗОВЫМ RPC. `dialogsPersist.ts` удалён (владелец списка пишет свой кэш
+  // сам, см. dialogsManager.ts/scheduleSave), а честный дом записи `me` —
+  // здесь: воркер и так единственный вычислитель этого факта (см. докблок
+  // выше), `setMe` — единственная точка его изменения. Write-through без
+  // дебаунса, как и у `saveStateKey` (persistManager.ts: «блоб маленький,
+  // дебаунс не нужен») — `me` меняется по явным действиям пользователя
+  // (профиль/премиум/вход/выход), не потоком. Passcode-гейт — тот же, что и
+  // раньше: внутри `saveMe` (core/store/persist.ts), новый путь его не обходит.
   function setMe(u: User | null): void {
     me = u
+    void saveMe(u)
     broadcast(RT.me, u)
   }
   const auth = newAuthManager({
@@ -106,11 +119,20 @@ export function createWorkerCore() {
     // конкретного пользователя, пережить переход они не могут (закрывает
     // остаточный риск PR #191). Синхронная часть (контекст, revoke, поколение)
     // — ДО broadcast; деструкция корзины внутри — void (кадр диска не ждёт).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggingOut, e) },
+    //
+    // Task 5, «Осторожно»: `dialogs.cancelPersist()` тем же порядком и по той
+    // же причине, что и media выше — отменяет ОТЛОЖЕННУЮ запись владельца
+    // (dialogsManager.scheduleSave), пока `main` (useAuthGate, увидев
+    // rt:logging_out) не позвал `persist.clearAll()`. Без отмены запоздавший
+    // таймер (действие, чей REST-ответ прилетел уже после логаута) переписал
+    // бы диалоги прошлого аккаунта на диск ПОВЕРХ только что стёртого стора.
+    // Сам кэш `items`/`hydrated` владельца этот вызов не трогает — полный
+    // сброс на логаут остаётся Task 6 (пины владения).
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -171,6 +193,11 @@ export function createWorkerCore() {
     // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
     savePinnedOrders: (value) => saveStateKey('pinnedOrders', value),
     mirrorStateKey,
+    // Task 5 (персист переезжает к владельцу): физический writer офлайн-кэша
+    // списка — та же `saveDialogs` (core/store/persist.ts), что раньше звал
+    // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
+    // dialogsManager (scheduleSave), не здесь.
+    saveCache: (list) => saveDialogs(list),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец

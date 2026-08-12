@@ -21,7 +21,7 @@ import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { User } from '../core/managers/authManager'
 import type { Dialog } from '../core/models'
 
-const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore/dialogsPersist
+const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
 
 /**
  * Task 2 (перенос владения диалогами): пробел зеркала на холодном старте.
