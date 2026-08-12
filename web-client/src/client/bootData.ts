@@ -93,3 +93,28 @@ export function bootPrefetch(): { me: Promise<User | null>; dialogsReady: Promis
 export function invalidateBootPrefetch(): void {
   prefetchValid = false
 }
+
+/**
+ * Стартовала ли страница под passcode-локом (Fix, повторное ревью финальной
+ * волны). Нужно `useAppBootstrap`, чтобы после разблокировки закрыть пробел
+ * зеркала диалогов: под локом `bootstrap()` пропускает `fillMirror()` целиком
+ * (см. `client/boot.ts::fillDialogsMirror` — RPC не летят вовсе), значит
+ * владелец (`dialogsManager`) ни разу не гидрировал зеркало ЭТОЙ вкладки.
+ * Обычный `refresh()`, которым `useAppBootstrap` подтягивает диалоги на
+ * тёплом релогине, тут не спасает: он публикует операцию, только если сеть
+ * разошлась с памятью владельца (Important #4, `dialogsManager.setAll`), а
+ * на аккаунте с нулём диалогов пустой ответ сети структурно совпадает с ещё
+ * не гидрированным пустым кэшем — `chatsStore.loaded` остаётся `false`
+ * навсегда, список висит на скелетоне. В отличие от `refresh()`,
+ * `fillMirror()` объявляет `reset` БЕЗУСЛОВНО (см. докблок `fillMirror` в
+ * `dialogsManager.ts`) — ровно то объявление пробела, которое пропустил
+ * локнутый boot.
+ *
+ * Читает `bootData.locked` напрямую (не через `bootPrefetch()`, который для
+ * ЛЮБОЙ причины отказа — лок или инвалидация тёплого релогина — одинаково
+ * отдаёт `null`): здесь важна именно причина, тёплый релогин уже закрыт
+ * прямым `refresh()` и своим тестом (`useAppBootstrap.dialogsGate.test.tsx`).
+ */
+export function bootWasLocked(): boolean {
+  return bootData?.locked ?? false
+}

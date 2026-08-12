@@ -1106,3 +1106,50 @@ describe('dialogsManager: поколение сессии гасит ответ�
     expect(ids(op)).toEqual([2])
   })
 })
+
+// Находка B (повторное ревью финальной волны): гвард `if (hydrating === p)` в
+// `finally` у `hydrate()` (dialogsManager.ts) — без него безусловное
+// `hydrating = null` в `finally` СТАРОЙ гидратации, дорезолвившейся ПОСЛЕ
+// того, как `resetForLogout()` уже запустил НОВУЮ, обнулило бы ссылку на ещё
+// не завершённую новую гидратацию. Третий параллельный вызов в этом окне
+// увидел бы `hydrating === null` и запустил бы ЕЩЁ ОДНУ (третью) гидратацию
+// вместо того, чтобы присоединиться к уже идущей новой — тот же класс гонки,
+// что промис вместо булева флага уже закрыл для случая «конкурентный
+// fillMirror» (см. describe выше), но с другой стороны: не ДВА параллельных
+// первых вызова, а ХВОСТ отменённого предыдущего, наступающий на пятки уже
+// стартовавшему следующему.
+describe('dialogsManager: finally прошлой гидратации не сбивает hydrating новой (находка B)', () => {
+  const tick = async (n = 5) => { for (let i = 0; i < n; i++) await Promise.resolve() }
+
+  it('третий fillMirror() присоединяется к УЖЕ ИДУЩЕЙ новой гидратации, а не запускает третью', async () => {
+    const cacheCalls: Array<{ resolve: (v: Dialog[]) => void }> = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: () => new Promise<Dialog[]>((res) => { cacheCalls.push({ resolve: res }) }),
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    const p1 = mgr.fillMirror() // гидратация СТАРОЙ сессии начата
+    await tick() // дошла до await loadCache() — cacheCalls[0] в полёте
+    mgr.resetForLogout() // sessionGen++, hydrating сброшен СИНХРОННО
+
+    const p2 = mgr.fillMirror() // гидратация НОВОЙ сессии начата (hydrating = pInternal2)
+    await tick() // дошла до await loadCache() — cacheCalls[1] в полёте
+
+    cacheCalls[0].resolve([]) // СТАРАЯ гидратация дорезолвилась ПОСЛЕ старта новой
+    await tick(10) // даём отработать её .finally() — здесь и решается гвард
+
+    // Пока НОВАЯ гидратация ещё не завершена (cacheCalls[1] не резолвлен) —
+    // третий вызов обязан присоединиться к НЕЙ, а не начать третью гидратацию.
+    const p3 = mgr.fillMirror()
+    await tick()
+    expect(cacheCalls).toHaveLength(2) // не 3 — красная строка на безусловном hydrating=null
+
+    cacheCalls[1].resolve([dialog(9, '2026-08-09T00:00:00Z')])
+    const [op1, op2, op3] = await Promise.all([p1, p2, p3])
+    expect(ids(op1)).toEqual([]) // отменённая сессия — честно пустой ответ (gen-гвард)
+    expect(ids(op2)).toEqual([9]) // дождалась своей же гидратации
+    expect(ids(op3)).toEqual([9]) // присоединилась к ТОЙ ЖЕ гидратации, увидела её результат
+  })
+})

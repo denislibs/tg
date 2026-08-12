@@ -19,7 +19,8 @@ import { startRealtime } from '../../client/realtimeBridge'
 import { setupPush } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
-import { bootPrefetch } from '../../client/bootData'
+import { bootPrefetch, bootWasLocked } from '../../client/bootData'
+import { fillDialogsMirror, applyDialogsMirror } from '../../client/boot'
 
 export function useAppBootstrap(): void {
   const managers = useManagers()
@@ -53,7 +54,25 @@ export function useAppBootstrap(): void {
       // получал пустой список и молча выходил — весь сеанс без онлайн-точек и
       // «был(а) в сети». Массового сида презенса больше нигде нет (второй вызов
       // в useNavigationActions.ts — точечный, на одного пира).
-      const dialogsReady = prefetch ? prefetch.dialogsReady : managers.dialogs.refresh()
+      //
+      // Fix (повторное ревью финальной волны, находка A): boot под passcode-
+      // локом пропускает `fillMirror()` целиком (`client/boot.ts`, `locked`) —
+      // зеркало ЭТОЙ вкладки ни разу не гидрировано владельцем. Обычный
+      // `refresh()` тут не гарантия: он публикует операцию, только если сеть
+      // разошлась с памятью владельца, а на аккаунте с нулём диалогов пустой
+      // ответ сети совпадает с ещё не гидрированным пустым кэшем — операции
+      // нет, `chatsStore.loaded` остаётся `false` навсегда (скелетон висит
+      // вечно, см. `ChatList.tsx`). Досюда (`run()` уже прошёл `runWhenUnlocked`)
+      // лок точно снят, поэтому явно закрываем пробел тем же приёмом, что
+      // холодный старт: `fillDialogsMirror(managers, false)` — гарантированный
+      // `reset` (см. докблок `dialogsManager.fillMirror` — announce
+      // безусловный) — и `applyDialogsMirror` для применения и сетевого
+      // догона поверх, БЕЗ повторного `refresh()` из ветки ниже.
+      const dialogsReady = prefetch
+        ? prefetch.dialogsReady
+        : bootWasLocked()
+          ? fillDialogsMirror(managers, false).then((op) => applyDialogsMirror(op, managers, false))
+          : managers.dialogs.refresh()
       // `.catch` до loadPresence (Minor #3): refresh() пробрасывает HttpError, а
       // тут он идёт `void`-ом — 401/5xx не должны стать unhandled rejection и не
       // должны отменять сид презенса по тому, что уже есть в зеркале.
