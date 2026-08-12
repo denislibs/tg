@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -40,6 +41,53 @@ func TestUpdateProfile(t *testing.T) {
 	}
 	if _, err := i.UpdateProfile(ctx, id, ProfileInput{FirstName: "A", PhoneVisibility: "bogus"}); err == nil {
 		t.Fatal("expected error for invalid phone visibility")
+	}
+}
+
+// fakePreviewer — AvatarPreviewer, отдающий фиксированное stripped-превью и
+// запоминающий, за каким media_id пришли.
+type fakePreviewer struct {
+	preview []byte
+	gotID   int64
+}
+
+func (p *fakePreviewer) StrippedPreview(_ context.Context, mediaID int64) ([]byte, error) {
+	p.gotID = mediaID
+	return p.preview, nil
+}
+
+// SetAvatar с подключённым превьюером кладёт stripped-превью аватарки в
+// профиль; без превьюера (или для не-медийного url) аватарка ставится без
+// превью — мягкая деградация.
+func TestSetAvatarStrippedPreview(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	id := seedUser(t, i, "+79990000031")
+
+	stripped := []byte{0xff, 0xd8, 0xff, 0xe0, 5}
+	pv := &fakePreviewer{preview: stripped}
+	i.SetAvatarPreviewer(pv)
+
+	u, err := i.SetAvatar(ctx, id, "/media/42/content")
+	if err != nil {
+		t.Fatalf("SetAvatar: %v", err)
+	}
+	if pv.gotID != 42 {
+		t.Fatalf("previewer got media id %d, want 42", pv.gotID)
+	}
+	if !bytes.Equal(u.AvatarPreview, stripped) {
+		t.Fatalf("AvatarPreview = %v, want %v", u.AvatarPreview, stripped)
+	}
+
+	// Без превьюера аватарка ставится, превью пустое (старое поведение не ломается).
+	i2, _, _, _ := newInteractor()
+	id2 := seedUser(t, i2, "+79990000032")
+	u2, err := i2.SetAvatar(ctx, id2, "/media/43/content")
+	if err != nil {
+		t.Fatalf("SetAvatar without previewer: %v", err)
+	}
+	if u2.AvatarURL != "/media/43/content" || u2.AvatarPreview != nil {
+		t.Fatalf("without previewer: url=%q preview=%v", u2.AvatarURL, u2.AvatarPreview)
 	}
 }
 

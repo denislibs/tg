@@ -49,14 +49,13 @@ func (h *MediaHandler) MediaToken(w http.ResponseWriter, r *http.Request) {
 }
 
 type uploadBody struct {
-	Mime        string `json:"mime"`
-	Size        int64  `json:"size"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	Duration    int    `json:"duration"`
-	BlurPreview []byte `json:"blur_preview"` // base64 in JSON
-	FileName    string `json:"file_name"`
-	Waveform    []byte `json:"waveform"` // base64 in JSON — пики голосового (5-бит)
+	Mime     string `json:"mime"`
+	Size     int64  `json:"size"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Duration int    `json:"duration"`
+	FileName string `json:"file_name"`
+	Waveform []byte `json:"waveform"` // base64 in JSON — пики голосового (5-бит)
 }
 
 func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +67,7 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	m, uploadURL, err := h.svc.CreateUpload(r.Context(), usecasemedia.UploadInput{
 		OwnerID: user.ID, Mime: body.Mime, Size: body.Size,
-		Width: body.Width, Height: body.Height, Duration: body.Duration, BlurPreview: body.BlurPreview,
+		Width: body.Width, Height: body.Height, Duration: body.Duration,
 		FileName: body.FileName, Waveform: body.Waveform,
 	})
 	if errors.Is(err, usecasemedia.ErrBadSize) {

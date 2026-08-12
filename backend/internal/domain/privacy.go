@@ -108,14 +108,17 @@ type BlockedUser struct {
 // «Разблокировать»); CallsAvailable — пройдёт ли call_request (tweb
 // phone_calls_available); CanMessage — пройдёт ли отправка сообщения.
 type UserProfile struct {
-	ID             int64
-	Username       *string
-	FirstName      string
-	LastName       string
-	DisplayName    string
-	Bio            string
-	Birthday       *string // "DD.MM" или "DD.MM.YYYY"; nil когда скрыт/не задан
-	AvatarURL      string
+	ID          int64
+	Username    *string
+	FirstName   string
+	LastName    string
+	DisplayName string
+	Bio         string
+	Birthday    *string // "DD.MM" или "DD.MM.YYYY"; nil когда скрыт/не задан
+	AvatarURL   string
+	// AvatarPreview — stripped-превью аватарки; скрывается тем же правилом
+	// privacy (profile_photo), что и AvatarURL.
+	AvatarPreview  []byte
 	Verified       bool
 	Premium        bool   // Telegram Premium subscriber (gold star badge)
 	EmojiStatus    string // unicode emoji shown after the name ("" when unset)

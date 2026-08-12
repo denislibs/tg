@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -29,17 +30,56 @@ func TestMediaRepo_CreateAndGet(t *testing.T) {
 
 	m, err := repo.Create(ctx, domain.Media{
 		OwnerID: owner, Bucket: "media", ObjectKey: "k1", Mime: "image/jpeg",
-		Size: 1024, Width: 800, Height: 600, BlurPreview: []byte{1, 2, 3},
+		Size: 1024, Width: 800, Height: 600,
 	})
 	if err != nil || m.ID == 0 {
 		t.Fatalf("Create = %+v, %v", m, err)
 	}
 	got, err := repo.GetByID(ctx, m.ID)
-	if err != nil || got.ObjectKey != "k1" || got.Width != 800 || len(got.BlurPreview) != 3 {
+	if err != nil || got.ObjectKey != "k1" || got.Width != 800 {
 		t.Fatalf("GetByID = %+v, %v", got, err)
+	}
+	// blur_preview при создании пуст (клиент его не присылает) — заполняется
+	// фоновой обработкой через UpdateProcessed.
+	if got.BlurPreview != nil {
+		t.Fatalf("blur_preview after create = %v, want nil", got.BlurPreview)
 	}
 	if _, err := repo.GetByID(ctx, 999999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected domain.ErrNotFound, got %v", err)
+	}
+}
+
+// Stripped-превью пишется UpdateProcessed; повторная обработка с пустым превью
+// не затирает уже записанное (та же семантика, что у тегов/thumb_key).
+func TestMediaRepo_BlurPreviewProcessed(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaRepo(pool)
+	ctx := context.Background()
+	owner := seedMediaOwner(t, repo, "+792")
+
+	m, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "pic1", Mime: "image/jpeg", Size: 10,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	stripped := []byte{0xff, 0xd8, 0xff, 0xe0, 42}
+	if err := repo.UpdateProcessed(ctx, m.ID, usecasemedia.ProcessedMeta{
+		Width: 800, Height: 600, BlurPreview: stripped,
+	}); err != nil {
+		t.Fatalf("UpdateProcessed: %v", err)
+	}
+	got, _ := repo.GetByID(ctx, m.ID)
+	if !bytes.Equal(got.BlurPreview, stripped) {
+		t.Fatalf("blur_preview = %v, want %v", got.BlurPreview, stripped)
+	}
+	// Повторная обработка без превью не затирает записанное.
+	if err := repo.UpdateProcessed(ctx, m.ID, usecasemedia.ProcessedMeta{Width: 800}); err != nil {
+		t.Fatalf("UpdateProcessed re-run: %v", err)
+	}
+	got, _ = repo.GetByID(ctx, m.ID)
+	if !bytes.Equal(got.BlurPreview, stripped) {
+		t.Fatalf("blur_preview clobbered by re-process: %v", got.BlurPreview)
 	}
 }
 

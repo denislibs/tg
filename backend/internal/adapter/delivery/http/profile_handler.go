@@ -35,6 +35,7 @@ func userJSON(u domain.User) map[string]any {
 		"bio":              u.Bio,
 		"birthday":         birthdayJSON(u.Birthday),
 		"avatar_url":       u.AvatarURL,
+		"avatar_preview":   u.AvatarPreview, // []byte → base64-строка в JSON; null у старых аватарок
 		"phone_visibility": u.PhoneVisibility,
 		"premium":          u.IsPremium,
 		"emoji_status":     u.EmojiStatus,

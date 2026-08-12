@@ -309,6 +309,7 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 		for _, d := range dialogs {
 			if d.Peer != nil && !vis[d.Peer.ID] {
 				d.Peer.AvatarURL = ""
+				d.Peer.AvatarPreview = nil // превью выдало бы скрытый аватар
 			}
 		}
 	}
@@ -325,6 +326,9 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 			}
 			if url, ok := custom[d.Peer.ID]; ok {
 				d.Peer.AvatarURL = url
+				// Превью настоящего аватара под личным фото не показываем;
+				// у личного фото своего stripped-превью нет.
+				d.Peer.AvatarPreview = nil
 			}
 		}
 	}

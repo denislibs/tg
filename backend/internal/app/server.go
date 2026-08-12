@@ -225,6 +225,9 @@ func registerServer(p serverParams) {
 	if p.Minio.OK {
 		mediaUC = usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client, ffmpeg.New())
 		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC, p.AuthUC, p.Cfg.MediaURLSecret)
+		// stripped-превью аватарки при её установке (media usecase генерирует по
+		// требованию, если фоновая обработка ещё не записала blur_preview).
+		p.AuthUC.SetAvatarPreviewer(mediaUC)
 		// Bot API sendPhoto/Document/Video: боты кладут медиа через media usecase.
 		p.ChatUC.SetBotMedia(botmedia.New(mediaUC))
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)

@@ -17,7 +17,7 @@ import (
 
 // userCols is the canonical user column list / scan order, shared by every
 // query that returns a full domain.User.
-const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, phone_visibility, is_premium, emoji_status`
+const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, avatar_preview, phone_visibility, is_premium, emoji_status`
 
 // scanUser scans a row selected with userCols into a domain.User. Phone is
 // nullable (freed on account deletion), so it is scanned via a pointer and left
@@ -26,7 +26,7 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	var u domain.User
 	var phone *string
 	err := row.Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
-		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility,
+		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility,
 		&u.IsPremium, &u.EmojiStatus)
 	if phone != nil {
 		u.Phone = *phone
@@ -181,17 +181,11 @@ func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET phone=NULL, username=NULL,
 		        first_name='Deleted', last_name='Account', display_name='Deleted Account',
-		        bio='', avatar_url='', emoji_status='',
+		        bio='', avatar_url='', avatar_preview=NULL, emoji_status='',
 		        password_hash=NULL, password_hint='', recovery_email='',
 		        deleted_at=now()
 		 WHERE id=$1`, id)
 	return err
-}
-
-// SetAvatar writes the avatar URL (a /media/{id}/content path) and returns the user.
-func (r *AuthRepo) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
-	return scanUser(r.pool.QueryRow(ctx,
-		`UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING `+userCols, id, url))
 }
 
 // SetEmojiStatus writes the user's emoji status ("" clears it) and returns the user.
@@ -253,9 +247,10 @@ func (r *AuthRepo) SetPremiumAutoRenew(ctx context.Context, userID int64, autoRe
 // --- Profile-photo gallery (Telegram getUserPhotos) ---
 
 // AddProfilePhoto inserts a gallery photo and promotes it to the user's current
-// avatar (users.avatar_url) in one transaction, so the denormalized avatar and
-// the gallery never diverge.
-func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+// avatar (users.avatar_url + users.avatar_preview) in one transaction, so the
+// denormalized avatar and the gallery never diverge. preview (stripped-превью)
+// пишется и на строку галереи — для отката аватарки при удалении текущей.
+func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string, preview []byte) (domain.ProfilePhoto, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return domain.ProfilePhoto{}, err
@@ -268,11 +263,11 @@ func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, video
 	}
 	p := domain.ProfilePhoto{UserID: userID, URL: url, VideoURL: videoURL}
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO profile_photos (user_id, url, video_url) VALUES ($1,$2,$3)
-		 RETURNING id, created_at`, userID, url, video).Scan(&p.ID, &p.CreatedAt); err != nil {
+		`INSERT INTO profile_photos (user_id, url, video_url, preview) VALUES ($1,$2,$3,$4)
+		 RETURNING id, created_at`, userID, url, video, preview).Scan(&p.ID, &p.CreatedAt); err != nil {
 		return domain.ProfilePhoto{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2 WHERE id=$1`, userID, url); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2, avatar_preview=$3 WHERE id=$1`, userID, url, preview); err != nil {
 		return domain.ProfilePhoto{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -342,17 +337,19 @@ func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64
 	newURL := cur
 	if cur == deletedURL {
 		// Fall back to the next most-recent remaining photo (or clear it).
+		// Превью откатывается вместе с url — из preview той же строки галереи.
 		newURL = ""
+		var newPreview []byte
 		var next string
 		err := tx.QueryRow(ctx,
-			`SELECT url FROM profile_photos WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1`,
-			userID).Scan(&next)
+			`SELECT url, preview FROM profile_photos WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+			userID).Scan(&next, &newPreview)
 		if err == nil {
 			newURL = next
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return "", err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2 WHERE id=$1`, userID, newURL); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2, avatar_preview=$3 WHERE id=$1`, userID, newURL, newPreview); err != nil {
 			return "", err
 		}
 	}
@@ -384,10 +381,10 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
 		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name, u.display_name,
-		        u.bio, u.birthday, u.avatar_url, u.phone_visibility, u.is_premium, u.emoji_status, d.id
+		        u.bio, u.birthday, u.avatar_url, u.avatar_preview, u.phone_visibility, u.is_premium, u.emoji_status, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
 		tokenHash).Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
-		&u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility, &u.IsPremium, &u.EmojiStatus, &deviceID)
+		&u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility, &u.IsPremium, &u.EmojiStatus, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, 0, domain.ErrNotFound
 	}

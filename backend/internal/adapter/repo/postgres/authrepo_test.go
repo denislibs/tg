@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -88,17 +89,21 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	u, _ := repo.CreateWithName(ctx, "+7100", "Галерея", "")
 
 	// Adding photos promotes each to the current avatar and lists newest-first.
-	p1, err := repo.AddProfilePhoto(ctx, u.ID, "/media/1/content", "")
+	p1, err := repo.AddProfilePhoto(ctx, u.ID, "/media/1/content", "", []byte{0xff, 0xd8, 1})
 	if err != nil || p1.ID == 0 {
 		t.Fatalf("AddProfilePhoto p1: %v", err)
 	}
-	p2, err := repo.AddProfilePhoto(ctx, u.ID, "/media/2/content", "/media/22/content")
+	p2, err := repo.AddProfilePhoto(ctx, u.ID, "/media/2/content", "/media/22/content", []byte{0xff, 0xd8, 2})
 	if err != nil {
 		t.Fatalf("AddProfilePhoto p2: %v", err)
 	}
 	got, _ := repo.GetByID(ctx, u.ID)
 	if got.AvatarURL != "/media/2/content" {
 		t.Fatalf("avatar_url after add = %q, want /media/2/content", got.AvatarURL)
+	}
+	// stripped-превью текущей аватарки денормализовано в users.avatar_preview.
+	if !bytes.Equal(got.AvatarPreview, []byte{0xff, 0xd8, 2}) {
+		t.Fatalf("avatar_preview after add = %v, want превью p2", got.AvatarPreview)
 	}
 	list, err := repo.ListProfilePhotos(ctx, u.ID)
 	if err != nil || len(list) != 2 {
@@ -120,16 +125,24 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	if got.AvatarURL != "/media/1/content" {
 		t.Fatalf("avatar_url after delete = %q, want /media/1/content", got.AvatarURL)
 	}
+	// Превью откатилось вместе с url — к превью p1.
+	if !bytes.Equal(got.AvatarPreview, []byte{0xff, 0xd8, 1}) {
+		t.Fatalf("avatar_preview after delete = %v, want превью p1", got.AvatarPreview)
+	}
 
 	// Deleting the last photo clears the avatar.
 	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.ID)
 	if err != nil || newURL != "" {
 		t.Fatalf("DeleteProfilePhoto(last) newURL = %q, %v", newURL, err)
 	}
+	got, _ = repo.GetByID(ctx, u.ID)
+	if got.AvatarPreview != nil {
+		t.Fatalf("avatar_preview after last delete = %v, want nil", got.AvatarPreview)
+	}
 
 	// Deleting another user's / unknown photo is a no-op returning the unchanged avatar.
 	other, _ := repo.CreateWithName(ctx, "+7101", "Другой", "")
-	op, _ := repo.AddProfilePhoto(ctx, other.ID, "/media/9/content", "")
+	op, _ := repo.AddProfilePhoto(ctx, other.ID, "/media/9/content", "", nil)
 	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
 	if err != nil || newURL != "" {
 		t.Fatalf("DeleteProfilePhoto(other) newURL = %q, %v (should be no-op)", newURL, err)

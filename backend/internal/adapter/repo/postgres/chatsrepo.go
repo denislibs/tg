@@ -187,7 +187,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
-		        COALESCE('/media/' || c.photo_media_id || '/content', ''),
+		        COALESCE('/media/' || c.photo_media_id || '/content', ''), pm.blur_preview,
 		        m.last_read_seq, m.unread_count, m.unread_mentions_count, m.unread_reactions,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
@@ -198,11 +198,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name, lm.enc_body,
-		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified, peer.is_premium, peer.emoji_status, peer.is_bot,
+		        peer.id, peer.display_name, peer.avatar_url, peer.avatar_preview, peer.is_verified, peer.is_premium, peer.emoji_status, peer.is_bot,
 		        c.auto_delete_period, COALESCE(ct.theme_id, '')
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN chat_theme ct ON ct.chat_id = c.id
+		 -- stripped-превью фото группы/канала — из media по photo_media_id
+		 LEFT JOIN media pm ON pm.id = c.photo_media_id
 		 LEFT JOIN LATERAL (
 		   SELECT seq, text, sender_id, created_at, media_id, type, enc_body,
 		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
@@ -212,7 +214,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified, u.is_premium, u.emoji_status, u.is_bot
+		   SELECT u.id, u.display_name, u.avatar_url, u.avatar_preview, u.is_verified, u.is_premium, u.emoji_status, u.is_bot
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -242,13 +244,14 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerID *int64
 		var peerName *string
 		var peerAvatar *string
+		var peerAvatarPreview []byte
 		var peerVerified *bool
 		var peerPremium *bool
 		var peerEmojiStatus *string
 		var peerIsBot *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.PhotoPreview, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName, &encBody,
-			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &peerIsBot, &d.AutoDeletePeriod, &d.ThemeID); err != nil {
+			&peerID, &peerName, &peerAvatar, &peerAvatarPreview, &peerVerified, &peerPremium, &peerEmojiStatus, &peerIsBot, &d.AutoDeletePeriod, &d.ThemeID); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -279,6 +282,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			if peerAvatar != nil {
 				p.AvatarURL = *peerAvatar
 			}
+			p.AvatarPreview = peerAvatarPreview
 			if peerVerified != nil {
 				p.Verified = *peerVerified
 			}

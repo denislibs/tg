@@ -167,6 +167,7 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	}
 	if check(domain.PrivacyProfilePhoto) {
 		p.AvatarURL = u.AvatarURL
+		p.AvatarPreview = u.AvatarPreview
 	}
 	if check(domain.PrivacyAbout) {
 		p.Bio = u.Bio

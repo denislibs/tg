@@ -41,7 +41,7 @@ func (s *Interactor) CreateUpload(ctx context.Context, in UploadInput) (domain.M
 	m, err := s.repo.Create(ctx, domain.Media{
 		OwnerID: in.OwnerID, Bucket: s.storage.Bucket(), ObjectKey: objectKey,
 		Mime: in.Mime, Size: in.Size, Width: in.Width, Height: in.Height,
-		Duration: in.Duration, BlurPreview: in.BlurPreview, FileName: in.FileName,
+		Duration: in.Duration, FileName: in.FileName,
 		Waveform: in.Waveform,
 	})
 	if err != nil {
@@ -219,9 +219,43 @@ func (s *Interactor) process(m domain.Media) {
 	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{
 		Width: res.Width, Height: res.Height, Duration: res.Duration,
 		Title: res.Title, Performer: res.Performer, ThumbKey: thumbKey,
+		BlurPreview: res.Stripped,
 	}); err != nil {
 		log.Printf("media: process %d: update: %v", m.ID, err)
 	}
+}
+
+// StrippedPreview возвращает stripped-превью медиа (крошечный JPEG, максимальная
+// сторона ~40px — байтовый уровень tweb stripped). Обычно оно уже записано
+// фоновой обработкой; если нет (гонка с process() или медиа загружено до
+// появления генерации) — генерируется синхронно тем же процессингом и
+// сохраняется в строку. Проверка доступа — забота вызывающего (как у SetAvatar:
+// media_id уже предъявлен клиентом, байты защищает media GET).
+func (s *Interactor) StrippedPreview(ctx context.Context, id int64) ([]byte, error) {
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(m.BlurPreview) > 0 {
+		return m.BlurPreview, nil
+	}
+	if s.processor == nil {
+		return nil, nil
+	}
+	rc, _, err := s.storage.GetObject(ctx, m.ObjectKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	res, err := s.processor.Process(ctx, rc, m.Mime)
+	if err != nil || len(res.Stripped) == 0 {
+		return nil, err
+	}
+	// Пустые поля ProcessedMeta не затирают уже записанное (см. UpdateProcessed).
+	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{BlurPreview: res.Stripped}); err != nil {
+		log.Printf("media: stripped %d: update: %v", m.ID, err)
+	}
+	return res.Stripped, nil
 }
 
 // GetContent opens the media object for streaming. Access control is the caller's job.

@@ -131,16 +131,6 @@ func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
 	return nil
 }
 
-func (r *fakeUserRepo) SetAvatar(_ context.Context, id int64, url string) (domain.User, error) {
-	phone, u, ok := r.find(id)
-	if !ok {
-		return domain.User{}, domain.ErrNotFound
-	}
-	u.AvatarURL = url
-	r.byPhone[phone] = u
-	return u, nil
-}
-
 func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.User, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
@@ -161,7 +151,7 @@ func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (do
 	return u, nil
 }
 
-func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string, preview []byte) (domain.ProfilePhoto, error) {
 	phone, u, ok := r.find(userID)
 	if !ok {
 		return domain.ProfilePhoto{}, domain.ErrNotFound
@@ -170,6 +160,7 @@ func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, vid
 	r.nextPhotoID++
 	r.photos[userID] = append(r.photos[userID], p)
 	u.AvatarURL = url
+	u.AvatarPreview = preview
 	r.byPhone[phone] = u
 	return p, nil
 }

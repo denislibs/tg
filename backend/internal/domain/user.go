@@ -19,6 +19,10 @@ type User struct {
 	Bio         string
 	Birthday    *time.Time // nil when unset; year may be the no-year sentinel
 	AvatarURL   string
+	// AvatarPreview — stripped-превью аватарки (крошечный JPEG ~40px, формат —
+	// см. domain.Media.BlurPreview). nil у аватарок, поставленных до появления
+	// генерации (бэкфилла нет — клиент фолбэкает на градиент).
+	AvatarPreview []byte
 	// PhoneVisibility controls who may see the phone number: one of
 	// PhoneVisibilityNobody / Contacts / Everybody.
 	PhoneVisibility string

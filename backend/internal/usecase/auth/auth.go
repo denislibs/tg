@@ -34,6 +34,7 @@ type Interactor struct {
 	pub      EventPublisher     // optional: realtime user_update fan-out
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
+	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
@@ -162,6 +163,7 @@ func (i *Interactor) SetMailer(m Mailer)                         { i.mail = m }
 func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
+func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
 
 // SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
 // (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.
