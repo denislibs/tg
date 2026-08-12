@@ -14,7 +14,7 @@ import { gradientFor } from '../../core/dialogToChat'
 import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/format/dayLabel'
 import { serviceMsgSegs, type ServiceSeg } from '../../core/serviceMsg'
-import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
@@ -367,9 +367,11 @@ function serviceSeg(sg: ServiceSeg, key: number, chatId: number | undefined, fee
 // Круглая миниатюра нового фото группы под сервисной пилюлей (tweb bubble
 // service .bubble-service-media-avatar-container: аватар-кружок, клик → просмотр).
 function ServicePhoto({ mediaId, onOpen }: { mediaId: number; onOpen: FeedFns['openLightbox'] }) {
-  useMediaTokenVersion()
+  // Task 7: URL — воркерным конвейером (useMediaUrl), синхронно из зеркала при
+  // повторном рендере.
+  const url = useMediaUrl(mediaId)
   const ref = useRef<HTMLDivElement>(null)
-  if (!hasMediaToken()) return null
+  if (!url) return null
   return (
     <div
       ref={ref}
@@ -378,7 +380,7 @@ function ServicePhoto({ mediaId, onOpen }: { mediaId: number; onOpen: FeedFns['o
       role="button"
       tabIndex={0}
     >
-      <img src={mediaContentUrl(mediaId)} alt="" loading="lazy" decoding="async" />
+      <img src={url} alt="" loading="lazy" decoding="async" />
     </div>
   )
 }

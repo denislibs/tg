@@ -48,6 +48,7 @@ function Row({ peer, active, onPick }: { peer: Peer; active: boolean; onPick: (p
         className={`${BASE}-avatar ${OWN}-avatar`}
         background={gradientFor(peer.id)}
         src={avatarSrc}
+        preview={peer.avatarPreview}
         text={name.charAt(0).toUpperCase()}
         size={30}
       />

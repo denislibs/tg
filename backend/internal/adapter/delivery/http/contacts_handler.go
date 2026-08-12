@@ -30,6 +30,7 @@ func contactJSON(c domain.Contact) map[string]any {
 		"share_phone":      c.SharePhone,
 		"username":         username,
 		"avatar_url":       c.AvatarURL,
+		"avatar_preview":   c.AvatarPreview,
 		"phone":            c.Phone,
 		"display_name":     c.DisplayName,
 		"has_custom_photo": c.HasCustomPhoto,

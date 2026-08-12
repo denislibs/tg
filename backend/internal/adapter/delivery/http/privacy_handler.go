@@ -157,7 +157,8 @@ func (h *PrivacyHandler) Profile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": p.ID, "username": username,
 		"first_name": p.FirstName, "last_name": p.LastName, "display_name": p.DisplayName,
-		"bio": p.Bio, "birthday": p.Birthday, "avatar_url": p.AvatarURL, "phone": p.Phone,
+		"bio": p.Bio, "birthday": p.Birthday, "avatar_url": p.AvatarURL,
+		"avatar_preview": p.AvatarPreview, "phone": p.Phone,
 		"verified": p.Verified, "premium": p.Premium, "emoji_status": p.EmojiStatus,
 		"is_bot": p.IsBot, "is_blocked": p.IsBlocked,
 		"calls_available": p.CallsAvailable, "can_message": p.CanMessage,

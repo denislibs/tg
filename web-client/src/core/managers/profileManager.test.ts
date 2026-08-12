@@ -140,7 +140,7 @@ describe('ProfileManager.addPhoto', () => {
     return {
       id: RAW.id, phone: RAW.phone, username: RAW.username, firstName: RAW.first_name, lastName: RAW.last_name,
       displayName: RAW.display_name, bio: RAW.bio, birthday: RAW.birthday, avatarUrl: RAW.avatar_url,
-      phoneVisibility: RAW.phone_visibility as 'nobody', premium: false, emojiStatus: '',
+      avatarPreview: '', phoneVisibility: RAW.phone_visibility as 'nobody', premium: false, emojiStatus: '',
     }
   }
 })

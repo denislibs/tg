@@ -44,10 +44,13 @@ type DialogPeer struct {
 	ID          int64
 	DisplayName string
 	AvatarURL   string
-	Verified    bool   // official/service account (blue check)
-	Premium     bool   // Telegram Premium subscriber (gold star badge)
-	EmojiStatus string // unicode emoji shown after the name ("" when unset)
-	IsBot       bool   // бот: клиент скрывает звонок и не даёт добавить в контакты/группу/секрет
+	// AvatarPreview — stripped-превью аватарки (см. domain.User.AvatarPreview);
+	// nil у старых аватарок и когда аватар скрыт privacy/подменён личным фото.
+	AvatarPreview []byte
+	Verified      bool   // official/service account (blue check)
+	Premium       bool   // Telegram Premium subscriber (gold star badge)
+	EmojiStatus   string // unicode emoji shown after the name ("" when unset)
+	IsBot         bool   // бот: клиент скрывает звонок и не даёт добавить в контакты/группу/секрет
 }
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
@@ -105,6 +108,9 @@ type Dialog struct {
 	// PhotoURL is the group/channel photo content path ("" when unset; private
 	// chats carry the peer's avatar in Peer instead).
 	PhotoURL string
+	// PhotoPreview — stripped-превью фото группы/канала (media.blur_preview по
+	// chats.photo_media_id); nil, если фото нет или превью ещё не сгенерировано.
+	PhotoPreview []byte
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 	// AutoDeletePeriod — период автоудаления сообщений чата в секундах (0 — выкл).
@@ -239,7 +245,9 @@ type UserCard struct {
 	DisplayName string
 	FirstName   string
 	AvatarURL   string
-	Phone       string
+	// AvatarPreview — stripped-превью аватарки (см. domain.User.AvatarPreview).
+	AvatarPreview []byte
+	Phone         string
 }
 
 // ShortName is the name Telegram uses in compact contexts (chat-list preview

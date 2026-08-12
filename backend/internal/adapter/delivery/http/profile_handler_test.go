@@ -94,9 +94,41 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 		t.Fatalf("expected 409, got %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Avatar set stores the media content path.
+	// Avatar set stores the media content path. Превьюер не подключён (медиа в
+	// этих тестах не поднимается) — avatar_preview null, ответ не ломается (то же
+	// поведение у старых аватарок без превью).
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 42}, token)
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"avatar_url":"/media/42/content"`)) {
 		t.Fatalf("set avatar: %d %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"avatar_preview":null`)) {
+		t.Fatalf("avatar_preview absent/non-null without previewer: %s", rec.Body.String())
+	}
+}
+
+// httpFakePreviewer — AvatarPreviewer для HTTP-теста: фиксированное stripped-превью.
+type httpFakePreviewer struct{ preview []byte }
+
+func (p httpFakePreviewer) StrippedPreview(context.Context, int64) ([]byte, error) {
+	return p.preview, nil
+}
+
+// С подключённым превьюером установка аватарки кладёт stripped-превью в DTO
+// (base64 в JSON) — и в ответ PUT /me/avatar, и в последующий GET /me.
+func TestSetAvatarPreview_HTTP(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	authUC := newAuthUC(pool)
+	authUC.SetAvatarPreviewer(httpFakePreviewer{preview: []byte{0xff, 0xd8, 0xff, 0xe0, 5}})
+	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	token, _ := signInToken(t, h, "+79990000021")
+
+	const wantB64 = `"avatar_preview":"/9j/4AU="` // base64([ff d8 ff e0 05])
+	rec := reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 7}, token)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(wantB64)) {
+		t.Fatalf("set avatar with preview: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = reqJSONAuth(t, h, http.MethodGet, "/me", nil, token)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(wantB64)) {
+		t.Fatalf("GET /me preview: %d %s", rec.Code, rec.Body.String())
 	}
 }

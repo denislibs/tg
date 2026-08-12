@@ -5,6 +5,9 @@
 // blob-objectURL с верным mime. Кэшируем по mediaId, чтобы бабл и лайтбокс делили
 // один blob-URL (без повторной сети и без гонок revoke). URL живёт до перезагрузки
 // страницы — как secretUrlCache для аудио.
+// mediaContentUrl здесь — БАЙТЫ шифртекста (E2E): расшифровка возможна только на
+// вкладке (ключи чата живут в её сторе), воркерный конвейер downloadMediaURL
+// (Task 7) отдал бы <img> нечитаемый ciphertext — сознательно не переводим.
 import { decryptMedia } from './crypto'
 import { mediaContentUrl, primeMediaToken } from '../mediaUrl'
 

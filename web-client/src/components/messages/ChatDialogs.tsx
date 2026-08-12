@@ -92,7 +92,7 @@ function ShareRow({ chat, sub, selected, onToggle }: { chat: Chat; sub: string; 
   return (
     <div className={classNames(s.shareRow, selected ? s.shareRowSel : '')} onClick={onToggle}>
       <div className={s.shareAvatar}>
-        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size="md" />
+        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size="md" />
         {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
       </div>
       <div className={s.pickerBody}>
@@ -109,7 +109,7 @@ function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolea
   return (
     <div className={s.recent} onClick={onToggle}>
       <div className={classNames(s.recentAvatar, selected ? s.recentAvatarSel : '')}>
-        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size={54} />
+        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size={54} />
         {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
       </div>
       <Text noWrap size={12.5} color="var(--primary-text-color)" className={s.recentName}>{chat.name}</Text>

@@ -12,7 +12,7 @@ import EmoticonsTab, { EmoticonsSearch } from './EmoticonsTab'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { useGifsPanel } from '../../core/hooks/useGifs'
 import type { GifItem } from '../../core/gifs'
-import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useT } from '../../i18n'
 // Одно глобальное правило геометрии ячейки `.gif.grid-item` — импорт ради
 // сайд-эффекта, локальных классов в файле нет (см. комментарий там).
@@ -24,26 +24,27 @@ const ROW_H = 117
 const GifCell = memo(function GifCell({
   g,
   visible,
-  tokenReady,
   onPick,
   onMenu,
   register,
 }: {
   g: GifItem
   visible: boolean
-  tokenReady: boolean
   onPick: (g: GifItem) => void
   onMenu: (g: GifItem, x: number, y: number) => void
   register: (key: string, el: HTMLElement | null) => void
 }) {
+  // Task 7: сохранённые GIF — воркерным конвейером (useMediaUrl); скачивание
+  // запускает только видимая ячейка (ленивость IO сохранена: id → null).
+  const savedUrl = useMediaUrl(visible && g.mediaId != null ? g.mediaId : null)
   let content = null
   if (visible) {
     if (g.mediaId != null) {
       // Сохранённые: наш сервер; mime решает тег (mp4-гифка ↔ настоящий image/gif)
-      if (tokenReady) {
+      if (savedUrl) {
         content = g.mime === 'image/gif'
-          ? <img className="media-photo" src={mediaContentUrl(g.mediaId)} alt="" draggable={false} />
-          : <video className="media-video" src={mediaContentUrl(g.mediaId)} muted loop autoPlay playsInline />
+          ? <img className="media-photo" src={savedUrl} alt="" draggable={false} />
+          : <video className="media-video" src={savedUrl} muted loop autoPlay playsInline />
       }
     } else {
       // Tenor: mp4 легче gif, играет напрямую с CDN
@@ -65,14 +66,12 @@ const GifCell = memo(function GifCell({
 function Masonry({
   items,
   visible,
-  tokenReady,
   onPick,
   onMenu,
   register,
 }: {
   items: GifItem[]
   visible: ReadonlySet<string>
-  tokenReady: boolean
   onPick: (g: GifItem) => void
   onMenu: (g: GifItem, x: number, y: number) => void
   register: (key: string, el: HTMLElement | null) => void
@@ -80,7 +79,7 @@ function Masonry({
   return (
     <div className="gifs-masonry">
       {items.map((g) => (
-        <GifCell key={g.key} g={g} visible={visible.has(g.key)} tokenReady={tokenReady} onPick={onPick} onMenu={onMenu} register={register} />
+        <GifCell key={g.key} g={g} visible={visible.has(g.key)} onPick={onPick} onMenu={onMenu} register={register} />
       ))}
     </div>
   )
@@ -100,8 +99,6 @@ export default function GifsTab({
   onPick: (g: GifItem) => void
 }) {
   const t = useT()
-  useMediaTokenVersion() // URL сохранённых GIF строятся синхронно из токена
-  const tokenReady = hasMediaToken()
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const panel = useGifsPanel(open && active, query)
@@ -193,7 +190,7 @@ export default function GifsTab({
             ? panel.results!.length
               ? (
                 <div className="emoticons-categories-container emoticons-has-search animated-item">
-                  <Masonry items={panel.results!} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+                  <Masonry items={panel.results!} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
                   <div ref={sentinelRef} style={{ height: 1 }} />
                 </div>
               )
@@ -204,13 +201,13 @@ export default function GifsTab({
         {panel.saved.length > 0 && (
           <div className="emoji-category">
             <div className="category-title">{t('Saved GIFs')}</div>
-            <Masonry items={panel.saved} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+            <Masonry items={panel.saved} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
           </div>
         )}
         {panel.featured.length > 0 && (
           <div className="emoji-category">
             <div className="category-title">{t('Trending')}</div>
-            <Masonry items={panel.featured} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+            <Masonry items={panel.featured} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
           </div>
         )}
         {empty && <span className="emoticons-not-found">{t('No GIFs found')}</span>}

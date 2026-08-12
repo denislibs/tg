@@ -73,6 +73,10 @@ type ProcessResult struct {
 	Title, Performer string
 	// Thumb is a generated jpeg thumbnail/poster (nil for non-visual media).
 	Thumb []byte
+	// Stripped — stripped-превью уровня Telegram: крошечный JPEG (максимальная
+	// сторона ~40px, сотни байт), едет прямо в payload как blur_preview.
+	// nil для невизуального медиа.
+	Stripped []byte
 }
 
 // ProcessedMeta is the persisted form of a ProcessResult: the thumbnail is already
@@ -82,6 +86,8 @@ type ProcessedMeta struct {
 	Width, Height, Duration int
 	Title, Performer        string
 	ThumbKey                string
+	// BlurPreview — сгенерированное stripped-превью (см. ProcessResult.Stripped).
+	BlurPreview []byte
 }
 
 // MediaProcessor probes and derives assets from an uploaded original (ffmpeg).
@@ -115,15 +121,16 @@ type ObjectStorage interface {
 }
 
 // UploadInput describes a media object the client is about to upload.
+// blur_preview клиент НЕ присылает — stripped-превью генерирует сервер при
+// фоновой обработке (см. Interactor.process).
 type UploadInput struct {
-	OwnerID     int64
-	Mime        string
-	Size        int64
-	Width       int
-	Height      int
-	Duration    int
-	BlurPreview []byte
-	FileName    string
+	OwnerID  int64
+	Mime     string
+	Size     int64
+	Width    int
+	Height   int
+	Duration int
+	FileName string
 	// Waveform — пики голосового (5-бит, посчитаны клиентом), nil для остальных.
 	Waveform []byte
 }

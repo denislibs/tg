@@ -4,7 +4,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import Text from '../../../shared/ui/Text'
 import TgIcon from '../../TgIcon'
-import { mediaContentUrl } from '../../../core/mediaUrl'
+import { useMediaUrl } from '../../../core/hooks/useMediaUrl'
 import type { ConvMsg } from '../../../data'
 import { useTranscription, TranscribeButton, TranscribedText } from '../Transcription'
 import { type Ctx } from './primitives'
@@ -53,6 +53,9 @@ export function RoundVideoRealBubble({ m, time, onPlayed, onSoundPlay }: {
   onSoundPlay?: (el: HTMLVideoElement) => void
 }) {
   const ref = useRef<HTMLVideoElement>(null)
+  // Кружок скачивается целиком воркерным конвейером (Task 7): файл маленький,
+  // blob:-URL из зеркала — синхронно при повторном рендере, как у гифок.
+  const src = useMediaUrl(m.mediaId ?? null)
   const [sound, setSound] = useState(false)
   const [paused, setPaused] = useState(false)
   const [progress, setProgress] = useState(0) // 0..1, только в sound-режиме
@@ -118,7 +121,7 @@ export function RoundVideoRealBubble({ m, time, onPlayed, onSoundPlay }: {
         <video
           ref={ref}
           className={s.roundRealVideo}
-          src={m.mediaId != null ? mediaContentUrl(m.mediaId) : undefined}
+          src={src || undefined}
           playsInline
           muted
           loop

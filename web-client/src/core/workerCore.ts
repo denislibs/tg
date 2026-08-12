@@ -100,11 +100,16 @@ export function createWorkerCore() {
     // сброшенным, иначе получит прежний. Тот же порядок, что у tweb: `clear()`
     // в `apiManager.logOut()` стирает ключи/кэши и лишь потом диспатчит
     // `logging_out` (`appManagers/apiManager.ts:289-335`).
-    onLoggingOut: (e) => { media.resetToken(); broadcast(RT.loggingOut, e) },
+    // Конвейер downloadMediaURL (Task 6) сбрасывается тем же порядком и по той
+    // же причине: кэш-контекст с blob:-URL и корзина cachedFiles — тоже медиа
+    // конкретного пользователя, пережить переход они не могут (закрывает
+    // остаточный риск PR #191). Синхронная часть (контекст, revoke, поколение)
+    // — ДО broadcast; деструкция корзины внутри — void (кадр диска не ждёт).
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии.
-    onLoggedIn: (e) => { media.resetToken(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -126,6 +131,10 @@ export function createWorkerCore() {
     // запрос) и обновляется (свой таймер за минуту до истечения), — веер тот же,
     // что у rt:me. Витрина (core/mediaUrl.ts) своего расписания не держит.
     onToken: (t) => broadcast(RT.mediaToken, t),
+    // Task 6: сминченный воркером objectURL — веер тот же, что у rt:media_token.
+    // Витрина (core/mediaCache.ts) зеркалит через storeProjection; проводка
+    // пином — core/workerCore.mediaUrl.test.ts.
+    onMediaUrl: (e) => broadcast(RT.mediaUrl, e),
     fileDownload,
     fileUpload,
   })

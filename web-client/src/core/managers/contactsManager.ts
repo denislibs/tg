@@ -11,6 +11,8 @@ export interface Contact {
   sharePhone: boolean
   username?: string
   avatarUrl: string
+  /** stripped-превью аватарки (base64 JPEG, `avatar_preview`; '' у старых аватарок) */
+  avatarPreview: string
   phone: string
   displayName: string
   /** у владельца задано личное фото этого контакта (avatarUrl уже подменён им) */
@@ -26,6 +28,7 @@ interface RawContact {
   share_phone: boolean
   username?: string | null
   avatar_url: string
+  avatar_preview?: string | null
   phone: string
   display_name: string
   has_custom_photo?: boolean
@@ -40,6 +43,7 @@ const mapContact = (c: RawContact): Contact => ({
   sharePhone: c.share_phone,
   username: c.username ?? undefined,
   avatarUrl: c.avatar_url,
+  avatarPreview: c.avatar_preview ?? '',
   phone: c.phone,
   displayName: c.display_name,
   hasCustomPhoto: !!c.has_custom_photo,

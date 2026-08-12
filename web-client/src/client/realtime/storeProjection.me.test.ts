@@ -15,7 +15,7 @@ import { registerStoreProjection } from './storeProjection'
 
 const ME: User = {
   id: 7, phone: '+79990000001', username: 'denis_m', firstName: 'Денис', lastName: '',
-  displayName: 'Денис', bio: '', birthday: null, avatarUrl: '', phoneVisibility: 'contacts',
+  displayName: 'Денис', bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts',
   premium: false, emojiStatus: '',
 }
 

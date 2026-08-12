@@ -9,7 +9,7 @@ import StoryReadOnlyPreview from './StoryReadOnlyPreview'
 import type { StoryItem } from '../core/managers/storiesManager'
 import s from './AddStorySheet.module.scss'
 
-// Плитка архива: грузит превью медиа истории (thumbUrl) и показывает бейджи
+// Плитка архива: грузит превью медиа истории (useMediaThumb) и показывает бейджи
 // pinned/edited поверх.
 function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
   const url = useMediaThumb(story.mediaId)

@@ -30,20 +30,29 @@ type UserRepo interface {
 	// is freed, personal fields are cleared and deleted_at is stamped. Message
 	// history is preserved and shown as coming from a "Deleted Account".
 	SoftDelete(ctx context.Context, id int64) error
-	SetAvatar(ctx context.Context, id int64, url string) (domain.User, error)
 	// SetEmojiStatus writes the user's emoji status ("" clears it).
 	SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error)
 	// SetPremium flips the Telegram Premium flag.
 	SetPremium(ctx context.Context, id int64, premium bool) (domain.User, error)
 	// AddProfilePhoto inserts a gallery photo and, in the same transaction,
-	// promotes it to the user's current avatar (users.avatar_url).
-	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+	// promotes it to the user's current avatar (users.avatar_url +
+	// users.avatar_preview). preview — stripped-превью аватарки (nil, если
+	// сгенерировать не удалось — колонки останутся NULL).
+	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string, preview []byte) (domain.ProfilePhoto, error)
 	// ListProfilePhotos returns the user's gallery, newest first.
 	ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error)
 	// DeleteProfilePhoto removes a photo owned by userID; if it was the current
 	// avatar, avatar_url falls back to the next most-recent photo (or ""). It
 	// returns the resulting avatar_url.
 	DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (newAvatarURL string, err error)
+}
+
+// AvatarPreviewer возвращает stripped-превью загруженного медиа (крошечный JPEG
+// ~40px), генерируя и сохраняя его по требованию, если фоновая обработка ещё не
+// успела. Реализуется media usecase. Optional — без него avatar_preview остаётся
+// NULL (клиент фолбэкает на градиент).
+type AvatarPreviewer interface {
+	StrippedPreview(ctx context.Context, mediaID int64) ([]byte, error)
 }
 
 // PremiumRepo persists Telegram Premium subscriptions (clone: mock checkout).

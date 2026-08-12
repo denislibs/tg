@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -289,7 +290,7 @@ func TestProcess_PersistsAudioTags(t *testing.T) {
 	select {
 	case got := <-repo.processed:
 		want := ProcessedMeta{Duration: 139, Title: "Track One", Performer: "denis1488"}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("UpdateProcessed = %+v, want %+v", got, want)
 		}
 	case <-time.After(2 * time.Second):
@@ -315,6 +316,76 @@ func TestProcess_NoTags(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("background processing did not persist anything")
+	}
+}
+
+// Stripped-превью (blur_preview) из процессора доезжает до репозитория при
+// фоновой обработке — вместе с размерами.
+func TestProcess_PersistsStripped(t *testing.T) {
+	stripped := []byte{0xff, 0xd8, 0xff, 0xe0, 7}
+	repo := &fakeRepo{
+		m:         domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/x", Mime: "image/jpeg", Size: 5},
+		processed: make(chan ProcessedMeta, 1),
+	}
+	s := New(repo, newFakeStorage(), fakeProcessor{res: ProcessResult{
+		Width: 800, Height: 600, Stripped: stripped,
+	}})
+	if err := s.PutContent(context.Background(), 1, 7, bytes.NewReader([]byte("12345")), 5); err != nil {
+		t.Fatalf("PutContent: %v", err)
+	}
+	select {
+	case got := <-repo.processed:
+		if !bytes.Equal(got.BlurPreview, stripped) {
+			t.Fatalf("BlurPreview = %v, want %v", got.BlurPreview, stripped)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("background processing did not persist anything")
+	}
+}
+
+// StrippedPreview: уже записанное превью отдаётся из строки без обращения к
+// хранилищу; пустое — генерируется синхронно и сохраняется; без процессора —
+// мягкая деградация в nil (без ошибки).
+func TestStrippedPreview(t *testing.T) {
+	ctx := context.Background()
+	stripped := []byte{0xff, 0xd8, 9}
+
+	// 1) превью уже в строке — процессор и хранилище не нужны вовсе.
+	repo := newFakeRepo()
+	repo.put(1, domain.Media{ID: 1, ObjectKey: "7/x", Mime: "image/jpeg", BlurPreview: stripped})
+	s := New(repo, newFakeStorage(), nil)
+	got, err := s.StrippedPreview(ctx, 1)
+	if err != nil || !bytes.Equal(got, stripped) {
+		t.Fatalf("cached StrippedPreview = %v, %v", got, err)
+	}
+
+	// 2) превью нет — генерируется из оригинала и уезжает в UpdateProcessed.
+	repo = newFakeRepo()
+	repo.processed = make(chan ProcessedMeta, 1)
+	repo.put(2, domain.Media{ID: 2, ObjectKey: "7/y", Mime: "image/jpeg"})
+	st := newFakeStorage()
+	st.blobs["7/y"] = []byte("jpegbytes")
+	s = New(repo, st, fakeProcessor{res: ProcessResult{Width: 40, Stripped: stripped}})
+	got, err = s.StrippedPreview(ctx, 2)
+	if err != nil || !bytes.Equal(got, stripped) {
+		t.Fatalf("generated StrippedPreview = %v, %v", got, err)
+	}
+	select {
+	case meta := <-repo.processed:
+		if !bytes.Equal(meta.BlurPreview, stripped) {
+			t.Fatalf("persisted BlurPreview = %v, want %v", meta.BlurPreview, stripped)
+		}
+	default:
+		t.Fatal("generated preview was not persisted")
+	}
+
+	// 3) процессора нет — nil без ошибки (аватарка ставится без превью).
+	repo = newFakeRepo()
+	repo.put(3, domain.Media{ID: 3, ObjectKey: "7/z", Mime: "image/jpeg"})
+	s = New(repo, newFakeStorage(), nil)
+	got, err = s.StrippedPreview(ctx, 3)
+	if err != nil || got != nil {
+		t.Fatalf("no-processor StrippedPreview = %v, %v (want nil, nil)", got, err)
 	}
 }
 

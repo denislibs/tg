@@ -8,7 +8,7 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { hexToRgbTriplet } from '../peerColor'
-import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import TgIcon from '../TgIcon'
 import RealMediaBubble from './RealMediaBubble'
 import SecretMediaBubble from './SecretMediaBubble'
@@ -167,11 +167,12 @@ function replyColorVar(out: boolean, color?: string): CSSProperties {
 const REPLY_THUMB_TYPES = new Set(['photo', 'video', 'roundVideo', 'sticker', 'gif', 'album'])
 
 // Small rounded thumbnail of the replied-to message's photo/video, shown in the
-// quote box (Telegram). Synchronous URL via the main-thread media token.
+// quote box (Telegram). Task 7: URL — воркерным конвейером (useMediaUrl),
+// синхронно из зеркала при повторном рендере.
 function ReplyThumb({ id }: { id: number }) {
-  useMediaTokenVersion()
-  if (!hasMediaToken()) return null
-  return <img src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
+  const url = useMediaUrl(id, { thumb: true })
+  if (!url) return null
+  return <img src={url} alt="" loading="lazy" decoding="async" />
 }
 
 export interface MessageContentProps {

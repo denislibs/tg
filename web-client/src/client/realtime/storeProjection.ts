@@ -15,6 +15,7 @@ import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
+import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
@@ -50,6 +51,11 @@ const APPLY: Projector = {
   // обновлении). core/mediaUrl.ts — зеркало: applyMediaToken кладёт снимок и
   // будит медиа-баблы, чтобы те пересобрали <img src> со свежим токеном.
   [RT.mediaToken]: (t) => { applyMediaToken(t) },
+  // Task 6: objectURL скачанного медиа — воркер единственный владелец
+  // (mediaManager::downloadMediaURL публикует при каждом созданном URL).
+  // core/mediaCache.ts — зеркало: applyMediaUrl кладёт снимок, cachedMediaUrl
+  // отдаёт его синхронно на рендере (потребители — Task 7).
+  [RT.mediaUrl]: (e) => { applyMediaUrl(e) },
   // Обратная сторона той же собственности: активная сессия ушла (логаут,
   // переезд на другой аккаунт, отозванная сессия) — снимок в зеркале подписан
   // на ПРОШЛОГО пользователя и живёт ещё до 15 минут. Владелец свой токен
@@ -60,7 +66,9 @@ const APPLY: Projector = {
   // Парного [RT.loggedIn] здесь нет сознательно (у владельца он есть):
   // активный токен не появляется, не уйдя перед этим, — любой вход идёт с
   // экрана входа, куда вкладку привёл этот самый кадр, уже сбросивший зеркало.
-  [RT.loggingOut]: () => { resetMediaToken() },
+  // Второе зеркало того же кадра (Task 6): blob:-URL медиа — владелец их уже
+  // отозвал (resetDownloads), витрина обязана перестать их отдавать.
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).

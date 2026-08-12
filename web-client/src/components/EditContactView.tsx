@@ -82,7 +82,7 @@ export default function EditContactView({
         <div className={add.body}>
           {/* Аватар + исходное имя */}
           <div className={add.avatarBlock}>
-            <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
+            <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} preview={chat.avatarPreview} size="profile" />
             <Text size={22} weight={600} color="var(--primary-text-color)" style={{ marginTop: '16px' }}>{chat.name}</Text>
             <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '2px' }}>исходное имя</Text>
           </div>

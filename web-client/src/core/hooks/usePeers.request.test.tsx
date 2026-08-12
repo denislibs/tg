@@ -25,7 +25,7 @@ describe('usePeers — запрос недостающих карточек', ()
   beforeEach(() => { usePeersStore.setState({ byId: {} }) })
 
   it('спрашивает у воркера ровно те id, которых нет в сторе', async () => {
-    usePeersStore.setState({ byId: { 2: { id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '' } } })
+    usePeersStore.setState({ byId: { 2: { id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '', avatarPreview: '' } } })
     const asked: number[][] = []
     const managers = { peers: { fillMirror: async (ids: number[]) => { asked.push(ids) } } }
 

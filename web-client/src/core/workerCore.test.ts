@@ -319,7 +319,7 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
       // authManager) — camelCase, не сырые snake_case-поля с проволоки.
       core.registry.auth.me = async () => ({
         id: 1, phone: '+7', username: null, firstName: '', lastName: '', displayName: 'Д',
-        bio: '', birthday: null, avatarUrl: '/old.jpg', phoneVisibility: 'contacts',
+        bio: '', birthday: null, avatarUrl: '/old.jpg', avatarPreview: '', phoneVisibility: 'contacts',
         premium: false, emojiStatus: '',
       })
 
@@ -434,7 +434,7 @@ describe('createWorkerCore(): карточки пиров — воркер пу�
 
       await core.registry.peers.fillMirror([2])
 
-      expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' }] }] }])
+      expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }] }] }])
     } finally {
       vi.unstubAllGlobals()
     }

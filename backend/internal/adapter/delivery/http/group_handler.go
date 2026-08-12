@@ -680,11 +680,11 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
-		avatar := c.AvatarURL
+		avatar, preview := c.AvatarURL, c.AvatarPreview
 		if h.privacy != nil && !photoOK[c.ID] && c.ID != viewer.ID {
-			avatar = ""
+			avatar, preview = "", nil // превью гасится вместе со скрытым аватаром
 		}
-		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": avatar})
+		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": avatar, "avatar_preview": preview})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }

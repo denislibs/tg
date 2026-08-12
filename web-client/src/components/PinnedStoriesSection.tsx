@@ -6,7 +6,7 @@ import { usePinnedStories } from '../core/hooks/usePinnedStories'
 import StoryReadOnlyPreview from './StoryReadOnlyPreview'
 import type { StoryItem } from '../core/managers/storiesManager'
 
-// Плитка закреплённой истории: превью медиа (thumbUrl).
+// Плитка закреплённой истории: превью медиа (useMediaThumb).
 function Tile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
   const url = useMediaThumb(story.mediaId)
   return (

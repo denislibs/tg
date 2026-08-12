@@ -111,6 +111,9 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     avatarText: name.charAt(0).toUpperCase() || '?',
     avatarEmoji: isSaved ? 'saved' : isService ? 'tg-logo' : undefined,
     avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
+    // Превью — тем же правилом, что и сам URL: приватный чат несёт
+    // peer.avatarPreview, группа/канал — photoPreview (media.blur_preview).
+    avatarPreview: isSaved || isService ? undefined : d.peer?.avatarPreview || d.photoPreview || undefined,
     peerId: d.peer?.id,
     isBot: d.peer?.isBot || undefined,
     verified: d.peer?.verified || undefined,

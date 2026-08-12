@@ -2,8 +2,9 @@
 // Шаред-медиа секция панели профиля (порт tweb sidebarRight/tabs/sharedMedia):
 // липкий таб-ряд + скользящий контент по табам (Участники/Чаты/Подарки и
 // непустые медиа-табы Media/Files/Links/Music/Voice). Данные тянет per-filter
-// из mediaHistory, глобальный плеер — из audioStore, просмотрщик — MediaLightbox.
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+// из mediaHistory, глобальный плеер — из audioStore, просмотрщик — vanilla-
+// вьювер (mediaViewer/openMediaViewer, Task 16).
+import { useEffect, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
@@ -20,17 +21,17 @@ import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
-import { mediaContentUrl, mediaThumbUrl, useMediaTokenVersion } from '../../core/mediaUrl'
+import MediaGridThumb from '../MediaGridThumb'
 import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
 import type { GiftInfo } from '../../core/managers/starsManager'
 import type { Message } from '../../core/models'
 import type { OpenPeer } from '../../data'
-import type { LightboxItem } from '../messages/MediaLightbox'
+import { usePeersStore } from '../../stores/peersStore'
+import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
+import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import s from '../UserInfoPanel.module.scss'
-
-const MediaLightbox = lazy(() => import('../messages/MediaLightbox'))
 
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
 const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
@@ -64,10 +65,6 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
-  // Ре-рендер при (пере)прайме медиа-токена — иначе превью сетки рендерятся с
-  // пустым/протухшим token'ом (401) и залипают серыми плейсхолдерами (как в фиде:
-  // RealMediaBubble/AlbumGrid тоже подписаны на useMediaTokenVersion).
-  useMediaTokenVersion()
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
@@ -197,31 +194,27 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(chatId, m.id)
   }
 
-  // Просмотрщик медиа — тот же MediaLightbox, что в чате (клик по тайлу).
-  const [lightbox, setLightbox] = useState<{
-    items: LightboxItem[]
-    index: number
-    originRect: { top: number; left: number; width: number; height: number }
-    originSrc?: string
-    originEl: HTMLElement
-  } | null>(null)
-  const openMedia = (index: number, e: React.MouseEvent<HTMLDivElement>) => {
+  // Просмотрщик медиа — тот же vanilla-вьювер, что в чате (клик по тайлу,
+  // Task 16). items — из сообщений таба (messageToViewerItem); имена авторов —
+  // из зеркала карточек пиров (peersStore), фолбэков чата у панели нет.
+  // jump/forward/delete не пробрасываются — их не было и у старого лайтбокса.
+  const openMedia = (rawIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
     const list = (msgs ?? []).filter((m) => m.mediaId != null)
-    const items: LightboxItem[] = list.map((m) => ({
-      mediaId: m.mediaId as number, type: m.type, date: when(m),
-      // подпись к медиа (tweb `.media-viewer-caption`)
-      caption: m.text || undefined, captionEntities: m.entities,
-      width: m.mediaWidth, height: m.mediaHeight,
-    }))
+    // индекс грида — по msgs целиком; во вьювер идёт индекс в отфильтрованном
+    const clicked = msgs?.[rawIndex]
+    const index = clicked ? list.indexOf(clicked) : -1
+    if (index < 0) return
+    const peersById = usePeersStore.getState().byId
+    const ctx = {
+      meId,
+      meName: useChatsStore.getState().me?.displayName,
+      peers: new Map(list.map((m) => [m.senderId, peersById[m.senderId]]).filter((p): p is [number, (typeof peersById)[number]] => !!p[1])),
+      lang,
+    }
     const el = e.currentTarget
-    const r = el.getBoundingClientRect()
-    const img = el.querySelector('img')
-    el.style.visibility = 'hidden' // как в чате: оригинал прячется под клоном
-    setLightbox({
-      items, index,
-      originRect: { top: r.top, left: r.left, width: r.width, height: r.height },
-      originSrc: img?.currentSrc || img?.src, originEl: el,
-    })
+    const items = list.map((m, i) => messageToViewerItem(m, ctx, i === index ? el : null))
+    // порядок таба — newest-first (REST), reverse не ставим: next = older ✓
+    void openMediaViewer({ items, index, target: el })
   }
   const empty = (
     <Text size={14} color="var(--secondary-text-color)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
@@ -385,28 +378,19 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
       {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
 
+      {/* tweb-классы `grid-item` (ячейка грида — appSearchSuper.ts:878) и
+          `video-time` (плашку длительности в tweb строит wrapVideo) — контекст
+          hideFloatings вьювера (mediaViewer/base.ts FLOATING_CONTEXTS): плашка
+          гаснет на полёте мувера. Визуал остаётся на классах модуля (стили tweb
+          `.video-time` скоуплены под .bubble и сюда не дотягиваются). */}
       {tab === 'Media' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaGrid}>
           {msgs.map((m, i) => (
-            <div key={m.id} className={s.mediaTile} onClick={(e) => openMedia(i, e)}>
+            <div key={m.id} className={`grid-item ${s.mediaTile}`} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && (
-                <img
-                  className={s.tileImg}
-                  src={mediaThumbUrl(m.mediaId)}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  onError={(e) => {
-                    // превью ещё не сгенерировано → полный контент
-                    const img = e.currentTarget
-                    if (m.mediaId != null && !img.dataset.fb) {
-                      img.dataset.fb = '1'
-                      img.src = mediaContentUrl(m.mediaId)
-                    }
-                  }}
-                />
+                <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
               )}
-              {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
+              {m.type === 'video' && <span className={`video-time ${s.tileDuration}`}>{fmtDur(m.mediaDuration)}</span>}
             </div>
           ))}
         </div>
@@ -482,21 +466,6 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       {/* sentinel infinite scroll медиа-табов: виден → догрузка следующей страницы */}
       {filter && msgs != null && hasMore && <div ref={sentinelRef} className={s.moreSentinel} />}
       </TabSlide>
-
-      {/* вне TabSlide: transform слайда ломал бы position:fixed лайтбокса */}
-      {lightbox && (
-        <Suspense fallback={null}>
-          <MediaLightbox
-            items={lightbox.items}
-            index={lightbox.index}
-            originRect={lightbox.originRect}
-            originSrc={lightbox.originSrc}
-            originEl={lightbox.originEl}
-            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-            onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
-          />
-        </Suspense>
-      )}
     </>
   )
 }

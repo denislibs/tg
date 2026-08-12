@@ -264,6 +264,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		row := map[string]any{
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
+			"photo_preview": d.PhotoPreview,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
 			"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
@@ -286,7 +287,8 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		if d.Peer != nil {
 			row["peer"] = map[string]any{
 				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
-				"verified": d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
+				"avatar_preview": d.Peer.AvatarPreview,
+				"verified":       d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
 				"is_bot": d.Peer.IsBot,
 			}
 		}

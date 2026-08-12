@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -206,11 +207,32 @@ func (i *Interactor) SetUsername(ctx context.Context, id int64, raw string) (dom
 	return u, err
 }
 
+// avatarPreviewFor резолвит stripped-превью аватарки по её content-пути
+// "/media/{id}/content" (канонический формат, который строит delivery и под
+// который уже завязан media-access SQL). nil — превьюер не подключён, путь не
+// медийный или превью сгенерировать не удалось: аватарка ставится без превью
+// (мягкая деградация, как у остальных optional-зависимостей).
+func (i *Interactor) avatarPreviewFor(ctx context.Context, url string) []byte {
+	if i.previews == nil {
+		return nil
+	}
+	var mediaID int64
+	if _, err := fmt.Sscanf(url, "/media/%d/content", &mediaID); err != nil || mediaID <= 0 {
+		return nil
+	}
+	p, err := i.previews.StrippedPreview(ctx, mediaID)
+	if err != nil {
+		i.logf("[avatar] stripped preview for media %d: %v", mediaID, err)
+		return nil
+	}
+	return p
+}
+
 // SetAvatar stores the avatar URL (a /media/{id}/content path) for the user and
 // appends it to the profile-photo gallery so the two stay consistent (Telegram
 // keeps every avatar as a gallery photo). Returns the fresh user.
 func (i *Interactor) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
-	if _, err := i.users.AddProfilePhoto(ctx, id, url, ""); err != nil {
+	if _, err := i.users.AddProfilePhoto(ctx, id, url, "", i.avatarPreviewFor(ctx, url)); err != nil {
 		return domain.User{}, err
 	}
 	u, err := i.users.GetByID(ctx, id)
@@ -224,7 +246,7 @@ func (i *Interactor) SetAvatar(ctx context.Context, id int64, url string) (domai
 // current avatar. url/videoURL are already-converted /media/{id}/content paths
 // (the delivery layer does the media_id→url conversion, as SetAvatar does).
 func (i *Interactor) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
-	ph, err := i.users.AddProfilePhoto(ctx, userID, url, videoURL)
+	ph, err := i.users.AddProfilePhoto(ctx, userID, url, videoURL, i.avatarPreviewFor(ctx, url))
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
 			i.emitUserUpdate(ctx, u, true)

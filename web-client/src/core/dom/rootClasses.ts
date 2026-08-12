@@ -28,7 +28,7 @@
 // месте (`useChatScroll.ts`, лента чата) — класс `.scrollable` без своего
 // инстанса висит ещё примерно на 15 других скроллерах (`ChatList`,
 // `EmojiDropdown`/`EmoticonsTab`/`StickersTab`/`GifsTab`, `MentionsHelper`,
-// `StickersHelper`, `InlineResultsHelper`, `CountryInput`, `MediaLightbox`,
+// `StickersHelper`, `InlineResultsHelper`, `CountryInput`, медиавьювер,
 // `TopbarSearch`, `StoriesRow`, `Tabs`, …).
 //   • `custom-scroll` (Задача 4, ревью-блокер Б-2): в tweb безопасен, потому
 //     что КАЖДЫЙ `.scrollable`-узел рождён конструктором `Scrollable` и у

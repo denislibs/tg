@@ -86,6 +86,35 @@ describe('setTransition', () => {
     expect([...element.classList]).toEqual(['is-connecting', 'animating', 'forwards'])
   })
 
+  it('useRafs: запуск отложен на N кадров (tweb :38-48), фейковый кадр = 16 мс', () => {
+    const element = document.createElement('div')
+    setTransition({ element, className: 'is-visible', forwards: true, duration: 250, useRafs: 2 })
+    expect([...element.classList]).toEqual([])
+    vi.advanceTimersByTime(16)
+    expect([...element.classList]).toEqual([])
+    vi.advanceTimersByTime(16)
+    expect([...element.classList]).toEqual(['is-visible', 'forwards', 'animating'])
+  })
+
+  it('useRafs: повторный вызов отменяет подвешенный raf-запуск (tweb :27-32)', () => {
+    const element = document.createElement('div')
+    const first = vi.fn()
+    const second = vi.fn()
+    setTransition({ element, className: 'is-visible', forwards: true, duration: 250, useRafs: 1, onTransitionEnd: first })
+    setTransition({ element, className: 'is-visible', forwards: false, duration: 250, onTransitionEnd: second })
+    vi.advanceTimersByTime(16 + 250)
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+    expect([...element.classList]).toEqual([])
+  })
+
+  it('useRafs при выключенных анимациях не откладывает — синхронный проход', () => {
+    useSettingsStore.setState({ reduceMotion: true })
+    const element = document.createElement('div')
+    setTransition({ element, className: 'is-visible', forwards: true, duration: 250, useRafs: 2 })
+    expect([...element.classList]).toEqual(['is-visible', 'forwards'])
+  })
+
   it('при выключенных анимациях применяет конечное состояние синхронно', () => {
     useSettingsStore.setState({ reduceMotion: true })
     const element = document.createElement('div')

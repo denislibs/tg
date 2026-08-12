@@ -21,11 +21,13 @@ func NewMediaRepo(pool *pgxpool.Pool) *MediaRepo { return &MediaRepo{pool: pool}
 
 func (r *MediaRepo) Create(ctx context.Context, m domain.Media) (domain.Media, error) {
 	q := querier(ctx, r.pool)
+	// blur_preview не пишется при создании: stripped-превью генерирует фоновая
+	// обработка (UpdateProcessed), клиент его не присылает.
 	err := q.QueryRow(ctx,
-		`INSERT INTO media (owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, waveform)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		`INSERT INTO media (owner_id, bucket, object_key, mime, size, width, height, duration, file_name, waveform)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		 RETURNING id, created_at`,
-		m.OwnerID, m.Bucket, m.ObjectKey, m.Mime, m.Size, m.Width, m.Height, m.Duration, m.BlurPreview, m.FileName, m.Waveform,
+		m.OwnerID, m.Bucket, m.ObjectKey, m.Mime, m.Size, m.Width, m.Height, m.Duration, m.FileName, m.Waveform,
 	).Scan(&m.ID, &m.CreatedAt)
 	return m, err
 }
@@ -57,9 +59,10 @@ func (r *MediaRepo) UpdateProcessed(ctx context.Context, id int64, res usecaseme
 		   duration  = CASE WHEN $4 > 0 THEN $4 ELSE duration END,
 		   thumb_key = CASE WHEN $5 <> '' THEN $5 ELSE thumb_key END,
 		   title     = CASE WHEN $6 <> '' THEN $6 ELSE title END,
-		   performer = CASE WHEN $7 <> '' THEN $7 ELSE performer END
+		   performer = CASE WHEN $7 <> '' THEN $7 ELSE performer END,
+		   blur_preview = CASE WHEN COALESCE(octet_length($8::bytea), 0) > 0 THEN $8::bytea ELSE blur_preview END
 		 WHERE id=$1`,
-		id, res.Width, res.Height, res.Duration, res.ThumbKey, res.Title, res.Performer)
+		id, res.Width, res.Height, res.Duration, res.ThumbKey, res.Title, res.Performer, res.BlurPreview)
 	return err
 }
 

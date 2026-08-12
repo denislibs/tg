@@ -2,7 +2,8 @@
 // секциями, клавиши — чипы .kbd; на маке модификаторы показываются символами
 // ⌘/⇧/⌥, как tweb KEY_LABELS). Список — реальные шорткаты этого клиента:
 // форматирование = SHORTCUTS/onEditorKeyDown композера, поиск/избранное/чаты =
-// core/hotkeys, медиа = MediaLightbox, сториз = useStoryViewer, редактор = MediaEditor.
+// core/hotkeys, медиа = mediaViewer/base.ts (onKeyDown: стрелки вне зума,
+// Ctrl+±: порт tweb), сториз = useStoryViewer, редактор = MediaEditor.
 import Text from '../../shared/ui/Text'
 import { SettingsScreen, Section } from './kit'
 import { useT } from '../../i18n'
@@ -25,6 +26,9 @@ const KEY_LABELS: Record<string, { mac: string; pc: string }> = {
   right: { mac: '→', pc: '→' },
   pageup: { mac: 'PgUp', pc: 'PgUp' },
   pagedown: { mac: 'PgDn', pc: 'PgDn' },
+  // tweb keyboardShortcuts.tsx:24-25 — зум вьювера
+  plus: { mac: '+', pc: '+' },
+  minus: { mac: '−', pc: '−' },
 }
 
 function labelFor(key: string): string {
@@ -120,12 +124,14 @@ export default function HotkeysSettings({ onBack }: { onBack: () => void }) {
         <ShortcutRow action="Close Window or Menu" keys={['esc']} />
       </Section>
 
-      {/* Просмотр медиа — MediaLightbox.tsx */}
+      {/* Просмотр медиа — mediaViewer/base.ts onKeyDown (порт tweb: стрелки
+          листают вне зума, зум — Ctrl+= / Ctrl+-; строки и подписи 1:1 с
+          tweb keyboardShortcuts.tsx:195-214) */}
       <Section caption="Media Viewer">
         <ShortcutRow action="Next Media" keys={['right']} />
         <ShortcutRow action="Previous Media" keys={['left']} />
-        <ShortcutRow action="Zoom In" keys={['ctrl', '+']} />
-        <ShortcutRow action="Zoom Out" keys={['ctrl', '-']} />
+        <ShortcutRow action="Zoom In" keys={['ctrl', 'plus']} />
+        <ShortcutRow action="Zoom Out" keys={['ctrl', 'minus']} />
       </Section>
 
       {/* Истории — useStoryViewer.ts */}

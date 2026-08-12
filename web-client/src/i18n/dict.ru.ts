@@ -459,6 +459,9 @@ const ru: Dict = {
   Unmute: 'Включить звук',
   Play: 'Воспроизвести',
   Pause: 'Пауза',
+  // Пункт «обычная скорость» меню скоростей видеоплеера (lib/mediaPlayer);
+  // официальная строка Telegram (Desktop lng_mediaview_playback_speed «Обычная»)
+  Normal: 'Обычная',
   Reply: 'Ответить',
   Edit: 'Изменить',
   Copy: 'Копировать',

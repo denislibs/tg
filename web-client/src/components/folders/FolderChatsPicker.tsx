@@ -34,7 +34,7 @@ function ChatPickRow({ chat, selected, onToggle }: { chat: Chat; selected: boole
   const src = useAvatarSrc(chat.avatarUrl)
   return (
     <Row
-      icon={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size={32} />}
+      icon={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size={32} />}
       label={chat.name}
       translate={false}
       selected={selected}

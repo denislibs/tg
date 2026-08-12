@@ -18,8 +18,19 @@ import (
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
 
-// thumbMaxSide caps the longest side of generated thumbnails/posters (px).
-const thumbMaxSide = 1280
+const (
+	// thumbMaxSide caps the longest side of generated thumbnails/posters (px).
+	thumbMaxSide = 1280
+	// strippedMaxSide/strippedQuality — параметры stripped-превью (LQIP) уровня
+	// Telegram: крошечный JPEG с максимальной стороной ~40px и низким качеством
+	// (DQT-таблица телеграмного stripped-заголовка в tweb
+	// src/helpers/bytes/getPreviewURLFromBytes.ts соответствует libjpeg q≈20;
+	// -q:v 28 у mjpeg даёт сопоставимую степень сжатия — сотни байт на кадр).
+	strippedMaxSide = 40
+	strippedQuality = 28
+	// thumbQuality — качество больших превью (как было: -q:v 3).
+	thumbQuality = 3
+)
 
 // Processor shells out to ffmpeg/ffprobe. The zero value is usable.
 type Processor struct{}
@@ -54,8 +65,11 @@ func (p *Processor) Process(ctx context.Context, src io.Reader, mime string) (us
 		res.Title, res.Performer = meta.Title, meta.Performer
 	}
 	if isImage || isVideo {
-		if thumb, err := thumbnail(ctx, tmp.Name(), isVideo); err == nil && len(thumb) > 0 {
+		if thumb, err := frameJPEG(ctx, tmp.Name(), isVideo, thumbMaxSide, thumbQuality); err == nil && len(thumb) > 0 {
 			res.Thumb = thumb
+		}
+		if stripped, err := frameJPEG(ctx, tmp.Name(), isVideo, strippedMaxSide, strippedQuality); err == nil && len(stripped) > 0 {
+			res.Stripped = stripped
 		}
 	}
 	return res, nil
@@ -144,18 +158,18 @@ func tag(tags map[string]any, name string) string {
 	return ""
 }
 
-// thumbnail renders a single downscaled jpeg frame (poster for video, the image
-// itself otherwise), longest side capped at thumbMaxSide, without upscaling.
-func thumbnail(ctx context.Context, path string, isVideo bool) ([]byte, error) {
+// frameJPEG renders a single downscaled jpeg frame (poster for video, the image
+// itself otherwise), longest side capped at maxSide, without upscaling.
+func frameJPEG(ctx context.Context, path string, isVideo bool, maxSide, quality int) ([]byte, error) {
 	// keep aspect, cap the longest side, never upscale (min() guards)
 	vf := fmt.Sprintf(
 		"scale='if(gt(iw,ih),min(%d,iw),-2)':'if(gt(iw,ih),-2,min(%d,ih))'",
-		thumbMaxSide, thumbMaxSide)
+		maxSide, maxSide)
 	args := []string{"-y", "-i", path}
 	if isVideo {
 		args = append(args, "-ss", "0")
 	}
-	args = append(args, "-frames:v", "1", "-vf", vf, "-q:v", "3", "-f", "mjpeg", "pipe:1")
+	args = append(args, "-frames:v", "1", "-vf", vf, "-q:v", strconv.Itoa(quality), "-f", "mjpeg", "pipe:1")
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	cmd.Stdout = &buf

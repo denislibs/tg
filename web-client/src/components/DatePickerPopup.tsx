@@ -20,7 +20,7 @@ import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
-import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useT, useLang } from '../i18n'
@@ -458,12 +458,10 @@ function DayCell({ cell, media, active, weekend, onClick }: {
   weekend: boolean
   onClick: () => void
 }) {
-  useMediaTokenVersion()
-  // Миниатюра есть не у всякого медиа — тогда берём оригинал, иначе ?v=thumb
-  // ответит 404 (бэкенд отдаёт has_thumb вместе с днём).
-  const thumb = media && hasMediaToken()
-    ? (media.has_thumb ? mediaThumbUrl(media.media_id) : mediaContentUrl(media.media_id))
-    : undefined
+  // Миниатюра есть не у всякого медиа — тогда берём оригинал (бэкенд отдаёт
+  // has_thumb вместе с днём). Task 7: URL — воркерным конвейером (useMediaUrl),
+  // синхронно из зеркала при повторном рендере.
+  const thumb = useMediaUrl(media ? media.media_id : null, { thumb: !!media?.has_thumb }) || undefined
   return (
     <button
       type="button"

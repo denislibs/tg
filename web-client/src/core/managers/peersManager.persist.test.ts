@@ -43,7 +43,7 @@ describe('PeersManager — write-through в офлайн-стор', () => {
     await mgr.getUsers([2])
     await new Promise((r) => setTimeout(r, 0)) // saveUsers — fire-and-forget
 
-    expect(await loadUsers()).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' }])
+    expect(await loadUsers()).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }])
   })
 
   it('патч имени по user_update тоже уезжает на диск', async () => {
@@ -53,7 +53,7 @@ describe('PeersManager — write-through в офлайн-стор', () => {
     mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
     await new Promise((r) => setTimeout(r, 0))
 
-    expect(await loadUsers()).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png' }])
+    expect(await loadUsers()).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png', avatarPreview: '' }])
   })
 })
 
@@ -85,7 +85,7 @@ describe('PeersManager — офлайн-фолбэк ловит только о�
 
     const mgr = newPeersManager({ rest: failingRest(new TypeError('Failed to fetch')) })
 
-    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' }])
+    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }])
   })
 
   // Подъём с диска НЕ должен затирать то, что уже в памяти: диск бывает старее
@@ -114,6 +114,6 @@ describe('PeersManager — офлайн-фолбэк ловит только о�
     net.offline = true
     expect(await mgr.getUsers([3])).toEqual([])
 
-    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png' }])
+    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png', avatarPreview: '' }])
   })
 })

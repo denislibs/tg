@@ -115,3 +115,58 @@ describe('Avatar: fade-in фотографии — механика tweb avatarN
     expect(img.style.opacity).toBe('0')
   })
 })
+
+// Task 9 (медиа-суперпорт): слой stripped-превью аватарки — 1:1 tweb
+// avatarNew.tsx:574-590 (img КАК ЕСТЬ, без блюра, классы
+// `avatar-photo avatar-photo-thumbnail`, под полной картинкой) и :598-604
+// (снимается вместе с fade-in после загрузки полной).
+describe('Avatar: слой avatar_preview (stripped-превью)', () => {
+  function getThumb() {
+    return document.querySelector<HTMLImageElement>('img.avatar-photo-thumbnail')
+  }
+  function getFull() {
+    return document.querySelector<HTMLImageElement>('img.avatar-photo:not(.avatar-photo-thumbnail)')
+  }
+
+  it('при наличии preview рендерится thumbnail-слой: raw <img> с data-URI, БЕЗ блюра/канваса, под полной картинкой; корень несёт avatar-relative', () => {
+    const { container } = render(<Avatar background="#000" src="/media/1/content" preview="QUJD" />)
+    const thumb = getThumb()!
+    expect(thumb).toBeTruthy()
+    expect(thumb.src).toBe('data:image/jpeg;base64,QUJD')
+    // КАК ЕСТЬ: превью аватарки не блюрится (в отличие от медиабаблов) — это
+    // обычный <img>, никакого canvas и CSS-фильтра
+    expect(thumb.tagName).toBe('IMG')
+    expect(thumb.style.filter).toBe('')
+    expect(container.querySelector('canvas')).toBeNull()
+    // слой лежит ПОД полной картинкой (раньше в DOM)
+    const full = getFull()!
+    expect(thumb.nextElementSibling).toBe(full)
+    // корень стакает слои классом avatar-relative (tweb avatarNew.tsx:1003)
+    expect(container.querySelector('.avatar')!.classList.contains('avatar-relative')).toBe(true)
+  })
+
+  it('после onLoad полной картинки превью снимается фазовым механизмом (вместе с fade-in, через 200мс)', () => {
+    vi.useFakeTimers()
+    const { container } = render(<Avatar background="#000" src="/media/1/content" preview="QUJD" />)
+    fireEvent.load(getFull()!)
+    // пока играет fade-in — превью ещё видно (tweb: setThumb() в том же
+    // setTimeout(FADE_IN_DURATION), что снимает fade-in)
+    expect(getThumb()).toBeTruthy()
+    act(() => {
+      vi.advanceTimersByTime(200)
+    })
+    expect(getThumb()).toBeNull()
+    expect(container.querySelector('.avatar')!.classList.contains('avatar-relative')).toBe(false)
+  })
+
+  it('ошибка загрузки полной — превью остаётся (в tweb setThumb() при ошибке не зовётся)', () => {
+    render(<Avatar background="#000" src="/media/1/content" preview="QUJD" />)
+    fireEvent.error(getFull()!)
+    expect(getThumb()).toBeTruthy()
+  })
+
+  it('без preview слой не рендерится', () => {
+    render(<Avatar background="#000" src="/media/1/content" />)
+    expect(getThumb()).toBeNull()
+  })
+})

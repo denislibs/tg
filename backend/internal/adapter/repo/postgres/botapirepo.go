@@ -191,6 +191,8 @@ func (r *BotAPIRepo) SetInline(ctx context.Context, botID int64, enabled bool, p
 }
 
 // SetAvatar задаёт аватар бота (users.avatar_url = /media/<id>/content).
+// avatar_preview у ботов не заполняется (как у аватарок до генерации превью) —
+// клиент фолбэкает на градиент; заполнение — при надобности, отдельной задачей.
 func (r *BotAPIRepo) SetAvatar(ctx context.Context, botID, mediaID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE users SET avatar_url = '/media/' || $2 || '/content' WHERE id = $1`, botID, mediaID)

@@ -336,6 +336,8 @@ export function useMessageActions({
 
   // Download the original media bytes (the context-menu "Загрузить" action). The
   // content endpoint is same-origin, so the <a download> forces a save.
+  // Токен-URL сознательно (Task 7): это БАЙТОВОЕ скачивание файла браузером,
+  // категория «МОЖНО: bytes прямым fetch», не картинка для <img>.
   const downloadMsg = async () => {
     const raw = menuRawMsg()
     closeMsgMenu()

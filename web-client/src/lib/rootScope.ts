@@ -24,7 +24,7 @@ import type { FolderUpdateEvt } from '@stores/foldersStore'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { PeerOp } from '@core/managers/peersManager'
 import type { User } from '@core/managers/authManager'
-import type { MediaTokenInfo } from '@core/managers/mediaManager'
+import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -122,6 +122,10 @@ export type BroadcastEvents = {
   // (mediaManager::fetchToken), payload — снимок {token, expiresAt}. Витрина
   // (core/mediaUrl.ts) его только зеркалит, своего расписания не держит.
   [RT.mediaToken]: [MediaTokenInfo]
+  // Task 6 (медиа-суперпорт, стадия C): objectURL скачанного медиа — воркер
+  // единственный владелец (mediaManager::downloadMediaURL), payload — снимок
+  // {id, thumb, url, size}. Витрина (core/mediaCache.ts) его только зеркалит.
+  [RT.mediaUrl]: [MediaUrlEvt]
 
   // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
   //    клиентские события — вне funnel'а сервера, meta не несут ──

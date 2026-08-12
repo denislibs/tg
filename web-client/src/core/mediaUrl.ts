@@ -20,6 +20,15 @@
 // сессии (rt:logging_out → resetMediaToken): токен подписан на id пользователя
 // и живёт до 15 минут, поэтому пережить переход он не может ни у владельца, ни
 // здесь.
+//
+// Task 6/7 (медиа-суперпорт, стадия C): картинки ПЕРЕЕХАЛИ с токенного URL на
+// rt:media_url/downloadMediaURL — objectURL из воркерного конвейера
+// (mediaManager) с зеркалом в core/mediaCache.ts (потребление —
+// core/hooks/useMediaUrl). Токен-механизм остаётся СТРИМУ и БАЙТАМ:
+// <video>/<audio> при DNP-OFF (resolveStreamUrl ниже, инлайн-автоплей
+// RealMediaBubble), байтовые fetch'и (StickerMedia, waveform,
+// mediaPlaybackController, secret/mediaCache, DocRow). mediaThumbUrl удалён —
+// превью-картинок на токене больше нет.
 import { useSyncExternalStore } from 'react'
 import { startClient } from '../client/bootstrap'
 import { AppConfig } from '../config/app'
@@ -113,8 +122,6 @@ export function mediaContentUrl(id: number): string {
   if (!hasMediaToken()) void primeMediaToken()
   return `${API_BASE}/media/${id}/content?token=${encodeURIComponent(token)}`
 }
-
-export const mediaThumbUrl = (id: number): string => mediaContentUrl(id) + '&v=thumb'
 
 // Разрешить URL медиа для не-render одноразовых нужд (аудио, waveform): синхронно
 // при свежем токене (важно, чтобы назначить src в рамках user-gesture), иначе один

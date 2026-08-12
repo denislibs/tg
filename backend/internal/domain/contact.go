@@ -17,10 +17,12 @@ type Contact struct {
 	// Enriched from the users table by the read model (not stored on the contacts
 	// row) so a list can render the peer's avatar/username/phone without a second
 	// round-trip. Zero/nil when looked up without the join.
-	Username    *string
-	AvatarURL   string
-	Phone       string
-	DisplayName string
+	Username  *string
+	AvatarURL string
+	// AvatarPreview — stripped-превью аватарки пира (см. domain.User.AvatarPreview).
+	AvatarPreview []byte
+	Phone         string
+	DisplayName   string
 	// HasCustomPhoto — у владельца задано личное фото этого контакта (AvatarURL
 	// уже подменён им). Позволяет UI показать «Изменить»/«Сбросить» фото.
 	HasCustomPhoto bool

@@ -26,13 +26,13 @@ func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{po
 // order matches scanContact.
 const contactSelect = `
 	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.share_phone, c.created_at,
-	       u.username, u.avatar_url, u.phone, u.display_name, u.is_bot
+	       u.username, u.avatar_url, u.avatar_preview, u.phone, u.display_name, u.is_bot
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
 func scanContact(row pgx.Row) (domain.Contact, error) {
 	var c domain.Contact
 	err := row.Scan(&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &c.Note, &c.SharePhone,
-		&c.CreatedAt, &c.Username, &c.AvatarURL, &c.Phone, &c.DisplayName, &c.IsBot)
+		&c.CreatedAt, &c.Username, &c.AvatarURL, &c.AvatarPreview, &c.Phone, &c.DisplayName, &c.IsBot)
 	return c, err
 }
 

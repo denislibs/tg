@@ -54,7 +54,7 @@ describe('storeProjection — карточки пиров: воркер влад
 
     await mgr.fillMirror([2])
 
-    expect(usePeersStore.getState().byId[2]).toEqual({ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png' })
+    expect(usePeersStore.getState().byId[2]).toEqual({ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' })
   })
 
   // Полнота канала: карточку мог уже вытянуть другой хук или другая вкладка —
@@ -86,7 +86,7 @@ describe('storeProjection — карточки пиров: воркер влад
     mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
 
     const after = usePeersStore.getState().byId
-    expect(after[2]).toEqual({ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png' })
+    expect(after[2]).toEqual({ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png', avatarPreview: '' })
     expect(after[3]).toBe(before[3])
   })
 
