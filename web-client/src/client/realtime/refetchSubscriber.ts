@@ -7,7 +7,7 @@
 // проектором не важен.
 import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
-import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import type { Managers } from '../bootstrap'
@@ -16,14 +16,17 @@ import type { Managers } from '../bootstrap'
 // Единственный на модуль (а не замыкание внутри registerRefetchSubscriber) —
 // storeProjection.ts дёргает тот же таймер на свои триггеры (сообщение в
 // неизвестный чат / входящий secret-запрос), иначе у двух зон были бы два
-// независимых 300мс-таймера на один и тот же loadChats (было так до задачи T3
+// независимых 300мс-таймера на один и тот же рефетч (было так до задачи T3
 // стадии 1C.1 — два триггера в одном окне давали два параллельных /chats).
+// Task 6 (перенос владения диалогами): рефетч теперь — `managers.dialogs.
+// refresh()` (владелец списка), не `loadChats` (диалоговая половина которого
+// снесена).
 let chatsReloadTimer: ReturnType<typeof setTimeout> | null = null
-export function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
+export function scheduleChatsReload(managers: Pick<Managers, 'dialogs'>): void {
   if (chatsReloadTimer) return
   chatsReloadTimer = setTimeout(() => {
     chatsReloadTimer = null
-    void loadChats(managers)
+    void managers.dialogs.refresh()
   }, 300)
 }
 
@@ -72,5 +75,5 @@ export function registerRefetchSubscriber(managers: Managers): void {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
-  rootScope.addEventListener('rt:resync', () => { void loadChats(managers) })
+  rootScope.addEventListener('rt:resync', () => { void managers.dialogs.refresh() })
 }

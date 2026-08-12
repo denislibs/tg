@@ -13,7 +13,7 @@ import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
-import { useChatsStore, loadChats } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { lastSeenLabel } from '../../core/presence'
 import s from './GroupEditFlow.module.scss'
 
@@ -79,7 +79,7 @@ export default function AddMembersScreen({
     setSaving(true)
     try {
       for (const id of selected) await managers.groups.addMember(chatId, id)
-      await loadChats(managers)
+      await managers.dialogs.refresh()
       onAdded()
     } finally {
       setSaving(false)

@@ -1,17 +1,10 @@
 // src/stores/chatsStore.test.ts
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useChatsStore, loadChats } from './chatsStore'
-import type { Dialog } from '../core/models'
 
-const dialogs: Dialog[] = [
-  { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
-    peer: { id: 2, displayName: 'Bob', avatarUrl: '' } },
-]
-
-function fakeManagers(over: Partial<{ me: unknown; dialogs: Dialog[] }> = {}) {
+function fakeManagers(over: Partial<{ me: unknown }> = {}) {
   return {
     auth: { me: async () => over.me ?? { id: 7, phone: '+1', display_name: 'Me' } },
-    chats: { listDialogs: async () => over.dialogs ?? dialogs },
   }
 }
 
@@ -22,15 +15,15 @@ function fakeManagers(over: Partial<{ me: unknown; dialogs: Dialog[] }> = {}) {
 // setDialogTheme/setDialogArchived) отсюда тоже убраны — тела переехали во
 // владельца (dialogsManager.applyMute/applyPinned/applyTheme/applyArchived),
 // тесты на них — dialogsManager.test.ts (describe «действия без оптимистики»).
-// Здесь остаётся только loadChats (me/дефолтная гидрация).
+// Task 6: диалоговая половина `loadChats` тоже ушла владельцу — здесь остаётся
+// только `me`, тесты на диалоги — dialogsManager.test.ts.
 describe('chatsStore', () => {
-  beforeEach(() => useChatsStore.setState({ dialogs: [], meId: null, loaded: false }))
+  beforeEach(() => useChatsStore.setState({ me: null, meId: null }))
 
-  it('loadChats populates dialogs + meId', async () => {
+  it('loadChats populates me/meId', async () => {
     await loadChats(fakeManagers() as never)
     const s = useChatsStore.getState()
     expect(s.meId).toBe(7)
-    expect(s.dialogs).toHaveLength(1)
-    expect(s.loaded).toBe(true)
+    expect(s.me).toEqual({ id: 7, phone: '+1', display_name: 'Me' })
   })
 })

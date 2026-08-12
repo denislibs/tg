@@ -45,6 +45,12 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: b
  * буферизует, см. web-client/CLAUDE.md «Владение фактами»). Сеть догоняет
  * отдельно (refresh) и публикует reset поверх, когда ответит — не ждём его
  * здесь, чтобы не блокировать рендер сетью.
+ *
+ * `applyDialogOps` здесь — allow-listed исключение из «пишет только проектор»
+ * (см. stores/noDuplicateDialogs.test.ts, как и у `core/hooks/useAuthGate.ts`):
+ * это тот же метод и тот же единственный вход зеркала, что и у storeProjection,
+ * просто вызванный отсюда до того, как подписка на rt:dialog_op вообще
+ * поднята — не второй вывод факта.
  */
 export async function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>, locked: boolean): Promise<void> {
   if (op) useChatsStore.getState().applyDialogOps([op])

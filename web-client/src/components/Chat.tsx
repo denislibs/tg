@@ -76,7 +76,7 @@ import ChatInputControl, { isControlNeeded, type ControlFlags } from './conversa
 import { useChatInputCenter } from './conversation/useChatInputCenter'
 import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type Message, type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -500,7 +500,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (!isRealChat) return
     void managers.chats.clearHistory(numericChatId)
       .then(() => win.reloadNewest())
-      .then(() => loadChats(managers))
+      .then(() => managers.dialogs.refresh())
       .catch(() => {})
   }
   const deleteLabels = (() => {

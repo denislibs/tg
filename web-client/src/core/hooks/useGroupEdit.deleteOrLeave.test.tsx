@@ -38,8 +38,7 @@ function fakeManagers(overrides: { removeMember?: () => Promise<void>; applyRemo
     },
     peers: { getUsers: async () => [] },
     auth: { me: async () => ({ id: 7, phone: '+1', username: null, firstName: '', lastName: '', displayName: 'Me', bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '' }) },
-    chats: { listDialogs: async () => [] },
-    dialogs: { applyRemoved: overrides.applyRemoved ?? vi.fn(async () => {}) },
+    dialogs: { applyRemoved: overrides.applyRemoved ?? vi.fn(async () => {}), refresh: vi.fn(async () => {}) },
   }
 }
 

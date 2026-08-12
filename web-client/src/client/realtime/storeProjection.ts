@@ -100,12 +100,11 @@ const APPLY: Projector = {
   },
   // Task 2 (перенос владения диалогами): список диалогов — владелец воркерный
   // dialogsManager (порядок считает единожды он, порт tweb generateDialogIndex).
-  // applyDialogOps — ЕДИНСТВЕННЫЙ вход зеркала для операций воркера; легаси-
-  // мутаторы chatsStore (setDialogMuted и т.п.) пока пишут в dialogs напрямую
-  // параллельно (см. докблок applyDialogOps) — их перевод на операции воркера
-  // отдельными задачами (Task 4/6), поэтому строгий пин «один писатель» здесь
-  // пока не заводится (в отличие от peersStore — там альтернативных писателей
-  // никогда не было).
+  // applyDialogOps — единственный вход зеркала для операций воркера. Task 6
+  // снесла легаси-мутаторы chatsStore (setDialogs/applyDialogs и т.п.), которые
+  // раньше писали в dialogs напрямую параллельно — пин «один писатель» (плюс
+  // allow-listed client/boot.ts и core/hooks/useAuthGate.ts, см. докблок там же)
+  // держит stores/noDuplicateDialogs.test.ts, как и у peersStore.
   [RT.dialogOp]: (e) => { useChatsStore.getState().applyDialogOps(e.ops) },
   // Task 3 (realtime-кадры применяет владелец): удаление диалога (chat_removed)
   // теперь тоже операция владельца (dialogsManager.applyRemoved → rt:dialog_op

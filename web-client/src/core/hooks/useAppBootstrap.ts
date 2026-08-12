@@ -28,12 +28,23 @@ export function useAppBootstrap(): void {
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
     // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
     const run = () => {
-      // Префетч (me/listDialogs из main.tsx) берём ТОЛЬКО через bootPrefetch():
+      // Префетч (me/диалоги из main.tsx) берём ТОЛЬКО через bootPrefetch():
       // он одноразовый по смыслу (данные аккаунта, под которым страница
       // загрузилась), а этот эффект отрабатывает заново на каждое монтирование
       // Shell — см. докблок bootPrefetch. null → идём в сеть под текущим токеном.
       const prefetch = bootPrefetch() ?? undefined
-      void loadChats(managers, prefetch).then(() => loadPresence(managers))
+      void loadChats(managers, prefetch)
+      // Task 6 (перенос владения диалогами): диалоговая половина `loadChats`
+      // снесена — на холодном старте (prefetch есть) список уже поднят и
+      // применён к зеркалу ДО первого рендера (`client/boot.ts::
+      // applyDialogsMirror`), повторный refresh() здесь плодил бы второй
+      // /chats на каждое монтирование Shell. На тёплом входе БЕЗ reload (та же
+      // жизнь страницы — вход/переезд сессии, useAuthGate.ts::onLoggedIn)
+      // bootPrefetch() уже инвалидирован (invalidateBootPrefetch) — тогда это
+      // единственное место, которое подтягивает диалоги новой сессии (owner
+      // сам решает cache-first/сеть внутри refresh()→hydrate()).
+      const dialogsReady = prefetch ? Promise.resolve() : managers.dialogs.refresh()
+      void dialogsReady.then(() => loadPresence(managers))
       void loadStories(managers)
       void loadNotifySettings(managers)
       void loadFolders(managers)

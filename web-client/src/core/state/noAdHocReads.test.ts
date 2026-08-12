@@ -23,6 +23,14 @@ const UI_DIRS = ['stores', 'components', 'core/hooks']
  * (`dialogsManager.ts`: `loadCache`/`loadState`, см. `client/boot.ts` →
  * `managers.dialogs.fillMirror()`). Allow-list пуст: UI-зона персист не
  * читает вовсе.
+ *
+ * Task 6 (снос старого пути): чтение диалогов с main исчезло целиком, не
+ * только персист-половина — `stores/chatsStore.ts::loadChats` больше не зовёт
+ * `managers.chats.listDialogs()` (сеть, не персист, но тот же класс «main сам
+ * добывает диалоговые данные»); список приходит ТОЛЬКО операциями владельца
+ * (`applyDialogOps`, rt:dialog_op). Этот тест по-прежнему проверяет именно
+ * `core/store/persist` (IndexedDB) — сетевой путь не в его периметре, держат
+ * `stores/noDuplicateDialogs.test.ts`/`stores/noManualOrder.test.ts`.
  */
 const ALLOWED: string[] = []
 

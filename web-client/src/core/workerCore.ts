@@ -128,14 +128,16 @@ export function createWorkerCore() {
     // IndexedDB-транзакций в core/store/persist.ts (enqueue исполняется в
     // порядке вызова, clear физически не может обогнать уже вызванный
     // enqueue записи) — подробный разбор гонки в докблоке
-    // `dialogsManager.cancelPersist()`, здесь не дублируем. Сам кэш
-    // `items`/`hydrated` владельца этот вызов не трогает — полный сброс на
-    // логаут остаётся Task 6 (пины владения).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); broadcast(RT.loggingOut, e) },
+    // `dialogsManager.cancelPersist()`, здесь не дублируем.
+    // `dialogs.resetForLogout()` (Task 6) — сосед по той же причине: сам кэш
+    // (`items`/`hydrated`) владельца переживает переход сессии (SharedWorker
+    // общий на все вкладки), без сброса следующий `fillMirror()` под другим
+    // аккаунтом отдал бы чужой список — см. докблок `resetForLogout()`.
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
-    // до входа, принадлежит прошлой сессии.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); broadcast(RT.loggedIn, e) },
+    // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -201,6 +203,12 @@ export function createWorkerCore() {
     // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
     // dialogsManager (scheduleSave), не здесь.
     saveCache: (list) => saveDialogs(list),
+    // Task 6 (диалоговая половина `loadChats` переезжает к владельцу):
+    // дешифровка превью секретных чатов. `secret` объявлен ниже — та же
+    // ленивая forward-ссылка, что у `messages` выше (decryptSecret реально
+    // зовётся только на fillMirror()/refresh(), к тому моменту `secret` уже
+    // проинициализирован).
+    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец

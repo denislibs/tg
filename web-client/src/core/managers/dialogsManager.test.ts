@@ -9,12 +9,16 @@ import { newGroupsManager } from './groupsManager'
 import type { Dialog } from '../models'
 import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
+import type { Draft } from '../models'
 
 const dialog = (chatId: number, at: string, pinned = false): Dialog => ({
   chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
+
+const draft = (chatId: number, updatedAt: string): Draft => ({ chatId, text: 'чер', replyToId: null, updatedAt })
+const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)
 
 const restStub = (chats: unknown[]) => ({ get: vi.fn(async () => ({ chats })) })
 
@@ -660,5 +664,271 @@ describe('dialogsManager: персист списка переезжает к в
 
     expect(save).not.toHaveBeenCalled()
     vi.useRealTimers()
+  })
+})
+
+// Task 6 (диалоговая половина `loadChats` переезжает к владельцу): расшифровка
+// превью секретных чатов — порт main-thread `chatsStore.decryptSecretPreviews`
+// (снесённого этой же задачей), но без RPC — secretManager в этом же воркере.
+describe('dialogsManager: расшифровка превью секретных чатов (Task 6)', () => {
+  const secretDialog = (chatId: number, at: string, encBody: string, text = ''): Dialog => ({
+    chatId, type: 'secret', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+    lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
+    lastMessage: { seq: 1, text, senderId: 1, at, encBody },
+  } as Dialog)
+
+  it('fillMirror (гидратация с диска) расшифровывает превью секретного диалога', async () => {
+    const decryptSecret = vi.fn(async (chatId: number) => ({ text: `plain-${chatId}`, media: undefined }))
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [secretDialog(1, '2026-08-01T00:00:00Z', 'ciphertext')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      decryptSecret,
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect(decryptSecret).toHaveBeenCalledWith(1, 'ciphertext')
+    expect((op as { items: { dialog: Dialog }[] }).items[0]!.dialog.lastMessage!.text).toBe('plain-1')
+  })
+
+  it('refresh (сетевой догон) расшифровывает превью секретного диалога из ответа /chats', async () => {
+    const raw = {
+      chat_id: 2, type: 'secret', title: 't2', last_read_seq: 0, unread: 0,
+      last_message: { seq: 1, text: '', sender_id: 1, at: '2026-08-02T00:00:00Z', enc_body: 'ciphertext2' },
+    }
+    const decryptSecret = vi.fn(async (chatId: number) => ({ text: `plain-${chatId}`, media: undefined }))
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([raw]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      decryptSecret,
+    })
+
+    await mgr.refresh()
+
+    expect(decryptSecret).toHaveBeenCalledWith(2, 'ciphertext2')
+    const op = ops.find((o) => o.op === 'reset') as { items: { dialog: Dialog }[] } | undefined
+    expect(op!.items[0]!.dialog.lastMessage!.text).toBe('plain-2')
+  })
+
+  it('готовый text/несекретный диалог — decryptSecret не зовётся', async () => {
+    const decryptSecret = vi.fn(async () => ({ text: 'x' }))
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), secretDialog(2, '2026-08-02T00:00:00Z', 'ciphertext', 'уже есть текст')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      decryptSecret,
+    })
+
+    await mgr.fillMirror()
+
+    expect(decryptSecret).not.toHaveBeenCalled()
+  })
+
+  it('упавшая дешифровка (ключ ещё не пришёл) глотается — превью остаётся как было, fillMirror не падает', async () => {
+    const decryptSecret = vi.fn(async () => { throw new Error('key missing') })
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [secretDialog(1, '2026-08-01T00:00:00Z', 'ciphertext')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      decryptSecret,
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect((op as { items: { dialog: Dialog }[] }).items[0]!.dialog.lastMessage!.text).toBe('')
+  })
+})
+
+// Task 6 (пины владения, приоритетная находка ревью Task 5): владелец обязан
+// полностью сбрасывать in-memory кэш на логауте/смене аккаунта — иначе
+// `dialogsManager` (живёт в SharedWorker, переживает `location.reload()`
+// отдельной вкладки) отдал бы следующему `fillMirror()` (уже под ДРУГИМ
+// пользователем) готовый список прошлого аккаунта вместо честной регидратации
+// с диска. Проводка (вызов из workerCore.ts::onLoggingOut/onLoggedIn) покрыта
+// отдельно — workerCore.dialogsReset.test.ts.
+describe('dialogsManager: сброс кэша владельца при логауте (Task 6)', () => {
+  it('resetForLogout() опустошает getSnapshot(); следующий fillMirror перечитывает кэш/State заново, а не отдаёт прошлые данные', async () => {
+    let cacheGen = 1
+    let stateGen = 1
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => (cacheGen === 1
+        ? [dialog(1, '2026-08-01T00:00:00Z')]
+        : [dialog(2, '2026-08-02T00:00:00Z')]),
+      loadState: async () => (stateGen === 1
+        ? { pinnedOrders: {}, drafts: [] }
+        : { pinnedOrders: { 0: [2] } as Record<number, number[]>, drafts: [] }),
+    })
+
+    await mgr.fillMirror()
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1])
+
+    mgr.resetForLogout()
+    expect(mgr.getSnapshot()).toEqual([])
+
+    // «Другой пользователь» — другой офлайн-кэш и другой pinnedOrders на диске.
+    cacheGen = 2
+    stateGen = 2
+    const op = await mgr.fillMirror()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2])
+    expect((op as { items: { dialog: Dialog; index: number }[] }).items[0]!.dialog.chatId).toBe(2)
+  })
+
+  it('resetForLogout() без немедленного fillMirror — patch/mute на пустой кэш тихо no-op (кэш честно пуст, не подвешен)', () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    mgr.resetForLogout()
+    mgr.applyMute(1, true) // диалога нет в (уже пустом) кэше
+
+    expect(ops).toEqual([])
+    expect(mgr.getSnapshot()).toEqual([])
+  })
+})
+
+// Task 6 (снос старого пути): порт `chatsStore: черновик поднимает диалог`
+// (chatsStore.order.test.ts, снесён этой же задачей вместе с applyDialogs) —
+// сценарии не менялись, только вход (fillMirror вместо setDialogs) и State
+// (loadState().drafts вместо AppState напрямую). `sort()` владельца читает
+// draftFor() из тех же `drafts`, что тут сеются.
+describe('dialogsManager: черновик поднимает диалог (Task 6, порт chatsStore.order.test.ts)', () => {
+  it('свежий черновик перевешивает более старое последнее сообщение', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [draft(1, '2026-08-09T13:00:00Z')] }),
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect(ids(op)).toEqual([1, 2])
+  })
+
+  it('без черновика тот же набор даёт обратный порядок (черновик реально участвует)', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect(ids(op)).toEqual([2, 1])
+  })
+
+  it('старый черновик диалог не поднимает', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [draft(1, '2026-08-09T09:00:00Z')] }),
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect(ids(op)).toEqual([2, 1])
+  })
+})
+
+// Task 6 (снос старого пути): порт `chatsStore: pinnedOrders засеивается из
+// applyDialogs/setDialogs` (chatsStore.order.test.ts, снесён этой же задачей) —
+// последний кусок легаси-пути, явно помеченный предыдущей задачей как «Task 6,
+// ещё не тронуто» (см. история файла). Перенесено в dialogsManager::setAll
+// (см. докблок syncPinnedOrder в dialogsManager.ts).
+describe('dialogsManager: засеивание pinnedOrders из первого списка (Task 6, порт applyDialogs/syncPinnedOrder)', () => {
+  it('порядок закреплённых переживает повторное применение списка (кэш → сеть, закреплённые пришли в другом порядке ответа)', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([
+        { chat_id: 2, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T11:00:00Z' } },
+        { chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T10:00:00Z' } },
+        { chat_id: 3, type: 'private', last_read_seq: 0, unread: 0, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T12:00:00Z' } },
+      ]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [
+        dialog(1, '2026-08-09T10:00:00Z', true),
+        dialog(2, '2026-08-09T11:00:00Z', true),
+        dialog(3, '2026-08-09T12:00:00Z'),
+      ],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    const before = await mgr.fillMirror() // кэш: закреплённые [1, 2] — засеивает pinnedOrders=[1,2]
+    expect(ids(before)).toEqual([1, 2, 3])
+
+    // сеть: тот же набор, но закреплённые пришли в ДРУГОМ порядке ответа ([2, 1])
+    await mgr.refresh()
+
+    // pinnedOrders уже засеян кэшем [1,2] — ответ сети его не переигрывает.
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+  })
+
+  // Порядок закреплённых сервер отдаёт только позицией в ответе /chats (ORDER
+  // BY m.pinned_at DESC, chatsrepo.go:225) — в модели `Dialog` его нет. Первый
+  // применённый список фиксирует его в pinnedOrders, дальше он авторитетен.
+  it('первый список засеивает pinnedOrders порядком ответа сервера', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [
+        dialog(2, '2020-01-01T00:00:00Z', true),
+        dialog(1, '2026-08-09T12:00:00Z', true),
+        dialog(3, '2026-08-09T13:00:00Z'),
+      ],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    const op = await mgr.fillMirror()
+
+    expect(ids(op)).toEqual([2, 1, 3])
+  })
+
+  // Fix (находка ревью Task 6 при переносе этого блока): досеянный pinnedOrder
+  // обязан остаться КОНСИСТЕНТНЫМ с индексами, которые уже отдал этот же
+  // fillMirror — иначе ближайший точечный patch (не полный список) одного из
+  // ранее-неотслеженных закреплённых пересчитает его индекс уже НОВЫМ
+  // pinnedOrder, увидит расхождение с сохранённым (общим для всех
+  // неотслеженных) и перетасует пин-блок на пустом месте — см. докблок
+  // syncPinnedOrder в dialogsManager.ts.
+  it('первичное засеивание переживает последующий точечный patch, не только повторный полный список', async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [
+        dialog(1, '2020-01-01T00:00:00Z', true), // topmost pinned
+        dialog(2, '2020-01-01T00:00:00Z', true),
+        dialog(3, '2020-01-01T00:00:00Z', true), // bottommost pinned
+      ],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+    await mgr.fillMirror()
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    ops.length = 0
+
+    // Входящее сообщение в СРЕДНИЙ закреплённый — контентный patch, не трогает
+    // `pinned`. Без консистентного pinnedOrder (см. докблок syncPinnedOrder)
+    // recompute дал бы chatId=2 БОЛЬШИЙ индекс, чем ещё не пересчитанные
+    // соседи (те остались бы на старом «общем для всех неотслеженных»
+    // значении), и он ошибочно прыгнул бы наверх пин-блока: [1,2,3] → [2,1,3].
+    mgr.applyNewMessage({ chat_id: 2, seq: 2, sender_id: 9, type: 'text', text: 'hi',
+      created_at: '2026-08-09T15:00:00Z' } as NewMessageEvt)
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
   })
 })

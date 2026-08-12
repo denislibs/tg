@@ -6,7 +6,7 @@ import { useCallback } from 'react'
 import type { TopicRow } from '../managers/groupsManager'
 import type { OpenPeer } from '../../data'
 import { useManagers } from './useManagers'
-import { useChatsStore, loadChats, loadPresence } from '../../stores/chatsStore'
+import { useChatsStore, loadPresence } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 
 export function useNavigationActions() {
@@ -40,7 +40,7 @@ export function useNavigationActions() {
     const nav = useNavigationStore.getState()
     nav.setDraftPeer(null)
     nav.setSelectedId(String(chatId))
-    void loadChats(managers)
+    void managers.dialogs.refresh()
   }, [managers])
 
   // Клик по «похожему каналу»: вступаем по @username и открываем.
@@ -48,7 +48,7 @@ export function useNavigationActions() {
     if (username) {
       try { await managers.channels.join(username) } catch { /* уже вступил / приватный — просто откроем */ }
     }
-    await loadChats(managers)
+    await managers.dialogs.refresh()
     useNavigationStore.getState().setSelectedId(String(chatId))
   }, [managers])
 

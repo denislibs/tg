@@ -4,11 +4,7 @@ import type { Dialog } from '../core/models'
 import type { User } from '../core/managers/authManager'
 import type { PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
-import { dialogIndex } from '../core/dialogs/dialogIndex'
 import type { DialogOp } from '../core/dialogs/dialogOps'
-import { draftFor } from './draftsStore'
-import { ALL_FOLDER_ID } from './foldersStore'
-import { useAppStateStore, setAppState } from './appState'
 
 // Per-chat typing state: chatId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
@@ -21,9 +17,7 @@ interface ChatsState {
   /** Task 2 (перенос владения диалогами): индекс из последней операции воркера
    * (rt:dialog_op) — хранится В СОСТОЯНИИ стора (не модульной переменной), чтобы
    * reset и смена аккаунта чистили его естественно тем же set(), что и dialogs.
-   * Читает только sortDialogsByIndex; setDialogs (единственный оставшийся
-   * легаси-мутатор, Task 6) его не трогает — по-прежнему сортирует через
-   * applyDialogs/dialogIndex. */
+   * Читает только sortDialogsByIndex. */
   dialogIndexById: Record<number, number>
   me: User | null
   meId: number | null
@@ -31,15 +25,16 @@ interface ChatsState {
   activeChatId: number | null
   presence: Record<number, { online: boolean; lastSeen: number }>
   typing: Record<number, ChatTyping>
-  setDialogs: (d: Dialog[]) => void
   /**
-   * Task 2 (перенос владения диалогами): ЕДИНСТВЕННЫЙ вход зеркала для операций
-   * воркера (rt:dialog_op) — пишет проектор (`client/realtime/storeProjection.ts`,
-   * APPLY[RT.dialogOp]) и холодный старт (`client/boot.ts`, ответ fillMirror()
-   * ДО первого рендера). Индекс приходит ГОТОВЫМ в операции — воркерный
-   * dialogsManager уже посчитал его; здесь он только хранится и сортирует
-   * (см. докблок sortDialogsByIndex). setDialogs (Task 6) пока работает
-   * параллельно — её перевод на операции воркера отдельной задачей.
+   * Task 2 (перенос владения диалогами): ЕДИНСТВЕННЫЙ вход и ЕДИНСТВЕННЫЙ
+   * писатель списка диалогов (Task 6 снесла легаси-путь `setDialogs`/
+   * `applyDialogs`, см. `stores/noDuplicateDialogs.test.ts`) — пишет проектор
+   * (`client/realtime/storeProjection.ts`, APPLY[RT.dialogOp]) и холодный старт
+   * (`client/boot.ts`, ответ fillMirror() ДО первого рендера). Индекс приходит
+   * ГОТОВЫМ в операции — воркерный dialogsManager уже посчитал его (порт tweb
+   * `generateDialogIndex`, `core/dialogs/dialogIndex.ts` — единственное место
+   * его вызова, см. `stores/noManualOrder.test.ts`); здесь он только хранится
+   * и сортирует (см. докблок sortDialogsByIndex).
    */
   applyDialogOps: (ops: DialogOp[]) => void
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
@@ -65,68 +60,14 @@ interface ChatsState {
 }
 
 /**
- * ЕДИНСТВЕННЫЙ путь изменения списка диалогов.
- *
- * Раньше правил порядка было ДВА и они расходились: `setDialogs` брал порядок из
- * входного массива (как пришло от сети/из персиста), а живые апдейты
- * двигали строки вручную (`firstUnpinned` + `slice`). Из-за
- * этого кэш давал один порядок, ответ сети другой, и список перетасовывался через
- * ~250 мс после первого кадра.
- *
- * Теперь порядок — ПРОИЗВОДНАЯ ОТ ДАННЫХ (`dialogIndex`, порт tweb
- * `generateDialogIndex`, dialogs.ts:605-608): из одних и тех же данных всегда
- * получается один и тот же список, поэтому кэш и сеть сходятся. Слияние — через
- * `reconcileById`: неизменившиеся диалоги сохраняют ССЫЛКИ, а совпавший с памятью
- * ответ возвращает ИСХОДНЫЙ массив (ни перерисовки, ни записи в IDB).
- *
- * `incoming` строят вызывающие через `map` по текущему списку (без перестановок):
- * при равных индексах сортировка стабильна (ES2019), и относительный порядок
- * ничьих не зависит от того, какой сеттер сработал.
- *
- * Папка: `pinnedOrders` в tweb — по одной записи на папку, у нас закрепление
- * пер-юзерное и на весь список сразу (бэкенд `PinDialog` → `chat_members.pinned`,
- * usecase/chat/dialog_flags.go:18-38; папка — только фильтр той же коллекции, своего
- * пин-состояния у неё нет). Поэтому запись одна — `ALL_FOLDER_ID`.
- */
-function applyDialogs(prev: Dialog[], incoming: Dialog[]): Dialog[] {
-  const pinnedOrder = useAppStateStore.getState().pinnedOrders[ALL_FOLDER_ID] ?? []
-  const sorted = incoming
-    // Черновик передаём третьим аргументом: у нас он лежит не в диалоге, а в
-    // AppState (tweb — `dialog.draft`, dialogs.ts:904-910). Свежий черновик
-    // поднимает диалог, как в оригинале.
-    .map((d) => [d, dialogIndex(d, pinnedOrder, draftFor(d.chatId))] as const)
-    .sort((a, b) => b[1] - a[1])
-    .map(([d]) => d)
-  syncPinnedOrder(sorted, pinnedOrder)
-  return reconcileById(prev, sorted, (d) => d.chatId).list
-}
-
-/**
- * Досеять `pinnedOrders` порядком закреплённых из получившегося списка — порт
- * tweb `generateDialogPinnedDate` (dialogs.ts:934-936), где отсутствующий в
- * порядке закреплённый тут же в него добавляется (`order.unshift`) и порядок
- * сохраняется (`savePinnedOrders`).
- *
- * Зачем: `pinned_at` сервер наружу не отдаёт (в `Dialog` только флаг `pinned`),
- * он выражен лишь ПОРЯДКОМ ответа `/chats` (ORDER BY m.pinned_at DESC,
- * chatsrepo.go:225). Первый применённый список этот порядок и фиксирует, дальше
- * он берётся из State — иначе закреплённые с одинаковым индексом (никого нет в
- * порядке) зависели бы от порядка входного массива, то есть от того же
- * расхождения кэш/сеть, ради которого всё и затевалось.
- */
-function syncPinnedOrder(sorted: readonly Dialog[], prevOrder: readonly number[]): void {
-  const next = sorted.filter((d) => d.pinned).map((d) => d.chatId)
-  if (next.length === prevOrder.length && next.every((id, i) => id === prevOrder[i])) return
-  setAppState('pinnedOrders', { ...useAppStateStore.getState().pinnedOrders, [ALL_FOLDER_ID]: next })
-}
-
-/**
- * Сортировка зеркала (Task 2, перенос владения диалогами в воркер). В отличие
- * от `applyDialogs` выше, индекс здесь НЕ пересчитывается — он уже готов в
- * DialogOp (воркерный dialogsManager посчитал его той же чистой dialogIndex(),
- * см. докблок dialogsManager.ts). Пересчёт dialogIndex на main воссоздал бы
- * исходный баг applyDialogs (два источника порядка — кэш и сеть/main
- * расходятся), только теперь между воркером и main.
+ * Сортировка зеркала (Task 2, перенос владения диалогами в воркер; Task 6 снесла
+ * легаси-путь `applyDialogs`/`dialogIndex`, который раньше жил рядом и считал
+ * порядок сам — см. `stores/noManualOrder.test.ts`). Индекс здесь НЕ
+ * пересчитывается — он уже готов в DialogOp (воркерный dialogsManager посчитал
+ * его чистой `dialogIndex()`, порт tweb `generateDialogIndex`, см. докблок
+ * dialogsManager.ts). Пересчёт dialogIndex на main воссоздал бы исходный баг
+ * (два источника порядка — кэш и сеть/main расходятся), только теперь между
+ * воркером и main.
  */
 function sortDialogsByIndex(dialogs: Dialog[], indexById: Record<number, number>): Dialog[] {
   return [...dialogs].sort((a, b) => (indexById[b.chatId] ?? 0) - (indexById[a.chatId] ?? 0))
@@ -141,7 +82,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
   activeChatId: null,
   presence: {},
   typing: {},
-  setDialogs: (dialogs) => set((s) => ({ dialogs: applyDialogs(s.dialogs, dialogs), loaded: true })),
   applyDialogOps: (ops) =>
     set((s) => {
       let list = s.dialogs
@@ -204,26 +144,21 @@ export const useChatsStore = create<ChatsState>((set) => ({
 
 interface LoadDeps {
   auth: { me(): Promise<User | null> }
-  chats: { listDialogs(): Promise<Dialog[]> }
-  // Секретные чаты: сервер отдаёт шифр-блоб последнего сообщения (plaintext он не
-  // знает) — расшифровываем на клиенте ключом из IndexedDB для превью в списке.
-  secret?: { decryptMessage(chatId: number, encBody: string): Promise<{ text: string; media?: { mediaType: string } } | null> }
 }
 
-// Fetch the current user + dialogs and populate the store. На холодном старте
-// принимает уже летящие промисы (prefetch из main.tsx) — так первый вызов не
-// плодит второй round-trip и переиспользует me()/listDialogs(), запущенные до
+// Fetch the current user and populate the store. Task 6 (перенос владения
+// диалогами): диалоговая половина ушла владельцу (`core/managers/
+// dialogsManager.ts`, `fillMirror()`/`refresh()`), здесь остаётся только `me` —
+// расшифровка превью секретных чатов тоже переехала туда же (та же причина, что
+// у самих диалогов: `secretManager` живёт в воркере, RPC на main не нужен).
+// На холодном старте принимает уже летящий промис (prefetch из main.tsx) — так
+// первый вызов не плодит второй round-trip и переиспользует me(), запущенный до
 // монтирования React.
 export async function loadChats(
   managers: LoadDeps,
-  prefetch?: { me: Promise<User | null>; dialogs: Promise<Dialog[]> },
+  prefetch?: { me: Promise<User | null> },
 ): Promise<void> {
-  const [me, dialogs] = await Promise.all([
-    prefetch?.me ?? managers.auth.me(),
-    prefetch?.dialogs ?? managers.chats.listDialogs(),
-  ])
-  await decryptSecretPreviews(managers, dialogs)
-  const st = useChatsStore.getState()
+  const me = await (prefetch?.me ?? managers.auth.me())
   // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
   // setMe в ChatsState выше и stores/noDuplicateMe.test.ts) — НЕ уступка
   // тесту, а единственный надёжный канал холодного старта: `SuperMessagePort`
@@ -236,27 +171,8 @@ export async function loadChats(
   // тот же токен, что и в boot-цепочке воркера) — не второй вывод факта, а
   // альтернативный путь ЗАПРОСА уже посчитанного значения, устойчивый к
   // порядку подписки. `loadChats` тестируется в изоляции без воркера/rootScope
-  // (chatsStore.test.ts: «loadChats populates dialogs + meId») — не выпиливать.
-  st.setMe(me) // meId выводится из me внутри setMe
-  st.setDialogs(dialogs)
-}
-
-// Расшифровать последнее сообщение каждого секретного чата для превью в списке
-// (холодный старт/reload — live-путь уже кладёт plaintext через applyNewMessage).
-// Ошибки дешифровки глотаем: превью просто останется generic-лейблом.
-async function decryptSecretPreviews(managers: LoadDeps, dialogs: Dialog[]): Promise<void> {
-  if (!managers.secret) return
-  await Promise.all(
-    dialogs.map(async (d) => {
-      const lm = d.lastMessage
-      if (d.type !== 'secret' || !lm?.encBody || lm.text) return
-      const dec = await managers.secret!.decryptMessage(d.chatId, lm.encBody).catch(() => null)
-      if (!dec) return
-      lm.text = dec.text
-      // Медиа без подписи: показать лейбл типа ('photo'/'video'/…) вместо 'encrypted'.
-      if (!dec.text && dec.media) lm.mediaType = dec.media.mediaType
-    }),
-  )
+  // (chatsStore.test.ts: «loadChats populates me/meId») — не выпиливать.
+  useChatsStore.getState().setMe(me) // meId выводится из me внутри setMe
 }
 
 // Seed online / last-seen for a set of users (or all private-dialog peers when

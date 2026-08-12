@@ -35,7 +35,7 @@ function walk(dir: string, acc: string[] = []): string[] {
  *    (`startRealtime()`) подключается из эффекта ПОСЛЕ первого рендера —
  *    воркерный `/me` может разрешиться раньше и разослать `rt:me` в пустоту.
  *    Заодно тестируется в изоляции без живого воркера/rootScope
- *    (chatsStore.test.ts: «loadChats populates dialogs + meId»).
+ *    (chatsStore.test.ts: «loadChats populates me/meId»).
  *  - `components/EmojiStatusPicker.tsx`, `components/PremiumCheckout.tsx`,
  *    `components/settings/EditProfile.tsx`: мгновенный отклик на действие
  *    пользователя (попап закрывается/оплата проходит/экран уходит назад) —

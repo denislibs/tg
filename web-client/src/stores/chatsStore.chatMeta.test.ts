@@ -54,14 +54,14 @@ describe('refetchSubscriber: chat_update', () => {
     __resetChatsReloadTimerForTests()
   })
 
-  it('чат уже в списке — managers.chats.listDialogs НЕ зовётся (снимок применяет владелец, не main)', () => {
+  it('чат уже в списке — managers.dialogs.refresh НЕ зовётся (снимок применяет владелец, не main)', () => {
     // Фейковые таймеры: обработчик уходит в сеть через дебаунсер (300 мс),
     // поэтому «не позвали» надо проверять ПОСЛЕ прокрутки таймеров, иначе тест
     // прошёл бы и на возвращённом рефетче.
     vi.useFakeTimers()
-    const listDialogs = vi.fn().mockResolvedValue([])
+    const refresh = vi.fn().mockResolvedValue(undefined)
     registerRefetchSubscriber({
-      chats: { listDialogs },
+      dialogs: { refresh },
       auth: { me: vi.fn().mockResolvedValue(null) },
       messages: { listPins: vi.fn() },
       folders: { list: vi.fn() },
@@ -71,18 +71,18 @@ describe('refetchSubscriber: chat_update', () => {
     vi.advanceTimersByTime(1000)
     vi.useRealTimers()
 
-    expect(listDialogs).not.toHaveBeenCalled()
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   // Меня добавили в группу (backend group.go:145-151: AddMember → publishChatUpdate):
   // диалога ещё нет ни в списке, ни в снимке нет полей, чтобы его собрать, —
-  // единственный источник нового диалога у нас /chats. Только этот случай и ходит
-  // в сеть.
+  // единственный источник нового диалога у нас /chats (владелец, managers.dialogs.
+  // refresh()). Только этот случай и ходит в сеть.
   it('чата ещё нет в списке — дебаунснутый рефетч /chats', () => {
     vi.useFakeTimers()
-    const listDialogs = vi.fn().mockResolvedValue([])
+    const refresh = vi.fn().mockResolvedValue(undefined)
     registerRefetchSubscriber({
-      chats: { listDialogs },
+      dialogs: { refresh },
       auth: { me: vi.fn().mockResolvedValue(null) },
       messages: { listPins: vi.fn() },
       folders: { list: vi.fn() },
@@ -93,13 +93,13 @@ describe('refetchSubscriber: chat_update', () => {
     vi.advanceTimersByTime(1000)
     vi.useRealTimers()
 
-    expect(listDialogs).toHaveBeenCalledTimes(1) // дебаунс: два кадра — один запрос
+    expect(refresh).toHaveBeenCalledTimes(1) // дебаунс: два кадра — один запрос
   })
 
   it('полный рефетч /chats остаётся за rt:resync (too_long)', () => {
-    const listDialogs = vi.fn().mockResolvedValue([])
+    const refresh = vi.fn().mockResolvedValue(undefined)
     registerRefetchSubscriber({
-      chats: { listDialogs },
+      dialogs: { refresh },
       auth: { me: vi.fn().mockResolvedValue(null) },
       messages: { listPins: vi.fn() },
       folders: { list: vi.fn() },
@@ -107,6 +107,6 @@ describe('refetchSubscriber: chat_update', () => {
 
     rootScope.dispatchEventSingle('rt:resync', null)
 
-    expect(listDialogs).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
   })
 })

@@ -9,7 +9,6 @@ import type { GroupCard, InviteLink } from '../managers/groupsManager'
 import type { DiscussionCandidate } from '../managers/channelsManager'
 import type { Peer } from '../managers/peersManager'
 import type { User } from '../managers/authManager'
-import { loadChats } from '../../stores/chatsStore'
 
 // Битовая маска «возможностей участников» (зеркало domain.MemberPerms).
 export const PERMS = [
@@ -108,8 +107,9 @@ interface Managers {
   // Task 4 (действия без оптимистики, fix ревью Important): self-leave
   // (removeMember(chatId, me.id)) применяет владельца локально сразу после
   // успеха — не дожидаясь WS chat_removed (см. deleteOrLeave ниже).
-  dialogs: { applyRemoved(chatId: number): Promise<void> }
-  chats: { listDialogs(): Promise<import('../models').Dialog[]> }
+  // Task 6: `refresh()` — сетевой догон владельца списка диалогов (заменил
+  // `chats.listDialogs()` + `loadChats`, диалоговая половина которого снесена).
+  dialogs: { applyRemoved(chatId: number): Promise<void>; refresh(): Promise<void> }
 }
 
 export interface GroupEdit {
@@ -230,7 +230,7 @@ export function useGroupEdit(chatId: number): GroupEdit {
 
   const admins = useMemo(() => members.filter((m) => m.role === 'creator' || m.role === 'admin'), [members])
 
-  const refreshDialogs = () => loadChats(managers)
+  const refreshDialogs = () => managers.dialogs.refresh()
 
   return {
     card, members, admins, invites, revokedInvites, bans, restricted, canBan, canManageAdmins, isCreator, reload,

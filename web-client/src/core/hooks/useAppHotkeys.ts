@@ -4,7 +4,7 @@
 // сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
-import { useChatsStore, loadChats } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { initHotkeys } from '../hotkeys'
 
@@ -33,7 +33,7 @@ export function useAppHotkeys(): void {
   const openSaved = useCallback(() => {
     void (async () => {
       const id = await managers.chats.saved()
-      await loadChats(managers)
+      await managers.dialogs.refresh()
       useNavigationStore.getState().selectChat(String(id))
     })()
   }, [managers])

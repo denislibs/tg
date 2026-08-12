@@ -5,7 +5,6 @@
 // — Shell их рендерит. Тосты идут через showToast.
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import { loadChats } from '../../stores/chatsStore'
 import { loadFolders } from '../../stores/foldersStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useT } from '../../i18n'
@@ -40,7 +39,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
       .joinByToken(m[1])
       .then(async (res) => {
         if (res.status === 'joined') {
-          await loadChats(managers)
+          await managers.dialogs.refresh()
           showToast('Вы вступили')
         } else {
           showToast('Заявка отправлена, ждите одобрения')
@@ -87,7 +86,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
   const onAddlistJoined = (folderTitle: string) => {
     // Вступили в папку по ссылке — на сервере появилась новая папка, в памяти её
     // нет: cache-first обходим overwrite'ом (tweb getDialogFilters(true)).
-    void loadChats(managers).then(() => loadFolders(managers, { overwrite: true }))
+    void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true }))
     showToast(`${t('Folder added')}: ${folderTitle}`)
   }
 
@@ -111,7 +110,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
         const { chat_id } = await managers.bots.start(u.id, deep.start ?? '')
         if (cancelled) return
         useNavigationStore.getState().selectChat(String(chat_id))
-        void loadChats(managers)
+        void managers.dialogs.refresh()
       } catch { /* ignore bad deep link */ }
     })()
     return () => { cancelled = true }

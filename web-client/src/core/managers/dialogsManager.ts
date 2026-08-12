@@ -49,6 +49,17 @@ export interface DialogsDeps {
    * его не задают.
    */
   saveCache?: (dialogs: Dialog[]) => Promise<void>
+  /**
+   * Task 6 (диалоговая половина `loadChats` переезжает к владельцу): дешифровка
+   * превью секретных чатов на холодном старте/сетевом догоне (порт
+   * `chatsStore.decryptSecretPreviews`, main). Текст секретного сообщения
+   * приходит с сервера как `enc_body`, plaintext знает только WebCrypto-ключ
+   * секретного чата — тот живёт в `secretManager` (workerCore.ts), в ТОМ ЖЕ
+   * воркере, поэтому RPC (как было с main) больше не нужен. Опционален по тому
+   * же приёму, что `getMeId`/`savePinnedOrders` выше: тесты, которых секретные
+   * чаты не касаются, его не задают.
+   */
+  decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; media?: { mediaType: string } } | null>
 }
 
 /** Тот же интервал, что был у main-thread-дебаунса `dialogsPersist.ts` (800мс)
@@ -57,7 +68,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache }: DialogsDeps) {
+export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, decryptSecret }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -104,8 +115,55 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       .map((dialog) => ({ dialog, index: dialogIndex(dialog, pinnedOrder, draftFor(dialog.chatId)) }))
       .sort((a, b) => b.index - a.index)
 
+  /**
+   * Досеять `pinnedOrders` порядком закреплённых из получившегося списка — порт
+   * tweb `generateDialogPinnedDate` (dialogs.ts:934-936), где отсутствующий в
+   * порядке закреплённый тут же в него добавляется (`order.unshift`) и порядок
+   * сохраняется (`savePinnedOrders`). До Task 6 жил в main (`chatsStore.
+   * applyDialogs`/`syncPinnedOrder`) и не был перенесён вместе с остальным —
+   * последний кусок легаси-пути, см. `stores/chatsStore.order.test.ts` (снесён
+   * этой же задачей, сценарии перенесены сюда).
+   *
+   * Зачем: `pinned_at` сервер наружу не отдаёт (в `Dialog` только флаг
+   * `pinned`), он выражен лишь ПОРЯДКОМ ответа `/chats` (ORDER BY m.pinned_at
+   * DESC, chatsrepo.go:225). Первый применённый список этот порядок и
+   * фиксирует (стабильная сортировка ES2019 разводит dialogIndex-«ничьи» между
+   * ЕЩЁ не отслеженными закреплёнными строго по порядку входного массива —
+   * см. докблок `dialogIndex.pinnedDate`), дальше он берётся из `pinnedOrder` —
+   * иначе закреплённые без записи в порядке (все получают ОДИНАКОВЫЙ индекс)
+   * зависели бы от порядка входного массива при КАЖДОМ применении, то есть от
+   * того же расхождения кэш/сеть, ради которого dialogIndex вообще заведён.
+   *
+   * Тот же канал записи/зеркала, что `applyPinned` (Task 4) — второй писатель
+   * `pinnedOrders` не заводится.
+   *
+   * Возвращает, действительно ли `pinnedOrder` изменился: до сих пор
+   * НЕотслеженные закреплённые (`idx===-1` в `dialogIndex.pinnedDate`) все
+   * получают ОДИНАКОВЫЙ индекс (offset считается от длины `pinnedOrder`, не от
+   * позиции) — засеяв их позициями в `next`, тот же `dialogIndex()` для КАЖДОГО
+   * из них начнёт отдавать РАЗНЫЕ значения. `setAll` обязан пересчитать `items`
+   * заново в этом случае — иначе их СОХРАНЁННЫЙ `index` (ещё старый, общий)
+   * разойдётся с тем, что `dialogIndex()` вернул бы сейчас, и ближайший же
+   * `patchDialog` любого из них (например, входящее сообщение) пересчитает
+   * его индекс уже НОВЫМ и заново засеянным `pinnedOrder`, увидит `moved` и
+   * перетасует пин-блок, будто это первый вход в порядок — см.
+   * `dialogsManager.test.ts`, «первичное засеивание переживает последующий
+   * точечный patch, не только повторный полный список».
+   */
+  function syncPinnedOrder(sorted: readonly DialogItem[]): boolean {
+    const next = sorted.filter((i) => i.dialog.pinned).map((i) => i.dialog.chatId)
+    if (next.length === pinnedOrder.length && next.every((id, i) => id === pinnedOrder[i])) return false
+    pinnedOrder = next
+    pinnedOrders = { ...pinnedOrders, [ALL_FOLDER_ID]: next }
+    void savePinnedOrders?.(pinnedOrders)
+    mirrorStateKey?.('pinnedOrders', pinnedOrders)
+    return true
+  }
+
   const setAll = (dialogs: Dialog[]): DialogOp => {
     items = sort(dialogs)
+    // Пересортировать НАДО ЖЕ засеянным pinnedOrder — см. докблок syncPinnedOrder.
+    if (syncPinnedOrder(items)) items = sort(dialogs)
     return { op: 'reset', items }
   }
 
@@ -144,12 +202,34 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     publish([{ op: 'patch', chatId, fields, ...(moved ? { index } : {}) }])
   }
 
+  // Расшифровать превью секретных чатов «на месте» (мутирует lastMessage
+  // входящих диалогов) — порт `chatsStore.decryptSecretPreviews` (main, до
+  // Task 6), но без RPC: секретный ключ знает `secretManager`, живущий в этом
+  // же воркере. Диалог без encBody, с уже готовым text или не secret-типа —
+  // no-op; упавшая дешифровка (ключ ещё не пришёл/битый) глотается, превью
+  // остаётся generic-лейблом — как и раньше.
+  async function decryptSecretPreviews(dialogs: Dialog[]): Promise<void> {
+    if (!decryptSecret) return
+    await Promise.all(dialogs.map(async (d) => {
+      const lm = d.lastMessage
+      if (d.type !== 'secret' || !lm?.encBody || lm.text) return
+      const dec = await decryptSecret(d.chatId, lm.encBody).catch(() => null)
+      if (!dec) return
+      lm.text = dec.text
+      if (!dec.text && dec.media) lm.mediaType = dec.media.mediaType
+    }))
+  }
+
   async function doHydrate(): Promise<void> {
     const state = await loadState()
     pinnedOrders = state.pinnedOrders
     pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
     drafts = state.drafts
-    if (!items.length) setAll(await loadCache())
+    if (!items.length) {
+      const cached = await loadCache()
+      await decryptSecretPreviews(cached)
+      setAll(cached)
+    }
     hydrated = true
   }
 
@@ -177,7 +257,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       await hydrate()
       try {
         const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
-        publish([setAll((r.chats ?? []).map(mapDialog))])
+        const dialogs = (r.chats ?? []).map(mapDialog)
+        await decryptSecretPreviews(dialogs)
+        publish([setAll(dialogs)])
       } catch (e) {
         if (e instanceof HttpError) throw e
       }
@@ -213,11 +295,42 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * записи диалогов — клир гарантированно ляжет ПОСЛЕ устаревшей записи, и
      * `cancelPersist()` тут ни при чём.
      *
-     * Полный сброс самого кэша (`items`/`hydrated`) на логаут — Task 6 (пины
-     * владения), здесь не делаем.
+     * Полный сброс самого кэша (`items`/`hydrated`) на логаут — `resetForLogout()`
+     * ниже, отдельный метод (Task 6).
      */
     cancelPersist(): void {
       if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    },
+
+    /**
+     * Task 6 (пины владения, приоритетная находка ревью Task 5): полный сброс
+     * in-memory кэша владельца на логауте/смене аккаунта. `dialogsManager`
+     * живёт в SharedWorker, который переживает `location.reload()` отдельной
+     * вкладки, пока жива хотя бы одна другая, — без этого сброса `items`/
+     * `hydrated` пережили бы логаут, и следующий `fillMirror()` (уже под ДРУГИМ
+     * вошедшим пользователем) отдал бы готовый `items` вместо честной
+     * регидратации с диска нового аккаунта — чужой список диалогов на экране.
+     *
+     * `items = []` обязателен, а не только `hydrated = false`: `doHydrate()`
+     * перечитывает кэш с диска ТОЛЬКО когда `!items.length` (см. выше) — при
+     * непустом `items` он молча оставил бы старые данные, даже сбросив флаг.
+     * `pinnedOrders`/`pinnedOrder`/`drafts` тоже перезапишет ближайший
+     * `doHydrate()` (он их читает безусловно), но обнуляем и здесь — с момента
+     * `resetForLogout()` до следующего `fillMirror()`/`refresh()` кэш обязан
+     * быть честно пуст, а не хранить обрывки прошлой сессии на случай, если
+     * что-то дёрнет владельца в этом окне (напр. запоздавший realtime-кадр).
+     *
+     * Вызывается РЯДОМ с `cancelPersist()` — тем же приёмом, что
+     * `media.resetToken()`/`resetDownloads()` (workerCore.ts, onLoggingOut/
+     * onLoggedIn): каждый владелец сбрасывает СВОЙ кэш сам, отдельным вызовом.
+     */
+    resetForLogout(): void {
+      items = []
+      pinnedOrders = {}
+      pinnedOrder = []
+      drafts = []
+      hydrated = false
+      hydrating = null
     },
 
     /**
