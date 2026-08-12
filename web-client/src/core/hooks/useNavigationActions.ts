@@ -40,7 +40,9 @@ export function useNavigationActions() {
     const nav = useNavigationStore.getState()
     nav.setDraftPeer(null)
     nav.setSelectedId(String(chatId))
-    void managers.dialogs.refresh()
+    // `.catch` (Minor #3 финального ревью): fire-and-forget вызов, а refresh()
+    // пробрасывает HttpError — без него 401/5xx даёт unhandled rejection.
+    void managers.dialogs.refresh().catch(() => {})
   }, [managers])
 
   // Клик по «похожему каналу»: вступаем по @username и открываем.

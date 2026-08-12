@@ -73,6 +73,25 @@ function sortDialogsByIndex(dialogs: Dialog[], indexById: Record<number, number>
   return [...dialogs].sort((a, b) => (indexById[b.chatId] ?? 0) - (indexById[a.chatId] ?? 0))
 }
 
+/**
+ * Fix (финальное ревью, Important #4): реконсил сохранил ссылки на все элементы
+ * и порядок тот же — значит СОДЕРЖИМОЕ не изменилось. `sortDialogsByIndex`
+ * аллоцирует всегда (`[...dialogs].sort`), поэтому без этой сверки совпавший
+ * `reset` (любой `refresh()` без реальных изменений на сервере) отдавал бы
+ * новую ссылку на массив и перерисовывал ВСЕХ подписчиков списка. Инвариант
+ * «совпавший ответ не даёт ни перерисовки, ни записи в IDB» —
+ * web-client/CLAUDE.md, «Применять ответ сети полной подменой коллекции».
+ */
+function sameList(a: readonly Dialog[], b: readonly Dialog[]): boolean {
+  return a.length === b.length && a.every((d, i) => d === b[i])
+}
+
+/** Тот же смысл для карты индексов: значения те же — держим прежний объект. */
+function sameIndex(a: Record<number, number>, b: Record<number, number>): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[Number(k)] === b[Number(k)])
+}
+
 export const useChatsStore = create<ChatsState>((set) => ({
   dialogs: [],
   dialogIndexById: {},
@@ -113,7 +132,12 @@ export const useChatsStore = create<ChatsState>((set) => ({
           list = list.filter((d) => d.chatId !== op.chatId)
         }
       }
-      return { dialogs: sortDialogsByIndex(list, indexById), dialogIndexById: indexById, loaded: true }
+      let dialogs = sortDialogsByIndex(list, indexById)
+      if (sameList(dialogs, s.dialogs)) {
+        dialogs = s.dialogs
+        if (sameIndex(indexById, s.dialogIndexById)) indexById = s.dialogIndexById
+      }
+      return { dialogs, dialogIndexById: indexById, loaded: true }
     }),
   setMe: (me) => set({ me, meId: me?.id ?? null }),
   setActiveChat: (activeChatId) => set({ activeChatId }),

@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { newGroupsManager } from './groupsManager'
+import { mapDialog, type RawDialog } from '../models'
 import type { Dialog } from '../models'
 import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
@@ -930,5 +931,178 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
       created_at: '2026-08-09T15:00:00Z' } as NewMessageEvt)
 
     expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+  })
+})
+
+// ── Финальное ревью ветки ────────────────────────────────────────────────────
+// Important #4: инвариант «совпавший ответ не даёт ни перерисовки, ни записи в
+// IDB» (web-client/CLAUDE.md, «Применять ответ сети полной подменой коллекции»;
+// порт tweb saveDialogFilter) на стороне ВЛАДЕЛЬЦА. До правки `refresh()`
+// публиковал `reset` безусловно, а `publish()` безусловно планировал полную
+// перезапись стора (clear + N put) — значит каждый колсайт `refresh()` (их
+// больше десятка: Sidebar, deep-links, редактор контакта, resync-кадр…), каждый
+// `reindex` и сам холодный старт переписывали весь S_DIALOGS. Половину зеркала
+// держит stores/chatsStore.order.test.ts.
+describe('dialogsManager: совпавший ответ не даёт ни операции, ни записи на диск (Important #4)', () => {
+  const raw = (chatId: number, at: string): RawDialog => ({
+    chat_id: chatId, type: 'private', title: 't' + chatId, unread: 0, last_read_seq: 0,
+    last_message: { seq: 1, text: 'x', sender_id: 1, at },
+  } as unknown as RawDialog)
+
+  it('ответ /chats совпал с кэшем — refresh() отдаёт null, ops пусты, saveCache не планируется, ссылки сохранены', async () => {
+    vi.useFakeTimers()
+    const rows = [raw(1, '2026-08-01T00:00:00Z'), raw(2, '2026-08-02T00:00:00Z')]
+    const ops: DialogOp[] = []
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      // сеть отдаёт РОВНО то же, что лежит в офлайн-кэше
+      rest: restStub(rows) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => rows.map(mapDialog),
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+    const before = mgr.getSnapshot()
+    ops.length = 0
+
+    const op = await mgr.refresh()
+
+    expect(op).toBeNull()
+    expect(ops).toEqual([])
+    expect(mgr.getSnapshot()).toBe(before) // тот же массив по ССЫЛКЕ
+    expect(mgr.getSnapshot()[0]).toBe(before[0]) // и те же элементы
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(save).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('ответ /chats отличается — reset публикуется, возвращается вызывающему и уезжает на диск', async () => {
+    vi.useFakeTimers()
+    const ops: DialogOp[] = []
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      rest: restStub([raw(1, '2026-08-01T00:00:00Z'), raw(2, '2026-08-02T00:00:00Z')]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+
+    const op = await mgr.refresh()
+
+    // Important #2: ответ RPC — самостоятельный канал доставки (boot.ts применяет
+    // его к зеркалу до того, как поднят насос rt:dialog_op).
+    expect(op?.op).toBe('reset')
+    expect(ids(op!)).toEqual([2, 1])
+    expect(ops).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(save).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('fillMirror не планирует запись на диск — данные только что прочитаны с того же диска', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+
+    await mgr.fillMirror()
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(save).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('reindex (State-ключ сменился) рассылается, но диска не касается — значения диалогов те же', async () => {
+    vi.useFakeTimers()
+    const ops: DialogOp[] = []
+    const save = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      saveCache: save,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.setStateKey('drafts', [draft(1, '2026-08-09T13:00:00Z')])
+
+    expect(ops).toHaveLength(1)
+    expect(ops[0].op).toBe('reindex')
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2]) // черновик поднял диалог
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(save).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})
+
+// Minor #4: `resetForLogout()` опустошает кэш синхронно, но уже улетевшие
+// `hydrate()`/`refresh()` этим не гасятся — ответ `/chats`, отправленный под
+// ПРОШЛЫМ токеном, применился бы к кэшу нового аккаунта и разошёлся веером по
+// вкладкам (SharedWorker переживает reload вкладки). Гвард — поколение сессии,
+// по образцу `downloadGen` в mediaManager.ts.
+describe('dialogsManager: поколение сессии гасит ответы прошлого аккаунта (Minor #4)', () => {
+  // Операции владельца асинхронны с первого же шага (`await hydrate()`), поэтому
+  // «запрос уже улетел» наступает не синхронно за вызовом — прокручиваем
+  // микротаски, прежде чем имитировать смену сессии.
+  const tick = async (n = 5) => { for (let i = 0; i < n; i++) await Promise.resolve() }
+
+  it('ответ /chats, улетевший до логаута, не применяется и не рассылается', async () => {
+    let resolveGet!: (v: { chats: unknown[] }) => void
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: { get: vi.fn(() => new Promise((res) => { resolveGet = res as never })) } as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+
+    const inflight = mgr.refresh()
+    await tick() // запрос ушёл под ПРОШЛЫМ токеном
+    mgr.resetForLogout() // сессия сменилась, пока ответ летел
+    resolveGet({ chats: [{ chat_id: 5, type: 'private', title: 't5', unread: 0, last_read_seq: 0 }] })
+
+    await expect(inflight).resolves.toBeNull()
+    expect(ops).toEqual([]) // чужой список не разошёлся по вкладкам
+    expect(mgr.getSnapshot()).toEqual([]) // и не осел в кэше владельца
+  })
+
+  it('чтение диска, улетевшее до логаута, не применяется — гидратация переигрывается заново', async () => {
+    let resolveCache!: (v: Dialog[]) => void
+    const ops: DialogOp[] = []
+    let gen = 1
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: () => (gen === 1
+        ? new Promise<Dialog[]>((res) => { resolveCache = res })
+        : Promise.resolve([dialog(2, '2026-08-02T00:00:00Z')])),
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+
+    const inflight = mgr.fillMirror()
+    await tick() // чтение кэша ПРОШЛОГО аккаунта уже в полёте
+    mgr.resetForLogout()
+    gen = 2
+    resolveCache([dialog(1, '2026-08-01T00:00:00Z')])
+
+    expect(ids(await inflight)).toEqual([]) // прошлый список никому не отдан
+    expect(ops).toEqual([]) // и не разослан
+    // Гидратация не «залипла» отменённой: следующий вызов честно читает диск
+    // нового аккаунта.
+    const op = await mgr.fillMirror()
+    expect(ids(op)).toEqual([2])
   })
 })

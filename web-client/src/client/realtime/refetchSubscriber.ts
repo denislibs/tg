@@ -26,7 +26,9 @@ export function scheduleChatsReload(managers: Pick<Managers, 'dialogs'>): void {
   if (chatsReloadTimer) return
   chatsReloadTimer = setTimeout(() => {
     chatsReloadTimer = null
-    void managers.dialogs.refresh()
+    // `.catch` (Minor #3 финального ревью): дебаунснутый fire-and-forget, а
+    // refresh() пробрасывает HttpError — иначе 401/5xx = unhandled rejection.
+    void managers.dialogs.refresh().catch(() => {})
   }, 300)
 }
 
@@ -75,5 +77,5 @@ export function registerRefetchSubscriber(managers: Managers): void {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
-  rootScope.addEventListener('rt:resync', () => { void managers.dialogs.refresh() })
+  rootScope.addEventListener('rt:resync', () => { void managers.dialogs.refresh().catch(() => {}) }) // .catch — см. Minor #3 выше
 }

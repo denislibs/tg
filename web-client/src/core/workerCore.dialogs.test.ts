@@ -11,6 +11,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { saveDialogs, saveStateKey } from './store/persist'
+import { STATE_VERSION } from './state/state'
 import type { Dialog } from './models'
 
 const dialog = (chatId: number, at: string, pinned = false): Dialog => ({
@@ -101,6 +102,13 @@ describe('createWorkerCore(): диалоги — воркер публикует
       dialog(6, '2019-12-01T00:00:00Z', true),
     ])
     await saveStateKey('pinnedOrders', { 0: [6, 5, 4] })
+    // Версия схемы на диске обязательна (Fix финального ревью, Minor #2):
+    // владелец читает State через тот же версионный гейт, что и main
+    // (loadStateOnce → дефолты при несовпадении STATE_VERSION), а в проде main
+    // этот ключ всегда пишет — `boot.ts`, `stateWasResetToDefaults()`. Без него
+    // стенд моделировал бы State чужой схемы, где игнорировать pinnedOrders —
+    // правильное поведение (см. workerCore.dialogsState.test.ts).
+    await saveStateKey('version', STATE_VERSION)
 
     const core = createWorkerCore()
     const [epWorker, epTab] = pair()

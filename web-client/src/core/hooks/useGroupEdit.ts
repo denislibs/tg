@@ -109,7 +109,9 @@ interface Managers {
   // успеха — не дожидаясь WS chat_removed (см. deleteOrLeave ниже).
   // Task 6: `refresh()` — сетевой догон владельца списка диалогов (заменил
   // `chats.listDialogs()` + `loadChats`, диалоговая половина которого снесена).
-  dialogs: { applyRemoved(chatId: number): Promise<void>; refresh(): Promise<void> }
+  // `refresh()` отдаёт опубликованную операцию (или null, если ответ совпал с
+  // памятью) — здесь она не нужна, ждём только завершения догона.
+  dialogs: { applyRemoved(chatId: number): Promise<void>; refresh(): Promise<unknown> }
 }
 
 export interface GroupEdit {

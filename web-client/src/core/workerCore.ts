@@ -52,6 +52,7 @@ import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe } from './store/persist'
+import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
@@ -187,7 +188,16 @@ export function createWorkerCore() {
     loadCache: () => loadDialogs(),
     loadState: async () => {
       const st = await loadStateAll()
-      return { pinnedOrders: st.pinnedOrders ?? {}, drafts: st.drafts ?? [] }
+      // Fix (финальное ревью, Minor #2): тот же версионный гейт, что у main
+      // (core/state/loadState.ts — при несовпадении STATE_VERSION он отдаёт
+      // чистые дефолты, а не склеивает половинки схемы прошлой сборки). Без него
+      // после ближайшего бампа версии main жил бы на дефолтах, а владелец
+      // сортировал бы по СТАРОМУ pinnedOrders/drafts — два разных ответа на один
+      // вопрос. Через `loadStateOnce()` не идём сознательно: он мемоизирует
+      // промис на модуль, а воркер перечитывает State заново после
+      // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
+      const gated = st.version === STATE_VERSION ? st : initialState()
+      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [] }
     },
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не

@@ -19,9 +19,9 @@ const dialog = (chatId: number): Dialog => ({
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
 } as Dialog)
 
-function fakeManagers(op: DialogOp) {
+function fakeManagers(op: DialogOp, netOp: DialogOp | null = null) {
   const fillMirror = vi.fn(async () => op)
-  const refresh = vi.fn(async () => {})
+  const refresh = vi.fn(async () => netOp)
   return { managers: { dialogs: { fillMirror, refresh } } as unknown as Pick<Managers, 'dialogs'>, fillMirror, refresh }
 }
 
@@ -68,6 +68,44 @@ describe('boot: холодный старт диалогов — зеркало 
       await applyDialogsMirror(null, managers, true)
 
       expect(useChatsStore.getState().dialogs).toEqual([])
+    })
+
+    // Fix (финальное ревью, Important #2): единственным каналом доставки reset'а
+    // от `refresh()` был бродкаст `rt:dialog_op`, а насос поднимается только в
+    // `startRealtime()` (эффект useAppBootstrap) — ПОСЛЕ первого рендера, и кадры
+    // до подписки никто не буферизует. Ответивший раньше `/chats` (localhost,
+    // быстрая сеть) уходил в никуда, и вкладка весь сеанс жила на дисковом кэше:
+    // `useAppBootstrap` при валидном префетче refresh сознательно не повторяет.
+    // Правило то же, что у fillMirror: пробел закрывает ОТВЕТ RPC.
+    it('ответ сетевого догона применяется из результата RPC, а не только бродкастом', async () => {
+      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
+      const netOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 30 }] }
+      const { managers } = fakeManagers(cacheOp, netOp)
+
+      await applyDialogsMirror(cacheOp, managers, false)
+
+      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([2, 1])
+    })
+
+    it('догон вернул null (ответ совпал с памятью) — зеркало не трогаем', async () => {
+      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
+      const { managers } = fakeManagers(cacheOp, null)
+
+      await applyDialogsMirror(cacheOp, managers, false)
+      const before = useChatsStore.getState().dialogs
+
+      expect(before.map((d) => d.chatId)).toEqual([1])
+    })
+
+    // Minor #3: refresh() пробрасывает HttpError — промис догона, который уезжает
+    // в bootData (на нём висит сид презенса), отклоняться наружу не должен.
+    it('догон упал (401/5xx) — промис резолвится, витрина остаётся на кэше', async () => {
+      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
+      const { managers } = fakeManagers(cacheOp)
+      ;(managers.dialogs.refresh as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401'))
+
+      await expect(applyDialogsMirror(cacheOp, managers, false)).resolves.toBeUndefined()
+      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])
     })
 
     it('не под локом — запускает сетевой догон (refresh)', async () => {

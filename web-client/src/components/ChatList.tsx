@@ -50,8 +50,9 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
   // Task 2 (перенос владения диалогами) — ответ владельца на fillMirror()
   // (кэш прошлой сессии, поднятый воркером) applyDialogOps'ится в reset →
   // loaded=true (chatsStore.ts), а весь холодный старт awaited в boot.ts
-  // (applyDialogsMirror) до первого рендера — отдельной проверки
-  // bootData.hydratedFromCache тут не нужно (она недостижима без loaded=true).
+  // (applyDialogsMirror) до первого рендера — отдельного флага «подняли из
+  // кэша» тут не нужно (он недостижим без loaded=true; мёртвый
+  // bootData.hydratedFromCache снесён финальным ревью, Minor #1).
   useLayoutEffect(() => {
     if (loaded || !scrollRef.current) return
     const placeholder = new DialogsPlaceholder()

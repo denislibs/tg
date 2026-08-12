@@ -91,6 +91,16 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   let hydrating: Promise<void> | null = null
   // Task 5: таймер отложенной записи кэша (см. scheduleSave/cancelPersist).
   let saveTimer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Fix (финальное ревью, Minor #4): поколение сессии. `resetForLogout()`
+   * опустошает кэш синхронно, но НЕ гасит уже улетевшие `hydrate()`/`refresh()`
+   * — чтение диска и ответ `/chats`, отправленный под ПРОШЛЫМ токеном, придут
+   * уже после смены сессии и без гварда применились бы к кэшу нового аккаунта и
+   * разошлись бы веером по вкладкам. Приём — тот же `downloadGen` у медиа
+   * (`mediaManager.ts::downloadMediaURL`/`resetDownloads`): поколение снимается
+   * в момент ЗАПУСКА операции и сверяется перед записью/публикацией.
+   */
+  let sessionGen = 0
 
   /** Схлопнуть серию публикаций в одну запись на диск (см. докблок `saveCache`
    * в DialogsDeps). Каждый publish() двигает окно — итоговая запись случится
@@ -106,7 +116,20 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     }, PERSIST_DEBOUNCE_MS)
   }
 
-  const publish = (ops: DialogOp[]) => { onDialogOps?.(ops); scheduleSave() }
+  /**
+   * Разослать операции вкладкам, НЕ трогая диск. Fix (финальное ревью,
+   * Important #4): запись на диск — следствие изменения ЗНАЧЕНИЙ кэша, а не
+   * самого факта рассылки. Два колсайта объявляют операцию, ничего в значениях
+   * не меняя, и обязаны идти этим путём:
+   *  - `fillMirror()` — данные только что прочитаны с ТОГО ЖЕ диска, планировать
+   *    обратную запись нечего;
+   *  - `reindex` из `setStateKey()` — меняется порядок (производная от
+   *    State-ключей `pinnedOrders`/`drafts`), а на диск идут только значения
+   *    диалогов (`items.map(i => i.dialog)`), они те же.
+   */
+  const announce = (ops: DialogOp[]) => { onDialogOps?.(ops) }
+  /** Изменились ЗНАЧЕНИЯ кэша: разослать и запланировать запись на диск. */
+  const publish = (ops: DialogOp[]) => { announce(ops); scheduleSave() }
   const draftFor = (chatId: number) => drafts.find((d) => d.chatId === chatId)
 
   /** Порядок — производная от данных (tweb generateDialogIndex, dialogs.ts:605-608). */
@@ -160,10 +183,37 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     return true
   }
 
-  const setAll = (dialogs: Dialog[]): DialogOp => {
+  /**
+   * Совпал ли пересчитанный список с текущим — И порядком (`chatId` + `index`),
+   * И значениями. `equal()` — тот же структурный компаратор, которым
+   * `reconcileEntity` сохраняет ссылки на витрине.
+   */
+  function sameItems(a: readonly DialogItem[], b: readonly DialogItem[]): boolean {
+    return a.length === b.length
+      && a.every((it, i) => it.index === b[i].index && it.dialog.chatId === b[i].dialog.chatId && equal(it.dialog, b[i].dialog))
+  }
+
+  /**
+   * Применить ПОЛНЫЙ список (кэш при гидрации, ответ `/chats` при догоне).
+   *
+   * Fix (финальное ревью, Important #4): `null`, если результат структурно
+   * совпал с текущим `items`, — инвариант «совпавший ответ не даёт ни
+   * перерисовки, ни записи в IDB» (web-client/CLAUDE.md, «Применять ответ сети
+   * полной подменой коллекции»; порт tweb `saveDialogFilter`). Без этого каждый
+   * колсайт `refresh()` (их больше десятка — Sidebar, deep-links, редактор
+   * контакта, resync-кадр) публиковал бы `reset` и переписывал ВЕСЬ `S_DIALOGS`
+   * даже когда сервер вернул ровно то же самое.
+   *
+   * Прежний `items` при совпадении сохраняется ПО ССЫЛКЕ (вместе со ссылками на
+   * сами диалоги) — свежие объекты `mapDialog` выбрасываем: кэш владельца ведёт
+   * себя так же, как зеркало под `reconcileById`.
+   */
+  const setAll = (dialogs: Dialog[]): DialogOp | null => {
+    const prev = items
     items = sort(dialogs)
     // Пересортировать НАДО ЖЕ засеянным pinnedOrder — см. докблок syncPinnedOrder.
     if (syncPinnedOrder(items)) items = sort(dialogs)
+    if (sameItems(prev, items)) { items = prev; return null }
     return { op: 'reset', items }
   }
 
@@ -221,13 +271,20 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   }
 
   async function doHydrate(): Promise<void> {
+    // Гварды поколения (Minor #4): чтение диска асинхронно, за это время могла
+    // случиться смена сессии — тогда прочитанное принадлежит прошлому аккаунту.
+    // Выходим, НЕ выставив `hydrated`: следующий вызов гидрирует заново, уже
+    // под новым скоупом персиста.
+    const gen = sessionGen
     const state = await loadState()
+    if (gen !== sessionGen) return
     pinnedOrders = state.pinnedOrders
     pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
     drafts = state.drafts
     if (!items.length) {
       const cached = await loadCache()
       await decryptSecretPreviews(cached)
+      if (gen !== sessionGen) return
       setAll(cached)
     }
     hydrated = true
@@ -235,8 +292,13 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
 
   function hydrate(): Promise<void> {
     if (hydrated) return Promise.resolve()
-    hydrating ??= doHydrate().finally(() => { hydrating = null })
-    return hydrating
+    // `hydrating === p` в finally (а не безусловное обнуление): `resetForLogout()`
+    // сбрасывает `hydrating` синхронно, и гидратация ПРОШЛОЙ сессии, дорезолвившись
+    // позже, обнулила бы ссылку на уже начатую гидратацию НОВОЙ — третий
+    // конкурентный вызов начал бы её заново (тот же класс гонки, что закрыт
+    // кэшированием промиса вместо булева флага, см. докблок `hydrating`).
+    const p = (hydrating ??= doHydrate().finally(() => { if (hydrating === p) hydrating = null }))
+    return p
   }
 
   return {
@@ -244,24 +306,51 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * Зеркало объявило пробел. Отвечаем ВСЕГДА — и ответом RPC (его ждёт boot.ts
      * до первого рендера), и веером (соседние вкладки). «Уже публиковали» не
      * считается доставкой: SuperMessagePort кадры не буферизует.
+     *
+     * `announce`, а не `publish` (Important #4, отложенная мелочь): значения
+     * только что прочитаны с диска — планировать обратную запись на тот же диск
+     * бессмысленно.
      */
     async fillMirror(): Promise<DialogOp> {
+      const gen = sessionGen
       await hydrate()
+      // Сессия сменилась, пока читали диск (Minor #4): ответ прошлого аккаунта
+      // ни рассылать, ни отдавать спросившему нельзя — отдаём честно пустой.
+      if (gen !== sessionGen) return { op: 'reset', items: [] }
       const op: DialogOp = { op: 'reset', items }
-      publish([op])
+      announce([op])
       return op
     },
 
-    /** Сетевой догон. Офлайн — молча остаёмся на кэше (как прежний listDialogs). */
-    async refresh(): Promise<void> {
+    /**
+     * Сетевой догон. Офлайн — молча остаёмся на кэше (как прежний listDialogs).
+     *
+     * Fix (финальное ревью, Important #2): возвращает ОПУБЛИКОВАННУЮ операцию
+     * (или `null`, если применять нечего). Единственным каналом доставки был
+     * бродкаст `rt:dialog_op`, а насос `smp.on(...)` поднимается лишь в
+     * `startRealtime()` из эффекта `useAppBootstrap` — ПОСЛЕ первого рендера;
+     * `SuperMessagePort` кадры не буферизует, поэтому ответ `/chats`, пришедший
+     * раньше подписки (localhost/быстрая сеть — обычное дело), уходил в никуда,
+     * и вкладка жила весь сеанс на дисковом кэше. Правило то же, что у
+     * `fillMirror`: пробел закрывает ОТВЕТ RPC, а не следующий бродкаст;
+     * повторное применение через бродкаст идемпотентно.
+     */
+    async refresh(): Promise<DialogOp | null> {
+      const gen = sessionGen
       await hydrate()
       try {
         const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
         const dialogs = (r.chats ?? []).map(mapDialog)
         await decryptSecretPreviews(dialogs)
-        publish([setAll(dialogs)])
+        // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
+        if (gen !== sessionGen) return null
+        const op = setAll(dialogs)
+        // Ответ совпал с памятью — ни операции, ни записи на диск (Important #4).
+        if (op) publish([op])
+        return op
       } catch (e) {
         if (e instanceof HttpError) throw e
+        return null
       }
     },
 
@@ -325,6 +414,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * onLoggedIn): каждый владелец сбрасывает СВОЙ кэш сам, отдельным вызовом.
      */
     resetForLogout(): void {
+      // Minor #4: всё, что уже улетело под прошлым токеном (чтение диска в
+      // doHydrate, ответ /chats в refresh), обязано осечься перед применением —
+      // см. докблок sessionGen.
+      sessionGen++
       items = []
       pinnedOrders = {}
       pinnedOrder = []
@@ -336,6 +429,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     /**
      * Ключ State, от которого зависит порядок, изменился (пишет persistManager).
      * Значения диалогов те же — публикуем reindex, а не reset.
+     *
+     * И по той же причине — `announce`, а не `publish` (Important #4): на диск
+     * (`S_DIALOGS`) уезжают только значения диалогов, а они не изменились;
+     * новый порядок целиком выводится из State-ключей, у которых свой писатель.
      */
     setStateKey(key: string, value: unknown): void {
       if (key === 'pinnedOrders') {
@@ -344,7 +441,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       } else if (key === 'drafts') drafts = value as Draft[]
       else return
       items = sort(items.map((i) => i.dialog))
-      publish([{ op: 'reindex', items: items.map((i) => ({ chatId: i.dialog.chatId, index: i.index })) }])
+      announce([{ op: 'reindex', items: items.map((i) => ({ chatId: i.dialog.chatId, index: i.index })) }])
     },
 
     // ── Task 3: realtime-кадры применяет владелец ────────────────────────────

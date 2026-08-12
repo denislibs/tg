@@ -86,7 +86,9 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
   const onAddlistJoined = (folderTitle: string) => {
     // Вступили в папку по ссылке — на сервере появилась новая папка, в памяти её
     // нет: cache-first обходим overwrite'ом (tweb getDialogFilters(true)).
-    void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true }))
+    // `.catch` (Minor #3 финального ревью): refresh() пробрасывает HttpError, а
+    // вызов идёт `void`-ом — на 401/5xx это был бы unhandled rejection.
+    void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true })).catch(() => {})
     showToast(`${t('Folder added')}: ${folderTitle}`)
   }
 
@@ -110,7 +112,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
         const { chat_id } = await managers.bots.start(u.id, deep.start ?? '')
         if (cancelled) return
         useNavigationStore.getState().selectChat(String(chat_id))
-        void managers.dialogs.refresh()
+        void managers.dialogs.refresh().catch(() => {}) // см. .catch выше (Minor #3)
       } catch { /* ignore bad deep link */ }
     })()
     return () => { cancelled = true }

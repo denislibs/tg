@@ -19,7 +19,17 @@ import type { User } from '../core/managers/authManager'
 
 export interface BootData {
   me: Promise<User | null>
-  hydratedFromCache: boolean
+  /**
+   * Сетевой догон списка диалогов, запущенный boot'ом (`applyDialogsMirror`):
+   * резолвится, когда ответ `/chats` УЖЕ применён к зеркалу; не отклоняется
+   * никогда (офлайн/401 остаются на кэше владельца). Fix (финальное ревью,
+   * Important #3): на нём висит сид презенса в `useAppBootstrap` — раньше он
+   * читал зеркало сразу и на пустом кэше (смена аккаунта, очищенное хранилище,
+   * вход в соседней вкладке) молча выходил без единой цели, оставляя сеанс без
+   * онлайн-точек и «был(а) в сети». Заменил мёртвый `hydratedFromCache`:
+   * скелетон списка решает по `loaded` (см. ChatList.tsx), флаг не читал никто.
+   */
+  dialogsReady: Promise<void>
   // Есть ли локальный session_token (IDB). По нему useAuthGate решает authed до
   // ответа сети (как tweb — auth из локального состояния), без промежуточного null.
   hasToken: boolean
@@ -62,16 +72,16 @@ export function setBootData(d: BootData): void {
  * `locked` — отдельная причина отказа: под пасскодом префетч не делался вовсе,
  * там пустышка (см. BootData.locked).
  *
- * Диалогов здесь больше нет (Fix, ревью Task 6, Important #1): та половина
+ * Снимка диалогов здесь нет (Fix, ревью Task 6, Important #1): та половина
  * `loadChats` снесена, диалогами владеет `dialogsManager` (`fillMirror()`/
  * `refresh()`), и `boot.ts::applyDialogsMirror` применяет их к зеркалу СРАЗУ,
- * синхронно внутри `bootstrap()` — отдельный «префетч на потом» им не нужен.
- * Возвращаемый объект — просто `{ me }`, не отдельный тип: у него ровно одно
- * поле, заводить для него имя было бы лишней косвенностью.
+ * синхронно внутри `bootstrap()`. `dialogsReady` — не снимок, а ПРОМИС уже
+ * запущенного сетевого догона: он ровно так же одноразов (принадлежит сессии,
+ * под которой страница загрузилась) и потому ходит тем же каналом, что `me`.
  */
-export function bootPrefetch(): { me: Promise<User | null> } | null {
+export function bootPrefetch(): { me: Promise<User | null>; dialogsReady: Promise<void> } | null {
   if (!bootData || bootData.locked || !prefetchValid) return null
-  return { me: bootData.me }
+  return { me: bootData.me, dialogsReady: bootData.dialogsReady }
 }
 
 /**

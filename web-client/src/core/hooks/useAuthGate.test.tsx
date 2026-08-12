@@ -218,8 +218,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // повторный loadChats запишет личность прошлого аккаунта поверх только что
   // приехавшего rt:me нового.
   describe('префетч старта не переживает смену сессии', () => {
-    const prefetch = { me: Promise.resolve(null) }
-    const boot = () => setBootData({ ...prefetch, hydratedFromCache: false, hasToken: true, locked: false })
+    const prefetch = { me: Promise.resolve(null), dialogsReady: Promise.resolve() }
+    const boot = () => setBootData({ ...prefetch, hasToken: true, locked: false })
 
     it('кросс-табовый: «добавить аккаунт» в соседней вкладке, затем вход там же', () => {
       boot()
@@ -253,7 +253,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     // другой вкладке. Префетч тут разрешён пустышкой «нет сессии» — повторный
     // loadChats записал бы me=null поверх приехавшего rt:me.
     it('вкладка, открытая уже на экране входа: вход в соседней (кадра ухода не было)', () => {
-      setBootData({ ...prefetch, hydratedFromCache: false, hasToken: false, locked: false })
+      setBootData({ ...prefetch, hasToken: false, locked: false })
       const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
       expect(result.current.authed).toBe(false) // boot без токена
 

@@ -45,8 +45,19 @@ export function useAppBootstrap(): void {
       // сам решает cache-first/сеть внутри refresh()→hydrate()). Пин (обе
       // ветки условия, мутацией) — useAppBootstrap.dialogsGate.test.tsx
       // (Fix, ревью Task 6, Important #2).
-      const dialogsReady = prefetch ? Promise.resolve() : managers.dialogs.refresh()
-      void dialogsReady.then(() => loadPresence(managers))
+      //
+      // Fix (финальное ревью, Important #3): на холодном старте берём ПРОМИС
+      // догона, запущенного boot'ом (`bootData.dialogsReady`), а не
+      // `Promise.resolve()`. `loadPresence` читает цели из зеркала, и на пустом
+      // кэше (смена аккаунта, очищенное хранилище, вход в соседней вкладке) он
+      // получал пустой список и молча выходил — весь сеанс без онлайн-точек и
+      // «был(а) в сети». Массового сида презенса больше нигде нет (второй вызов
+      // в useNavigationActions.ts — точечный, на одного пира).
+      const dialogsReady = prefetch ? prefetch.dialogsReady : managers.dialogs.refresh()
+      // `.catch` до loadPresence (Minor #3): refresh() пробрасывает HttpError, а
+      // тут он идёт `void`-ом — 401/5xx не должны стать unhandled rejection и не
+      // должны отменять сид презенса по тому, что уже есть в зеркале.
+      void dialogsReady.catch(() => {}).then(() => loadPresence(managers)).catch(() => {})
       void loadStories(managers)
       void loadNotifySettings(managers)
       void loadFolders(managers)
