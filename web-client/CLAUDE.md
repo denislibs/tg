@@ -158,12 +158,16 @@ npx vite build --outDir ../client-build
 - Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
 - Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatSelection`/`useChatInfoCard`/`usePinnedBar`).
-- **Грузить медиа-**bytes** прямым `fetch` к аутентифицированному media-эндпоинту** (URL строит
-  `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`. Бинарь идёт на main-thread,
-  а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb (`wrapSticker`, загрузка файлов).
-  Так делают `StickerMedia.loadStickerContent` (инспекция Content-Type → lottie/video/image + кэш) и
-  `messages/RealMediaBubble` (стрим файла с прогрессом/отменой через `ReadableStream`). Это про **bytes**;
-  метаданные/URL-резолв — по-прежнему через `managers` (`useMediaThumb`/`useMediaContentUrl`).
+- **Грузить медиа-bytes НЕ-картинок прямым `fetch` к аутентифицированному media-эндпоинту**
+  (токен-URL строит `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`.
+  Бинарь идёт на main-thread, а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb
+  (`wrapSticker`, загрузка файлов). Так делают `StickerMedia.loadStickerContent` (инспекция
+  Content-Type → lottie/video/image + кэш), `messages/RealMediaBubble` (стрим файла-документа с
+  прогрессом/отменой через `ReadableStream`), `core/audio/waveform` и `core/secret/mediaCache`
+  (шифртекст E2E). Это про **bytes**; КАРТИНКИ (фото/превью/аватарки) с медиа-суперпорта токен-URL
+  больше не ходят — их владелец воркерный конвейер `downloadMediaURL` (см. «Медиа» ниже), витрина
+  берёт готовый objectURL из зеркала (`core/hooks/useMediaUrl`/`useMediaThumb`); хука
+  `useMediaContentUrl` больше нет.
 
 **Асинхронщина и актуальность (middleware):**
 - Любой асинхронный результат (RPC `.then`, `img.onload`, таймер), который пишет в
@@ -201,7 +205,8 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 |---|---|---|---|---|
 | `me`/`meId` | `core/workerCore.ts::setMe` (кэш + веер); меняют `core/managers/authManager.ts`, `profileManager.ts`, `premiumManager.ts` | `rt:me` — **значение** (полный `User`, `null` = разлогинен); `rt:logging_out {migrateTo}` и `rt:logged_in {userId}` — **намерение** перехода сессии (порт tweb `logging_out`/`account_logged_in`) | значение — `stores/chatsStore.ts::setMe` из проектора; намерение исполняет `core/hooks/useAuthGate.ts` | `stores/noDuplicateMe.test.ts` |
 | карточки пиров | `core/managers/peersManager.ts` | `rt:peer_op` — **операцию** (`upsert`/`patch`), не снимок кэша | `stores/peersStore.ts`, единственный писатель — проектор; пробел объявляет `core/hooks/usePeers.ts` (`fillMirror`) | `stores/noDuplicatePeers.test.ts`, `client/realtime/storeProjection.peers.test.ts` |
-| медиа-токен | `core/managers/mediaManager.ts` — получение и **единственное** расписание обновления (`TOKEN_MARGIN`) | `rt:media_token` (`MediaTokenInfo`) | `core/mediaUrl.ts::applyMediaToken`; своего таймера нет, `URL_SAFETY_MARGIN` — окно на полёт запроса, не расписание | `core/noDuplicateMediaToken.test.ts`, `core/mediaUrl.test.ts` |
+| медиа-токен (только стрим DNP-OFF и байтовые пути — см. «Медиа») | `core/managers/mediaManager.ts` — получение и **единственное** расписание обновления (`TOKEN_MARGIN`) | `rt:media_token` (`MediaTokenInfo`) | `core/mediaUrl.ts::applyMediaToken`; своего таймера нет, `URL_SAFETY_MARGIN` — окно на полёт запроса, не расписание | `core/noDuplicateMediaToken.test.ts`, `core/mediaUrl.test.ts` |
+| URL медиа (objectURL картинок/превью) | `core/managers/mediaManager.ts::downloadMediaURL` — байты → CacheStorage `cachedFiles` → `blob:`-URL минтится в воркере | `rt:media_url` (`MediaUrlEvt`) — **значение**; пробел объявляет витрина RPC-вызовом `downloadMediaURL` (поздняя вкладка стартовый бродкаст пропустила) | `core/mediaCache.ts` (потребление — `core/hooks/useMediaUrl`/`useMediaThumb`); пишут проектор и RPC-ответ владельца | `core/noDuplicateMediaUrl.test.ts` |
 
 **НЕЛЬЗЯ:**
 - **Выводить намерение из значения.** Снимок факта отвечает «что сейчас», а не «что происходит»:
@@ -310,6 +315,50 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 тихие и не конкурируют за корректирующую запись с
 `setScrollPositionSilently`/`ScrollSaver.restore()`, которые тихие по
 построению, — поэтому не тот класс писателя, который держит этот пин.
+
+## Медиа
+
+### Вьювер — vanilla-ядро (`components/mediaViewer/`)
+
+Медиавьювер — НЕ React-компонент, а порт vanilla-ядра tweb: `base.ts` (порт
+`tweb/src/components/mediaViewer/base.ts` — DOM-дерево, полёт мувера,
+зум/пан/поворот, свайпы, прелоадер), `appMediaViewer.ts` (message-вариант,
+порт tweb `mediaViewer/index.ts`: топбар-кнопки, ⋮-меню, листание через
+`listLoader`), `openMediaViewer.ts` (контроллер: один живой инстанс — аналог
+tweb-глобали `window.appMediaViewer`; Esc — `core/hotkeys.pushEsc`, Back —
+`navigationStack.pushLayer`). Видеоплеер — vanilla `lib/mediaPlayer` (порт tweb
+`lib/mediaPlayer`), прелоадер — vanilla `components/preloader.ts` (порт tweb
+`components/preloader.ts`). React живёт в ядре только ОСТРОВАМИ через
+`createRoot`: аватарка автора (`.media-viewer-userpic`) и caption
+(`RichText` в `.media-viewer-caption`).
+**Правило изменений ядра: сначала tweb, порт 1:1**; своя ветка — только с
+комментарием-обоснованием у строки. Карта непортированного (HLS/RTMP,
+SVG-хвосты, profile-avatars-морф и т.п.) — отчёты
+`docs/superpowers/plans/2026-08-12-task*-report.md` (сводная — task17).
+
+### Медиа-слой: владелец URL — воркер
+
+Картинки (фото, превью, аватарки) НЕ ходят токен-URL'ом. Модель tweb: воркер
+(`core/managers/mediaManager.ts::downloadMediaURL`) качает байты → пишет в
+CacheStorage-корзину `cachedFiles` (`core/files/cacheStorage.ts`; сохраняются
+файлы ≤ `MAX_FILE_SAVE_SIZE` = 20 МиБ, константа tweb) → минтит `blob:`-objectURL
+прямо в воркере (blob-стор общий на origin) → объявляет `rt:media_url`. Витрина
+зеркалит (`core/mediaCache.ts`, потребление — `core/hooks/useMediaUrl` /
+`useMediaThumb`); поздняя вкладка объявляет пробел сама — RPC `downloadMediaURL`
+и есть канал доставки её снимка. Logout/смена сессии (`onLoggingOut` в
+`workerCore`) стирает корзину (`deleteAll`) и revoke'ает objectURL'ы
+(`mediaManager::resetDownloads`).
+
+Токен-механизм (`core/mediaUrl.ts`) остался РОВНО двум категориям потребителей:
+- **стрим `<video>`/`<audio>` при DNP-OFF** — `resolveStreamUrl` (при DNP-ON
+  уводит на `/dnp-stream`, SW-206 из Noise-канала): вьювер/аудио-плеер
+  (`mediaPlaybackController`) и инлайн-автоплей видео в `RealMediaBubble`
+  (прямой `mediaContentUrl` в `src`);
+- **байтовые fetch'и** («МОЖНО: bytes прямым fetch» выше): `StickerMedia`,
+  файл-документ `RealMediaBubble`/`DocRow` (href + стрим с прогрессом),
+  `core/audio/waveform`, `core/secret/mediaCache` (шифртекст E2E).
+
+Новых потребителей токен-URL для картинок не заводить.
 
 ## Связь с бэком
 
