@@ -9,7 +9,6 @@ import { CHAT_THEMES, type ChatTheme } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { useSettingsStore } from '../settings'
 import { useManagers } from '../core/hooks/useManagers'
-import { useChatsStore } from '../stores/chatsStore'
 import { useT } from '../i18n'
 import s from './ChatThemesPicker.module.scss'
 
@@ -34,9 +33,9 @@ export default function ChatThemesPicker({
 
   const selected = currentThemeId || ''
 
+  // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
+  // (dialogsManager.applyTheme) ПОСЛЕ успешного REST-ответа (chatThemesManager.ts).
   const apply = (id: string) => {
-    // Оптимистично красим сразу; серверный chat_theme_update дойдёт следом (идемпотентно).
-    useChatsStore.getState().setDialogTheme(chatId, id)
     void managers.chatThemes.setChatTheme(chatId, id).catch(() => {})
     onClose()
   }

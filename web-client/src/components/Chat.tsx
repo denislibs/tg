@@ -216,7 +216,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   const typingLabel = useTypingLabel(numericChatId, isGroup)
   const peerPresence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
-  const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
   // toggle re-renders the menu; fall back to the chat prop.
   const dialogMuted = useChatsStore((s) =>
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.muted : undefined,
@@ -888,11 +887,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Mute как в tweb: включение mute из меню — через попап длительности
   // (PopupMute, монтируется в ConversationOverlays), снятие — сразу.
+  // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
+  // (dialogsManager.applyMute) ПОСЛЕ успешного REST-ответа (groupsManager.ts).
   const applyMute = (next: boolean, seconds?: number | null) => {
     if (!isRealChat) return
-    setDialogMuted(numericChatId, next) // optimistic
     const until = next && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
-    void managers.groups.setMute(numericChatId, next, until).catch(() => setDialogMuted(numericChatId, !next))
+    void managers.groups.setMute(numericChatId, next, until).catch(() => {})
   }
   const toggleMute = () => {
     if (!isRealChat) return

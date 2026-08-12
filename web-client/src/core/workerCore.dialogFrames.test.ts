@@ -151,3 +151,49 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([])
   })
 })
+
+// Task 4 (действия без оптимистики): то же действие с ДРУГОГО устройства/вкладки
+// доезжает этими 4 кадрами (backend logAndPublish на все устройства владельца/
+// участников) — проверяем, что workerCore.ts::dispatch реально зовёт применялку
+// владельца (не только что dialogsManager сам умеет считать patch из этих
+// аргументов — это отдельно покрыто dialogsManager.test.ts), и что применение
+// происходит РОВНО ОДИН РАЗ (ops длиной 1, не 2 — раньше эти же 4 кадра ЕЩЁ и
+// разбирала витрина напрямую через storeProjection.ts/chatsStore-мутаторы;
+// тот путь убран вместе с мутаторами — второго применения быть не может).
+describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive/theme) применяет владелец РОВНО ОДИН РАЗ (Task 4)', () => {
+  it('dialog_mute (без pts) → dialogs.applyMute → ровно один rt:dialog_op patch', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('dialog_mute', { chat_id: 1, muted: true })
+
+    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+  })
+
+  it('dialog_archive (без pts) → dialogs.applyArchived → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('dialog_archive', { chat_id: 1, archived: true })
+
+    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { archived: true, pinned: false } }])
+  })
+
+  it('chat_theme_update (без pts) → dialogs.applyTheme → ровно один rt:dialog_op patch', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('chat_theme_update', { chat_id: 1, theme_id: 'sunset' })
+
+    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { themeId: 'sunset' } }])
+  })
+
+  it('dialog_pin (без pts) → dialogs.applyPinned → ровно один патч + reindex, не двойное применение', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('dialog_pin', { chat_id: 1, pinned: true })
+
+    // patch (поле pinned) + reindex (порядок закреплённых) — обе от ОДНОГО
+    // вызова applyPinned, не два независимых применения одного и того же факта.
+    expect(dialogOps).toHaveLength(2)
+    expect(dialogOps[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { pinned: true } })
+    expect(dialogOps[1]).toMatchObject({ op: 'reindex' })
+  })
+})

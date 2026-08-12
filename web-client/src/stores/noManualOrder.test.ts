@@ -6,8 +6,9 @@
 //
 // Task 2 (перенос владения диалогами в воркер) завёл ВТОРОЕ легальное место —
 // они не конкурируют, потому что пишут РАЗНЫЕ (пока непересекающиеся) пути:
-//   - `applyDialogs` — легаси-мутаторы (setDialogMuted, applyNewMessage, …),
-//     индекс считает САМ через `dialogIndex()` (порт tweb generateDialogIndex);
+//   - `applyDialogs` — легаси-путь `setDialogs`/`loadChats` (Task 4/3 перевели
+//     mute/pin/archive/theme и realtime-кадры на владельца — здесь остался
+//     только он), индекс считает САМ через `dialogIndex()` (порт tweb generateDialogIndex);
 //   - `sortDialogsByIndex` — зеркало операций воркера (`applyDialogOps`,
 //     rt:dialog_op), индекс НЕ считает — берёт готовым из DialogOp (его уже
 //     посчитал воркерный dialogsManager той же чистой `dialogIndex()`).

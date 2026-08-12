@@ -114,11 +114,13 @@ const APPLY: Projector = {
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
-  // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
-  [RT.chatThemeUpdate]: (e) => { useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
-  [RT.dialogPin]: (e) => { useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned) },
-  [RT.dialogArchive]: (e) => { useChatsStore.getState().setDialogArchived(e.chat_id, e.archived) },
-  [RT.dialogMute]: (e) => { useChatsStore.getState().setDialogMuted(e.chat_id, e.muted) },
+  // Task 4 (действия без оптимистики): тема оформления / пин / архив / mute
+  // диалога (с другого устройства/вкладки) теперь тоже применяет владелец
+  // (workerCore.ts::dispatch → dialogs.applyTheme/applyPinned/applyArchived/
+  // applyMute → rt:dialog_op) — строки [RT.chatThemeUpdate]/[RT.dialogPin]/
+  // [RT.dialogArchive]/[RT.dialogMute] здесь были вторым, main-side выводом
+  // того же факта через мутаторы chatsStore (setDialogTheme и т.п., удалены
+  // вместе с этими строками — второго применения не было бы, будь они живы).
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
   [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },

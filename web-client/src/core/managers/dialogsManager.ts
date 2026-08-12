@@ -28,10 +28,25 @@ export interface DialogsDeps {
    * эхо). Разрешается лениво (воркер узнаёт `me` асинхронно), поэтому геттер, а не
    * значение — тот же приём, что у `newMessagesManager` (messagesManager.ts). */
   getMeId?: () => number | null
+  /**
+   * Task 4 (действия без оптимистики): `applyPinned` двигает порядок закреплённых
+   * и обязан и записать новый `pinnedOrders` на диск, и разослать зеркало ключа
+   * остальным вкладкам — тем же путём, что `persistManager.stateKey`
+   * (`saveStateKey` + `mirrorStateKey` в workerCore.ts), второй писатель того же
+   * ключа не заводится. Опциональны по тому же приёму, что `getMeId` выше: тесты,
+   * которых `applyPinned` не касается, их не задают.
+   */
+  savePinnedOrders?: (value: Record<number, number[]>) => Promise<void>
+  mirrorStateKey?: (key: string, value: unknown) => void
 }
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId }: DialogsDeps) {
+export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey }: DialogsDeps) {
   let items: DialogItem[] = []
+  // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
+  // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
+  // см. прежний chatsStore.setDialogPinned). `pinnedOrder` — производная для
+  // ТЕКУЩЕЙ (единственной) папки, ей пользуется dialogIndex().
+  let pinnedOrders: Record<number, number[]> = {}
   let pinnedOrder: number[] = []
   let drafts: Draft[] = []
   let hydrated = false
@@ -98,7 +113,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
 
   async function doHydrate(): Promise<void> {
     const state = await loadState()
-    pinnedOrder = state.pinnedOrders[ALL_FOLDER_ID] ?? []
+    pinnedOrders = state.pinnedOrders
+    pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
     drafts = state.drafts
     if (!items.length) setAll(await loadCache())
     hydrated = true
@@ -141,8 +157,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * Значения диалогов те же — публикуем reindex, а не reset.
      */
     setStateKey(key: string, value: unknown): void {
-      if (key === 'pinnedOrders') pinnedOrder = (value as Record<number, number[]>)[ALL_FOLDER_ID] ?? []
-      else if (key === 'drafts') drafts = value as Draft[]
+      if (key === 'pinnedOrders') {
+        pinnedOrders = value as Record<number, number[]>
+        pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
+      } else if (key === 'drafts') drafts = value as Draft[]
       else return
       items = sort(items.map((i) => i.dialog))
       publish([{ op: 'reindex', items: items.map((i) => ({ chatId: i.dialog.chatId, index: i.index })) }])
@@ -246,6 +264,52 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       if (idx === -1) return // не было в кэше — нечего убирать
       items = items.filter((i) => i.dialog.chatId !== chatId)
       publish([{ op: 'remove', chatId }])
+    },
+
+    // ── Task 4 (действия без оптимистики) ─────────────────────────────────────
+    // Порт tweb: `invokeApi(...).then(saveUpdate)` — сеть уже подтвердила, ЗАТЕМ
+    // применяем. Сетевые менеджеры (groupsManager/chatThemesManager) зовут эти
+    // методы ПОСЛЕ успешного REST-ответа; при ошибке они не зовутся вовсе — см.
+    // dialogsManager.test.ts «RPC упал — ни одной операции».
+
+    /** Пер-чатовый mute (messages.setMute) — то же поле, что и realtime-эхо dialog_mute. */
+    applyMute(chatId: number, muted: boolean): void {
+      patchDialog(chatId, { muted })
+    },
+
+    /** В архив / из архива — пин сбрасывается (как на бэке, group_settings.go). */
+    applyArchived(chatId: number, archived: boolean): void {
+      patchDialog(chatId, { archived, pinned: false })
+    },
+
+    /** Тема оформления чата (messages.setChatTheme) — пустая строка сбрасывает к дефолту. */
+    applyTheme(chatId: number, themeId: string): void {
+      patchDialog(chatId, { themeId: themeId || undefined })
+    },
+
+    /**
+     * Пин/анпин двигает и ПОРЯДОК: свежий пин встаёт первым (порт tweb
+     * `order.unshift`, dialogs.ts:934), анпин выпадает из порядка. Порядок
+     * закреплённых — общий State-ключ на весь список (см. докблок ALL_FOLDER_ID
+     * выше и прежний chatsStore.setDialogPinned, откуда перенесена логика).
+     * Пишем на диск и рассылаем зеркало ключа тем же путём, что
+     * `persistManager.stateKey` (`saveStateKey` + `mirrorStateKey` в
+     * workerCore.ts) — второй писатель того же ключа не заводится.
+     */
+    applyPinned(chatId: number, pinned: boolean): void {
+      const idx = items.findIndex((i) => i.dialog.chatId === chatId)
+      if (idx === -1) return
+      const others = pinnedOrder.filter((id) => id !== chatId)
+      pinnedOrder = pinned ? [chatId, ...others] : others
+      pinnedOrders = { ...pinnedOrders, [ALL_FOLDER_ID]: pinnedOrder }
+      void savePinnedOrders?.(pinnedOrders)
+      mirrorStateKey?.('pinnedOrders', pinnedOrders)
+      const dialog: Dialog = { ...items[idx].dialog, pinned }
+      items = sort(items.map((i) => (i.dialog.chatId === chatId ? dialog : i.dialog)))
+      publish([
+        { op: 'patch', chatId, fields: { pinned } },
+        { op: 'reindex', items: items.map((i) => ({ chatId: i.dialog.chatId, index: i.index })) },
+      ])
     },
   }
 }

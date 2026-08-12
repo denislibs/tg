@@ -53,20 +53,20 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
     chat.type === 'secret' ? st.byChat[Number(chat.id)]?.status : undefined,
   )
   const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
-  const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
-  const setDialogPinned = useChatsStore((s) => s.setDialogPinned)
-  const setDialogArchived = useChatsStore((s) => s.setDialogArchived)
   const fmtTime = useTimeFormatter()
   const { onPointerDown, ripple } = useRipple()
 
   // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности,
   // Unmute снимает сразу. null — попап ни разу не открывали (не монтируем).
   const [muteOpen, setMuteOpen] = useState<boolean | null>(null)
+  // Task 4 (действия без оптимистики, порт tweb toggleDialogPin/
+  // updateNotifySettings): оптимистики нет — локальный апдейт (patchDialog)
+  // применяет владелец (dialogsManager) ПОСЛЕ успешного REST-ответа
+  // (groupsManager.ts), витрина здесь только шлёт запрос.
   const applyMute = (muted: boolean, seconds?: number | null) => {
     const chatId = Number(chat.id)
-    setDialogMuted(chatId, muted) // оптимистично
     const until = muted && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
-    void managers.groups.setMute(chatId, muted, until).catch(() => setDialogMuted(chatId, !muted))
+    void managers.groups.setMute(chatId, muted, until).catch(() => {})
   }
 
   // Anchor a corner of the menu AT the click point and grow toward free space
@@ -84,22 +84,21 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
     else pos.top = e.clientY
     setMenuPos(pos)
   }
-  // Pin/Unpin (tweb ChatList.Context.Pin): оптимистично + откат; лимит 5 → тост.
+  // Pin/Unpin (tweb ChatList.Context.Pin): сеть сначала (Task 4) — лимит 5
+  // (бэк вернёт 400) отдаём тостом, локально ничего откатывать не нужно, т.к.
+  // ничего не менялось до ответа.
   const applyPin = (pinned: boolean) => {
     const chatId = Number(chat.id)
-    setDialogPinned(chatId, pinned)
     void managers.groups.setPin(chatId, pinned).catch((e: unknown) => {
-      setDialogPinned(chatId, !pinned)
       if (String(e).includes('pin limit')) {
         rootScope.dispatchEvent('ui:toast', t("Sorry, you can't pin any more chats to the top."))
       }
     })
   }
-  // Archive/Unarchive (tweb editPeerFolders folder_id 0↔1)
+  // Archive/Unarchive (tweb editPeerFolders folder_id 0↔1) — сеть сначала (Task 4).
   const applyArchive = (archived: boolean) => {
     const chatId = Number(chat.id)
-    setDialogArchived(chatId, archived)
-    void managers.groups.setArchive(chatId, archived).catch(() => setDialogArchived(chatId, !archived))
+    void managers.groups.setArchive(chatId, archived).catch(() => {})
   }
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'

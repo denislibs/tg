@@ -5,6 +5,7 @@
 // НЕ переведено на эти операции (Task 2) — тест проверяет только владельца.
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
+import { newGroupsManager } from './groupsManager'
 import type { Dialog } from '../models'
 import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
@@ -371,5 +372,169 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     mgr.applyRead({ chat_id: 1, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(0)
+  })
+})
+
+// Task 4 (действия без оптимистики): порт tweb — сеть сначала, локальный апдейт
+// (patchDialog/applyPinned) идёт ПОСЛЕ успешного ответа, а не до него. Стенд
+// склеивает РЕАЛЬНЫЕ newDialogsManager + newGroupsManager тем же приёмом, что
+// workerCore.ts (groupsManager получает владельца зависимостью), — проверяем
+// сквозной путь «сеть → владелец», а не мок вместо владельца.
+describe('dialogsManager × groupsManager: действия без оптимистики (Task 4)', () => {
+  it('setMute: RPC упал — ни одной операции, кэш не изменился', async () => {
+    const ops: DialogOp[] = []
+    const dialogs = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+    await dialogs.fillMirror()
+    ops.length = 0
+    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { throw new Error('offline') }) } as never, dialogs })
+
+    await expect(groups.setMute(1, true)).rejects.toThrow()
+
+    expect(ops).toEqual([])
+    expect(dialogs.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(false)
+  })
+
+  it('setMute: успех — patch опубликован ПОСЛЕ ответа сервера', async () => {
+    const ops: DialogOp[] = []
+    const dialogs = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+    })
+    await dialogs.fillMirror()
+    ops.length = 0
+    // rest.post не резолвится, пока тест сам не дёрнет resolvePost — так видно,
+    // что apply СТОИТ ПОСЛЕ await, а не до него (мутация «apply перед await»
+    // сдвинула бы патч ДО resolvePost и первый expect ниже покраснел бы).
+    let resolvePost!: () => void
+    const posted = new Promise<void>((res) => { resolvePost = res })
+    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { await posted }) } as never, dialogs })
+
+    const call = groups.setMute(1, true)
+    expect(ops).toEqual([]) // ответ сети ещё не пришёл — кэш и зеркало не тронуты
+    resolvePost()
+    await call
+
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { muted: true } })
+    expect(dialogs.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(true)
+  })
+})
+
+// Task 4: применялки владельца сами по себе (без сети) — тела, которые зовут
+// сетевые менеджеры ПОСЛЕ успешного REST-ответа (см. groupsManager.ts/
+// chatThemesManager.ts) и workerCore.ts::dispatch для realtime-эха с другого
+// устройства (dialog_mute/dialog_pin/dialog_archive/chat_theme_update).
+describe('dialogsManager: действия без оптимистики — применялки владельца', () => {
+  const setup = (dialogs: Dialog[], pinnedOrders: Record<number, number[]> = {}) => {
+    const ops: DialogOp[] = []
+    const saved: Record<number, number[]>[] = []
+    const mirrored: { key: string; value: unknown }[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => dialogs,
+      loadState: async () => ({ pinnedOrders, drafts: [] }),
+      savePinnedOrders: async (v) => { saved.push(v) },
+      mirrorStateKey: (key, value) => mirrored.push({ key, value }),
+    })
+    return { mgr, ops, saved, mirrored }
+  }
+
+  it('applyMute патчит поле muted', async () => {
+    const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z')])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyMute(1, true)
+
+    expect(ops).toEqual([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(true)
+  })
+
+  it('applyArchived архивирует и сбрасывает пин (как на бэке)', async () => {
+    const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z', true)])
+    await mgr.fillMirror()
+    expect(mgr.getSnapshot()[0].dialog.pinned).toBe(true)
+    ops.length = 0
+
+    mgr.applyArchived(1, true)
+
+    // Диалог был закреплён — сброс pinned выкидывает его из «закреплённого»
+    // блока индекса в обычный (по дате активности), поэтому index в патче
+    // ТОЖЕ участвует (moved=true внутри patchDialog) — сверяем fields отдельно.
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { archived: true, pinned: false } })
+    const d = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog
+    expect(d.archived).toBe(true)
+    expect(d.pinned).toBe(false)
+  })
+
+  it('applyTheme ставит themeId; пустая строка сбрасывает к дефолту (undefined)', async () => {
+    const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z')])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyTheme(1, 'sunset')
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.themeId).toBe('sunset')
+
+    ops.length = 0
+    mgr.applyTheme(1, '')
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.themeId).toBeUndefined()
+  })
+
+  it('applyPinned: свежий пин встаёт первым (tweb order.unshift), пишет pinnedOrders на диск и зеркалит ключ', async () => {
+    const { mgr, ops, saved, mirrored } = setup([
+      dialog(1, '2026-08-09T10:00:00Z'),
+      dialog(2, '2026-08-09T11:00:00Z'),
+      dialog(3, '2026-08-09T12:00:00Z'),
+    ])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyPinned(1, true)
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 3, 2])
+    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.pinned).toBe(true)
+    expect(saved[saved.length - 1]).toEqual({ 0: [1] })
+    expect(mirrored[mirrored.length - 1]).toEqual({ key: 'pinnedOrders', value: { 0: [1] } })
+    expect(ops.some((o) => o.op === 'patch' && o.chatId === 1 && o.fields.pinned === true)).toBe(true)
+
+    ops.length = 0
+    mgr.applyPinned(2, true) // второй пин встаёт ПЕРВЫМ (unshift)
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3])
+    expect(saved[saved.length - 1]).toEqual({ 0: [2, 1] })
+  })
+
+  it('applyPinned(false): анпин выпадает из порядка и возвращается к дате активности', async () => {
+    const { mgr, saved } = setup(
+      [dialog(1, '2026-08-09T10:00:00Z', true), dialog(2, '2026-08-09T12:00:00Z')],
+      { 0: [1] },
+    )
+    await mgr.fillMirror()
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2])
+
+    mgr.applyPinned(1, false)
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1])
+    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.pinned).toBe(false)
+    expect(saved[saved.length - 1]).toEqual({ 0: [] })
+  })
+
+  it('applyPinned: неизвестный чат — тихий no-op, pinnedOrders не пишется', async () => {
+    const { mgr, ops, saved } = setup([dialog(1, '2026-08-01T00:00:00Z')])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyPinned(99, true)
+
+    expect(ops).toEqual([])
+    expect(saved).toEqual([])
   })
 })

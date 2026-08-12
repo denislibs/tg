@@ -21,8 +21,9 @@ interface ChatsState {
   /** Task 2 (перенос владения диалогами): индекс из последней операции воркера
    * (rt:dialog_op) — хранится В СОСТОЯНИИ стора (не модульной переменной), чтобы
    * reset и смена аккаунта чистили его естественно тем же set(), что и dialogs.
-   * Читает только sortDialogsByIndex; легаси-мутаторы ниже (setDialogMuted и
-   * т.п.) его не трогают — они по-прежнему сортируют через applyDialogs/dialogIndex. */
+   * Читает только sortDialogsByIndex; setDialogs (единственный оставшийся
+   * легаси-мутатор, Task 6) его не трогает — по-прежнему сортирует через
+   * applyDialogs/dialogIndex. */
   dialogIndexById: Record<number, number>
   me: User | null
   meId: number | null
@@ -37,9 +38,8 @@ interface ChatsState {
    * APPLY[RT.dialogOp]) и холодный старт (`client/boot.ts`, ответ fillMirror()
    * ДО первого рендера). Индекс приходит ГОТОВЫМ в операции — воркерный
    * dialogsManager уже посчитал его; здесь он только хранится и сортирует
-   * (см. докблок sortDialogsByIndex). Легаси-мутаторы (setDialogMuted,
-   * applyNewMessage, …) пока работают параллельно — их перевод на операции
-   * воркера отдельными задачами (Task 4/6).
+   * (см. докблок sortDialogsByIndex). setDialogs (Task 6) пока работает
+   * параллельно — её перевод на операции воркера отдельной задачей.
    */
   applyDialogOps: (ops: DialogOp[]) => void
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
@@ -49,15 +49,16 @@ interface ChatsState {
    * исключения (оптимистика/гидратация), см. stores/noDuplicateMe.test.ts. */
   setMe: (u: User | null) => void
   setActiveChat: (id: number | null) => void
-  setDialogMuted: (chatId: number, muted: boolean) => void
-  setDialogPinned: (chatId: number, pinned: boolean) => void
-  /** тема оформления чата сменилась (chat_theme_update) — '' сбрасывает к дефолту */
-  setDialogTheme: (chatId: number, themeId: string) => void
-  setDialogArchived: (chatId: number, archived: boolean) => void
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta/applyNewMessage/
   // applyRead/bumpUnreadReactions отсюда убраны — их тела переехали во владельца
   // (core/managers/dialogsManager.ts), выход теперь операция rt:dialog_op через
   // applyDialogOps, а не прямая запись в этот стор.
+  // Task 4 (действия без оптимистики): setDialogMuted/setDialogPinned/
+  // setDialogTheme/setDialogArchived отсюда тоже убраны — тела переехали во
+  // владельца (dialogsManager.applyMute/applyPinned/applyTheme/applyArchived),
+  // сетевые менеджеры (groupsManager/chatThemesManager) зовут их сами ПОСЛЕ
+  // успешного REST-ответа; вызывавшая их витрина (ChatListItem/Chat/
+  // useMuteToggle/useAppHotkeys/ChatThemesPicker) больше их не трогает.
   setPresence: (p: PresenceEvt) => void
   setTyping: (chatId: number, userId: number, action: TypingAction, at: number) => void
   clearTyping: (chatId: number, userId: number) => void
@@ -119,10 +120,6 @@ function syncPinnedOrder(sorted: readonly Dialog[], prevOrder: readonly number[]
   setAppState('pinnedOrders', { ...useAppStateStore.getState().pinnedOrders, [ALL_FOLDER_ID]: next })
 }
 
-/** Заменить один диалог, НЕ переставляя список: порядок посчитает `applyDialogs`. */
-const replace = (dialogs: Dialog[], chatId: number, d: Dialog): Dialog[] =>
-  dialogs.map((x) => (x.chatId === chatId ? d : x))
-
 /**
  * Сортировка зеркала (Task 2, перенос владения диалогами в воркер). В отличие
  * от `applyDialogs` выше, индекс здесь НЕ пересчитывается — он уже готов в
@@ -180,38 +177,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
     }),
   setMe: (me) => set({ me, meId: me?.id ?? null }),
   setActiveChat: (activeChatId) => set({ activeChatId }),
-  setDialogMuted: (chatId, muted) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === chatId)
-      if (!cur) return {}
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, muted })) }
-    }),
-  setDialogTheme: (chatId, themeId) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === chatId)
-      if (!cur) return {}
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, themeId: themeId || undefined })) }
-    }),
-  // Закрепить/открепить. Позицию считает dialogIndex по `pinnedOrders`, поэтому
-  // здесь обновляется именно порядок: свежий пин встаёт первым (tweb dialogs.ts:934
-  // `order.unshift`), анпин выпадает из порядка и возвращается к дате активности.
-  setDialogPinned: (chatId, pinned) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === chatId)
-      if (!cur) return {}
-      const orders = useAppStateStore.getState().pinnedOrders
-      const order = orders[ALL_FOLDER_ID] ?? []
-      const rest = order.filter((id) => id !== chatId)
-      setAppState('pinnedOrders', { ...orders, [ALL_FOLDER_ID]: pinned ? [chatId, ...rest] : rest })
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, pinned })) }
-    }),
-  // В архив / из архива; пин при переносе сбрасывается (как на бэке).
-  setDialogArchived: (chatId, archived) =>
-    set((s) => {
-      const cur = s.dialogs.find((d) => d.chatId === chatId)
-      if (!cur) return {}
-      return { dialogs: applyDialogs(s.dialogs, replace(s.dialogs, chatId, { ...cur, archived, pinned: false })) }
-    }),
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta ушли
   // отсюда — их тела переехали в core/managers/dialogsManager.ts
   // (applyRemoved/applyChatMeta), вызываются из workerCore.ts::dispatch по тем

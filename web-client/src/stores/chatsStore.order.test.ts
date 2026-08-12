@@ -110,62 +110,30 @@ describe('chatsStore: черновик поднимает диалог', () => {
   })
 })
 
-describe('chatsStore: setDialogPinned пишет pinnedOrders', () => {
-  it('свежий пин встаёт первым в порядке (tweb order.unshift) и первым в списке', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T11:00:00Z'),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-
-    useChatsStore.getState().setDialogPinned(1, true)
-    expect(pinnedOrder()).toEqual([1])
-    expect(ids()).toEqual([1, 3, 2])
-
-    useChatsStore.getState().setDialogPinned(2, true)
-    expect(pinnedOrder()).toEqual([2, 1])
-    expect(ids()).toEqual([2, 1, 3])
-  })
-
-  it('анпин убирает чат из порядка и возвращает его к дате активности', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-    useChatsStore.getState().setDialogPinned(1, true)
-    expect(ids()).toEqual([1, 2])
-
-    useChatsStore.getState().setDialogPinned(1, false)
-
-    expect(pinnedOrder()).toEqual([])
-    expect(ids()).toEqual([2, 1])
-  })
-
+// Task 4 (действия без оптимистики): setDialogPinned/setDialogArchived (мутаторы
+// chatsStore) убраны — тела переехали во владельца (dialogsManager.applyPinned/
+// applyArchived), тесты на «свежий пин встаёт первым»/«анпин убирает из
+// порядка»/«архивация снимает пин» — тоже туда (dialogsManager.test.ts, describe
+// «действия без оптимистики»). Здесь остаётся только то, что по-прежнему живёт в
+// applyDialogs/syncPinnedOrder (Task 6, ещё не тронуто): первичное засеивание
+// pinnedOrders из ответа сети и переживание повторного применения списка.
+describe('chatsStore: pinnedOrders засеивается из applyDialogs/setDialogs', () => {
   it('порядок закреплённых переживает повторное применение списка (кэш ↔ сеть)', () => {
-    useChatsStore.getState().setDialogs([
-      dlg(1, '2026-08-09T10:00:00Z'),
-      dlg(2, '2026-08-09T11:00:00Z'),
-      dlg(3, '2026-08-09T12:00:00Z'),
-    ])
-    useChatsStore.getState().setDialogPinned(1, true)
-    useChatsStore.getState().setDialogPinned(2, true)
-    const before = ids()
-
-    // ответ сети: закреплённые пришли в другом порядке
     useChatsStore.getState().setDialogs([
       dlg(1, '2026-08-09T10:00:00Z', { pinned: true }),
       dlg(2, '2026-08-09T11:00:00Z', { pinned: true }),
       dlg(3, '2026-08-09T12:00:00Z'),
     ])
+    const before = ids()
+
+    // ответ сети: тот же набор, закреплённые пришли в другом порядке ответа
+    useChatsStore.getState().setDialogs([
+      dlg(2, '2026-08-09T11:00:00Z', { pinned: true }),
+      dlg(1, '2026-08-09T10:00:00Z', { pinned: true }),
+      dlg(3, '2026-08-09T12:00:00Z'),
+    ])
 
     expect(ids()).toEqual(before)
-  })
-
-  it('архивация снимает пин и убирает чат из порядка', () => {
-    useChatsStore.getState().setDialogs([dlg(1, '2026-08-09T10:00:00Z'), dlg(2, '2026-08-09T12:00:00Z')])
-    useChatsStore.getState().setDialogPinned(1, true)
-
-    useChatsStore.getState().setDialogArchived(1, true)
-
-    expect(pinnedOrder()).toEqual([])
-    expect(ids()).toEqual([2, 1])
   })
 
   // Порядок закреплённых сервер отдаёт только позицией в ответе /chats

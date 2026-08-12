@@ -209,6 +209,11 @@ export interface ChatRemovedEvt { chat_id: number; removed: true }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
 export interface ChatThemeUpdateEvt { chat_id: number; theme_id: string }
+// Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
+// dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/applyMute).
+export interface DialogPinEvt { chat_id: number; pinned: boolean }
+export interface DialogArchiveEvt { chat_id: number; archived: boolean }
+export interface DialogMuteEvt { chat_id: number; muted: boolean; muted_until?: number }
 // АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
 // участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
 // функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:

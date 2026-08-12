@@ -47,11 +47,11 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt } from './realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope, loadDialogs, loadStateAll } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll, saveStateKey } from './store/persist'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
 
@@ -142,18 +142,18 @@ export function createWorkerCore() {
   const push = newPushManager({ rest })
   const notify = newNotifyManager({ rest })
   const folders = newFoldersManager({ rest })
-  const groups = newGroupsManager({ rest })
-  const channels = newChannelsManager({ rest })
-  // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
-  // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
-  // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
-  // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
-  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
+  // Зеркало ключа State во все вкладки (порт tweb apiManagerProxy.processMirrorTaskMap.
+  // state) — общая функция для persistManager.stateKey (сторонние ключи) И
+  // dialogsManager.applyPinned (свой прямой writer pinnedOrders, Task 4): один
+  // канал зеркалирования, не два независимых бродкаста. broadcast объявлен ниже —
+  // дёргается лениво, тот же приём, что и остальные стрелки на этой странице.
+  const mirrorStateKey = (key: string, value: unknown) => broadcast('state:mirror', { key, value })
   // Task 1 (перенос владения списком диалогов в воркер): список диалогов —
   // воркер единственный владелец (dialogsManager). Веер тот же приём, что у
-  // peers выше: менеджер объявляет операцию (rt:dialog_op), витрина (Task 2)
+  // peers ниже: менеджер объявляет операцию (rt:dialog_op), витрина (Task 2)
   // переигрывает её как зеркало. loadCache/loadState — офлайн-кэш и ключи State,
-  // от которых зависит порядок (см. докблок dialogsManager.ts).
+  // от которых зависит порядок (см. докблок dialogsManager.ts). Определён ДО
+  // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
@@ -166,13 +166,30 @@ export function createWorkerCore() {
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
     // значение: `me` разрешается лениво асинхронным /me).
     getMeId: () => me?.id ?? null,
+    // Task 4 (действия без оптимистики): applyPinned пишет pinnedOrders на диск и
+    // рассылает зеркало ключа — тот же путь, что persistManager.stateKey ниже
+    // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
+    savePinnedOrders: (value) => saveStateKey('pinnedOrders', value),
+    mirrorStateKey,
   })
+  // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
+  // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
+  // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
+  const groups = newGroupsManager({ rest, dialogs })
+  const channels = newChannelsManager({ rest })
+  // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
+  // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
+  // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
+  // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
+  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
   const privacy = newPrivacyManager({ rest })
   const drafts = newDraftsManager({ rest })
-  const chatThemes = newChatThemesManager({ rest })
+  // Task 4: тема оформления чата — тоже сеть-сначала, applyTheme зовётся после
+  // успешного /theme (см. chatThemesManager.ts).
+  const chatThemes = newChatThemesManager({ rest, dialogs })
   const sessions = newSessionsManager({ rest })
   const calls = newCallsManager({ rest })
   const livestream = newLivestreamManager({ rest })
@@ -191,7 +208,7 @@ export function createWorkerCore() {
   // appStateManager.setKeyValueToStorage → invokeVoid('mirror', …), которая без
   // указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
   const persist = newPersistManager(
-    (key, value) => broadcast('state:mirror', { key, value }),
+    mirrorStateKey,
     // Task 1: порядок диалогов зависит от State-ключей pinnedOrders/drafts —
     // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
     (key, value) => dialogs.setStateKey(key, value),
@@ -288,6 +305,17 @@ export function createWorkerCore() {
     if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.id ?? null)
     else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
     else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).chat_id)
+    // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
+    // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
+    // устройства владельца/участников) — применяет владелец ровно один раз
+    // (patchDialog внутри applyMute/applyPinned/applyArchived/applyTheme
+    // сравнивает через equal() и не публикует no-op). Раньше эти 4 кадра
+    // разбирала витрина напрямую (storeProjection.ts, setDialogMuted и т.п.) —
+    // тот путь убран вместе с мутаторами chatsStore, второго применения нет.
+    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).chat_id, (d as DialogMuteEvt).muted)
+    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).chat_id, (d as DialogPinEvt).pinned)
+    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).chat_id, (d as DialogArchiveEvt).archived)
+    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).chat_id, (d as ChatThemeUpdateEvt).theme_id)
     else if (t === 'reaction') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
       // реакций диалога (перенесено из storeProjection.ts вместе с телом
