@@ -90,6 +90,31 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     expect(s.dialogs.map((d) => d.chatId)).toEqual([1, 2]) // index 30 > 20 — 1 теперь выше
   })
 
+  // Ревью Task 2 (Important): patch БЕЗ index — mute/read/метаданные, которые
+  // порядок не двигают (реальный сценарий Task 3/4 — воркерный владелец шлёт
+  // именно такой patch). Позиция обязана остаться прежней: сама по себе fields-
+  // правка не имеет права переиндексировать диалог. Ловит регрессию вида
+  // `op.index ?? 0` — валидный TS, тайпчек не поймает, но обнулил бы позицию.
+  //
+  // ТРИ диалога, а не два: у chatId 1 и chatId 3 индекс 10 и 5 соответственно —
+  // оба МЕНЬШЕ индекса chatId 2 (20). Если бы patch без index обнулял индекс
+  // (0 < 5), diaлог 1 обогнал бы... нет — упал бы НИЖЕ chatId 3 (0 < 5), меняя
+  // порядок с [2,1,3] на [2,3,1]. С двумя диалогами (10 vs 20) обнуление 10→0
+  // не поменяло бы относительный порядок — регрессия была бы не видна.
+  it('patch без index меняет поля, но НЕ трогает позицию диалога', () => {
+    const st = useChatsStore.getState()
+    st.applyDialogOps([{ op: 'reset', items: [
+      { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 }, { dialog: dialog(3), index: 5 },
+    ] }])
+
+    st.applyDialogOps([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+
+    const s = useChatsStore.getState()
+    expect(s.dialogs.find((d) => d.chatId === 1)?.muted).toBe(true)
+    // index у chatId 1 остался 10 (между 20 и 5) — порядок не изменился.
+    expect(s.dialogs.map((d) => d.chatId)).toEqual([2, 1, 3])
+  })
+
   // remove: диалог выпадает из зеркала.
   it('remove убирает диалог из зеркала', () => {
     const st = useChatsStore.getState()
