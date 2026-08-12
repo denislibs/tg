@@ -9,13 +9,13 @@
 //     медиа/автор/подпись собирает вызывающий из окна сообщений);
 //   • действия над сообщением — инжектируемые колбэки opts (onForward/onDelete/
 //     jumpToMessage): наши флоу пересылки/удаления — React-попапы чата
-//     (приедут в Task 16), PopupDeleteMessages/showForwardPopup tweb (:23-24)
+//     (проводка — Chat.tsx, Task 16), PopupDeleteMessages/showForwardPopup tweb (:23-24)
 //     не портируются. Кнопка без колбэка получает класс hide — как tweb прячет
 //     по canForward/canDelete (setMessageActionVisibility :396-418);
 //     permissionsPromise (:457-498) не портирован — прав-модели MTProto нет;
 //   • SearchListLoader (MTProto-поиск по инпут-фильтрам) не портирован — наш
-//     ListLoader (Task 3) + колбэк opts.loadMoreMedia (REST `/chats/{id}/media`
-//     подключит Task 16; без колбэка пустой ответ ⇒ loadedAll — вьювер листает
+//     ListLoader (Task 3) + колбэк opts.loadMoreMedia (REST `/chats/{id}/media`,
+//     проводка — Chat.tsx, Task 16); без колбэка пустой ответ ⇒ loadedAll — вьювер листает
 //     только переданные items, как жил старый лайтбокс);
 //   • onMediaCaptionClick (index.ts:47-73, t.me-редиректы/спойлеры/цитаты в
 //     подписи) не портирован: подпись — React `RichText`, ссылки в нём обычные
@@ -42,12 +42,15 @@ import AppMediaViewerBase, { btnIcon, iconSpan, type ViewerAuthor, type ViewerMe
 import ListLoader from './listLoader'
 
 // Наш аналог сообщения для вьювера (модель старого useLightbox + mid):
-// вызывающий (Task 16) собирает его из окна сообщений / ответа `/media`.
+// вызывающий (collectLightboxItems, Task 16) собирает его из окна сообщений / ответа `/media`.
 export type ViewerItem = {
   /** миниатюра-источник в DOM; у соседей вне отрендеренного окна — null
    * (tweb processItem кладёт `element: null as HTMLElement`, index.ts:100) */
   element: HTMLElement | null
   mid: number
+  /** per-chat seq сообщения — цель jumpToMessage (наша навигация ленты ходит
+   * по seq, а не по id); у не-сообщений (фото профиля) отсутствует */
+  seq?: number
   media: ViewerMedia
   author: ViewerAuthor
   caption?: string
@@ -69,8 +72,9 @@ export type AppMediaViewerOptions = {
   /** флоу удаления с подтверждением (React-попап, Task 16); по подтверждению
    * звать closeFromMedia — close перецелится в отцентрованное медиа (tweb :249-252) */
   onDelete?: (mid: number, closeFromMedia: () => void) => void
-  /** переход к сообщению из клика по автору (tweb appImManager.setInnerPeer) */
-  jumpToMessage?: (mid: number) => void
+  /** переход к сообщению из клика по автору (tweb appImManager.setInnerPeer);
+   * получает весь item — вызывающему нужен seq (jump ленты ходит по seq) */
+  jumpToMessage?: (item: ViewerItem) => void
   /** дозапрос истории медиа (REST `/chats/{id}/media`, Task 16); без колбэка —
    * loadedAll: листаются только переданные items */
   loadMoreMedia?: (older: boolean, anchor: ViewerItem | undefined, loadCount: number) => Promise<ViewerItem[]>
@@ -112,9 +116,9 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     // shared-media-таба (:276-281) не портирована — таба нет. catch: close()
     // во время полёта открытия отдаёт rejected (base :1039-1045).
     this.onAuthorClick = () => {
-      const mid = this.target?.mid
-      if (!mid || !this.opts.jumpToMessage) return
-      void this.close()?.then(() => this.opts.jumpToMessage!(mid)).catch(() => {})
+      const item = this.target?.item
+      if (!item?.mid || !this.opts.jumpToMessage) return
+      void this.close()?.then(() => this.opts.jumpToMessage!(item)).catch(() => {})
     }
 
     // * constructing html end
@@ -184,15 +188,23 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
   }
 
   protected static async downloadMedia(item: ViewerItem) {
-    const managers = startClient().managers
     const mediaId = item.media.mediaId
-    const [url, meta] = await Promise.all([
-      managers.media.downloadMediaURL(mediaId),
-      managers.media.meta(mediaId).catch(() => null),
-    ])
     const a = document.createElement('a')
-    a.href = url
-    a.download = meta?.fileName || `media-${mediaId}`
+    const direct = item.media.url
+    if (direct !== undefined) {
+      // Task 16: готовый источник (секретное E2E / фото профиля) — конвейер и
+      // meta не зовутся (у секретного meta — шифртекст); имя — по виду медиа
+      a.href = typeof direct === 'function' ? await direct() : direct
+      a.download = `media-${mediaId || 'photo'}${item.media.kind === 'video' ? '.mp4' : '.jpg'}`
+    } else {
+      const managers = startClient().managers
+      const [url, meta] = await Promise.all([
+        managers.media.downloadMediaURL(mediaId),
+        managers.media.meta(mediaId).catch(() => null),
+      ])
+      a.href = url
+      a.download = meta?.fileName || `media-${mediaId}`
+    }
     document.body.append(a)
     a.click()
     a.remove()

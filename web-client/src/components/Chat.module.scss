@@ -47,17 +47,6 @@
   }
 }
 
-.spinnerBox {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 // Скролл-контейнер ленты: позицию, размеры, overflow и маску фейдов задают
 // портированные партиалы tweb (_scrollable.scss `.scrollable.scrollable-y` +
 // _chat.scss `.bubbles-scrollable`). Здесь — только видимый тонкий скроллбар:

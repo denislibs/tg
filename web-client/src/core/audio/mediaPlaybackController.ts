@@ -17,8 +17,8 @@ const RATES = [0.5, 1, 1.5, 2]
 
 // Тип медиа для очереди/скорости — tweb PlaybackMediaType
 // (appMediaPlaybackController.ts:80). У tweb их три ('voice' | 'video' | 'audio'),
-// но 'video' там про медиа-вьюер, а наш вьюер держит свою скорость отдельно
-// (settings.videoRate, MediaLightbox) — контроллер играет только голос и музыку.
+// но 'video' там про медиа-вьюер, а наш вьювер держит свою скорость отдельно
+// (settings.videoRate, @lib/mediaPlayer) — контроллер играет только голос и музыку.
 export type PlaybackMediaType = 'voice' | 'audio'
 
 // tweb getPlaybackMediaTypeFromMessage (appMediaPlaybackController.ts:1098-1109):

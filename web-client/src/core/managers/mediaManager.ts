@@ -95,7 +95,7 @@ export function newMediaManager({ rest, onUploadProgress, onToken, onMediaUrl, f
     tokenTimer = setTimeout(() => { void fetchToken().catch(() => {}) }, Math.max(5_000, mediaTokenExp - Date.now() - TOKEN_MARGIN))
   }
   // ЕДИНСТВЕННАЯ точка, где токен появляется и обновляется: сюда сходятся и
-  // ленивый путь (ensureToken из contentUrl/streamUrl/thumbUrl/tokenInfo), и
+  // ленивый путь (ensureToken из contentUrl/streamUrl/tokenInfo), и
   // плановый таймер — поэтому и публикация вкладкам ровно одна. tokenFetch
   // склеивает параллельные запросы (N вкладок на холодном старте + сработавший
   // таймер) в один поход в сеть.
@@ -389,14 +389,8 @@ export function newMediaManager({ rest, onUploadProgress, onToken, onMediaUrl, f
     // Сброс конвейера на смене активной сессии — зовёт воркер там же и так же,
     // как resetToken (см. выше).
     resetDownloads,
-    // URL of the server-generated thumbnail/poster (jpeg). Same content endpoint
-    // with ?v=thumb. Caller should only use it when meta.hasThumb is true.
-    // Task 7: последний потребитель — MediaLightbox (умирает в стадии E);
-    // остальные превью-картинки ходят downloadMediaURL. Удалить вместе с ним.
-    async thumbUrl(id: number): Promise<string> {
-      const tok = await ensureToken()
-      return rest.mediaUrl(`/media/${id}/content`, tok) + '&v=thumb'
-    },
+    // thumbUrl (токенный ?v=thumb) снесён в Task 16 вместе с последним
+    // потребителем MediaLightbox: превью ходят downloadMediaURL({thumb}).
   }
 }
 

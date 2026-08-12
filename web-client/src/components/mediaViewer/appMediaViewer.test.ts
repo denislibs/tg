@@ -208,14 +208,14 @@ describe('forward/delete: видимость и действия по колбэ
   })
 })
 
-describe('клик по автору: close → jumpToMessage(mid) (tweb index.ts:268-290)', () => {
-  it('jumpToMessage зовётся с mid ПОСЛЕ реального закрытия (вьювер уже снят с DOM)', async () => {
-    const jumpToMessage = vi.fn((_mid: number) => {
+describe('клик по автору: close → jumpToMessage(item) (tweb index.ts:268-290)', () => {
+  it('jumpToMessage зовётся с item ПОСЛЕ реального закрытия (вьювер уже снят с DOM)', async () => {
+    const jumpToMessage = vi.fn((_item: ViewerItem) => {
       // порядок load-bearing: сначала close() доехал (wholeDiv снят), потом jump
       expect(document.body.contains(v.whole)).toBe(false)
     })
     const v = makeViewer({ jumpToMessage })
-    const p = v.openMedia({ items: [item(9)], index: 0 })
+    const p = v.openMedia({ items: [item(9, { seq: 90 })], index: 0 })
     await settleOpen(p)
 
     v.authorMap.container.click()
@@ -223,7 +223,9 @@ describe('клик по автору: close → jumpToMessage(mid) (tweb index.t
 
     await vi.advanceTimersByTimeAsync(800)
     expect(jumpToMessage).toHaveBeenCalledTimes(1)
-    expect(jumpToMessage.mock.calls[0][0]).toBe(9)
+    // item целиком: вызывающему нужен seq (jump ленты ходит по seq)
+    expect(jumpToMessage.mock.calls[0][0].mid).toBe(9)
+    expect(jumpToMessage.mock.calls[0][0].seq).toBe(90)
   })
 
   it('без jumpToMessage клик по автору вьювер не закрывает', async () => {

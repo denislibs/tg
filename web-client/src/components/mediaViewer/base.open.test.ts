@@ -340,3 +340,42 @@ describe('close(): полный порт (tweb :975-1024)', () => {
     await p1
   })
 })
+
+// Адаптация Task 16: media.url — готовый источник байтов МИМО воркерного
+// конвейера (секретные E2E-медиа, расшифрованные вкладкой; фото профиля).
+describe('_openMedia: media.url минует downloadMediaURL (секретные E2E / фото профиля)', () => {
+  it('строка url: downloadMediaURL НЕ зовётся, полный img встаёт из url', async () => {
+    downloadMediaURL.mockResolvedValue('blob:should-not-be-used')
+    const v = makeViewer()
+    const p = v.callOpenMedia({ media: photo({ mediaId: 99, url: 'blob:secret-99' }), fromRight: 0 })
+    await settleOpen(p)
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+    const full = [...v.contentMap.mover.querySelectorAll('img')].filter((i) => i.src.includes('blob:secret-99'))
+    expect(full.length).toBe(1)
+  })
+
+  it('ленивый url-резолвер (сосед листания, ещё не расшифрован): зовётся он, конвейер молчит', async () => {
+    downloadMediaURL.mockResolvedValue('blob:should-not-be-used')
+    const lazyUrl = vi.fn(async () => 'blob:secret-lazy')
+    const v = makeViewer()
+    const p = v.callOpenMedia({ media: photo({ mediaId: 98, url: lazyUrl }), fromRight: 0 })
+    await settleOpen(p)
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+    expect(lazyUrl).toHaveBeenCalledTimes(1)
+    const full = [...v.contentMap.mover.querySelectorAll('img')].filter((i) => i.src.includes('blob:secret-lazy'))
+    expect(full.length).toBe(1)
+  })
+
+  it('строка url — ещё и ghost-подложка (зеркало конвейера про эти байты не знает)', async () => {
+    const v = makeViewer()
+    const p = v.callOpenMedia({ media: photo({ mediaId: 97, url: 'blob:secret-ghost' }), fromRight: 0 })
+    const img = v.contentMap.media.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img!.src).toContain('blob:secret-ghost')
+    await settleOpen(p)
+  })
+})

@@ -4,7 +4,7 @@
 // переписывается ради самой нормы; при следующем содержательном касании файла —
 // приводить затронутую проводку в соответствие (тест либо пометка с причиной у
 // неё), а не расширять непокрытую площадь дальше.
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import StickyIntersector from './stickyIntersector'
@@ -17,7 +17,7 @@ import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
-import SpinnerArc from './SpinnerArc'
+import ProgressivePreloader from './preloader'
 import type { Chat } from '../data'
 import { useT, useLang } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -41,7 +41,9 @@ import { useSlowmode } from '../core/hooks/useSlowmode'
 import { useChatScroll } from '../core/hooks/useChatScroll'
 import { useConvMessages } from '../core/hooks/useConvMessages'
 import { useVoiceQueue } from '../core/hooks/useVoiceQueue'
-import { useLightbox } from '../core/hooks/useLightbox'
+import { collectLightboxItems, messageToViewerItem } from './mediaViewer/collectLightboxItems'
+import { closeMediaViewer, openMediaViewer } from './mediaViewer/openMediaViewer'
+import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelExtras } from '../core/hooks/useChannelExtras'
 import { useMountTransition } from '../core/hooks/useMountTransition'
@@ -76,7 +78,7 @@ import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
-import { type MessageEntity } from '../core/models'
+import { type Message, type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
@@ -93,9 +95,8 @@ import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 
-// Инфо-панель и просмотрщик медиа — не первый кадр; ленивые чанки.
+// Инфо-панель — не первый кадр; ленивый чанк.
 const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
-const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 
 // Распорки ленты (.bubbles-padding-top/-bottom) — 1:1 из tweb chat.ts
 // recomputePaddings(): десктоп резервирует 4.5rem сверху и 4rem снизу под
@@ -614,6 +615,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Спиннер держится в DOM до конца обратного перехода — tweb снимает узел в
   // onTransitionEnd у SetTransition (preloader.ts:248-256).
   const { mounted: spinnerMount, cls: spinnerCls } = useMountTransition(showSpinner, 'is-visible', 200)
+  // Кольцо в оверлей спиннера — vanilla ProgressivePreloader (порт tweb;
+  // инстанс на монтирование узла, умирает вместе с ним — как tweb detach).
+  const chatSpinnerHost = useCallback((el: HTMLDivElement | null) => {
+    if (el) new ProgressivePreloader({ cancelable: false }).attach(el)
+  }, [])
 
   // Лестница появления баблов при открытии чата — порт tweb
   // `bubbles.ts:10363-10460` (animateAsLadder), см. `core/dom/ladder.ts`.
@@ -680,11 +686,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (Scroll correction, prepend-restore, jump-scroll, down-arrow pin, and player-offset
   // compensation all live in useChatScroll.)
 
-  // Full-screen media viewer (collect loaded photos/videos, zoom from the thumb).
-  const { lightbox, openLightbox, closeLightbox } = useLightbox({
-    win: winV, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, lang,
-  })
-
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
   const { commentCounts, commentRepliers } = useChannelExtras({
@@ -741,7 +742,77 @@ export default function Chat({ chat, onBack, thread }: Props) {
       jumpToSeqE(pendingJump.seq)
     }
   }, [pendingJump, numericChatId, jumpToSeqE])
-  const openLightboxE = useEvent(openLightbox)
+  // ── Просмотрщик медиа (Task 16): vanilla-вьювер (mediaViewer/*) вместо
+  // снесённого React-лайтбокса. Сбор items — из окна сообщений
+  // (collectLightboxItems — чистая логика бывшего useLightbox), действия —
+  // существующие флоу чата, дозагрузка соседей — REST /chats/{id}/media. ──
+  const mediaPagesRef = useRef<{ msgs: Message[]; complete: boolean } | null>(null)
+  // close-колбэк вьювера на время открытого попапа удаления/пересылки:
+  // подтверждение попапа закрывает вьювер (tweb PopupDeleteMessages/
+  // showForwardPopup зовут this.close() по действию), отмена — снимает колбэк
+  // (проводка — обёртка msgActions у <ChatMsgActionPopups> ниже).
+  const viewerActionCloseRef = useRef<(() => void) | null>(null)
+  const lightboxCtx = () => ({ meId, meName: me?.displayName, peers, chatName: chat.name, lang })
+  // Миниатюра сообщения в отрендеренных баблах (tweb собирает targets из
+  // баблов селектором '.attachment', bubbles.ts:3744-3800; у нас строки ленты
+  // адресуются data-mid, у секретных медиа контейнер без .attachment — img).
+  const findBubbleMedia = (id: number): HTMLElement | null =>
+    bubblesRef.current?.querySelector<HTMLElement>(
+      `[data-mid="${id}"] .attachment, [data-mid="${id}"] img, [data-mid="${id}"] video`,
+    ) ?? null
+  // Дозагрузка соседей листания (наш источник вместо tweb SearchListLoader):
+  // REST отдаёт newest-first постранично — докручиваем страницы, пока не найдём
+  // якорь и не наберём loadCount за ним; кэш живёт одно открытие вьювера.
+  const loadMoreMedia = async (older: boolean, anchor: ViewerItem | undefined, loadCount: number): Promise<ViewerItem[]> => {
+    if (!anchor || !isRealChat) return []
+    const cache = (mediaPagesRef.current ??= { msgs: [], complete: false })
+    const fetchNext = async () => {
+      const r = await managers.messages.mediaHistory(numericChatId, 'media', cache.msgs.length, 50)
+      cache.msgs.push(...r.messages)
+      if (!r.messages.length || cache.msgs.length >= r.count) cache.complete = true
+    }
+    try {
+      const idxOf = () => cache.msgs.findIndex((m) => m.id === anchor.mid)
+      while (idxOf() === -1 && !cache.complete) await fetchNext()
+      const i = idxOf()
+      if (i === -1) return [] // якоря нет в фильтре media (секретный чат) — край
+      if (older) {
+        while (cache.msgs.length - i - 1 < loadCount && !cache.complete) await fetchNext()
+      }
+      const ctx = lightboxCtx()
+      const slice = older
+        ? cache.msgs.slice(i + 1, i + 1 + loadCount)
+        : cache.msgs.slice(Math.max(0, i - loadCount), i)
+      // порядок newest-first сохраняем — ListLoader (reverse: true) сам разложит
+      return slice.map((m) => messageToViewerItem(m, ctx, findBubbleMedia(m.id)))
+    } catch {
+      return [] // ошибка сети = край списка: вьювер листает уже загруженное
+    }
+  }
+  const openLightboxE = useEvent((mediaId: number, el: HTMLElement) => {
+    if (!isRealChat) return
+    const { items, index } = collectLightboxItems({
+      msgs: winV.msgs, mediaId, ctx: lightboxCtx(), findElement: (m) => findBubbleMedia(m.id),
+    })
+    if (!items[index]) return
+    items[index].element = el // источник полёта — сама кликнутая миниатюра
+    mediaPagesRef.current = null
+    void openMediaViewer({
+      items, index, target: el, reverse: true, // порядок окна по возрастанию — tweb bubbles.ts:3843
+      jumpToMessage: (it) => { if (it.seq != null) jumpToSeqE(it.seq) },
+      onForward: (mid, close) => {
+        viewerActionCloseRef.current = () => { void close() }
+        openForwardFor([mid])
+      },
+      onDelete: (mid, closeFromMedia) => {
+        viewerActionCloseRef.current = closeFromMedia
+        openDeleteFor([mid])
+      },
+      loadMoreMedia,
+    })
+  })
+  // Смена чата / unmount: vanilla-вьювер живёт в body — закрываем сами.
+  useEffect(() => () => closeMediaViewer(), [numericChatId])
   const roundPlayingE = useEvent(attachRound)
   // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)
   const recallE = useEvent((video: boolean) => {
@@ -1278,15 +1349,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
         )}
 
         {/* Спиннер первой загрузки (только после grace-задержки, на попадании в
-            кэш пропускается). Появление/уход — как tweb ProgressivePreloader:
-            SetTransition по классу `is-visible` с duration 200 и снятие узла по
-            окончании перехода (preloader.ts:248-256, TRANSITION_TIME = 200). */}
+            кэш пропускается). Кольцо — vanilla ProgressivePreloader (Task 16
+            снёс React-стенд-ин SpinnerArc; в tweb история грузится под тем же
+            прелоадером — bubbles.ts:752 `new ProgressivePreloader(...)`). */}
         {spinnerMount && (
-          <div className={classNames(s.spinnerOverlay, spinnerCls)}>
-            <div className={s.spinnerBox}>
-              <SpinnerArc size={30} stroke={2.5} color="#fff" />
-            </div>
-          </div>
+          <div className={classNames(s.spinnerOverlay, spinnerCls)} ref={chatSpinnerHost} />
         )}
 
         {/* Лента — дерево tweb: .bubbles > .scrollable.bubbles-scrollable >
@@ -1526,23 +1593,28 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
       )}
 
-      {/* Просмотрщик медиа (lightbox) — state-driven из useLightbox */}
-      {lightbox && (
-        <Suspense fallback={null}>
-          <MediaLightbox
-            items={lightbox.items}
-            index={lightbox.index}
-            originRect={lightbox.originRect}
-            originSrc={lightbox.originSrc}
-            originEl={lightbox.originEl}
-            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-            onClose={closeLightbox}
-          />
-        </Suspense>
-      )}
-
-      {/* Попапы действий над сообщением (state-driven из useMessageActions) */}
-      <ChatMsgActionPopups msgActions={msgActions} numericChatId={numericChatId} isRealChat={isRealChat} />
+      {/* Попапы действий над сообщением (state-driven из useMessageActions).
+          Обёртка doDelete/doForward — Task 16: действие, начатое из вьювера,
+          по подтверждению закрывает вьювер (см. viewerActionCloseRef выше). */}
+      <ChatMsgActionPopups
+        msgActions={{
+          ...msgActions,
+          doDelete: (revoke) => {
+            msgActions.doDelete(revoke)
+            viewerActionCloseRef.current?.()
+            viewerActionCloseRef.current = null
+          },
+          doForward: async (chatIds) => {
+            await msgActions.doForward(chatIds)
+            viewerActionCloseRef.current?.()
+            viewerActionCloseRef.current = null
+          },
+          closeDelete: () => { viewerActionCloseRef.current = null; msgActions.closeDelete() },
+          closeForward: () => { viewerActionCloseRef.current = null; msgActions.closeForward() },
+        }}
+        numericChatId={numericChatId}
+        isRealChat={isRealChat}
+      />
     </CallProvider>
   )
 }

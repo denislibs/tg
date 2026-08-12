@@ -7,8 +7,8 @@
 // Не портированы (помечено):
 //   • useGlobalVolume / appMediaPlaybackController — глобальная громкость у нас
 //     обслуживает только голос/музыку (core/audio/mediaPlaybackController.ts);
-//     громкость видео вьювера НЕ персистится — ровно как в React-плеере
-//     (components/messages/VideoPlayer.tsx), персист скорости — на плеере;
+//     громкость видео вьювера НЕ персистится — ровно как в снесённом (Task 16)
+//     React-плеере лайтбокса, персист скорости — на плеере;
 //   • maxVolume > 1 (буст голосовых) и setMaxVolume — потребителя нет.
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'

@@ -51,10 +51,9 @@ describe('mediaManager: медиа-токен — владелец и его р�
 
   // Полнота канала: токен появляется не только через tokenInfo(). Любой путь,
   // которому нужен токен, идёт через ensureToken → fetchToken → publish.
-  it('токен, добытый ради contentUrl/thumbUrl/streamUrl, публикуется тем же каналом', async () => {
+  it('токен, добытый ради contentUrl/streamUrl, публикуется тем же каналом', async () => {
     for (const call of [
       (m: ReturnType<typeof newMediaManager>) => m.contentUrl(42),
-      (m: ReturnType<typeof newMediaManager>) => m.thumbUrl(42),
       (m: ReturnType<typeof newMediaManager>) => m.streamUrl(42),
     ]) {
       const { rest } = fakeRest()
@@ -118,12 +117,12 @@ describe('mediaManager: медиа-токен — владелец и его р�
     const got: MediaTokenInfo[] = []
     const mgr = newMediaManager({ rest, onToken: (t) => got.push(t) })
 
-    const [info, url, thumb] = await Promise.all([mgr.tokenInfo(), mgr.contentUrl(1), mgr.thumbUrl(2)])
+    const [info, url, stream] = await Promise.all([mgr.tokenInfo(), mgr.contentUrl(1), mgr.streamUrl(2)])
 
     expect(tokenGets()).toBe(1)
     expect(got).toHaveLength(1)
     expect(url).toContain(info.token)
-    expect(thumb).toContain(info.token)
+    expect(stream).toContain(info.token)
   })
 
   // Пин на clearTimeout + пол в 5 с внутри scheduleTokenRefresh. Сервер отдаёт

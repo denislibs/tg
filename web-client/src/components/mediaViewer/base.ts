@@ -33,8 +33,9 @@
 //   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container)
 //     не портированы — RTMP-стримов нет (фичи не существует)
 //   • Esc в tweb закрывает вьювер не клавиатурным листенером, а
-//     `appNavigationController` (navigationItem в _openMedia :2429-2450) — наш
-//     navLayer-стек подключит Task 16
+//     `appNavigationController` (navigationItem в _openMedia :2429-2450) — у
+//     нас Esc/Back вешает контроллер openMediaViewer.ts (Task 16): pushEsc +
+//     pushLayer, close по обоим
 //   • `getOverlayRoot()` в tweb (`helpers/appWindow.ts:33`) возвращает body
 //     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
 //     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
@@ -130,6 +131,13 @@ export type ViewerMedia = {
    * У нашего бэка длительность видео может отсутствовать (см. core/gifs.ts) —
    * тогда 0/undefined трактуется как «короткое» (loop), безвредно */
   duration?: number
+  /** Адаптация Task 16: источник байтов МИМО воркерного конвейера —
+   * downloadMediaURL/resolveStreamUrl не зовутся. Секретные E2E-медиа
+   * (расшифровка возможна только на вкладке — getSecretMediaUrl, ветку
+   * заполняет collectLightboxItems) и фото профиля (URL уже отрезолвлен
+   * вызывающим). Строка — готовый URL (у секретных она же ghost-подложка),
+   * функция — ленивый резолв (скачать+расшифровать по факту показа) */
+  url?: string | (() => Promise<string>)
 }
 
 // Автор медиа (tweb setAuthorInfo(fromId, timestamp) резолвит имя/дату через
@@ -155,6 +163,14 @@ type Transform = {
 // двух ambient-типов не тащим, объявлены локально.
 type DOMRectMinified = { top: number, right: number, bottom: number, left: number }
 type DOMRectEditable = DOMRectMinified & { width: number, height: number }
+
+// Адаптация Task 16: готовый источник байтов (ViewerMedia.url, см. тип) —
+// undefined значит «обычное медиа, иди в конвейер».
+function resolveDirectMediaUrl(media: ViewerMedia): Promise<string> | undefined {
+  const { url } = media
+  if (url === undefined) return undefined
+  return Promise.resolve(typeof url === 'function' ? url() : url)
+}
 
 // Порт tweb `helpers/dom/createVideo.ts` в объёме вьювера: элемент +
 // playsinline + уборка src по смерти middleware после тяжёлой анимации;
@@ -274,7 +290,9 @@ export default class AppMediaViewerBase<
   protected captionScrollable!: HTMLElement
 
   // Колбэки наружу: клик по автору (закрыть и перейти к сообщению — проброс в
-  // Task 14) и завершение close() (Task 16 вернёт скрытую миниатюру источника).
+  // Task 14) и завершение close() (контроллер openMediaViewer.ts снимает
+  // Esc/Back-слои и отпускает синглтон; миниатюру источника никто не прятал —
+  // как в tweb, её накрывает сам вьювер).
   public onAuthorClick?: (author: ViewerAuthor) => void
   public onClose?: () => void
 
@@ -1054,8 +1072,8 @@ export default class AppMediaViewerBase<
   // Порт tweb base.ts:975-1024 в нашем объёме. Не портированы (каждое помечено):
   //   • disposeSolid (:976) — solid-островов нет, наши React-острова умирают в
   //     destroyIslands ниже;
-  //   • navigationItem (:992-994, appNavigationController) — наш navLayer-стек
-  //     подключит Task 16 (см. шапку файла);
+  //   • navigationItem (:992-994, appNavigationController) — Esc/Back-слои
+  //     снимает контроллер openMediaViewer.ts в onClose (см. шапку файла);
   //   • lazyLoadQueue.clear() (:996) — очереди нет (шапка файла, Task 14);
   //   • author.avatarMiddlewareHelper.destroy() (:997) — остров аватарки
   //     уничтожает destroyIslands в finally;
@@ -1107,8 +1125,8 @@ export default class AppMediaViewerBase<
   }
 
   // Порт tweb base.ts:1027-1034. `overlayCounter.isDarkOverlayActive` НЕ
-  // портирован — оверлей-счётчика (стек попапов/пасскод-лока tweb) у нас нет,
-  // подключение к navLayer-стеку — Task 16; остаётся вторая половина: глушение
+  // портирован — оверлей-счётчика (стек попапов/пасскод-лока tweb) у нас нет
+  // (Esc/Back-слои живут в контроллере openMediaViewer.ts); остаётся вторая половина: глушение
   // анимаций (стикеры/видео) под тёмным оверлеем через animationIntersector.
   protected toggleOverlay(active: boolean) {
     if (this.overlayActive === active) {
@@ -1138,7 +1156,7 @@ export default class AppMediaViewerBase<
   // (:1044, :1052); наш helpers/mediaSizes — шим без событийной части
   // (см. его шапку) — слушаем window 'resize' напрямую, источник у tweb тот же
   // (mediaSizes пересчитывается на resize окна). Esc — не здесь: см. шапку
-  // файла (appNavigationController → наш navLayer-стек, Task 16).
+  // файла (appNavigationController → pushEsc контроллера openMediaViewer.ts).
   protected toggleGlobalListeners(active: boolean) {
     if (active) this.setGlobalListeners()
     else this.removeGlobalListeners()
@@ -1199,8 +1217,8 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:1058-1130 в объёме без видео/PiP/live (см. шапку файла):
   // гейт overlayCounter.overlaysActive tweb (:1061 в onKeyDown) и попапов у
-  // нас пока эквивалентен findUpClassName(target, 'popup') — оверлей-стека
-  // нет до Task 16.
+  // нас эквивалентен findUpClassName(target, 'popup') — оверлей-стека нет
+  // (попапы поверх вьювера у нас перекрывают его по z-index, см. _bridge.scss).
   onClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement
     if (findUpClassName(target, 'popup')) { // target может быть внутри попапа
@@ -1266,7 +1284,7 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:1132-1160. Гейт overlayCounter.overlaysActive > 1
   // (:1134-1136, :1163-1165 — «поверх вьювера открыт ещё оверлей») не
-  // портирован — оверлей-счётчика нет до Task 16 (пометка в шапке файла).
+  // портирован — оверлей-счётчика нет (пометка в шапке файла).
   private onKeyDown = (e: KeyboardEvent) => {
     const key = e.key
 
@@ -2327,7 +2345,7 @@ export default class AppMediaViewerBase<
       this.setNewMover()
     } else {
       // navigationItem + appNavigationController.pushItem (tweb :2437-2455) —
-      // наш navLayer-стек подключит Task 16 (см. шапку файла)
+      // Esc/Back вешает контроллер openMediaViewer.ts (см. шапку файла)
       this.toggleOverlay(true)
       this.setGlobalListeners()
       this.mountToOverlay()
@@ -2371,7 +2389,10 @@ export default class AppMediaViewerBase<
       // конвейера (наш аналог cacheContext.downloaded: URL уже объявлен
       // владельцем), иначе — канвас-блюр stripped-превью (blur, Task 9;
       // `data:`-обёртка — как useBlurThumb в баблах).
-      const cachedUrl = cachedMediaUrl(media.mediaId)
+      // media.url строкой (секретное, уже расшифрованное вкладкой; фото
+      // профиля) — готовая подложка: конвейерное зеркало про эти байты не
+      // знает (Task 16)
+      const cachedUrl = typeof media.url === 'string' ? media.url : cachedMediaUrl(media.mediaId)
       let img: HTMLImageElement | HTMLCanvasElement | undefined
       if (cachedUrl) {
         img = new Image()
@@ -2578,8 +2599,9 @@ export default class AppMediaViewerBase<
         const load = async () => {
           // Стрим-URL (DNP-ON → /dnp-stream SW-206, иначе токенный URL);
           // supportsStreaming tweb: промис загрузки = Promise.resolve() —
-          // кольцом ведает буферизация выше, не догрузка файла
-          const promise = Promise.resolve(resolveStreamUrl(media.mediaId))
+          // кольцом ведает буферизация выше, не догрузка файла.
+          // media.url (секретное E2E-видео / видео-аватар) минует стрим (Task 16)
+          const promise = resolveDirectMediaUrl(media) ?? Promise.resolve(resolveStreamUrl(media.mediaId))
 
           void Promise.all([promise, onAnimationEnd]).then(([url]) => {
             if (this.tempId !== tempId) {
@@ -2623,7 +2645,8 @@ export default class AppMediaViewerBase<
           // полноразмер. fullPhotoSize-добор tweb (:2909-2912, сортировка
           // media.sizes) не портирован — у нашего бэка один полноразмер,
           // photoSize-лестницы не существует.
-          const cancellablePromise = startClient().managers.media.downloadMediaURL(media.mediaId)
+          // media.url (секретное E2E / фото профиля) минует конвейер (Task 16)
+          const cancellablePromise = resolveDirectMediaUrl(media) ?? startClient().managers.media.downloadMediaURL(media.mediaId)
 
           // Наш аналог tweb-гейта `!(await getCacheContext()).url` (:2915):
           // судьба конвейера отслеживается флагами — ответ уже пришёл → кольцо

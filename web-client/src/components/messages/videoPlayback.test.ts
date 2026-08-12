@@ -1,14 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatVideoTime, bufferedEnd, bufferedPercent, rateToString, VIDEO_RATES, type TimeRangesLike } from './videoPlayback'
-
-// Мини-фабрика TimeRanges-подобного объекта из массива [start, end] пар.
-function ranges(pairs: [number, number][]): TimeRangesLike {
-  return {
-    length: pairs.length,
-    start: (i) => pairs[i][0],
-    end: (i) => pairs[i][1],
-  }
-}
+import { formatVideoTime, rateToString, VIDEO_RATES } from './videoPlayback'
 
 describe('formatVideoTime', () => {
   it('mm:ss без часов, секунды всегда с нулём, минуты — без', () => {
@@ -29,38 +20,6 @@ describe('formatVideoTime', () => {
     expect(formatVideoTime(NaN)).toBe('0:00')
     expect(formatVideoTime(-10)).toBe('0:00')
     expect(formatVideoTime(Infinity)).toBe('0:00')
-  })
-})
-
-describe('bufferedEnd', () => {
-  it('пустые диапазоны → 0', () => {
-    expect(bufferedEnd(ranges([]), 0)).toBe(0)
-  })
-  it('один диапазон с начала', () => {
-    expect(bufferedEnd(ranges([[0, 30]]), 5)).toBe(30)
-  })
-  it('несколько диапазонов — берём ближайший к текущему времени (наибольший start ≤ currentTime)', () => {
-    const r = ranges([[0, 10], [20, 40]])
-    expect(bufferedEnd(r, 5)).toBe(10)
-    expect(bufferedEnd(r, 25)).toBe(40)
-  })
-  it('текущее время до второго диапазона → остаёмся на первом', () => {
-    const r = ranges([[0, 10], [20, 40]])
-    expect(bufferedEnd(r, 15)).toBe(10)
-  })
-})
-
-describe('bufferedPercent', () => {
-  it('процент от длительности', () => {
-    expect(bufferedPercent(ranges([[0, 30]]), 0, 60)).toBe(50)
-    expect(bufferedPercent(ranges([[0, 60]]), 0, 60)).toBe(100)
-  })
-  it('нулевая/невалидная длительность → 0', () => {
-    expect(bufferedPercent(ranges([[0, 30]]), 0, 0)).toBe(0)
-    expect(bufferedPercent(ranges([[0, 30]]), 0, NaN)).toBe(0)
-  })
-  it('клампится в 0..100', () => {
-    expect(bufferedPercent(ranges([[0, 120]]), 0, 60)).toBe(100)
   })
 })
 

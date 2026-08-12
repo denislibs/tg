@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
@@ -26,9 +26,9 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
-// MediaLightbox грузится лениво; тип — type-only импорт (стирается, статической связи не создаёт)
-import type { LightboxItem } from './messages/MediaLightbox'
-const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
+// Просмотрщик фото профиля — vanilla-вьювер (Task 16, замена MediaLightbox)
+import { openMediaViewer } from './mediaViewer/openMediaViewer'
+import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -191,28 +191,44 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   const headerPhotos: HeaderPhoto[] = photos ?? (headerAvatarSrc ? [{ src: headerAvatarSrc, isVideo: false }] : [])
   const photoCount = headerPhotos.length
   const curIndex = clampIndex(photoIndex, photoCount)
-  const curPhoto = headerPhotos[curIndex]
 
-  // просмотрщик фото профиля (tweb: клик по центру фото открывает полноэкранно)
-  const [avatarView, setAvatarView] = useState<{
-    originRect: { top: number; left: number; width: number; height: number }
-    originEl: HTMLElement
-    index: number
-  } | null>(null)
-  const avatarItems: LightboxItem[] = headerPhotos.map((p) =>
-    p.isVideo ? { src: p.src, videoUrl: p.videoSrc, type: 'video' } : { src: p.src },
-  )
+  // Просмотрщик фото профиля (tweb openAvatarViewer: клик по центру фото
+  // открывает полноэкранно) — vanilla-вьювер (Task 16). Натуральных размеров
+  // модель галереи не знает — премеряем still-картинки (мгновенно: их src уже
+  // показан шапкой, кэш браузера); видео-аватар (tweb photo_video) играет в
+  // gif-режиме вьювера (muted-loop без плеера), бокс — по размерам still'а.
   const openAvatarViewer = (startIndex: number) => {
     const el = avatarWrapRef.current
     if (!el || !headerAvatarSrc) return
-    const r = el.getBoundingClientRect()
-    setAvatarView({
-      originRect: { top: r.top, left: r.left, width: r.width, height: r.height },
-      originEl: el,
-      index: clampIndex(startIndex, photoCount),
+    const photos: HeaderPhoto[] = headerPhotos.length ? headerPhotos : [{ src: headerAvatarSrc, isVideo: false }]
+    const index = clampIndex(startIndex, photos.length)
+    const measure = (src: string) => new Promise<{ w: number; h: number } | null>((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+      img.onerror = () => resolve(null)
+      img.src = src
+    })
+    void Promise.all(photos.map((p) => measure(p.src))).then((sizes) => {
+      const items: ViewerItem[] = photos.map((p, i) => ({
+        // цель полёта закрытия есть только у открытого фото — пролистанные
+        // гаснут opacity (как вёл себя и старый лайтбокс)
+        element: i === index ? el : null,
+        mid: 0, // не сообщение: forward/delete/jump не пробрасываются
+        media: {
+          mediaId: 0,
+          width: sizes[i]?.w ?? 0,
+          height: sizes[i]?.h ?? 0, // 0×0 → контроллер подставит бокс миниатюры
+          kind: p.isVideo ? 'video' : 'photo',
+          gif: p.isVideo || undefined,
+          // готовый URL мимо конвейера (ViewerMedia.url): still — blob
+          // конвейера, видео — токенный URL (useProfilePhotos)
+          url: p.isVideo ? p.videoSrc : p.src,
+        },
+        author: { peerId: peerId ?? 0, name: chat.name, date: '' },
+      }))
+      void openMediaViewer({ items, index, target: el })
     })
   }
-  const closeAvatarViewer = () => setAvatarView(null)
 
   // ── перелистывание в шапке: тап по краевым третям / свайп (tweb tap-zones +
   // SwipeHandler). Свайп ведём live-переводом дорожки, на отпускании — решаем. ──
@@ -651,21 +667,6 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
           />
           </div>
-
-          {/* просмотрщик фото профиля (tweb openAvatarViewer) — стартует с
-              текущего фото шапки-пейджера (avatarView.index) */}
-          {avatarView && headerAvatarSrc && (
-            <Suspense fallback={null}>
-              <MediaLightbox
-                items={avatarItems.length ? avatarItems : [{ src: headerAvatarSrc }]}
-                index={avatarView.index}
-                originRect={avatarView.originRect}
-                originSrc={curPhoto?.src ?? headerAvatarSrc}
-                originEl={avatarView.originEl}
-                onClose={closeAvatarViewer}
-              />
-            </Suspense>
-          )}
 
           {/* Инфо полученного подарка (tweb PopupStarGiftInfo) */}
           {selectedGift && (

@@ -21,8 +21,8 @@
 // `_mediaViewer.scss`; своих у плеера нет.
 //
 // Адаптации (поведение не менялось, каждая помечена и на месте):
-//   • скорость персистится в settings-сторе (videoRate) — как в React-плеере
-//     (MediaLightbox → VideoPlayer.tsx); appMediaPlaybackController tweb у нас
+//   • скорость персистится в settings-сторе (videoRate) — контракт унаследован
+//     от снесённого (Task 16) React-плеера; appMediaPlaybackController tweb у нас
 //     обслуживает только голос/музыку (core/audio/mediaPlaybackController.ts),
 //     потому его подписки (playbackParams, muted, seekForward/Backward) не
 //     портированы — громкость/мьют идут на сам <video>;
@@ -505,7 +505,7 @@ export default class VideoPlayer extends ControlsHover {
 
   private setPlaybackRate(rate: number) {
     this.video.playbackRate = rate
-    // персист — settings-стор, как onRateChange React-плеера (MediaLightbox)
+    // персист — settings-стор (контракт onRateChange бывшего React-плеера)
     useSettingsStore.getState().update({ videoRate: rate })
     this.syncRate(rate)
   }
