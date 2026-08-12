@@ -1,12 +1,17 @@
 // Каркас vanilla-ядра медиавьювера — порт tweb `src/components/mediaViewer/base.ts`
-// (константы :81-105, конструктор DOM :318-445, полёт открытия/закрытия
-// `setMoverToTarget` :1176-1798 + `waitForMoverTransition` :1800-1845,
-// toggleWholeActive :1847-1856, setFullAspect :1858-1882, removeCenterFromMover
-// :1912-1926, moveTheMover :1928-1956, setNewMover :1958-1980, радиусы
-// :2066-2114, floatings :2124-2193, center-стили :2236-2265, монтирование
-// :2452-2455). Класс всё ещё ИНЕРТЕН: его пока никто не создаёт — зум/пан/тач —
-// Task 12, наполнение медиа и React-острова (аватарка автора, caption) —
-// Task 13, message-подкласс `AppMediaViewer` с точками входа — Task 14.
+// (константы :81-105, конструктор DOM :318-445, листенеры/жесты `setListeners`
+// :447-587, зум/пан `onSwipeFirst`/`onSwipeReset`/`onZoom` и математика
+// :589-833, transform-стопка контейнера `buildMoversTransform` и поворот
+// :835-966, клик/клавиатура `onClick`/`onKeyDown`/`onKeyUp` :1058-1174,
+// глобальные листенеры :1036-1053, полёт открытия/закрытия `setMoverToTarget`
+// :1176-1798 + `waitForMoverTransition` :1800-1845, toggleWholeActive
+// :1847-1856, setFullAspect :1858-1882, removeCenterFromMover :1912-1926,
+// moveTheMover :1928-1956, setNewMover :1958-1980, радиусы :2066-2114,
+// floatings :2124-2193, center-стили :2236-2265, монтирование :2452-2455).
+// Класс всё ещё ИНЕРТЕН: его пока никто не создаёт — наполнение медиа и
+// React-острова (аватарка автора, caption) — Task 13, message-подкласс
+// `AppMediaViewer` с точками входа (он же зовёт setListeners, как tweb
+// index.ts:166) — Task 14.
 //
 // Порядок append детей `.media-viewer-whole` — load-bearing: правила партиала
 // `styles/tweb/_mediaViewer.scss` построены на соседях
@@ -16,13 +21,19 @@
 // Адаптации (поведение не менялось):
 //   • ButtonIcon/Icon tweb (`button.ts`/`buttonIcon.ts`/`icon.ts`) → локальные
 //     `btnIcon`/`iconSpan`: та же разметка `button.btn-icon > span.tgico.button-icon`,
-//     глифы — из нашей карты `@core/tgico-icons` (шрифт tgico). Ripple у
-//     mobile-close (в tweb ButtonIcon без noRipple вешает `rp` + `div.c-ripple`)
-//     не портирован: наш ripple — React-хук (`shared/ui/Ripple`), vanilla-порт
-//     поедет вместе с оживлением кнопок в Task 13
-//   • RangeSelector зума (tweb :375-396) — пока голый контейнер
-//     `div.progress-line.with-transition` (те же классы, что строит RangeSelector
-//     c `withTransition: true`); наполнение (filled/seek + хендлеры) — Task 12
+//     глифы — из нашей карты `@core/tgico-icons` (шрифт tgico); свап иконки
+//     zoomin↔zoomout — локальный `replaceButtonIcon` (порт tweb button.ts:48-53
+//     поверх `iconSpan`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
+//     вешает `rp` + `div.c-ripple`) не портирован: наш ripple — React-хук
+//     (`shared/ui/Ripple`), vanilla-порт поедет вместе с оживлением кнопок в Task 13
+//   • `updateVideoControlsLock` tweb (:958-966, вызовы из toggleZoom/rotateMedia)
+//     не портирован — обслуживает только videoPlayer, приедет с плеером в Task 15
+//   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container) и
+//     `!this.videoPlayer`-условие мобильного тапа не портированы — RTMP-стримов
+//     нет (фичи не существует), плеер — Task 15
+//   • Esc в tweb закрывает вьювер не клавиатурным листенером, а
+//     `appNavigationController` (navigationItem в _openMedia :2429-2450) — наш
+//     navLayer-стек подключит Task 16
 //   • `getOverlayRoot()` в tweb (`helpers/appWindow.ts:33`) возвращает body
 //     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
 //     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
@@ -35,25 +46,33 @@
 import EventListenerBase from '@helpers/eventListenerBase'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
+import cancelEvent from '@helpers/dom/cancelEvent'
+import { attachClickEvent, hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
+import findUpAsChild from '@helpers/dom/findUpAsChild'
 import findUpClassName from '@helpers/dom/findUpClassName'
+import { isFullScreen } from '@helpers/dom/fullScreen'
 import getVisibleRect from '@helpers/dom/getVisibleRect'
 import liteMode from '@helpers/liteMode'
 import { MediaSize } from '@helpers/mediaSize'
 import mediaSizes from '@helpers/mediaSizes'
+import clamp from '@helpers/number/clamp'
+import isBetween from '@helpers/number/isBetween'
 import { doubleRaf, fastRaf } from '@helpers/schedulers'
+import debounce, { type DebounceReturnType } from '@helpers/schedulers/debounce'
 import windowSize from '@helpers/windowSize'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { glyph, type IconName } from '@core/tgico-icons'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
-import type SwipeHandler from '@core/dom/swipeHandler'
+import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
 import ProgressivePreloader from '../preloader'
+import RangeSelector from '../rangeSelector'
 import getMediaViewerClipPath from './clipPath'
 import getMediaViewerSnapshotSize from './snapshotSize'
 import type ListLoader from './listLoader'
 
 // Константы tweb base.ts:81-105. Экспортированы: потребители внутри класса
 // появляются по мере порта (открытие — Task 11, зум — Task 12, видео — Task 15),
-// а снаружи их уже сейчас читают тесты и будущие сателлиты (RangeSelector зума).
+// а снаружи их уже сейчас читают тесты.
 export const ZOOM_STEP = 0.5
 export const ZOOM_INITIAL_VALUE = 1
 export const ZOOM_MIN_VALUE = 0.5
@@ -82,8 +101,8 @@ export const MEDIA_VIEWER_CLASSNAME = 'media-viewer'
 // HTMLElement) — уничтожается вместе с мувером при уходе (`moveTheMover`, tweb :1952).
 export type MoverElement = HTMLElement & { middlewareHelper: MiddlewareHelper }
 
-// tweb base.ts:107-111 — стопка зум/пан. Значения оживит Task 12; до него
-// transform тождественен (x/y = 0, scale = 1).
+// tweb base.ts:107-111 — стопка зум/пан (живёт на moversContainer,
+// НЕЗАВИСИМО от transform'а полёта на самом мувере).
 type Transform = {
   x: number
   y: number
@@ -133,6 +152,16 @@ function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}): HTMLBu
   return button
 }
 
+// Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх нашего `iconSpan`:
+// свап глифа кнопки заменой span.button-icon (зум-кнопка zoomin↔zoomout).
+function replaceButtonIcon(element: HTMLElement, icon: IconName) {
+  const newIcon = iconSpan(icon, 'button-icon')
+  const oldIcon = element.querySelector('.button-icon')
+  if (oldIcon) oldIcon.replaceWith(newIcon)
+  else element.append(newIcon)
+  return newIcon
+}
+
 export default class AppMediaViewerBase<
   ContentAdditionType extends string,
   ButtonsAdditionType extends string,
@@ -170,26 +199,46 @@ export default class AppMediaViewerBase<
   // живой ожидатель — новый снимает предыдущий (cancelMoverTransition).
   private moverTransitionCancels = new WeakMap<HTMLElement, () => void>()
 
-  // ЗАГЛУШКИ КАРКАСА (tweb :257-266): зум/пан/поворот оживит Task 12 — до него
-  // transform тождественен, rotation 0 и isZooming false, поэтому ветки переноса
-  // трансформа при закрытии (zoomedClose/rotatedClose в setMoverToTarget)
-  // портированы целиком, но пока недостижимы.
+  // Состояние зум/пан/поворота (tweb :256-266).
   protected transform: Transform = { x: 0, y: 0, scale: ZOOM_INITIAL_VALUE }
   // Накопленный поворот в градусах (кратные 90, против часовой — отрицательные).
+  // Живёт на moversContainer вместе с зум/пан-трансформом; сбрасывается
+  // пер-медиа (resetRotationForNav).
   protected rotation = 0
   protected isZooming = false
+  protected isGesturingNow = false
+  protected isZoomingNow = false
+  protected draggingType?: 'wheel' | 'touchmove' | 'mousemove'
   protected initialContentRect: DOMRect | null = null
 
-  // Разводка жестов по wholeDiv (tweb :522-587) — Task 12.
+  protected ctrlKeyDown = false
+  // Флаг закрытия (tweb :275): полный close — Task 14; уже сейчас его читает
+  // onSwipeReset (гейт клампа во время закрытия).
+  protected closing = false
+
+  // Разводка жестов по wholeDiv (tweb :522-587, setListeners).
   protected swipeHandler: SwipeHandler | null = null
+
+  // tweb :281-284: все четыре стартуют АЛИАСОМ на transform (одна и та же
+  // ссылка) — до первого onSwipeFirst/adjustPosition, которые перезапишут их
+  // собственными объектами, читаются только нулевые x/y.
+  protected lastTransform: Transform = this.transform
+  protected lastZoomCenter: { x: number, y: number } = this.transform
+  protected lastDragOffset: { x: number, y: number } = this.transform
+  protected lastDragDelta: { x: number, y: number } = this.transform
+  protected lastGestureTime = 0
+  // Создаётся в setListeners (tweb :521); до него хендлеры RangeSelector
+  // (onScrub → addZoom) могут честно застать undefined — вызовы через `?.`
+  // (в tweb strict выключен, там та же прореха прикрыта `?.` лишь в onScrub).
+  protected clampZoomDebounced?: DebounceReturnType<() => void>
+  protected ignoreNextClick = false
+  protected highlightSwitchersTimeout = 0
 
   protected zoomElements: {
     container: HTMLElement
     btnOut: HTMLElement
     btnIn: HTMLElement
-    // в tweb — RangeSelector({step: .01, min/max: ZOOM_*, withTransition: true});
-    // наполнение контейнера — Task 12
-    rangeSelector: HTMLElement
+    rangeSelector: RangeSelector
   } = {} as AppMediaViewerBase<ContentAdditionType, ButtonsAdditionType, TargetType>['zoomElements']
 
   protected middlewareHelper: MiddlewareHelper
@@ -267,13 +316,32 @@ export default class AppMediaViewerBase<
     this.zoomElements.container.classList.add('zoom-container')
 
     this.zoomElements.btnOut = btnIcon('zoomout')
+    attachClickEvent(this.zoomElements.btnOut, () => this.addZoomStep(false))
     this.zoomElements.btnIn = btnIcon('zoomin')
+    attachClickEvent(this.zoomElements.btnIn, () => this.addZoomStep(true))
 
-    // наполнение — Task 12 (порт RangeSelector: filled/seek, onScrub → addZoom)
-    this.zoomElements.rangeSelector = document.createElement('div')
-    this.zoomElements.rangeSelector.classList.add('progress-line', 'with-transition')
+    this.zoomElements.rangeSelector = new RangeSelector({
+      step: 0.01,
+      min: ZOOM_MIN_VALUE,
+      max: ZOOM_MAX_VALUE,
+      withTransition: true,
+    }, ZOOM_INITIAL_VALUE)
+    this.zoomElements.rangeSelector.setListeners()
+    this.zoomElements.rangeSelector.setHandlers({
+      onScrub: (value) => {
+        const add = value - this.transform.scale
+        this.addZoom(add)
+        this.clampZoomDebounced?.clearTimeout()
+      },
+      onMouseDown: () => {
+        this.onSwipeFirst()
+      },
+      onMouseUp: () => {
+        this.onSwipeReset()
+      },
+    })
 
-    this.zoomElements.container.append(this.zoomElements.btnOut, this.zoomElements.rangeSelector, this.zoomElements.btnIn)
+    this.zoomElements.container.append(this.zoomElements.btnOut, this.zoomElements.rangeSelector.container, this.zoomElements.btnIn)
 
     if (!IS_TOUCH_SUPPORTED) {
       this.wholeDiv.append(this.zoomElements.container)
@@ -327,6 +395,681 @@ export default class AppMediaViewerBase<
     }
 
     this.setNewMover()
+  }
+
+  // Порт tweb base.ts:447-587 в объёме Task 12 (зовёт конструктор подкласса —
+  // tweb index.ts:166, у нас Task 14). Не портированы здесь:
+  //   • download-кнопка (attachClickEvent + меню качества ButtonMenuToggle,
+  //     tweb :448-459) — вместе с onDownloadClick в Task 14;
+  //   • listLoader.onJump → onPrevClick/onNextClick (tweb :489-492) — поля
+  //     message-подкласса, Task 14.
+  protected setListeners() {
+    ;[this.buttons.close, this.buttons['mobile-close'], this.preloaderStreamable.preloader].forEach((el) => {
+      attachClickEvent(el, this.close.bind(this))
+    })
+
+    ;([[-1, this.buttons.prev], [1, this.buttons.next]] as [number, HTMLElement][]).forEach(([moveLength, button]) => {
+      // tweb :464-465: сырой addEventListener, не attachClickEvent — тот на
+      // таче (mousedown) отменял бы slide-жест
+      button.addEventListener('click', (e) => {
+        cancelEvent(e)
+        if (this.setMoverPromise) return
+
+        this.listLoader.go(moveLength)
+      })
+    })
+
+    attachClickEvent(this.buttons.zoomin, () => {
+      if (this.isZooming) this.resetZoom()
+      else {
+        this.addZoomStep(true)
+      }
+    })
+
+    attachClickEvent(this.buttons.rotate, () => this.rotateMedia())
+
+    // ! нельзя через attachClickEvent — на тач-устройствах он отменит
+    // slide-событие (tweb :486-488)
+    this.wholeDiv.addEventListener('click', this.onClick)
+
+    const adjustPosition = (xDiff: number, yDiff: number) => {
+      const [x, y] = [xDiff - this.lastDragOffset.x, yDiff - this.lastDragOffset.y]
+      const [transform, inBoundsX, inBoundsY] = this.calculateOffsetBoundaries({
+        x: this.transform.x + x,
+        y: this.transform.y + y,
+        scale: this.transform.scale,
+      })
+
+      this.lastDragDelta = {
+        x,
+        y,
+      }
+
+      this.lastDragOffset = {
+        x: xDiff,
+        y: yDiff,
+      }
+
+      this.setTransform(transform)
+
+      return { inBoundsX, inBoundsY }
+    }
+
+    const setLastGestureTime = debounce(() => {
+      this.lastGestureTime = Date.now()
+    }, 500, false, true)
+
+    // Кламп-дебаунс 300 мс: после серии addZoom (кнопки/слайдер/колесо) зум,
+    // ушедший в bounce-зону за ZOOM_MAX, доводится onSwipeReset'ом обратно.
+    this.clampZoomDebounced = debounce(() => {
+      this.onSwipeReset()
+    }, 300, false, true)
+
+    this.swipeHandler = new SwipeHandler({
+      element: this.wholeDiv,
+      onReset: this.onSwipeReset,
+      onFirstSwipe: this.onSwipeFirst,
+      onSwipe: (xDiff, yDiff, e, cancelDrag) => {
+        if (isFullScreen()) {
+          return
+        }
+
+        if (this.isZooming && !this.isZoomingNow) {
+          void setLastGestureTime() // void: fire-and-forget как в tweb (oxlint no-floating-promises)
+
+          this.draggingType = (e as { type?: string }).type as AppMediaViewerBase<
+            ContentAdditionType, ButtonsAdditionType, TargetType
+          >['draggingType']
+          const { inBoundsX, inBoundsY } = adjustPosition(xDiff, yDiff)
+          cancelDrag?.(!inBoundsX, !inBoundsY)
+
+          return
+        }
+
+        if (this.isZoomingNow || !IS_TOUCH_SUPPORTED) {
+          return
+        }
+
+        const percents = Math.abs(xDiff) / windowSize.width
+        if (percents > .2 || Math.abs(xDiff) > 125) {
+          if (xDiff > 0) {
+            this.buttons.prev.click()
+          } else {
+            this.buttons.next.click()
+          }
+
+          return true
+        }
+
+        const percentsY = Math.abs(yDiff) / windowSize.height
+        if (percentsY > .2 || Math.abs(yDiff) > 125) {
+          this.close()
+          return true
+        }
+
+        return false
+      },
+      onZoom: this.onZoom,
+      onDoubleClick: ({ centerX, centerY }) => {
+        if (this.isZooming) {
+          this.resetZoom()
+        } else {
+          const scale = ZOOM_INITIAL_VALUE + 2
+          this.changeZoomByPosition(centerX, centerY, scale)
+        }
+      },
+      verifyTouchTarget: (e) => {
+        // * Fix for seek input
+        if (isFullScreen() ||
+          findUpAsChild(e.target as HTMLElement, this.zoomElements.container) ||
+          findUpClassName(e.target, 'ckin__controls') ||
+          findUpClassName(e.target, 'media-viewer-caption') ||
+          (findUpClassName(e.target, 'media-viewer-topbar') && e.type !== 'wheel')) {
+          return false
+        }
+
+        return true
+      },
+      cursor: '',
+    })
+  }
+
+  // Порт tweb base.ts:589-604.
+  protected onSwipeFirst = (e?: { type?: string }) => {
+    this.lastDragOffset = this.lastDragDelta = { x: 0, y: 0 }
+    this.lastTransform = { ...this.transform }
+    if (e?.type !== 'wheel' || !this.ctrlKeyDown) { // сохранить transition для настоящего колеса мыши
+      this.moversContainer.classList.add('no-transition')
+      this.zoomElements.rangeSelector.container.classList.remove('with-transition')
+    }
+    this.isGesturingNow = true
+    this.lastGestureTime = Date.now()
+    this.clampZoomDebounced?.clearTimeout()
+
+    if (!this.lastTransform.x && !this.lastTransform.y && !this.isZooming) {
+      this.initialContentRect = this.content.media.getBoundingClientRect()
+    }
+  }
+
+  // Порт tweb base.ts:606-656.
+  protected onSwipeReset = (e?: Event) => {
+    // move
+    this.moversContainer.classList.remove('no-transition')
+    this.zoomElements.rangeSelector.container.classList.add('with-transition')
+    this.clampZoomDebounced?.clearTimeout()
+
+    if (e?.type === 'mouseup' && this.draggingType === 'mousemove') {
+      this.ignoreNextClick = true
+    }
+
+    const { draggingType } = this
+    this.isZoomingNow = false
+    this.isGesturingNow = false
+    this.draggingType = undefined
+
+    if (this.closing) {
+      return
+    }
+
+    if (this.transform.scale > ZOOM_INITIAL_VALUE) {
+      // Текущие границы контента
+      const s1 = Math.min(this.transform.scale, ZOOM_MAX_VALUE)
+      const scaleFactor = s1 / this.transform.scale
+
+      // Новая позиция от последнего зум-центра: точка под пальцами остаётся
+      // на месте при отскоке от максимального зума
+      let x1 = this.transform.x * scaleFactor + (this.lastZoomCenter.x - scaleFactor * this.lastZoomCenter.x)
+      let y1 = this.transform.y * scaleFactor + (this.lastZoomCenter.y - scaleFactor * this.lastZoomCenter.y)
+
+      // Масштаб не менялся — жесту пана добавляется инерция
+      if (draggingType && draggingType !== 'wheel' && this.lastTransform.scale === this.transform.scale) {
+        // Подобранный коэффициент скорости пана
+        const k = 0.1
+
+        // Скорость жеста пользователя
+        const elapsedTime = Math.max(1, Date.now() - this.lastGestureTime)
+        const Vx = Math.abs(this.lastDragOffset.x) / elapsedTime
+        const Vy = Math.abs(this.lastDragOffset.y) / elapsedTime
+
+        // Дополнительная дистанция от скорости жеста и последней дельты пана
+        x1 -= Math.abs(this.lastDragOffset.x) * Vx * k * -this.lastDragDelta.x
+        y1 -= Math.abs(this.lastDragOffset.y) * Vy * k * -this.lastDragDelta.y
+      }
+
+      const [transform] = this.calculateOffsetBoundaries({ x: x1, y: y1, scale: s1 })
+      this.lastTransform = transform
+      this.setTransform(transform)
+    } else if (this.transform.scale < ZOOM_INITIAL_VALUE) {
+      this.resetZoom()
+    }
+  }
+
+  // Порт tweb base.ts:658-701.
+  protected onZoom = ({
+    initialCenterX,
+    initialCenterY,
+    zoom,
+    zoomAdd,
+    currentCenterX,
+    currentCenterY,
+    dragOffsetX,
+    dragOffsetY,
+    zoomFactor,
+  }: ZoomDetails) => {
+    initialCenterX ||= windowSize.width / 2
+    initialCenterY ||= windowSize.height / 2
+    currentCenterX ||= windowSize.width / 2
+    currentCenterY ||= windowSize.height / 2
+
+    this.isZoomingNow = true
+
+    // Bounce headroom: во время жеста зум может уходить за ZOOM_MAX_VALUE до
+    // тройного значения — обратно к максимуму его доведёт onSwipeReset
+    // (clampZoomDebounced после кнопок/колеса, конец жеста на таче).
+    const zoomMaxBounceValue = ZOOM_MAX_VALUE * 3
+    const scale = zoomAdd !== undefined ?
+      clamp(this.lastTransform.scale + zoomAdd, ZOOM_MIN_VALUE, zoomMaxBounceValue) :
+      // zoomFactor есть всегда, когда нет ни zoomAdd, ни zoom (пинч-ветка
+      // SwipeHandler) — в tweb это гарантирует построение ZoomDetails
+      (zoom ?? clamp(this.lastTransform.scale * zoomFactor!, ZOOM_MIN_VALUE, zoomMaxBounceValue))
+    const scaleFactor = scale / this.lastTransform.scale
+    const offsetX = Math.abs(Math.min(this.lastTransform.x, 0))
+    const offsetY = Math.abs(Math.min(this.lastTransform.y, 0))
+
+    // Последний зум-центр запоминается для отскока (bounce back)
+    this.lastZoomCenter = {
+      x: currentCenterX,
+      y: currentCenterY,
+    }
+
+    // Новый центр относительно сдвинутой картинки
+    const scaledCenterX = offsetX + initialCenterX
+    const scaledCenterY = offsetY + initialCenterY
+
+    const { scaleOffsetX, scaleOffsetY } = this.calculateScaleOffset({ x: scaledCenterX, y: scaledCenterY, scale: scaleFactor })
+
+    const [transform] = this.calculateOffsetBoundaries({
+      x: this.lastTransform.x + scaleOffsetX + dragOffsetX,
+      y: this.lastTransform.y + scaleOffsetY + dragOffsetY,
+      scale,
+    })
+
+    this.setTransform(transform)
+  }
+
+  // Порт tweb base.ts:703-712 — зум в точку (дабл-клик/дабл-тап).
+  protected changeZoomByPosition(x: number, y: number, scale: number) {
+    const { scaleOffsetX, scaleOffsetY } = this.calculateScaleOffset({ x, y, scale })
+    const transform = this.calculateOffsetBoundaries({
+      x: scaleOffsetX,
+      y: scaleOffsetY,
+      scale,
+    })[0]
+
+    this.setTransform(transform)
+  }
+
+  // Порт tweb base.ts:714-717.
+  protected setTransform(transform: Transform) {
+    this.transform = transform
+    this.changeZoom(transform.scale)
+  }
+
+  // Порт tweb base.ts:720-729: насколько сдвинуть картинку, чтобы зум-центр
+  // остался на месте.
+  protected calculateScaleOffset({ x, y, scale }: {
+    x: number,
+    y: number,
+    scale: number
+  }) {
+    return {
+      scaleOffsetX: x - scale * x,
+      scaleOffsetY: y - scale * y,
+    }
+  }
+
+  // Порт tweb base.ts:731-756.
+  protected toggleZoom(enable?: boolean) {
+    const isVisible = this.isZooming
+    const auto = enable === undefined
+    if (this.zoomElements.rangeSelector.mousedown || this.ctrlKeyDown) {
+      enable = true
+    }
+
+    enable ??= !isVisible
+
+    if (isVisible === enable) {
+      return
+    }
+
+    replaceButtonIcon(this.buttons.zoomin, !enable ? 'zoomin' : 'zoomout')
+    this.zoomElements.container.classList.toggle('is-visible', this.isZooming = enable)
+    this.wholeDiv.classList.toggle('is-zooming', enable)
+
+    if (auto || !enable) {
+      const zoomValue = enable ? this.transform.scale : ZOOM_INITIAL_VALUE
+      this.setZoomValue(zoomValue)
+      this.zoomElements.rangeSelector.setProgress(zoomValue)
+    }
+
+    // updateVideoControlsLock tweb :755 — плеер, Task 15 (см. шапку файла)
+  }
+
+  // Порт tweb base.ts:758-760.
+  protected addZoomStep(add: boolean) {
+    this.addZoom(ZOOM_STEP * (add ? 1 : -1))
+  }
+
+  // Порт tweb base.ts:762-768.
+  protected resetZoom() {
+    this.setTransform({
+      x: 0,
+      y: 0,
+      scale: ZOOM_INITIAL_VALUE,
+    })
+  }
+
+  // Порт tweb base.ts:770-774.
+  protected changeZoom(value = this.transform.scale) {
+    this.transform.scale = value
+    this.zoomElements.rangeSelector.setProgress(value)
+    this.setZoomValue(value)
+  }
+
+  // Порт tweb base.ts:776-789.
+  protected addZoom(value: number) {
+    this.lastTransform = this.transform
+    this.onZoom({
+      zoomAdd: value,
+      currentCenterX: 0,
+      currentCenterY: 0,
+      initialCenterX: 0,
+      initialCenterY: 0,
+      dragOffsetX: 0,
+      dragOffsetY: 0,
+    })
+    this.lastTransform = this.transform
+    void this.clampZoomDebounced?.() // void: fire-and-forget как в tweb (oxlint no-floating-promises)
+  }
+
+  // Порт tweb base.ts:791-793. В tweb метод нигде не вызывается (мёртв и в
+  // референсе — исторический хвост зум-порта из WebZ); оставлен по границе
+  // порта Task 12, снести/оживить — решение финального сверения Task 17.
+  protected getZoomBounce() {
+    return this.isGesturingNow && IS_TOUCH_SUPPORTED ? 50 : 0
+  }
+
+  // Порт tweb base.ts:795-813.
+  protected calculateOffsetBoundaries = (
+    { x, y, scale }: Transform,
+    offsetTop = 0,
+  ): [Transform, boolean, boolean] => {
+    if (!this.initialContentRect) return [{ x, y, scale }, true, true]
+    // Текущие границы контента
+    let inBoundsX = true
+    let inBoundsY = true
+
+    const { minX, maxX, minY, maxY } = this.getZoomBoundaries(scale, offsetTop)
+
+    inBoundsX = isBetween(x, maxX, minX)
+    x = clamp(x, maxX, minX)
+
+    inBoundsY = isBetween(y, maxY, minY)
+    y = clamp(y, maxY, minY)
+
+    return [{ x, y, scale }, inBoundsX, inBoundsY]
+  }
+
+  // Порт tweb base.ts:815-833.
+  protected getZoomBoundaries(scale = this.transform.scale, offsetTop = 0) {
+    if (!this.initialContentRect) {
+      return { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+    }
+
+    const centerX = (windowSize.width - windowSize.width * scale) / 2
+    const centerY = (windowSize.height - windowSize.height * scale) / 2
+
+    // Пан/зум действуют на повёрнутый+refit бокс в экранном пространстве,
+    // поэтому границы считаются от него (= initialContentRect без поворота).
+    const rect = this.getDisplayRect()
+    const minX = Math.max(-rect.left * scale, centerX)
+    const maxX = windowSize.width - rect.right * scale
+
+    const minY = Math.max(-rect.top * scale + offsetTop, centerY)
+    const maxY = windowSize.height - rect.bottom * scale
+
+    return { minX, maxX, minY, maxY }
+  }
+
+  // Порт tweb base.ts:835-850.
+  protected setZoomValue = (value = this.transform.scale) => {
+    this.initialContentRect ??= this.content.media.getBoundingClientRect()
+
+    if (value === ZOOM_INITIAL_VALUE) {
+      this.transform.x = 0
+      this.transform.y = 0
+    }
+
+    this.applyMoversTransform(value)
+
+    this.zoomElements.btnOut.classList.toggle('inactive', value <= ZOOM_MIN_VALUE)
+    this.zoomElements.btnIn.classList.toggle('inactive', value >= ZOOM_MAX_VALUE)
+
+    this.toggleZoom(value !== ZOOM_INITIAL_VALUE)
+  }
+
+  // Порт tweb base.ts:852-854. Зум/пан/поворот живут на moversContainer —
+  // НЕ на мувере: его transform занят полётом открытия/закрытия/листания
+  // (setMoverToTarget/moveTheMover), две стопки независимы.
+  protected applyMoversTransform(scaleValue = this.transform.scale) {
+    this.moversContainer.style.transform = this.buildMoversTransform(scaleValue)
+  }
+
+  // Порт tweb base.ts:856-873 — сборка transform'а moversContainer. Порядок
+  // важен: зум/пан (origin 0 0) — ВНЕШНИЕ (экранные) трансформы, а
+  // rotate+orientation-refit — ВНУТРЕННИЙ, применяется к медиа вокруг его
+  // собственного центра. Пан/зум в экранном пространстве означают, что драг
+  // ложится прямо на экранные оси даже в повороте (боковая→горизонтальная
+  // фотка панится влево-вправо, а не вверх-вниз), а математике границ нужен
+  // только повёрнутый bbox (getDisplayRect). Rotate-обёртка эмитится ВСЕГДА
+  // (identity при rotation 0 — пара translate(C)…translate(-C) сокращается
+  // через неё на каждом шаге интерполяции, так что зум анимируется и
+  // рендерится ровно как раньше), чтобы ПЕРВЫЙ поворот интерполировался
+  // пофункционально, а не через matrix-декомпозицию от голого зума (та
+  // уводила картинку в сторону до доводки).
+  protected buildMoversTransform(scaleValue = this.transform.scale) {
+    const { x, y } = this.transform
+    const fit = this.getRotationFitScale()
+    const { x: cx, y: cy } = this.getMediaCenter()
+    return `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0px) scale(${scaleValue.toFixed(3)}) ` +
+      `translate(${cx.toFixed(3)}px, ${cy.toFixed(3)}px) rotate(${this.rotation}deg) scale(${fit.toFixed(5)}) translate(${(-cx).toFixed(3)}px, ${(-cy).toFixed(3)}px)`
+  }
+
+  // Порт tweb base.ts:875-884: центр медиа на экране в покое (до зум/пана).
+  // Поворот — внутренний transform, так что это пивот вращения — константа,
+  // не зависящая от текущего зума/пана.
+  protected getMediaCenter() {
+    const rect = this.initialContentRect ?? this.content.media.getBoundingClientRect()
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+  }
+
+  // Порт tweb base.ts:906-930: экранный bbox медиа ПОСЛЕ поворота +
+  // orientation-refit (всё ещё в до-зумном фрейме). Пан/зум действуют на ЭТОТ
+  // бокс в экранном пространстве, поэтому границы зума выводятся прямо из
+  // него. Без поворота → просто initialContentRect.
+  protected getDisplayRect(): DOMRectMinified & { width: number, height: number } {
+    const rect = this.initialContentRect ?? this.content.media.getBoundingClientRect()
+    if (!this.rotation) {
+      return rect
+    }
+
+    const normalized = ((this.rotation % 360) + 360) % 360
+    const swap = normalized === 90 || normalized === 270
+    const fit = this.getRotationFitScale()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const width = (swap ? rect.height : rect.width) * fit
+    const height = (swap ? rect.width : rect.height) * fit
+    return {
+      left: cx - width / 2,
+      right: cx + width / 2,
+      top: cy - height / 2,
+      bottom: cy + height / 2,
+      width,
+      height,
+    }
+  }
+
+  // Порт tweb base.ts:932-950.
+  protected rotateMedia() {
+    // Прайминг transition ТОЛЬКО на первом применении transform'а
+    // (moversContainer ещё на CSS-дефолте, без инлайна): закоммитить
+    // identity-структурированный transform, чтобы первый поворот
+    // интерполировал rotate/scale пофункционально, а не через
+    // matrix-декомпозицию от голого дефолта (та уводила картинку в сторону
+    // до доводки). Когда инлайн-transform уже есть (после любого
+    // зума/поворота), он уже в этой форме — повторный прайминг добавил бы
+    // no-transition посреди полёта и схлопнул ещё играющий поворот в цель.
+    if (!this.moversContainer.style.transform) {
+      this.moversContainer.classList.add('no-transition')
+      this.applyMoversTransform()
+      void this.moversContainer.offsetLeft // рефлоу-барьер: коммит запраймленного состояния
+      this.moversContainer.classList.remove('no-transition')
+    }
+
+    this.rotation -= 90 // против часовой, как Telegram Desktop
+    this.applyMoversTransform()
+    // updateVideoControlsLock tweb :949 — плеер, Task 15 (см. шапку файла)
+  }
+
+  // Порт tweb base.ts:952-956: медиа визуально повёрнуто (любое не кратное
+  // 360°). −360° выглядит как вертикаль — сравнивается нормализованный угол,
+  // не сырой аккумулятор.
+  protected isRotated() {
+    return (((this.rotation % 360) + 360) % 360) !== 0
+  }
+
+  // Порт tweb base.ts:2416-2425 (блок внутри _openMedia — сам _openMedia и
+  // его вызов этого метода приедут в Task 13): поворот — пер-медиа. Снять
+  // остаточный поворот прошлой картинки и мгновенно (no-transition) вернуть
+  // moversContainer в identity — чтобы ни уезжающий nav-слайд, ни входящее
+  // открытие не сыграли лишний доворот.
+  protected resetRotationForNav() {
+    if (this.rotation) {
+      this.rotation = 0
+      this.moversContainer.classList.add('no-transition')
+      this.applyMoversTransform()
+      void this.moversContainer.offsetLeft // рефлоу-барьер: коммит до слайда/открытия
+      this.moversContainer.classList.remove('no-transition')
+    }
+  }
+
+  // ЗАГЛУШКА (объём Task 12): полный порт tweb base.ts:1075-1129 (снятие
+  // навигации, listLoader.reset, полёт setMoverToTarget(closing) и уборка
+  // оверлея/DOM) приедет с message-подклассом в Task 14. Уже сейчас close —
+  // цель вертикального свайпа, click-outside и кнопок close/mobile-close;
+  // флаг closing читает onSwipeReset (гейт клампа во время закрытия),
+  // снятие SwipeHandler — как в tweb :1090.
+  public close(e?: MouseEvent) {
+    if (e) {
+      cancelEvent(e)
+    }
+
+    if (this.closing) {
+      return
+    }
+
+    this.closing = true
+    this.swipeHandler?.removeListeners()
+  }
+
+  // Порт tweb base.ts:1036-1053 (в объёме окна: у tweb — getAppWindow(),
+  // активное окно Document-PiP; у нас приложение в PiP не переезжает — всегда
+  // главный window). mediaSizes-resize → applyLayoutVariables (tweb :1044,
+  // :1052) приедет вместе с applyLayoutVariables в Task 13. Esc — не здесь:
+  // см. шапку файла (appNavigationController → наш navLayer-стек, Task 16).
+  protected toggleGlobalListeners(active: boolean) {
+    if (active) this.setGlobalListeners()
+    else this.removeGlobalListeners()
+  }
+
+  protected removeGlobalListeners() {
+    window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('keyup', this.onKeyUp)
+  }
+
+  protected setGlobalListeners() {
+    window.addEventListener('keydown', this.onKeyDown)
+    window.addEventListener('keyup', this.onKeyUp)
+  }
+
+  // Порт tweb base.ts:1058-1130 в объёме без видео/PiP/live (см. шапку файла):
+  // гейт overlayCounter.overlaysActive tweb (:1061 в onKeyDown) и попапов у
+  // нас пока эквивалентен findUpClassName(target, 'popup') — оверлей-стека
+  // нет до Task 16.
+  onClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (findUpClassName(target, 'popup')) { // target может быть внутри попапа
+      return
+    }
+
+    if (this.ignoreNextClick) {
+      this.ignoreNextClick = false
+      return
+    }
+
+    if (this.setMoverAnimationPromise) return
+
+    if (target.tagName === 'A') return
+    cancelEvent(e)
+
+    // На мобильном медиа без контролов плеера (фото/GIF) не имеет своего
+    // controls-toggle, поэтому тап по нему переключает хром (топбар + caption)
+    // сам — зеркаля тоггл видеоконтролов, — а не закрывает вьювер. Тапы по
+    // хрому/меню сохраняют свои обработчики; драги уже отфильтрованы через
+    // ignoreNextClick. (`!this.videoPlayer` tweb :1077 — плеер, Task 15.)
+    if (mediaSizes.isMobile && !findUpClassName(target, 'media-viewer-topbar') && !findUpClassName(target, 'media-viewer-caption') && !findUpClassName(target, 'btn-menu')) {
+      this.wholeDiv.classList.toggle('chrome-hidden')
+      return
+    }
+
+    if (IS_TOUCH_SUPPORTED) {
+      if (this.highlightSwitchersTimeout) {
+        clearTimeout(this.highlightSwitchersTimeout)
+      } else {
+        this.wholeDiv.classList.add('highlight-switchers')
+      }
+
+      this.highlightSwitchersTimeout = window.setTimeout(() => {
+        this.wholeDiv.classList.remove('highlight-switchers')
+        this.highlightSwitchersTimeout = 0
+      }, 3e3)
+
+      return
+    }
+
+    if (hasMouseMovedSinceDown(e)) {
+      return
+    }
+
+    const isZooming = this.isZooming && false
+    // Зоны, считающиеся «кликом по контролу», — такой клик НЕ трактуется как
+    // тап по фону (который закрывает вьювер). 'media-viewer-topbar' накрывает
+    // весь топбар, включая handheld-крестик в .media-viewer-topbar-left (вне
+    // .media-viewer-buttons). Ветка live-стрима (admin-popup-container, PiP по
+    // клику в фон, tweb :1102-1122) не портирована — см. шапку файла.
+    const classNames = ['ckin__player', 'media-viewer-buttons', 'media-viewer-author', 'media-viewer-caption', 'zoom-container', 'media-viewer-topbar']
+    if (isZooming) {
+      classNames.push('media-viewer-movers')
+    }
+
+    const hasClickedSomething = classNames.some((s) => !!findUpClassName(target, s))
+    if (!hasClickedSomething || (!isZooming && (target.tagName === 'IMG' || target.tagName === 'image'))) {
+      this.close()
+    }
+  }
+
+  // Порт tweb base.ts:1132-1160. Гейт overlayCounter.overlaysActive > 1
+  // (:1134-1136, :1163-1165 — «поверх вьювера открыт ещё оверлей») не
+  // портирован — оверлей-счётчика нет до Task 16 (пометка в шапке файла).
+  private onKeyDown = (e: KeyboardEvent) => {
+    const key = e.key
+
+    let good = true
+    if (key === 'ArrowRight') {
+      // в tweb `!this.isZooming && ...click()` (oxlint no-unused-expressions)
+      if (!this.isZooming) this.buttons.next.click()
+    } else if (key === 'ArrowLeft') {
+      if (!this.isZooming) this.buttons.prev.click()
+    } else if (key === '-' || key === '=') {
+      if (this.ctrlKeyDown) {
+        this.addZoomStep(key === '=')
+      }
+    } else {
+      good = false
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      this.ctrlKeyDown = true
+    }
+
+    if (good) {
+      cancelEvent(e)
+    }
+  }
+
+  // Порт tweb base.ts:1162-1174.
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) {
+      this.ctrlKeyDown = false
+
+      if (this.isZooming) {
+        this.setZoomValue()
+      }
+    }
   }
 
   // См. шапку файла: у tweb — body активного окна (Document-PiP), у нас — body.
@@ -1207,8 +1950,7 @@ export default class AppMediaViewerBase<
   // width/height местами — скейл, чтобы повёрнутый бокс влезал (и заполнял)
   // вьюпорт в новой ориентации, как в Telegram Desktop. 0°/180° сохраняют
   // бокс — fit = 1. Независим от зума (зум умножается сверху в экранном
-  // пространстве). До Task 12 rotation всегда 0 — но зовётся переносом
-  // rotatedClose в setMoverToTarget, портированным целиком.
+  // пространстве).
   protected getRotationFitScale(rotation = this.rotation) {
     const normalized = ((rotation % 360) + 360) % 360
     if (normalized !== 90 && normalized !== 270) {
@@ -1226,9 +1968,11 @@ export default class AppMediaViewerBase<
   }
 
   // В tweb жизнь вьювера завершает close() (base.ts:1020: destroy общего
-  // middlewareHelper после ухода мувера); у нас close приедет с message-
-  // подклассом (Task 14) — до тех пор явный деструктор каркаса.
+  // middlewareHelper после ухода мувера); наш close — пока заглушка Task 12
+  // (полный — Task 14) — до тех пор явный деструктор каркаса.
   public destroy() {
+    this.swipeHandler?.removeListeners()
+    this.zoomElements.rangeSelector.removeListeners()
     this.wholeDiv.remove()
     this.middlewareHelper.destroy()
     this.cleanup()

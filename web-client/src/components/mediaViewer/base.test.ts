@@ -103,17 +103,24 @@ describe('AppMediaViewerBase: дерево конструктора (tweb base.t
     }
   })
 
-  it('zoom-container: [zoomout, progress-line (заглушка Task 12), zoomin]', () => {
+  it('zoom-container: [zoomout, progress-line (RangeSelector), zoomin]', () => {
     const v = makeViewer()
     const container = v.zoom.container
     expect([...container.children]).toEqual([
       v.zoom.btnOut,
-      v.zoom.rangeSelector,
+      v.zoom.rangeSelector.container,
       v.zoom.btnIn,
     ])
     expect(v.zoom.btnOut.querySelector('span.tgico.button-icon')!.textContent).toBe(glyph('zoomout'))
     expect(v.zoom.btnIn.querySelector('span.tgico.button-icon')!.textContent).toBe(glyph('zoomin'))
-    expect(v.zoom.rangeSelector.matches('.progress-line.with-transition')).toBe(true)
+    expect(v.zoom.rangeSelector.container.matches('.progress-line.with-transition')).toBe(true)
+    // наполнение RangeSelector (tweb rangeSelector.ts:48-77)
+    expect(v.zoom.rangeSelector.container.querySelector(':scope > .progress-line__filled')).not.toBeNull()
+    const seek = v.zoom.rangeSelector.container.querySelector<HTMLInputElement>(':scope > input.progress-line__seek')!
+    expect(seek.type).toBe('range')
+    expect(seek.step).toBe('0.01')
+    expect(seek.min).toBe('0.5')
+    expect(seek.max).toBe('4')
   })
 
   it('movers: свитчеры left/right со span.tgico.media-viewer-sibling-button + стартовый mover-wrapper', () => {
