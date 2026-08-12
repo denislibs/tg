@@ -172,6 +172,28 @@ describe('PeersManager — объёмные чтения не создают т�
   })
 })
 
+// Пин avatarPreview в same() (Task 9): смена ОДНОГО превью (url тот же — бэкенд
+// перегенерил stripped без смены файла) обязана публиковаться, иначе вкладки
+// навсегда остаются со старым превью. Найдено контрольной мутацией: без этого
+// теста снятие `avatarPreview === b.avatarPreview` из same() оставалось зелёным.
+describe('PeersManager — превью аватарки в границе изменения', () => {
+  it('изменилось только avatar_preview → кадр публикуется', async () => {
+    const user = { id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/same.png', avatar_preview: 'AAA' }
+    const { rest } = fakeRest([user])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    await mgr.getUsers([2])
+    ops.length = 0
+
+    user.avatar_preview = 'BBB'
+    mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
+    await new Promise((r) => setTimeout(r, 0))
+
+    const published = ops.flatMap((o) => (o.op === 'upsert' ? o.peers : []))
+    expect(published).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/same.png', avatarPreview: 'BBB' }])
+  })
+})
+
 // Границы объявления: обе стороны правила, а не одна. «Объявить изменившееся»
 // пинится выше; здесь — «промолчать, когда не изменилось» и «промолчать, когда
 // отвечать нечем». Обе строки одна другую не подстраховывают: приложение
