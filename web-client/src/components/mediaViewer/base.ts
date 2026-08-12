@@ -8,10 +8,12 @@
 // :1847-1856, setFullAspect :1858-1882, removeCenterFromMover :1912-1926,
 // moveTheMover :1928-1956, setNewMover :1958-1980, радиусы :2066-2114,
 // floatings :2124-2193, center-стили :2236-2265, монтирование :2452-2455).
-// Класс всё ещё ИНЕРТЕН: его пока никто не создаёт — наполнение медиа и
-// React-острова (аватарка автора, caption) — Task 13, message-подкласс
-// `AppMediaViewer` с точками входа (он же зовёт setListeners, как tweb
-// index.ts:166) — Task 14.
+// Task 13 довёз наполнение медиа: `_openMedia` (порт tweb :2320-3005 в объёме
+// фото; видео-ветка — заглушка до Task 15), setAuthorInfo/caption как
+// React-острова (createRoot), прелоадер на мувере, полный close()
+// (tweb :975-1024) и layout-методы (:2195-2235). Класс всё ещё ИНЕРТЕН: его
+// пока никто не создаёт — message-подкласс `AppMediaViewer` с точками входа
+// (он же зовёт setListeners, как tweb index.ts:166) — Task 14.
 //
 // Порядок append детей `.media-viewer-whole` — load-bearing: правила партиала
 // `styles/tweb/_mediaViewer.scss` построены на соседях
@@ -38,11 +40,13 @@
 //     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
 //     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
 //     документа
-//   • прелоадеры (tweb :309-315) создаются, но `attach` к муверу — Task 13;
-//     `lazyLoadQueue` tweb не портирован — понадобится только соседям по
-//     листанию (Task 14)
+//   • `lazyLoadQueue` tweb не портирован — понадобится только соседям по
+//     листанию (Task 14); load в _openMedia запускается напрямую
 //   • `middlewareHelper` мувера в tweb лежит прямо на HTMLElement (global.d.ts);
 //     у нас HTMLElement не аугментирован — локальный тип `MoverElement`
+import { createElement, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
+import { createRoot, type Root } from 'react-dom/client'
 import EventListenerBase from '@helpers/eventListenerBase'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
@@ -60,12 +64,19 @@ import isBetween from '@helpers/number/isBetween'
 import { doubleRaf, fastRaf } from '@helpers/schedulers'
 import debounce, { type DebounceReturnType } from '@helpers/schedulers/debounce'
 import windowSize from '@helpers/windowSize'
+import blur from '@helpers/blur'
+import renderImageFromUrl, { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { glyph, type IconName } from '@core/tgico-icons'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
+import { calcImageInBox } from '@core/dom/calcImageInBox'
 import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
+import { cachedMediaUrl } from '@core/mediaCache'
+import { startClient } from '@/client/bootstrap'
+import animationIntersector from '../animationIntersector'
 import ProgressivePreloader from '../preloader'
 import RangeSelector from '../rangeSelector'
+import ViewerAuthorAvatar from './authorIsland'
 import getMediaViewerClipPath from './clipPath'
 import getMediaViewerSnapshotSize from './snapshotSize'
 import type ListLoader from './listLoader'
@@ -100,6 +111,29 @@ export const MEDIA_VIEWER_CLASSNAME = 'media-viewer'
 // Мувер несёт свой MiddlewareHelper (tweb global.d.ts:27 кладёт его на все
 // HTMLElement) — уничтожается вместе с мувером при уходе (`moveTheMover`, tweb :1952).
 export type MoverElement = HTMLElement & { middlewareHelper: MiddlewareHelper }
+
+// Дескриптор медиа вьювера (Task 13) — наш аналог tweb `MyPhoto | MyDocument`
+// в _openMedia: воркерный конвейер адресует медиа по id (downloadMediaURL),
+// натуральные размеры и stripped-превью приезжают из payload сообщения.
+export type ViewerMedia = {
+  mediaId: number
+  width: number
+  height: number
+  /** stripped-превью (base64 JPEG, как `blur` бабла) — канвас-блюр в ghost */
+  blurPreview?: string
+  kind: 'photo' | 'video'
+}
+
+// Автор медиа (tweb setAuthorInfo(fromId, timestamp) резолвит имя/дату через
+// wrapPeerTitle/formatFullSentTime; у нас готовые строки собирает вызывающий —
+// message-вариант, Task 14).
+export type ViewerAuthor = {
+  peerId: string | number
+  name: string
+  date: string
+  /** stripped `avatar_preview` пира (Task 9) — слой под полной аватаркой */
+  avatarPreview?: string
+}
 
 // tweb base.ts:107-111 — стопка зум/пан (живёт на moversContainer,
 // НЕЗАВИСИМО от transform'а полёта на самом мувере).
@@ -172,14 +206,18 @@ export default class AppMediaViewerBase<
 }> {
   protected wholeDiv: HTMLElement
   protected overlaysDiv: HTMLElement
-  // avatarEl (tweb avatarNew → `.media-viewer-userpic`, prepend в container при
-  // открытии, base.ts:2035-2048) у нас — React-остров, приедет в Task 13.
+  // avatarEl tweb (avatarNew → `.media-viewer-userpic`, prepend в container,
+  // base.ts:2035-2048) у нас — React-остров: authorRoot/authorHost ниже,
+  // монтирует setAuthorInfo.
   protected author: {
     container: HTMLElement
     nameEl: HTMLElement
     date: HTMLElement
   } = {} as AppMediaViewerBase<ContentAdditionType, ButtonsAdditionType, TargetType>['author']
-  protected content: { [k in 'main' | 'container' | 'media' | 'mover' | ContentAdditionType]: HTMLElement } =
+  // 'caption' в базовой карте — адаптация: в tweb его добавляет message-подкласс
+  // (index.ts:112 через ContentAdditionType), но у нас caption-слот живёт в base —
+  // сюда же Task 14 привезёт RichText-остров (captionRoot ниже).
+  protected content: { [k in 'main' | 'container' | 'media' | 'mover' | 'caption' | ContentAdditionType]: HTMLElement } =
     {} as AppMediaViewerBase<ContentAdditionType, ButtonsAdditionType, TargetType>['content']
   protected buttons: {
     [k in 'download' | 'close' | 'prev' | 'next' | 'mobile-close' | 'zoomin' | 'rotate' | ButtonsAdditionType]: HTMLElement
@@ -192,6 +230,32 @@ export default class AppMediaViewerBase<
   protected preloaderStreamable: ProgressivePreloader
 
   protected isFirstOpen = true
+
+  // Цель полёта закрытия (tweb :2404: `this.target = {element: target}`) —
+  // источник, к которому close() вернёт мувер.
+  protected target?: { element: HTMLElement }
+
+  // React-острова (решение программы: ядро vanilla, React — только через
+  // createRoot). Аватарка автора: ОДИН root на жизнь вьювера — повторный
+  // setAuthorInfo только ре-рендерит (пин — base.open.test.ts); хост
+  // display:contents, чтобы `.media-viewer-userpic` остался визуальным
+  // ребёнком `.media-viewer-author` (правила партиала целы).
+  private authorRoot: Root | null = null
+  private authorHost: HTMLElement | null = null
+  protected authorInfo: ViewerAuthor | null = null
+  // Caption-остров: root над scrollable-слотом; RichText-рендер — Task 14.
+  protected captionRoot: Root | null = null
+  protected captionScrollable!: HTMLElement
+
+  // Колбэки наружу: клик по автору (закрыть и перейти к сообщению — проброс в
+  // Task 14) и завершение close() (Task 16 вернёт скрытую миниатюру источника).
+  public onAuthorClick?: (author: ViewerAuthor) => void
+  public onClose?: () => void
+
+  // Промис полёта закрытия: повторный close() возвращает его же (tweb :984
+  // отдаёт setMoverAnimationPromise — тот же deferred по часам; у нас
+  // сохранённый объект, чтобы повторные зовы получали стабильную ссылку).
+  private closePromise: Promise<void> | null = null
 
   protected setMoverPromise: Promise<void> | null = null
   protected setMoverAnimationPromise: Promise<void> | null = null
@@ -367,8 +431,6 @@ export default class AppMediaViewerBase<
     this.overlaysDiv.append(mainDiv)
     // * overlays end
 
-    // caption (`.media-viewer-caption`) создаёт подкласс — Task 14
-
     topbarLeft.append(this.buttons['mobile-close'], this.author.container)
     topbar.append(topbarLeft, buttonsDiv)
 
@@ -386,6 +448,22 @@ export default class AppMediaViewerBase<
     this.moversContainer.append(this.buttons.prev, this.buttons.next)
 
     this.wholeDiv.append(this.overlaysDiv, this.topbar, this.moversContainer)
+
+    // caption — порт tweb index.ts:112-141 (в tweb создаёт message-подкласс,
+    // у нас слот в base — см. комментарий у карты content). Порядок append —
+    // load-bearing: ПОСЛЕ movers (tweb index.ts:139 `wholeDiv.append(caption)`
+    // идёт после конструктора base), CSS-соседи партиала
+    // (`.zoom-container.is-visible ~ .media-viewer-caption`) построены на нём.
+    this.content.caption = document.createElement('div')
+    this.content.caption.classList.add(MEDIA_VIEWER_CLASSNAME + '-caption', 'spoilers-container')
+    // в tweb классы scrollable приходят от `new Scrollable(caption)`
+    // (index.ts:137); наш Scrollable инстанцирован ровно один раз (норма
+    // web-client/CLAUDE.md, «Скролл») — здесь визуальный слепок классов, живой
+    // Scrollable для caption — отдельная задача из TODO rootClasses.ts
+    this.captionScrollable = document.createElement('div')
+    this.captionScrollable.classList.add('scrollable', 'scrollable-y')
+    this.content.caption.append(this.captionScrollable)
+    this.wholeDiv.append(this.content.caption)
 
     // * constructing html end
 
@@ -427,6 +505,14 @@ export default class AppMediaViewerBase<
     })
 
     attachClickEvent(this.buttons.rotate, () => this.rotateMedia())
+
+    // Клик по автору → колбэк наружу (закрыть и перейти к сообщению — проброс
+    // в Task 14). Гейт closing — как у onClick tweb: во время полёта закрытия
+    // контролы уже мертвы.
+    attachClickEvent(this.author.container, () => {
+      if (this.closing || !this.authorInfo) return
+      this.onAuthorClick?.(this.authorInfo)
+    })
 
     // ! нельзя через attachClickEvent — на тач-устройствах он отменит
     // slide-событие (tweb :486-488)
@@ -503,7 +589,7 @@ export default class AppMediaViewerBase<
 
         const percentsY = Math.abs(yDiff) / windowSize.height
         if (percentsY > .2 || Math.abs(yDiff) > 125) {
-          this.close()
+          void this.close() // void: fire-and-forget как в tweb (oxlint no-floating-promises)
           return true
         }
 
@@ -912,8 +998,8 @@ export default class AppMediaViewerBase<
     return (((this.rotation % 360) + 360) % 360) !== 0
   }
 
-  // Порт tweb base.ts:2416-2425 (блок внутри _openMedia — сам _openMedia и
-  // его вызов этого метода приедут в Task 13): поворот — пер-медиа. Снять
+  // Порт tweb base.ts:2416-2425 (блок внутри _openMedia, вынесен методом):
+  // поворот — пер-медиа. Снять
   // остаточный поворот прошлой картинки и мгновенно (no-transition) вернуть
   // moversContainer в identity — чтобы ни уезжающий nav-слайд, ни входящее
   // открытие не сыграли лишний доворот.
@@ -927,30 +1013,94 @@ export default class AppMediaViewerBase<
     }
   }
 
-  // ЗАГЛУШКА (объём Task 12): полный порт tweb base.ts:1075-1129 (снятие
-  // навигации, listLoader.reset, полёт setMoverToTarget(closing) и уборка
-  // оверлея/DOM) приедет с message-подклассом в Task 14. Уже сейчас close —
-  // цель вертикального свайпа, click-outside и кнопок close/mobile-close;
-  // флаг closing читает onSwipeReset (гейт клампа во время закрытия),
-  // снятие SwipeHandler — как в tweb :1090.
-  public close(e?: MouseEvent) {
+  // Порт tweb base.ts:975-1024 в нашем объёме. Не портированы (каждое помечено):
+  //   • disposeSolid (:976) — solid-островов нет, наши React-острова умирают в
+  //     destroyIslands ниже;
+  //   • navigationItem (:992-994, appNavigationController) — наш navLayer-стек
+  //     подключит Task 16 (см. шапку файла);
+  //   • lazyLoadQueue.clear() (:996) — очереди нет (шапка файла, Task 14);
+  //   • author.avatarMiddlewareHelper.destroy() (:997) — остров аватарки
+  //     уничтожает destroyIslands в finally;
+  //   • SearchListLoader.cleanup (:1002) — MTProto-специфика, не портирована
+  //     вместе с ним (Task 3);
+  //   • (window as any).appMediaViewer (:1005-1007) — глобальную ссылку не
+  //     заводили (_openMedia тоже её не пишет).
+  public close(e?: MouseEvent): Promise<void> | null {
     if (e) {
       cancelEvent(e)
     }
 
     if (this.closing) {
-      return
+      // tweb :983-985 возвращает setMoverAnimationPromise — тот же deferred по
+      // часам; отдаём сохранённый промис полёта (стабильный объект, см. поле)
+      return this.closePromise
+    }
+
+    if (this.setMoverAnimationPromise) {
+      const rejected = Promise.reject(new Error('close during setMoverToTarget'))
+      // tweb :987 возвращает голый Promise.reject() — у нас результат кликов
+      // никто не ждёт, гасим unhandled rejection (vitest/консоль)
+      void rejected.catch(() => {})
+      return rejected
     }
 
     this.closing = true
     this.swipeHandler?.removeListeners()
+
+    const promise = this.closePromise =
+      this.setMoverToTarget(this.target?.element, true).then(({ onAnimationEnd }) => onAnimationEnd)
+
+    this.listLoader.reset()
+    this.setMoverPromise = null
+    this.tempId = -1
+
+    this.removeGlobalListeners()
+
+    void promise.finally(() => {
+      this.revealHiddenFloatings()
+      this.wholeDiv.remove()
+      this.toggleOverlay(false)
+      this.destroyIslands()
+      this.middlewareHelper.destroy()
+      this.onClose?.()
+    })
+
+    return promise
+  }
+
+  // Порт tweb base.ts:1027-1034. `overlayCounter.isDarkOverlayActive` НЕ
+  // портирован — оверлей-счётчика (стек попапов/пасскод-лока tweb) у нас нет,
+  // подключение к navLayer-стеку — Task 16; остаётся вторая половина: глушение
+  // анимаций (стикеры/видео) под тёмным оверлеем через animationIntersector.
+  protected toggleOverlay(active: boolean) {
+    if (this.overlayActive === active) {
+      return
+    }
+
+    this.overlayActive = active
+    animationIntersector.checkAnimations2(active)
+  }
+
+  // Уничтожение React-островов (замена tweb-уборке avatarMiddlewareHelper,
+  // :997): unmount корней + снятие хоста; caption-слот чистится вместе с ними.
+  protected destroyIslands() {
+    this.authorRoot?.unmount()
+    this.authorRoot = null
+    this.authorHost?.remove()
+    this.authorHost = null
+    this.authorInfo = null
+    this.captionRoot?.unmount()
+    this.captionRoot = null
+    this.captionScrollable.replaceChildren()
   }
 
   // Порт tweb base.ts:1036-1053 (в объёме окна: у tweb — getAppWindow(),
   // активное окно Document-PiP; у нас приложение в PiP не переезжает — всегда
-  // главный window). mediaSizes-resize → applyLayoutVariables (tweb :1044,
-  // :1052) приедет вместе с applyLayoutVariables в Task 13. Esc — не здесь:
-  // см. шапку файла (appNavigationController → наш navLayer-стек, Task 16).
+  // главный window). Ресайз: в tweb `mediaSizes.addEventListener('resize', ...)`
+  // (:1044, :1052); наш helpers/mediaSizes — шим без событийной части
+  // (см. его шапку) — слушаем window 'resize' напрямую, источник у tweb тот же
+  // (mediaSizes пересчитывается на resize окна). Esc — не здесь: см. шапку
+  // файла (appNavigationController → наш navLayer-стек, Task 16).
   protected toggleGlobalListeners(active: boolean) {
     if (active) this.setGlobalListeners()
     else this.removeGlobalListeners()
@@ -959,11 +1109,54 @@ export default class AppMediaViewerBase<
   protected removeGlobalListeners() {
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
+    window.removeEventListener('resize', this.applyLayoutVariables)
   }
 
   protected setGlobalListeners() {
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
+    window.addEventListener('resize', this.applyLayoutVariables)
+  }
+
+  // Порт tweb base.ts:2195-2205: вьюпорт изменился → пере-вписать content.media
+  // и мувер, затем повторно применить center-позиционирование. Open-путь зовёт
+  // только applyLayoutPadding — сайзинг он делает сам следом (_openMedia).
+  protected applyLayoutVariables = () => {
+    this.applyLayoutPadding()
+    const mover = this.content.mover
+    if (mover && mover.classList.contains('center')) {
+      this.refitMediaToViewport()
+      this.applyCenterStyles(mover)
+    }
+  }
+
+  // Порт tweb base.ts:2207-2213.
+  protected applyLayoutPadding() {
+    const { top, bottom } = this.getLayoutReserves()
+    const cs = this.content.main.style
+    cs.paddingTop = `${top}px`
+    cs.paddingBottom = `${bottom}px`
+  }
+
+  // Порт tweb base.ts:2215-2235: ре-фит content.media (скрытой цели) и мувера
+  // под новый mediaBoxSize с сохранением пропорции источника (выведенной из
+  // текущих инлайн-px content.media — аспект-фита прошлого вьюпорта), чтобы
+  // containerRect оставался синхронным вьюпорту и математика закрытия не врала.
+  protected refitMediaToViewport() {
+    const media = this.content.media
+    const w = parseFloat(media.style.width)
+    const h = parseFloat(media.style.height)
+    if (!w || !h) return
+    const { width: boxW, height: boxH } = this.mediaBoxSize
+    const noZoom = !mediaSizes.isMobile
+    const fit = calcImageInBox(w, h, boxW, boxH, noZoom)
+    media.style.width = `${fit.width}px`
+    media.style.height = `${fit.height}px`
+    const mover = this.content.mover
+    if (mover) {
+      mover.style.width = `${fit.width}px`
+      mover.style.height = `${fit.height}px`
+    }
   }
 
   // Порт tweb base.ts:1058-1130 в объёме без видео/PiP/live (см. шапку файла):
@@ -1028,7 +1221,7 @@ export default class AppMediaViewerBase<
 
     const hasClickedSomething = classNames.some((s) => !!findUpClassName(target, s))
     if (!hasClickedSomething || (!isZooming && (target.tagName === 'IMG' || target.tagName === 'image'))) {
-      this.close()
+      void this.close() // void: fire-and-forget как в tweb (oxlint no-floating-promises)
     }
   }
 
@@ -1085,6 +1278,59 @@ export default class AppMediaViewerBase<
       this.getOverlayRoot().append(this.wholeDiv)
       void this.wholeDiv.offsetLeft // reflow
     }
+  }
+
+  // Порт tweb base.ts:2017-2064 на React-остров. avatarNew → наш
+  // shared/ui/Avatar (сателлит authorIsland.tsx) через createRoot в
+  // display:contents-хост — `.media-viewer-userpic` остаётся визуальным
+  // ребёнком `.media-viewer-author`, правила партиала целы. Повторный вызов
+  // НЕ плодит root (в tweb — replaceWith нового узла + destroy старого
+  // avatarMiddlewareHelper; у React та же смена содержимого — ре-рендер).
+  // wrapPeerTitle/formatFullSentTime (RPC пиров + лангпак) не портированы:
+  // имя/дата приезжают готовыми строками дескриптора (Task 14 собирает их из
+  // сообщения), поэтому replaceContent-аналог — textContent.
+  public setAuthorInfo(author: ViewerAuthor) {
+    this.authorInfo = author
+    if (!this.authorRoot) {
+      const host = this.authorHost = document.createElement('div')
+      host.style.display = 'contents'
+      this.author.container.prepend(host)
+      this.authorRoot = createRoot(host)
+    }
+    // flushSync: ядро vanilla — топбар обязан быть собран синхронно в кадре
+    // открытия, как prepend узла аватара в tweb (:2046-2050)
+    flushSync(() => {
+      this.authorRoot!.render(createElement(ViewerAuthorAvatar, {
+        name: author.name,
+        avatarPreview: author.avatarPreview,
+        peerId: author.peerId,
+      }))
+    })
+    this.author.nameEl.textContent = author.name
+    this.author.date.textContent = author.date
+  }
+
+  // Слот caption (vanilla-путь): вставить готовый DOM-узел в scrollable
+  // (`.media-viewer-caption > .scrollable`), null — очистить; пустая подпись
+  // прячет контейнер классом hide (как setCaption message-варианта tweb).
+  public setCaptionNode(node: HTMLElement | null) {
+    if (node) {
+      this.captionScrollable.replaceChildren(node)
+    } else {
+      this.captionScrollable.replaceChildren()
+    }
+    this.content.caption.classList.toggle('hide', !node)
+  }
+
+  // React-путь caption (Task 14 привезёт сюда RichText): остров в том же
+  // scrollable-слоте. Пути взаимоисключающие — слот принадлежит либо root'у,
+  // либо setCaptionNode (Task 14 выберет один).
+  public renderCaptionIsland(jsx: ReactNode | null) {
+    this.captionRoot ??= createRoot(this.captionScrollable)
+    flushSync(() => {
+      this.captionRoot!.render(jsx)
+    })
+    this.content.caption.classList.toggle('hide', jsx == null)
   }
 
   // Порт tweb base.ts:1176-1798 — полёт открытия/закрытия. Из веток tweb НЕ
@@ -1967,12 +2213,269 @@ export default class AppMediaViewerBase<
     return Math.min(box.width / height, box.height / width)
   }
 
+  // Порт tweb base.ts:2320-3005 в объёме фото. Из веток tweb не портированы
+  // (каждая помечена на месте): live-стрим RTMP (фичи нет), HLS/quality-меню
+  // (Task 15), видео-ветка целиком (заглушка ниже — Task 15), navigationItem
+  // (Task 16). Вход — наш дескриптор ViewerMedia вместо MyPhoto/MyDocument:
+  // байты и URL живут в воркерном конвейере downloadMediaURL (Task 6).
+  protected async _openMedia({
+    media,
+    author,
+    fromRight,
+    target,
+    reverse = false,
+    prevTargets = [],
+    nextTargets = [],
+  }: {
+    media: ViewerMedia,
+    author?: ViewerAuthor,
+    fromRight: number,
+    target?: HTMLElement,
+    reverse?: boolean,
+    prevTargets?: TargetType[],
+    nextTargets?: TargetType[],
+  }): Promise<void> {
+    if (this.setMoverPromise) return this.setMoverPromise
+
+    const isVideo = media.kind === 'video'
+
+    // tweb :2366 (setAuthorPromise): у нас setAuthorInfo синхронный (строки +
+    // flushSync-остров) — промиса нечего глотать; noAuthor-вариант = без author
+    if (author) {
+      this.setAuthorInfo(author)
+    }
+
+    // Open-путь: только паддинги, чтобы mediaBoxSize читал правильные резервы.
+    // Текущий мувер вот-вот заменит setNewMover — refit/recenter ресайз-хендлера
+    // здесь не нужны (tweb :2368-2371).
+    this.applyLayoutPadding()
+
+    if (this.isFirstOpen) {
+      this.isFirstOpen = false
+      this.listLoader.setTargets(prevTargets, nextTargets, reverse)
+      // (window as any).appMediaViewer tweb :2379 — глобальную ссылку не заводим
+    }
+
+    const shouldLoadMore = this.listLoader.next.length < 10
+
+    this.buttons.prev.classList.toggle('hide', !this.listLoader.previous.length)
+    this.buttons.next.classList.toggle('hide', !this.listLoader.next.length)
+
+    // buttons.rotate.toggle('hide', isLiveStream) tweb :2394 — live-стримов нет
+
+    const container = this.content.media
+    // tweb :2400-2402, развёрнуто для строгого TS (narrow после присваивания)
+    if (!target || target === container) target = container
+    const useContainerAsTarget = target === container
+
+    this.target = { element: target }
+    const tempId = ++this.tempId
+
+    if (container.firstElementChild) {
+      container.replaceChildren()
+    }
+
+    // changeQualityOptionsPromise tweb :2410-2418 — HLS-качества, Task 15
+
+    // Поворот — пер-медиа (tweb :2420-2429, вынесено методом ещё в Task 12)
+    this.resetRotationForNav()
+
+    const wasActive = fromRight !== 0
+    if (wasActive) {
+      this.moveTheMover(this.content.mover as MoverElement, fromRight === 1)
+      this.setNewMover()
+    } else {
+      // navigationItem + appNavigationController.pushItem (tweb :2437-2455) —
+      // наш navLayer-стек подключит Task 16 (см. шапку файла)
+      this.toggleOverlay(true)
+      this.setGlobalListeners()
+      this.mountToOverlay()
+      this.toggleWholeActive(true)
+    }
+
+    const mover = this.content.mover as MoverElement
+
+    // setAttachmentSize-эквивалент (tweb :2463-2477): вписать натуральные
+    // размеры медиа в mediaBoxSize (окно минус резервы, tweb :2267-2274) и
+    // прибить px на layout-ghost — от него считается containerRect всего полёта.
+    // noZoom на десктопе — как tweb (`noZoom: mediaSizes.isMobile ? false : true`).
+    const mediaBoxSize = this.mediaBoxSize
+    const fit = calcImageInBox(media.width, media.height, mediaBoxSize.width, mediaBoxSize.height, !mediaSizes.isMobile)
+    container.style.width = `${fit.width}px`
+    container.style.height = `${fit.height}px`
+
+    // VIDEO_MIN_WIDTH-добивка контейнера под плеер (tweb :2479-2493) — Task 15
+
+    let thumbPromise: Promise<unknown> = Promise.resolve()
+    if (useContainerAsTarget) {
+      // tweb :2494-2528: thumb в ghost. Скачанное медиа — синхронно из зеркала
+      // конвейера (наш аналог cacheContext.downloaded: URL уже объявлен
+      // владельцем), иначе — канвас-блюр stripped-превью (blur, Task 9;
+      // `data:`-обёртка — как useBlurThumb в баблах).
+      const cachedUrl = cachedMediaUrl(media.mediaId)
+      let img: HTMLImageElement | HTMLCanvasElement | undefined
+      if (cachedUrl) {
+        img = new Image()
+        // Ждать decode: setMoverToTarget рисует этот thumb на canvas через
+        // drawImage — недекодированная картинка даёт ПУСТОЙ canvas, полёт
+        // от container-цели летел бы пустым до конца (tweb :2500-2506)
+        thumbPromise = renderImageFromUrlPromise(img, cachedUrl, false).catch(() => {})
+      } else if (media.blurPreview) {
+        const got = blur(`data:image/jpeg;base64,${media.blurPreview}`)
+        img = got.canvas
+        thumbPromise = got.promise
+      }
+
+      if (img) {
+        img.classList.add('thumbnail')
+        container.append(img)
+      }
+    }
+
+    // live-стрим-thumb (tweb :2530-2547) — RTMP-фичи нет
+
+    // preloaderStreamable (supportsStreaming, tweb :2555) — стрим-видео, Task 15
+    const preloader = this.preloader
+
+    // canAttachPreloader — адаптация tweb photo.ts:297-301 к вьюверу: кольцо
+    // только на медиа ≥150×150 (у мелкого нет места под 54px-кольцо);
+    // `|| noAutoDownload` не портирован — автозагрузка у нас всегда включена,
+    // manual-ветка остаётся живой через catch ниже (ошибка загрузки).
+    const canAttachPreloader = media.width >= 150 && media.height >= 150
+
+    let setMoverPromise: Promise<void>
+    if (isVideo) {
+      // ЗАГЛУШКА (объём Task 13): видео-ветка tweb :2557-2896 (createVideo,
+      // vanilla-плеер, стрим/буферизация, preloaderStreamable) появится в
+      // Task 15. Пока видео летит тем же полётом от thumb'а в ghost, полное
+      // медиа не грузится.
+      const set = () => this.setMoverToTarget(target, false, fromRight).then(() => {})
+      setMoverPromise = thumbPromise.then(set)
+    } else {
+      const set = () => this.setMoverToTarget(target, false, fromRight).then(({ onAnimationEnd }) => {
+        const load = async () => {
+          // RPC к воркеру-владельцу (конвейер download→cache→objectURL, Task 6)
+          // через startClient().managers — как жил MediaLightbox. thumb-вариант
+          // (tweb `{media, thumb: size}`) не нужен: вьювер всегда показывает
+          // полноразмер. fullPhotoSize-добор tweb (:2909-2912, сортировка
+          // media.sizes) не портирован — у нашего бэка один полноразмер,
+          // photoSize-лестницы не существует.
+          const cancellablePromise = startClient().managers.media.downloadMediaURL(media.mediaId)
+
+          // Наш аналог tweb-гейта `!(await getCacheContext()).url` (:2915):
+          // судьба конвейера отслеживается флагами — ответ уже пришёл → кольцо
+          // не нужно; упал → manual-кольцо уже висит (catch ниже), перевешивать
+          // его attach'ом нельзя (attach снимает класс manual).
+          let arrived = false
+          let failedLoad = false
+          void cancellablePromise.then(() => { arrived = true }, () => { failedLoad = true })
+
+          void onAnimationEnd.then(() => {
+            // tweb :2914-2919 (attachPromise; attach(mover, true, promise) —
+            // рядом в комментарии): вешаем кольцо на мувер. Промис в attach НЕ
+            // передаём — RPC-промис без notify/cancel ничего не даёт
+            // attachPromise, а его авто-detach по резолву маскировал бы явный
+            // detach по приходу медиа ниже (кольцо крутится индетерминированно).
+            if (canAttachPreloader && !arrived && !failedLoad) {
+              preloader.attach(mover, true)
+            }
+          })
+
+          void Promise.all([onAnimationEnd, cancellablePromise]).then(([, url]) => {
+            if (this.tempId !== tempId) {
+              return // «media viewer changed photo» tweb :2924
+            }
+
+            // SVGSVGElement-ветка tweb :2928-2941 — SVG-хвостов нет
+            const div = (mover.firstElementChild?.classList.contains('media-viewer-aspecter')
+              ? mover.firstElementChild
+              : mover) as HTMLElement
+            const haveImage = ['CANVAS', 'IMG'].includes(div.firstElementChild?.tagName ?? '')
+              ? div.firstElementChild as HTMLElement
+              : null
+            if ((haveImage as HTMLImageElement | null)?.src !== url) {
+              const image = new Image()
+              image.classList.add('thumbnail')
+
+              // tweb :2946-2957: полное медиа декодируется офскрин
+              // (renderImageFromUrl), встаёт fastRaf-кадром, старый thumb
+              // уходит кадром ПОЗЖЕ — свап без чёрной вспышки.
+              // void: decode-промис доводится колбэком (oxlint no-floating-promises)
+              void renderImageFromUrl(image, url, () => {
+                fastRaf(() => {
+                  // updateMediaSource(target, url) tweb :2948 не портирован:
+                  // источник-бабл — React с тем же зеркалом URL (useMediaUrl),
+                  // его src вьювер не трогает; восстановление скрытой
+                  // миниатюры — Task 16 (onClose)
+                  if (haveImage) {
+                    fastRaf(() => {
+                      haveImage.remove()
+                    })
+                  }
+
+                  div.append(image)
+                })
+              }, false)
+
+              // cancellableFullPromise tweb :2959-2967 — см. комментарий у
+              // downloadMediaURL выше (photoSize-лестницы нет)
+            }
+
+            // В tweb detach здесь закомментирован — его исполняет авто-detach
+            // attachPromise; у нас промис в attach не передаётся (см. выше) —
+            // detach по приходу медиа явный.
+            preloader.detach()
+          }).catch((err: unknown) => {
+            console.error(err) // this.log.error tweb :2972
+            // manual-ветка (tweb :2973-2976) — живая: attach без reset +
+            // setManual, клик по кольцу перезапускает load (loadFunc ниже)
+            preloader.attach(mover)
+            preloader.setManual()
+          })
+
+          return cancellablePromise
+        }
+
+        // lazyLoadQueue.unshift({load}) tweb :2983 — очереди нет (шапка файла,
+        // соседи по листанию — Task 14): прямой запуск; loadFunc — путь
+        // ретрая manual-кольца (в tweb его зовёт onClick прелоадера).
+        // catch — глушим повтор реджекта возвращаемого load'ом промиса:
+        // ошибку уже обслужил manual-catch внутри (в tweb возврат уходит в
+        // lazyLoadQueue, которая его же и глотает)
+        const run = () => { void load().catch(() => {}) }
+        preloader.setDownloadFunction(run)
+        run()
+      })
+
+      setMoverPromise = thumbPromise.then(set)
+    }
+
+    const result = this.setMoverPromise = setMoverPromise.catch(() => {
+      this.setMoverAnimationPromise = null
+    }).finally(() => {
+      this.setMoverPromise = null
+    })
+
+    if (shouldLoadMore) {
+      // tweb :2996-3003: префетч соседей — после реального конца полёта, чтобы
+      // невидимая работа списка/воркера не толкалась с анимацией открытия
+      void result.then(() => this.setMoverAnimationPromise).then(() => {
+        if (this.tempId === tempId && this.listLoader.next.length < 10) {
+          void this.listLoader.load(true)
+        }
+      })
+    }
+
+    return result
+  }
+
   // В tweb жизнь вьювера завершает close() (base.ts:1020: destroy общего
-  // middlewareHelper после ухода мувера); наш close — пока заглушка Task 12
-  // (полный — Task 14) — до тех пор явный деструктор каркаса.
+  // middlewareHelper после ухода мувера); наш destroy — явный деструктор
+  // каркаса для хозяина инстанса (тесты, горячая замена точки входа Task 16).
   public destroy() {
     this.swipeHandler?.removeListeners()
     this.zoomElements.rangeSelector.removeListeners()
+    this.destroyIslands()
     this.wholeDiv.remove()
     this.middlewareHelper.destroy()
     this.cleanup()

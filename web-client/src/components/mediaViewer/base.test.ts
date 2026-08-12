@@ -38,7 +38,7 @@ afterEach(() => {
 })
 
 describe('AppMediaViewerBase: дерево конструктора (tweb base.ts:318-435)', () => {
-  it('порядок детей wholeDiv ровно [zoom-container, overlays, topbar, movers]', () => {
+  it('порядок детей wholeDiv ровно [zoom-container, overlays, topbar, movers, caption]', () => {
     const v = makeViewer()
     const children = [...v.whole.children]
     expect(children.map((el) => el.classList[0])).toEqual([
@@ -46,6 +46,9 @@ describe('AppMediaViewerBase: дерево конструктора (tweb base.t
       'overlays',
       'media-viewer-topbar',
       'media-viewer-movers',
+      // caption строго ПОСЛЕ movers (tweb index.ts:139) — CSS-соседи
+      // `.zoom-container.is-visible ~ .media-viewer-caption` живут на порядке
+      'media-viewer-caption',
     ])
     expect(v.whole.classList.contains('media-viewer-whole')).toBe(true)
     expect(v.topbarEl.classList.contains('media-viewer-appear')).toBe(true)
