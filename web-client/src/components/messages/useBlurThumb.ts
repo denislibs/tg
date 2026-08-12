@@ -21,8 +21,15 @@ export function useBlurThumb(blurBase64: string | undefined, skip = false): RefO
   const hostRef = useRef<HTMLDivElement | null>(null)
   // skip читается через ref и НЕ входит в deps: решение «нужно ли превью»
   // принимается один раз на появление blur-данных (как в tweb — на рендер
-  // обёртки). Поздний приход полного URL превью не снимает: в tweb thumbnail
-  // остаётся в DOM под проявившимся медиа.
+  // обёртки). Поздний приход полного URL превью не снимает.
+  //
+  // ОТСТУПЛЕНИЕ от tweb: там подложку по концу fade-in сносят
+  // (renderMediaWithFadeIn.ts:43 `UNMOUNT_THUMBS && thumbImage?.remove()`).
+  // Оставляем — визуально это то же самое, потому что медиа абсолютное и
+  // растянуто по контейнеру (`.media-photo` в `styles/tweb/_bridge.scss`, порт
+  // base.scss:1282-1296) и полностью закрывает канвас 28×40; пин на это —
+  // `styles/mediaLayering.test.ts`. Разойтись картинки могут только на медиа с
+  // прозрачностью — там из-под неё будет виден блюр, а не фон бабла.
   const skipRef = useRef(skip)
   skipRef.current = skip
   useLayoutEffect(() => {
