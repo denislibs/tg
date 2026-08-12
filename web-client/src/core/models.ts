@@ -128,7 +128,18 @@ export interface RawWebPage {
   site_name?: string
   title?: string
   description?: string
-  image_url?: string
+  // Картинка превью — НАШЕ медиа: сервер скачивает og:image к себе и отдаёт
+  // media_id (usecase/chat/webpreview.go). Чужого адреса в payload больше нет:
+  // ходить за картинкой на сторонний хост значит сдавать ему IP читателя, да и
+  // наш CSP (`img-src 'self' data: blob:`) такой запрос режет.
+  photo_id?: number
+  photo_w?: number
+  photo_h?: number
+  photo_blur?: string
+  photo_has_thumb?: boolean
+  // Из страницы извлеклась статья Instant View. tweb рисует футер карточки
+  // только при `webPage.cached_page` (bubbles.ts:7990).
+  has_iv?: boolean
 }
 
 export interface WebPageData {
@@ -136,7 +147,13 @@ export interface WebPageData {
   siteName: string
   title: string
   description?: string
-  imageUrl?: string
+  photoId?: number
+  photoW?: number
+  photoH?: number
+  /** stripped-подложка картинки (base64 JPEG) — как у медиа сообщения */
+  photoBlur?: string
+  photoHasThumb?: boolean
+  hasIV?: boolean
 }
 
 export function mapWebPage(w: RawWebPage): WebPageData {
@@ -145,7 +162,12 @@ export function mapWebPage(w: RawWebPage): WebPageData {
     siteName: w.site_name ?? '',
     title: w.title ?? '',
     description: w.description || undefined,
-    imageUrl: w.image_url || undefined,
+    photoId: w.photo_id || undefined,
+    photoW: w.photo_w || undefined,
+    photoH: w.photo_h || undefined,
+    photoBlur: w.photo_blur || undefined,
+    photoHasThumb: w.photo_has_thumb || undefined,
+    hasIV: w.has_iv || undefined,
   }
 }
 

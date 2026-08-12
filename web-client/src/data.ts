@@ -94,8 +94,9 @@ export interface ConvMsg {
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
   videoDuration?: string // overlay on video / round video
-  // link preview attached to a text message (imageUrl — серверное og:image; gradient/emoji — легаси моков)
-  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
+  // карточка превью ссылки под текстовым сообщением (сервер собирает её из
+  // og-тегов; картинка — наше медиа, см. WebPageData)
+  webPage?: import('./core/models').WebPageData
   // «проверка фактов» (Telegram factCheck): блок в бабле (текст + сущности + опц. страна)
   factCheck?: import('./core/models').FactCheck
   // расшифровка голосового/видео-кружка (Telegram transcribeAudio) — текст под баблом

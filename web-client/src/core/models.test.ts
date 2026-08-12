@@ -85,11 +85,14 @@ describe('mapMessage', () => {
     const raw: RawMessage = {
       id: 13, chat_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-      web_page: { url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание', image_url: 'https://example.com/og.png' },
+      web_page: {
+        url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание',
+        photo_id: 42, photo_w: 1280, photo_h: 720, photo_blur: 'Ymx1cg==', photo_has_thumb: true, has_iv: true,
+      },
     }
     expect(mapMessage(raw).webPage).toEqual({
-      url: 'https://example.com', siteName: 'Example', title: 'Заголовок',
-      description: 'Описание', imageUrl: 'https://example.com/og.png',
+      url: 'https://example.com', siteName: 'Example', title: 'Заголовок', description: 'Описание',
+      photoId: 42, photoW: 1280, photoH: 720, photoBlur: 'Ymx1cg==', photoHasThumb: true, hasIV: true,
     })
   })
 
@@ -101,7 +104,11 @@ describe('mapMessage', () => {
     expect(mapMessage({ ...base }).webPage).toBeUndefined()
     expect(mapMessage({ ...base, web_page: null }).webPage).toBeUndefined()
     const wp = mapMessage({ ...base, web_page: { title: 't' } }).webPage
-    expect(wp).toEqual({ url: undefined, siteName: '', title: 't', description: undefined, imageUrl: undefined })
+    expect(wp).toEqual({
+      url: undefined, siteName: '', title: 't', description: undefined,
+      photoId: undefined, photoW: undefined, photoH: undefined,
+      photoBlur: undefined, photoHasThumb: undefined, hasIV: undefined,
+    })
   })
 
   it('maps factcheck (fact check block) to factCheck', () => {

@@ -4,6 +4,9 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import Text from '../../../shared/ui/Text'
 import classNames from '../../../shared/lib/classNames'
+import { useMediaUrl } from '../../../core/hooks/useMediaUrl'
+import { useBlurThumb } from '../useBlurThumb'
+import { mediaSizes, setAttachmentSize } from '../../../core/dom/mediaSizes'
 import Avatar from '../../../shared/ui/Avatar'
 import Spinner from '../../../shared/ui/Spinner'
 import TgIcon from '../../TgIcon'
@@ -15,23 +18,52 @@ import { useManagers } from '../../../core/hooks/useManagers'
 import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
 import type { IVArticle } from '../../../core/managers/ivManager'
+import type { WebPageData } from '../../../core/models'
 import type { ConvMsg } from '../../../data'
 import s from '../MessageBubbles.module.scss'
 
+/**
+ * Картинка карточки превью. Отдельный компонент, потому что тянет хуки
+ * медиа-конвейера (URL из зеркала + канвас stripped-подложки), а рендерится
+ * условно — в теле WebPagePreview хуки так вызывать нельзя.
+ *
+ * Дерево tweb (wrappers/webPage.tsx:69-91 + bubbles.ts:8112): resizer →
+ * контейнер `.webpage-preview` (ему wrapPhoto добавляет `media-container`) →
+ * само медиа `.media-photo`. Размер бокса — `setAttachmentSize` по
+ * `mediaSizes.webpage`, как у tweb (boxWidth/boxHeight оттуда же).
+ */
+function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
+  const url = useMediaUrl(wp.photoId ?? null, { thumb: !!wp.photoHasThumb })
+  const hostRef = useBlurThumb(wp.photoBlur, !!url)
+  const { size } = setAttachmentSize({
+    width: wp.photoW || 0,
+    height: wp.photoH || 0,
+    boxWidth: mediaSizes().webpage.width,
+    boxHeight: mediaSizes().webpage.height,
+  })
+  // tweb ставит квадратной картинке ровно 48px (bubbles.ts:8192).
+  const box = square ? { width: SQUARE_PHOTO, height: SQUARE_PHOTO } : size
+  return (
+    <div className="webpage-preview-resizer">
+      <div ref={hostRef} className="webpage-preview media-container" style={{ width: box.width, height: box.height }}>
+        {url && <img className="media-photo" src={url} alt="" loading="lazy" decoding="async" />}
+      </div>
+    </div>
+  )
+}
+
+/** tweb bubbles.ts:8189 — сторона квадратной картинки карточки */
+const SQUARE_PHOTO = 48
+
 /** link preview card (rendered inside a text bubble) */
-export function WebPagePreview({
-  wp,
-  out,
-}: {
-  wp: NonNullable<ConvMsg['webPage']>
-  out: boolean
-}) {
+export function WebPagePreview({ wp }: { wp: NonNullable<ConvMsg['webPage']> }) {
   const t = useT()
   const managers = useManagers()
   const [ivLoading, setIvLoading] = useState(false)
   const [ivArticle, setIvArticle] = useState<IVArticle | null>(null)
-  // Кнопка ленивая: серверного флага «есть IV» нет — показываем всегда при наличии
-  // ссылки; клик → лоадер → 422/ошибка → просто открыть в новой вкладке.
+  // Клик → лоадер → статья; 422/сеть → просто открыть в новой вкладке. Кнопка
+  // при этом рисуется только при wp.hasIV — сервер проверил, что статья
+  // извлекается (tweb показывает футер лишь при webPage.cached_page).
   const openIV = async (e: ReactMouseEvent) => {
     e.stopPropagation()
     if (!wp.url || ivLoading) return
@@ -44,27 +76,35 @@ export function WebPagePreview({
       setIvLoading(false)
     }
   }
+  const hasText = !!(wp.siteName || wp.title || wp.description)
+  // tweb bubbles.ts:8188-8202: квадратная картинка при тексте рядом — 48px
+  // врезкой (`has-square-photo`, float), вертикальная — своим классом;
+  // остальные едут во всю ширину карточки.
+  const square = !!wp.photoId && !!wp.photoW && wp.photoW === wp.photoH && hasText
+  const vertical = !!wp.photoId && !!wp.photoH && !!wp.photoW && wp.photoH > wp.photoW && !square
+  // tweb bubbles.ts:8341: `position = invertMedia || isSquare ? 'top' : 'bottom'`
+  // — у обычной карточки картинка ПОД текстом, а не над ним. Флага invert_media
+  // (Telegram «медиа сверху») у нас нет, поэтому решает только квадратность.
+  const photo = wp.photoId ? <WebPagePhoto wp={wp} square={square} /> : null
   // Разметка tweb (wrappers/webPage.tsx:105-142): .webpage.quote-like >
   // .webpage-quote.quote-like-border > .webpage-content > (.webpage-preview-resizer,
   // .webpage-name, .webpage-title, .webpage-text, .webpage-footer).
   return (
-    <div className={classNames('webpage', 'quote-like', s.webpage)} data-out={out || undefined}>
+    <div
+      className={classNames(
+        'webpage', 'quote-like',
+        square ? 'has-square-photo' : '',
+        vertical ? 'has-vertical-photo' : '',
+      )}
+    >
       <div className={classNames('webpage-quote', 'quote-like-border')}>
         <div className="webpage-content">
-          {wp.imageUrl && (
-            <div className="webpage-preview-resizer">
-              <img className={classNames('webpage-preview', s.webPhoto)} src={wp.imageUrl} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" />
-            </div>
-          )}
+          {square && photo}
           <div className="webpage-name">{wp.siteName}</div>
           <div className="webpage-title">{wp.title}</div>
           {wp.description && <div className="webpage-text">{wp.description}</div>}
-          {wp.gradient && (
-            <div className={s.webImg} style={{ background: wp.gradient }}>
-              {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
-            </div>
-          )}
-          {wp.url && (
+          {!square && photo}
+          {wp.hasIV && wp.url && (
             <button type="button" className={classNames('webpage-footer', 'is-button', s.ivButton)} onClick={openIV}>
               {ivLoading ? <Spinner size={16} thickness={2} /> : <>⚡ {t('Instant View')}</>}
             </button>

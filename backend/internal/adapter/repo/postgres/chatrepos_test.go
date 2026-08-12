@@ -623,6 +623,42 @@ func TestMediaAccessRepo_OwnerAndCanAccess(t *testing.T) {
 	}
 }
 
+// Картинка превью ссылки скачана нами и принадлежит отправителю, но видеть её
+// должен весь чат — иначе у собеседника карточка приезжает с 404 вместо фото.
+// Ссылка живёт в messages.web_page_media_id (миграция 0092), а не в media_id.
+func TestMediaAccessRepo_WebPagePhoto(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaAccessRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	sender := seedUser(t, pool, "+7950")
+	peer := seedUser(t, pool, "+7951")
+	stranger := seedUser(t, pool, "+7952")
+	chatID := createPrivate(t, pool, sender, peer)
+	photoID := seedMedia(t, pool, sender, "wp")
+
+	seq, _ := msgs.NextSeq(ctx, chatID)
+	msg, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: sender, Type: "text", Text: "https://example.com"})
+	if err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	// Сообщение само по себе медиа не несёт — доступа у собеседника ещё нет.
+	if ok, _ := repo.CanAccess(ctx, peer, photoID); ok {
+		t.Fatal("peer should not access the photo before the preview references it")
+	}
+
+	if err := msgs.SetWebPage(ctx, msg.ID, &domain.WebPagePreview{URL: "https://example.com", Title: "t", PhotoID: photoID}); err != nil {
+		t.Fatalf("SetWebPage: %v", err)
+	}
+
+	if ok, _ := repo.CanAccess(ctx, peer, photoID); !ok {
+		t.Fatal("peer should access the link-preview photo of a message in their chat")
+	}
+	if ok, _ := repo.CanAccess(ctx, stranger, photoID); ok {
+		t.Fatal("stranger should not access the link-preview photo")
+	}
+}
+
 func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewMediaAccessRepo(pool)

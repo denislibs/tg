@@ -41,6 +41,18 @@ func cacheKey(url string) string {
 	return "iv:" + hex.EncodeToString(sum[:])
 }
 
+// HasArticle отвечает, извлекается ли из страницы статья Instant View —
+// реализация порта chat.IVProber. Зовётся при сборке превью ссылки, чтобы
+// кнопка «Мгновенный просмотр» появлялась только там, где ей есть что открыть.
+//
+// Специально тот же путь, что и у Article, а не отдельная «дешёвая проба»:
+// второй способ ответить на тот же вопрос разошёлся бы с первым (кнопка есть —
+// клик отдаёт 422), а так проба ещё и греет кэш, и клик отдаёт статью из него.
+func (i *Interactor) HasArticle(ctx context.Context, rawURL string) bool {
+	_, err := i.Article(ctx, rawURL)
+	return err == nil
+}
+
 // Article возвращает статью для Instant View по пользовательскому URL.
 func (i *Interactor) Article(ctx context.Context, rawURL string) (domain.IVArticle, error) {
 	u, err := ParseTargetURL(rawURL)

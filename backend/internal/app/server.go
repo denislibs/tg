@@ -291,7 +291,12 @@ func registerServer(p serverParams) {
 	if p.Redis.OK {
 		ivCache = newIVCache(p.Redis.Client)
 	}
-	ivHandler := httptransport.NewIVHandler(usecaseiv.New(ivadapter.New(), ivCache))
+	ivUC := usecaseiv.New(ivadapter.New(), ivCache)
+	ivHandler := httptransport.NewIVHandler(ivUC)
+	// Тот же usecase — проба «есть ли Instant View» при сборке превью ссылки:
+	// кнопка на карточке появляется только там, где статья реально извлекается
+	// (tweb рисует футер лишь при webPage.cached_page), а проба греет кэш.
+	p.ChatUC.SetIVProber(ivUC)
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))

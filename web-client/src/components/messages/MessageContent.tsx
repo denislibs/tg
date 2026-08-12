@@ -561,7 +561,7 @@ export default function MessageContent({
             <div className={classNames(s.message, 'message', 'spoilers-container')}>
               <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               {m.webPage && (
-                <WebPagePreview wp={m.webPage} out={out} />
+                <WebPagePreview wp={m.webPage} />
               )}
               {m.factCheck && (
                 <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
