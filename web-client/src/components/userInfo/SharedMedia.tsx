@@ -378,14 +378,19 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
       {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
 
+      {/* tweb-классы `grid-item` (ячейка грида — appSearchSuper.ts:878) и
+          `video-time` (плашку длительности в tweb строит wrapVideo) — контекст
+          hideFloatings вьювера (mediaViewer/base.ts FLOATING_CONTEXTS): плашка
+          гаснет на полёте мувера. Визуал остаётся на классах модуля (стили tweb
+          `.video-time` скоуплены под .bubble и сюда не дотягиваются). */}
       {tab === 'Media' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaGrid}>
           {msgs.map((m, i) => (
-            <div key={m.id} className={s.mediaTile} onClick={(e) => openMedia(i, e)}>
+            <div key={m.id} className={`grid-item ${s.mediaTile}`} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && (
                 <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
               )}
-              {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
+              {m.type === 'video' && <span className={`video-time ${s.tileDuration}`}>{fmtDur(m.mediaDuration)}</span>}
             </div>
           ))}
         </div>

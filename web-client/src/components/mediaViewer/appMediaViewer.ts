@@ -33,6 +33,8 @@ import { createElement } from 'react'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
+import { positionMenuTrigger } from '@helpers/positionMenu'
+import { doubleRaf } from '@helpers/schedulers'
 import type { IconName } from '@core/tgico-icons'
 import type { MessageEntity } from '@core/models'
 import { startClient } from '@/client/bootstrap'
@@ -82,9 +84,13 @@ export type AppMediaViewerOptions = {
 
 export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delete' | 'forward', ViewerTarget> {
   protected btnMenuToggle!: HTMLButtonElement
+  protected btnMenu!: HTMLElement
   protected btnMenuForward!: HTMLElement
   protected btnMenuDownload!: HTMLElement
   protected btnMenuDelete!: HTMLElement
+  /** снять ⋮-меню (immediate — вместе с DOM-узлом сразу): body-смонтированное
+   * меню не уходит вместе с wholeDiv, закрытие/деструкция зовут его явно */
+  protected closeBtnMenu?: (immediate?: boolean) => void
 
   constructor(protected opts: AppMediaViewerOptions = {}) {
     super(new ListLoader<ViewerTarget, ViewerTarget>({
@@ -129,6 +135,19 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
   // стрелочное свойство: передаётся в map по ссылке (oxlint unbound-method)
   protected static toTarget = (item: ViewerItem): ViewerTarget =>
     ({ element: item.element as HTMLElement, mid: item.mid, item })
+
+  // Body-смонтированное ⋮-меню — не потомок wholeDiv: close()/destroy() базы
+  // его не снимут. В tweb открытый btn-menu закрывает contextMenuController
+  // (Esc/клик по оверлею); контроллера у нас нет — закрываем сами.
+  public override close(e?: MouseEvent) {
+    this.closeBtnMenu?.()
+    return super.close(e)
+  }
+
+  public override destroy() {
+    this.closeBtnMenu?.(true)
+    super.destroy()
+  }
 
   // Порт tweb index.ts:169-186 поверх base.setListeners; download — из
   // base.setListeners tweb (:448-451, без гейта hasQualityOptions — HLS-меню
@@ -251,14 +270,18 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
   // минимальный vanilla-объём ButtonMenuToggle/ButtonMenu (buttonMenuToggle.ts:
   // 95-97, buttonMenu.ts:82-104/:232-233; классы открытия — contextMenuController
   // :140-142: 'active'+'was-open' на меню, 'menu-open' на кнопке; стили — порт
-  // styles/tweb/_button.scss). Меню живёт ВНУТРИ кнопки — штатная форма tweb
-  // (ButtonMenuToggleHandler:43 ищет `el.querySelector('.btn-menu')`);
-  // positionMenuTrigger/монтирование в body (доводка меню) — Task 17.
+  // styles/tweb/_button.scss). Меню строится один раз (адаптация: пункты
+  // статичны, verify/пересборки tweb на каждое открытие не нужны), но живёт
+  // tweb-циклом autoPosition (buttonMenuToggle.ts:145-162, 171-186): на
+  // открытие монтируется в getOverlayRoot() (body) и позиционируется
+  // positionMenuTrigger от кнопки, классы — после doubleRaf (кадр между
+  // монтированием и transition); на закрытие уезжает из DOM отложенно
+  // (300 мс — уход transition, tweb :171-186).
   protected setBtnMenuToggle() {
     const toggle = this.btnMenuToggle = btnIcon('more', { onlyMobile: true })
     toggle.classList.add('btn-menu-toggle')
 
-    const menu = document.createElement('div')
+    const menu = this.btnMenu = document.createElement('div')
     menu.classList.add('btn-menu', 'bottom-left')
 
     // i18n вне React — как connectionStatus.ts: строка на момент постройки
@@ -283,16 +306,33 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     this.btnMenuDownload = menuItem('download', 'Download', this.onDownloadClick)
     this.btnMenuDelete = menuItem('delete', 'Delete', this.onDeleteClick, true)
     menu.append(this.btnMenuForward, this.btnMenuDownload, this.btnMenuDelete)
-    toggle.append(menu)
 
+    // Поколение открытия — роль tempId tweb (buttonMenuToggle.ts:113-116):
+    // закрытие до кадра doubleRaf обесценивает летящее добавление классов.
+    let tempId = 0
+    let closeTimeout: ReturnType<typeof setTimeout> | undefined
+    const unmount = () => {
+      closeTimeout = undefined
+      menu.remove()
+    }
     const onOutsideClick = (e: Event) => {
-      if (findUpClassName(e.target as HTMLElement, 'btn-menu-toggle') === toggle) return
+      const target = e.target as HTMLElement
+      // клик по кнопке обрабатывает её хендлер, по меню — сами пункты
+      if (findUpClassName(target, 'btn-menu-toggle') === toggle || findUpClassName(target, 'btn-menu') === menu) return
       closeMenu()
     }
-    const closeMenu = () => {
+    const closeMenu = this.closeBtnMenu = (immediate = false) => {
+      ++tempId
       menu.classList.remove('active')
       toggle.classList.remove('menu-open')
       document.removeEventListener('click', onOutsideClick, true)
+      if (!menu.isConnected) return
+      // tweb buttonMenuToggle.ts:171-186: element.remove() по таймеру 300 мс —
+      // меню уезжает из DOM после transition закрытия; immediate — деструкция
+      // вьювера (ждать некому)
+      clearTimeout(closeTimeout)
+      if (immediate) unmount()
+      else closeTimeout = setTimeout(unmount, 300)
     }
     attachClickEvent(toggle, (e) => {
       cancelEvent(e)
@@ -301,9 +341,21 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
       if (toggle.classList.contains('menu-open')) {
         closeMenu()
       } else {
-        menu.classList.add('active', 'was-open')
-        toggle.classList.add('menu-open')
-        document.addEventListener('click', onOutsideClick, true)
+        const id = ++tempId
+        // переоткрытие при летящем 300мс-закрытии переиспользует ещё
+        // смонтированный элемент (tweb :117-121)
+        clearTimeout(closeTimeout)
+        closeTimeout = undefined
+        this.getOverlayRoot().append(menu) // tweb :150-156 (mountTarget = getOverlayRoot())
+        positionMenuTrigger(toggle, menu, 'bottom-left', { top: 8, bottom: 8 }) // tweb :157 (positionPadding-дефолт)
+        // tweb :158 + ButtonMenuToggleHandler → openBtnMenu: классы открытия —
+        // после doubleRaf, иначе transition не сыграет на свежесмонтированном узле
+        void doubleRaf().then(() => {
+          if (id !== tempId) return
+          menu.classList.add('active', 'was-open')
+          toggle.classList.add('menu-open')
+          document.addEventListener('click', onOutsideClick, true)
+        })
       }
     })
 

@@ -314,6 +314,8 @@ export default class AppMediaViewerBase<
   // пер-медиа (resetRotationForNav).
   protected rotation = 0
   protected isZooming = false
+  // write-only после сноса мёртвого getZoomBounce (его единственного читателя,
+  // мёртв и в tweb): записи — часть 1:1-портированных тел onSwipeFirst/onSwipeReset
   protected isGesturingNow = false
   protected isZoomingNow = false
   protected draggingType?: 'wheel' | 'touchmove' | 'mousemove'
@@ -882,12 +884,9 @@ export default class AppMediaViewerBase<
     void this.clampZoomDebounced?.() // void: fire-and-forget как в tweb (oxlint no-floating-promises)
   }
 
-  // Порт tweb base.ts:791-793. В tweb метод нигде не вызывается (мёртв и в
-  // референсе — исторический хвост зум-порта из WebZ); оставлен по границе
-  // порта Task 12, снести/оживить — решение финального сверения Task 17.
-  protected getZoomBounce() {
-    return this.isGesturingNow && IS_TOUCH_SUPPORTED ? 50 : 0
-  }
+  // getZoomBounce (tweb base.ts:791-793) НЕ портирован: мёртв и в референсе
+  // (объявлен, нигде не вызывается — исторический хвост зум-порта из WebZ);
+  // снесён финальной сверкой Task 17 по норме «мёртвый код удалять».
 
   // Порт tweb base.ts:795-813.
   protected calculateOffsetBoundaries = (

@@ -47,6 +47,7 @@ class TestViewer extends AppMediaViewer {
   get menu() {
     return {
       toggle: this.btnMenuToggle,
+      element: this.btnMenu,
       forward: this.btnMenuForward,
       download: this.btnMenuDownload,
       delete: this.btnMenuDelete,
@@ -288,13 +289,22 @@ describe('пагинация: listLoader.loadMore → opts.loadMoreMedia', () =>
 })
 
 describe('мобильное ⋮-меню (порт base :970-973 + минимальный btn-menu)', () => {
+  // кадр doubleRaf между монтированием меню и классами открытия
+  // (buttonMenuToggle.ts:158) — под fake timers rAF идёт по часам
+  async function openMenu(toggle: HTMLElement) {
+    toggle.click()
+    await vi.advanceTimersByTimeAsync(50)
+  }
+
   it('кнопка more.only-handhelds в топбаре, пункты [forward, download, delete(.danger)]', () => {
     const v = makeViewer()
     const toggle = v.menu.toggle
     expect(toggle.matches('button.btn-icon.only-handhelds.btn-menu-toggle')).toBe(true)
     expect(toggle.parentElement!.classList.contains('media-viewer-topbar')).toBe(true)
-    const menu = toggle.querySelector('.btn-menu.bottom-left')!
-    expect(menu).not.toBeNull()
+    const menu = v.menu.element
+    expect(menu.matches('.btn-menu.bottom-left')).toBe(true)
+    // до открытия меню вне DOM (tweb монтирует его на открытие)
+    expect(menu.isConnected).toBe(false)
     expect([...menu.children]).toEqual([v.menu.forward, v.menu.download, v.menu.delete])
     expect(v.menu.delete.classList.contains('danger')).toBe(true)
     for (const el of menu.children) {
@@ -304,17 +314,36 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
     }
   })
 
-  it('клик по toggle открывает (active/was-open + menu-open), повторный — закрывает', () => {
+  it('открытие монтирует меню в body и позиционирует от кнопки (positionMenuTrigger bottom-left)', async () => {
     const v = makeViewer()
     const toggle = v.menu.toggle
-    const menu = toggle.querySelector('.btn-menu')!
-    toggle.click()
+    const menu = v.menu.element
+    await openMenu(toggle)
+    // tweb buttonMenuToggle.ts:150-157: mountTarget = getOverlayRoot() (body)…
+    expect(menu.parentElement).toBe(document.body)
+    // …и инлайн-координаты от rect кнопки: bottom-left → top (rect.top +
+    // rect.height + padding.top 8) и right (innerWidth − rect.left − rect.width
+    // − padding.right, которого в tweb-дефолте {top:8,bottom:8} нет → 0);
+    // happy-dom даёт нулевой rect
+    expect(menu.style.top).toBe('8px')
+    expect(menu.style.right).toBe(`${window.innerWidth}px`)
+  })
+
+  it('клик по toggle открывает (active/was-open + menu-open), повторный — закрывает и уносит из DOM через 300мс', async () => {
+    const v = makeViewer()
+    const toggle = v.menu.toggle
+    const menu = v.menu.element
+    await openMenu(toggle)
     expect(menu.classList.contains('active')).toBe(true)
     expect(menu.classList.contains('was-open')).toBe(true)
     expect(toggle.classList.contains('menu-open')).toBe(true)
     toggle.click()
     expect(menu.classList.contains('active')).toBe(false)
     expect(toggle.classList.contains('menu-open')).toBe(false)
+    // transition закрытия: узел уезжает из body отложенно (tweb :171-186)
+    expect(menu.isConnected).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(menu.isConnected).toBe(false)
   })
 
   it('пункт меню зовёт действие и закрывает меню', async () => {
@@ -322,11 +351,23 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
     const v = makeViewer({ onForward })
     const p = v.openMedia({ items: [item(3)], index: 0 })
     await settleOpen(p)
-    const toggle = v.menu.toggle
-    toggle.click()
+    await openMenu(v.menu.toggle)
     v.menu.forward.click()
     expect(onForward).toHaveBeenCalledTimes(1)
     expect(onForward.mock.calls[0][0]).toBe(3)
-    expect(toggle.querySelector('.btn-menu')!.classList.contains('active')).toBe(false)
+    expect(v.menu.element.classList.contains('active')).toBe(false)
+  })
+
+  it('close() вьювера снимает открытое меню (body-узел не сирота)', async () => {
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(5)], index: 0 })
+    await settleOpen(p)
+    await openMenu(v.menu.toggle)
+    expect(v.menu.element.isConnected).toBe(true)
+    const closeP = v.close()
+    expect(v.menu.element.classList.contains('active')).toBe(false)
+    await vi.advanceTimersByTimeAsync(800)
+    await closeP
+    expect(v.menu.element.isConnected).toBe(false)
   })
 })
