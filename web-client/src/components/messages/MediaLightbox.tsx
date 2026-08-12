@@ -1,7 +1,10 @@
 // src/components/messages/MediaLightbox.tsx
-// Умирает в стадии E медиа-суперпорта (замена — vanilla-ядро вьювера), поэтому
-// Task 7 его на useMediaUrl/downloadMediaURL сознательно НЕ переводит: остаётся
-// на RPC contentUrl/thumbUrl/streamUrl до сноса вместе с useLightbox.
+// УМИРАЕТ В TASK 16 медиа-суперпорта (замена — vanilla-ядро вьювера:
+// components/mediaViewer/base.ts + appMediaViewer.ts; видео — vanilla-плеер
+// lib/mediaPlayer, Task 15). Сносится вместе с useLightbox и React-плеером
+// VideoPlayer.tsx (его единственный потребитель — этот файл). Поэтому же
+// Task 7 его на useMediaUrl/downloadMediaURL сознательно НЕ переводит:
+// остаётся на RPC contentUrl/thumbUrl/streamUrl до сноса.
 // Медиавьюер. Дерево и классы — дословно из tweb (`mediaViewer/base.ts:318-435`,
 // живой DOM — `docs/research/2026-08-08-tweb-live-dom-reference.md` §9):
 //

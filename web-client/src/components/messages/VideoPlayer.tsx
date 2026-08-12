@@ -1,4 +1,10 @@
 // src/components/messages/VideoPlayer.tsx
+//
+// УМИРАЕТ В TASK 16 (медиа-суперпорт): единственный потребитель — MediaLightbox,
+// который Task 16 сносит вместе с этим файлом; замена — vanilla-порт
+// `src/lib/mediaPlayer/index.ts` (Task 15), его использует vanilla-вьювер
+// (components/mediaViewer/base.ts). Не развивать.
+//
 // Видеоплеер медиавьюера — порт tweb `lib/mediaPlayer/index.ts` (класс VideoPlayer,
 // метод buildControls) + `helpers/dom/controlsHover.ts`. Дерево и классы 1:1:
 //

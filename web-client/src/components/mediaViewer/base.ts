@@ -9,7 +9,9 @@
 // moveTheMover :1928-1956, setNewMover :1958-1980, радиусы :2066-2114,
 // floatings :2124-2193, center-стили :2236-2265, монтирование :2452-2455).
 // Task 13 довёз наполнение медиа: `_openMedia` (порт tweb :2320-3005 в объёме
-// фото; видео-ветка — заглушка до Task 15), setAuthorInfo/caption как
+// фото), Task 15 — видео-ветку (tweb :2557-2896 + createPlayer :2627-2740,
+// vanilla-плеер `@lib/mediaPlayer`, буферизация, updateVideoControlsLock
+// :958-968), setAuthorInfo/caption как
 // React-острова (createRoot), прелоадер на мувере, полный close()
 // (tweb :975-1024) и layout-методы (:2195-2235). Message-подкласс —
 // `appMediaViewer.ts` (Task 14, он же зовёт setListeners, как tweb
@@ -28,11 +30,8 @@
 //     поверх `iconSpan`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
 //     вешает `rp` + `div.c-ripple`) не портирован: наш ripple — React-хук
 //     (`shared/ui/Ripple`), vanilla-порт поедет вместе с оживлением кнопок в Task 13
-//   • `updateVideoControlsLock` tweb (:958-966, вызовы из toggleZoom/rotateMedia)
-//     не портирован — обслуживает только videoPlayer, приедет с плеером в Task 15
-//   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container) и
-//     `!this.videoPlayer`-условие мобильного тапа не портированы — RTMP-стримов
-//     нет (фичи не существует), плеер — Task 15
+//   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container)
+//     не портированы — RTMP-стримов нет (фичи не существует)
 //   • Esc в tweb закрывает вьювер не клавиатурным листенером, а
 //     `appNavigationController` (navigationItem в _openMedia :2429-2450) — наш
 //     navLayer-стек подключит Task 16
@@ -72,6 +71,8 @@ import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import { calcImageInBox } from '@core/dom/calcImageInBox'
 import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
 import { cachedMediaUrl } from '@core/mediaCache'
+import { resolveStreamUrl } from '@core/mediaUrl'
+import VideoPlayer from '@lib/mediaPlayer'
 import { startClient } from '@/client/bootstrap'
 import animationIntersector from '../animationIntersector'
 import ProgressivePreloader from '../preloader'
@@ -122,6 +123,13 @@ export type ViewerMedia = {
   /** stripped-превью (base64 JPEG, как `blur` бабла) — канвас-блюр в ghost */
   blurPreview?: string
   kind: 'photo' | 'video'
+  /** GIF-режим (tweb `document.type === 'gif'`): автоплей-цикл без плеера;
+   * Task 16 заполняет из isGifLike (core/gifs.ts) по mime/имени файла */
+  gif?: boolean
+  /** длительность видео в секундах (tweb `media.duration`); < 60 → loop.
+   * У нашего бэка длительность видео может отсутствовать (см. core/gifs.ts) —
+   * тогда 0/undefined трактуется как «короткое» (loop), безвредно */
+  duration?: number
 }
 
 // Автор медиа (tweb setAuthorInfo(fromId, timestamp) резолвит имя/дату через
@@ -148,13 +156,14 @@ type Transform = {
 type DOMRectMinified = { top: number, right: number, bottom: number, left: number }
 type DOMRectEditable = DOMRectMinified & { width: number, height: number }
 
-// Порт tweb `helpers/dom/createVideo.ts` в объёме ветки-фолбэка снапшота
-// (видео, чей кадр не удалось скопировать в canvas): элемент + playsinline +
-// уборка src по смерти middleware после тяжёлой анимации. HLS/stream-учёт
-// tweb (`initVideoHls`/`toggleStreamInUse`) приедет с плеером в Task 15.
-function createVideo({ middleware }: { middleware: Middleware }): HTMLVideoElement {
+// Порт tweb `helpers/dom/createVideo.ts` в объёме вьювера: элемент +
+// playsinline + уборка src по смерти middleware после тяжёлой анимации;
+// `pip` — разрешить видео уходить в Picture-in-Picture (живое видео плеера;
+// снапшоты/gif остаются с запретом, tweb createVideo:22). HLS/stream-учёт
+// tweb (`initVideoHls`/`toggleStreamInUse`) не портирован — HLS-качеств нет.
+function createVideo({ pip, middleware }: { pip?: boolean, middleware: Middleware }): HTMLVideoElement {
   const video = document.createElement('video')
-  video.disablePictureInPicture = true
+  if (!pip) video.disablePictureInPicture = true
   video.setAttribute('playsinline', 'true')
   middleware.onDestroy(async () => {
     await getHeavyAnimationPromise()
@@ -189,7 +198,11 @@ export function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}):
 
 // Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх нашего `iconSpan`:
 // свап глифа кнопки заменой span.button-icon (зум-кнопка zoomin↔zoomout).
-function replaceButtonIcon(element: HTMLElement, icon: IconName) {
+// Экспорт: VolumeSelector/VideoPlayer (Task 15) свапают иконки тем же путём —
+// в tweb хелпер живёт в components/button.ts, у нас порт остался здесь; цикл
+// модулей base ↔ mediaPlayer идентичен tweb (их VideoPlayer тоже импортирует
+// mediaViewer/base ради типа), исполнение везде отложено до рантайма.
+export function replaceButtonIcon(element: HTMLElement, icon: IconName) {
   const newIcon = iconSpan(icon, 'button-icon')
   const oldIcon = element.querySelector('.button-icon')
   if (oldIcon) oldIcon.replaceWith(newIcon)
@@ -229,6 +242,10 @@ export default class AppMediaViewerBase<
   protected tempId = 0
   protected preloader: ProgressivePreloader
   protected preloaderStreamable: ProgressivePreloader
+
+  // Vanilla-плеер текущего видео (tweb base.ts:238) — создаётся в createPlayer
+  // видео-ветки _openMedia, умирает по setMoverBefore (once-подписка там же).
+  protected videoPlayer?: VideoPlayer
 
   protected isFirstOpen = true
 
@@ -807,7 +824,7 @@ export default class AppMediaViewerBase<
       this.zoomElements.rangeSelector.setProgress(zoomValue)
     }
 
-    // updateVideoControlsLock tweb :755 — плеер, Task 15 (см. шапку файла)
+    this.updateVideoControlsLock() // tweb :755
   }
 
   // Порт tweb base.ts:758-760.
@@ -997,7 +1014,19 @@ export default class AppMediaViewerBase<
 
     this.rotation -= 90 // против часовой, как Telegram Desktop
     this.applyMoversTransform()
-    // updateVideoControlsLock tweb :949 — плеер, Task 15 (см. шапку файла)
+    this.updateVideoControlsLock() // tweb :949
+  }
+
+  // Порт tweb base.ts:958-968: хром плеера живёт внутри moversContainer и
+  // скейлился/крутился бы вместе с кадром — на время зума ИЛИ поворота контролы
+  // запираются скрытыми (как уже делает зум), иначе возвращается автоскрытие.
+  // Клавиатура плеера продолжает работать (`listenKeyboardEvents: 'always'`).
+  protected updateVideoControlsLock() {
+    if (!this.videoPlayer) {
+      return
+    }
+
+    this.videoPlayer.lockControls(this.isZooming || this.isRotated() ? false : undefined)
   }
 
   // Порт tweb base.ts:952-956: медиа визуально повёрнуто (любое не кратное
@@ -1188,12 +1217,13 @@ export default class AppMediaViewerBase<
     if (target.tagName === 'A') return
     cancelEvent(e)
 
-    // На мобильном медиа без контролов плеера (фото/GIF) не имеет своего
-    // controls-toggle, поэтому тап по нему переключает хром (топбар + caption)
-    // сам — зеркаля тоггл видеоконтролов, — а не закрывает вьювер. Тапы по
-    // хрому/меню сохраняют свои обработчики; драги уже отфильтрованы через
-    // ignoreNextClick. (`!this.videoPlayer` tweb :1077 — плеер, Task 15.)
-    if (mediaSizes.isMobile && !findUpClassName(target, 'media-viewer-topbar') && !findUpClassName(target, 'media-viewer-caption') && !findUpClassName(target, 'btn-menu')) {
+    // На мобильном медиа без контролов плеера (фото/GIF, `!this.videoPlayer`
+    // tweb :1077) не имеет своего controls-toggle, поэтому тап по нему
+    // переключает хром (топбар + caption) сам — зеркаля тоггл видеоконтролов, —
+    // а не закрывает вьювер; у видео тем же тоггло-тапом владеет ControlsHover
+    // плеера. Тапы по хрому/меню сохраняют свои обработчики; драги уже
+    // отфильтрованы через ignoreNextClick.
+    if (mediaSizes.isMobile && !this.videoPlayer && !findUpClassName(target, 'media-viewer-topbar') && !findUpClassName(target, 'media-viewer-caption') && !findUpClassName(target, 'btn-menu')) {
       this.wholeDiv.classList.toggle('chrome-hidden')
       return
     }
@@ -1564,8 +1594,8 @@ export default class AppMediaViewerBase<
       if (mover.firstElementChild && mover.firstElementChild.classList.contains('media-viewer-aspecter')) {
         aspecter = mover.firstElementChild as HTMLDivElement
 
-        // .ckin__player — chrome vanilla-плеера (Task 15); ветка готова заранее
-        // и до него узла просто не находит
+        // .ckin__player — chrome vanilla-плеера (@lib/mediaPlayer): на
+        // закрытии/листании видео возвращается голым в аспектер, плеер уходит
         const player = aspecter.querySelector('.ckin__player')
         if (player && !needOpacity) {
           const video = player.querySelector('video')
@@ -2222,11 +2252,11 @@ export default class AppMediaViewerBase<
     return Math.min(box.width / height, box.height / width)
   }
 
-  // Порт tweb base.ts:2320-3005 в объёме фото. Из веток tweb не портированы
+  // Порт tweb base.ts:2320-3005 (фото + видео). Из веток tweb не портированы
   // (каждая помечена на месте): live-стрим RTMP (фичи нет), HLS/quality-меню
-  // (Task 15), видео-ветка целиком (заглушка ниже — Task 15), navigationItem
-  // (Task 16). Вход — наш дескриптор ViewerMedia вместо MyPhoto/MyDocument:
-  // байты и URL живут в воркерном конвейере downloadMediaURL (Task 6).
+  // (HLS-качеств нет), navigationItem (Task 16). Вход — наш дескриптор
+  // ViewerMedia вместо MyPhoto/MyDocument: байты и URL живут в воркерном
+  // конвейере downloadMediaURL (Task 6), стрим видео — resolveStreamUrl.
   protected async _openMedia({
     media,
     author,
@@ -2286,7 +2316,7 @@ export default class AppMediaViewerBase<
       container.replaceChildren()
     }
 
-    // changeQualityOptionsPromise tweb :2410-2418 — HLS-качества, Task 15
+    // changeQualityOptionsPromise tweb :2410-2418 — HLS-качеств у нас нет
 
     // Поворот — пер-медиа (tweb :2420-2429, вынесено методом ещё в Task 12)
     this.resetRotationForNav()
@@ -2315,7 +2345,25 @@ export default class AppMediaViewerBase<
     container.style.width = `${fit.width}px`
     container.style.height = `${fit.height}px`
 
-    // VIDEO_MIN_WIDTH-добивка контейнера под плеер (tweb :2479-2493) — Task 15
+    // Порт tweb :2479-2493: узкое видео с UI плеера добивается до
+    // VIDEO_MIN_WIDTH (контролы не влезают), с сохранением пропорции и
+    // клампом по mediaBoxSize; gif плеера не получает — не добивается.
+    const isVideoWithPlayer = isVideo && !media.gif
+    if (isVideoWithPlayer) {
+      const currentWidth = parseFloat(container.style.width)
+      if (currentWidth > 0 && currentWidth < VIDEO_MIN_WIDTH) {
+        const currentHeight = parseFloat(container.style.height)
+        const aspect = currentWidth / currentHeight
+        let newWidth = Math.min(VIDEO_MIN_WIDTH, mediaBoxSize.width)
+        let newHeight = newWidth / aspect
+        if (newHeight > mediaBoxSize.height) {
+          newHeight = mediaBoxSize.height
+          newWidth = newHeight * aspect
+        }
+        container.style.width = `${newWidth}px`
+        container.style.height = `${newHeight}px`
+      }
+    }
 
     let thumbPromise: Promise<unknown> = Promise.resolve()
     if (useContainerAsTarget) {
@@ -2345,8 +2393,10 @@ export default class AppMediaViewerBase<
 
     // live-стрим-thumb (tweb :2530-2547) — RTMP-фичи нет
 
-    // preloaderStreamable (supportsStreaming, tweb :2555) — стрим-видео, Task 15
-    const preloader = this.preloader
+    // tweb :2548 `supportsStreaming ? preloaderStreamable : preloader`: наше
+    // видео всегда стримится HTTP-range'ами (resolveStreamUrl) — у него
+    // стримовое кольцо, у фото — обычное
+    const preloader = isVideo ? this.preloaderStreamable : this.preloader
 
     // canAttachPreloader — адаптация tweb photo.ts:297-301 к вьюверу: кольцо
     // только на медиа ≥150×150 (у мелкого нет места под 54px-кольцо);
@@ -2356,11 +2406,213 @@ export default class AppMediaViewerBase<
 
     let setMoverPromise: Promise<void>
     if (isVideo) {
-      // ЗАГЛУШКА (объём Task 13): видео-ветка tweb :2557-2896 (createVideo,
-      // vanilla-плеер, стрим/буферизация, preloaderStreamable) появится в
-      // Task 15. Пока видео летит тем же полётом от thumb'а в ghost, полное
-      // медиа не грузится.
-      const set = () => this.setMoverToTarget(target, false, fromRight).then(() => {})
+      // Видео-ветка — порт tweb :2557-2896 + createPlayer :2627-2740 в нашем
+      // объёме. Не портированы (помечено): live/RTMP (фичи нет), HLS-качества
+      // (changeQualityOptionsPromise/isHlsStream), appMediaPlaybackController
+      // (useController/setSingleMedia/releaseSingleMedia — контроллер у нас
+      // обслуживает голос/музыку), mediaTimestamp (таймкоды сообщений — Task 14
+      // их не собирает), storyboard, handleVideoLeak/shouldIgnoreVideoError
+      // (фиксы crbug/утечек MTProto-стримов — наш стрим обычный HTTP-range),
+      // updateMediaSource (см. фото-ветку), navigationItem в onPip (Task 16).
+      const middleware = mover.middlewareHelper.get()
+      const video = createVideo({ pip: !media.gif, middleware })
+
+      video.addEventListener('contextmenu', (event) => {
+        // гейт tweb :2569-2573 (без live-условия)
+        if (this.wholeDiv.classList.contains('no-forwards')) {
+          cancelEvent(event)
+        }
+      })
+
+      const set = () => this.setMoverToTarget(target, false, fromRight).then(({ onAnimationEnd }) => {
+        const div = (mover.firstElementChild?.classList.contains('media-viewer-aspecter')
+          ? mover.firstElementChild
+          : mover) as HTMLElement
+
+        // tweb :2584-2585: снапшот-видео мувера (кадр источника, поставленный
+        // setMoverToTarget) удаляется перед вставкой живого видео
+        mover.querySelector('video')?.remove()
+
+        video.setAttribute('playsinline', 'true')
+        video.autoplay = true
+
+        if (media.gif) {
+          video.muted = true
+          video.autoplay = true
+          video.loop = true
+        } else if ((media.duration ?? 0) < 60) {
+          video.loop = true
+        }
+
+        // * don't remove (комментарий tweb :2609)
+        div.append(video)
+
+        const canPlayThrough = new Promise<void>((resolve) => {
+          video.addEventListener('canplay', () => resolve(), { once: true })
+        })
+
+        // Порт tweb createPlayer :2627-2740: плеер создаётся СТРОГО после
+        // Promise.all([canplay-гейт, конец полёта]) — иначе контролы рендерились
+        // бы внутри ещё анимируемого аспектера и прыгали к финальной позиции.
+        const createPlayer = async () => {
+          if (media.gif) {
+            return
+          }
+
+          const readyPromise = Promise.all([canPlayThrough, onAnimationEnd])
+          await readyPromise
+          if (this.tempId !== tempId) {
+            return
+          }
+
+          const player = this.videoPlayer = new VideoPlayer({
+            video,
+            play: true,
+            streamable: true,
+            duration: media.duration,
+            onMenuToggle: (open) => {
+              // меню плеера перекрывает подпись — прячем её (tweb :2657-2660)
+              this.wholeDiv.classList.toggle('hide-caption', !!open)
+            },
+            onTimePreviewToggle: (visible) => {
+              // превью-время сикбара стоит на месте подписи (tweb :2662-2666)
+              this.wholeDiv.classList.toggle('hide-caption', visible)
+            },
+            onPip: (pip) => {
+              // tweb :2668-2699 без ветки «другой вьювер уже открыт» (глобальной
+              // ссылки window.appMediaViewer не заводим) и без setSingleMedia
+              const lastMover = this.moversContainer.lastElementChild as HTMLElement
+              // PiP-фейд: мувер в покое несёт .active (transition opacity) —
+              // инлайн-opacity анимируется через --open-duration
+              lastMover.style.opacity = pip ? '0' : ''
+              this.toggleWholeActive(!pip)
+              this.toggleOverlay(!pip)
+              this.toggleGlobalListeners(!pip)
+            },
+            onPipClose: () => {
+              void this.close()
+            },
+            listenKeyboardEvents: 'always',
+          })
+
+          // Плеер есть (в отличие от фото) и его контролы на открытии показаны;
+          // дальше has-video-controls ведёт их show/hide (tweb :2707-2712)
+          this.wholeDiv.classList.add('has-video', 'has-video-controls')
+
+          player.addEventListener('toggleControls', (show) => {
+            this.wholeDiv.classList.toggle('has-video-controls', show)
+          })
+
+          this.addEventListener('setMoverBefore', () => {
+            this.wholeDiv.classList.remove('has-video', 'has-video-controls')
+            this.videoPlayer?.cleanup()
+            this.videoPlayer = undefined
+          }, { once: true })
+
+          if (this.isZooming || this.isRotated()) {
+            this.videoPlayer.lockControls(false)
+          }
+        }
+
+        // Буферизация (tweb :2742-2803, ветка supportsStreaming): waiting →
+        // стримовое кольцо + is-buffering (гасит большую play-иконку), canplay →
+        // detach; разлочка контролов — после конца полёта (см. комментарий tweb).
+        let attachedCanPlay = false
+        let buffering = false
+
+        const _onBuffering = (noCanPlay?: boolean) => {
+          if (buffering) {
+            return
+          }
+
+          buffering = true
+          if (!noCanPlay) attachCanPlay()
+          preloader.attach(mover, true)
+
+          // класс для плеера, чтобы убрать большую иконку пока прелоадер на
+          // месте (комментарий tweb :2755)
+          video.parentElement!.classList.add('is-buffering')
+        }
+
+        void onAnimationEnd.then(() => {
+          if (video.readyState < video.HAVE_FUTURE_DATA) {
+            _onBuffering(true)
+          }
+        })
+
+        const attachCanPlay = () => {
+          if (attachedCanPlay) {
+            return
+          }
+
+          attachedCanPlay = true
+          video.addEventListener('canplay', () => {
+            attachedCanPlay = false
+            buffering = false
+            preloader.detach()
+            video.parentElement!.classList.remove('is-buffering')
+
+            if (!this.isZooming) {
+              // Разлочка — после доигрыша открытия: canplay может стрельнуть
+              // посреди анимации, контролы прыгнули бы (комментарий tweb)
+              void onAnimationEnd.then(() => {
+                if (this.tempId === tempId) {
+                  this.videoPlayer?.lockControls(undefined)
+                }
+              })
+            }
+          }, { once: true })
+        }
+
+        video.addEventListener('waiting', () => {
+          const loading = video.networkState === video.NETWORK_LOADING
+          const isntEnoughData = video.readyState < video.HAVE_FUTURE_DATA
+
+          if (loading && isntEnoughData) {
+            _onBuffering()
+          }
+        })
+
+        attachCanPlay()
+
+        const load = async () => {
+          // Стрим-URL (DNP-ON → /dnp-stream SW-206, иначе токенный URL);
+          // supportsStreaming tweb: промис загрузки = Promise.resolve() —
+          // кольцом ведает буферизация выше, не догрузка файла
+          const promise = Promise.resolve(resolveStreamUrl(media.mediaId))
+
+          void Promise.all([promise, onAnimationEnd]).then(([url]) => {
+            if (this.tempId !== tempId) {
+              console.warn('media viewer changed video') // tweb :2830
+              return
+            }
+
+            const onError = () => {
+              console.error('video error', video.error) // tweb :2836-2851 (см. шапку ветки)
+              preloader.detach()
+            }
+
+            video.addEventListener('error', onError, { once: true })
+            middleware.onClean(() => {
+              video.removeEventListener('error', onError)
+            })
+
+            // void: видео-ветка renderImageFromUrl синхронна (src + колбэк),
+            // тип-объединение с промисом — от картинок (oxlint no-floating-promises)
+            void renderImageFromUrl(video, url)
+
+            // tweb :2886-2889 onMediaLoadPromise.then(createPlayer): у нас гейт
+            // метаданных уже внутри createPlayer (canplay ⊇ metadata)
+            void createPlayer()
+          })
+
+          return promise
+        }
+
+        // lazyLoadQueue tweb :2896 — очереди нет (шапка файла): прямой запуск
+        void load().catch((err: unknown) => console.error(err))
+      })
+
       setMoverPromise = thumbPromise.then(set)
     } else {
       const set = () => this.setMoverToTarget(target, false, fromRight).then(({ onAnimationEnd }) => {
@@ -2485,6 +2737,8 @@ export default class AppMediaViewerBase<
   // каркаса для хозяина инстанса (тесты, горячая замена точки входа Task 16).
   public destroy() {
     this.swipeHandler?.removeListeners()
+    this.videoPlayer?.cleanup()
+    this.videoPlayer = undefined
     this.zoomElements.rangeSelector.removeListeners()
     this.destroyIslands()
     this.wholeDiv.remove()
