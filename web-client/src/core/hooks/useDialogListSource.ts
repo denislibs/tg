@@ -18,11 +18,10 @@ import { useEvent } from './useEvent'
 import { useMiddlewareHelper } from './useMiddlewareHelper'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
-import { useNotifyStore, notifyTypeForChat } from '../../stores/notifyStore'
+import { useNotifyStore, isDialogMuted } from '../../stores/notifyStore'
 import { guessLoadCount } from '../dialogs/loadCount'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { dialogMatchesFolder } from '../folderFilter'
-import type { NotifySettings } from '../managers/notifyManager'
 import type { Folder } from '../managers/foldersManager'
 import type { Dialog } from '../models'
 import type { Chat } from '../../data'
@@ -48,16 +47,6 @@ type PageState = { filterId: number; totalCount: number; isEnd: boolean; wasAtLe
 const EMPTY_PAGE_STATE = { totalCount: 0, isEnd: false, wasAtLeastOnceFetched: false } as const
 
 const noop = () => {}
-
-/**
- * Заглушённость строки — РОВНО та, что видит витрина: `useChatList` навешивает
- * `muted` ещё и по глобально выключенному ТИПУ чатов (`notifyStore`,
- * tweb `isPeerLocalMuted` с `respectType`), а у `Dialog.muted` этого нет.
- * Правило папки `excludeMuted` обязано смотреть на то же значение, что список.
- */
-function isMuted(d: Dialog, notifySettings: NotifySettings): boolean {
-  return !!d.muted || notifySettings[notifyTypeForChat(d.type)].muted
-}
 
 /**
  * @param filterId «Все чаты»/«Архив»/id пользовательской папки
@@ -97,15 +86,18 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    * ЕДИНСТВЕННОЕ правило принадлежности строки этой папке — и для `items`, и
    * для размера набора (`countInMirror`). Считается по `Dialog`, а не по `Chat`:
    * размер нужен вне рендера, где витринных `Chat` попросту нет, — а два разных
-   * адаптера расходились бы ровно на `muted` (см. `isMuted`), и в папке с
-   * `excludeMuted` фетчер считал бы набранным то, чего в списке нет: цикл
-   * догрузки обрывается, папка не наполняется никогда.
+   * адаптера расходились бы ровно на `muted`: витрина (`useChatList`) считает
+   * заглушённым и чат глобально выключенного ТИПА, а у `Dialog.muted` этого нет.
+   * В папке с `excludeMuted` фетчер тогда считал бы набранным то, чего в списке
+   * нет: цикл догрузки обрывается, папка не наполняется никогда. Само правило
+   * живёт в одном месте на всё приложение — `stores/notifyStore.ts::isDialogMuted`
+   * (пин `stores/noDuplicateMuteRule.test.ts`).
    */
   const matchesThisFolder = useCallback((d: Dialog): boolean => {
     if (!folderKnown) return false
     if (filterId === ARCHIVE_FOLDER_ID ? !d.archived : !!d.archived) return false
     if (!folder) return true
-    return dialogMatchesFolder({ ...d, muted: isMuted(d, notifySettings) }, folder, contactIds)
+    return dialogMatchesFolder({ ...d, muted: isDialogMuted(d, notifySettings) }, folder, contactIds)
   }, [folderKnown, folder, filterId, contactIds, notifySettings])
 
   const items = useMemo<DialogListItem[]>(() => {
@@ -115,7 +107,13 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     for (const d of dialogs) {
       if (!matchesThisFolder(d)) continue
       const value = chatById.get(d.chatId)
-      if (!value) continue // строка ещё не смаплена витриной — её здесь нет
+      // Контракт `chats` — ПОЛНАЯ витрина зеркала (`useChatList` маппит каждый
+      // диалог), поэтому в норме ветка недостижима. Держим её не как защиту от
+      // краша рендера (строка без витринного значения), а как единственную
+      // честную реакцию: если она когда-нибудь сработает, набор папки станет
+      // БОЛЬШЕ списка (`countInMirror` считает по зеркалу, а не по `chats`), и
+      // догрузка встанет ровно так же, как вставала на разъехавшемся `muted`.
+      if (!value) continue
       out.push({ id: d.chatId, index: dialogIndexById[d.chatId] ?? 0, value })
     }
     return out

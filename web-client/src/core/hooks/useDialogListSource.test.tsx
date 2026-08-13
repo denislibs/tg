@@ -161,6 +161,21 @@ describe('useDialogListSource: items — производная от зерка�
     expect(result.current.items.map((i) => i.id)).toEqual([2, 3, 1])
   })
 
+  // `chats` по контракту — полная витрина зеркала, поэтому в норме такой строки
+  // не бывает. Если она всё же появится, показать её нечем: строка без
+  // витринного значения — это падение рендера.
+  it('диалог, которого нет в пропе chats, в items не попадает', () => {
+    seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }])
+    const { managers } = fakeManagers()
+
+    const { result } = renderHook(
+      () => useDialogListSource(ALL_FOLDER_ID, useChatList().filter((c) => c.id !== '2')),
+      { wrapper: wrapper(managers) },
+    )
+
+    expect(result.current.items.map((i) => i.id)).toEqual([1])
+  })
+
   it('каждый item несёт ГОТОВЫЙ индекс порядка из зеркала', () => {
     seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 10 }])
     const { managers } = fakeManagers()

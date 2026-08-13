@@ -1,14 +1,18 @@
 # Task 6 — источник данных списка папки (`useDialogListSource`)
 
-**Статус:** сделано, ревью закрыто (5 Important + 6 Minor). Прогон зелёный:
-`267 файлов / 1900 тестов`, `tsc --noEmit` чист, `oxlint` без предупреждений в
-тронутых файлах.
+**Статус:** сделано; ревью (5 Important + 6 Minor) и ре-ревью (2 находки)
+закрыты. Прогон зелёный: `267 файлов / 1897 тестов`, `tsc --noEmit` чист (кроме
+файлов параллельных агентов — `components/ArchiveRow.tsx`, `ChatList*`,
+`virtual/*`), `oxlint` без предупреждений в тронутых файлах.
 
 ## Файлы
 
 | Файл | Что |
 |---|---|
 | `web-client/src/core/dialogs/loadCount.ts` (+ `.test.ts`) | `DIALOG_LOAD_COUNT`, `guessLoadCount()` |
+| `web-client/src/stores/notifyStore.ts` (+ `noDuplicateMuteRule.test.ts`) | `isDialogMuted()` — единственный дом правила «заглушён» |
+| `web-client/src/core/hooks/useChatList.ts` (+ `.test.ts`) | колсайт правила в витрине |
+| `web-client/src/client/uiNotifications.ts` | колсайт правила в гейте уведомлений |
 | `web-client/src/core/hooks/useDialogListSource.ts` (+ `.test.tsx`) | сам источник |
 | `web-client/src/client/boot.ts` | первичный догон — страницей |
 | `web-client/src/client/boot.dialogs.test.ts`, `boot.order.test.ts` | пины boot |
@@ -169,6 +173,63 @@ return managers.dialogs.getDialogs({ limit: guessLoadCount() })
 есть, сейчас не зовётся ниоткуда) — но это отдельный RPC-контракт и правка
 этапа 2.
 
+## Ответ на находки ре-ревью
+
+### 1 — правило «заглушён» сведено к одной функции
+
+Было: выражение `dialog.muted || settings[notifyTypeForChat(type)].muted`
+написано в ТРЁХ местах — `useChatList.ts:27`, `useDialogListSource.ts:59`,
+`client/uiNotifications.ts:27`. Совпадали, но ничто их не скрепляло: удаление
+строки `useChatList.ts:27` оставляло весь прогон зелёным, то есть I4 мог
+вернуться молча и в проде.
+
+Стало:
+
+- `stores/notifyStore.ts::isDialogMuted(dialog, settings)` — единственный дом
+  правила, рядом с `notifyTypeForChat`. `dialog` опционален: уведомление
+  приходит и по чату, которого ещё нет в зеркале.
+- Три колсайта зовут её; `uiNotifications` продолжает брать `typeSettings`
+  для `preview` — это ДРУГАЯ настройка, правило она не выводит.
+- **Пин `stores/noDuplicateMuteRule.test.ts`** (образец —
+  `stores/noManualOrder.test.ts`): скан по исходникам, копия узнаётся по паре
+  признаков «файл берёт настройки по типу чата (`notifyTypeForChat`) И читает у
+  них `.muted`». Экран настроек уведомлений читает `settings[key].muted` без
+  `notifyTypeForChat` — правило не выводит, под пин не попадает. Второй тест —
+  анти-протухание: сам дом правила его содержит.
+- **Пин на ПРИМЕНЕНИЕ в витрине** — новый `core/hooks/useChatList.test.ts`: то
+  самое место, удаление которого раньше проходило зелёным.
+
+Мутации: удаление половины правила в самом `isDialogMuted` краснит обоих
+потребителей (витрину и фильтр папок); возврат второй копии в
+`useDialogListSource` краснит пин (`[ 'core/hooks/useDialogListSource.ts' ] ≠ []`);
+удаление колсайта в `useChatList` краснит его тест.
+
+### 2 — `if (!value) continue` покрыт
+
+Тест «диалог, которого нет в пропе `chats`, в items не попадает» (мутация
+«оставлять строку без витринного `Chat`» → `[ 1, 2 ] ≠ [ 1 ]`). У строки
+комментарий: контракт `chats` — ПОЛНАЯ витрина зеркала, поэтому в норме ветка
+недостижима; держим её как единственную честную реакцию — если сработает, набор
+папки станет больше списка (`countInMirror` считает по зеркалу, а не по `chats`)
+и догрузка встанет ровно так же, как вставала на разъехавшемся `muted`.
+
+### Принято как есть (зафиксировано, не чинилось)
+
+- **`countInMirror` читает `useChatsStore.getState()`** — мутация «читать
+  `dialogs` из замыкания рендера» зелёная, хотя выбор обоснован отдельным
+  абзацем докблока. Различить их тестом можно только смоделировав окно «зеркало
+  уже применило страницу, React ещё не перерисовал», которого в `act()` не
+  бывает; выбор оставлен как есть, обоснование — у кода.
+- **Ненаблюдаемые различения:** `filterId: forFilterId` в аргументах запроса и в
+  `setPageState` — мутации на «текущий `filterId`» зелёные, потому что гвард
+  актуальности обрывает цикл прошлой папки раньше следующей итерации. Туда же
+  `index: dialogIndexById[d.chatId] ?? 0` — `?? 0` недостижим, индексы владелец
+  считает на все строки зеркала.
+- **Колсайт в `client/uiNotifications.ts` остаётся без теста** — как и был до
+  задачи: у файла нет тестов вовсе (он тянет `startClient()` на уровне модуля).
+  Правило, которое он теперь зовёт, покрыто в своём доме; сам гейт уведомлений —
+  предсуществующий долг, вне периметра Task 6.
+
 ## Мутации (каждая прогнана, вывод vitest — реальный)
 
 | # | Мутация | Результат |
@@ -189,6 +250,10 @@ return managers.dialogs.getDialogs({ limit: guessLoadCount() })
 | 14 | boot: `getDialogs(...)` → `refresh()` | 2 теста: `to be called 1 times, but got 0`, `[ 'refresh', 'fillMirror' ] ≠ [ 'getDialogs', 'fillMirror' ]` |
 | 15 | boot: снят `.then(() => fillMirror())` | 2 теста: `[ 1 ] ≠ [ 2, 1 ]`, `to be called 1 times, but got 0` |
 | 16 | boot: снят `if (locked) return Promise.resolve()` | 2 теста: `[ {chatId: 1, …} ] ≠ []`, `to not be called at all, but been called 1 times` |
+| 17 | **ре-ревью 1:** `isDialogMuted` теряет половину правила (`return !!dialog?.muted`) | 2 теста: `expected undefined to be true` (витрина), `[ {id: 1, …}, …(1) ] ≠ []` (фильтр папки) |
+| 18 | **ре-ревью 1:** вторая копия правила возвращена в `useDialogListSource` | пин: `[ 'core/hooks/useDialogListSource.ts' ] to deeply equal []` |
+| 19 | **ре-ревью 1:** снят колсайт `useChatList.ts` | `expected undefined to be true` |
+| 20 | **ре-ревью 2:** снят `if (!value) continue` | `expected [ 1, 2 ] to deeply equal [ 1 ]` |
 
 Пины владения — зелёные и не ослаблены: `stores/noDuplicateDialogs.test.ts`
 (хук в зеркало не пишет; allow-list не расширялся), `stores/noManualOrder.test.ts`
