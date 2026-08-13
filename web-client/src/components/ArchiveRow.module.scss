@@ -10,12 +10,9 @@
   overflow: hidden;
 }
 
-// archiveDialog.module.scss `.Media`: слот аватара обычного ряда, размеры даёт
-// `.row-media-bigger` (54px, absolute) — здесь только заполнение круга.
-.media {
-  padding: 0;
-}
-
+// archiveDialog.module.scss `.MediaContent`: заполнение слота аватара. Самого
+// `.Media` тут нет — в оригинале у него только ветка `&.hasStories`, а padding
+// инлайновый, из `storyDimensions()`; размеры слота даёт `.row-media-bigger`.
 .mediaContent {
   width: 100%;
   height: 100%;

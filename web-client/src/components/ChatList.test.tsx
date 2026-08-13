@@ -29,22 +29,69 @@ import type { Dialog } from '../core/models'
 import type { DialogsPage } from '../core/managers/dialogsManager'
 import type { Chat } from '../data'
 
-// Счётчик рендеров строки. Обёртка `memo` ВОКРУГ настоящей строки: DOM остаётся
-// настоящим (классы/`top` проверяются на нём же), а граница мемоизации ровно та
-// же, что у самой строки, — поэтому счётчик краснеет ровно тогда, когда ломается
-// стабильность пропсов, приезжающих строке из `ChatList` (нестабильный
-// `renderItem`/`onSelect` — и на каждом кадре скролла перерисовывается всё окно).
-const { rowRenders } = vi.hoisted(() => ({ rowRenders: [] as string[] }))
+// Три протокола, все — про НАСТОЯЩИЕ компоненты, без подмены их поведения.
+//
+// `rowRenders` — рендеры настоящей `ChatListItem`: считаются по `useTypingLabel`,
+//   который строка зовёт ровно один раз за рендер и ровно с её `chatId`. Границей
+//   мемоизации при этом остаётся `memo` самой строки, поэтому счётчик краснеет и
+//   на снятом `memo` (ChatListItem.tsx), и на нестабильных пропсах из `ChatList`.
+// `archiveRenders` — рендеры настоящей `ArchiveRow`: считаются по `useRipple`;
+//   в тесте архива список пуст, поэтому кроме архива этот хук звать некому.
+// `rowRefs` — какой `ref` приехал строке на каждом её рендере (для этого нужна
+//   обёртка, но БЕЗ `memo`: решение «перерисовывать или нет» остаётся за самой
+//   строкой, обёртка лишь протоколирует пропсы).
+// `listRenderItems` — какая ссылка `renderItem` приехала в ядро списка.
+const { rowRenders, archiveRenders, rowRefs, listRenderItems } = vi.hoisted(() => ({
+  rowRenders: [] as number[],
+  archiveRenders: { count: 0 },
+  rowRefs: new Map<string, unknown[]>(),
+  listRenderItems: [] as unknown[],
+}))
+
+vi.mock('../core/hooks/useTypingLabel', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../core/hooks/useTypingLabel')>()
+  return {
+    ...mod,
+    useTypingLabel: (chatId: number, isGroup: boolean) => {
+      rowRenders.push(chatId)
+      return mod.useTypingLabel(chatId, isGroup)
+    },
+  }
+})
+
+vi.mock('../shared/ui/Ripple/useRipple', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../shared/ui/Ripple/useRipple')>()
+  return {
+    ...mod,
+    useRipple: () => {
+      archiveRenders.count++
+      return mod.useRipple()
+    },
+  }
+})
 
 vi.mock('./ChatListItem', async (importOriginal) => {
-  const { memo } = await import('react')
   const mod = await importOriginal<typeof import('./ChatListItem')>()
   const Real = mod.default
-  const Counting = (props: ComponentProps<typeof Real>) => {
-    rowRenders.push(props.chat.id)
+  const Probe = (props: ComponentProps<typeof Real>) => {
+    const seen = rowRefs.get(props.chat.id) ?? []
+    seen.push(props.ref)
+    rowRefs.set(props.chat.id, seen)
     return <Real {...props} />
   }
-  return { default: memo(Counting) }
+  return { default: Probe }
+})
+
+vi.mock('./virtual/DeferredSortedVirtualList', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('./virtual/DeferredSortedVirtualList')>()
+  const Real = mod.default
+  return {
+    ...mod,
+    default: (props: ComponentProps<typeof Real>) => {
+      listRenderItems.push(props.renderItem)
+      return <Real {...props} />
+    },
+  }
 })
 
 import ChatList, { type ChatListProps } from './ChatList'
@@ -140,6 +187,9 @@ let sizeStubbed = false
 
 beforeEach(() => {
   rowRenders.length = 0
+  archiveRenders.count = 0
+  rowRefs.clear()
+  listRenderItems.length = 0
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
   useAppStateStore.setState({ folders: [], drafts: [] })
@@ -285,23 +335,23 @@ describe('ChatList — позиционирование строки навеш�
 })
 
 describe('ChatList — мемоизация строки переезд пережила', () => {
+  /** Сколько раз отрисовались НАСТОЯЩИЕ строки 7..14 (idx 6..13 — те, что остаются в окне). */
+  const stayed = () => rowRenders.filter((id) => id >= 7 && id <= 14).length
+
   it('кадр скролла не перерисовывает строки, оставшиеся в окне', async () => {
     seedDialogs(500)
     const { managers } = fakeManagers(page({ count: 500 }))
 
     const { rerender } = await renderList(managers)
 
-    const stayed = () => rowRenders.filter((id) => Number(id) >= 7 && Number(id) <= 14).length
-    expect(stayed()).toBe(8) // строки 7..14 (idx 6..13) отрисованы по разу
+    expect(stayed()).toBe(8) // строки 7..14 отрисованы по разу
 
     await scrollTo(HOST_HEIGHT)
 
     expect(rows()[0].getAttribute('href')).toBe('#7') // окно действительно уехало
-    // Мутация: снять `useCallback` с `renderItem` — каждая из оставшихся в окне
-    // строк отрендерится по второму разу.
     expect(stayed()).toBe(8)
     // Въехавшие (15..24) — ровно по разу.
-    expect(rowRenders.filter((id) => Number(id) >= 15 && Number(id) <= 24).length).toBe(10)
+    expect(rowRenders.filter((id) => id >= 15 && id <= 24).length).toBe(10)
 
     // Ре-рендер родителя с НОВЫМИ инлайновыми обработчиками (то, что даёт Sidebar
     // на каждом своём рендере) строк тоже не касается. Мутация: убрать `useEvent`
@@ -310,6 +360,79 @@ describe('ChatList — мемоизация строки переезд пере
     await act(async () => { rerender({}) })
 
     expect(stayed()).toBe(8)
+  })
+
+  // Сюда `useCallback` вокруг `renderItem` попадает напрямую: тест выше его не
+  // видит, потому что пропсы строки стабильны сами по себе и её `memo` гасит
+  // лишний рендер даже при меняющемся `renderItem`. А вот ядро списка получает
+  // его пропом и по нему решает, перерисовывать ли ВСЁ окно.
+  it('ядро списка получает ОДНУ И ТУ ЖЕ ссылку renderItem между рендерами', async () => {
+    seedDialogs(20)
+    const { managers } = fakeManagers(page({ count: 20 }))
+
+    const { rerender } = await renderList(managers)
+    await act(async () => { rerender({}) })
+
+    // Мутация: снять `useCallback` — на каждом рендере ChatList в ядро приезжает
+    // новая стрелка.
+    expect(listRenderItems.length).toBeGreaterThan(1)
+    expect(new Set(listRenderItems).size).toBe(1)
+  })
+
+  // Докблок `VirtualListItemProps.itemRef` (`virtual/VerticalVirtualList.tsx:73-80`)
+  // требует вешать ref СТАБИЛЬНОЙ ссылкой: нестабильную React отцепляет и
+  // прицепляет заново на каждом рендере, а переприкрепление — это повторная
+  // синхронизация узла с текущим `top`, и анимация переезда молча исчезает.
+  it('строке приезжает СТАБИЛЬНАЯ ссылка ref (а не инлайновая стрелка)', async () => {
+    seedDialogs(20)
+    const { managers } = fakeManagers(page({ count: 20 }))
+
+    const { rerender } = await renderList(managers)
+    // Меняем выделение — это ЕДИНСТВЕННОЕ, что заставляет строку отрисоваться
+    // повторно с тем же `itemRef`.
+    await act(async () => { rerender({ selectedId: '5' }) })
+
+    const seen = rowRefs.get('3') ?? []
+    // Мутация: `ref={(el) => itemRef(el)}` — ссылки перестанут совпадать.
+    expect(seen.length).toBeGreaterThan(1)
+    expect(new Set(seen).size).toBe(1)
+  })
+
+  it('ChatListItem — memo: смена выделения перерисовывает ТОЛЬКО задетые строки', async () => {
+    seedDialogs(20)
+    const { managers } = fakeManagers(page({ count: 20 }))
+
+    const { rerender } = await renderList(managers)
+    const before = rowRenders.length
+    expect(before).toBe(14) // всё окно, по разу
+
+    // `renderItem` меняется вместе с `selectedId` → ядро зовёт его для каждой
+    // строки окна, но пропсы меняются только у выделенной. Мутация: снять `memo`
+    // с `ChatListItem` — перерисуются все 14.
+    await act(async () => { rerender({ selectedId: '5' }) })
+
+    expect(rowRenders.slice(before)).toEqual([5])
+  })
+
+  it('ArchiveRow — memo: смена выделения закреплённый архив не перерисовывает', async () => {
+    // Диалогов нет — `useRipple` в этом дереве зовёт только архив.
+    const { managers } = fakeManagers(page({ count: 0 }))
+
+    const { rerender } = await renderList(managers, {
+      archived: [{ id: '900', name: 'Архивный', avatar: '', date: '', preview: '', type: 'private' }],
+    })
+    // Ждём, пока доиграет волна reveal: при пустом наборе `revealIdx` встаёт на
+    // 0, закреплённый архив на кадр становится скелетоном и раскрывается
+    // следующим шагом волны (штатное поведение оригинала — `revealIdx` про
+    // закреплённые не знает). Без этой паузы базовый счётчик был бы гонкой.
+    await flushScroll()
+    const before = archiveRenders.count
+    expect(list().children[0].textContent).toContain('Архивный')
+
+    await act(async () => { rerender({ selectedId: '5' }) })
+
+    // Мутация: снять `memo` с `ArchiveRow` — счётчик вырастет на единицу.
+    expect(archiveRenders.count).toBe(before)
   })
 })
 
@@ -340,6 +463,10 @@ describe('ChatList — canvas-плейсхолдер первой загрузк
 
     const canvas = scroller().querySelector('canvas.dialogs-placeholder-canvas')
     expect(canvas).not.toBe(null)
+    // Именно контейнер ПРОКРУТКИ, а не `ul` (tweb: `sortedList.list.parentElement`).
+    // Мутация: перевесить `attach` на `ul` — канвас уедет внутрь списка, где его
+    // накроет высота `ul` и перекроют абсолютные строки.
+    expect(canvas?.parentElement).toBe(scroller())
 
     seedDialogs(3)
     await act(async () => { rerender({ loaded: true }) })

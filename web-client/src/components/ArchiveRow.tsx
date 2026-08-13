@@ -55,8 +55,11 @@ function ArchiveRow({ chats, onOpen, ref }: {
     >
       {ripple}
 
-      {/* archiveDialog.tsx:414-419 — слот аватара обычного ряда + градиентный круг */}
-      <div className={classNames('row-media', 'row-media-bigger', 'dialog-avatar', s.media)}>
+      {/* archiveDialog.tsx:414-419 — слот аватара обычного ряда + градиентный круг.
+          Своего класса у слота нет: в оригинале `styles.Media` несёт только
+          ветку `&.hasStories`, а padding там ИНЛАЙНОВЫЙ, из `storyDimensions()`
+          (archiveDialog.tsx:430-432) — сегменты историй мы не портируем. */}
+      <div className={classNames('row-media', 'row-media-bigger', 'dialog-avatar')}>
         <div className={s.mediaContent}>
           <TgIcon name="archive" size={28} color="#fff" />
         </div>
