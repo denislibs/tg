@@ -140,6 +140,22 @@
   }
 }
 
+// `ul` виртуального списка архива. Строки лежат в нём абсолютом (класс `.Item`
+// из `virtual/DeferredSortedVirtualList.module.scss`), поэтому containing block
+// обязан быть на самом `ul`: без `position: relative` строки отсчитывались бы от
+// `.archiveOverlay` и не прокручивались бы вместе со списком. У основного списка
+// то же самое делает `.virtual-chatlist` (_chatlist.scss:471).
+//
+// Классы `chatlist virtual-chatlist` сюда НЕ переезжают, хотя в tweb они у
+// архива есть (там это тот же `SortedDialogList`): они принесли бы боковые поля
+// .5rem, которых у строк нашего оверлея никогда не было, — а задача этапа
+// механика рендера, а не редизайн. `margin: 0` гасит браузерный отступ списка
+// (глобальный сброс в `styles/index.scss:109` снимает только padding и маркеры).
+.archiveVirtualList {
+  position: relative;
+  margin: 0;
+}
+
 .searchOverlay {
   position: absolute;
   inset: 0;
