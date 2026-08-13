@@ -17,7 +17,6 @@ import { useSettingsStore } from '../settings'
 import { useLockStore } from '../stores/lockStore'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
-import { guessLoadCount } from '../core/dialogs/loadCount'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { User } from '../core/managers/authManager'
 
@@ -42,9 +41,8 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: b
  * Применить ответ владельца к витрине ДО первого рендера (подписка на
  * rt:dialog_op ещё не поднята — startRealtime() стартует позже, из
  * useAppBootstrap.ts; кадры, случившиеся раньше её подписки, никто не
- * буферизует, см. web-client/CLAUDE.md «Владение фактами»). Догон первой
- * страницы (getDialogs) идёт отдельно — его НЕ ждём здесь, чтобы не блокировать
- * рендер сетью.
+ * буферизует, см. web-client/CLAUDE.md «Владение фактами»). Сеть догоняет
+ * отдельно (refresh) — её НЕ ждём здесь, чтобы не блокировать рендер сетью.
  *
  * `applyDialogOps` здесь — allow-listed исключение из «пишет только проектор»
  * (см. stores/noDuplicateDialogs.test.ts, как и у `core/hooks/useAuthGate.ts`):
@@ -56,52 +54,40 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: b
  * из результата RPC, а не только бродкастом — до подъёма насоса (startRealtime()
  * из эффекта useAppBootstrap) кадр `rt:dialog_op` доставить некому, и на быстрой
  * сети reset уходил в никуда. Возвращаем промис этого догона: он уезжает в
- * `bootData` и на нём висит сид презенса (`loadPresence`). Промис намеренно НЕ
- * отклоняется (401/5xx пробрасываются наружу из менеджера): остаёмся на кэше,
- * презенс сеется тем, что есть, unhandled rejection не плодим (Minor #3).
+ * `bootData` и на нём висит сид презенса (`loadPresence`), которому нужен
+ * честный сигнал «сетевой список приехал» — на пустом кэше зеркало в момент
+ * монтирования Shell ещё пусто. Промис намеренно НЕ отклоняется (401/5xx у
+ * `refresh()` пробрасываются): остаёмся на кэше, презенс сеется тем, что есть,
+ * unhandled rejection не плодим (Minor #3).
  *
- * Этап 3 (виртуальный список): догон идёт СТРАНИЦЕЙ — `getDialogs({limit:
- * guessLoadCount()})`, а не полным `refresh()`. Полный список одним куском
- * поднимал у владельца `loadedAll`, после чего пагинация не работала никогда
- * (`dialogsManager.ts::getDialogs` отвечал из памяти), то есть весь этап 2
- * оставался мёртвым кодом. `refresh()` при этом никуда не делся — он остаётся
- * ЯВНЫМ полным ресинком (Sidebar, deep-links, кадр `rt:resync`), просто первым
- * запросом сеанса больше не является.
+ * ПОЧЕМУ ПЕРВИЧНАЯ ЗАГРУЗКА ПОЛНАЯ, А НЕ СТРАНИЦА. Этап 3 менял этот вызов на
+ * `getDialogs({limit: guessLoadCount()})` (страница вместо полного списка) —
+ * откачено сквозным ревью. Зеркало (`stores/chatsStore.ts`) — источник не
+ * только для списка «Все чаты», но и для АРХИВА и ПОЛЬЗОВАТЕЛЬСКИХ ПАПОК, а
+ * размера их наборов нет ни у бэкенда, ни у воркера: `limit` режет ГЛОБАЛЬНЫЙ
+ * порядок и архивные строки в ответе не выделены
+ * (`backend/internal/usecase/chat/dialogpage.go`, `chatsrepo.go`), а
+ * `dialogsManager.ts::countFor` для ARCHIVE и папок отдаёт длину того, что УЖЕ
+ * набрано. Поэтому усечённое зеркало делает эти списки неполными МОЛЧА:
+ * `totalCount === items.length` ⇒ дырок в `fullItems` нет ⇒ `requestItemForIdx`
+ * не зовётся ⇒ догрузки для них не случается НИКОГДА, и ни одного признака в UI
+ * нет. Хуже того: не попал архивный чат в первые ~20 строк глобального порядка —
+ * строки «Архив» в сайдбаре нет вовсе (`components/ChatList.tsx`, гейт
+ * `archived.length > 0`), то есть нет и входа в архив. Пока у папок и архива
+ * нет собственного счётчика набора, первичная загрузка обязана быть полной.
  *
- * ЧТО ЭТО МЕНЯЕТ ДЛЯ `dialogsReady`. `getDialogs` — cache-first (как tweb
- * `dialogsStorage.getDialogs`): если кэш владельца уже держит `guessLoadCount()`
- * строк папки, он отвечает ИЗ ПАМЯТИ и в сеть не идёт вовсе — прежний `refresh()`
- * бил в `/chats` всегда. Поэтому `dialogsReady` больше не означает «сетевой
- * список приехал»; его смысл теперь — «первая страница списка ДОЕХАЛА ДО
- * ЗЕРКАЛА, из сети или из кэша владельца». Потребителю (сид презенса
- * `loadPresence` в `useAppBootstrap`) нужно ровно это: непустое зеркало, из
- * которого можно взять цели, — а не факт сетевого запроса.
- *
- * Страницу к зеркалу применяет второй `fillMirror()`: `getDialogs` отдаёт
- * `Dialog[]` без индексов порядка (их считает только владелец — см.
- * `stores/noManualOrder.test.ts`), а его собственная публикация `upsert` — это
- * бродкаст `rt:dialog_op`, которого на холодном старте доставить некому (то же
- * Important #2, что и выше). Пробел объявляет зеркало, владелец отвечает —
- * `fillMirror()` и есть этот канал, второй вызов идёт уже без сети (кэш
- * владельца прогрет страницей).
- *
- * Цена схемы: полный список едет по порту ДВАЖДЫ за холодный старт (ответ
- * первого `fillMirror` + ответ второго) плюс лишний бродкаст `reset` соседним
- * вкладкам (`announce` внутри `fillMirror`). Со стороны стора это бесплатно —
- * `reconcile`/`sameList`/`sameIndex` сохраняют ссылки, второго рендера нет.
- * Дешевле было бы `getSnapshot()` владельца (`dialogsManager.ts:549`, индексы
- * там есть, сейчас не зовётся ниоткуда) — но это отдельный RPC-контракт и
- * правка этапа 2, не этой задачи.
+ * Пагинация при этом НЕ мертва и не удалена: `getDialogs` +
+ * `helpers/sequentialCursorFetcher` продолжают обслуживать список «Все чаты»,
+ * пока у владельца не поднят `loadedAll` (`dialogsManager.ts`) — то есть когда
+ * полный ответ не дошёл (офлайн/ошибка) или пришёл без `is_end`.
  */
 export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>, locked: boolean): Promise<void> {
   if (op) useChatsStore.getState().applyDialogOps([op])
   if (locked) return Promise.resolve()
-  return managers.dialogs.getDialogs({ limit: guessLoadCount() })
-    .then(() => managers.dialogs.fillMirror())
-    .then(
-      (netOp) => { useChatsStore.getState().applyDialogOps([netOp]) },
-      () => { /* офлайн/401 — витрина остаётся на кэше владельца */ },
-    )
+  return managers.dialogs.refresh().then(
+    (netOp) => { if (netOp) useChatsStore.getState().applyDialogOps([netOp]) },
+    () => { /* офлайн/401 — витрина остаётся на кэше владельца */ },
+  )
 }
 
 export async function bootstrap(): Promise<{ managers: Managers }> {

@@ -53,9 +53,10 @@ function wrapper(managers: Managers) {
 function fakeManagers(fillMirror: ReturnType<typeof vi.fn>, refresh: ReturnType<typeof vi.fn>): Managers {
   return {
     auth: { me: vi.fn(async () => null) },
-    // Этап 3: сетевой догон `applyDialogsMirror` — страница `getDialogs`, а не
-    // полный `refresh()` (см. докблок в `client/boot.ts`); сама страница
-    // доезжает до зеркала вторым ответом `fillMirror()`.
+    // Сетевой догон `applyDialogsMirror` — ПОЛНЫЙ `refresh()`, а не страница
+    // (см. докблок в `client/boot.ts`). `getDialogs` фейк всё равно держит:
+    // мутация «вернуть постраничный догон» должна дойти до ассерта, а не упасть
+    // на отсутствующем методе.
     dialogs: { fillMirror, refresh, getDialogs: vi.fn(async () => ({ dialogs: [], count: 0, isEnd: false })) },
     presence: { get: vi.fn(async () => []) },
   } as unknown as Managers
@@ -85,10 +86,9 @@ describe('useAppBootstrap: зеркало диалогов после разбл
 
     for (let i = 0; i < 20; i++) await Promise.resolve()
 
-    // Первый fillMirror() — гейт под локом, второй — доставка страницы догона.
-    expect(fillMirror).toHaveBeenCalledTimes(2)
-    expect(managers.dialogs.getDialogs).toHaveBeenCalledTimes(1)
-    expect(refresh).not.toHaveBeenCalled()
+    expect(fillMirror).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(managers.dialogs.getDialogs).not.toHaveBeenCalled()
     expect(useChatsStore.getState().loaded).toBe(true)
     expect(useChatsStore.getState().dialogs).toEqual([])
   })
@@ -99,10 +99,8 @@ describe('useAppBootstrap: зеркало диалогов после разбл
     const dialog = { chatId: 1, type: 'private', title: 't1', unread: 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false } as unknown as import('../models').Dialog
     const cacheOp: DialogOp = { op: 'reset', items: [] } // под passcode кэш владельца всегда пуст
     const netOp: DialogOp = { op: 'reset', items: [{ dialog, index: 10 }] }
-    // Первый ответ — пустой кэш владельца, второй (после страницы догона) —
-    // прогретый ею список.
-    const fillMirror = vi.fn(async () => (fillMirror.mock.calls.length > 1 ? netOp : cacheOp))
-    const refresh = vi.fn(async () => null)
+    const fillMirror = vi.fn(async () => cacheOp)
+    const refresh = vi.fn(async () => netOp)
 
     renderHook(() => useAppBootstrap(), { wrapper: wrapper(fakeManagers(fillMirror, refresh)) })
 
