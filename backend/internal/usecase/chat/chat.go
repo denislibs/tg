@@ -343,6 +343,21 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 	return dialogs, nil
 }
 
+// ListDialogsPage — страница списка диалогов по курсору.
+//
+// Надстройка над ListDialogs, а не отдельный запрос в БД: единица кэширования
+// (dialogscache, TTL 15с) — полный список, и нарезка идёт после чтения кэша.
+// Тяжёлую часть запроса (LATERAL на каждый диалог) пагинация не разгружает —
+// её сняла бы только денормализация last_message_at, это отдельная задача;
+// здесь пагинация решает контракт клиента, см. спеку этапа 2.
+func (i *Interactor) ListDialogsPage(ctx context.Context, userID int64, p domain.DialogPage) (domain.DialogPageResult, error) {
+	all, err := i.ListDialogs(ctx, userID)
+	if err != nil {
+		return domain.DialogPageResult{}, err
+	}
+	return sliceDialogPage(all, p), nil
+}
+
 // ChatPartners returns the user ids that share a chat with userID.
 func (i *Interactor) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
 	return i.chats.ChatPartners(ctx, userID)
