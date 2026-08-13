@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
 import { useFolders, useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
-import { matchesFolder } from '../folderFilter'
+import { chatMatchesFolder } from '../folderFilter'
 import { openPopup } from '../../stores/popupStore'
 import { useManagers } from './useManagers'
 import { useT } from '../../i18n'
@@ -38,7 +38,7 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
   // Мемоизировано, чтобы <ChatList>/<FolderTabs> получали стабильные пропсы —
   // ре-рендер сайдбара под тогл оверлея не пересоздаёт массивы и не бьёт их memo.
   const filtered = useMemo(
-    () => (activeFolder ? visibleChats.filter((c) => matchesFolder(c, activeFolder, contactIds)) : visibleChats),
+    () => (activeFolder ? visibleChats.filter((c) => chatMatchesFolder(c, activeFolder, contactIds)) : visibleChats),
     [visibleChats, activeFolder, contactIds],
   )
 
@@ -48,7 +48,7 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
     const counts: Record<number, number> = {
       [ALL_FOLDER_ID]: visibleChats.filter((c) => c.unread && !c.muted).length,
     }
-    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && matchesFolder(c, f, contactIds)).length
+    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && chatMatchesFolder(c, f, contactIds)).length
     return counts
   }, [visibleChats, folders, contactIds])
 
