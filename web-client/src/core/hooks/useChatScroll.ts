@@ -20,6 +20,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
+import { useIsActiveChat } from '../chat/chatInstanceContext'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../realtime/events'
@@ -44,6 +45,13 @@ interface UseChatScrollArgs {
 
 export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const managers = useManagers()
+  // В стеке инстансов чата смонтировано несколько копий одновременно (неактивные
+  // скрыты display:none, но живут в DOM) — у скрытого узла scrollHeight/clientHeight/
+  // scrollTop равны 0, поэтому любое условие «прижат к низу» тривиально истинно.
+  // Эффекты этого хука, которые сами по себе способны отметить чат прочитанным
+  // (markRead), обязаны быть гейтированы этим флагом — иначе фоновый инстанс читает
+  // чат за пользователя. См. gate у каждого из них ниже.
+  const isActive = useIsActiveChat()
   const [showScrollDown, setShowScrollDown] = useState(false)
   // Unread-below badge on the scroll-to-bottom button (tweb .bubbles-go-down count):
   // DERIVED from the store, not accumulated from the event stream. newestSeq (the
@@ -199,7 +207,13 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
       atBottomRef.current = !userScrolledUpRef.current || atRealBottom
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
-      if (atRealBottom && document.hasFocus()) {
+      // Гейт активности: onAdditionalScroll не только реагирует на настоящий
+      // scroll-event своего собственного контейнера (что само по себе безопасно —
+      // у скрытого узла его не бывает), но и зовётся ПРОГРАММНО на монтировании и
+      // на каждое изменение win.msgs/win.reachedBottom (эффекты ниже) — эти вызовы
+      // происходят у ЛЮБОГО смонтированного инстанса независимо от видимости, и
+      // именно они и есть источник бага «фоновый инстанс сам читает чат».
+      if (atRealBottom && document.hasFocus() && isActive) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
@@ -528,7 +542,9 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // lastReadSeq), so the incoming message already grows it via lastMessage.seq. The
   // DATA path is realtimeBridge → messagesStore; this stays a pure UI reaction.
   useEffect(() => {
-    if (!isRealChat) return
+    // Гейт активности: фоновый (скрытый) инстанс не должен отмечать чужой для
+    // пользователя чат прочитанным на входящее сообщение.
+    if (!isRealChat || !isActive) return
     // Подписка на rootScope напрямую (типизированный payload). storeProjection
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
@@ -540,7 +556,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     }
     rootScope.addEventListener(RT.newMessage, onNewMessage)
     return () => rootScope.removeEventListener(RT.newMessage, onNewMessage)
-  }, [isRealChat, numericChatId, managers])
+  }, [isRealChat, isActive, numericChatId, managers])
 
   // Mark read on open / at the bottom — when the newest is loaded, focused, and the
   // viewport is pinned to the bottom, read up to max seq. This effect re-runs on
@@ -548,16 +564,21 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // history must NOT have the messages below the fold auto-marked read (tweb reads
   // only what's seen) — otherwise the derived unread-below badge could never rise.
   // Gated on focus like tweb (a background tab shouldn't mark a chat read).
+  // Плюс гейт активности инстанса — тот же класс бага: у скрытой копии
+  // atBottomRef тривиально true (нулевая геометрия), без гейта она читала бы
+  // чат при каждом обновлении окна, даже пока пользователь смотрит другой чат.
   useEffect(() => {
-    if (!isRealChat || !win.reachedBottom || win.msgs.length === 0) return
+    if (!isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
     if (!atBottomRef.current || !document.hasFocus()) return
     const maxSeq = win.msgs[win.msgs.length - 1].seq
     void managers.realtime.markRead({ chatId: numericChatId, upToSeq: maxSeq })
-  }, [isRealChat, win.reachedBottom, win.msgs, numericChatId, managers])
+  }, [isRealChat, isActive, win.reachedBottom, win.msgs, numericChatId, managers])
 
   // Mark read when the window regains focus while we're at the bottom of this chat.
+  // Гейт активности: window 'focus' — глобальное событие, слышат ВСЕ смонтированные
+  // инстансы разом; без гейта фоновая копия тоже отмечала бы чат прочитанным.
   useEffect(() => {
-    if (!isRealChat) return
+    if (!isRealChat || !isActive) return
     const onFocus = () => {
       const el = scrollRef.current
       if (!el || win.msgs.length === 0) return
@@ -568,7 +589,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [isRealChat, numericChatId, win.msgs, managers])
+  }, [isRealChat, isActive, numericChatId, win.msgs, managers])
 
   // Floating "scroll to bottom" button (tweb .bubbles-go-down). If we jumped into
   // mid-history (true bottom not loaded), reload the newest page and pin to it —
