@@ -24,7 +24,7 @@ import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
-import { useNavigationStore } from '../stores/navigationStore'
+import { useChatStackStore } from '../stores/chatStackStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
@@ -153,8 +153,17 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
   const { openPeer: onOpenPeer, onChatCreated, openPublicChannel: onOpenChannel } = useNavigationActions()
-  const onCloseThread = useNavigationStore((s) => s.closeThread)
-  const onOpenThread = useNavigationStore((s) => s.openCommentsThread)
+  const onCloseThread = useCallback(() => { useChatStackStore.getState().closeTop() }, [])
+  // Ветка комментариев под постом канала (tweb setPeer({peerId, threadId})) —
+  // кладём поверх стека (tweb setInnerPeer).
+  const onOpenThread = useCallback((args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => {
+    useChatStackStore.getState().setInnerPeer({
+      peerId: args.chatId,
+      threadId: args.rootMsgId,
+      type: 'discussion',
+      thread: { rootMsgId: args.rootMsgId, title: args.title, subtitle: args.subtitle, kind: 'comments' },
+    })
+  }, [])
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
 
@@ -1271,11 +1280,20 @@ export default function Chat({ chat, onBack, thread }: Props) {
       {/* Колонка чата = tweb `.chat.tabs-tab.active`; `can-click-date` включает
           клик по дате-разделителю (_chatBubble.scss:511-514, bubbles.ts:3058-3090).
           Геометрия — из styles/tweb/_chat.scss (topbar/bubbles/chat-input внутри
-          позиционируются абсолютом относительно #column-center). */}
+          позиционируются абсолютом относительно #column-center).
+          `tabs-tab` (переключение display:none/flex + transform-переход между
+          инстансами стека) с этого узла УБРАН — им теперь владеет обёртка
+          ChatsContainer (`.chat.tabs-tab[data-type]`, ChatsContainer.tsx), у
+          которой и лежит настоящий класс `.active` активного инстанса. `chat` +
+          `active` здесь оставлены НЕ дублем: `.chat:not(.active)` и парные
+          компаунд-селекторы `.chat.is-go-down-visible`/`.chat.is-search-active`
+          (_chat.scss:486,1217,527) требуют оба класса на ОДНОМ узле — без
+          локального `chat.active` кнопка «вниз» и паддинг поиска молча
+          перестали бы работать. */}
       <div
         ref={rootRef}
         className={classNames(
-          'chat', 'tabs-tab', 'active',
+          'chat', 'active',
           isRealChat ? 'can-click-date' : '',
           // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
           showScrollDown ? 'is-go-down-visible' : '',

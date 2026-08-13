@@ -6,15 +6,21 @@ import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 import { initHotkeys } from '../hotkeys'
 
 export function useAppHotkeys(): void {
   const managers = useManagers()
   // Esc: тред закрывается первым (комментарии → назад к каналу), затем чат.
+  // Полное закрытие идёт через selectChat(null) (а не голый setSelectedId) —
+  // она же чистит chatStackStore: без этого колонка на десктопе осталась бы
+  // показывать прежний чат (useLeftColumnShown прячет #column-center только
+  // на хендхелдах, см. её докблок).
   const escCloseChat = useCallback(() => {
+    const stack = useChatStackStore.getState()
+    if (selectOpenThread(stack)) { stack.closeTop(); return }
     const nav = useNavigationStore.getState()
-    if (nav.openThread) { nav.closeThread(); return }
-    if (nav.selectedId) { nav.setSelectedId(null); nav.setDraftPeer(null) }
+    if (nav.selectedId) nav.selectChat(null)
   }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец

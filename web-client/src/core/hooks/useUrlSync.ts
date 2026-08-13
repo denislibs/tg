@@ -14,6 +14,7 @@ import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 import { setBaseHandler } from '../navigation/navigationStack'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import type { Managers } from '../../client/bootstrap'
@@ -21,7 +22,8 @@ import type { Managers } from '../../client/bootstrap'
 // Хэш для текущего состояния навигации (без ведущего #). '' — список чатов.
 function hashForState(): string {
   const nav = useNavigationStore.getState()
-  if (nav.openThread) return `${nav.openThread.chatId}_${nav.openThread.thread.rootMsgId}`
+  const openThread = selectOpenThread(useChatStackStore.getState())
+  if (openThread) return `${openThread.chatId}_${openThread.thread.rootMsgId}`
   const id = nav.selectedId
   if (!id) return ''
   if (id.startsWith('draft:')) {
@@ -66,8 +68,11 @@ export async function applyHash(rawHash: string, managers: Managers): Promise<vo
       }
       const user = res.users.find((u) => u.username.toLowerCase() === username)
       if (user) {
+        // selectChat кладёт черновик-инстанс в chatStackStore (см. openPeer в
+        // useNavigationActions — та же пара вызовов и тот же порядок: draftPeer
+        // восстанавливается ПОСЛЕ selectChat, которая сама его обнуляет).
+        nav.selectChat(`draft:${user.id}`)
         nav.setDraftPeer({ id: user.id, displayName: user.displayName, username: user.username, avatarUrl: user.avatarUrl })
-        nav.setSelectedId(`draft:${user.id}`)
       }
     } catch { /* директория недоступна — оставляем список */ }
     return
@@ -81,7 +86,7 @@ export async function applyHash(rawHash: string, managers: Managers): Promise<vo
 export function useUrlSync(): void {
   const managers = useManagers()
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useNavigationStore((s) => s.openThread)
+  const openThread = useChatStackStore(selectOpenThread)
   const suppressRef = useRef(false)
   const readyRef = useRef(false)
 

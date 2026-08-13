@@ -17,6 +17,7 @@ import { resolvePreset, PRESET_MODE } from '../../theme'
 import { useSettingsStore } from '../../settings'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 
 export interface ShellTheme {
   shellThemeVariant: ChatThemeVariant | undefined
@@ -24,7 +25,7 @@ export interface ShellTheme {
 
 export function useShellTheme(): ShellTheme {
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useNavigationStore((s) => s.openThread)
+  const openThread = useChatStackStore(selectOpenThread)
   // Тема живёт в диалоге (chatsStore.dialogs) — тот же источник, из которого
   // useChatList собирает Chat, поэтому отдельный фолбэк по `selected.themeId`
   // ничего не добавил бы. Черновик (`draft:<peerId>`) и синтетический чат треда

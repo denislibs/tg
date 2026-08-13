@@ -4,16 +4,15 @@
 // который должен подписываться ровно один раз — Shell вызывает этот хук единожды.
 import { useEffect } from 'react'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 import { useNavigationActions } from './useNavigationActions'
 
 export function useChatNavigation() {
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useNavigationStore((s) => s.openThread)
+  const openThread = useChatStackStore(selectOpenThread)
   const draftPeer = useNavigationStore((s) => s.draftPeer)
   const selectChat = useNavigationStore((s) => s.selectChat)
   const setSelectedId = useNavigationStore((s) => s.setSelectedId)
-  const openCommentsThread = useNavigationStore((s) => s.openCommentsThread)
-  const closeThread = useNavigationStore((s) => s.closeThread)
   const actions = useNavigationActions()
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
@@ -32,7 +31,7 @@ export function useChatNavigation() {
 
   return {
     selectedId, openThread, draftPeer,
-    selectChat, setSelectedId, openCommentsThread, closeThread,
+    selectChat, setSelectedId,
     ...actions,
   }
 }

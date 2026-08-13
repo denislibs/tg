@@ -30,6 +30,7 @@ import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import { useManagers } from '../core/hooks/useManagers'
 import { useChatList } from '../core/hooks/useChatList'
 import { useNavigationStore } from '../stores/navigationStore'
+import { useChatStackStore, selectOpenThread } from '../stores/chatStackStore'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
@@ -103,7 +104,10 @@ export default function Sidebar({
   // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
   const chats = useChatList()
   const selectedId = useNavigationStore((st) => st.selectedId) ?? ''
-  const activeTopicId = useNavigationStore((st) => (st.openThread?.thread.kind === 'topic' ? st.openThread.thread.rootMsgId : null))
+  const activeTopicId = useChatStackStore((st) => {
+    const open = selectOpenThread(st)
+    return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
+  })
   const onSelect = useNavigationStore((st) => st.selectChat)
   const { openTopicThread: onOpenTopic, openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
 
