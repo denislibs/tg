@@ -397,6 +397,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   }
 
   /**
+   * Элементы ВЫБОРКИ (а не папки) в текущем порядке: для `all`/`archive` это и
+   * есть отфильтрованный список, для пользовательской папки — ВЕСЬ кэш, потому
+   * что её выборка глобальная (tweb: `realFolderId` = GLOBAL для фильтра,
+   * dialogs.ts:1646-1649).
+   *
+   * Заведён отдельно от `forFilter`, чтобы у сетевой страницы всё, что зависит
+   * от выборки, считалось по ОДНОМУ списку: и курсор (`offset_chat_id`), и
+   * размер удерживаемого окна (`held`, размер фолбэка залипшего курсора). Пока
+   * курсор брался из выборки, а размер окна — из отфильтрованной папки,
+   * фолбэк для пользовательской папки просил ЗАВЕДОМО КОРОТКУЮ страницу
+   * (длина папки вместо длины кэша) и курсор не расклинивал: страница вновь
+   * приносила уже известное, `added` оставался нулём, и список папки замирал
+   * на плейсхолдерах.
+   */
+  const scopeList = (filterId: number): DialogItem[] =>
+    scopeFor(filterId) === 'global' ? items : (forFilter(filterId) ?? [])
+
+  /**
    * Размер набора для страницы — порт `count: loadedAll ? curDialogStorage.length
    * : this.getFolder(filterId).count` (dialogs.ts:1706).
    *
@@ -443,7 +461,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *
    * Возвращает, сколько диалогов страница добавила ВПЕРВЫЕ (обновление уже
    * известного не считается). Ноль — признак того, что курсор не продвинулся;
-   * что с этим делать, решает `getDialogs` (см. фолбэк на `refresh()`).
+   * что с этим делать, решает `getDialogs` (см. там фолбэк залипшего курсора —
+   * повторная страница БЕЗ курсора).
    */
   function mergePage(dialogs: Dialog[]): number {
     const byId = new Map(items.map((i) => [i.dialog.chatId, i]))
@@ -477,9 +496,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   async function fetchPage(filterId: number, limit: number, useCursor = true): Promise<{ isEnd: boolean; added: number } | null> {
     const gen = sessionGen
     const scope = scopeFor(filterId)
-    // Пользовательская папка вычерпывает глобальный набор (tweb: realFolderId
-    // = GLOBAL для фильтра), поэтому её курсор — хвост всего кэша.
-    const cursorList = scope === 'global' ? items : (forFilter(filterId) ?? [])
+    // Курсор — хвост СВОЕЙ выборки (для пользовательской папки это весь кэш,
+    // см. докблок `scopeList`).
+    const cursorList = scopeList(filterId)
     const offsetChatId = useCursor && cursorList.length ? cursorList[cursorList.length - 1].dialog.chatId : 0
     const wire = WIRE_FOLDER[scope]
     const query: Record<string, string | number> = { limit, offset_chat_id: offsetChatId }
@@ -501,8 +520,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // у нас курсор — `chatId`, и при исчезнувшем опорном чате бэкенд отдаёт
       // с начала (`dialogpage.go`), поэтому одного `is_end` мало — сверяем с
       // размером выборки, как это же делает tweb в `dialogsLength >= count`.
-      const held = scope === 'global' ? items.length : (forFilter(filterId) ?? []).length
-      if (isEnd && (!offsetChatId || held >= (serverCount[scope] ?? Infinity))) setLoaded(scope)
+      // `scopeList` здесь пересчитывается сознательно: страница только что
+      // влилась в кэш (`mergePage` выше), и удерживаемое окно уже ДРУГОЕ, не то,
+      // из которого брался курсор. Короткое замыкание бережёт лишний проход по
+      // кэшу: без `is_end` и без курсора размер выборки не нужен вовсе.
+      if (isEnd && (!offsetChatId || scopeList(filterId).length >= (serverCount[scope] ?? Infinity))) setLoaded(scope)
       return { isEnd, added }
     } catch (e) {
       if (e instanceof HttpError) throw e
@@ -656,7 +678,12 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // приносит хвост. Полным `refresh()` это лечить больше нельзя — он
       // ограничен тем же удерживаемым окном (Task 5) и списка не продвигает.
       if (res && !res.isEnd && !res.added) {
-        res = await fetchPage(filterId, cached.length + limit, false)
+        // Размер фолбэка считается по ТОМУ ЖЕ списку, из которого брался курсор
+        // (`scopeList`), а НЕ по отфильтрованной папке: у пользовательской папки
+        // курсор — хвост всего кэша, и страница длиной с папку заведомо не
+        // дотянулась бы до него — курсор остался бы залипшим (ревью Task 4,
+        // Important 1).
+        res = await fetchPage(filterId, scopeList(filterId).length + limit, false)
         // Тот же сознательно непокрытый гвард, что выше, — довод там же.
         if (gen !== sessionGen) return { dialogs: [], count: 0, isEnd: false }
       }

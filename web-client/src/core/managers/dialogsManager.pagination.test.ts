@@ -308,6 +308,38 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
     expect(page.isEnd).toBe(true)
   })
 
+  // Ревью Task 4, Important 1: у ПОЛЬЗОВАТЕЛЬСКОЙ папки выборка глобальная, и
+  // курсор берётся из всего кэша — значит и фолбэк обязан просить окно ВСЕГО
+  // КЭША, а не длины папки. Страница длиной с папку (тут — ноль подходящих
+  // диалогов + limit) не дотягивается до залипшего чата, приносит только уже
+  // известное, и папка навсегда остаётся с незаполняемыми плейсхолдерами.
+  it('залипший курсор в пользовательской папке лечится окном всего кэша, а не длиной папки', async () => {
+    // Сервер: 8 диалогов в глобальном порядке (chat 1 — самый свежий), группа
+    // (единственный житель папки 7) — в самом хвосте.
+    const server = Array.from({ length: 8 }, (_, i) => raw(i + 1, 8 - i, i === 7 ? { type: 'group' } : {}))
+    const rest = {
+      get: vi.fn(async (_path: string, q: Record<string, number>) => (q.offset_chat_id
+        // опорный чат курсора исчез — страница приходит с начала и нового не несёт
+        ? { chats: [raw(1, 8), raw(2, 7)], count: 40, is_end: false }
+        : { chats: server.slice(0, q.limit), count: server.length, is_end: q.limit >= server.length })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      // держим три ГЛОБАЛЬНЫХ диалога, из которых в папку 7 не попадает ни один
+      loadCache: async () => [dialog(1, 8), dialog(2, 7), dialog(3, 6)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+
+    const page = await mgr.getDialogs({ limit: 5, filterId: 7 })
+
+    // Фолбэк просит 3 (весь кэш) + 5, доходит до восьмого чата и приносит его;
+    // по длине папки (0 + 5) страница закончилась бы на пятом, и папка осталась
+    // бы пустой при завышенном count.
+    expect(rest.get.mock.calls[1][1]).toEqual({ limit: 8, offset_chat_id: 0 })
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([8])
+  })
+
   // Порт `count: loadedAll ? curDialogStorage.length : folder.count`
   // (dialogs.ts:1706): как только набор загружен целиком, размером служит
   // ДЛИНА КЭША, а серверный `count` прошлых страниц — устаревшее число.
@@ -417,19 +449,30 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
   // архива и «Всех чатов» нет, оба живут на этой оценке — как
   // пользовательская папка в оригинале живёт ПОСТОЯННО (dialogs.ts:1728).
   it('до собственного сетевого ответа архив и папка тоже берут завышенный глобальный count', async () => {
+    const rest = restStub({ chats: [raw(9, 9)], count: 137, is_end: false })
     const mgr = newDialogsManager({
-      rest: restStub({ chats: [raw(9, 9)], count: 137, is_end: false }) as never,
+      rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [contactDialog, strangerDialog, dialog(3, 3, { archived: true })],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, nonContacts: true })] }),
+      // Папка 8 — близнец седьмой по правилу: в сеть она не сходит ни разу,
+      // значит и `count` у неё может взяться только с чужой оценки.
+      loadState: async () => ({
+        pinnedOrders: {}, drafts: [] as Draft[],
+        folders: [folder({ id: 7, nonContacts: true }), folder({ id: 8, nonContacts: true })],
+      }),
     })
     mgr.setContactIds([7])
     await mgr.getDialogs({ filterId: 7, limit: 5 }) // глобальная выборка отдала count 137 (кэш стал 4)
+    rest.get.mockClear()
 
     // Окна ниже умещаются в кэш — сеть больше не дёргается, сравниваем только count.
-    expect((await mgr.getDialogs({ limit: 3 })).count).toBe(137) // «Все чаты» — серверный
+    expect((await mgr.getDialogs({ limit: 3 })).count).toBe(137) // «Все чаты» — на глобальной оценке
     expect((await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 1 })).count).toBe(137)
-    expect((await mgr.getDialogs({ filterId: 7, limit: 1 })).count).toBe(137)
+    // Папка 8 своего ответа не видела вовсе — живёт на оценке, оставленной
+    // ответом папки 7 (выборка у обеих одна, глобальная; порт
+    // `folder.count = result.count`, dialogs.ts:1728).
+    expect((await mgr.getDialogs({ filterId: 8, limit: 1 })).count).toBe(137)
+    expect(rest.get).not.toHaveBeenCalled()
   })
 
   // Порт `setDialogsLoaded(realFolderId=FOLDER_ID_ALL)` (dialogs.ts:276-288):
