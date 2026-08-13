@@ -659,6 +659,31 @@
   }
 }
 
+// Виртуальный `ul` вкладки «Избранное» (tweb appSearchSuper.ts:1897-1907 —
+// SortedDialogList): строки лежат в нём абсолютом, поэтому containing block
+// обязан быть на самом `ul` (у списка чатов ту же роль играет `.virtual-chatlist`,
+// styles/tweb/_chatlist.scss:471). Боковой отступ строки переезжает сюда по той
+// же причине, что и в tweb `.virtual-chatlist`: абсолютная строка растянута на
+// 100% ширины containing block'а, и собственный горизонтальный margin вынес бы
+// её за правый край.
+.savedVirtualList {
+  position: relative;
+  list-style: none;
+  margin: 0 8px;
+  padding: 0;
+}
+
+// Строка «Избранного» — та же, что .memberRow, но ростом со слот виртуального
+// списка: в tweb это обычная строка списка диалогов, `.row-big { min-height:
+// 4.5rem }` (_row.scss:131) — те же 72px, что itemSize у SortedDialogList
+// (appSearchSuper.ts:1905). Без этого строка (56px) не заполняла бы свой слот и
+// между строками зияли бы 16px.
+.savedRow {
+  min-height: 72px;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 // линия заголовка: имя слева, роль справа (tweb row-title-row: 16/22)
 .memberTitleRow {
   display: flex;
