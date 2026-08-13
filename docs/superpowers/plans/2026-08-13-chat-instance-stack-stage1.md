@@ -846,11 +846,19 @@ git commit -m "refactor(chat): навигация колонки чата чер
 ### Task 6: гейт глобальных эффектов в `Chat.tsx`
 
 **Files:**
-- Modify: `web-client/src/components/Chat.tsx:1106-1121` (window-хоткей Ctrl+PageUp/PageDown)
-- Test: `web-client/src/components/Chat.hotkeys.instance.test.tsx` (создать)
+- Create: `web-client/src/core/hooks/useFeedPageHotkeys.ts` (вынос эффекта из `Chat.tsx:1106-1121`)
+- Modify: `web-client/src/components/Chat.tsx:1106-1121` (вызов вынесенного хука)
+- Test: `web-client/src/core/hooks/useFeedPageHotkeys.test.tsx` (создать)
 
 **Interfaces:**
 - Consumes: `useIsActiveChat` (Task 3).
+- Produces: `useFeedPageHotkeys({ enabled, onPageUp, onPageDown })` — вешает
+  window-слушатель только когда `enabled && useIsActiveChat()`.
+
+**Почему выносим, а не гейтим на месте:** тест обязан бить по production-коду.
+Отрендерить `Chat` дважды в юните нереально (тянет менеджеры, сторы, ленту), а
+копия эффекта в тесте проверяла бы саму себя. Маленький хук — то же поведение,
+но его можно смонтировать дважды по-настоящему.
 
 - [ ] **Step 1: Найти все глобальные эффекты инстанса**
 
@@ -863,72 +871,124 @@ Run: `cd web-client && grep -n "window.addEventListener\|document.addEventListen
 эффект не гейтирован, обработчик сработает дважды.
 
 ```tsx
-// web-client/src/components/Chat.hotkeys.instance.test.tsx
+// web-client/src/core/hooks/useFeedPageHotkeys.test.tsx
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useEffect } from 'react'
 import { cleanup, render } from '@testing-library/react'
-import { ChatInstanceProvider } from '../core/chat/chatInstanceContext'
-import { useIsActiveChat } from '../core/chat/chatInstanceContext'
-import type { ChatInstanceDesc } from '../stores/chatStackStore'
+import { ChatInstanceProvider } from '../chat/chatInstanceContext'
+import type { ChatInstanceDesc } from '../../stores/chatStackStore'
+import { useFeedPageHotkeys } from './useFeedPageHotkeys'
 
 afterEach(cleanup)
 
 const desc = (key: string): ChatInstanceDesc => ({ key, peerId: 1, type: 'chat' })
 
-// Тот же контракт, что у хоткея ленты в Chat.tsx: слушатель на window,
-// повешенный из инстанса, обязан быть за гейтом активности.
-function PageKeys({ onDown }: { onDown: () => void }) {
-  const isActive = useIsActiveChat()
-  useEffect(() => {
-    if (!isActive) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'PageDown') onDown() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isActive, onDown])
+function Harness({ onPageDown }: { onPageDown: () => void }) {
+  useFeedPageHotkeys({ enabled: true, onPageUp: () => {}, onPageDown })
   return null
 }
 
-describe('глобальные эффекты инстанса', () => {
-  it('window-хоткей срабатывает только у активного инстанса', () => {
-    const onDown = vi.fn()
+const press = () =>
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', ctrlKey: true }))
+
+describe('useFeedPageHotkeys', () => {
+  it('срабатывает только у активного инстанса', () => {
+    const onPageDown = vi.fn()
     render(
       <>
         <ChatInstanceProvider value={{ desc: desc('a'), isActive: false }}>
-          <PageKeys onDown={onDown} />
+          <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
         <ChatInstanceProvider value={{ desc: desc('b'), isActive: true }}>
-          <PageKeys onDown={onDown} />
+          <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
       </>,
     )
 
+    press()
+
+    expect(onPageDown).toHaveBeenCalledTimes(1)
+  })
+
+  it('при enabled=false не слушает вовсе', () => {
+    const onPageDown = vi.fn()
+    function Off() {
+      useFeedPageHotkeys({ enabled: false, onPageUp: () => {}, onPageDown })
+      return null
+    }
+    render(<Off />)
+
+    press()
+
+    expect(onPageDown).not.toHaveBeenCalled()
+  })
+
+  it('без Ctrl/Cmd не срабатывает', () => {
+    const onPageDown = vi.fn()
+    render(<Harness onPageDown={onPageDown} />)
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown' }))
 
-    expect(onDown).toHaveBeenCalledTimes(1)
+    expect(onPageDown).not.toHaveBeenCalled()
   })
 })
 ```
 
-- [ ] **Step 3: Прогнать тест**
+- [ ] **Step 3: Прогнать тест, убедиться что падает**
 
-Run: `cd web-client && npx vitest run src/components/Chat.hotkeys.instance.test.tsx`
-Expected: PASS (тест закрепляет контракт; красным он станет, если гейт уберут из хука-образца).
+Run: `cd web-client && npx vitest run src/core/hooks/useFeedPageHotkeys.test.tsx`
+Expected: FAIL — модуль `./useFeedPageHotkeys` не найден.
 
-- [ ] **Step 4: Поставить гейт в `Chat.tsx`**
-
-В эффекте `:1106-1121` заменить условие входа:
+- [ ] **Step 4: Вынести хук и подключить его в `Chat.tsx`**
 
 ```ts
-const isActiveInstance = useIsActiveChat()
-useEffect(() => {
-  if (!isRealChat || !isActiveInstance) return
-  // …существующий код без изменений…
-}, [isRealChat, isActiveInstance, scrollRef, onScrollDownClick])
+// web-client/src/core/hooks/useFeedPageHotkeys.ts
+import { useEffect } from 'react'
+import { useIsActiveChat } from '../chat/chatInstanceContext'
+
+// Ctrl/Cmd+PageUp / PageDown — к началу / концу истории (tweb). Слушатель висит
+// на window, а инстансов чата в стеке смонтировано несколько (неактивные скрыты,
+// но живут в DOM) — поэтому эффект обязан быть за гейтом активности, иначе
+// нажатие отработает во всех копиях сразу.
+interface Args {
+  enabled: boolean
+  onPageUp: () => void
+  onPageDown: () => void
+}
+
+export function useFeedPageHotkeys({ enabled, onPageUp, onPageDown }: Args): void {
+  const isActive = useIsActiveChat()
+
+  useEffect(() => {
+    if (!enabled || !isActive) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      if (e.key === 'PageUp') {
+        e.preventDefault()
+        onPageUp()
+      } else if (e.key === 'PageDown') {
+        e.preventDefault()
+        onPageDown()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [enabled, isActive, onPageUp, onPageDown])
+}
 ```
 
-Каждому оставшемуся без гейта глобальному эффекту (если такие нашлись в Step 1)
-поставить гейт либо комментарий у строки с причиной, почему он безопасен в
-нескольких копиях.
+В `Chat.tsx` эффект `:1106-1121` заменить вызовом (колбэки — через `useEvent`,
+чтобы не пересоздавать слушатель на каждый рендер):
+
+```ts
+useFeedPageHotkeys({
+  enabled: isRealChat,
+  onPageUp: useEvent(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })),
+  onPageDown: useEvent(() => onScrollDownClick()),
+})
+```
+
+Каждому оставшемуся без гейта глобальному эффекту из Step 1 поставить гейт либо
+комментарий у строки с причиной, почему он безопасен в нескольких копиях.
 
 - [ ] **Step 5: Прогнать весь набор**
 
@@ -938,7 +998,7 @@ Expected: зелёное.
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add web-client/src/components/Chat.tsx web-client/src/components/Chat.hotkeys.instance.test.tsx
+git add web-client/src/components/Chat.tsx web-client/src/core/hooks/useFeedPageHotkeys.ts web-client/src/core/hooks/useFeedPageHotkeys.test.tsx
 git commit -m "fix(chat): глобальные эффекты инстанса только у активного"
 ```
 
