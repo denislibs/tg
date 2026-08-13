@@ -210,6 +210,40 @@ export function useMessageActions({
     closeMsgMenu()
   }
 
+  // «Copy Media» — картинка сообщения в буфер обмена. Буфер принимает только
+  // image/png, поэтому не-png (webp/jpeg с бэка) перерисовываем канвасом.
+  // ClipboardItem принимает Promise<Blob>, а сам `write` обязан стартовать в
+  // задаче клика — иначе Chrome снимает разрешение как «не жест пользователя»
+  // (та же механика, что у tweb в popups/myQrCode.tsx). Поэтому байты грузим
+  // ВНУТРИ промиса, а не до вызова write.
+  const copyMedia = () => {
+    const raw = menuRawMsg()
+    const mediaId = raw?.mediaId
+    closeMsgMenu()
+    if (mediaId == null || !navigator.clipboard?.write) return
+
+    const png = (async (): Promise<Blob> => {
+      const url = await managers.media.contentUrl(mediaId)
+      const blob = await fetch(url).then((r) => r.blob())
+      if (blob.type === 'image/png') return blob
+
+      const bitmap = await createImageBitmap(blob)
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+      bitmap.close?.()
+      const converted = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (!converted) throw new Error('copyMedia: canvas.toBlob вернул null')
+      return converted
+    })()
+
+    void navigator.clipboard
+      .write([new ClipboardItem({ 'image/png': png })])
+      .then(() => rootScope.dispatchEvent('ui:toast', t('Image copied to clipboard')))
+      .catch(() => rootScope.dispatchEvent('ui:toast', t('Could not copy the image')))
+  }
+
   const startTranslate = () => {
     const m = msgMenu && msgs[msgMenu.idx]
     if (m?.text) setTranslateText(m.text)
@@ -553,6 +587,11 @@ export function useMessageActions({
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
       : []),
     ...(!isSecret ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg }] : []),
+    // «Copy Media» — сразу после «Copy», как в оригинале. Только фото: буфер
+    // обмена принимает картинку, для видео/файлов пункта нет (там «Download»).
+    ...(isRealChat && !isSecret && menuRawMsg()?.type === 'photo' && menuRawMsg()?.mediaId != null
+      ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy Media', onClick: copyMedia }]
+      : []),
     ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
       ? [{ icon: <TgIcon name="language" size={20} />, label: 'Translate', onClick: startTranslate }]
       : []),
