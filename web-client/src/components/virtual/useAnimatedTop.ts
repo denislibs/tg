@@ -34,6 +34,12 @@ export function useAnimatedTop(top: number, canAnimate: boolean): (el: HTMLEleme
   const stopRef = useRef<(() => void) | null>(null)
 
   const setEl = useCallback((el: HTMLElement | null) => {
+    // Гасим анимацию, бежавшую на ПРЕЖНЕМ узле (смена ключа/ремонт строки —
+    // старый элемент, к которому был привязан animate()-тик, больше не наш).
+    // Осознанное допущение: `top`/`--background` на старом узле НЕ сбрасываются
+    // (проверено ревью отдельным тестом) — узел уже отсоединяется от дерева
+    // (иначе setEl не вызвался бы с другим el), практического дефекта нет,
+    // следующий attach полностью перезапишет оба свойства на новом узле.
     stopRef.current?.()
     stopRef.current = null
     elRef.current = el
@@ -49,6 +55,11 @@ export function useAnimatedTop(top: number, canAnimate: boolean): (el: HTMLEleme
 
   useEffect(() => {
     const el = elRef.current
+    // `currentRef.current === top` — оптимизация: эффект перезапускается на
+    // смену ЛЮБОГО из [top, canAnimate], а не только top (например, гасится
+    // «Без анимаций» уже после того, как значение доехало до цели). Без этой
+    // проверки такой перезапуск заново дёрнул бы `--background`/`animate()`
+    // с startValue === target — визуально пустая, но лишняя анимация.
     if (!el || currentRef.current === top) return
 
     stopRef.current?.()

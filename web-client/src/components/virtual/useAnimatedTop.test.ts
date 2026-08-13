@@ -113,4 +113,55 @@ describe('useAnimatedTop', () => {
 
     expect(el.style.top).toBe(frozen)
   })
+
+  it('смена DOM-узла во время анимации гасит анимацию на старом и сразу синхронизирует новый', () => {
+    const { result, rerender } = renderHook(({ top, canAnimate }: Props) => useAnimatedTop(top, canAnimate), {
+      initialProps: { top: 0, canAnimate: true },
+    })
+    const oldEl = host()
+    result.current(oldEl)
+
+    rerender({ top: 100, canAnimate: true })
+    vi.advanceTimersByTime(64) // где-то на середине пути
+    const frozenTop = oldEl.style.top
+    const frozenBackground = oldEl.style.getPropertyValue('--background')
+    expect(frozenBackground).toBe('var(--surface-color)')
+
+    const newEl = host()
+    result.current(newEl)
+
+    // новый узел получил актуальный top сразу — как при монтировании, без анимации
+    expect(newEl.style.top).toBe('100px')
+    expect(newEl.style.getPropertyValue('--background')).toBe('')
+
+    vi.advanceTimersByTime(1000)
+
+    // старый узел больше не получает обновлений — заморожен в момент подмены
+    // (мутация: убрать `stopRef.current?.()` из setEl — тест краснеет, старый
+    // узел продолжает получать кадры анимации)
+    expect(oldEl.style.top).toBe(frozenTop)
+    expect(oldEl.style.getPropertyValue('--background')).toBe(frozenBackground)
+    expect(newEl.style.top).toBe('100px')
+  })
+
+  it('перезапуск эффекта без смены top (флип canAnimate) не запускает лишнюю анимацию', () => {
+    const { result, rerender } = renderHook(({ top, canAnimate }: Props) => useAnimatedTop(top, canAnimate), {
+      initialProps: { top: 0, canAnimate: true },
+    })
+    const el = host()
+    result.current(el)
+
+    rerender({ top: 50, canAnimate: true })
+    vi.advanceTimersByTime(128) // анимация доехала: currentRef.current === 50 === top
+    expect(el.style.top).toBe('50px')
+    expect(el.style.getPropertyValue('--background')).toBe('')
+
+    // top не меняется, меняется только canAnimate — эффект перезапустится
+    // (deps [top, canAnimate]), но раз значение уже на месте, лишней анимации
+    // быть не должно (мутация: убрать `currentRef.current === top` из раннего
+    // return — тест краснеет, --background мигает попусту)
+    rerender({ top: 50, canAnimate: false })
+    rerender({ top: 50, canAnimate: true })
+    expect(el.style.getPropertyValue('--background')).toBe('')
+  })
 })
