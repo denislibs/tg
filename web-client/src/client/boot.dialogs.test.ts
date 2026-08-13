@@ -13,7 +13,7 @@
 // докблок applyDialogsMirror. Пины на это — в describe «постраничный догон».
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fillDialogsMirror, applyDialogsMirror } from './boot'
-import { guessLoadCount } from '../core/hooks/useDialogListSource'
+import { guessLoadCount } from '../core/dialogs/loadCount'
 import { useChatsStore } from '../stores/chatsStore'
 import type { Dialog } from '../core/models'
 import type { DialogOp } from '../core/dialogs/dialogOps'

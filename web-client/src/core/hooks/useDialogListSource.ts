@@ -1,39 +1,31 @@
 // Источник данных виртуального списка чатов одной папки — порт потребителя
 // курсора из tweb `components/autonomousDialogList/base.ts` (`cursorFetcher`,
-// `requestItemForIdx`, `guessLoadCount`, `loadDialogsInner`) и глушилки
-// анимации первой загрузки (`autonomousDialogList/dialogs.ts:248-261` +
+// `requestItemForIdx`, `loadDialogsInner`) и глушилки анимации первой загрузки
+// (`autonomousDialogList/dialogs.ts:248-261` +
 // `deferredSortedVirtualList.tsx:241-253`).
 //
 // СВОЕГО СПИСКА ЗДЕСЬ НЕТ. В tweb список ВЛАДЕЕТ элементами (`sortedList`), у
 // нас владелец — воркерный `dialogsManager`, а `chatsStore` — зеркало: `items`
-// это производная от зеркала (`useChatList()` + фильтр папки), а не второй
-// набор данных. Хук только (1) просит у владельца следующую страницу и (2)
-// отдаёт витрине размер набора/признак конца/флаг анимации. Писать в зеркало
-// он не имеет права (`stores/noDuplicateDialogs.test.ts`), сортировать —
-// тоже (`stores/noManualOrder.test.ts`): порядок уже пришёл из воркера.
-import { useMemo, useState } from 'react'
+// это производная от зеркала, а не второй набор данных. Хук только (1) просит у
+// владельца следующую страницу и (2) отдаёт витрине размер набора/признак
+// конца/флаг анимации. Писать в зеркало он не имеет права
+// (`stores/noDuplicateDialogs.test.ts`), сортировать — тоже
+// (`stores/noManualOrder.test.ts`): порядок уже пришёл из воркера.
+import { useCallback, useMemo, useState } from 'react'
 import { SequentialCursorFetcher, type SequentialCursorFetcherResult } from '@helpers/sequentialCursorFetcher'
 import { useManagers } from './useManagers'
-import { useChatList } from './useChatList'
 import { useEvent } from './useEvent'
 import { useMiddlewareHelper } from './useMiddlewareHelper'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
+import { useNotifyStore, notifyTypeForChat } from '../../stores/notifyStore'
+import { guessLoadCount } from '../dialogs/loadCount'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
-import { chatMatchesFolder, dialogMatchesFolder } from '../folderFilter'
+import { dialogMatchesFolder } from '../folderFilter'
+import type { NotifySettings } from '../managers/notifyManager'
 import type { Folder } from '../managers/foldersManager'
+import type { Dialog } from '../models'
 import type { Chat } from '../../data'
-
-/** Размер страницы — константа tweb `autonomousDialogList/base.ts:23`. */
-export const DIALOG_LOAD_COUNT = 20
-
-/**
- * Порт tweb `base.ts:216-219` (формула дословно, `windowSize.height` у нас —
- * `window.innerHeight`): «чтобы скролл был даже на очень большом экране».
- */
-export function guessLoadCount(): number {
-  return Math.max(window.innerHeight / 64 * 1.25 | 0, DIALOG_LOAD_COUNT)
-}
 
 /** Строка списка: `index` — готовый индекс порядка из зеркала (его считает владелец). */
 export type DialogListItem = { id: number; index: number; value: Chat }
@@ -57,20 +49,39 @@ const EMPTY_PAGE_STATE = { totalCount: 0, isEnd: false, wasAtLeastOnceFetched: f
 
 const noop = () => {}
 
-export function useDialogListSource(filterId: number): DialogListSource {
+/**
+ * Заглушённость строки — РОВНО та, что видит витрина: `useChatList` навешивает
+ * `muted` ещё и по глобально выключенному ТИПУ чатов (`notifyStore`,
+ * tweb `isPeerLocalMuted` с `respectType`), а у `Dialog.muted` этого нет.
+ * Правило папки `excludeMuted` обязано смотреть на то же значение, что список.
+ */
+function isMuted(d: Dialog, notifySettings: NotifySettings): boolean {
+  return !!d.muted || notifySettings[notifyTypeForChat(d.type)].muted
+}
+
+/**
+ * @param filterId «Все чаты»/«Архив»/id пользовательской папки
+ * @param chats витрина зеркала (`useChatList()`) — берётся ПРОПОМ, а не своим
+ *   вызовом хука: на каждую папку монтируется свой список, и N собственных
+ *   `useChatList` дали бы N ref-кэшей с `JSON.stringify` по всему массиву
+ *   диалогов на каждую операцию (сам `useChatList` предупреждает, что
+ *   стабильность ссылок критична для FPS).
+ */
+export function useDialogListSource(filterId: number, chats: Chat[]): DialogListSource {
   const managers = useManagers()
-  const chats = useChatList()
+  const dialogs = useChatsStore((s) => s.dialogs)
+  const dialogIndexById = useChatsStore((s) => s.dialogIndexById)
+  const notifySettings = useNotifyStore((s) => s.settings)
   const folders = useFolders()
   const contactIds = useFoldersStore((s) => s.contactIds)
-  const dialogIndexById = useChatsStore((s) => s.dialogIndexById)
   const helper = useMiddlewareHelper()
 
   const [pageState, setPageState] = useState<PageState>({ filterId, ...EMPTY_PAGE_STATE })
   const [blockedAnimationCount, setBlockedAnimationCount] = useState(0)
   // Смена папки на живом хуке — это новый список (в tweb на папку свой
-  // AutonomousDialogList со своим курсором): счётчики прошлой папки не
-  // наследуются. Не сбросом состояния в рендере, а выводом: ответ прошлой
-  // папки, долетевший позже, отсекается по `filterId` в setPageState.
+  // AutonomousDialogList со своим курсором): размер набора, признак конца и
+  // «загружались хоть раз» прошлой папки не наследуются, иначе новая получила
+  // бы чужую высоту списка и подавленный скелетон.
   const page = pageState.filterId === filterId ? pageState : { filterId, ...EMPTY_PAGE_STATE }
 
   // Развилка папок — та же, что у владельца (`dialogsManager.ts::forFilter`):
@@ -82,18 +93,33 @@ export function useDialogListSource(filterId: number): DialogListSource {
     : folders.find((f) => f.id === filterId)
   const folderKnown = filterId === ALL_FOLDER_ID || filterId === ARCHIVE_FOLDER_ID || !!folder
 
+  /**
+   * ЕДИНСТВЕННОЕ правило принадлежности строки этой папке — и для `items`, и
+   * для размера набора (`countInMirror`). Считается по `Dialog`, а не по `Chat`:
+   * размер нужен вне рендера, где витринных `Chat` попросту нет, — а два разных
+   * адаптера расходились бы ровно на `muted` (см. `isMuted`), и в папке с
+   * `excludeMuted` фетчер считал бы набранным то, чего в списке нет: цикл
+   * догрузки обрывается, папка не наполняется никогда.
+   */
+  const matchesThisFolder = useCallback((d: Dialog): boolean => {
+    if (!folderKnown) return false
+    if (filterId === ARCHIVE_FOLDER_ID ? !d.archived : !!d.archived) return false
+    if (!folder) return true
+    return dialogMatchesFolder({ ...d, muted: isMuted(d, notifySettings) }, folder, contactIds)
+  }, [folderKnown, folder, filterId, contactIds, notifySettings])
+
   const items = useMemo<DialogListItem[]>(() => {
-    if (!folderKnown) return []
+    const chatById = new Map<number, Chat>()
+    for (const chat of chats) chatById.set(Number(chat.id), chat)
     const out: DialogListItem[] = []
-    for (const chat of chats) {
-      const id = Number(chat.id)
-      if (!Number.isFinite(id)) continue
-      if (filterId === ARCHIVE_FOLDER_ID ? !chat.archived : !!chat.archived) continue
-      if (folder && !chatMatchesFolder(chat, folder, contactIds)) continue
-      out.push({ id, index: dialogIndexById[id] ?? 0, value: chat })
+    for (const d of dialogs) {
+      if (!matchesThisFolder(d)) continue
+      const value = chatById.get(d.chatId)
+      if (!value) continue // строка ещё не смаплена витриной — её здесь нет
+      out.push({ id: d.chatId, index: dialogIndexById[d.chatId] ?? 0, value })
     }
     return out
-  }, [chats, dialogIndexById, filterId, folder, folderKnown, contactIds])
+  }, [chats, dialogs, dialogIndexById, matchesThisFolder])
 
   /** Папка, выбранная ПРЯМО СЕЙЧАС (а не в момент запуска запроса) — ею
    *  отсекается ответ, доехавший уже после переключения папки. */
@@ -107,13 +133,8 @@ export function useDialogListSource(filterId: number): DialogListSource {
    * MessagePort сохраняется), а вот React-рендер с новыми `items` — ещё нет.
    */
   const countInMirror = useEvent((): number => {
-    if (!folderKnown) return 0
     let n = 0
-    for (const d of useChatsStore.getState().dialogs) {
-      if (filterId === ARCHIVE_FOLDER_ID ? !d.archived : !!d.archived) continue
-      if (folder && !dialogMatchesFolder(d, folder, contactIds)) continue
-      ++n
-    }
+    for (const d of useChatsStore.getState().dialogs) if (matchesThisFolder(d)) ++n
     return n
   })
 
@@ -148,7 +169,8 @@ export function useDialogListSource(filterId: number): DialogListSource {
     const unblock = offsetIndex ? noop : blockAnimation()
     try {
       const result = await managers.dialogs.getDialogs({ offsetIndex, limit: guessLoadCount(), filterId: forFilterId })
-      // Хук размонтирован либо папку успели переключить — писать нечего.
+      // Хук размонтирован либо папку успели переключить: писать в состояние
+      // нечего, а двигать курсор чужого (уже нового) цикла — тем более.
       if (!middleware() || currentFilterId() !== forFilterId) return { cursor: offsetIndex, count: 0 }
 
       // Порт base.ts:274-277: курсор — МИНИМАЛЬНЫЙ индекс отданной страницы.
@@ -166,8 +188,19 @@ export function useDialogListSource(filterId: number): DialogListSource {
       // хвоста кэша, `dialogsManager.ts::fetchPage`), поэтому цикл фетчера
       // крутился бы вечно. `count: 0` — единственный выход из него
       // (sequentialCursorFetcher.ts: `if(count === 0) break`).
+      //
+      // Легитимную догрузку это глушит МЯГКО: обрывается только текущий цикл,
+      // следующий `requestItemForIdx` (скролл, новый видимый индекс) начнёт с
+      // того же курсора заново. Само окно почти недостижимо: `startRealtime()`
+      // поднимает насос до того, как долетит ответ RPC, а кадр `rt:dialog_op`
+      // уходит из воркера раньше ответа и по тому же порту.
       if (cursor === (offsetIndex ?? Infinity)) return { cursor: offsetIndex, count: 0 }
 
+      // `totalCount` — размер НАБОРА в зеркале, а не длина страницы (порт
+      // base.ts:297, `sortedList.itemsLength()`). Страницы перекрываются
+      // (владелец режет свой кэш по курсору-значению), поэтому `+= count`
+      // фетчера считал бы уже известные строки заново и обрывал цикл, не
+      // добрав до нужного индекса, — в списке остались бы пустые строки.
       return { cursor, count: result.dialogs.length, totalCount: countInMirror() }
     } finally {
       unblock()
@@ -185,11 +218,13 @@ export function useDialogListSource(filterId: number): DialogListSource {
     // ОТРИЦАТЕЛЬНЫЙ индекс — штатная ситуация оригинала: список зовёт
     // `requestItemForIdx(idx - pinnedItems.length, …)`
     // (deferredSortedVirtualList.tsx:289), а `revealIdx` после первой отдачи
-    // закреплённых не учитывает. Такой вызов не просит НИЧЕГО, поэтому и
-    // сообщать фетчеру ему нечего: `fetchUntil(idx + 1, itemsLength)` с
-    // неположительным `neededCount` новую страницу не запустит, но
-    // `fetchedItemsCount` перепишет — и уже идущий цикл догрузки решит, что
-    // нужное количество набрано, и оборвётся на середине.
+    // закреплённых не учитывает. Такой вызов не просит ни одной строки, поэтому
+    // и фетчеру сообщать нечего: `fetchUntil(idx + 1, itemsLength)` новую
+    // страницу не запустит (`neededCount` неположительный), но `itemsLength`
+    // всё равно перепишет — а у нас, в отличие от tweb, «уже набрано» приходит
+    // не только отсюда, но и из ответа владельца (`totalCount` выше), так что
+    // молча смешивать эти два источника на вызове, который ничего не просит,
+    // незачем.
     if (idx < 0) return
     fetcher.fetchUntil(idx + 1, itemsLength)
   })

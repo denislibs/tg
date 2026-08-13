@@ -1,16 +1,19 @@
 // Этап 3 (виртуальный список), Task 6: источник данных списка папки.
 //
-// Пины здесь про две вещи сразу: (1) `items` — ПРОИЗВОДНАЯ от зеркала, а не
-// свой список (тот же фильтр папки, что у владельца; порядок берётся как есть),
-// (2) постраничная догрузка идёт через `SequentialCursorFetcher` к
-// `managers.dialogs.getDialogs` ровно теми параметрами, что в tweb.
+// Пины здесь про три вещи: (1) `items` — ПРОИЗВОДНАЯ от зеркала, а не свой
+// список (порядок берётся как есть); (2) правило папки в хуке РОВНО ОДНО — им
+// считаются и строки, и размер набора для фетчера; (3) постраничная догрузка
+// идёт через `SequentialCursorFetcher` к `managers.dialogs.getDialogs` теми же
+// параметрами, что в tweb.
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { DIALOG_LOAD_COUNT, guessLoadCount, useDialogListSource } from './useDialogListSource'
+import { useDialogListSource } from './useDialogListSource'
+import { useChatList } from './useChatList'
 import { ManagersProvider } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useFoldersStore } from '../../stores/foldersStore'
+import { useNotifyStore } from '../../stores/notifyStore'
 import { useAppStateStore } from '../../stores/appState'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import type { Folder } from '../managers/foldersManager'
@@ -28,6 +31,9 @@ const folder = (over: Partial<Folder> = {}): Folder => ({
   excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [], ...over,
 })
 
+const page = (dialogs: Dialog[], over: Partial<DialogsPage> = {}): DialogsPage =>
+  ({ dialogs, count: 0, isEnd: false, ...over })
+
 /** Кладём диалоги в зеркало ТЕМ ЖЕ путём, что проектор — операцией владельца. */
 function seedMirror(items: { dialog: Dialog; index: number }[]) {
   useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: false })
@@ -40,48 +46,56 @@ function wrapper(managers: unknown) {
   )
 }
 
-/** Фейк владельца: отдаёт заранее подготовленные страницы и пишет свои вызовы. */
-function fakeManagers(pages: DialogsPage[] = [{ dialogs: [], count: 0, isEnd: true }]) {
+/**
+ * `chats` хук принимает пропом (см. докблок): в тестах — той же `useChatList`,
+ * что отдаст Sidebar, чтобы витрина и зеркало не разъезжались по построению.
+ */
+function renderSource(managers: unknown, filterId: number) {
+  return renderHook(({ fid }) => useDialogListSource(fid, useChatList()), {
+    wrapper: wrapper(managers), initialProps: { fid: filterId },
+  })
+}
+
+/**
+ * Фейк владельца: отдаёт заранее подготовленные страницы.
+ *
+ * `MAX_CALLS` — предохранитель: цикл `SequentialCursorFetcher` обязан
+ * останавливаться сам. Если он этого не делает (снят гвард залипшего курсора),
+ * фейк бросает, и тест падает диагностируемым ассертом про число вызовов, а не
+ * крашем воркера vitest от бесконечного цикла.
+ */
+const MAX_CALLS = 12
+function fakeManagers(pages: DialogsPage[] = [page([], { isEnd: true })]) {
   const calls: { offsetIndex?: number; limit?: number; filterId?: number }[] = []
-  let n = 0
   const getDialogs = vi.fn(async (o: { offsetIndex?: number; limit?: number; filterId?: number } = {}) => {
     calls.push(o)
-    return pages[Math.min(n++, pages.length - 1)]
+    if (calls.length > MAX_CALLS) throw new Error(`getDialogs зациклился: ${calls.length} вызовов`)
+    return pages[Math.min(calls.length - 1, pages.length - 1)]
   })
   return { managers: { dialogs: { getDialogs } }, getDialogs, calls }
 }
+
+/** Фейк с ручным разрешением каждого запроса — для гвардов актуальности. */
+function deferredManagers() {
+  const pending: ((p: DialogsPage) => void)[] = []
+  const getDialogs = vi.fn(() => new Promise<DialogsPage>((res) => { pending.push(res) }))
+  return { managers: { dialogs: { getDialogs } }, getDialogs, pending }
+}
+
+const originalHeight = window.innerHeight
 
 function setWindowHeight(height: number) {
   Object.defineProperty(window, 'innerHeight', { value: height, configurable: true, writable: true })
 }
 
-const originalHeight = window.innerHeight
-
 beforeEach(() => {
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
   useAppStateStore.setState({ folders: [], drafts: [] })
+  useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 })
 
 afterEach(() => { setWindowHeight(originalHeight) })
-
-describe('guessLoadCount — порт tweb base.ts:216-219', () => {
-  it('DIALOG_LOAD_COUNT = 20 (base.ts:23)', () => {
-    expect(DIALOG_LOAD_COUNT).toBe(20)
-  })
-
-  it('маленький экран — не меньше DIALOG_LOAD_COUNT', () => {
-    setWindowHeight(600) // 600 / 64 * 1.25 = 11.7 -> 11
-    expect(guessLoadCount()).toBe(20)
-  })
-
-  it('большой экран — ровно значение формулы max(h / 64 * 1.25 | 0, 20)', () => {
-    setWindowHeight(2000)
-    expect(guessLoadCount()).toBe(39) // 2000 / 64 * 1.25 = 39.0625 -> 39
-    setWindowHeight(1080)
-    expect(guessLoadCount()).toBe(21) // 1080 / 64 * 1.25 = 21.09 -> 21
-  })
-})
 
 describe('useDialogListSource: items — производная от зеркала', () => {
   it('«Все чаты» — всё зеркало, кроме архива', () => {
@@ -92,7 +106,7 @@ describe('useDialogListSource: items — производная от зерка�
     ])
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
 
     expect(result.current.items.map((i) => i.id)).toEqual([1, 3])
   })
@@ -104,7 +118,7 @@ describe('useDialogListSource: items — производная от зерка�
     ])
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(ARCHIVE_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ARCHIVE_FOLDER_ID)
 
     expect(result.current.items.map((i) => i.id)).toEqual([2])
   })
@@ -118,7 +132,7 @@ describe('useDialogListSource: items — производная от зерка�
     useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(7), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, 7)
 
     // группа 1 — да; приватный 2 — нет (нет флага типа); архивная группа 3 — нет.
     expect(result.current.items.map((i) => i.id)).toEqual([1])
@@ -128,7 +142,7 @@ describe('useDialogListSource: items — производная от зерка�
     seedMirror([{ dialog: dialog(1), index: 30 }])
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(7), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, 7)
 
     expect(result.current.items).toEqual([])
   })
@@ -141,7 +155,7 @@ describe('useDialogListSource: items — производная от зерка�
     ])
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
 
     expect(result.current.items.map((i) => i.id)).toEqual(useChatsStore.getState().dialogs.map((d) => d.chatId))
     expect(result.current.items.map((i) => i.id)).toEqual([2, 3, 1])
@@ -151,9 +165,41 @@ describe('useDialogListSource: items — производная от зерка�
     seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 10 }])
     const { managers } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
 
     expect(result.current.items.map((i) => i.index)).toEqual([30, 10])
+  })
+})
+
+// Правило принадлежности папке в хуке ОДНО: им считаются и строки, и размер
+// набора, который хук отдаёт фетчеру. Два адаптера (`Chat` для строк, `Dialog`
+// для размера) расходились бы ровно на `muted`: `useChatList` навешивает его
+// ещё и по глобально выключенному ТИПУ чатов, а у `Dialog.muted` этого нет.
+// В папке с `excludeMuted` набор оказывался бы БОЛЬШЕ списка, фетчер считал бы
+// нужное количество набранным, и папка не наполнялась бы никогда.
+describe('useDialogListSource: строки и размер набора считаются одним правилом', () => {
+  it('excludeMuted + глобально заглушённый тип: чат не в списке И не в размере набора', async () => {
+    seedMirror([
+      { dialog: dialog(1, { type: 'group', unread: 1 }), index: 30 },
+      { dialog: dialog(2, { type: 'group', unread: 1 }), index: 20 },
+    ])
+    // Сами диалоги НЕ заглушены — заглушён весь тип «группы» (tweb respectType).
+    useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: true, preview: true }, channels: { muted: false, preview: true } } })
+    useAppStateStore.setState({ folders: [folder({ id: 7, groups: true, excludeMuted: true })] })
+    const { managers, getDialogs } = fakeManagers([
+      page([dialog(1, { type: 'group', unread: 1 })]),
+      page([dialog(2, { type: 'group', unread: 1 })]),
+      page([], { isEnd: true }),
+    ])
+
+    const { result } = renderSource(managers, 7)
+    expect(result.current.items).toEqual([])
+
+    await act(async () => { result.current.requestItemForIdx(1, 0) })
+
+    // Набор папки пуст ровно так же, как список, поэтому цикл догрузки идёт до
+    // конца набора (3 запроса), а не обрывается на первой же странице.
+    expect(getDialogs).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -162,16 +208,16 @@ describe('useDialogListSource: постраничная догрузка', () =>
     setWindowHeight(2000)
     const { managers, calls } = fakeManagers()
 
-    const { result } = renderHook(() => useDialogListSource(7), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, 7)
     await act(async () => { result.current.requestItemForIdx(5, 0) })
 
     expect(calls).toEqual([{ offsetIndex: undefined, limit: 39, filterId: 7 }])
   })
 
   it('повторный запрос того же индекса не плодит запросов (фетчер сериализует)', async () => {
-    const { managers, getDialogs } = fakeManagers([{ dialogs: [], count: 0, isEnd: true }])
+    const { managers, getDialogs } = fakeManagers([page([], { isEnd: true })])
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
     await act(async () => {
       result.current.requestItemForIdx(5, 0)
       result.current.requestItemForIdx(5, 0)
@@ -183,18 +229,18 @@ describe('useDialogListSource: постраничная догрузка', () =>
 
   // В оригинале `revealIdx` после первой отдачи не учитывает закреплённых, и
   // список зовёт `requestItemForIdx(idx - pinnedItems.length, …)` с
-  // ОТРИЦАТЕЛЬНЫМ индексом. Такой вызов не просит ни одной строки — но, дойдя
-  // до `fetchUntil(idx + 1, itemsLength)`, обнулил бы фетчеру «уже набрано» при
-  // сохранённом `neededCount` прошлых запросов и запустил бы новый цикл
-  // догрузки на пустом месте. Поэтому до фетчера он не доходит вовсе.
+  // ОТРИЦАТЕЛЬНЫМ индексом. Такой вызов не просит ни одной строки, но, дойдя до
+  // `fetchUntil(idx + 1, itemsLength)`, перепишет фетчеру «уже набрано» при
+  // сохранённом `neededCount` прошлых запросов и запустит новый цикл догрузки
+  // на пустом месте. Поэтому до фетчера он не доходит вовсе.
   it('ОТРИЦАТЕЛЬНЫЙ индекс не доходит до фетчера и не запускает лишнюю догрузку', async () => {
-    const { managers, getDialogs } = fakeManagers([{ dialogs: [], count: 0, isEnd: true }])
+    const { managers, getDialogs } = fakeManagers([page([], { isEnd: true })])
     getDialogs.mockImplementationOnce(async () => {
       seedMirror([{ dialog: dialog(1), index: 30 }])
-      return { dialogs: [dialog(1)], count: 9, isEnd: false }
+      return page([dialog(1)], { count: 9 })
     })
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
     // Цикл нужного количества (4) не добрал — набралась одна строка и конец.
     await act(async () => { result.current.requestItemForIdx(3, 0) })
     expect(getDialogs).toHaveBeenCalledTimes(2)
@@ -205,9 +251,9 @@ describe('useDialogListSource: постраничная догрузка', () =>
   })
 
   it('totalCount и isEnd берутся из ответа getDialogs', async () => {
-    const { managers } = fakeManagers([{ dialogs: [], count: 137, isEnd: true }])
+    const { managers } = fakeManagers([page([], { count: 137, isEnd: true })])
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
     expect(result.current.totalCount).toBe(0)
     expect(result.current.wasAtLeastOnceFetched).toBe(false)
 
@@ -221,18 +267,14 @@ describe('useDialogListSource: постраничная догрузка', () =>
   it('следующая страница уходит с курсором = минимальный индекс предыдущей (base.ts:274-277)', async () => {
     // Зеркало наполняет проектор: к моменту ответа RPC индексы страницы в нём
     // уже есть (кадр rt:dialog_op уходит из воркера раньше ответа).
-    const page1 = [dialog(1), dialog(2)]
-    const { managers, calls, getDialogs } = fakeManagers([
-      { dialogs: page1, count: 4, isEnd: false },
-      { dialogs: [dialog(3)], count: 4, isEnd: true },
-    ])
+    const { managers, calls, getDialogs } = fakeManagers([page([dialog(3)], { count: 4, isEnd: true })])
     getDialogs.mockImplementationOnce(async (o = {}) => {
       calls.push(o)
       seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }])
-      return { dialogs: page1, count: 4, isEnd: false }
+      return page([dialog(1), dialog(2)], { count: 4 })
     })
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
     await act(async () => { result.current.requestItemForIdx(3, 0) })
 
     expect(calls.map((c) => c.offsetIndex)).toEqual([undefined, 20])
@@ -241,54 +283,129 @@ describe('useDialogListSource: постраничная догрузка', () =>
   it('курсор не сдвинулся — цикл фетчера останавливается, а не долбит владельца', async () => {
     // Индексов приехавших диалогов в зеркале нет (насос ещё не поднят) —
     // следующий запрос ушёл бы с тем же offsetIndex и вернул ту же страницу.
-    const { managers, getDialogs } = fakeManagers([{ dialogs: [dialog(1), dialog(2)], count: 99, isEnd: false }])
+    const { managers, getDialogs } = fakeManagers([page([dialog(1), dialog(2)], { count: 99 })])
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
-    await act(async () => { result.current.requestItemForIdx(50, 0) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(5, 0) })
 
     expect(getDialogs).toHaveBeenCalledTimes(1)
+  })
+
+  // Порт `sortedList.itemsLength()` (base.ts:297): фетчеру отдаётся размер
+  // НАБОРА в зеркале, а не длина страницы. Владелец режет свой кэш по
+  // курсору-значению, поэтому страницы перекрываются, и `fetchedItemsCount +=
+  // count` считал бы уже известные строки заново — цикл оборвался бы, не добрав
+  // до нужного индекса, и в списке остались бы пустые строки.
+  it('фетчеру отдаётся размер набора в зеркале, а не длина страницы', async () => {
+    const { managers, getDialogs } = fakeManagers([page([], { isEnd: true })])
+    getDialogs.mockImplementationOnce(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }, { dialog: dialog(3), index: 10 }])
+      return page([dialog(1), dialog(2), dialog(3)], { count: 9 })
+    })
+    // Вторая страница перекрывается первой: три отданных диалога, новый — один.
+    getDialogs.mockImplementationOnce(async () => {
+      seedMirror([
+        { dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 },
+        { dialog: dialog(3), index: 10 }, { dialog: dialog(4), index: 5 },
+      ])
+      return page([dialog(3), dialog(4)], { count: 9 })
+    })
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(4, 0) })
+
+    // Набрано 4 из нужных 5 → идём за третьей страницей (она пустая, конец).
+    expect(getDialogs).toHaveBeenCalledTimes(3)
+  })
+})
+
+// Ответ, доехавший после размонтирования или после переключения папки, не имеет
+// права ни писать в состояние хука, ни двигать курсор уже нового цикла.
+describe('useDialogListSource: гвард актуальности ответа', () => {
+  it('хук размонтирован — цикл догрузки не продолжается', async () => {
+    const { managers, getDialogs, pending } = deferredManagers()
+
+    const { result, unmount } = renderSource(managers, ALL_FOLDER_ID)
+    act(() => { result.current.requestItemForIdx(4, 0) })
+    expect(pending).toHaveLength(1)
+
+    unmount()
+    await act(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }])
+      pending[0](page([dialog(1)], { count: 9 }))
+    })
+
+    expect(getDialogs).toHaveBeenCalledTimes(1)
+  })
+
+  it('папку переключили, пока страница летела — цикл прошлой папки не продолжается', async () => {
+    useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
+    const { managers, getDialogs, pending } = deferredManagers()
+
+    const { result, rerender } = renderSource(managers, ALL_FOLDER_ID)
+    act(() => { result.current.requestItemForIdx(4, 0) })
+    expect(pending).toHaveLength(1)
+
+    rerender({ fid: 7 })
+    await act(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }])
+      pending[0](page([dialog(1)], { count: 9 }))
+    })
+
+    expect(getDialogs).toHaveBeenCalledTimes(1)
+  })
+
+  it('смена папки сбрасывает totalCount/isEnd/wasAtLeastOnceFetched', async () => {
+    useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
+    const { managers } = fakeManagers([page([], { count: 137, isEnd: true })])
+
+    const { result, rerender } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    expect(result.current.totalCount).toBe(137)
+    expect(result.current.isEnd).toBe(true)
+    expect(result.current.wasAtLeastOnceFetched).toBe(true)
+
+    rerender({ fid: 7 })
+
+    expect(result.current.totalCount).toBe(0)
+    expect(result.current.isEnd).toBe(false)
+    expect(result.current.wasAtLeastOnceFetched).toBe(false)
   })
 })
 
 describe('useDialogListSource: анимация первой загрузки', () => {
   it('animate ложен, пока первая загрузка не завершилась, и истинен после', async () => {
-    let release!: (p: DialogsPage) => void
-    const getDialogs = vi.fn(() => new Promise<DialogsPage>((res) => { release = res }))
-    const managers = { dialogs: { getDialogs } }
+    const { managers, pending } = deferredManagers()
 
-    const { result } = renderHook(() => useDialogListSource(ALL_FOLDER_ID), { wrapper: wrapper(managers) })
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
 
     await act(async () => { result.current.requestItemForIdx(0, 0) })
     expect(result.current.animate).toBe(false)
 
-    await act(async () => { release({ dialogs: [], count: 0, isEnd: true }) })
+    await act(async () => { pending[0](page([], { isEnd: true })) })
     expect(result.current.animate).toBe(true)
   })
 
   it('глушилка — СЧЁТЧИК, а не флаг: две первые загрузки внахлёст отпускают анимацию только обе', async () => {
-    const released: ((p: DialogsPage) => void)[] = []
-    const getDialogs = vi.fn(() => new Promise<DialogsPage>((res) => { released.push(res) }))
-    const managers = { dialogs: { getDialogs } }
     useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
+    const { managers, pending } = deferredManagers()
 
-    const { result, rerender } = renderHook(({ fid }) => useDialogListSource(fid), {
-      wrapper: wrapper(managers), initialProps: { fid: ALL_FOLDER_ID },
-    })
+    const { result, rerender } = renderSource(managers, ALL_FOLDER_ID)
 
     // Первая загрузка «Всех чатов» ещё летит, когда папку переключили — и её
     // первая загрузка глушит анимацию вторым блоком.
     await act(async () => { result.current.requestItemForIdx(0, 0) })
     rerender({ fid: 7 })
     await act(async () => { result.current.requestItemForIdx(0, 0) })
-    expect(released).toHaveLength(2)
+    expect(pending).toHaveLength(2)
     expect(result.current.animate).toBe(false)
 
     // Ответ ПЕРВОЙ (уже неактуальной) загрузки анимацию отпускать не вправе —
     // булев флаг отпустил бы здесь, счётчик держит.
-    await act(async () => { released[0]({ dialogs: [], count: 0, isEnd: true }) })
+    await act(async () => { pending[0](page([], { isEnd: true })) })
     expect(result.current.animate).toBe(false)
 
-    await act(async () => { released[1]({ dialogs: [], count: 0, isEnd: true }) })
+    await act(async () => { pending[1](page([], { isEnd: true })) })
     expect(result.current.animate).toBe(true)
   })
 })
