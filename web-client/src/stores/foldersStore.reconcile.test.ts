@@ -77,6 +77,29 @@ describe('loadFolders: cache-first', () => {
     expect(m.dialogs.setContactIds).toHaveBeenCalledWith([1, 2])
   })
 
+  // Ревью Minor 3: доставка контактов владельцу — не fire-and-forget. Пока
+  // `setContactIds` не дошёл, воркер честно НЕ считает папку с правилом
+  // contacts/non_contacts (см. contactsKnown в dialogsManager.ts), поэтому
+  // вызывающий обязан дождаться доставки — иначе `await loadFolders(...)`
+  // означал бы «контакты доставлены», не будучи этим.
+  it('loadFolders не резолвится, пока контакты не доставлены владельцу', async () => {
+    let release!: () => void
+    const delivered = new Promise<void>((r) => { release = r })
+    const m = {
+      ...managersWith([work], [1, 2]),
+      dialogs: { setContactIds: vi.fn(() => delivered) },
+    }
+
+    let done = false
+    const p = loadFolders(m).then(() => { done = true })
+    for (let i = 0; i < 20; i++) await Promise.resolve() // прокрутить микротаски
+
+    expect(done).toBe(false) // ждём доставки
+    release()
+    await p
+    expect(m.dialogs.setContactIds).toHaveBeenCalledWith([1, 2])
+  })
+
   it('память пуста — идём в сеть', async () => {
     const m = managersWith([work])
 

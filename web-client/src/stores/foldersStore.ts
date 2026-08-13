@@ -7,9 +7,9 @@ import { mapFolder, type Folder, type RawFolder } from '../core/managers/folders
 import type { Contact } from '../core/managers/contactsManager'
 import { reconcileById } from '../core/store/reconcile'
 import { useAppStateKey, useAppStateStore, setAppState } from './appState'
-
-// id псевдо-папки «Все чаты» (tweb FOLDER_ID_ALL)
-export const ALL_FOLDER_ID = 0
+// Обе константы id папок живут в core/folderIds.ts: их читают и main, и воркер
+// (`dialogsManager.getDialogs({filterId})`), второй копии значения быть не должно.
+import { ALL_FOLDER_ID } from '../core/folderIds'
 
 interface FoldersUiState {
   selectedId: number
@@ -79,10 +79,18 @@ export async function loadFolders(
     const ids = (await managers.contacts.list()).map((c) => c.userId)
     useFoldersStore.getState().setContacts(ids)
     // Владелец списка диалогов фильтрует папки в воркере — те же контакты
-    // (см. докблок параметра `dialogs` выше).
-    void managers.dialogs.setContactIds(ids).catch(() => {})
+    // (см. докблок параметра `dialogs` выше). Именно `await`, а не
+    // fire-and-forget: провалившийся RPC обязан попасть в тот же catch, что и
+    // провалившийся `/contacts`, — иначе воркер молча остался бы без контактов,
+    // а вызывающий считал бы, что доставил их.
+    await managers.dialogs.setContactIds(ids)
   } catch {
-    /* без контактов правила contacts/non_contacts считают всех не-контактами */
+    /* Оффлайн/упавший RPC: контакты не доехали. Правила contacts/non_contacts
+     * от этого не начинают врать — владелец знает, что контактов ЕЩЁ НЕ БЫЛО,
+     * и отдаёт для такой папки пустую страницу (скелетоны), а не список, где
+     * все считаются не-контактами (см. contactsKnown в dialogsManager.ts).
+     * Повтор — ближайший `loadFolders` (бутстрап вкладки, deep-link, откат
+     * удаления папки); отдельного ретрая этот этап не заводит. */
   }
 }
 

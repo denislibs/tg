@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
-import { useFolders, useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
+import { useFolders, useFoldersStore, loadFolders } from '../../stores/foldersStore'
+import { ALL_FOLDER_ID } from '../folderIds'
 import { chatMatchesFolder } from '../folderFilter'
 import { openPopup } from '../../stores/popupStore'
 import { useManagers } from './useManagers'

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
-import { loadFolders, useFoldersStore, ALL_FOLDER_ID } from './foldersStore'
+import { loadFolders, useFoldersStore } from './foldersStore'
+import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)

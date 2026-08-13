@@ -8,6 +8,7 @@
 // rest), свой сетап не изобретаем.
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
+import { ARCHIVE_FOLDER_ID } from '../folderIds'
 import { mapDialog } from '../models'
 import type { Dialog, Draft, RawDialog } from '../models'
 import type { DialogOp } from '../dialogs/dialogOps'
@@ -205,11 +206,13 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
     expect((await full.getDialogs({ limit: 2 })).count).toBe(3)
   })
 
-  // `is_end` на запрос С КУРСОРОМ закрывает саму страницу, но НЕ объявляет весь
-  // список загруженным: про начало набора страница «после чата X» ничего не
-  // знает (плюс бэкенд отдаёт с начала, если опорный чат исчез, — отступление
-  // №1 спеки). Полным набор объявляет только ответ без курсора (`refresh()`).
-  it('страница по курсору с is_end закрывает страницу, но loadedAll не объявляет', async () => {
+  // Ревью Important 5: tweb поднимает `dialogsLoaded` на ЛЮБОЙ дошедшей до
+  // конца странице (appMessagesManager.ts:3639) — страницы там идут строго
+  // сверху. У нас курсор — `chatId`, и при исчезнувшем опорном чате бэкенд
+  // отдаёт с начала, поэтому одного `is_end` мало: сверяем кэш с размером
+  // набора — ровно как tweb в `dialogsLength >= count`. Без этого КАЖДОЕ
+  // касание хвоста списка навсегда стоило бы сетевого раунд-трипа.
+  it('страница по курсору, закрывшая набор (кэш дорос до count), объявляет весь список загруженным', async () => {
     const rest = restStub({ chats: [raw(3, 3)], count: 3, is_end: true })
     const mgr = newDialogsManager({
       rest: rest as never,
@@ -218,13 +221,102 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
     })
 
-    const page = await mgr.getDialogs({ limit: 3 })
-    expect(page.isEnd).toBe(true)
+    expect((await mgr.getDialogs({ limit: 3 })).isEnd).toBe(true)
+    rest.get.mockClear()
 
-    // Окно шире того, что есть в кэше, — снова идём в сеть: «конец после
-    // курсора» полной загрузкой не считается.
-    await mgr.getDialogs({ limit: 10 })
-    expect(rest.get).toHaveBeenCalledTimes(2)
+    // Кэш (3) дорос до серверного count (3) — дальше страницы из памяти.
+    const page = await mgr.getDialogs({ limit: 10 })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([3, 2, 1])
+    expect(page.count).toBe(3)
+  })
+
+  it('страница по курсору с is_end, но кэш меньше серверного count — загруженным набор НЕ считается', async () => {
+    // `is_end` после курсора при count=9: «после опорного чата пусто», но
+    // держим мы только 3 из 9 — начало набора нам неизвестно.
+    const rest = restStub({ chats: [raw(3, 3)], count: 9, is_end: true })
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ limit: 3 })
+    rest.get.mockClear()
+
+    const page = await mgr.getDialogs({ limit: 10 })
+    expect(rest.get).toHaveBeenCalledTimes(1) // окно шире кэша — снова в сеть
+    expect(page.count).toBe(9) // и count по-прежнему серверный
+  })
+
+  // Порт `isEnd: result.isEnd && curDialogStorage[len-1] === dialogs[len-1]`
+  // (dialogs.ts:1751): страница КОРОЧЕ хвоста кэша концом списка не является,
+  // даже если сервер объявил `is_end` — ниже неё в кэше ещё есть диалоги.
+  it('страница, не дотянувшаяся до хвоста кэша, концом набора не считается', async () => {
+    const mgr = newDialogsManager({
+      // ответ приносит троих разом — окно (3) закончится раньше хвоста (5)
+      rest: restStub({ chats: [raw(5, 5), raw(4, 4), raw(3, 3)], count: 9, is_end: true }) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    const page = await mgr.getDialogs({ limit: 3 })
+
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([5, 4, 3]) // хвост кэша — 2 и 1
+    expect(page.isEnd).toBe(false)
+  })
+
+  // Ревью Important 4 (настоящий баг): опорный чат курсора исчез с сервера →
+  // `dialogpage.go:14-22` отдаёт страницу С НАЧАЛА → она не приносит ничего
+  // нового → хвост кэша не двигается → следующий запрос уходит с ТЕМ ЖЕ
+  // `offset_chat_id`. Без фолбэка список не продвинулся бы НИКОГДА.
+  it('страница, не принёсшая ни одного нового диалога, лечится полным refresh(), а не залипает', async () => {
+    const calls: (Record<string, number> | undefined)[] = []
+    const rest = {
+      get: vi.fn(async (_path: string, q?: Record<string, number>) => {
+        calls.push(q)
+        // страница по курсору — повтор уже известного (курсор не найден на сервере)
+        if (q) return { chats: [raw(2, 2), raw(1, 1)], count: 9, is_end: false }
+        // полный список (фолбэк) — весь набор
+        return { chats: [raw(3, 3), raw(2, 2), raw(1, 1)], count: 3, is_end: true }
+      }),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    const page = await mgr.getDialogs({ limit: 3 })
+
+    expect(calls).toEqual([{ limit: 3, offset_chat_id: 1 }, undefined]) // страница, затем refresh()
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([3, 2, 1]) // список продвинулся
+    expect(page.isEnd).toBe(true)
+  })
+
+  // Порт `count: loadedAll ? curDialogStorage.length : folder.count`
+  // (dialogs.ts:1706): как только набор загружен целиком, размером служит
+  // ДЛИНА КЭША, а серверный `count` прошлых страниц — устаревшее число.
+  it('после полной загрузки count — длина кэша, а не серверный count прошлой страницы', async () => {
+    const rest = {
+      get: vi.fn(async (_path: string, q?: Record<string, number>) => (q
+        ? { chats: [raw(3, 3)], count: 137, is_end: false } // страница: сервер знает про 137
+        : { chats: [raw(1, 1), raw(2, 2), raw(3, 3)], count: 3, is_end: true })), // полный список
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    await mgr.getDialogs({ limit: 3 }) // страница запомнила serverCount = 137
+
+    await mgr.refresh() // полный список: набор загружен целиком
+
+    expect((await mgr.getDialogs({ limit: 2 })).count).toBe(3)
   })
 
   it('офлайн (сеть упала) — отдаём то, что есть в кэше, без исключения', async () => {
@@ -285,7 +377,83 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
     const mgr = withFolders([])
 
     expect((await mgr.getDialogs({ limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([2, 1])
-    expect((await mgr.getDialogs({ filterId: -1, limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([3])
+    expect((await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([3])
+  })
+
+  // Отступление от tweb (docblock ARCHIVE_FOLDER_ID, core/folderIds.ts): у них
+  // архив — реальная папка с id 1 при пользовательских id от 2, у нас id папок
+  // раздаёт Postgres С ЕДИНИЦЫ. Псевдо-id архива обязан лежать ВНЕ этого
+  // пространства, иначе первая созданная пользователем папка молча стала бы
+  // архивом.
+  it('id архива не пересекается с id пользовательских папок', async () => {
+    const mgr = withFolders([folder({ id: 1, nonContacts: true })])
+    mgr.setContactIds([7])
+
+    const page = await mgr.getDialogs({ filterId: 1, limit: 10 })
+
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([2]) // папка №1, а не архив ([3])
+  })
+
+  // Ревью Important 1: серверный `count` — размер ВСЕГО набора (бэкенд про
+  // папки не знает), поэтому применим только к «Всем чатам». Для архива и
+  // пользовательских папок размер — длина отфильтрованного кэша.
+  it('count архива/папки — длина отфильтрованного кэша, а не глобальный серверный count', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub({ chats: [raw(9, 9)], count: 137, is_end: false }) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [contactDialog, strangerDialog, dialog(3, 3, { archived: true })],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, nonContacts: true })] }),
+    })
+    mgr.setContactIds([7])
+    await mgr.getDialogs({ limit: 5 }) // сеть отдала count всего набора (кэш стал 4)
+
+    // Окна ниже умещаются в кэш — сеть больше не дёргается, сравниваем только count.
+    expect((await mgr.getDialogs({ limit: 3 })).count).toBe(137) // «Все чаты» — серверный
+    expect((await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 1 })).count).toBe(1)
+    // В папку «не контакты» попали stranger (peer 9) и пришедший страницей
+    // чат 9 (без peer, значит тоже не контакт) — двое, но НЕ 137.
+    expect((await mgr.getDialogs({ filterId: 7, limit: 1 })).count).toBe(2)
+  })
+
+  // Ревью Important 3: tweb перед фильтрацией папки ЖДЁТ `fillContacts()`
+  // (dialogs.ts:1625-1642). У нас контакты приезжают пушем, ждать нечего —
+  // поэтому «контактов ещё не было» обязано вести себя как неизвестная папка:
+  // пустая страница со скелетонами вместо МОЛЧА неверной (все — не-контакты).
+  it('папка с правилом contacts/non_contacts до прихода контактов отдаёт пустую страницу, а не неверную', async () => {
+    const rest = restStub({ chats: [] })
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [contactDialog, strangerDialog],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, nonContacts: true })] }),
+    })
+
+    // Контактов ещё не было: без гварда сюда попали БЫ оба чата (каждый
+    // приватный без контактов считается не-контактом).
+    expect(await mgr.getDialogs({ filterId: 7, limit: 10 })).toEqual({ dialogs: [], count: 0, isEnd: false })
+    expect(rest.get).not.toHaveBeenCalled()
+
+    mgr.setContactIds([7])
+
+    expect((await mgr.getDialogs({ filterId: 7, limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([2])
+  })
+
+  it('пустой список контактов — тоже знание: папка считается, а не ждёт вечно', async () => {
+    const mgr = withFolders([folder({ id: 7, nonContacts: true })])
+    mgr.setContactIds([])
+
+    expect((await mgr.getDialogs({ filterId: 7, limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([2, 1])
+  })
+
+  it('папка, чьи правила от контактов не зависят, считается и без них', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub({ chats: [] }) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [contactDialog, dialog(4, 4, { type: 'group' })],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+
+    expect((await mgr.getDialogs({ filterId: 7, limit: 10 })).dialogs.map((d) => d.chatId)).toEqual([4])
   })
 
   it('неизвестная папка (определения ещё не приехали) — пустая страница, а не весь список; сеть не дёргается', async () => {
@@ -311,6 +479,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
     })
     await mgr.fillMirror()
+    mgr.setContactIds([7])
     expect((await mgr.getDialogs({ filterId: 7, limit: 10 })).dialogs).toEqual([]) // папки ещё нет
 
     mgr.setStateKey('folders', [folder({ id: 7, nonContacts: true, contacts: true })])
