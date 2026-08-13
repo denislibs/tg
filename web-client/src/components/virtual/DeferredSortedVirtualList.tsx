@@ -27,6 +27,7 @@
 // глушилки держит владелец загрузки, а сюда приходит уже готовое `animate`
 // (`:270` — `animate={blockedAnimationCount() === 0}`).
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -43,10 +44,12 @@ import VerticalVirtualList, { type VirtualListItemProps } from './VerticalVirtua
 
 import styles from './DeferredSortedVirtualList.module.scss'
 
-/** `:34-38`. Про поле `index` — см. комментарий у `fullItems` ниже. */
+/**
+ * `:34-38`, без поля `index`: в оригинале оно нужно `sortedItems` (`:70`), а тот
+ * здесь не портируется — см. комментарий у `fullItems`.
+ */
 export type DeferredSortedVirtualListItem<T> = {
   id: number | string
-  index: number
   value: T
 }
 
@@ -58,14 +61,31 @@ export type DeferredSortedVirtualListRenderItemProps<T> = {
 
 export type DeferredSortedVirtualListProps<T> = {
   scrollableHost: HTMLElement | null
+  /**
+   * Уже упорядоченные элементы — компонент их НЕ пересортировывает. Порядок
+   * приходит готовым от владельца (воркер считает `dialogIndex`, зеркало
+   * раскладывает по нему в `chatsStore.sortDialogsByIndex`); второе правило
+   * сортировки на витрине запрещено пином `stores/noManualOrder.test.ts`.
+   * Ссылка на массив должна меняться только при реальном изменении состава или
+   * порядка: по её смене пересчитывается решение анимировать переезд
+   * (`useShouldAnimate`), а элементы сравниваются между старым и новым списком
+   * ПО ССЫЛКЕ.
+   */
   items: readonly DeferredSortedVirtualListItem<T>[]
+  /** Закреплённые сверху (у нас — архив). Тоже стабильной ссылкой. */
   pinnedItems?: readonly DeferredSortedVirtualListItem<T>[]
   totalCount: number
   wasAtLeastOnceFetched: boolean
   itemSize: LoadingDialogSkeletonSize
   noAvatar?: boolean
   animate: boolean
+  /**
+   * Стабильная ссылка (`useCallback`): зовётся из эффекта каждой непоказанной
+   * строки окна, и новая ссылка на каждом рендере родителя означает шторм
+   * запросов страниц.
+   */
   requestItemForIdx: (idx: number, itemsLength: number) => void
+  /** Стабильная ссылка: строка обёрнута в `memo` (см. `VerticalVirtualList`). */
   renderItem: (p: DeferredSortedVirtualListRenderItemProps<T>) => ReactNode
   listRef?: Ref<HTMLUListElement>
   className?: string
@@ -100,12 +120,12 @@ function DeferredSortedVirtualList<T>({
   // `sortedItems` оригинала (`:70`, `sortWith` у единственного вызывающего —
   // `(a, b) => b - a`, `sortedDialogList.ts:102`) здесь НЕ портируется: там список
   // владеет элементами и добирает их порциями в произвольном порядке, поэтому
-  // обязан упорядочить их сам. У нас порядок — производная зеркала и считается
-  // ровно в одном месте на main (`chatsStore.sortDialogsByIndex`, инвариант
-  // `stores/noManualOrder.test.ts`); `items` приезжают уже отсортированными, а
-  // второе правило сортировки здесь — ровно тот баг, ради которого заведён
-  // инвариант. Поле `index` при этом остаётся частью контракта элемента (ключ
-  // порядка, посчитанный владельцем) — как и в типе оригинала (`:34-38`).
+  // обязан упорядочить их сам — сортировка там защитная. У нас порядок —
+  // производная зеркала и считается ровно в одном месте на main
+  // (`chatsStore.sortDialogsByIndex`, инвариант `stores/noManualOrder.test.ts`);
+  // `items` приезжают уже отсортированными, а второе правило сортировки здесь —
+  // ровно тот баг, ради которого заведён инвариант. Вместе с сортировкой из типа
+  // элемента ушло и поле `index` — читать его стало некому.
   const fullItems = useMemo(() => {
     const realItems = [...pinnedItems, ...items]
 
@@ -153,9 +173,24 @@ function DeferredSortedVirtualList<T>({
     if (mn === null) return
 
     const timeout = self.setTimeout(() => {
+      // `Math.max` (`:215`) — защита оригинала от отката `revealIdx` назад;
+      // СОЗНАТЕЛЬНО НЕ ПОКРЫТА тестом: в нашем потоке она недостижима, а значит
+      // мутация `Math.max(mn + 1, …) → mn + 1` ничего не красит. Доказательство:
+      // в очередь встают только индексы с `idx >= revealIdx` (`isRevealed` ложен),
+      // а второй и последний писатель `revealIdx` — эффект `wasAtLeastOnceFetched`
+      // выше — срабатывает единожды и ровно тогда, когда очередь заведомо пуста
+      // (до него `revealIdx === Infinity`, то есть раскрыто всё). Оставлена
+      // дословно: удалять защиту оригинала ради красного теста — хуже.
       const next = Math.max(mn + 1, revealIdxRef.current)
       revealIdxRef.current = next
       setRevealIdx(next)
+      // Снятие раскрытого индекса с очереди. Дублирует `dequeueReveal` в cleanup
+      // строки (`:283` оригинала — там ровно та же пара), поэтому по отдельности
+      // ни одна из двух не красит тест; наблюдаемой разницы между ними в
+      // React-порте нет (разбор — в отчёте задачи), а нагруженная из них —
+      // именно cleanup строки: только он снимает с очереди индекс, чья строка
+      // уехала из окна, так и не дождавшись раскрытия (тест «строка ушла из
+      // окна…»). Обе сохранены 1:1 с оригиналом.
       setQueuedToBeRevealed((prev) => prev.filter((n) => next <= n))
     }, REVEAL_STEP)
 
@@ -180,21 +215,42 @@ function DeferredSortedVirtualList<T>({
     [],
   )
 
-  const renderVirtualItem = (p: VirtualListItemProps<DeferredSortedVirtualListItem<T> | null>) => (
-    <DeferredItem
-      item={p.item}
-      idx={p.idx}
-      itemRef={p.itemRef}
-      revealIdx={revealIdx}
-      pinnedCount={pinnedItems.length}
-      itemsLength={items.length}
-      itemSize={itemSize}
-      noAvatar={noAvatar}
-      requestItemForIdx={requestItemForIdx}
-      enqueueReveal={enqueueReveal}
-      dequeueReveal={dequeueReveal}
-      renderItem={renderItem}
-    />
+  const pinnedCount = pinnedItems.length
+  const itemsLength = items.length
+
+  // Стабильная ссылка обязательна: это `renderItem` списка, а строки списка
+  // обёрнуты в `memo` (см. `VerticalVirtualList`). Строке отдаётся уже готовый
+  // БУЛЕВ `isRevealed`, а не число `revealIdx`: иначе каждый шаг волны (раз в
+  // 8.3 мс) менял бы проп у всех строк окна и перерисовывал бы их все, хотя
+  // раскрывается ровно одна.
+  const renderVirtualItem = useCallback(
+    (p: VirtualListItemProps<DeferredSortedVirtualListItem<T> | null>) => (
+      <DeferredItem
+        item={p.item}
+        idx={p.idx}
+        itemRef={p.itemRef}
+        isRevealed={p.idx < revealIdx} // `:272`
+        pinnedCount={pinnedCount}
+        itemsLength={itemsLength}
+        itemSize={itemSize}
+        noAvatar={noAvatar}
+        requestItemForIdx={requestItemForIdx}
+        enqueueReveal={enqueueReveal}
+        dequeueReveal={dequeueReveal}
+        renderItem={renderItem}
+      />
+    ),
+    [
+      revealIdx,
+      pinnedCount,
+      itemsLength,
+      itemSize,
+      noAvatar,
+      requestItemForIdx,
+      enqueueReveal,
+      dequeueReveal,
+      renderItem,
+    ],
   )
 
   return (
@@ -219,11 +275,11 @@ function DeferredSortedVirtualList<T>({
  * месте ещё не загруженного индекса (`:306-324`). Отдельный компонент, потому что
  * ему нужны свои эффекты — очередь reveal и запрос недостающей страницы.
  */
-function DeferredItem<T>({
+function DeferredItemInner<T>({
   item,
   idx,
   itemRef,
-  revealIdx,
+  isRevealed,
   pinnedCount,
   itemsLength,
   itemSize,
@@ -236,7 +292,7 @@ function DeferredItem<T>({
   item: DeferredSortedVirtualListItem<T> | null
   idx: number
   itemRef: (el: HTMLElement | null) => void
-  revealIdx: number
+  isRevealed: boolean
   pinnedCount: number
   itemsLength: number
   itemSize: LoadingDialogSkeletonSize
@@ -246,7 +302,6 @@ function DeferredItem<T>({
   dequeueReveal: (idx: number) => void
   renderItem: (p: DeferredSortedVirtualListRenderItemProps<T>) => ReactNode
 }) {
-  const isRevealed = idx < revealIdx // `:272`
   const canShow = !!item && isRevealed // `:273`
 
   // `:275-285` — индекс, который уже есть, но ещё не раскрыт, встаёт в очередь;
@@ -263,6 +318,10 @@ function DeferredItem<T>({
 
   // `:287-291` — за всё, что показать нельзя, просим страницу у владельца.
   // Индекс — БЕЗ закреплённых сверху: их владелец в своей нумерации не знает.
+  // Индекс может выйти ОТРИЦАТЕЛЬНЫМ: пока волна reveal не дошла до закреплённой
+  // строки, она тоже считается непоказанной и даёт `0 - pinnedCount`. Так же ведёт
+  // себя оригинал (`:290`); владелец обязан игнорировать отрицательный и уже
+  // загруженный индекс.
   useEffect(() => {
     if (canShow) return
 
@@ -309,5 +368,14 @@ function DeferredItem<T>({
 
   return <>{renderItem({ id: item.id, value: item.value, itemRef: setEl })}</>
 }
+
+// Второй рубеж мемоизации (первый — сама строка списка, `VerticalVirtualList`).
+// Шаг волны reveal меняет `revealIdx` и, значит, ссылку на `renderVirtualItem` —
+// строки окна перерисовываются все. Здесь это заканчивается: у `memo` меняется
+// ровно один проп ровно у одной строки — её `isRevealed`, — поэтому дорогой
+// `renderItem` потребителя (у нас это `ChatListItem`: аватар, rich-text превью,
+// бэйджи) на шаге волны вызывается один раз, а не по разу на каждую раскрытую
+// строку окна. Каст — обход потери дженерик-параметра в `memo`.
+const DeferredItem = memo(DeferredItemInner) as typeof DeferredItemInner
 
 export default DeferredSortedVirtualList

@@ -19,7 +19,6 @@ type Chat = { title: string }
 function makeItems(n: number, from = 0): DeferredSortedVirtualListItem<Chat>[] {
   return Array.from({ length: n }, (_, i) => ({
     id: from + i,
-    index: 1000 - (from + i),
     value: { title: `chat ${from + i}` },
   }))
 }
@@ -153,7 +152,7 @@ describe('DeferredSortedVirtualList — requestItemForIdx (:287-291)', () => {
     vi.useFakeTimers()
     const host = makeHost()
     const pinnedItems: DeferredSortedVirtualListItem<Chat>[] = [
-      { id: 'archive', index: Number.MAX_SAFE_INTEGER, value: { title: 'Archived' } },
+      { id: 'archive', value: { title: 'Archived' } },
     ]
 
     const props = {
@@ -202,7 +201,7 @@ describe('DeferredSortedVirtualList — закреплённые сверху (:
     vi.useFakeTimers()
     const host = makeHost()
     const pinnedItems: DeferredSortedVirtualListItem<Chat>[] = [
-      { id: 'archive', index: Number.MAX_SAFE_INTEGER, value: { title: 'Archived' } },
+      { id: 'archive', value: { title: 'Archived' } },
     ]
 
     render(
@@ -301,6 +300,107 @@ describe('DeferredSortedVirtualList — волна раскрытия (:199-223)
     rerender(<DeferredSortedVirtualList {...props} wasAtLeastOnceFetched />)
 
     expect(rowIds(host)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+  })
+})
+
+describe('DeferredSortedVirtualList — снятие с очереди reveal (:283)', () => {
+  it('строка ушла из окна, не дождавшись раскрытия — волна дальше не едет', () => {
+    // Единственное, что умеет только cleanup строки (а не фильтр очереди в самом
+    // таймере): снять с очереди индекс, чья строка уехала из окна. Мутация
+    // «dequeueReveal → no-op» оставляет очередь набитой, волна докручивает
+    // revealIdx до конца окна вслепую, и по возвращении видно все 14 строк.
+    vi.useFakeTimers()
+    const host = makeHost()
+
+    const props = {
+      scrollableHost: host,
+      totalCount: 200, // много дырок ниже загруженных 30 — есть куда уехать
+      wasAtLeastOnceFetched: true,
+      itemSize: 72 as const,
+      animate: true,
+      requestItemForIdx: () => {},
+      renderItem,
+    }
+
+    const { rerender } = render(<DeferredSortedVirtualList {...props} items={[]} />, { container: host })
+    rerender(<DeferredSortedVirtualList {...props} items={makeItems(30)} />)
+
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    expect(rowIds(host)).toEqual(['0'])
+
+    // Уезжаем далеко вниз — в окне одни дырки, все строки очереди размонтированы.
+    // За 24 мс троттлинга измерения волна успевает сделать ещё один шаг (8.3 мс),
+    // поэтому к моменту ухода раскрыты две строки, а не одна.
+    act(() => {
+      host.scrollTop = 100 * 72
+      host.dispatchEvent(new Event('scroll'))
+      vi.advanceTimersByTime(30) // троттлинг измерения
+    })
+    expect(rowIds(host)).toEqual([])
+
+    act(() => {
+      vi.advanceTimersByTime(500) // за это время без снятия с очереди волна докрутила бы всё окно
+    })
+
+    // Возвращаемся: раскрытыми должны остаться ровно те строки, что доехали до ухода.
+    act(() => {
+      host.scrollTop = 0
+      host.dispatchEvent(new Event('scroll'))
+      // 24 мс — троттлинг измерения; оставшиеся 4 мс меньше шага волны (8.3 мс),
+      // то есть заново вставшие в очередь строки раскрыться ещё не успевают.
+      vi.advanceTimersByTime(28)
+    })
+
+    expect(rowIds(host)).toEqual(['0', '1'])
+  })
+})
+
+describe('DeferredSortedVirtualList — строка не перерисовывается зря', () => {
+  it('шаг волны reveal перерисовывает ровно одну строку — раскрытую', () => {
+    // Шаг волны меняет revealIdx каждые 8.3 мс. Без мемоизации это перерисовывало
+    // бы renderItem потребителя (у нас — ChatListItem: аватар, rich-text превью,
+    // бэйджи) у ВСЕХ раскрытых строк окна на каждом шаге.
+    vi.useFakeTimers()
+    const host = makeHost()
+
+    const shown: (string | number)[] = []
+    const countingRenderItem = ({ id, itemRef }: DeferredSortedVirtualListRenderItemProps<Chat>) => {
+      shown.push(id)
+      return <div data-testid="row" data-id={id} ref={itemRef} />
+    }
+
+    const props = {
+      scrollableHost: host,
+      totalCount: 100,
+      wasAtLeastOnceFetched: true,
+      itemSize: 72 as const,
+      animate: true,
+      requestItemForIdx: () => {},
+      renderItem: countingRenderItem,
+    }
+
+    const { rerender } = render(<DeferredSortedVirtualList {...props} items={[]} />, { container: host })
+    rerender(<DeferredSortedVirtualList {...props} items={makeItems(10)} />)
+    expect(shown).toEqual([])
+
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    expect(shown).toEqual([0])
+
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    // Мутация: снять `memo` с DeferredItem или `useCallback` с renderVirtualItem —
+    // строка 0 перерисуется вместе со строкой 1, и здесь будет [0, 0, 1].
+    expect(shown).toEqual([0, 1])
+
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    expect(shown).toEqual([0, 1, 2])
   })
 })
 
@@ -420,5 +520,34 @@ describe('DeferredSortedVirtualList — параметры скелетона (:
     expect(skeletons(host).map((el) => el.style.top).slice(0, 3)).toEqual(['0px', '64px', '128px'])
     expect((host.querySelector('ul') as HTMLElement).style.height).toBe(100 * 64 + 8 + 'px')
     expect(skeletons(host)).toHaveLength(15)
+  })
+
+  it('seed скелетона — его индекс: соседние дырки выглядят по-разному', () => {
+    const host = makeHost()
+    render(
+      <DeferredSortedVirtualList
+        scrollableHost={host}
+        items={[]}
+        totalCount={100}
+        wasAtLeastOnceFetched
+        itemSize={72}
+        animate
+        requestItemForIdx={() => {}}
+        renderItem={renderItem}
+      />,
+      { container: host },
+    )
+
+    // Ширины плашек — детерминированная функция seed'а (см. LoadingDialogSkeleton).
+    // Мутация `seed={idx}` → `seed={0}` делает весь столбец скелетонов одинаковым.
+    const plateWidths = (skeleton: HTMLElement) =>
+      Array.from(skeleton.querySelectorAll('div'))
+        .map((el) => (el as HTMLElement).style.getPropertyValue('--width'))
+        .filter(Boolean)
+        .join('|')
+
+    const first = plateWidths(skeletons(host)[0])
+    expect(first).not.toBe('')
+    expect(first).not.toBe(plateWidths(skeletons(host)[1]))
   })
 })

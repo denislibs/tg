@@ -34,6 +34,24 @@ export function useAnimatedTop(top: number, canAnimate: boolean): (el: HTMLEleme
   const stopRef = useRef<(() => void) | null>(null)
 
   const setEl = useCallback((el: HTMLElement | null) => {
+    // Отцепление (`el === null`) и переприкрепление ТОГО ЖЕ узла — не смена узла,
+    // и состояние хука тут трогать нельзя.
+    //
+    // React 19 переинициализирует ref-колбэк keyed-ребёнка, когда тот переезжает в
+    // DOM: под StrictMode (а его включает `main.tsx`) один и тот же своп соседей
+    // даёт пару `detach(null)` + `attach(тот же el)`. То же самое делает и
+    // потребитель, передавший НЕСТАБИЛЬНЫЙ inline-ref (`ref={(el) => itemRef(el)}`) —
+    // уже без всякого StrictMode, в проде. Прежняя безусловная ветка на каждый такой
+    // вызов сбрасывала `currentRef`/`top`/`--background` — и переезд строки не
+    // анимировался вовсе, строка прыгала (критерий приёмки №4 спеки).
+    //
+    // Гасить бегущую анимацию на отцеплении тоже не нужно: при размонтировании её
+    // снимает cleanup эффекта ниже, при смене узла — ветка `stopRef.current?.()`
+    // прямо здесь. Единственный оставшийся случай — узел отцепили и больше ничего не
+    // приткнули: анимация доигрывает свои ⩽120 мс на уже отсоединённом от дерева
+    // элементе, это не наблюдаемо.
+    if (el === null || el === elRef.current) return
+
     // Гасим анимацию, бежавшую на ПРЕЖНЕМ узле (смена ключа/ремонт строки —
     // старый элемент, к которому был привязан animate()-тик, больше не наш).
     // Осознанное допущение: `top`/`--background` на старом узле НЕ сбрасываются
@@ -43,7 +61,6 @@ export function useAnimatedTop(top: number, canAnimate: boolean): (el: HTMLEleme
     stopRef.current?.()
     stopRef.current = null
     elRef.current = el
-    if (!el) return
 
     // Первое присвоение узлу — БЕЗ анимации, как `{defer: true}` у
     // `createEffect(on(...))` оригинала (createAnimatedValue.ts:37-38): эффект

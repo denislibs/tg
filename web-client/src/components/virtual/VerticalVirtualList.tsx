@@ -20,7 +20,7 @@
 //    сохраняет свой узел и анимирует `top` к новому месту. React требует явный
 //    `key`, и без него строки пришлось бы ключевать индексом — тогда `top` строки
 //    никогда бы не менялся и анимация переезда исчезла бы вовсе.
-import { useEffect, useMemo, useState, type Key, type ReactNode, type Ref } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useState, type Key, type ReactNode, type Ref } from 'react'
 
 import { IS_OVERLAY_SCROLL_SUPPORTED } from '@environment/overlayScrollSupport'
 import { useElementSize } from '@shared/lib/useElementSize'
@@ -70,6 +70,13 @@ function isVisible(
 export type VirtualListItemProps<T> = {
   item: T
   idx: number
+  /**
+   * Вешать на КОРНЕВОЙ узел строки — и только его, СТАБИЛЬНОЙ ссылкой
+   * (`ref={itemRef}`, не `ref={(el) => itemRef(el)}`). Нестабильный ref React
+   * отцепляет и прицепляет заново на каждом рендере, а переприкрепление — это
+   * повторная синхронизация узла с текущим `top`; анимация переезда строки при
+   * этом молча исчезает. Сам `itemRef` стабилен между рендерами строки.
+   */
   itemRef: (el: HTMLElement | null) => void
 }
 
@@ -77,6 +84,11 @@ export type VerticalVirtualListProps<T> = {
   listRef?: Ref<HTMLUListElement>
   list: readonly T[]
   getKey: (item: T, idx: number) => Key
+  /**
+   * Обязан быть СТАБИЛЬНОЙ ссылкой (`useCallback`): строка обёрнута в `memo`, и
+   * новый `renderItem` на каждом рендере родителя перерисовывает всё окно —
+   * ровно то, ради избавления от чего список и виртуализируется.
+   */
   renderItem: (p: VirtualListItemProps<T>) => ReactNode
 
   className?: string
@@ -99,7 +111,7 @@ const NO_SCROLL_SHIFT = (): void => {}
  * цикле по видимым индексам его звать нельзя (число и порядок вызовов менялись бы
  * от рендера к рендеру). Аналог `Item` оригинала (`:77-88`).
  */
-function VerticalVirtualListItem<T>({
+function VerticalVirtualListItemInner<T>({
   item,
   idx,
   itemHeight,
@@ -117,6 +129,16 @@ function VerticalVirtualListItem<T>({
 
   return <>{renderItem({ item, idx, itemRef })}</>
 }
+
+// В solid перерисовка одной строки на кадре скролла невозможна по построению:
+// `<For>` + `<Show>` — мелкозернистая реактивность, при смене `scrollAmount`
+// пересчитывается только предикат видимости. React же перерисовывает всё поддерево
+// родителя, то есть КАЖДУЮ видимую строку на каждом кадре скролла (замер ревью:
+// 16 вызовов `renderItem` на один кадр). `memo` возвращает нам поведение оригинала:
+// строка перерисовывается, только когда у неё реально изменился `item`, `idx` или
+// `canAnimate`. Цена — требование стабильности `renderItem` (см. тип пропа).
+// Каст — стандартный обход того, что `memo` теряет дженерик-параметр.
+const VerticalVirtualListItem = memo(VerticalVirtualListItemInner) as typeof VerticalVirtualListItemInner
 
 function VerticalVirtualList<T>({
   listRef,
@@ -139,7 +161,14 @@ function VerticalVirtualList<T>({
   // `useElementSize` у нас — callback-ref (а не аксессор элемента, как solid-хук
   // оригинала), поэтому хост «подсовывается» ему эффектом; `scrollableHost === null`
   // на первом рендере — штатная ветка: размеры остаются нулевыми.
-  useEffect(() => {
+  //
+  // Эффект именно layout-фазы: `useElementSize` меряет хост синхронно при
+  // подстановке, и React успевает перерисовать список с настоящей высотой ДО
+  // первой отрисовки. С обычным `useEffect` первый кадр уходил бы в браузер с
+  // `hostHeight === 0` — то есть с 4 строками вместо окна, а при `forceHostHeight`
+  // ещё и с `ul` нулевой высоты. Различить фазы в тестах нельзя: `act()` из RTL
+  // прогоняет layout- и passive-эффекты одинаково, до любых утверждений.
+  useLayoutEffect(() => {
     hostSizeRef(scrollableHost)
     return () => hostSizeRef(null)
   }, [hostSizeRef, scrollableHost])
@@ -182,9 +211,19 @@ function VerticalVirtualList<T>({
   const shouldAnimate = useShouldAnimate({ list, scrollAmount, hostHeight, itemHeight, onScrollShift }) // `:55-61`
   const canAnimate = shouldAnimate && animate // `:63`
 
+  // Оригинал проходит по ВСЕМУ списку (`<For each={props.list}>` + `<Show>`), и в
+  // solid это бесплатно — предикат пересчитывается точечно. У нас проход идёт на
+  // каждом кадре скролла целиком, то есть 10k итераций на 10k диалогов, поэтому
+  // нижняя граница окна берётся арифметикой из той же формулы
+  // (`idx * itemHeight >= scrollAmount - padding` ⟺ `idx >= ceil((scrollAmount - padding) / itemHeight)`),
+  // а решение о каждом индексе по-прежнему принимает дословный `isVisible`.
+  // Выход из цикла по нему же: верхняя граница монотонна по `idx`, первый
+  // не прошедший индекс — последний.
+  const firstIdx = Math.max(0, Math.ceil((scrollAmount - thresholdPadding) / itemHeight))
+
   const children: ReactNode[] = []
-  for (let idx = 0; idx < list.length; ++idx) {
-    if (!isVisible(idx, scrollAmount, hostHeight, itemHeight, thresholdPadding)) continue
+  for (let idx = firstIdx; idx < list.length; ++idx) {
+    if (!isVisible(idx, scrollAmount, hostHeight, itemHeight, thresholdPadding)) break
 
     const item = list[idx]
     children.push(
