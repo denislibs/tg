@@ -24,6 +24,7 @@ import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import rootScope from '@lib/rootScope'
 import { isGifLike } from '../gifs'
+import { buildMessageLink } from '../messageLink'
 import { parseMarkdown } from '../richtext/markdown'
 import type { FactCheck } from '../models'
 import { friendlyMsgTime } from '../format/friendlyTime'
@@ -242,6 +243,26 @@ export function useMessageActions({
       .write([new ClipboardItem({ 'image/png': png })])
       .then(() => rootScope.dispatchEvent('ui:toast', t('Image copied to clipboard')))
       .catch(() => rootScope.dispatchEvent('ui:toast', t('Could not copy the image')))
+  }
+
+  // «Copy Message Link» — ссылка на конкретный пост (tweb
+  // MessageContext.CopyMessageLink1, только в каналах). Формат и разбор — в
+  // core/messageLink.ts; открывается нашим же клиентом через хэш навигации.
+  const copyMsgLink = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.seq == null) return
+    const link = buildMessageLink({
+      origin: location.origin,
+      pathname: location.pathname,
+      chatId: numericChatId,
+      username: chat.username,
+      seq: raw.seq,
+    })
+    void navigator.clipboard
+      ?.writeText(link)
+      .then(() => rootScope.dispatchEvent('ui:toast', t('Link copied to clipboard')))
+      .catch(() => {})
   }
 
   const startTranslate = () => {
@@ -591,6 +612,11 @@ export function useMessageActions({
     // обмена принимает картинку, для видео/файлов пункта нет (там «Download»).
     ...(isRealChat && !isSecret && menuRawMsg()?.type === 'photo' && menuRawMsg()?.mediaId != null
       ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy Media', onClick: copyMedia }]
+      : []),
+    // «Copy Message Link» — только в каналах (tweb verify: isChannel), у поста
+    // с серверным seq: у неотправленного якоря ещё нет.
+    ...(isRealChat && chat.type === 'channel' && menuRawMsg()?.seq != null
+      ? [{ icon: <TgIcon name="link" size={20} />, label: 'Copy Message Link', onClick: copyMsgLink }]
       : []),
     ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
       ? [{ icon: <TgIcon name="language" size={20} />, label: 'Translate', onClick: startTranslate }]

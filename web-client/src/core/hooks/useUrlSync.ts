@@ -15,6 +15,7 @@ import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { setBaseHandler } from '../navigation/navigationStack'
+import { parseNavHash, requestMessageJump } from '../messageLink'
 import type { Managers } from '../../client/bootstrap'
 
 // Хэш для текущего состояния навигации (без ведущего #). '' — список чатов.
@@ -35,21 +36,31 @@ function hashForState(): string {
 
 // Применить хэш к навигации. Публичный @username, которого нет в диалогах,
 // резолвим директорией (channels.search): чат → вступить+открыть, юзер → черновик.
-async function applyHash(rawHash: string, managers: Managers): Promise<void> {
-  const h = rawHash.replace(/^#/, '')
+export async function applyHash(rawHash: string, managers: Managers): Promise<void> {
   const nav = useNavigationStore.getState()
-  if (!h) { nav.selectChat(null); return }
+  if (!rawHash.replace(/^#/, '')) { nav.selectChat(null); return }
 
-  if (h.startsWith('@')) {
-    const username = h.slice(1).toLowerCase()
+  const parsed = parseNavHash(rawHash)
+  if (!parsed) return
+
+  // Прыжок к сообщению ставится ДО открытия чата: лента потребляет pendingJump
+  // при монтировании (тот же путь, что переход из поиска).
+  const openAt = (chatId: number | string) => {
+    if (parsed.seq != null) requestMessageJump(Number(chatId), parsed.seq)
+    nav.selectChat(String(chatId))
+  }
+
+  if (parsed.target.startsWith('@')) {
+    const username = parsed.target.slice(1).toLowerCase()
     const dlg = useChatsStore.getState().dialogs.find((d) => d.username?.toLowerCase() === username)
-    if (dlg) { nav.selectChat(String(dlg.chatId)); return }
+    if (dlg) { openAt(dlg.chatId); return }
     try {
       const res = await managers.channels.search(username)
       const chat = res.chats.find((c) => c.username.toLowerCase() === username)
       if (chat) {
         try { await managers.channels.join(chat.username) } catch { /* уже вступил / приватный */ }
         await managers.dialogs.refresh()
+        if (parsed.seq != null) requestMessageJump(chat.id, parsed.seq)
         useNavigationStore.getState().selectChat(String(chat.id))
         return
       }
@@ -62,9 +73,9 @@ async function applyHash(rawHash: string, managers: Managers): Promise<void> {
     return
   }
 
-  // #<chatId> или #<chatId>_<threadRoot> — открываем чат (ветку в Phase A не восстанавливаем).
-  const m = h.match(/^(\d+)(?:_\d+)?$/)
-  if (m) nav.selectChat(m[1])
+  // #<chatId>, #<chatId>_<threadRoot> (ветку в Phase A не восстанавливаем)
+  // или #<chatId>/<seq> — открываем чат, при наличии якоря прыгаем к сообщению.
+  openAt(parsed.target)
 }
 
 export function useUrlSync(): void {
