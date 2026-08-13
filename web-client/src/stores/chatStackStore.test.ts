@@ -65,4 +65,29 @@ describe('chatStackStore', () => {
     expect(selectRoot(useChatStackStore.getState())?.peerId).toBe(1)
     expect(selectOpenThread(useChatStackStore.getState())).toEqual({ chatId: 2, thread })
   })
+
+  it('popTo(index) срезает всё выше индекса', () => {
+    const { setPeer, setInnerPeer, popTo } = useChatStackStore.getState()
+    setPeer({ peerId: 1, type: 'chat' })
+    setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    setInnerPeer({ peerId: 3, type: 'chat' })
+
+    popTo(0)
+    expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([1])
+
+    setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    setInnerPeer({ peerId: 3, type: 'chat' })
+
+    popTo(-1)
+    expect(useChatStackStore.getState().stack).toEqual([])
+  })
+
+  it('clear() опустошает стек', () => {
+    const { setPeer, setInnerPeer, clear } = useChatStackStore.getState()
+    setPeer({ peerId: 1, type: 'chat' })
+    setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+
+    clear()
+    expect(useChatStackStore.getState().stack).toEqual([])
+  })
 })
