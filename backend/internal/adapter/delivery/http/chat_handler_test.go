@@ -156,7 +156,14 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 	// 2) проход курсором по одному
 	var walked []int64
 	var cursor int64
-	for {
+	// Ограничитель итераций: без него регрессия курсора (напр. offset_chat_id
+	// игнорируется) не роняет тест, а вешает его — в CI это таймаут всего
+	// прогона вместо внятной ошибки.
+	maxIter := full.Count + 2
+	for iter := 0; ; iter++ {
+		if iter >= maxIter {
+			t.Fatalf("курсор не сходится за %d шагов, собрано: %v", maxIter, walked)
+		}
 		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_chat_id=%d", cursor))
 		if p.Count != 3 {
 			t.Fatalf("count на странице=%d", p.Count)
