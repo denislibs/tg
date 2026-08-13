@@ -14,6 +14,8 @@
 //     (transition.ts:349); transitionTime у horizontalMenu — 200мс, как --tabs-transition.
 //
 // Родитель должен резать горизонтальный overflow (overflow-x: hidden).
+//
+// Про `keepMounted` (порт того, как tweb держит табы) — см. докблок пропа.
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import type { TabValue } from './Tabs'
@@ -29,12 +31,30 @@ export default function TabSlide({
   tab,
   order,
   className,
+  keepMounted,
   children,
 }: {
   tab: TabValue
   /** значения табов в порядке отображения — по нему считается направление */
   order: readonly TabValue[]
   className?: string
+  /**
+   * Держать в DOM ВСЕ уже показанные табы — так устроен оригинал: `.tabs-container`
+   * хранит все свои `.tabs-tab`, а `selectTab` лишь переставляет класс `active`
+   * (`transition.ts:300-323`), и, например, скроллер папки создаётся один раз
+   * (`appDialogsManager.addFilter`, `lib/appDialogsManager.ts:1249-1290`) и живёт
+   * дальше сам по себе. Нужно там, где у таба есть СОБСТВЕННОЕ состояние DOM,
+   * которое пересоздание узла потеряет: у списка чатов это `scrollTop` папки.
+   *
+   * Поддерево неактивного таба ЗАМОРОЖЕНО: в DOM живёт узел, с которым таб ушёл
+   * (React пропускает поддерево, у которого не изменился элемент), свежий
+   * `children` достаётся только активному. Возврат на таб отдаёт ему актуальное
+   * поддерево, а состояние DOM и хуков переживает уход — ключ кадра тот же.
+   *
+   * Без пропа поведение прежнее: в DOM только текущий кадр (+ уходящий на время
+   * слайда), уход таба его размонтирует.
+   */
+  keepMounted?: boolean
   children: ReactNode
 }) {
   const els = useRef(new Map<TabValue, HTMLDivElement>())
@@ -43,6 +63,8 @@ export default function TabSlide({
   const lastRef = useRef<Frame>({ tab, node: children })
   const [exiting, setExiting] = useState<Frame | null>(null)
   const backwardsRef = useRef(false)
+  // keepMounted: поддеревья всех показанных табов, в порядке первого показа.
+  const mounted = useRef(new Map<TabValue, ReactNode>())
 
   if (lastRef.current.tab !== tab) {
     // tweb: toRight = prevId < id; при !toRight контейнер получает `backwards`
@@ -50,6 +72,14 @@ export default function TabSlide({
     setExiting(lastRef.current) // правка состояния во время рендера — React перерисует сразу
   }
   lastRef.current = { tab, node: children }
+
+  if (keepMounted) {
+    // Актуальное поддерево получает активный таб; ушедшие держат то, с которым
+    // ушли. Запись в ref на рендере идемпотентна (в т.ч. под StrictMode).
+    mounted.current.set(tab, children)
+    // Таба больше нет в `order` (папку удалили) — уходит и его кадр.
+    for (const t of mounted.current.keys()) if (!order.includes(t)) mounted.current.delete(t)
+  }
 
   const exitingTab = exiting?.tab
   useLayoutEffect(() => {
@@ -81,9 +111,16 @@ export default function TabSlide({
     }
   }, [exitingTab, tab])
 
-  // Оба кадра — одним массивом с ключами: так React сохраняет DOM-узел уходящего
+  // Кадры — одним массивом с ключами: так React сохраняет DOM-узел уходящего
   // таба (иначе он пересоздался бы и слайд начался бы с пустого места).
-  const frames: Frame[] = exiting ? [exiting, { tab, node: children }] : [{ tab, node: children }]
+  const frames: Frame[] = keepMounted
+    ? [...mounted.current].map(([t, node]) => ({ tab: t, node }))
+    : exiting ? [exiting, { tab, node: children }] : [{ tab, node: children }]
+
+  // Показан текущий таб, а на время слайда — ещё и уходящий (tweb: `active`
+  // висит на обоих кадрах, пока играет переход). Без `keepMounted` других
+  // кадров и не бывает, поэтому там условие всегда истинно, как и было.
+  const isShown = (t: TabValue) => t === tab || t === exiting?.tab
 
   return (
     <div
@@ -97,11 +134,14 @@ export default function TabSlide({
       {frames.map((f) => (
         <div
           key={String(f.tab)}
+          // Какому табу принадлежит кадр — как tweb помечает скроллер папки
+          // (`scrollable.container.dataset.filterId`, `autonomousDialogList/dialogs.ts:209`).
+          data-tab={String(f.tab)}
           ref={(el) => {
             if (el) els.current.set(f.tab, el)
             else els.current.delete(f.tab)
           }}
-          className={classNames('tabs-tab', 'active', className ?? '')}
+          className={classNames('tabs-tab', isShown(f.tab) ? 'active' : '', className ?? '')}
         >
           {f.node}
         </div>

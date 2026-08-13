@@ -1,11 +1,25 @@
 // src/shared/ui/Tabs/TabSlide.test.tsx
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
+import { useEffect } from 'react'
 import TabSlide from './TabSlide'
 
 const ORDER = ['a', 'b', 'c'] as const
 
 afterEach(cleanup)
+
+/**
+ * Считает МОНТИРОВАНИЯ своего таба: так видно, пережил ли кадр уход с него
+ * (пересоздание узла — это и потеря состояния DOM, ради которого живёт
+ * `keepMounted`: у списка чатов там `scrollTop` папки).
+ */
+const mounts: string[] = []
+function Probe({ id, value }: { id: string; value: number }) {
+  useEffect(() => {
+    mounts.push(id)
+  }, [id])
+  return <div>{`${id}:${value}`}</div>
+}
 
 describe('TabSlide', () => {
   it('на переключении держит оба кадра в DOM и уводит их transform-ами', () => {
@@ -54,6 +68,96 @@ describe('TabSlide', () => {
     })
     expect(root.className).toContain('backwards')
     act(() => { vi.advanceTimersByTime(300) })
+    expect(root.querySelectorAll('.tabs-tab')).toHaveLength(1)
+    vi.useRealTimers()
+  })
+})
+
+describe('TabSlide keepMounted (tweb: .tabs-container хранит все свои .tabs-tab)', () => {
+  it('показанный таб остаётся в DOM, показан ровно текущий, возврат его не пересоздаёт', () => {
+    vi.useFakeTimers()
+    mounts.length = 0
+    const { container, rerender } = render(
+      <TabSlide tab="a" order={ORDER} keepMounted>
+        <Probe id="a" value={1} />
+      </TabSlide>,
+    )
+    const root = container.firstElementChild!
+    expect(root.querySelectorAll('.tabs-tab')).toHaveLength(1)
+    const frameA = root.querySelector<HTMLElement>('[data-tab="a"]')!
+
+    act(() => {
+      rerender(
+        <TabSlide tab="b" order={ORDER} keepMounted>
+          <Probe id="b" value={1} />
+        </TabSlide>,
+      )
+    })
+    // пока играет слайд, показаны оба кадра
+    expect(root.querySelectorAll('.tabs-tab')).toHaveLength(2)
+    expect(root.querySelectorAll('.tabs-tab.active')).toHaveLength(2)
+
+    act(() => { vi.advanceTimersByTime(300) })
+    // слайд доигран: кадр 'a' ОСТАЛСЯ в DOM (без keepMounted его бы сняли),
+    // но уже не показан — `active` носит один текущий
+    expect(root.querySelector('[data-tab="a"]')).toBe(frameA)
+    expect(frameA.classList.contains('active')).toBe(false)
+    expect(root.querySelectorAll('.tabs-tab.active')).toHaveLength(1)
+    // содержимое ушедшего таба заморожено на том, с которым он ушёл
+    expect(frameA.textContent).toBe('a:1')
+
+    act(() => {
+      rerender(
+        <TabSlide tab="a" order={ORDER} keepMounted>
+          <Probe id="a" value={2} />
+        </TabSlide>,
+      )
+    })
+    // тот же узел, свежее поддерево, повторного монтирования не было
+    expect(root.querySelector('[data-tab="a"]')).toBe(frameA)
+    expect(frameA.textContent).toBe('a:2')
+    expect(frameA.classList.contains('active')).toBe(true)
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(mounts).toEqual(['a', 'b'])
+    vi.useRealTimers()
+  })
+
+  it('таба не стало в order (папку удалили) — его кадр уходит из DOM', () => {
+    vi.useFakeTimers()
+    mounts.length = 0
+    const { container, rerender } = render(
+      <TabSlide tab="a" order={ORDER} keepMounted>
+        <Probe id="a" value={1} />
+      </TabSlide>,
+    )
+    const root = container.firstElementChild!
+
+    act(() => {
+      rerender(
+        <TabSlide tab="b" order={ORDER} keepMounted>
+          <Probe id="b" value={1} />
+        </TabSlide>,
+      )
+    })
+    act(() => { vi.advanceTimersByTime(300) })
+    act(() => {
+      rerender(
+        <TabSlide tab="a" order={ORDER} keepMounted>
+          <Probe id="a" value={1} />
+        </TabSlide>,
+      )
+    })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(root.querySelector('[data-tab="b"]')).not.toBe(null)
+
+    act(() => {
+      rerender(
+        <TabSlide tab="a" order={['a', 'c']} keepMounted>
+          <Probe id="a" value={1} />
+        </TabSlide>,
+      )
+    })
+    expect(root.querySelector('[data-tab="b"]')).toBe(null)
     expect(root.querySelectorAll('.tabs-tab')).toHaveLength(1)
     vi.useRealTimers()
   })

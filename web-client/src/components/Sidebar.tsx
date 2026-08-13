@@ -85,6 +85,9 @@ export default function Sidebar({
     connectionStatus.construct(managers, status)
     return () => connectionStatus.destroy()
   }, [managers])
+  // Контейнер прокрутки АКТИВНОЙ папки: скроллер теперь свой у каждой (кадр
+  // слайда, `components/ChatList.tsx`), а ряду историй нужен ровно тот, что
+  // сейчас перед глазами, — его ChatList сюда и публикует.
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
   const chatlistContainerRef = useRef<HTMLDivElement>(null)
@@ -117,7 +120,7 @@ export default function Sidebar({
   const {
     folders, folderId, tabOrder, archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays: folderOverlays,
-  } = useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings: openFolderSettings })
+  } = useSidebarFolders({ chats, onOpenFolderSettings: openFolderSettings })
 
   // --chatlist-overlay-height: живая высота .chatlist-overlay (нотисы + табы папок).
   // tweb ставит её ResizeObserver'ом на .connection-status-bottom, а .folders-scrollable

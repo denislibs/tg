@@ -23,15 +23,17 @@
   }
 }
 
+// Клиренс под compose-FAB — на `.chatlist-bottom`, пустом узле за списком
+// (tweb `addFilter`: `scrollable.append(top, bottom)`). Своей высоты у него в
+// tweb нет; отступ отдан ему, а не паддингу самого скроллера, потому что
+// нижний padding контейнера прокрутки в scrollable-область попадает не везде.
+.bottom {
+  height: 84px;
+}
+
 // Свёрнутый список — узкая колонка аватаров (tweb --sidebar-collapsed-width 80px)
 // рядом с открытой панелью форум-тем. Ряды становятся avatar-only (.rowCollapsed),
 // видима только левая 80px-полоса — остальное перекрыто панелью тем; FAB-клиренс не нужен.
-.scroll.collapsed .slide {
-  padding-bottom: 0;
-}
-
-// нижний отступ — клиренс compose-FAB (в tweb его даёт .chatlist-bottom)
-.slide {
-  padding-bottom: 84px;
-  width: 100%;
+.scroll.collapsed .bottom {
+  height: 0;
 }

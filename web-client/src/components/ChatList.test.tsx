@@ -14,7 +14,8 @@
 // создаёт сам `ChatList`, поэтому стаб общий, а не на конкретном элементе.
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ComponentProps, ReactNode } from 'react'
+import { createRef } from 'react'
+import type { ComponentProps, ReactNode, RefObject } from 'react'
 
 import { ManagersProvider } from '../core/hooks/useManagers'
 import { useChatList } from '../core/hooks/useChatList'
@@ -123,14 +124,18 @@ function fakeManagers(response: DialogsPage | ((o: { filterId: number }) => Dial
   return { managers: { dialogs: { getDialogs } } as never, getDialogs }
 }
 
+/** Пропы харнесса: пропы списка + внешний ref (его Sidebar отдаёт ряду историй). */
+type HarnessProps = Partial<ChatListProps> & { listRef?: RefObject<HTMLDivElement | null> }
+
 /**
  * `chats` приезжают ChatList'у пропом — той же `useChatList`, что отдаёт Sidebar
  * (витрина зеркала ЦЕЛИКОМ: по папке список фильтрует себя сам).
  */
-function Harness(props: Partial<ChatListProps>) {
+function Harness({ listRef, ...props }: HarnessProps) {
   const chats = useChatList()
   return (
     <ChatList
+      ref={listRef}
       chats={chats}
       selectedId=""
       // Инлайновые стрелки — НОВАЯ ссылка на каждом рендере родителя, ровно как
@@ -152,13 +157,13 @@ function wrapper(managers: never) {
 }
 
 /** Рендер + доводка первой загрузки папки (её запускает сам ChatList). */
-async function renderList(managers: never, props: Partial<ChatListProps> = {}) {
+async function renderList(managers: never, props: HarnessProps = {}) {
   const Wrapper = wrapper(managers)
   const view = render(<Wrapper><Harness {...props} /></Wrapper>)
   await act(async () => {})
   return {
     ...view,
-    rerender: (next: Partial<ChatListProps> = {}) =>
+    rerender: (next: HarnessProps = {}) =>
       view.rerender(<Wrapper><Harness {...props} {...next} /></Wrapper>),
   }
 }
@@ -473,5 +478,122 @@ describe('ChatList — canvas-плейсхолдер первой загрузк
 
     // Мутация: убрать вызов `detach` — канвас остаётся поверх списка навсегда.
     expect(document.querySelector('canvas.dialogs-placeholder-canvas')).toBe(null)
+  })
+})
+
+// Task 8: на каждую папку свой скроллер и свой `ul` — порт tweb
+// `autonomousDialogList/dialogs.ts:207-238` (`new Scrollable` на каждый фильтр).
+describe('ChatList — свой скроллер и свой ul на каждую папку', () => {
+  /** Папка, под правило которой подходят все диалоги теста (private, не контакты). */
+  const WORK = {
+    id: 7, title: 'Работа', pos: 0,
+    contacts: false, nonContacts: true, groups: false, broadcasts: false,
+    excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  }
+  const ORDER = [ALL_FOLDER_ID, WORK.id]
+
+  const scrollers = () => Array.from(document.querySelectorAll<HTMLElement>('.folders-scrollable'))
+  /** Кадр слайда помечен своим табом — как tweb метит скроллер папки `dataset.filterId`. */
+  const scrollerOf = (folder: number) =>
+    document.querySelector<HTMLElement>(`.folders-scrollable[data-tab="${folder}"]`) as HTMLElement
+  const listIn = (host: HTMLElement) => host.querySelector<HTMLElement>('ul.chatlist') as HTMLElement
+  const firstRowIn = (host: HTMLElement) =>
+    listIn(host).querySelector<HTMLElement>('a.chatlist-chat') as HTMLElement
+
+  /** Уходящий кадр снимает фолбэк-таймер слайда (TRANSITION_TIME + 100). */
+  const flushSlide = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)) })
+
+  async function renderTwoFolders(props: HarnessProps = {}) {
+    seedDialogs(500)
+    useAppStateStore.setState({ folders: [WORK], drafts: [] })
+    const { managers, getDialogs } = fakeManagers(page({ count: 500 }))
+    const view = await renderList(managers, { folderOrder: ORDER, ...props })
+    return { ...view, getDialogs }
+  }
+
+  it('во время слайда в DOM оба списка, и каждый со своим scrollTop и своим окном', async () => {
+    const { rerender } = await renderTwoFolders()
+    await scrollTo(HOST_HEIGHT) // прокрутили «Все чаты»
+
+    await act(async () => { rerender({ folder: WORK.id }) })
+
+    // Мутация: убрать `keepMounted` у TabSlide — кадр «Всех» пересоздастся, и
+    // прокрутка папки обнулится (ровно то, что раньше делали руками).
+    expect(scrollers()).toHaveLength(2)
+    expect(document.querySelectorAll('ul.chatlist')).toHaveLength(2)
+    expect(scrollerOf(ALL_FOLDER_ID).scrollTop).toBe(HOST_HEIGHT)
+    expect(scrollerOf(WORK.id).scrollTop).toBe(0)
+    // Окно у каждого своё: прокрученная папка показывает строки с 7-й, новая — с 1-й.
+    expect(firstRowIn(scrollerOf(ALL_FOLDER_ID)).getAttribute('href')).toBe('#7')
+    expect(firstRowIn(scrollerOf(WORK.id)).getAttribute('href')).toBe('#1')
+
+    // Устройство кадра — как у tweb-скроллера фильтра: `ul` и `.chatlist-bottom`
+    // за ним (`scrollable.append(top, bottom)`), клиренс под compose-FAB.
+    for (const host of scrollers()) {
+      expect(host.lastElementChild?.classList.contains('chatlist-bottom')).toBe(true)
+      expect(listIn(host).nextElementSibling).toBe(host.lastElementChild)
+    }
+  })
+
+  it('возврат в папку восстанавливает её scrollTop и её окно', async () => {
+    const { rerender } = await renderTwoFolders()
+    await scrollTo(HOST_HEIGHT)
+    const all = scrollerOf(ALL_FOLDER_ID)
+
+    await act(async () => { rerender({ folder: WORK.id }) })
+    await flushSlide()
+    // Слайд доигран: ушедшая папка жива, но спрятана (`active` носит текущая).
+    expect(scrollerOf(ALL_FOLDER_ID)).toBe(all)
+    expect(all.classList.contains('active')).toBe(false)
+
+    await act(async () => { rerender({ folder: ALL_FOLDER_ID }) })
+    await flushSlide()
+
+    expect(scrollerOf(ALL_FOLDER_ID)).toBe(all)
+    expect(all.scrollTop).toBe(HOST_HEIGHT)
+    expect(firstRowIn(all).getAttribute('href')).toBe('#7')
+  })
+
+  it('второй список не дёргает загрузку: страница просится по разу на папку', async () => {
+    const { rerender, getDialogs } = await renderTwoFolders()
+    expect(getDialogs).toHaveBeenCalledTimes(1)
+
+    await act(async () => { rerender({ folder: WORK.id }) })
+    await flushSlide()
+
+    // Ушедшая папка своей страницы не перезапрашивает — её курсор на месте.
+    expect(getDialogs).toHaveBeenCalledTimes(2)
+    expect(getDialogs).toHaveBeenLastCalledWith(expect.objectContaining({ filterId: WORK.id }))
+
+    await act(async () => { rerender({ folder: ALL_FOLDER_ID }) })
+    await flushSlide()
+
+    // Возврат на живой кадр — тоже не загрузка: первый показ у папки был один.
+    expect(getDialogs).toHaveBeenCalledTimes(2)
+  })
+
+  it('наружу отдаётся скроллер АКТИВНОЙ папки', async () => {
+    const listRef = createRef<HTMLDivElement>()
+    const { rerender } = await renderTwoFolders({ listRef })
+
+    expect(listRef.current).toBe(scrollerOf(ALL_FOLDER_ID))
+
+    await act(async () => { rerender({ folder: WORK.id }) })
+    expect(listRef.current).toBe(scrollerOf(WORK.id))
+    await flushSlide()
+
+    // Возврат на УЖЕ ПОКАЗАННУЮ папку: её узел не пересоздаётся, ref-колбэков
+    // нет — наружу её отдаёт layout-эффект. Мутация: снять эффект — снаружи
+    // останется скроллер прошлой папки.
+    await act(async () => { rerender({ folder: ALL_FOLDER_ID }) })
+    expect(listRef.current).toBe(scrollerOf(ALL_FOLDER_ID))
+    await flushSlide()
+
+    // Папку удалили — её кадр уходит из DOM, но активный скроллер наружу
+    // остаётся. Мутация: отдавать наружу узел из ref-колбэка кадра, а не
+    // активную папку из карты — уход чужого кадра обнулит ref.
+    await act(async () => { rerender({ folderOrder: [ALL_FOLDER_ID] }) })
+    expect(scrollerOf(WORK.id)).toBe(null)
+    expect(listRef.current).toBe(scrollerOf(ALL_FOLDER_ID))
   })
 })

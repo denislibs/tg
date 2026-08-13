@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useFolders, useFoldersStore, loadFolders } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../folderIds'
 import { chatMatchesFolder } from '../folderFilter'
@@ -17,9 +17,8 @@ import type { Chat } from '../../data'
 // удаление/редактирование папки. Меню и подтверждение — вьюпортные попапы, через
 // глобальный popupStore (порт tweb createFolderContextMenu / Confirm.Remove).
 // Редактор папки — экран колонки, отдаётся готовым overlays-узлом.
-export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }: {
+export function useSidebarFolders({ chats, onOpenFolderSettings }: {
   chats: Chat[]
-  listScrollRef: RefObject<HTMLDivElement | null>
   onOpenFolderSettings: () => void
 }) {
   const managers = useManagers()
@@ -52,11 +51,15 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
     return counts
   }, [visibleChats, folders, contactIds])
 
+  // Прокрутку списка тут больше НЕ трогаем: у каждой папки свой
+  // `.folders-scrollable` со своим `scrollTop` (`components/ChatList.tsx`, порт
+  // tweb `generateScrollable`), и позиция папки обязана переживать уход на
+  // соседнюю — как в tweb. Прежний ручной `scrollTop = 0` замещал то, чего у
+  // нас не было (свой контейнер на папку), и был зарегистрированным исключением
+  // в `core/scrollWriters.test.ts`; исключение снято вместе со строкой.
   const changeFolder = (id: number) => {
     if (id === folderId) return
     selectFolder(id)
-    const el = listScrollRef.current
-    if (el) el.scrollTop = 0
   }
 
   const doDeleteFolder = (f: Folder) => {
