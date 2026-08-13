@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import Avatar from '../shared/ui/Avatar'
 import classNames from '../shared/lib/classNames'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -27,10 +27,17 @@ interface Props {
   // Stable across the whole list (the row passes its own id) so memo() holds and
   // a sidebar re-render (scroll-fold, overlay toggle) doesn't re-render every row.
   onSelect: (id: string) => void
-  index?: number
   // Свёрнутый ряд (tweb .is-collapsed .chatlist-chat): только аватар, текст скрыт
   // — узкая колонка аватаров рядом с открытой панелью форум-тем.
   collapsed?: boolean
+  /**
+   * Корневой узел строки отдаётся НАРУЖУ — виртуальному списку: он навешивает на
+   * него класс позиционирования и пишет анимированный `top`
+   * (`components/virtual/DeferredSortedVirtualList.tsx`, `useAnimatedTop`), ровно
+   * как tweb, где это делает список (`deferredSortedVirtualList.tsx:176`), а не
+   * строка. Ссылка обязана быть СТАБИЛЬНОЙ — см. `VirtualListItemProps.itemRef`.
+   */
+  ref?: Ref<HTMLAnchorElement>
 }
 
 // Small rounded thumbnail of the last message's photo, shown before the preview
@@ -41,7 +48,7 @@ function SidebarThumb({ id }: { id: number }) {
   return <div className={s.thumb} style={{ backgroundImage: url ? `url(${url})` : undefined }} />
 }
 
-function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
+function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   const onClick = () => onSelect(chat.id)
   const t = useT()
   const managers = useManagers()
@@ -144,6 +151,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           subtitle → title → avatar, визуальный порядок задаёт CSS
           (`.row-subtitle-row { order: 1 }`). Выбранная строка — класс `active`. */}
       <a
+        ref={ref}
         className={classNames(
           'row', 'no-wrap', 'row-with-padding', 'row-clickable', 'hover-effect', 'rp',
           'chatlist-chat', 'chatlist-chat-bigger', 'row-big',

@@ -115,7 +115,7 @@ export default function Sidebar({
     setScreen('settings')
   }
   const {
-    folders, folderId, tabOrder, filtered, archivedChats, folderUnread,
+    folders, folderId, tabOrder, archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays: folderOverlays,
   } = useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings: openFolderSettings })
 
@@ -311,7 +311,10 @@ export default function Sidebar({
         <div id="folders-container" className="tabs-container">
         <ChatList
           ref={listScrollRef}
-          chats={filtered}
+          // Витрина зеркала ЦЕЛИКОМ: по папке список фильтрует себя сам
+          // (`useDialogListSource`) — там это правило одно и на строки, и на
+          // размер набора для пагинации.
+          chats={chats}
           selectedId={selectedId}
           onSelect={handleSelect}
           loaded={loaded}

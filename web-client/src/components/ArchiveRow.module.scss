@@ -1,39 +1,57 @@
-// Ряд «Архив» (tweb archive-dialog: row chatlist-chat + градиентный аватар)
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.55rem;
-  margin: 0 0.5rem;
-  border-radius: 12px;
-  cursor: pointer;
+// Порт tweb `components/archiveDialog.module.scss`. Всё, что есть в партиалах
+// ряда (`.row-big`, `.chatlist-chat`, `.row-media-bigger`), сюда не дублируется —
+// здесь только собственные правила оригинала.
 
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
+// Ряд кликабелен; курсор в tweb даёт `.row-clickable`, у нас — как и у
+// `ChatListItem`, дополняем здесь (см. `ChatListItem.module.scss`).
+.row {
+  cursor: pointer;
+  // Ripple у нас свой (tweb `.c-ripple` не портирован) — режем по радиусу ряда.
+  overflow: hidden;
 }
 
-// tweb ArchiveAvatar: круг с linear-gradient(#5CAFFA, #408ACF) и archive_filled
-.avatar {
-  width: 54px;
-  height: 54px;
+// archiveDialog.module.scss `.Media`: слот аватара обычного ряда, размеры даёт
+// `.row-media-bigger` (54px, absolute) — здесь только заполнение круга.
+.media {
+  padding: 0;
+}
+
+.mediaContent {
+  width: 100%;
+  height: 100%;
+
   border-radius: 50%;
-  flex-shrink: 0;
   background: linear-gradient(#5caffa, #408acf);
   display: flex;
   align-items: center;
   justify-content: center;
+
+  color: white;
 }
 
-.body {
-  flex: 1;
-  min-width: 0;
+.title {
+  font-weight: var(--font-weight-bold);
 }
 
-.subtitleRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.subtitle {
+  color: var(--secondary-text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// tweb `:global(.night) &` — у нас тёмные темы это `html[data-theme]`.
+.unreadPeerTitle {
+  color: hsl(from var(--secondary-text-color) h s calc(l - 5));
+  font-weight: var(--font-weight-bold);
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='tinted']) & {
+    color: var(--primary-text-color);
+  }
+}
+
+.unreadBadge {
+  flex-shrink: 0;
+  margin-inline-start: 0.5rem;
 }

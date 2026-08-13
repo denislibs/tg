@@ -30,18 +30,17 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
   const contactIds = useFoldersStore((st) => st.contactIds)
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
 
-  const activeFolder = folders.find((f) => f.id === folderId)
   const tabOrder = useMemo(() => [ALL_FOLDER_ID, ...folders.map((f) => f.id)], [folders])
-
-  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
-  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
   // Мемоизировано, чтобы <ChatList>/<FolderTabs> получали стабильные пропсы —
   // ре-рендер сайдбара под тогл оверлея не пересоздаёт массивы и не бьёт их memo.
-  const filtered = useMemo(
-    () => (activeFolder ? visibleChats.filter((c) => chatMatchesFolder(c, activeFolder, contactIds)) : visibleChats),
-    [visibleChats, activeFolder, contactIds],
-  )
+  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
+  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
+
+  // Отбор строк ПАПКИ здесь больше не делается: список фильтрует себя сам
+  // (`core/hooks/useDialogListSource`), где правило папки одно и на строки, и на
+  // размер набора для пагинации. Второе такое правило здесь означало бы, что
+  // витрина и пагинация считают папку по-разному.
 
   // Badge таба = число непрочитанных чатов папки (tweb folders-tabs Badge);
   // у «Все» — только незамьюченные (tweb unreadUnmutedCount).
@@ -126,8 +125,8 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
   )
 
   return {
-    folders, folderId, activeFolder, tabOrder, contactIds,
-    filtered, archivedChats, folderUnread,
+    folders, folderId, tabOrder, contactIds,
+    archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays,
   }
 }
