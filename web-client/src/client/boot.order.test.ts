@@ -25,7 +25,9 @@ const calls: string[] = []
 
 const dialogs = {
   fillMirror: vi.fn(async () => { calls.push('dialogs.fillMirror'); return { op: 'reset' as const, items: [] } }),
-  refresh: vi.fn(async () => { calls.push('dialogs.refresh'); return null }),
+  // Этап 3: сетевой догон холодного старта — страница, а не полный refresh()
+  // (см. докблок applyDialogsMirror в boot.ts).
+  getDialogs: vi.fn(async () => { calls.push('dialogs.getDialogs'); return { dialogs: [], count: 0, isEnd: false } }),
 }
 
 vi.mock('./bootstrap', () => ({
