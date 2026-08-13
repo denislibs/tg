@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -260,5 +261,100 @@ func TestStickersRepo_IsStickerMediaAndExists(t *testing.T) {
 	}
 	if ok, _ := r.MediaExists(ctx, 999999); ok {
 		t.Fatalf("MediaExists(нет): want false")
+	}
+}
+
+// Метаданные файла (размеры, mime, stripped-превью) едут вместе со стикером во
+// ВСЕХ выборках: клиенту они нужны до загрузки байтов — по ним он вписывает
+// стикер в бокс, выбирает рендерер и показывает нижний слой превью.
+func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7812")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "meta", Title: "Мета", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatalf("CreateSet: %v", err)
+	}
+	thumb := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x2A}
+	var mediaID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO media (owner_id, bucket, object_key, mime, width, height, blur_preview)
+		 VALUES ($1,'media','meta/0','image/webp',512,384,$2) RETURNING id`, owner, thumb).Scan(&mediaID); err != nil {
+		t.Fatalf("seed media: %v", err)
+	}
+
+	added, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "😀"})
+	if err != nil {
+		t.Fatalf("AddSticker: %v", err)
+	}
+	if err := r.Install(ctx, owner, set.ID); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if err := r.TouchRecent(ctx, owner, added.ID, 20); err != nil {
+		t.Fatalf("TouchRecent: %v", err)
+	}
+	if err := r.Fave(ctx, owner, added.ID, 10); err != nil {
+		t.Fatalf("Fave: %v", err)
+	}
+
+	assertMeta := func(name string, s domain.Sticker) {
+		t.Helper()
+		if s.Width != 512 || s.Height != 384 {
+			t.Fatalf("%s: размеры %dx%d, want 512x384", name, s.Width, s.Height)
+		}
+		if s.Mime != "image/webp" {
+			t.Fatalf("%s: mime %q, want image/webp", name, s.Mime)
+		}
+		if !bytes.Equal(s.Thumb, thumb) {
+			t.Fatalf("%s: thumb %v, want %v", name, s.Thumb, thumb)
+		}
+	}
+
+	assertMeta("AddSticker", added)
+
+	byID, err := r.StickerByID(ctx, added.ID)
+	if err != nil {
+		t.Fatalf("StickerByID: %v", err)
+	}
+	assertMeta("StickerByID", byID)
+
+	lists := map[string]func() ([]domain.Sticker, error){
+		"Stickers":      func() ([]domain.Sticker, error) { return r.Stickers(ctx, set.ID) },
+		"Recent":        func() ([]domain.Sticker, error) { return r.Recent(ctx, owner, 20) },
+		"Faved":         func() ([]domain.Sticker, error) { return r.Faved(ctx, owner, 10) },
+		"SearchByEmoji": func() ([]domain.Sticker, error) { return r.SearchByEmoji(ctx, owner, "😀", 20) },
+	}
+	for name, load := range lists {
+		sts, err := load()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(sts) != 1 {
+			t.Fatalf("%s: %d стикеров, want 1", name, len(sts))
+		}
+		assertMeta(name, sts[0])
+	}
+}
+
+// Медиа без прогона процессинга (нет размеров и превью) не должно ни терять
+// стикер из выборки, ни ронять скан: клиент деградирует до квадрата без превью.
+func TestStickersRepo_MediaWithoutMetadata(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7813")
+
+	set, ids := seedFullSet(t, pool, r, owner, "raw", 1)
+	sts, err := r.Stickers(ctx, set.ID)
+	if err != nil || len(sts) != 1 || sts[0].ID != ids[0] {
+		t.Fatalf("Stickers: %+v, %v", sts, err)
+	}
+	if sts[0].Width != 0 || sts[0].Height != 0 || sts[0].Thumb != nil {
+		t.Fatalf("необработанное медиа: %+v, want нулевые размеры и пустой thumb", sts[0])
+	}
+	if sts[0].Mime != "application/json" {
+		t.Fatalf("mime %q, want application/json", sts[0].Mime)
 	}
 }
