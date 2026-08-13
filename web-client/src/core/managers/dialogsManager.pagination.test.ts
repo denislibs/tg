@@ -123,9 +123,10 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
     const page = await mgr.getDialogs({ limit: 4 })
 
     expect(rest.get).toHaveBeenCalledTimes(1)
-    // Курсор к серверу — chatId последнего элемента кэша (отступление №1 спеки:
-    // у бэкенда нет понятия dialogIndex).
-    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 4, offset_chat_id: 1 })
+    // Курсор к серверу — chatId последнего элемента выборки (отступление №1
+    // спеки: у бэкенда нет понятия dialogIndex), а сама выборка объявлена
+    // параметром `folder_id` (0 — всё, кроме архива).
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 4, offset_chat_id: 1, folder_id: 0 })
     expect(page.dialogs.map((d) => d.chatId)).toEqual([4, 3, 2, 1])
     expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([4, 3, 2, 1])
   })
@@ -269,17 +270,23 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
   })
 
   // Ревью Important 4 (настоящий баг): опорный чат курсора исчез с сервера →
-  // `dialogpage.go:14-22` отдаёт страницу С НАЧАЛА → она не приносит ничего
-  // нового → хвост кэша не двигается → следующий запрос уходит с ТЕМ ЖЕ
+  // `dialogpage.go` отдаёт страницу С НАЧАЛА → она не приносит ничего нового →
+  // хвост кэша не двигается → следующий запрос уходит с ТЕМ ЖЕ
   // `offset_chat_id`. Без фолбэка список не продвинулся бы НИКОГДА.
-  it('страница, не принёсшая ни одного нового диалога, лечится полным refresh(), а не залипает', async () => {
+  //
+  // Лечение (спека «Размер набора и refresh()», отступление №3): одна страница БЕЗ курсора
+  // увеличенного размера — она заведомо накрывает удерживаемое окно, то есть и
+  // пересобирает голову выборки, и приносит хвост. Полным `refresh()` это
+  // лечить больше нельзя: он ограничен тем же удерживаемым окном (Task 5) и
+  // списка не продвигает.
+  it('страница, не принёсшая ни одного нового диалога, лечится страницей БЕЗ курсора, а не залипает', async () => {
     const calls: (Record<string, number> | undefined)[] = []
     const rest = {
       get: vi.fn(async (_path: string, q?: Record<string, number>) => {
         calls.push(q)
         // страница по курсору — повтор уже известного (курсор не найден на сервере)
-        if (q) return { chats: [raw(2, 2), raw(1, 1)], count: 9, is_end: false }
-        // полный список (фолбэк) — весь набор
+        if (q?.offset_chat_id) return { chats: [raw(2, 2), raw(1, 1)], count: 9, is_end: false }
+        // страница без курсора (фолбэк) — выборка с начала
         return { chats: [raw(3, 3), raw(2, 2), raw(1, 1)], count: 3, is_end: true }
       }),
     }
@@ -292,7 +299,11 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
 
     const page = await mgr.getDialogs({ limit: 3 })
 
-    expect(calls).toEqual([{ limit: 3, offset_chat_id: 1 }, undefined]) // страница, затем refresh()
+    expect(calls).toEqual([
+      { limit: 3, offset_chat_id: 1, folder_id: 0 },
+      // размер фолбэка — удерживаемое окно выборки (2) плюс запрошенное (3)
+      { limit: 5, offset_chat_id: 0, folder_id: 0 },
+    ])
     expect(page.dialogs.map((d) => d.chatId)).toEqual([3, 2, 1]) // список продвинулся
     expect(page.isEnd).toBe(true)
   })
@@ -397,12 +408,14 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
   // Ревью Important 1 (снят Task 3, «Счётчик и загружено целиком — по
   // выборке»): раньше архив и пользовательская папка отдавали длину
   // отфильтрованного кэша — именно это давало «дырок не бывает по
-  // определению» и глушило догрузку насмерть (см. докблок `countFor`). Запрос
-  // страницы ещё уходит БЕЗ `folder_id` (Task 4), поэтому ни у архива, ни у
-  // папки своего серверного `count` пока нет — обе временно живут на той же
-  // ЗАВЫШЕННОЙ глобальной оценке, на которой пользовательская папка в
-  // оригинале живёт ПОСТОЯННО (dialogs.ts:1728). Различить их по `folder_id`
-  // — задача следующего этапа.
+  // определению» и глушило догрузку насмерть (см. докблок `countFor`).
+  //
+  // Task 4: страницы уходят со СВОИМ `folder_id`, поэтому серверный `count`
+  // приходит по выборке — и ЗАВЫШЕННУЮ глобальную оценку заводит запрос
+  // ГЛОБАЛЬНОЙ выборки, то есть страница пользовательской папки (её
+  // `realFolderId` = GLOBAL, dialogs.ts:1646-1649). Пока своего ответа у
+  // архива и «Всех чатов» нет, оба живут на этой оценке — как
+  // пользовательская папка в оригинале живёт ПОСТОЯННО (dialogs.ts:1728).
   it('до собственного сетевого ответа архив и папка тоже берут завышенный глобальный count', async () => {
     const mgr = newDialogsManager({
       rest: restStub({ chats: [raw(9, 9)], count: 137, is_end: false }) as never,
@@ -411,7 +424,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, nonContacts: true })] }),
     })
     mgr.setContactIds([7])
-    await mgr.getDialogs({ limit: 5 }) // сеть отдала count всего набора (кэш стал 4)
+    await mgr.getDialogs({ filterId: 7, limit: 5 }) // глобальная выборка отдала count 137 (кэш стал 4)
 
     // Окна ниже умещаются в кэш — сеть больше не дёргается, сравниваем только count.
     expect((await mgr.getDialogs({ limit: 3 })).count).toBe(137) // «Все чаты» — серверный
@@ -679,5 +692,161 @@ describe('размер набора по выборке (порт dialogs.ts:170
 
     const page = await mgr.getDialogs({ limit: 1, filterId: 7 })
     expect(page.count).toBe(40)
+  })
+
+  // Архив без собственного счётчика не создаёт дырок, а без дырок
+  // requestItemForIdx не зовётся никогда — список не догружается вовсе.
+  it('архив берёт count своей выборки, а не длину загруженного', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q?: Record<string, string | number>) =>
+        q?.folder_id === 1
+          ? { chats: [raw(1, 1, { archived: true })], count: 9, is_end: false }
+          : { chats: [raw(2, 2)], count: 40, is_end: false }),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    const page = await mgr.getDialogs({ limit: 1, filterId: ARCHIVE_FOLDER_ID })
+    expect(page.count).toBe(9)
+  })
+
+  // Решётка setDialogsLoaded (dialogs.ts:276-299): обе реальные загружены —
+  // загружен и глобальный набор, значит папка отвечает из памяти.
+  it('загруженные ALL и ARCHIVE делают загруженным глобальный набор', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q?: Record<string, string | number>) =>
+        q?.folder_id === 1
+          ? { chats: [raw(1, 1, { archived: true })], count: 1, is_end: true }
+          : { chats: [raw(2, 2)], count: 1, is_end: true }),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      // Папки заводятся State-ключом `folders` — у менеджера нет отдельного
+      // `setFolders`; здесь тест владеет `loadState`, поэтому определение
+      // отдаётся сразу гидратацией (тот же приём, что в тестах фильтра папки
+      // выше), а не досылается `setStateKey` после `fillMirror`.
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+    mgr.setContactIds([])
+
+    await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
+    await mgr.getDialogs({ limit: 5 })
+    rest.get.mockClear()
+
+    const page = await mgr.getDialogs({ limit: 5, filterId: 7 })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page.isEnd).toBe(true)
+  })
+
+  // Обратная сторона той же решётки: ОДНА загруженная реальная папка
+  // глобального набора не закрывает (`all && archive`, dialogs.ts:272-299) —
+  // иначе пользовательская папка, чьи страницы вычерпывают глобальный набор,
+  // навсегда осталась бы с тем, что успел набрать архив.
+  it('загруженный архив сам по себе не делает загруженной выборку пользовательской папки', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q?: Record<string, string | number>) =>
+        q?.folder_id === 1
+          ? { chats: [raw(1, 1, { archived: true })], count: 1, is_end: true }
+          : { chats: [raw(2, 2, { type: 'group' })], count: 40, is_end: false }),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+
+    await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID }) // архив загружен целиком
+    rest.get.mockClear()
+
+    const page = await mgr.getDialogs({ limit: 5, filterId: 7 })
+    expect(rest.get).toHaveBeenCalled() // «Все чаты» не загружены — папке есть куда идти
+    expect(page.dialogs.map((d) => d.chatId)).toEqual([2])
+  })
+
+  it('страница архива уходит с folder_id=1 и курсором из архивной выборки', async () => {
+    const rest = {
+      get: vi.fn(async () => ({ chats: [raw(7, 7, { archived: true })], count: 9, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // Хвост АРХИВА (chat_id 3) и хвост всего кэша (chat_id 1) обязаны
+      // РАЗЛИЧАТЬСЯ: иначе тест не отличит курсор выборки от курсора кэша.
+      loadCache: async () => [dialog(1, 1), dialog(3, 3, { archived: true }), dialog(5, 5, { archived: true })],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
+
+    // Курсор — хвост АРХИВНОЙ выборки (chat_id 3), а не всего кэша (1):
+    // бэкенд ищет offset_chat_id внутри выборки и чужой id трактует как
+    // «с начала» (dialogpage.go), то есть страница повторилась бы вечно.
+    expect(rest.get).toHaveBeenCalledWith('/chats', expect.objectContaining({ folder_id: 1, offset_chat_id: 3 }))
+  })
+
+  it('страница пользовательской папки уходит БЕЗ folder_id (глобальный набор)', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, _q?: Record<string, string | number>) => ({ chats: [raw(5, 5)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+    mgr.setContactIds([])
+
+    await mgr.getDialogs({ limit: 5, filterId: 7 })
+
+    const q = rest.get.mock.calls[0][1] as Record<string, unknown>
+    expect(q.folder_id).toBeUndefined()
+    // И курсор — хвост ВСЕГО кэша (chat_id 1): выборка папки и есть глобальная.
+    expect(q.offset_chat_id).toBe(1)
+  })
+
+  // Тот же порт `dialogsLength >= count`, что у «Всех чатов» (см. «страница по
+  // курсору, закрывшая набор» выше), но сверяется РАЗМЕР СВОЕЙ ВЫБОРКИ: `count`
+  // архивной страницы описывает архив, и мерить его длиной всего кэша (где
+  // львиная доля — неархивные) значит объявить архив загруженным, держа два
+  // диалога из пяти.
+  it('конец архивной страницы сверяется с размером архивной выборки, а не всего кэша', async () => {
+    const rest = {
+      get: vi.fn(async () => ({ chats: [raw(5, 5, { archived: true })], count: 5, is_end: true })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // Весь кэш (4) вместе со страницей дорастает до серверного count архива
+      // (5), но самой архивной выборки в нём — один диалог до страницы и два
+      // после.
+      loadCache: async () => [dialog(1, 1), dialog(2, 2), dialog(4, 4), dialog(3, 3, { archived: true })],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ limit: 2, filterId: ARCHIVE_FOLDER_ID }) // держим 2 архивных из 5
+    rest.get.mockClear()
+
+    const page = await mgr.getDialogs({ limit: 10, filterId: ARCHIVE_FOLDER_ID })
+    expect(rest.get).toHaveBeenCalled() // архив загруженным целиком не считается
+    expect(page.count).toBe(5)
+  })
+
+  // is_end архивной страницы не имеет права объявить загруженным весь набор.
+  it('is_end архивной страницы не поднимает загруженность «Всех чатов»', async () => {
+    const rest = {
+      get: vi.fn(async () => ({ chats: [raw(5, 5, { archived: true })], count: 1, is_end: true })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
+    rest.get.mockClear()
+    await mgr.getDialogs({ limit: 5 }) // «Все чаты» — обязаны пойти в сеть
+
+    expect(rest.get).toHaveBeenCalled()
   })
 })
