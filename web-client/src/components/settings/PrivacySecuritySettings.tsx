@@ -113,41 +113,35 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           icon={<TgIcon name="deleteuser" size={24} />}
           label="Blocked Users"
           value={blockedValue}
-          chevron
           onClick={() => setSub('Blocked Users')}
         />
         <Row
           icon={<TgIcon name="auto_delete_circle_clock" size={24} />}
           label="Auto-Delete Messages"
           value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t)}
-          chevron
           onClick={() => setSub('Auto-Delete Messages')}
         />
         <Row
           icon={<TgIcon name="key" size={24} />}
           label="Passcode Lock"
           value={t(passcodeEnabled ? 'On' : 'Off')}
-          chevron
           onClick={() => setSub('Passcode Lock')}
         />
         <Row
           icon={<TgIcon name="lock" size={24} />}
           label="Two-Step Verification"
           value={pwEnabled == null ? undefined : t(pwEnabled ? 'On' : 'Off')}
-          chevron
           onClick={() => setSub('Two-Step Verification')}
         />
         {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
           icon={<TgIcon name="faceid" size={24} />}
           label="Passkeys"
-          chevron
           onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
         />
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
           label="Active Sessions"
-          chevron
           onClick={() => setSub('Active Sessions')}
         />
       </Section>

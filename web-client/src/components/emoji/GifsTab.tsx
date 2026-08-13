@@ -219,7 +219,8 @@ export default function GifsTab({
           open
           onClose={() => setCtxMenu(null)}
           zIndex={2100}
-          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 220), top: Math.min(ctxMenu.y, window.innerHeight - 60), transformOrigin: 'top left' }}
+          corner="bottom-right"
+          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 220), top: Math.min(ctxMenu.y, window.innerHeight - 60) }}
         >
           <MenuItem
             icon={<TgIcon name="crossgif" size={20} />}

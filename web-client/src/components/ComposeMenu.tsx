@@ -19,7 +19,8 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
     <Menu
       open={open}
       onClose={onClose}
-      style={{ right: anchor?.right ?? 20, bottom: anchor?.bottom ?? 96, transformOrigin: 'bottom right' }}
+      corner="top-left"
+      style={{ right: anchor?.right ?? 20, bottom: anchor?.bottom ?? 96 }}
     >
       <MenuItem
         icon={<TgIcon name="newchannel" size={20} />}

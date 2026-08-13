@@ -1,7 +1,9 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
 import SidebarSection from '../../shared/ui/SidebarSection'
+import Checkbox from '../../shared/ui/Checkbox'
+import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import TgSwitch from '../TgSwitch'
@@ -237,7 +239,47 @@ export function EntryRow({
   )
 }
 
-/** Generic tappable row: icon? + label (+ subtitle) + right value/chevron/toggle/check. */
+/**
+ * Строка настроек — порт `tweb components/row.ts` на глобальные классы tweb
+ * (`styles/tweb/_row.scss`), своего CSS-модуля у неё нет.
+ *
+ * Дерево, которое собирает `Row` в tweb (см. дампы
+ * `docs/research/tweb-dom/15-right-02-edit-channel`, `…-12-edit-group`,
+ * `07-right-sidebar`):
+ *
+ *   div|label.row[.no-subtitle][.row-with-icon][.row-with-padding]
+ *                [.row-with-toggle][.row-clickable.hover-effect.rp]
+ *     > div.c-ripple                       (ripple(), только у кликабельной)
+ *     > div.row-title                      — когда правого блока нет
+ *       | div.row-row.row-title-row        — когда есть (`titleRight`)
+ *           > div.row-title
+ *           + div.row-title.row-title-right[.row-title-right-secondary]
+ *     + div.row-subtitle                   (при наличии подписи)
+ *     + span.tgico.row-icon                (иконка — АБСОЛЮТНАЯ, слева)
+ *
+ * Соответствие пропов оригиналу:
+ *   `value`    → `titleRightSecondary` (`row.ts:192-194`, дамп 08-general-settings);
+ *   `toggle`   → `checkboxField` c `toggle: true` (`row.ts:140-143`): тег строки
+ *                становится `label`, контейнер получает `row-with-toggle`,
+ *                а сам тумблер уезжает в `titleRight`;
+ *   `checkbox` → `checkboxField` БЕЗ `toggle` (`row.ts:145-150`) — вторая, ничем
+ *                не похожая на тумблер форма: тег строки тоже `label`, но
+ *                `label.checkbox-field` (`div.checkbox-box` + `svg.checkbox-box-check`)
+ *                кладётся ОТДЕЛЬНЫМ ребёнком контейнера и абсолютно позиционируется
+ *                слева (`checkbox-field-absolute` + `.row .checkbox-field` в
+ *                `_row.scss:361-384`), контейнер получает `row-with-padding`.
+ *                Дампы: «Chat history for new members» в `15-right-12-edit-group`,
+ *                под-права аккордеона «Send Media» в `15-right-13-group-permissions`;
+ *   `icon`     → `Icon(icon, 'row-icon')` (`row.ts:201-210`) — плюс
+ *                `row-with-icon` и `row-with-padding` на контейнере;
+ *   `danger`/`accent` → классы `.danger`/`.primary` из tweb `base.scss:602-617`
+ *                (портированы в `styles/tweb/_bridge.scss`).
+ *
+ * ОТСТУПЛЕНИЕ: `selected` (список-переключатель «Off / 1 day / 1 week …»)
+ * в tweb — это `radioField`, а не галочка справа. RadioField мы не портировали,
+ * поэтому отметку кладём в тот же `row-title-right`, что и тумблер. Строку
+ * заменит порт `radioField.ts` — отдельная задача.
+ */
 export function Row({
   icon,
   label,
@@ -246,8 +288,9 @@ export function Row({
   onClick,
   danger,
   accent,
-  chevron,
   toggle,
+  checkbox,
+  restriction,
   checked,
   selected,
   translate = true,
@@ -260,8 +303,12 @@ export function Row({
   onClick?: () => void
   danger?: boolean
   accent?: boolean
-  chevron?: boolean
+  /** тумблер справа (tweb `checkboxFieldOptions: {toggle: true}`) */
   toggle?: boolean
+  /** квадратный чекбокс слева (tweb `checkboxFieldOptions` без `toggle`) */
+  checkbox?: boolean
+  /** tweb `restriction: true` — «выключено» красит тумблер в --danger-color */
+  restriction?: boolean
   checked?: boolean
   selected?: boolean
   translate?: boolean
@@ -269,31 +316,77 @@ export function Row({
   multiline?: boolean
 }) {
   const t = useT()
-  const color = danger ? '#ff595a' : accent ? 'var(--primary-color)' : 'var(--primary-text-color)'
-  return (
-    <div className={classNames(s.row, onClick ? s.rowClickable : '')} onClick={onClick}>
-      {icon && <div className={s.rowIcon}>{icon}</div>}
-      <div className={s.rowBody}>
-        <Text
-          noWrap={!multiline}
-          size={16}
-          color={color}
-          style={multiline ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : undefined}
-        >
-          {translate ? t(label) : label}
-        </Text>
-        {sublabel && (
-          <Text noWrap size={13.5} color="var(--secondary-text-color)">
-            {sublabel}
-          </Text>
-        )}
-      </div>
-      {value != null && (
-        <Text size={15} color="var(--secondary-text-color)" className={s.rowValue}>{value}</Text>
-      )}
-      {toggle && <TgSwitch checked={!!checked} />}
-      {selected && <TgIcon name="check" size={22} color="var(--primary-color)" />}
-      {chevron && <TgIcon name="next" size={22} color="var(--secondary-text-color)" />}
+  const { onPointerDown, ripple } = useRipple()
+
+  // Иконка приходит готовой нодой (обычно `<TgIcon/>`, а он уже рендерит
+  // `span.tgico`) — доклеиваем ей класс `row-icon`, как это делает
+  // `Icon(options.icon, 'row-icon')` в tweb.
+  const iconNode = isValidElement<{ className?: string }>(icon)
+    ? cloneElement(icon, { className: classNames('row-icon', icon.props.className ?? '') })
+    : icon
+
+  const titleRight = toggle
+    ? <TgSwitch checked={!!checked} restriction={restriction} />
+    : selected
+      ? <TgIcon name="check" size={22} color="var(--primary-color)" />
+      : value ?? null
+
+  const title = (
+    <div className={classNames('row-title', multiline ? 'pre-wrap' : '')}>
+      {translate ? t(label) : label}
     </div>
+  )
+
+  // tweb `row.ts:129,145-150,212-214`: havePadding включают иконка и НЕ-тумблерный
+  // чекбокс — оба живут в абсолютном левом слоте, под который контейнер и
+  // раздвигается классом `row-with-padding`.
+  const havePadding = !!icon || !!checkbox
+  const Tag = toggle || checkbox ? 'label' : 'div'
+  return (
+    <Tag
+      className={classNames(
+        'row',
+        sublabel ? '' : 'no-subtitle',
+        icon ? 'row-with-icon' : '',
+        havePadding ? 'row-with-padding' : '',
+        toggle ? 'row-with-toggle' : '',
+        onClick ? 'row-clickable' : '',
+        onClick ? 'hover-effect' : '',
+        onClick ? 'rp' : '',
+        danger ? 'danger' : accent ? 'primary' : '',
+      )}
+      onClick={onClick}
+      onPointerDown={onClick ? onPointerDown : undefined}
+    >
+      {/* `.c-ripple` — ПЕРВЫМ ребёнком (tweb `ripple()` делает prepend) */}
+      {onClick ? ripple : null}
+      {titleRight != null ? (
+        <div className="row-row row-title-row">
+          {title}
+          <div
+            className={classNames(
+              'row-title',
+              'row-title-right',
+              !toggle && !selected ? 'row-title-right-secondary' : '',
+            )}
+          >
+            {titleRight}
+          </div>
+        </div>
+      ) : (
+        title
+      )}
+      {/* tweb: `checkbox-field-absolute` — потому что подписи (span) у нас нет
+          никогда (`row.ts:146-148`), `disable-hover` — `row.ts:165`. */}
+      {checkbox && (
+        <Checkbox
+          checked={!!checked}
+          shape="square"
+          className="checkbox-field-absolute disable-hover"
+        />
+      )}
+      {sublabel && <div className="row-subtitle">{sublabel}</div>}
+      {iconNode}
+    </Tag>
   )
 }

@@ -265,6 +265,28 @@
   white-space: nowrap !important;
 }
 
+// tweb base.scss:602-617 — цветовые классы-модификаторы. Их вешают прямо на
+// контейнер строки/кнопки (`removeRow.container.classList.add('danger')`,
+// `sidebarRight/tabs/chatInviteLinks.tsx:105`; `button.btn-icon.primary` в
+// дампе `15-right-13-group-permissions`). Наш `settings/kit` Row берёт
+// красный/акцентный цвет отсюда, а не инлайновым `color`.
+.danger {
+  color: var(--danger-color) !important;
+
+  .c-ripple__circle {
+    background-color: var(--light-danger-color);
+  }
+}
+
+.blue,
+.primary {
+  color: var(--primary-color) !important;
+
+  .c-ripple__circle {
+    background-color: var(--light-primary-color);
+  }
+}
+
 // tweb base.scss:554-558 — базовые цвета текста и каретки в полях ввода.
 // base.scss целиком не портируем (глобальный ресет), но без этого правила
 // набранный текст в поле поиска остаётся браузерно-чёрным и на тёмной теме
@@ -593,3 +615,4 @@ button:focus {
 body > .btn-menu {
   z-index: 4000;
 }
+

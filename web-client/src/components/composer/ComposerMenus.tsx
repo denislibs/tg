@@ -45,7 +45,8 @@ export default function ComposerMenus({
       <Menu
         open={forwardMenuOpen}
         onClose={onCloseForwardMenu}
-        style={forwardMenuAnchor ? { ...forwardMenuAnchor, transformOrigin: 'bottom left' } : undefined}
+        corner="top-right"
+        style={forwardMenuAnchor ?? undefined}
       >
         <MenuItem
           icon={check(!!forward && !forward.dropAuthor)}
@@ -85,7 +86,7 @@ export default function ComposerMenus({
       </Menu>
 
       {ttlAnchor && (
-        <Menu open onClose={onCloseTtl} style={{ ...ttlAnchor, transformOrigin: 'bottom left' }}>
+        <Menu open onClose={onCloseTtl} corner="top-right" style={ttlAnchor}>
           {TTL_OPTIONS.map((o) => (
             <MenuItem
               key={o.label}
@@ -99,7 +100,7 @@ export default function ComposerMenus({
       )}
 
       {recordAnchor && (
-        <Menu open onClose={onCloseRecord} style={{ ...recordAnchor, transformOrigin: 'bottom right' }}>
+        <Menu open onClose={onCloseRecord} corner="top-left" style={recordAnchor}>
           <MenuItem
             icon={<TgIcon name="microphone" size={20} />}
             label={t('Record voice message')}

@@ -340,11 +340,17 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
         {/* overPhoto: развёрнутое фото под шапкой и ещё не залито скроллом —
             шапка прозрачная, иконки/текст белые поверх верхнего градиента
             (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
-        <div className={classNames(s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
-          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
+        {/* Классы шапки — глобальные tweb (`styles/tweb/_sidebar.scss`):
+            `div.sidebar-header > button.btn-icon.sidebar-close-button + …`
+            (дампы `07-right-sidebar`, `15-right-*`). Модуль оставляет за собой
+            только то, что в tweb живёт в НЕ портированном `_profile.scss`
+            (`.profile-container .sidebar-header`): абсолютное положение поверх
+            шапки-аватаров и заливка/белые иконки по скроллу. */}
+        <div className={classNames('sidebar-header', s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
+          <IconButton className="sidebar-close-button" onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
-          <div className={s.headerTitles}>
+          <div className={classNames('sidebar-header__title', s.headerTitles)}>
             {/* Смена заголовка — вертикальный слайд tweb `AnimatedSuper`
                 (порт `components/animatedSuper.ts` + `_animatedSuper.scss`):
                 уходящий ряд уезжает вверх/вниз с фейдом за --pm-transition.
@@ -375,7 +381,11 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           )}
         </div>
 
-        <div ref={bodyRef} className={s.body} onScroll={onBodyScroll} onWheel={onBodyWheel}>
+        {/* Тело — тоже глобальные классы tweb: `div.sidebar-content` (позиционный
+            предок, `_sidebar.scss`) > `div.scrollable.scrollable-y`
+            (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
+        <div className="sidebar-content">
+        <div ref={bodyRef} className={classNames('scrollable', 'scrollable-y', s.body)} onScroll={onBodyScroll} onWheel={onBodyWheel}>
           {/* Шапка-аватары (tweb .profile-avatars-container): ЕДИНЫЙ DOM-контейнер,
               collapsed ↔ expanded морфится классом is-collapsed чистыми CSS
               transition'ами — padding-bottom 100%↔66%, активный слайд
@@ -698,6 +708,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
             />
           )}
+        </div>
         </div>
 
         {/* Group add-member FAB (tweb btnAddMembers) */}

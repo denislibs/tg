@@ -39,6 +39,12 @@ interface InputSearchProps {
   focused?: boolean
   onClear?: () => void
   className?: string
+  /** класс на самом `<input>` (tweb: `input.classList.add('selector-search-input')`) */
+  inputClassName?: string
+  /** tweb `noBorder` — `InputField({withBorder: false})`, узла `.input-field-border` нет */
+  noBorder?: boolean
+  /** tweb `noFocusEffect` — на инпут не вешается `with-focus-effect` */
+  noFocusEffect?: boolean
   /**
    * Хэндл трёх методов выше. Отдельный ref, а НЕ основной: основной `ref`
    * компонента — сам `HTMLInputElement`, на нём висят `focus()`/`blur()`
@@ -120,7 +126,7 @@ function createStatusPreloader(): HTMLDivElement {
 // а JSX выражает только один. React такие узлы не трогает — свои дети он
 // вставляет по ссылкам на собственные, а лишние никогда не удаляет.
 const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function InputSearch(
-  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, statusRef },
+  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, inputClassName, noBorder, noFocusEffect, statusRef },
   ref,
 ) {
   const has = value.length > 0
@@ -234,7 +240,7 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
     <div ref={rootRef}>
       <input
         ref={ref}
-        className={classNames('input-field-input', 'input-search-input', 'with-focus-effect', has ? '' : 'is-empty', focused ? s.input : '')}
+        className={classNames('input-field-input', 'input-search-input', noFocusEffect ? '' : 'with-focus-effect', has ? '' : 'is-empty', focused ? s.input : '', inputClassName ?? '')}
         type="text"
         autoComplete="off"
         dir="auto"
@@ -244,7 +250,7 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         onFocus={onFocus}
         onBlur={onBlur}
       />
-      <div className="input-field-border" />
+      {!noBorder && <div className="input-field-border" />}
       <span ref={iconRef} className={classNames('tgico', 'input-search-part', 'input-search-icon')}>
         <TgIcon name="search" size={24} />
       </span>

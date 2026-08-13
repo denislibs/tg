@@ -1,15 +1,32 @@
 // Контекстное меню сообщения — обычный ui-kit Menu (портал/бэкдроп/анимация из
-// кита, как у attach-меню); полоска реакций — абсолют НАД панелью, как tweb
-// вешает .btn-menu-reactions-container внутрь .btn-menu (margin-top: -(40+8)px).
+// кита, как у attach-меню). DOM — 1:1 с живым дампом tweb
+// (`docs/research/tweb-dom/05-context-menu.json`, разметку строят
+// `chat/contextMenu.ts::appendReactionsMenu` + `chat/reactionsMenu.ts`):
 //
-// Полоска — порт tweb: таблетка 40px (radius 40, фон/blur как у btn-menu,
-// drop-shadow 0 2px 8px .24), ячейки 36×28 с эмодзи 28px, шеврон 32×32
-// разворачивает полный EmojiDropdown (tweb onMoreClick → EmojiTab). Lottie
-// appear/select-анимации реакций приходят с MTProto-сервера и вне Telegram
-// недоступны — замена: scale-подскок на hover.
+//   div.btn-menu.contextmenu.has-items-wrapper.<угол>
+//     div.btn-menu-reactions-container.btn-menu-reactions-container-horizontal
+//        .btn-menu-transition.is-visible
+//       div.btn-menu-reactions-bubble.btn-menu-reactions-bubble-big
+//       div.btn-menu-reactions
+//         div.btn-menu-reactions-reaction > div.btn-menu-reactions-reaction-scale
+//         button.btn-icon.btn-menu-reactions-more > span.tgico.button-icon
+//     div.btn-menu-items.btn-menu-transition
+//       div.btn-menu-item.rp-overflow …
+//       hr
+//
+// `has-items-wrapper` снимает с самой панели фон/тень/паддинг и переводит их на
+// `.btn-menu-items`, а показом обеих частей рулит `.btn-menu.active
+// .btn-menu-transition` (_button.scss:149-158, 206-212) — всё это уже есть в
+// портированном партиале, поэтому своих стилей у меню почти нет.
+//
+// Единственное осознанное упрощение: у tweb внутри `-reaction-scale` лежат две
+// обёртки `media-sticker-wrapper` с `canvas.lottie` (appear/select-анимации
+// реакции приезжают с MTProto-сервера) — у нас реакции статические эмодзи,
+// поэтому в `-reaction-scale` стоит наш `<Emoji>`. Шеврон «ещё» разворачивает
+// полный EmojiDropdown (tweb onMoreClick → EmojiTab).
 import { Fragment, lazy, memo, Suspense, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import Menu, { MenuItem } from '../../shared/ui/Menu'
+import Menu, { MenuItem, cornerFrom } from '../../shared/ui/Menu'
 import Emoji from '../emoji/Emoji'
 // Полный пикер эмодзи (шеврон «ещё реакции») — тот же ленивый чанк, что и в Composer.
 const EmojiDropdown = lazy(() => import('../emoji/EmojiDropdown'))
@@ -51,7 +68,9 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
   // Шеврон «ещё» разворачивает полный пикер эмодзи на месте меню (tweb EmojiTab).
   const [expanded, setExpanded] = useState(false)
   // The "Viewers" action needs the click coordinates; capture the last pointer
-  // event on a wrapper so MenuItem's (event-less) onClick can still forward it.
+  // event on `.btn-menu-items` (capture-фаза срабатывает до onClick пункта), чтобы
+  // MenuItem's (event-less) onClick could still forward it — своей обёртки у
+  // пункта в tweb нет, так что перехватываем на общем контейнере.
   const lastEvent = useRef<MouseEvent | null>(null)
 
   // Anchor a corner at the click: top/left when growing down-right, right/bottom
@@ -97,39 +116,65 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
       open={!menu.closing}
       onClose={onClose}
       onExitComplete={onExited}
-      className={s.panel}
-      style={{ ...xPos, ...yPos, transformOrigin: `${menu.originY} ${menu.originX}` }}
+      className={classNames('contextmenu', 'has-items-wrapper', s.panel)}
+      corner={cornerFrom(menu.originY, menu.originX)}
+      style={{ ...xPos, ...yPos }}
     >
       {onReaction && (
+        // Позиционирование полоски — целиком из партиала: `position: absolute` +
+        // `margin-top: var(--menu-offset)` (= -(высота + .5rem)) поднимают её над
+        // панелью, `inset-inline-end: var(--bubble-side-offset)` выравнивает по
+        // краю (_button.scss:684-700). Инлайновых left/right больше нет.
+        // `is-visible` обязателен: без него партиал держит `opacity: 0 !important`
+        // (tweb вешает его в ChatReactionsMenu.render → setVisible).
         <div
-          className={classNames(s.reactionsBar, barBelow ? s.below : '')}
-          style={menu.originX === 'left' ? { left: 0 } : { right: 0 }}
+          className={classNames(
+            'btn-menu-reactions-container',
+            'btn-menu-reactions-container-horizontal',
+            'btn-menu-transition',
+            'is-visible',
+            barBelow ? s.below : '',
+          )}
         >
-          {REACTIONS.map((r) => (
-            <div key={r} className={s.reaction} onClick={() => onReaction(r)}>
-              <Emoji e={r} size={28} />
-            </div>
-          ))}
-          <div className={s.more} onClick={() => setExpanded(true)}>
-            <TgIcon name={barBelow ? 'up' : 'down'} size={24} />
+          <div className="btn-menu-reactions-bubble btn-menu-reactions-bubble-big" />
+          <div className="btn-menu-reactions">
+            {REACTIONS.map((r) => (
+              <div key={r} className="btn-menu-reactions-reaction" onClick={() => onReaction(r)}>
+                {/* у tweb внутри -scale два `media-sticker-wrapper` с `canvas.lottie`
+                    (appear + select); у нас реакция — статический <Emoji> */}
+                <div className="btn-menu-reactions-reaction-scale">
+                  <Emoji e={r} size={28} />
+                </div>
+              </div>
+            ))}
+            {/* tweb: ButtonIcon(`${openSide === 'bottom' ? 'down' : 'up'} btn-menu-reactions-more`)
+                внутри `.btn-menu-reactions` (reactionsMenu.ts:183-188). Размер глифа
+                даёт `.btn-icon` (font-size: 1.5rem), инлайном не задаём. */}
+            <button
+              type="button"
+              className="btn-icon btn-menu-reactions-more"
+              onClick={() => setExpanded(true)}
+            >
+              <TgIcon name={barBelow ? 'up' : 'down'} className="button-icon" size="inherit" />
+            </button>
           </div>
         </div>
       )}
-      {items.map((it, i) => (
-        // Ключ — позиция: подписи больше не обязаны быть строками (read-date —
-        // нода), а порядок пунктов внутри открытого меню не меняется.
-        <Fragment key={i}>
-          <div onClickCapture={(e) => (lastEvent.current = e)}>
+      <div className="btn-menu-items btn-menu-transition" onClickCapture={(e) => (lastEvent.current = e)}>
+        {items.map((it, i) => (
+          // Ключ — позиция: подписи больше не обязаны быть строками (read-date —
+          // нода), а порядок пунктов внутри открытого меню не меняется.
+          <Fragment key={i}>
             <MenuItem
               icon={it.icon}
               label={typeof it.label === 'string' ? t(it.label) : it.label}
               danger={it.danger}
               onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
             />
-          </div>
-          {it.separatorDown && <hr />}
-        </Fragment>
-      ))}
+            {it.separatorDown && <hr />}
+          </Fragment>
+        ))}
+      </div>
     </Menu>
   )
 }

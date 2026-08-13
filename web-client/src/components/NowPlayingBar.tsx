@@ -119,7 +119,7 @@ function NowPlayingBar() {
   const [rateStyle, setRateStyle] = useState<CSSProperties | undefined>(undefined)
   const openRate = () => {
     const r = rateBtnRef.current?.getBoundingClientRect()
-    if (r) setRateStyle({ top: r.bottom + 4, right: window.innerWidth - r.right, transformOrigin: 'top right' })
+    if (r) setRateStyle({ top: r.bottom + 4, right: window.innerWidth - r.right })
     setRateOpen(true)
   }
   const frac = duration > 0 ? currentTime / duration : 0
@@ -192,7 +192,7 @@ function NowPlayingBar() {
               >
                 {rateLabel}
               </button>
-              <Menu open={rateOpen} onClose={() => setRateOpen(false)} style={rateStyle}>
+              <Menu open={rateOpen} onClose={() => setRateOpen(false)} corner="bottom-left" style={rateStyle}>
                 {[0.5, 1, 1.5, 2].map((r) => (
                   <MenuItem
                     key={r}

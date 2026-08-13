@@ -174,7 +174,6 @@ export default function SettingsView({
             icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
             label="Telegram Premium"
             sublabel={me?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
-            chevron
             onClick={() => (me?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
           <Row

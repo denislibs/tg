@@ -1,7 +1,7 @@
 import { memo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import Avatar from '../shared/ui/Avatar'
 import classNames from '../shared/lib/classNames'
-import Menu, { MenuItem } from '../shared/ui/Menu'
+import Menu, { MenuItem, cornerFrom, type MenuCorner } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
@@ -78,18 +78,20 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
 
   // Anchor a corner of the menu AT the click point and grow toward free space
   // (right/bottom edges flip via right/bottom CSS so it stays exactly at the cursor).
-  const [menuPos, setMenuPos] = useState<CSSProperties | null>(null)
+  const [menuPos, setMenuPos] = useState<{ style: CSSProperties; corner: MenuCorner } | null>(null)
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     const MW = 220, MH = 320 // rough size, only to decide the grow direction
     const flipLeft = e.clientX + MW > window.innerWidth
     const flipUp = e.clientY + MH > window.innerHeight
-    const pos: CSSProperties = { transformOrigin: `${flipUp ? 'bottom' : 'top'} ${flipLeft ? 'right' : 'left'}` }
-    if (flipLeft) pos.right = window.innerWidth - e.clientX
-    else pos.left = e.clientX
-    if (flipUp) pos.bottom = window.innerHeight - e.clientY
-    else pos.top = e.clientY
-    setMenuPos(pos)
+    const originY = flipUp ? 'bottom' : 'top'
+    const originX = flipLeft ? 'right' : 'left'
+    const style: CSSProperties = {}
+    if (flipLeft) style.right = window.innerWidth - e.clientX
+    else style.left = e.clientX
+    if (flipUp) style.bottom = window.innerHeight - e.clientY
+    else style.top = e.clientY
+    setMenuPos({ style, corner: cornerFrom(originY, originX) })
   }
   // Pin/Unpin (tweb ChatList.Context.Pin): сеть сначала (Task 4) — лимит 5
   // (бэк вернёт 400) отдаём тостом, локально ничего откатывать не нужно, т.к.
@@ -273,7 +275,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
         ) : null}
       </a>
 
-      <Menu open={!!menuPos} onClose={() => setMenuPos(null)} style={menuPos ?? undefined}>
+      <Menu open={!!menuPos} onClose={() => setMenuPos(null)} corner={menuPos?.corner} style={menuPos?.style}>
         {menuItems.map((it) => (
           <MenuItem
             key={it.label}

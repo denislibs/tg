@@ -1,65 +1,41 @@
-// MessageContextMenu — полоска реакций + ui-kit Menu одной колонкой (реакции
-// всегда сверху). Позиционирование колонки (угол в точке клика) — инлайн.
-//
-// Полоска — порт tweb .btn-menu-reactions-container (_button.scss):
-// высота 2.5rem, radius = высоте, фон/blur как у .btn-menu,
-// drop-shadow(0 .125rem .5rem rgba(0,0,0,.24)); ячейка 36×28 (28px эмодзи +
-// 4px по бокам), шеврон «ещё» 32×32 прозрачный.
-// Абсолют внутри панели ui-kit Menu: над ней с зазором 8px
-// (tweb --menu-offset: -(высота+.5rem)); left/right по стороне якоря — инлайн.
-.reactionsBar {
-  position: absolute;
-  top: -48px; // -(2.5rem + 0.5rem)
-  display: flex;
-  align-items: center;
-  height: 2.5rem;
-  border-radius: 2.5rem;
-  padding: 0 0.0625rem;
-  background: var(--menu-background-color);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
-  filter: drop-shadow(0 0.125rem 0.5rem rgba(0, 0, 0, 0.24));
-}
+// MessageContextMenu — вся геометрия панели, полоски реакций и пунктов приходит
+// из портированного `styles/tweb/_button.scss` (`.btn-menu.has-items-wrapper`,
+// `.btn-menu-reactions*`, `.btn-menu-items`). Здесь остаётся ТОЛЬКО то, чего в
+// партиале нет, — каждое правило с причиной.
 
-// меню у верха экрана: полоске нет места сверху — показываем под панелью
-.below {
-  top: auto;
-  bottom: -48px;
-}
+// Полоска под панелью — случай, которого у tweb нет: он вместо переворота
+// сдвигает САМО меню (positionMenu с menuPadding.top = высота полоски,
+// contextMenu.ts::getMenuPadding), а этот порт у нас не сделан. Пока меню у
+// верха экрана — показываем полоску под ним: гасим подъём `--menu-offset`
+// (_button.scss:687) и ставим её под панель тем же зазором .5rem.
+// (селектор с `.panel` — чтобы перебить одноимённые правила партиала, у них
+// специфичность класса)
+.panel .below {
+  top: 100%;
+  margin-top: 0.5rem;
 
-.reaction {
-  width: 36px; // 28 + 4×2 (tweb --size + padding-horizontal)
-  height: 28px;
-  padding: 0 4px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  // Lottie select-анимация tweb недоступна вне Telegram — подскок на hover.
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-
-  &:hover {
-    transform: scale(1.25);
+  // хвостик пузыря смотрит на меню, значит для нижнего положения — вверх
+  // (партиал знает только `bottom: calc(var(--size) / -2)`).
+  :global(.btn-menu-reactions-bubble-big) {
+    top: calc(var(--size) / -2);
+    bottom: auto;
+    border-radius: 1rem 1rem 0 0;
   }
 }
 
-// кнопка «ещё» (tweb .btn-menu-reactions-more: 2rem, secondary, прозрачная)
-.more {
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 auto;
-  margin-inline-end: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--secondary-text-color);
-  cursor: pointer;
+// Подскок реакции на ховер. У tweb это его же ветка `@if $use-hover-scale`
+// (_button.scss:650, 858-882) — она выключена, потому что на ховер там играет
+// lottie select-анимация реакции, приезжающая с MTProto-сервера. Lottie у нас
+// нет (в `-reaction-scale` стоит статический <Emoji>), поэтому включаем ровно
+// эту ветку партиала: transform: scale(1.25) с его же переходом.
+.panel :global(.btn-menu-reactions-reaction-scale) {
+  transform: scale(1);
+  transition: transform var(--transition-standard-in);
+}
 
-  &:hover {
-    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
-  }
+.panel :global(.btn-menu-reactions-reaction:hover .btn-menu-reactions-reaction-scale),
+.panel :global(.btn-menu-reactions-reaction:active .btn-menu-reactions-reaction-scale) {
+  transform: scale(1.25);
 }
 
 // Разделитель под пунктом даты прочтения (tweb contextMenu.ts:1514

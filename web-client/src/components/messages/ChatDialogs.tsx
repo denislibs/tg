@@ -10,6 +10,7 @@ import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
+import PeerSelector from '../../shared/ui/PeerSelector'
 import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { peerColor } from '../peerColor'
 import { useAvatarSrc } from '../useAvatarSrc'
@@ -23,10 +24,6 @@ import FolderTabs from '../FolderTabs'
 import type { Chat } from '../../data'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
-
-// Only the fields the add-member list renders (Dialog.peer is narrower than the
-// full Peer type, so we keep this minimal and structurally compatible).
-
 
 // Delete confirmation — порт tweb PopupDeleteMessages (popups/deleteMessages.ts:84-160):
 // заголовок «Delete message»/«Delete N messages», описание, в личке — чекбокс
@@ -55,6 +52,9 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
   const withCheckbox = canRevoke && !isChannel
   return (
     <ConfirmPopup
+      // tweb deleteMessages.ts: `new PopupPeer('popup-delete-chat', …)`
+      // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
+      className="popup-delete-chat"
       avatar={avatar}
       title={single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
       description={single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
@@ -85,23 +85,6 @@ function shareSub(chat: Chat, presence: Record<number, { online: boolean; lastSe
   const p = chat.peerId != null ? presence[chat.peerId] : undefined
   if (p?.online) return t('online')
   return lastSeenLabel(p?.lastSeen ?? 0, lang)
-}
-
-// Строка списка «Поделиться»: аватар + имя/подпись, выделение галочкой.
-function ShareRow({ chat, sub, selected, onToggle }: { chat: Chat; sub: string; selected: boolean; onToggle: () => void }) {
-  const src = useAvatarSrc(chat.avatarUrl)
-  return (
-    <div className={classNames(s.shareRow, selected ? s.shareRowSel : '')} onClick={onToggle}>
-      <div className={s.shareAvatar}>
-        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size="md" />
-        {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
-      </div>
-      <div className={s.pickerBody}>
-        <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{chat.name}</Text>
-        <Text noWrap size={13.5} color="var(--secondary-text-color)">{sub}</Text>
-      </div>
-    </div>
-  )
 }
 
 // Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
@@ -164,6 +147,16 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     if (query) out = out.filter((c) => c.name.toLowerCase().includes(query))
     return out
   }, [chats, activeFolder, contactIds, query])
+  // Строки для общего селектора: id/имя/аватар/подпись (tweb wrapSubtitle).
+  const peers = useMemo(
+    () => list.map((c) => ({
+      id: Number(c.id),
+      name: c.name,
+      avatarUrl: c.avatarUrl,
+      subtitle: shareSub(c, presence, lang, t),
+    })),
+    [list, presence, lang, t],
+  )
   // Недавние — первые 8 чатов (лента отсортирована по свежести); прячем при поиске.
   const recents = query ? [] : chats.slice(0, 8)
   const searching = query.length > 0
@@ -171,52 +164,56 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   return (
     <Popup
       open={open}
+      // tweb pickUser.tsx/forward.tsx: `class="popup-forward"`
+      // (дамп `17-popup-01-forward-share.json`: div.popup.popup-forward)
+      className="popup-forward"
       title={t('Share with')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const c = confirmed.current; if (c) onPick(c); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
       width={460}
     >
-      {/* поиск */}
-      <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
-        <input
-          className={s.pickerSearchInput}
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('Search')}
-        />
-      </div>
-
-      {/* ряд недавних */}
-      {recents.length > 0 && (
-        <div className={s.recents}>
-          {recents.map((c) => (
-            <RecentChip key={c.id} chat={c} selected={selected.has(Number(c.id))} onToggle={() => toggle(Number(c.id))} />
-          ))}
-        </div>
-      )}
-
-      {/* табы папок — липкие при скролле */}
-      {!searching && folders.length > 0 && (
-        <div className={s.shareTabs}>
-          <FolderTabs value={folderId} onChange={setFolderId} folders={folders} />
-        </div>
-      )}
-
-      {/* список чатов */}
-      <div className={s.pickerList}>
-        {list.map((c) => (
-          <ShareRow
-            key={c.id}
-            chat={c}
-            sub={shareSub(c, presence, lang, t)}
-            selected={selected.has(Number(c.id))}
-            onToggle={() => toggle(Number(c.id))}
-          />
-        ))}
-      </div>
+      {/* Тело — тот же селектор, что у участников/админов справа: в tweb форвард-попап
+          собран из него же (дамп `17-popup-01-forward-share`:
+          div.selector.selector-round.selector-right.selector-multiselect-hidden).
+          Поиск, ряд «недавних» и табы папок лежат ВНУТРИ его скроллера. */}
+      <PeerSelector
+        peers={peers}
+        mode="multi"
+        design="round"
+        side="right"
+        multiselectHidden
+        noFilter
+        placeholder={t('Search')}
+        onQueryChange={setQ}
+        selected={[...selected]}
+        onSelectedChange={(ids) => setSelected(new Set(ids))}
+        beforeList={
+          <>
+            {/* Ряд «недавних» — горизонтальная секция внутри селектора
+                (`sidebar-left-section-container search-group search-group-contacts`
+                со своим `scrollable-x`), как в дампе. */}
+            {recents.length > 0 && (
+              <div className="sidebar-left-section-container search-group search-group-contacts">
+                <div className="sidebar-left-section search-group-inner">
+                  <div className="sidebar-left-section-content search-group-content">
+                    <div className="scrollable scrollable-x search-group-scrollable-x">
+                      <ul className="chatlist">
+                        {recents.map((c) => (
+                          <RecentChip key={c.id} chat={c} selected={selected.has(Number(c.id))} onToggle={() => toggle(Number(c.id))} />
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!searching && folders.length > 0 && (
+              <FolderTabs value={folderId} onChange={setFolderId} folders={folders} />
+            )}
+          </>
+        }
+      />
     </Popup>
   )
 }

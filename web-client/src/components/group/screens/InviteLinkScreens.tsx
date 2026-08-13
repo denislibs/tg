@@ -107,7 +107,6 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
               icon={<TgIcon name="admin" size={22} />}
               label={linkSubtitle(t, primary) || t('View link')}
               translate={false}
-              chevron
               onClick={() => setDetail(primary)}
             />
             <Row
@@ -131,7 +130,6 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
             label={l.title || l.url.replace(/^https?:\/\//, '')}
             translate={false}
             sublabel={linkSubtitle(t, l) || undefined}
-            chevron
             onClick={() => setDetail(l)}
           />
         ))}
@@ -147,7 +145,6 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
               label={l.title || l.url.replace(/^https?:\/\//, '')}
               translate={false}
               sublabel={t('revoked')}
-              chevron
               onClick={() => setDetail(l)}
             />
           ))}
