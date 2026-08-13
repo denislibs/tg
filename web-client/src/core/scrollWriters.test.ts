@@ -87,6 +87,17 @@ const ALLOWED: Record<string, number> = {
   // выдачи поиска по стрелкам, формула 1:1 из tweb (topbarSearch.tsx:678-681).
   // Изолированный дропдаун, не лента сообщений.
   'components/conversation/TopbarSearch.tsx': 1,
+  // components/virtual/useShouldAnimate.ts (createScrollShiftCompensator) — порт
+  // побочного эффекта `verticalVirtualList.tsx:49-53`: когда ВСЕ видимые строки
+  // виртуального списка чатов сдвинулись на одинаковое число позиций,
+  // `useShouldAnimate` отменяет их анимацию `top` и ВМЕСТО неё компенсирует
+  // scrollTop на ту же величину — список визуально стоит на месте. Список чатов
+  // не ходит через Scrollable/ScrollSaver (см. запись `useSidebarFolders.tsx`
+  // выше) — тихая корректирующая запись не тот класс писателя, у которого есть
+  // альтернатива через них. Функция экспортирована здесь же (не в будущем
+  // `VerticalVirtualList.tsx`, Task 5) — это парный механизм самого
+  // `useShouldAnimate`: тот решает КОГДА компенсировать, эта функция — КАК.
+  'components/virtual/useShouldAnimate.ts': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {
