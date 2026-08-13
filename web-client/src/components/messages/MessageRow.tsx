@@ -10,8 +10,10 @@
 // здесь остаётся мемоизированная обёртка ряда (bands/checkbox/зона) и реакции.
 // Стили — MessageRow.module.scss; палитра исходящих/входящих через CSS-переменные
 // на .row ([data-out]); геометрия с рантайм-флагами (радиусы, textSize) — инлайн.
-import { memo, useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import Checkbox from '../../shared/ui/Checkbox'
+import Emoji from '../emoji/Emoji'
+import { QUICK_REACTION } from '../../core/reactions'
 import classNames from '../../shared/lib/classNames'
 import { bubbleClasses } from './bubbleClasses'
 import { BubbleTail } from './bubbleParts/primitives'
@@ -87,12 +89,21 @@ export interface MessageRowProps {
   // peerId.isUser()): от этого зависит, показывать в чипе аватары или число.
   // Флага can_see_list бэк пока не отдаёт, поэтому берём приватность чата.
   canSeeReactionList: boolean
+  // Можно ли ставить быструю реакцию по ховеру бабла (tweb: не в «Избранном»,
+  // не в секретном чате, только у отправленного сообщения).
+  canQuickReact?: boolean
 }
+
+// Задержка перед показом быстрой реакции (tweb bubbles.ts — `pause(400)` в
+// цепочке загрузки её стикера): кружок не мелькает, пока курсор идёт по ленте.
+const QUICK_REACTION_DELAY = 400
+// Появление/скрытие (tweb setHoverVisible → SetTransition, 200мс).
+const QUICK_REACTION_TRANSITION = 200
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, showName, isChannel, isFirstUnread,
-  feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
+  feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList, canQuickReact,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
   // --peer-color-rgb на бабле (tweb ставит его инлайном, живой DOM §3): от него
@@ -162,6 +173,27 @@ function MessageRow({
   // выделения происходило в один кадр, без затухания полосы.
   const selectedCls = useSetTransition(canSelect && rowSelected, 'is-selected', 200)
 
+  // Быстрая реакция по ховеру бабла (tweb bubbles.ts onBubblesMouseMove +
+  // setHoverVisible): кружок с первой реакцией у края бабла, клик ставит её.
+  // Узел монтируется на входе курсора (CSS держит его прозрачным), класс
+  // `is-visible` приходит через QUICK_REACTION_DELAY — так играет transition;
+  // на выходе курсора класс снимается, а сам узел уходит после анимации.
+  const quickEligible = !!canQuickReact && !selecting && m.id != null && m.id > 0 && m.status !== 'error'
+  const [quickHovered, setQuickHovered] = useState(false)
+  const [quickMounted, setQuickMounted] = useState(false)
+  const [quickOn, setQuickOn] = useState(false)
+  useEffect(() => {
+    if (quickHovered) {
+      setQuickMounted(true)
+      const id = window.setTimeout(() => setQuickOn(true), QUICK_REACTION_DELAY)
+      return () => window.clearTimeout(id)
+    }
+    setQuickOn(false)
+    const id = window.setTimeout(() => setQuickMounted(false), QUICK_REACTION_TRANSITION)
+    return () => window.clearTimeout(id)
+  }, [quickHovered])
+  const quickCls = useSetTransition(quickOn, 'is-visible', QUICK_REACTION_TRANSITION)
+
   return (
     <div
       className={classNames(...cls, selectedCls, s.row)}
@@ -192,7 +224,11 @@ function MessageRow({
       {/* Каркас tweb — одинаковый у ВСЕХ типов (живой DOM §3): контент бабла
           всегда лежит в .bubble-content-wrapper > .bubble-content. */}
       <div className="bubble-content-wrapper">
-        <div className="bubble-content">
+        <div
+          className={classNames('bubble-content', quickOn ? 'hover-reaction-visible' : '')}
+          onMouseEnter={quickEligible ? () => setQuickHovered(true) : undefined}
+          onMouseLeave={quickEligible ? () => setQuickHovered(false) : undefined}
+        >
           <MessageContent
             m={m}
             out={out}
@@ -207,6 +243,18 @@ function MessageRow({
             rowLive={rowLiveRef.current}
             feedFns={feedFns}
           />
+          {/* Быстрая реакция (tweb .bubble-hover-reaction) — кружок у края
+              бабла; клик ставит её тем же путём, что чип и полоска в меню. */}
+          {quickEligible && quickMounted && (
+            <div
+              className={classNames('bubble-hover-reaction', quickCls)}
+              onClick={(e) => { e.stopPropagation(); feedFns.toggleReaction(m.id as number, QUICK_REACTION) }}
+            >
+              <div className="bubble-hover-reaction-sticker">
+                <Emoji e={QUICK_REACTION} size={18} />
+              </div>
+            </div>
+          )}
           {/* Кнопка «переслать» сбоку поста канала (tweb bubbles.ts:7673-7681,
               живой DOM §3): круглая, за пределами бабла, проявляется по ховеру. */}
           {isChannel && m.id != null && !selecting && (

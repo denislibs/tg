@@ -19,7 +19,8 @@ import { usePortalContainer } from '../../core/pip'
 import classNames from '../../shared/lib/classNames'
 import s from './MessageContextMenu.module.scss'
 
-const REACTIONS = ['❤️', '👍', '👎', '🔥', '🥰', '👏', '😁']
+// Список общий с быстрой реакцией по ховеру бабла (core/reactions.ts).
+import { REACTIONS } from '../../core/reactions'
 
 // Высота полоски (2.5rem) + зазор до меню (.5rem) — tweb --menu-offset.
 const BAR_OFFSET = 48
