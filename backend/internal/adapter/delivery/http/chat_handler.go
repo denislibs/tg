@@ -253,48 +253,67 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"dialogs": out})
 }
 
+// dialogRow — представление одного диалога в HTTP-контракте /chats.
+func dialogRow(d domain.Dialog) map[string]any {
+	row := map[string]any{
+		"chat_id": d.ChatID, "type": d.Type,
+		"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
+		"photo_preview": d.PhotoPreview,
+		"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
+		"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
+		"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
+		"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
+		"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
+	}
+	if d.HasLast {
+		lastMsg := map[string]any{
+			"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
+			"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
+			"sender_name": d.LastSenderName,
+		}
+		// Секретный чат: отдаём шифр-блоб — клиент расшифрует его для превью
+		// (сервер plaintext не знает). У обычных чатов LastEncBody = nil.
+		if len(d.LastEncBody) > 0 {
+			lastMsg["enc_body"] = base64.StdEncoding.EncodeToString(d.LastEncBody)
+		}
+		row["last_message"] = lastMsg
+	}
+	if d.Peer != nil {
+		row["peer"] = map[string]any{
+			"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
+			"avatar_preview": d.Peer.AvatarPreview,
+			"verified":       d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
+			"is_bot": d.Peer.IsBot,
+		}
+	}
+	return row
+}
+
+// ListDialogs — GET /chats?limit=&offset_chat_id=: без параметров отдаёт весь
+// список (обратная совместимость), с ними — страницу по курсору chat_id.
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
-	dialogs, err := h.svc.ListDialogs(r.Context(), h.meID(r))
+	limit := queryInt(r, "limit", 0)
+	if limit < 0 {
+		// Отрицательный limit — не 400: клиента с таким запросом нет,
+		// тихая деградация к «весь список» безопаснее.
+		limit = 0
+	}
+	page := domain.DialogPage{
+		Limit:        int(limit),
+		OffsetChatID: queryInt(r, "offset_chat_id", 0),
+	}
+	res, err := h.svc.ListDialogsPage(r.Context(), h.meID(r), page)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list chats")
 		return
 	}
-	out := make([]map[string]any, 0, len(dialogs))
-	for _, d := range dialogs {
-		row := map[string]any{
-			"chat_id": d.ChatID, "type": d.Type,
-			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
-			"photo_preview": d.PhotoPreview,
-			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
-			"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
-			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
-			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
-			"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
-		}
-		if d.HasLast {
-			lastMsg := map[string]any{
-				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
-				"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
-				"sender_name": d.LastSenderName,
-			}
-			// Секретный чат: отдаём шифр-блоб — клиент расшифрует его для превью
-			// (сервер plaintext не знает). У обычных чатов LastEncBody = nil.
-			if len(d.LastEncBody) > 0 {
-				lastMsg["enc_body"] = base64.StdEncoding.EncodeToString(d.LastEncBody)
-			}
-			row["last_message"] = lastMsg
-		}
-		if d.Peer != nil {
-			row["peer"] = map[string]any{
-				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
-				"avatar_preview": d.Peer.AvatarPreview,
-				"verified":       d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
-				"is_bot": d.Peer.IsBot,
-			}
-		}
-		out = append(out, row)
+	out := make([]map[string]any, 0, len(res.Dialogs))
+	for _, d := range res.Dialogs {
+		out = append(out, dialogRow(d))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chats": out, "count": res.Count, "is_end": res.IsEnd,
+	})
 }
 
 type sendBody struct {
