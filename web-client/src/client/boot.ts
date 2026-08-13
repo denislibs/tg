@@ -60,26 +60,10 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: b
  * `refresh()` пробрасываются): остаёмся на кэше, презенс сеется тем, что есть,
  * unhandled rejection не плодим (Minor #3).
  *
- * ПОЧЕМУ ПЕРВИЧНАЯ ЗАГРУЗКА ПОЛНАЯ, А НЕ СТРАНИЦА. Этап 3 менял этот вызов на
- * `getDialogs({limit: guessLoadCount()})` (страница вместо полного списка) —
- * откачено сквозным ревью. Зеркало (`stores/chatsStore.ts`) — источник не
- * только для списка «Все чаты», но и для АРХИВА и ПОЛЬЗОВАТЕЛЬСКИХ ПАПОК, а
- * размера их наборов нет ни у бэкенда, ни у воркера: `limit` режет ГЛОБАЛЬНЫЙ
- * порядок и архивные строки в ответе не выделены
- * (`backend/internal/usecase/chat/dialogpage.go`, `chatsrepo.go`), а
- * `dialogsManager.ts::countFor` для ARCHIVE и папок отдаёт длину того, что УЖЕ
- * набрано. Поэтому усечённое зеркало делает эти списки неполными МОЛЧА:
- * `totalCount === items.length` ⇒ дырок в `fullItems` нет ⇒ `requestItemForIdx`
- * не зовётся ⇒ догрузки для них не случается НИКОГДА, и ни одного признака в UI
- * нет. Хуже того: не попал архивный чат в первые ~20 строк глобального порядка —
- * строки «Архив» в сайдбаре нет вовсе (`components/ChatList.tsx`, гейт
- * `archived.length > 0`), то есть нет и входа в архив. Пока у папок и архива
- * нет собственного счётчика набора, первичная загрузка обязана быть полной.
- *
- * Пагинация при этом НЕ мертва и не удалена: `getDialogs` +
- * `helpers/sequentialCursorFetcher` продолжают обслуживать список «Все чаты»,
- * пока у владельца не поднят `loadedAll` (`dialogsManager.ts`) — то есть когда
- * полный ответ не дошёл (офлайн/ошибка) или пришёл без `is_end`.
+ * Первичная сетевая загрузка — `refresh()`, и она страничная: на пустом кэше
+ * владелец просит одну страницу (`dialogsManager.ts::doRefresh`). Дальше список
+ * догружает сам сайдбар через `getDialogs` + `helpers/sequentialCursorFetcher`,
+ * опираясь на размер набора своей выборки (`countFor`).
  */
 export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>, locked: boolean): Promise<void> {
   if (op) useChatsStore.getState().applyDialogOps([op])

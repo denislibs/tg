@@ -24,8 +24,14 @@ import DeferredSortedVirtualList, {
 } from './virtual/DeferredSortedVirtualList'
 import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
+import { useManagers } from '../core/hooks/useManagers'
+import { ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import type { Chat } from '../data'
 import s from './ChatList.module.scss'
+
+/** `archiveDialog.tsx:27` — страница архива, которой живёт строка «Архив»
+ *  (там же её лимит показа имён, см. `ArchiveRow.LIMIT`). */
+const ARCHIVE_ROW_LIMIT = 10
 
 export interface ChatListProps {
   /**
@@ -183,6 +189,47 @@ function ChatListFolder({
 
   const { items, totalCount, wasAtLeastOnceFetched, animate, requestItemForIdx } =
     useDialogListSource(folder, chats)
+
+  const managers = useManagers()
+  /**
+   * Порт `AutonomousDialogList.ensureArchiveDialogHydrated`
+   * (`autonomousDialogList/dialogs.ts:248-276`): список, который несёт строку
+   * «Архив», сам и просит её страницу — в оригинале состояние строки тянет
+   * `getDialogs({filterId: FOLDER_ID_ARCHIVE, limit: 10})`
+   * (`archiveDialog.tsx:27,124-137`) и показывает ряд, если та непуста.
+   *
+   * Без этого запроса строки не бывает ВОВСЕ: её гейт — архивные диалоги в
+   * зеркале (`pinnedArchive` ниже), первичный `refresh()` теперь страничный и
+   * старый архив в первое окно не попадает, а страницы «Всех чатов» уходят с
+   * `folder_id=0` и архив не принесут никогда (спека
+   * `2026-08-13-dialogs-count-and-refresh-design.md`, «Дополнение: вход в архив»).
+   *
+   * Ответ здесь НЕ читается и никуда не пишется: владелец объявляет страницу
+   * сам (`upsert` → `rt:dialog_op` → проектор → зеркало), витрина своего вывода
+   * того же факта не держит (`web-client/CLAUDE.md`, «Владение фактами»).
+   * `.catch` — как у прочих fire-and-forget колсайтов владельца (офлайн/401
+   * оставляют список на кэше, unhandled rejection не плодим).
+   *
+   * Гейт `hasArchiveRow` — тот же, что у самой строки: `onOpenArchive` приезжает
+   * от Sidebar только списку «Всех чатов». Зависимость БУЛЕВА, а не сам
+   * колбэк: Sidebar пересоздаёт стрелку на каждом рендере, и запрос уходил бы
+   * заново на каждый его рендер.
+   *
+   * Второе условие — `archiveEmpty` — это порт правила перезапроса
+   * (`archiveDialog.tsx:163-171`: архив в состоянии строки СОКРАТИЛСЯ — просим
+   * его страницу заново). У нас архив пропадает из зеркала штатно: `refresh()`
+   * читает окно ГЛОБАЛЬНОЙ выборки и применяет его полной подменой
+   * (`dialogsManager.ts::setAll`), а старые архивные диалоги в это окно не
+   * входят. Без перезапроса строка «Архив» исчезала бы на первом же из
+   * девятнадцати колсайтов `refresh()` и до конца сеанса. Пока архив в зеркале
+   * непуст, зависимость не меняется — то есть запрос ровно один.
+   */
+  const hasArchiveRow = !!onOpenArchive
+  const archiveEmpty = !archived?.length
+  useEffect(() => {
+    if (!hasArchiveRow || !archiveEmpty) return
+    void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT }).catch(() => {})
+  }, [hasArchiveRow, archiveEmpty, managers])
 
   // Порт `appDialogsManager.onTabChange` (`lib/appDialogsManager.ts:1101`) →
   // `AutonomousDialogList.onChatsScroll()` (`base.ts:144-146` — `requestItemForIdx(0)`):

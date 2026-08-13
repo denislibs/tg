@@ -6,9 +6,9 @@
 // `virtual/*.test.tsx`) и не про список папки (`ChatList.test.tsx`):
 // (1) в DOM живут только строки окна, а не весь архив;
 // (2) `ul` несёт высоту под ВЕСЬ набор и лежит прямо в контейнере прокрутки;
-// (3) `totalCount` — длина набора: дырок-скелетонов у архива не бывает, а
-//     открытие оверлея не порождает ни одного запроса страницы у владельца
-//     (пагинации у архива нет — он живёт в зеркале целиком);
+// (3) `totalCount` — размер АРХИВНОЙ выборки, который отдал владелец, и оверлей
+//     просит у него свои страницы сам (порт `archivedTab.tsx:19,80-96` — архив
+//     это тот же `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`);
 // (4) пустой архив показывает заглушку ВМЕСТО `ul`;
 // (5) строки те же `ChatListItem` с тем же `onSelect`/`selected`.
 //
@@ -72,7 +72,7 @@ import { useNotifyStore } from '../stores/notifyStore'
 import { useNavigationStore } from '../stores/navigationStore'
 import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
-import { ALL_FOLDER_ID } from '../core/folderIds'
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
 
@@ -85,10 +85,16 @@ const NORMAL = 5
 const ARCHIVE_ID_BASE = 1000
 
 function fakeManagers() {
-  // Владелец отдаёт РОВНО набор незаархивированных: у списка «Все чаты» не
-  // остаётся дырок, и он просит страницу ровно один раз — на первом показе
-  // папки. Всё, что сверх этого, — уже запрос архива, которого быть не должно.
-  const getDialogs = vi.fn(async () => ({ dialogs: [], count: NORMAL, isEnd: true }))
+  // Владелец отдаёт размер СВОЕЙ выборки: «Все чаты» — набор незаархивированных,
+  // архив — свой (`/chats?folder_id=1`). Дырок ни у того, ни у другого не
+  // остаётся, поэтому каждый список просит страницу ровно один раз — на первом
+  // показе. Сами диалоги приезжают зеркалу отдельно (`seedMirror`), как их
+  // разложил бы проектор по операции владельца.
+  const getDialogs = vi.fn(async (o: { filterId: number }) => ({
+    dialogs: [],
+    count: o.filterId === ARCHIVE_FOLDER_ID ? ARCHIVED : NORMAL,
+    isEnd: true,
+  }))
   const managers = new Proxy({}, {
     get: (_target, ns: string) => new Proxy({}, {
       get: (_t, method: string) => {
@@ -229,13 +235,17 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     expect(archiveList().querySelectorAll('.loading-dialog-skeleton')).toHaveLength(0)
   })
 
-  it('пагинации нет: открытие архива не шлёт владельцу ни одного запроса страницы', async () => {
+  // Порт `archivedTab.tsx:19,80-96`: у архива СВОЙ курсор — он просит страницы
+  // сам, как и список папки. Без этого архив живёт лишь тем, что случайно
+  // оказалось в зеркале, а страницы «Всех чатов» уходят с `folder_id=0` и
+  // архивных диалогов не приносят вовсе (спека, «Дополнение: вход в архив»).
+  // Мутация: вернуть списку `NO_ITEM_REQUEST` и `totalCount={items.length}` —
+  // запроса с `filterId: ARCHIVE_FOLDER_ID` при открытии оверлея не будет.
+  it('архив листается сам: открытие оверлея просит у владельца страницу архивной выборки', async () => {
     const { getDialogs } = await openArchive()
 
-    // Единственный запрос — первый показ папки «Все чаты»; архив своего не шлёт
-    // (мутация: посадить список на `useDialogListSource(ARCHIVE_FOLDER_ID, …)`
-    // — у него свой курсор, и он попросит страницу архива у владельца).
-    expect(getDialogs).toHaveBeenCalledTimes(1)
+    const archivePages = getDialogs.mock.calls.filter(([o]) => o.filterId === ARCHIVE_FOLDER_ID)
+    expect(archivePages.length).toBeGreaterThan(0)
     expect(getDialogs).toHaveBeenCalledWith(expect.objectContaining({ filterId: ALL_FOLDER_ID }))
   })
 
@@ -282,8 +292,8 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     expect(archiveRowRenders()).toBe(14)
 
     // Прочитали обычный (неархивный) чат: `dialogs` в зеркале — новый массив,
-    // значит и `chats`, и `archivedChats` приезжают новыми. Мутация: убрать кэш
-    // обёрток в `ArchiveList` (`itemCacheRef`/`prevItemsRef`) — у каждой строки
+    // значит и `chats` приезжают новыми. Мутация: убрать кэш обёрток в
+    // `useDialogListSource` (`itemCacheRef`/`prevItemsRef`) — у каждой строки
     // окна сменится ссылка `item`, и все 14 перерисуются.
     await act(async () => {
       useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 1, fields: { unread: 1 } }])
@@ -306,8 +316,8 @@ describe('Sidebar — архив на виртуальном ядре', () => {
 
     // Равномерный сдвиг ядро компенсирует скроллом, а не анимацией `top` у всех
     // видимых строк сразу (`useShouldAnimate` → `createScrollShiftCompensator`).
-    // Мутация: убрать кэш обёрток в `ArchiveList` — сравнение старого и нового
-    // списка идёт ПО ССЫЛКЕ, новые обёртки в прежнем списке не найдутся,
+    // Мутация: убрать кэш обёрток в `useDialogListSource` — сравнение старого и
+    // нового списка идёт ПО ССЫЛКЕ, новые обёртки в прежнем списке не найдутся,
     // компенсация не сработает и весь экран дёрнется.
     expect(archiveHost().scrollTop).toBe(HOST_HEIGHT + ITEM)
   })

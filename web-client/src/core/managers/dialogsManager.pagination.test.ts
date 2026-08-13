@@ -8,6 +8,7 @@
 // rest), свой сетап не изобретаем.
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
+import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import { ARCHIVE_FOLDER_ID } from '../folderIds'
 import { mapDialog } from '../models'
 import type { Dialog, Draft, RawDialog } from '../models'
@@ -343,11 +344,14 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
   // Порт `count: loadedAll ? curDialogStorage.length : folder.count`
   // (dialogs.ts:1706): как только набор загружен целиком, размером служит
   // ДЛИНА КЭША, а серверный `count` прошлых страниц — устаревшее число.
-  it('после полной загрузки count — длина кэша, а не серверный count прошлой страницы', async () => {
+  it('после refresh(), накрывшего набор, count — длина кэша, а не серверный count прошлой страницы', async () => {
     const rest = {
-      get: vi.fn(async (_path: string, q?: Record<string, number>) => (q
+      // Страница «Всех чатов» уходит со своим `folder_id` (0), а `refresh()`
+      // (Task 5) — по ГЛОБАЛЬНОЙ выборке, то есть с одним лишь `limit`: по
+      // этому запросы и различаются, как их различает бэкенд.
+      get: vi.fn(async (_path: string, q: Record<string, number>) => (q.folder_id === 0
         ? { chats: [raw(3, 3)], count: 137, is_end: false } // страница: сервер знает про 137
-        : { chats: [raw(1, 1), raw(2, 2), raw(3, 3)], count: 3, is_end: true })), // полный список
+        : { chats: [raw(1, 1), raw(2, 2), raw(3, 3)], count: 3, is_end: true })), // окно refresh накрыло набор
     }
     const mgr = newDialogsManager({
       rest: rest as never,
@@ -889,6 +893,125 @@ describe('размер набора по выборке (порт dialogs.ts:170
     await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
     rest.get.mockClear()
     await mgr.getDialogs({ limit: 5 }) // «Все чаты» — обязаны пойти в сеть
+
+    expect(rest.get).toHaveBeenCalled()
+  })
+})
+
+// Порт `dialogsOffsetDate` (dialogs.ts:80,386-393,1052-1058 +
+// appMessagesManager.ts:3534): смещение пагинации хранится ПО ВЫБОРКЕ, и
+// страница чужой папки его не двигает. Пока курсор выводился из хвоста кэша,
+// этого различия не было — а кэш наполняют три выборки сразу (Task 4).
+describe('курсор пагинации — свой у каждой выборки', () => {
+  it('страница архива не сбивает курсор глобальной выборки', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q: Record<string, number>) => (q.folder_id === 1
+        // Архив: единственный диалог, и он САМЫЙ СТАРЫЙ в глобальном порядке,
+        // то есть после слияния окажется в хвосте кэша.
+        ? { chats: [raw(99, 1, { archived: true })], count: 1, is_end: true }
+        : { chats: [raw(1, 9), raw(2, 8)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+
+    await mgr.refresh() // глобальная выборка вычерпана до чата 2
+    await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 5 }) // архив положил в кэш чат 99
+    rest.get.mockClear()
+
+    // Страница пользовательской папки идёт по ГЛОБАЛЬНОЙ выборке и обязана
+    // продолжить с чата 2 — там, где остановилась её пагинация. С курсором из
+    // хвоста кэша сюда уехал бы архивный чат 99, то есть конец набора, и папка
+    // не получила бы больше ни одного диалога.
+    await mgr.getDialogs({ filterId: 7, limit: 5 })
+
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 2 })
+  })
+
+  it('вторая страница продолжает с того, чем кончилась ПЕРВАЯ, а не с хвоста кэша', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(5, 5), raw(4, 4)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // В кэше прошлой сессии — САМЫЙ СТАРЫЙ диалог: после слияния страницы он
+      // остаётся в хвосте, то есть хвост кэша и хвост страницы РАЗЪЕЗЖАЮТСЯ.
+      loadCache: async () => [dialog(1, 1)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ limit: 2 }) // первая страница: курсор встал на чате 4
+    rest.get.mockClear()
+
+    await mgr.getDialogs({ limit: 5 })
+
+    // Курсор — конец ПАГИНАЦИИ (4), а не хвост кэша (1): после чата 1 сервер
+    // отдал бы пустоту, страница не приносила бы нового, и список замер бы.
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 4, folder_id: 0 })
+  })
+
+  it('resetForLogout() сбрасывает курсоры: первая страница нового аккаунта идёт от начала', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 8)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    await mgr.getDialogs({ limit: 2 }) // курсор выборки «Все чаты» встал на чате 2
+    rest.get.mockClear()
+
+    mgr.resetForLogout()
+
+    // `chatId` прошлого аккаунта бэкенд в выборке нового не найдёт и молча
+    // отдаст страницу с начала — просить её надо явно, без курсора.
+    await mgr.getDialogs({ limit: 5 })
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 0, folder_id: 0 })
+  })
+})
+
+describe('refresh перечитывает удерживаемое окно, а не весь список', () => {
+  // Холодный старт: держим ноль — просим первую страницу. Без этого boot
+  // тянет всю ленту диалогов одним ответом и глушит пагинацию на весь сеанс.
+  it('на пустом кэше просит одну страницу', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 1)], count: 200, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(rest.get).toHaveBeenCalledWith('/chats', expect.objectContaining({ limit: DIALOG_LOAD_COUNT }))
+  })
+
+  it('на прогретом кэше просит ровно столько, сколько держит', async () => {
+    const cached = Array.from({ length: 37 }, (_, i) => dialog(i + 1, 1))
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 1)], count: 200, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => cached,
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(rest.get).toHaveBeenCalledWith('/chats', expect.objectContaining({ limit: 37 }))
+  })
+
+  // Ответ без is_end больше не считается полным набором — иначе первый же из
+  // девятнадцати колсайтов refresh() глушил бы догрузку до конца сеанса.
+  it('ответ без is_end не объявляет набор загруженным', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 1)], count: 200, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+    rest.get.mockClear()
+    await mgr.getDialogs({ limit: 5 })
 
     expect(rest.get).toHaveBeenCalled()
   })
