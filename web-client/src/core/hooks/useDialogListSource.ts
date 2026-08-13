@@ -11,7 +11,7 @@
 // конца/флаг анимации. Писать в зеркало он не имеет права
 // (`stores/noDuplicateDialogs.test.ts`), сортировать — тоже
 // (`stores/noManualOrder.test.ts`): порядок уже пришёл из воркера.
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { SequentialCursorFetcher, type SequentialCursorFetcherResult } from '@helpers/sequentialCursorFetcher'
 import { useManagers } from './useManagers'
 import { useEvent } from './useEvent'
@@ -26,12 +26,34 @@ import type { Folder } from '../managers/foldersManager'
 import type { Dialog } from '../models'
 import type { Chat } from '../../data'
 
-/** Строка списка: `index` — готовый индекс порядка из зеркала (его считает владелец). */
-export type DialogListItem = { id: number; index: number; value: Chat }
+/**
+ * Строка списка — форма `DeferredSortedVirtualListItem` ядра
+ * (`components/virtual/DeferredSortedVirtualList.tsx:51`).
+ *
+ * Поля `index` (индекс порядка) здесь НЕТ, хотя в tweb у элемента оно есть
+ * (`deferredSortedVirtualList.tsx:34-38`): там его читает `sortedItems`, который
+ * мы не портируем (ядро уже отказалось от поля по той же причине). Класть сюда
+ * копию `chatsStore.dialogIndexById` только ради полноты — заводить второй
+ * источник порядка на витрине и, хуже того, обязать обёртку пересоздаваться на
+ * каждый `reindex` владельца (а он приходит на любую правку `pinnedOrders`/
+ * `drafts`, со ЗНАЧЕНИЯМИ диалогов неизменными) — то есть ровно ломать
+ * стабильность ссылок, ради которой обёртка и кэшируется. Курсору догрузки
+ * индексы нужны — он берёт их у зеркала напрямую (`fetchPage`).
+ */
+export type DialogListItem = { id: number; value: Chat }
 
 export type DialogListSource = {
-  /** Диалоги папки в порядке зеркала (не пересортированы). */
-  items: DialogListItem[]
+  /**
+   * Диалоги папки в порядке зеркала (не пересортированы).
+   *
+   * Требования к ссылкам — контракт пропа `items` ядра
+   * (`DeferredSortedVirtualList.tsx:64-80`), оба выполняются кэшем ниже:
+   * 1. ссылка на САМ массив меняется только при реальном изменении состава или
+   *    порядка — по её смене `useShouldAnimate` решает, анимировать ли переезд;
+   * 2. обёртка живёт, пока живёт строка, и приезжает НОВОЙ, когда изменилось её
+   *    содержимое (строка обёрнута в `memo` и сравнивает `item` по ссылке).
+   */
+  items: readonly DialogListItem[]
   /** Сколько всего в папке — `count` последнего ответа `getDialogs`. */
   totalCount: number
   isEnd: boolean
@@ -59,7 +81,6 @@ const noop = () => {}
 export function useDialogListSource(filterId: number, chats: Chat[]): DialogListSource {
   const managers = useManagers()
   const dialogs = useChatsStore((s) => s.dialogs)
-  const dialogIndexById = useChatsStore((s) => s.dialogIndexById)
   const notifySettings = useNotifyStore((s) => s.settings)
   const folders = useFolders()
   const contactIds = useFoldersStore((s) => s.contactIds)
@@ -100,10 +121,36 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     return dialogMatchesFolder({ ...d, muted: isDialogMuted(d, notifySettings) }, folder, contactIds)
   }, [folderKnown, folder, filterId, contactIds, notifySettings])
 
-  const items = useMemo<DialogListItem[]>(() => {
+  /**
+   * Обёртки строк, живущие между пересчётами, — ключ по `chatId`. Тот же приём
+   * и та же мотивация, что у ref-кэша в `useChatList`, только требование
+   * жёстче: `useShouldAnimate` сравнивает элементы старого и нового списка ПО
+   * ССЫЛКЕ (`prev.indexOf(item)`, порт `verticalVirtualList.tsx:143-172`), и
+   * пересоздание обёрток на каждом пересчёте делало бы пересечение «видимые до»
+   * и «видимые сейчас» ВСЕГДА пустым: `shouldAnimate` навсегда `true`,
+   * компенсация равномерного сдвига (`onScrollShift`) не зовётся никогда, и при
+   * появлении чата над видимой областью дёргается весь экран вместо одной
+   * строки. В tweb стабильность этой ссылки — тоже часть контракта, там она
+   * держится намеренной мутацией вместо спреда
+   * (`deferredSortedVirtualList.tsx:141-147` и комментарий у `:144`).
+   *
+   * Обёртка пересоздаётся РОВНО когда изменилось витринное значение строки —
+   * второе требование контракта `items` ядра: строка обёрнута в `memo` и
+   * сравнивает `item` по ссылке, так что «та же обёртка с новым содержимым»
+   * до перерисовки не дошла бы. Оба требования совместимы, потому что
+   * `useChatList` сохраняет ссылку `Chat` у строк, значения которых не менялись.
+   */
+  const itemCacheRef = useRef<Map<number, DialogListItem>>(new Map())
+  /** Прошлый результат: ссылка на массив обязана пережить пересчёт, ничего в
+   *  списке не изменивший (`useShouldAnimate` пересчитывается по её смене). */
+  const prevItemsRef = useRef<readonly DialogListItem[]>([])
+
+  const items = useMemo<readonly DialogListItem[]>(() => {
+    const cache = itemCacheRef.current
     const chatById = new Map<number, Chat>()
     for (const chat of chats) chatById.set(Number(chat.id), chat)
-    const out: DialogListItem[] = []
+    const next: DialogListItem[] = []
+    const seen = new Set<number>()
     for (const d of dialogs) {
       if (!matchesThisFolder(d)) continue
       const value = chatById.get(d.chatId)
@@ -114,10 +161,20 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
       // БОЛЬШЕ списка (`countInMirror` считает по зеркалу, а не по `chats`), и
       // догрузка встанет ровно так же, как вставала на разъехавшемся `muted`.
       if (!value) continue
-      out.push({ id: d.chatId, index: dialogIndexById[d.chatId] ?? 0, value })
+      seen.add(d.chatId)
+      const hit = cache.get(d.chatId)
+      if (hit && hit.value === value) { next.push(hit); continue }
+      const item: DialogListItem = { id: d.chatId, value }
+      cache.set(d.chatId, item)
+      next.push(item)
     }
-    return out
-  }, [chats, dialogs, dialogIndexById, matchesThisFolder])
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id)
+
+    const prev = prevItemsRef.current
+    if (prev.length === next.length && prev.every((it, i) => it === next[i])) return prev
+    prevItemsRef.current = next
+    return next
+  }, [chats, dialogs, matchesThisFolder])
 
   /** Папка, выбранная ПРЯМО СЕЙЧАС (а не в момент запуска запроса) — ею
    *  отсекается ответ, доехавший уже после переключения папки. */

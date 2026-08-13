@@ -10,6 +10,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useDialogListSource } from './useDialogListSource'
 import { useChatList } from './useChatList'
+import { useShouldAnimate } from '../../components/virtual/useShouldAnimate'
 import { ManagersProvider } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useFoldersStore } from '../../stores/foldersStore'
@@ -176,13 +177,111 @@ describe('useDialogListSource: items — производная от зерка�
     expect(result.current.items.map((i) => i.id)).toEqual([1])
   })
 
-  it('каждый item несёт ГОТОВЫЙ индекс порядка из зеркала', () => {
-    seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 10 }])
+})
+
+// Контракт пропа `items` ядра (`components/virtual/DeferredSortedVirtualList.tsx:64-80`).
+// Обе его половины держит ref-кэш обёрток; вторая половина (стабильность ссылок)
+// — не украшение, а условие работы `useShouldAnimate`: он сравнивает элементы
+// старого и нового списка ПО ССЫЛКЕ, и на пересоздаваемых обёртках пересечение
+// «видимые до»/«видимые сейчас» всегда пусто — компенсация равномерного сдвига
+// не срабатывает никогда (см. describe ниже, он проверяет это по результату).
+describe('useDialogListSource: ссылки в items', () => {
+  it('пересчёт, ничего не изменивший в списке, отдаёт ТОТ ЖЕ массив', () => {
+    seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }])
+    const { managers } = fakeManagers()
+
+    const { result, rerender } = renderSource(managers, ALL_FOLDER_ID)
+    const before = result.current.items
+
+    rerender({ fid: ALL_FOLDER_ID })
+
+    expect(result.current.items).toBe(before)
+  })
+
+  // Пересчёт, который список не изменил, обязан вернуть ПРЕЖНИЙ массив: смена
+  // его ссылки — это команда `useShouldAnimate` пересчитать решение об анимации,
+  // а здесь пересчитывать нечего (правка приехала в чат другой папки).
+  it('правка вне папки пересчитывает items, но ссылка на массив прежняя', () => {
+    seedMirror([
+      { dialog: dialog(1), index: 30 },
+      { dialog: dialog(2, { archived: true }), index: 20 },
+    ])
     const { managers } = fakeManagers()
 
     const { result } = renderSource(managers, ALL_FOLDER_ID)
+    const before = result.current.items
+    expect(before.map((i) => i.id)).toEqual([1])
 
-    expect(result.current.items.map((i) => i.index)).toEqual([30, 10])
+    act(() => {
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 7 } }])
+    })
+
+    expect(result.current.items).toBe(before)
+  })
+
+  it('изменилась одна строка — её обёртка новая, у остальных ТЕ ЖЕ ссылки', () => {
+    seedMirror([
+      { dialog: dialog(1), index: 30 },
+      { dialog: dialog(2), index: 20 },
+      { dialog: dialog(3), index: 10 },
+    ])
+    const { managers } = fakeManagers()
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    const before = result.current.items
+
+    act(() => {
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 5 } }])
+    })
+    const after = result.current.items
+
+    expect(after).not.toBe(before) // список изменился — новая ссылка на массив
+    expect(after[1]).not.toBe(before[1]) // строка обёрнута в memo и сравнивает item по ссылке
+    expect(after[0]).toBe(before[0])
+    expect(after[2]).toBe(before[2])
+  })
+})
+
+// Проверка ПО РЕЗУЛЬТАТУ, а не по реализации: механизм `useShouldAnimate`
+// действительно живой. Критерий приёмки №4 спеки этапа — новый чат сверху
+// поднимает свою строку, а остальные видимые не дёргаются: вместо анимации
+// список компенсирует равномерный сдвиг записью в `scrollTop`.
+describe('useDialogListSource + useShouldAnimate: компенсация равномерного сдвига', () => {
+  const ITEM_HEIGHT = 72
+  const HOST_HEIGHT = 144
+  // Прокручены так, что видимы строки 4..7 — появление чата НАД ними сдвигает
+  // весь видимый кусок ровно на одну позицию.
+  const SCROLL_AMOUNT = 5 * ITEM_HEIGHT
+
+  function renderWithAnimation(managers: unknown, onScrollShift: (amount: number) => void) {
+    return renderHook(() => {
+      const source = useDialogListSource(ALL_FOLDER_ID, useChatList())
+      const shouldAnimate = useShouldAnimate({
+        list: source.items,
+        scrollAmount: SCROLL_AMOUNT,
+        hostHeight: HOST_HEIGHT,
+        itemHeight: ITEM_HEIGHT,
+        onScrollShift,
+      })
+      return { items: source.items, shouldAnimate }
+    }, { wrapper: wrapper(managers) })
+  }
+
+  it('чат появился НАД видимой областью — сдвиг компенсирован, анимации нет', () => {
+    seedMirror(Array.from({ length: 10 }, (_, i) => ({ dialog: dialog(i + 1), index: (10 - i) * 10 })))
+    const { managers } = fakeManagers()
+    const shifts: number[] = []
+
+    const { result } = renderWithAnimation(managers, (amount) => shifts.push(amount))
+    expect(result.current.items).toHaveLength(10)
+
+    act(() => {
+      useChatsStore.getState().applyDialogOps([{ op: 'upsert', items: [{ dialog: dialog(99), index: 1000 }] }])
+    })
+
+    expect(result.current.items[0].id).toBe(99)
+    expect(shifts).toEqual([-ITEM_HEIGHT])
+    expect(result.current.shouldAnimate).toBe(false)
   })
 })
 
