@@ -394,10 +394,16 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
     expect(page.dialogs.map((d) => d.chatId)).toEqual([2]) // папка №1, а не архив ([3])
   })
 
-  // Ревью Important 1: серверный `count` — размер ВСЕГО набора (бэкенд про
-  // папки не знает), поэтому применим только к «Всем чатам». Для архива и
-  // пользовательских папок размер — длина отфильтрованного кэша.
-  it('count архива/папки — длина отфильтрованного кэша, а не глобальный серверный count', async () => {
+  // Ревью Important 1 (снят Task 3, «Счётчик и загружено целиком — по
+  // выборке»): раньше архив и пользовательская папка отдавали длину
+  // отфильтрованного кэша — именно это давало «дырок не бывает по
+  // определению» и глушило догрузку насмерть (см. докблок `countFor`). Запрос
+  // страницы ещё уходит БЕЗ `folder_id` (Task 4), поэтому ни у архива, ни у
+  // папки своего серверного `count` пока нет — обе временно живут на той же
+  // ЗАВЫШЕННОЙ глобальной оценке, на которой пользовательская папка в
+  // оригинале живёт ПОСТОЯННО (dialogs.ts:1728). Различить их по `folder_id`
+  // — задача следующего этапа.
+  it('до собственного сетевого ответа архив и папка тоже берут завышенный глобальный count', async () => {
     const mgr = newDialogsManager({
       rest: restStub({ chats: [raw(9, 9)], count: 137, is_end: false }) as never,
       onDialogOps: () => {},
@@ -409,10 +415,31 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
 
     // Окна ниже умещаются в кэш — сеть больше не дёргается, сравниваем только count.
     expect((await mgr.getDialogs({ limit: 3 })).count).toBe(137) // «Все чаты» — серверный
-    expect((await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 1 })).count).toBe(1)
-    // В папку «не контакты» попали stranger (peer 9) и пришедший страницей
-    // чат 9 (без peer, значит тоже не контакт) — двое, но НЕ 137.
-    expect((await mgr.getDialogs({ filterId: 7, limit: 1 })).count).toBe(2)
+    expect((await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 1 })).count).toBe(137)
+    expect((await mgr.getDialogs({ filterId: 7, limit: 1 })).count).toBe(137)
+  })
+
+  // Порт `setDialogsLoaded(realFolderId=FOLDER_ID_ALL)` (dialogs.ts:276-288):
+  // GLOBAL поднимает ОБЕ реальные папки разом. У архива в Task 3 своего
+  // сетевого ответа нет (запрос без `folder_id`), но полный `refresh()`
+  // обязан снять с него временную завышенную оценку тоже — иначе архив
+  // навсегда остался бы «недогруженным» даже после того, как кэш уже
+  // содержит его целиком.
+  it('refresh(), покрывший весь набор, помечает загруженным и архив', async () => {
+    const rest = restStub({ chats: [raw(1, 1), raw(2, 2, { archived: true })], count: 2, is_end: true })
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    await mgr.refresh()
+    rest.get.mockClear()
+
+    const page = await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 5 })
+    expect(rest.get).not.toHaveBeenCalled() // архив уже загружен целиком — в сеть не ходим
+    expect(page.count).toBe(1) // длина архивного кэша, а не завышенная глобальная оценка
+    expect(page.isEnd).toBe(true)
   })
 
   // Ревью Important 3: tweb перед фильтрацией папки ЖДЁТ `fillContacts()`
@@ -580,5 +607,77 @@ describe('dialogsManager.getDialogs: поколение сессии гасит 
     // И список больше не считается загруженным целиком — окно шире кэша идёт в сеть.
     await mgr.getDialogs({ limit: 10 })
     expect(rest.get).toHaveBeenCalled()
+  })
+
+  // Симметрично 'all' выше: `dialogsLoaded.archive` — тоже состояние
+  // ПРОШЛОГО аккаунта. Не снимись он при логауте, архив, помеченный
+  // загруженным целиком ДО сброса, продолжил бы отвечать «уже всё есть» из
+  // уже опустошённого кэша нового пользователя, ни разу не сходив в сеть.
+  it('resetForLogout() снимает признак загруженности архива', async () => {
+    const rest = restStub({ chats: [raw(1, 1, { archived: true })], count: 1, is_end: true })
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    await mgr.refresh() // is_end без курсора → загружены и «Все чаты», и архив
+    rest.get.mockClear()
+
+    mgr.resetForLogout()
+
+    await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 10 })
+    expect(rest.get).toHaveBeenCalled() // архив больше не считается загруженным
+  })
+
+  // Сброс флага «загружено» недостаточен сам по себе: `serverCount` — тоже
+  // состояние ПРОШЛОГО аккаунта, и его завышенная оценка обязана уйти вместе
+  // с ним, иначе просочится в count нового пользователя даже когда его кэш
+  // уже умещает окно без сети.
+  it('resetForLogout() снимает завышенный серверный count, а не только флаг загруженности', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(3, 3)], count: 137, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, 1), dialog(2, 2)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    await mgr.getDialogs({ limit: 5 }) // кэша (2) не хватает — сеть отдала count=137
+    rest.get.mockClear()
+
+    mgr.resetForLogout()
+
+    // Кэш «холодного старта» нового аккаунта (та же loadCache-заглушка) снова
+    // умещает окно без сети — но серверная оценка ПРОШЛОГО аккаунта не должна
+    // просочиться в его count.
+    const page = await mgr.getDialogs({ limit: 2 })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page.count).toBe(2) // длина кэша, а не устаревшие 137
+  })
+})
+
+describe('размер набора по выборке (порт dialogs.ts:1706,1728)', () => {
+  // Пользовательская папка серверного набора не имеет: её размер — ЗАВЫШЕННАЯ
+  // глобальная оценка (tweb dialogs.ts:1728), и именно она даёт дырку.
+  it('пользовательская папка берёт глобальный count', async () => {
+    const rest = {
+      get: vi.fn(async () => ({ chats: [raw(1, 1)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+    mgr.setContactIds([])
+    // У менеджера нет отдельного `setFolders` — папки заводятся State-ключом
+    // `folders` (тем же каналом, что и `pinnedOrders`/`drafts`, см. тест
+    // «определения папок приезжают State-ключом folders» выше). Гидратация
+    // ДО setStateKey обязательна: doHydrate() безусловно перечитывает `folders`
+    // из loadState() и молча стёр бы значение, заданное раньше неё.
+    await mgr.fillMirror()
+    mgr.setStateKey('folders', [folder({ id: 7, groups: true })])
+
+    const page = await mgr.getDialogs({ limit: 1, filterId: 7 })
+    expect(page.count).toBe(40)
   })
 })
