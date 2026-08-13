@@ -280,6 +280,43 @@ describe('DeferredSortedVirtualList — волна раскрытия (:199-223)
     expect(rowIds(host)).toEqual(['0', '1', '2'])
   })
 
+  it('сброс wasAtLeastOnceFetched возвращает раскрытие в исходное (порт clear(), :162)', () => {
+    // В оригинале `clear()` батчит `setWasAtLeastOnceFetched(false)` вместе с
+    // `setRevealIdx(Infinity)`. Без симметричной ветки `revealIdx` залипал бы на
+    // длине прошлого состава, и часть строк нового осталась бы скелетонами.
+    vi.useFakeTimers()
+    const host = makeHost()
+
+    const items = makeItems(10)
+    const props = {
+      scrollableHost: host,
+      totalCount: 100,
+      itemSize: 72 as const,
+      animate: true,
+      requestItemForIdx: () => {},
+      renderItem,
+    }
+
+    // revealIdx фиксируется на 0 (пустая первая отдача), дальше волна раскрывает
+    // строки по одной — доводим до двух.
+    const { rerender } = render(<DeferredSortedVirtualList {...props} items={[]} wasAtLeastOnceFetched />, {
+      container: host,
+    })
+    rerender(<DeferredSortedVirtualList {...props} items={items} wasAtLeastOnceFetched />)
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    act(() => {
+      vi.advanceTimersByTime(8)
+    })
+    expect(rowIds(host)).toEqual(['0', '1'])
+
+    rerender(<DeferredSortedVirtualList {...props} items={items} wasAtLeastOnceFetched={false} />)
+
+    // Ни одного шага волны не понадобилось: раскрытие вернулось к «всё, что есть».
+    expect(rowIds(host)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+  })
+
   it('уже загруженное на момент первой отдачи раскрывается целиком, без волны', () => {
     vi.useFakeTimers()
     const host = makeHost()
@@ -331,12 +368,17 @@ describe('DeferredSortedVirtualList — снятие с очереди reveal (:
     expect(rowIds(host)).toEqual(['0'])
 
     // Уезжаем далеко вниз — в окне одни дырки, все строки очереди размонтированы.
-    // За 24 мс троттлинга измерения волна успевает сделать ещё один шаг (8.3 мс),
-    // поэтому к моменту ухода раскрыты две строки, а не одна.
+    // Раскрытых к этому моменту две, а не одна: за один `act()` волна двигается
+    // ровно на ОДИН шаг, сколько бы времени ни промотали, — следующий её таймер
+    // планируется эффектом уже после промотки. Здесь этот единственный шаг и
+    // случается. Промотка нужна лишь чтобы перекрыть троттлинг измерения скролла;
+    // от его величины ожидание не зависит — проверено прогонами с
+    // `SCROLL_THROTTLE` 4, 8 и 24 (на 100 промотки просто не хватает, и окно не
+    // успевает уехать).
     act(() => {
       host.scrollTop = 100 * 72
       host.dispatchEvent(new Event('scroll'))
-      vi.advanceTimersByTime(30) // троттлинг измерения
+      vi.advanceTimersByTime(30) // > троттлинга измерения (24 мс)
     })
     expect(rowIds(host)).toEqual([])
 
@@ -348,8 +390,10 @@ describe('DeferredSortedVirtualList — снятие с очереди reveal (:
     act(() => {
       host.scrollTop = 0
       host.dispatchEvent(new Event('scroll'))
-      // 24 мс — троттлинг измерения; оставшиеся 4 мс меньше шага волны (8.3 мс),
-      // то есть заново вставшие в очередь строки раскрыться ещё не успевают.
+      // Хватит перекрыть троттлинг измерения (24 мс). Больше промотать не
+      // страшно: строки встают в очередь только после того, как окно уехало
+      // обратно, а их таймер планируется уже за пределами этого `act()` —
+      // проверено прогонами с промоткой 28, 40 и 500 мс, результат один и тот же.
       vi.advanceTimersByTime(28)
     })
 
@@ -393,8 +437,12 @@ describe('DeferredSortedVirtualList — строка не перерисовыв
     act(() => {
       vi.advanceTimersByTime(8)
     })
-    // Мутация: снять `memo` с DeferredItem или `useCallback` с renderVirtualItem —
-    // строка 0 перерисуется вместе со строкой 1, и здесь будет [0, 0, 1].
+    // Мутация: снять `memo` с DeferredItem (или отдать строке меняющееся число
+    // вместо булева `isRevealed`) — строка 0 перерисуется вместе со строкой 1, и
+    // здесь будет [0, 0, 1]. А вот снятие `useCallback` с `renderVirtualItem` этот
+    // тест НЕ красит: за ним стоит `memo` на `DeferredItem`, чьи пропы на таком
+    // рендере равны по ссылке (почему так и почему строка всё же нужна —
+    // в комментарии у самого `useCallback`).
     expect(shown).toEqual([0, 1])
 
     act(() => {
