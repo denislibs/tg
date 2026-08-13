@@ -69,9 +69,14 @@ export default function ChatsContainer({ renderInstance }: Props) {
 
   // 2) исполнение отложенного перехода — когда оба узла уже в DOM.
   // Зависимости [pending, renderList]: эффект реально работает только когда
-  // появился новый pending (эффект №1 отреагировал на смену стека) или когда
-  // renderList сменился (нужный узел мог домонтироваться) — а не на любом
-  // ре-рендере компонента.
+  // появился новый pending (эффект №1 отреагировал на смену стека) — а не на
+  // любом постороннем ре-рендере компонента (напр. родитель передал новый
+  // `renderInstance`). `renderList` в зависимостях — эффект №1 всегда коммитит
+  // `setPending` и `setRenderList` парой в одном флаше, поэтому к моменту,
+  // когда этот эффект видит свежий `pending`, `renderList` уже содержит нужный
+  // узел (React 18+ батчит оба setState в один следующий рендер) — оба узла
+  // гарантированно уже в DOM, отдельной проверки/повтора «на следующем
+  // коммите» не нужно.
   useLayoutEffect(() => {
     if (!pending) return
     const container = containerRef.current
@@ -79,7 +84,6 @@ export default function ChatsContainer({ renderInstance }: Props) {
 
     const to = nodesRef.current.get(pending.toKey) ?? null
     const from = nodesRef.current.get(pending.fromKey) ?? null
-    if (!to) return // узел ещё не смонтирован — доиграем на следующем коммите (renderList вот-вот подтянет его)
 
     setPending(null)
     runNavigationTransition({ container, to, from, toRight: pending.toRight })
