@@ -20,4 +20,17 @@ describe('chatPositions', () => {
   it('для неизвестного ключа возвращает undefined', () => {
     expect(getChatPosition(42, undefined)).toBeUndefined()
   })
+
+  it('clearChatPositions очищает все сохранённые позиции', () => {
+    saveChatPosition(5, undefined, { top: 120 })
+    saveChatPosition(10, 7, { top: 50 })
+
+    expect(getChatPosition(5, undefined)).toEqual({ top: 120 })
+    expect(getChatPosition(10, 7)).toEqual({ top: 50 })
+
+    clearChatPositions()
+
+    expect(getChatPosition(5, undefined)).toBeUndefined()
+    expect(getChatPosition(10, 7)).toBeUndefined()
+  })
 })
