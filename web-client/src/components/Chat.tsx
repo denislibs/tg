@@ -27,6 +27,7 @@ import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
+import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import rootScope from '@lib/rootScope'
 import { markMediaPlayed } from '../core/mediaRead'
@@ -1113,21 +1114,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Ctrl/Cmd+PageUp / PageDown — к началу / концу истории (tweb). PageUp скроллит
   // к верху загруженного окна (старые подгрузит штатный scroll-листенер); PageDown
   // переиспользует «вниз» (reloadNewest + пин к низу). Активно при открытом чате.
-  useEffect(() => {
-    if (!isRealChat) return
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
-      if (e.key === 'PageUp') {
-        e.preventDefault()
-        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-      } else if (e.key === 'PageDown') {
-        e.preventDefault()
-        onScrollDownClick()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isRealChat, scrollRef, onScrollDownClick])
+  // Слушатель вынесен в useFeedPageHotkeys и гейтится useIsActiveChat — в стеке
+  // инстансов чата смонтировано несколько копий одновременно (см. Chat.tsx выше).
+  useFeedPageHotkeys({
+    enabled: isRealChat,
+    onPageUp: useEvent(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })),
+    onPageDown: useEvent(() => onScrollDownClick()),
+  })
 
   // tweb bubbles.ts:10166-10180 (onRenderScrollSet): `has-sticky-dates` на
   // контейнере ленты появляется, когда история прокручиваема — без него
