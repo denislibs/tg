@@ -77,16 +77,33 @@ export default function TabSlide({
     // Актуальное поддерево получает активный таб; ушедшие держат то, с которым
     // ушли. Запись в ref на рендере идемпотентна (в т.ч. под StrictMode).
     mounted.current.set(tab, children)
-    // Таба больше нет в `order` (папку удалили) — уходит и его кадр.
-    for (const t of mounted.current.keys()) if (!order.includes(t)) mounted.current.delete(t)
+    // Таба больше нет в `order` (папку удалили) — уходит и его кадр. ТЕКУЩИЙ
+    // при этом неприкосновенен, даже если его самого уже нет в `order`:
+    // рассинхрон «выбранный таб исчез из списка» живёт ровно до того, как
+    // владелец выбора его починит (у папок — `foldersStore.applyFolderUpdate`),
+    // а прополка без этой оговорки на этот кадр выкинула бы из DOM показанное
+    // содержимое целиком — у списка чатов это пустая колонка вместо чатов.
+    for (const t of mounted.current.keys()) {
+      if (t !== tab && !order.includes(t)) mounted.current.delete(t)
+    }
   }
 
   const exitingTab = exiting?.tab
   useLayoutEffect(() => {
     if (exitingTab === undefined) return
+
+    // Фолбэк-таймер (transition.ts:349) ставится ДО всего остального и не зависит
+    // от того, нашлись ли кадры: с `keepMounted` кадр уходящего таба может
+    // исчезнуть в том же коммите (таб пропал из `order`), и тогда снимать
+    // `exiting` было бы некому — на `.tabs-container` навсегда остался бы
+    // `animating` (его читает _spoiler.scss:114).
+    const timer = window.setTimeout(() => {
+      setExiting((cur) => (cur?.tab === exitingTab ? null : cur))
+    }, TRANSITION_TIME + 100)
+
     const to = els.current.get(tab)
     const from = els.current.get(exitingTab)
-    if (!to || !from) return
+    if (!to || !from) return () => window.clearTimeout(timer)
 
     // slideTabs (transition.ts:56-70): ширина берётся у уходящего кадра, оба
     // получают стартовые transform, reflow фиксирует их, затем приходящий едет к 0.
@@ -102,9 +119,6 @@ export default function TabSlide({
       setExiting((cur) => (cur?.tab === exitingTab ? null : cur))
     }
     from.addEventListener('transitionend', onEnd)
-    const timer = window.setTimeout(() => {
-      setExiting((cur) => (cur?.tab === exitingTab ? null : cur))
-    }, TRANSITION_TIME + 100)
     return () => {
       window.clearTimeout(timer)
       from.removeEventListener('transitionend', onEnd)
@@ -113,6 +127,14 @@ export default function TabSlide({
 
   // Кадры — одним массивом с ключами: так React сохраняет DOM-узел уходящего
   // таба (иначе он пересоздался бы и слайд начался бы с пустого места).
+  //
+  // Отступление от tweb: порядок кадров в DOM у нас — порядок ПЕРВОГО ПОКАЗА
+  // (порядок вставки в `mounted`), а tweb расставляет их по `localId` фильтра
+  // (`positionElementByIndex`, `appDialogsManager.ts:1280`). Наблюдаемой разницы
+  // нет — кадры лежат в одной ячейке грида (`.tabs-container`), показан всегда
+  // ровно один (+ уходящий на время слайда), и порядок в DOM ни на геометрию, ни
+  // на порядок отрисовки не влияет; заводить второй источник порядка табов ради
+  // совпадения по DOM-дереву дороже, чем эта запись.
   const frames: Frame[] = keepMounted
     ? [...mounted.current].map(([t, node]) => ({ tab: t, node }))
     : exiting ? [exiting, { tab, node: children }] : [{ tab, node: children }]

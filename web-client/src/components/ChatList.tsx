@@ -8,8 +8,10 @@
 //
 // Компонент вынесен из Sidebar и мемоизирован, чтобы его собственное переходное
 // состояние (сворачивание историй на скролле, тоглы оверлеев) не перерисовывало
-// список. Контейнер прокрутки прокидывается обратно в Sidebar — там на нём
-// висят слушатели fold/reveal.
+// список. Наружу (в `ref`) отдаётся скроллер АКТИВНОЙ папки — Sidebar на него не
+// подписывается, а ЧИТАЕТ его лениво: ряд историй спрашивает `scrollTop` в момент
+// жеста (`useCollapsable.ts:124`, сам `wheel` висит на `.connection-status-bottom`)
+// и скроллит его в ноль по клику (`Sidebar.tsx`, `onExpand`).
 import { forwardRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import classNames from '../shared/lib/classNames'
 import { TabSlide } from '../shared/ui/Tabs'
@@ -36,7 +38,15 @@ export interface ChatListProps {
   onSelect: (id: string) => void
   loaded: boolean
   folder: number // id выбранной папки (0 = «Все чаты»)
-  folderOrder: readonly number[] // порядок табов для направления слайда
+  /**
+   * Все табы папок в порядке отображения. Определяет: (1) направление слайда
+   * (вперёд/назад по этому порядку) и (2) состав живых кадров — папка, ушедшая
+   * из `folderOrder`, уходит из DOM вместе со своим скроллером (`keepMounted`,
+   * `shared/ui/Tabs/TabSlide.tsx`). Выбранная папка при этом остаётся
+   * отрисованной, даже если её самой в списке уже нет: рассинхрон чинит владелец
+   * выбора (`stores/foldersStore.ts::applyFolderUpdate`), а не список.
+   */
+  folderOrder: readonly number[]
   /** архивные чаты (только в папке «Все») → закреплённый ряд «Архив» в начале списка */
   archived?: Chat[]
   onOpenArchive?: () => void
@@ -80,6 +90,11 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
     else scrollers.current.delete(forFolder)
   }, [])
 
+  const publishScroller = (el: HTMLDivElement | null) => {
+    if (typeof ref === 'function') ref(el)
+    else if (ref) ref.current = el
+  }
+
   // НАРУЖУ (Sidebar) отдаётся скроллер АКТИВНОЙ папки: ряд историй спрашивает
   // «прокручен ли список» (`useCollapsable`, порт tweb `scrollable`) и скроллит
   // его в ноль по клику — оба вопроса про тот список, который сейчас перед
@@ -87,10 +102,14 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
   // ref-колбэк кадра успевает отработать в фазе мутации того же коммита, а
   // возврат на уже показанную папку своих ref-колбэков не рождает вовсе (узел
   // не пересоздаётся) — без эффекта наружу торчал бы скроллер прошлой папки.
+  //
+  // Cleanup обязателен: ref мы наполняем сами, и без него на размонтировании
+  // снаружи остался бы оторванный от документа узел (настоящий ref React обнулил
+  // бы). Между перезапусками эффекта обнуление не наблюдаемо — cleanup и эффект
+  // идут в одной layout-фазе, без отрисовки между ними.
   useLayoutEffect(() => {
-    const el = scrollers.current.get(folder) ?? null
-    if (typeof ref === 'function') ref(el)
-    else if (ref) ref.current = el
+    publishScroller(scrollers.current.get(folder) ?? null)
+    return () => publishScroller(null)
   })
 
   return (

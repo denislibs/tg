@@ -161,4 +161,63 @@ describe('TabSlide keepMounted (tweb: .tabs-container хранит все сво
     expect(root.querySelectorAll('.tabs-tab')).toHaveLength(1)
     vi.useRealTimers()
   })
+
+  // Достижимо в проде: `folder_update {deleted}` с другого устройства убирает
+  // папку из `order`, а выбранной она остаётся до того, как владелец выбора
+  // это починит. Прополка, не щадящая текущий таб, на этот кадр выкидывала бы
+  // из DOM показанное содержимое целиком (у списка чатов — все чаты).
+  it('текущего таба не стало в order — его кадр всё равно показан', () => {
+    vi.useFakeTimers()
+    mounts.length = 0
+    const { container, rerender } = render(
+      <TabSlide tab="b" order={ORDER} keepMounted>
+        <Probe id="b" value={1} />
+      </TabSlide>,
+    )
+    const root = container.firstElementChild!
+
+    act(() => {
+      rerender(
+        <TabSlide tab="b" order={['a', 'c']} keepMounted>
+          <Probe id="b" value={1} />
+        </TabSlide>,
+      )
+    })
+
+    expect(root.querySelector('[data-tab="b"]')).not.toBe(null)
+    expect(root.querySelectorAll('.tabs-tab.active')).toHaveLength(1)
+    expect(root.textContent).toBe('b:1')
+    vi.useRealTimers()
+  })
+
+  // Уходящий кадр может исчезнуть в том же коммите, в котором начался слайд
+  // (таб пропал из `order`): снимать `exiting` тогда некому, кроме фолбэк-таймера.
+  it('уходящий кадр исчез вместе со своим табом — `animating` всё равно снимается', () => {
+    vi.useFakeTimers()
+    mounts.length = 0
+    const { container, rerender } = render(
+      <TabSlide tab="a" order={ORDER} keepMounted>
+        <Probe id="a" value={1} />
+      </TabSlide>,
+    )
+    const root = container.firstElementChild!
+
+    // Уходим с 'a' на 'b' и в этом же кадре теряем 'a' из `order`.
+    act(() => {
+      rerender(
+        <TabSlide tab="b" order={['b', 'c']} keepMounted>
+          <Probe id="b" value={1} />
+        </TabSlide>,
+      )
+    })
+    expect(root.querySelector('[data-tab="a"]')).toBe(null)
+    expect(root.className).toContain('animating')
+
+    act(() => { vi.advanceTimersByTime(300) })
+
+    // Мутация: вернуть ранний `return` до постановки таймера — `animating`
+    // останется на контейнере навсегда.
+    expect(root.className).not.toContain('animating')
+    vi.useRealTimers()
+  })
 })

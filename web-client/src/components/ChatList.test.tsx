@@ -596,4 +596,38 @@ describe('ChatList — свой скроллер и свой ul на кажду�
     expect(scrollerOf(WORK.id)).toBe(null)
     expect(listRef.current).toBe(scrollerOf(ALL_FOLDER_ID))
   })
+
+  it('размонтирование обнуляет внешний ref (не оставляет оторванный узел)', async () => {
+    const listRef = createRef<HTMLDivElement>()
+    const { unmount } = await renderTwoFolders({ listRef })
+    expect(listRef.current).not.toBe(null)
+
+    unmount()
+
+    // Мутация: убрать cleanup у layout-эффекта публикации — снаружи останется
+    // узел, которого больше нет в документе.
+    expect(listRef.current).toBe(null)
+  })
+
+  // Достижимо в проде: `folder_update {deleted}` с другого устройства убирает
+  // папку из `folderOrder`, а выбранной она остаётся до того, как это починит
+  // владелец выбора (`foldersStore`). Кадр показанной папки обязан пережить
+  // этот промежуточный рендер — иначе список чатов исчезает целиком.
+  it('показанная папка ушла из folderOrder — её список всё равно на месте', async () => {
+    const listRef = createRef<HTMLDivElement>()
+    const { rerender } = await renderTwoFolders({ listRef })
+
+    await act(async () => { rerender({ folder: WORK.id }) })
+    await flushSlide()
+
+    // Папку удалили на другом устройстве: её больше нет в списке табов.
+    await act(async () => { rerender({ folder: WORK.id, folderOrder: [ALL_FOLDER_ID] }) })
+
+    // Мутация: прополка `mounted` по `order` без оговорки `t !== tab` —
+    // кадров ноль, `.folders-scrollable.active` нет, наружу уезжает null.
+    expect(scrollerOf(WORK.id)).not.toBe(null)
+    expect(document.querySelectorAll('.folders-scrollable.active')).toHaveLength(1)
+    expect(listRef.current).toBe(scrollerOf(WORK.id))
+    expect(firstRowIn(scrollerOf(WORK.id)).getAttribute('href')).toBe('#1')
+  })
 })
