@@ -220,6 +220,34 @@ samp {
   height: 100%;
 }
 
+// Слои показа стикера — 1:1 tweb base.scss (.media-sticker, .fade-in/.fade-out).
+// Превью и медиа лежат друг на друге в одном контейнере: превью снимается лишь
+// после того, как верхний слой доказанно прокрасился (см.
+// components/wrappers/stickerAppearance.ts). Классы ГЛОБАЛЬНЫЕ — их ставит
+// императивный контроллер вне React, css-модуль ему недоступен.
+.media-sticker {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  object-fit: contain !important;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.fade-in {
+  @include animation-level(2) {
+    animation: fade-in-opacity .2s ease-in-out forwards;
+  }
+}
+
+.fade-out {
+  @include animation-level(2) {
+    animation: fade-out-opacity .2s ease-in-out forwards;
+  }
+}
+
 // tweb base.scss:986-992 — базовое правило сентинел-узлов components/stickyIntersector.ts
 // (наши: src/components/stickyIntersector.ts). Без position:absolute здесь `top: 0` из
 // `_chatBubble.scss` .sticky_sentinel--top (position он не переопределяет) игнорируется:

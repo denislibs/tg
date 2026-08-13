@@ -16,8 +16,23 @@ import { join } from 'node:path'
 /** Зоны, где чтение персиста означает рваную гидрацию. */
 const UI_DIRS = ['stores', 'components', 'core/hooks']
 
-/** Единственный легитимный читатель в UI-зоне: гидрация диалогов на старте (boot.ts). */
-const ALLOWED = ['stores/dialogsPersist.ts']
+/**
+ * Task 5 (персист диалогов переезжает к владельцу): единственный читатель
+ * персиста в UI-зоне был `stores/dialogsPersist.ts` (гидрация диалогов на
+ * старте с main) — удалён, гидрация теперь целиком в воркере
+ * (`dialogsManager.ts`: `loadCache`/`loadState`, см. `client/boot.ts` →
+ * `managers.dialogs.fillMirror()`). Allow-list пуст: UI-зона персист не
+ * читает вовсе.
+ *
+ * Task 6 (снос старого пути): чтение диалогов с main исчезло целиком, не
+ * только персист-половина — `stores/chatsStore.ts::loadChats` больше не зовёт
+ * `managers.chats.listDialogs()` (сеть, не персист, но тот же класс «main сам
+ * добывает диалоговые данные»); список приходит ТОЛЬКО операциями владельца
+ * (`applyDialogOps`, rt:dialog_op). Этот тест по-прежнему проверяет именно
+ * `core/store/persist` (IndexedDB) — сетевой путь не в его периметре, держат
+ * `stores/noDuplicateDialogs.test.ts`/`stores/noManualOrder.test.ts`.
+ */
+const ALLOWED: string[] = []
 
 const SRC = join(__dirname, '..', '..')
 

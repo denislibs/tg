@@ -76,7 +76,7 @@ import ChatInputControl, { isControlNeeded, type ControlFlags } from './conversa
 import { useChatInputCenter } from './conversation/useChatInputCenter'
 import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type Message, type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -216,7 +216,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   const typingLabel = useTypingLabel(numericChatId, isGroup)
   const peerPresence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
-  const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
   // toggle re-renders the menu; fall back to the chat prop.
   const dialogMuted = useChatsStore((s) =>
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.muted : undefined,
@@ -474,13 +473,24 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
-  // покидается. chat_removed по WS уберёт чат из списка; закрываем колонку.
+  // покидается.
   const owned = !!chat.owned
   const doDeleteChat = () => {
     if (!isRealChat || meId == null) return
+    // Task 4 (действия без оптимистики, fix ревью Important): локальный
+    // апдейт применяет владелец сразу после успеха, не дожидаясь WS
+    // chat_removed (порт tweb appChatsManager.leaveChat/leaveChannel →
+    // onChatUpdated). deleteGroup зовёт dialogs.applyRemoved сам
+    // (groupsManager.ts); здесь — self-leave (removeMember(chatId, meId) —
+    // ВСЕГДА я сам, не кик другого участника), применяем явно. Сознательно
+    // без отдельного теста именно на этой строке — Chat.tsx документирован в
+    // web-client/CLAUDE.md («Тесты», «известное исключение и долг») как файл
+    // без единого теста; идентичная проводка (self-leave → applyRemoved после
+    // успеха, no-op на ошибке) покрыта на уровне того же паттерна —
+    // core/hooks/useGroupEdit.deleteOrLeave.test.tsx.
     const op = owned && (isGroup || isChannel)
       ? managers.groups.deleteGroup(numericChatId)
-      : managers.groups.removeMember(numericChatId, meId)
+      : managers.groups.removeMember(numericChatId, meId).then(() => managers.dialogs.applyRemoved(numericChatId))
     void op.catch(() => {})
     onBack?.()
   }
@@ -490,7 +500,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (!isRealChat) return
     void managers.chats.clearHistory(numericChatId)
       .then(() => win.reloadNewest())
-      .then(() => loadChats(managers))
+      .then(() => managers.dialogs.refresh())
       .catch(() => {})
   }
   const deleteLabels = (() => {
@@ -888,11 +898,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Mute как в tweb: включение mute из меню — через попап длительности
   // (PopupMute, монтируется в ConversationOverlays), снятие — сразу.
+  // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
+  // (dialogsManager.applyMute) ПОСЛЕ успешного REST-ответа (groupsManager.ts).
   const applyMute = (next: boolean, seconds?: number | null) => {
     if (!isRealChat) return
-    setDialogMuted(numericChatId, next) // optimistic
     const until = next && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
-    void managers.groups.setMute(numericChatId, next, until).catch(() => setDialogMuted(numericChatId, !next))
+    void managers.groups.setMute(numericChatId, next, until).catch(() => {})
   }
   const toggleMute = () => {
     if (!isRealChat) return

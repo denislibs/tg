@@ -35,10 +35,7 @@ function walk(dir: string, acc: string[] = []): string[] {
  *    (`startRealtime()`) подключается из эффекта ПОСЛЕ первого рендера —
  *    воркерный `/me` может разрешиться раньше и разослать `rt:me` в пустоту.
  *    Заодно тестируется в изоляции без живого воркера/rootScope
- *    (chatsStore.test.ts: «loadChats populates dialogs + meId»).
- *  - `stores/dialogsPersist.ts` (hydrateDialogsFromPersist): гидратация с
- *    диска до поднятия воркера — чтение вчерашнего кэша, не независимый
- *    вывод факта.
+ *    (chatsStore.test.ts: «loadChats populates me/meId»).
  *  - `components/EmojiStatusPicker.tsx`, `components/PremiumCheckout.tsx`,
  *    `components/settings/EditProfile.tsx`: мгновенный отклик на действие
  *    пользователя (попап закрывается/оплата проходит/экран уходит назад) —
@@ -48,7 +45,6 @@ function walk(dir: string, acc: string[] = []): string[] {
 const ALLOWED = [
   'client/realtime/storeProjection.ts',
   'stores/chatsStore.ts',
-  'stores/dialogsPersist.ts',
   'components/EmojiStatusPicker.tsx',
   'components/PremiumCheckout.tsx',
   'components/settings/EditProfile.tsx',

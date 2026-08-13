@@ -37,7 +37,7 @@ describe('resetAppState', () => {
     expect(useAppStateStore.getState()).toEqual(initialState())
   })
 
-  it('не пишет сброс на диск: персист чистит logout отдельно (clearDialogsPersist)', () => {
+  it('не пишет сброс на диск: персист чистит logout отдельно (managers.persist.clearAll())', () => {
     setAppState('folders', [folder])
     stateKey.mockClear()
 
@@ -65,7 +65,11 @@ describe('после сброса cache-first снова запрашивает 
     resetAppState()
     const list = vi.fn().mockResolvedValue([])
 
-    await loadFolders({ folders: { list }, contacts: { list: vi.fn().mockResolvedValue([]) } })
+    await loadFolders({
+      folders: { list },
+      contacts: { list: vi.fn().mockResolvedValue([]) },
+      dialogs: { setContactIds: vi.fn().mockResolvedValue(undefined) },
+    })
 
     expect(list).toHaveBeenCalledTimes(1)
   })

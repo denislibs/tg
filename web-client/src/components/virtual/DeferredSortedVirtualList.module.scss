@@ -1,0 +1,8 @@
+// Порт 1:1 tweb src/components/deferredSortedVirtualList.module.scss.
+// Класс навешивается СНАРУЖИ, самим списком (`deferredSortedVirtualList.tsx:176`
+// — `element.classList.add(styles.Item)`), а не строкой: строка о виртуализации
+// не знает.
+.Item {
+  position: absolute;
+  width: 100%;
+}

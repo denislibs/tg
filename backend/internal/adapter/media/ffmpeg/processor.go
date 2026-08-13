@@ -56,6 +56,17 @@ func (p *Processor) Process(ctx context.Context, src io.Reader, mime string) (us
 	meta := probe(ctx, tmp.Name())
 	res := usecasemedia.ProcessResult{Width: meta.Width, Height: meta.Height, Duration: meta.Duration}
 
+	// Lottie-стикер (.tgs/json) для ffprobe — просто текстовый файл, размеров он
+	// не даёт. Достаём их из хедера анимации: без w/h фронт не может вписать
+	// стикер в бокс (tweb makeMediaSize(doc.w, doc.h).aspectFitted). Растеризации
+	// нет — превью первого кадра клиент делает сам и кэширует.
+	if res.Width == 0 && isLottieMime(mime) {
+		if w, h, ok := lottieDims(tmp.Name()); ok {
+			res.Width, res.Height = w, h
+			return res, nil
+		}
+	}
+
 	isImage := strings.HasPrefix(mime, "image/")
 	isVideo := strings.HasPrefix(mime, "video/")
 	// Теги трека — только для аудио (у Telegram они живут в

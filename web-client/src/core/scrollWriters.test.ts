@@ -71,14 +71,6 @@ const ALLOWED: Record<string, number> = {
   // не портируется на вендорный `fastSmoothScroll` — перевод плавных скроллов
   // приложения на него вне периметра этого этапа (см. task-5-brief.md, Self-Review).
   'core/dom/smoothScrollToElement.ts': 1,
-  // core/hooks/useSidebarFolders.tsx:59 — сброс списка чатов на верх при смене
-  // таба папки. У нас один общий скролл-контейнер на все папки (ChatList.tsx,
-  // комментарий над `<div ref={setScrollRef}>`), а не отдельный
-  // `.folders-scrollable` на каждую, как в tweb, — эта строка замещает то, что
-  // tweb получает бесплатно (свежий контейнер новой папки стартует с
-  // scrollTop=0). Список чатов не ходит через Scrollable/ScrollSaver — это не
-  // лента с динамической подгрузкой контента сверху/снизу.
-  'core/hooks/useSidebarFolders.tsx': 1,
   // components/DatePickerPopup.tsx:195 — одноразовая начальная позиция при
   // открытии попапа календаря (месяц initDate), ДО первого показа. Попап, не
   // лента; нет ни подгрузки контента, ни необходимости восстанавливать позицию.
@@ -87,6 +79,18 @@ const ALLOWED: Record<string, number> = {
   // выдачи поиска по стрелкам, формула 1:1 из tweb (topbarSearch.tsx:678-681).
   // Изолированный дропдаун, не лента сообщений.
   'components/conversation/TopbarSearch.tsx': 1,
+  // components/virtual/useShouldAnimate.ts (createScrollShiftCompensator) — порт
+  // побочного эффекта `verticalVirtualList.tsx:49-53`: когда ВСЕ видимые строки
+  // виртуального списка чатов сдвинулись на одинаковое число позиций,
+  // `useShouldAnimate` отменяет их анимацию `top` и ВМЕСТО неё компенсирует
+  // scrollTop на ту же величину — список визуально стоит на месте. Список чатов
+  // не ходит через Scrollable/ScrollSaver: у него нет ни подгрузки контента НАД
+  // вьюпортом (новое приходит сверху, но окно строк считается арифметикой от
+  // `scrollTop`, а не восстановлением позиции), ни второго писателя, с которым
+  // эта тихая запись могла бы конкурировать. Функция экспортирована здесь же (не в будущем
+  // `VerticalVirtualList.tsx`, Task 5) — это парный механизм самого
+  // `useShouldAnimate`: тот решает КОГДА компенсировать, эта функция — КАК.
+  'components/virtual/useShouldAnimate.ts': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {

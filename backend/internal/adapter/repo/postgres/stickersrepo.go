@@ -57,14 +57,29 @@ func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet
 	return set, err
 }
 
-const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position`
+// stickerCols — колонки стикера + метаданные его файла из media. Размеры, mime и
+// stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
+// рендерера, нижний слой показа) — см. domain.Sticker.
+const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position,
+	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview`
+
+// stickerMediaJoin — INNER JOIN безопасен: stickers.media_id NOT NULL и
+// ссылается на media(id), строк не теряем.
+const stickerMediaJoin = ` JOIN media m ON m.id = st.media_id`
+
+func scanSticker(s scanner) (domain.Sticker, error) {
+	var st domain.Sticker
+	err := s.Scan(&st.ID, &st.SetID, &st.MediaID, &st.Emoji, &st.Position,
+		&st.Width, &st.Height, &st.Mime, &st.Thumb)
+	return st, err
+}
 
 func scanStickers(rows pgx.Rows) ([]domain.Sticker, error) {
 	defer rows.Close()
 	var out []domain.Sticker
 	for rows.Next() {
-		var s domain.Sticker
-		if err := rows.Scan(&s.ID, &s.SetID, &s.MediaID, &s.Emoji, &s.Position); err != nil {
+		s, err := scanSticker(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -74,7 +89,8 @@ func scanStickers(rows pgx.Rows) ([]domain.Sticker, error) {
 
 func (r *StickersRepo) Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+stickerCols+` FROM stickers st WHERE st.set_id=$1 ORDER BY st.position, st.id`, setID)
+		`SELECT `+stickerCols+` FROM stickers st`+stickerMediaJoin+
+			` WHERE st.set_id=$1 ORDER BY st.position, st.id`, setID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,19 +99,22 @@ func (r *StickersRepo) Stickers(ctx context.Context, setID int64) ([]domain.Stic
 
 func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error) {
 	// position — следующий в наборе (сид и пополнение идут последовательно).
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO stickers (set_id, media_id, emoji, position)
-		 VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM stickers WHERE set_id=$1), 0))
-		 RETURNING id, position`,
-		s.SetID, s.MediaID, s.Emoji).Scan(&s.ID, &s.Position)
-	return s, err
+	// Вставку заворачиваем в CTE и дочитываем media тем же джойном, что и
+	// остальные выборки: добавленный стикер уезжает клиенту сразу, и метаданные
+	// файла у него должны быть те же, что и после перезагрузки набора.
+	return scanSticker(querier(ctx, r.pool).QueryRow(ctx,
+		`WITH ins AS (
+		   INSERT INTO stickers (set_id, media_id, emoji, position)
+		   VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM stickers WHERE set_id=$1), 0))
+		   RETURNING id, set_id, media_id, emoji, position
+		 )
+		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
+		s.SetID, s.MediaID, s.Emoji))
 }
 
 func (r *StickersRepo) StickerByID(ctx context.Context, id int64) (domain.Sticker, error) {
-	var s domain.Sticker
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT `+stickerCols+` FROM stickers st WHERE st.id=$1`, id).
-		Scan(&s.ID, &s.SetID, &s.MediaID, &s.Emoji, &s.Position)
+	s, err := scanSticker(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+stickerCols+` FROM stickers st`+stickerMediaJoin+` WHERE st.id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Sticker{}, domain.ErrNotFound
 	}
@@ -181,7 +200,7 @@ func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]d
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+stickerCols+`
 		   FROM recent_stickers rs
-		   JOIN stickers st ON st.id = rs.sticker_id
+		   JOIN stickers st ON st.id = rs.sticker_id`+stickerMediaJoin+`
 		  WHERE rs.user_id=$1
 		  ORDER BY rs.used_at DESC, rs.sticker_id DESC
 		  LIMIT $2`, userID, limit)
@@ -216,7 +235,7 @@ func (r *StickersRepo) Faved(ctx context.Context, userID int64, limit int) ([]do
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+stickerCols+`
 		   FROM faved_stickers fs
-		   JOIN stickers st ON st.id = fs.sticker_id
+		   JOIN stickers st ON st.id = fs.sticker_id`+stickerMediaJoin+`
 		  WHERE fs.user_id=$1
 		  ORDER BY fs.faved_at DESC, fs.sticker_id DESC
 		  LIMIT $2`, userID, limit)
@@ -230,7 +249,7 @@ func (r *StickersRepo) SearchByEmoji(ctx context.Context, userID int64, emoji st
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+stickerCols+`
 		   FROM stickers st
-		   JOIN user_sticker_sets uss ON uss.set_id = st.set_id AND uss.user_id=$1
+		   JOIN user_sticker_sets uss ON uss.set_id = st.set_id AND uss.user_id=$1`+stickerMediaJoin+`
 		  WHERE st.emoji=$2
 		  ORDER BY uss.position, st.position, st.id
 		  LIMIT $3`, userID, emoji, limit)

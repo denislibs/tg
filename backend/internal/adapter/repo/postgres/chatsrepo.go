@@ -223,8 +223,10 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
 		   -- «Комментарии» (тред), в списке диалогов они не нужны.
 		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
-		 -- закреплённые сверху (свежий пин — первым), затем по дате последнего сообщения
-		 ORDER BY m.pinned_at DESC NULLS LAST, lm.created_at DESC NULLS LAST`, userID)
+		 -- закреплённые сверху (свежий пин — первым), затем по дате последнего
+		 -- сообщения; c.id — тайбрейк, без него порядок при равных ключах не
+		 -- определён и курсор пагинации невоспроизводим (см. спеку этапа 2)
+		 ORDER BY m.pinned_at DESC NULLS LAST, lm.created_at DESC NULLS LAST, c.id DESC`, userID)
 	if err != nil {
 		return nil, err
 	}

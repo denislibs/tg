@@ -6,17 +6,54 @@
 import type { RestClient } from '../net/restClient'
 
 export interface StickerSet { id: number; slug: string; title: string; kind: 'sticker' | 'emoji'; count: number }
-export interface Sticker { id: number; setId: number; mediaId: number; emoji: string }
+/**
+ * Метаданные файла (width/height/mime/thumb) приезжают вместе со стикером —
+ * бэк снимает их джойном на media. Клиенту они нужны ДО загрузки байтов:
+ * по размерам он вписывает стикер в бокс по пропорции (tweb
+ * `makeMediaSize(doc.w, doc.h).aspectFitted`), по mime заранее знает рендерер,
+ * а thumb (base64 JPEG, как `blur_preview` у медиа) показывает нижним слоем,
+ * пока файл летит. Нули/пустые значения — «метаданных нет» (медиа загружено до
+ * появления процессинга): бокс тогда квадратный, нижнего слоя нет.
+ */
+export interface Sticker {
+  id: number
+  setId: number
+  mediaId: number
+  emoji: string
+  width: number
+  height: number
+  mime: string
+  thumb: string
+}
 /** Сохранённый GIF — media нашего сервера (лимит 200 LIFO на бэке). */
 export interface SavedGif { mediaId: number }
 /** Результат внешнего поиска (Tenor-прокси /gifs/search). */
 export interface TenorGif { id: string; mp4Url: string; gifUrl: string; previewUrl: string; width: number; height: number }
 export interface GifPage { gifs: TenorGif[]; next: string }
 
-interface RawSticker { id: number; set_id: number; media_id: number; emoji: string }
+interface RawSticker {
+  id: number
+  set_id: number
+  media_id: number
+  emoji: string
+  width?: number
+  height?: number
+  mime?: string
+  /** base64 JPEG stripped-превью; null у медиа без сгенерированного превью */
+  thumb?: string | null
+}
 interface RawTenorGif { id: string; mp4_url: string; gif_url: string; preview_url: string; width: number; height: number }
 
-const mapSticker = (r: RawSticker): Sticker => ({ id: r.id, setId: r.set_id, mediaId: r.media_id, emoji: r.emoji })
+const mapSticker = (r: RawSticker): Sticker => ({
+  id: r.id,
+  setId: r.set_id,
+  mediaId: r.media_id,
+  emoji: r.emoji,
+  width: r.width ?? 0,
+  height: r.height ?? 0,
+  mime: r.mime ?? '',
+  thumb: r.thumb ?? '',
+})
 const mapTenorGif = (r: RawTenorGif): TenorGif => ({
   id: r.id, mp4Url: r.mp4_url, gifUrl: r.gif_url, previewUrl: r.preview_url, width: r.width, height: r.height,
 })

@@ -5,7 +5,9 @@
 @use '../styles/foundation' as *;
 
 .row {
-  // tweb рисует ряды в виртуальном списке абсолютом; у нас обычный поток.
+  // `position: absolute` + `top` ряду даёт виртуальный список снаружи (класс
+  // `.Item` из `virtual/DeferredSortedVirtualList.module.scss`, как в tweb) —
+  // здесь этого нет намеренно.
   cursor: pointer;
   // Ripple у нас свой (tweb `.c-ripple` не портирован) — режем его по радиусу ряда.
   overflow: hidden;

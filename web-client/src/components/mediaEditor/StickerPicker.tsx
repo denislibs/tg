@@ -95,7 +95,7 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
             <div className={s.stickerGrid}>
               {c.stickers.map((st) => (
                 <span key={st.id} className={s.stickerCell} onClick={() => pick(st)}>
-                  <StickerMedia mediaId={st.mediaId} width={64} height={64} playOnHover loop />
+                  <StickerMedia mediaId={st.mediaId} width={64} height={64} playOnHover loop thumb={st.thumb} />
                 </span>
               ))}
             </div>

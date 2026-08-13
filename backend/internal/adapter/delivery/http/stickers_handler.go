@@ -23,10 +23,17 @@ func (h *StickersHandler) meID(r *http.Request) int64 {
 	return u.ID
 }
 
+// stickersJSON — представление стикера для клиента. Кроме идентификаторов едут
+// метаданные файла (см. domain.Sticker): по width/height клиент вписывает стикер
+// в бокс по пропорции, по mime заранее знает рендерер, thumb (base64 JPEG, как
+// blur_preview у медиа) показывает нижним слоем, пока файл летит.
 func stickersJSON(sts []domain.Sticker) []map[string]any {
 	out := make([]map[string]any, 0, len(sts))
 	for _, s := range sts {
-		out = append(out, map[string]any{"id": s.ID, "set_id": s.SetID, "media_id": s.MediaID, "emoji": s.Emoji})
+		out = append(out, map[string]any{
+			"id": s.ID, "set_id": s.SetID, "media_id": s.MediaID, "emoji": s.Emoji,
+			"width": s.Width, "height": s.Height, "mime": s.Mime, "thumb": s.Thumb,
+		})
 	}
 	return out
 }
@@ -161,9 +168,9 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not add sticker")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sticker": map[string]any{
-		"id": s.ID, "set_id": s.SetID, "media_id": s.MediaID, "emoji": s.Emoji,
-	}})
+	// Тем же представлением, что и выборки набора: добавленный стикер клиент
+	// показывает сразу, метаданные файла ему нужны те же.
+	writeJSON(w, http.StatusOK, map[string]any{"sticker": stickersJSON([]domain.Sticker{s})[0]})
 }
 
 // Recent — GET /stickers/recent.

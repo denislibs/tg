@@ -1,13 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
-import { ALL_FOLDER_ID } from '../stores/foldersStore'
+import { useChatsStore } from '../stores/chatsStore'
+import { ALL_FOLDER_ID } from '../core/folderIds'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
+import DeferredSortedVirtualList, {
+  type DeferredSortedVirtualListItem,
+  type DeferredSortedVirtualListRenderItemProps,
+} from './virtual/DeferredSortedVirtualList'
+import { useEvent } from '../core/hooks/useEvent'
+import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -85,6 +91,9 @@ export default function Sidebar({
     connectionStatus.construct(managers, status)
     return () => connectionStatus.destroy()
   }, [managers])
+  // Контейнер прокрутки АКТИВНОЙ папки: скроллер теперь свой у каждой (кадр
+  // слайда, `components/ChatList.tsx`), а ряду историй нужен ровно тот, что
+  // сейчас перед глазами, — его ChatList сюда и публикует.
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
   const chatlistContainerRef = useRef<HTMLDivElement>(null)
@@ -115,9 +124,9 @@ export default function Sidebar({
     setScreen('settings')
   }
   const {
-    folders, folderId, tabOrder, filtered, archivedChats, folderUnread,
+    folders, folderId, tabOrder, archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays: folderOverlays,
-  } = useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings: openFolderSettings })
+  } = useSidebarFolders({ chats, onOpenFolderSettings: openFolderSettings })
 
   // --chatlist-overlay-height: живая высота .chatlist-overlay (нотисы + табы папок).
   // tweb ставит её ResizeObserver'ом на .connection-status-bottom, а .folders-scrollable
@@ -178,7 +187,7 @@ export default function Sidebar({
     onOpenContacts: () => setScreen('contacts'),
     onOpenSaved: async () => {
       const id = await managers.chats.saved()
-      await loadChats(managers)
+      await managers.dialogs.refresh()
       onSelect(String(id))
     },
     onOpenPremium: openPremium,
@@ -311,7 +320,10 @@ export default function Sidebar({
         <div id="folders-container" className="tabs-container">
         <ChatList
           ref={listScrollRef}
-          chats={filtered}
+          // Витрина зеркала ЦЕЛИКОМ: по папке список фильтрует себя сам
+          // (`useDialogListSource`) — там это правило одно и на строки, и на
+          // размер набора для пагинации.
+          chats={chats}
           selectedId={selectedId}
           onSelect={handleSelect}
           loaded={loaded}
@@ -336,14 +348,16 @@ export default function Sidebar({
                   {t('Archived Chats')}
                 </Text>
               </div>
+              {/* Контейнер прокрутки оверлея — он же `scrollableHost` списка;
+                  заглушка пустого архива рендерится ВМЕСТО `ul`, а не внутри
+                  него (у виртуального `ul` своя геометрия под весь набор). */}
               <div className={s.archiveList}>
-                {archivedChats.map((chat) => (
-                  <ChatListItem key={chat.id} chat={chat} selected={chat.id === selectedId} onSelect={handleSelect} />
-                ))}
-                {archivedChats.length === 0 && (
+                {archivedChats.length === 0 ? (
                   <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
                     <Text size={15} color="var(--secondary-text-color)">{t('No archived chats')}</Text>
                   </div>
+                ) : (
+                  <ArchiveList chats={archivedChats} selectedId={selectedId} onSelect={handleSelect} />
                 )}
               </div>
             </div>
@@ -398,5 +412,133 @@ export default function Sidebar({
 
       {stories.overlays}
     </div>
+  )
+}
+
+/**
+ * Строка архива — той же высоты, что и строка списка чатов: в tweb вкладка
+ * архива это ТОТ ЖЕ `AutonomousDialogList`, только с `FOLDER_ID_ARCHIVE`
+ * (`sidebarLeft/tabs/archivedTab.tsx:80-96`), а высоту строки он берёт из
+ * `autonomousDialogList/dialogs.ts:221` — `itemSize: 72`.
+ */
+const ARCHIVE_ITEM_HEIGHT = 72
+
+/**
+ * Пагинации у архива нет (см. докблок `ArchiveList`), поэтому просить страницу
+ * некому. Ссылка обязана быть СТАБИЛЬНОЙ — контракт пропа `requestItemForIdx`
+ * ядра: он зовётся из эффекта каждой непоказанной строки.
+ *
+ * Сама эта стабильность СОЗНАТЕЛЬНО НЕ ПОКРЫТА тестом: у списка без пагинации
+ * непоказанных строк не бывает вовсе, а если бы и были — вызов пустой (проверено
+ * мутацией «инлайновая стрелка вместо константы»: прогон остаётся зелёным).
+ * Константа держится ради контракта, а не ради наблюдаемого поведения.
+ */
+const NO_ITEM_REQUEST = () => {}
+
+/**
+ * Архивные чаты — тот же виртуальный список, что и у папки (`ChatList`): строки
+ * лежат абсолютом в `ul` фиксированной высоты, в DOM живут только те, что попали
+ * в окно видимости. Оригинал — `tweb/src/components/sidebarLeft/tabs/archivedTab.tsx`:
+ * там архив это обычный `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`, то есть то
+ * же ядро `createDeferredSortedVirtualList`, что и у остальных списков диалогов.
+ *
+ * Отличия от списка папки — от нашей модели данных, а не от tweb:
+ * 1. **закреплённых строк нет** — закреплён сам архив, и не здесь, а в списке
+ *    уровнем выше (`ChatList`, `pinnedItems`);
+ * 2. **пагинации нет**: архив приезжает витрине целиком
+ *    (`useSidebarFolders.archivedChats` — фильтр по всему зеркалу), поэтому
+ *    `totalCount` это длина набора. Дырок в `fullItems` ядра при этом не
+ *    возникает вовсе — а значит, ни скелетонов, ни запроса страницы
+ *    (`NO_ITEM_REQUEST`), — и `wasAtLeastOnceFetched` взведён с первого рендера:
+ *    ждать здесь нечего, всё, что есть, показывается разом (при `false` `ul` был
+ *    бы ростом с хост, а строки открывались бы волной reveal — поведение
+ *    оригинала для СВЕЖЕПРИЕХАВШИХ строк, не для уже известных);
+ * 3. `animate` — константа: в оригинале это `blockedAnimationCount() === 0`, а
+ *    счётчик глушилки держит владелец ПЕРВОЙ ЗАГРУЗКИ (`dialogs.ts:248-256`,
+ *    `isFirstLoad`), которой у архива нет — счётчик остался бы нулевым всегда.
+ *    Значение пропа СОЗНАТЕЛЬНО НЕ ПОКРЫТО: оно доходит до `useAnimatedTop`,
+ *    который анимирует `top` в DOM покадрово, и в happy-dom наблюдаемой разницы
+ *    у `animate={false}` нет (проверено мутацией — прогон зелёный); сама
+ *    механика анимации покрыта `virtual/useAnimatedTop.test.ts`.
+ */
+function ArchiveList({ chats, selectedId, onSelect }: {
+  chats: Chat[]
+  selectedId: string
+  onSelect: (id: string) => void
+}) {
+  // Хост нужен ядру ЗНАЧЕНИЕМ (оно вешает на него слушатель скролла и
+  // ResizeObserver), поэтому это состояние: первый рендер идёт с null, второй —
+  // с живым узлом. Ref-колбэк обязан быть СТАБИЛЬНЫМ: смена идентичности
+  // заставила бы React переприсваивать его на каждом рендере, то есть на каждом
+  // рендере пересобирать окно видимости. Всё — как в `ChatList.ChatListFolder`.
+  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
+  const setListEl = useCallback((ul: HTMLUListElement | null) => {
+    setScrollHost(ul?.parentElement ?? null)
+  }, [])
+
+  // Обёртки строк, живущие между пересчётами, — контракт пропа `items` ядра
+  // (`DeferredSortedVirtualList.tsx:64-80`): ссылка на массив меняется только
+  // при реальном изменении состава, а обёртка строки приезжает НОВОЙ, только
+  // когда изменилось её витринное значение. Кэш обязателен: `chats` приходит
+  // новым массивом на ЛЮБУЮ операцию зеркала (`useChatList` → `useMemo` по
+  // `dialogs`), и без него `useShouldAnimate` сравнивал бы по ссылке всегда
+  // разные обёртки — пересечение «видимые до» и «видимые сейчас» стало бы
+  // пустым, а компенсация равномерного сдвига не звалась бы никогда (разбор —
+  // `core/hooks/useDialogListSource.ts:124-142`, тот же кэш и та же причина).
+  const itemCacheRef = useRef<Map<string, DeferredSortedVirtualListItem<Chat>>>(new Map())
+  const prevItemsRef = useRef<readonly DeferredSortedVirtualListItem<Chat>[]>([])
+
+  const items = useMemo<readonly DeferredSortedVirtualListItem<Chat>[]>(() => {
+    const cache = itemCacheRef.current
+    const seen = new Set<string>()
+    const next = chats.map((chat) => {
+      seen.add(chat.id)
+      const hit = cache.get(chat.id)
+      if (hit && hit.value === chat) return hit
+      const item: DeferredSortedVirtualListItem<Chat> = { id: chat.id, value: chat }
+      cache.set(chat.id, item)
+      return item
+    })
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id)
+
+    // Вторая половина контракта — ссылка на САМ массив. СОЗНАТЕЛЬНО НЕ ПОКРЫТА:
+    // при живом кэше выше её снятие не наблюдаемо (проверено мутацией) — состав
+    // пересчёта тот же и по ссылкам, поэтому `useShouldAnimate` находит все
+    // видимые строки на прежних местах и компенсирует нулевой сдвиг, то есть
+    // ничего не делает. Оставлена, потому что этого требует докблок пропа
+    // `items` ядра, а стоит она одного сравнения: без неё каждая операция
+    // зеркала гоняла бы вхолостую и пересчёт `fullItems`, и проход
+    // `useShouldAnimate` по всему окну.
+    const prev = prevItemsRef.current
+    if (prev.length === next.length && prev.every((it, i) => it === next[i])) return prev
+    prevItemsRef.current = next
+    return next
+  }, [chats])
+
+  // `handleSelect` Sidebar пересоздаётся на каждом его рендере, а `renderItem`
+  // обязан быть стабильным: он входит в пропсы `memo`-строки, и его смена
+  // перерисовывает ВСЁ окно.
+  const selectChat = useEvent(onSelect)
+
+  const renderItem = useCallback(
+    ({ value, itemRef }: DeferredSortedVirtualListRenderItemProps<Chat>) => (
+      <ChatListItem ref={itemRef} chat={value} selected={value.id === selectedId} onSelect={selectChat} />
+    ),
+    [selectedId, selectChat],
+  )
+
+  return (
+    <DeferredSortedVirtualList<Chat>
+      listRef={setListEl}
+      className={s.archiveVirtualList}
+      scrollableHost={scrollHost}
+      items={items}
+      totalCount={items.length}
+      wasAtLeastOnceFetched
+      itemSize={ARCHIVE_ITEM_HEIGHT}
+      animate
+      requestItemForIdx={NO_ITEM_REQUEST}
+      renderItem={renderItem}
+    />
   )
 }

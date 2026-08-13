@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
-import { loadChats } from '../../stores/chatsStore'
 
 // Целевое действие для выбранного фото: личное фото у себя или предложение контакту.
 export type ContactPhotoMode = 'set' | 'suggest'
@@ -76,7 +75,7 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
       if (modeRef.current === 'set') {
         await managers.contacts.setPhoto(peerId, mediaId)
         setHasPersonal(true)
-        await loadChats(managers) // обновить аватар в списке диалогов и шапке чата
+        await managers.dialogs.refresh() // обновить аватар в списке диалогов и шапке чата
       } else {
         await managers.contacts.suggestPhoto(peerId, mediaId)
       }
@@ -90,7 +89,7 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
     try {
       await managers.contacts.clearPhoto(peerId)
       setHasPersonal(false)
-      await loadChats(managers)
+      await managers.dialogs.refresh()
     } finally {
       setBusyPhoto(false)
     }
@@ -99,7 +98,7 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
   const del = async () => {
     if (peerId == null) return
     await managers.contacts.del(peerId)
-    await loadChats(managers)
+    await managers.dialogs.refresh()
     onClose()
   }
 

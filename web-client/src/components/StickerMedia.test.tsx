@@ -84,6 +84,29 @@ describe('StickerMedia', () => {
     expect(args.loop).toBe(true)
   })
 
+  // Слой превью: stripped-JPEG с бэка показывается СРАЗУ, до загрузки файла —
+  // без него ячейка стоит пустой, пока летят байты и декодируется первый кадр.
+  it('thumb: stripped-превью встаёт нижним слоем до загрузки файла', async () => {
+    // Загрузка «зависает» — проверяем именно состояние до прихода медиа.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    const { container } = render(<StickerMedia mediaId={105} width={72} height={72} thumb="/9j/" />)
+
+    await waitFor(() => {
+      const img = container.querySelector('img.media-sticker.thumbnail')
+      expect(img).not.toBeNull()
+      expect(img!.getAttribute('src')).toBe('data:image/jpeg;base64,/9j/')
+      expect((img as HTMLElement).dataset.stickerThumb).toBe('105')
+    })
+  })
+
+  it('без thumb нижнего слоя нет (пустых <img> в контейнере не появляется)', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    const { container } = render(<StickerMedia mediaId={106} width={72} height={72} />)
+
+    await Promise.resolve()
+    expect(container.querySelector('img')).toBeNull()
+  })
+
   it('video/webm: рендерит <video> c object-URL содержимого (видео-стикер)', async () => {
     const fetchMock = stubFetch('video/webm')
     const { container } = render(<StickerMedia mediaId={104} width={200} height={200} autoplay loop />)

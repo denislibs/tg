@@ -1,5 +1,6 @@
 // src/core/managers/groupsManager.ts
 import type { RestClient } from '../net/restClient'
+import type { DialogsManager } from './dialogsManager'
 
 export interface GroupCard {
   id: number; type: string; title: string; username: string; about: string
@@ -98,8 +99,12 @@ const mapTopic = (r: RawTopic): TopicRow => ({
   lastOut: r.last_out ?? false, lastMsgSeq: r.last_seq ?? 0,
 })
 
-export function newGroupsManager({ rest }: {
+export function newGroupsManager({ rest, dialogs }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
+  // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
+  // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
+  // invokeApi(...).then(saveUpdate)).
+  dialogs: Pick<DialogsManager, 'applyMute' | 'applyPinned' | 'applyArchived' | 'applyRemoved'>
 }) {
   return {
     async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
@@ -119,8 +124,10 @@ export function newGroupsManager({ rest }: {
     // muted=true без until — навсегда.
     async setMute(chatId: number, muted: boolean, until?: number): Promise<void> {
       await rest.post(`/chats/${chatId}/mute`, { muted, until: until ?? null })
-      // Оптимистику двигает вызыватель (setDialogMuted), а кросс-таб/реконсил — реальное
-      // WS-событие dialog_mute с бэка (logAndPublish на устройства владельца).
+      // Оптимистики нет (Task 4, порт tweb toggleDialogPin): применяем ПОСЛЕ
+      // ответа сети. Кросс-таб/другие устройства получат то же самое кадром
+      // dialog_mute (workerCore.ts::dispatch → dialogs.applyMute).
+      dialogs.applyMute(chatId, muted)
     },
     // ── Форум-топики ──
     async setForum(chatId: number, enabled: boolean): Promise<void> {
@@ -156,13 +163,16 @@ export function newGroupsManager({ rest }: {
       await rest.post(`/chats/${chatId}/topics/${rootMsgId}/mute`, { muted })
     },
 
-    // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400).
+    // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400: при
+    // ошибке apply не зовётся вовсе, дальше диалог как был).
     async setPin(chatId: number, pinned: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/pin`, { pinned })
+      dialogs.applyPinned(chatId, pinned)
     },
     // Убрать диалог в архив / вернуть из архива.
     async setArchive(chatId: number, archived: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/archive`, { archived })
+      dialogs.applyArchived(chatId, archived)
     },
     async card(chatId: number): Promise<GroupCard> {
       const c = await rest.get<{
@@ -241,8 +251,14 @@ export function newGroupsManager({ rest }: {
     async deleteAllRevoked(chatId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/revoked_invite_links`)
     },
+    // Удаляет чат целиком (для всех участников) — в отличие от removeMember,
+    // которым выходит один конкретный участник (в т.ч. может быть кем угодно —
+    // «удаляемый я» не всегда), здесь однозначно: мой собственный диалог тоже
+    // пропадает, поэтому applyRemoved зовём сразу после успеха, не дожидаясь
+    // WS chat_removed (Task 4, тот же приём, что и mute/pin/archive выше).
     async deleteGroup(chatId: number): Promise<void> {
       await rest.del(`/chats/${chatId}`)
+      dialogs.applyRemoved(chatId)
     },
     async members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]> {
       const r = await rest.get<{ members: { user_id: number; role: string; online: boolean }[] }>(`/chats/${chatId}/members`)

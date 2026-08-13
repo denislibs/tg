@@ -67,7 +67,14 @@ export default function StickersHelper({
               data-doc-id={st.id}
               onClick={() => onPick(st)}
             >
-              <StickerMedia mediaId={st.mediaId} width={STICKER_SIZE} height={STICKER_SIZE} playOnHover loop />
+              <StickerMedia
+                mediaId={st.mediaId}
+                width={STICKER_SIZE}
+                height={STICKER_SIZE}
+                playOnHover
+                loop
+                thumb={st.thumb}
+              />
             </div>
           ))}
         </div>

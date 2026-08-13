@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { loadChats } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import type { SearchResult } from '../managers/channelsManager'
 
@@ -27,7 +26,7 @@ export function useSidebarSearch(initialQuery?: string) {
   const searchReal = (q: string): Promise<SearchResult> => managers.channels.search(q)
   const onJoin = async (username: string) => {
     await managers.channels.join(username)
-    await loadChats(managers)
+    await managers.dialogs.refresh()
     closeSearch()
   }
 

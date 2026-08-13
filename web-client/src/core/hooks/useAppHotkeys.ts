@@ -4,7 +4,7 @@
 // сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
-import { useChatsStore, loadChats } from '../../stores/chatsStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { initHotkeys } from '../hotkeys'
 
@@ -17,23 +17,23 @@ export function useAppHotkeys(): void {
     if (nav.selectedId) { nav.setSelectedId(null); nav.setDraftPeer(null) }
   }, [])
 
+  // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
+  // (dialogsManager.applyMute) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
+  // как и в ChatListItem/Chat.tsx.
   const muteCurrentChat = useCallback(() => {
     const id = useNavigationStore.getState().selectedId
     if (!id || id.startsWith('draft:')) return
     const chatId = Number(id)
-    const st = useChatsStore.getState()
-    const dlg = st.dialogs.find((d) => d.chatId === chatId)
+    const dlg = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)
     if (!dlg) return
-    const next = !dlg.muted
-    st.setDialogMuted(chatId, next) // оптимистично, как ChatListItem
-    void managers.groups.setMute(chatId, next).catch(() => st.setDialogMuted(chatId, !next))
+    void managers.groups.setMute(chatId, !dlg.muted).catch(() => {})
   }, [managers])
 
   // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара.
   const openSaved = useCallback(() => {
     void (async () => {
       const id = await managers.chats.saved()
-      await loadChats(managers)
+      await managers.dialogs.refresh()
       useNavigationStore.getState().selectChat(String(id))
     })()
   }, [managers])
