@@ -121,6 +121,62 @@ func TestSliceDialogPage(t *testing.T) {
 	})
 }
 
+// archivedFixture — набор со смешанными архивными: 10,30,50 в архиве.
+func archivedFixture() []domain.Dialog {
+	return []domain.Dialog{
+		{ChatID: 10, Archived: true},
+		{ChatID: 20},
+		{ChatID: 30, Archived: true},
+		{ChatID: 40},
+		{ChatID: 50, Archived: true},
+	}
+}
+
+func TestSliceDialogPageFolder(t *testing.T) {
+	all := archivedFixture()
+
+	t.Run("нулевое значение Folder — весь набор, как до появления папок", func(t *testing.T) {
+		r := sliceDialogPage(all, domain.DialogPage{})
+		eq(t, chatIDs(r.Dialogs), []int64{10, 20, 30, 40, 50})
+		if r.Count != 5 {
+			t.Fatalf("count=%d, want 5", r.Count)
+		}
+	})
+
+	t.Run("FolderAll — без архива, Count по выборке", func(t *testing.T) {
+		r := sliceDialogPage(all, domain.DialogPage{Folder: domain.FolderAll})
+		eq(t, chatIDs(r.Dialogs), []int64{20, 40})
+		if r.Count != 2 || !r.IsEnd {
+			t.Fatalf("count=%d isEnd=%v, want 2 true", r.Count, r.IsEnd)
+		}
+	})
+
+	t.Run("FolderArchive — только архив, Count по выборке", func(t *testing.T) {
+		r := sliceDialogPage(all, domain.DialogPage{Folder: domain.FolderArchive})
+		eq(t, chatIDs(r.Dialogs), []int64{10, 30, 50})
+		if r.Count != 3 {
+			t.Fatalf("count=%d, want 3", r.Count)
+		}
+	})
+
+	// Курсор ищется ВНУТРИ выборки: chat_id 30 в архиве — второй, а в полном
+	// наборе третий. Мутация «фильтровать после нарезки» краснит здесь.
+	t.Run("курсор считается внутри выборки", func(t *testing.T) {
+		r := sliceDialogPage(all, domain.DialogPage{Folder: domain.FolderArchive, Limit: 1, OffsetChatID: 30})
+		eq(t, chatIDs(r.Dialogs), []int64{50})
+		if r.Count != 3 || !r.IsEnd {
+			t.Fatalf("count=%d isEnd=%v, want 3 true", r.Count, r.IsEnd)
+		}
+	})
+
+	// Чат из ДРУГОЙ выборки курсором не является — страница идёт с начала
+	// (то же правило, что у неизвестного id: домен не различает эти случаи).
+	t.Run("курсор из другой выборки — страница с начала", func(t *testing.T) {
+		r := sliceDialogPage(all, domain.DialogPage{Folder: domain.FolderArchive, Limit: 2, OffsetChatID: 20})
+		eq(t, chatIDs(r.Dialogs), []int64{10, 30})
+	})
+}
+
 // TestListDialogsPage бьёт по самой проводке Interactor.ListDialogsPage, а не
 // только по чистой sliceDialogPage: чинит находку ревью — до этого теста подмена
 // `all, err := i.ListDialogs(...)` на `all, _ := i.ListDialogs(...)` (глотание
