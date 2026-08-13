@@ -63,10 +63,19 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 // channelPostPayload — снимок поста канала для channel-лога и живого кадра (единый
 // источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
 func channelPostPayload(m domain.Message, actorID int64) map[string]any {
-	return map[string]any{
+	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
 		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
 	}
+	// client_msg_id — единственный ключ, которым отправитель матчит эхо со своим
+	// оптимистичным баблом: пост канала уходит REST'ом, message_ack (как у
+	// личных чатов и групп, см. messageUpdatePayload) на этом пути нет. Без
+	// поля бабл навсегда остаётся «отправляется», а эхо ложится вторым.
+	// Остальным подписчикам поле безвредно — им нечего им матчить.
+	if m.ClientMsgID != nil {
+		p["client_msg_id"] = *m.ClientMsgID
+	}
+	return p
 }
 
 // SetSignatures toggles channel post signatures (Telegram
