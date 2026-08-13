@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -121,6 +122,52 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	}
 	if len(bDialogs) != 1 || bDialogs[0].Peer == nil || bDialogs[0].Peer.ID != a {
 		t.Fatalf("b's peer = %+v; want id %d", bDialogs[0].Peer, a)
+	}
+}
+
+// Порядок выдачи обязан быть строго тотальным: без тайбрейка по c.id два
+// диалога без сообщений (lm.created_at = NULL у обоих) сортируются
+// произвольно, и курсор пагинации по такому порядку невоспроизводим.
+func TestChatsRepo_ListDialogs_StableOrderWithoutMessages(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+
+	me := seedUser(t, pool, "+720")
+	// три пустых приватных чата — у всех lm.created_at IS NULL
+	for i := 0; i < 3; i++ {
+		other := seedUser(t, pool, fmt.Sprintf("+72%d", i+1))
+		createPrivate(t, pool, me, other)
+	}
+
+	first, err := repo.ListDialogs(ctx, me)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 3 {
+		t.Fatalf("want 3 dialogs, got %d", len(first))
+	}
+	ids := make([]int64, len(first))
+	for i, d := range first {
+		ids[i] = d.ChatID
+	}
+	// по убыванию c.id
+	for i := 1; i < len(ids); i++ {
+		if ids[i-1] <= ids[i] {
+			t.Fatalf("order is not by chat id desc: %v", ids)
+		}
+	}
+	// и повторный запрос даёт ровно тот же порядок
+	for attempt := 0; attempt < 3; attempt++ {
+		again, err := repo.ListDialogs(ctx, me)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range again {
+			if again[i].ChatID != ids[i] {
+				t.Fatalf("attempt %d: order changed: %v vs %v", attempt, again, ids)
+			}
+		}
 	}
 }
 

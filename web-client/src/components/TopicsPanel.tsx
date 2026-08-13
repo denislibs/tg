@@ -4,16 +4,27 @@
 // как сообщения). Ряды 64px без аватара (tweb topic-dialogs-override): иконка
 // топика в строке названия, превью последнего сообщения, время. Клик по теме
 // открывает её тред в колонке чата (tweb setPeer({peerId, threadId})).
-import { useEffect, useRef, useState } from 'react'
+//
+// Список видимых тем — то же виртуальное ядро, что у списка чатов и оверлея
+// архива (`DeferredSortedVirtualList`): в tweb это `SortedDialogList` с
+// `itemSize: 64, noAvatar: true` (`forumTab/groupForumTab.ts:27-32`).
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Badge from '../shared/ui/Badge'
 import IconButton from '../shared/ui/IconButton'
 import Popup from '../shared/ui/Popup'
 import Menu, { MenuItem } from '../shared/ui/Menu'
+import DeferredSortedVirtualList, {
+  type DeferredSortedVirtualListItem,
+  type DeferredSortedVirtualListRenderItemProps,
+} from './virtual/DeferredSortedVirtualList'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
-import type { TopicRow } from '../core/managers/groupsManager'
+import { useEvent } from '../core/hooks/useEvent'
+// Тип строки данных темы. Локальный алиас — потому что `TopicRow` в этом файле
+// занят мемоизированным КОМПОНЕНТОМ строки (см. ниже).
+import type { TopicRow as Topic } from '../core/managers/groupsManager'
 import { fmtWhen, mediaLabel } from '../core/dialogToChat'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
@@ -51,13 +62,98 @@ export function TopicIcon({ color, emoji, title, size = 26 }: { color: number; e
 
 const CHANGE_INFO = 64
 
+/** Высота строки темы — `itemSize: 64` из tweb `forumTab/groupForumTab.ts:28`. */
+const TOPIC_ITEM_HEIGHT = 64
+
+/**
+ * Пагинации у тем нет (весь список приезжает одним RPC `listTopics`), поэтому
+ * просить страницу некому. Ссылка обязана быть СТАБИЛЬНОЙ — контракт пропа
+ * `requestItemForIdx` ядра: он зовётся из эффекта каждой непоказанной строки.
+ *
+ * Сама эта стабильность СОЗНАТЕЛЬНО НЕ ПОКРЫТА тестом (как и у архива,
+ * `Sidebar.tsx::NO_ITEM_REQUEST`): при `totalCount === items.length` дырок в
+ * списке не бывает вовсе, непоказанных строк нет, а вызов и так пустой.
+ */
+const NO_ITEM_REQUEST = () => {}
+
+/**
+ * Ряд темы «как диалог» (tweb DialogElement без аватара): иконка темы в
+ * заголовке, галочки/замок/mute справа, бейджи mention/unread/pinned в превью.
+ * В активном (открытом) ряду фон акцентный — весь текст/иконки светлые (Text
+ * рендерит div, поэтому цвета задаём через active, а не CSS-селектором span).
+ *
+ * Отдельный `memo`-компонент, а не функция в теле панели: строка входит в окно
+ * виртуального списка, и пересоздание её на каждом рендере панели обнуляло бы
+ * мемоизацию окна — виртуализация не давала бы ничего. Отсюда же требование к
+ * вызывающему: все пропсы стабильны (колбэки — `useEvent`, `topic` — обёртка из
+ * кэша), иначе `memo` не держит.
+ */
+export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, onContextMenu, ref }: {
+  topic: Topic
+  /** тема открыта в колонке чата — ряд подсвечен акцентом */
+  active: boolean
+  /** ряд из свёрнутой секции скрытых тем — приглушённый */
+  dimmed?: boolean
+  onOpen: (topic: Topic) => void
+  onContextMenu: (e: React.MouseEvent, topic: Topic) => void
+  /** ref виртуального списка; у строк секции скрытых тем его нет (они в потоке) */
+  ref?: Ref<HTMLDivElement>
+}) {
+  const t = useT()
+  const titleColor = active ? '#fff' : 'var(--primary-text-color)'
+  const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
+  const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
+  return (
+    <div
+      ref={ref}
+      className={classNames(s.row, active ? s.rowActive : '', dimmed ? s.rowDimmed : '')}
+      onClick={() => onOpen(topic)}
+      onContextMenu={(e) => onContextMenu(e, topic)}
+    >
+      <div className={s.titleRow}>
+        {topic.isGeneral ? (
+          <TopicIcon color={0} title="#" size={20} />
+        ) : (
+          <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
+        )}
+        <Text noWrap size={16} weight={500} color={titleColor} style={{ flex: 1 }}>
+          {topic.isGeneral ? t('General') : topic.title}
+        </Text>
+        {/* muted тема — иконка nosound серым (tweb .is-muted .dialog-title .tgico-nosound) */}
+        {topic.muted && <TgIcon name="muted" size={17} color={metaColor} style={{ flexShrink: 0 }} />}
+        {/* закрытая тема — замок; иначе исходящее последнее — галочки «доставлено»
+            (read-tracking исходящих в тредах нет, поэтому всегда ✓✓). */}
+        {topic.closed ? (
+          <TgIcon name="lock" size={16} color={metaColor} style={{ flexShrink: 0 }} />
+        ) : topic.lastOut ? (
+          <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
+        ) : null}
+        <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
+      </div>
+      <div className={s.subtitleRow}>
+        <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
+          {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
+          {topic.lastText || mediaLabel(topic.lastType)}
+        </Text>
+        {/* Порядок бейджей как в tweb: mention → unread; pinned вместо счётчика у прочитанной. */}
+        {topic.unreadMentions > 0 && <Badge muted={topic.muted} className={s.badge}>@</Badge>}
+        {topic.unread > 0 ? (
+          <Badge muted={topic.muted} className={s.badge}>{topic.unread}</Badge>
+        ) : topic.pinned ? (
+          <TgIcon name="chatspinned" size={19} color={metaColor} style={{ flexShrink: 0 }} />
+        ) : null}
+      </div>
+    </div>
+  )
+})
+
 export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose, onOpenTopic, onViewAsMessages }: {
   chatId: number
   chatName: string
   /** rootMsgId темы, открытой в колонке чата — её ряд подсвечен */
   activeRootMsgId: number | null
   onClose: () => void
-  onOpenTopic: (topic: TopicRow) => void
+  onOpenTopic: (topic: Topic) => void
   onViewAsMessages: () => void
 }) {
   const t = useT()
@@ -65,14 +161,14 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const middlewareHelper = useMiddlewareHelper()
   const chatIdRef = useRef(chatId)
   chatIdRef.current = chatId
-  const [topics, setTopics] = useState<TopicRow[] | null>(null)
+  const [topics, setTopics] = useState<Topic[] | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [editing, setEditing] = useState<TopicRow | null>(null)
+  const [editing, setEditing] = useState<Topic | null>(null)
   // Поиск по темам (tweb: кнопка search в шапке форум-таба); null — закрыт.
   const [query, setQuery] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null)
   // контекстное меню ряда темы (правый клик / long-press, tweb)
-  const [rowMenu, setRowMenu] = useState<{ topic: TopicRow; top: number; left: number } | null>(null)
+  const [rowMenu, setRowMenu] = useState<{ topic: Topic; top: number; left: number } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   // «Новая тема» — создатель или право «Изменение инфо» (tweb manage_topics)
   const [canManage, setCanManage] = useState(false)
@@ -102,74 +198,81 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const visible = all.filter((topic) => !topic.hidden)
   const hidden = all.filter((topic) => topic.hidden)
 
-  const openRowMenu = (e: React.MouseEvent, topic: TopicRow) => {
+  // Колбэки строк — стабильными ссылками (`useEvent`): они входят в пропсы
+  // `memo`-строки, и новая стрелка на каждом рендере панели перерисовывала бы
+  // всё окно списка.
+  const openRowMenu = useEvent((e: React.MouseEvent, topic: Topic) => {
     if (!canManage) return
     e.preventDefault()
     setRowMenu({ topic, top: e.clientY, left: e.clientX })
-  }
+  })
 
   // Клик по теме: открыть тред + оптимистично пометить прочитанной (обнулить
   // unread этого ряда локально; реальные данные подтянутся при следующем reload).
-  const handleOpenTopic = (topic: TopicRow) => {
+  const handleOpenTopic = useEvent((topic: Topic) => {
     if (topic.unread > 0 || topic.unreadMentions > 0) {
       setTopics((cur) => (cur ?? []).map((tp) => (tp.id === topic.id ? { ...tp, unread: 0, unreadMentions: 0 } : tp)))
       void managers.groups.readTopic(chatId, topic.rootMsgId, topic.lastMsgSeq).catch(() => {})
     }
     onOpenTopic(topic)
-  }
+  })
 
-  // Ряд темы «как диалог» (tweb DialogElement без аватара): иконка темы в
-  // заголовке, галочки/замок/mute справа, бейджи mention/unread/pinned в превью.
-  // В активном (открытом) ряду фон акцентный — весь текст/иконки светлые (Text
-  // рендерит div, поэтому цвета задаём через active, а не CSS-селектором span).
-  const renderRow = (topic: TopicRow, dimmed = false) => {
-    const active = topic.rootMsgId === activeRootMsgId
-    const titleColor = active ? '#fff' : 'var(--primary-text-color)'
-    const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
-    const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
-    return (
-      <div
-        key={topic.id}
-        className={classNames(s.row, active ? s.rowActive : '', dimmed ? s.rowDimmed : '')}
-        onClick={() => handleOpenTopic(topic)}
-        onContextMenu={(e) => openRowMenu(e, topic)}
-      >
-        <div className={s.titleRow}>
-          {topic.isGeneral ? (
-            <TopicIcon color={0} title="#" size={20} />
-          ) : (
-            <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
-          )}
-          <Text noWrap size={16} weight={500} color={titleColor} style={{ flex: 1 }}>
-            {topic.isGeneral ? t('General') : topic.title}
-          </Text>
-          {/* muted тема — иконка nosound серым (tweb .is-muted .dialog-title .tgico-nosound) */}
-          {topic.muted && <TgIcon name="muted" size={17} color={metaColor} style={{ flexShrink: 0 }} />}
-          {/* закрытая тема — замок; иначе исходящее последнее — галочки «доставлено»
-              (read-tracking исходящих в тредах нет, поэтому всегда ✓✓). */}
-          {topic.closed ? (
-            <TgIcon name="lock" size={16} color={metaColor} style={{ flexShrink: 0 }} />
-          ) : topic.lastOut ? (
-            <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
-          ) : null}
-          <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
-        </div>
-        <div className={s.subtitleRow}>
-          <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
-            {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
-            {topic.lastText || mediaLabel(topic.lastType)}
-          </Text>
-          {/* Порядок бейджей как в tweb: mention → unread; pinned вместо счётчика у прочитанной. */}
-          {topic.unreadMentions > 0 && <Badge muted={topic.muted} className={s.badge}>@</Badge>}
-          {topic.unread > 0 ? (
-            <Badge muted={topic.muted} className={s.badge}>{topic.unread}</Badge>
-          ) : topic.pinned ? (
-            <TgIcon name="chatspinned" size={19} color={metaColor} style={{ flexShrink: 0 }} />
-          ) : null}
-        </div>
-      </div>
-    )
-  }
+  // Хост нужен ядру ЗНАЧЕНИЕМ (оно вешает на него слушатель скролла и
+  // ResizeObserver), поэтому это состояние: первый рендер идёт с null, второй —
+  // с живым узлом. Ref-колбэк обязан быть СТАБИЛЬНЫМ: смена идентичности
+  // заставила бы React переприсваивать его на каждом рендере, то есть на каждом
+  // рендере пересобирать окно видимости. Всё — как в `ChatList`/`ArchiveList`.
+  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
+  const setListEl = useCallback((ul: HTMLUListElement | null) => {
+    setScrollHost(ul?.parentElement ?? null)
+  }, [])
+
+  // Обёртки строк, живущие между пересчётами, — контракт пропа `items` ядра
+  // (`DeferredSortedVirtualList.tsx:64-80`): обёртка приезжает НОВОЙ, только
+  // когда изменилось её значение. Без кэша `visible.map(...)` отдавал бы новые
+  // обёртки на ЛЮБОЙ рендер панели (открыли меню, набрали букву в поиске), и
+  // `memo` строки не держал бы ничего, а `useShouldAnimate` не находил бы
+  // прежние строки по ссылке — компенсация равномерного сдвига не срабатывала бы.
+  const itemCacheRef = useRef<Map<number, DeferredSortedVirtualListItem<Topic>>>(new Map())
+  const prevItemsRef = useRef<readonly DeferredSortedVirtualListItem<Topic>[]>([])
+
+  const items = useMemo<readonly DeferredSortedVirtualListItem<Topic>[]>(() => {
+    const cache = itemCacheRef.current
+    const seen = new Set<number>()
+    const next = visible.map((topic) => {
+      seen.add(topic.id)
+      const hit = cache.get(topic.id)
+      if (hit && hit.value === topic) return hit
+      const item: DeferredSortedVirtualListItem<Topic> = { id: topic.id, value: topic }
+      cache.set(topic.id, item)
+      return item
+    })
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id)
+
+    // Вторая половина контракта — ссылка на САМ массив. СОЗНАТЕЛЬНО НЕ ПОКРЫТА
+    // (как и у архива, `Sidebar.tsx`): при живом кэше выше её снятие не
+    // наблюдаемо — состав пересчёта тот же и по ссылкам, поэтому
+    // `useShouldAnimate` находит все видимые строки на прежних местах и
+    // компенсирует нулевой сдвиг, то есть ничего не делает.
+    const prev = prevItemsRef.current
+    if (prev.length === next.length && prev.every((it, i) => it === next[i])) return prev
+    prevItemsRef.current = next
+    return next
+  }, [visible])
+
+  // Меняется только на смене активной темы — на кадре скролла нет.
+  const renderItem = useCallback(
+    ({ value, itemRef }: DeferredSortedVirtualListRenderItemProps<Topic>) => (
+      <TopicRow
+        ref={itemRef as Ref<HTMLDivElement>}
+        topic={value}
+        active={value.rootMsgId === activeRootMsgId}
+        onOpen={handleOpenTopic}
+        onContextMenu={openRowMenu}
+      />
+    ),
+    [activeRootMsgId, handleOpenTopic, openRowMenu],
+  )
 
   return (
     <div className={s.root}>
@@ -282,7 +385,52 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
             {t('No topics')}
           </Text>
         )}
-        {visible.map((topic) => renderRow(topic))}
+        {/* Виртуализируется ТОЛЬКО список видимых тем; секция скрытых ниже
+            остаётся обычным потоком. Это осознанное отступление (спека
+            `2026-08-13-remaining-lists-design.md`, «Отступления от tweb» №1):
+            у секции свой заголовок-раскрывашка, а ядро умеет только однородные
+            строки фиксированной высоты. В tweb скрытые темы живут в том же
+            `SortedDialogList` — отступление СУЩЕСТВУЮЩЕЕ, не вводимое этим
+            переносом.
+
+            Пагинации у тем нет: весь список приезжает одним `listTopics`,
+            поэтому `totalCount` — длина набора (дырок-скелетонов не бывает
+            вовсе), а `wasAtLeastOnceFetched` взводится ответом владельца.
+            Значение `totalCount` СОЗНАТЕЛЬНО НЕ ПОКРЫТО тестом: ядро берёт
+            `max(totalCount, items.length)` (`fullItems`), поэтому при живых
+            `items` любое НЕ большее значение не наблюдаемо (проверено мутацией
+            `totalCount={0}` — прогон зелёный). Проп держится ради контракта.
+            `noAvatar` — из tweb `groupForumTab.ts:29` (у темы аватара нет,
+            значок стоит в строке названия).
+
+            `extraPaddingBottom: 0` — отступление от дефолтных 8px ядра
+            (`deferredSortedVirtualList.tsx:55`): нижний клиренс у нас уже даёт
+            `padding-bottom` самого контейнера прокрутки (`.list`), а СРАЗУ за
+            `ul` в потоке идёт секция скрытых тем — второй клиренс сдвинул бы её
+            заголовок. Тот же приём, что у tweb-списка «Избранное»
+            (`appSearchSuper.ts:1906` — `extraPaddingBottom: 0`, тоже вложенный
+            список).
+
+            `animate` — константа: в оригинале это `blockedAnimationCount() === 0`,
+            а счётчик глушилки держит владелец ПЕРВОЙ ЗАГРУЗКИ, которой у тем
+            нет. Значение СОЗНАТЕЛЬНО НЕ ПОКРЫТО (как и у архива): оно доходит до
+            `useAnimatedTop`, который анимирует `top` в DOM покадрово, а в
+            happy-dom наблюдаемой разницы у `animate={false}` нет; сама механика
+            покрыта `virtual/useAnimatedTop.test.ts`. */}
+        <DeferredSortedVirtualList<Topic>
+          listRef={setListEl}
+          className={s.virtualList}
+          scrollableHost={scrollHost}
+          items={items}
+          totalCount={items.length}
+          wasAtLeastOnceFetched={topics != null}
+          itemSize={TOPIC_ITEM_HEIGHT}
+          noAvatar
+          extraPaddingBottom={0}
+          animate
+          requestItemForIdx={NO_ITEM_REQUEST}
+          renderItem={renderItem}
+        />
 
         {hidden.length > 0 && (
           <>
@@ -292,7 +440,16 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
                 {t('Hidden Topics')} ({hidden.length})
               </Text>
             </div>
-            {showHidden && hidden.map((topic) => renderRow(topic, true))}
+            {showHidden && hidden.map((topic) => (
+              <TopicRow
+                key={topic.id}
+                topic={topic}
+                active={topic.rootMsgId === activeRootMsgId}
+                dimmed
+                onOpen={handleOpenTopic}
+                onContextMenu={openRowMenu}
+              />
+            ))}
           </>
         )}
       </div>
@@ -325,7 +482,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
 // Клик по большому значку циклит цвет (когда emoji не выбран). У General
 // (initial.isGeneral) правится только имя — значок системный.
 function TopicFormPopup({ initial, onSubmit, onClose }: {
-  initial?: TopicRow
+  initial?: Topic
   onSubmit: (title: string, color: number, emoji: string) => void
   onClose: () => void
 }) {

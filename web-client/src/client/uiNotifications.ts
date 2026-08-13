@@ -5,7 +5,7 @@
 // per-chat mute → глобальные настройки типа чата → клиентские настройки.
 import { startClient } from './bootstrap'
 import { useSettingsStore } from '../settings'
-import { useNotifyStore, notifyTypeForChat } from '../stores/notifyStore'
+import { useNotifyStore, notifyTypeForChat, isDialogMuted } from '../stores/notifyStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useI18nStore } from '../i18n'
 import { mediaLabel } from '../core/dialogToChat'
@@ -23,8 +23,12 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   const s = useChatsStore.getState()
   if (evt.sender_id === s.meId) return
   const dialog = s.dialogs.find((d) => d.chatId === evt.chat_id)
-  const typeSettings = useNotifyStore.getState().settings[notifyTypeForChat(dialog?.type)]
-  if (dialog?.muted || typeSettings.muted) return
+  const notifySettings = useNotifyStore.getState().settings
+  // Правило «заглушён» — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
+  // пин stores/noDuplicateMuteRule.test.ts). `preview` ниже — другая настройка,
+  // её по-прежнему берём по типу чата напрямую.
+  if (isDialogMuted(dialog, notifySettings)) return
+  const typeSettings = notifySettings[notifyTypeForChat(dialog?.type)]
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране).
   if (s.activeChatId === evt.chat_id && !document.hidden) return

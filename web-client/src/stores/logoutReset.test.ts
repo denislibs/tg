@@ -65,7 +65,11 @@ describe('после сброса cache-first снова запрашивает 
     resetAppState()
     const list = vi.fn().mockResolvedValue([])
 
-    await loadFolders({ folders: { list }, contacts: { list: vi.fn().mockResolvedValue([]) } })
+    await loadFolders({
+      folders: { list },
+      contacts: { list: vi.fn().mockResolvedValue([]) },
+      dialogs: { setContactIds: vi.fn().mockResolvedValue(undefined) },
+    })
 
     expect(list).toHaveBeenCalledTimes(1)
   })

@@ -1,6 +1,7 @@
-import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
-import { useFolders, useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
-import { matchesFolder } from '../folderFilter'
+import { useMemo, useState, type CSSProperties } from 'react'
+import { useFolders, useFoldersStore, loadFolders } from '../../stores/foldersStore'
+import { ALL_FOLDER_ID } from '../folderIds'
+import { chatMatchesFolder } from '../folderFilter'
 import { openPopup } from '../../stores/popupStore'
 import { useManagers } from './useManagers'
 import { useT } from '../../i18n'
@@ -16,9 +17,8 @@ import type { Chat } from '../../data'
 // удаление/редактирование папки. Меню и подтверждение — вьюпортные попапы, через
 // глобальный popupStore (порт tweb createFolderContextMenu / Confirm.Remove).
 // Редактор папки — экран колонки, отдаётся готовым overlays-узлом.
-export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }: {
+export function useSidebarFolders({ chats, onOpenFolderSettings }: {
   chats: Chat[]
-  listScrollRef: RefObject<HTMLDivElement | null>
   onOpenFolderSettings: () => void
 }) {
   const managers = useManagers()
@@ -29,18 +29,17 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
   const contactIds = useFoldersStore((st) => st.contactIds)
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
 
-  const activeFolder = folders.find((f) => f.id === folderId)
   const tabOrder = useMemo(() => [ALL_FOLDER_ID, ...folders.map((f) => f.id)], [folders])
-
-  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
-  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
   // Мемоизировано, чтобы <ChatList>/<FolderTabs> получали стабильные пропсы —
   // ре-рендер сайдбара под тогл оверлея не пересоздаёт массивы и не бьёт их memo.
-  const filtered = useMemo(
-    () => (activeFolder ? visibleChats.filter((c) => matchesFolder(c, activeFolder, contactIds)) : visibleChats),
-    [visibleChats, activeFolder, contactIds],
-  )
+  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
+  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
+
+  // Отбор строк ПАПКИ здесь больше не делается: список фильтрует себя сам
+  // (`core/hooks/useDialogListSource`), где правило папки одно и на строки, и на
+  // размер набора для пагинации. Второе такое правило здесь означало бы, что
+  // витрина и пагинация считают папку по-разному.
 
   // Badge таба = число непрочитанных чатов папки (tweb folders-tabs Badge);
   // у «Все» — только незамьюченные (tweb unreadUnmutedCount).
@@ -48,15 +47,19 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
     const counts: Record<number, number> = {
       [ALL_FOLDER_ID]: visibleChats.filter((c) => c.unread && !c.muted).length,
     }
-    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && matchesFolder(c, f, contactIds)).length
+    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && chatMatchesFolder(c, f, contactIds)).length
     return counts
   }, [visibleChats, folders, contactIds])
 
+  // Прокрутку списка тут больше НЕ трогаем: у каждой папки свой
+  // `.folders-scrollable` со своим `scrollTop` (`components/ChatList.tsx`, порт
+  // tweb `generateScrollable`), и позиция папки обязана переживать уход на
+  // соседнюю — как в tweb. Прежний ручной `scrollTop = 0` замещал то, чего у
+  // нас не было (свой контейнер на папку), и был зарегистрированным исключением
+  // в `core/scrollWriters.test.ts`; исключение снято вместе со строкой.
   const changeFolder = (id: number) => {
     if (id === folderId) return
     selectFolder(id)
-    const el = listScrollRef.current
-    if (el) el.scrollTop = 0
   }
 
   const doDeleteFolder = (f: Folder) => {
@@ -125,8 +128,8 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
   )
 
   return {
-    folders, folderId, activeFolder, tabOrder, contactIds,
-    filtered, archivedChats, folderUnread,
+    folders, folderId, tabOrder, contactIds,
+    archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays,
   }
 }

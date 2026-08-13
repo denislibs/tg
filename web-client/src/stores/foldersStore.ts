@@ -7,9 +7,9 @@ import { mapFolder, type Folder, type RawFolder } from '../core/managers/folders
 import type { Contact } from '../core/managers/contactsManager'
 import { reconcileById } from '../core/store/reconcile'
 import { useAppStateKey, useAppStateStore, setAppState } from './appState'
-
-// id псевдо-папки «Все чаты» (tweb FOLDER_ID_ALL)
-export const ALL_FOLDER_ID = 0
+// Обе константы id папок живут в core/folderIds.ts: их читают и main, и воркер
+// (`dialogsManager.getDialogs({filterId})`), второй копии значения быть не должно.
+import { ALL_FOLDER_ID } from '../core/folderIds'
 
 interface FoldersUiState {
   selectedId: number
@@ -32,9 +32,21 @@ export const useFoldersStore = create<FoldersUiState>((set) => ({
   },
   remove: (id) => {
     applyFolders(useAppStateStore.getState().folders.filter((f) => f.id !== id))
-    set((s) => (s.selectedId === id ? { selectedId: ALL_FOLDER_ID } : s))
+    deselectIfRemoved(id)
   },
 }))
+
+/**
+ * Удалённая папка не может остаться выбранной — выбор уезжает на «Все чаты».
+ *
+ * Правило ОДНО на оба пути удаления: локальный `remove` (своё действие) и
+ * `applyFolderUpdate` (пуш `folder_update {deleted}` с другого устройства). Пока
+ * второй путь его не соблюдал, у показанного списка чатов пропадал таб, но
+ * оставался `selectedId`: витрина рисовала папку, которой уже нет в `order`.
+ */
+function deselectIfRemoved(id: number): void {
+  useFoldersStore.setState((s) => (s.selectedId === id ? { selectedId: ALL_FOLDER_ID } : s))
+}
 
 /** Реактивное чтение папок — единственный способ их получить в UI. */
 export function useFolders(): Folder[] {
@@ -57,6 +69,11 @@ export async function loadFolders(
   managers: {
     folders: { list(): Promise<Folder[]> }
     contacts: { list(): Promise<Contact[]> }
+    // Этап 2 (пагинация диалогов): те же контакты нужны владельцу списка —
+    // правила папок `contacts`/`non_contacts` он считает сам, в воркере
+    // (`dialogsManager.getDialogs({filterId})`). Один источник, два
+    // потребителя; второго загрузчика контактов не заводим.
+    dialogs: { setContactIds(ids: number[]): Promise<void> }
   },
   { overwrite = false }: { overwrite?: boolean } = {},
 ): Promise<void> {
@@ -71,9 +88,21 @@ export async function loadFolders(
   // Контакты обновляем всегда: они нужны правилам contacts/non_contacts и
   // меняются независимо от папок.
   try {
-    useFoldersStore.getState().setContacts((await managers.contacts.list()).map((c) => c.userId))
+    const ids = (await managers.contacts.list()).map((c) => c.userId)
+    useFoldersStore.getState().setContacts(ids)
+    // Владелец списка диалогов фильтрует папки в воркере — те же контакты
+    // (см. докблок параметра `dialogs` выше). Именно `await`, а не
+    // fire-and-forget: провалившийся RPC обязан попасть в тот же catch, что и
+    // провалившийся `/contacts`, — иначе воркер молча остался бы без контактов,
+    // а вызывающий считал бы, что доставил их.
+    await managers.dialogs.setContactIds(ids)
   } catch {
-    /* без контактов правила contacts/non_contacts считают всех не-контактами */
+    /* Оффлайн/упавший RPC: контакты не доехали. Правила contacts/non_contacts
+     * от этого не начинают врать — владелец знает, что контактов ЕЩЁ НЕ БЫЛО,
+     * и отдаёт для такой папки пустую страницу (скелетоны), а не список, где
+     * все считаются не-контактами (см. contactsKnown в dialogsManager.ts).
+     * Повтор — ближайший `loadFolders` (бутстрап вкладки, deep-link, откат
+     * удаления папки); отдельного ретрая этот этап не заводит. */
   }
 }
 
@@ -107,6 +136,7 @@ export function applyFolderUpdate(evt: FolderUpdateEvt): void {
   if (evt.deleted) {
     if (evt.folder_id === undefined) return
     applyFolders(prev.filter((f) => f.id !== evt.folder_id))
+    deselectIfRemoved(evt.folder_id)
     return
   }
   if (!evt.folder) return

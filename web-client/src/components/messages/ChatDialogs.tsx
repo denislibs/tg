@@ -14,10 +14,11 @@ import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { peerColor } from '../peerColor'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { dialogToChat } from '../../core/dialogToChat'
-import { matchesFolder } from '../../core/folderFilter'
+import { chatMatchesFolder } from '../../core/folderFilter'
 import { lastSeenLabel } from '../../core/presence'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useFolders, useFoldersStore, ALL_FOLDER_ID } from '../../stores/foldersStore'
+import { useFolders, useFoldersStore } from '../../stores/foldersStore'
+import { ALL_FOLDER_ID } from '../../core/folderIds'
 import FolderTabs from '../FolderTabs'
 import type { Chat } from '../../data'
 import type { Dialog } from '../../core/models'
@@ -159,7 +160,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   const activeFolder = folderId !== ALL_FOLDER_ID ? folders.find((f) => f.id === folderId) : undefined
   const list = useMemo(() => {
     let out = chats
-    if (activeFolder) out = out.filter((c) => matchesFolder(c, activeFolder, contactIds))
+    if (activeFolder) out = out.filter((c) => chatMatchesFolder(c, activeFolder, contactIds))
     if (query) out = out.filter((c) => c.name.toLowerCase().includes(query))
     return out
   }, [chats, activeFolder, contactIds, query])

@@ -121,6 +121,32 @@ type Dialog struct {
 	ThemeID string
 }
 
+// DialogPage — запрос страницы списка диалогов.
+//
+// Курсор — chat_id последнего полученного диалога, а не смещение: список
+// переупорядочивается между запросами (новое сообщение поднимает чат наверх),
+// и позиционный offset дал бы пропуски и дубли. Порядок задаёт ChatsRepo.
+// ListDialogs (pinned_at, last message date, chat_id) и он строго тотальный.
+type DialogPage struct {
+	// 0 — без пагинации: весь список. Отрицательный Limit sliceDialogPage
+	// трактует так же, как 0 (весь остаток от курсора); отсечение
+	// отрицательных значений в 0 — забота HTTP-слоя (Task 3), не домена.
+	Limit int
+	// 0 — с начала. Неизвестный id трактуется как «с начала» (чат мог уехать
+	// в архив или быть удалён между страницами); клиент сливает страницы по
+	// chat_id, поэтому последствие — повторная страница, а не дыра.
+	OffsetChatID int64
+}
+
+// DialogPageResult — страница плюс метаданные для виртуального списка:
+// Count даёт высоту списка и число плейсхолдеров, IsEnd останавливает догрузку.
+type DialogPageResult struct {
+	Dialogs []Dialog
+	// Размер ПОЛНОГО набора, не страницы; от Limit и курсора не зависит.
+	Count int
+	IsEnd bool
+}
+
 // Member is a full membership row (role + admin rights + mute).
 type Member struct {
 	ChatID, UserID int64

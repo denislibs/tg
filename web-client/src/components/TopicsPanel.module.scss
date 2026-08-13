@@ -33,13 +33,42 @@
   &:hover::-webkit-scrollbar-thumb { background: var(--secondary-text-color); }
 }
 
+// `ul` виртуального списка видимых тем. Строки лежат в нём абсолютом (класс
+// `.Item` из `virtual/DeferredSortedVirtualList.module.scss`), поэтому
+// containing block обязан быть на самом `ul`: без `position: relative` строки
+// отсчитывались бы от `.root` и не прокручивались бы вместе со списком. У
+// основного списка чатов то же делает `.virtual-chatlist` (_chatlist.scss:471),
+// у оверлея архива — `.archiveVirtualList` (Sidebar.module.scss).
+//
+// Класс `topic-dialogs-override` (tweb `forumTab/groupForumTab.ts:23`) сюда НЕ
+// переезжает — как и `chatlist virtual-chatlist` у архива: всё его правило
+// (`_topics.scss:232-235`) адресовано `.chatlist-chat`, то есть строке
+// tweb-чатлиста, которой у нас в панели нет, а обе его декларации уже вшиты в
+// `.row` ниже (`min-height: 4rem` → `height: 64px`, `padding-inline-start: .75rem`
+// → `padding-left: 12px`). Привезти партиал под класс, которого не на ком
+// применить, значит завести мёртвый CSS; тащить сюда сами tweb-классы строки —
+// редизайн панели, а задача этапа — механика рендера.
+//
+// `margin: 0` гасит браузерный отступ списка (глобальный сброс в
+// `styles/index.scss` снимает только padding и маркеры).
+.virtualList {
+  position: relative;
+  margin: 0;
+}
+
 // ряд темы (tweb SortedDialogList itemSize 64, noAvatar — иконка в заголовке)
 .row {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 3px;
-  min-height: 64px; // tweb .topic-dialogs-override .chatlist-chat { min-height: 4rem }
+  // tweb .topic-dialogs-override .chatlist-chat { min-height: 4rem }. У нас
+  // высота ФИКСИРОВАННАЯ, а не минимальная: строка лежит абсолютом с шагом
+  // `itemSize` (64) виртуального списка, и любое расхождение с ним даёт либо
+  // наложение строк, либо щель — в потоке та же строка просто раздвинула бы
+  // соседей. Значение то же, что у tweb (4rem). Считается ВМЕСТЕ с padding —
+  // глобальный `* { box-sizing: border-box }` (`styles/index.scss:141-143`).
+  height: 64px;
   padding: 6px 10px 6px 12px; // tweb padding-inline-start: .75rem
   border-radius: 12px;
   cursor: pointer;
@@ -58,7 +87,7 @@
     &:hover { background: color-mix(in srgb, var(--primary-color) 90%, #000); }
   }
 
-  // Цвета текста/иконок активного ряда задаются через prop active в renderRow
+  // Цвета текста/иконок активного ряда задаются через prop active в TopicRow
   // (Text рендерит div — CSS-селектор span сюда не попадает). Здесь только бейдж:
   // на акцентном фоне — белый фон, акцентный текст (tweb .active .badge).
   .badge {
