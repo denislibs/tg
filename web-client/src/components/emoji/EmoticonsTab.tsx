@@ -15,10 +15,10 @@
 // Классы `emoticons-will-move-*` вешаются только когда у вкладки есть меню
 // (tab.ts:104-109) — у GIF-вкладки (noMenu) их нет, как и в живом дампе
 // docs/research/tweb-dom/04-emoji-dropdown.json.
-import { useEffect, useState, type ReactNode, type RefObject, type UIEvent } from 'react'
-import { createPortal } from 'react-dom'
+import { type ReactNode, type RefObject, type UIEvent } from 'react'
 import InputSearch from '../../shared/ui/InputSearch'
 import IconButton from '../../shared/ui/IconButton'
+import TgIcon from '../TgIcon'
 import classNames from '../../shared/lib/classNames'
 
 /** Пункт ленты категорий: tweb StickersTabCategory.elements.menuTab —
@@ -50,15 +50,14 @@ export function MenuTab({
 }
 
 /** Поле поиска вкладки — tweb EmoticonsSearch (search.tsx): общий InputSearch
- * с классом `emoticons-search-input-container`. Полоска emoji-групп в tweb
- * ВСТАВЛЯЕТСЯ внутрь него (`inputSearch.input.after(scrollableContainer)`),
- * поэтому здесь она уходит порталом в тот же узел `.input-search`.
- *
- * отступление от tweb: у `input` нет класса `emoticons-search-input`, а кнопки
- * `emoticons-search-input-arrow` (сброс выбранной группы) нет вовсе — общий
- * `shared/ui/InputSearch` не даёт ни докинуть класс на сам инпут, ни скрыть
- * свою иконку поиска, под которой эта стрелка живёт. Группа сбрасывается
- * повторным кликом по чипу. */
+ * с классом `emoticons-search-input-container` на контейнере и
+ * `emoticons-search-input` на самом инпуте (search.tsx:157-158), без рамки и
+ * фокус-эффекта (noBorder/noFocusEffect, search.tsx:153-154). Полоска
+ * emoji-групп вставляется сразу после инпута (`inputSearch.input.after(...)`,
+ * search.tsx:97) — слот `afterInput`; стрелка сброса выбранной группы — после
+ * лупы (`searchIcon.after(arrowButton)`, search.tsx:101-103) — слот `afterIcon`.
+ * Лупа и стрелка меняются местами по `is-hiding` от выбранной группы
+ * (search.tsx:111-114). */
 export function EmoticonsSearch({
   inputRef,
   value,
@@ -68,6 +67,8 @@ export function EmoticonsSearch({
   placeholder,
   focused,
   chips,
+  hasGroup,
+  onGroupClear,
 }: {
   inputRef: RefObject<HTMLInputElement | null>
   value: string
@@ -78,54 +79,68 @@ export function EmoticonsSearch({
   focused?: boolean
   /** `.emoticons-search-input-category` — чипы emoji-групп */
   chips?: ReactNode
+  /** выбрана emoji-группа — лупа гаснет, стрелка «назад» показывается */
+  hasGroup?: boolean
+  /** клик по стрелке: сброс выбранной группы (tweb search.tsx:105-107) */
+  onGroupClear?: () => void
 }) {
-  // tweb вставляет полоску групп внутрь `.input-search`; у нас это родитель
-  // инпута (см. комментарий в shared/ui/InputSearch — корень компонента и есть
-  // `.input-search`), так что портал целится в него.
-  const [host, setHost] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    setHost(inputRef.current?.parentElement ?? null)
-  }, [inputRef])
-
   return (
-    <>
-      {/* placeholder НЕ отдаём общему InputSearch: в tweb он переезжает внутрь
-          `.emoticons-search-input-scrollable` (search.tsx:88-96) и там же
-          гаснет вместе с чипами по `is-searching` — рендерим его ниже. */}
-      <InputSearch
-        ref={inputRef}
-        className="emoticons-search-input-container"
-        value={value}
-        onChange={onChange}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        focused={focused}
-        onClear={() => onChange('')}
-      />
-      {host &&
-        createPortal(
-          <div
-            className={classNames(
-              'scrollable',
-              'scrollable-x',
-              'emoticons-search-input-scrollable',
-              value.trim() ? 'is-searching' : '',
-            )}
-          >
-            {/* tweb search.tsx:96 снимает с него `will-animate` */}
-            <span className="i18n input-search-placeholder" onClick={() => inputRef.current?.focus()}>
-              {placeholder}
-            </span>
-            {chips && <div className="emoticons-search-input-categories">{chips}</div>}
-          </div>,
-          host,
-        )}
-    </>
+    /* placeholder НЕ отдаём общему InputSearch: в tweb он переезжает внутрь
+       `.emoticons-search-input-scrollable` (search.tsx:90) и там же гаснет
+       вместе с чипами по `is-searching` — рендерим его в afterInput. */
+    <InputSearch
+      ref={inputRef}
+      className="emoticons-search-input-container"
+      inputClassName="emoticons-search-input"
+      noBorder
+      noFocusEffect
+      value={value}
+      onChange={onChange}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      focused={focused}
+      onClear={() => onChange('')}
+      afterInput={
+        <div
+          className={classNames(
+            'scrollable',
+            'scrollable-x',
+            'emoticons-search-input-scrollable',
+            value.trim() ? 'is-searching' : '',
+          )}
+        >
+          {/* tweb search.tsx:99 снимает с него `will-animate` */}
+          <span className="i18n input-search-placeholder" onClick={() => inputRef.current?.focus()}>
+            {placeholder}
+          </span>
+          {/* контейнер чипов есть и у вкладок без групп (tweb рендерит его
+              всегда, наполнение приходит из getEmojiGroups) */}
+          <div className="emoticons-search-input-categories">{chips}</div>
+        </div>
+      }
+      iconClassName={classNames('will-animate', hasGroup ? 'is-hiding' : '')}
+      afterIcon={
+        <IconButton
+          noRipple
+          className={classNames(
+            'will-animate',
+            'emoticons-search-input-arrow',
+            'input-search-part',
+            'input-search-button',
+            hasGroup ? '' : 'is-hiding',
+          )}
+          onClick={onGroupClear}
+        >
+          <TgIcon name="arrow_prev" size="inherit" className="button-icon" />
+        </IconButton>
+      }
+    />
   )
 }
 
 export default function EmoticonsTab({
   padding,
+  contentId,
   active,
   noMenu,
   searching,
@@ -140,6 +155,9 @@ export default function EmoticonsTab({
 }: {
   /** `emoji-padding` | `stickers-padding` | `gifs-padding` (tabs/*.ts) */
   padding: string
+  /** id узла `.emoticons-content` — `content-emoji|content-stickers|content-gifs`
+   * (tweb tabs/emoji.ts:316, stickers.ts:92, gifs.ts:82) */
+  contentId: string
   active: boolean
   /** вкладка без ленты категорий (tweb GifsTab: `noMenu: true`) */
   noMenu?: boolean
@@ -181,7 +199,7 @@ export default function EmoticonsTab({
           </div>
         </div>
       )}
-      <div className="emoticons-content">
+      <div className="emoticons-content" id={contentId}>
         <div
           ref={scrollRef}
           className={classNames('scrollable', 'scrollable-y', willMoveUp)}

@@ -7,16 +7,7 @@
 // «Сохранённые» без поиска.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
-import type { GifItem } from '../gifs'
-import type { TenorGif } from '../managers/stickersManager'
-
-const tenorToItem = (g: TenorGif): GifItem => ({
-  key: `t-${g.id}`,
-  width: g.width,
-  height: g.height,
-  mp4Url: g.mp4Url,
-  previewUrl: g.previewUrl,
-})
+import { tenorToItem, type GifItem } from '../gifs'
 
 export function useGifsPanel(active: boolean, query: string) {
   const managers = useManagers()

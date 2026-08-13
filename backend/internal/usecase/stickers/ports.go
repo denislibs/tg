@@ -25,10 +25,14 @@ type Repo interface {
 	// InstalledSets — установленные наборы пользователя по position.
 	InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSet, error)
 	SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSet, error)
+	// FeaturedSets — «трендовые» наборы: новейшие первыми, не больше limit.
+	FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error)
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error
 	Recent(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error)
+	// ClearRecent — стереть весь список недавних пользователя; идемпотентно.
+	ClearRecent(ctx context.Context, userID int64) error
 	// Fave — upsert + обрезка до keep новейших; Unfave идемпотентен.
 	Fave(ctx context.Context, userID, stickerID int64, keep int) error
 	Unfave(ctx context.Context, userID, stickerID int64) error
