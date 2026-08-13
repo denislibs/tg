@@ -20,9 +20,8 @@ func sliceDialogPage(all []domain.Dialog, p domain.DialogPage) domain.DialogPage
 			}
 		}
 	}
-	if from > count {
-		from = count
-	}
+	// from — либо 0, либо i+1 для валидного индекса i из range(all), т.е.
+	// не больше count; отдельная защита от выхода за границы не нужна.
 
 	to := count
 	if p.Limit > 0 && from+p.Limit < to {

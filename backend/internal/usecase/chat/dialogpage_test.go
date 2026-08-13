@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -117,4 +119,72 @@ func TestSliceDialogPage(t *testing.T) {
 		}
 		eq(t, got, []int64{10, 20, 30, 40, 50})
 	})
+}
+
+// TestListDialogsPage бьёт по самой проводке Interactor.ListDialogsPage, а не
+// только по чистой sliceDialogPage: чинит находку ревью — до этого теста подмена
+// `all, err := i.ListDialogs(...)` на `all, _ := i.ListDialogs(...)` (глотание
+// ошибки) не красила ни один тест пакета.
+func TestListDialogsPage(t *testing.T) {
+	t.Run("страница согласована с ListDialogs", func(t *testing.T) {
+		in, _ := newInteractor()
+		ctx := context.Background()
+		const owner int64 = 1
+		for _, peer := range []int64{2, 3, 4} {
+			if _, err := in.CreatePrivateChat(ctx, owner, peer); err != nil {
+				t.Fatalf("CreatePrivateChat: %v", err)
+			}
+		}
+
+		all, err := in.ListDialogs(ctx, owner)
+		if err != nil {
+			t.Fatalf("ListDialogs: %v", err)
+		}
+		if len(all) != 3 {
+			t.Fatalf("setup: got %d dialogs, want 3", len(all))
+		}
+
+		page, err := in.ListDialogsPage(ctx, owner, domain.DialogPage{Limit: 2})
+		if err != nil {
+			t.Fatalf("ListDialogsPage: %v", err)
+		}
+		if page.Count != len(all) || page.IsEnd {
+			t.Fatalf("page count=%d isEnd=%v, want count=%d isEnd=false", page.Count, page.IsEnd, len(all))
+		}
+		eq(t, chatIDs(page.Dialogs), chatIDs(all)[:2])
+
+		rest, err := in.ListDialogsPage(ctx, owner, domain.DialogPage{
+			Limit:        2,
+			OffsetChatID: page.Dialogs[len(page.Dialogs)-1].ChatID,
+		})
+		if err != nil {
+			t.Fatalf("ListDialogsPage (2-я страница): %v", err)
+		}
+		if !rest.IsEnd {
+			t.Fatal("должен быть конец")
+		}
+		eq(t, chatIDs(rest.Dialogs), chatIDs(all)[2:])
+	})
+
+	t.Run("ошибка ListDialogs пробрасывается наружу, а не глотается", func(t *testing.T) {
+		s := newStore()
+		wantErr := errors.New("boom")
+		in := New(fakeTx{}, errChatRepo{fakeChats{s}, wantErr}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
+
+		_, err := in.ListDialogsPage(context.Background(), 1, domain.DialogPage{})
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("got err=%v, want %v", err, wantErr)
+		}
+	})
+}
+
+// errChatRepo — обёртка над fakeChats, форсирующая ошибку ListDialogs: единственный
+// способ проверить, что ListDialogsPage её пробрасывает, а не глотает.
+type errChatRepo struct {
+	fakeChats
+	err error
+}
+
+func (r errChatRepo) ListDialogs(_ context.Context, _ int64) ([]domain.Dialog, error) {
+	return nil, r.err
 }
