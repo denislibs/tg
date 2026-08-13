@@ -39,7 +39,7 @@ const StickerCell = memo(function StickerCell({
       }}
     >
       {/* tweb mediaSizes.active.esgSticker = 72×72 — стикер занимает всю ячейку */}
-      <StickerMedia mediaId={st.mediaId} width={CELL} height={CELL} playOnHover loop />
+      <StickerMedia mediaId={st.mediaId} width={CELL} height={CELL} playOnHover loop thumb={st.thumb} />
     </div>
   )
 })

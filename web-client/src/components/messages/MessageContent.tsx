@@ -144,7 +144,9 @@ function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
   }
   return (
     <div className={s.stickerReal}>
-      <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} />
+      {/* mediaBlur — то же stripped-превью, что у остальных медиа сообщения:
+          нижний слой, пока файл стикера летит (tweb показывает тумб документа) */}
+      <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} thumb={m.mediaBlur} />
       {time}
     </div>
   )

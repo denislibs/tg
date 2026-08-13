@@ -28,7 +28,35 @@ describe('StickersManager', () => {
     const mgr = newStickersManager({ rest })
     const list = await mgr.recent()
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/recent', query: undefined })
-    expect(list).toEqual([{ id: 1, setId: 2, mediaId: 33, emoji: '🔥' }])
+    expect(list).toEqual([
+      { id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 0, height: 0, mime: '', thumb: '' },
+    ])
+  })
+
+  // Метаданные файла едут вместе со стикером: по width/height бокс вписывается по
+  // пропорции, по mime выбирается рендерер, thumb (base64 JPEG) показывается
+  // нижним слоем, пока файл летит. Потеря любого поля в маппинге = стикер
+  // рисуется квадратом и мигает пустотой до первого кадра.
+  it('маппинг несёт метаданные файла (w/h, mime, stripped-превью)', async () => {
+    const { rest } = fakeRest({
+      stickers: [
+        { id: 1, set_id: 2, media_id: 33, emoji: '🔥', width: 512, height: 384, mime: 'image/webp', thumb: '/9j/' },
+      ],
+    })
+    const mgr = newStickersManager({ rest })
+    expect(await mgr.recent()).toEqual([
+      { id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 512, height: 384, mime: 'image/webp', thumb: '/9j/' },
+    ])
+  })
+
+  // Старый бэк (или медиа без прогона процессинга) метаданных не пришлёт —
+  // маппинг обязан дать нули и пустые строки, а не undefined: витрина различает
+  // «нет превью» по пустой строке, а undefined утёк бы в src картинки.
+  it('отсутствующие метаданные схлопываются в нули, а не в undefined', async () => {
+    const { rest } = fakeRest({ stickers: [{ id: 1, set_id: 2, media_id: 33, emoji: '🔥', thumb: null }] })
+    const mgr = newStickersManager({ rest })
+    const [sticker] = await mgr.recent()
+    expect(sticker).toEqual({ id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 0, height: 0, mime: '', thumb: '' })
   })
 
   it('recent/faved tolerate a missing stickers array', async () => {
@@ -61,7 +89,9 @@ describe('StickersManager', () => {
     const mgr = newStickersManager({ rest })
     const list = await mgr.searchByEmoji('👍')
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/search', query: { emoji: '👍' } })
-    expect(list).toEqual([{ id: 9, setId: 1, mediaId: 12, emoji: '👍' }])
+    expect(list).toEqual([
+      { id: 9, setId: 1, mediaId: 12, emoji: '👍', width: 0, height: 0, mime: '', thumb: '' },
+    ])
   })
 
   it('setBySlug returns the set and mapped stickers', async () => {
@@ -71,7 +101,9 @@ describe('StickersManager', () => {
     const r = await mgr.setBySlug('duck')
     expect(calls[0].path).toBe('/sticker-sets/duck')
     expect(r.set).toEqual(set)
-    expect(r.stickers).toEqual([{ id: 1, setId: 1, mediaId: 10, emoji: '🦆' }])
+    expect(r.stickers).toEqual([
+      { id: 1, setId: 1, mediaId: 10, emoji: '🦆', width: 0, height: 0, mime: '', thumb: '' },
+    ])
   })
 
   it('install/uninstall hit POST/DELETE /sticker-sets/:id/install', async () => {

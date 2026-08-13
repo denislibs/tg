@@ -170,7 +170,7 @@ const CustomEmojiCell = memo(function CustomEmojiCell({
 }) {
   return (
     <span className="super-emoji super-emoji-custom" onClick={() => onPick(st.mediaId, st.emoji)}>
-      <StickerMedia mediaId={st.mediaId} width={34} height={34} playOnHover />
+      <StickerMedia mediaId={st.mediaId} width={34} height={34} playOnHover thumb={st.thumb} />
     </span>
   )
 })
