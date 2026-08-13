@@ -16,9 +16,10 @@ import { cleanup, renderHook, act } from '@testing-library/react'
 import { useNavigationActions } from './useNavigationActions'
 import { ManagersProvider } from './useManagers'
 import type { Managers } from '../../client/bootstrap'
+import type { TopicRow } from '../managers/groupsManager'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore } from '../../stores/chatStackStore'
+import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 
 afterEach(cleanup)
 
@@ -75,5 +76,56 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
 
     expect(useNavigationStore.getState().selectedId).toBe('555')
     expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([555])
+  })
+})
+
+const topic: TopicRow = {
+  id: 9, chatId: 100, rootMsgId: 55, title: 'Тема', iconColor: 1, iconEmoji: '',
+  closed: false, hidden: false, pinned: false, pos: 0, isGeneral: false, createdBy: 1,
+  msgCount: 0, lastText: '', lastType: '', lastSenderName: '',
+  unread: 0, unreadMentions: 0, muted: false, lastOut: false, lastMsgSeq: 0,
+}
+
+// (Fix ревью Task 5, Critical.) `useForumPanel.handleSelect` зовёт openTopicThread
+// «с чистого листа» — клик по форуму в списке чатов открывает панель тем локальным
+// стейтом Sidebar, МИНУЯ selectChat. Старый navigationStore.openTopicThread одним
+// set() выставлял и тред, и selectedId; новая проводка обязана давать тот же
+// результат через chatStackStore — стек глубины 2 (корень форума + тема), а не
+// один элемент (тогда selectOpenThread/closeTop с глубиной 1 были бы no-op).
+describe('useNavigationActions.openTopicThread — форум-топик «с чистого листа»', () => {
+  it('кладёт ПАРУ инстансов (корень форума + тема) и выставляет selectedId', () => {
+    const managers = testManagers()
+    const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.openTopicThread(100, topic) })
+
+    expect(useNavigationStore.getState().selectedId).toBe('100')
+    expect(useChatStackStore.getState().stack).toMatchObject([
+      { peerId: 100, threadId: undefined, type: 'chat' },
+      { peerId: 100, threadId: 55, type: 'chat' },
+    ])
+  })
+
+  it('selectOpenThread видит открытую тему (глубина стека > 1)', () => {
+    const managers = testManagers()
+    const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.openTopicThread(100, topic) })
+
+    expect(selectOpenThread(useChatStackStore.getState())).toEqual({
+      chatId: 100,
+      thread: expect.objectContaining({ rootMsgId: 55, kind: 'topic' }),
+    })
+  })
+
+  it('closeTop() снимает тему и оставляет корень форума (кнопка «назад» в шапке треда)', () => {
+    const managers = testManagers()
+    const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.openTopicThread(100, topic) })
+    act(() => { useChatStackStore.getState().closeTop() })
+
+    expect(useChatStackStore.getState().stack).toMatchObject([{ peerId: 100, type: 'chat', threadId: undefined }])
+    expect(selectOpenThread(useChatStackStore.getState())).toBeNull()
   })
 })

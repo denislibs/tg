@@ -4,12 +4,10 @@
 // который должен подписываться ровно один раз — Shell вызывает этот хук единожды.
 import { useEffect } from 'react'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
 import { useNavigationActions } from './useNavigationActions'
 
 export function useChatNavigation() {
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useChatStackStore(selectOpenThread)
   const draftPeer = useNavigationStore((s) => s.draftPeer)
   const selectChat = useNavigationStore((s) => s.selectChat)
   const setSelectedId = useNavigationStore((s) => s.setSelectedId)
@@ -30,7 +28,7 @@ export function useChatNavigation() {
   }, [])
 
   return {
-    selectedId, openThread, draftPeer,
+    selectedId, draftPeer,
     selectChat, setSelectedId,
     ...actions,
   }

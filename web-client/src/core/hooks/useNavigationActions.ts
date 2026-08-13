@@ -16,8 +16,20 @@ export function useNavigationActions() {
   // Форум-топик в tweb остаётся инстансом `chat` с threadId (chat.ts:894) —
   // кладём его поверх стека (tweb setInnerPeer). Субтитр темы (имя группы)
   // готовим здесь, чтобы chatStackStore не импортировал chatsStore.
+  //
+  // (Fix ревью Task 5, Critical.) `useForumPanel.handleSelect` зовёт этот путь
+  // «с чистого листа» — форум в списке чатов НЕ выбран (клик по форуму открывает
+  // панель тем локальным стейтом Sidebar, минуя `selectChat`). Без корня стек
+  // получал бы РОВНО один элемент (саму тему) — `selectedId` оставался бы `null`
+  // (нет подсветки в сайдбаре, `#column-center` уезжает офскрин на узких
+  // экранах), а `selectOpenThread`/`closeTop()` требуют глубины > 1, так что
+  // подсветка темы, хэш и кнопка «назад» в шапке треда молча не работали бы.
+  // Поэтому сначала — тем же путём, что и обычный выбор чата из списка —
+  // ставим корень форума (`selectChat` заодно выставляет `selectedId`), и лишь
+  // затем кладём тему поверх (`setInnerPeer`).
   const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
     const subtitle = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)?.title
+    useNavigationStore.getState().selectChat(String(chatId))
     useChatStackStore.getState().setInnerPeer({
       peerId: chatId,
       threadId: topic.rootMsgId,
