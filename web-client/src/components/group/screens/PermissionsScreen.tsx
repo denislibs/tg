@@ -35,12 +35,20 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
 
   return (
     <SettingsScreen title="Permissions" onBack={onBack} zIndex={70}>
+      {/* Строки прав — ровно та форма, что в дампе `15-right-13-group-permissions`:
+          `label.row.no-subtitle.row-with-toggle.row-clickable.hover-effect.rp`
+          с тумблером-ограничением (`checkbox-field-toggle-restriction`: снятый
+          тумблер красный, а не серый). Квадратный чекбокс
+          (`div.checkbox-box`) в этом экране tweb рисует ТОЛЬКО у под-прав
+          аккордеона «Send Media» (Send Photos / Videos / …) — такой вложенности
+          у нашей маски `PERMS` нет (см. `core/hooks/useGroupEdit.ts`). */}
       <Section caption="What can members of this group do?">
         {PERMS.map((p) => (
           <Row
             key={p.bit}
             label={p.label}
             toggle
+            restriction
             checked={(perms & p.bit) !== 0}
             onClick={() => push(perms ^ p.bit, slowIdx)}
           />

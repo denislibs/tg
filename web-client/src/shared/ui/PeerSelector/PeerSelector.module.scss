@@ -1,0 +1,34 @@
+// PeerSelector рендерит ГЛОБАЛЬНЫЕ классы tweb (`styles/tweb/_selector.scss` —
+// дословный порт партиала). Здесь только то, чего в партиале нет по построению.
+
+// Хост селектора — аналог tweb `.sidebar-content` (_sidebar.scss:
+// `display:flex; position:relative; flex:1 1 auto; height:100%; overflow:hidden`).
+// Он нужен потому, что `.selector` внутри — `height: 100%`, а его первый
+// ребёнок `.scrollable` — `position:absolute; inset:0`: без позиционированного
+// предка с определённой высотой список схлопнулся бы в ноль.
+.host {
+  display: flex;
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  // `.selector-height-container` в партиале сам держит `min-height: max(360px, …)`;
+  // здесь та же нижняя граница нужна хосту, иначе flex-элемент ужмётся под
+  // соседями (строка «Add Members» над селектором).
+  min-height: 360px;
+}
+
+// Действия строки участника (restrict / kick / ban / unban). В tweb их нет —
+// там то же самое живёт в контекстном меню участника
+// (`helpers/dom/createParticipantContextMenu`), которое мы не портировали.
+// Поэтому слот собственный: абсолютный, поверх строки, чтобы не влиять на
+// раскладку `.row` из партиала.
+.actions {
+  position: absolute;
+  inset-inline-end: .75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  z-index: 2;
+}

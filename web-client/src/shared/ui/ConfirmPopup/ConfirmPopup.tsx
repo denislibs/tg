@@ -1,10 +1,17 @@
 // ConfirmPopup — порт tweb PopupPeer (src/components/popups/peer.ts + index.ts
-// setButtons + scss/partials/popups/_popup.scss/_peer.scss): компактный конфирм
-// со скримом rgba(0,0,0,.3), карточкой 19.5–25rem (radius 2.5rem), хедером
-// [avatar? + title], описанием, опц. чекбоксами и рядом текстовых UPPERCASE-кнопок
-// (flex row-reverse; ≥3 — колонкой). Cancel добавляется автоматически последним
-// (tweb addCancelButton). Esc закрывает, Enter кликает первую не-cancel кнопку
-// (tweb btnConfirmOnEnter).
+// setButtons + scss/partials/popups/_popup.scss/_peer.scss). Разметка 1:1 с
+// дампом `docs/research/tweb-dom/17-popup-03-delete-message.json`:
+//   div.popup.popup-peer[.<модификатор>] >
+//     div.popup-container.z-depth-1[.have-checkbox] >
+//       div.popup-header ([avatar 32] + div.popup-title)
+//       + p.popup-description
+//       + label.checkbox-field.checkbox-ripple.hover-effect.rp (опц.)
+//       + div.popup-buttons[.is-vertical-layout] >
+//           button.popup-button.btn.danger.rp / button.popup-button.btn.primary.rp
+// Геометрию даёт партиал `styles/tweb/popups/_peer.scss` (19.5–25rem, карточка
+// width: min-content, padding .75rem .5rem, хедер 2.5rem, описание 15rem…fit).
+// Cancel добавляется автоматически последним (tweb addCancelButton). Esc
+// закрывает, Enter кликает первую не-cancel кнопку (tweb btnConfirmOnEnter).
 //
 // Показ/скрытие — КЛАССЫ, как у tweb PopupElement (popups/index.ts:359 `show()`
 // вешает `active` после reflow; popups/index.ts:420-421 `destroy()` вешает
@@ -41,6 +48,11 @@ export interface ConfirmPopupButton {
 export interface ConfirmPopupProps {
   /** controlled-режим; не передан — попап монтируется открытым и закрывается сам */
   open?: boolean
+  /**
+   * Модификатор попапа — второй класс корня (tweb `new PopupPeer('popup-delete-chat')`,
+   * peer.ts:35-40 → `'popup-peer' + ' ' + className`).
+   */
+  className?: string
   title?: ReactNode
   description?: ReactNode
   /** узел 32px слева от заголовка (tweb avatarNew size 32 в header.prepend) */
@@ -54,13 +66,14 @@ export interface ConfirmPopupProps {
   children?: ReactNode
 }
 
-// Текстовая кнопка конфирма (tweb .popup-button btn primary/danger) с ripple.
+// Текстовая кнопка конфирма — tweb popups/index.ts:263
+// (`'popup-button btn' + (isDanger ? ' danger' : ' primary')`) + ripple(button).
 function ConfirmButton({ text, danger, onClick }: { text: string; danger?: boolean; onClick: () => void }) {
   const { onPointerDown, ripple } = useRipple()
   return (
     <button
       type="button"
-      className={classNames('rp', 'rp-overflow', s.button, danger ? s.danger : '')}
+      className={classNames('popup-button', 'btn', danger ? 'danger' : 'primary', 'rp', 'rp-overflow')}
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
@@ -70,26 +83,26 @@ function ConfirmButton({ text, danger, onClick }: { text: string; danger?: boole
   )
 }
 
-// Строка чекбокса (tweb .checkbox-field в .popup-peer: min-height 3rem, ripple).
+// Строка чекбокса — tweb CheckboxField с withRipple внутри PopupPeer
+// (peer.ts:84-92): вся строка и есть `label.checkbox-field`, геометрию ей задаёт
+// `_peer.scss` (min-height 3rem, padding .25rem 1.125rem).
 function CheckboxRow({ text, checked, onToggle }: { text: ReactNode; checked: boolean; onToggle: () => void }) {
   const { onPointerDown, ripple } = useRipple()
   return (
-    <div
-      className={classNames('rp', 'rp-overflow', s.checkboxRow)}
-      role="checkbox"
-      aria-checked={checked}
+    <Checkbox
+      checked={checked}
+      shape="square"
+      className="checkbox-ripple hover-effect rp"
+      caption={text}
+      ripple={ripple}
       onPointerDown={onPointerDown}
-      onClick={onToggle}
-    >
-      {ripple}
-      <Checkbox checked={checked} shape="square" size={20} />
-      <span className={s.checkboxText}>{text}</span>
-    </div>
+      onToggle={onToggle}
+    />
   )
 }
 
 export default function ConfirmPopup({
-  open: openProp, title, description, avatar, checkboxes, buttons, onClose, onExitComplete, children,
+  open: openProp, className, title, description, avatar, checkboxes, buttons, onClose, onExitComplete, children,
 }: ConfirmPopupProps) {
   const t = useT()
   const container = usePortalContainer()
@@ -184,17 +197,20 @@ export default function ConfirmPopup({
   return createPortal(
     <div
       ref={rootRef}
-      className={classNames('popup', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
+      className={classNames('popup', 'popup-peer', className ?? '', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
       onClick={dismiss}
     >
-      <div className={classNames('popup-container', s.card)} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={classNames('popup-container', 'z-depth-1', checkboxes?.length ? 'have-checkbox' : '')}
+        onClick={(e) => e.stopPropagation()}
+      >
         {(title != null || avatar != null) && (
-          <div className={s.header}>
+          <div className="popup-header">
             {avatar}
-            <div className={s.title}>{title}</div>
+            <div className="popup-title">{title}</div>
           </div>
         )}
-        {description != null && <p className={s.description}>{description}</p>}
+        {description != null && <p className="popup-description">{description}</p>}
         {(checkboxes ?? []).map((c, i) => (
           <CheckboxRow
             key={i}
@@ -204,7 +220,7 @@ export default function ConfirmPopup({
           />
         ))}
         {children}
-        <div className={classNames(s.buttons, vertical ? s.vertical : '')}>
+        <div className={classNames('popup-buttons', vertical ? 'is-vertical-layout' : '')}>
           {buttons.map((b, i) => (
             <ConfirmButton key={i} text={b.text} danger={b.danger} onClick={() => activate(b)} />
           ))}

@@ -2,12 +2,13 @@
 // type 'privacy'): исключения правила (multi, галочка подтверждает) и «Block
 // user...» (single, клик выбирает сразу). Кандидаты — контакты ∪ пиры диалогов
 // + глобальный поиск.
+//
+// Разметка — `shared/ui/PeerSelector`; вариант privacy в tweb это
+// `design: 'round', checkboxSide: 'right'` (addMembers.tsx:52-56), то есть тот
+// же `selector-round selector-right`, что у списков правой колонки.
 import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from './kit'
-import InputSearch from '../../shared/ui/InputSearch'
-import UserAvatar from '../UserAvatar'
-import Checkbox from '../../shared/ui/Checkbox'
-import Text from '../../shared/ui/Text'
+import PeerSelector from '../../shared/ui/PeerSelector'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -58,20 +59,15 @@ export default function PrivacyUserPicker({
     }
   }, [q, managers])
 
-  const list = useMemo(() => {
+  // Фильтрация своя (`noFilter` у селектора): выдачу глобального поиска
+  // повторно по имени фильтровать нельзя — сервер матчит и по username.
+  const peers = useMemo(() => {
     const query = q.trim().toLowerCase()
     const base = candidates.filter((c) => !query || c.name.toLowerCase().includes(query))
     const seen = new Set(base.map((c) => c.id))
     return [...base, ...found.filter((u) => !seen.has(u.id))]
+      .map((c) => ({ id: c.id, name: c.name, avatarUrl: c.avatarUrl }))
   }, [candidates, q, found])
-
-  const rowClick = (id: number) => {
-    if (!multi) {
-      onPick?.(id)
-      return
-    }
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
 
   const changed = useMemo(() => {
     if (selected.length !== initial.length) return true
@@ -81,25 +77,17 @@ export default function PrivacyUserPicker({
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={80}>
-      <div className={s.search}>
-        <InputSearch value={q} onChange={setQ} placeholder={t(placeholder)} />
-      </div>
-      <div className={s.cardList}>
-        {list.length === 0 && (
-          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: 16, display: 'block', textAlign: 'center' }}>
-            {t('No Results')}
-          </Text>
-        )}
-        {list.map((c) => (
-          <div key={c.id} className={s.memberRow} onClick={() => rowClick(c.id)}>
-            {multi && <Checkbox checked={selected.includes(c.id)} shape="square" size={20} />}
-            <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} />
-            <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--primary-text-color)">{c.name}</Text>
-            </div>
-          </div>
-        ))}
-      </div>
+      <PeerSelector
+        peers={peers}
+        mode={multi ? 'multi' : 'single'}
+        noFilter
+        placeholder={t(placeholder)}
+        onQueryChange={setQ}
+        selected={selected}
+        onSelectedChange={setSelected}
+        onPick={(p) => onPick?.(p.id)}
+        empty={{ title: 'No Results' }}
+      />
 
       {multi && changed && (
         <div className={s.fab} onClick={() => onDone?.(selected)}>

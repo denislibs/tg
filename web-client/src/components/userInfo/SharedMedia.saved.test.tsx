@@ -309,7 +309,7 @@ describe('SharedMedia — «Избранное» на виртуальном я�
     // «переименовать класс скроллера» краснит здесь, а не молча оставляет
     // список без окна).
     const panel = readFileSync(join(__dirname, '..', 'UserInfoPanel.tsx'), 'utf8')
-    expect(panel).toMatch(/<div ref=\{bodyRef\} className=\{s\.body\}/)
+    expect(panel).toMatch(/<div ref=\{bodyRef\} className=\{classNames\('scrollable', 'scrollable-y', s\.body\)\}/)
     expect(readFileSync(join(__dirname, 'SharedMedia.tsx'), 'utf8')).toContain("closest<HTMLElement>('.' + s.body)")
   })
 })
