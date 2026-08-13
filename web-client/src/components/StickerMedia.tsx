@@ -138,13 +138,21 @@ const StickerMedia = memo(function StickerMedia({
             // tweb wrapSticker: стикеры в чате и в пикере — разные классы lite-mode,
             // по ним intersector.setAutoplay гасит/будит их пачкой при смене настройки
             liteModeKey: playOnHover ? 'stickers_panel' : 'stickers_chat',
-            noOffscreen: true, // этап 1: legacy-рендер (декод в воркере, отрисовка на main)
-            // Кэш кадров только для зацикленных стикеров. У one-shot (loop=false) при
-            // завершении срабатывает onLap → clearCache → ImageBitmap.close(), и кадр,
-            // который в этот момент дорисовывается, детачится (drawImage on detached).
-            // Для one-shot кэш всё равно бесполезен (каждый кадр показывается один раз),
-            // а loop=true никогда не завершается → clearCache не вызывается, кэш
-            // безопасен и ускоряет повторы. Этап 2 (offscreen) кэширует в воркере.
+            // Offscreen-рендер (tweb по умолчанию): canvas уезжает в воркер
+            // (`transferControlToOffscreen`), главный поток не трогает пиксели и не
+            // получает кадры. Наш lottie-воркер — dedicated (не SharedWorker),
+            // поэтому презентация идёт через per-tab compositor-воркер, как в tweb
+            // при `IS_SHARED_WORKER_OFFSCREEN_CANVAS_SUPPORTED === false`.
+            // Снятие нижнего слоя в этом режиме гейтится `ensurePresented()`
+            // (см. wrappers/stickerAppearance) — без него кадр снимался бы до
+            // прокраски. Safari и браузеры без OffscreenCanvas/ImageBitmap
+            // деградируют в legacy сами (lib/lottie/shouldRenderOffscreen).
+            //
+            // Кэш кадров в offscreen-режиме живёт в воркере и защищён от гонки
+            // очистки; в legacy-фолбэке он на вкладке, и у one-shot (loop=false)
+            // завершение зовёт onLap → clearCache → ImageBitmap.close() ровно
+            // тогда, когда кадр дорисовывается (drawImage on detached). Поэтому
+            // кэш по-прежнему включаем только для зацикленных.
             noCache: !loop,
           })
           .then((p) => {
