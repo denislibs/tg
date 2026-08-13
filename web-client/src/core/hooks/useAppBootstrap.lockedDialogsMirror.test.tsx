@@ -53,7 +53,11 @@ function wrapper(managers: Managers) {
 function fakeManagers(fillMirror: ReturnType<typeof vi.fn>, refresh: ReturnType<typeof vi.fn>): Managers {
   return {
     auth: { me: vi.fn(async () => null) },
-    dialogs: { fillMirror, refresh },
+    // Сетевой догон `applyDialogsMirror` — ПОЛНЫЙ `refresh()`, а не страница
+    // (см. докблок в `client/boot.ts`). `getDialogs` фейк всё равно держит:
+    // мутация «вернуть постраничный догон» должна дойти до ассерта, а не упасть
+    // на отсутствующем методе.
+    dialogs: { fillMirror, refresh, getDialogs: vi.fn(async () => ({ dialogs: [], count: 0, isEnd: false })) },
     presence: { get: vi.fn(async () => []) },
   } as unknown as Managers
 }
@@ -76,13 +80,15 @@ describe('useAppBootstrap: зеркало диалогов после разбл
     // Сеть совпала с (тоже пустой) памятью владельца — ИМЕННО этот случай
     // раньше оставлял зеркало без единой применённой операции.
     const refresh = vi.fn(async () => null)
+    const managers = fakeManagers(fillMirror, refresh)
 
-    renderHook(() => useAppBootstrap(), { wrapper: wrapper(fakeManagers(fillMirror, refresh)) })
+    renderHook(() => useAppBootstrap(), { wrapper: wrapper(managers) })
 
-    for (let i = 0; i < 10; i++) await Promise.resolve()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
 
     expect(fillMirror).toHaveBeenCalledTimes(1)
     expect(refresh).toHaveBeenCalledTimes(1)
+    expect(managers.dialogs.getDialogs).not.toHaveBeenCalled()
     expect(useChatsStore.getState().loaded).toBe(true)
     expect(useChatsStore.getState().dialogs).toEqual([])
   })
@@ -98,7 +104,7 @@ describe('useAppBootstrap: зеркало диалогов после разбл
 
     renderHook(() => useAppBootstrap(), { wrapper: wrapper(fakeManagers(fillMirror, refresh)) })
 
-    for (let i = 0; i < 10; i++) await Promise.resolve()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
 
     expect(useChatsStore.getState().loaded).toBe(true)
     expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])

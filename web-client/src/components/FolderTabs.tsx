@@ -1,7 +1,7 @@
 import { Tabs } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
 import type { Folder } from '../core/managers/foldersManager'
-import { ALL_FOLDER_ID } from '../stores/foldersStore'
+import { ALL_FOLDER_ID } from '../core/folderIds'
 
 // Табы папок (tweb folders-tabs): «Все» + папки пользователя; value = id папки
 // (0 — «Все чаты»). Правый клик по табу — контекстное меню папки, как в tweb

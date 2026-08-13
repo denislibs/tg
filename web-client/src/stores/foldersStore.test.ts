@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
-import { loadFolders, useFoldersStore, ALL_FOLDER_ID } from './foldersStore'
+import { applyFolderUpdate, loadFolders, useFoldersStore } from './foldersStore'
+import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)
@@ -24,6 +25,7 @@ describe('foldersStore', () => {
     await loadFolders({
       folders: { list: () => Promise.resolve([folder]) },
       contacts: { list: () => Promise.resolve([]) },
+      dialogs: { setContactIds: async () => {} },
     })
 
     expect(useAppStateStore.getState().folders).toEqual([folder])
@@ -36,6 +38,7 @@ describe('foldersStore', () => {
     await loadFolders({
       folders: { list: () => Promise.reject(new Error('offline')) },
       contacts: { list: () => Promise.reject(new Error('offline')) },
+      dialogs: { setContactIds: async () => {} },
     })
 
     expect(useAppStateStore.getState().folders).toEqual([folder])
@@ -56,5 +59,30 @@ describe('foldersStore', () => {
 
     expect(useAppStateStore.getState().folders).toEqual([])
     expect(useFoldersStore.getState().selectedId).toBe(ALL_FOLDER_ID)
+  })
+
+  // Тот же инвариант на ВТОРОМ пути удаления — пуш с другого устройства. Пока он
+  // его не соблюдал, показанной оставалась папка, которой уже нет в списке табов:
+  // список чатов рисует кадр папки вне `folderOrder` (ChatList/TabSlide), и до
+  // клика по табу пользователь видел бы чужой/пустой список.
+  it('пуш folder_update {deleted} по ВЫБРАННОЙ папке тоже сбрасывает выбор', () => {
+    useAppStateStore.setState({ folders: [folder] })
+    useFoldersStore.getState().select(7)
+
+    applyFolderUpdate({ folder_id: 7, deleted: true })
+
+    expect(useAppStateStore.getState().folders).toEqual([])
+    expect(useFoldersStore.getState().selectedId).toBe(ALL_FOLDER_ID)
+  })
+
+  it('пуш об удалении ДРУГОЙ папки выбор не трогает', () => {
+    const other: Folder = { ...folder, id: 9, title: 'Другая', pos: 1 }
+    useAppStateStore.setState({ folders: [folder, other] })
+    useFoldersStore.getState().select(7)
+
+    applyFolderUpdate({ folder_id: 9, deleted: true })
+
+    expect(useAppStateStore.getState().folders).toEqual([folder])
+    expect(useFoldersStore.getState().selectedId).toBe(7)
   })
 })

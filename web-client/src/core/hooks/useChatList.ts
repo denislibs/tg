@@ -7,7 +7,7 @@ import { useMemo, useRef } from 'react'
 import type { Chat } from '../../data'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useDrafts } from '../../stores/draftsStore'
-import { useNotifyStore, notifyTypeForChat } from '../../stores/notifyStore'
+import { useNotifyStore, isDialogMuted } from '../../stores/notifyStore'
 import { dialogToChat } from '../dialogToChat'
 
 export function useChatList(): Chat[] {
@@ -24,7 +24,9 @@ export function useChatList(): Chat[] {
       let chat = dialogToChat(d, meId, draftsByChat[d.chatId])
       // Глобально выключенный тип чатов показывается как muted (tweb
       // isPeerLocalMuted с respectType): иконка + серый badge у всех таких чатов.
-      if (!chat.muted && notifySettings[notifyTypeForChat(d.type)].muted) chat = { ...chat, muted: true }
+      // Само правило — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
+      // пин stores/noDuplicateMuteRule.test.ts); здесь только его применение.
+      if (!chat.muted && isDialogMuted(d, notifySettings)) chat = { ...chat, muted: true }
       seen.add(d.chatId)
       const json = JSON.stringify(chat)
       const hit = cache.get(d.chatId)

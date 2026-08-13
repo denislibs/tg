@@ -13,17 +13,38 @@ import { dialogIndex } from '../dialogs/dialogIndex'
 import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
 import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
 import { equal } from '../store/reconcile'
+import { dialogMatchesFolder } from '../folderFilter'
+// Наше закрепление пер-юзерное и на весь список сразу — запись одна (см.
+// chatsStore), поэтому `pinnedOrders` ключуется тем же ALL_FOLDER_ID.
+// Обе константы — общий дом core/folderIds.ts (их читает и main, и воркер).
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
+import type { Folder } from './foldersManager'
 
-/** Наше закрепление пер-юзерное и на весь список сразу — запись одна (см. chatsStore). */
-const ALL_FOLDER_ID = 0
+/** Размер страницы по умолчанию — как в tweb (`limit = 20`, dialogs.ts:1614). */
+const DEFAULT_LIMIT = 20
+
+/** Ответ `getDialogs` — контракт 1:1 с tweb (dialogs.ts:1605-1610, без isTopEnd:
+ * его считает потребитель-виртуализатор, этап 3). */
+export type DialogsPage = { dialogs: Dialog[]; count: number; isEnd: boolean }
+
+/** Ответ `GET /chats` в форме Task 3 (`chat_handler.go::ListDialogs`). */
+type ChatsResponse = { chats?: RawDialog[]; count?: number; is_end?: boolean }
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
   onDialogOps?: (ops: DialogOp[]) => void
   /** офлайн-кэш прошлой сессии (persist.loadDialogs) */
   loadCache: () => Promise<Dialog[]>
-  /** ключи State, от которых зависит порядок (persist.loadStateAll) */
-  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; drafts: Draft[] }>
+  /**
+   * Ключи State, от которых зависит порядок (persist.loadStateAll), и —
+   * этап 2 — определения папок: фильтр папки считается в воркере
+   * (`getDialogs({filterId})`), а на холодном старте State никто не ПИШЕТ
+   * (boot.ts поднимает его с диска через `setAppStateSilent`), поэтому канала
+   * `setStateKey` для первого кадра мало. `folders` опционален по тому же
+   * приёму, что `getMeId`/`savePinnedOrders`: тесты, которых папки не
+   * касаются, его не задают.
+   */
+  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; drafts: Draft[]; folders?: Folder[] }>
   /** id текущего пользователя — нужен applyNewMessage (не бампить бейдж на своё же
    * эхо). Разрешается лениво (воркер узнаёт `me` асинхронно), поэтому геттер, а не
    * значение — тот же приём, что у `newMessagesManager` (messagesManager.ts). */
@@ -77,6 +98,34 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   let pinnedOrders: Record<number, number[]> = {}
   let pinnedOrder: number[] = []
   let drafts: Draft[] = []
+  // Этап 2 (пагинация): входы фильтра папок. Определения — State-ключ `folders`
+  // (диск при гидрации + `setStateKey` на изменение), контакты — отдельный
+  // сеттер `setContactIds` (владения контактами этот этап не заводит, см. спеку
+  // «Фильтр папки переезжает в воркер»).
+  let folders: Folder[] = []
+  let contactIds: ReadonlySet<number> = new Set()
+  /**
+   * Контакты УЖЕ приезжали (пусть даже пустым списком) — третье состояние, без
+   * которого пустой `contactIds` неотличим от «контактов ещё нет».
+   *
+   * Порт гарантии оригинала: tweb перед фильтрацией непользовательской папки
+   * ЖДЁТ `fillContacts()` и только потом считает (`dialogs.ts:1625-1642`). У
+   * нас контакты приезжают пушем (`stores/foldersStore.ts::loadFolders` →
+   * `setContactIds`), ждать нечего — значит нужен признак «данных ещё не
+   * было»: иначе правило `contacts`/`non_contacts` МОЛЧА даёт неверную
+   * страницу (все — не-контакты), а это хуже пустой (см. forFilter).
+   */
+  let contactsKnown = false
+  /**
+   * Список загружен ЦЕЛИКОМ — порт tweb `isDialogsLoaded(realFolderId)`
+   * (dialogs.ts:1700). Выставляет только сетевой ответ, покрывший весь набор:
+   * `is_end` пришёл на запрос БЕЗ курсора. Пока флаг не поднят, `getDialogs`
+   * при нехватке кэша идёт в сеть, а `count` берётся у сервера.
+   */
+  let loadedAll = false
+  /** `count` последнего сетевого ответа (аналог tweb `getFolder(filterId).count`);
+   * `null` — сети ещё не было (холодный кэш с диска). */
+  let serverCount: number | null = null
   let hydrated = false
   // Промис гидратации в полёте (а не булев флаг): конкурентный fillMirror()/
   // refresh() — две вкладки поднимают общий SharedWorker одновременно, либо оба
@@ -281,6 +330,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     pinnedOrders = state.pinnedOrders
     pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
     drafts = state.drafts
+    folders = state.folders ?? []
     if (!items.length) {
       const cached = await loadCache()
       await decryptSecretPreviews(cached)
@@ -288,6 +338,165 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       setAll(cached)
     }
     hydrated = true
+  }
+
+  /**
+   * Элементы кэша, прошедшие фильтр папки, в текущем порядке — порт tweb
+   * `getFolderDialogs(filterId)` (dialogs.ts:1650). `null` — посчитать папку
+   * ПОКА НЕЧЕМ; показать вместо неё весь список (или неверно отфильтрованный)
+   * хуже, чем показать пустую страницу со скелетонами (спека, «Фильтр папки
+   * переезжает в воркер»).
+   *
+   * Входов у фильтра два, и «ещё не приехало» бывает у обоих:
+   *  - определения папок (`folders`) — папки с таким id мы не знаем;
+   *  - контакты (`contactsKnown`) — правило `contacts`/`non_contacts` без них
+   *    посчитало бы КАЖДЫЙ приватный чат не-контактом и молча отдало неверную
+   *    страницу. tweb в этом месте дожидается `fillContacts()`
+   *    (dialogs.ts:1625-1642); нам ждать нечего — контакты приходят пушем, —
+   *    поэтому ведём себя как с неизвестной папкой.
+   */
+  function forFilter(filterId: number): DialogItem[] | null {
+    if (filterId === ALL_FOLDER_ID) return items.filter((i) => !i.dialog.archived)
+    if (filterId === ARCHIVE_FOLDER_ID) return items.filter((i) => i.dialog.archived)
+    const folder = folders.find((f) => f.id === filterId)
+    if (!folder) return null
+    if (!contactsKnown && (folder.contacts || folder.nonContacts)) return null
+    // Архив в пользовательские папки не попадает — как в tweb, где архивные
+    // диалоги лежат в ДРУГОЙ реальной папке и в выборку фильтра не входят.
+    return items.filter((i) => !i.dialog.archived && dialogMatchesFolder(i.dialog, folder, contactIds))
+  }
+
+  /**
+   * Размер набора для страницы — порт `count: loadedAll ? curDialogStorage.length
+   * : this.getFolder(filterId).count` (dialogs.ts:1706), обе ветки развилки
+   * здесь же, чтобы колсайты не повторяли одно и то же условие.
+   *
+   * Список загружен целиком — размер это длина кэша. Иначе для «Всех чатов»
+   * берём `count` последнего ответа сервера; для архива и пользовательских
+   * папок серверного размера у нас НЕТ (бэкенд про папки не знает, `count` в
+   * ответе — размер всего набора), поэтому отдаём длину отфильтрованного кэша.
+   * До первой сети `serverCount === null` — тоже длина кэша (отступление №3
+   * спеки: tweb в этом месте отдаёт `null` и перезапрашивает через 500 мс).
+   */
+  function countFor(filterId: number, cached: readonly DialogItem[]): number {
+    if (loadedAll || filterId !== ALL_FOLDER_ID) return cached.length
+    return serverCount ?? cached.length
+  }
+
+  /**
+   * Позиция курсора в отфильтрованном списке — порт dialogs.ts:1691-1698.
+   * Курсор — ЗНАЧЕНИЕ индекса последнего полученного диалога, а не позиция:
+   * список мог переехать между запросами, линейный поиск это переживает.
+   */
+  function offsetFor(list: readonly DialogItem[], offsetIndex: number): number {
+    let offset = 0
+    if (offsetIndex > 0) {
+      for (const length = list.length; offset < length; ++offset) {
+        if (offsetIndex > list[offset].index) break
+      }
+    }
+    return offset
+  }
+
+  /**
+   * Слить страницу в кэш: новые диалоги дописываются, известные обновляются на
+   * месте, публикуется `upsert` (`reset` остаётся за `refresh()` и гидрацией).
+   *
+   * `syncPinnedOrder` здесь НЕ зовётся сознательно (спека, «Хвост из этапа 1»):
+   * порядок закреплённых выводится из ПОЛНОГО списка, а частичная страница
+   * видит лишь часть пинов — засеяв порядок по ней, мы поставили бы ещё не
+   * приехавшие закреплённые задним числом ниже. Дублирующая проверка — тест
+   * «слияние страницы не трогает порядок закреплённых»
+   * (dialogsManager.pagination.test.ts).
+   *
+   * Возвращает, сколько диалогов страница добавила ВПЕРВЫЕ (обновление уже
+   * известного не считается). Ноль — признак того, что курсор не продвинулся;
+   * что с этим делать, решает `getDialogs` (см. фолбэк на `refresh()`).
+   */
+  function mergePage(dialogs: Dialog[]): number {
+    const byId = new Map(items.map((i) => [i.dialog.chatId, i]))
+    const changed: DialogItem[] = []
+    let added = 0
+    for (const dialog of dialogs) {
+      const prev = byId.get(dialog.chatId)?.dialog
+      if (!prev) added++
+      else if (equal(prev, dialog)) continue // тот же диалог теми же значениями — не операция
+      const item: DialogItem = { dialog, index: dialogIndex(dialog, pinnedOrder, draftFor(dialog.chatId)) }
+      byId.set(dialog.chatId, item)
+      changed.push(item)
+    }
+    if (!changed.length) return added
+    items = [...byId.values()].sort((a, b) => b.index - a.index)
+    publish([{ op: 'upsert', items: changed }])
+    return added
+  }
+
+  /**
+   * Сетевая страница — порт `appMessagesManager.getTopMessages` из ветки
+   * догрузки (dialogs.ts:1712-1717). Курсор к серверу — `chatId` последнего
+   * элемента кэша, а не `offsetIndex`: у бэкенда своего понятия `dialogIndex`
+   * нет (отступление №1 спеки). `null` — ответ применять нельзя (офлайн либо
+   * сменившаяся сессия).
+   */
+  async function fetchPage(limit: number, offsetChatId: number): Promise<{ isEnd: boolean; added: number } | null> {
+    const gen = sessionGen
+    try {
+      const r = await rest.get<ChatsResponse>('/chats', { limit, offset_chat_id: offsetChatId })
+      const dialogs = (r.chats ?? []).map(mapDialog)
+      await decryptSecretPreviews(dialogs)
+      // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
+      if (gen !== sessionGen) return null
+      if (typeof r.count === 'number') serverCount = r.count
+      const isEnd = !!r.is_end
+      const added = mergePage(dialogs)
+      // Полным набор считается, когда конец ДОСТИГНУТ и мы держим его ЦЕЛИКОМ:
+      // либо страница шла без курсора (значит покрыла набор от начала), либо
+      // кэш дорос до серверного `count`. Порт tweb: там `dialogsLoaded`
+      // поднимает любая дошедшая до конца страница (appMessagesManager.ts:3639),
+      // потому что страницы идут строго сверху; у нас курсор — `chatId`, и при
+      // исчезнувшем опорном чате бэкенд отдаёт с начала (dialogpage.go:14-22),
+      // поэтому одного `is_end` мало — сверяем с размером набора, как это же
+      // делает tweb в `dialogsLength >= count`.
+      if (isEnd && (!offsetChatId || items.length >= (serverCount ?? Infinity))) loadedAll = true
+      return { isEnd, added }
+    } catch (e) {
+      if (e instanceof HttpError) throw e
+      return null // офлайн — остаёмся на кэше, как в refresh()
+    }
+  }
+
+  /**
+   * Тело `refresh()` отдельной функцией: его зовёт не только RPC-метод, но и
+   * `getDialogs` — фолбэком, когда страница по курсору перестала продвигать
+   * список (см. там же). Ссылаться из объекта на его собственный метод
+   * (`this`/замыкание на литерал) владелец не может: он раздаётся по RPC
+   * поштучно, `this` на той стороне не существует.
+   */
+  async function doRefresh(): Promise<DialogOp | null> {
+    const gen = sessionGen
+    await hydrate()
+    try {
+      const r = await rest.get<ChatsResponse>('/chats')
+      const dialogs = (r.chats ?? []).map(mapDialog)
+      await decryptSecretPreviews(dialogs)
+      // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
+      if (gen !== sessionGen) return null
+      // Этап 2: запрос без параметров — весь список, поэтому `is_end` в ответе
+      // означает «кэш покрывает набор целиком» (см. loadedAll). Дальше
+      // `getDialogs` отвечает из памяти и в сеть не ходит. `count` из этого же
+      // ответа НЕ запоминаем сознательно: при `loadedAll` размером набора
+      // служит длина кэша (порт dialogs.ts:1706), а без `is_end` (ответ
+      // сервера прежней формы) этот же ответ полным не считается — и тогда
+      // страницу всё равно догоняет `fetchPage`, приносящий свой `count`.
+      if (r.is_end) loadedAll = true
+      const op = setAll(dialogs)
+      // Ответ совпал с памятью — ни операции, ни записи на диск (Important #4).
+      if (op) publish([op])
+      return op
+    } catch (e) {
+      if (e instanceof HttpError) throw e
+      return null
+    }
   }
 
   function hydrate(): Promise<void> {
@@ -335,26 +544,99 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * `fillMirror`: пробел закрывает ОТВЕТ RPC, а не следующий бродкаст;
      * повторное применение через бродкаст идемпотентно.
      */
-    async refresh(): Promise<DialogOp | null> {
+    refresh: doRefresh,
+
+    getSnapshot: (): DialogItem[] => items,
+
+    /**
+     * Страница списка — порт tweb `dialogsStorage.getDialogs`
+     * (lib/storages/dialogs.ts:1691-1753; поиск/форумы/`skipMigrated` у нас
+     * отсутствуют как явления, поэтому портирована только ветка списка).
+     *
+     * Три шага оригинала: (1) отфильтровать кэш папкой, (2) найти курсор
+     * линейным поиском по ЗНАЧЕНИЮ индекса, (3) хватает кэша — нарезать
+     * локально, не хватает — одна сетевая страница, пересчитать курсор,
+     * нарезать заново.
+     *
+     * Размер набора и признак конца — `countFor`/`loadedAll` (см. их докблоки);
+     * страница, не дотянувшаяся до хвоста кэша, концом не считается — порт
+     * `dialogs.ts:1751`.
+     *
+     * Конкурентные вызовы НЕ сериализуются: два одновременных `getDialogs`
+     * выпустят два запроса. Так же и в tweb — очередь держит потребитель
+     * (`helpers/sequentialCursorFetcher.ts`, этап 3), а не хранилище.
+     */
+    async getDialogs(options: { offsetIndex?: number; limit?: number; filterId?: number } = {}): Promise<DialogsPage> {
+      const { offsetIndex = 0, limit = DEFAULT_LIMIT, filterId = ALL_FOLDER_ID } = options
       const gen = sessionGen
       await hydrate()
-      try {
-        const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
-        const dialogs = (r.chats ?? []).map(mapDialog)
-        await decryptSecretPreviews(dialogs)
-        // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
-        if (gen !== sessionGen) return null
-        const op = setAll(dialogs)
-        // Ответ совпал с памятью — ни операции, ни записи на диск (Important #4).
-        if (op) publish([op])
-        return op
-      } catch (e) {
-        if (e instanceof HttpError) throw e
-        return null
+      // Сессия сменилась, пока читали диск (Minor #4) — отдаём честно пустую страницу.
+      if (gen !== sessionGen) return { dialogs: [], count: 0, isEnd: false }
+
+      const cached = forFilter(filterId)
+      // Считать папку пока нечем (определения или контакты не приехали) — см. forFilter.
+      if (!cached) return { dialogs: [], count: 0, isEnd: false }
+
+      // Порт dialogs.ts:1700-1710 — попадание в кэш отвечает без сети.
+      const offset = offsetFor(cached, offsetIndex)
+      const isEnoughDialogs = cached.length >= offset + limit
+      if (loadedAll || isEnoughDialogs) {
+        return {
+          dialogs: cached.slice(offset, offset + limit).map((i) => i.dialog),
+          count: countFor(filterId, cached),
+          isEnd: loadedAll && offset + limit >= cached.length,
+        }
+      }
+
+      // Порт dialogs.ts:1712-1752 — одна страница из сети, затем пересчёт курсора.
+      let res = await fetchPage(limit, items.length ? items[items.length - 1].dialog.chatId : 0)
+      // Гвард сессии здесь СОЗНАТЕЛЬНО НЕ ПОКРЫТ мутацией: `resetForLogout()`
+      // синхронно опустошает `items`, а `fetchPage` под сменившимся поколением
+      // ничего не сливает, поэтому нижняя ветка и так соберёт пустую страницу —
+      // обе ветки дают один результат. Гвард держит инвариант «ответ прошлой
+      // сессии не собирается из кэша НОВОЙ» (регидратация могла успеть
+      // наполнить `items` между сбросом и этой строкой) и обязан пережить
+      // появление такой регидратации.
+      if (gen !== sessionGen) return { dialogs: [], count: 0, isEnd: false }
+      // Страница по курсору не принесла НИ ОДНОГО нового диалога и концом
+      // набора себя не объявила — курсор залип: опорный чат на сервере исчез,
+      // и бэкенд отдаёт с начала (`dialogpage.go:14-22`), а хвост кэша не
+      // сдвинулся, значит следующий запрос уйдёт с ТЕМ ЖЕ `offset_chat_id` —
+      // список не продвинулся бы никогда. Один раз падаем на полный `refresh()`
+      // (он же поднимет `loadedAll`), дальше страницы идут из памяти.
+      if (res && !res.isEnd && !res.added) {
+        await doRefresh()
+        if (gen !== sessionGen) return { dialogs: [], count: 0, isEnd: false }
+        res = null // конец набора теперь решает loadedAll, а не залипшая страница
+      }
+      const after = forFilter(filterId) ?? []
+      const nextOffset = offsetFor(after, offsetIndex)
+      const page = after.slice(nextOffset, nextOffset + limit)
+      return {
+        dialogs: page.map((i) => i.dialog),
+        count: countFor(filterId, after),
+        isEnd: (loadedAll && nextOffset + limit >= after.length)
+          // tweb: `result.isEnd && curDialogStorage[len-1] === dialogs[len-1]`
+          // (dialogs.ts:1751) — конец набора засчитан, только если окно
+          // дотянулось до ХВОСТА кэша: страница короче хвоста концом списка не
+          // является. Пустая страница при `isEnd` — тот же конец (дальше нечего).
+          || (!!res?.isEnd && (page.length === 0 || page[page.length - 1] === after[after.length - 1])),
       }
     },
 
-    getSnapshot: (): DialogItem[] => items,
+    /**
+     * Контакты для правил папок `contacts`/`non_contacts`. Зовётся оттуда же,
+     * откуда наполняется UI-стор (`stores/foldersStore.ts::loadFolders` →
+     * `setContacts`): один источник, два потребителя — отдельного владения
+     * контактами этап не заводит (спека, «Фильтр папки переезжает в воркер»).
+     */
+    setContactIds(ids: number[]): void {
+      contactIds = new Set(ids)
+      // Пустой список контактов — тоже ЗНАНИЕ (см. contactsKnown): до этого
+      // вызова папка с правилом contacts/non_contacts честно отдаёт пустую
+      // страницу, а не молча неверную.
+      contactsKnown = true
+    },
 
     /**
      * Task 5, «Осторожно» (смена аккаунта/логаут): гасит ОЖИДАЮЩИЙ таймер
@@ -422,6 +704,15 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       pinnedOrders = {}
       pinnedOrder = []
       drafts = []
+      // Этап 2: папки и признаки загруженности — тоже про ПРОШЛЫЙ аккаунт.
+      // `loadedAll` пережил бы логаут и заставил `getDialogs` нового
+      // пользователя отвечать «всё уже загружено» из пустого кэша, не сходив в
+      // сеть; `folders`/`contactIds` дали бы чужие правила фильтрации.
+      folders = []
+      contactIds = new Set()
+      contactsKnown = false
+      loadedAll = false
+      serverCount = null
       hydrated = false
       hydrating = null
     },
@@ -435,6 +726,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * новый порядок целиком выводится из State-ключей, у которых свой писатель.
      */
     setStateKey(key: string, value: unknown): void {
+      // Этап 2: определения папок — тот же канал, что pinnedOrders/drafts
+      // (persistManager.stateKey → сюда). Порядок от них НЕ зависит, поэтому
+      // ни пересортировки, ни reindex — только фильтр `getDialogs({filterId})`.
+      if (key === 'folders') { folders = value as Folder[]; return }
       if (key === 'pinnedOrders') {
         pinnedOrders = value as Record<number, number[]>
         pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -97,6 +98,96 @@ func TestChatFlow_HTTP(t *testing.T) {
 	}
 	if dialogs.Chats[0].Peer.ID != idB {
 		t.Fatalf("peer id = %d; want %d", dialogs.Chats[0].Peer.ID, idB)
+	}
+}
+
+// getChats делает GET /chats(+query) с токеном и декодирует ответ в форму
+// {chats, count, is_end}; падает тестом, если код ответа не 200.
+func getChats(t *testing.T, h http.Handler, token, query string) struct {
+	Chats []struct {
+		ChatID int64 `json:"chat_id"`
+	} `json:"chats"`
+	Count int  `json:"count"`
+	IsEnd bool `json:"is_end"`
+} {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/chats"+query, token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /chats%s: %d %s", query, rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Chats []struct {
+			ChatID int64 `json:"chat_id"`
+		} `json:"chats"`
+		Count int  `json:"count"`
+		IsEnd bool `json:"is_end"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode /chats%s: %v", query, err)
+	}
+	return out
+}
+
+// Пагинация /chats: проход курсором обязан собрать ровно тот же набор в том же
+// порядке, что и выдача без параметров, и ни разу не повторить чат.
+func TestListDialogs_Pagination_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000030")
+	_, idB := signUp(t, h, pool, "+79990000031")
+	_, idC := signUp(t, h, pool, "+79990000032")
+	_, idD := signUp(t, h, pool, "+79990000033")
+
+	for _, peer := range []int64{idB, idC, idD} {
+		rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": peer})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// 1) выдача без параметров: прежняя форма + count/is_end
+	full := getChats(t, h, tokenA, "")
+	if full.Count != 3 || !full.IsEnd {
+		t.Fatalf("count=%d is_end=%v", full.Count, full.IsEnd)
+	}
+	if len(full.Chats) != 3 {
+		t.Fatalf("want 3 chats, got %d", len(full.Chats))
+	}
+
+	// 2) проход курсором по одному
+	var walked []int64
+	var cursor int64
+	// Ограничитель итераций: без него регрессия курсора (напр. offset_chat_id
+	// игнорируется) не роняет тест, а вешает его — в CI это таймаут всего
+	// прогона вместо внятной ошибки.
+	maxIter := full.Count + 2
+	for iter := 0; ; iter++ {
+		if iter >= maxIter {
+			t.Fatalf("курсор не сходится за %d шагов, собрано: %v", maxIter, walked)
+		}
+		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_chat_id=%d", cursor))
+		if p.Count != 3 {
+			t.Fatalf("count на странице=%d", p.Count)
+		}
+		if len(p.Chats) > 1 {
+			t.Fatalf("limit=1 нарушен: %d", len(p.Chats))
+		}
+		for _, c := range p.Chats {
+			walked = append(walked, c.ChatID)
+		}
+		if p.IsEnd {
+			break
+		}
+		cursor = walked[len(walked)-1]
+	}
+
+	// 3) совпадает с полной выдачей — порядок и состав
+	if len(walked) != len(full.Chats) {
+		t.Fatalf("прошли %v, полная выдача %v", walked, full.Chats)
+	}
+	for i := range walked {
+		if walked[i] != full.Chats[i].ChatID {
+			t.Fatalf("порядок разошёлся: %v vs %v", walked, full.Chats)
+		}
 	}
 }
 

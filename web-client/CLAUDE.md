@@ -301,9 +301,13 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 |---|---|---|
 | `core/hooks/useChatScroll.ts:95` | Фолбэк `setScrollTopSilently` в единственном кадре между монтированием React-узла и коммитом эффекта, создающего `Scrollable` | Как только `scrollableRef.current` появляется, вся корректирующая запись уходит в `Scrollable.setScrollPositionSilently` |
 | `core/dom/smoothScrollToElement.ts:15` | Cap-прыжок перед нативным `scrollTo({behavior:'smooth'})` при центрировании бабла (jump-to-message) | Одноразовая анимация к цели, не хранение/восстановление позиции; свести к `fastSmoothScroll` — отдельная работа (см. выше) |
-| `core/hooks/useSidebarFolders.tsx:59` | Сброс списка чатов на верх при смене таба папки | У нас один общий скролл-контейнер на все папки (не отдельный `.folders-scrollable` на каждую, как в tweb, см. `ChatList.tsx`) — строка замещает то, что tweb получает бесплатно (новый контейнер стартует с `scrollTop=0`); список — не лента с подгрузкой контента |
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
+| `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
+
+Сброс списка чатов на верх при смене папки (`useSidebarFolders.tsx`) из этого
+списка ушёл вместе со строкой: у каждой папки теперь свой `.folders-scrollable`
+со своим `scrollTop` (как в tweb), и позиция не сбрасывается, а сохраняется.
 
 **Вне скана `scrollWriters.test.ts` намеренно**: `scrollTo(...)`/`scrollIntoView(...)`
 (по приложению — 12/8 вызовов, восьмой `scrollIntoView` — вендорный

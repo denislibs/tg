@@ -4,7 +4,7 @@
 // непустые медиа-табы Media/Files/Links/Music/Voice). Данные тянет per-filter
 // из mediaHistory, глобальный плеер — из audioStore, просмотрщик — vanilla-
 // вьювер (mediaViewer/openMediaViewer, Task 16).
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
@@ -31,6 +31,11 @@ import type { OpenPeer } from '../../data'
 import { usePeersStore } from '../../stores/peersStore'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
+import DeferredSortedVirtualList, {
+  type DeferredSortedVirtualListItem,
+  type DeferredSortedVirtualListRenderItemProps,
+} from '../virtual/DeferredSortedVirtualList'
+import { useEvent } from '../../core/hooks/useEvent'
 import s from '../UserInfoPanel.module.scss'
 
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
@@ -263,41 +268,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
       {/* контент табов скользит ±100% (tweb TransitionSlider 'tabs') */}
       <TabSlide tab={tab} order={tabOrder}>
-      {/* «Избранное» → «Чаты»: сохранённые диалоги по источнику пересылки */}
+      {/* «Избранное» → «Чаты»: сохранённые диалоги по источнику пересылки.
+          Список виртуальный (см. `SavedDialogsList`); заглушка пустого набора
+          рендерится ВМЕСТО `ul`, а не внутри него — у виртуального `ul` своя
+          геометрия под весь набор. */}
       {tab === 'Chats' && savedDialogs && (
         <div className={s.cardPlain} style={{ margin: '0 12px' }}>
-          {savedDialogs.length === 0 && empty}
-          {savedDialogs.map((d) => {
-            const isSelf = d.kind === 'self'
-            const title = isSelf ? t('My Notes') : d.title
-            return (
-              <div
-                key={`${d.kind}:${d.peerId}`}
-                className={s.memberRow}
-                onClick={() => {
-                  if (isSelf || !onOpenPeer) return
-                  if (d.kind === 'user') onOpenPeer({ id: d.peerId, displayName: d.title, avatarUrl: d.photoUrl })
-                  else onOpenPeer({ id: 0, displayName: d.title, chatId: d.peerId })
-                }}
-                style={isSelf ? { cursor: 'default' } : undefined}
-              >
-                {isSelf ? (
-                  <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" />
-                ) : (
-                  <UserAvatar id={d.peerId} name={title} avatarUrl={d.photoUrl} />
-                )}
-                <div className={s.grow}>
-                  <div className={s.memberTitleRow}>
-                    <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
-                    <span className={s.roleLabel}>{fmtWhen(d.last.at)}</span>
-                  </div>
-                  <Text noWrap size={14} color="var(--secondary-text-color)">
-                    {d.last.text || mediaLabel(d.last.type)}
-                  </Text>
-                </div>
-              </div>
-            )
-          })}
+          {savedDialogs.length === 0 ? empty : <SavedDialogsList dialogs={savedDialogs} onOpenPeer={onOpenPeer} />}
         </div>
       )}
 
@@ -467,5 +444,161 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       {filter && msgs != null && hasMore && <div ref={sentinelRef} className={s.moreSentinel} />}
       </TabSlide>
     </>
+  )
+}
+
+/**
+ * Высота строки «Избранного» — `itemSize: 72` оригинала
+ * (`tweb/src/components/appSearchSuper.ts:1905`, `loadSavedDialogs`): там строки
+ * этой вкладки — обычные строки списка диалогов (`SortedDialogList`), то есть
+ * `.row-big { min-height: 4.5rem }` (`tweb/src/scss/partials/_row.scss:131`).
+ */
+const SAVED_ITEM_HEIGHT = 72
+
+/**
+ * `extraPaddingBottom: 0` — буквально из оригинала
+ * (`tweb/src/components/appSearchSuper.ts:1906`). Это единственное, чем геометрия
+ * этого списка отличается от списка чатов и архива (у тех — дефолтные 8px,
+ * `deferredSortedVirtualList.tsx:55`): список вложен в панель профиля, снизу под
+ * ним идёт свой контент панели, и лишний отступ там не нужен. Высота `ul` —
+ * ровно `count * 72`.
+ */
+const SAVED_EXTRA_PADDING_BOTTOM = 0
+
+/**
+ * Пагинации у «Избранного» нет: набор приезжает ОДНИМ RPC
+ * (`useSavedDialogs` → `managers.chats.savedDialogs()`), поэтому дырок в
+ * `fullItems` ядра не возникает вовсе и просить страницу некому. Ссылка обязана
+ * быть СТАБИЛЬНОЙ — контракт пропа `requestItemForIdx` ядра (он зовётся из
+ * эффекта каждой непоказанной строки).
+ *
+ * Стабильность ПОКРЫТА: проп входит в пропсы `memo`-строки ядра, поэтому мутация
+ * «инлайновая стрелка вместо константы» перерисовывает всё окно на каждом рендере
+ * панели и красит тест «рендер панели строк не касается…».
+ */
+const NO_ITEM_REQUEST = () => {}
+
+/**
+ * Сохранённые диалоги «Избранного» на том же виртуальном ядре, что список чатов
+ * и архив. Оригинал — `tweb/src/components/appSearchSuper.ts:1890-1935`
+ * (`loadSavedDialogs`): вкладка поднимает `SortedDialogList` с `itemSize: 72` и
+ * `extraPaddingBottom: 0`, а `scrollable` ему отдаётся ТОТ ЖЕ, что у всей панели
+ * (`sidebarRight/tabs/sharedMedia.tsx:648` — `scrollable: tab.scrollable`, в него
+ * же `:160` кладётся шапка профиля).
+ *
+ * Пропы ядра, отличные от списка папки:
+ * 1. `totalCount = items.length`, `wasAtLeastOnceFetched` взведён с первого
+ *    рендера, `requestItemForIdx` — no-op: пагинации нет (см. `NO_ITEM_REQUEST`);
+ * 2. `pinnedItems` не передаётся — закреплённых строк у вкладки нет;
+ * 3. `animate` — константа: в оригинале это `blockedAnimationCount() === 0`, а
+ *    счётчик глушилки держит владелец ПЕРВОЙ ЗАГРУЗКИ, которой у этого списка
+ *    нет. Значение СОЗНАТЕЛЬНО НЕ ПОКРЫТО (как и у архива): оно доходит до
+ *    `useAnimatedTop`, покадровая анимация `top` в happy-dom не наблюдаема, сама
+ *    механика покрыта `virtual/useAnimatedTop.test.ts`.
+ */
+function SavedDialogsList({ dialogs, onOpenPeer }: {
+  dialogs: SavedDialog[]
+  onOpenPeer?: (peer: OpenPeer) => void
+}) {
+  // Хост ядру нужен ЗНАЧЕНИЕМ (оно вешает на него слушатель скролла и
+  // ResizeObserver), поэтому это состояние: первый рендер идёт с null, второй —
+  // с живым узлом (штатная ветка `scrollableHost === null` в
+  // `VerticalVirtualList`). Ref-колбэк обязан быть СТАБИЛЬНЫМ: смена
+  // идентичности заставила бы React переприсваивать его на каждом рендере, то
+  // есть на каждом рендере пересобирать окно видимости.
+  //
+  // Хост — скроллер ПАНЕЛИ ПРОФИЛЯ (`UserInfoPanel.module.scss` `.body`,
+  // `UserInfoPanel.tsx` — `<div ref={bodyRef} className={s.body} …>`), а не
+  // родитель `ul` (у списка чатов и архива `ul` лежит прямо в скроллере, здесь —
+  // в карточке внутри вкладки) и не окно. Так же и в оригинале: `SortedDialogList`
+  // «Избранного» получает `scrollable` всей панели.
+  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
+  const setListEl = useCallback((ul: HTMLUListElement | null) => {
+    setScrollHost(ul?.closest<HTMLElement>('.' + s.body) ?? null)
+  }, [])
+
+  // Обёртки строк (`{id, value}`) обязаны переживать рендеры родителя — контракт
+  // пропа `items` ядра (`DeferredSortedVirtualList.tsx:64-80`): ссылки на них
+  // сравниваются между старым и новым списком в `useShouldAnimate`, а строка
+  // сравнивает свой `item` по ссылке. Кэша по id (как у архива в `Sidebar.tsx`)
+  // здесь НЕТ и он не нужен: `dialogs` — снимок одного RPC
+  // (`useSavedDialogs`, состояние хука), он не пересобирается на операциях
+  // зеркала, поэтому `useMemo` по нему даёт те же обёртки на все рендеры панели.
+  // Обновление набора приходит только новым ответом RPC, где новы и сами
+  // `SavedDialog` — кэш по id всё равно промахнулся бы на каждой строке.
+  const items = useMemo<readonly DeferredSortedVirtualListItem<SavedDialog>[]>(
+    () => dialogs.map((d) => ({ id: `${d.kind}:${d.peerId}`, value: d })),
+    [dialogs],
+  )
+
+  // `onOpenPeer` приезжает от панели новой стрелкой на каждом её рендере, а
+  // `renderItem` обязан быть стабильным: он входит в пропсы `memo`-строки ядра,
+  // и его смена перерисовывает ВСЁ окно.
+  const openPeer = useEvent((peer: OpenPeer) => onOpenPeer?.(peer))
+
+  const renderItem = useCallback(
+    ({ value, itemRef }: DeferredSortedVirtualListRenderItemProps<SavedDialog>) => (
+      <SavedDialogRow dialog={value} onOpenPeer={openPeer} itemRef={itemRef} />
+    ),
+    [openPeer],
+  )
+
+  return (
+    <DeferredSortedVirtualList<SavedDialog>
+      listRef={setListEl}
+      className={s.savedVirtualList}
+      scrollableHost={scrollHost}
+      items={items}
+      totalCount={items.length}
+      wasAtLeastOnceFetched
+      itemSize={SAVED_ITEM_HEIGHT}
+      extraPaddingBottom={SAVED_EXTRA_PADDING_BOTTOM}
+      animate
+      requestItemForIdx={NO_ITEM_REQUEST}
+      renderItem={renderItem}
+    />
+  )
+}
+
+/**
+ * Строка сохранённого диалога — та же разметка, что была у списка до
+ * виртуализации; добавился только `itemRef` ядра на корневом узле (по нему ядро
+ * анимирует `top` и вешает класс абсолютного позиционирования).
+ */
+function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
+  dialog: SavedDialog
+  onOpenPeer: (peer: OpenPeer) => void
+  itemRef: (el: HTMLElement | null) => void
+}) {
+  const t = useT()
+  const isSelf = dialog.kind === 'self'
+  const title = isSelf ? t('My Notes') : dialog.title
+
+  return (
+    <div
+      ref={itemRef}
+      className={classNames(s.memberRow, s.savedRow)}
+      onClick={() => {
+        if (isSelf) return
+        if (dialog.kind === 'user') onOpenPeer({ id: dialog.peerId, displayName: dialog.title, avatarUrl: dialog.photoUrl })
+        else onOpenPeer({ id: 0, displayName: dialog.title, chatId: dialog.peerId })
+      }}
+      style={isSelf ? { cursor: 'default' } : undefined}
+    >
+      {isSelf ? (
+        <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" />
+      ) : (
+        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} />
+      )}
+      <div className={s.grow}>
+        <div className={s.memberTitleRow}>
+          <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
+          <span className={s.roleLabel}>{fmtWhen(dialog.last.at)}</span>
+        </div>
+        <Text noWrap size={14} color="var(--secondary-text-color)">
+          {dialog.last.text || mediaLabel(dialog.last.type)}
+        </Text>
+      </div>
+    </div>
   )
 }
