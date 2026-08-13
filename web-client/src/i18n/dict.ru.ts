@@ -1191,6 +1191,11 @@ const ru: Dict = {
   'Delete GIF': 'Удалить GIF',
   'Save GIF': 'Сохранить GIF',
   'GIF saved to your GIFs.': 'GIF добавлен в сохранённые',
+  'Copy Media': 'Копировать медиа',
+  'Copy Message Link': 'Копировать ссылку',
+  'Link copied to clipboard': 'Ссылка скопирована',
+  'Image copied to clipboard': 'Изображение скопировано',
+  'Could not copy the image': 'Не удалось скопировать изображение',
   // ── Медиа-редактор перед отправкой (tweb mediaEditor) ──
   Enhance: 'Улучшение',
   Brightness: 'Яркость',

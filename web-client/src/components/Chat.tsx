@@ -1398,6 +1398,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 autoDownload={autoDownload}
                 isRealChat={isRealChat}
                 isGroup={isGroup}
+                // Быстрая реакция по ховеру: в «Избранном» её нет (tweb
+                // onBubblesMouseMove: `this.peerId !== rootScope.myId`), в
+                // секретных чатах реакций нет вовсе.
+                canQuickReact={isRealChat && chat.type !== 'saved' && chat.type !== 'secret'}
                 discussionsEnabled={discussionsEnabled}
                 commentCounts={commentCounts}
                 commentRepliers={commentRepliers}

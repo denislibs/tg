@@ -28,6 +28,8 @@ export interface ChatFeedProps {
   winMsgs: Message[]
   isRealChat: boolean
   isGroup: boolean
+  /** можно ли ставить быструю реакцию по ховеру бабла (tweb: не в «Избранном») */
+  canQuickReact: boolean
   discussionsEnabled: boolean
   commentCounts: Map<number, number>
   /** авторы последних комментариев по посту — стек аватаров в футере */
@@ -47,7 +49,7 @@ export interface ChatFeedProps {
 }
 
 function ChatFeed({
-  msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts, commentRepliers,
+  msgs, winMsgs, isRealChat, isGroup, canQuickReact, discussionsEnabled, commentCounts, commentRepliers,
   highlightSeq, unreadDividerSeq, selecting, selected, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
@@ -278,6 +280,7 @@ function ChatFeed({
     const row = (
       <MessageRow
         canSeeReactionList={!isGroup}
+        canQuickReact={canQuickReact}
         key={k}
         m={m}
         seq={isRealChat ? winMsgs[i]?.seq : undefined}
