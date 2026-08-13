@@ -89,15 +89,35 @@ func (r *fakeSearchRepo) PublicChatByUsername(_ context.Context, username string
 
 // fakeChannelPublisher records how many times PublishToChannel was called.
 type fakeChannelPublisher struct {
-	mu    sync.Mutex
-	count int
+	mu     sync.Mutex
+	count  int
+	frames [][]byte
 }
 
-func (p *fakeChannelPublisher) PublishToChannel(_ context.Context, _ int64, _ []byte) error {
+func (p *fakeChannelPublisher) PublishToChannel(_ context.Context, _ int64, frame []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.count++
+	p.frames = append(p.frames, frame)
 	return nil
+}
+
+// lastPayload — поле d последнего опубликованного кадра {t, d}.
+func (p *fakeChannelPublisher) lastPayload(t *testing.T) map[string]any {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.frames) == 0 {
+		t.Fatal("кадров не опубликовано")
+	}
+	var env struct {
+		T string         `json:"t"`
+		D map[string]any `json:"d"`
+	}
+	if err := json.Unmarshal(p.frames[len(p.frames)-1], &env); err != nil {
+		t.Fatalf("разбор кадра: %v", err)
+	}
+	return env.D
 }
 
 // groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
@@ -226,6 +246,67 @@ func TestPostToChannel_RequiresPostRight_AndPublishes(t *testing.T) {
 	}
 	if fpub.count != 1 {
 		t.Fatalf("publishes=%d, want 1", fpub.count)
+	}
+}
+
+// client_msg_id обязан ехать в эхо поста канала — им отправитель матчит свой
+// оптимистичный бабл. У канала (в отличие от личных чатов и групп) нет
+// message_ack: пост уходит REST'ом, и эхо — ЕДИНСТВЕННЫЙ ключ связки. Без него
+// бабл навсегда остаётся «отправляется», а эхо ложится вторым — визуально
+// дубль одного сообщения (воспроизведено на стенде 2026-08-13).
+func TestPostToChannel_EchoCarriesClientMsgID(t *testing.T) {
+	i, _, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", "opt-7"); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	if got, _ := fpub.lastPayload(t)["client_msg_id"].(string); got != "opt-7" {
+		t.Fatalf("client_msg_id живого кадра = %q, want opt-7", got)
+	}
+}
+
+// difference-реплей отдаёт тот же снимок, что живой кадр (общий
+// channelPostPayload): вкладка, поймавшая пост катч-апом, а не живым кадром,
+// обязана схлопнуть свой бабл тем же ключом.
+func TestChannelDifference_CarriesClientMsgID(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", "opt-8"); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	if err != nil || len(ups) == 0 {
+		t.Fatalf("GetChannelDifference: %v, %d строк", err, len(ups))
+	}
+	var d map[string]any
+	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
+		t.Fatalf("разбор payload: %v", err)
+	}
+	if got, _ := d["client_msg_id"].(string); got != "opt-8" {
+		t.Fatalf("client_msg_id в difference = %q, want opt-8", got)
+	}
+}
+
+// Пост без client_msg_id (не от отправляющей вкладки — например, из бота или
+// планировщика) поля не несёт: у получателей матчить нечего, пустая строка
+// только сбивала бы дедуп.
+func TestPostToChannel_NoClientMsgID_NoField(t *testing.T) {
+	i, _, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", ""); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	if _, ok := fpub.lastPayload(t)["client_msg_id"]; ok {
+		t.Fatal("client_msg_id присутствует в кадре, хотя его не присылали")
 	}
 }
 
