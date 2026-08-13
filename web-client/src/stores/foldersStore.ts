@@ -57,6 +57,11 @@ export async function loadFolders(
   managers: {
     folders: { list(): Promise<Folder[]> }
     contacts: { list(): Promise<Contact[]> }
+    // Этап 2 (пагинация диалогов): те же контакты нужны владельцу списка —
+    // правила папок `contacts`/`non_contacts` он считает сам, в воркере
+    // (`dialogsManager.getDialogs({filterId})`). Один источник, два
+    // потребителя; второго загрузчика контактов не заводим.
+    dialogs: { setContactIds(ids: number[]): Promise<void> }
   },
   { overwrite = false }: { overwrite?: boolean } = {},
 ): Promise<void> {
@@ -71,7 +76,11 @@ export async function loadFolders(
   // Контакты обновляем всегда: они нужны правилам contacts/non_contacts и
   // меняются независимо от папок.
   try {
-    useFoldersStore.getState().setContacts((await managers.contacts.list()).map((c) => c.userId))
+    const ids = (await managers.contacts.list()).map((c) => c.userId)
+    useFoldersStore.getState().setContacts(ids)
+    // Владелец списка диалогов фильтрует папки в воркере — те же контакты
+    // (см. докблок параметра `dialogs` выше).
+    void managers.dialogs.setContactIds(ids).catch(() => {})
   } catch {
     /* без контактов правила contacts/non_contacts считают всех не-контактами */
   }

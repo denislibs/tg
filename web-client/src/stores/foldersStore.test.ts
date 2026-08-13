@@ -24,6 +24,7 @@ describe('foldersStore', () => {
     await loadFolders({
       folders: { list: () => Promise.resolve([folder]) },
       contacts: { list: () => Promise.resolve([]) },
+      dialogs: { setContactIds: async () => {} },
     })
 
     expect(useAppStateStore.getState().folders).toEqual([folder])
@@ -36,6 +37,7 @@ describe('foldersStore', () => {
     await loadFolders({
       folders: { list: () => Promise.reject(new Error('offline')) },
       contacts: { list: () => Promise.reject(new Error('offline')) },
+      dialogs: { setContactIds: async () => {} },
     })
 
     expect(useAppStateStore.getState().folders).toEqual([folder])

@@ -197,7 +197,11 @@ export function createWorkerCore() {
       // промис на модуль, а воркер перечитывает State заново после
       // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
       const gated = st.version === STATE_VERSION ? st : initialState()
-      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [] }
+      // Этап 2 (пагинация): `folders` — определения папок для фильтра
+      // `getDialogs({filterId})`. Читаются С ДИСКА, а не ждут `setStateKey`:
+      // на холодном старте State никто не ПИШЕТ (boot.ts поднимает его
+      // `setAppStateSilent`), значит канал зеркала ключа в этом кадре молчит.
+      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [], folders: gated.folders ?? [] }
     },
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не

@@ -8,6 +8,7 @@
 // folderFilter.test.ts), иначе один и тот же чат попадал бы в разные папки
 // на разных экранах.
 import type { Chat } from '../data'
+import type { Dialog } from './models'
 import type { Folder } from './managers/foldersManager'
 
 export type FolderMatchable = {
@@ -45,6 +46,22 @@ export function chatMatchesFolder(chat: Chat, folder: Folder, contactIds: Readon
   const chatId = Number(chat.id)
   if (!Number.isFinite(chatId)) return false // draft-чаты в папки не попадают
   return matchesFolder({ chatId, type: chat.type, unread: chat.unread, muted: chat.muted, peerId: chat.peerId }, folder, contactIds)
+}
+
+// Адаптер Dialog → FolderMatchable (воркер, dialogsManager.getDialogs).
+//
+// ЗВАТЬ `matchesFolder(dialog, …)` НАПРЯМУЮ НЕЛЬЗЯ: у `Dialog` нет плоского
+// `peerId` — собеседник приватного чата лежит в `peer.id` (models.ts), — а поле
+// `FolderMatchable.peerId` опционально, поэтому такой вызов пройдёт тайпчек
+// МОЛЧА и ветка контактности всегда даст `isContact === false`: приватные чаты
+// разъедутся по папкам «Контакты»/«Не контакты» между воркером и main. Маппинг
+// тот же, что уже делает витрина — `core/dialogToChat.ts:117` (`peerId: d.peer?.id`).
+export function dialogMatchesFolder(dialog: Dialog, folder: Folder, contactIds: ReadonlySet<number>): boolean {
+  return matchesFolder(
+    { chatId: dialog.chatId, type: dialog.type, unread: dialog.unread, muted: dialog.muted, peerId: dialog.peer?.id },
+    folder,
+    contactIds,
+  )
 }
 
 // Счётчики для подзаголовка строки папки (tweb chatFolders.tsx:60-88):

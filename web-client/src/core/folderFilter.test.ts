@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { chatMatchesFolder, folderCounts, matchesFolder, type FolderMatchable } from './folderFilter'
+import { chatMatchesFolder, dialogMatchesFolder, folderCounts, matchesFolder, type FolderMatchable } from './folderFilter'
 import type { Folder } from './managers/foldersManager'
+import type { Dialog } from './models'
 import type { Chat } from '../data'
 
 const folder = (over: Partial<Folder>): Folder => ({
@@ -60,6 +61,45 @@ describe('chatMatchesFolder: адаптер Chat, draft-чаты отсекаю�
     const c = chat({ id: '5', type: 'group' })
     const f = folder({ groups: true })
     expect(chatMatchesFolder(c, f, contacts)).toBe(true)
+  })
+})
+
+// Адаптер Dialog → FolderMatchable (воркер): у `Dialog` нет плоского `peerId`
+// (собеседник лежит в `peer.id`), а поле `FolderMatchable.peerId` опционально —
+// прямой вызов `matchesFolder(dialog, …)` прошёл бы тайпчек МОЛЧА и всегда
+// считал приватный чат НЕ контактом. Именно это и проверяем: тест краснеет,
+// если адаптер перестанет маппить `peer?.id`.
+describe('dialogMatchesFolder: адаптер Dialog, контактность из peer.id', () => {
+  const dialog = (over: Partial<Dialog>): Dialog => ({
+    chatId: 5, type: 'private', title: 't', unread: 0, unreadMentions: 0, unreadReactions: 0,
+    lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
+    ...over,
+  } as Dialog)
+  const contacts = new Set([7])
+
+  it('приватный чат с peer.id из контактов попадает в папку «Контакты»', () => {
+    const d = dialog({ peer: { id: 7, displayName: 'c', avatarUrl: '' } })
+    expect(dialogMatchesFolder(d, folder({ contacts: true }), contacts)).toBe(true)
+  })
+
+  it('он же НЕ попадает в папку «Не контакты»', () => {
+    const d = dialog({ peer: { id: 7, displayName: 'c', avatarUrl: '' } })
+    expect(dialogMatchesFolder(d, folder({ nonContacts: true }), contacts)).toBe(false)
+  })
+
+  it('чужой (peer.id вне контактов) — наоборот', () => {
+    const d = dialog({ peer: { id: 9, displayName: 's', avatarUrl: '' } })
+    expect(dialogMatchesFolder(d, folder({ nonContacts: true }), contacts)).toBe(true)
+    expect(dialogMatchesFolder(d, folder({ contacts: true }), contacts)).toBe(false)
+  })
+
+  it('остальные поля (тип, unread, muted, include/exclude) проксируются как есть', () => {
+    const g = dialog({ chatId: 5, type: 'group', unread: 0, muted: true })
+    expect(dialogMatchesFolder(g, folder({ groups: true }), contacts)).toBe(true)
+    expect(dialogMatchesFolder(g, folder({ groups: true, excludeMuted: true }), contacts)).toBe(false)
+    expect(dialogMatchesFolder(g, folder({ groups: true, excludeRead: true }), contacts)).toBe(false)
+    expect(dialogMatchesFolder(g, folder({ excludeChats: [5], groups: true }), contacts)).toBe(false)
+    expect(dialogMatchesFolder(g, folder({ includeChats: [5] }), contacts)).toBe(true)
   })
 })
 

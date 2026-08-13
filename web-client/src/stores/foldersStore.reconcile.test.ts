@@ -33,6 +33,9 @@ function managersWith(list: Folder[], contacts: number[] = []) {
   return {
     folders: { list: vi.fn().mockResolvedValue(list) },
     contacts: { list: vi.fn().mockResolvedValue(contacts.map((userId) => ({ userId }))) },
+    // Этап 2: те же контакты уезжают владельцу списка диалогов (воркер) —
+    // см. loadFolders и dialogsManager.setContactIds.
+    dialogs: { setContactIds: vi.fn().mockResolvedValue(undefined) },
   }
 }
 
@@ -59,6 +62,19 @@ describe('loadFolders: cache-first', () => {
     await loadFolders(m)
 
     expect(m.contacts.list).toHaveBeenCalledTimes(1)
+  })
+
+  // Этап 2 (пагинация диалогов): правила папок `contacts`/`non_contacts`
+  // считает и владелец списка в воркере (`dialogsManager.getDialogs({filterId})`),
+  // поэтому ТОТ ЖЕ ответ `/contacts` обязан уехать и ему — иначе воркер считает
+  // всех не-контактами и папка «Контакты» на экране разойдётся со страницей из
+  // воркера. Один источник, два потребителя.
+  it('контакты уезжают и владельцу списка диалогов (воркер), не только в UI-стор', async () => {
+    const m = managersWith([work], [1, 2])
+
+    await loadFolders(m)
+
+    expect(m.dialogs.setContactIds).toHaveBeenCalledWith([1, 2])
   })
 
   it('память пуста — идём в сеть', async () => {
@@ -119,6 +135,7 @@ describe('loadFolders: реконсайл', () => {
     await loadFolders({
       folders: { list: vi.fn().mockRejectedValue(new Error('offline')) },
       contacts: { list: vi.fn().mockRejectedValue(new Error('offline')) },
+      dialogs: { setContactIds: vi.fn().mockResolvedValue(undefined) },
     }, { overwrite: true })
 
     expect(useAppStateStore.getState().folders).toBe(before)
