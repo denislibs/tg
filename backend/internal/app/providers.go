@@ -55,6 +55,16 @@ func providePool(lc fx.Lifecycle, cfg *config.Config, ctx context.Context) (*pgx
 	if err != nil {
 		return nil, err
 	}
+	// Бэкфилл зеркал для тредов, заведённых до перехода на Telegram-модель
+	// (см. backfill_mirrors.go). Идемпотентна — на пустой дельте возвращает 0,
+	// поэтому безопасно звать на каждом старте. Сама строка вызова не покрыта
+	// юнит-тестом (это точка сборки приложения, providePool не тестируется
+	// отдельно) — поведение функции проверено в backfill_mirrors_test.go.
+	if n, err := postgres.BackfillDiscussionMirrors(ctx, pool); err != nil {
+		log.Printf("backfill discussion mirrors failed: %v", err)
+	} else if n > 0 {
+		log.Printf("backfilled %d discussion mirrors", n)
+	}
 	if cfg.SeedDemo {
 		if err := postgres.SeedDemo(ctx, pool); err != nil {
 			log.Printf("seed demo failed: %v", err)
