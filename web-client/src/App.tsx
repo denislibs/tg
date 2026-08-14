@@ -8,6 +8,8 @@ import { dispatchHeavyAnimationEvent } from './core/dom/heavyAnimation'
 import pause from './helpers/schedulers/pause'
 import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
+import ChatsContainer from './components/chat/ChatsContainer'
+import type { ChatInstanceDesc } from './stores/chatStackStore'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackground'
 import SvgDefs from './components/SvgDefs'
@@ -61,7 +63,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // Навигация (navigationStore) + URL-хэш ↔ чат + deep-links + список чатов.
   const nav = useChatNavigation()
-  const { selectedId, openThread, draftPeer } = nav
+  const { selectedId, draftPeer } = nav
   // tweb appImManager.selectTab: класс держится, пока активна вкладка чатлиста,
   // то есть пока чат/тред/черновик НЕ выбран (см. useLeftColumnShown).
   useLeftColumnShown(selectedId !== null)
@@ -73,6 +75,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // узкое — форсируем мобильный layout (useMediaQuery слушает основное окно).
   const pipActive = usePipStore((st) => st.active)
   const narrow = useMediaQuery('(max-width:900px)') || pipActive
+  // Намеренно `setSelectedId`, а не `selectChat`: на хендхелдах «назад» лишь
+  // переключает CSS-вкладку (useLeftColumnShown), инстанс в chatStackStore
+  // остаётся смонтированным — открыть тот же чат снова можно без ремаунта
+  // (сохранение состояния при возврате — цель этого этапа, см. план).
   const backToList = narrow ? () => nav.setSelectedId(null) : undefined
 
   // Переключение список ↔ чат на узком экране — 1:1 tweb `appImManager.selectTab`
@@ -125,8 +131,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         }
       : null
 
-  const selected = chatList.find((c) => c.id === selectedId) ?? draftChat
-
   const renderSidebar = (fullWidth = false) => (
     <Sidebar
       initialQuery={deep.deepDomain}
@@ -136,48 +140,33 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     />
   )
 
-  // Чат треда: диалог из списка, а для комментариев (discussion-группа, где мы
-  // можем не состоять) — синтетический Chat.
-  const threadChat: ChatEntity | null = openThread
-    ? chatList.find((c) => c.id === String(openThread.chatId)) ?? {
-        id: String(openThread.chatId),
-        name: openThread.thread.title,
-        avatar: gradientFor(openThread.chatId),
-        avatarText: '#',
-        date: '',
-        preview: '',
-        type: 'group',
-      }
-    : null
-
-  // Ключ вкладки чата: его смена ремаунтит колонку — как в tweb, где на переход
-  // между чатами из списка предыдущий `.chat` УДАЛЯЕТСЯ из DOM (см. ниже).
-  const tabKey = openThread && threadChat
-    ? `thread-${openThread.chatId}-${openThread.thread.rootMsgId}`
-    : selected
-      ? `chat-${selected.id}`
-      : 'empty'
-
-  const chatBody =
-    openThread && threadChat ? (
-      <Chat
-        key={tabKey}
-        chat={threadChat}
-        thread={openThread.thread}
-        onBack={backToList}
-      />
-    ) : selected ? (
-      <Chat key={tabKey} chat={selected} onBack={backToList} />
-    ) : (
-      <div className="chat tabs-tab active" />
-    )
+  // Резолв дескриптора стека в сущность чата: реальный диалог из списка, иначе
+  // черновик (тот же peerId, что открытого черновика), иначе синтетический Chat
+  // для треда/комментариев (discussion-группа, где мы можем не состоять) —
+  // та же логика, что раньше жила в `threadChat`/`selected`, теперь по `desc`.
+  const resolveChat = (desc: ChatInstanceDesc): ChatEntity =>
+    chatList.find((c) => c.id === String(desc.peerId)) ??
+    (draftChat && draftChat.peerId === desc.peerId ? draftChat : null) ?? {
+      id: String(desc.peerId),
+      name: desc.thread?.title ?? '',
+      avatar: gradientFor(desc.peerId),
+      avatarText: '#',
+      date: '',
+      preview: '',
+      type: 'group',
+    }
 
   // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
   // от него считаются инсеты .bubbles и маска фейдов ленты. Внутри —
-  // .chats-container.tabs-container с колонкой чата (tweb §1).
+  // ChatsContainer рисует .chats-container.tabs-container со стеком инстансов
+  // колонки чата (tweb §1, порт appImManager.chats[]).
   const chatArea = (
     <div id="column-center" className={classNames('tabs-tab', 'main-column')}>
-      <div className="chats-container tabs-container">{chatBody}</div>
+      <ChatsContainer
+        renderInstance={(desc) => (
+          <Chat chat={resolveChat(desc)} thread={desc.thread} onBack={backToList} />
+        )}
+      />
     </div>
   )
 

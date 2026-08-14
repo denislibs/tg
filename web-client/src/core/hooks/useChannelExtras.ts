@@ -4,7 +4,7 @@
 // the worker's per-channel pts funnel — cursor seed + catch-up via typed
 // /difference), plus per-post comment/view counts. No-ops for non-channels. (Сам
 // тред комментариев — обычный Chat в thread-режиме; открытие — через
-// App.openThread.)
+// chatStackStore.setInnerPeer, см. Chat.tsx onOpenThread.)
 import { useEffect, useState } from 'react'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'

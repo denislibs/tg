@@ -14,6 +14,8 @@ import { bootData, bootPrefetch, invalidateBootPrefetch } from '../../client/boo
 import { resetAppState } from '../../stores/appState'
 import { resetStateCache } from '../state/loadState'
 import { useChatsStore } from '../../stores/chatsStore'
+import { useChatStackStore } from '../../stores/chatStackStore'
+import { clearChatPositions } from '../chat/chatPositions'
 import { resetChatCardCache } from './useChatInfoCard'
 import { runWhenUnlocked } from '../../stores/lockStore'
 import rootScope from '@lib/rootScope'
@@ -48,6 +50,20 @@ function resetAccountStateInMemory(): void {
   // `setDialogs([])` (Task 6 снесла легаси-путь) заменяет пустая операция
   // reset — тот же метод и тот же вход, что и у storeProjection.
   useChatsStore.getState().applyDialogOps([{ op: 'reset', items: [] }])
+  // Стек инстансов колонки чата (chatStackStore) и сохранённые позиции ленты
+  // (chatPositions) переживают эту функцию сами по себе — ни один из них не
+  // читает State/дисковый персист, оба живут только в памяти вкладки. Без
+  // явной очистки здесь колонка чата после входа под ДРУГИМ аккаунтом
+  // показала бы прежний стек: `resolveChat` в App.tsx всегда возвращает
+  // ChatEntity (реальный/черновик/синтетический фолбэк для несуществующего у
+  // нового аккаунта peerId) и никогда не отдаёт null, поэтому пустой стек не
+  // подставляется сам собой — нужен явный clear(). Позиции держат смысл
+  // только вместе со своим peerId/threadId ЭТОГО аккаунта; чужие координаты
+  // под чужими id — мусор, который в лучшем случае не совпадёт ни с одним
+  // реальным чатом, а в худшем случае по счастливому совпадению id откроет
+  // чат нового аккаунта не с той позиции.
+  useChatStackStore.getState().clear()
+  clearChatPositions()
 }
 
 export function useAuthGate(): AuthGate {

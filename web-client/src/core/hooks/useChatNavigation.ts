@@ -8,12 +8,9 @@ import { useNavigationActions } from './useNavigationActions'
 
 export function useChatNavigation() {
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useNavigationStore((s) => s.openThread)
   const draftPeer = useNavigationStore((s) => s.draftPeer)
   const selectChat = useNavigationStore((s) => s.selectChat)
   const setSelectedId = useNavigationStore((s) => s.setSelectedId)
-  const openCommentsThread = useNavigationStore((s) => s.openCommentsThread)
-  const closeThread = useNavigationStore((s) => s.closeThread)
   const actions = useNavigationActions()
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
@@ -31,8 +28,8 @@ export function useChatNavigation() {
   }, [])
 
   return {
-    selectedId, openThread, draftPeer,
-    selectChat, setSelectedId, openCommentsThread, closeThread,
+    selectedId, draftPeer,
+    selectChat, setSelectedId,
     ...actions,
   }
 }

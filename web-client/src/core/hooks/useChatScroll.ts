@@ -20,6 +20,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
+import { useIsActiveChat } from '../chat/chatInstanceContext'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../realtime/events'
@@ -27,9 +28,13 @@ import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
 import Scrollable from '@components/scrollable'
+import { getChatPosition, saveChatPosition } from '../chat/chatPositions'
 
 interface UseChatScrollArgs {
   numericChatId: number
+  /** корень треда (комментарии/форум-топик) — вместе с numericChatId ключ
+   * сохранённой позиции (см. chatPositions.ts); undefined — обычный чат */
+  threadId?: number
   isRealChat: boolean
   win: MessageWindow
   /** высота верхней распорки ленты (.bubbles-padding-top) */
@@ -42,8 +47,15 @@ interface UseChatScrollArgs {
   unreadStickyTop: number
 }
 
-export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
+export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const managers = useManagers()
+  // В стеке инстансов чата смонтировано несколько копий одновременно (неактивные
+  // скрыты display:none, но живут в DOM) — у скрытого узла scrollHeight/clientHeight/
+  // scrollTop равны 0, поэтому любое условие «прижат к низу» тривиально истинно.
+  // Эффекты этого хука, которые сами по себе способны отметить чат прочитанным
+  // (markRead), обязаны быть гейтированы этим флагом — иначе фоновый инстанс читает
+  // чат за пользователя. См. gate у каждого из них ниже.
+  const isActive = useIsActiveChat()
   const [showScrollDown, setShowScrollDown] = useState(false)
   // Unread-below badge on the scroll-to-bottom button (tweb .bubbles-go-down count):
   // DERIVED from the store, not accumulated from the event stream. newestSeq (the
@@ -189,17 +201,33 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     // the re-pin + loadNewer feed each other into a cascade that loads the whole
     // history. While a real chat is still loading (no msgs yet) leave atBottomRef
     // at its open-time default so the initial scroll-to-bottom isn't cancelled.
+    // Гейт скрытого узла: onAdditionalScroll не только реагирует на настоящий
+    // scroll-event своего собственного контейнера (что само по себе безопасно —
+    // у скрытого узла его не бывает), но и зовётся ПРОГРАММНО на монтировании и
+    // на каждое изменение win.msgs/win.reachedBottom (эффекты ниже) — эти вызовы
+    // происходят у ЛЮБОГО смонтированного инстанса независимо от видимости. У
+    // скрытого (display:none) узла нет layout box — clientHeight читается нулём
+    // (тот же признак, что и в cleanup сохранения позиции выше), поэтому `dist`
+    // тривиально 0 и условие «прижат к низу» тривиально истинно. Без этого гейта
+    // фоновый инстанс на КАЖДОЕ такое программное срабатывание переписывал бы
+    // atBottomRef/userScrolledUpRef намерение пользователя («он прокрутил вверх
+    // и ушёл в тред») в «прижат к низу» — а на возврате активности ResizeObserver
+    // (correctScroll) увидел бы atBottomRef===true и пином к низу уничтожил бы
+    // сохранённую chatPositions-позицию. Реальный scroll-event у скрытого узла не
+    // бывает вовсе (нет layout — некуда скроллить), так что гейт не блокирует ни
+    // один сценарий активного инстанса — только запись, не чтение геометрии.
+    const hasLayout = el.clientHeight > 0
     if (!isRealChat) {
-      atBottomRef.current = dist < 240
+      if (hasLayout) atBottomRef.current = dist < 240
     } else if (win.msgs.length > 0) {
       const atRealBottom = dist < 240 && win.reachedBottom
       // Stay pinned to the bottom from open until the user scrolls up. Once they
       // have, fall back to the strict real-bottom gate (prevents a mid-history
       // jump from false-pinning + cascading loadNewer).
-      atBottomRef.current = !userScrolledUpRef.current || atRealBottom
+      if (hasLayout) atBottomRef.current = !userScrolledUpRef.current || atRealBottom
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
-      if (atRealBottom && document.hasFocus()) {
+      if (hasLayout && atRealBottom && document.hasFocus() && isActive) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
@@ -256,8 +284,44 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     scrollable.onAdditionalScroll = onAdditionalScroll
     scrollable.onScrolledTop = onScrolledTop
     scrollable.onScrolledBottom = onScrolledBottom
+    // Восстановление позиции ленты при возврате в чат — порт
+    // tweb appImManager.getChatSavedPosition (lib/appImManager.ts:2151):
+    // возврат из треда (или переключение на нижний инстанс стека) должен
+    // застать ленту там же, где пользователь её оставил, а не пином к низу.
+    // Ключ — пара peer+thread (chatPositions.ts). Запись идёт через
+    // Scrollable.setScrollPositionSilently — единственный владелец прямой
+    // (числовой) записи scrollTop в этом хуке (core/scrollWriters.test.ts).
+    // atBottomRef/userScrolledUpRef выставляются как у jump-to-message ниже
+    // (smoothCenterToSeq/jumpToSeq): иначе ResizeObserver-эффект
+    // (correctScroll), который следом читает atBottomRef.current (дефолт
+    // true), тут же перепишет восстановленную позицию пином к низу.
+    const savedPos = getChatPosition(numericChatId, threadId)
+    if (savedPos) {
+      atBottomRef.current = false
+      userScrolledUpRef.current = true
+      scrollable.setScrollPositionSilently(savedPos.top)
+    }
     onAdditionalScroll() // eager run — seeds showScrollDown/atBottomRef from the mount scrollTop
     return () => {
+      // Сохранение позиции как СТРАХОВКА на размонтирование без предшествующей
+      // деактивации (основной путь — эффект ниже, реагирующий на isActive
+      // true→false). К МОМЕНТУ размонтирования узел стека обычно уже скрыт:
+      // `ChatsContainer` снимает класс `.active` таймером перехода
+      // (`NAVIGATION_TRANSITION_TIME + 100`), а таймер, обрезающий список и
+      // реально убирающий узел из DOM, зарегистрирован ТЕМ ЖЕ кодом с той же
+      // задержкой, но позже по порядку вызова — `setTimeout` с равной
+      // задержкой исполняет колбэки в порядке регистрации, так что класс
+      // снимается первым. У скрытого (`display: none`) узла нет layout box —
+      // `clientHeight` читается нулём (CSSOM View), и `scrollPosition`
+      // (тот же `scrollTop`) читался бы нулём тоже. Поэтому здесь пишем,
+      // только если у контейнера ЕЩЁ есть layout box: `clientHeight === 0` —
+      // верный признак «скрыт», в отличие от `scrollPosition === 0`, который
+      // у чата, честно прокрученного к верху, тоже ноль. «Не сохранили» —
+      // приемлемо (остаётся прошлое сохранённое значение), «сохранили 0
+      // поверх настоящей позиции» — нет.
+      if (scrollable.container.clientHeight > 0) {
+        saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
+      }
       scrollable.destroy()
       // destroy() doesn't remove the thumb container it may have prepended (thumb/thumbContainer
       // are `protected`, unset — tweb's own container is throwaway, so it never needed to; ours is
@@ -268,7 +332,31 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
       el.querySelector(':scope > .scrollable-thumb-container')?.remove()
       scrollableRef.current = null
     }
-  }, [onAdditionalScroll, onScrolledTop, onScrolledBottom])
+  }, [onAdditionalScroll, onScrolledTop, onScrolledBottom, numericChatId, threadId])
+  // Основной путь сохранения позиции — переход isActive true→false (Critical-
+  // ревью Task 7), не размонтирование. В момент, когда `ChatsContainer` уводит
+  // инстанс с переднего плана (push нового поверх, переключение на нижний по
+  // стеку), `isActive` из контекста (`useIsActiveChat`) меняется СИНХРОННО с
+  // React-рендером, вызванным сменой стека, — тем же коммитом, что запускает
+  // navigation-переход. Класс `.active`, который физически скрывает узел
+  // (`display: none`), снимается только СПУСТЯ `NAVIGATION_TRANSITION_TIME +
+  // 100`мс — так что здесь, в момент самого перехода `true → false`, узел ещё
+  // полностью виден и его геометрия настоящая. `wasActiveRef` хранит значение
+  // ПРЕДЫДУЩЕГО рендера (эффект видит новое `isActive` в замыкании, поэтому
+  // без рефа не отличить «стал неактивным» от «остался неактивным»).
+  const wasActiveRef = useRef(isActive)
+  useEffect(() => {
+    const wasActive = wasActiveRef.current
+    wasActiveRef.current = isActive
+    if (!wasActive || isActive) return
+    const scrollable = scrollableRef.current
+    // Тот же гейт «есть ли у контейнера layout box», что и в cleanup выше —
+    // здесь он избыточен по построению (узел ещё виден), но не бесплатен и
+    // безвреден: держит оба места сохранения симметричными на случай, если
+    // порядок эффектов когда-нибудь изменится.
+    if (!scrollable || scrollable.container.clientHeight === 0) return
+    saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
+  }, [isActive, numericChatId, threadId])
   // Keep loadedAll in sync with the window's real top/bottom (tweb: bubbles.ts' setLoaded()
   // writes scrollable.loadedAll[side] on every window-state change) — onScrolledTop/
   // onScrolledBottom above read it at trigger time.
@@ -528,7 +616,9 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // lastReadSeq), so the incoming message already grows it via lastMessage.seq. The
   // DATA path is realtimeBridge → messagesStore; this stays a pure UI reaction.
   useEffect(() => {
-    if (!isRealChat) return
+    // Гейт активности: фоновый (скрытый) инстанс не должен отмечать чужой для
+    // пользователя чат прочитанным на входящее сообщение.
+    if (!isRealChat || !isActive) return
     // Подписка на rootScope напрямую (типизированный payload). storeProjection
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
@@ -540,7 +630,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     }
     rootScope.addEventListener(RT.newMessage, onNewMessage)
     return () => rootScope.removeEventListener(RT.newMessage, onNewMessage)
-  }, [isRealChat, numericChatId, managers])
+  }, [isRealChat, isActive, numericChatId, managers])
 
   // Mark read on open / at the bottom — when the newest is loaded, focused, and the
   // viewport is pinned to the bottom, read up to max seq. This effect re-runs on
@@ -548,16 +638,21 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
   // history must NOT have the messages below the fold auto-marked read (tweb reads
   // only what's seen) — otherwise the derived unread-below badge could never rise.
   // Gated on focus like tweb (a background tab shouldn't mark a chat read).
+  // Плюс гейт активности инстанса — тот же класс бага: у скрытой копии
+  // atBottomRef тривиально true (нулевая геометрия), без гейта она читала бы
+  // чат при каждом обновлении окна, даже пока пользователь смотрит другой чат.
   useEffect(() => {
-    if (!isRealChat || !win.reachedBottom || win.msgs.length === 0) return
+    if (!isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
     if (!atBottomRef.current || !document.hasFocus()) return
     const maxSeq = win.msgs[win.msgs.length - 1].seq
     void managers.realtime.markRead({ chatId: numericChatId, upToSeq: maxSeq })
-  }, [isRealChat, win.reachedBottom, win.msgs, numericChatId, managers])
+  }, [isRealChat, isActive, win.reachedBottom, win.msgs, numericChatId, managers])
 
   // Mark read when the window regains focus while we're at the bottom of this chat.
+  // Гейт активности: window 'focus' — глобальное событие, слышат ВСЕ смонтированные
+  // инстансы разом; без гейта фоновая копия тоже отмечала бы чат прочитанным.
   useEffect(() => {
-    if (!isRealChat) return
+    if (!isRealChat || !isActive) return
     const onFocus = () => {
       const el = scrollRef.current
       if (!el || win.msgs.length === 0) return
@@ -568,7 +663,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [isRealChat, numericChatId, win.msgs, managers])
+  }, [isRealChat, isActive, numericChatId, win.msgs, managers])
 
   // Floating "scroll to bottom" button (tweb .bubbles-go-down). If we jumped into
   // mid-history (true bottom not loaded), reload the newest page and pin to it —
