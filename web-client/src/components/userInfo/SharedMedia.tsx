@@ -38,6 +38,9 @@ import DeferredSortedVirtualList, {
 } from '../virtual/DeferredSortedVirtualList'
 import { useEvent } from '../../core/hooks/useEvent'
 import s from './SharedMedia.module.scss'
+// Витрина подарков — модули tweb 1:1 (см. комментарий у рендера ниже)
+import giftsGrid from '../stargifts/stargiftsGrid.module.scss'
+import profileList from '../stargifts/profileList.module.scss'
 
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
 // Порядок узлов ряда — как в tweb (дамп 07-right-sidebar): сначала
@@ -380,37 +383,39 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           Скрытые (hidden) приходят только владельцу — помечаем «глаз-off» и
           приглушаем. Ограниченные — бейдж «Лимит»; отправитель — мини-аватар
           (аноним → безликий кружок), как itemFrom/itemUnsaved в tweb. */}
+      {/* Витрина подарков — модули САМОГО tweb, портированные дословно
+          (`components/stargifts/stargiftsGrid.module.scss` и
+          `profileList.module.scss`): в оригинале подарки тоже сделаны
+          CSS-модулями, а не глобальными классами, так что это та же форма.
+          `gridItem` — плитка, `itemPrice` — цена в звёздах, `itemFrom` —
+          мини-аватар дарителя (аноним → `itemFromAnonymous`), `itemLock` —
+          метка скрытого, `empty*` — пустое состояние из profileList. */}
       {tab === 'Gifts' && gifts && (
         gifts.length === 0 ? (
-          <div className={s.giftsEmpty}>
-            <span className={s.giftsEmptyEmoji}>🎁</span>
-            <Text size={15} color="var(--secondary-text-color)">{t('No gifts yet')}</Text>
+          <div className={profileList.empty}>
+            <div className={profileList.emptyTitle}>{t('No gifts yet')}</div>
             {onSendGift && (
-              <button type="button" className={s.giftsEmptyBtn} onClick={onSendGift}>
+              <button type="button" className="btn-primary btn-color-primary btn-control" onClick={onSendGift}>
                 {t('Send a Gift')}
               </button>
             )}
           </div>
         ) : (
-          <div className={s.giftsProfileGrid}>
+          <div className={classNames(giftsGrid.grid, giftsGrid.viewProfile)}>
             {gifts.map((g) => {
               const anon = g.anonymous || (!g.fromName && g.fromId == null)
               return (
-                <div
-                  key={g.id}
-                  className={classNames(s.giftTile, g.hidden ? s.giftTileHidden : '')}
-                  onClick={() => onOpenGift?.(g)}
-                >
-                  {g.hidden && <TgIcon name="hide" size={16} className={s.giftTileHiddenIcon} />}
-                  {g.gift.total != null && <span className={s.giftTileBadge}>{t('Limited')}</span>}
-                  <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
-                  <span className={s.giftTilePrice}>
+                <div key={g.id} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
+                  {g.hidden && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
+                  {g.gift.total != null && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                  <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
+                  <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
                     {g.gift.priceStars}
                   </span>
-                  <div className={s.giftTileFrom}>
+                  <div className={giftsGrid.itemFrom}>
                     {anon ? (
-                      <span className={s.giftTileAnon}>?</span>
+                      <span className={giftsGrid.itemFromAnonymous}>?</span>
                     ) : (
                       <UserAvatar id={g.fromId ?? undefined} name={g.fromName} size={18} />
                     )}
