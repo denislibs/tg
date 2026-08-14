@@ -60,6 +60,11 @@ type store struct {
 	mentions   []mentionRow                        // message_mentions rows
 	readMarks  map[int64]map[int64][]readMark      // chatID -> userID -> история горизонта чтения
 
+	// discussionChat — channelID -> текущая привязанная группа обсуждения
+	// (chats.discussion_chat_id в реальной БД); 0/отсутствие — не привязана.
+	// Заполняется тестами напрямую (seedDiscussion), как и chatType.
+	discussionChat map[int64]int64
+
 	// автоудаление: период чата / глобальный период пользователя
 	autoDelete     map[int64]int
 	userAutoDelete map[int64]int
@@ -78,18 +83,28 @@ type destructCall struct{ ChatID, ReaderID, ReadSeq int64 }
 
 func newStore() *store {
 	return &store{
-		chatType:  map[int64]string{},
-		chatSeq:   map[int64]int64{},
-		members:   map[int64]map[int64]*member{},
-		messages:  map[int64][]domain.Message{},
-		owners:    map[int64]int64{},
-		mediaDims: map[int64]MediaDims{},
-		reactions: map[int64]map[int64]map[string]bool{},
-		viewed:    map[int64]map[int64]bool{},
-		pts:       map[int64]int64{},
-		date:      map[int64]int64{},
-		updates:   map[int64][]domain.Update{},
+		chatType:       map[int64]string{},
+		chatSeq:        map[int64]int64{},
+		members:        map[int64]map[int64]*member{},
+		messages:       map[int64][]domain.Message{},
+		owners:         map[int64]int64{},
+		mediaDims:      map[int64]MediaDims{},
+		reactions:      map[int64]map[int64]map[string]bool{},
+		viewed:         map[int64]map[int64]bool{},
+		pts:            map[int64]int64{},
+		date:           map[int64]int64{},
+		updates:        map[int64][]domain.Update{},
+		discussionChat: map[int64]int64{},
 	}
+}
+
+// seedDiscussion привязывает к каналу группу обсуждения (эквивалент
+// chats.discussion_chat_id=groupID в реальной БД) — нужно для MirrorByPost/
+// MirrorsByPosts, которые резолвят зеркало только в ТЕКУЩЕЙ группе канала.
+func (s *store) seedDiscussion(channelID, groupID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.discussionChat[channelID] = groupID
 }
 
 func (s *store) seedMedia(mediaID, ownerID int64) {
@@ -1049,40 +1064,49 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 	return picked, nil
 }
 
-// MirrorByPost ищет среди ВСЕХ чатов (зеркало живёт в группе обсуждения, а не
-// в channelID) сообщение с IsDiscussionMirror и совпадающими FwdFromChatID/
-// FwdFromMsgID — эквивалент SQL-версии MessagesRepo.MirrorByPost.
+// MirrorByPost ищет зеркало ТОЛЬКО в текущей группе обсуждения канала
+// (discussionChat[channelID]) — сообщение с IsDiscussionMirror и совпадающими
+// FwdFromChatID/FwdFromMsgID. Зеркало в старой (отвязанной) группе обсуждения
+// найдено быть не должно — эквивалент SQL-версии MessagesRepo.MirrorByPost,
+// которая ограничивает выборку chat_id=(SELECT discussion_chat_id ...).
 func (r fakeMsgs) MirrorByPost(_ context.Context, channelID, postID int64) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	for _, msgs := range r.s.messages {
-		for _, m := range msgs {
-			if m.IsDiscussionMirror && !m.Deleted &&
-				m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
-				m.FwdFromMsgID != nil && *m.FwdFromMsgID == postID {
-				return m.ID, nil
-			}
+	discID, ok := r.s.discussionChat[channelID]
+	if !ok || discID == 0 {
+		return 0, nil
+	}
+	for _, m := range r.s.messages[discID] {
+		if m.IsDiscussionMirror && !m.Deleted &&
+			m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+			m.FwdFromMsgID != nil && *m.FwdFromMsgID == postID {
+			return m.ID, nil
 		}
 	}
 	return 0, nil
 }
 
-// MirrorsByPosts — батч-версия MirrorByPost.
+// MirrorsByPosts — батч-версия MirrorByPost, той же ограничивающей логики.
 func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	discID, ok := r.s.discussionChat[channelID]
+	if !ok || discID == 0 {
+		return out, nil
+	}
 	want := map[int64]bool{}
 	for _, id := range postIDs {
 		want[id] = true
 	}
-	out := map[int64]int64{}
-	for _, msgs := range r.s.messages {
-		for _, m := range msgs {
-			if m.IsDiscussionMirror && !m.Deleted &&
-				m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
-				m.FwdFromMsgID != nil && want[*m.FwdFromMsgID] {
-				out[*m.FwdFromMsgID] = m.ID
-			}
+	for _, m := range r.s.messages[discID] {
+		if m.IsDiscussionMirror && !m.Deleted &&
+			m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+			m.FwdFromMsgID != nil && want[*m.FwdFromMsgID] {
+			out[*m.FwdFromMsgID] = m.ID
 		}
 	}
 	return out, nil

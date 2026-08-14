@@ -802,15 +802,21 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
-// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
-// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
-// считается: она без флага is_discussion_mirror.
+// MirrorByPost возвращает id зеркала поста канала в его ТЕКУЩЕЙ группе
+// обсуждения (0 — зеркала нет). Ограничение chat_id=discussion_chat_id
+// обязательно: канал можно перепривязать на другую группу (LinkDiscussion/
+// UnlinkDiscussion), а уникальный индекс из Task 1 стоит на
+// (chat_id, fwd_from_chat_id, fwd_from_msg_id) — он не запрещает зеркала
+// одного поста в разных (старой и новой) группах. Без этого условия резолв
+// мог бы найти зеркало в уже отвязанной группе. Пользовательская пересылка
+// того же поста зеркалом не считается: она без флага is_discussion_mirror.
 func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error) {
 	q := querier(ctx, r.pool)
 	var id int64
 	err := q.QueryRow(ctx,
 		`SELECT id FROM messages
-		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id=$2 AND is_discussion_mirror AND deleted_at IS NULL`,
+		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id=$2 AND is_discussion_mirror AND deleted_at IS NULL
+		   AND chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
 		channelID, postID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
@@ -818,8 +824,9 @@ func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64
 	return id, err
 }
 
-// MirrorsByPosts — батч того же резолва: postID -> id зеркала. Посты без
-// зеркала в карту не попадают.
+// MirrorsByPosts — батч того же резолва (см. MirrorByPost про ограничение
+// текущей группой обсуждения): postID -> id зеркала. Посты без зеркала в
+// карту не попадают.
 func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
 	if len(postIDs) == 0 {
@@ -828,7 +835,8 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT fwd_from_msg_id, id FROM messages
-		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id = ANY($2) AND is_discussion_mirror AND deleted_at IS NULL`,
+		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id = ANY($2) AND is_discussion_mirror AND deleted_at IS NULL
+		   AND chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
 		channelID, postIDs)
 	if err != nil {
 		return nil, err
