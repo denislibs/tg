@@ -214,6 +214,9 @@ func newChannelTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeS
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}
+	// Зеркалим привязку группы обсуждения в общий store — MirrorByPost/
+	// MirrorsByPosts (fakeMsgs) резолвят её оттуда, а не из fg.discussion.
+	fg.onSetDiscussion = s.seedDiscussion
 	return in, fg, fs, fpub
 }
 

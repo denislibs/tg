@@ -48,6 +48,11 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 			return e
 		}
 		msg = m
+		// Зеркало поста в группе обсуждения — в той же транзакции: пост без
+		// зеркала остался бы без треда комментариев.
+		if e := i.mirrorChannelPost(ctx, m); e != nil {
+			return e
+		}
 		payload, _ := json.Marshal(channelPostPayload(m, actorID))
 		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
 		return e
