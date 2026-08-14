@@ -514,10 +514,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
 
   /**
    * Время последнего сообщения диалога в миллисекундах — ключ СЕРВЕРНОГО
-   * порядка (`ORDER BY m.pinned_at DESC, last_message_at DESC`, chatsrepo.go),
-   * а не наш `dialogIndex`: последний поднимает диалог черновиком
-   * (`dialogIndex.activityDate`), которого сервер не видит. Всё, что сверяется
-   * с порядком ОТВЕТА, обязано считаться этим ключом. `0` — сообщений нет.
+   * порядка (`ORDER BY m.pinned_at DESC NULLS LAST, lm.created_at DESC NULLS
+   * LAST, c.id DESC`, chatsrepo.go:229), а не наш `dialogIndex`: последний
+   * поднимает диалог черновиком (`dialogIndex.activityDate`), которого сервер
+   * не видит. Всё, что сверяется с порядком ОТВЕТА, обязано считаться этим
+   * ключом. `0` — сообщений нет (пустой чат либо очищенная история).
    */
   const msgTime = (d: Dialog): number => {
     const ms = Date.parse(d.lastMessage?.at ?? '')
@@ -525,14 +526,37 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   }
 
   /**
+   * Диалоги ВРЕМЕННОГО ПОТОКА выборки — те, чьё место в серверном порядке
+   * задано временем последнего сообщения. Порт гварда `if(offsetDate &&
+   * !dialog.pFlags.pinned)` (dialogs.ts:1051): и закреплённые, и диалоги без
+   * сообщения из потока выпадают, и оригинал не пускает их ни в смещение
+   * пагинации, ни в рассуждения о том, что этим смещением накрыто.
+   *
+   * У нас это тем важнее, что порядок сервера — `pinned_at DESC NULLS LAST,
+   * lm.created_at DESC NULLS LAST` (chatsrepo.go:229): страница НЕ является
+   * непрерывным временным отрезком. Закреплённый идёт первым с любым (в том
+   * числе древним или отсутствующим) последним сообщением, а очищенные чаты
+   * `NULLS LAST` уводит в самый хвост.
+   */
+  const inFlow = (d: Dialog): boolean => !d.pinned && msgTime(d) > 0
+  const flowOf = (page: readonly Dialog[]): Dialog[] => page.filter(inFlow)
+
+  /**
    * Продвинуть курсор выборки последним диалогом её страницы — и только ВГЛУБЬ
    * (порт `if(!savedOffsetDate || offsetDate < savedOffsetDate)`,
    * dialogs.ts:1060-1066). Пустой ответ курсор не двигает: двигать его в ноль
    * значило бы перечерпывать выборку с начала (порт `if(offsetDate && ...)`,
    * dialogs.ts:1051).
+   *
+   * Опорным берётся последний диалог ПОТОКА, а не страницы: закреплённый
+   * приехал бы курсором наверх набора (сервер ставит его первым при любом
+   * времени), а диалог без сообщения дал бы `at === 0` — правило «только
+   * вглубь» после такого не выполнилось бы уже никогда, и выборка застряла бы
+   * на одном и том же `offset_chat_id`.
    */
   function advanceCursor(scope: Scope, page: readonly Dialog[]): void {
-    const last = page[page.length - 1]
+    const flow = flowOf(page)
+    const last = flow[flow.length - 1]
     if (!last) return
     const at = msgTime(last)
     const saved = serverCursor[scope]
@@ -622,12 +646,34 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * но отсутствующий в ответе. Всё, что ниже окна, не трогается — оно вне
    * зоны ответственности этого ответа.
    *
+   * Границы считаются ТОЛЬКО по временному потоку окна (`flowOf`), и сверяются
+   * с ним же — четыре категории диалогов ведут себя по-разному, и каждая
+   * осознанно:
+   *  - **закреплённый** в границы не входит и правилом не снимается: сервер
+   *    ставит его первым при любом времени последнего сообщения (в том числе
+   *    древнем), поэтому по времени он окно не описывает — считая по нему,
+   *    нижняя граница проваливалась бы к нему, и всё удерживаемое ниже
+   *    (глубокие страницы папок, набранный прокруткой архив) снималось бы как
+   *    «пропавшее внутри окна»;
+   *  - **без последнего сообщения** (пустой чат, очищенная история —
+   *    `cleared_max_seq`, chatsrepo.go:213) — то же самое, только границу он
+   *    обнулял бы совсем, и слияние выродилось бы обратно в полную подмену;
+   *  - **с временем РОВНО на нижней границе** — остаётся: тайбрейк сервера
+   *    `c.id DESC` (chatsrepo.go:229) может отрезать соседа с той же меткой
+   *    сразу за срезом страницы, и его отсутствие в ответе ничего не доказывает;
+   *  - **поднявшийся выше всего окна** (realtime-сообщение долетело до нас
+   *    раньше, чем сервер собрал ответ) — остаётся: вернуть его сервер не мог,
+   *    это мы знаем больше, чем он.
+   *
+   * Цена решения: фантом закреплённого или очищенного диалога, чей
+   * `chat_removed` потерялся в разрыве потока апдейтов, этим ответом НЕ
+   * снимается — его снимет свой канал (`applyRemoved`) либо ответ с `is_end`,
+   * когда выборка целиком уместится в окно. Ложное удаление живого диалога
+   * дороже задержавшегося фантома.
+   *
    * Сравнение — по `msgTime` (ключ серверного порядка), а не по `dialogIndex`:
    * иначе диалог, поднятый ЛОКАЛЬНЫМ черновиком, попадал бы в окно, которого
-   * сервер для него не строил, и удалялся бы. Верхняя граница диапазона нужна
-   * по той же причине с другой стороны: диалог, который поднялся выше всего
-   * окна уже ПОСЛЕ того, как сервер собрал ответ (пришло realtime-сообщение),
-   * сервер вернуть не мог — это мы знаем больше, а не он.
+   * сервер для него не строил.
    */
   function mergeWindow(page: Dialog[], isEnd: boolean): Dialog[] {
     const held = items.map((i) => i.dialog)
@@ -635,18 +681,23 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     if (isEnd) return page
     // Пустое окно без `is_end` — сервер не сказал ничего, сверять не с чем.
     if (!page.length) return held
-    const returned = new Set(page.map((d) => d.chatId))
+    const flow = flowOf(page)
+    // В окне ни одного диалога временного потока (только закреплённые и/или
+    // очищенные) — границ нет, сверять не с чем: просто сливаем.
+    if (!flow.length) return [...page, ...held.filter((d) => !page.some((p) => p.chatId === d.chatId))]
     let top = -Infinity
     let bottom = Infinity
-    for (const d of page) {
+    for (const d of flow) {
       const t = msgTime(d)
       if (t > top) top = t
       if (t < bottom) bottom = t
     }
+    const returned = new Set(page.map((d) => d.chatId))
     const kept = held.filter((d) => {
       if (returned.has(d.chatId)) return false // свежая версия уже в `page`
+      if (!inFlow(d)) return true // вне временного потока — правилом не снимаем
       const t = msgTime(d)
-      return t < bottom || t > top
+      return t <= bottom || t > top
     })
     return [...page, ...kept]
   }

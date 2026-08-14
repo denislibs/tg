@@ -613,6 +613,28 @@ describe('useDialogListSource: гидратация строки «Архив»'
     expect(archiveRowCalls).toHaveLength(1)
   })
 
+  // У пользователя БЕЗ архива гейт по зеркалу не закроется никогда — запрос
+  // уходил бы на каждую страницу списка. Оригинал спрашивает один раз
+  // (`archiveDialog.tsx:170` — `if(canFetch()) return`); у нас признак ставит
+  // сам ответ («пусто и это конец»), чтобы перезапрос при выпавшем из зеркала
+  // архиве остался.
+  it('владелец ответил «архива нет» — на следующих страницах не переспрашиваем', async () => {
+    const { managers, archiveRowCalls } = fakeManagers([
+      page([dialog(1)], { count: 99 }), page([dialog(2)], { count: 99 }), page([], { isEnd: true }),
+    ])
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    expect(archiveRowCalls).toHaveLength(1)
+
+    await act(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }])
+      result.current.requestItemForIdx(5, 0)
+    })
+
+    expect(archiveRowCalls).toHaveLength(1)
+  })
+
   // РЕТРАЙ, которого не даёт эффект монтирования: запрос fire-and-forget, и
   // упади он (моргнула сеть на старте), строки «Архив» не будет до перезагрузки
   // вкладки — кадр списка «Все чаты» переживает переключение папок (`TabSlide

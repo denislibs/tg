@@ -233,19 +233,30 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    * («список строки сократился — перезапросить»): у нас архив штатно выпадает
    * из окна `refresh()`, а пока он в зеркале есть, повторный запрос не нужен.
    *
-   * Ответ здесь НЕ читается и никуда не пишется: владелец объявляет страницу
-   * сам (`upsert` → `rt:dialog_op` → проектор → зеркало), витрина своего вывода
-   * того же факта не держит (`web-client/CLAUDE.md`, «Владение фактами»).
-   * `.catch` — как у прочих fire-and-forget колсайтов владельца.
+   * Ответ здесь НЕ применяется: владелец объявляет страницу сам (`upsert` →
+   * `rt:dialog_op` → проектор → зеркало), витрина своего вывода того же факта
+   * не держит (`web-client/CLAUDE.md`, «Владение фактами»). Читается из него
+   * ровно одно — «архива нет вовсе» (`isEnd` при пустой странице), и только
+   * чтобы БОЛЬШЕ НЕ СПРАШИВАТЬ: у пользователя без архива гейт по зеркалу не
+   * закроется никогда, и запрос уходил бы на каждую страницу списка (в сеть при
+   * этом сходил бы только первый — дальше владелец отвечает из кэша, — но RPC
+   * воркеру летели бы все). У оригинала на этом месте свой признак «уже
+   * спрашивали» (`archiveDialog.tsx:170` — `if(canFetch()) return`); наш
+   * опирается на ОТВЕТ, потому что перезапрос при выпавшем из зеркала архиве
+   * обязан остаться. `.catch` — как у прочих fire-and-forget колсайтов
+   * владельца, и он же сохраняет ретрай: упавший запрос признака не ставит.
    *
    * Только список «Всех чатов»: строку архива несёт он один (`Sidebar.tsx`
    * отдаёт `archived` только ему), а сам оверлей архива страницы просит уже
    * своим курсором — обычным `fetchPage` ниже.
    */
+  const noArchiveRef = useRef(false)
   const ensureArchiveHydrated = useEvent((forFilterId: number): void => {
-    if (forFilterId !== ALL_FOLDER_ID) return
+    if (forFilterId !== ALL_FOLDER_ID || noArchiveRef.current) return
     if (useChatsStore.getState().dialogs.some((d) => d.archived)) return
-    void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT }).catch(() => {})
+    void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT })
+      .then((r) => { if (!r.dialogs.length && r.isEnd) noArchiveRef.current = true })
+      .catch(() => {})
   })
 
   /**

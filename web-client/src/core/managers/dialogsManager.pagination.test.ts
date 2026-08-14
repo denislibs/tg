@@ -978,6 +978,56 @@ describe('курсор пагинации — свой у каждой выбо�
     expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 9, offset_chat_id: 4 })
   })
 
+  // Опорным для курсора берётся последний диалог ВРЕМЕННОГО ПОТОКА, а не
+  // страницы (порт `if(offsetDate && !dialog.pFlags.pinned)`, dialogs.ts:1051).
+  it('курсор не встаёт на закреплённый — он в серверном порядке вне времени', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q: Record<string, number>) => (q.offset_chat_id
+        ? { chats: [raw(9, 9, { pinned: true })], count: 40, is_end: false }
+        : { chats: [raw(1, 5), raw(2, 4)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh() // курсор: чат 2 (низ потока)
+    await mgr.getDialogs({ limit: 5 }) // страница принесла ОДИН закреплённый
+    rest.get.mockClear()
+
+    await mgr.getDialogs({ limit: 9 })
+
+    // Курсор остался на 2: встань он на закреплённый (сервер ставит его ПЕРВЫМ
+    // при любом времени), следующая страница пошла бы от вершины набора.
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 9, offset_chat_id: 2, folder_id: 0 })
+  })
+
+  // Диалог без последнего сообщения (очищенная история) даёт `at === 0`, и
+  // правило «только вглубь» после него не выполнилось бы уже НИКОГДА: каждая
+  // следующая страница уходила бы с тем же `offset_chat_id`.
+  it('курсор не встаёт на диалог без последнего сообщения и не замерзает', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q: Record<string, number>) => (q.offset_chat_id
+        ? { chats: [raw(3, 3), raw(9, 1, { last_message: undefined })], count: 40, is_end: false }
+        : { chats: [raw(1, 5), raw(2, 4)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+    await mgr.getDialogs({ limit: 5 }) // хвост страницы — очищенный чат 9
+    rest.get.mockClear()
+
+    await mgr.getDialogs({ limit: 9 })
+
+    // Курсор продвинулся до чата 3 (низ потока), а не залип на `at: 0` чата 9.
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 9, offset_chat_id: 3, folder_id: 0 })
+  })
+
   // Курсор — `chat_id`, и он обязан ЛЕЖАТЬ в кэше своей выборки: опорный чат,
   // которого мы больше не держим (разархивирован, удалён, выпал при слиянии
   // окна), просит у сервера продолжение с места, которого у нас нет, — голова
@@ -1093,6 +1143,94 @@ describe('refresh сливает окно с кэшем, а не подменя�
     await mgr.refresh()
 
     expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([9, 1, 2])
+  })
+
+  // Порядок сервера — `pinned_at DESC NULLS LAST, lm.created_at DESC NULLS
+  // LAST, c.id DESC` (chatsrepo.go:229), то есть страница НЕ является
+  // непрерывным временным отрезком: закреплённый идёт первым с любым временем
+  // последнего сообщения. Считая границы по нему, окно проваливалось бы до его
+  // старой метки и сносило всё живое ниже (порт гварда `if(offsetDate &&
+  // !dialog.pFlags.pinned)`, dialogs.ts:1051).
+  it('закреплённый со СТАРЫМ сообщением не расширяет окно и не сносит живые диалоги ниже', async () => {
+    const rest = {
+      get: vi.fn(async () => ({
+        chats: [raw(100, 1, { pinned: true }), raw(1, 9), raw(2, 8)],
+        count: 40, is_end: false,
+      })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // 50 и 51 лежат ПОД окном (дни 5 и 4) — их принесла догрузка папки/архива.
+      loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(50, 5), dialog(51, 4)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId).sort((a, b) => a - b)).toEqual([1, 2, 50, 51, 100])
+  })
+
+  // Тот же класс, вырожденный: закреплённый без последнего сообщения (легальное
+  // состояние — «очистить историю», `cleared_max_seq`, chatsrepo.go:213) дал бы
+  // нижнюю границу 0, окно накрыло бы ВЕСЬ кэш, и слияние выродилось бы обратно
+  // в полную подмену.
+  it('закреплённый БЕЗ последнего сообщения не обнуляет нижнюю границу', async () => {
+    const rest = {
+      get: vi.fn(async () => ({
+        chats: [raw(100, 1, { pinned: true, last_message: undefined }), raw(1, 9), raw(2, 8)],
+        count: 40, is_end: false,
+      })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(50, 5), dialog(51, 4)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId).sort((a, b) => a - b)).toEqual([1, 2, 50, 51, 100])
+  })
+
+  // Тайбрейк сервера — `c.id DESC` (chatsrepo.go:229): сосед с той же меткой
+  // времени мог оказаться сразу ЗА срезом страницы, и его отсутствие в ответе
+  // ничего не доказывает.
+  it('ничья по времени на нижней границе окна не снимает диалог', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 8)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // У чата 3 РОВНО то же время, что у нижнего диалога окна (день 8).
+      loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(3, 8)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toContain(3)
+  })
+
+  // Вне временного потока — вне правила: у закреплённого место в порядке задаёт
+  // `pinned_at`, у очищенного его нет вовсе, поэтому «должен был вернуться, но
+  // не вернулся» про них не выводится. Их фантомы снимает свой канал
+  // (`applyRemoved`) или ответ с `is_end` — цена сознательная, ложное удаление
+  // живого диалога дороже.
+  it('закреплённый и очищенный, пропавшие из ответа, правилом не снимаются', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 7)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [
+        dialog(1, 9), dialog(2, 7),
+        dialog(70, 8, { pinned: true }), // закреплённый СТРОГО внутри окна (9 > 8 > 7)
+        mapDialog(raw(71, 8, { last_message: undefined })), // и очищенный
+      ],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    const ids = mgr.getSnapshot().map((i) => i.dialog.chatId)
+    expect(ids).toContain(70)
+    expect(ids).toContain(71)
   })
 
   // `is_end` без курсора — ответ и есть ВЕСЬ набор: всё, чего в нём нет, ушло.
