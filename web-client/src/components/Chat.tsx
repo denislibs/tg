@@ -460,7 +460,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
-  } = useChatScroll({ numericChatId, isRealChat, win, paddingTop: padTopPx, unreadDividerSeq, unreadStickyTop: padTopPx })
+  } = useChatScroll({ numericChatId, threadId: thread?.rootMsgId, isRealChat, win, paddingTop: padTopPx, unreadDividerSeq, unreadStickyTop: padTopPx })
   // Pinned messages in this chat (newest pin first) + индекс показанного пина
   // (tweb pinnedMessage: перелистывание кликом + выбор по скроллу ленты).
   const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, scrollRef)

@@ -28,9 +28,13 @@ import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
 import Scrollable from '@components/scrollable'
+import { getChatPosition, saveChatPosition } from '../chat/chatPositions'
 
 interface UseChatScrollArgs {
   numericChatId: number
+  /** корень треда (комментарии/форум-топик) — вместе с numericChatId ключ
+   * сохранённой позиции (см. chatPositions.ts); undefined — обычный чат */
+  threadId?: number
   isRealChat: boolean
   win: MessageWindow
   /** высота верхней распорки ленты (.bubbles-padding-top) */
@@ -43,7 +47,7 @@ interface UseChatScrollArgs {
   unreadStickyTop: number
 }
 
-export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
+export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const managers = useManagers()
   // В стеке инстансов чата смонтировано несколько копий одновременно (неактивные
   // скрыты display:none, но живут в DOM) — у скрытого узла scrollHeight/clientHeight/
@@ -270,8 +274,30 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
     scrollable.onAdditionalScroll = onAdditionalScroll
     scrollable.onScrolledTop = onScrolledTop
     scrollable.onScrolledBottom = onScrolledBottom
+    // Восстановление позиции ленты при возврате в чат — порт
+    // tweb appImManager.getChatSavedPosition (lib/appImManager.ts:2151):
+    // возврат из треда (или переключение на нижний инстанс стека) должен
+    // застать ленту там же, где пользователь её оставил, а не пином к низу.
+    // Ключ — пара peer+thread (chatPositions.ts). Запись идёт через
+    // Scrollable.setScrollPositionSilently — единственный владелец прямой
+    // (числовой) записи scrollTop в этом хуке (core/scrollWriters.test.ts).
+    // atBottomRef/userScrolledUpRef выставляются как у jump-to-message ниже
+    // (smoothCenterToSeq/jumpToSeq): иначе ResizeObserver-эффект
+    // (correctScroll), который следом читает atBottomRef.current (дефолт
+    // true), тут же перепишет восстановленную позицию пином к низу.
+    const savedPos = getChatPosition(numericChatId, threadId)
+    if (savedPos) {
+      atBottomRef.current = false
+      userScrolledUpRef.current = true
+      scrollable.setScrollPositionSilently(savedPos.top)
+    }
     onAdditionalScroll() // eager run — seeds showScrollDown/atBottomRef from the mount scrollTop
     return () => {
+      // Сохранение позиции при уходе (свёртка треда, переключение на другой
+      // инстанс стека, размонтирование при закрытии чата) — читаем через
+      // Scrollable.scrollPosition (геттер над тем же динамическим полем
+      // scrollTop, которым владеет сам класс), не голым el.scrollTop.
+      saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
       scrollable.destroy()
       // destroy() doesn't remove the thumb container it may have prepended (thumb/thumbContainer
       // are `protected`, unset — tweb's own container is throwaway, so it never needed to; ours is
@@ -282,7 +308,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unre
       el.querySelector(':scope > .scrollable-thumb-container')?.remove()
       scrollableRef.current = null
     }
-  }, [onAdditionalScroll, onScrolledTop, onScrolledBottom])
+  }, [onAdditionalScroll, onScrolledTop, onScrolledBottom, numericChatId, threadId])
   // Keep loadedAll in sync with the window's real top/bottom (tweb: bubbles.ts' setLoaded()
   // writes scrollable.loadedAll[side] on every window-state change) — onScrolledTop/
   // onScrolledBottom above read it at trigger time.
