@@ -20,3 +20,13 @@ slice3-real-chat-verified.png
 # MaxMind GeoLite2 DB (licensed, not redistributable)
 backend/data/geoip/*.mmdb
 .claude/worktrees/
+
+# Выгрузка стикеров: venv, сессия MTProto и креды api_id/api_hash
+tools/.venv/
+tools/.tg_session*
+tools/.tg.env
+
+# Сами наборы качает tools/fetch_stickers.py — это гигабайты, в git их нет.
+# В репо остаётся duck: образец раскладки для seed-stickers и данные для тестов.
+backend/assets/stickers/*
+!backend/assets/stickers/duck/
