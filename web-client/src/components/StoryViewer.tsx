@@ -508,7 +508,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
 
       {/* Меню своей истории: закреп в профиле, редактирование, удаление.
           Add/Remove from Profile 1:1 с tweb (Story.AddToProfile/RemoveFromProfile). */}
-      <Menu open={menuOpen} onClose={() => setMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+      <Menu open={menuOpen} onClose={() => setMenuOpen(false)} zIndex={3100} corner="bottom-left" style={{ top: 56, right: 16 }}>
         <MenuItem
           icon={<TgIcon name={vm.pinned ? 'pinlist' : 'pinnedchat'} size={20} />}
           label={vm.pinned ? t('Story.RemoveFromProfile') : t('Story.AddToProfile')}
@@ -539,7 +539,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       </Menu>
 
       {/* Меню чужой истории: Hide My View (stealth) — 1:1 с tweb Stories.StealthMode.View. */}
-      <Menu open={othersMenuOpen} onClose={() => setOthersMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+      <Menu open={othersMenuOpen} onClose={() => setOthersMenuOpen(false)} zIndex={3100} corner="bottom-left" style={{ top: 56, right: 16 }}>
         <MenuItem
           icon={<TgIcon name="eye2" size={20} />}
           label={t('Stories.StealthMode.View')}

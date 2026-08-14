@@ -116,7 +116,8 @@ export default function SendMediaPopup({
               onClose={() => setMenuOpen(false)}
               onExitComplete={() => setMenuPos(null)}
               zIndex={4100}
-              style={{ top: menuPos.top, right: menuPos.right, transformOrigin: 'top right' }}
+              corner="bottom-left"
+              style={{ top: menuPos.top, right: menuPos.right }}
             >
               <MenuItem
                 icon={<TgIcon name="image" size={20} />}

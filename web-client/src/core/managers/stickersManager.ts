@@ -72,12 +72,20 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/search', { q })
       return r.sets ?? []
     },
+    /** Трендовые наборы (новые первыми, лимит 40 на бэке) — экран поиска
+     * стикеров показывает их при пустом запросе (tweb getFeaturedStickers). */
+    async featuredSets(): Promise<StickerSet[]> {
+      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/featured')
+      return r.sets ?? []
+    },
     async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
     async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },
     async recent(): Promise<Sticker[]> {
       const r = await rest.get<{ stickers: RawSticker[] }>('/stickers/recent')
       return (r.stickers ?? []).map(mapSticker)
     },
+    /** очистка недавних (tweb clearRecentStickers) */
+    async clearRecent(): Promise<void> { await rest.del('/stickers/recent') },
     async faved(): Promise<Sticker[]> {
       const r = await rest.get<{ stickers: RawSticker[] }>('/stickers/faved')
       return (r.stickers ?? []).map(mapSticker)

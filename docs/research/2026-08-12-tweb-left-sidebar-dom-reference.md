@@ -136,7 +136,43 @@ solid-js-плашка предложения (в нашем клиенте та�
 
 ---
 
-## 3. Бургер-меню — `14-left-12-burger-menu.json`
+## 3. Бургер-меню — `18-burger-menu-full.json` (полное), `14-left-12-burger-menu.json`
+
+Полный дамп с раскрытым подменю — в `18-burger-menu-full.json`. Разбор:
+
+```text
+div.btn-menu.bottom-right
+  div.btn-menu-item.rp-overflow                       ← текущий аккаунт
+    div.avatar.avatar-24…btn-menu-item-icon.is-external + span.btn-menu-item-text
+  div.btn-menu-item.rp-overflow > span.tgico.btn-menu-item-icon + span.i18n.btn-menu-item-text "Add Account"
+  hr                                                  ← разделители обычным <hr>, не CSS-бордером
+  …"Saved Messages" · "My Stories" · "Contacts"
+  hr
+  div.btn-menu-item.rp-overflow                       ← Wallet: вместо глифа картинка
+    span.btn-menu-item-icon.is-external.media-container.no-background > img.media-photo
+    span.btn-menu-item-text "Wallet"
+  …"Settings"
+  div.btn-menu-item.rp-overflow.submenu-trigger       ← "More"
+    span.tgico.btn-menu-item-icon
+    span.btn-menu-item-text > span.submenu-label > span.submenu-label-text > span.i18n + span.tgico  ← шеврон
+```
+
+**Подменю создаётся лениво, по наведению** на `.submenu-trigger` — до первого hover его в DOM нет
+вообще. Отдельный корень, не вложенный в пункт:
+
+```text
+div.btn-menu.sidebar-tools-submenu.btn-menu-submenu
+  "Enable Dark Mode"        ← текст-переключатель, состояние зашито в подпись
+  "Disable Animations"      ← иконка со СВОИМ классом состояния: span.tgico.btn-menu-item-icon.animations-icon-off
+  hr
+  "Switch to A version" · "Telegram Features" · "Report Bug" · "Install App" · "Picture-in-Picture"
+  a.btn-menu-footer > span.btn-menu-footer-text        ← версия сборки, ссылкой
+```
+
+Два наблюдения для порта: у переключателей текст пункта меняется («Enable/Disable»), а не
+появляется галочка; и у меню бывает **футер** (`a.btn-menu-footer`) — у нас такого элемента нет.
+
+### Ранний снимок
 
 ```text
 div.btn-menu.bottom-right.active.was-open
@@ -199,6 +235,10 @@ Chat Folders · Stickers and Emoji · Speakers and Camera · Devices · Language
 | `14-left-22-settings-language` | Language | секция Translate Messages (тумблеры + «Do Not Translate»), затем радио-список языков (`row-subtitle` — самоназвание) |
 | `14-left-23-settings-shortcuts` | Keyboard Shortcuts | пять секций (Text Formatting / Messages / Chat / Navigation / Media), строки `row.no-subtitle.row-clickable.row-grid` — подпись слева, комбинация справа |
 | `14-left-25-settings-edit-profile` | Edit Profile | `span.tgico.avatar-edit-icon` поверх `avatar-120`; поля `div.input-field-input[contenteditable=true]` (Name / Last Name / Bio) и `input.input-field-input[type=text]` (Username); секции «Username order», «Personal Channel», «Add Birthday» |
+| `14-left-33-auto-delete` | Privacy → Auto-delete messages | solid-js `div._Container_xlod8_1` с `canvas.lottie` вместо картинки, ниже секция «Self-destruct timer» с радио сроков |
+| `14-left-34-two-step-verification` | Privacy → Two-Step Verification | интро без пароля: `div.media-sticker-wrapper > canvas.lottie` + `button.btn-primary.btn-color-primary` «Set Password» + `sidebar-left-section-caption` |
+| `14-left-35-passkeys-popup` | Privacy → Passkeys | **не экран слайдера, а попап** `div.popup._popup_164hr_1`: `_sticker_1ixcd_28 > _lottie_1ixcd_39 > canvas.lottie`, `_title_1ixcd_1` «Protect your account», строки `row._row_164hr_22` с `row-title.text-bold` |
+| `14-left-36-quick-reaction` | Stickers and Emoji → Quick Reaction | `label.row` с **`label.radio-field.radio-field-right`** — радио справа, а не слева; тайтл — `div.radio-field-main.quick-reaction-title` |
 | `14-left-26-settings-header-menu` | ⋮ в шапке Settings | ровно один пункт — **Log Out** |
 | `14-left-24-premium-popup` | Telegram Premium | не экран слайдера, а `div.popup.popup-premium.active`: радио-тарифы (`label.row…popup-gift…`, «Annual»/«Monthly» с ценой), список фич строками с `div.row-media.row-media-small.premium-promo-tab-icon [background-color]` и бейджем `span.i18n.row-title-badge` «New» |
 | `14-left-29-compose-menu` | меню FAB (карандаш) | `div.btn-menu.top-left`: New Channel / New Group / New Private Chat |
@@ -268,9 +308,109 @@ div.sidebar-left-section-content
 | `15-right-07-subscribers` | → Subscribers | тот же `selector-round.selector-right` |
 | `15-right-09-removed-users` | → Removed users | тот же селектор + пустое состояние |
 
+### Группа, где я создатель (`15-right-11…18`)
+
+| Дамп | Экран | Чем интересен |
+|---|---|---|
+| `15-right-11-group-profile` | Group Info | профиль группы: те же блоки, что у канала, плюс список участников прямо в профиле |
+| `15-right-12-edit-group` | Edit (обычная группа) | строки: Group Type · Invite Links · Reactions · **Permissions 13/13** · Topics · Administrators · Members · тумблер «Chat history for new members» · `danger` «Delete and Leave Group» |
+| `15-right-12b-edit-supergroup` | Edit (после миграции в супергруппу) | тот же экран, но добавились **Recent Actions**, **Removed users**, **Add Group to a Community** — удобно диффить, что даёт супергруппа |
+| `15-right-13-group-permissions` | → Permissions | **самый насыщенный экран**: строки-тумблеры `label.row.row-with-toggle…accordion-toggle` и вложенный `div.accordion` со счётчиком `b.accordion-counter` («Send Media 9/9»), внутри — чекбоксы `label.checkbox-field > div.checkbox-box > .checkbox-box-border + .checkbox-box-background + svg.checkbox-box-check` |
+| `15-right-14-group-members` | → Members | список участников группы |
+| `15-right-15-member-context-menu` | ПКМ по участнику | `btn-menu` из двух пунктов: Send Message / Edit admin rights |
+| `15-right-16-user-admin-rights` | → Admin Rights | тумблеры прав конкретного админа |
+| `15-right-17-group-type` | → Group Type | радио Private/Public + ссылка + блок «кто может писать» |
+| `16-forum-01-topics-list` | левая колонка форум-группы | список топиков отдельным `sidebar-slider-item` поверх списка чатов |
+
+Чекбокс в группе прав — не тот же элемент, что тумблер: `checkbox-box` с тремя слоями
+(рамка, заливка, `svg` галочка), тогда как в настройках везде `checkbox-field-toggle`.
+
 Главная находка для порта: **участники/админы/удалённые — это один компонент-селектор**
 с двумя модификаторами формы (`selector-square`/`selector-round`) и стороны
 (`selector-left`/`selector-right`), а не три разных списка.
+
+---
+
+## 7. Попапы (`17-popup-*.json`)
+
+### Общий скелет — одинаков у всех
+
+```text
+div.popup.popup-<вид>[.active]
+  div.popup-container.z-depth-1[.have-checkbox]
+    div.popup-header
+      button.btn-icon.popup-close        ← внутри либо div.animated-close-icon, либо span.tgico
+      div.popup-title > span.i18n
+    p.popup-description                  ← у подтверждений
+    div.popup-body                       ← у «содержательных»
+    div.popup-buttons
+      button.popup-button.btn.danger.rp  ← опасное действие первым
+      button.popup-button.btn.primary.rp
+```
+
+### `17-popup-01-forward-share` — «Share with» (forward.tsx)
+
+Самый крупный попап (14 КБ). Ключевое: его тело — **тот же селектор**, что участники и
+админы в правой колонке, только с флагом мультивыбора:
+
+```text
+div.popup.popup-forward
+  div.popup-body > div.tabs-container
+    div.selector.selector-round.selector-right.selector-multiselect-hidden.tabs-tab.active
+      div.scrollable.scrollable-y.selector-scrollable
+        …selector-search-section → div.input-search.selector-search-input-container
+        div.sidebar-left-section-container.search-group.search-group-contacts     ← ряд «недавних»
+          div.scrollable.scrollable-x.search-group-scrollable-x > ul.chatlist
+        …табы папок (menu-horizontal-div) и основной ul.chatlist
+          a.row…chatlist-chat
+            label.checkbox-field.checkbox-field-round.checkbox-color-white
+              input[type=checkbox] + div.checkbox-box > .checkbox-box-border + .checkbox-box-background + svg.checkbox-box-check
+```
+
+То есть галочка выбора чата — **круглая белая** вариация того же `checkbox-box`, что в правах группы.
+
+### `17-popup-03-delete-message` — подтверждение удаления
+
+```text
+div.popup.popup-peer.popup-delete-chat
+  div.popup-container.z-depth-1.have-checkbox
+    div.popup-header > div.avatar.avatar-32 [data-peer-id] + div.popup-title
+    p.popup-description
+    div.popup-buttons > button.popup-button.btn.danger + button.popup-button.btn.primary
+```
+
+`popup-peer` — общий класс всех подтверждений с аватаркой; `have-checkbox` появляется, когда
+в попапе есть опция вроде «удалить у всех».
+
+### `17-popup-06-date-picker` — календарь
+
+Класс двойной: **`popup-schedule popup-date-picker`** — тот же попап переиспользуется под
+отложенную отправку. Управление месяцами живёт **в шапке**, а не в теле:
+
+```text
+div.popup-header
+  button.btn-icon.popup-close
+  div.popup-title > div.date-picker-month-title > span.i18n "August 2026"
+  div.date-picker-controls > button.btn-icon.date-picker-prev.primary + .date-picker-next
+div.scrollable.scrollable-y.popup-scrollable.date-picker-scrollable
+  div.date-picker-months
+```
+
+Открывается кликом по служебному баблу с датой (на `.chat` висит класс `can-click-date`).
+
+### Меню (`btn-menu`) — не попапы, но рядом
+
+`17-popup-00-chat-menu` (⋮ в шапке канала) и `17-popup-04-attach-menu` (скрепка):
+
+```text
+div.btn-menu.bottom-left | .top-right
+  div.btn-menu-item.rp-overflow
+    span.tgico.btn-menu-item-icon + span.i18n.btn-menu-item-text
+  div.btn-menu-item.rp-overflow.submenu-trigger        ← пункт с подменю
+    span.btn-menu-item-text > span.submenu-label > span.submenu-label-text + span.tgico
+```
+
+У пункта с картинкой вместо иконки (Wallet) — `span.btn-menu-item-icon.is-external.media-container`.
 
 ---
 
@@ -280,8 +420,11 @@ div.sidebar-left-section-content
 FAB: синтетический клик по `.btn-menu-item` tweb не отрабатывает вообще, а настоящий
 попадает уже по закрывшемуся меню — из трёх пунктов FAB воспроизводимо открылся только
 «New Group». Сами меню сняты (`14-left-12`, `14-left-29`), не хватает целевых экранов.
-Туда же — **Two-Step Verification** и **Auto-delete messages** из Privacy, **архив** и
-**Connected websites**.
+Туда же — **архив**.
+
+**Connected websites снять невозможно**: при нуле подключённых сайтов tweb вешает на строку
+`.hide` (в дампе `14-left-16-settings-privacy` она есть, но с нулевым прямоугольником), так
+что в списке её просто нет. Появится — снимется.
 
 Экран «New Channel» по коду tweb — это шаг 2 группы плюс видимое второе поле
 (`div.input-field` без `.hide` под описание), но **проверено это не было**.

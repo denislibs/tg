@@ -54,18 +54,17 @@
   }
 }
 
-// шапка: закрыть + заголовок + (ред.). Absolute поверх скролла — при скролле
-// до табов заливается (tweb sidebar-header: position absolute, z-index 3).
+// Шапка. Раскладку (flex, align-items, min-height 3.5rem, padding-inline) даёт
+// глобальный `.sidebar-header` из `styles/tweb/_sidebar.scss` — здесь только то,
+// что в tweb лежит в НЕ портированном `_profile.scss:625-629`
+// (`.profile-container .sidebar-header`: absolute поверх шапки-аватаров, z-index 3,
+// `--transition: .1s ease-in-out`) и в `_profile.scss:598-606`
+// (`:not(.header-filled)` — прозрачный фон).
 .header {
   position: absolute;
   top: 0;
   inset-inline: 0;
   z-index: 3;
-  height: 56px; // tweb sidebar-header 3.5rem
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 12px;
   // Сверху шапка ПРОЗРАЧНАЯ (tweb .sidebar-header без .header-filled): без фона и
   // границы. Фон+граница появляются при небольшом скролле (.headerScrolled) или
   // поверх фото — прозрачная с белым текстом (.headerWhite). Границу держим 1px
@@ -93,12 +92,15 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-// стопка заголовков шапки: «Информация» ↔ «имя + счётчик» (tweb TransitionSlider)
+// Стопка заголовков шапки: «Информация» ↔ «имя + счётчик» (tweb TransitionSlider).
+// `flex: 1` и обрезка приходят из глобального `.sidebar-header__title`
+// (`styles/tweb/_sidebar.scss`); свои — только позиционный контекст под
+// абсолютные ряды AnimatedSuper и отмена левого отступа заголовка (у нас слева
+// стоит кнопка-крестик, а не отступ, как у tweb-заголовка без кнопки).
 .headerTitles {
-  flex: 1;
-  min-width: 0;
   position: relative;
   height: 100%;
+  padding-inline-start: 0;
 }
 
 .headerTitleItem {
@@ -110,10 +112,11 @@
   min-width: 0;
 }
 
-// скроллируемое тело (overflow-x: hidden — под слайд табов ±100%)
+// Скроллируемое тело. Размер/скролл дают глобальные `.scrollable.scrollable-y`
+// (`styles/tweb/_scrollable.scss`: absolute inset 0 + overflow-y: auto) внутри
+// `.sidebar-content`; здесь — только запрет горизонтального скролла (под слайд
+// табов ±100%) и оформление полосы.
 .body {
-  flex: 1;
-  overflow-y: auto;
   overflow-x: hidden;
 
   // тонкий скроллбар (как в ленте / ChatList / tweb)

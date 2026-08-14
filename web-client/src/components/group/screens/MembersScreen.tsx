@@ -1,35 +1,51 @@
 // group/screens/MembersScreen.tsx
 // Участники / Подписчики (tweb chatMembers): список, добавление через пикер,
 // restrict/kick/ban (для группы) или удаление (для канала).
+// Список — `shared/ui/PeerSelector` (порт tweb appSelectPeers): дампы
+// `15-right-14-group-members` / `15-right-07-subscribers`.
 import { useMemo, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
-import InputSearch from '../../../shared/ui/InputSearch'
+import PeerSelector from '../../../shared/ui/PeerSelector'
 import TgIcon from '../../TgIcon'
 import { useT } from '../../../i18n'
 import type { GroupEdit, EditMember } from '../../../core/hooks/useGroupEdit'
 import { useGroupCandidates } from '../../../core/hooks/useGroupCandidates'
-import UserAvatar from '../../UserAvatar'
-import { MemberPicker } from './shared'
+import { MemberPicker, memberToPeer } from './shared'
 import { MemberRestrictScreen } from './MemberScreens'
-import s from '../GroupEditFlow.module.scss'
 
 export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
   const candidates = useGroupCandidates()
-  const [q, setQ] = useState('')
   const [picking, setPicking] = useState(false)
   const [restricting, setRestricting] = useState<EditMember | null>(null)
-  const list = useMemo(
-    () => g.members.filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase())),
-    [g.members, q],
-  )
   const memberIds = useMemo(() => new Set(g.members.map((m) => m.userId)), [g.members])
   const addable = useMemo(
     () => candidates.filter((c) => !memberIds.has(c.id)).map((c) => ({ userId: c.id, name: c.name, avatarUrl: c.avatarUrl, role: 'member', rights: 0 })),
     [candidates, memberIds],
   )
+
+  const peers = useMemo(() => g.members.map((m) => memberToPeer(m, {
+    subtitle: t(m.role === 'creator' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member'),
+    actions: g.canBan && m.role !== 'creator' ? (
+      <>
+        {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
+        {!isChannel && m.role !== 'admin' && (
+          <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setRestricting(m)} title={t('Restrict')}>
+            <TgIcon name="permissions" size={20} />
+          </IconButton>
+        )}
+        <IconButton size="small" color="var(--secondary-text-color)" onClick={() => void g.kick(m.userId)} title={t('Remove')}>
+          <TgIcon name="close" size={20} />
+        </IconButton>
+        {!isChannel && (
+          <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('Ban and remove from group')}>
+            <TgIcon name="deleteuser" size={20} />
+          </IconButton>
+        )}
+      </>
+    ) : undefined,
+  })), [g, isChannel, t])
 
   return (
     <SettingsScreen
@@ -57,40 +73,10 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
         />
       ) : null}
     >
-      <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
         <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
-        {list.map((m) => (
-          <div key={m.userId} className={s.memberRow}>
-            <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
-            <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--primary-text-color)">{m.name}</Text>
-              <Text noWrap size={14} color="var(--secondary-text-color)">
-                {t(m.role === 'creator' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member')}
-              </Text>
-            </div>
-            {g.canBan && m.role !== 'creator' && (
-              <>
-                {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
-                {!isChannel && m.role !== 'admin' && (
-                  <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setRestricting(m)} title={t('Restrict')}>
-                    <TgIcon name="permissions" size={20} />
-                  </IconButton>
-                )}
-                <IconButton size="small" color="var(--secondary-text-color)" onClick={() => void g.kick(m.userId)} title={t('Remove')}>
-                  <TgIcon name="close" size={20} />
-                </IconButton>
-                {!isChannel && (
-                  <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('Ban and remove from group')}>
-                    <TgIcon name="deleteuser" size={20} />
-                  </IconButton>
-                )}
-              </>
-            )}
-          </div>
-        ))}
       </Section>
-
+      <PeerSelector peers={peers} empty={{ title: 'No Results' }} />
     </SettingsScreen>
   )
 }

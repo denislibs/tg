@@ -16,6 +16,7 @@ import { resetStateCache } from '../state/loadState'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { clearChatPositions } from '../chat/chatPositions'
+import { resetChatCardCache } from './useChatInfoCard'
 import { runWhenUnlocked } from '../../stores/lockStore'
 import rootScope from '@lib/rootScope'
 import { RT } from '../realtime/events'
@@ -36,6 +37,9 @@ export interface AuthGate {
 function resetAccountStateInMemory(): void {
   resetStateCache()
   resetAppState()
+  // Карточки чатов (права/memberCount) — тоже память прошлого аккаунта:
+  // useChatInfoCard показывает их синхронно, до ответа сети (см. cardCache там).
+  resetChatCardCache()
   // ИСКЛЮЧЕНИЕ из «пишет только проектор» (см. stores/noDuplicateDialogs.test.ts,
   // allow-list) — список диалогов тоже держится в памяти (зеркало): без сброса
   // чужие чаты видны до ответа владельца под новым аккаунтом. Владелец

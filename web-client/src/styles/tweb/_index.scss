@@ -48,6 +48,8 @@
 @use "sidebar"; // :32
 @use "slider"; // :34
 @use "leftSidebar"; // :35
+@use "rightSidebar"; // :36
+@use "searchGroup"; // :37
 @use "mediaViewer"; // :39 (в tweb это ../components/mediaViewer/mediaViewer)
 @use "scrollable"; // :40
 @use "emojiDropdown"; // :41
@@ -74,6 +76,10 @@
 
 // Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).
 @use "popups/popup"; // :83
+@use "popups/peer"; // :87
+@use "popups/datePicker"; // :89
+@use "popups/forward"; // :90
+@use "popups/premium"; // :110
 @use "popups/confirmation"; // :114
 
 // Выдержки из base.scss (целиком не портируем — это глобальный ресет,

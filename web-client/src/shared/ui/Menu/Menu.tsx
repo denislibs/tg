@@ -5,12 +5,32 @@ import classNames from '../../lib/classNames'
 import { usePortalContainer } from '../../../core/pip'
 import s from './Menu.module.scss'
 
+/** Угол, из которого «растёт» панель. В tweb это класс на `.btn-menu`
+ *  (`_button.scss:240-277`), который выставляет `--transform-origin-x/y`;
+ *  инлайновый `transform-origin` для того же — отсебятина. */
+export type MenuCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center-left' | 'center-right'
+
+/** Класс-угол из CSS `transform-origin`, для мест, где угол вычисляется в
+ *  рантайме (флип у края экрана), а не задаётся статически. Соответствие —
+ *  `_button.scss:228-262` (инверсия: там класс задаёт origin, здесь по origin
+ *  находим класс):
+ *   top left     → bottom-right
+ *   top right    → bottom-left
+ *   bottom left  → top-right
+ *   bottom right → top-left */
+export function cornerFrom(originY: 'top' | 'bottom', originX: 'left' | 'right'): MenuCorner {
+  if (originY === 'top') return originX === 'left' ? 'bottom-right' : 'bottom-left'
+  return originX === 'left' ? 'top-right' : 'top-left'
+}
+
 interface MenuProps {
   open: boolean
   onClose: () => void
   /** called after the close animation finishes (unmount the owner here) */
   onExitComplete?: () => void
-  /** position + transform-origin (anchor a corner at the click point) */
+  /** угол роста панели — класс tweb вместо инлайнового transform-origin */
+  corner?: MenuCorner
+  /** position (fixed-координаты якоря) */
   style?: CSSProperties
   /** extra panel styling (width, radius override, …) */
   className?: string
@@ -25,10 +45,14 @@ interface MenuProps {
 // `--btn-menu-transition`. Никакого JS-анимирования (framer-motion убран).
 //
 // Отступление: позиционирование. tweb держит меню абсолютом внутри
-// `.btn-menu-toggle`-хоста и выбирает угол классом (`bottom-left` и т.п.);
-// у нас вызывающий передаёт готовые fixed-координаты точки клика, поэтому
-// панель живёт в портале. Порт positionMenu() — отдельная задача.
-export default function Menu({ open, onClose, onExitComplete, style, className, zIndex, children }: MenuProps) {
+// `.btn-menu-toggle`-хоста, и класс-угол там делает две вещи разом — задаёт
+// `--transform-origin-*` И раскладывает панель (`inset-block: 100% auto`).
+// У нас панель уезжает в портал с fixed-координатами от вызывающего, поэтому
+// от класса-угла остаётся только точка роста: инлайновые top/left/right/bottom
+// перебивают inset-правила класса по специфичности. Отсюда требование к
+// вызывающему — задавать координаты ПОЛНОСТЬЮ (обе оси), иначе недостающую
+// сторону подставит `inset` класса. Порт positionMenu() — отдельная задача.
+export default function Menu({ open, onClose, onExitComplete, corner, style, className, zIndex, children }: MenuProps) {
   const container = usePortalContainer()
   const panelRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(open)
@@ -70,7 +94,15 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
       el?.removeEventListener('transitionend', onEnd)
       exitRef.current?.()
     }
-    const onEnd = (e: TransitionEvent) => { if (e.target === el) finish() }
+    // Конец ловим и по переходу самой панели, и по переходу её анимируемого
+    // ребёнка. Контекстное меню (`has-items-wrapper`) гасит переход у панели
+    // — `transition: unset !important` (_button.scss:149) — и анимирует
+    // ВНУТРЕННИЕ обёртки `.btn-menu-transition`; без второй ветки такой попап
+    // доживал до фолбэк-таймера, то есть размонтировался с задержкой.
+    const onEnd = (e: TransitionEvent) => {
+      const t = e.target
+      if (t === el || (t instanceof HTMLElement && t.classList.contains('btn-menu-transition'))) finish()
+    }
     el?.addEventListener('transitionend', onEnd)
     const timer = window.setTimeout(finish, 300)
     return () => {
@@ -94,8 +126,8 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
       )}
       <div
         ref={panelRef}
-        className={classNames('btn-menu', active ? 'active' : '', everActive.current ? 'was-open' : '', s.panel, className ?? '')}
-        style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
+        className={classNames('btn-menu', corner ?? '', active ? 'active' : '', everActive.current ? 'was-open' : '', className ?? '')}
+        style={{ position: 'fixed', zIndex: zIndex != null ? zIndex + 1 : 2001, ...style }}
       >
         {children}
       </div>

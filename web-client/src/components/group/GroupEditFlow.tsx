@@ -144,26 +144,26 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(card!.isPublic ? 'Public' : 'Private')} chevron onClick={() => setSub('type')} />
-          <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(activeInvites.length, 1))} chevron onClick={() => setSub('links')} />
-          <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} chevron onClick={() => setSub('reactions')} />
+          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(card!.isPublic ? 'Public' : 'Private')} onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
+          <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (
-            <Row icon={<TgIcon name="comments" size={22} />} label="Discussion" value={linkedId ? undefined : t('Add')} chevron onClick={() => setSub('discussion')} />
+            <Row icon={<TgIcon name="comments" size={22} />} label="Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />
           )}
           {!isChannel && g.canBan && (
-            <Row icon={<TgIcon name="permissions" size={22} />} label="Permissions" value={`${permsCount}/${PERMS.length}`} chevron onClick={() => setSub('permissions')} />
+            <Row icon={<TgIcon name="permissions" size={22} />} label="Permissions" value={`${permsCount}/${PERMS.length}`} onClick={() => setSub('permissions')} />
           )}
         </Section>
       )}
 
       <Section>
-        <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} chevron onClick={() => setSub('admins')} />
-        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.memberCount ?? g.members.length)} chevron onClick={() => setSub('members')} />
+        <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
+        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.memberCount ?? g.members.length)} onClick={() => setSub('members')} />
         {!isChannel && g.canBan && (
-          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} chevron onClick={() => setSub('restricted')} />
+          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} onClick={() => setSub('restricted')} />
         )}
         {g.canBan && (
-          <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('None')} chevron onClick={() => setSub('banned')} />
+          <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('None')} onClick={() => setSub('banned')} />
         )}
       </Section>
 
@@ -201,12 +201,15 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         </Section>
       )}
 
-      {/* «Chat history for new members» — только группа */}
+      {/* «Chat history for new members» — только группа. tweb рисует эту строку
+          КВАДРАТНЫМ чекбоксом, а не тумблером (дамп `15-right-12-edit-group`:
+          `label.rp.row.no-subtitle.row-with-padding` > `div.row-title` +
+          `label.checkbox-field.checkbox-without-caption`). */}
       {!isChannel && canChangeInfo && (
         <Section footer="New members will see earlier messages when this is on.">
           <Row
             label="Chat history for new members"
-            toggle
+            checkbox
             checked={card?.historyForNew ?? true}
             onClick={() => void g.saveHistory(!(card?.historyForNew ?? true))}
           />

@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
 import { useAuthGate } from './useAuthGate'
+import { useChatInfoCard } from './useChatInfoCard'
 import { ManagersProvider } from './useManagers'
 import type { Managers } from '../../client/bootstrap'
 import rootScope from '@lib/rootScope'
@@ -132,6 +133,29 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     expect(getChatPosition(1, undefined)).toBeUndefined()
     await act(async () => { await Promise.resolve() }) // managers.persist.clearAll() — микротаска
     expect(clearAll).toHaveBeenCalled()
+  })
+
+  // Карточки чатов (права/memberCount) useChatInfoCard показывает из кэша
+  // синхронно, ДО ответа сети — без сброса на логауте следующий аккаунт увидел
+  // бы права предыдущего (например, композер вместо плашки в чужом канале).
+  it('логаут стирает кэш карточек чатов — следующий вход стартует с «права неизвестны»', async () => {
+    const cardOf = vi.fn().mockResolvedValue({
+      type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionChatId: 0,
+      slowmodeSeconds: 0, chargeStars: 0, defaultPermissions: 31,
+    })
+    const managers = { ...testManagers(), groups: { card: cardOf, members: async () => [] } } as unknown as Managers
+    const info = () => useChatInfoCard({ isRealChat: true, isChannel: true, numericChatId: 909 })
+
+    const first = renderHook(() => ({ gate: useAuthGate(), info: info() }), { wrapper: withManagers(managers) })
+    await act(async () => { await Promise.resolve() }) // карточка приезжает → в кэш
+    expect(first.result.current.info.permissionsKnown).toBe(true)
+
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+    first.unmount()
+
+    const second = renderHook(() => info(), { wrapper: withManagers(managers) })
+    expect(second.result.current.card).toBeNull()
+    expect(second.result.current.permissionsKnown).toBe(false)
   })
 
   // Что ломается без reload: соседняя вкладка осталась бы authed=true (или

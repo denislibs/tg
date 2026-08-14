@@ -87,12 +87,17 @@ function Masonry({
 
 export default function GifsTab({
   active,
+  inited,
   open,
   inputRef,
   onPick,
 }: {
   /** выбранная вкладка (tweb `.tabs-tab.active`) */
   active: boolean
+  /** слайд на эту вкладку доигран — только тогда tweb зовёт `tab.init()`
+   * (onTransitionEnd, index.ts:289); до этого вкладка пустая, чтобы
+   * построение ленты не съедало кадры анимации */
+  inited: boolean
   /** дропдаун открыт — триггер ленивой загрузки данных */
   open: boolean
   inputRef: RefObject<HTMLInputElement | null>
@@ -101,7 +106,7 @@ export default function GifsTab({
   const t = useT()
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
-  const panel = useGifsPanel(open && active, query)
+  const panel = useGifsPanel(open && active && inited, query)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const cellsRef = useRef(new Map<string, HTMLElement>())
@@ -168,6 +173,7 @@ export default function GifsTab({
     <>
       <EmoticonsTab
         padding="gifs-padding"
+        contentId="content-gifs"
         noMenu
         active={active}
         // `is-searching` у noMenu-вкладки в tweb тоже выставляется (tab.ts:176),
@@ -198,12 +204,15 @@ export default function GifsTab({
             : undefined
         }
       >
+        {/* сохранённые GIF — кладка прямо в categories-container, без
+            обёртки-категории и заголовка (tweb gifs.ts init:
+            `this.categoriesContainer.append(gifsContainer)`) */}
         {panel.saved.length > 0 && (
-          <div className="emoji-category">
-            <div className="category-title">{t('Saved GIFs')}</div>
-            <Masonry items={panel.saved} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
-          </div>
+          <Masonry items={panel.saved} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
         )}
+        {/* отступление от tweb: трендов Tenor в его ESG-вкладке нет вовсе
+            (только сохранённые), у нас бэк отдаёт featured — показываем их
+            отдельной категорией с заголовком, чтобы отделить от сохранённых */}
         {panel.featured.length > 0 && (
           <div className="emoji-category">
             <div className="category-title">{t('Trending')}</div>
@@ -219,7 +228,8 @@ export default function GifsTab({
           open
           onClose={() => setCtxMenu(null)}
           zIndex={2100}
-          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 220), top: Math.min(ctxMenu.y, window.innerHeight - 60), transformOrigin: 'top left' }}
+          corner="bottom-right"
+          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 220), top: Math.min(ctxMenu.y, window.innerHeight - 60) }}
         >
           <MenuItem
             icon={<TgIcon name="crossgif" size={20} />}

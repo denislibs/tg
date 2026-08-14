@@ -26,8 +26,10 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       })
       return r.chat_id
     },
-    async post(chatId: number, text: string, clientMsgId: string): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, client_msg_id: clientMsgId })
+    // entities — разметка поста (bold/text_link/mention/hashtag…): тот же формат,
+    // что у обычной отправки; на бэке проходит sanitizeEntities.
+    async post(chatId: number, text: string, clientMsgId: string, entities?: MessageEntity[]): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, entities, client_msg_id: clientMsgId })
       return mapMessage(r)
     },
     // catch-up канала (GET /channels/{id}/difference) ведёт per-channel funnel в

@@ -23,10 +23,13 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 
 // PostToChannel inserts a channel message and delivers it O(1): bump channel_pts,
 // append a channel_update, then PUBLISH once to channel:{id}. No per-subscriber fan-out.
-func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text, clientMsgID string) (domain.Message, error) {
+func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities []domain.MessageEntity, clientMsgID string) (domain.Message, error) {
 	if err := i.requireRight(ctx, channelID, actorID, domain.RightPostMessages); err != nil {
 		return domain.Message{}, err
 	}
+	// Форматирование поста проходит ту же санитизацию, что и обычная отправка
+	// (message.go:132) — клиентским offset/length не доверяем.
+	entities = sanitizeEntities(entities)
 	var cmid *string
 	if clientMsgID != "" {
 		cmid = &clientMsgID
@@ -39,7 +42,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 			return e
 		}
 		m, e := i.msgs.Insert(ctx, domain.Message{
-			ChatID: channelID, Seq: seq, SenderID: actorID, Type: "text", Text: text, ClientMsgID: cmid,
+			ChatID: channelID, Seq: seq, SenderID: actorID, Type: "text", Text: text, Entities: entities, ClientMsgID: cmid,
 		})
 		if e != nil {
 			return e
@@ -63,10 +66,27 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 // channelPostPayload — снимок поста канала для channel-лога и живого кадра (единый
 // источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
 func channelPostPayload(m domain.Message, actorID int64) map[string]any {
-	return map[string]any{
+	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
 		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
 	}
+	// Форматирование поста. Без него подписчик получает живой кадр (и реплей
+	// difference) голым текстом: bold/text_link/mention/hashtag пропадают, а
+	// история из БД потом приезжает уже размеченной — бабл «перерисовывается»
+	// сам собой. Пустой срез не кладём — payload остаётся байт-в-байт прежним
+	// для постов без форматирования.
+	if len(m.Entities) > 0 {
+		p["entities"] = m.Entities
+	}
+	// client_msg_id — единственный ключ, которым отправитель матчит эхо со своим
+	// оптимистичным баблом: пост канала уходит REST'ом, message_ack (как у
+	// личных чатов и групп, см. messageUpdatePayload) на этом пути нет. Без
+	// поля бабл навсегда остаётся «отправляется», а эхо ложится вторым.
+	// Остальным подписчикам поле безвредно — им нечего им матчить.
+	if m.ClientMsgID != nil {
+		p["client_msg_id"] = *m.ClientMsgID
+	}
+	return p
 }
 
 // SetSignatures toggles channel post signatures (Telegram

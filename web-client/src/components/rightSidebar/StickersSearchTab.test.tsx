@@ -1,0 +1,172 @@
+// Пин DOM-структуры экрана «Поиск стикеров» правой колонки по живому дампу tweb
+// (`docs/research/tweb-dom/19-emoticons-06-sticker-search-right.json`):
+//   div#stickers-container.tabs-tab.sidebar-slider-item….chatlist-container.active
+//     div.sidebar-header (sidebar-close-button + input-search "Search Stickers")
+//     div.sidebar-content > div.scrollable.scrollable-y > div.sticker-sets
+//       div.sticker-set [data-sticker-set data-title]
+//         div.sticker-set-header
+//           div.sticker-set-details > .sticker-set-name + .sticker-set-count > span.i18n
+//           button.btn-primary.btn-color-primary.sticker-set-button > span.i18n "Add"/"Added"
+//         div.sticker-set-stickers > ровно 5 × div.sticker-set-sticker.media-sticker-wrapper
+// Поведение: featured при пустом запросе, searchSets по вводу (дебаунс),
+// Add → install (кнопка disabled на время запроса, потом "Added"+gray),
+// клик по превью — onPickSticker; открытие извне — openStickersSearchTab.
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import StickersSearchTab, { openStickersSearchTab } from './StickersSearchTab'
+import { openGifsSearchTab } from './GifsSearchTab'
+import PopupHost from '../PopupHost'
+import { ManagersProvider } from '../../core/hooks/useManagers'
+import { usePopupStore } from '../../stores/popupStore'
+import type { Managers } from '../../client/bootstrap'
+
+const noop = () => {}
+
+// happy-dom не реализует IntersectionObserver (нужен экрану GIF в kind-тесте).
+beforeAll(() => {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+
+// Файл стикера в тестах не грузим (fetch к media) — превью пинится по обёртке
+// .sticker-set-sticker; сам StickerMedia покрыт своим StickerMedia.test.tsx.
+vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
+
+let slugSeq = 0
+// slug уникален на тест: кэш стикеров набора в компоненте — модульный, по slug.
+const makeSet = (id: number, title: string, count = 40) => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker' as const, count })
+const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '🦆', width: 512, height: 512, mime: 'application/json', thumb: '' })
+
+function makeManagers(over: Record<string, unknown> = {}) {
+  const fns = {
+    mySets: vi.fn().mockResolvedValue([]),
+    featuredSets: vi.fn().mockResolvedValue([makeSet(1, 'Duck')]),
+    searchSets: vi.fn().mockResolvedValue([]),
+    setBySlug: vi.fn().mockResolvedValue({ set: makeSet(1, 'Duck'), stickers: [1, 2, 3, 4, 5, 6, 7].map(makeSticker) }),
+    install: vi.fn().mockResolvedValue(undefined),
+    uninstall: vi.fn().mockResolvedValue(undefined),
+    // экран GIF (kind-тест ниже рендерит оба экрана через PopupHost)
+    searchGifs: vi.fn().mockResolvedValue({ gifs: [], next: '' }),
+    ...over,
+  }
+  return { managers: { stickers: fns } as unknown as Managers, fns }
+}
+
+function renderTab(props: Partial<Parameters<typeof StickersSearchTab>[0]> = {}, managers = makeManagers().managers) {
+  return render(
+    <ManagersProvider managers={managers}>
+      <StickersSearchTab onClose={noop} {...props} />
+    </ManagersProvider>,
+  )
+}
+
+describe('StickersSearchTab — разметка tweb', () => {
+  afterEach(cleanup)
+
+  it('контейнер #stickers-container: классы слайдер-вкладки + chatlist-container (tweb stickers.tsx:148-149), placeholder "Search Stickers"', () => {
+    renderTab()
+    const container = document.getElementById('stickers-container')!
+    for (const cls of ['tabs-tab', 'sidebar-slider-item', 'scrolled-start', 'scrolled-end', 'scrollable-y-bordered', 'chatlist-container', 'active']) {
+      expect(container.classList.contains(cls), cls).toBe(true)
+    }
+    expect(container.querySelector('.sidebar-header > button.sidebar-close-button')).not.toBeNull()
+    expect(container.querySelector('.sidebar-header .input-search-placeholder')!.textContent).toBe('Search Stickers')
+    expect(container.querySelector('.sidebar-content > .scrollable.scrollable-y > .sticker-sets')).not.toBeNull()
+  })
+
+  it('пустой запрос — featured; строка набора: header/details/name/count и ровно 5 превью из выдачи набора', async () => {
+    const { managers, fns } = makeManagers()
+    renderTab({}, managers)
+    expect(fns.featuredSets).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(document.querySelector('.sticker-set')).not.toBeNull())
+    const row = document.querySelector('.sticker-set')!
+    expect(row.getAttribute('data-title')).toBe('Duck')
+    expect(row.getAttribute('data-sticker-set')).toBe('1')
+    const details = row.querySelector('.sticker-set-header > .sticker-set-details')!
+    expect(details.querySelector('.sticker-set-name')!.textContent).toBe('Duck')
+    expect(details.querySelector('.sticker-set-count > span.i18n')!.textContent).toBe('40 stickers')
+    // tweb stickers.tsx:58 — min(5, count) превью, даже если в наборе больше
+    await waitFor(() => {
+      const cells = row.querySelectorAll('.sticker-set-stickers > .sticker-set-sticker.media-sticker-wrapper')
+      expect(cells.length).toBe(5)
+    })
+  })
+
+  it('кнопка: не установлен — "Add"; клик — install, после ответа "Added" + класс gray (tweb toggleStickerSet)', async () => {
+    const { managers, fns } = makeManagers()
+    renderTab({}, managers)
+    await waitFor(() => expect(document.querySelector('.sticker-set-button')).not.toBeNull())
+    const button = document.querySelector<HTMLButtonElement>('button.btn-primary.btn-color-primary.sticker-set-button')!
+    expect(button.textContent).toBe('Add')
+    expect(button.classList.contains('gray')).toBe(false)
+    fireEvent.click(button)
+    expect(fns.install).toHaveBeenCalledWith(1)
+    await waitFor(() => expect(button.textContent).toBe('Added'))
+    expect(button.classList.contains('gray')).toBe(true)
+  })
+
+  it('уже установленный набор (mySets) сразу "Added"+gray; клик — uninstall', async () => {
+    const { managers, fns } = makeManagers({ mySets: vi.fn().mockResolvedValue([makeSet(1, 'Duck')]) })
+    renderTab({}, managers)
+    await waitFor(() => {
+      const b = document.querySelector('.sticker-set-button')
+      expect(b?.textContent).toBe('Added')
+      expect(b?.classList.contains('gray')).toBe(true)
+    })
+    fireEvent.click(document.querySelector('.sticker-set-button')!)
+    expect(fns.uninstall).toHaveBeenCalledWith(1)
+  })
+
+  it('ввод запроса — searchSets (дебаунс); клик по превью — onPickSticker', async () => {
+    const searched = makeSet(9, 'Utya', 27)
+    const { managers, fns } = makeManagers({
+      searchSets: vi.fn().mockResolvedValue([searched]),
+      setBySlug: vi.fn().mockResolvedValue({ set: searched, stickers: [makeSticker(1)] }),
+    })
+    const onPickSticker = vi.fn()
+    renderTab({ onPickSticker }, managers)
+    fireEvent.change(document.querySelector<HTMLInputElement>('.input-search-input')!, { target: { value: 'duck' } })
+    await waitFor(() => expect(fns.searchSets).toHaveBeenCalledWith('duck'))
+    await waitFor(() => expect(document.querySelector('.sticker-set-sticker')).not.toBeNull())
+    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    expect(onPickSticker).toHaveBeenCalledTimes(1)
+    expect(onPickSticker.mock.calls[0][0].mediaId).toBe(101)
+  })
+
+  it('openStickersSearchTab — публичный путь открытия: попап kind=right-search, рендер даёт этот экран', () => {
+    openStickersSearchTab({})
+    const popups = usePopupStore.getState().popups
+    const entry = popups[popups.length - 1]
+    // литерал, не константа компонента — иначе тест тавтологичен и мутация kind не краснеет
+    expect(entry.kind).toBe('right-search')
+    render(
+      <ManagersProvider managers={makeManagers().managers}>
+        {entry.render({ open: true, requestClose: noop, onExitComplete: noop, destroy: noop })}
+      </ManagersProvider>,
+    )
+    expect(document.getElementById('stickers-container')).not.toBeNull()
+    usePopupStore.getState().clear()
+  })
+
+  it('kind-замена: открытие экрана стикеров закрывает открытый экран GIF (замена вкладки слайдера tweb)', async () => {
+    render(
+      <ManagersProvider managers={makeManagers().managers}>
+        <PopupHost />
+      </ManagersProvider>,
+    )
+    openGifsSearchTab({})
+    await waitFor(() => expect(document.getElementById('search-gifs-container')).not.toBeNull())
+    openStickersSearchTab({})
+    await waitFor(() => {
+      expect(document.getElementById('search-gifs-container')).toBeNull()
+      expect(document.getElementById('stickers-container')).not.toBeNull()
+    })
+    usePopupStore.getState().clear()
+  })
+})

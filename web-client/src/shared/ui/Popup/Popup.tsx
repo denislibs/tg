@@ -1,6 +1,9 @@
 // Popup — центрированная модалка на механизме tweb 1:1 (popups/_popup.scss):
-//   div.popup[.active] > div.popup-container > .popup-header(.popup-close +
-//   .popup-title) + .popup-body
+//   div.popup[.<модификатор>][.active] > div.popup-container.z-depth-1 >
+//     .popup-header(.popup-close + .popup-title) + .popup-body +
+//     .popup-footer.popup-footer-abitlarger > button.popup-footer-button
+//   (popups/index.ts:121-231 — классы контейнера/тела/футера,
+//    popups/indexTsx.tsx:447-520 — Body/Footer/FooterButton)
 // Показ/скрытие делают КЛАССЫ `.active` (tweb popups/index.ts:359 `show()`) и
 // `.hiding` (tweb popups/index.ts:420-421 `destroy()` вешает `hiding` и снимает
 // `active`): у `.popup` анимируются opacity и visibility (с задержкой visibility
@@ -15,7 +18,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import classNames from '../../lib/classNames'
+import { pushEsc } from '../../../core/hotkeys'
 import IconButton from '../IconButton'
+import { useRipple } from '../Ripple/useRipple'
 import TgIcon from '../../../components/TgIcon'
 import { usePortalContainer } from '../../../core/pip'
 import { useNavLayer } from '../../../core/hooks/useNavLayer'
@@ -25,6 +30,12 @@ interface PopupProps {
   open: boolean
   /** заголовок (уже переведённый) */
   title: ReactNode
+  /**
+   * Модификатор попапа — первый аргумент конструктора tweb PopupElement
+   * (popups/index.ts:122 `element.className = 'popup' + ' ' + className`):
+   * `popup-forward`, `popup-schedule popup-date-picker` и т.п.
+   */
+  className?: string
   onClose: () => void
   /** exit-анимация закончилась — можно размонтировать владельцу */
   onExitComplete?: () => void
@@ -32,16 +43,57 @@ interface PopupProps {
   headerRight?: ReactNode
   /** прибитый низ карточки (например, строка подписи + send) */
   footer?: ReactNode
-  /** широкая кнопка снизу (tweb popup-footer button) */
+  /** широкая кнопка снизу (tweb PopupElement.Footer + FooterButton) */
   action?: { label: string; onClick: () => void }
+  /**
+   * tweb PopupOptions.body (popups/index.ts:207-211): тело-обёртка `.popup-body`.
+   * `false` — дети ложатся прямо в `.popup-container`, как у попапа календаря,
+   * где роль тела играет сам `.popup-scrollable` (datePicker.tsx:811).
+   */
+  body?: boolean
   /** ширина карточки, по умолчанию 420 */
   width?: number
   children: ReactNode
 }
 
-export default function Popup({ open, title, onClose, onExitComplete, headerRight, footer, action, width = 420, children }: PopupProps) {
+/**
+ * Широкая кнопка футера — tweb PopupElement.FooterButton (popups/indexTsx.tsx:501-517):
+ * `popup-footer-button btn-primary btn-color-primary` + ripple (дамп
+ * `17-popup-06-date-picker.json`, `17-popup-01-forward-share.json`).
+ */
+export function PopupFooterButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const { onPointerDown, ripple } = useRipple()
+  return (
+    <button
+      type="button"
+      className="popup-footer-button btn-primary btn-color-primary rp"
+      onPointerDown={onPointerDown}
+      onClick={onClick}
+    >
+      {ripple}
+      {label}
+    </button>
+  )
+}
+
+export default function Popup({
+  open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, width = 420, children,
+}: PopupProps) {
   const container = usePortalContainer()
   useNavLayer(open, onClose) // браузерный/аппаратный Back закрывает попап
+
+  // Esc закрывает верхний попап. У tweb это делает appNavigationController
+  // (Escape и Back ведут в один и тот же LIFO-стек слоёв); у нас Back ведёт
+  // `useNavLayer` (popstate), а клавиша — свой стек `core/hotkeys`, потому что
+  // Escape в браузере popstate не порождает. Без этой регистрации попапы на
+  // базовом `Popup` (календарь, «Поделиться», выбор контакта) не закрывались
+  // клавишей вовсе — закрыть можно было только крестиком или кликом по скриму.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    if (!open) return
+    return pushEsc(() => closeRef.current())
+  }, [open])
 
   const rootRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(open)
@@ -89,11 +141,11 @@ export default function Popup({ open, title, onClose, onExitComplete, headerRigh
   return createPortal(
     <div
       ref={rootRef}
-      className={classNames('popup', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
+      className={classNames('popup', className ?? '', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
       onClick={onClose}
       style={{ ['--popup-width' as string]: `min(${width}px, calc(100vw - 32px))` }}
     >
-      <div className={classNames('popup-container', s.container)} onClick={(e) => e.stopPropagation()}>
+      <div className={classNames('popup-container', 'z-depth-1', s.container)} onClick={(e) => e.stopPropagation()}>
         <div className="popup-header">
           <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
             <TgIcon name="close" size={22} />
@@ -101,11 +153,11 @@ export default function Popup({ open, title, onClose, onExitComplete, headerRigh
           <div className="popup-title">{title}</div>
           {headerRight}
         </div>
-        <div className={s.body}>{children}</div>
+        {body ? <div className={classNames('popup-body', s.body)}>{children}</div> : children}
         {footer}
         {action && (
-          <div className={s.action} onClick={action.onClick}>
-            {action.label}
+          <div className="popup-footer popup-footer-abitlarger">
+            <PopupFooterButton label={action.label} onClick={action.onClick} />
           </div>
         )}
       </div>

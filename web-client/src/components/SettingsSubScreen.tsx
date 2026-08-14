@@ -194,7 +194,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
                 toggle={r.type === 'toggle'}
                 checked={!!toggles[key]}
                 value={r.type === 'value' ? r.value && t(r.value) : undefined}
-                chevron={isNav}
                 selected={!!selected}
               />
             )

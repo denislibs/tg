@@ -216,7 +216,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       <Menu
         open={autoOpen && open}
         onClose={close}
-        style={{ top: anchor.top, right: anchor.right + 256, transformOrigin: 'top right' }}
+        corner="bottom-left"
+        style={{ top: anchor.top, right: anchor.right + 256 }}
       >
         {autoItems.map((a) => (
           <MenuItem
@@ -234,7 +235,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         open={open}
         onClose={close}
         onExitComplete={onClose}
-        style={{ top: anchor.top, right: anchor.right, width: 244, transformOrigin: 'top right' }}
+        corner="bottom-left"
+        style={{ top: anchor.top, right: anchor.right, width: 244 }}
       >
         {items.map((it) => (
           <MenuItem

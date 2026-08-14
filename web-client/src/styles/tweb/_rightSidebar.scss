@@ -1,0 +1,82 @@
+// Порт tweb src/scss/partials/_rightSidebar.scss (style.scss:36) — выдержка.
+// Не портировано:
+//   • блок #column-right (позиция/ширина/transform правой колонки) — у нас
+//     колонкой владеют модули (UserInfoPanel.module.scss — панель профиля,
+//     rightSidebar/RightSearchTab.module.scss — экраны поиска): колонка
+//     чат-скоупная, а не постоянно смонтированный слайдер tweb;
+//   • .group-permissions-container / .shared-media-container /
+//     #poll-results-container / .edit-peer-container и далее — экраны этих
+//     вкладок ещё не рендерят классы tweb.
+// #stickers-container — экран «Поиск стикеров» (rightSidebar/StickersSearchTab):
+// дословно из оригинала.
+@use "../foundation" as *;
+
+#stickers-container {
+  .sticker-sets {
+    display: flex;
+    flex-direction: column;
+    margin-top: 16px;
+  }
+
+  .sticker-set {
+    display: flex;
+    flex-direction: column;
+    height: 140px;
+    cursor: pointer;
+
+    &-name {
+      font-weight: var(--font-weight-bold);
+    }
+
+    &-count {
+      font-size: 14px;
+      color: var(--secondary-text-color);
+    }
+
+    &-header {
+      display: flex;
+      padding-left: 16px;
+      padding-bottom: 12px;
+      justify-content: space-between;
+    }
+
+    &-button {
+      height: 30px;
+      padding-left: 12px;
+      padding-right: 13px;
+      margin-right: 16px;
+      font-size: 15px;
+      border-radius: 16px;
+      font-weight: 400;
+      width: auto;
+      transition: width 0.2s;
+
+      &.gray {
+        background: #F1F3F4;
+        color: var(--secondary-text-color);
+      }
+    }
+
+    &-stickers {
+      display: flex;
+      justify-content: space-around;
+    }
+
+    &-sticker {
+      width: 68px;
+      height: 68px;
+      position: relative;
+      //padding: 0 5px;
+
+      &:hover {
+        border-radius: 12px;
+        background-color: var(--light-secondary-text-color);
+      }
+
+      img {
+        max-width: 100%;
+        max-height: 100%;
+      }
+    }
+  }
+}

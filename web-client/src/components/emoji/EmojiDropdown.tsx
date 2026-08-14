@@ -1,8 +1,9 @@
 // Эмодзи-дропдаун — React-порт tweb EmoticonsDropdown (components/emoticonsDropdown).
-// Дерево и классы 1:1 с живым дампом docs/research/tweb-dom/04-emoji-dropdown.json:
+// Дерево и классы 1:1 с живыми дампами docs/research/tweb-dom/19-emoticons-0*.json:
 //
 //   div.emoji-dropdown[.active]
-//     div.emoji-container > div.tabs-container > три .tabs-tab.emoticons-container
+//     div.emoji-container > div.tabs-container[data-animation="tabs"]
+//       > три .tabs-tab.emoticons-container (слайд смены — порт TransitionSlider)
 //     div.emoji-tabs.menu-horizontal-div.emoticons-menu.no-stripe > 5×button.btn-icon
 //
 // Поведение тоже из tweb:
@@ -31,6 +32,8 @@ import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
 import StickersTab from './StickersTab'
 import GifsTab from './GifsTab'
 import EmoticonsTab, { EmoticonsSearch, MenuTab } from './EmoticonsTab'
+import useEmoticonsStickySpy from './useEmoticonsStickySpy'
+import IS_EMOJI_SUPPORTED from '@environment/emojiSupport'
 import IconButton from '../../shared/ui/IconButton'
 import StickerMedia from '../StickerMedia'
 import type { Sticker } from '../../core/managers/stickersManager'
@@ -40,6 +43,8 @@ import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from '.
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
 import { pushEsc } from '../../core/hotkeys'
+import { openGifsSearchTab } from '../rightSidebar/GifsSearchTab'
+import { openStickersSearchTab } from '../rightSidebar/StickersSearchTab'
 
 // tweb DropdownHover: ANIMATION_DURATION = 200 (scale/fade). Hover-открытие живёт
 // отдельным модулем useDropdownHover (Composer держит его в главном чанке).
@@ -80,7 +85,11 @@ function loadRecent(): string[] {
   }
 }
 
-// ── Ячейка эмодзи (tweb appendEmoji, emoji.ts:49-110) ────────────────────────
+// ── Ячейка эмодзи (tweb appendEmoji, emoji.ts:50-116) ────────────────────────
+// На системах с нативной отрисовкой эмодзи (IS_EMOJI_SUPPORTED: macOS/iOS) tweb
+// НЕ подставляет картинку: wrapEmojiText → wrapRichText отдаёт
+// `span.emoji.emoji-native` с самим глифом (wrapRichText.ts:503-505). Только без
+// поддержки идёт img-ветка с плейсхолдером:
 //   span.super-emoji.super-emoji-regular > img.emoji + span.emoji-placeholder
 // Плейсхолдер добавляется ТОЛЬКО пока URL не в loadedURLs, opacity гоняется
 // инлайном (emoji.ts:88-105) — так же и здесь.
@@ -97,10 +106,10 @@ const EmojiCell = memo(function EmojiCell({
   const [loaded, setLoaded] = useState(() => loadedEmojis.has(e))
 
   let content
-  if (attempt >= 2) {
-    // отступление от tweb: у него набор PNG в бандле и фолбэка нет; мы тянем
-    // Apple-набор с CDN, при промахе показываем нативный глиф.
-    content = <span className="emoji">{e}</span>
+  if (IS_EMOJI_SUPPORTED || attempt >= 2) {
+    // при поддержке — нативный рендер 1:1 tweb; иначе это фолбэк нашей
+    // CDN-ветки (отступление от tweb: у него набор PNG в бандле и фолбэка нет)
+    content = <span className="emoji emoji-native">{e}</span>
   } else {
     const file = emojiCodepoints(e, attempt === 1)
     content = (
@@ -152,7 +161,11 @@ const EmojiCategory = memo(function EmojiCategory({
   const rows = Math.ceil(emojis.length / cols)
   return (
     <div ref={(el) => register(catKey, el)} className="emoji-category">
-      <div className="category-title">{title}</div>
+      {/* локальная категория (tweb createLocalCategory, tab.ts:345-347):
+          заголовок `i18n(title)` = span.i18n + класс disable-hover */}
+      <div className="category-title disable-hover">
+        <span className="i18n">{title}</span>
+      </div>
       <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && emojis.map((e, i) => <EmojiCell key={`${e}-${i}`} e={e} onPick={onPick} />)}
       </div>
@@ -196,6 +209,8 @@ const CustomEmojiCategory = memo(function CustomEmojiCategory({
   const rows = Math.ceil(stickers.length / cols)
   return (
     <div ref={(el) => register(catKey, el)} className="emoji-category">
+      {/* категория-набор НЕ локальная: заголовок — голый текст (wrapEmojiText),
+          без span.i18n и без disable-hover (tweb createCategory) */}
       <div className="category-title">{title}</div>
       <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && stickers.map((st) => <CustomEmojiCell key={st.id} st={st} onPick={onPick} />)}
@@ -263,12 +278,93 @@ export default function EmojiDropdown({
     [onPickSticker, onPickGif],
   )
   const [tab, setTab] = useState<TabId>('emoji')
-  // Вкладки стикеров/GIF инициализируются при первом выборе (tweb: tab.init()
-  // из horizontalMenu-колбэка), эмодзи — сразу (index.ts:376).
-  // (у GIF-вкладки нет меню, значит и `no-border-top` ей не полагается — флаг
-  // нужен только вкладке стикеров).
-  const [stickersInited, setStickersInited] = useState(false)
-  if (tab === 'stickers' && !stickersInited) setStickersInited(true)
+  // Наполнение вкладки — строго ПОСЛЕ слайда. В tweb `tab.init()` висит на
+  // `onTransitionEnd` слайдера (index.ts:288-291 — четвёртый аргумент
+  // horizontalMenu, см. horizontalMenu.ts:145), поэтому переход играет по ещё
+  // пустой вкладке. Если инициализировать в том же кадре, что и переключение,
+  // построение сотен узлов стикеров/GIF съедает первые кадры анимации — слайд
+  // виден рывком ровно один раз, при первом открытии вкладки.
+  // Вкладка эмодзи инициализирована сразу (tweb index.ts:376).
+  const [initedTabs, setInitedTabs] = useState<ReadonlySet<TabId>>(() => new Set<TabId>(['emoji']))
+  const markInited = useCallback((id: TabId) => {
+    setInitedTabs((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+  }, [])
+
+  // ── Слайд смены вкладок — порт tweb TransitionSlider типа 'tabs'
+  // (transition.ts: selectTab 240-372 + slideTabs 44-96); в tweb его создаёт
+  // horizontalMenu из EmoticonsDropdown.init (index.ts:287). Контейнер несёт
+  // `data-animation="tabs"` (transition.ts:186), переход играет CSS-правило
+  // `.tabs-container[data-animation="tabs"] .tabs-tab { transition: transform }`
+  // (_slider.scss). React в том же коммите уже переставил `active` на новую
+  // вкладку — эффект возвращает его уходящей на время слайда (в tweb `active`
+  // держится на обеих до конца перехода) и ведёт классы
+  // `animating`/`backwards`/`from`/`to` + инлайновые transform.
+  const tabsContainerRef = useRef<HTMLDivElement>(null)
+  const prevTabRef = useRef<TabId>('emoji')
+  useLayoutEffect(() => {
+    const prev = prevTabRef.current
+    if (prev === tab) return
+    prevTabRef.current = tab
+    const content = tabsContainerRef.current
+    if (!content) return
+    const fromIdx = tabs.indexOf(prev)
+    const toIdx = tabs.indexOf(tab)
+    const from = content.children[fromIdx] as HTMLElement | undefined
+    const to = content.children[toIdx] as HTMLElement | undefined
+    if (!from || !to || from === to) {
+      markInited(tab)
+      return
+    }
+    // гейт «Без анимаций» (tweb liteMode.isAvailable('animations'), transition.ts:258).
+    // Слайда нет — значит нет и onTransitionEnd: инициализируем сразу
+    // (в tweb ту же роль играет мгновенная ветка selectTab, transition.ts:258-270).
+    if (document.body.classList.contains('animation-level-0')) {
+      markInited(tab)
+      return
+    }
+
+    // transition.ts:300-322
+    const toRight = fromIdx < toIdx
+    content.classList.add('animating')
+    content.classList.toggle('backwards', !toRight)
+    from.classList.remove('to')
+    from.classList.add('from', 'active')
+    to.classList.remove('from')
+    to.classList.add('to')
+
+    // slideTabs (transition.ts:56-70): стартовые transform → reflow → приходящий к 0
+    const width = from.getBoundingClientRect().width
+    const els = toRight ? [from, to] : [to, from]
+    els[0].style.transform = `translate3d(${-width}px, 0, 0)`
+    els[1].style.transform = `translate3d(${width}px, 0, 0)`
+    void to.offsetWidth // reflow
+    to.style.transform = ''
+
+    const finish = () => {
+      window.clearTimeout(timeout)
+      from.removeEventListener('transitionend', onEnd)
+      from.classList.remove('active', 'from')
+      to.classList.remove('to')
+      from.style.transform = ''
+      content.classList.remove('animating', 'backwards')
+      // tweb: onTransitionEnd → tab.init() (index.ts:289)
+      markInited(tab)
+    }
+    const onEnd = (e: TransitionEvent) => {
+      if (e.target === from) finish()
+    }
+    from.addEventListener('transitionend', onEnd)
+    // фолбэк-таймер transitionTime + 100 (transition.ts:349); его id
+    // остаётся в data-transition-timeout и не подчищается — как в tweb
+    // (transition.ts:360 пишет и никогда не удаляет атрибут)
+    const timeout = window.setTimeout(finish, ANIMATION_DURATION + 100)
+    from.dataset.transitionTimeout = String(timeout)
+    // повторное переключение до конца слайда доигрывает предыдущий мгновенно
+    return finish
+    // tabs меняется только вместе с колбэками-владельцами — на живом дропдауне
+    // это константа, из deps намеренно исключён
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   // Открытие/закрытие 1:1 tweb DropdownHover.toggle: display='' → форс-reflow →
   // класс active (transition играет); закрытие: снять active → через 200 мс display:none.
@@ -378,23 +474,19 @@ export default function EmojiDropdown({
     }
   }, [])
 
-  // Scroll-spy: активная категория в меню + автоподскролл меню к её иконке.
-  const spyRaf = useRef(0)
+  // `no-border-top` — по позиции скролла (tweb onAdditionalScroll, index.ts:646-651).
   const onScroll = () => {
-    cancelAnimationFrame(spyRaf.current)
-    spyRaf.current = requestAnimationFrame(() => {
-      const sc = scrollRef.current
-      if (!sc) return
-      setAtTop(sc.scrollTop <= 0)
-      const top = sc.scrollTop + 50
-      let cur = cats[0]?.key
-      for (const c of [...cats, ...customCats]) {
-        const el = catElsRef.current.get(c.key)
-        if (el && el.offsetTop <= top) cur = c.key
-      }
-      if (cur) setActiveCat(cur)
-    })
+    const sc = scrollRef.current
+    if (sc) setAtTop(sc.scrollTop <= 0)
   }
+  // Scroll-spy активной категории — StickyIntersector (он же вешает сентинелы
+  // sticky_sentinel--top в каждую категорию), порт tweb menuOnClick.
+  const { markJump } = useEmoticonsStickySpy({
+    scrollRef,
+    catEls: catElsRef,
+    count: cats.length + customCats.length,
+    onActive: setActiveCat,
+  })
   useEffect(() => {
     menuRef.current
       ?.querySelector('.menu-horizontal-div-item.active')
@@ -403,7 +495,9 @@ export default function EmojiDropdown({
 
   const scrollToCat = (key: string) => {
     const el = catElsRef.current.get(key)
-    scrollRef.current?.scrollTo({ top: el ? el.offsetTop : 0, behavior: 'smooth' })
+    const top = el ? el.offsetTop : 0
+    markJump(top)
+    scrollRef.current?.scrollTo({ top, behavior: 'smooth' })
     setActiveCat(key)
   }
 
@@ -455,10 +549,12 @@ export default function EmojiDropdown({
 
   // Нижние табы (tweb renderEmojiDropdownElement, index.ts:66-90). Кнопки есть
   // всегда — прячется по правилам index.ts:459-460 отдельная кнопка либо вся
-  // полоса (`tabsToRender.length <= 1`).
-  const tabButton = (id: TabId, cls: string, icon: IconName) => (
+  // полоса (`tabsToRender.length <= 1`). data-tab фиксирован разметкой tweb
+  // (index.ts:77-88: search/delete −1, emoji 0, stickers 1, gifs 2).
+  const tabButton = (id: TabId, dataTab: number, cls: string, icon: IconName) => (
     <IconButton
       noRipple
+      data-tab={dataTab}
       className={classNames('menu-horizontal-div-item', cls, tab === id ? 'active' : '')}
       onClick={() => tabs.includes(id) && setTab(id)}
     >
@@ -474,9 +570,11 @@ export default function EmojiDropdown({
       {...panelProps}
     >
       <div className="emoji-container">
-        <div className="tabs-container">
+        {/* data-animation="tabs" ставит TransitionSlider (transition.ts:186) */}
+        <div ref={tabsContainerRef} className="tabs-container" data-animation="tabs">
           <EmoticonsTab
             padding="emoji-padding"
+            contentId="content-emoji"
             active={tab === 'emoji'}
             searching={searching}
             noBorderTop={atTop || searching}
@@ -493,6 +591,8 @@ export default function EmojiDropdown({
                 onBlur={() => setFocused(false)}
                 placeholder={t('Search Emoji')}
                 focused={searching}
+                hasGroup={!!group}
+                onGroupClear={() => setGroup(null)}
                 chips={QUICK_CHIPS.map((c) => (
                   <div
                     key={c.e}
@@ -514,8 +614,13 @@ export default function EmojiDropdown({
                 ? results.length
                   ? (
                     <div className="emoticons-categories-container emoticons-will-move-down emoticons-has-search animated-item">
-                      <div className="emoji-category">
-                        <div className="category-items super-emojis">
+                      {/* категория результатов: без заголовка и меню, paddingTop
+                          .5rem и minHeight инлайном (tweb emoji.ts:288-289) */}
+                      <div className="emoji-category" style={{ paddingTop: '.5rem' }}>
+                        <div
+                          className="category-items super-emojis"
+                          style={{ minHeight: Math.ceil(results.length / cols) * CELL }}
+                        >
                           {results.map((e) => (
                             <EmojiCell key={e} e={e} onPick={pickEmoji} />
                           ))}
@@ -556,7 +661,7 @@ export default function EmojiDropdown({
           {onPickSticker && (
             <StickersTab
               active={tab === 'stickers'}
-              inited={stickersInited}
+              inited={initedTabs.has('stickers')}
               open={open}
               inputRef={stickersInputRef}
               onPick={(st) => {
@@ -568,6 +673,7 @@ export default function EmojiDropdown({
           {onPickGif && (
             <GifsTab
               active={tab === 'gifs'}
+              inited={initedTabs.has('gifs')}
               open={open}
               inputRef={gifsInputRef}
               onPick={(g) => {
@@ -589,25 +695,31 @@ export default function EmojiDropdown({
           tabs.length <= 1 ? 'hide' : '',
         )}
       >
-        {/* search: в tweb открывает набор в правом сайдбаре; у нас его нет —
-            отступление от tweb: фокусируем поиск текущей вкладки */}
+        {/* search: экраны поиска правой колонки — tweb index.ts:295-303
+            (вкладка стикеров → AppStickersTab, иначе → AppGifsTab) */}
         <IconButton
           noRipple
+          data-tab={-1}
           className={classNames(
             'menu-horizontal-div-item',
             'emoji-tabs-search',
             'justify-self-start',
             tab === 'emoji' ? 'hide' : '',
           )}
-          onClick={() => (tab === 'stickers' ? stickersInputRef : gifsInputRef).current?.focus()}
+          onClick={() =>
+            tab === 'stickers'
+              ? openStickersSearchTab({ onPickSticker })
+              : openGifsSearchTab({ onPick: onPickGif })
+          }
         >
           <TgIcon name="search" size="inherit" className="button-icon" />
         </IconButton>
-        {tabButton('emoji', 'emoji-tabs-emoji', 'smile')}
-        {tabButton('stickers', 'emoji-tabs-stickers', 'stickers_face')}
-        {tabButton('gifs', 'emoji-tabs-gifs', 'gifs')}
+        {tabButton('emoji', 0, 'emoji-tabs-emoji', 'smile')}
+        {tabButton('stickers', 1, 'emoji-tabs-stickers', 'stickers_face')}
+        {tabButton('gifs', 2, 'emoji-tabs-gifs', 'gifs')}
         <IconButton
           noRipple
+          data-tab={-1}
           className={classNames(
             'menu-horizontal-div-item',
             'emoji-tabs-delete',

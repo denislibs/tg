@@ -178,16 +178,6 @@
   }
 }
 
-.search {
-  padding: 4px 12px 8px;
-
-  // белая пилюля с тенью секции (как инфо-карточки панели)
-  input {
-    background: var(--surface-color);
-    box-shadow: var(--section-box-shadow);
-  }
-}
-
 .bansCaption {
   padding: 4px 24px 8px;
 }
@@ -207,12 +197,4 @@
   color: #fff;
   cursor: pointer;
   z-index: 5;
-}
-
-// карточка-список (кандидаты в «Добавить участников») — surface как cardPlain панели
-.cardList {
-  margin: 0 12px;
-  padding: 6px;
-  border-radius: 16px;
-  background: var(--surface-color);
 }

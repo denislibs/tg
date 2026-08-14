@@ -13,8 +13,12 @@
 //   showBack = foldersSidebarShown || isLeftSearchActive
 // (панель папок у нас скрывает бургер целиком, поэтому здесь остаётся поиск).
 //
-// Не портировано: `span.badge.badge-20.badge-primary.sidebar-tools-button-notifications` —
-// это счётчик уведомлений ДРУГИХ аккаунтов (мультиаккаунта у нас нет).
+// Внутри кнопки — бейдж непрочитанного ДРУГИХ аккаунтов
+// (`span.badge.badge-20.badge-primary.sidebar-tools-button-notifications`,
+// sidebarLeft/index.ts). Источника числа у нас пока нет: воркер не считает
+// непрочитанное неактивных аккаунтов, поэтому бейдж всегда пустой и несёт
+// `is-badge-empty` — ровно то состояние, в котором он снят с живого клиента
+// (дамп `14-left-01-chatlist.json`). Появится счётчик — сюда придёт число.
 import { memo, useState } from 'react'
 import classNames from '../shared/lib/classNames'
 import IconButton from '../shared/ui/IconButton'
@@ -52,7 +56,9 @@ function SidebarMenuButton({
         onClick={() => setMenuOpen((o) => !o)}
         color="var(--secondary-text-color)"
         aria-label="Меню"
-      />
+      >
+        <span className="badge badge-20 badge-primary is-badge-empty sidebar-tools-button-notifications" />
+      </IconButton>
       <div
         className={classNames('btn-icon', 'sidebar-back-button', showBack ? 'is-visible' : '')}
         onClick={onBack}

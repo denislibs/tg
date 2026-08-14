@@ -14,6 +14,22 @@
 //    (бэкенд-ручка /chats/{id}/calendar — аналог getSearchResultsCalendar);
 //  • заголовок и стрелки ведёт «месяц под центром вьюпорта» (эвристика tdesktop
 //    CalendarBox, которую tweb использует, чтобы стрелки не перескакивали).
+//
+// Разметка — глобальные классы партиала `styles/tweb/popups/_datePicker.scss`
+// (дамп `docs/research/tweb-dom/17-popup-06-date-picker.json`):
+//   div.popup.popup-schedule.popup-date-picker >
+//     div.popup-container.z-depth-1 >
+//       div.popup-header (popup-close + div.popup-title > .date-picker-month-title
+//                         + .date-picker-controls > .date-picker-prev/.date-picker-next)
+//       + div.scrollable.scrollable-y.popup-scrollable.date-picker-scrollable
+//           > .date-picker-months > .date-picker-month-section
+//               > .date-picker-month-label + .date-picker-weekdays > .date-picker-weekday
+//                 + .date-picker-month-grid > .date-picker-spacer
+//                                           / button.btn-icon.date-picker-month-date
+//                                               > span.date-picker-day-num
+//       + div.popup-footer.popup-footer-abitlarger > button.popup-footer-button
+// Собственного `.popup-body` у попапа нет (datePicker.tsx:811 — роль тела играет
+// сам `PopupElement.Scrollable`), поэтому Popup получает `body={false}`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Popup from '../shared/ui/Popup'
 import IconButton from '../shared/ui/IconButton'
@@ -25,9 +41,8 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useT, useLang } from '../i18n'
 import type { CalendarDay } from '../core/managers/messagesManager'
-import s from './DatePickerPopup.module.scss'
 
-// Геометрия — держать синхронно с DatePickerPopup.module.scss
+// Геометрия — держать синхронно с `styles/tweb/popups/_datePicker.scss`
 // (--date-picker-cell: 2.5rem при html font-size 16px ⇒ 40px).
 const CELL_HEIGHT = 40
 const MONTH_LABEL_HEIGHT = 40
@@ -337,15 +352,22 @@ export default function DatePickerPopup({
   return (
     <Popup
       open={open}
+      className="popup-schedule popup-date-picker"
+      body={false}
       onClose={onClose}
       onExitComplete={onExitComplete}
-      title={<span className={s.monthTitle}>{monthTitle}</span>}
+      title={<div className="date-picker-month-title">{monthTitle}</div>}
       headerRight={
-        <div className={s.controls}>
-          <IconButton onClick={onPrev} disabled={currentIdx <= 0} title={t('Previous')}>
+        <div className="date-picker-controls">
+          <IconButton className="date-picker-prev primary" onClick={onPrev} disabled={currentIdx <= 0} title={t('Previous')}>
             <TgIcon name="up" size={24} />
           </IconButton>
-          <IconButton onClick={onNext} disabled={currentIdx < 0 || currentIdx >= sections.length - 1} title={t('Next')}>
+          <IconButton
+            className="date-picker-next primary"
+            onClick={onNext}
+            disabled={currentIdx < 0 || currentIdx >= sections.length - 1}
+            title={t('Next')}
+          >
             <TgIcon name="down" size={24} />
           </IconButton>
         </div>
@@ -358,77 +380,71 @@ export default function DatePickerPopup({
         },
       }}
       footer={withTime ? (
-        <div>
-          {/* tweb .date-picker-time: два поля 80px с разделителем «:» */}
-          <div className={s.time}>
-            <Input
-              ref={hoursRef}
-              wrapClassName={s.timeField}
-              value={hours}
-              onChange={onHoursChange}
-              inputMode="numeric"
-              maxLength={2}
-            />
-            <div className={s.timeDelimiter}>:</div>
-            <Input
-              ref={minutesRef}
-              wrapClassName={s.timeField}
-              value={minutes}
-              onChange={onMinutesChange}
-              inputMode="numeric"
-              maxLength={2}
-            />
+        <>
+          {/* tweb .date-picker-time (datePicker.tsx:884): два поля с разделителем «:»
+              ЗА пределами футера — ширину 80px и центрирование даёт партиал */}
+          <div className="date-picker-time">
+            <Input ref={hoursRef} value={hours} onChange={onHoursChange} inputMode="numeric" maxLength={2} />
+            <div className="date-picker-time-delimiter">:</div>
+            <Input ref={minutesRef} value={minutes} onChange={onMinutesChange} inputMode="numeric" maxLength={2} />
           </div>
-          {/* confirm с живым лейблом; прошлое время — disabled (владелец закрывает попап сам) */}
-          <button
-            type="button"
-            className={s.confirmBtn}
-            disabled={isPast}
-            onClick={() => onPick(Math.floor(sendDate.getTime() / 1000))}
-          >
-            {confirmLabel}
-          </button>
-          {/* вторичная кнопка (tweb footerAfter — «Send when online») */}
-          {secondaryAction && (
-            <button type="button" className={s.secondaryBtn} onClick={secondaryAction.onClick}>
-              {secondaryAction.label}
+          <div className="popup-footer popup-footer-abitlarger">
+            {/* confirm с живым лейблом; прошлое время — disabled (владелец закрывает попап сам) */}
+            <button
+              type="button"
+              className="popup-footer-button btn-primary btn-color-primary"
+              disabled={isPast}
+              onClick={() => onPick(Math.floor(sendDate.getTime() / 1000))}
+            >
+              {confirmLabel}
             </button>
-          )}
-        </div>
+            {/* вторичная кнопка (tweb footerAfter — «Send when online»):
+                PopupElement.FooterButton color="secondary" (indexTsx.tsx:511) */}
+            {secondaryAction && (
+              <button
+                type="button"
+                className="popup-footer-button btn-primary btn-transparent primary popup-schedule-secondary"
+                onClick={secondaryAction.onClick}
+              >
+                {secondaryAction.label}
+              </button>
+            )}
+          </div>
+        </>
       ) : undefined}
     >
-      {/* tweb `withBorders="both"` (_scrollable.scss:128-143): линии сверху/снизу
+      {/* tweb `withBorders="both"` (_scrollable.scss:136-150): линии сверху/снизу
           показываются, только когда прокрутка не упёрта в соответствующий край */}
       <div
         ref={scrollRef}
         className={classNames(
-          s.scrollable,
-          scrollTop <= 0 ? s.scrolledStart : '',
-          scrollTop + viewportH >= totalHeight - 1 ? s.scrolledEnd : '',
+          'scrollable', 'scrollable-y', 'popup-scrollable', 'date-picker-scrollable', 'scrollable-y-bordered',
+          scrollTop <= 0 ? 'scrolled-start' : '',
+          scrollTop + viewportH >= totalHeight - 1 ? 'scrolled-end' : '',
         )}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
-        <div className={s.months} style={{ height: totalHeight }}>
+        <div className="date-picker-months" style={{ height: totalHeight }}>
           {visible.map((section) => (
             <div
               key={section.key}
-              className={s.monthSection}
+              className="date-picker-month-section"
               style={{ transform: `translateY(${section.offset}px)`, height: section.height }}
             >
-              <div className={s.monthLabel}>
+              <div className="date-picker-month-label">
                 {capitalize(new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(section.date))}
               </div>
-              <div className={s.weekdays}>
+              <div className="date-picker-weekdays">
                 {weekdays.map((w) => (
-                  <div key={w.key} className={classNames(s.weekday, w.weekend ? s.danger : '')}>
+                  <div key={w.key} className={classNames('date-picker-weekday', w.weekend ? 'danger' : '')}>
                     {w.name}
                   </div>
                 ))}
               </div>
-              <div className={s.grid}>
+              <div className="date-picker-month-grid">
                 {section.cells.map((cell) =>
                   cell.kind === 'spacer' ? (
-                    <div key={cell.key} className={s.spacer} />
+                    <div key={cell.key} className="date-picker-spacer" />
                   ) : (
                     <DayCell
                       key={cell.date.getTime()}
@@ -466,20 +482,23 @@ function DayCell({ cell, media, active, weekend, onClick }: {
     <button
       type="button"
       className={classNames(
-        s.day,
-        active ? s.active : '',
-        thumb ? s.withMedia : '',
-        weekend && !active ? s.danger : '',
+        'btn-icon',
+        'date-picker-month-date',
+        active ? 'active' : '',
+        thumb ? 'with-media' : '',
+        // `.danger` глобально с !important — вешаем только когда он не спорит
+        // с цветом выбранного дня (tweb datePicker.tsx:864-866).
+        weekend && !active ? 'danger' : '',
       )}
       disabled={cell.disabled}
       onClick={onClick}
     >
       {thumb && (
-        <span className={s.cellPhoto}>
+        <span className="date-picker-cell-photo">
           <img src={thumb} alt="" loading="lazy" decoding="async" />
         </span>
       )}
-      <span className={s.dayNum}>{cell.date.getDate()}</span>
+      <span className="date-picker-day-num">{cell.date.getDate()}</span>
     </button>
   )
 }

@@ -80,7 +80,6 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         <Row
           icon={<TgIcon name="image" size={24} />}
           label="Chat Background"
-          chevron
           onClick={() => setDedicated('wallpaper')}
         />
         <Row

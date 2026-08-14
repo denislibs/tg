@@ -75,6 +75,7 @@ import ScrollDownFab from './conversation/ScrollDownFab'
 import CornerButton from './conversation/CornerButton'
 import ChatInputControl, { isControlNeeded, type ControlFlags } from './conversation/ChatInputControl'
 import { useChatInputCenter } from './conversation/useChatInputCenter'
+import { computeControlPlates } from './conversation/controlPlates'
 import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
 import { useChatsStore } from '../stores/chatsStore'
@@ -295,7 +296,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
-  const { card, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount } =
+  const { card, permissionsKnown, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount } =
     useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
@@ -984,14 +985,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={onScrollDownClick} />
 
   // ── Плашка вместо строки ввода (tweb .chat-input-control) ──
-  // Цепочка условий повторяет приоритет прежних веток футера; в самой плашке она
-  // раскладывается в `haveSomethingInControl` из finishPeerChange (input.ts:2448-2567).
+  // Цепочка условий — в computeControlPlates (порт haveSomethingInControl).
   const composerUsable = canType && canSendText
   const threadClosed = !!thread?.closed
-  const botStartPlate = !threadClosed && botStart
-  const secretPlate = !threadClosed && !botStartPlate && secretLocked
-  const groupRestricted = !threadClosed && !botStartPlate && !secretPlate && !composerUsable && isGroup && !canSendText
-  const channelMutePlate = !threadClosed && !botStartPlate && !secretPlate && !groupRestricted && !composerUsable
+  const { botStartPlate, secretPlate, groupRestricted, channelMutePlate } = computeControlPlates({
+    composerUsable, permissionsKnown, isGroup, canSendText, botStart, secretLocked, threadClosed,
+  })
   const controlFlags = useMemo<ControlFlags>(() => ({
     // tweb unblockBtn: `!isBot && peerId.isUser()`. Разблокировки у нас нет —
     // кнопка структурная, но её `hide` считается тем же условием, что в оригинале.

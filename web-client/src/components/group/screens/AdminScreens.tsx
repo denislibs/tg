@@ -1,29 +1,29 @@
 // group/screens/AdminScreens.tsx
 // Администраторы (tweb chatAdministrators + EditAdmin): список админов, добавление
-// через пикер и экран прав админа.
+// через пикер и экран прав админа. Список — `shared/ui/PeerSelector`
+// (порт tweb appSelectPeers), дамп `15-right-06-administrators`.
 import { useMemo, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
-import InputSearch from '../../../shared/ui/InputSearch'
+import PeerSelector, { PeerRow } from '../../../shared/ui/PeerSelector'
 import TgIcon from '../../TgIcon'
 import { useT } from '../../../i18n'
 import type { GroupEdit, EditMember } from '../../../core/hooks/useGroupEdit'
 import { RIGHTS } from '../../../core/hooks/useGroupInfo'
-import UserAvatar from '../../UserAvatar'
-import { MemberPicker } from './shared'
-import s from '../GroupEditFlow.module.scss'
+import { MemberPicker, memberToPeer } from './shared'
 
 export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const [q, setQ] = useState('')
   const [editing, setEditing] = useState<EditMember | null>(null)
   const [picking, setPicking] = useState(false)
-  const list = useMemo(
-    () => g.admins.filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase())),
-    [g.admins, q],
-  )
   const candidates = useMemo(() => g.members.filter((m) => m.role === 'member'), [g.members])
+  const peers = useMemo(
+    () => g.admins.map((m) => memberToPeer(m, {
+      subtitle: t(m.role === 'creator' ? 'Owner' : 'Admin'),
+      disabled: !g.canManageAdmins || m.role === 'creator',
+    })),
+    [g.admins, g.canManageAdmins, t],
+  )
 
   return (
     <SettingsScreen
@@ -51,24 +51,19 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
         />
       ) : null}
     >
-      <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
-      <Section>
-        {g.canManageAdmins && (
+      {g.canManageAdmins && (
+        <Section>
           <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label="Add Admin" accent onClick={() => setPicking(true)} />
-        )}
-        {list.map((m) => (
-          <div key={m.userId} className={s.memberRow} onClick={() => g.canManageAdmins && m.role !== 'creator' && setEditing(m)}>
-            <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
-            <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--primary-text-color)">{m.name}</Text>
-              <Text noWrap size={14} color="var(--secondary-text-color)">
-                {t(m.role === 'creator' ? 'Owner' : 'Admin')}
-              </Text>
-            </div>
-          </div>
-        ))}
-      </Section>
-
+        </Section>
+      )}
+      <PeerSelector
+        peers={peers}
+        onPick={(p) => {
+          const m = g.admins.find((x) => x.userId === p.id)
+          if (m) setEditing(m)
+        }}
+        empty={{ title: 'No Results' }}
+      />
     </SettingsScreen>
   )
 }
@@ -95,14 +90,7 @@ function AdminRightsScreen({
         </IconButton>
       }
     >
-      <Section>
-        <div className={s.memberRow}>
-          <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
-          <div className={s.memberBody}>
-            <Text noWrap size={16} color="var(--primary-text-color)">{member.name}</Text>
-          </div>
-        </div>
-      </Section>
+      <MemberHeaderSection member={member} />
       <Section caption="What can this admin do?">
         {RIGHTS.map((r) => (
           <Row
@@ -110,6 +98,7 @@ function AdminRightsScreen({
             label={r.label}
             translate={false}
             toggle
+            restriction
             checked={(bits & r.bit) !== 0}
             onClick={() => setBits((b) => b ^ r.bit)}
           />
@@ -121,5 +110,23 @@ function AdminRightsScreen({
         </Section>
       )}
     </SettingsScreen>
+  )
+}
+
+/**
+ * Шапка экрана прав: тот же ряд `chatlist-chat`, что и в списке участников —
+ * в tweb это буквально `ul.chatlist.chatlist-new > a.row…chatlist-chat.chatlist-chat-abitbigger`
+ * внутри обычной секции (дамп `15-right-16-user-admin-rights`), а не отдельная
+ * вёрстка. Поэтому и строка та же — `PeerRow` из `shared/ui/PeerSelector`.
+ */
+export function MemberHeaderSection({ member }: { member: EditMember }) {
+  return (
+    <Section>
+      <div className="chatlist-container">
+        <ul className="chatlist chatlist-new">
+          <PeerRow peer={memberToPeer(member)} />
+        </ul>
+      </div>
+    </Section>
   )
 }

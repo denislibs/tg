@@ -318,7 +318,8 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
       <Menu
         open={menuAnchor != null}
         onClose={() => setMenuAnchor(null)}
-        style={menuAnchor ? { top: menuAnchor.top, right: menuAnchor.right, transformOrigin: 'top right' } : undefined}
+        corner="bottom-left"
+        style={menuAnchor ? { top: menuAnchor.top, right: menuAnchor.right } : undefined}
       >
         {canManage && (
           <MenuItem
@@ -338,7 +339,8 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
       <Menu
         open={rowMenu != null}
         onClose={() => setRowMenu(null)}
-        style={rowMenu ? { top: rowMenu.top, left: rowMenu.left, transformOrigin: 'top left' } : undefined}
+        corner="bottom-right"
+        style={rowMenu ? { top: rowMenu.top, left: rowMenu.left } : undefined}
       >
         {rowMenu && [
           <MenuItem

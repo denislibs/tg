@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,15 +90,35 @@ func (r *fakeSearchRepo) PublicChatByUsername(_ context.Context, username string
 
 // fakeChannelPublisher records how many times PublishToChannel was called.
 type fakeChannelPublisher struct {
-	mu    sync.Mutex
-	count int
+	mu     sync.Mutex
+	count  int
+	frames [][]byte
 }
 
-func (p *fakeChannelPublisher) PublishToChannel(_ context.Context, _ int64, _ []byte) error {
+func (p *fakeChannelPublisher) PublishToChannel(_ context.Context, _ int64, frame []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.count++
+	p.frames = append(p.frames, frame)
 	return nil
+}
+
+// lastPayload — поле d последнего опубликованного кадра {t, d}.
+func (p *fakeChannelPublisher) lastPayload(t *testing.T) map[string]any {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.frames) == 0 {
+		t.Fatal("кадров не опубликовано")
+	}
+	var env struct {
+		T string         `json:"t"`
+		D map[string]any `json:"d"`
+	}
+	if err := json.Unmarshal(p.frames[len(p.frames)-1], &env); err != nil {
+		t.Fatalf("разбор кадра: %v", err)
+	}
+	return env.D
 }
 
 // groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
@@ -213,11 +234,11 @@ func TestPostToChannel_RequiresPostRight_AndPublishes(t *testing.T) {
 	id, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleSubscriber, 0)
 	// subscriber cannot post
-	if _, err := i.PostToChannel(context.Background(), id, 8, "hi", ""); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := i.PostToChannel(context.Background(), id, 8, "hi", nil, ""); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("subscriber post = %v", err)
 	}
 	// creator posts → published once to the channel topic
-	msg, err := i.PostToChannel(context.Background(), id, 7, "hello world", "c1")
+	msg, err := i.PostToChannel(context.Background(), id, 7, "hello world", nil, "c1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,11 +250,140 @@ func TestPostToChannel_RequiresPostRight_AndPublishes(t *testing.T) {
 	}
 }
 
+// client_msg_id обязан ехать в эхо поста канала — им отправитель матчит свой
+// оптимистичный бабл. У канала (в отличие от личных чатов и групп) нет
+// message_ack: пост уходит REST'ом, и эхо — ЕДИНСТВЕННЫЙ ключ связки. Без него
+// бабл навсегда остаётся «отправляется», а эхо ложится вторым — визуально
+// дубль одного сообщения (воспроизведено на стенде 2026-08-13).
+func TestPostToChannel_EchoCarriesClientMsgID(t *testing.T) {
+	i, _, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", nil, "opt-7"); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	if got, _ := fpub.lastPayload(t)["client_msg_id"].(string); got != "opt-7" {
+		t.Fatalf("client_msg_id живого кадра = %q, want opt-7", got)
+	}
+}
+
+// difference-реплей отдаёт тот же снимок, что живой кадр (общий
+// channelPostPayload): вкладка, поймавшая пост катч-апом, а не живым кадром,
+// обязана схлопнуть свой бабл тем же ключом.
+func TestChannelDifference_CarriesClientMsgID(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", nil, "opt-8"); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	if err != nil || len(ups) == 0 {
+		t.Fatalf("GetChannelDifference: %v, %d строк", err, len(ups))
+	}
+	var d map[string]any
+	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
+		t.Fatalf("разбор payload: %v", err)
+	}
+	if got, _ := d["client_msg_id"].(string); got != "opt-8" {
+		t.Fatalf("client_msg_id в difference = %q, want opt-8", got)
+	}
+}
+
+// Пост без client_msg_id (не от отправляющей вкладки — например, из бота или
+// планировщика) поля не несёт: у получателей матчить нечего, пустая строка
+// только сбивала бы дедуп.
+func TestPostToChannel_NoClientMsgID_NoField(t *testing.T) {
+	i, _, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.PostToChannel(ctx, id, 7, "hello", nil, ""); err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	if _, ok := fpub.lastPayload(t)["client_msg_id"]; ok {
+		t.Fatal("client_msg_id присутствует в кадре, хотя его не присылали")
+	}
+}
+
+// Форматирование поста канала: до этого entities терялись на всём пути (хендлер
+// их не читал, usecase не принимал, Insert не писал, payload не отдавал), и
+// пост приезжал подписчику голым текстом — без bold/text_link/mention/hashtag.
+func TestPostToChannel_KeepsEntities(t *testing.T) {
+	i, _, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	ents := []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
+
+	msg, err := i.PostToChannel(ctx, id, 7, "Голова: Мария", ents, "e1")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	// 1. дошли до Insert и вернулись в сохранённом сообщении (иначе история —
+	// та, что читается из БД, — приедет без разметки)
+	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+		t.Fatalf("Entities сохранённого сообщения = %+v, want один bold", msg.Entities)
+	}
+
+	// 2. уехали в живом кадре (иначе подписчик видит голый текст до перезагрузки)
+	raw, ok := fpub.lastPayload(t)["entities"]
+	if !ok {
+		t.Fatal("в живом кадре нет entities — форматирование поста теряется")
+	}
+	got, _ := json.Marshal(raw)
+	if !strings.Contains(string(got), `"bold"`) {
+		t.Fatalf("entities кадра = %s, want bold", got)
+	}
+
+	// 3. и в difference — реплей должен совпадать с живым кадром
+	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	if err != nil || len(ups) == 0 {
+		t.Fatalf("GetChannelDifference: %v, %d строк", err, len(ups))
+	}
+	var d map[string]any
+	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
+		t.Fatalf("разбор payload: %v", err)
+	}
+	if _, ok := d["entities"]; !ok {
+		t.Fatal("в difference нет entities — реплей разойдётся с живым кадром")
+	}
+}
+
+// Разметка не берётся у клиента на веру — тот же sanitizeEntities, что и на
+// обычной отправке (message.go:132).
+func TestPostToChannel_SanitizesEntities(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	// text_link с javascript:-схемой — ровно то, что sanitizeEntities выбрасывает
+	// (sanitize.go:75, safeLinkURL). Рядом валидный bold: он обязан уцелеть,
+	// иначе тест прошёл бы и при «выкинули всё подряд».
+	bad := []domain.MessageEntity{
+		{Type: "text_link", Offset: 0, Length: 5, URL: "javascript:alert(1)"},
+		{Type: "bold", Offset: 0, Length: 5},
+	}
+
+	msg, err := i.PostToChannel(ctx, id, 7, "hello", bad, "")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+		t.Fatalf("Entities = %+v, want только bold (javascript:-ссылка должна быть выброшена)", msg.Entities)
+	}
+}
+
 func TestGetChannelDifference(t *testing.T) {
 	i, _, _, _ := newChannelTestInteractor(t)
 	id, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)
-	_, _ = i.PostToChannel(context.Background(), id, 7, "a", "")
-	_, _ = i.PostToChannel(context.Background(), id, 7, "b", "")
+	_, _ = i.PostToChannel(context.Background(), id, 7, "a", nil, "")
+	_, _ = i.PostToChannel(context.Background(), id, 7, "b", nil, "")
 	ups, err := i.GetChannelDifference(context.Background(), id, 7, 1, 100)
 	if err != nil {
 		t.Fatal(err)

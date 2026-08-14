@@ -25,6 +25,26 @@ html {
   font-size: var(--font-size-16);
 }
 
+/* Разделитель — tweb base.scss:784. Без этого правила <hr> берёт браузерный
+   дефолт (`border: 1px inset`, две светлые грани) и в меню светится ярче tweb,
+   где это одна линия в --border-color под opacity .6 (_button.scss:633). */
+hr {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 0;
+  padding-bottom: .5rem;
+}
+
+/* tweb base.scss:1388 — <hr> по умолчанию не показывается вовсе; видимым его
+   делает только `.btn-menu hr` (_button.scss:636). Структурные разделители
+   секций (SettingSection → наш PeerSelector) в tweb именно так и скрыты.
+   Правило стоит ПОСЛЕ партиалов tweb, но `.btn-menu hr` специфичнее и
+   выигрывает при равном !important. */
+hr {
+  display: none !important;
+}
+
 /* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
    --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
    пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).
