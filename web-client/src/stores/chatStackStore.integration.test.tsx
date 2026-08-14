@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useChatStackStore, selectOpenThread } from './chatStackStore'
+import { useChatStackStore, selectOpenThreadDesc } from './chatStackStore'
 import { useNavigationStore } from './navigationStore'
 
 const thread = { rootMsgId: 7, title: 'Comments', kind: 'comments' as const }
@@ -25,7 +25,7 @@ describe('навигация колонки чата идёт через сте�
     useNavigationStore.getState().selectChat('43')
 
     expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([43])
-    expect(selectOpenThread(useChatStackStore.getState())).toBeNull()
+    expect(selectOpenThreadDesc(useChatStackStore.getState())).toBeUndefined()
   })
 
   it('selectChat(null) очищает стек', () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useChatStackStore, descKey, selectActive, selectRoot, selectOpenThread } from './chatStackStore'
+import { useChatStackStore, descKey, selectActive, selectRoot, selectOpenThreadDesc } from './chatStackStore'
 
 const thread = { rootMsgId: 7, title: 'Comments', kind: 'comments' as const }
 
@@ -56,14 +56,14 @@ describe('chatStackStore', () => {
     expect(descKey({ peerId: 2, type: 'chat' })).not.toBe(descKey({ peerId: 2, threadId: 7, type: 'chat' }))
   })
 
-  it('selectRoot — дно стека (подсветка в списке), selectOpenThread — только при глубине > 1', () => {
+  it('selectRoot — дно стека (подсветка в списке), selectOpenThreadDesc — только при глубине > 1', () => {
     const { setPeer, setInnerPeer } = useChatStackStore.getState()
     setPeer({ peerId: 1, type: 'chat' })
-    expect(selectOpenThread(useChatStackStore.getState())).toBeNull()
+    expect(selectOpenThreadDesc(useChatStackStore.getState())).toBeUndefined()
 
     setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
     expect(selectRoot(useChatStackStore.getState())?.peerId).toBe(1)
-    expect(selectOpenThread(useChatStackStore.getState())).toEqual({ chatId: 2, thread })
+    expect(selectOpenThreadDesc(useChatStackStore.getState())).toMatchObject({ peerId: 2, thread })
   })
 
   it('popTo(index) срезает всё выше индекса', () => {

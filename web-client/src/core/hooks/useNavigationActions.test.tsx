@@ -19,7 +19,7 @@ import type { Managers } from '../../client/bootstrap'
 import type { TopicRow } from '../managers/groupsManager'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
+import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 
 afterEach(cleanup)
 
@@ -91,7 +91,7 @@ const topic: TopicRow = {
 // стейтом Sidebar, МИНУЯ selectChat. Старый navigationStore.openTopicThread одним
 // set() выставлял и тред, и selectedId; новая проводка обязана давать тот же
 // результат через chatStackStore — стек глубины 2 (корень форума + тема), а не
-// один элемент (тогда selectOpenThread/closeTop с глубиной 1 были бы no-op).
+// один элемент (тогда selectOpenThreadDesc/closeTop с глубиной 1 были бы no-op).
 describe('useNavigationActions.openTopicThread — форум-топик «с чистого листа»', () => {
   it('кладёт ПАРУ инстансов (корень форума + тема) и выставляет selectedId', () => {
     const managers = testManagers()
@@ -106,14 +106,14 @@ describe('useNavigationActions.openTopicThread — форум-топик «с ч
     ])
   })
 
-  it('selectOpenThread видит открытую тему (глубина стека > 1)', () => {
+  it('selectOpenThreadDesc видит открытую тему (глубина стека > 1)', () => {
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
     act(() => { result.current.openTopicThread(100, topic) })
 
-    expect(selectOpenThread(useChatStackStore.getState())).toEqual({
-      chatId: 100,
+    expect(selectOpenThreadDesc(useChatStackStore.getState())).toMatchObject({
+      peerId: 100,
       thread: expect.objectContaining({ rootMsgId: 55, kind: 'topic' }),
     })
   })
@@ -126,6 +126,6 @@ describe('useNavigationActions.openTopicThread — форум-топик «с ч
     act(() => { useChatStackStore.getState().closeTop() })
 
     expect(useChatStackStore.getState().stack).toMatchObject([{ peerId: 100, type: 'chat', threadId: undefined }])
-    expect(selectOpenThread(useChatStackStore.getState())).toBeNull()
+    expect(selectOpenThreadDesc(useChatStackStore.getState())).toBeUndefined()
   })
 })

@@ -106,7 +106,7 @@ export default function Sidebar({
   const selectedId = useNavigationStore((st) => st.selectedId) ?? ''
   // Возвращает примитив (не сам дескриптор) — селектор подписки безопасен и
   // без selectOpenThreadDesc, но переиспользуем её ради единого API «открыт ли
-  // тред» (см. предупреждение у selectOpenThread про подписку по ссылке).
+  // тред» (см. её докблок в chatStackStore.ts про безопасность подписки по ссылке).
   const activeTopicId = useChatStackStore((st) => {
     const open = selectOpenThreadDesc(st)
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null

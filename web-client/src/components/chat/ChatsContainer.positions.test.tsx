@@ -144,6 +144,16 @@ describe('ChatsContainer ↔ useChatScroll ↔ chatPositions: реальный �
     })
     await act(async () => { await wait(TRANSITION_SETTLE_MS) })
 
+    // Инвариант `.active` (ChatsContainer.test.tsx намеренно его не проверяет —
+    // там runNavigationTransition замокан; здесь переход настоящий): после
+    // оседания push единственный `.active` узел — новый верхний (тред), не
+    // прежний корень. Именно эта разметка и делает возможной саму проверку
+    // геометрии выше/ниже (isVisible читает ровно этот класс).
+    const tabsAfterPush = Array.from(container.querySelectorAll('.chats-container > .chat.tabs-tab'))
+    expect(tabsAfterPush.filter((t) => t.classList.contains('active'))).toHaveLength(1)
+    expect(container.querySelector('[data-testid="scroll-1_9_discussion"]')?.closest('.tabs-tab')?.classList.contains('active')).toBe(true)
+    expect(container.querySelector('[data-testid="scroll-1_0_chat"]')?.closest('.tabs-tab')?.classList.contains('active')).toBe(false)
+
     // Коллапс стека на ДРУГОЙ чат — единственный надёжный способ реально
     // снять чат 1 (и тред) из DOM без переиспользования ключа (одиночный pop
     // держит нижний инстанс смонтированным всегда — не тот сценарий).

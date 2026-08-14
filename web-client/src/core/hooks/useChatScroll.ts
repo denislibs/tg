@@ -201,23 +201,33 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
     // the re-pin + loadNewer feed each other into a cascade that loads the whole
     // history. While a real chat is still loading (no msgs yet) leave atBottomRef
     // at its open-time default so the initial scroll-to-bottom isn't cancelled.
+    // Гейт скрытого узла: onAdditionalScroll не только реагирует на настоящий
+    // scroll-event своего собственного контейнера (что само по себе безопасно —
+    // у скрытого узла его не бывает), но и зовётся ПРОГРАММНО на монтировании и
+    // на каждое изменение win.msgs/win.reachedBottom (эффекты ниже) — эти вызовы
+    // происходят у ЛЮБОГО смонтированного инстанса независимо от видимости. У
+    // скрытого (display:none) узла нет layout box — clientHeight читается нулём
+    // (тот же признак, что и в cleanup сохранения позиции выше), поэтому `dist`
+    // тривиально 0 и условие «прижат к низу» тривиально истинно. Без этого гейта
+    // фоновый инстанс на КАЖДОЕ такое программное срабатывание переписывал бы
+    // atBottomRef/userScrolledUpRef намерение пользователя («он прокрутил вверх
+    // и ушёл в тред») в «прижат к низу» — а на возврате активности ResizeObserver
+    // (correctScroll) увидел бы atBottomRef===true и пином к низу уничтожил бы
+    // сохранённую chatPositions-позицию. Реальный scroll-event у скрытого узла не
+    // бывает вовсе (нет layout — некуда скроллить), так что гейт не блокирует ни
+    // один сценарий активного инстанса — только запись, не чтение геометрии.
+    const hasLayout = el.clientHeight > 0
     if (!isRealChat) {
-      atBottomRef.current = dist < 240
+      if (hasLayout) atBottomRef.current = dist < 240
     } else if (win.msgs.length > 0) {
       const atRealBottom = dist < 240 && win.reachedBottom
       // Stay pinned to the bottom from open until the user scrolls up. Once they
       // have, fall back to the strict real-bottom gate (prevents a mid-history
       // jump from false-pinning + cascading loadNewer).
-      atBottomRef.current = !userScrolledUpRef.current || atRealBottom
+      if (hasLayout) atBottomRef.current = !userScrolledUpRef.current || atRealBottom
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
-      // Гейт активности: onAdditionalScroll не только реагирует на настоящий
-      // scroll-event своего собственного контейнера (что само по себе безопасно —
-      // у скрытого узла его не бывает), но и зовётся ПРОГРАММНО на монтировании и
-      // на каждое изменение win.msgs/win.reachedBottom (эффекты ниже) — эти вызовы
-      // происходят у ЛЮБОГО смонтированного инстанса независимо от видимости, и
-      // именно они и есть источник бага «фоновый инстанс сам читает чат».
-      if (atRealBottom && document.hasFocus() && isActive) {
+      if (hasLayout && atRealBottom && document.hasFocus() && isActive) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
