@@ -293,11 +293,25 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
     }
     onAdditionalScroll() // eager run — seeds showScrollDown/atBottomRef from the mount scrollTop
     return () => {
-      // Сохранение позиции при уходе (свёртка треда, переключение на другой
-      // инстанс стека, размонтирование при закрытии чата) — читаем через
-      // Scrollable.scrollPosition (геттер над тем же динамическим полем
-      // scrollTop, которым владеет сам класс), не голым el.scrollTop.
-      saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
+      // Сохранение позиции как СТРАХОВКА на размонтирование без предшествующей
+      // деактивации (основной путь — эффект ниже, реагирующий на isActive
+      // true→false). К МОМЕНТУ размонтирования узел стека обычно уже скрыт:
+      // `ChatsContainer` снимает класс `.active` таймером перехода
+      // (`NAVIGATION_TRANSITION_TIME + 100`), а таймер, обрезающий список и
+      // реально убирающий узел из DOM, зарегистрирован ТЕМ ЖЕ кодом с той же
+      // задержкой, но позже по порядку вызова — `setTimeout` с равной
+      // задержкой исполняет колбэки в порядке регистрации, так что класс
+      // снимается первым. У скрытого (`display: none`) узла нет layout box —
+      // `clientHeight` читается нулём (CSSOM View), и `scrollPosition`
+      // (тот же `scrollTop`) читался бы нулём тоже. Поэтому здесь пишем,
+      // только если у контейнера ЕЩЁ есть layout box: `clientHeight === 0` —
+      // верный признак «скрыт», в отличие от `scrollPosition === 0`, который
+      // у чата, честно прокрученного к верху, тоже ноль. «Не сохранили» —
+      // приемлемо (остаётся прошлое сохранённое значение), «сохранили 0
+      // поверх настоящей позиции» — нет.
+      if (scrollable.container.clientHeight > 0) {
+        saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
+      }
       scrollable.destroy()
       // destroy() doesn't remove the thumb container it may have prepended (thumb/thumbContainer
       // are `protected`, unset — tweb's own container is throwaway, so it never needed to; ours is
@@ -309,6 +323,30 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       scrollableRef.current = null
     }
   }, [onAdditionalScroll, onScrolledTop, onScrolledBottom, numericChatId, threadId])
+  // Основной путь сохранения позиции — переход isActive true→false (Critical-
+  // ревью Task 7), не размонтирование. В момент, когда `ChatsContainer` уводит
+  // инстанс с переднего плана (push нового поверх, переключение на нижний по
+  // стеку), `isActive` из контекста (`useIsActiveChat`) меняется СИНХРОННО с
+  // React-рендером, вызванным сменой стека, — тем же коммитом, что запускает
+  // navigation-переход. Класс `.active`, который физически скрывает узел
+  // (`display: none`), снимается только СПУСТЯ `NAVIGATION_TRANSITION_TIME +
+  // 100`мс — так что здесь, в момент самого перехода `true → false`, узел ещё
+  // полностью виден и его геометрия настоящая. `wasActiveRef` хранит значение
+  // ПРЕДЫДУЩЕГО рендера (эффект видит новое `isActive` в замыкании, поэтому
+  // без рефа не отличить «стал неактивным» от «остался неактивным»).
+  const wasActiveRef = useRef(isActive)
+  useEffect(() => {
+    const wasActive = wasActiveRef.current
+    wasActiveRef.current = isActive
+    if (!wasActive || isActive) return
+    const scrollable = scrollableRef.current
+    // Тот же гейт «есть ли у контейнера layout box», что и в cleanup выше —
+    // здесь он избыточен по построению (узел ещё виден), но не бесплатен и
+    // безвреден: держит оба места сохранения симметричными на случай, если
+    // порядок эффектов когда-нибудь изменится.
+    if (!scrollable || scrollable.container.clientHeight === 0) return
+    saveChatPosition(numericChatId, threadId, { top: scrollable.scrollPosition })
+  }, [isActive, numericChatId, threadId])
   // Keep loadedAll in sync with the window's real top/bottom (tweb: bubbles.ts' setLoaded()
   // writes scrollable.loadedAll[side] on every window-state change) — onScrolledTop/
   // onScrolledBottom above read it at trigger time.
