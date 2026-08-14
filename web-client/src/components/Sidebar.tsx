@@ -30,7 +30,7 @@ import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import { useManagers } from '../core/hooks/useManagers'
 import { useChatList } from '../core/hooks/useChatList'
 import { useNavigationStore } from '../stores/navigationStore'
-import { useChatStackStore, selectOpenThread } from '../stores/chatStackStore'
+import { useChatStackStore, selectOpenThreadDesc } from '../stores/chatStackStore'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
@@ -104,8 +104,11 @@ export default function Sidebar({
   // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
   const chats = useChatList()
   const selectedId = useNavigationStore((st) => st.selectedId) ?? ''
+  // Возвращает примитив (не сам дескриптор) — селектор подписки безопасен и
+  // без selectOpenThreadDesc, но переиспользуем её ради единого API «открыт ли
+  // тред» (см. предупреждение у selectOpenThread про подписку по ссылке).
   const activeTopicId = useChatStackStore((st) => {
-    const open = selectOpenThread(st)
+    const open = selectOpenThreadDesc(st)
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)

@@ -6,7 +6,7 @@ import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
+import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import { initHotkeys } from '../hotkeys'
 
 export function useAppHotkeys(): void {
@@ -18,7 +18,7 @@ export function useAppHotkeys(): void {
   // на хендхелдах, см. её докблок).
   const escCloseChat = useCallback(() => {
     const stack = useChatStackStore.getState()
-    if (selectOpenThread(stack)) { stack.closeTop(); return }
+    if (selectOpenThreadDesc(stack)) { stack.closeTop(); return }
     const nav = useNavigationStore.getState()
     if (nav.selectedId) nav.selectChat(null)
   }, [])

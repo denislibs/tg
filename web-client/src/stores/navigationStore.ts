@@ -6,8 +6,9 @@ import { useChatStackStore } from './chatStackStore'
 // источник истины вместо useState+ref-зеркал в App — хоткеи, SW-хендлер и
 // deep-links читают getState() напрямую. Тред (форум-топик / комментарии)
 // больше не хранится здесь — это верхний инстанс стека `chatStackStore`
-// (`selectOpenThread`); `selectChat` лишь синхронизирует стек с выбором
-// корневого чата (tweb `appImManager.setPeer`).
+// (`selectOpenThreadDesc` для подписки, `selectOpenThread` — только через
+// `getState()`, см. предупреждение у неё); `selectChat` лишь синхронизирует
+// стек с выбором корневого чата (tweb `appImManager.setPeer`).
 
 interface NavState {
   /** id выбранного чата ("123", "draft:<peerId>" или null) */

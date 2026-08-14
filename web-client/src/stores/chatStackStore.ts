@@ -79,8 +79,31 @@ export const selectActive = (s: ChatStackState): ChatInstanceDesc | undefined =>
  *  а тред лежит поверх него и подсветку не меняет. */
 export const selectRoot = (s: ChatStackState): ChatInstanceDesc | undefined => s.stack[0]
 
-/** Совместимость с потребителями `navigationStore.openThread` на время этапа 1. */
+/**
+ * Совместимость с потребителями `navigationStore.openThread` на время этапа 1.
+ *
+ * НЕ ПОДПИСЫВАТЬ через `useChatStackStore(selectOpenThread)` — строит НОВЫЙ
+ * объект на каждый вызов. Zustand v5 сравнивает снимок подписки по ссылке
+ * (`useSyncExternalStore`), поэтому такая подписка даёт бесконечный ре-рендер
+ * на любой глубине стека > 1 (найдено на стенде: React error #185 «Maximum
+ * update depth exceeded» при открытии темы форума — до этого стек не
+ * поднимался выше 1, где функция стабильно отдаёт `null`, и баг был не виден).
+ * Для подписки — `selectOpenThreadDesc` ниже (отдаёт сам дескриптор, он уже
+ * стабилен по ссылке в сторе). Эта функция — только через `getState()`
+ * (обработчики, эффекты) или в тестах, где сравнение по ссылке не участвует.
+ */
 export const selectOpenThread = (s: ChatStackState): { chatId: number; thread: ThreadInfo } | null => {
   const top = selectActive(s)
   return s.stack.length > 1 && top?.thread ? { chatId: top.peerId, thread: top.thread } : null
+}
+
+/** Верхний инстанс, если это открытый тред (глубина стека > 1) — сам дескриптор
+ *  из стора, стабильный по ссылке между рендерами, пока стек не меняется.
+ *  Единственный безопасный для подписки (`useChatStackStore(selectOpenThreadDesc)`)
+ *  вариант «открыт ли тред» — см. предупреждение у `selectOpenThread`. */
+export const selectOpenThreadDesc = (
+  s: ChatStackState,
+): (ChatInstanceDesc & { thread: ThreadInfo }) | undefined => {
+  const top = selectActive(s)
+  return s.stack.length > 1 && top?.thread ? (top as ChatInstanceDesc & { thread: ThreadInfo }) : undefined
 }

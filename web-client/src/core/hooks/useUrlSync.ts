@@ -14,7 +14,7 @@ import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThread } from '../../stores/chatStackStore'
+import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import { setBaseHandler } from '../navigation/navigationStack'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import type { Managers } from '../../client/bootstrap'
@@ -22,8 +22,8 @@ import type { Managers } from '../../client/bootstrap'
 // Хэш для текущего состояния навигации (без ведущего #). '' — список чатов.
 function hashForState(): string {
   const nav = useNavigationStore.getState()
-  const openThread = selectOpenThread(useChatStackStore.getState())
-  if (openThread) return `${openThread.chatId}_${openThread.thread.rootMsgId}`
+  const openThread = selectOpenThreadDesc(useChatStackStore.getState())
+  if (openThread) return `${openThread.peerId}_${openThread.thread.rootMsgId}`
   const id = nav.selectedId
   if (!id) return ''
   if (id.startsWith('draft:')) {
@@ -86,7 +86,7 @@ export async function applyHash(rawHash: string, managers: Managers): Promise<vo
 export function useUrlSync(): void {
   const managers = useManagers()
   const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useChatStackStore(selectOpenThread)
+  const openThread = useChatStackStore(selectOpenThreadDesc)
   const suppressRef = useRef(false)
   const readyRef = useRef(false)
 
