@@ -194,7 +194,11 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
                 (`sidebar-left-section-container search-group search-group-contacts`
                 со своим `scrollable-x`), как в дампе. */}
             {recents.length > 0 && (
-              <div className="sidebar-left-section-container search-group search-group-contacts">
+              // Классы 1:1 с дампом: горизонтальную ленту даёт именно
+              // `search-group-people` (_searchGroup.scss), `-with-scroll` —
+              // свой скроллер, `popup-forward-top-peers collapsable` —
+              // z-слой и схлопывание при поиске (_forward.scss).
+              <div className="sidebar-left-section-container search-group search-group-contacts search-group-people popup-forward-top-peers collapsable search-group-with-scroll">
                 <div className="sidebar-left-section search-group-inner">
                   <div className="sidebar-left-section-content search-group-content">
                     <div className="scrollable scrollable-x search-group-scrollable-x">
