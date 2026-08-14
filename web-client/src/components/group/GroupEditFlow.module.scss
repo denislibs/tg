@@ -1,38 +1,16 @@
-// GroupEditFlow — экраны редактирования группы. Цвета — CSS-переменные темы.
+// GroupEditFlow — экраны редактирования группы/канала. Разметка вендорная
+// (`avatar-edit`, `sidebar-left-section*`, `input-wrapper`, `row` —
+// дампы 15-right-12/12b/13/17), здесь только то, чему в партиалах tweb
+// соответствия нет.
 
-// карточка аватар+имя+описание
-.infoCard {
+// центровка `.avatar-edit` над секцией полей (в tweb это делает
+// `.edit-peer-container > .sidebar-content > .scrollable > div`)
+.editHeader {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 4px 4px;
-}
-
-.avatarWrap {
-  position: relative;
-  cursor: pointer;
-  border-radius: 50%;
-  overflow: hidden;
-}
-
-// затемнение с камерой поверх аватара (tweb avatar-edit)
-.avatarOverlay {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
-  display: flex;
-  align-items: center;
   justify-content: center;
+  padding: 8px 0 12px;
 }
 
-.field {
-  width: 100%;
-}
-
-// уточка-плейсхолдер + подпись (tweb .sticker-container + .caption)
 .duck {
   display: flex;
   flex-direction: column;
@@ -46,7 +24,6 @@
   max-width: 320px;
 }
 
-// карточка со ссылкой (клик — копировать)
 .linkBox {
   display: flex;
   flex-direction: column;
@@ -58,7 +35,6 @@
   margin: 4px 0 8px;
 }
 
-// поле username с префиксом t.me/
 .usernameWrap {
   display: flex;
   align-items: center;
@@ -83,7 +59,6 @@
   padding: 6px 4px 0;
 }
 
-// строка эмодзи-реакции
 .emojiRow {
   display: flex;
   align-items: center;
@@ -103,12 +78,10 @@
   line-height: 1;
 }
 
-// медленный режим: подписи над слайдером
 .slowmode {
   padding: 6px 4px 10px;
 }
 
-// строка «Плата за сообщение» (Telegram paid messages)
 .chargeRow {
   display: flex;
   align-items: center;
@@ -146,8 +119,6 @@
   }
 }
 
-// строка участника (tweb .row + chatlist-chat-abitbigger: 56px, аватар 42,
-// радиус 16, hover на всю строку)
 .memberRow {
   display: flex;
   align-items: center;
@@ -182,7 +153,6 @@
   padding: 4px 24px 8px;
 }
 
-// угловая кнопка добавления (tweb btn-corner)
 .fab {
   position: absolute;
   right: 20px;
