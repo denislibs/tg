@@ -27,14 +27,40 @@ import (
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 )
 
-// setMeta — meta.json набора: заголовок, вид и список файлов с эмодзи.
+// setMeta — meta.json набора: заголовок, вид, обложка и список файлов с эмодзи.
 type setMeta struct {
 	Title    string `json:"title"`
 	Kind     string `json:"kind"`
+	Cover    string `json:"cover"`
 	Stickers []struct {
 		File  string `json:"file"`
 		Emoji string `json:"emoji"`
 	} `json:"stickers"`
+}
+
+// setIndex — _index.json рядом с наборами: порядок трендов из выгрузки
+// (tools/fetch_stickers.py). Без него наборы сидируются в алфавитном порядке
+// каталогов, и панель показывает их не так, как Telegram.
+type setIndex struct {
+	Order []string `json:"order"`
+}
+
+// loadRanks читает _index.json и отдаёт slug → позиция (с единицы). Файла нет —
+// пустая карта: все наборы получают rank 0 («вне трендов»).
+func loadRanks(dir string) map[string]int {
+	raw, err := os.ReadFile(filepath.Join(dir, "_index.json"))
+	if err != nil {
+		return map[string]int{}
+	}
+	var idx setIndex
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return map[string]int{}
+	}
+	ranks := make(map[string]int, len(idx.Order))
+	for i, slug := range idx.Order {
+		ranks[slug] = i + 1
+	}
+	return ranks
 }
 
 func main() {
@@ -102,18 +128,41 @@ func run(dir string) error {
 	if err != nil {
 		return err
 	}
+	ranks := loadRanks(dir)
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		if err := seedSet(ctx, stickersUC, mediaUC, dir, e.Name()); err != nil {
+		if err := seedSet(ctx, stickersUC, mediaUC, dir, e.Name(), ranks[e.Name()]); err != nil {
 			return fmt.Errorf("набор %s: %w", e.Name(), err)
 		}
 	}
 	return nil
 }
 
-func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaUC *usecasemedia.Interactor, dir, slug string) error {
+// uploadFile читает файл набора и заливает его как media (тот же путь, что у
+// обычной загрузки: CreateUpload + PutContent). Общий код для стикеров набора
+// и его обложки — им обеим нужна ровно эта пара вызовов.
+func uploadFile(ctx context.Context, mediaUC *usecasemedia.Interactor, path string) (int64, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	name := filepath.Base(path)
+	m, _, err := mediaUC.CreateUpload(ctx, usecasemedia.UploadInput{
+		OwnerID: domain.ServiceUserID, Mime: stickerMime(name),
+		Size: int64(len(data)), Width: 512, Height: 512, FileName: name,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := mediaUC.PutContent(ctx, m.ID, domain.ServiceUserID, bytes.NewReader(data), int64(len(data))); err != nil {
+		return 0, err
+	}
+	return m.ID, nil
+}
+
+func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaUC *usecasemedia.Interactor, dir, slug string, rank int) error {
 	if _, _, err := stickersUC.SetBySlug(ctx, slug); err == nil {
 		log.Printf("набор %s уже есть — пропускаю", slug)
 		return nil
@@ -137,24 +186,31 @@ func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaU
 		return err
 	}
 	for _, s := range meta.Stickers {
-		data, err := os.ReadFile(filepath.Join(dir, slug, s.File))
+		mediaID, err := uploadFile(ctx, mediaUC, filepath.Join(dir, slug, s.File))
 		if err != nil {
 			return err
 		}
-		m, _, err := mediaUC.CreateUpload(ctx, usecasemedia.UploadInput{
-			OwnerID: domain.ServiceUserID, Mime: stickerMime(s.File),
-			Size: int64(len(data)), Width: 512, Height: 512, FileName: s.File,
-		})
-		if err != nil {
-			return err
-		}
-		if err := mediaUC.PutContent(ctx, m.ID, domain.ServiceUserID, bytes.NewReader(data), int64(len(data))); err != nil {
-			return err
-		}
-		if _, err := stickersUC.AddSticker(ctx, domain.ServiceUserID, set.ID, m.ID, s.Emoji); err != nil {
+		if _, err := stickersUC.AddSticker(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji); err != nil {
 			return err
 		}
 	}
 	log.Printf("набор %s (%s, %d стикеров) залит", slug, meta.Kind, len(meta.Stickers))
+
+	if rank > 0 {
+		if err := stickersUC.SetRank(ctx, set.ID, rank); err != nil {
+			return err
+		}
+	}
+	// Обложка — такое же медиа, как стикер, но в наборе не числится: это
+	// иконка вкладки панели (tweb stickerSetThumb), а не отправляемый стикер.
+	if meta.Cover != "" {
+		coverID, err := uploadFile(ctx, mediaUC, filepath.Join(dir, slug, meta.Cover))
+		if err != nil {
+			return err
+		}
+		if err := stickersUC.SetCover(ctx, set.ID, coverID); err != nil {
+			return err
+		}
+	}
 	return nil
 }

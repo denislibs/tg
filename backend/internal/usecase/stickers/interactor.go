@@ -216,3 +216,13 @@ func (i *Interactor) SearchGifs(ctx context.Context, q, pos string) (GifPage, er
 	}
 	return i.gifs.SearchGifs(ctx, strings.TrimSpace(q), pos, gifSearchLim)
 }
+
+// SetRank — позиция набора в трендах (см. domain.StickerSet.Rank).
+func (i *Interactor) SetRank(ctx context.Context, setID int64, rank int) error {
+	return i.repo.SetRank(ctx, setID, rank)
+}
+
+// SetCover — обложка набора (иконка вкладки панели).
+func (i *Interactor) SetCover(ctx context.Context, setID, mediaID int64) error {
+	return i.repo.SetCover(ctx, setID, mediaID)
+}

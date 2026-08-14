@@ -378,6 +378,15 @@ async def main() -> None:
             sets = sets[: args.limit]
         print(f"\nк выгрузке: {len(sets)} наборов\n", flush=True)
 
+    # Порядок трендов знает только эта выдача: сид читает каталоги алфавитом и
+    # без индекса расставил бы наборы как попало.
+    if sets:
+        index = {"order": [s.short_name.lower() for s in sets]}
+        (out / "_index.json").write_text(
+            json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        print(f"индекс порядка: {out / '_index.json'} ({len(sets)} наборов)", flush=True)
+
     for i, s in enumerate(sets, start=1):
         try:
             n, b = await fetch_set(client, types.InputStickerSetShortName(short_name=s.short_name), out, s.short_name.lower())
