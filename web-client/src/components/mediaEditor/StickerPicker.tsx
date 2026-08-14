@@ -11,6 +11,7 @@ import StickerMedia from '../StickerMedia'
 import TgIcon, { type IconName } from '../TgIcon'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { setThumbMediaId } from '../../core/stickers/setThumb'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
 import s from './MediaEditor.module.scss'
@@ -35,7 +36,7 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
     if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
     if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
-      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: stickers[0].mediaId, stickers })
+      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
     return list
   }, [panel.recent, panel.faved, panel.sets, t])
