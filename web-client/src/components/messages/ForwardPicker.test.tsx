@@ -69,4 +69,17 @@ describe('ForwardPicker — тело на общем селекторе', () => 
 
     expect(document.querySelectorAll('.selector .chatlist a.chatlist-chat').length).toBeGreaterThan(0)
   })
+
+  it('секция «недавних» несёт search-group-people — без него лента чипов идёт колонкой', () => {
+    mount()
+    const recents = document.querySelector('.search-group.search-group-contacts')!
+
+    // `.search-group-people .chatlist { display:flex; flex-direction:row }`
+    // (_searchGroup.scss) — единственное, что раскладывает чипы в ряд;
+    // остальные классы — из того же узла дампа 17-popup-01.
+    expect(recents.classList.contains('search-group-people')).toBe(true)
+    expect(recents.classList.contains('popup-forward-top-peers')).toBe(true)
+    expect(recents.classList.contains('collapsable')).toBe(true)
+    expect(recents.classList.contains('search-group-with-scroll')).toBe(true)
+  })
 })

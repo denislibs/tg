@@ -278,12 +278,17 @@ export default function EmojiDropdown({
     [onPickSticker, onPickGif],
   )
   const [tab, setTab] = useState<TabId>('emoji')
-  // Вкладки стикеров/GIF инициализируются при первом выборе (tweb: tab.init()
-  // из horizontalMenu-колбэка), эмодзи — сразу (index.ts:376).
-  // (у GIF-вкладки нет меню, значит и `no-border-top` ей не полагается — флаг
-  // нужен только вкладке стикеров).
-  const [stickersInited, setStickersInited] = useState(false)
-  if (tab === 'stickers' && !stickersInited) setStickersInited(true)
+  // Наполнение вкладки — строго ПОСЛЕ слайда. В tweb `tab.init()` висит на
+  // `onTransitionEnd` слайдера (index.ts:288-291 — четвёртый аргумент
+  // horizontalMenu, см. horizontalMenu.ts:145), поэтому переход играет по ещё
+  // пустой вкладке. Если инициализировать в том же кадре, что и переключение,
+  // построение сотен узлов стикеров/GIF съедает первые кадры анимации — слайд
+  // виден рывком ровно один раз, при первом открытии вкладки.
+  // Вкладка эмодзи инициализирована сразу (tweb index.ts:376).
+  const [initedTabs, setInitedTabs] = useState<ReadonlySet<TabId>>(() => new Set<TabId>(['emoji']))
+  const markInited = useCallback((id: TabId) => {
+    setInitedTabs((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+  }, [])
 
   // ── Слайд смены вкладок — порт tweb TransitionSlider типа 'tabs'
   // (transition.ts: selectTab 240-372 + slideTabs 44-96); в tweb его создаёт
@@ -306,9 +311,17 @@ export default function EmojiDropdown({
     const toIdx = tabs.indexOf(tab)
     const from = content.children[fromIdx] as HTMLElement | undefined
     const to = content.children[toIdx] as HTMLElement | undefined
-    if (!from || !to || from === to) return
-    // гейт «Без анимаций» (tweb liteMode.isAvailable('animations'), transition.ts:258)
-    if (document.body.classList.contains('animation-level-0')) return
+    if (!from || !to || from === to) {
+      markInited(tab)
+      return
+    }
+    // гейт «Без анимаций» (tweb liteMode.isAvailable('animations'), transition.ts:258).
+    // Слайда нет — значит нет и onTransitionEnd: инициализируем сразу
+    // (в tweb ту же роль играет мгновенная ветка selectTab, transition.ts:258-270).
+    if (document.body.classList.contains('animation-level-0')) {
+      markInited(tab)
+      return
+    }
 
     // transition.ts:300-322
     const toRight = fromIdx < toIdx
@@ -334,6 +347,8 @@ export default function EmojiDropdown({
       to.classList.remove('to')
       from.style.transform = ''
       content.classList.remove('animating', 'backwards')
+      // tweb: onTransitionEnd → tab.init() (index.ts:289)
+      markInited(tab)
     }
     const onEnd = (e: TransitionEvent) => {
       if (e.target === from) finish()
@@ -646,7 +661,7 @@ export default function EmojiDropdown({
           {onPickSticker && (
             <StickersTab
               active={tab === 'stickers'}
-              inited={stickersInited}
+              inited={initedTabs.has('stickers')}
               open={open}
               inputRef={stickersInputRef}
               onPick={(st) => {
@@ -658,6 +673,7 @@ export default function EmojiDropdown({
           {onPickGif && (
             <GifsTab
               active={tab === 'gifs'}
+              inited={initedTabs.has('gifs')}
               open={open}
               inputRef={gifsInputRef}
               onPick={(g) => {

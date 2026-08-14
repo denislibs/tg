@@ -87,12 +87,17 @@ function Masonry({
 
 export default function GifsTab({
   active,
+  inited,
   open,
   inputRef,
   onPick,
 }: {
   /** выбранная вкладка (tweb `.tabs-tab.active`) */
   active: boolean
+  /** слайд на эту вкладку доигран — только тогда tweb зовёт `tab.init()`
+   * (onTransitionEnd, index.ts:289); до этого вкладка пустая, чтобы
+   * построение ленты не съедало кадры анимации */
+  inited: boolean
   /** дропдаун открыт — триггер ленивой загрузки данных */
   open: boolean
   inputRef: RefObject<HTMLInputElement | null>
@@ -101,7 +106,7 @@ export default function GifsTab({
   const t = useT()
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
-  const panel = useGifsPanel(open && active, query)
+  const panel = useGifsPanel(open && active && inited, query)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const cellsRef = useRef(new Map<string, HTMLElement>())

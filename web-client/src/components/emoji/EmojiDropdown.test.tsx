@@ -254,6 +254,24 @@ describe('EmojiDropdown — слайд смены вкладок (порт Trans
     // tweb transition.ts:360 пишет id таймера и не удаляет его
     expect(emojiTab.hasAttribute('data-transition-timeout')).toBe(true)
   })
+
+  it('вкладка наполняется только по окончании слайда (tweb onTransitionEnd → tab.init)', () => {
+    vi.useFakeTimers()
+    const { managers, stickers } = makeManagers()
+    renderDropdown(managers, { onPickSticker: noop })
+
+    act(() => {
+      fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
+    })
+    // слайд ещё играет — вкладка пустая, за данными не ходили: иначе построение
+    // ленты стикеров съедает первые кадры и первый переход виден рывком
+    expect(stickers.recent).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(301)
+    })
+    expect(stickers.recent).toHaveBeenCalled()
+  })
 })
 
 describe('StickersTab — Recent с крестиком очистки (tweb stickers.ts:193-213)', () => {

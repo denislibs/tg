@@ -73,7 +73,7 @@ export default function StickersTab({
   onPick: (st: Sticker) => void
 }) {
   const t = useT()
-  const panel = useStickersPanel(open && active)
+  const panel = useStickersPanel(open && active && inited)
   const scrollRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLElement>(null)
   const catElsRef = useRef(new Map<string, HTMLDivElement>())
