@@ -52,6 +52,11 @@ func main() {
 // статичный. .json остаётся application/json, чтобы не сломать lottie-детект.
 func stickerMime(file string) string {
 	switch strings.ToLower(filepath.Ext(file)) {
+	case ".tgs":
+		// .tgs — gzip'нутый lottie-json Telegram. Не распаковываем: бэкенд читает
+		// из него размеры сам (ffmpeg.lottieDims разжимает по magic-байтам), а
+		// фронт — DecompressionStream в StickerMedia.
+		return "application/x-tgsticker"
 	case ".webm":
 		return "video/webm"
 	case ".webp":
