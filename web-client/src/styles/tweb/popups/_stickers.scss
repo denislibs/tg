@@ -1,0 +1,65 @@
+// Порт tweb `src/scss/partials/popups/_stickers.scss` 1:1 — модалка набора
+// стикеров (`components/stickers/StickerSetModal.tsx`). Сетка превью общая с
+// «Поиском стикеров» (`_rightSidebar.scss` даёт `.sticker-set`/media-sticker-wrapper
+// хедер строки поиска, этот партиал — сетку `.sticker-set-stickers` внутри
+// попапа) — классы `.sticker-set-sticker`/`.media-sticker-wrapper` совпадают
+// намеренно, как в оригинале.
+@use "../../foundation" as *;
+
+.popup-stickers {
+  $parent: ".popup";
+  --popup-width: 420px;
+  --popup-max-height: 420px;
+  --popup-footer-gradient-start: 0%;
+
+  // Оригинал целится в `.popup-scrollable` (вложенный Scrollable внутри
+  // `.popup-body`, popups/indexTsx.tsx `PopupElement.Scrollable`). У нашего
+  // `Popup` (shared/ui/Popup/Popup.tsx) тело — само и есть скроллер
+  // (`.popup-body { overflow-y: auto }`, Popup.module.scss), вложенного узла
+  // нет — поэтому здесь цель `.popup-body` напрямую.
+  #{$parent} {
+    &-body {
+      padding-bottom: var(--popup-footer-height);
+
+      &.is-loading {
+        min-height: 9rem;
+        position: relative;
+      }
+    }
+  }
+
+  .sticker-set {
+    margin: .0625rem 0;
+
+    &-stickers {
+      --per-row: 5;
+      --item-size: var(--popup-sticker-size);
+      padding: 0 5px;
+      display: grid;
+      grid-template-columns: repeat(var(--per-row), 1fr);
+      position: relative;
+
+      @include respond-to(handhelds) {
+        --per-row: 4;
+      }
+
+      .media-sticker-wrapper {
+        width: var(--item-size);
+        height: var(--item-size);
+        margin-bottom: 2px;
+        justify-self: center;
+        cursor: pointer;
+        position: relative;
+
+        @include respond-to(handhelds) {
+          margin-bottom: 8px;
+        }
+
+        @include hover() {
+          border-radius: 12px;
+          background-color: var(--light-secondary-text-color);
+        }
+      }
+    }
+  }
+}

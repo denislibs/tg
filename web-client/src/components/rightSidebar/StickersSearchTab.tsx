@@ -10,11 +10,12 @@
 // поиск наборов; Add/Added — toggleStickerSet (кнопка disabled на время
 // запроса, установленный — «Added» + класс gray). Клик по превью-стикеру —
 // отправка в текущий чат (tweb sendMessageWithDocument), на узком экране
-// панель после отправки закрывается (симметрично GifsSearchTab).
-// Отступления от tweb (нет аналога в нашем API):
-//   • data-access_hash не рендерим — у наших наборов нет access_hash;
-//   • клик по строке набора у tweb открывает попап набора (showStickersPopup) —
-//     попапа набора у нас нет, кликабельны только кнопка и превью.
+// панель после отправки закрывается (симметрично GifsSearchTab). Клик по
+// остальной части строки (не по кнопке и не по превью) — открывает
+// `StickerSetModal` набора (tweb sidebarRight/tabs/stickers.tsx:172-198
+// `attachClickEvent`: превью → send, кнопка → toggle, иначе → showStickersPopup).
+// Отступление от tweb (нет аналога в нашем API): data-access_hash не рендерим —
+// у наших наборов нет access_hash.
 import { useEffect, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
@@ -24,6 +25,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import StickerMedia from '../StickerMedia'
 import StickerSetSkeleton from './StickerSetSkeleton'
+import StickerSetModal from '../stickers/StickerSetModal'
 import RightSearchTab, { RIGHT_SEARCH_POPUP_KIND, RightSearchPopup } from './RightSearchTab'
 
 // Без скелетона первая загрузка (и любой новый поиск) на время запроса висит
@@ -56,12 +58,15 @@ function StickerSetRow({
   busy,
   onToggle,
   onPickSticker,
+  onOpen,
 }: {
   set: StickerSet
   installed: boolean
   busy: boolean
   onToggle: () => void
   onPickSticker?: (st: Sticker) => void
+  /** клик по строке вне кнопки/превью — открыть StickerSetModal (tweb showStickersPopup) */
+  onOpen: () => void
 }) {
   const t = useT()
   const managers = useManagers()
@@ -77,7 +82,7 @@ function StickerSetRow({
   }, [managers, set.slug])
 
   return (
-    <div className="sticker-set" data-sticker-set={set.id} data-title={set.title}>
+    <div className="sticker-set" data-sticker-set={set.id} data-title={set.title} onClick={onOpen}>
       <div className="sticker-set-header">
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
@@ -85,11 +90,13 @@ function StickerSetRow({
             <span className="i18n">{set.count} {t('stickers')}</span>
           </div>
         </div>
-        {/* tweb: установленный — «Added» + класс gray; disabled на время запроса */}
+        {/* tweb: установленный — «Added» + класс gray; disabled на время запроса;
+            stopPropagation — иначе клик по кнопке всплыл бы до onOpen (tweb
+            `e.preventDefault(); e.cancelBubble = true` в attachClickEvent) */}
         <button
           className={`btn-primary btn-color-primary sticker-set-button${installed ? ' gray' : ''}`}
           disabled={busy}
-          onClick={onToggle}
+          onClick={(e) => { e.stopPropagation(); onToggle() }}
         >
           <span className="i18n">{t(installed ? 'Added' : 'Add')}</span>
         </button>
@@ -100,7 +107,11 @@ function StickerSetRow({
             key={st.id}
             className="sticker-set-sticker media-sticker-wrapper"
             data-doc-id={st.mediaId}
-            onClick={onPickSticker ? () => onPickSticker(st) : undefined}
+            onClick={(e) => {
+              // превью шлёт стикер (ранний return в tweb attachClickEvent) — до onOpen не доходит
+              e.stopPropagation()
+              onPickSticker?.(st)
+            }}
           >
             {/* превью — play:true, loop:true (tweb wrapSticker в этом экране) */}
             <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} />
@@ -123,6 +134,9 @@ export default function StickersSearchTab({
   const narrow = useMediaQuery('(max-width:900px)')
   const [query, setQuery] = useState('')
   const { sets, installedIds, busyIds, toggle, loading } = useStickersSearch(query)
+  // Слаг открытого попапа набора (tweb showStickersPopup) — null, пока ни одна
+  // строка не кликнута.
+  const [openSlug, setOpenSlug] = useState<string | null>(null)
 
   const pick = onPickSticker
     ? (st: Sticker) => {
@@ -152,9 +166,11 @@ export default function StickersSearchTab({
                 busy={busyIds.has(set.id)}
                 onToggle={() => toggle(set)}
                 onPickSticker={pick}
+                onOpen={() => setOpenSlug(set.slug)}
               />
             ))}
       </div>
+      {openSlug && <StickerSetModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
       {/* пустой div после списка — как в живом DOM (хвост tweb Scrollable) */}
       <div />
     </RightSearchTab>

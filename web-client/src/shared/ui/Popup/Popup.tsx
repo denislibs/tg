@@ -51,6 +51,8 @@ interface PopupProps {
    * где роль тела играет сам `.popup-scrollable` (datePicker.tsx:811).
    */
   body?: boolean
+  /** доп. класс(ы) на `.popup-body` — например `is-loading` (tweb popups/_stickers.scss) */
+  bodyClassName?: string
   /** ширина карточки, по умолчанию 420 */
   width?: number
   children: ReactNode
@@ -77,7 +79,7 @@ export function PopupFooterButton({ label, onClick }: { label: string; onClick: 
 }
 
 export default function Popup({
-  open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, width = 420, children,
+  open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, bodyClassName, width = 420, children,
 }: PopupProps) {
   const container = usePortalContainer()
   useNavLayer(open, onClose) // браузерный/аппаратный Back закрывает попап
@@ -153,7 +155,7 @@ export default function Popup({
           <div className="popup-title">{title}</div>
           {headerRight}
         </div>
-        {body ? <div className={classNames('popup-body', s.body)}>{children}</div> : children}
+        {body ? <div className={classNames('popup-body', s.body, bodyClassName ?? '')}>{children}</div> : children}
         {footer}
         {action && (
           <div className="popup-footer popup-footer-abitlarger">

@@ -218,6 +218,9 @@
   --bubble-transition-in: transform var(--transition-standard-in), opacity var(--transition-standard-in);
   --bubble-transition-out: transform var(--transition-standard-out), opacity var(--transition-standard-out);
   --round-video-size: 280px;
+  // tweb base.scss:118,214 — сетка модалки набора стикеров (popups/_stickers.scss):
+  // 80px на десктопе, 68px на handhelds (см. переопределение ниже).
+  --popup-sticker-size: 80px;
   --chat-bubbles-padding: 0.5rem;
   --star-golden-color: #fecf16;
   --gc-blue-text-color: #3390ec;
@@ -250,6 +253,7 @@
 @include respond-to(handhelds) {
   :root {
     --round-video-size: 240px;
+    --popup-sticker-size: 68px;
   }
 }
 
