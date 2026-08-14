@@ -454,13 +454,15 @@ export function useChatSend({
       // Channels post through the REST channel endpoint (not the group WS send);
       // optimistic append (sender is the posting admin = me), reusing the existing
       // optimistic + scroll-to-bottom pattern. Live echo arrives via rt:new_message.
-      // (Channel posts are plain text — no entities on this path yet.)
+      // Форматирование идёт тем же путём, что и в обычных чатах: разметка из
+      // композера (entOf) — и в оптимистичный бабл, и в REST-тело поста.
       setReply(null)
       atBottomRef.current = true; userScrolledUpRef.current = false
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
-        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: parts[k].text })
-        void managers.channels.post(numericChatId, parts[k].text, clientMsgId)
+        const entities = entOf(parts[k])
+        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: parts[k].text, type: 'text', entities })
+        void managers.channels.post(numericChatId, parts[k].text, clientMsgId, entities)
       }
       return
     }

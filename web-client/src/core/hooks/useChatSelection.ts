@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useDragSelect } from './useDragSelect'
 import { pushEsc } from '../hotkeys'
+import { useIsActiveChat } from '../chat/chatInstanceContext'
 
 export interface ChatSelection {
   /** Selected message ids. Non-empty ⇒ selection mode (see `selecting`). */
@@ -24,6 +25,7 @@ export interface ChatSelection {
 }
 
 export function useChatSelection(scrollRef: RefObject<HTMLDivElement | null>): ChatSelection {
+  const isActive = useIsActiveChat()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
   const selecting = selectionMode || selected.size > 0
@@ -55,11 +57,14 @@ export function useChatSelection(scrollRef: RefObject<HTMLDivElement | null>): C
   })
 
   // Esc exits multi-select — через глобальный Esc-стек (core/hotkeys), LIFO
-  // поверх других оверлеев.
+  // поверх других оверлеев. Гейт активности: стек Esc — общий на все смонтированные
+  // инстансы чата; без гейта мультиселект, оставленный включённым в фоновом
+  // (скрытом) инстансе, продолжал бы класть свой обработчик в стек и перехватывал
+  // бы Esc у активного инстанса.
   useEffect(() => {
-    if (!selecting) return
+    if (!selecting || !isActive) return
     return pushEsc(clearSelection)
-  }, [selecting, clearSelection])
+  }, [selecting, isActive, clearSelection])
 
   return {
     selected, setSelected, selectionMode, setSelectionMode, selecting,

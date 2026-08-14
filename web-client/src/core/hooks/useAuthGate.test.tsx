@@ -31,6 +31,8 @@ import { RT } from '../realtime/events'
 import type { User } from '../managers/authManager'
 import { useAppStateStore, setAppState } from '../../stores/appState'
 import { useChatsStore } from '../../stores/chatsStore'
+import { useChatStackStore } from '../../stores/chatStackStore'
+import { saveChatPosition, getChatPosition, clearChatPositions } from '../chat/chatPositions'
 import { bootPrefetch, setBootData } from '../../client/bootData'
 
 const ME: User = {
@@ -66,6 +68,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     vi.restoreAllMocks()
     useAppStateStore.setState({ folders: [] })
     useChatsStore.setState({ dialogs: [] })
+    useChatStackStore.setState({ stack: [] }, false)
+    clearChatPositions()
   })
 
   // Ключевой пин раунда 4: канал ЗНАЧЕНИЯ сессией не управляет. Любая
@@ -107,6 +111,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     setAppState('folders', [folder])
     useChatsStore.setState({ dialogs: [{ chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
+    useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' })
+    saveChatPosition(1, undefined, { top: 777 })
     const clearAll = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers(clearAll)) })
 
@@ -119,6 +125,12 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     // аккаунта не должны дожить до входа под следующим.
     expect(useAppStateStore.getState().folders).toEqual([])
     expect(useChatsStore.getState().dialogs).toEqual([])
+    // Стек колонки чата и сохранённые позиции ленты — то же самое: без явной
+    // очистки `resolveChat` (App.tsx) всегда возвращает ChatEntity (реальный/
+    // черновик/синтетический фолбэк), поэтому колонка после входа под другим
+    // аккаунтом показала бы прежний peerId прошлого аккаунта.
+    expect(useChatStackStore.getState().stack).toEqual([])
+    expect(getChatPosition(1, undefined)).toBeUndefined()
     await act(async () => { await Promise.resolve() }) // managers.persist.clearAll() — микротаска
     expect(clearAll).toHaveBeenCalled()
   })
