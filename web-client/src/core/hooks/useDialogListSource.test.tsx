@@ -562,7 +562,6 @@ describe('useDialogListSource: анимация первой загрузки', 
   })
 })
 
-
 // Порт `AutonomousDialogList.ensureArchiveDialogHydrated`
 // (`autonomousDialogList/dialogs.ts:263-276` + `archiveDialog.tsx:27,124-137`):
 // список «Всех чатов» тянет страницу строки «Архив» ПАРАЛЛЕЛЬНО каждой своей

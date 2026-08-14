@@ -1233,6 +1233,30 @@ describe('refresh сливает окно с кэшем, а не подменя�
     expect(ids).toContain(71)
   })
 
+  // Вырожденный случай той же категории: ВО ВСЁМ ответе ни одного диалога
+  // временного потока (у пользователя первые страницы заняты закреплёнными, а
+  // истории у них очищены). Границ окна нет вовсе — сверять не с чем, ответ
+  // просто СЛИВАЕТСЯ с кэшем, и слияние обязано остаться дедуплицированным:
+  // диалог, пришедший в ответе, во второй раз из кэша не берётся.
+  it('ответ без единого диалога временного потока сливается с кэшем без дублей', async () => {
+    const rest = {
+      get: vi.fn(async () => ({
+        chats: [raw(1, 9, { pinned: true }), raw(2, 8, { last_message: undefined })],
+        count: 40, is_end: false,
+      })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // Чат 1 уже в кэше (ответ принесёт его свежую версию), 50 и 51 — ниже.
+      loadCache: async () => [dialog(1, 9, { pinned: true }), dialog(50, 5), dialog(51, 4)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId).sort((a, b) => a - b)).toEqual([1, 2, 50, 51])
+  })
+
   // `is_end` без курсора — ответ и есть ВЕСЬ набор: всё, чего в нём нет, ушло.
   it('окно с is_end заменяет список целиком', async () => {
     const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9)], count: 1, is_end: true })) }

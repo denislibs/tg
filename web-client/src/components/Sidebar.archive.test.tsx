@@ -86,18 +86,19 @@ const NORMAL = 5
 /** id архивных диалогов идут отдельным диапазоном — их видно в `href` строки. */
 const ARCHIVE_ID_BASE = 1000
 
-function fakeManagers(archiveCount = ARCHIVED) {
-  // Владелец отдаёт размер СВОЕЙ выборки: «Все чаты» — набор незаархивированных,
-  // архив — свой (`/chats?folder_id=1`). Дырок ни у того, ни у другого не
-  // остаётся, поэтому каждый список просит страницу ровно один раз — на первом
-  // показе. Сами диалоги приезжают зеркалу отдельно (`seedMirror`), как их
-  // разложил бы проектор по операции владельца.
-  const getDialogs = vi.fn(async (o: { filterId: number }) => ({
-    dialogs: [],
-    count: o.filterId === ARCHIVE_FOLDER_ID ? archiveCount : NORMAL,
-    isEnd: true,
-  }))
-  const managers = new Proxy({}, {
+// Владелец отдаёт размер СВОЕЙ выборки: «Все чаты» — набор незаархивированных,
+// архив — свой (`/chats?folder_id=1`). Дырок ни у того, ни у другого не
+// остаётся, поэтому каждый список просит страницу ровно один раз — на первом
+// показе. Сами диалоги приезжают зеркалу отдельно (`seedMirror`), как их
+// разложил бы проектор по операции владельца.
+const answerFor = (filterId: number, archiveCount: number) => ({
+  dialogs: [],
+  count: filterId === ARCHIVE_FOLDER_ID ? archiveCount : NORMAL,
+  isEnd: true,
+})
+
+function managersWith(getDialogs: (o: { filterId: number }) => unknown): Managers {
+  return new Proxy({}, {
     get: (_target, ns: string) => new Proxy({}, {
       get: (_t, method: string) => {
         if (ns === 'realtime' && method === 'getStatus') return async () => ({ state: 'ready', retryAt: undefined, syncing: false })
@@ -106,7 +107,23 @@ function fakeManagers(archiveCount = ARCHIVED) {
       },
     }),
   }) as unknown as Managers
-  return { managers, getDialogs }
+}
+
+function fakeManagers(archiveCount = ARCHIVED) {
+  const getDialogs = vi.fn(async (o: { filterId: number }) => answerFor(o.filterId, archiveCount))
+  return { managers: managersWith(getDialogs), getDialogs }
+}
+
+/** Тот же владелец, но страница АРХИВНОЙ выборки не отвечает, пока тест её не
+ *  отпустит: только в этом окне у архивного списка живы `wasAtLeastOnceFetched
+ *  === false` и `animate === false` (первая загрузка ещё идёт). */
+function pendingArchiveManagers(archiveCount = ARCHIVED) {
+  let release: (() => void) | null = null
+  const getDialogs = vi.fn(async (o: { filterId: number }) => {
+    if (o.filterId === ARCHIVE_FOLDER_ID) await new Promise<void>((resolve) => { release = resolve })
+    return answerFor(o.filterId, archiveCount)
+  })
+  return { managers: managersWith(getDialogs), release: () => release?.() }
 }
 
 const dialog = (chatId: number, archived: boolean): Dialog => ({
@@ -128,10 +145,17 @@ function seed(archived: number) {
   seedMirror([...normal, ...arch])
 }
 
+/** Архивный чат получил сообщение и уехал на самый верх архива. */
+const raiseArchived = (chatId: number, index: number) =>
+  useChatsStore.getState().applyDialogOps([{ op: 'upsert', items: [{ dialog: dialog(chatId, true), index }] }])
+
 /** Контейнер прокрутки оверлея архива — он же `scrollableHost` списка. */
 const archiveHost = () => document.querySelector<HTMLElement>('.' + s.archiveList) as HTMLElement
 const archiveList = () => archiveHost().querySelector('ul') as HTMLElement
 const archiveRows = () => Array.from(archiveList().querySelectorAll<HTMLElement>('a.chatlist-chat'))
+/** Строки, которым ядро ПРЯМО СЕЙЧАС анимирует `top`: на время движения
+ *  `useAnimatedTop` держит на строке `--background` (`useAnimatedTop.ts:97`). */
+const animatingRows = () => archiveRows().filter((el) => el.style.getPropertyValue('--background') !== '')
 /** Рендеры НАСТОЯЩИХ строк архива (id обычных диалогов в этот диапазон не попадают). */
 const archiveRowRenders = () => rowRenders.filter((id) => id > ARCHIVE_ID_BASE).length
 
@@ -176,11 +200,8 @@ beforeEach(() => {
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-/** Рендер сайдбара + открытие оверлея архива кликом по закреплённому ряду.
- *  `archiveCount` — размер архивной выборки, который отдаёт ВЛАДЕЛЕЦ (по
- *  умолчанию сходится с засеянным зеркалом: архив загружен целиком). */
-async function openArchive(archiveCount = ARCHIVED) {
-  const { managers, getDialogs } = fakeManagers(archiveCount)
+/** Рендер сайдбара + открытие оверлея архива кликом по закреплённому ряду. */
+async function mountAndOpenArchive(managers: Managers) {
   render(
     <ManagersProvider managers={managers}>
       <Sidebar onToggleMode={() => {}} />
@@ -192,6 +213,14 @@ async function openArchive(archiveCount = ARCHIVED) {
   // строки-диалога `a`), кликом по нему оверлей и открывается.
   const archiveRow = document.querySelector('ul.chatlist > div.chatlist-chat') as HTMLElement
   await act(async () => { fireEvent.click(archiveRow) })
+}
+
+/** То же с владельцем, отвечающим сразу. `archiveCount` — размер архивной
+ *  выборки, который он отдаёт (по умолчанию сходится с засеянным зеркалом:
+ *  архив загружен целиком). */
+async function openArchive(archiveCount = ARCHIVED) {
+  const { managers, getDialogs } = fakeManagers(archiveCount)
+  await mountAndOpenArchive(managers)
   return { getDialogs }
 }
 
@@ -345,6 +374,48 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     // нового списка идёт ПО ССЫЛКЕ, новые обёртки в прежнем списке не найдутся,
     // компенсация не сработает и весь экран дёрнется.
     expect(archiveHost().scrollTop).toBe(HOST_HEIGHT + ITEM)
+  })
+
+  // `wasAtLeastOnceFetched` и `animate` — ЖИВЫЕ значения из
+  // `useDialogListSource`, а не константы (ими они были, пока своей первой
+  // загрузки у архива не существовало вовсе). Наблюдать разницу можно РОВНО
+  // пока первая страница архива летит: во всех остальных тестах файла ассерты
+  // идут после её ответа, когда оба значения уже истинны, — там мутация
+  // «обратно в `true`» не красит ничего.
+  describe('первая страница архива ещё летит', () => {
+    it('ul ростом с ХОСТ, а не под весь набор (wasAtLeastOnceFetched)', async () => {
+      const { managers, release } = pendingArchiveManagers()
+      await mountAndOpenArchive(managers)
+
+      // Мутация `wasAtLeastOnceFetched={true}`: `forceHostHeight` снимается, и
+      // `ul` сразу получает высоту под всю выборку — первый ассерт краснеет.
+      expect(archiveList().style.height).toBe(HOST_HEIGHT + 'px')
+
+      await act(async () => { release() })
+
+      expect(archiveList().style.height).toBe(ARCHIVED * ITEM + 8 + 'px')
+    })
+
+    it('переезд строки НЕ анимируется, а после ответа — анимируется (animate)', async () => {
+      const { managers, release } = pendingArchiveManagers()
+      await mountAndOpenArchive(managers)
+
+      // Сдвиг НЕравномерный (одна строка едет через всё окно наверх, остальные —
+      // на позицию вниз), поэтому `useShouldAnimate` анимацию разрешает и
+      // решает уже `animate` списка: пока первая загрузка не доиграла, глушилка
+      // (`blockedAnimationCount`) держит её выключенной.
+      // Мутация `animate={true}`: строки поедут анимацией и `--background`
+      // встанет — первый ассерт краснеет.
+      await act(async () => { raiseArchived(ARCHIVE_ID_BASE + 10, 1000) })
+      expect(animatingRows()).toHaveLength(0)
+
+      await act(async () => { release() })
+      await act(async () => { raiseArchived(ARCHIVE_ID_BASE + 11, 1001) })
+
+      // Мутация `animate={false}`: анимации не будет и здесь — второй ассерт
+      // краснеет.
+      expect(animatingRows().length).toBeGreaterThan(0)
+    })
   })
 
   it('пустой архив: заглушка ВМЕСТО списка, ul в DOM нет', async () => {

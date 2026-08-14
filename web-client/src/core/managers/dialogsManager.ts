@@ -647,8 +647,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * зоны ответственности этого ответа.
    *
    * Границы считаются ТОЛЬКО по временному потоку окна (`flowOf`), и сверяются
-   * с ним же — четыре категории диалогов ведут себя по-разному, и каждая
-   * осознанно:
+   * с ним же — пять категорий диалогов ведут себя по-разному; первые четыре —
+   * осознанно, пятая это известная цена (см. её пункт):
    *  - **закреплённый** в границы не входит и правилом не снимается: сервер
    *    ставит его первым при любом времени последнего сообщения (в том числе
    *    древнем), поэтому по времени он окно не описывает — считая по нему,
@@ -663,7 +663,17 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *    сразу за срезом страницы, и его отсутствие в ответе ничего не доказывает;
    *  - **поднявшийся выше всего окна** (realtime-сообщение долетело до нас
    *    раньше, чем сервер собрал ответ) — остаётся: вернуть его сервер не мог,
-   *    это мы знаем больше, чем он.
+   *    это мы знаем больше, чем он;
+   *  - **с УДАЛЁННЫМ на сервере последним сообщением** — единственная категория,
+   *    которую правило снимает ошибочно, и это принятая цена. Нашу копию
+   *    `lastMessage` вниз никто не пересчитывает (её единственный писатель —
+   *    `applyNewMessage`), поэтому чат, уехавший на сервере НИЖЕ окна из-за
+   *    удаления своих последних сообщений, в ответе не придёт, а локальный
+   *    `msgTime` останется внутри `(bottom, top]` — строка снимется из кэша и
+   *    пропадёт из сайдбара до ближайшей догрузки вглубь, которая вернёт её с
+   *    верным временем. Данные не теряются, поэтому гвард («снимать, только
+   *    если сервер подтвердил чат временем ниже нашего» — то есть второй проход
+   *    сверки и второй источник правды о времени) дороже, чем сама цена.
    *
    * Цена решения: фантом закреплённого или очищенного диалога, чей
    * `chat_removed` потерялся в разрыве потока апдейтов, этим ответом НЕ
@@ -681,10 +691,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     if (isEnd) return page
     // Пустое окно без `is_end` — сервер не сказал ничего, сверять не с чем.
     if (!page.length) return held
+    const returned = new Set(page.map((d) => d.chatId))
     const flow = flowOf(page)
     // В окне ни одного диалога временного потока (только закреплённые и/или
     // очищенные) — границ нет, сверять не с чем: просто сливаем.
-    if (!flow.length) return [...page, ...held.filter((d) => !page.some((p) => p.chatId === d.chatId))]
+    if (!flow.length) return [...page, ...held.filter((d) => !returned.has(d.chatId))]
     let top = -Infinity
     let bottom = Infinity
     for (const d of flow) {
@@ -692,7 +703,6 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       if (t > top) top = t
       if (t < bottom) bottom = t
     }
-    const returned = new Set(page.map((d) => d.chatId))
     const kept = held.filter((d) => {
       if (returned.has(d.chatId)) return false // свежая версия уже в `page`
       if (!inFlow(d)) return true // вне временного потока — правилом не снимаем
@@ -878,6 +888,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       return {
         dialogs: page.map((i) => i.dialog),
         count: countFor(filterId, after),
+        // `isLoaded` спрашивается ВТОРОЙ раз намеренно (первый — до `fetchPage`,
+        // `loaded` выше): страница могла принести `is_end` и поднять флаг своей
+        // выборки прямо сейчас, и тогда конец набора решает уже он, а не снимок,
+        // сделанный до запроса.
         isEnd: (isLoaded(scopeFor(filterId)) && nextOffset + limit >= after.length)
           // tweb: `result.isEnd && curDialogStorage[len-1] === dialogs[len-1]`
           // (dialogs.ts:1751) — конец набора засчитан, только если окно

@@ -294,8 +294,6 @@ describe('ChatList — ul виртуального списка', () => {
     expect(getDialogs).toHaveBeenCalledWith({ filterId: ARCHIVE_FOLDER_ID, limit: 10 })
   })
 
-
-
   it('смена папки запускает первую загрузку НОВОЙ папки', async () => {
     seedDialogs(3)
     useAppStateStore.setState({
