@@ -228,8 +228,9 @@ async def fetch_set(
         return 0, 0
 
     cover = await download_cover(client, s, target)
-    # short_name — чтобы набор можно было перезапросить по каталогу (докачка обложек),
-    # cover игнорируется сидом: Go пропускает неизвестные поля meta.json.
+    # short_name — чтобы набор можно было перезапросить по каталогу (докачка обложек).
+    # cover сид тоже читает: заливает файл как media и привязывает SetCover'ом
+    # (backend/cmd/seed-stickers/main.go) — это иконка вкладки панели, а не стикер набора.
     meta = {"title": s.title, "short_name": s.short_name, "kind": kind, "stickers": stickers}
     if cover:
         meta["cover"] = cover
