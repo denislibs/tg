@@ -66,21 +66,59 @@ function renderSource(managers: unknown, filterId: number) {
  * крашем воркера vitest от бесконечного цикла.
  */
 const MAX_CALLS = 12
+/**
+ * Запрос строки «Архив» (`ensureArchiveHydrated`), а не страница списка: у него
+ * фиксированный лимит `archiveDialog.tsx:27` и нет курсора. Страницы самого
+ * списка архива приезжают с `guessLoadCount()` — с этим не пересекаются.
+ */
+const ARCHIVE_ROW_LIMIT = 10
+type DialogsQuery = { offsetIndex?: number; limit?: number; filterId?: number }
+const isArchiveRowRequest = (o: DialogsQuery) =>
+  o.filterId === ARCHIVE_FOLDER_ID && o.offsetIndex === undefined && o.limit === ARCHIVE_ROW_LIMIT
+
 function fakeManagers(pages: DialogsPage[] = [page([], { isEnd: true })]) {
-  const calls: { offsetIndex?: number; limit?: number; filterId?: number }[] = []
-  const getDialogs = vi.fn(async (o: { offsetIndex?: number; limit?: number; filterId?: number } = {}) => {
+  const calls: DialogsQuery[] = []
+  const getDialogs = vi.fn(async (o: DialogsQuery = {}) => {
     calls.push(o)
     if (calls.length > MAX_CALLS) throw new Error(`getDialogs зациклился: ${calls.length} вызовов`)
     return pages[Math.min(calls.length - 1, pages.length - 1)]
   })
-  return { managers: { dialogs: { getDialogs } }, getDialogs, calls }
+  const { dialogs, archiveRowCalls, failNextArchiveRow } = withArchiveRow(getDialogs)
+  return { managers: { dialogs }, getDialogs, calls, archiveRowCalls, failNextArchiveRow }
 }
 
-/** Фейк с ручным разрешением каждого запроса — для гвардов актуальности. */
+/**
+ * Гидратация строки «Архив» идёт ПАРАЛЛЕЛЬНО загрузке списка (порт
+ * `ensureArchiveDialogHydrated`) и к его курсору отношения не имеет — отводим
+ * её ДО мока страниц: иначе она съедала бы и сценарий `pages`, и
+ * `mockImplementationOnce`, и счётчик вызовов у тестов про пагинацию.
+ */
+function withArchiveRow(getDialogs: (o?: DialogsQuery) => Promise<DialogsPage>) {
+  const archiveRowCalls: DialogsQuery[] = []
+  const fail = { next: false }
+  return {
+    archiveRowCalls,
+    /** Уронить ближайший запрос строки «Архив» — оффлайн/401 на старте. */
+    failNextArchiveRow: () => { fail.next = true },
+    dialogs: {
+      getDialogs: (o: DialogsQuery = {}) => {
+        if (!isArchiveRowRequest(o)) return getDialogs(o)
+        archiveRowCalls.push(o)
+        if (fail.next) { fail.next = false; return Promise.reject(new Error('offline')) }
+        return Promise.resolve(page([], { isEnd: true }))
+      },
+    },
+  }
+}
+
+/** Фейк с ручным разрешением каждого запроса — для гвардов актуальности.
+ *  Запрос строки «Архив» разрешается сразу и в очередь не встаёт (см.
+ *  `withArchiveRow`). */
 function deferredManagers() {
   const pending: ((p: DialogsPage) => void)[] = []
   const getDialogs = vi.fn(() => new Promise<DialogsPage>((res) => { pending.push(res) }))
-  return { managers: { dialogs: { getDialogs } }, getDialogs, pending }
+  const { dialogs } = withArchiveRow(getDialogs)
+  return { managers: { dialogs }, getDialogs, pending }
 }
 
 const originalHeight = window.innerHeight
@@ -521,5 +559,101 @@ describe('useDialogListSource: анимация первой загрузки', 
 
     await act(async () => { pending[1](page([], { isEnd: true })) })
     expect(result.current.animate).toBe(true)
+  })
+})
+
+
+// Порт `AutonomousDialogList.ensureArchiveDialogHydrated`
+// (`autonomousDialogList/dialogs.ts:263-276` + `archiveDialog.tsx:27,124-137`):
+// список «Всех чатов» тянет страницу строки «Архив» ПАРАЛЛЕЛЬНО каждой своей
+// загрузке. Без неё строки не бывает вовсе — её гейт это архивные диалоги в
+// зеркале, а страницы «Всех чатов» уходят за своей выборкой (`folder_id=0`) и
+// архива не приносят никогда (спека, «Дополнение: вход в архив»).
+describe('useDialogListSource: гидратация строки «Архив»', () => {
+  it('загрузка «Всех чатов» тянет страницу архивной выборки', async () => {
+    const { managers, archiveRowCalls } = fakeManagers()
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+
+    expect(archiveRowCalls).toEqual([{ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT }])
+  })
+
+  // Своя страница архива уже привезла его в зеркало — перезапрашивать нечего
+  // (порт условия `hasDialogs()`/refetch, archiveDialog.tsx:106,162-171).
+  it('архив уже в зеркале — страница строки не запрашивается', async () => {
+    seedMirror([{ dialog: dialog(9, { archived: true }), index: 10 }])
+    const { managers, archiveRowCalls } = fakeManagers()
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+
+    expect(archiveRowCalls).toEqual([])
+  })
+
+  // Порт правила перезапроса (`archiveDialog.tsx:162-171`: список строки
+  // сократился — просим страницу заново). У нас архив выпадает из зеркала
+  // штатно: `refresh()` читает окно ГЛОБАЛЬНОЙ выборки, и архивные диалоги,
+  // лежащие ниже окна, в него не попадают.
+  it('архив, выпавший из зеркала, гидрируется заново следующей страницей', async () => {
+    seedMirror([{ dialog: dialog(9, { archived: true }), index: 10 }])
+    const { managers, archiveRowCalls } = fakeManagers([
+      page([dialog(1)], { count: 99 }), page([], { isEnd: true }),
+    ])
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    expect(archiveRowCalls).toEqual([]) // архив на месте — просить нечего
+
+    await act(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }]) // окно refresh() архив не накрыло
+      result.current.requestItemForIdx(5, 0)
+    })
+
+    expect(archiveRowCalls).toHaveLength(1)
+  })
+
+  // РЕТРАЙ, которого не даёт эффект монтирования: запрос fire-and-forget, и
+  // упади он (моргнула сеть на старте), строки «Архив» не будет до перезагрузки
+  // вкладки — кадр списка «Все чаты» переживает переключение папок (`TabSlide
+  // keepMounted`). В оригинале ретрай встроен тем, что гидратация висит на
+  // КАЖДОЙ загрузке списка (dialogs.ts:248-276), а не на его создании.
+  it('упавший запрос повторяется следующей страницей списка', async () => {
+    const { managers, archiveRowCalls, failNextArchiveRow } = fakeManagers([
+      page([dialog(1)], { count: 99 }), page([], { isEnd: true }),
+    ])
+    failNextArchiveRow()
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    expect(archiveRowCalls).toHaveLength(1) // первая попытка упала — архива в зеркале так и нет
+
+    await act(async () => {
+      seedMirror([{ dialog: dialog(1), index: 30 }])
+      result.current.requestItemForIdx(5, 0)
+    })
+
+    expect(archiveRowCalls).toHaveLength(2)
+  })
+
+  it('список пользовательской папки страницу архива не просит', async () => {
+    useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
+    const { managers, archiveRowCalls } = fakeManagers()
+
+    const { result } = renderSource(managers, 7)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+
+    expect(archiveRowCalls).toEqual([])
+  })
+
+  it('сам список архива своей строки не гидрирует — он листается курсором', async () => {
+    const { managers, archiveRowCalls, calls } = fakeManagers()
+
+    const { result } = renderSource(managers, ARCHIVE_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+
+    expect(archiveRowCalls).toEqual([])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].filterId).toBe(ARCHIVE_FOLDER_ID)
   })
 })

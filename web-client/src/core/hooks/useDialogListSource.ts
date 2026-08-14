@@ -42,6 +42,10 @@ import type { Chat } from '../../data'
  */
 export type DialogListItem = { id: number; value: Chat }
 
+/** `archiveDialog.tsx:27` — страница архива, которой живёт строка «Архив»
+ *  (там же её лимит показа имён, см. `ArchiveRow.LIMIT`). */
+const ARCHIVE_ROW_LIMIT = 10
+
 export type DialogListSource = {
   /**
    * Диалоги папки в порядке зеркала (не пересортированы).
@@ -209,6 +213,42 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
   })
 
   /**
+   * Строка «Архив» — порт `AutonomousDialogList.ensureArchiveDialogHydrated`
+   * (`autonomousDialogList/dialogs.ts:263-276`): список «Всех чатов» тянет её
+   * страницу ПАРАЛЛЕЛЬНО каждой своей загрузке, а состояние строки просит у
+   * хранилища `getDialogs({filterId: FOLDER_ID_ARCHIVE, limit: 10})`
+   * (`archiveDialog.tsx:27,124-137`) и показывает ряд, если та непуста.
+   *
+   * Без этого запроса строки не бывает вовсе: её гейт — архивные диалоги в
+   * зеркале (`ChatList.tsx`, `pinnedArchive`), первичный `refresh()` страничный
+   * и старый архив в первое окно не попадает, а страницы «Всех чатов» уходят с
+   * `folder_id=0` и архива не приносят никогда (спека
+   * `2026-08-13-dialogs-count-and-refresh-design.md`, «Дополнение: вход в архив»).
+   *
+   * Зовётся из `fetchPage`, а не из эффекта монтирования, — ровно по месту
+   * оригинала, и это же даёт РЕТРАЙ: запрос fire-and-forget, и упади он
+   * (моргнула сеть на старте), следующая же страница «Всех чатов» — прокрутка,
+   * дырка, новый `requestItemForIdx` — попросит архив заново. Условие «архива в
+   * зеркале нет» — порт правила перезапроса `archiveDialog.tsx:162-171`
+   * («список строки сократился — перезапросить»): у нас архив штатно выпадает
+   * из окна `refresh()`, а пока он в зеркале есть, повторный запрос не нужен.
+   *
+   * Ответ здесь НЕ читается и никуда не пишется: владелец объявляет страницу
+   * сам (`upsert` → `rt:dialog_op` → проектор → зеркало), витрина своего вывода
+   * того же факта не держит (`web-client/CLAUDE.md`, «Владение фактами»).
+   * `.catch` — как у прочих fire-and-forget колсайтов владельца.
+   *
+   * Только список «Всех чатов»: строку архива несёт он один (`Sidebar.tsx`
+   * отдаёт `archived` только ему), а сам оверлей архива страницы просит уже
+   * своим курсором — обычным `fetchPage` ниже.
+   */
+  const ensureArchiveHydrated = useEvent((forFilterId: number): void => {
+    if (forFilterId !== ALL_FOLDER_ID) return
+    if (useChatsStore.getState().dialogs.some((d) => d.archived)) return
+    void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT }).catch(() => {})
+  })
+
+  /**
    * Одна страница — порт `base.ts:247-299` (`loadDialogsInner`) + обёртка
    * первой загрузки из `dialogs.ts:248-256`. Отступления от оригинала:
    *
@@ -222,6 +262,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     const middleware = helper.get()
     // `isFirstLoad = !offsetIndex` — дословно dialogs.ts:249.
     const unblock = offsetIndex ? noop : blockAnimation()
+    ensureArchiveHydrated(forFilterId)
     try {
       const result = await managers.dialogs.getDialogs({ offsetIndex, limit: guessLoadCount(), filterId: forFilterId })
       // Хук размонтирован либо папку успели переключить: писать в состояние

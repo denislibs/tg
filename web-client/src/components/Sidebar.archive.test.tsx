@@ -6,9 +6,11 @@
 // `virtual/*.test.tsx`) и не про список папки (`ChatList.test.tsx`):
 // (1) в DOM живут только строки окна, а не весь архив;
 // (2) `ul` несёт высоту под ВЕСЬ набор и лежит прямо в контейнере прокрутки;
-// (3) `totalCount` — размер АРХИВНОЙ выборки, который отдал владелец, и оверлей
-//     просит у него свои страницы сам (порт `archivedTab.tsx:19,80-96` — архив
-//     это тот же `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`);
+// (3) `totalCount` — размер АРХИВНОЙ выборки, который отдал ВЛАДЕЛЕЦ (а не
+//     длина того, что уже в зеркале): при неполной загрузке архива хвост списка
+//     это дырки-скелетоны, и они же просят следующую страницу — оверлей
+//     листается сам (порт `archivedTab.tsx:19,80-96` — архив это тот же
+//     `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`);
 // (4) пустой архив показывает заглушку ВМЕСТО `ul`;
 // (5) строки те же `ChatListItem` с тем же `onSelect`/`selected`.
 //
@@ -84,7 +86,7 @@ const NORMAL = 5
 /** id архивных диалогов идут отдельным диапазоном — их видно в `href` строки. */
 const ARCHIVE_ID_BASE = 1000
 
-function fakeManagers() {
+function fakeManagers(archiveCount = ARCHIVED) {
   // Владелец отдаёт размер СВОЕЙ выборки: «Все чаты» — набор незаархивированных,
   // архив — свой (`/chats?folder_id=1`). Дырок ни у того, ни у другого не
   // остаётся, поэтому каждый список просит страницу ровно один раз — на первом
@@ -92,7 +94,7 @@ function fakeManagers() {
   // разложил бы проектор по операции владельца.
   const getDialogs = vi.fn(async (o: { filterId: number }) => ({
     dialogs: [],
-    count: o.filterId === ARCHIVE_FOLDER_ID ? ARCHIVED : NORMAL,
+    count: o.filterId === ARCHIVE_FOLDER_ID ? archiveCount : NORMAL,
     isEnd: true,
   }))
   const managers = new Proxy({}, {
@@ -174,9 +176,11 @@ beforeEach(() => {
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-/** Рендер сайдбара + открытие оверлея архива кликом по закреплённому ряду. */
-async function openArchive() {
-  const { managers, getDialogs } = fakeManagers()
+/** Рендер сайдбара + открытие оверлея архива кликом по закреплённому ряду.
+ *  `archiveCount` — размер архивной выборки, который отдаёт ВЛАДЕЛЕЦ (по
+ *  умолчанию сходится с засеянным зеркалом: архив загружен целиком). */
+async function openArchive(archiveCount = ARCHIVED) {
+  const { managers, getDialogs } = fakeManagers(archiveCount)
   render(
     <ManagersProvider managers={managers}>
       <Sidebar onToggleMode={() => {}} />
@@ -220,12 +224,28 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     expect(archiveList().style.height).toBe(ARCHIVED * ITEM + 8 + 'px')
   })
 
+  // Размер набора приезжает от ВЛАДЕЛЬЦА, а не считается по зеркалу: пока
+  // архив догружен не весь, `ul` ростом со всю выборку, а её незагруженный
+  // хвост — дырки-скелетоны, которые и просят следующую страницу. Мутация:
+  // `totalCount={items.length}` в `ArchiveList` — оба ассерта краснеют.
+  it('загружена часть архива: ul ростом со ВСЮ выборку, хвост — скелетоны', async () => {
+    const SERVER = ARCHIVED * 2
+
+    await openArchive(SERVER)
+
+    expect(archiveList().style.height).toBe(SERVER * ITEM + 8 + 'px')
+    await scrollArchiveTo(SERVER * ITEM + 8 - HOST_HEIGHT)
+    expect(archiveList().querySelectorAll('.loading-dialog-skeleton').length).toBeGreaterThan(0)
+  })
+
   it('в хвосте списка настоящие строки, а не скелетоны-дырок', async () => {
     await openArchive()
 
-    // Дырки ядро кладёт В КОНЕЦ (`fullItems` длиной `totalCount`), поэтому
-    // смотреть на них надо с самого низа: `totalCount` больше набора хоть на
-    // единицу — и последнее окно доберёт скелетон. Низ: 300*72 + 8 - 720.
+    // Архив здесь загружен ЦЕЛИКОМ (владелец отдал ровно длину зеркала),
+    // поэтому дырок нет вовсе. Дырки ядро кладёт В КОНЕЦ (`fullItems` длиной
+    // `totalCount`), поэтому смотреть на них надо с самого низа: `totalCount`
+    // больше набора хоть на единицу — и последнее окно доберёт скелетон (это
+    // соседний тест). Низ: 300*72 + 8 - 720.
     await scrollArchiveTo(ARCHIVED * ITEM + 8 - HOST_HEIGHT)
 
     // Нижняя граница: idx >= ceil((20888 - 288) / 72) = 287; верхняя — за концом
@@ -244,9 +264,14 @@ describe('Sidebar — архив на виртуальном ядре', () => {
   it('архив листается сам: открытие оверлея просит у владельца страницу архивной выборки', async () => {
     const { getDialogs } = await openArchive()
 
-    const archivePages = getDialogs.mock.calls.filter(([o]) => o.filterId === ARCHIVE_FOLDER_ID)
-    expect(archivePages.length).toBeGreaterThan(0)
-    expect(getDialogs).toHaveBeenCalledWith(expect.objectContaining({ filterId: ALL_FOLDER_ID }))
+    // Счёт ТОЧНЫЙ: по одной первой странице на список и ни одной сверх — иначе
+    // дырки-скелетоны архива устроили бы лавину запросов. Запроса строки
+    // «Архив» здесь нет: архив уже в зеркале (`seed`), просить нечего
+    // (`useDialogListSource::ensureArchiveHydrated`).
+    expect(getDialogs.mock.calls.map(([o]) => o)).toEqual([
+      { offsetIndex: undefined, limit: 20, filterId: ALL_FOLDER_ID },
+      { offsetIndex: undefined, limit: 20, filterId: ARCHIVE_FOLDER_ID },
+    ])
   })
 
   it('клик по строке архива выбирает ТОТ ЖЕ чат и подсвечивает её', async () => {

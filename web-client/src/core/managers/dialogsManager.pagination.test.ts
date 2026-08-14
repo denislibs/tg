@@ -950,6 +950,57 @@ describe('курсор пагинации — свой у каждой выбо�
     expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 4, folder_id: 0 })
   })
 
+  // Порт `if(!savedOffsetDate || offsetDate < savedOffsetDate)`
+  // (dialogs.ts:1060-1066): смещение двигается только ВГЛУБЬ. Окно `refresh()`
+  // всегда читается от начала выборки, и без этого правила оно откатывало бы
+  // курсор наверх — следующая страница папки приносила бы уже известное
+  // (`added === 0`), а это фолбэк залипшего курсора, то есть лишний запрос на
+  // всё удерживаемое окно.
+  it('окно refresh() не откатывает курсор, ушедший глубже', async () => {
+    const rest = {
+      get: vi.fn(async (_p: string, q: Record<string, number>) => (q.offset_chat_id
+        ? { chats: [raw(3, 5), raw(4, 4)], count: 40, is_end: false }
+        : { chats: [raw(1, 7), raw(2, 6)], count: 40, is_end: false })),
+    }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+    })
+
+    await mgr.refresh() // курсор глобальной выборки: чат 2
+    await mgr.getDialogs({ filterId: 7, limit: 5 }) // ...ушёл глубже: чат 4
+    await mgr.refresh() // окно снова читает голову — курсор обязан остаться на 4
+    rest.get.mockClear()
+
+    await mgr.getDialogs({ filterId: 7, limit: 9 })
+
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 9, offset_chat_id: 4 })
+  })
+
+  // Курсор — `chat_id`, и он обязан ЛЕЖАТЬ в кэше своей выборки: опорный чат,
+  // которого мы больше не держим (разархивирован, удалён, выпал при слиянии
+  // окна), просит у сервера продолжение с места, которого у нас нет, — голова
+  // выборки навсегда осталась бы дырками. Фолбэк залипшего курсора это не
+  // ловит: он срабатывает по `added === 0`, а такая страница исправно приносит
+  // новое (только не то, чего не хватает).
+  it('курсор, ушедший из выборки, не используется — страница идёт от хвоста выборки', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(30, 3, { archived: true })], count: 9, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [dialog(5, 5, { archived: true })],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 2 }) // курсор архива встал на чате 30
+    mgr.applyArchived(30, false) // ...и тут же ушёл из архивной выборки
+    rest.get.mockClear()
+
+    await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 5 })
+
+    expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 5, folder_id: 1 })
+  })
+
   it('resetForLogout() сбрасывает курсоры: первая страница нового аккаунта идёт от начала', async () => {
     const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 8)], count: 40, is_end: false })) }
     const mgr = newDialogsManager({
@@ -966,6 +1017,117 @@ describe('курсор пагинации — свой у каждой выбо�
     // отдаст страницу с начала — просить её надо явно, без курсора.
     await mgr.getDialogs({ limit: 5 })
     expect(rest.get).toHaveBeenCalledWith('/chats', { limit: 5, offset_chat_id: 0, folder_id: 0 })
+  })
+})
+
+// Полная подмена коллекции запрещена (web-client/CLAUDE.md, «НЕЛЬЗЯ»), и со
+// страничным окном это перестало быть теорией: окно `refresh()` — только голова
+// ГЛОБАЛЬНОЙ выборки, а ниже неё живут архив и глубокие страницы папок.
+describe('refresh сливает окно с кэшем, а не подменяет список', () => {
+  /** Кэш: голова глобальной выборки (свежие) + архивный диалог глубоко внизу. */
+  const cachedTail = () => [dialog(1, 9), dialog(2, 8), dialog(50, 1, { archived: true })]
+
+  it('диалоги ниже окна переживают ответ', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 8)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => cachedTail(),
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    // Архивный чат 50 в окно не попал (он старше всего окна) — и остался.
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 50])
+  })
+
+  // Ремонт после разрыва потока апдейтов (`rt:resync`): кадр `chat_removed`,
+  // потерянный в разрыве, уже не придёт, и сверка с ответом — единственный
+  // способ снять исчезнувший диалог.
+  it('диалог, пропавший ВНУТРИ окна, из кэша снимается', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(3, 7)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // Чат 2 лежит между 1 и 3 по времени — сервер обязан был бы его вернуть.
+      loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(3, 7), dialog(50, 1)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 3, 50])
+  })
+
+  // Сравнение идёт по времени последнего сообщения (ключ СЕРВЕРНОГО порядка), а
+  // не по `dialogIndex`: черновик поднимает диалог только у нас, сервер про него
+  // не знает и в окно его не клал.
+  it('диалог, поднятый локальным черновиком, окном не снимается', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9), raw(2, 7)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      // Черновик ВНУТРИ окна по времени (8-е между 9-м и 7-м), а само последнее
+      // сообщение чата 7 — глубоко под окном: по `dialogIndex` он попал бы в
+      // окно и был бы снят, по серверному ключу — нет.
+      loadCache: async () => [dialog(1, 9), dialog(2, 7), dialog(7, 1)],
+      loadState: async () => ({
+        pinnedOrders: {},
+        drafts: [{ chatId: 7, text: 'ч', replyToId: null, updatedAt: at(8) }] as Draft[],
+      }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toContain(7)
+  })
+
+  // Обратная сторона: диалог, поднявшийся ВЫШЕ окна уже после того, как сервер
+  // собрал ответ (пришло realtime-сообщение), сервер вернуть не мог.
+  it('диалог свежее всего окна не снимается', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 8), raw(2, 7)], count: 40, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [dialog(9, 9), dialog(1, 8), dialog(2, 7)],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([9, 1, 2])
+  })
+
+  // `is_end` без курсора — ответ и есть ВЕСЬ набор: всё, чего в нём нет, ушло.
+  it('окно с is_end заменяет список целиком', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9)], count: 1, is_end: true })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => cachedTail(),
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+
+    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1])
+  })
+
+  // Контракт Task 4: ЕДИНСТВЕННЫЙ до этой строки писатель `serverCount.global` —
+  // страница пользовательской папки, а её на холодном старте может не быть
+  // вовсе. Без записи из `refresh()` архив и «Все чаты» остались бы без
+  // завышенной оценки, то есть без дырок, то есть без догрузки.
+  it('count окна становится глобальной оценкой размера набора', async () => {
+    const rest = { get: vi.fn(async () => ({ chats: [raw(1, 9)], count: 200, is_end: false })) }
+    const mgr = newDialogsManager({
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    })
+
+    await mgr.refresh()
+    rest.get.mockClear()
+
+    // Окно умещается в кэш — сеть не дёргается, сравниваем только `count`.
+    const page = await mgr.getDialogs({ limit: 1 })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page.count).toBe(200) // без записи здесь была бы длина кэша (1)
   })
 })
 

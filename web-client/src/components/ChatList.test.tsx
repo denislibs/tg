@@ -126,17 +126,15 @@ function fakeManagers(response: DialogsPage | ((o: { filterId: number }) => Dial
 
 /**
  * Запросы СТРАНИЦ ПАПКИ. Список, несущий строку «Архив», отдельно гидрирует её
- * саму (`getDialogs({filterId: ARCHIVE_FOLDER_ID})` в `ChatListFolder` — порт
+ * саму (`getDialogs({filterId: ARCHIVE_FOLDER_ID})` из
+ * `useDialogListSource::ensureArchiveHydrated` — порт
  * `ensureArchiveDialogHydrated`, `autonomousDialogList/dialogs.ts:263-276`), и
  * этот запрос к пагинации папки отношения не имеет — свой пин у него ниже
- * («список «Всех чатов» гидрирует строку архива»).
+ * («список «Всех чатов» гидрирует строку архива»), а правила запроса и ретрая —
+ * в `core/hooks/useDialogListSource.test.tsx`.
  */
 const folderPages = (getDialogs: { mock: { calls: [{ filterId: number }][] } }) =>
   getDialogs.mock.calls.filter(([o]) => o.filterId !== ARCHIVE_FOLDER_ID)
-
-/** Обратное к `folderPages` — запросы страницы АРХИВНОЙ выборки. */
-const archivePages = (getDialogs: { mock: { calls: [{ filterId: number }][] } }) =>
-  getDialogs.mock.calls.filter(([o]) => o.filterId === ARCHIVE_FOLDER_ID)
 
 /** Пропы харнесса: пропы списка + внешний ref (его Sidebar отдаёт ряду историй). */
 type HarnessProps = Partial<ChatListProps> & { listRef?: RefObject<HTMLDivElement | null> }
@@ -282,13 +280,11 @@ describe('ChatList — ul виртуального списка', () => {
     expect(getDialogs).toHaveBeenCalledWith(expect.objectContaining({ offsetIndex: undefined, filterId: ALL_FOLDER_ID }))
   })
 
-  // Порт `AutonomousDialogList.ensureArchiveDialogHydrated`
-  // (`autonomousDialogList/dialogs.ts:263-276` + `archiveDialog.tsx:27,124-137`):
-  // список, который несёт строку «Архив», сам просит её страницу у владельца.
-  // Без этого запроса строки не бывает вовсе — её гейт это архивные диалоги в
-  // зеркале, а страницы «Всех чатов» уходят за своей выборкой (`folder_id=0`) и
-  // архива не приносят никогда. Мутация: снять эффект в `ChatListFolder` —
-  // запроса с `filterId: ARCHIVE_FOLDER_ID` не будет.
+  // Проводка строки «Архив» в сборе: список «Всех чатов» просит её страницу у
+  // владельца (порт `ensureArchiveDialogHydrated`; правила запроса и ретрая —
+  // у самого источника, `core/hooks/useDialogListSource.test.tsx`). Мутация:
+  // снять вызов `ensureArchiveHydrated` в `fetchPage` — запроса с
+  // `filterId: ARCHIVE_FOLDER_ID` не будет.
   it('список «Всех чатов» гидрирует строку архива страницей архивной выборки', async () => {
     seedDialogs(3)
     const { managers, getDialogs } = fakeManagers(page({ count: 3 }))
@@ -298,40 +294,7 @@ describe('ChatList — ul виртуального списка', () => {
     expect(getDialogs).toHaveBeenCalledWith({ filterId: ARCHIVE_FOLDER_ID, limit: 10 })
   })
 
-  // Ссылка `onOpenArchive` приезжает от Sidebar новой стрелкой на каждом его
-  // рендере (в харнессе — тоже инлайновая). Мутация: положить сам колбэк в
-  // зависимости эффекта вместо булева признака — гидратация уйдёт заново на
-  // КАЖДЫЙ рендер списка.
-  it('гидратация строки архива не повторяется на рендерах родителя', async () => {
-    seedDialogs(3)
-    const { managers, getDialogs } = fakeManagers(page({ count: 3 }))
 
-    const { rerender } = await renderList(managers)
-    await act(async () => { rerender({ selectedId: '2' }) })
-    await act(async () => { rerender({ selectedId: '3' }) })
-
-    expect(archivePages(getDialogs)).toHaveLength(1)
-  })
-
-  // Порт правила перезапроса (`archiveDialog.tsx:163-171`: архив в состоянии
-  // строки сократился — просим страницу заново). У нас он пропадает из зеркала
-  // штатно: `refresh()` читает окно ГЛОБАЛЬНОЙ выборки и применяет его полной
-  // подменой (`dialogsManager.ts::setAll`), а старые архивные диалоги в это
-  // окно не входят. Мутации: снять условие `!archiveEmpty` — краснеет первый
-  // ассерт (запрос уйдёт при живом архиве); убрать `archiveEmpty` из
-  // зависимостей — краснеет второй (пропавший архив не перезапросят).
-  it('архив, пропавший из зеркала, гидрируется заново', async () => {
-    seedDialogs(3)
-    const { managers, getDialogs } = fakeManagers(page({ count: 3 }))
-    const archived: Chat[] = [{ id: '900', name: 'Архивный', avatar: '', date: '', preview: '', type: 'private', unread: 0 }]
-
-    const { rerender } = await renderList(managers, { archived })
-    expect(archivePages(getDialogs)).toHaveLength(0) // архив в зеркале есть — просить нечего
-
-    await act(async () => { rerender({ archived: [] }) })
-
-    expect(archivePages(getDialogs)).toHaveLength(1)
-  })
 
   it('смена папки запускает первую загрузку НОВОЙ папки', async () => {
     seedDialogs(3)
