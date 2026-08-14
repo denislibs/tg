@@ -98,6 +98,11 @@ type Message struct {
 	// FwdFromName — скрытая атрибуция пересылки (privacy forwards): вместо
 	// ссылки на аккаунт хранится только имя автора текстом (tweb fwd_from.from_name).
 	FwdFromName *string
+	// IsDiscussionMirror — это сообщение является зеркалом поста канала в его
+	// группе обсуждения (Telegram: пост дублируется в связанную группу, а
+	// комментарии отвечают на зеркало). Отличает зеркало от обычной пересылки:
+	// по fwd_from_* они неразличимы.
+	IsDiscussionMirror bool
 	// ReplyTo is a lightweight preview of the replied-to message, populated by
 	// the history read model (not stored). Nil when this isn't a reply.
 	ReplyTo *ReplyPreview
