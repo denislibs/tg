@@ -225,6 +225,13 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 			return e
 		}
 		msg = m
+		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
+		// Комментарий (ThreadRootID != nil) постом не является.
+		if msg.ThreadRootID == nil {
+			if e := i.mirrorChannelPost(ctx, msg); e != nil {
+				return e
+			}
+		}
 		if msg.MediaID != nil {
 			one := []domain.Message{msg}
 			if e := i.hydrateMedia(ctx, one); e == nil {

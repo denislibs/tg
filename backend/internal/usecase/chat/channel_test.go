@@ -204,8 +204,12 @@ func newChannelTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeS
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
 	fpub := &fakeChannelPublisher{}
-	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, nil, nil, nil, fg, nil, fch, fs, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	in.SetChannelPublisher(fpub)
+	// Media-фикстура для тестов Send с медиа (TestSendToChannel_CreatesMirror):
+	// mediaID=42 принадлежит пользователю 7 — стандартному создателю канала
+	// во всех тестах этого пакета.
+	s.seedMedia(42, 7)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.
 	fg.onCreate = func(id int64) {

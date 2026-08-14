@@ -125,3 +125,50 @@ func TestPostToChannel_DiscussionLookupError_Propagates(t *testing.T) {
 		t.Fatalf("PostToChannel вернул непустой пост при ошибке: %+v", post)
 	}
 }
+
+// Пост с медиа идёт не через PostToChannel, а через Send — зеркало обязано
+// появиться и на этом пути.
+func TestSendToChannel_CreatesMirror(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	mediaID := int64(42)
+	post, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", Text: "cap", MediaID: &mediaID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := i.msgs.MirrorByPost(ctx, ch, post.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("зеркало не создано для поста с медиа")
+	}
+	m, _ := i.msgs.GetByID(ctx, id)
+	if m.MediaID == nil || *m.MediaID != mediaID {
+		t.Fatalf("медиа не перенесено в зеркало: %v", m.MediaID)
+	}
+}
+
+// Комментарий в группе обсуждения — не пост, зеркалить его нельзя.
+func TestSendComment_NoMirror(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	disc, _ := i.EnableDiscussion(ctx, ch, 7)
+	post, _ := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	root, _ := i.msgs.MirrorByPost(ctx, ch, post.ID)
+
+	c, err := i.Send(ctx, SendInput{ChatID: disc, SenderID: 7, Type: "text", Text: "первый", ThreadRootID: &root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.IsDiscussionMirror {
+		t.Fatal("комментарий помечен как зеркало")
+	}
+}
