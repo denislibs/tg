@@ -272,7 +272,13 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	j := messageJSON(m)
+	// Внешний контракт этого эндпоинта — пара (канал, пост): комментарий
+	// действительно тредится на id зеркала поста в группе обсуждения (см.
+	// usecase/chat.PostComment), но клиент про зеркало ничего не знает и
+	// сверяет thread_root_id с постом, который открыл.
+	j["thread_root_id"] = postID
+	writeJSON(w, http.StatusOK, j)
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +300,11 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, messageJSON(m))
+		j := messageJSON(m)
+		// см. PostComment — thread_root_id наружу отдаём как id поста, а не
+		// зеркала, на котором тред реально держится.
+		j["thread_root_id"] = postID
+		out = append(out, j)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }

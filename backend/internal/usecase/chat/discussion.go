@@ -88,25 +88,55 @@ func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([
 	return i.groups.DiscussionCandidates(ctx, actorID)
 }
 
-// PostComment posts a comment on a channel post. The comment is a message in the
-// channel's discussion group with ThreadRootID set to the post id, so it threads
-// under that post. Returns domain.ErrNotFound if discussions aren't enabled. The
-// commenter is auto-joined to the discussion group (idempotent) before posting.
+// PostComment posts a comment on a channel post. Тред живёт не на самом посте, а
+// на его зеркале в группе обсуждения (комментарии — обычные сообщения группы),
+// поэтому ThreadRootID — id зеркала, а не id поста. Returns domain.ErrNotFound,
+// если обсуждения выключены ЛИБО постId не резолвится в реальный пост этого
+// канала (тредить действительно некуда). The commenter is auto-joined to the
+// discussion group (idempotent) before posting.
 func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
 		return domain.Message{}, domain.ErrNotFound
 	}
+	root, err := i.msgs.MirrorByPost(ctx, channelID, postID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	if root == 0 {
+		// Зеркала может не быть не потому, что поста нет, а потому, что пост
+		// опубликовали ДО EnableDiscussion/LinkDiscussion: на вставке
+		// mirrorChannelPost — no-op без привязанного обсуждения (GetDiscussion
+		// тогда возвращал 0), и взяться зеркалу больше неоткуда. Комментировать
+		// такие старые посты Telegram позволяет, поэтому дозаводим зеркало по
+		// требованию первого комментария, а не хороним тред навсегда.
+		post, e := i.msgs.GetByID(ctx, postID)
+		if e != nil || post.ChatID != channelID {
+			return domain.Message{}, domain.ErrNotFound
+		}
+		if e := i.mirrorChannelPost(ctx, post); e != nil {
+			return domain.Message{}, e
+		}
+		root, err = i.msgs.MirrorByPost(ctx, channelID, postID)
+		if err != nil {
+			return domain.Message{}, err
+		}
+		if root == 0 {
+			return domain.Message{}, domain.ErrNotFound
+		}
+	}
 	_ = i.groups.AddMember(ctx, disc, userID, domain.RoleMember, 0) // auto-join (idempotent)
-	pid := postID
 	return i.Send(ctx, SendInput{
 		ChatID: disc, SenderID: userID, Type: "text", Text: text,
-		ClientMsgID: clientMsgID, ThreadRootID: &pid,
+		ClientMsgID: clientMsgID, ThreadRootID: &root,
 	})
 }
 
 // ListComments returns the comment thread (ascending) for a channel post plus the
-// total comment count. domain.ErrNotFound if discussions aren't enabled.
+// total comment count. Читает по id зеркала поста (см. PostComment), внешне
+// вызывающий по-прежнему адресует пост парой (канал, postID). domain.ErrNotFound
+// если обсуждения выключены; без зеркала — пустой тред без ошибки (тред у поста
+// ещё не появился, это не сбой).
 func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID int64, offset, limit int) ([]domain.Message, int, error) {
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
@@ -115,11 +145,18 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	msgs, err := i.msgs.ListThread(ctx, disc, postID, offset, limit)
+	root, err := i.msgs.MirrorByPost(ctx, channelID, postID)
 	if err != nil {
 		return nil, 0, err
 	}
-	cnt, err := i.msgs.CountThread(ctx, disc, postID)
+	if root == 0 {
+		return nil, 0, nil
+	}
+	msgs, err := i.msgs.ListThread(ctx, disc, root, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	cnt, err := i.msgs.CountThread(ctx, disc, root)
 	return msgs, cnt, err
 }
 
@@ -129,8 +166,12 @@ const RecentRepliersLimit = 3
 
 // CommentCounts returns a postID -> comment count map for the given posts plus
 // the authors of each thread's latest comments (newest first, up to
-// RecentRepliersLimit distinct). When discussions aren't enabled it returns
-// empty maps (no error).
+// RecentRepliersLimit distinct). Тред живёт на зеркале поста (см. PostComment),
+// поэтому счёт и авторов читаем по id зеркал — но ключи обоих результатов
+// остаются id ПОСТОВ: внешний HTTP-контракт про пару (канал, пост) не меняется,
+// зеркало — деталь реализации треда. Посты без зеркала просто не набирают
+// комментариев (out[postID] остаётся нулевым значением карты). When discussions
+// aren't enabled it returns empty maps (no error).
 func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserCard, error) {
 	out := map[int64]int{}
 	empty := map[int64][]domain.UserCard{}
@@ -138,11 +179,23 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 	if disc == 0 {
 		return out, empty, nil
 	}
-	for _, p := range postIDs {
-		c, _ := i.msgs.CountThread(ctx, disc, p)
-		out[p] = c
+	// один батч-запрос на все посты вместо резолва зеркала по одному
+	mirrors, err := i.msgs.MirrorsByPosts(ctx, channelID, postIDs)
+	if err != nil {
+		return out, empty, err
 	}
-	recent, err := i.msgs.RecentThreadRepliers(ctx, disc, postIDs, RecentRepliersLimit)
+	// обратная карта — вернуть найденное по root к id поста для ключей результата
+	postByRoot := make(map[int64]int64, len(mirrors))
+	roots := make([]int64, 0, len(mirrors))
+	for postID, root := range mirrors {
+		postByRoot[root] = postID
+		roots = append(roots, root)
+	}
+	for postID, root := range mirrors {
+		c, _ := i.msgs.CountThread(ctx, disc, root)
+		out[postID] = c
+	}
+	recent, err := i.msgs.RecentThreadRepliers(ctx, disc, roots, RecentRepliersLimit)
 	if err != nil {
 		return out, empty, err
 	}
@@ -168,10 +221,15 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 	}
 	res := make(map[int64][]domain.UserCard, len(recent))
 	for root, users := range recent {
+		postID := postByRoot[root]
 		for _, u := range users {
-			if c, ok := byID[u]; ok {
-				res[root] = append(res[root], c)
+			// та же деградация, что и у userCard() (group.go): не нашли карточку —
+			// отдаём голый id, а не молча теряем комментатора из стека.
+			c, ok := byID[u]
+			if !ok {
+				c = domain.UserCard{ID: u}
 			}
+			res[postID] = append(res[postID], c)
 		}
 	}
 	return out, res, nil
