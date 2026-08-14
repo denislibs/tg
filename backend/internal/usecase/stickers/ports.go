@@ -25,8 +25,13 @@ type Repo interface {
 	// InstalledSets — установленные наборы пользователя по position.
 	InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSet, error)
 	SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSet, error)
-	// FeaturedSets — «трендовые» наборы: новейшие первыми, не больше limit.
+	// FeaturedSets — «трендовые» наборы: по рангу (порядок Telegram-выдачи),
+	// затем наборы без ранга новейшими первыми; не больше limit.
 	FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error)
+	// SetRank проставляет позицию набора в трендах (0 — вне трендов).
+	SetRank(ctx context.Context, setID int64, rank int) error
+	// SetCover привязывает медиа обложки к набору.
+	SetCover(ctx context.Context, setID, mediaID int64) error
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error

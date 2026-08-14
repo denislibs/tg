@@ -6,12 +6,12 @@ import "testing"
 // выбирает движок (lottie/видео/картинка), поэтому ошибка здесь ломает рендер.
 func TestStickerMime(t *testing.T) {
 	cases := map[string]string{
-		"1.tgs":   "application/x-tgsticker",
-		"1.TGS":   "application/x-tgsticker",
-		"2.webm":  "video/webm",
-		"3.webp":  "image/webp",
-		"4.png":   "image/png",
-		"5.json":  "application/json",
+		"1.tgs":     "application/x-tgsticker",
+		"1.TGS":     "application/x-tgsticker",
+		"2.webm":    "video/webm",
+		"3.webp":    "image/webp",
+		"4.png":     "image/png",
+		"5.json":    "application/json",
 		"cover.tgs": "application/x-tgsticker",
 	}
 	for file, want := range cases {

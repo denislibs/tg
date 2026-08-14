@@ -387,3 +387,47 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
 	}
 }
+
+// FeaturedSets отдаёт наборы в порядке трендов: сначала rank 1,2,3…, затем
+// наборы без ранга. Порядок — то, что пользователь видит в панели стикеров.
+func TestFeaturedSetsOrderByRank(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7815")
+
+	noRank, err := r.CreateSet(ctx, domain.StickerSet{Slug: "zzz-no-rank", Title: "Без ранга", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.CreateSet(ctx, domain.StickerSet{Slug: "bbb", Title: "Второй", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := r.CreateSet(ctx, domain.StickerSet{Slug: "aaa", Title: "Первый", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetRank(ctx, first.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetRank(ctx, second.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	sets, err := r.FeaturedSets(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{sets[0].Slug, sets[1].Slug, sets[2].Slug}
+	want := []string{"aaa", "bbb", "zzz-no-rank"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("порядок %v, ожидался %v", got, want)
+		}
+	}
+	if sets[0].Rank != 1 {
+		t.Errorf("Rank = %d, ожидался 1", sets[0].Rank)
+	}
+	_ = noRank
+}

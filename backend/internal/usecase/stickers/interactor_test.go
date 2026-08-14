@@ -177,6 +177,30 @@ func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerS
 	return out, nil
 }
 
+func (f *fakeRepo) SetRank(_ context.Context, setID int64, rank int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.sets[setID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	s.Rank = rank
+	f.sets[setID] = s
+	return nil
+}
+
+func (f *fakeRepo) SetCover(_ context.Context, setID, mediaID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.sets[setID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	s.CoverMediaID = mediaID
+	f.sets[setID] = s
+	return nil
+}
+
 // trim оставляет keep записей с наибольшим временем.
 func trim(m map[int64]int64, keep int) {
 	for len(m) > keep {

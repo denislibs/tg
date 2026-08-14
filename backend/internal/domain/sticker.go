@@ -12,6 +12,12 @@ type StickerSet struct {
 	Kind         string `json:"kind"`
 	StickerCount int    `json:"count"`
 	CreatedBy    int64  `json:"-"`
+	// Rank — позиция набора в трендах Telegram (0 — вне трендов, такие идут
+	// последними). Панель стикеров показывает наборы именно в этом порядке.
+	Rank int `json:"rank"`
+	// CoverMediaID — обложка набора (иконка вкладки, tweb stickerSetThumb);
+	// 0 — обложки нет, клиент рисует первый стикер набора.
+	CoverMediaID int64 `json:"cover_media_id,omitempty"`
 }
 
 // Sticker — один стикер набора; файл лежит в media (клиент строит URL по

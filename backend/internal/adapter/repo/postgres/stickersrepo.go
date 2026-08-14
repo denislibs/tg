@@ -21,11 +21,12 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 
 // setCols — колонки набора + число стикеров (для клиентских превью наборов).
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
-	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id)`
+	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
 func scanSet(s scanner) (domain.StickerSet, error) {
 	var set domain.StickerSet
-	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount)
+	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
+		&set.Rank, &set.CoverMediaID)
 	return set, err
 }
 
@@ -37,6 +38,21 @@ func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (do
 		return domain.StickerSet{}, domain.ErrConflict
 	}
 	return set, err
+}
+
+// SetRank проставляет набору позицию в трендах. Зовётся сидом: только он
+// знает порядок выдачи messages.getFeaturedStickers.
+func (r *StickersRepo) SetRank(ctx context.Context, setID int64, rank int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE sticker_sets SET rank = $2 WHERE id = $1`, setID, rank)
+	return err
+}
+
+// SetCover привязывает медиа обложки к набору.
+func (r *StickersRepo) SetCover(ctx context.Context, setID, mediaID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE sticker_sets SET cover_media_id = $2 WHERE id = $1`, setID, mediaID)
+	return err
 }
 
 func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) {
@@ -180,13 +196,14 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 	return out, rows.Err()
 }
 
-// FeaturedSets — «трендовые» наборы: все наборы публичны, поэтому фичед — это
-// просто новейшие по созданию (id — serial, растёт с созданием), новые первыми.
+// FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
+// messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
+// новейшими первыми.
 func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
-		  ORDER BY s.id DESC
+		  ORDER BY (s.rank = 0), s.rank, s.id DESC
 		  LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
