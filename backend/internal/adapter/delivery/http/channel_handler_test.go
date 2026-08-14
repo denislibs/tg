@@ -208,6 +208,113 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	}
 }
 
+// Комментарий обязан нести ОДИН И ТОТ ЖЕ thread_root_id (id ПОСТА) что через
+// /comments, что через generic-историю группы обсуждения (GET
+// /chats/{id}/history?thread_root=<postId>) — именно так текущий клиент
+// читает тред комментариев. Плюс: (b) чтение по thread_root=<id поста>
+// обязано найти комментарий, а не вернуть пусто (тред физически висит на id
+// ЗЕРКАЛА, не поста — без перевода на входе страница молча пустая), и (c)
+// редактирование не меняет наружный id.
+func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990005001")
+	tokenB, _ := signUp(t, h, pool, "+79990005002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss3", "username": "discusschan3", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": "discuss this too", "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	pid := itoa(post.ID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
+		"text": "nice", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var comment struct {
+		ID           int64  `json:"id"`
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &comment)
+	if comment.ThreadRootID == nil || *comment.ThreadRootID != post.ID {
+		t.Fatalf("POST /comments thread_root_id = %v, want %d", comment.ThreadRootID, post.ID)
+	}
+
+	// (b) generic-история группы обсуждения по thread_root=<id поста> находит
+	// комментарий (а не пустую страницу).
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+pid, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Count    int `json:"count"`
+		Messages []struct {
+			ID           int64  `json:"id"`
+			ThreadRootID *int64 `json:"thread_root_id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	found := false
+	for _, m := range hist.Messages {
+		if m.ID != comment.ID {
+			continue
+		}
+		found = true
+		// (a) тот же id, что и через /comments.
+		if m.ThreadRootID == nil || *m.ThreadRootID != post.ID {
+			t.Fatalf("generic history thread_root_id = %v, want %d (как в /comments)", m.ThreadRootID, post.ID)
+		}
+	}
+	if !found {
+		t.Fatalf("комментарий %d не найден в generic-истории (%d сообщений, count=%d): %s",
+			comment.ID, len(hist.Messages), hist.Count, rec.Body.String())
+	}
+
+	// (c) редактирование не меняет наружный id треда.
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+discCid+"/messages/"+itoa(comment.ID), tokenB, map[string]any{
+		"text": "nice (edited)",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var edited struct {
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
+	if edited.ThreadRootID == nil || *edited.ThreadRootID != post.ID {
+		t.Fatalf("edited comment thread_root_id = %v, want %d", edited.ThreadRootID, post.ID)
+	}
+}
+
 func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990004001")

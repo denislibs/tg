@@ -89,7 +89,7 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not unlock")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSON(msg), "balance": bal})
+	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
 }
 
 // GiftCatalog — GET /gifts/catalog: доступные подарки.
@@ -138,7 +138,7 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send gift")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSON(msg), "balance": bal})
+	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
 }
 
 // ProfileGifts — GET /users/{userID}/gifts: подарки в профиле пользователя.

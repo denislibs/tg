@@ -1137,6 +1137,30 @@ func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []i
 	return out, nil
 }
 
+// PostsByMirrors — обратный резолв к MirrorsByPosts: по id сообщений отдаёт
+// id постов, зеркалами которых они являются (перебор по PRIMARY KEY id, без
+// привязки к «текущей» группе обсуждения — см. комментарий у Postgres-версии).
+func (r fakeMsgs) PostsByMirrors(_ context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.IsDiscussionMirror && !m.Deleted && want[m.ID] && m.FwdFromMsgID != nil {
+				out[m.ID] = *m.FwdFromMsgID
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

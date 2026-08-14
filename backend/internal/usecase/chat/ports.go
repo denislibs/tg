@@ -252,6 +252,14 @@ type MessageRepo interface {
 	// MirrorsByPosts — батч того же резолва: postID -> id зеркала. Посты без
 	// зеркала в карту не попадают.
 	MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error)
+	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
+	// сообщений (это могут быть id зеркал, обычных сообщений или корней
+	// форум-топиков вперемешку — вызывающий не обязан их различать) отдаёт
+	// id постов, зеркалами которых они являются: mirrorID -> postID. Не-
+	// зеркала в карту не попадают. Единая точка внешнего перевода
+	// thread_root_id (id зеркала -> id поста) для любого набора отдаваемых
+	// наружу сообщений — см. Interactor.ExternalizeThreadRoots.
+	PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)

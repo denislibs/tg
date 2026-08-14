@@ -237,7 +237,13 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 				msg = one[0]
 			}
 		}
-		payload, e := json.Marshal(messageUpdatePayload(msg))
+		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
+		// публикация одобренного поста сама не проставляет ThreadRootID (см.
+		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
+		// безусловно, тем же путём, что Send/ForwardMessages.
+		spOut := messageUpdatePayload(msg)
+		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+		payload, e := json.Marshal(spOut)
 		if e != nil {
 			return e
 		}
@@ -248,7 +254,9 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", messageUpdatePayload(msg), pts))
+		base := messageUpdatePayload(msg)
+		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
 	}
 	return msg, nil
 }

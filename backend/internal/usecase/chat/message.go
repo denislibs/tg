@@ -328,7 +328,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 
 	var msg domain.Message
-	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRootID
+	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRoot
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
 	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
@@ -429,10 +429,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
 		mentioned := mentionedUserIDs(msg.Entities)
-		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRootID):
-		// WS-эхо обязано совпадать с тем, что уже отдаёт HTTP-хендлер комментариев,
-		// иначе один и тот же тред ключуется по-разному в истории и в live-кадре.
-		extRoot = i.externalThreadRootID(ctx, msg)
+		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot):
+		// WS-эхо обязано совпадать с тем, что уже отдаёт HTTP (тот же чокпоинт,
+		// messagesJSON/messageJSONOut в chat_handler.go), иначе один и тот же
+		// комментарий уезжает наружу то с id поста, то с id зеркала.
+		extRoot = i.externalThreadRoot(ctx, msg)
 		outMsg := messageUpdatePayload(msg)
 		outMsg["thread_root_id"] = extRoot
 		payload, e := json.Marshal(outMsg)

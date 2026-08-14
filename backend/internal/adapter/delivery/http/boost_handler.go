@@ -80,7 +80,7 @@ func (h *ChatHandler) CreateGiveaway(w http.ResponseWriter, r *http.Request) {
 	if h.giveawayErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
 }
 
 // ParticipateGiveaway — POST /giveaways/{id}/participate: участвовать.

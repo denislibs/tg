@@ -24,7 +24,14 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared, tag)
+	// Комментарии: клиент адресует тред id ПОСТА (внешний контракт), а
+	// физически он висит на id ЗЕРКАЛА в группе обсуждения — резолвим перед
+	// запросом к хранилищу (см. resolveThreadRootForQuery). Саму переменную
+	// threadRoot не трогаем: ниже, в исходном виде, она ещё нужна
+	// prependForeignThreadRoot, которая читает id ПОСТА (по нему находит
+	// оригинал в канале, а не зеркало).
+	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, queryRoot, cleared, tag)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -54,7 +61,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		// Фильтр по тегу отдаёт своё узкое окно — общий счётчик чата тут не к месту.
 		count = len(msgs)
 	case threadRoot != nil:
-		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
+		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	default:
 		count, err = i.msgs.CountMessages(ctx, chatID)
 	}
@@ -295,7 +302,10 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot, cleared)
+	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса,
+	// threadRoot (id поста) остаётся исходным для prependForeignThreadRoot.
+	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
+	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
 	}
@@ -318,7 +328,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	i.hydrateSendAs(ctx, msgs)
 	var count int
 	if threadRoot != nil {
-		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
+		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	} else {
 		count, err = i.msgs.CountMessages(ctx, chatID)
 	}

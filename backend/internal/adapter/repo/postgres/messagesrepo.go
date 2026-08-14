@@ -852,6 +852,36 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 	return out, rows.Err()
 }
 
+// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по id сообщений
+// отдаёт id постов, зеркалами которых они являются (mirrorID -> postID).
+// В отличие от MirrorByPost/MirrorsByPosts, здесь резолв по PRIMARY KEY
+// конкретной строки-зеркала, а не «текущее зеркало канала» — ограничение
+// chat_id=discussion_chat_id тут не нужно и не действует: зеркало уже
+// физически существует по этому id, привязку канала переигрывать незачем.
+func (r *MessagesRepo) PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT id, fwd_from_msg_id FROM messages
+		 WHERE id = ANY($1) AND is_discussion_mirror AND deleted_at IS NULL`,
+		ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mirror, post int64
+		if err := rows.Scan(&mirror, &post); err != nil {
+			return nil, err
+		}
+		out[mirror] = post
+	}
+	return out, rows.Err()
+}
+
 // RecentThreadRepliers returns, for each thread root, the авторы последних
 // комментариев (новейшие первыми, не более limit различных). Нужен футеру
 // «N комментариев» под постом канала — Telegram показывает там стек аватаров

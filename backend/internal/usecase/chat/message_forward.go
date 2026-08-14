@@ -156,7 +156,13 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 					msg = one[0]
 				}
 			}
-			payload, e := json.Marshal(messageUpdatePayload(msg))
+			// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
+			// форвард сам не проставляет ThreadRootID (см. комментарий выше), так что
+			// это no-op без лишнего запроса — единый чокпоинт применяем всё равно,
+			// а не полагаемся на память о том, что этот путь «якобы безопасен».
+			fwdOut := messageUpdatePayload(msg)
+			fwdOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+			payload, e := json.Marshal(fwdOut)
 			if e != nil {
 				return e
 			}
@@ -188,6 +194,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	if i.publisher != nil {
 		for idx, msg := range created {
 			base := messageUpdatePayload(msg)
+			base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 			for _, uid := range members {
 				extra := map[string]any{"pts": ptsMaps[idx][uid]}
 				if uid != in.SenderID {
