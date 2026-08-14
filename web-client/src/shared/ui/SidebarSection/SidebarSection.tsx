@@ -10,6 +10,8 @@ interface SidebarSectionProps {
   onActionClick?: () => void
   /** убрать тень карточки (tweb .no-shadow) */
   noShadow?: boolean
+  /** без `<hr>`-разделителя внутри секции (tweb settingSection.ts:42-47) */
+  noDelimiter?: boolean
   /** убрать нижний margin (tweb .no-margin-bottom) */
   noMargin?: boolean
   /** контент без бокового инсета (tweb .full-width) */
@@ -29,6 +31,7 @@ export default function SidebarSection({
   action,
   onActionClick,
   noShadow,
+  noDelimiter,
   noMargin,
   fullWidth,
   className,
@@ -40,6 +43,7 @@ export default function SidebarSection({
         className={classNames(
           'sidebar-left-section',
           noShadow ? 'no-shadow' : '',
+          noDelimiter ? 'no-delimiter' : '',
           noMargin ? 'no-margin-bottom' : '',
           className ?? '',
         )}

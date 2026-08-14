@@ -66,8 +66,8 @@ import type { ComponentProps } from 'react'
 type ListProps = ComponentProps<(typeof import('../virtual/DeferredSortedVirtualList'))['default']>
 
 import SharedMedia from './SharedMedia'
-import s from '../UserInfoPanel.module.scss'
 import itemStyles from '../virtual/DeferredSortedVirtualList.module.scss'
+import s from '../UserInfoPanel.module.scss'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { SavedDialog } from '../../core/managers/chatsManager'
@@ -154,7 +154,7 @@ beforeEach(() => {
   dialogs = savedDialogs(SAVED)
 
   host = document.createElement('div')
-  host.className = s.body
+  host.className = 'scrollable scrollable-y'
   mountPoint = document.createElement('div')
   host.append(mountPoint)
   document.body.append(host)
@@ -163,7 +163,7 @@ beforeEach(() => {
 
   if (!sizeStubbed) {
     sizeStubbed = true
-    const isHost = (el: HTMLElement) => el.classList.contains(s.body)
+    const isHost = (el: HTMLElement) => el.classList.contains('scrollable-y')
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
       configurable: true,
       get(this: HTMLElement) { return isHost(this) ? HOST_HEIGHT : 0 },
@@ -304,12 +304,12 @@ describe('SharedMedia — «Избранное» на виртуальном я�
   })
 
   it('скроллер панели носит именно тот класс, по которому список его ищет', () => {
-    // Список находит хост по `closest('.' + s.body)` — коуплинг с разметкой
+    // Список находит хост по `closest('.scrollable-y')` — коуплинг с разметкой
     // панели. Пин: `UserInfoPanel` вешает этот класс на свой скроллер (мутация
     // «переименовать класс скроллера» краснит здесь, а не молча оставляет
     // список без окна).
     const panel = readFileSync(join(__dirname, '..', 'UserInfoPanel.tsx'), 'utf8')
-    expect(panel).toMatch(/<div ref=\{bodyRef\} className=\{classNames\('scrollable', 'scrollable-y', s\.body\)\}/)
-    expect(readFileSync(join(__dirname, 'SharedMedia.tsx'), 'utf8')).toContain("closest<HTMLElement>('.' + s.body)")
+    expect(panel).toMatch(/<div ref=\{bodyRef\} className="scrollable scrollable-y"/)
+    expect(readFileSync(join(__dirname, 'SharedMedia.tsx'), 'utf8')).toContain("closest<HTMLElement>('.scrollable-y')")
   })
 })

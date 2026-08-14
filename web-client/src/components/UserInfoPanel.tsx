@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
-import Text from '../shared/ui/Text'
 import QrModal from './QrModal'
 import rootScope from '@lib/rootScope'
 import TgIcon from './TgIcon'
-import AnimatedSuper from './conversation/AnimatedSuper'
 import ChannelStats from './ChannelStats'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -14,7 +12,8 @@ import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
-import { Section, Row } from './settings/kit'
+import { Row } from './settings/kit'
+import SidebarSection from '../shared/ui/SidebarSection'
 import PinnedStoriesSection from './PinnedStoriesSection'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
@@ -24,31 +23,24 @@ import { useSavedDialogs, useUserProfile, useProfileGifts, useProfilePhotos, typ
 import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
+import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
 import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
 // Просмотрщик фото профиля — vanilla-вьювер (Task 16, замена MediaLightbox)
 import { openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
-import s from './UserInfoPanel.module.scss'
-import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { GiftInfo } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
 import RightsEditor from './userInfo/RightsEditor'
-import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, TAB_GAP } from './userInfo/helpers'
+import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
-  const narrow = useMediaQuery('(max-width:900px)')
   useNavLayer(open, onClose) // Back закрывает панель профиля (tweb right column)
-  // Класс открытия ставим ПОСЛЕ первого коммита (эффект) — первый кадр панель
-  // отрисована сдвинутой за край, и появление играет CSS-transition transform
-  // (tweb body.is-right-column-shown на постоянно смонтированном #column-right).
-  const [shown, setShown] = useState(false)
-  useEffect(() => { setShown(open) }, [open])
   // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
   // над чатом, #column-center сдвигает свою translateX-центровку (_chat.scss:439).
   useEffect(() => {
@@ -120,9 +112,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // заливается и показывает «имя + счётчик активного таба» (tweb sharedMedia.tsx
   // setIsSharedMedia / TransitionSlider) ──
   const [filled, setFilled] = useState(false)
-  // фон+граница шапки — отдельно от filled: сверху прозрачная, при небольшом
-  // скролле заливается (tweb .header-filled по scrollPosition >= ~5).
-  const [scrolled, setScrolled] = useState(false)
+  // tweb setIsSharedMedia (sharedMedia.tsx:505-516): заливку шапки СТАВИТ переход
+  // к табам и СНИМАЕТ только клик по «назад» — обратный скролл её не снимает.
+  const [headerFilled, setHeaderFilled] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const tabsBarRef = useRef<HTMLDivElement>(null)
   const onBodyScroll = () => {
@@ -130,15 +122,19 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     if (!body || !bar) return
     // скролл вниз сворачивает развёрнутое фото обратно в круг (tweb collapse)
     if (body.scrollTop > 4) setExpanded(false)
-    // фон/граница шапки появляются при небольшом скролле (не над развёрнутым фото)
-    setScrolled(body.scrollTop > 8)
     // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET) — смена
     // заголовка на «имя + счётчик» (не связано с фоном шапки)
-    const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
-    setFilled(top <= HEADER_H + TAB_GAP + 1)
+    // порог 1:1 с tweb: OFFSET(56+16) + BODY_PADDING(16), top = rect.top - 1
+    const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top - 1
+    const isSharedMedia = top <= HEADER_H + ADDITIONAL_OFFSET + BODY_PADDING
+    setFilled(isSharedMedia)
+    if (isSharedMedia) setHeaderFilled(true)
   }
   // клик по «назад» в залитой шапке — к началу профиля (tweb closeBtn: scrollIntoView profile-content)
-  const scrollBackToProfile = () => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  const scrollBackToProfile = () => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    setHeaderFilled(false) // tweb: closeBtn снимает заливку вместе с возвратом заголовка
+  }
 
   // колёсико по телу панели (tweb useCollapsable.onMove): вверх при scrollTop=0
   // разворачивает шапку, вниз — сворачивает (не дожидаясь скролла)
@@ -315,11 +311,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // Шапка прозрачная (белые иконки) над развёрнутым фото до заливки скроллом.
   const overPhoto = expanded && !filled && !!headerAvatarSrc
+  // Заголовок шапки: 0 — название раздела, 1 — «имя + счётчик таба» (tweb
+  // sharedMedia.setIsSharedMedia переключает тот же TransitionSlider).
+  const headerSlider = useTransitionSlider(filled && activeCount != null ? 1 : 0)
 
   return createPortal(
-    // tweb #column-right: панель ФИКСИРОВАННОЙ ширины, absolute у правого края,
-    // ЗАКРЫТА = translate3d(100% + отступ), ОТКРЫТА = translate3d(0,0,0);
-    // transition transform (in .3s / out .25s, cb(.4,0,.2,1)), без opacity-фейда.
+    // tweb #column-right (`_rightSidebar.scss`): панель ширины
+    // --right-column-width, absolute у правого края; закрытая уехала
+    // translate3d'ом за край, открытая — на месте. Открытие переключает НЕ
+    // класс панели, а `body.is-right-column-shown` (эффект выше) — как в tweb.
     // Панель остаётся смонтированной; закрытая — inert (недоступна фокусу/AT).
     // Портал в #main-columns: в tweb #column-right — СОСЕДНЯЯ колонка (§1), а не
     // потомок #column-center; внутри него панель ловила бы его transform
@@ -328,64 +328,76 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       id="column-right"
       ref={columnRef}
       inert={!open}
-      className={classNames('tabs-tab', 'sidebar', 'sidebar-right', 'main-column', s.panel, narrow ? s.panelNarrow : s.panelWide, shown ? s.panelOpen : '')}
+      className="tabs-tab sidebar sidebar-right main-column"
     >
-        {/* Шапка: absolute поверх контента. Над фото — прозрачная с белыми
-            иконками (tweb .profile-container:not(.header-filled) .sidebar-header
-            + .need-white); у табов — заливка, X→назад, «имя + счётчик таба»
+      {/* Вкладка-слайдер правой колонки (дамп 07-right-sidebar):
+          `div.sidebar-content.sidebar-slider.tabs-container` > сама вкладка
+          профиля. Состояния шапки-аватаров — классами НА ВКЛАДКЕ, как в tweb
+          (`_profile.scss`: `.profile-container.is-collapsed`, `.need-white`,
+          `.header-filled`), а не на внутренних узлах. */}
+      <div className="sidebar-content sidebar-slider tabs-container">
+        <div
+          className={classNames(
+            'tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active',
+            expanded && headerAvatarSrc ? '' : 'is-collapsed',
+            headerFilled ? 'header-filled' : '',
+            overPhoto ? 'need-white' : '',
+            isGroup && canAddMembers && isRealChat ? 'can-add-members' : '',
+          )}
+        >
+        {/* Шапка: absolute поверх контента (`.profile-container .sidebar-header`).
+            Над фото — прозрачная с белыми иконками (`:not(.header-filled)` +
+            `.need-white`); у табов — заливка, X→назад, «имя + счётчик таба»
             слайд-фейдом (tweb setIsSharedMedia + TransitionSlider slide-fade). */}
-        {/* Шапка панели (tweb sidebar-header): X/карандаш; при скролле до табов
-            заливается и показывает «имя + счётчик активного таба» слайд-фейдом,
-            X→стрелка назад (tweb setIsSharedMedia + TransitionSlider). */}
-        {/* overPhoto: развёрнутое фото под шапкой и ещё не залито скроллом —
-            шапка прозрачная, иконки/текст белые поверх верхнего градиента
-            (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
-        {/* Классы шапки — глобальные tweb (`styles/tweb/_sidebar.scss`):
-            `div.sidebar-header > button.btn-icon.sidebar-close-button + …`
-            (дампы `07-right-sidebar`, `15-right-*`). Модуль оставляет за собой
-            только то, что в tweb живёт в НЕ портированном `_profile.scss`
-            (`.profile-container .sidebar-header`): абсолютное положение поверх
-            шапки-аватаров и заливка/белые иконки по скроллу. */}
-        <div className={classNames('sidebar-header', s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
-          <IconButton className="sidebar-close-button" onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
-            <TgIcon name={filled ? 'back' : 'close'} />
-          </IconButton>
-          <div className={classNames('sidebar-header__title', s.headerTitles)}>
-            {/* Смена заголовка — вертикальный слайд tweb `AnimatedSuper`
-                (порт `components/animatedSuper.ts` + `_animatedSuper.scss`):
-                уходящий ряд уезжает вверх/вниз с фейдом за --pm-transition.
-                Индекс 1 (имя собеседника) больше индекса 0 (название раздела),
-                поэтому «вниз по списку» = уходящий ряд наверх, как в tweb. */}
-            <AnimatedSuper index={filled && activeCount != null ? 1 : 0} rowClassName={s.headerTitleItem}>
-              {filled && activeCount != null ? (
-                <>
-                  <Text noWrap size={16} weight={600} color="var(--primary-text-color)">{isSaved ? t('Saved Messages') : chat.name}</Text>
-                  <Text noWrap size={13} color="var(--secondary-text-color)">{countLabel(tab, activeCount, isChannel)}</Text>
-                </>
-              ) : (
-                <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--primary-text-color)'}>{t(title)}</Text>
+        <div className={classNames('sidebar-header', filled ? 'hide-border' : '')}>
+          {/* X ⇄ «назад» — не смена иконки, а поворот трёх полосок
+              (`.animated-close-icon.state-back`, `_animatedIcon.scss`). */}
+          <button
+            type="button"
+            className="btn-icon sidebar-close-button"
+            onClick={filled ? scrollBackToProfile : onClose}
+            aria-label={t(filled ? 'Back' : 'Close')}
+          >
+            <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />
+          </button>
+          {/* Заголовок раздела ⇄ «имя + счётчик активного таба»: два
+              `.transition-item` в `.transition.slide-fade`, как у tweb
+              (sharedMedia.setIsSharedMedia → TransitionSlider). */}
+          <div className={classNames('transition slide-fade', headerSlider.containerClass)}>
+            <div className={classNames('transition-item', headerSlider.itemClass(0))}>
+              <div className="sidebar-header__title">{t(title)}</div>
+              {(isGroup || isChannel) && (
+                <IconButton onClick={() => setEditing(true)}>
+                  <TgIcon name="edit" />
+                </IconButton>
               )}
-            </AnimatedSuper>
+              {/* Приватный чат: карандаш открывает экран «Изменить контакт»
+                  (редактируемые поля живут там, инфо-панель — только просмотр). */}
+              {isUser && peerId !== meId && onEditContact && (
+                <IconButton onClick={onEditContact}>
+                  <TgIcon name="edit" />
+                </IconButton>
+              )}
+            </div>
+            <div className={classNames('transition-item', headerSlider.itemClass(1))}>
+              <div className="sidebar-header__rows">
+                <div className="sidebar-header__title">
+                  <span className="peer-title">{isSaved ? t('Saved Messages') : chat.name}</span>
+                </div>
+                <div className="sidebar-header__subtitle">
+                  {activeCount != null ? countLabel(tab, activeCount, isChannel) : ''}
+                </div>
+              </div>
+            </div>
           </div>
-          {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
-              <TgIcon name="edit" />
-            </IconButton>
-          )}
-          {/* Приватный чат: карандаш открывает экран «Изменить контакт»
-              (редактируемые поля живут там, инфо-панель — только просмотр). */}
-          {isUser && peerId !== meId && onEditContact && (
-            <IconButton onClick={onEditContact} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
-              <TgIcon name="edit" />
-            </IconButton>
-          )}
         </div>
 
         {/* Тело — тоже глобальные классы tweb: `div.sidebar-content` (позиционный
             предок, `_sidebar.scss`) > `div.scrollable.scrollable-y`
             (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
         <div className="sidebar-content">
-        <div ref={bodyRef} className={classNames('scrollable', 'scrollable-y', s.body)} onScroll={onBodyScroll} onWheel={onBodyWheel}>
+        <div ref={bodyRef} className="scrollable scrollable-y" onScroll={onBodyScroll} onWheel={onBodyWheel}>
+        <div className="profile-content">
           {/* Шапка-аватары (tweb .profile-avatars-container): ЕДИНЫЙ DOM-контейнер,
               collapsed ↔ expanded морфится классом is-collapsed чистыми CSS
               transition'ами — padding-bottom 100%↔66%, активный слайд
@@ -394,7 +406,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               разворачивает; скролл сворачивает (onBodyScroll). */}
           <div
             ref={avatarWrapRef}
-            className={classNames(s.avatarsContainer, expanded && headerAvatarSrc ? '' : s.isCollapsed)}
+            className={classNames('profile-avatars-container', canPage ? '' : 'is-single', dragging ? 'is-swiping' : '')}
             onClick={onContainerClick}
             onPointerDown={expanded ? onAvatarsPointerDown : undefined}
             onPointerMove={expanded ? onAvatarsPointerMove : undefined}
@@ -406,7 +418,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 (tweb .profile-avatars-avatars translate). Видео играем только у
                 активного слайда в развёрнутом состоянии, иначе — still-постер. */}
             <div
-              className={s.avatarsTrack}
+              className="profile-avatars-avatars"
               style={{
                 transform: `translateX(calc(${-curIndex * 100}% + ${dragDx}px))`,
                 transition: dragging ? 'none' : undefined,
@@ -414,92 +426,104 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             >
               {headerPhotos.length > 0 ? (
                 headerPhotos.map((p, i) => (
-                  <div key={i} className={classNames(s.avatarsSlide, i === curIndex ? s.avatarsSlideActive : '')}>
-                    {expanded && p.isVideo && p.videoSrc && i === curIndex ? (
-                      <video className={s.profilePhoto} src={p.videoSrc} poster={p.src} autoPlay muted loop playsInline />
-                    ) : (
-                      <img className={s.profilePhoto} src={p.src} alt="" draggable={false} />
-                    )}
+                  <div key={i} className={classNames('profile-avatars-avatar media-container', i === curIndex ? 'active' : '')}>
+                    {/* tweb: фото лежит в `.avatar.avatar-like.avatar-full` —
+                        оттуда и круг в collapsed, и object-fit у `.avatar-photo`. */}
+                    <div className="avatar avatar-like avatar-full avatar-gradient profile-avatars-avatar-first">
+                      {expanded && p.isVideo && p.videoSrc && i === curIndex ? (
+                        <video className="avatar-photo" src={p.videoSrc} poster={p.src} autoPlay muted loop playsInline />
+                      ) : (
+                        <img className="avatar-photo" src={p.src} alt="" draggable={false} />
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (
-                /* без фото — фиксированный аватар-120 по центру, без морфа
-                   (tweb .profile-avatars-container.is-topic) */
-                <div className={classNames(s.avatarsSlide, s.avatarsSlideActive, s.avatarsSlideNoPhoto)}>
+                /* без фото — аватар-120 по центру, без морфа (tweb .is-topic) */
+                <div className="profile-avatars-avatar media-container active">
                   <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} size="profile" />
                 </div>
               )}
             </div>
-            {/* сегментная полоска-пейджер (tweb .profile-avatars-tabs) — только N≥2;
-                в collapsed прячется opacity */}
-            {canPage && (
-              <div className={s.avatarsTabs}>
-                {headerPhotos.map((_, i) => (
-                  <div key={i} className={classNames(s.avatarsTab, i === curIndex ? s.avatarsTabActive : '')} />
-                ))}
-              </div>
-            )}
-            <div className={s.avatarsGradient} />
-            <div className={classNames(s.avatarsGradient, s.avatarsGradientTop)} />
+            <div className="profile-avatars-gradient" />
+            <div className="profile-avatars-gradient profile-avatars-gradient-top" />
+            {/* сегментная полоска-пейджер (tweb .profile-avatars-tabs); при одном
+                фото её скрывает сам `.is-single`, ветвление в JS не нужно */}
+            <div className="profile-avatars-tabs">
+              {headerPhotos.map((_, i) => (
+                <div key={i} className={classNames('profile-avatars-tab', i === curIndex ? 'active' : '')} />
+              ))}
+            </div>
+            <div className="profile-avatars-arrow">
+              <span className="tgico profile-avatars-arrow-icon" />
+            </div>
+            <div className="profile-avatars-arrow profile-avatars-arrow-next">
+              <span className="tgico profile-avatars-arrow-icon" />
+            </div>
             {/* имя+статус — ОДНИ узлы в обоих состояниях (tweb .profile-avatars-info):
                 collapsed центрирует их transform'ом и меняет цвет с белого на текстовый */}
-            <div className={s.avatarsInfo}>
-              <div className={s.profileName}>
-                <span className={s.profileNameText}>{chat.name}</span>
+            <div className="profile-avatars-info">
+              <div className="profile-name">
+                <span className="peer-title">{chat.name}</span>
                 {profile?.verified && <VerifiedBadge size={22} />}
                 {profile?.premium && <PremiumBadge size={22} />}
                 {profile?.emojiStatus && <EmojiStatus emoji={profile.emojiStatus} size={22} />}
               </div>
-              <div className={s.profileSubtitle}>{subtitleText}</div>
+              <div className="profile-subtitle">
+                <div className="profile-subtitle-text"><span>{subtitleText}</span></div>
+              </div>
             </div>
           </div>
+          <div className="profile-content-delimiter" />
 
           {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
               В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
           {!isSaved && (
-          <Section>
+          <SidebarSection noDelimiter>
             {isChannel ? (
-              <div className={s.channelRow}>
-                <TgIcon name="info" size={24} color="var(--secondary-text-color)" style={{ marginTop: 4 }} />
-                <div className={s.grow}>
-                  <Text size={15.5} color="var(--primary-text-color)" style={{ marginBottom: linkText ? '12px' : 0 }}>
-                    {chat.description ?? t('Channel description.')}
-                  </Text>
-                  {/* клик по ссылке канала — копирование + тост (tweb PeerProfile.Link) */}
-                  {linkText?.map((l) => (
-                    <div
-                      key={l.label}
-                      style={{ marginBottom: '10px', cursor: 'pointer' }}
-                      onClick={() => copyInfo(l.value, 'Link copied to clipboard.')}
-                    >
-                      <Text size={15.5} color="var(--primary-text-color)">{l.label}:</Text>
-                      <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>
-                        {l.value}
-                      </Text>
-                    </div>
-                  ))}
-                  <Text size={13.5} color="var(--secondary-text-color)">{t('Info')}</Text>
-                </div>
-              </div>
+              <>
+                {/* Описание канала — обычная `.row` с иконкой (tweb PeerProfile
+                    MainSection: Info-строка), многострочная через `pre-wrap`. */}
+                <Row
+                  icon={<TgIcon name="info" size={24} />}
+                  label={chat.description ?? t('Channel description.')}
+                  sublabel={t('Info')}
+                  translate={false}
+                  multiline
+                />
+                {/* клик по ссылке канала — копирование + тост (tweb PeerProfile.Link) */}
+                {linkText?.map((l) => (
+                  <Row
+                    key={l.label}
+                    icon={<TgIcon name="link" size={24} />}
+                    label={l.value}
+                    sublabel={l.label}
+                    translate={false}
+                    onClick={() => copyInfo(l.value, 'Link copied to clipboard.')}
+                  />
+                ))}
+              </>
             ) : isGroup ? (
-              // клик копирует ссылку + глобальный тост (tweb PeerProfile.Link:
-              // copyTextToClipboard + toast(LinkCopied))
+              // Ссылка группы: `.row.row-grid` с QR-кнопкой в `.row-right`
+              // (дамп 15-right-11). Клик копирует + тост (tweb PeerProfile.Link).
               inviteUrl && (
-                <div className={s.linkRow} onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}>
-                  <TgIcon name="link" size={24} color="var(--secondary-text-color)" />
-                  <div className={s.grow}>
-                    <Text size={16} color="var(--primary-text-color)" style={{ wordBreak: 'break-all' }}>{inviteShort}</Text>
-                    <Text size={13.5} color="var(--secondary-text-color)">{t('Link')}</Text>
-                  </div>
-                  <IconButton
-                    size="small"
-                    color="var(--secondary-text-color)"
-                    onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
-                    aria-label="QR"
-                  >
-                    <TgIcon name="qr" size={22} />
-                  </IconButton>
-                </div>
+                <Row
+                  icon={<TgIcon name="link" size={24} />}
+                  label={inviteShort}
+                  sublabel={t('Link')}
+                  translate={false}
+                  onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}
+                  right={
+                    <button
+                      type="button"
+                      className="btn-icon qr rp"
+                      aria-label="QR"
+                      onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
+                    >
+                      <TgIcon name="qr" size={22} />
+                    </button>
+                  }
+                />
               )
             ) : (
               <>
@@ -561,7 +585,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 onClick={() => setKeyPopupOpen(true)}
               />
             )}
-          </Section>
+          </SidebarSection>
           )}
 
           {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
@@ -569,87 +593,71 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
           {/* Статистика — только канал (у групп не показываем) */}
           {isRealChat && isChannel && canViewStats && (
-            <div className={s.section}>
-              <div className={s.cardPlain}>
-                <div
-                  className={s.enabledRow}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setShowStats(true)}
-                >
-                  <TgIcon name="statistics" size={24} color="var(--secondary-text-color)" />
-                  <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>
-                    {t('Statistics')}
-                  </Text>
-                  <TgIcon name="next" size={20} color="var(--secondary-text-color)" />
-                </div>
-              </div>
-            </div>
+            <SidebarSection noDelimiter>
+              <Row
+                icon={<TgIcon name="statistics" size={24} />}
+                label="Statistics"
+                onClick={() => setShowStats(true)}
+              />
+            </SidebarSection>
           )}
 
           {/* Форум-топики группы («Обсуждения») перенесены в «Изменить группу». */}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                Обсуждения
-              </Text>
-              <div className={s.cardPlain}>
-                {discussionChatId > 0 ? (
-                  <div className={s.enabledRow}>
-                    <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>Обсуждения включены</Text>
-                    <TgIcon name="check" size={22} color="var(--primary-color)" />
-                  </div>
-                ) : (
-                  <div className={s.actionWrap}>
-                    {/* tweb не даёт кнопкам press-scale: отклик — ripple и фон
-                        (_button.scss:75-77), поэтому whileTap снят. */}
-                    <div
-                      onClick={() => void enableDiscussion()}
-                      className={s.actionBtn}
-                      style={{ opacity: enablingDiscussion ? 0.6 : 1 }}
-                    >
-                      Включить обсуждения
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <SidebarSection noDelimiter title={t('Discussion')}>
+              {discussionChatId > 0 ? (
+                <Row
+                  icon={<TgIcon name="comments" size={24} />}
+                  label="Discussion enabled"
+                  translate={false}
+                  selected
+                />
+              ) : (
+                <Row
+                  icon={<TgIcon name="comments" size={24} />}
+                  label="Enable discussion"
+                  translate={false}
+                  accent
+                  onClick={enablingDiscussion ? undefined : () => void enableDiscussion()}
+                />
+              )}
+            </SidebarSection>
           )}
 
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                Заявки на вступление
-              </Text>
-              <div className={s.cardPlain}>
-                {joinRequests.map((req) => (
-                  <div key={req.userId} className={s.requestRow}>
-                    <Avatar background="var(--primary-color)" text={req.displayName[0]?.toUpperCase()} size="md" />
-                    <div className={s.grow}>
-                      <Text noWrap size={16} color="var(--primary-text-color)">{req.displayName}</Text>
-                    </div>
-                    <IconButton
-                      aria-label={`Одобрить заявку: ${req.displayName}`}
-                      onClick={() => void approveJoinRequest(req.userId)}
-                      color="var(--primary-color)"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <TgIcon name="check" size={22} />
-                    </IconButton>
-                    <IconButton
-                      aria-label={`Отклонить заявку: ${req.displayName}`}
-                      onClick={() => void declineJoinRequest(req.userId)}
-                      color="#ff595a"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <TgIcon name="close" size={22} />
-                    </IconButton>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <SidebarSection noDelimiter title={t('Subscribe Requests')}>
+              {joinRequests.map((req) => (
+                <Row
+                  key={req.userId}
+                  icon={<Avatar background="var(--primary-color)" text={req.displayName[0]?.toUpperCase()} size="md" />}
+                  label={req.displayName}
+                  translate={false}
+                  right={
+                    <>
+                      <button
+                        type="button"
+                        className="btn-icon rp"
+                        aria-label={`Одобрить заявку: ${req.displayName}`}
+                        onClick={() => void approveJoinRequest(req.userId)}
+                      >
+                        <TgIcon name="check" size={22} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-icon rp danger"
+                        aria-label={`Отклонить заявку: ${req.displayName}`}
+                        onClick={() => void declineJoinRequest(req.userId)}
+                      >
+                        <TgIcon name="close" size={22} />
+                      </button>
+                    </>
+                  }
+                />
+              ))}
+            </SidebarSection>
           )}
 
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
@@ -658,7 +666,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               реальность чата определяем по numeric id (private тоже подходит) */}
           {/* блок не ниже вьюпорта панели — табы всегда доезжают до шапки
               (tweb _searchSuper.scss: min-height var(--super-height)) */}
-          <div className={s.sharedWrap}>
+          <div className="search-super">
           <SharedMedia
             tab={tab}
             onTab={setTab}
@@ -708,15 +716,19 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
             />
           )}
+        </div>{/* /.profile-content */}
         </div>
         </div>
 
-        {/* Group add-member FAB (tweb btnAddMembers) */}
+        {/* Group add-member FAB (tweb btnAddMembers): `.btn-circle.btn-corner`
+            внутри самой вкладки — её `.can-add-members` и поднимает
+            (`_profile.scss` → `.shared-media-container.can-add-members`). */}
         {isGroup && canAddMembers && isRealChat && (
-          <div className={s.fab} onClick={() => setAddingMembers(true)}>
+          <button type="button" className="btn-circle btn-corner rp" onClick={() => setAddingMembers(true)}>
             <TgIcon name="adduser" />
-          </div>
+          </button>
         )}
+        </div>{/* /.profile-container */}
 
         {/* Оверлеи-подэкраны: въезд справа играет CSS самого экрана, обёртки-
             презенсы не нужны. */}
@@ -754,6 +766,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             onRemove={() => removeRights(editMember.userId)}
           />
         )}
+      </div>{/* /.sidebar-slider */}
     </div>,
     document.getElementById('main-columns') ?? document.body,
   )

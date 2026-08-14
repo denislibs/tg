@@ -256,6 +256,8 @@ export function EntryRow({
  *           + div.row-title.row-title-right[.row-title-right-secondary]
  *     + div.row-subtitle                   (при наличии подписи)
  *     + span.tgico.row-icon                (иконка — АБСОЛЮТНАЯ, слева)
+ *     + div.row-right                      (`rightContent`, `row.ts:280-283`:
+ *                                           контейнер получает ещё `row-grid`)
  *
  * Соответствие пропов оригиналу:
  *   `value`    → `titleRightSecondary` (`row.ts:192-194`, дамп 08-general-settings);
@@ -295,6 +297,7 @@ export function Row({
   selected,
   translate = true,
   multiline,
+  right,
 }: {
   icon?: ReactNode
   label: string
@@ -314,6 +317,8 @@ export function Row({
   translate?: boolean
   /** многострочный заголовок (tweb Row.Title class="pre-wrap" — Bio с переносами) */
   multiline?: boolean
+  /** правый слот строки (tweb `rightContent` → `.row-right` + `.row-grid`) */
+  right?: ReactNode
 }) {
   const t = useT()
   const { onPointerDown, ripple } = useRipple()
@@ -353,6 +358,7 @@ export function Row({
         onClick ? 'row-clickable' : '',
         onClick ? 'hover-effect' : '',
         onClick ? 'rp' : '',
+        right ? 'row-grid' : '', // tweb row.ts:282 — правый слот включает grid-раскладку
         danger ? 'danger' : accent ? 'primary' : '',
       )}
       onClick={onClick}
@@ -387,6 +393,7 @@ export function Row({
       )}
       {sublabel && <div className="row-subtitle">{sublabel}</div>}
       {iconNode}
+      {right && <div className="row-right">{right}</div>}
     </Tag>
   )
 }

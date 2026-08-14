@@ -507,14 +507,14 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   // идентичности заставила бы React переприсваивать его на каждом рендере, то
   // есть на каждом рендере пересобирать окно видимости.
   //
-  // Хост — скроллер ПАНЕЛИ ПРОФИЛЯ (`UserInfoPanel.module.scss` `.body`,
-  // `UserInfoPanel.tsx` — `<div ref={bodyRef} className={s.body} …>`), а не
+  // Хост — скроллер ПАНЕЛИ ПРОФИЛЯ (`.scrollable-y` панели, tweb
+  // `_sidebar.scss`/`_scrollable.scss` — у панели больше нет своего модуля), а не
   // родитель `ul` (у списка чатов и архива `ul` лежит прямо в скроллере, здесь —
   // в карточке внутри вкладки) и не окно. Так же и в оригинале: `SortedDialogList`
   // «Избранного» получает `scrollable` всей панели.
   const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
   const setListEl = useCallback((ul: HTMLUListElement | null) => {
-    setScrollHost(ul?.closest<HTMLElement>('.' + s.body) ?? null)
+    setScrollHost(ul?.closest<HTMLElement>('.scrollable-y') ?? null)
   }, [])
 
   // Обёртки строк (`{id, value}`) обязаны переживать рендеры родителя — контракт
