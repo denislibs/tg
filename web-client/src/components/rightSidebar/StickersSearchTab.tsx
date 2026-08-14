@@ -23,7 +23,13 @@ import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import StickerMedia from '../StickerMedia'
+import StickerSetSkeleton from './StickerSetSkeleton'
 import RightSearchTab, { RIGHT_SEARCH_POPUP_KIND, RightSearchPopup } from './RightSearchTab'
+
+// Без скелетона первая загрузка (и любой новый поиск) на время запроса висит
+// белым полотном под строкой поиска — выглядит как поломка (Task 6). Число
+// строк — с запасом на высоту панели, под конкретный вьюпорт не подгоняем.
+const SKELETON_COUNT = 6
 
 // tweb stickers.tsx:58 — в строке набора ровно min(5, count) превью.
 const PREVIEW_COUNT = 5
@@ -116,7 +122,7 @@ export default function StickersSearchTab({
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const [query, setQuery] = useState('')
-  const { sets, installedIds, busyIds, toggle } = useStickersSearch(query)
+  const { sets, installedIds, busyIds, toggle, loading } = useStickersSearch(query)
 
   const pick = onPickSticker
     ? (st: Sticker) => {
@@ -136,16 +142,18 @@ export default function StickersSearchTab({
       onClose={onClose}
     >
       <div className="sticker-sets">
-        {sets.map((set) => (
-          <StickerSetRow
-            key={set.id}
-            set={set}
-            installed={installedIds.has(set.id)}
-            busy={busyIds.has(set.id)}
-            onToggle={() => toggle(set)}
-            onPickSticker={pick}
-          />
-        ))}
+        {loading && sets.length === 0
+          ? <StickerSetSkeleton count={SKELETON_COUNT} />
+          : sets.map((set) => (
+              <StickerSetRow
+                key={set.id}
+                set={set}
+                installed={installedIds.has(set.id)}
+                busy={busyIds.has(set.id)}
+                onToggle={() => toggle(set)}
+                onPickSticker={pick}
+              />
+            ))}
       </div>
       {/* пустой div после списка — как в живом DOM (хвост tweb Scrollable) */}
       <div />

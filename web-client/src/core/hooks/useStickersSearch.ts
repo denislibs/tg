@@ -13,6 +13,9 @@ export function useStickersSearch(query: string) {
   const [sets, setSets] = useState<StickerSet[]>([])
   const [installedIds, setInstalledIds] = useState<ReadonlySet<number>>(new Set())
   const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(new Set())
+  // Скелетон экрана держится, пока идёт актуальный запрос (Task 6 «скелетоны
+  // в панели») — включая первую загрузку трендов без ввода.
+  const [loading, setLoading] = useState(true)
   // Устаревшие ответы отбрасываются счётчиком поколений (как useGifsSearch).
   const reqRef = useRef(0)
   const firstRef = useRef(true)
@@ -31,10 +34,11 @@ export function useStickersSearch(query: string) {
     const q = query.trim()
     const req = ++reqRef.current
     const run = () => {
+      setLoading(true)
       const p = q ? managers.stickers.searchSets(q) : managers.stickers.featuredSets()
       p.then(
-        (res) => { if (req === reqRef.current) setSets(res) },
-        () => { if (req === reqRef.current) setSets([]) },
+        (res) => { if (req === reqRef.current) { setSets(res); setLoading(false) } },
+        () => { if (req === reqRef.current) { setSets([]); setLoading(false) } },
       )
     }
     if (firstRef.current) {
@@ -75,5 +79,5 @@ export function useStickersSearch(query: string) {
       })
   }, [managers, installedIds])
 
-  return { sets, installedIds, busyIds, toggle }
+  return { sets, installedIds, busyIds, toggle, loading }
 }
