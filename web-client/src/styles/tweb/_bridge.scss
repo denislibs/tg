@@ -335,6 +335,24 @@ button:focus {
   }
 }
 
+// tweb scss/components/_global.scss:131-141 — флекс-утилиты. `.justify-start`
+// несёт лента категорий эмодзи-дропдауна (`nav.menu-horizontal-div.no-stripe
+// .justify-start.emoticons-menu`, tab.ts:133): без него срабатывает дефолт
+// `.menu-horizontal-div { justify-content: space-around }` из _slider.scss и
+// кнопки категорий расползаются по всей ширине. `.justify-self-*` носят
+// кнопки search/delete нижней полосы `.emoji-tabs` (index.ts:77-81).
+.justify-start {
+  justify-content: flex-start !important;
+}
+
+.justify-self-start {
+  justify-self: flex-start !important;
+}
+
+.justify-self-end {
+  justify-self: flex-end !important;
+}
+
 // tweb base.scss:524-528 — узлы «только для узких экранов» (в медиавьюере это
 // мобильная кнопка закрытия и ⋮-меню топбара).
 @include respond-to(not-handhelds) {

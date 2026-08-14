@@ -1,7 +1,11 @@
 import { memo, useState } from 'react'
+import IS_EMOJI_SUPPORTED from '@environment/emojiSupport'
 
-// Render an emoji as an Apple-set image (like tweb's `<img class="emoji">`),
-// falling back to the native glyph if the image can't be found.
+// Render an emoji the way tweb's wrapEmojiText does: on systems with native
+// colour-emoji rendering (IS_EMOJI_SUPPORTED — macOS/iOS) the glyph itself in
+// `span.emoji.emoji-native` (wrapRichText.ts:503-505); otherwise an Apple-set
+// image (like tweb's `<img class="emoji">`), falling back to the native glyph
+// if the image can't be found.
 //
 // tweb ships the PNGs in `assets/img/emoji/<unicode>.png`; we don't bundle the
 // set, so we pull the same Apple artwork from the emoji-datasource CDN. The
@@ -24,9 +28,9 @@ export function emojiCodepoints(emoji: string, stripVS = false): string {
 function Emoji({ e, size = 24 }: { e: string; size?: number }) {
   const [attempt, setAttempt] = useState(0)
 
-  if (attempt >= 2) {
+  if (IS_EMOJI_SUPPORTED || attempt >= 2) {
     return (
-      <span style={{ fontSize: size * 0.95, lineHeight: 1, userSelect: 'none' }}>{e}</span>
+      <span className="emoji emoji-native" style={{ fontSize: size * 0.95, lineHeight: 1, userSelect: 'none' }}>{e}</span>
     )
   }
 

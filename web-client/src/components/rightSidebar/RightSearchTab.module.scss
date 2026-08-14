@@ -1,0 +1,55 @@
+// Экраны «Поиск GIF» / «Поиск стикеров» правой колонки. У tweb это вкладки
+// слайдера ВНУТРИ постоянно смонтированного #column-right
+// (`tweb src/scss/partials/_rightSidebar.scss:35-53`: absolute у правого края,
+// ширина --right-column-width, скругление/тень колонки, z-index 3, въезд
+// translate3d(100%…)→0). Наша правая колонка чат-скоупная (UserInfoPanel),
+// поэтому экран поиска — отдельная панель с ТОЙ ЖЕ геометрией колонки,
+// открываемая императивно через popupStore (как AddContact/EditContact —
+// «вкладки слайдера», см. useChatPopups). Внутренняя разметка — глобальные
+// классы tweb (sidebar-header / sidebar-content / scrollable), модуль держит
+// только позицию панели.
+@use '../../styles/foundation' as *;
+
+// широкий режим — геометрия tweb #column-right (not-handhelds)
+.panelWide {
+  position: absolute;
+  inset-block: var(--page-chats-padding);
+  inset-inline-end: var(--page-chats-padding);
+  width: var(--right-column-width);
+  border-radius: var(--main-column-border-radius);
+  box-shadow: var(--column-box-shadow);
+  z-index: 4; // поверх панели профиля (#column-right, z-index 3)
+  background: var(--background-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  // Узел создаётся на открытии (popupStore), transition стартовать не от чего —
+  // въезд кейфреймом той же кривой (как AddContactView.panelNarrowIn).
+  @include animation-level-global(2) {
+    animation: right-search-slide-in var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+// узкий режим — фуллскрин-колонка (tweb handhelds: translate3d(100vw) → 0)
+.panelNarrow {
+  position: fixed;
+  inset: 0;
+  z-index: 1900;
+  background: var(--background-color);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  @include animation-level-global(2) {
+    animation: right-search-slide-in var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+// CSS-модули хешируют любое имя в animation — ссылка на глобальный кейфрейм
+// партиала молча сломалась бы; держим локальный дубль (см. AddContactView.module.scss).
+@keyframes right-search-slide-in {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+}

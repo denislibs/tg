@@ -110,6 +110,20 @@ func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
 }
 
+// Featured — GET /sticker-sets/featured: трендовые наборы (новые первыми) —
+// экран поиска стикеров показывает их при пустом запросе (tweb getFeaturedStickers).
+func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
+	sets, err := h.svc.Featured(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load featured")
+		return
+	}
+	if sets == nil {
+		sets = []domain.StickerSet{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
+}
+
 // CreateSet — POST /sticker-sets {slug,title,kind}.
 func (h *StickersHandler) CreateSet(w http.ResponseWriter, r *http.Request) {
 	var b struct {
@@ -181,6 +195,15 @@ func (h *StickersHandler) Recent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"stickers": stickersJSON(sts)})
+}
+
+// ClearRecent — DELETE /stickers/recent: очистить список недавних.
+func (h *StickersHandler) ClearRecent(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.ClearRecent(r.Context(), h.meID(r)); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not clear recent")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Faved — GET /stickers/faved.

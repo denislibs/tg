@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, type Ref } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react'
 import classNames from '../../lib/classNames'
 import { setTransition } from '../../../core/dom/setTransition'
 import TgIcon from '../../../components/TgIcon'
@@ -45,6 +45,18 @@ interface InputSearchProps {
   noBorder?: boolean
   /** tweb `noFocusEffect` — на инпут не вешается `with-focus-effect` */
   noFocusEffect?: boolean
+  /** узлы сразу ПОСЛЕ `<input>` (tweb emoticons-search:
+   *  `inputSearch.input.after(scrollableContainer)`, search.tsx:97) */
+  afterInput?: ReactNode
+  /** узлы сразу после лупы (tweb emoticons-search: `inputSearch.searchIcon
+   *  .after(arrowButton)`, search.tsx:103) */
+  afterIcon?: ReactNode
+  /** доп. классы на самой лупе (tweb emoticons-search:
+   *  `inputSearch.searchIcon.classList.add('will-animate')` + toggle 'is-hiding',
+   *  search.tsx:102,113). Осторожно: смена значения перепишет className лупы и
+   *  снесёт императивные классы toggleLoading — совмещать с `statusRef`-загрузкой
+   *  нельзя (в emoticons-поиске loading не используется). */
+  iconClassName?: string
   /**
    * Хэндл трёх методов выше. Отдельный ref, а НЕ основной: основной `ref`
    * компонента — сам `HTMLInputElement`, на нём висят `focus()`/`blur()`
@@ -126,7 +138,7 @@ function createStatusPreloader(): HTMLDivElement {
 // а JSX выражает только один. React такие узлы не трогает — свои дети он
 // вставляет по ссылкам на собственные, а лишние никогда не удаляет.
 const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function InputSearch(
-  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, inputClassName, noBorder, noFocusEffect, statusRef },
+  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, inputClassName, noBorder, noFocusEffect, afterInput, afterIcon, iconClassName, statusRef },
   ref,
 ) {
   const has = value.length > 0
@@ -250,11 +262,16 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         onFocus={onFocus}
         onBlur={onBlur}
       />
+      {afterInput}
       {!noBorder && <div className="input-field-border" />}
-      <span ref={iconRef} className={classNames('tgico', 'input-search-part', 'input-search-icon')}>
+      <span ref={iconRef} className={classNames('tgico', 'input-search-part', 'input-search-icon', iconClassName ?? '')}>
         <TgIcon name="search" size={24} />
       </span>
-      {has && onClear && (
+      {afterIcon}
+      {/* tweb держит кнопку очистки в DOM всегда (inputSearch.ts:90,111), при
+          пустом поле её прячет CSS `input.is-empty ~ .input-search-clear`
+          (_inputSearch.scss:128) — не рендерить её условно по `has` */}
+      {onClear && (
         <IconButton
           className={classNames('input-search-clear', 'input-search-part', 'input-search-button')}
           size="small"

@@ -358,3 +358,32 @@ func TestStickersRepo_MediaWithoutMetadata(t *testing.T) {
 		t.Fatalf("mime %q, want application/json", sts[0].Mime)
 	}
 }
+
+// FeaturedSets — «тренды»: новейшие наборы первыми (id — serial), выдача
+// ограничена limit, счётчик стикеров едет вместе с набором.
+func TestStickersRepo_FeaturedSets(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7814")
+
+	first, _ := seedFullSet(t, pool, r, owner, "feat_first", 2)
+	second, _ := seedFullSet(t, pool, r, owner, "feat_second", 1)
+	third, _ := seedFullSet(t, pool, r, owner, "feat_third", 3)
+
+	sets, err := r.FeaturedSets(ctx, 40)
+	if err != nil {
+		t.Fatalf("FeaturedSets: %v", err)
+	}
+	if len(sets) != 3 || sets[0].ID != third.ID || sets[1].ID != second.ID || sets[2].ID != first.ID {
+		t.Fatalf("FeaturedSets: want новые первыми [%d %d %d], got %+v", third.ID, second.ID, first.ID, sets)
+	}
+	if sets[0].StickerCount != 3 {
+		t.Fatalf("StickerCount = %d, want 3", sets[0].StickerCount)
+	}
+
+	limited, err := r.FeaturedSets(ctx, 2)
+	if err != nil || len(limited) != 2 || limited[0].ID != third.ID {
+		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
+	}
+}

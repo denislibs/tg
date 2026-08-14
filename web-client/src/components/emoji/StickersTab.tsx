@@ -9,7 +9,10 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import TgIcon, { type IconName } from '../TgIcon'
 import StickerMedia from '../StickerMedia'
 import EmoticonsTab, { EmoticonsSearch, MenuTab } from './EmoticonsTab'
+import useEmoticonsStickySpy from './useEmoticonsStickySpy'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
+import IconButton from '../../shared/ui/IconButton'
+import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { useT } from '../../i18n'
@@ -78,6 +81,7 @@ export default function StickersTab({
   const [activeCat, setActiveCat] = useState('recent')
   const [cols, setCols] = useState(5)
   const [ctxMenu, setCtxMenu] = useState<{ st: Sticker; x: number; y: number } | null>(null)
+  const [clearRecentOpen, setClearRecentOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [atTop, setAtTop] = useState(true)
@@ -164,23 +168,19 @@ export default function StickersTab({
     }
   }, [])
 
-  // Scroll-spy активной категории + автоподскролл меню (как у эмодзи).
-  const spyRaf = useRef(0)
+  // `no-border-top` — по позиции скролла (tweb onAdditionalScroll, index.ts:646-651).
   const onScroll = () => {
-    cancelAnimationFrame(spyRaf.current)
-    spyRaf.current = requestAnimationFrame(() => {
-      const sc = scrollRef.current
-      if (!sc) return
-      setAtTop(sc.scrollTop <= 0)
-      const top = sc.scrollTop + 50
-      let cur = sections[0]?.key
-      for (const c of sections) {
-        const el = catElsRef.current.get(c.key)
-        if (el && el.offsetTop <= top) cur = c.key
-      }
-      if (cur) setActiveCat(cur)
-    })
+    const sc = scrollRef.current
+    if (sc) setAtTop(sc.scrollTop <= 0)
   }
+  // Scroll-spy активной категории — StickyIntersector (он же вешает сентинелы
+  // sticky_sentinel--top в каждую секцию), порт tweb menuOnClick.
+  const { markJump } = useEmoticonsStickySpy({
+    scrollRef,
+    catEls: catElsRef,
+    count: sections.length,
+    onActive: setActiveCat,
+  })
   useEffect(() => {
     menuRef.current
       ?.querySelector('.menu-horizontal-div-item.active')
@@ -189,7 +189,9 @@ export default function StickersTab({
 
   const scrollToCat = (key: string) => {
     const el = catElsRef.current.get(key)
-    scrollRef.current?.scrollTo({ top: el ? el.offsetTop : 0, behavior: 'smooth' })
+    const top = el ? el.offsetTop : 0
+    markJump(top)
+    scrollRef.current?.scrollTo({ top, behavior: 'smooth' })
     setActiveCat(key)
   }
 
@@ -213,6 +215,7 @@ export default function StickersTab({
     <>
       <EmoticonsTab
         padding="stickers-padding"
+        contentId="content-stickers"
         active={active}
         searching={searching}
         noBorderTop={inited && (atTop || searching)}
@@ -260,7 +263,20 @@ export default function StickersTab({
           const rows = Math.ceil(c.stickers.length / cols)
           return (
             <div key={c.key} ref={(el) => register(c.key, el)} className="emoji-category">
-              <div className="category-title">{c.title}</div>
+              {/* локальные секции (recent/faved) — i18n-заголовок span.i18n +
+                  disable-hover (tweb createLocalCategory, tab.ts:345-347);
+                  секции-наборы — голый текст без disable-hover (createCategory) */}
+              <div className={c.icon ? 'category-title disable-hover' : 'category-title'}>
+                {c.icon ? <span className="i18n">{c.title}</span> : c.title}
+                {/* крестик «очистить недавние» — tweb stickers.ts:201-213:
+                    ButtonIcon('close', {noRipple}) в заголовке Recent,
+                    клик → confirmationPopup → clearRecentStickers */}
+                {c.key === 'recent' && (
+                  <IconButton noRipple aria-label={t('Clear Recent Stickers')} onClick={() => setClearRecentOpen(true)}>
+                    <TgIcon name="close" size="inherit" className="button-icon" />
+                  </IconButton>
+                )}
+              </div>
               {visibleCats.has(c.key)
                 ? grid(c.stickers, rows * CELL)
                 : <div className="category-items super-stickers" style={{ minHeight: rows * CELL }} />}
@@ -271,6 +287,23 @@ export default function StickersTab({
           <span className="emoticons-not-found">{t('No stickers found')}</span>
         )}
       </EmoticonsTab>
+
+      {/* подтверждение очистки недавних (tweb confirmationPopup
+          ClearRecentStickersAlertTitle/Message + кнопка Clear, stickers.ts:204-211) */}
+      {clearRecentOpen && (
+        <ConfirmPopup
+          title={t('Clear Recent Stickers')}
+          description={t('Are you sure you want to clear your recent stickers?')}
+          buttons={[{
+            text: t('Clear'),
+            onClick: () => {
+              panel.clearRecent()
+              setClearRecentOpen(false)
+            },
+          }]}
+          onClose={() => setClearRecentOpen(false)}
+        />
+      )}
 
       {/* ПКМ/long-press по стикеру: избранное (tweb sticker context menu) */}
       {ctxMenu && (

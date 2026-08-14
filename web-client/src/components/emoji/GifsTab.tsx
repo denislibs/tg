@@ -168,6 +168,7 @@ export default function GifsTab({
     <>
       <EmoticonsTab
         padding="gifs-padding"
+        contentId="content-gifs"
         noMenu
         active={active}
         // `is-searching` у noMenu-вкладки в tweb тоже выставляется (tab.ts:176),
@@ -198,12 +199,15 @@ export default function GifsTab({
             : undefined
         }
       >
+        {/* сохранённые GIF — кладка прямо в categories-container, без
+            обёртки-категории и заголовка (tweb gifs.ts init:
+            `this.categoriesContainer.append(gifsContainer)`) */}
         {panel.saved.length > 0 && (
-          <div className="emoji-category">
-            <div className="category-title">{t('Saved GIFs')}</div>
-            <Masonry items={panel.saved} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
-          </div>
+          <Masonry items={panel.saved} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
         )}
+        {/* отступление от tweb: трендов Tenor в его ESG-вкладке нет вовсе
+            (только сохранённые), у нас бэк отдаёт featured — показываем их
+            отдельной категорией с заголовком, чтобы отделить от сохранённых */}
         {panel.featured.length > 0 && (
           <div className="emoji-category">
             <div className="category-title">{t('Trending')}</div>
