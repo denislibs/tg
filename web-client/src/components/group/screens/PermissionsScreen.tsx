@@ -4,10 +4,10 @@
 import { useRef, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Slider from '../../../shared/ui/Slider'
+import Input from '../../../shared/ui/Input'
 import classNames from '../../../shared/lib/classNames'
 import { useT } from '../../../i18n'
 import { type GroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel } from '../../../core/hooks/useGroupEdit'
-import s from '../GroupEditFlow.module.scss'
 
 export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
@@ -92,20 +92,19 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
         <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
           {/* Плата за сообщение — обычная `.row` с правым слотом
               (`row-right`, tweb row.ts:280-283), в слоте — числовое поле. */}
-          <Row
-            label="Stars per message"
-            right={
-              <input
-                type="number"
-                min={0}
-                max={10000}
-                value={charge}
-                onChange={(e) => pushCharge(Number(e.target.value))}
-                className={s.chargeInput}
-                aria-label={t('Stars per message')}
-              />
-            }
-          />
+          {/* Плата — вендорное поле `.input-wrapper > .input-field`
+              (`_input.scss`), как все поля правой колонки; своей рамки у него
+              больше нет. */}
+          <div className="input-wrapper">
+            <Input
+              label={t('Stars per message')}
+              type="number"
+              min={0}
+              max={10000}
+              value={String(charge)}
+              onChange={(v) => pushCharge(Number(v))}
+            />
+          </div>
         </Section>
       )}
     </SettingsScreen>

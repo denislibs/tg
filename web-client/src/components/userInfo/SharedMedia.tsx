@@ -37,7 +37,6 @@ import DeferredSortedVirtualList, {
   type DeferredSortedVirtualListRenderItemProps,
 } from '../virtual/DeferredSortedVirtualList'
 import { useEvent } from '../../core/hooks/useEvent'
-import s from './SharedMedia.module.scss'
 // Витрина подарков — модули tweb 1:1 (см. комментарий у рендера ниже)
 import giftsGrid from '../stargifts/stargiftsGrid.module.scss'
 import profileList from '../stargifts/profileList.module.scss'
@@ -572,7 +571,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       )}
 
       {/* sentinel infinite scroll медиа-табов: виден → догрузка следующей страницы */}
-      {filter && msgs != null && hasMore && <div ref={sentinelRef} className={s.moreSentinel} />}
+      {/* sentinel догрузки — пустой маркер для IntersectionObserver; в tweb на
+          этом месте `div.preloader` (дамп 07-right-sidebar), но спиннера у нас
+          нет: страница подгружается молча, как и раньше. */}
+      {filter && msgs != null && hasMore && <div ref={sentinelRef} />}
       </TabSlide>
     </>
   )
@@ -677,7 +679,7 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   return (
     <DeferredSortedVirtualList<SavedDialog>
       listRef={setListEl}
-      className={s.savedVirtualList}
+      className="chatlist"
       scrollableHost={scrollHost}
       items={items}
       totalCount={items.length}

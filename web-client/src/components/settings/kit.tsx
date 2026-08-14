@@ -1,5 +1,4 @@
 import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import Text from '../../shared/ui/Text'
 import SidebarSection from '../../shared/ui/SidebarSection'
 import Checkbox from '../../shared/ui/Checkbox'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
@@ -231,15 +230,20 @@ export function EntryRow({
   sub?: string
   onRemove?: () => void
 }) {
+  // Та же `.row`, что и всюду: медиа-слот слева (`row-media` — аватар/иконка,
+  // `row.ts:216-224`), заголовок с подписью и кнопка справа в `row-right`
+  // (`row.ts:280-283`). Своей вёрстки у списочной строки в tweb нет.
   return (
-    <div className={s.entry}>
-      {left}
-      <div className={s.entryBody}>
-        <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
-        {sub && <Text noWrap size={13.5} color="var(--secondary-text-color)">{sub}</Text>}
-      </div>
+    <div className={classNames('row', sub ? '' : 'no-subtitle', 'row-with-padding')}>
+      {left != null && <div className="row-media">{left}</div>}
+      <div className="row-title">{title}</div>
+      {sub && <div className="row-subtitle">{sub}</div>}
       {onRemove && (
-        <TgIcon name="close" size={20} color="var(--secondary-text-color)" onClick={onRemove} style={{ cursor: 'pointer', flexShrink: 0 }} />
+        <div className="row-right">
+          <button type="button" className="btn-icon rp" onClick={onRemove} aria-label="✕">
+            <TgIcon name="close" size={20} />
+          </button>
+        </div>
       )}
     </div>
   )

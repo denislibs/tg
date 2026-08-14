@@ -28,7 +28,6 @@ import { PermissionsScreen } from './screens/PermissionsScreen'
 import { AdminsScreen } from './screens/AdminScreens'
 import { MembersScreen } from './screens/MembersScreen'
 import { RemovedUsersScreen, RestrictedUsersScreen } from './screens/MemberScreens'
-import s from './GroupEditFlow.module.scss'
 
 type Sub =
   | null
@@ -122,8 +121,10 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
           `.avatar-edit` с иконкой-камерой поверх аватара, ниже — секция
           `no-delimiter` с `.input-wrapper` (имя + описание) и подписью
           `.sidebar-left-section-caption`. */}
-      <div className={s.editHeader}>
-        <div className="avatar-edit" onClick={() => fileRef.current?.click()}>
+      {/* `.avatar-edit` центрируется сам — `.page-chats .avatar-edit
+          { margin: 1rem auto 2rem }` (styles/tweb/pages/_chats.scss:40-45),
+          своей обёртки в оригинале нет. */}
+      <div className="avatar-edit" onClick={() => fileRef.current?.click()}>
           <Avatar size="profile" background={gradientFor(chatId)} src={avatarSrc} text={chat.avatarText} />
           <span className="tgico avatar-edit-icon">
             <TgIcon name="cameraadd" size={36} />
@@ -139,7 +140,6 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
               e.target.value = ''
             }}
           />
-        </div>
       </div>
       <div className="sidebar-left-section-container">
         <div className="sidebar-left-section no-delimiter">
