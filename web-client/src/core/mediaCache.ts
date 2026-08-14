@@ -3,6 +3,7 @@
 // content-type, очистка, синк настроек TTL/лимита в service worker.
 // Ниже — второй жилец модуля (Task 6): зеркало objectURL'ов той же корзины.
 import type { MediaUrlEvt } from './managers/mediaManager'
+import { isLottieMime } from './stickers/tgs'
 
 const CACHED_FILES = 'cachedFiles'
 
@@ -77,7 +78,7 @@ export interface CachedFilesSizes {
 const ZERO: CachedFilesSizes = { total: 0, images: 0, videos: 0, stickers: 0, other: 0 }
 
 // Категория по content-type (tweb collectCachedFilesSizes): image/* → фото,
-// video/* → видео, application/json → стикеры (lottie), остальное → другое.
+// video/* → видео, application/json/x-tgsticker → стикеры (lottie), остальное → другое.
 export async function collectCachedFilesSizes(): Promise<CachedFilesSizes> {
   if (!('caches' in window)) return { ...ZERO }
   const out = { ...ZERO }
@@ -91,7 +92,7 @@ export async function collectCachedFilesSizes(): Promise<CachedFilesSizes> {
     const ct = res.headers.get('content-type') || ''
     const key = ct.startsWith('image/') ? 'images'
       : ct.startsWith('video/') ? 'videos'
-        : ct.startsWith('application/json') ? 'stickers' : 'other'
+        : isLottieMime(ct) ? 'stickers' : 'other'
     out[key] += size
     out.total += size
   }

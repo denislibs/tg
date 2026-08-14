@@ -1,9 +1,10 @@
 // StickerMedia — единый рендер файла стикера (пикер, саджесты, бабл в чате).
-// Файл лежит в media: lottie-json (mime application/json) либо статичный
-// webp/png, либо webm-видео. Тип заранее не известен (в списках стикеров есть
-// только media_id), поэтому контент грузится fetch'ем и различается по
-// Content-Type; результат кэшируется на сессию — повторный маунт (перелистывание
-// категорий пикера, скролл ленты) не перекачивает файл.
+// Файл лежит в media: lottie-json (mime application/json либо gzip'нутый
+// application/x-tgsticker — см. core/stickers/tgs) либо статичный webp/png,
+// либо webm-видео. Тип заранее не известен (в списках стикеров есть только
+// media_id), поэтому контент грузится fetch'ем и различается по Content-Type;
+// результат кэшируется на сессию — повторный маунт (перелистывание категорий
+// пикера, скролл ленты) не перекачивает файл.
 //
 // Показ — трёхслойный, как в tweb `wrapSticker` + `stickerAppearance`:
 //   1) нижний слой — превью: stripped-JPEG с бэка (`thumb`) либо кадр,
@@ -25,6 +26,7 @@ import animationIntersector, { type AnimationItemGroup } from './animationInters
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 import createStickerAppearance from './wrappers/stickerAppearance'
 import { getStickerThumb, saveStickerThumb, saveStickerThumbFromPlayer } from '../core/stickers/stickerThumbs'
+import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
 
@@ -46,7 +48,7 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
       const res = await fetch(mediaContentUrl(mediaId))
       if (!res.ok) throw new Error(`sticker media ${mediaId}: HTTP ${res.status}`)
       const ct = res.headers.get('content-type') ?? ''
-      if (ct.includes('application/json')) return { kind: 'lottie', data: await res.json() }
+      if (isLottieMime(ct)) return { kind: 'lottie', data: await readLottie(res) }
       // video/webm (vp9) — видео-стикер (tweb wrapSticker WebM-ветка).
       if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
