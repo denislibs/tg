@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Публикация поста в канал с обсуждением кладёт зеркало в группу: автор бабла —
@@ -170,5 +172,77 @@ func TestSendComment_NoMirror(t *testing.T) {
 	}
 	if c.IsDiscussionMirror {
 		t.Fatal("комментарий помечен как зеркало")
+	}
+}
+
+// Пост, попавший в канал пересылкой (ForwardMessages), тоже обязан получить
+// зеркало в группе обсуждения — не только прямой PostToChannel/Send.
+func TestForwardMessages_ToChannelWithDiscussion_CreatesMirror(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	src, _ := i.CreateChannel(ctx, 7, "Source", "", "", true)
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	orig, err := i.PostToChannel(ctx, src, 7, "original", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fwd, err := i.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: ch, MsgIDs: []int64{orig.ID}, SenderID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fwd) != 1 {
+		t.Fatalf("ожидалось 1 пересланное сообщение, получено %d", len(fwd))
+	}
+
+	id, err := i.msgs.MirrorByPost(ctx, ch, fwd[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("зеркало не создано для пересланного в канал поста")
+	}
+}
+
+// Одобренный предложенный пост (SuggestPost → ApproveSuggestedPost) публикуется
+// в канал publishApprovedPost'ом — этот путь тоже обязан завести зеркало.
+func TestApproveSuggestedPost_ToChannelWithDiscussion_CreatesMirror(t *testing.T) {
+	in, fg, _, fpub, _ := newSuggestTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := in.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	_ = fg.AddMember(ctx, ch, 8, domain.RoleSubscriber, 0)
+	info, err := in.SuggestPost(ctx, ch, 8, "please publish", nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	approved, err := in.ApproveSuggestedPost(ctx, info.ID, 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != "approved" {
+		t.Fatalf("status=%q, want approved", approved.Status)
+	}
+
+	// ApproveSuggestedPost возвращает SuggestedPostInfo, а не id опубликованного
+	// сообщения — достаём msg_id из последнего опубликованного канального кадра
+	// (channelPostPayload кладёт его туда же, что и PostToChannel).
+	postID, ok := fpub.lastPayload(t)["msg_id"].(float64)
+	if !ok {
+		t.Fatal("msg_id отсутствует в опубликованном кадре")
+	}
+
+	id, err := in.msgs.MirrorByPost(ctx, ch, int64(postID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("зеркало не создано для одобренного предложенного поста")
 	}
 }
