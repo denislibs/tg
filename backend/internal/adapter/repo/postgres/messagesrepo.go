@@ -802,6 +802,48 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
+// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
+// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
+// считается: она без флага is_discussion_mirror.
+func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx,
+		`SELECT id FROM messages
+		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id=$2 AND is_discussion_mirror AND deleted_at IS NULL`,
+		channelID, postID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// MirrorsByPosts — батч того же резолва: postID -> id зеркала. Посты без
+// зеркала в карту не попадают.
+func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT fwd_from_msg_id, id FROM messages
+		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id = ANY($2) AND is_discussion_mirror AND deleted_at IS NULL`,
+		channelID, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var post, mirror int64
+		if err := rows.Scan(&post, &mirror); err != nil {
+			return nil, err
+		}
+		out[post] = mirror
+	}
+	return out, rows.Err()
+}
+
 // RecentThreadRepliers returns, for each thread root, the авторы последних
 // комментариев (новейшие первыми, не более limit различных). Нужен футеру
 // «N комментариев» под постом канала — Telegram показывает там стек аватаров

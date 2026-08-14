@@ -1049,6 +1049,45 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 	return picked, nil
 }
 
+// MirrorByPost ищет среди ВСЕХ чатов (зеркало живёт в группе обсуждения, а не
+// в channelID) сообщение с IsDiscussionMirror и совпадающими FwdFromChatID/
+// FwdFromMsgID — эквивалент SQL-версии MessagesRepo.MirrorByPost.
+func (r fakeMsgs) MirrorByPost(_ context.Context, channelID, postID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.IsDiscussionMirror && !m.Deleted &&
+				m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+				m.FwdFromMsgID != nil && *m.FwdFromMsgID == postID {
+				return m.ID, nil
+			}
+		}
+	}
+	return 0, nil
+}
+
+// MirrorsByPosts — батч-версия MirrorByPost.
+func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range postIDs {
+		want[id] = true
+	}
+	out := map[int64]int64{}
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.IsDiscussionMirror && !m.Deleted &&
+				m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+				m.FwdFromMsgID != nil && want[*m.FwdFromMsgID] {
+				out[*m.FwdFromMsgID] = m.ID
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

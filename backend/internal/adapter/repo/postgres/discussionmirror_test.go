@@ -91,3 +91,60 @@ func TestMessages_DiscussionMirror_FlagRoundTrip(t *testing.T) {
 		t.Fatal("флаг is_discussion_mirror не дожил до чтения")
 	}
 }
+
+func TestMessages_MirrorByPost(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	groups := NewGroupRepo(pool)
+	ctx := context.Background()
+
+	u := seedUser(t, pool, "+7902")
+	ch, _ := groups.CreateMultiMember(ctx, "channel", "Chan", "", "", true, u)
+	_ = groups.AddMember(ctx, ch, u, domain.RoleCreator, domain.AllRights)
+	disc, _ := groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, u)
+	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
+	_ = groups.SetDiscussion(ctx, ch, disc)
+
+	seq, _ := msgs.NextSeq(ctx, ch)
+	post, _ := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq, SenderID: u, Type: "text", Text: "p1"})
+	seq2, _ := msgs.NextSeq(ctx, ch)
+	post2, _ := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq2, SenderID: u, Type: "text", Text: "p2"})
+
+	mseq, _ := msgs.NextSeq(ctx, disc)
+	mirror, err := msgs.Insert(ctx, domain.Message{
+		ChatID: disc, Seq: mseq, SenderID: u, Type: "text", Text: "p1",
+		SendAsChatID: &ch, FwdFromChatID: &ch, FwdFromMsgID: &post.ID, IsDiscussionMirror: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// у post2 зеркала нет, но есть ПОЛЬЗОВАТЕЛЬСКАЯ пересылка в ту же группу
+	fseq, _ := msgs.NextSeq(ctx, disc)
+	_, _ = msgs.Insert(ctx, domain.Message{
+		ChatID: disc, Seq: fseq, SenderID: u, Type: "text", Text: "p2",
+		FwdFromChatID: &ch, FwdFromMsgID: &post2.ID,
+	})
+
+	got, err := msgs.MirrorByPost(ctx, ch, post.ID)
+	if err != nil || got != mirror.ID {
+		t.Fatalf("MirrorByPost(post1) = %d, %v; want %d", got, err, mirror.ID)
+	}
+	got2, err := msgs.MirrorByPost(ctx, ch, post2.ID)
+	if err != nil {
+		t.Fatalf("MirrorByPost(post2): %v", err)
+	}
+	if got2 != 0 {
+		t.Fatalf("пересылка принята за зеркало: MirrorByPost(post2) = %d, want 0", got2)
+	}
+
+	m, err := msgs.MirrorsByPosts(ctx, ch, []int64{post.ID, post2.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m[post.ID] != mirror.ID {
+		t.Fatalf("MirrorsByPosts[post1] = %d, want %d", m[post.ID], mirror.ID)
+	}
+	if _, ok := m[post2.ID]; ok {
+		t.Fatal("MirrorsByPosts вернул запись для поста без зеркала")
+	}
+}

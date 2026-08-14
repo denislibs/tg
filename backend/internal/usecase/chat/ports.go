@@ -245,6 +245,13 @@ type MessageRepo interface {
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
+	// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
+	// считается: она без флага is_discussion_mirror.
+	MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error)
+	// MirrorsByPosts — батч того же резолва: postID -> id зеркала. Посты без
+	// зеркала в карту не попадают.
+	MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
