@@ -1,4 +1,4 @@
-import { useCallback, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useCallback, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 
 interface SliderProps {
@@ -22,6 +22,12 @@ interface SliderProps {
   style?: CSSProperties
   /** подпись для скринридера на нативном input (в tweb её нет) */
   ariaLabel?: string
+  /**
+   * Дети ложатся ВНУТРЬ `.progress-line` — так в tweb устроен ступенчатый
+   * селектор: засечки `.range-setting-selector-option` абсолютно позиционируются
+   * внутри полосы (`rangeSelector.ts` + дамп 15-right-13-group-permissions).
+   */
+  children?: ReactNode
 }
 
 // Ползунок — разметка tweb RangeSelector (rangeSelector.ts:47-75; стили —
@@ -44,7 +50,7 @@ interface SliderProps {
 // Контейнер, который сам раскладывает полосу (`.zoom-container` медиавьюера),
 // гасит это пропом `style`.
 export default function Slider({
-  value, min = 0, max = 100, step = 1, onChange, color, useTransform, withTransition, className, style, ariaLabel,
+  value, min = 0, max = 100, step = 1, onChange, color, useTransform, withTransition, className, style, ariaLabel, children,
 }: SliderProps) {
   const frac = max > min ? Math.min(Math.max((value - min) / (max - min), 0), 1) : 0
   // tweb RangeSelector.onMouseDown/onMouseUp (rangeSelector.ts:97-109) вешает на
@@ -89,6 +95,7 @@ export default function Slider({
         aria-label={ariaLabel}
         onChange={(e) => onChange(Number(e.target.value))}
       />
+      {children}
     </div>
   )
 }

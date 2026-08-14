@@ -12,11 +12,11 @@ import Spinner from '../../../shared/ui/Spinner'
 import TgIcon from '../../TgIcon'
 import LottieSticker from '../../LottieSticker'
 import ConfirmDialog from '../../settings/ConfirmDialog'
+import classNames from '../../../shared/lib/classNames'
 import { useT } from '../../../i18n'
 import type { GroupEdit, ImporterRow } from '../../../core/hooks/useGroupEdit'
 import type { InviteLink } from '../../../core/managers/groupsManager'
 import UserAvatar from '../../UserAvatar'
-import s from '../GroupEditFlow.module.scss'
 
 // expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
 // «истекает <дата>» для будущей, пусто — бессрочная.
@@ -85,24 +85,30 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
         />
       ) : null}
     >
-      <div className={s.duck}>
-        <LottieSticker name="UtyanLinks" size={120} loop />
-        <Text size={14.5} color="var(--secondary-text-color)" className={s.duckCaption}>
-          {isChannel
-            ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
-            : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
-        </Text>
+      {/* Заглушка-стикер с подписью — как в tweb: медиа-шапка секции
+          (`.sticker-container`) и подпись `sidebar-left-section-caption`. */}
+      <div className="sidebar-left-section-container">
+        <div className="sidebar-left-section no-delimiter">
+          <div className="sidebar-left-section-content sticker-container">
+            <LottieSticker name="UtyanLinks" size={120} loop />
+          </div>
+          <div className="sidebar-left-section-content sidebar-left-section-caption">
+            {isChannel
+              ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
+              : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
+          </div>
+        </div>
       </div>
 
       <Section caption="Invite Link">
         {primary ? (
           <>
-            <div className={s.linkBox} onClick={() => copy(primary.token, primary.url)}>
-              <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
-              <Text size={13} color={copied === primary.token ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                {copied === primary.token ? t('Link copied to clipboard.') : t('Copy Link')}
-              </Text>
-            </div>
+            <Row
+              label={primary.url}
+              sublabel={copied === primary.token ? t('Link copied to clipboard.') : t('Copy Link')}
+              translate={false}
+              onClick={() => copy(primary.token, primary.url)}
+            />
             <Row
               icon={<TgIcon name="admin" size={22} />}
               label={linkSubtitle(t, primary) || t('View link')}
@@ -239,17 +245,31 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
       }
     >
       <Section caption="Link Name" footer="Only admins will see this name.">
-        <Input label={t('Link Name (Optional)')} value={name} onChange={setName} maxLength={32} wrapClassName={s.field} />
+        <div className="input-wrapper">
+          <Input label={t('Link Name (Optional)')} value={name} onChange={setName} maxLength={32} />
+        </div>
       </Section>
 
       <Section caption="Limit by Period" footer="You can make the link expire after a certain time.">
-        <div className={s.slowmode}>
-          <div className={s.slowLabels}>
+        {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
+            с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
+        <div className="range-setting-selector range-steps-selector">
+          <Slider min={0} max={PERIOD_STEPS.length - 1} step={1} value={periodIdx} onChange={setPeriodIdx} style={{ marginBlock: 0 }}>
             {PERIOD_STEPS.map((v, i) => (
-              <span key={i} className={i === periodIdx ? s.slowActive : undefined}>{periodLabel(v)}</span>
+              <div
+                key={i}
+                className={classNames(
+                  'range-setting-selector-option',
+                  i === periodIdx ? 'active is-chosen' : '',
+                  i === 0 ? 'is-first' : '',
+                  i === PERIOD_STEPS.length - 1 ? 'is-last' : '',
+                )}
+                style={{ left: `${(i / (PERIOD_STEPS.length - 1)) * 100}%` }}
+              >
+                <div className="range-setting-selector-option-text">{periodLabel(v)}</div>
+              </div>
             ))}
-          </div>
-          <Slider min={0} max={PERIOD_STEPS.length - 1} step={1} value={periodIdx} onChange={setPeriodIdx} />
+          </Slider>
         </div>
       </Section>
 
@@ -259,13 +279,25 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
 
       {!approval && (
         <Section caption="Limit Number of Uses" footer="You can make the link work only for a certain number of users.">
-          <div className={s.slowmode}>
-            <div className={s.slowLabels}>
+        {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
+              с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
+          <div className="range-setting-selector range-steps-selector">
+            <Slider min={0} max={USES_STEPS.length - 1} step={1} value={usesIdx} onChange={setUsesIdx} style={{ marginBlock: 0 }}>
               {USES_STEPS.map((v, i) => (
-                <span key={i} className={i === usesIdx ? s.slowActive : undefined}>{usesLabel(v)}</span>
+                <div
+                  key={i}
+                  className={classNames(
+                    'range-setting-selector-option',
+                    i === usesIdx ? 'active is-chosen' : '',
+                    i === 0 ? 'is-first' : '',
+                    i === USES_STEPS.length - 1 ? 'is-last' : '',
+                  )}
+                  style={{ left: `${(i / (USES_STEPS.length - 1)) * 100}%` }}
+                >
+                  <div className="range-setting-selector-option-text">{usesLabel(v)}</div>
+                </div>
               ))}
-            </div>
-            <Slider min={0} max={USES_STEPS.length - 1} step={1} value={usesIdx} onChange={setUsesIdx} />
+            </Slider>
           </div>
         </Section>
       )}
@@ -296,12 +328,12 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
   return (
     <SettingsScreen title={link.title || 'Invite Link'} onBack={onBack} zIndex={80}>
       <Section caption="Invite Link">
-        <div className={s.linkBox} onClick={copy}>
-          <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>{link.url}</Text>
-          <Text size={13} color={copied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-            {copied ? t('Link copied to clipboard.') : t('Copy Link')}
-          </Text>
-        </div>
+        <Row
+          label={link.url}
+          sublabel={copied ? t('Link copied to clipboard.') : t('Copy Link')}
+          translate={false}
+          onClick={copy}
+        />
       </Section>
 
       {link.usageLimit != null && link.uses === 0 && (
@@ -315,13 +347,13 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       {importers.length > 0 && (
         <Section caption={`${link.uses} ${t('joined')}`}>
           {importers.map((im) => (
-            <div key={im.userId} className={s.memberRow}>
-              <UserAvatar id={im.userId} name={im.name} avatarUrl={im.avatarUrl} />
-              <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--primary-text-color)">{im.name}</Text>
-                <Text noWrap size={14} color="var(--secondary-text-color)">{new Date(im.joinedAt).toLocaleDateString()}</Text>
-              </div>
-            </div>
+            <Row
+              key={im.userId}
+              icon={<UserAvatar id={im.userId} name={im.name} avatarUrl={im.avatarUrl} />}
+              label={im.name}
+              sublabel={new Date(im.joinedAt).toLocaleDateString()}
+              translate={false}
+            />
           ))}
         </Section>
       )}

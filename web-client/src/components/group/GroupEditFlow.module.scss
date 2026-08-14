@@ -1,93 +1,12 @@
 // GroupEditFlow — экраны редактирования группы/канала. Разметка вендорная
-// (`avatar-edit`, `sidebar-left-section*`, `input-wrapper`, `row` —
-// дампы 15-right-12/12b/13/17), здесь только то, чему в партиалах tweb
-// соответствия нет.
+// (`avatar-edit`, `sidebar-left-section*`, `row`, `radio-field`,
+// `range-setting-selector`, `btn-circle.btn-corner` — дампы 15-right-12/13/17),
+// здесь остались только правила, которым в партиалах tweb соответствия нет.
 
-// центровка `.avatar-edit` над секцией полей (в tweb это делает
-// `.edit-peer-container > .sidebar-content > .scrollable > div`)
 .editHeader {
   display: flex;
   justify-content: center;
   padding: 8px 0 12px;
-}
-
-.duck {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px 8px;
-  text-align: center;
-}
-
-.duckCaption {
-  max-width: 320px;
-}
-
-.linkBox {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--light-secondary-text-color);
-  cursor: pointer;
-  margin: 4px 0 8px;
-}
-
-.usernameWrap {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--light-secondary-text-color);
-  border-radius: 10px;
-}
-
-.usernameInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: var(--font-size-16);
-  font-family: inherit;
-  color: var(--primary-text-color);
-}
-
-.usernameError {
-  padding: 6px 4px 0;
-}
-
-.emojiRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 8px;
-  border-radius: 10px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--light-secondary-text-color);
-  }
-}
-
-.emoji {
-  font-size: var(--font-size-24);
-  line-height: 1;
-}
-
-.slowmode {
-  padding: 6px 4px 10px;
-}
-
-.chargeRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  gap: 12px;
 }
 
 .chargeInput {
@@ -104,67 +23,4 @@
   &:focus {
     border-color: var(--primary-color);
   }
-}
-
-.slowLabels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12.5px;
-  color: var(--secondary-text-color);
-  margin-bottom: 8px;
-
-  .slowActive {
-    color: var(--primary-color);
-    font-weight: 600;
-  }
-}
-
-.memberRow {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 56px;
-  padding: 7px 16px 7px 12px;
-  border-radius: 16px;
-  cursor: pointer;
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
-}
-
-.memberBody {
-  flex: 1;
-  min-width: 0;
-
-  // tweb: заголовок 16/22, статус 14/18
-  > div {
-    line-height: 22px;
-  }
-
-  > div + div {
-    line-height: 18px;
-  }
-}
-
-.bansCaption {
-  padding: 4px 24px 8px;
-}
-
-.fab {
-  position: absolute;
-  right: 20px;
-  bottom: 20px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--tg-accentGradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  cursor: pointer;
-  z-index: 5;
 }

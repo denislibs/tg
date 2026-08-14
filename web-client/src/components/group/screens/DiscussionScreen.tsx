@@ -2,7 +2,6 @@
 // Обсуждение канала (tweb chatDiscussion): привязка/отвязка группы-обсуждения.
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import Text from '../../../shared/ui/Text'
 import Avatar from '../../../shared/ui/Avatar'
 import TgIcon from '../../TgIcon'
 import ConfirmDialog from '../../settings/ConfirmDialog'
@@ -11,7 +10,6 @@ import type { GroupEdit, DiscussionGroup } from '../../../core/hooks/useGroupEdi
 import type { DiscussionCandidate } from '../../../core/managers/channelsManager'
 import { gradientFor } from '../../../core/dialogToChat'
 import { initials } from './shared'
-import s from '../GroupEditFlow.module.scss'
 
 export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
@@ -35,25 +33,30 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
   return (
     <SettingsScreen title="Discussion" onBack={onBack} zIndex={70}>
-      <Text size={14.5} color="var(--secondary-text-color)" className={s.bansCaption}>
-        {linkedId
-          ? t('Users can now discuss your posts in the linked group.')
-          : t('Select a group chat that will host comments from your channel.')}
-      </Text>
+      {/* Пояснение экрана — вендорная подпись секции
+          (`sidebar-left-section-caption`), а не свой текстовый блок. */}
+      <div className="sidebar-left-section-container">
+        <div className="sidebar-left-section no-delimiter">
+          <div className="sidebar-left-section-content sidebar-left-section-caption">
+            {linkedId
+              ? t('Users can now discuss your posts in the linked group.')
+              : t('Select a group chat that will host comments from your channel.')}
+          </div>
+        </div>
+      </div>
 
       {linkedId ? (
         <>
           {linked && (
             <Section>
-              <div className={s.memberRow}>
-                <Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />
-                <div className={s.memberBody}>
-                  <Text noWrap size={16} color="var(--primary-text-color)">{linked.title}</Text>
-                  <Text noWrap size={14} color="var(--secondary-text-color)">
-                    {linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
-                  </Text>
-                </div>
-              </div>
+              {/* Привязанная группа — вендорная строка чата (`chatlist-chat`,
+                  дамп 15-right-11), а не своя карточка. */}
+              <Row
+                icon={<Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />}
+                label={linked.title}
+                sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
+                translate={false}
+              />
             </Section>
           )}
           <Section>
@@ -64,15 +67,14 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
         <Section>
           <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
-            <div key={c.id} className={s.memberRow} onClick={() => setConfirming(c)}>
-              <Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />
-              <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--primary-text-color)">{c.title}</Text>
-                <Text noWrap size={14} color="var(--secondary-text-color)">
-                  {c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
-                </Text>
-              </div>
-            </div>
+            <Row
+              key={c.id}
+              icon={<Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />}
+              label={c.title}
+              sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
+              translate={false}
+              onClick={() => setConfirming(c)}
+            />
           ))}
         </Section>
       )}
