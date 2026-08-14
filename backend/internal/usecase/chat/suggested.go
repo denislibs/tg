@@ -226,11 +226,10 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		}
 		msg = m
 		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
-		// Комментарий (ThreadRootID != nil) постом не является.
-		if msg.ThreadRootID == nil {
-			if e := i.mirrorChannelPost(ctx, msg); e != nil {
-				return e
-			}
+		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
+		// клиентское ThreadRootID (publishApprovedPost его и не проставляет).
+		if e := i.mirrorChannelPost(ctx, msg); e != nil {
+			return e
 		}
 		if msg.MediaID != nil {
 			one := []domain.Message{msg}

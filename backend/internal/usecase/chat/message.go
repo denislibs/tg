@@ -384,11 +384,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
-		// Комментарий (ThreadRootID != nil) постом не является.
-		if msg.ThreadRootID == nil {
-			if e := i.mirrorChannelPost(ctx, msg); e != nil {
-				return e
-			}
+		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
+		// клиентское ThreadRootID.
+		if e := i.mirrorChannelPost(ctx, msg); e != nil {
+			return e
 		}
 		msg.SenderName = senderName
 		// Применяем гидратацию, посчитанную ДО транзакции (send-as title/photo,

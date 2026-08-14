@@ -157,7 +157,46 @@ func TestSendToChannel_CreatesMirror(t *testing.T) {
 	}
 }
 
-// Комментарий в группе обсуждения — не пост, зеркалить его нельзя.
+// Регрессия: ThreadRootID приезжает из HTTP/WS-фрейма и не валидируется на
+// принадлежность чату (в отличие от ReplyToID) — тем же полем пользуются и
+// форум-топики. mirrorChannelPost поэтому решает «это пост или нет» по типу
+// чата-получателя, а не по ThreadRootID: обычный пост в канал с обсуждением,
+// отправленный со сфабрикованным (ничему не соответствующим) thread_root_id,
+// штатным API — без каких-либо ухищрений — обязан всё равно получить
+// зеркало. Это одновременно и пин на мутацию: верни гейт
+// `if msg.ThreadRootID == nil` в message.go — тест обязан покраснеть.
+func TestSendToChannel_ArbitraryThreadRootID_StillCreatesMirror(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	bogusRoot := int64(999999) // произвольный id, ничему в этом чате не соответствует
+	post, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "text", Text: "hello", ThreadRootID: &bogusRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := i.msgs.MirrorByPost(ctx, ch, post.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("зеркало не создано для поста со сфабрикованным thread_root_id")
+	}
+}
+
+// Сообщение в группе обсуждения зеркала не порождает — но НЕ потому, что у
+// него выставлен ThreadRootID (mirrorChannelPost это поле больше не
+// смотрит), а потому что у самой группы обсуждения нет своей привязанной
+// группы обсуждения: GetDiscussion(disc) == 0, и хелпер для неё — no-op. В
+// проде это дополнительно отсекается на входе по типу чата (disc — group, не
+// channel); groupMembershipChats.ChatType в этом тестовом файле type-check
+// не моделирует (хардкодит "channel" для любого id — см. её определение в
+// channel_test.go), поэтому здесь реально проверяется именно барьер
+// GetDiscussion, а не тип чата.
 func TestSendComment_NoMirror(t *testing.T) {
 	i, _, _, _ := newChannelTestInteractor(t)
 	ctx := context.Background()

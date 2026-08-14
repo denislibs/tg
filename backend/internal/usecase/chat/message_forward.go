@@ -142,11 +142,10 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
-			// Комментарий (ThreadRootID != nil) постом не является.
-			if msg.ThreadRootID == nil {
-				if e := i.mirrorChannelPost(ctx, msg); e != nil {
-					return e
-				}
+			// Что считать постом — решает сам хелпер (по типу чата-получателя), не
+			// клиентское ThreadRootID (ForwardMessages его и не проставляет).
+			if e := i.mirrorChannelPost(ctx, msg); e != nil {
+				return e
 			}
 			msg.SenderName = senderName
 			// Медиа-мета в live-кадр — как в Send (иначе файл у получателя
