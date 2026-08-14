@@ -1,11 +1,9 @@
-import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Emoji from './emoji/Emoji'
 import { useT } from '../i18n'
 import { usePostStats } from '../core/hooks/usePostStats'
 import StatChart from './StatChart'
-import s from './UserInfoPanel.module.scss'
 
 // Экран «Статистика поста» канала (аналог tweb messageStatistics). Слайд-ин
 // сабвью в стиле ChannelStats: шапка + карточки Overview + разбивка реакций +
@@ -43,17 +41,16 @@ export default function PostStats({
   const { stats, loading, error } = usePostStats(chatId, msgId)
 
   return (
-    <div className={`${s.rights} ${s.slideIn}`}>
-      <div className={s.rightsHeader}>
-        <IconButton onClick={onBack} color="var(--secondary-text-color)">
+    <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
+      <div className="sidebar-header">
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
           <TgIcon name="back" />
-        </IconButton>
-        <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-          {t('Post statistics')}
-        </Text>
+        </button>
+        <div className="sidebar-header__title">{t('Post statistics')}</div>
       </div>
 
-      <div className={s.body}>
+      <div className="sidebar-content">
+      <div className="scrollable scrollable-y">
         {loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
             <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
@@ -67,23 +64,22 @@ export default function PostStats({
 
         {stats && !loading && (
           <>
-            <div className={s.section} style={{ marginTop: 8 }}>
-              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                {t('Overview')}
-              </Text>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <OverviewCard value={nf.format(stats.views)} label={t('Views')} />
-                <OverviewCard value={nf.format(stats.forwards)} label={t('Forwards')} />
-                <OverviewCard value={nf.format(stats.reactionsTotal)} label={t('Reactions')} />
+            <div className="sidebar-left-section-container">
+              <div className="sidebar-left-section">
+                <div className="sidebar-left-section-name">{t('Overview')}</div>
+                <div className="statistics-overview">
+                  <OverviewCard value={nf.format(stats.views)} label={t('Views')} />
+                  <OverviewCard value={nf.format(stats.forwards)} label={t('Forwards')} />
+                  <OverviewCard value={nf.format(stats.reactionsTotal)} label={t('Reactions')} />
+                </div>
               </div>
             </div>
 
             {stats.reactions.length > 0 && (
-              <div className={s.section}>
-                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                  {t('Reactions')}
-                </Text>
-                <div className={s.cardPlain}>
+              <div className="sidebar-left-section-container">
+                <div className="sidebar-left-section">
+                  <div className="sidebar-left-section-name">{t('Reactions')}</div>
+                  <div className="sidebar-left-section-content">
                   {stats.reactions.map((r) => (
                     <div
                       key={r.emoji}
@@ -96,22 +92,24 @@ export default function PostStats({
                       </Text>
                     </div>
                   ))}
+                  </div>
                 </div>
               </div>
             )}
 
             {stats.viewsByDay.length > 0 && (
-              <div className={s.section}>
-                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                  {t('Views by day')}
-                </Text>
-                <div className={s.cardPlain} style={{ padding: '12px 12px 8px' }}>
+              <div className="sidebar-left-section-container">
+                <div className="sidebar-left-section">
+                  <div className="sidebar-left-section-name">{t('Views by day')}</div>
+                  <div className="sidebar-left-section-content">
                   <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
+                  </div>
                 </div>
               </div>
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   )

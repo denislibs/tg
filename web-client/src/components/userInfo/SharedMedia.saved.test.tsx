@@ -8,7 +8,7 @@
 // (2) высота `ul` — РОВНО `count * 72`, без `+8`: `extraPaddingBottom: 0`
 //     оригинала (`tweb/src/components/appSearchSuper.ts:1906`) — единственное
 //     геометрическое отличие этого списка от остальных;
-// (3) хост окна — скроллер ПАНЕЛИ ПРОФИЛЯ (`UserInfoPanel.module.scss` `.body`),
+// (3) хост окна — скроллер ПАНЕЛИ ПРОФИЛЯ (`.scrollable-y`, вендорный класс tweb),
 //     а не родитель `ul` и не окно: список лежит в карточке внутри вкладки;
 // (4) пустой набор показывает прежнюю заглушку ВМЕСТО `ul`;
 // (5) уход с вкладки размонтирует список и снимает слушатель скролла с хоста;
@@ -67,7 +67,6 @@ type ListProps = ComponentProps<(typeof import('../virtual/DeferredSortedVirtual
 
 import SharedMedia from './SharedMedia'
 import itemStyles from '../virtual/DeferredSortedVirtualList.module.scss'
-import s from '../UserInfoPanel.module.scss'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { SavedDialog } from '../../core/managers/chatsManager'
@@ -107,10 +106,12 @@ const scrollListenerCount = (spy: typeof addSpy) =>
   spy.mock.calls.filter((c: unknown[]) => c[0] === 'scroll').length
 
 const list = () => host.querySelector('ul')
-const rows = () => Array.from(host.querySelectorAll<HTMLElement>('.' + s.savedRow))
-// Заголовок строки и превью идут в одном `textContent` подряд с временем
-// (`saved-0` + `03:00` + `msg-0`), поэтому строку опознаём по превью в конце.
-const rowTitles = () => rows().map((r) => r.textContent?.match(/msg-\d+$/)?.[0] ?? '')
+// Строка «Избранного» теперь вендорная (`chatlist-chat`, как у списка чатов).
+const rows = () => Array.from(host.querySelectorAll<HTMLElement>('.chatlist-chat'))
+// Строку опознаём по превью последнего сообщения (`msg-N`): в `textContent`
+// оно идёт между заголовком/временем и инициалом аватара (аватар в вендорной
+// разметке — последний ребёнок строки).
+const rowTitles = () => rows().map((r) => r.textContent?.match(/msg-\d+/)?.[0] ?? '')
 
 let sizeStubbed = false
 
@@ -256,7 +257,7 @@ describe('SharedMedia — «Избранное» на виртуальном я�
     const self: SavedDialog = { kind: 'self', peerId: 7, title: 'me', count: 1, last: { type: 'text', text: 'x', at: '2026-08-13T10:00:00Z' } }
     renderSaved({ dialogs: [self, dialog(1)], onOpenPeer })
 
-    fireEvent.click(host.querySelectorAll<HTMLElement>('.' + s.savedRow)[0])
+    fireEvent.click(host.querySelectorAll<HTMLElement>('.chatlist-chat')[0])
 
     expect(onOpenPeer).not.toHaveBeenCalled()
     expect(screen.getByText('My Notes')).toBeTruthy()

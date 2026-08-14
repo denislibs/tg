@@ -1,16 +1,26 @@
 // userInfo/RightsEditor.tsx
-// Экран прав администратора (порт tweb sidebarRight/tabs/userPermissions.tsx):
-// строка участника + тумблер на каждое право. Выезд экрана — задача владельца
-// (UserInfoPanel), как в tweb, где сабвью профиля это вкладки `.tabs-tab`
-// правого сайдбар-слайдера (`tweb components/slider.ts:39-44`).
+// Экран прав администратора — порт tweb `sidebarRight/tabs/userPermissions.tsx`.
+// Эталон разметки — живой дамп `docs/research/tweb-dom/15-right-16-user-admin-rights`:
+//
+//   div.tabs-tab.sidebar-slider-item.scrollable-y-bordered
+//      .edit-peer-container.user-permissions-container.active
+//     > div.sidebar-header
+//         > button.btn-icon.sidebar-close-button + div.sidebar-header__title
+//         + button.btn-icon.primary.appear-zoom.rp        ← «применить», зумом
+//     + div.sidebar-content > div.scrollable.scrollable-y
+//         > div.sidebar-left-section-container > … > div.chatlist-container
+//             > ul.chatlist.chatlist-new > a.row.chatlist-chat  ← строка участника
+//         + div.sidebar-left-h2.sidebar-left-section-name        ← «What can this admin do?»
+//         + label.row.no-subtitle.row-with-toggle…               ← право с тумблером
+//
+// Выезд экрана — задача владельца (UserInfoPanel): в tweb сабвью профиля это
+// вкладки `.tabs-tab` правого сайдбар-слайдера (`components/slider.ts:39-44`).
 import { useState } from 'react'
-import IconButton from '../../shared/ui/IconButton'
-import Text from '../../shared/ui/Text'
-import TgSwitch from '../TgSwitch'
+import UserAvatar from '../UserAvatar'
 import TgIcon from '../TgIcon'
+import { Row } from '../settings/kit'
 import { RIGHTS, type RealMember } from '../../core/hooks/useGroupInfo'
-import classNames from '../../shared/lib/classNames'
-import s from '../UserInfoPanel.module.scss'
+import { useT } from '../../i18n'
 
 export default function RightsEditor({
   member,
@@ -23,72 +33,100 @@ export default function RightsEditor({
   onSave: (bitmask: number) => void | Promise<void>
   onRemove: () => void | Promise<void>
 }) {
+  const t = useT()
   const isAdmin = member.role === 'creator' || member.role === 'admin'
   const initial = isAdmin ? RIGHTS.reduce((acc, r) => acc | r.bit, 0) : 0
   const [bits, setBits] = useState(initial)
   const [saving, setSaving] = useState(false)
 
   const toggle = (bit: number) => setBits((b) => (b & bit ? b & ~bit : b | bit))
+  const run = async (fn: () => void | Promise<void>) => {
+    if (saving) return
+    setSaving(true)
+    try { await fn() } finally { setSaving(false) }
+  }
 
-  // `slideIn` — въезд справа, тот же, что у остальных экранов правой панели
-  // (UserInfoPanel.module.scss:743, порт входной половины tweb
-  // transition.ts:23-42). Отдельным классом, потому что `.rights` шарится.
   return (
-    <div className={classNames(s.rights, s.slideIn)}>
-      <div className={s.rightsHeader}>
-        <IconButton onClick={onBack} color="var(--secondary-text-color)">
+    <div className="tabs-tab sidebar-slider-item scrollable-y-bordered edit-peer-container user-permissions-container active">
+      <div className="sidebar-header">
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
           <TgIcon name="back" />
-        </IconButton>
-        <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-          {member.displayName}
-        </Text>
+        </button>
+        <div className="sidebar-header__title">{t('Admin Rights')}</div>
+        {/* «Применить» — та же кнопка-галка, что в оригинале: появляется зумом
+            (`appear-zoom`), пока экран сохраняется — заблокирована. */}
+        <button
+          type="button"
+          className="btn-icon primary appear-zoom rp"
+          onClick={() => void run(() => onSave(bits))}
+          disabled={saving}
+          aria-label={t('Save')}
+        >
+          <TgIcon name="check" />
+        </button>
       </div>
 
-      <div className={s.body}>
-        <div className={s.section} style={{ marginTop: 0 }}>
-          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-            Права администратора
-          </Text>
-          <div className={s.cardPlain}>
-            {RIGHTS.map((r) => (
-              <div key={r.bit} onClick={() => toggle(r.bit)} className={s.rightRow}>
-                <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>{r.label}</Text>
-                <TgSwitch checked={(bits & r.bit) !== 0} />
+      <div className="sidebar-content">
+        <div className="scrollable scrollable-y">
+          <div className="sidebar-left-section-container">
+            <div className="sidebar-left-section">
+              <div className="sidebar-left-section-content">
+                <div className="chatlist-container">
+                  <ul className="chatlist chatlist-new">
+                    <a className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger" data-peer-id={member.userId}>
+                      <div className="row-row row-subtitle-row dialog-subtitle">
+                        <div className="row-subtitle no-wrap">{member.online ? t('online') : t('last seen recently')}</div>
+                      </div>
+                      <div className="row-row row-title-row dialog-title">
+                        <div className="row-title no-wrap user-title">
+                          <span className="peer-title">{member.displayName}</span>
+                        </div>
+                      </div>
+                      <UserAvatar
+                        id={member.userId}
+                        name={member.displayName}
+                        avatarUrl={member.avatarUrl}
+                        online={member.online}
+                        className="dialog-avatar row-media row-media-abitbigger"
+                      />
+                    </a>
+                  </ul>
+                </div>
               </div>
-            ))}
+            </div>
           </div>
-        </div>
 
-        <div className={s.section} style={{ marginTop: 12 }}>
-          <div
-            onClick={async () => {
-              if (saving) return
-              setSaving(true)
-              try {
-                await onSave(bits)
-              } finally {
-                setSaving(false)
-              }
-            }}
-            className={s.saveBtn}
-            style={{ opacity: saving ? 0.6 : 1 }}
-          >
-            Сохранить
+          <div className="sidebar-left-section-container">
+            <div className="sidebar-left-section">
+              {/* Заголовок группы прав — `sidebar-left-h2` из оригинала */}
+              <div className="sidebar-left-h2 sidebar-left-section-name">{t('What can this admin do?')}</div>
+              <div className="sidebar-left-section-content">
+                {RIGHTS.map((r) => (
+                  <Row
+                    key={r.bit}
+                    label={r.label}
+                    translate={false}
+                    toggle
+                    checked={(bits & r.bit) !== 0}
+                    onClick={() => toggle(r.bit)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
+
           {isAdmin && (
-            <div
-              onClick={async () => {
-                if (saving) return
-                setSaving(true)
-                try {
-                  await onRemove()
-                } finally {
-                  setSaving(false)
-                }
-              }}
-              className={s.removeBtn}
-            >
-              Снять права
+            <div className="sidebar-left-section-container">
+              <div className="sidebar-left-section">
+                <div className="sidebar-left-section-content">
+                  <Row
+                    icon={<TgIcon name="deleteuser" size={24} />}
+                    label="Dismiss Admin"
+                    danger
+                    onClick={() => void run(onRemove)}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>

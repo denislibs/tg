@@ -1,10 +1,8 @@
-import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useChannelStats } from '../core/hooks/useChannelStats'
 import StatChart from './StatChart'
-import s from './UserInfoPanel.module.scss'
 
 // Панель «Статистика» канала/супергруппы (аналог tweb sidebarRight/tabs/statistics).
 // Слайд-ин сабвью в стиле RightsEditor: шапка + карточки Overview + графики +
@@ -13,19 +11,13 @@ import s from './UserInfoPanel.module.scss'
 // nf — компактный разделитель тысяч (1 234).
 const nf = new Intl.NumberFormat(undefined)
 
+// Карточка сводки — `statistics-overview-item` из tweb (`_rightSidebar.scss`:
+// значение и подпись под ним, без своей рамки: сетку рисует контейнер).
 function OverviewCard({ value, label }: { value: string; label: string }) {
   return (
-    <div
-      style={{
-        flex: '1 1 40%',
-        minWidth: 0,
-        padding: '10px 12px',
-        borderRadius: 12,
-        background: 'var(--surface-color)',
-      }}
-    >
-      <Text size={19} weight={600} color="var(--primary-color)">{value}</Text>
-      <Text noWrap size={13} color="var(--secondary-text-color)">{label}</Text>
+    <div className="statistics-overview-item">
+      <div className="statistics-overview-item-value">{value}</div>
+      <div className="statistics-overview-item-value-description">{label}</div>
     </div>
   )
 }
@@ -38,12 +30,12 @@ function ChartSection({
   children: React.ReactNode
 }) {
   return (
-    <div className={s.section}>
-      <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-        {title}
-      </Text>
-      <div className={s.cardPlain} style={{ padding: '12px 12px 8px' }}>
-        {children}
+    <div className="sidebar-left-section-container">
+      <div className="sidebar-left-section">
+        <div className="sidebar-left-section-name">{title}</div>
+        <div className="sidebar-left-section-content">
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -67,17 +59,16 @@ export default function ChannelStats({
       : 0
 
   return (
-    <div className={`${s.rights} ${s.slideIn}`}>
-      <div className={s.rightsHeader}>
-        <IconButton onClick={onBack} color="var(--secondary-text-color)">
+    <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
+      <div className="sidebar-header">
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
           <TgIcon name="back" />
-        </IconButton>
-        <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-          {t('Statistics')}
-        </Text>
+        </button>
+        <div className="sidebar-header__title">{t('Statistics')}</div>
       </div>
 
-      <div className={s.body}>
+      <div className="sidebar-content">
+      <div className="scrollable scrollable-y">
         {loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
             <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
@@ -92,16 +83,18 @@ export default function ChannelStats({
         {stats && !loading && (
           <>
             {/* Overview — карточки-числа */}
-            <div className={s.section} style={{ marginTop: 8 }}>
-              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                {t('Overview')}
-              </Text>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <OverviewCard value={nf.format(stats.summary.members)} label={isChannel ? t('Subscribers') : t('Members')} />
-                <OverviewCard value={nf.format(stats.summary.avgReach)} label={t('Views per post')} />
-                <OverviewCard value={nf.format(stats.summary.totalViews)} label={t('Total views')} />
-                <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('Posts')} />
-                <OverviewCard value={`${notifPct}%`} label={t('Notifications')} />
+            <div className="sidebar-left-section-container">
+              <div className="sidebar-left-section">
+                <div className="sidebar-left-section-name">{t('Overview')}</div>
+                {/* Сводка — вендорная сетка `.statistics-overview`
+                    (`_rightSidebar.scss`), карточки в ней — `-item`. */}
+                <div className="statistics-overview">
+                  <OverviewCard value={nf.format(stats.summary.members)} label={isChannel ? t('Subscribers') : t('Members')} />
+                  <OverviewCard value={nf.format(stats.summary.avgReach)} label={t('Views per post')} />
+                  <OverviewCard value={nf.format(stats.summary.totalViews)} label={t('Total views')} />
+                  <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('Posts')} />
+                  <OverviewCard value={`${notifPct}%`} label={t('Notifications')} />
+                </div>
               </div>
             </div>
 
@@ -124,11 +117,10 @@ export default function ChannelStats({
             )}
 
             {stats.topPosts.length > 0 && (
-              <div className={s.section}>
-                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                  {t('Top posts')}
-                </Text>
-                <div className={s.cardPlain}>
+              <div className="sidebar-left-section-container">
+                <div className="sidebar-left-section">
+                  <div className="sidebar-left-section-name">{t('Top posts')}</div>
+                  <div className="sidebar-left-section-content">
                   {stats.topPosts.map((p) => (
                     <div
                       key={p.msgId}
@@ -147,11 +139,13 @@ export default function ChannelStats({
                       </Text>
                     </div>
                   ))}
+                  </div>
                 </div>
               </div>
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   )

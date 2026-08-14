@@ -37,7 +37,7 @@ import DeferredSortedVirtualList, {
   type DeferredSortedVirtualListRenderItemProps,
 } from '../virtual/DeferredSortedVirtualList'
 import { useEvent } from '../../core/hooks/useEvent'
-import s from '../UserInfoPanel.module.scss'
+import s from './SharedMedia.module.scss'
 
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
 // Порядок узлов ряда — как в tweb (дамп 07-right-sidebar): сначала
@@ -448,19 +448,33 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
             <div className="sidebar-left-section-content">
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow}>
-              <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
-                {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Document')}</Text>
-                <Text size={13.5} color="var(--secondary-text-color)">{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</Text>
+        {/* Строка файла — вендорный `.document` (порт tweb `wrapDocument`,
+            стили `_document.scss` + доводка `.search-super-content-files`):
+            `.document-container > .document-wrapper > .document.ext-{ext}`
+            с `.document-ico > .document-ico-text`, `.document-name`,
+            `.document-size` (дамп 03-document). Цвет квадрата даёт
+            `--background-color`, как у оригинала. */}
+        {msgs.map((m) => {
+          const ext = extOf(m.mediaName)
+          return (
+            <div key={m.id} className="document-container">
+              <div className="document-wrapper">
+                <div
+                  className={classNames('document', ext ? `ext-${ext}` : '')}
+                  style={{ ['--background-color' as string]: EXT_COLORS[ext] ?? 'var(--primary-color)' }}
+                >
+                  <div className="document-ico">
+                    <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
+                  </div>
+                  <div className="document-name">{m.mediaName || t('Document')}</div>
+                  <div className="document-size">
+                    <span>{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
+          )
+        })}
             </div>
           </div>
         </div>
@@ -472,22 +486,19 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
             <div className="sidebar-left-section-content">
-        <div className={s.mediaList}>
-          {msgs.map((m) => {
-            const url = firstUrl(m.text)
-            return (
-              <div key={m.id} className={s.mediaRow} onClick={() => window.open(url, '_blank', 'noopener')} style={{ cursor: 'pointer' }}>
-                <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
-                  {hostOf(url).charAt(0).toUpperCase()}
-                </div>
-                <div className={s.grow}>
-                  <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{hostOf(url)}</Text>
-                  <Text noWrap size={13.5} color="var(--link-color)">{url}</Text>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {/* Строка ссылки — `.search-super-item` с абсолютной `.row-media`
+            слева (`_searchSuper.scss` → `.search-super-content-links`):
+            превью-квадрат, заголовок хоста и сам url. */}
+        {msgs.map((m) => {
+          const url = firstUrl(m.text)
+          return (
+            <div key={m.id} className="search-super-item rp" onClick={() => window.open(url, '_blank', 'noopener')}>
+              <div className="row-media">{hostOf(url).charAt(0).toUpperCase()}</div>
+              <div className="row-title">{hostOf(url)}</div>
+              <div className="row-subtitle">{url}</div>
+            </div>
+          )
+        })}
             </div>
           </div>
         </div>
@@ -499,19 +510,28 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
             <div className="sidebar-left-section-content">
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.mediaName || t('Audio'))} style={{ cursor: 'pointer' }}>
-              <div className={s.rowPlay}>
-                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Audio')}</Text>
-                <Text noWrap size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+        {/* Строка аудио — вендорный `.audio` (порт tweb `wrapAudio`, стили
+            `_audio.scss` + `.search-super-content-music`): `.document-container
+            > .document-wrapper > .audio` с `.audio-toggle.audio-ico`,
+            `.audio-details > .audio-title + .audio-subtitle` (дамп 03-reply-audio).
+            Кнопка play/pause — наш глиф внутри штатного `.audio-toggle`. */}
+        {msgs.map((m) => (
+          <div key={m.id} className="document-container">
+            <div className="document-wrapper">
+              <div className="audio" onClick={() => playRow(m, m.mediaName || t('Audio'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+                </div>
+                <div className="audio-details">
+                  <div className="audio-title">{m.mediaName || t('Audio')}</div>
+                  <div className="audio-subtitle">
+                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
             </div>
           </div>
         </div>
@@ -523,19 +543,23 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
             <div className="sidebar-left-section-content">
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))} style={{ cursor: 'pointer' }}>
-              <div className={s.rowPlay}>
-                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</Text>
-                <Text size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+        {msgs.map((m) => (
+          <div key={m.id} className="document-container">
+            <div className="document-wrapper">
+              <div className="audio" onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+                </div>
+                <div className="audio-details">
+                  <div className="audio-title">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-subtitle">
+                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
             </div>
           </div>
         </div>
@@ -677,30 +701,34 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const title = isSelf ? t('My Notes') : dialog.title
 
   return (
+    // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
+    // участников (дамп 15-right-11): время последнего сообщения уезжает в
+    // штатный правый слот заголовка, превью — в `.row-subtitle`.
     <div
       ref={itemRef}
-      className={classNames(s.memberRow, s.savedRow)}
+      className={classNames(
+        'row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger',
+        isSelf ? '' : 'rp',
+      )}
+      data-peer-id={dialog.peerId}
       onClick={() => {
         if (isSelf) return
         if (dialog.kind === 'user') onOpenPeer({ id: dialog.peerId, displayName: dialog.title, avatarUrl: dialog.photoUrl })
         else onOpenPeer({ id: 0, displayName: dialog.title, chatId: dialog.peerId })
       }}
-      style={isSelf ? { cursor: 'default' } : undefined}
     >
-      {isSelf ? (
-        <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" />
-      ) : (
-        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} />
-      )}
-      <div className={s.grow}>
-        <div className={s.memberTitleRow}>
-          <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
-          <span className={s.roleLabel}>{fmtWhen(dialog.last.at)}</span>
-        </div>
-        <Text noWrap size={14} color="var(--secondary-text-color)">
-          {dialog.last.text || mediaLabel(dialog.last.type)}
-        </Text>
+      <div className="row-row row-title-row dialog-title">
+        <div className="row-title">{title}</div>
+        <div className="row-title row-title-right row-title-right-secondary">{fmtWhen(dialog.last.at)}</div>
       </div>
+      <div className="row-row row-subtitle-row dialog-subtitle">
+        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type)}</div>
+      </div>
+      {isSelf ? (
+        <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />
+      ) : (
+        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} className="dialog-avatar row-media row-media-abitbigger" />
+      )}
     </div>
   )
 }
