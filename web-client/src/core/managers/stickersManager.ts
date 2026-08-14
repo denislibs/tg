@@ -5,7 +5,12 @@
 // image/webp|png — статичный; URL клиент строит сам (core/mediaUrl).
 import type { RestClient } from '../net/restClient'
 
-export interface StickerSet { id: number; slug: string; title: string; kind: 'sticker' | 'emoji'; count: number }
+/**
+ * coverMediaId — обложка набора (не у всех: из 334 наборов есть у 230,
+ * `omitempty` на бэке). Когда её нет, вкладка панели показывает первый
+ * стикер набора — правило кодирует `core/stickers/setThumb.ts`.
+ */
+export interface StickerSet { id: number; slug: string; title: string; kind: 'sticker' | 'emoji'; count: number; coverMediaId?: number }
 /**
  * Метаданные файла (width/height/mime/thumb) приезжают вместе со стикером —
  * бэк снимает их джойном на media. Клиенту они нужны ДО загрузки байтов:
@@ -31,6 +36,15 @@ export interface SavedGif { mediaId: number }
 export interface TenorGif { id: string; mp4Url: string; gifUrl: string; previewUrl: string; width: number; height: number }
 export interface GifPage { gifs: TenorGif[]; next: string }
 
+interface RawStickerSet {
+  id: number
+  slug: string
+  title: string
+  kind: 'sticker' | 'emoji'
+  count: number
+  /** обложка набора; отсутствует в ответе (omitempty) у наборов без обложки */
+  cover_media_id?: number
+}
 interface RawSticker {
   id: number
   set_id: number
@@ -44,6 +58,14 @@ interface RawSticker {
 }
 interface RawTenorGif { id: string; mp4_url: string; gif_url: string; preview_url: string; width: number; height: number }
 
+const mapStickerSet = (r: RawStickerSet): StickerSet => ({
+  id: r.id,
+  slug: r.slug,
+  title: r.title,
+  kind: r.kind,
+  count: r.count,
+  coverMediaId: r.cover_media_id,
+})
 const mapSticker = (r: RawSticker): Sticker => ({
   id: r.id,
   setId: r.set_id,
@@ -61,22 +83,22 @@ const mapTenorGif = (r: RawTenorGif): TenorGif => ({
 export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
   return {
     async mySets(): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets')
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets')
+      return (r.sets ?? []).map(mapStickerSet)
     },
     async setBySlug(slug: string): Promise<{ set: StickerSet; stickers: Sticker[] }> {
-      const r = await rest.get<{ set: StickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
-      return { set: r.set, stickers: (r.stickers ?? []).map(mapSticker) }
+      const r = await rest.get<{ set: RawStickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
+      return { set: mapStickerSet(r.set), stickers: (r.stickers ?? []).map(mapSticker) }
     },
     async searchSets(q: string): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/search', { q })
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/search', { q })
+      return (r.sets ?? []).map(mapStickerSet)
     },
     /** Трендовые наборы (новые первыми, лимит 40 на бэке) — экран поиска
      * стикеров показывает их при пустом запросе (tweb getFeaturedStickers). */
     async featuredSets(): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/featured')
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/featured')
+      return (r.sets ?? []).map(mapStickerSet)
     },
     async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
     async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },

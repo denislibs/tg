@@ -38,6 +38,7 @@ import IconButton from '../../shared/ui/IconButton'
 import StickerMedia from '../StickerMedia'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { useCustomEmojiSets } from '../../core/hooks/useStickers'
+import { setThumbMediaId } from '../../core/stickers/setThumb'
 import type { GifItem } from '../../core/gifs'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
@@ -421,7 +422,7 @@ export default function EmojiDropdown({
   const customCats = useMemo(
     () =>
       customSets
-        .map(({ set, stickers }) => ({ key: `ce-${set.slug}`, title: set.title, thumb: stickers[0]?.mediaId, stickers }))
+        .map(({ set, stickers }) => ({ key: `ce-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers }))
         .filter((c) => c.stickers.length > 0),
     [customSets],
   )

@@ -15,6 +15,7 @@ import IconButton from '../../shared/ui/IconButton'
 import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { setThumbMediaId } from '../../core/stickers/setThumb'
 import { useT } from '../../i18n'
 
 // tweb base.scss: --esg-sticker-size 72px (desktop); EmoticonsTabStyles.Stickers
@@ -91,7 +92,7 @@ export default function StickersTab({
     if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
     if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
-      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: stickers[0].mediaId, stickers })
+      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
     return list
   }, [panel.recent, panel.faved, panel.sets, t])
