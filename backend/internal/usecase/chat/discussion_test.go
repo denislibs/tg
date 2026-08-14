@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -299,5 +300,156 @@ func TestComments_ThreadOnMirror(t *testing.T) {
 	}
 	if len(recent[post.ID]) != 1 || recent[post.ID][0].ID != 8 {
 		t.Fatalf("recent repliers = %+v, want автор 8", recent[post.ID])
+	}
+}
+
+// Гонка за ленивое создание зеркала: пост опубликован ДО EnableDiscussion, у
+// него ещё нет зеркала. Первый комментарий должен его завести — но что если
+// параллельно к тому же посту пришёл ещё один первый комментарий и выиграл
+// гонку? Insert проигравшего падает на уникальном индексе
+// uq_messages_discussion_mirror (см. миграцию 0093), хотя зеркало к этому
+// моменту уже есть. PostComment обязан не пробрасывать эту ошибку наружу
+// 500-й, а тихо взять уже созданное зеркало и приземлить комментарий в него.
+func TestPostComment_RaceLazyMirror_UsesWinnersMirror(t *testing.T) {
+	failNext := false
+	i, _, _, _ := newChannelTestInteractorMsgs(t, func(s *store) MessageRepo {
+		return racyMirrorMsgs{fakeMsgs: fakeMsgs{s}, failNextMirrorInsert: &failNext}
+	})
+	ctx := context.Background()
+
+	// Пост опубликован БЕЗ обсуждения (зеркала не будет), обсуждение включаем
+	// уже потом — ровно сценарий, для которого существует ленивая дозаводка.
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	post, err := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatalf("EnableDiscussion: %v", err)
+	}
+	if root, _ := i.msgs.MirrorByPost(ctx, ch, post.ID); root != 0 {
+		t.Fatalf("зеркало уже есть до первого комментария: %d", root)
+	}
+
+	failNext = true // следующая вставка зеркала «проиграет» гонку
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1")
+	if err != nil {
+		t.Fatalf("PostComment вернул ошибку вместо приземления в чужое зеркало: %v", err)
+	}
+	if failNext {
+		t.Fatal("racyMirrorMsgs.Insert для зеркала ни разу не звали — гонка не смоделирована")
+	}
+
+	root, err := i.msgs.MirrorByPost(ctx, ch, post.ID)
+	if err != nil || root == 0 {
+		t.Fatalf("MirrorByPost после гонки = %d, %v; зеркало обязано существовать", root, err)
+	}
+	if comment.ThreadRootID == nil || *comment.ThreadRootID != root {
+		t.Fatalf("комментарий висит на %v, а зеркало-«победитель» — %d", comment.ThreadRootID, root)
+	}
+}
+
+// Комментарий к удалённому посту не должен лениво заводить зеркало и
+// проходить — GetByID видит Deleted и обязан вернуть domain.ErrNotFound, как
+// и для несуществующего/чужого поста.
+func TestPostComment_DeletedPost_NotFound(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	post, err := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatalf("EnableDiscussion: %v", err)
+	}
+	if err := i.msgs.SoftDelete(ctx, post.ID); err != nil {
+		t.Fatalf("SoftDelete: %v", err)
+	}
+
+	if _, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("PostComment на удалённый пост = %v, want ErrNotFound", err)
+	}
+	if root, _ := i.msgs.MirrorByPost(ctx, ch, post.ID); root != 0 {
+		t.Fatalf("зеркало заведено для удалённого поста: %d", root)
+	}
+}
+
+// HTTP и WS обязаны отдавать один и тот же thread_root_id для одного и того
+// же комментария. HTTP-хендлер комментариев (channel_handler.go) уже
+// перезаписывает thread_root_id на id ПОСТА в JSON-ответе (контракт покрыт
+// TestChannelDiscussion_HTTP, http-пакет). Здесь проверяем вторую половину:
+// live-кадр WS того же Send() несёт тот же id поста, а не id зеркала, на
+// котором тред физически висит внутри (см. externalThreadRootID,
+// discussion_mirror.go) — иначе клиент ключевал бы одно и то же окно треда
+// по-разному в истории (HTTP) и в реальном времени (WS).
+func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
+	s := newStore()
+	fg := newFakeGroupRepo()
+	fch := newFakeChannelRepo()
+	fs := newFakeSearchRepo()
+	// groupMembershipChatsFanout + fakeUpdates — единственная комбинация в
+	// пакете, где Send() реально фанаутит live-кадры per-member (обычный
+	// стаб groupMembershipChats.MemberIDs всегда nil, см. его комментарий).
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg}}, fakeMsgs{s},
+		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
+	i.SetChannelPublisher(&fakeChannelPublisher{})
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "channel"
+		s.chatSeq[id] = 0
+		s.mu.Unlock()
+	}
+	fg.onSetDiscussion = s.seedDiscussion
+	pub := &fakePublisher{}
+	i.SetPublisher(pub)
+
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatalf("EnableDiscussion: %v", err)
+	}
+	post, err := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1")
+	if err != nil {
+		t.Fatalf("PostComment: %v", err)
+	}
+	mirrorID, _ := i.msgs.MirrorByPost(ctx, ch, post.ID)
+	// Внутреннее представление (в БД и в возвращённом domain.Message) остаётся
+	// зеркалом — это то, чем тред физически держится, а не то, что видит клиент.
+	if comment.ThreadRootID == nil || *comment.ThreadRootID != mirrorID {
+		t.Fatalf("внутренний ThreadRootID = %v, want зеркало %d", comment.ThreadRootID, mirrorID)
+	}
+
+	var env struct {
+		T string `json:"t"`
+		D struct {
+			MsgID        int64  `json:"msg_id"`
+			ThreadRootID *int64 `json:"thread_root_id"`
+		} `json:"d"`
+	}
+	found := false
+	for _, f := range pub.frames {
+		if f.userID != 8 {
+			continue
+		}
+		if err := json.Unmarshal(f.frame, &env); err != nil {
+			t.Fatalf("frame decode: %v", err)
+		}
+		if env.T == "new_message" && env.D.MsgID == comment.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("не нашли new_message WS-кадр для комментария %d автору 8", comment.ID)
+	}
+	if env.D.ThreadRootID == nil || *env.D.ThreadRootID != post.ID {
+		t.Fatalf("WS thread_root_id = %v, want id поста %d (HTTP отдаёт именно его — см. TestChannelDiscussion_HTTP)",
+			env.D.ThreadRootID, post.ID)
 	}
 }

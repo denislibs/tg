@@ -111,17 +111,25 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 		// такие старые посты Telegram позволяет, поэтому дозаводим зеркало по
 		// требованию первого комментария, а не хороним тред навсегда.
 		post, e := i.msgs.GetByID(ctx, postID)
-		if e != nil || post.ChatID != channelID {
+		if e != nil || post.ChatID != channelID || post.Deleted {
 			return domain.Message{}, domain.ErrNotFound
 		}
-		if e := i.mirrorChannelPost(ctx, post); e != nil {
-			return domain.Message{}, e
-		}
+		createErr := i.mirrorChannelPost(ctx, post)
+		// Гонка: два параллельных первых комментария к одному немигрированному
+		// посту оба увидят root==0 и оба попробуют создать зеркало. Проигравший
+		// падает на уникальном индексе uq_messages_discussion_mirror —
+		// createErr тут не «поста нет», а «кто-то уже создал зеркало параллельно».
+		// Резолвим ещё раз и берём то, что уже есть в базе; createErr отдаём
+		// наружу, только если зеркала и правда нет (значит, ошибка реальная, а
+		// не проигрыш гонки) — не глушим её молча.
 		root, err = i.msgs.MirrorByPost(ctx, channelID, postID)
 		if err != nil {
 			return domain.Message{}, err
 		}
 		if root == 0 {
+			if createErr != nil {
+				return domain.Message{}, createErr
+			}
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}

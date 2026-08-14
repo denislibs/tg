@@ -328,6 +328,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 
 	var msg domain.Message
+	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRootID
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
 	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
@@ -428,7 +429,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
 		mentioned := mentionedUserIDs(msg.Entities)
-		payload, e := json.Marshal(messageUpdatePayload(msg))
+		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRootID):
+		// WS-эхо обязано совпадать с тем, что уже отдаёт HTTP-хендлер комментариев,
+		// иначе один и тот же тред ключуется по-разному в истории и в live-кадре.
+		extRoot = i.externalThreadRootID(ctx, msg)
+		outMsg := messageUpdatePayload(msg)
+		outMsg["thread_root_id"] = extRoot
+		payload, e := json.Marshal(outMsg)
 		if e != nil {
 			return e
 		}
@@ -436,7 +443,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// заблокированный вариант — без ссылок на контент, только blur+цена.
 		var payloadLocked []byte
 		if msg.PaidMediaPrice != nil {
-			payloadLocked, e = json.Marshal(messageUpdatePayload(lockedPaidCopy(msg)))
+			lockedOut := messageUpdatePayload(lockedPaidCopy(msg))
+			lockedOut["thread_root_id"] = extRoot
+			payloadLocked, e = json.Marshal(lockedOut)
 			if e != nil {
 				return e
 			}
@@ -524,9 +533,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.dialogsCache.Invalidate(ctx, recipients...)
 		}
 		base := messageUpdatePayload(msg)
+		base["thread_root_id"] = extRoot // см. извлечение extRoot выше по функции
 		var baseLocked map[string]any
 		if msg.PaidMediaPrice != nil {
 			baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
+			baseLocked["thread_root_id"] = extRoot
 		}
 		// Realtime-кадры всем получателям — одним pipeline'ом (было M
 		// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative

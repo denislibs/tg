@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -527,6 +528,30 @@ func (r fakeMsgs) Insert(_ context.Context, m domain.Message) (domain.Message, e
 	}
 	r.s.messages[m.ChatID] = append(r.s.messages[m.ChatID], m)
 	return m, nil
+}
+
+// racyMirrorMsgs оборачивает fakeMsgs и имитирует проигрыш гонки за создание
+// зеркала поста: следующая вставка зеркала (IsDiscussionMirror) сначала
+// молча кладёт строку в стор — как будто её только что успел вставить
+// параллельный «победитель» — а самому вызывающему возвращает ошибку, как
+// это делает уникальный индекс uq_messages_discussion_mirror в реальной БД
+// при конфликте. Нужен TestPostComment_RaceLazyMirror_UsesWinnersMirror.
+type racyMirrorMsgs struct {
+	fakeMsgs
+	failNextMirrorInsert *bool
+}
+
+var errMirrorConflict = errors.New("conflict: uq_messages_discussion_mirror")
+
+func (r racyMirrorMsgs) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
+	if m.IsDiscussionMirror && r.failNextMirrorInsert != nil && *r.failNextMirrorInsert {
+		*r.failNextMirrorInsert = false
+		if _, err := r.fakeMsgs.Insert(ctx, m); err != nil {
+			return domain.Message{}, err
+		}
+		return domain.Message{}, errMirrorConflict
+	}
+	return r.fakeMsgs.Insert(ctx, m)
 }
 
 func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPagePreview) error {

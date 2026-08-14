@@ -87,3 +87,23 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	})
 	return err
 }
+
+// externalThreadRootID — обратный перевод mirrorChannelPost: наружу (и HTTP, и
+// WS) комментарий обязан нести thread_root_id = id ПОСТА, а не id зеркала, на
+// котором тред физически держится (см. PostComment/ListComments/CommentCounts).
+// HTTP-хендлер комментариев (channel_handler.go) уже перезаписывает
+// thread_root_id в ответе на id поста; это — та же подмена для WS-эха того же
+// сообщения (usecase/chat/message.go, Send), чтобы окно треда на клиенте
+// ключевалось одинаково независимо от канала доставки. Для сообщений без
+// треда и для форум-топиков (root — настоящее сообщение темы, не зеркало) —
+// no-op, id отдаётся как есть.
+func (i *Interactor) externalThreadRootID(ctx context.Context, m domain.Message) *int64 {
+	if m.ThreadRootID == nil {
+		return nil
+	}
+	root, err := i.msgs.GetByID(ctx, *m.ThreadRootID)
+	if err != nil || !root.IsDiscussionMirror || root.FwdFromMsgID == nil {
+		return m.ThreadRootID
+	}
+	return root.FwdFromMsgID
+}
