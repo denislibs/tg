@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -89,5 +90,38 @@ func TestMirrorChannelPost_Idempotent(t *testing.T) {
 	second, _ := i.msgs.MirrorByPost(ctx, ch, post.ID)
 	if second != first {
 		t.Fatalf("повторный вызов создал новое зеркало: было %d, стало %d", first, second)
+	}
+}
+
+// Транзиентный сбой GetDiscussion (обрыв соединения и т.п.) — не «обсуждения
+// нет»: ошибка обязана дойти до вызывающего PostToChannel, а не проглотиться
+// молча (иначе пост опубликуется без зеркала и без треда комментариев навсегда).
+//
+// ВАЖНО про то, что этот тест НЕ проверяет: fakeTx.WithinTx в этом пакете
+// выполняет fn напрямую, без настоящего отката — insert поста в channelID
+// в общем in-memory store уже произошёл к моменту, когда mirrorChannelPost
+// возвращает ошибку, и fakeTx его не отменяет. Реальная транзакция БД
+// (pgx) откатит вставку поста при возврате ошибки из WithinTx — это
+// поведение не покрыто здесь фейком и проверяется на уровне
+// adapter/repo/postgres. Тест ниже проверяет только то, что фейк может
+// гарантировать: ошибка GetDiscussion не проглатывается и доходит до
+// вызывающего PostToChannel как есть, а сам PostToChannel не возвращает
+// вызывающему «успешно опубликованный» пост.
+func TestPostToChannel_DiscussionLookupError_Propagates(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	wantErr := errors.New("db connection lost")
+	fg.getDiscussionErr = wantErr
+
+	post, err := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("PostToChannel вернул %v, ожидалась ошибка GetDiscussion %v", err, wantErr)
+	}
+	if post.ID != 0 {
+		t.Fatalf("PostToChannel вернул непустой пост при ошибке: %+v", post)
 	}
 }

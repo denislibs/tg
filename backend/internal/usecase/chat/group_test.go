@@ -33,6 +33,10 @@ type fakeGroupRepo struct {
 	// (MirrorByPost/MirrorsByPosts). В реальной БД оба репозитория читают одну
 	// колонку chats.discussion_chat_id — фейки обязаны вести себя так же.
 	onSetDiscussion func(channelID, groupID int64)
+	// getDiscussionErr — если не nil, GetDiscussion возвращает эту ошибку вместо
+	// обычного резолва; имитирует транзиентный сбой (обрыв соединения и т.п.)
+	// отдельно от легального «обсуждения нет» (disc==0, err==nil).
+	getDiscussionErr error
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
@@ -218,6 +222,9 @@ func (r *fakeGroupRepo) SetDiscussion(_ context.Context, channelID, groupID int6
 func (r *fakeGroupRepo) GetDiscussion(_ context.Context, channelID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.getDiscussionErr != nil {
+		return 0, r.getDiscussionErr
+	}
 	return r.discussion[channelID], nil
 }
 
