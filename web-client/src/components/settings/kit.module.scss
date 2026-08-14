@@ -1,11 +1,18 @@
-// Общий набор для экранов настроек: слайд-скрин, секция (на SidebarSection),
-// строка. Экран — нейтральная подложка, карточки — surface (как tweb settings).
+// Каркас экранов настроек/правой колонки. Разметка вендорная
+// (`tabs-tab.sidebar-slider-item` + `.sidebar-header` + `.sidebar-content`
+// > `.scrollable.scrollable-y`, дампы 15-right-12/16); здесь остались ДВА
+// правила, аналога которым в tweb нет по построению.
+//
+// Почему: в оригинале эти экраны — вкладки ПОСТОЯННОГО слайдера колонки
+// (`SidebarSlider`, `slider.ts:22-47`: `#column-left/#column-right` >
+// `.sidebar-slider.tabs-container` > соседние `.tabs-tab`), и геометрию им
+// даёт сама колонка — `.sidebar-slider-item` в tweb вообще без стилей
+// (grep по `src/scss` пуст, это чистый маркер). У нас экран монтируется
+// поверх колонки отдельным слоем (условный рендер, а не постоянный стек
+// вкладок), поэтому слой обязан сам занять колонку и обрезать въезжающую
+// вкладку. Свести к нулю можно только переносом всех экранов в общий
+// слайдер — это смена модели навигации, а не стилей.
 
-// Корень экрана — слайдер-контейнер, 1:1 с tweb `.sidebar-slider`
-// (`tweb components/slider.ts:39-44`: `TransitionSlider({type: 'navigation'})`).
-// Раскладку (grid 100%×100%, `.tabs-tab` друг поверх друга) и сам переход даёт
-// портированный партиал `styles/tweb/_slider.scss:139-241`; здесь — только
-// позиционирование поверх родителя и подложка.
 .screen {
   position: absolute;
   inset: 0;
@@ -15,64 +22,10 @@
   overflow: hidden;
 }
 
-// Въезд экрана, открытого не из соседнего экрана настроек (см. kit.tsx):
-// кривая та же, что у `.tabs-container[data-animation="navigation"].animating
-// .tabs-tab` в `styles/tweb/_slider.scss:230-235`.
 .entering {
   transition: transform var(--transition-standard-in);
 
   :global(body.animation-level-0) & {
     transition: none;
   }
-}
-
-// Вкладка слайдера: экран целиком (шапка + тело) либо вложенный саб-экран.
-// `display: none/flex` и `flex-direction: column` приходят из `.tabs-tab`
-// (`_slider.scss:145-159`); фон нужен свой — во время параллакса уходящая
-// вкладка сдвигается влево и не должна просвечивать.
-.tab {
-  background: var(--background-color);
-}
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 8px;
-}
-.title {
-  flex: 1;
-}
-// Колонка — как tweb `.sidebar-content` (_sidebar.scss: `display:flex` +
-// `flex: 1 1 auto`). Без неё экран выбора людей (`shared/ui/PeerSelector`) не
-// может растянуться на остаток высоты: его `.selector` — `height: 100%`, а
-// первый ребёнок `.scrollable` — `position:absolute; inset:0`.
-.body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding-bottom: 24px;
-}
-
-// секция: карточка (SidebarSection, заголовок внутри) + footer под ней
-.section {
-  margin-bottom: 12px;
-}
-.footer {
-  padding: 6px 24px 0;
-}
-
-// Строка настроек (`Row`) своих правил не имеет — она рендерит глобальные
-// классы tweb (`.row` и потомки из `styles/tweb/_row.scss`).
-
-// строка-запись списка (аватар/иконка + имя/подпись + удалить)
-.entry {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-}
-.entryBody {
-  flex: 1;
-  min-width: 0;
 }

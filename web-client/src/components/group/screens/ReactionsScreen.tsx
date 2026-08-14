@@ -2,10 +2,8 @@
 // Реакции (tweb chatReactions): все / выборочные / выключены.
 import { useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import TgSwitch from '../../TgSwitch'
 import type { GroupEdit } from '../../../core/hooks/useGroupEdit'
 import { EMOJIS } from './shared'
-import s from '../GroupEditFlow.module.scss'
 
 export function ReactionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const [mode, setMode] = useState<'all' | 'some' | 'none'>(g.card?.reactionsMode ?? 'all')
@@ -33,10 +31,17 @@ export function ReactionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => voi
           {EMOJIS.map((e) => {
             const on = allowed.includes(e)
             return (
-              <div key={e} className={s.emojiRow} onClick={() => apply('some', on ? allowed.filter((x) => x !== e) : [...allowed, e])}>
-                <span className={s.emoji}>{e}</span>
-                <TgSwitch checked={on} />
-              </div>
+              // Реакция — обычная `.row` с тумблером; эмодзи в слоте иконки
+              // (tweb chatReactions: `Row({checkboxField, icon})`).
+              <Row
+                key={e}
+                icon={<span className="reaction-emoji">{e}</span>}
+                label={e}
+                translate={false}
+                toggle
+                checked={on}
+                onClick={() => apply('some', on ? allowed.filter((x) => x !== e) : [...allowed, e])}
+              />
             )
           })}
         </Section>

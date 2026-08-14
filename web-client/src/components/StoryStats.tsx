@@ -1,11 +1,9 @@
 import { createPortal } from 'react-dom'
-import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useStoryStats } from '../core/hooks/useStoryStats'
 import StatChart from './StatChart'
-import s from './UserInfoPanel.module.scss'
 
 // Экран «Статистика истории» (аналог tweb storyStatistics). Full-screen оверлей
 // над просмотрщиком: карточка просмотров + график просмотров по дням. Данные —
@@ -19,17 +17,16 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
-      <div className={`${s.rights} ${s.slideIn}`}>
-        <div className={s.rightsHeader}>
-          <IconButton onClick={onClose} color="var(--secondary-text-color)">
+      <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
+        <div className="sidebar-header">
+          <button type="button" className="btn-icon sidebar-close-button" onClick={onClose} aria-label={t('Back')}>
             <TgIcon name="back" />
-          </IconButton>
-          <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-            {t('Story statistics')}
-          </Text>
+          </button>
+          <div className="sidebar-header__title">{t('Story statistics')}</div>
         </div>
 
-        <div className={s.body}>
+        <div className="sidebar-content">
+        <div className="scrollable scrollable-y">
           {loading && (
             <div style={{ padding: 24, textAlign: 'center' }}>
               <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
@@ -43,38 +40,32 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
 
           {stats && !loading && (
             <>
-              <div className={s.section} style={{ marginTop: 8 }}>
-                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                  {t('Overview')}
-                </Text>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  <div
-                    style={{
-                      flex: '1 1 40%',
-                      minWidth: 0,
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      background: 'var(--surface-color)',
-                    }}
-                  >
-                    <Text size={19} weight={600} color="var(--primary-color)">{nf.format(stats.views)}</Text>
-                    <Text noWrap size={13} color="var(--secondary-text-color)">{t('Views')}</Text>
+              <div className="sidebar-left-section-container">
+                <div className="sidebar-left-section">
+                  <div className="sidebar-left-section-name">{t('Overview')}</div>
+                  {/* Сводка — вендорная сетка `.statistics-overview` */}
+                  <div className="statistics-overview">
+                    <div className="statistics-overview-item">
+                      <div className="statistics-overview-item-value">{nf.format(stats.views)}</div>
+                      <div className="statistics-overview-item-value-description">{t('Views')}</div>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {stats.viewsByDay.length > 0 && (
-                <div className={s.section}>
-                  <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
-                    {t('Views by day')}
-                  </Text>
-                  <div className={s.cardPlain} style={{ padding: '12px 12px 8px' }}>
+                <div className="sidebar-left-section-container">
+                  <div className="sidebar-left-section">
+                    <div className="sidebar-left-section-name">{t('Views by day')}</div>
+                    <div className="sidebar-left-section-content">
                     <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
+                    </div>
                   </div>
                 </div>
               )}
             </>
           )}
+        </div>
         </div>
       </div>
     </div>,

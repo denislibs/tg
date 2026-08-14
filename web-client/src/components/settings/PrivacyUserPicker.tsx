@@ -13,7 +13,6 @@ import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
-import s from '../group/GroupEditFlow.module.scss'
 
 export default function PrivacyUserPicker({
   title,
@@ -90,9 +89,9 @@ export default function PrivacyUserPicker({
       />
 
       {multi && changed && (
-        <div className={s.fab} onClick={() => onDone?.(selected)}>
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => onDone?.(selected)}>
           <TgIcon name="check" />
-        </div>
+        </button>
       )}
     </SettingsScreen>
   )

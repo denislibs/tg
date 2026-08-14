@@ -3,11 +3,11 @@
 // сообщения владельца).
 import { useRef, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import Text from '../../../shared/ui/Text'
 import Slider from '../../../shared/ui/Slider'
+import Input from '../../../shared/ui/Input'
+import classNames from '../../../shared/lib/classNames'
 import { useT } from '../../../i18n'
 import { type GroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel } from '../../../core/hooks/useGroupEdit'
-import s from '../GroupEditFlow.module.scss'
 
 export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
@@ -55,27 +55,54 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
         ))}
       </Section>
       <Section caption="Slow Mode" footer="Choose how often members of the group are able to send messages.">
-        <div className={s.slowmode}>
-          <div className={s.slowLabels}>
+        {/* Слоумод 1:1 с дампом 15-right-13: `div.range-setting-selector
+            .range-steps-selector > div.progress-line` (наш вендорный `Slider`),
+            а засечки-подписи — `.range-setting-selector-option[.active]
+            [.is-first][.is-last]` c `-option-text`, позиционируемые процентом
+            слева. Раскладку контейнера даёт `_rightSidebar.scss`
+            (`.group-permissions-container .range-steps-selector`). */}
+        <div className="range-setting-selector range-steps-selector">
+          <Slider
+            min={0}
+            max={SLOWMODE_STEPS.length - 1}
+            step={1}
+            value={slowIdx}
+            onChange={(v) => push(perms, v)}
+            style={{ marginBlock: 0 }}
+          >
             {SLOWMODE_STEPS.map((sec, i) => (
-              <span key={sec} className={i === slowIdx ? s.slowActive : undefined}>{slowmodeLabel(sec)}</span>
+              <div
+                key={sec}
+                className={classNames(
+                  'range-setting-selector-option',
+                  i === slowIdx ? 'active is-chosen' : '',
+                  i === 0 ? 'is-first' : '',
+                  i === SLOWMODE_STEPS.length - 1 ? 'is-last' : '',
+                )}
+                style={{ left: `${(i / (SLOWMODE_STEPS.length - 1)) * 100}%` }}
+              >
+                <div className="range-setting-selector-option-text">{slowmodeLabel(sec)}</div>
+              </div>
             ))}
-          </div>
-          <Slider min={0} max={SLOWMODE_STEPS.length - 1} step={1} value={slowIdx} onChange={(v) => push(perms, v)} />
+          </Slider>
         </div>
       </Section>
       {/* Платные сообщения (Telegram paid messages) — только владелец группы. */}
       {g.isCreator && (
         <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
-          <div className={s.chargeRow}>
-            <Text size={15} color="var(--primary-text-color)">{t('Stars per message')}</Text>
-            <input
+          {/* Плата за сообщение — обычная `.row` с правым слотом
+              (`row-right`, tweb row.ts:280-283), в слоте — числовое поле. */}
+          {/* Плата — вендорное поле `.input-wrapper > .input-field`
+              (`_input.scss`), как все поля правой колонки; своей рамки у него
+              больше нет. */}
+          <div className="input-wrapper">
+            <Input
+              label={t('Stars per message')}
               type="number"
               min={0}
               max={10000}
-              value={charge}
-              onChange={(e) => pushCharge(Number(e.target.value))}
-              className={s.chargeInput}
+              value={String(charge)}
+              onChange={(v) => pushCharge(Number(v))}
             />
           </div>
         </Section>

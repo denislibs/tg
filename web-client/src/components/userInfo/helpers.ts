@@ -37,6 +37,9 @@ export function countLabel(tab: string, n: number, isChannel: boolean): string {
 
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 export const HEADER_H = 56
+/** tweb sharedMedia.tsx:481-483 — ADDITIONAL_OFFSET/BODY_PADDING порога header-filled */
+export const ADDITIONAL_OFFSET = 16
+export const BODY_PADDING = 16
 // зазор шапка↔таб-плашка; градиент плашки растягивается вверх на столько же
 // (TabsBar gap), чтобы закрыть зазор и контент не просвечивал.
 export const TAB_GAP = 8

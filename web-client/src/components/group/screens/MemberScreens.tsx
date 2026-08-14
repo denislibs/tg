@@ -12,7 +12,6 @@ import { useT } from '../../../i18n'
 import { type GroupEdit, type EditMember, PERMS } from '../../../core/hooks/useGroupEdit'
 import { MemberPicker, memberToPeer } from './shared'
 import { MemberHeaderSection } from './AdminScreens'
-import s from '../GroupEditFlow.module.scss'
 
 // ── Чёрный список (tweb removedUsers, уточка UtyanSearch при пустоте) ────────
 export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
@@ -56,10 +55,12 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
         empty={{ title: 'No Results', description: 'Try searching.' }}
       />
 
+      {/* Кнопка-действие экрана — вендорная `.btn-circle.btn-corner`
+          (tweb `btnAddMembers`), а не свой FAB. */}
       {g.canBan && (
-        <div className={s.fab} onClick={() => setPicking(true)}>
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => setPicking(true)}>
           <TgIcon name="adduser" />
-        </div>
+        </button>
       )}
 
     </SettingsScreen>

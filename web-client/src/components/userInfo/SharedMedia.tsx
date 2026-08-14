@@ -11,7 +11,8 @@ import Avatar from '../../shared/ui/Avatar'
 import UserAvatar from '../UserAvatar'
 import PlayPauseGlyph from '../PlayPauseGlyph'
 import StarIcon from '../stars/StarIcon'
-import { Tabs, TabSlide, TabsBar } from '../../shared/ui/Tabs'
+import { TabSlide } from '../../shared/ui/Tabs'
+import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -36,11 +37,43 @@ import DeferredSortedVirtualList, {
   type DeferredSortedVirtualListRenderItemProps,
 } from '../virtual/DeferredSortedVirtualList'
 import { useEvent } from '../../core/hooks/useEvent'
-import s from '../UserInfoPanel.module.scss'
+// Витрина подарков — модули tweb 1:1 (см. комментарий у рендера ниже)
+import giftsGrid from '../stargifts/stargiftsGrid.module.scss'
+import profileList from '../stargifts/profileList.module.scss'
 
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
+// Порядок узлов ряда — как в tweb (дамп 07-right-sidebar): сначала
+// Chats/Members, затем Gifts и медиа-табы. Скрытые несут `hide`, но остаются.
+const ALL_TABS = ['Chats', 'Members', 'Gifts', ...SHARED_TABS] as const
 const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
   Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
+}
+
+/**
+ * Пункт таб-ряда шаред-медиа — `menu-horizontal-div-item` из tweb
+ * (`horizontalMenu`, дамп 07-right-sidebar):
+ *   div.menu-horizontal-div-item.rp[.active][.hide]
+ *     > div.c-ripple + i.menu-horizontal-div-item-background
+ *     + span.menu-horizontal-div-item-span > span.i18n
+ * Подчёркивание активного рисует `i.menu-horizontal-div-item-background`,
+ * своей полоски-индикатора у нас больше нет.
+ */
+function SharedMediaTab({ name, active, hidden, onClick }: { name: string; active: boolean; hidden: boolean; onClick: () => void }) {
+  const t = useT()
+  const { onPointerDown, ripple } = useRipple()
+  return (
+    <div
+      className={classNames('menu-horizontal-div-item rp', active ? 'active' : '', hidden ? 'hide' : '')}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+    >
+      {ripple}
+      <i className="menu-horizontal-div-item-background" />
+      <span className="menu-horizontal-div-item-span">
+        <span className="i18n">{t(name)}</span>
+      </span>
+    </div>
+  )
 }
 
 export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, onSendGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
@@ -250,60 +283,98 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
   return (
     <>
-      {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
-          absolute-шапку панели (tweb .search-super-tabs-scrollable: sticky) */}
-      <TabsBar top={stickyTop} barRef={navRef}>
-        <div className={s.tabsWrap}>
-          <Tabs value={tab} onChange={(v) => onTab(v as string)}>
-            <Tabs.List framed>
-              {tabOrder.map((name) => (
-                <Tabs.Tab key={name} value={name}>
-                  {t(name)}
-                </Tabs.Tab>
-              ))}
-            </Tabs.List>
-          </Tabs>
+      {/* Таб-ряд шаред-медиа 1:1 с оригиналом (дамп 07-right-sidebar):
+          градиент-обрезка + sticky-скроллер + nav.menu-horizontal-div.
+          Неподходящие табы В DOM и скрыты классом `hide` (как в tweb), а не
+          выброшены условным рендером — иначе `is-single` и раскладка ряда
+          считались бы по другому набору узлов. */}
+      <div className="menu-horizontal-gradient-container search-super-tabs-gradient-container">
+        <div className="menu-horizontal-gradient menu-horizontal-gradient-color-background search-super-tabs-gradient" />
+      </div>
+      <div
+        ref={navRef}
+        className={classNames(
+          'search-super-tabs-scrollable menu-horizontal-scrollable sticky',
+          tabOrder.length === 1 ? 'is-single' : '',
+        )}
+        style={{ top: stickyTop }}
+      >
+        <div className="scrollable scrollable-x search-super-nav-scrollable">
+          <nav className="search-super-tabs menu-horizontal-div">
+            {ALL_TABS.map((name) => (
+              <SharedMediaTab
+                key={name}
+                name={name}
+                active={tab === name}
+                hidden={!tabOrder.includes(name)}
+                onClick={() => onTab(name)}
+              />
+            ))}
+          </nav>
         </div>
-      </TabsBar>
+      </div>
 
       {/* контент табов скользит ±100% (tweb TransitionSlider 'tabs') */}
-      <TabSlide tab={tab} order={tabOrder}>
+      <TabSlide tab={tab} order={tabOrder} containerClassName="search-super-tabs-container" className="search-super-tab-container">
       {/* «Избранное» → «Чаты»: сохранённые диалоги по источнику пересылки.
           Список виртуальный (см. `SavedDialogsList`); заглушка пустого набора
           рендерится ВМЕСТО `ul`, а не внутри него — у виртуального `ul` своя
           геометрия под весь набор. */}
       {tab === 'Chats' && savedDialogs && (
-        <div className={s.cardPlain} style={{ margin: '0 12px' }}>
-          {savedDialogs.length === 0 ? empty : <SavedDialogsList dialogs={savedDialogs} onOpenPeer={onOpenPeer} />}
+        <div className="search-super-content-container search-super-content-savedDialogs">
+          <div className="sidebar-left-section-container">
+            <div className="sidebar-left-section no-delimiter">
+              <div className="sidebar-left-section-content">
+                {savedDialogs.length === 0 ? empty : <SavedDialogsList dialogs={savedDialogs} onOpenPeer={onOpenPeer} />}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {tab === 'Members' && members && (
-        <div className={s.cardPlain} style={{ margin: '0 12px' }}>
-          {members.map((mem) => (
-            <div
-              key={mem.userId}
-              className={s.memberRow}
-              onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
-            >
-              <UserAvatar id={mem.userId} name={mem.displayName} avatarUrl={mem.avatarUrl} online={mem.online} />
-              <div className={s.grow}>
-                {/* роль — на линии заголовка (tweb row-title-right-secondary) */}
-                <div className={s.memberTitleRow}>
-                  <Text noWrap size={16} color="var(--primary-text-color)">{mem.displayName}</Text>
-                  <span
-                    onClick={canManageAdmins ? (e) => { e.stopPropagation(); onEditMember?.(mem) } : undefined}
-                    className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
-                  >
-                    {roleLabel(mem.role, !!isChannel)}
-                  </span>
-                </div>
-                <Text size={14} color="var(--secondary-text-color)">
-                  {mem.online ? t('online') : t('last seen recently')}
-                </Text>
+        <div className="search-super-content-container search-super-content-members">
+          <div className="sidebar-left-section-container">
+            <div className="sidebar-left-section no-delimiter">
+              <div className="sidebar-left-section-content">
+                {/* Строки участников — тот же `chatlist-chat`, что у списка чатов
+                    (дамп 15-right-11): `a.row.chatlist-chat.chatlist-chat-abitbigger`
+                    с `.row-row.row-title-row.dialog-title`, подписью и
+                    `.row-media.row-media-abitbigger` под аватар. */}
+                <ul className="chatlist">
+                  {members.map((mem) => (
+                    <a
+                      key={mem.userId}
+                      className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger rp"
+                      data-peer-id={mem.userId}
+                      onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
+                    >
+                      <div className="row-row row-title-row dialog-title">
+                        <div className="row-title">{mem.displayName}</div>
+                        {/* роль — правым слотом заголовка (tweb row-title-right-secondary) */}
+                        <div
+                          className="row-title row-title-right row-title-right-secondary"
+                          onClick={canManageAdmins ? (e) => { e.stopPropagation(); onEditMember?.(mem) } : undefined}
+                        >
+                          {roleLabel(mem.role, !!isChannel)}
+                        </div>
+                      </div>
+                      <div className="row-row row-subtitle-row dialog-subtitle">
+                        <div className="row-subtitle">{mem.online ? t('online') : t('last seen recently')}</div>
+                      </div>
+                      <UserAvatar
+                        id={mem.userId}
+                        name={mem.displayName}
+                        avatarUrl={mem.avatarUrl}
+                        online={mem.online}
+                        className="dialog-avatar row-media row-media-abitbigger"
+                      />
+                    </a>
+                  ))}
+                </ul>
               </div>
             </div>
-          ))}
+          </div>
         </div>
       )}
 
@@ -311,37 +382,39 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           Скрытые (hidden) приходят только владельцу — помечаем «глаз-off» и
           приглушаем. Ограниченные — бейдж «Лимит»; отправитель — мини-аватар
           (аноним → безликий кружок), как itemFrom/itemUnsaved в tweb. */}
+      {/* Витрина подарков — модули САМОГО tweb, портированные дословно
+          (`components/stargifts/stargiftsGrid.module.scss` и
+          `profileList.module.scss`): в оригинале подарки тоже сделаны
+          CSS-модулями, а не глобальными классами, так что это та же форма.
+          `gridItem` — плитка, `itemPrice` — цена в звёздах, `itemFrom` —
+          мини-аватар дарителя (аноним → `itemFromAnonymous`), `itemLock` —
+          метка скрытого, `empty*` — пустое состояние из profileList. */}
       {tab === 'Gifts' && gifts && (
         gifts.length === 0 ? (
-          <div className={s.giftsEmpty}>
-            <span className={s.giftsEmptyEmoji}>🎁</span>
-            <Text size={15} color="var(--secondary-text-color)">{t('No gifts yet')}</Text>
+          <div className={profileList.empty}>
+            <div className={profileList.emptyTitle}>{t('No gifts yet')}</div>
             {onSendGift && (
-              <button type="button" className={s.giftsEmptyBtn} onClick={onSendGift}>
+              <button type="button" className="btn-primary btn-color-primary btn-control" onClick={onSendGift}>
                 {t('Send a Gift')}
               </button>
             )}
           </div>
         ) : (
-          <div className={s.giftsProfileGrid}>
+          <div className={classNames(giftsGrid.grid, giftsGrid.viewProfile)}>
             {gifts.map((g) => {
               const anon = g.anonymous || (!g.fromName && g.fromId == null)
               return (
-                <div
-                  key={g.id}
-                  className={classNames(s.giftTile, g.hidden ? s.giftTileHidden : '')}
-                  onClick={() => onOpenGift?.(g)}
-                >
-                  {g.hidden && <TgIcon name="hide" size={16} className={s.giftTileHiddenIcon} />}
-                  {g.gift.total != null && <span className={s.giftTileBadge}>{t('Limited')}</span>}
-                  <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
-                  <span className={s.giftTilePrice}>
+                <div key={g.id} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
+                  {g.hidden && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
+                  {g.gift.total != null && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                  <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
+                  <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
                     {g.gift.priceStars}
                   </span>
-                  <div className={s.giftTileFrom}>
+                  <div className={giftsGrid.itemFrom}>
                     {anon ? (
-                      <span className={s.giftTileAnon}>?</span>
+                      <span className={giftsGrid.itemFromAnonymous}>?</span>
                     ) : (
                       <UserAvatar id={g.fromId ?? undefined} name={g.fromName} size={18} />
                     )}
@@ -355,93 +428,153 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
       {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
 
-      {/* tweb-классы `grid-item` (ячейка грида — appSearchSuper.ts:878) и
-          `video-time` (плашку длительности в tweb строит wrapVideo) — контекст
-          hideFloatings вьювера (mediaViewer/base.ts FLOATING_CONTEXTS): плашка
-          гаснет на полёте мувера. Визуал остаётся на классах модуля (стили tweb
-          `.video-time` скоуплены под .bubble и сюда не дотягиваются). */}
+      {/* Сетка медиа 1:1 с оригиналом (дамп 07-right-sidebar):
+          `.search-super-content-media > .grid > .grid-item.search-super-item.media-container`,
+          превью — `.grid-item-media`. `video-time` — плашка длительности
+          (её же вьювер гасит на полёте мувера, FLOATING_CONTEXTS). */}
       {tab === 'Media' && msgs != null && msgs.length > 0 && (
-        <div className={s.mediaGrid}>
+        <div className="search-super-content-container search-super-content-media">
+        <div className="grid">
           {msgs.map((m, i) => (
-            <div key={m.id} className={`grid-item ${s.mediaTile}`} onClick={(e) => openMedia(i, e)}>
+            <div key={m.id} className="grid-item search-super-item media-container" data-mid={m.id} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && (
-                <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
+                <MediaGridThumb className="grid-item-media" mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
               )}
-              {m.type === 'video' && <span className={`video-time ${s.tileDuration}`}>{fmtDur(m.mediaDuration)}</span>}
+              {m.type === 'video' && <span className="video-time">{fmtDur(m.mediaDuration)}</span>}
             </div>
           ))}
+        </div>
         </div>
       )}
 
       {tab === 'Files' && msgs != null && msgs.length > 0 && (
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow}>
-              <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
-                {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Document')}</Text>
-                <Text size={13.5} color="var(--secondary-text-color)">{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</Text>
+        <div className="search-super-content-container search-super-content-files">
+        <div className="sidebar-left-section-container">
+          <div className="sidebar-left-section no-delimiter">
+            <div className="sidebar-left-section-content">
+        {/* Строка файла — вендорный `.document` (порт tweb `wrapDocument`,
+            стили `_document.scss` + доводка `.search-super-content-files`):
+            `.document-container > .document-wrapper > .document.ext-{ext}`
+            с `.document-ico > .document-ico-text`, `.document-name`,
+            `.document-size` (дамп 03-document). Цвет квадрата даёт
+            `--background-color`, как у оригинала. */}
+        {msgs.map((m) => {
+          const ext = extOf(m.mediaName)
+          return (
+            <div key={m.id} className="document-container">
+              <div className="document-wrapper">
+                <div
+                  className={classNames('document', ext ? `ext-${ext}` : '')}
+                  style={{ ['--background-color' as string]: EXT_COLORS[ext] ?? 'var(--primary-color)' }}
+                >
+                  <div className="document-ico">
+                    <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
+                  </div>
+                  <div className="document-name">{m.mediaName || t('Document')}</div>
+                  <div className="document-size">
+                    <span>{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+          )
+        })}
+            </div>
+          </div>
+        </div>
         </div>
       )}
 
       {tab === 'Links' && msgs != null && msgs.length > 0 && (
-        <div className={s.mediaList}>
-          {msgs.map((m) => {
-            const url = firstUrl(m.text)
-            return (
-              <div key={m.id} className={s.mediaRow} onClick={() => window.open(url, '_blank', 'noopener')} style={{ cursor: 'pointer' }}>
-                <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
-                  {hostOf(url).charAt(0).toUpperCase()}
-                </div>
-                <div className={s.grow}>
-                  <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{hostOf(url)}</Text>
-                  <Text noWrap size={13.5} color="var(--link-color)">{url}</Text>
-                </div>
-              </div>
-            )
-          })}
+        <div className="search-super-content-container search-super-content-links">
+        <div className="sidebar-left-section-container">
+          <div className="sidebar-left-section no-delimiter">
+            <div className="sidebar-left-section-content">
+        {/* Строка ссылки — `.search-super-item` с абсолютной `.row-media`
+            слева (`_searchSuper.scss` → `.search-super-content-links`):
+            превью-квадрат, заголовок хоста и сам url. */}
+        {msgs.map((m) => {
+          const url = firstUrl(m.text)
+          return (
+            <div key={m.id} className="search-super-item rp" onClick={() => window.open(url, '_blank', 'noopener')}>
+              <div className="row-media">{hostOf(url).charAt(0).toUpperCase()}</div>
+              <div className="row-title">{hostOf(url)}</div>
+              <div className="row-subtitle">{url}</div>
+            </div>
+          )
+        })}
+            </div>
+          </div>
+        </div>
         </div>
       )}
 
       {tab === 'Music' && msgs != null && msgs.length > 0 && (
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.mediaName || t('Audio'))} style={{ cursor: 'pointer' }}>
-              <div className={s.rowPlay}>
-                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Audio')}</Text>
-                <Text noWrap size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+        <div className="search-super-content-container search-super-content-music">
+        <div className="sidebar-left-section-container">
+          <div className="sidebar-left-section no-delimiter">
+            <div className="sidebar-left-section-content">
+        {/* Строка аудио — вендорный `.audio` (порт tweb `wrapAudio`, стили
+            `_audio.scss` + `.search-super-content-music`): `.document-container
+            > .document-wrapper > .audio` с `.audio-toggle.audio-ico`,
+            `.audio-details > .audio-title + .audio-subtitle` (дамп 03-reply-audio).
+            Кнопка play/pause — наш глиф внутри штатного `.audio-toggle`. */}
+        {msgs.map((m) => (
+          <div key={m.id} className="document-container">
+            <div className="document-wrapper">
+              <div className="audio" onClick={() => playRow(m, m.mediaName || t('Audio'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+                </div>
+                <div className="audio-details">
+                  <div className="audio-title">{m.mediaName || t('Audio')}</div>
+                  <div className="audio-subtitle">
+                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+          </div>
+        ))}
+            </div>
+          </div>
+        </div>
         </div>
       )}
 
       {tab === 'Voice' && msgs != null && msgs.length > 0 && (
-        <div className={s.mediaList}>
-          {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))} style={{ cursor: 'pointer' }}>
-              <div className={s.rowPlay}>
-                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</Text>
-                <Text size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+        <div className="search-super-content-container search-super-content-voice">
+        <div className="sidebar-left-section-container">
+          <div className="sidebar-left-section no-delimiter">
+            <div className="sidebar-left-section-content">
+        {msgs.map((m) => (
+          <div key={m.id} className="document-container">
+            <div className="document-wrapper">
+              <div className="audio" onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+                </div>
+                <div className="audio-details">
+                  <div className="audio-title">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-subtitle">
+                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+          </div>
+        ))}
+            </div>
+          </div>
+        </div>
         </div>
       )}
 
       {/* sentinel infinite scroll медиа-табов: виден → догрузка следующей страницы */}
-      {filter && msgs != null && hasMore && <div ref={sentinelRef} className={s.moreSentinel} />}
+      {/* sentinel догрузки — пустой маркер для IntersectionObserver; в tweb на
+          этом месте `div.preloader` (дамп 07-right-sidebar), но спиннера у нас
+          нет: страница подгружается молча, как и раньше. */}
+      {filter && msgs != null && hasMore && <div ref={sentinelRef} />}
       </TabSlide>
     </>
   )
@@ -507,14 +640,14 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   // идентичности заставила бы React переприсваивать его на каждом рендере, то
   // есть на каждом рендере пересобирать окно видимости.
   //
-  // Хост — скроллер ПАНЕЛИ ПРОФИЛЯ (`UserInfoPanel.module.scss` `.body`,
-  // `UserInfoPanel.tsx` — `<div ref={bodyRef} className={s.body} …>`), а не
+  // Хост — скроллер ПАНЕЛИ ПРОФИЛЯ (`.scrollable-y` панели, tweb
+  // `_sidebar.scss`/`_scrollable.scss` — у панели больше нет своего модуля), а не
   // родитель `ul` (у списка чатов и архива `ul` лежит прямо в скроллере, здесь —
   // в карточке внутри вкладки) и не окно. Так же и в оригинале: `SortedDialogList`
   // «Избранного» получает `scrollable` всей панели.
   const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
   const setListEl = useCallback((ul: HTMLUListElement | null) => {
-    setScrollHost(ul?.closest<HTMLElement>('.' + s.body) ?? null)
+    setScrollHost(ul?.closest<HTMLElement>('.scrollable-y') ?? null)
   }, [])
 
   // Обёртки строк (`{id, value}`) обязаны переживать рендеры родителя — контракт
@@ -546,7 +679,7 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   return (
     <DeferredSortedVirtualList<SavedDialog>
       listRef={setListEl}
-      className={s.savedVirtualList}
+      className="chatlist"
       scrollableHost={scrollHost}
       items={items}
       totalCount={items.length}
@@ -575,30 +708,34 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const title = isSelf ? t('My Notes') : dialog.title
 
   return (
+    // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
+    // участников (дамп 15-right-11): время последнего сообщения уезжает в
+    // штатный правый слот заголовка, превью — в `.row-subtitle`.
     <div
       ref={itemRef}
-      className={classNames(s.memberRow, s.savedRow)}
+      className={classNames(
+        'row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger',
+        isSelf ? '' : 'rp',
+      )}
+      data-peer-id={dialog.peerId}
       onClick={() => {
         if (isSelf) return
         if (dialog.kind === 'user') onOpenPeer({ id: dialog.peerId, displayName: dialog.title, avatarUrl: dialog.photoUrl })
         else onOpenPeer({ id: 0, displayName: dialog.title, chatId: dialog.peerId })
       }}
-      style={isSelf ? { cursor: 'default' } : undefined}
     >
-      {isSelf ? (
-        <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" />
-      ) : (
-        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} />
-      )}
-      <div className={s.grow}>
-        <div className={s.memberTitleRow}>
-          <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
-          <span className={s.roleLabel}>{fmtWhen(dialog.last.at)}</span>
-        </div>
-        <Text noWrap size={14} color="var(--secondary-text-color)">
-          {dialog.last.text || mediaLabel(dialog.last.type)}
-        </Text>
+      <div className="row-row row-title-row dialog-title">
+        <div className="row-title">{title}</div>
+        <div className="row-title row-title-right row-title-right-secondary">{fmtWhen(dialog.last.at)}</div>
       </div>
+      <div className="row-row row-subtitle-row dialog-subtitle">
+        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type)}</div>
+      </div>
+      {isSelf ? (
+        <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />
+      ) : (
+        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} className="dialog-avatar row-media row-media-abitbigger" />
+      )}
     </div>
   )
 }

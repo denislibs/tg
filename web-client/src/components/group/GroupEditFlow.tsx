@@ -28,7 +28,6 @@ import { PermissionsScreen } from './screens/PermissionsScreen'
 import { AdminsScreen } from './screens/AdminScreens'
 import { MembersScreen } from './screens/MembersScreen'
 import { RemovedUsersScreen, RestrictedUsersScreen } from './screens/MemberScreens'
-import s from './GroupEditFlow.module.scss'
 
 type Sub =
   | null
@@ -118,29 +117,43 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       }
     >
       {/* аватар + имя + описание (tweb editPeer) */}
-      <Section footer={isChannel ? 'You can provide an optional description for your channel.' : 'You can provide an optional description for your group.'}>
-        <div className={s.infoCard}>
-          <div className={s.avatarWrap} onClick={() => fileRef.current?.click()}>
-            <Avatar size="profile" background={gradientFor(chatId)} src={avatarSrc} text={chat.avatarText} />
-            <div className={s.avatarOverlay}>
-              <TgIcon name="cameraadd" size={36} />
+      {/* Шапка редактирования 1:1 с дампом 15-right-12: кликабельный
+          `.avatar-edit` с иконкой-камерой поверх аватара, ниже — секция
+          `no-delimiter` с `.input-wrapper` (имя + описание) и подписью
+          `.sidebar-left-section-caption`. */}
+      {/* `.avatar-edit` центрируется сам — `.page-chats .avatar-edit
+          { margin: 1rem auto 2rem }` (styles/tweb/pages/_chats.scss:40-45),
+          своей обёртки в оригинале нет. */}
+      <div className="avatar-edit" onClick={() => fileRef.current?.click()}>
+          <Avatar size="profile" background={gradientFor(chatId)} src={avatarSrc} text={chat.avatarText} />
+          <span className="tgico avatar-edit-icon">
+            <TgIcon name="cameraadd" size={36} />
+          </span>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) setCropFile(f)
+              e.target.value = ''
+            }}
+          />
+      </div>
+      <div className="sidebar-left-section-container">
+        <div className="sidebar-left-section no-delimiter">
+          <div className="sidebar-left-section-content">
+            <div className="input-wrapper">
+              <Input label={t(isChannel ? 'Channel name' : 'Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} />
+              <Input label={t('Description')} value={about} onChange={(v) => setDraft({ title, about: v })} />
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) setCropFile(f)
-                e.target.value = ''
-              }}
-            />
           </div>
-          <Input label={t(isChannel ? 'Channel name' : 'Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} wrapClassName={s.field} />
-          <Input label={t('Description')} value={about} onChange={(v) => setDraft({ title, about: v })} wrapClassName={s.field} />
+          <div className="sidebar-left-section-content sidebar-left-section-caption">
+            {t(isChannel ? 'You can provide an optional description for your channel.' : 'You can provide an optional description for your group.')}
+          </div>
         </div>
-      </Section>
+      </div>
 
       {canChangeInfo && (
         <Section>

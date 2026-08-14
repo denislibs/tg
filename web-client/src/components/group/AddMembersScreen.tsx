@@ -16,7 +16,6 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../../stores/chatsStore'
 import { lastSeenLabel } from '../../core/presence'
-import s from './GroupEditFlow.module.scss'
 
 export default function AddMembersScreen({
   chatId,
@@ -110,9 +109,9 @@ export default function AddMembersScreen({
       />
 
       {selected.length > 0 && (
-        <div className={s.fab} onClick={() => void confirm()}>
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => void confirm()}>
           {saving ? <Spinner size={24} /> : <TgIcon name="check" />}
-        </div>
+        </button>
       )}
     </SettingsScreen>
   )

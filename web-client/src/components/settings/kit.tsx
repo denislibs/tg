@@ -1,6 +1,4 @@
 import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import IconButton from '../../shared/ui/IconButton'
-import Text from '../../shared/ui/Text'
 import SidebarSection from '../../shared/ui/SidebarSection'
 import Checkbox from '../../shared/ui/Checkbox'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
@@ -126,21 +124,25 @@ export function SettingsScreen({
       data-animation="navigation"
       style={{ zIndex }}
     >
-      {/* класс `active` вешает не React, а слайдер — поэтому его нет в className */}
-      <div ref={ownRef} className={classNames('tabs-tab', s.tab)}>
-        <div className={s.header}>
-          <IconButton onClick={onBack} color="var(--secondary-text-color)">
+      {/* Вкладка слайдера — вендорный каркас tweb (дампы 15-right-12/16):
+          `div.tabs-tab.sidebar-slider-item.scrollable-y-bordered` >
+          `div.sidebar-header` (кнопка `sidebar-close-button` + `__title`) +
+          `div.sidebar-content > div.scrollable.scrollable-y`.
+          Класс `active` вешает не React, а слайдер — его здесь нет. */}
+      <div ref={ownRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
+        <div className="sidebar-header">
+          <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
             <TgIcon name="back" />
-          </IconButton>
-          <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
-            {t(title)}
-          </Text>
+          </button>
+          <div className="sidebar-header__title">{t(title)}</div>
           {headerRight}
         </div>
-        <div className={s.body}>{children}</div>
+        <div className="sidebar-content">
+          <div className="scrollable scrollable-y">{children}</div>
+        </div>
       </div>
       {shownSub != null && (
-        <div ref={subRef} className={classNames('tabs-tab', s.tab)}>
+        <div ref={subRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
           <InSliderContext.Provider value>{shownSub}</InSliderContext.Provider>
         </div>
       )}
@@ -200,16 +202,19 @@ export function Section({
   children: ReactNode
 }) {
   const t = useT()
+  // 1:1 с tweb `SettingSection` (дамп 15-right-12): и заголовок, и подпись
+  // живут ВНУТРИ `.sidebar-left-section` — заголовок как
+  // `.sidebar-left-section-name`, подпись как второй
+  // `.sidebar-left-section-content.sidebar-left-section-caption`. Своей обёртки
+  // у секции нет: расстояние между карточками даёт сам
+  // `.sidebar-left-section-container` (`_section.scss`).
   return (
-    <div className={s.section}>
-      {/* Заголовок — ВНУТРИ карточки (tweb .sidebar-left-section-name) */}
-      <SidebarSection noMargin title={caption ? t(caption) : undefined}>{children}</SidebarSection>
-      {footer && (
-        <Text size={13.5} color="var(--secondary-text-color)" className={s.footer}>
-          {t(footer)}
-        </Text>
-      )}
-    </div>
+    <SidebarSection
+      title={caption ? t(caption) : undefined}
+      caption={footer ? t(footer) : undefined}
+    >
+      {children}
+    </SidebarSection>
   )
 }
 
@@ -225,15 +230,20 @@ export function EntryRow({
   sub?: string
   onRemove?: () => void
 }) {
+  // Та же `.row`, что и всюду: медиа-слот слева (`row-media` — аватар/иконка,
+  // `row.ts:216-224`), заголовок с подписью и кнопка справа в `row-right`
+  // (`row.ts:280-283`). Своей вёрстки у списочной строки в tweb нет.
   return (
-    <div className={s.entry}>
-      {left}
-      <div className={s.entryBody}>
-        <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
-        {sub && <Text noWrap size={13.5} color="var(--secondary-text-color)">{sub}</Text>}
-      </div>
+    <div className={classNames('row', sub ? '' : 'no-subtitle', 'row-with-padding')}>
+      {left != null && <div className="row-media">{left}</div>}
+      <div className="row-title">{title}</div>
+      {sub && <div className="row-subtitle">{sub}</div>}
       {onRemove && (
-        <TgIcon name="close" size={20} color="var(--secondary-text-color)" onClick={onRemove} style={{ cursor: 'pointer', flexShrink: 0 }} />
+        <div className="row-right">
+          <button type="button" className="btn-icon rp" onClick={onRemove} aria-label="✕">
+            <TgIcon name="close" size={20} />
+          </button>
+        </div>
       )}
     </div>
   )
@@ -256,6 +266,8 @@ export function EntryRow({
  *           + div.row-title.row-title-right[.row-title-right-secondary]
  *     + div.row-subtitle                   (при наличии подписи)
  *     + span.tgico.row-icon                (иконка — АБСОЛЮТНАЯ, слева)
+ *     + div.row-right                      (`rightContent`, `row.ts:280-283`:
+ *                                           контейнер получает ещё `row-grid`)
  *
  * Соответствие пропов оригиналу:
  *   `value`    → `titleRightSecondary` (`row.ts:192-194`, дамп 08-general-settings);
@@ -295,6 +307,7 @@ export function Row({
   selected,
   translate = true,
   multiline,
+  right,
 }: {
   icon?: ReactNode
   label: string
@@ -314,6 +327,8 @@ export function Row({
   translate?: boolean
   /** многострочный заголовок (tweb Row.Title class="pre-wrap" — Bio с переносами) */
   multiline?: boolean
+  /** правый слот строки (tweb `rightContent` → `.row-right` + `.row-grid`) */
+  right?: ReactNode
 }) {
   const t = useT()
   const { onPointerDown, ripple } = useRipple()
@@ -353,6 +368,7 @@ export function Row({
         onClick ? 'row-clickable' : '',
         onClick ? 'hover-effect' : '',
         onClick ? 'rp' : '',
+        right ? 'row-grid' : '', // tweb row.ts:282 — правый слот включает grid-раскладку
         danger ? 'danger' : accent ? 'primary' : '',
       )}
       onClick={onClick}
@@ -387,6 +403,7 @@ export function Row({
       )}
       {sublabel && <div className="row-subtitle">{sublabel}</div>}
       {iconNode}
+      {right && <div className="row-right">{right}</div>}
     </Tag>
   )
 }
