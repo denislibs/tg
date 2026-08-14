@@ -28,10 +28,23 @@ describe('ChannelsManager.post', () => {
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest })
     const m = await mgr.post(7, 'hey', 'c1')
-    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', client_msg_id: 'c1' })
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1' })
     expect(m.chatId).toBe(7)
     expect(m.seq).toBe(6)
     expect(m.text).toBe('m6')
+  })
+
+  // Разметка поста (bold/text_link/mention/hashtag) обязана уехать на бэк: без
+  // неё пост канала приходит подписчикам голым текстом.
+  it('передаёт entities поста в теле запроса', async () => {
+    const post = vi.fn(async () => raw(6))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    const entities = [{ type: 'bold' as const, offset: 0, length: 6 }]
+
+    await mgr.post(7, 'Голова: Мария', 'c1', entities)
+
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'Голова: Мария', entities, client_msg_id: 'c1' })
   })
 })
 

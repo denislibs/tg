@@ -63,11 +63,12 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Text        string `json:"text"`
-		ClientMsgID string `json:"client_msg_id"`
+		Text        string                 `json:"text"`
+		Entities    []domain.MessageEntity `json:"entities"`
+		ClientMsgID string                 `json:"client_msg_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.ClientMsgID)
+	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.Entities, b.ClientMsgID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
