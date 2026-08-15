@@ -205,6 +205,50 @@ func TestSeedReactionsSkipsFullyLoadedEntry(t *testing.T) {
 	}
 }
 
+// Ре-ревью R2: у полностью залитой реакции (все роли на месте, заливать
+// нечего) Position/Title обязаны догнать reactions.json — Telegram меняет
+// порядок пикера, и без этой синхронизации реакция навсегда застревала бы на
+// позиции первой заливки. Прямой аналог rank у cmd/seed-stickers.
+func TestSeedReactionsSyncsMetadataOfFullyLoadedEntry(t *testing.T) {
+	dir := t.TempDir()
+	entries := []reactionEntry{
+		{Reaction: "🔥", Title: "Fire", Slug: "1f525", Files: map[string]string{"static": "static.webp"}},
+		// ❤ теперь на позиции 1 (была 0) и с новым заголовком — как будто
+		// Telegram переставил пикер и переименовал реакцию.
+		{Reaction: "❤", Title: "Red Heart NEW", Slug: "2764", Files: map[string]string{"static": "static.webp"}},
+	}
+	writeReactionsDir(t, dir, entries)
+	repo := &fakeReactionsRepo{existing: []domain.AvailableReaction{
+		{Emoji: "🔥", Title: "Fire", Position: 1, StaticMediaID: 10},
+		{Emoji: "❤", Title: "Red Heart", Position: 0, StaticMediaID: 42},
+	}}
+	var paths []string
+
+	if err := seedReactions(context.Background(), repo, recordingUpload(&paths), dir, entries); err != nil {
+		t.Fatalf("seedReactions: %v", err)
+	}
+
+	if len(paths) != 0 {
+		t.Fatalf("заливок = %d, ожидалось 0 — все роли уже были залиты, менялись только метаданные: %v", len(paths), paths)
+	}
+	if len(repo.upserted) != 2 {
+		t.Fatalf("upsert-ов = %d, ожидалось 2 — у обеих реакций разошлись метаданные", len(repo.upserted))
+	}
+
+	byEmoji := map[string]domain.AvailableReaction{}
+	for _, rc := range repo.upserted {
+		byEmoji[rc.Emoji] = rc
+	}
+	fire := byEmoji["🔥"]
+	if fire.Position != 0 || fire.StaticMediaID != 10 {
+		t.Errorf("🔥: %+v — позиция должна обновиться на 0, static остаться прежним (10)", fire)
+	}
+	heart := byEmoji["❤"]
+	if heart.Position != 1 || heart.Title != "Red Heart NEW" || heart.StaticMediaID != 42 {
+		t.Errorf("❤: %+v — позиция 1, новый заголовок, static прежний (42), без перезаливки", heart)
+	}
+}
+
 // Реакция, у которой в БД есть строка, но без static_media_id (прерванный
 // прогон до неё не дошёл), не считается засеянной — досеивается заново, а не
 // пропускается навсегда.

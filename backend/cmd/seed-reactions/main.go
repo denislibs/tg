@@ -228,11 +228,11 @@ func roleMediaID(rc domain.AvailableReaction, role string) int64 {
 //     не равен 0 → пропуск), а недостающие — те, что появились в новой
 //     выгрузке API, или которые не успели залиться раньше — доливаются;
 //   - реакция, у которой все нужные по индексу роли уже на месте, вообще не
-//     вызывает upload/Upsert — строгий no-op на повторном прогоне (в том
-//     числе Title/Position/Premium/Inactive не переписываются лишний раз;
-//     если Telegram когда-нибудь переставит готовую реакцию в пикере, это
-//     не подхватится без доливки хотя бы одной роли — вне области этого
-//     фикса, ревью просило только границу по ролям).
+//     заливает файлы — но если Position/Title/Premium/Inactive разошлись с
+//     тем, что уже в БД (Telegram переставил реакцию в пикере, переименовал
+//     и т.п.), метаданные всё равно обновляются отдельным Upsert без единой
+//     заливки — ровно как rank у cmd/seed-stickers (там же тот же урок:
+//     набор без rank/обложки после прерванного прогона иначе не долечивался).
 func seedReactions(ctx context.Context, repo reactionsRepo, upload uploadFunc, dir string, list []reactionEntry) error {
 	existing, err := repo.List(ctx)
 	if err != nil {
@@ -245,6 +245,8 @@ func seedReactions(ctx context.Context, repo reactionsRepo, upload uploadFunc, d
 
 	for pos, entry := range list {
 		rc, hadRow := byEmoji[entry.Reaction]
+		metaChanged := hadRow && (rc.Title != entry.Title || rc.Position != pos ||
+			rc.Premium != entry.Premium || rc.Inactive != entry.Inactive)
 		rc.Emoji = entry.Reaction
 		rc.Title = entry.Title
 		rc.Position = pos
@@ -288,6 +290,16 @@ func seedReactions(ctx context.Context, repo reactionsRepo, upload uploadFunc, d
 				return err
 			}
 			log.Printf("+ %s %s: 0 файлов (роли отсутствуют в выгрузке)", entry.Reaction, entry.Title)
+		case metaChanged:
+			// Все роли уже на месте — заливать нечего, но Position (порядок
+			// пикера) или Title/Premium/Inactive разошлись с тем, что приехало
+			// из Telegram. Без этой ветки реакция навсегда застревала бы на
+			// позиции первой заливки (см. ревью: тот же баг уже чинили у
+			// cmd/seed-stickers для rank).
+			if err := repo.Upsert(ctx, rc); err != nil {
+				return err
+			}
+			log.Printf("~ %s %s: обновлены метаданные (позиция/заголовок)", entry.Reaction, entry.Title)
 		default:
 			log.Printf("= %s уже полностью залита", entry.Reaction)
 		}
