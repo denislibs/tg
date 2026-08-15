@@ -47,4 +47,19 @@ describe('ReactionAroundEffect', () => {
     expect(screen.queryByTestId('media')).toBeNull()
     expect(onDone).toHaveBeenCalledOnce()
   })
+
+  // Ревью R6, Important 1: размонтирование раньше конца анимации (переключили
+  // чат, лента реконсилировалась, реакция откатилась по сетевой ошибке) не
+  // должно оставлять пару msgId:emoji «зависшей» у вызывающей стороны —
+  // StickerMedia.onComplete в этом случае никогда не позовётся сам (его плеер
+  // уничтожается ДО завершения), поэтому cleanup обязан позвать onDone за него.
+  it('размонтирование ДО завершения анимации всё равно зовёт onDone', () => {
+    const onDone = vi.fn()
+    const { unmount } = render(<ReactionAroundEffect emoji="❤" onDone={onDone} />)
+    expect(onDone).not.toHaveBeenCalled()
+
+    unmount()
+
+    expect(onDone).toHaveBeenCalledOnce()
+  })
 })
