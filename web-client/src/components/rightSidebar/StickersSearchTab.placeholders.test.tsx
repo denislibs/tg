@@ -5,8 +5,15 @@
 // прихода ответа — иначе строка «схлопывается» до ответа и список дёргается
 // по мере подгрузки. Тест держит это поведение: до резолва setBySlug ячейки
 // уже есть, после — та же численность, но уже с содержимым.
+//
+// Отдельный блок — клик по ячейке гасится ВСЕГДА, а не только когда контент
+// уже приехал (tweb attachClickEvent:166-172 — findUpClassName ловит клик по
+// .sticker-set-sticker независимо от dataset.docId и делает return, так и не
+// доходя до showStickersPopup). Иначе клик по ещё не наполненному (или
+// навсегда пустому — набор усох ниже count) слоту всплывает на строку и
+// открывает StickerSetModal вместо «ничего не происходит».
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
@@ -23,29 +30,34 @@ let slugSeq = 0
 const makeSet = (id: number, title: string, count: number) => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker' as const, count })
 const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '🦆', width: 512, height: 512, mime: 'application/json', thumb: '' })
 
-function makeManagers(setBySlug: ReturnType<typeof vi.fn>) {
+function makeManagers(over: Record<string, unknown> = {}) {
   const fns = {
     mySets: vi.fn().mockResolvedValue([]),
     featuredSets: vi.fn().mockResolvedValue([makeSet(1, 'Duck', 3)]),
     searchSets: vi.fn().mockResolvedValue([]),
-    setBySlug,
+    // по умолчанию — зависший запрос состава (эмулирует окно ожидания ответа)
+    setBySlug: vi.fn(() => new Promise(() => {})),
     install: vi.fn().mockResolvedValue(undefined),
     uninstall: vi.fn().mockResolvedValue(undefined),
+    ...over,
   }
   return { managers: { stickers: fns } as unknown as Managers, fns }
+}
+
+function renderTab(managers: Managers) {
+  return render(
+    <ManagersProvider managers={managers}>
+      <StickersSearchTab onClose={noop} />
+    </ManagersProvider>,
+  )
 }
 
 describe('StickersSearchTab — ячейки-заглушки строки набора', () => {
   afterEach(cleanup)
 
   it('до резолва setBySlug строка уже показывает min(5, count) пустых ячеек фиксированного размера', async () => {
-    // Промис состава набора держим нерезолвленным — эмулирует окно ожидания ответа.
-    const { managers, fns } = makeManagers(vi.fn(() => new Promise(() => {})))
-    render(
-      <ManagersProvider managers={managers}>
-        <StickersSearchTab onClose={noop} />
-      </ManagersProvider>,
-    )
+    const { managers, fns } = makeManagers()
+    renderTab(managers)
     await waitFor(() => expect(fns.featuredSets).toHaveBeenCalled())
     await waitFor(() => {
       const cells = document.querySelectorAll('[data-testid="sticker-set-cell"]')
@@ -57,16 +69,62 @@ describe('StickersSearchTab — ячейки-заглушки строки на�
 
   it('после резолва setBySlug — та же численность ячеек, уже с содержимым', async () => {
     const stickers = [1, 2, 3].map(makeSticker)
-    const { managers } = makeManagers(vi.fn().mockResolvedValue({ set: makeSet(1, 'Duck', 3), stickers }))
-    render(
-      <ManagersProvider managers={managers}>
-        <StickersSearchTab onClose={noop} />
-      </ManagersProvider>,
-    )
+    const { managers } = makeManagers({ setBySlug: vi.fn().mockResolvedValue({ set: makeSet(1, 'Duck', 3), stickers }) })
+    renderTab(managers)
     await waitFor(() => {
       const cells = document.querySelectorAll('[data-testid="sticker-set-cell"]')
       expect(cells.length).toBe(3)
       cells.forEach((cell) => expect(cell.querySelector('[data-testid="sticker-media"]')).not.toBeNull())
     })
+  })
+
+  it('клик по ещё не наполненной ячейке (setBySlug завис) НЕ открывает модалку набора и не шлёт стикер', async () => {
+    const onPickSticker = vi.fn()
+    const { managers, fns } = makeManagers()
+    render(
+      <ManagersProvider managers={managers}>
+        <StickersSearchTab onClose={noop} onPickSticker={onPickSticker} />
+      </ManagersProvider>,
+    )
+    await waitFor(() => expect(fns.featuredSets).toHaveBeenCalled())
+    let cell!: Element
+    await waitFor(() => {
+      const cells = document.querySelectorAll('[data-testid="sticker-set-cell"]')
+      expect(cells.length).toBe(3)
+      cell = cells[0]
+    })
+    // ячейка ещё пуста — состав так и не приехал
+    expect(cell.querySelector('[data-testid="sticker-media"]')).toBeNull()
+    fireEvent.click(cell)
+    expect(document.querySelector('.popup-stickers')).toBeNull()
+    expect(onPickSticker).not.toHaveBeenCalled()
+  })
+
+  it('count=0 — ячеек нет, ошибок нет', async () => {
+    const { managers, fns } = makeManagers({ featuredSets: vi.fn().mockResolvedValue([makeSet(1, 'Empty', 0)]) })
+    renderTab(managers)
+    await waitFor(() => expect(fns.featuredSets).toHaveBeenCalled())
+    await waitFor(() => expect(document.querySelector('.sticker-set')).not.toBeNull())
+    expect(document.querySelectorAll('[data-testid="sticker-set-cell"]').length).toBe(0)
+  })
+
+  it('набор усох (count больше фактически приехавших стикеров) — лишние ячейки остаются пустыми, клик по ним безопасен', async () => {
+    const shrunkSet = makeSet(1, 'Shrunk', 5)
+    const stickers = [1, 2].map(makeSticker) // приехало меньше, чем count
+    const { managers } = makeManagers({
+      featuredSets: vi.fn().mockResolvedValue([shrunkSet]),
+      setBySlug: vi.fn().mockResolvedValue({ set: shrunkSet, stickers }),
+    })
+    renderTab(managers)
+    await waitFor(() => {
+      const cells = document.querySelectorAll('[data-testid="sticker-set-cell"]')
+      expect(cells.length).toBe(5) // min(5, count=5)
+      const filled = Array.from(cells).filter((c) => c.querySelector('[data-testid="sticker-media"]'))
+      expect(filled.length).toBe(2) // ровно столько, сколько реально приехало
+    })
+    const cells = document.querySelectorAll('[data-testid="sticker-set-cell"]')
+    // последняя ячейка — навсегда пустой слот (набор усох ниже count)
+    fireEvent.click(cells[4])
+    expect(document.querySelector('.popup-stickers')).toBeNull()
   })
 })

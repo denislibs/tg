@@ -115,13 +115,16 @@ function StickerSetRow({
               data-testid="sticker-set-cell"
               className="sticker-set-sticker media-sticker-wrapper"
               data-doc-id={st?.mediaId}
-              onClick={st
-                ? (e) => {
-                    // превью шлёт стикер (ранний return в tweb attachClickEvent) — до onOpen не доходит
-                    e.stopPropagation()
-                    onPickSticker?.(st)
-                  }
-                : undefined}
+              onClick={(e) => {
+                // Гасим клик ВСЕГДА, а не только когда контент уже приехал — tweb
+                // (findUpClassName(target, 'sticker-set-sticker') в attachClickEvent)
+                // ловит клик по ячейке независимо от dataset.docId и делает return,
+                // так и не доходя до onOpen; иначе клик по ещё не наполненному
+                // (или навсегда пустому — набор усох ниже count) слоту всплывает
+                // на строку и открывает StickerSetModal.
+                e.stopPropagation()
+                if (st) onPickSticker?.(st)
+              }}
             >
               {/* превью — play:true, loop:true (tweb wrapSticker в этом экране);
                   пока стикер для этого слота не приехал — ячейка пустая, но
