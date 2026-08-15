@@ -130,6 +130,61 @@ describe('StickersSearchTab — ленивость загрузки ФАЙЛОВ
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  // Ревью C2, Important: `visible` из useLazyVisibility гаснет, как только
+  // строка уходит из вьюпорта (useLazyVisibility.ts удаляет ключ на
+  // `!isIntersecting`) — гейтить МОНТИРОВАНИЕ StickerMedia сырым `visible`
+  // означало бы размонтировать её на каждом уходе строки из вида: убивался бы
+  // lottie-плеер, из DOM пропадали бы canvas/SVG-силуэт/thumb, а при
+  // возврате — новый маунт и (не будь кэша StickerMedia по mediaId) новая
+  // загрузка. StickersSearchTab.tsx гейтит монтирование латчем `everVisible`
+  // (once true — навсегда), а не `visible` — эта строка ловит именно это:
+  // после однократного попадания во вьюпорт превью остаётся в DOM (тот же
+  // узел, не пересозданный) и уход/возврат строки не порождает повторный fetch.
+  it('переход «видима → ушла из вида» не размонтирует превью: узел StickerMedia не пересоздаётся, файл не грузится повторно', async () => {
+    const { managers, fns, prefix } = makeManagers(1, 1)
+    const { fetchMock } = stubControlledFetch()
+    currentVisible = new Set([`${prefix}1`])
+    const { rerender } = render(
+      <ManagersProvider managers={managers}>
+        <StickersSearchTab onClose={noop} />
+      </ManagersProvider>,
+    )
+
+    await waitFor(() => expect(fns.featuredSets).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const cell = document.querySelector('[data-sticker-set="1"] [data-testid="sticker-set-cell"]')!
+    // StickerMedia рендерит один div (её собственный boxRef) синхронно на
+    // маунте, независимо от того, догрузился ли файл, — устойчивый маркер
+    // «эта же React-нода жива», в отличие от содержимого файла (образ/canvas),
+    // которое зависит от decode()/lottie-мока и не переживает мутацию надёжно.
+    const mediaRoot = await waitFor(() => {
+      const el = cell.firstElementChild
+      expect(el).not.toBeNull()
+      return el!
+    })
+
+    // строка ушла из вьюпорта — однажды показанное превью не обязано исчезать
+    currentVisible = new Set()
+    rerender(
+      <ManagersProvider managers={managers}>
+        <StickersSearchTab onClose={noop} />
+      </ManagersProvider>,
+    )
+    expect(cell.firstElementChild).toBe(mediaRoot) // тот же узел — StickerMedia не размонтирована
+    expect(fetchMock).toHaveBeenCalledTimes(1) // и повторной загрузки на уход из вида не случилось
+
+    // строка вернулась во вьюпорт
+    currentVisible = new Set([`${prefix}1`])
+    rerender(
+      <ManagersProvider managers={managers}>
+        <StickersSearchTab onClose={noop} />
+      </ManagersProvider>,
+    )
+    expect(cell.firstElementChild).toBe(mediaRoot) // по-прежнему тот же узел — без цикла unmount/remount
+    expect(fetchMock).toHaveBeenCalledTimes(1) // и без повторного fetch при возврате
+  })
+
   // Ревью L3, Important 3 (перенесено с уровня setBySlug на уровень файла):
   // пин на то, что загрузка файла реально идёт через `queue.push`
   // (StickerMedia → loadStickerContent), а не напрямую — без очереди все 20
