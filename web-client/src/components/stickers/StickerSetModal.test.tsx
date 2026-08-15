@@ -3,6 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StickerSetModal from './StickerSetModal'
 import animationIntersector from '../animationIntersector'
 
+// Сетка попапа ленивая (tweb LazyLoadQueue): медиа монтируется только видимой
+// ячейке. happy-dom класс IntersectionObserver определяет, но записей никогда
+// не порождает — поэтому здесь стаб, который объявляет видимыми первые
+// `ioVisibleLimit` наблюдаемых ячеек.
+let ioVisibleLimit = Infinity
+let ioObserved = 0
+class TestIntersectionObserver {
+  constructor(private cb: IntersectionObserverCallback) {}
+  observe(el: Element) {
+    if (ioObserved++ >= ioVisibleLimit) return
+    this.cb([{ target: el, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', TestIntersectionObserver)
+
 const set = { id: 7, slug: 'utyaduck', title: 'Duck', kind: 'sticker' as const, count: 40 }
 const stickers = Array.from({ length: 40 }, (_, i) => ({
   id: i + 1, setId: 7, mediaId: 100 + i, emoji: '🦆', position: i,
@@ -37,6 +54,8 @@ describe('StickerSetModal', () => {
     installed = []
     install.mockClear()
     uninstall.mockClear()
+    ioVisibleLimit = Infinity
+    ioObserved = 0
   })
 
   it('показывает заголовок набора и кнопку с числом стикеров', async () => {
@@ -48,6 +67,29 @@ describe('StickerSetModal', () => {
   it('рисует все стикеры набора', async () => {
     render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
+  })
+
+  // Регрессия: сетка рендерила StickerMedia сразу всем стикерам набора, а он
+  // фетчит файл на маунте — открытие набора на 120 стикеров запускало 120
+  // параллельных загрузок и декодов. tweb на этом же попапе заводит
+  // LazyLoadQueue (popups/stickers.tsx:196) и отдаёт её каждому wrapSticker.
+  it('медиа грузят только видимые ячейки; сами ячейки сетки на месте все', async () => {
+    ioVisibleLimit = 3
+    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+
+    await waitFor(() => expect(document.querySelectorAll('.sticker-set-sticker')).toHaveLength(40))
+    expect(screen.getAllByTestId('sticker')).toHaveLength(3)
+  })
+
+  // Пока набор грузится, tweb кладёт в тело попапа putPreloader
+  // (popups/stickers.tsx:339-342) — у попапа уже есть свои заголовок и кнопка,
+  // и «скелет набора» дорисовывал бы фантомную вторую пару.
+  it('на время загрузки — прелоадер tweb в теле .is-loading, без заглушки набора', () => {
+    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    const body = document.querySelector('.popup-body')!
+    expect(body.classList.contains('is-loading')).toBe(true)
+    expect(body.querySelector(':scope > .preloader > svg.preloader-circular')).not.toBeNull()
+    expect(document.querySelector('[data-testid="sticker-set-skeleton"]')).toBeNull()
   })
 
   it('добавляет набор по клику на кнопку', async () => {

@@ -37,7 +37,7 @@
 // кнопок), которых в нашем `i18n/dict.*` нет — заводить их ради одной этой
 // модалки не стали (как `StoriesRow`'s aria-label — тоже литеральный русский
 // без ключа), но число и падеж — как в tweb, через ту же `stickerWord(count)`.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
 import { openPopup } from '../../stores/popupStore'
 import Popup from '../../shared/ui/Popup'
@@ -45,8 +45,9 @@ import Menu, { MenuItem } from '../../shared/ui/Menu'
 import IconButton from '../../shared/ui/IconButton'
 import TgIcon from '../TgIcon'
 import StickerMedia from '../StickerMedia'
-import StickerSetSkeleton from '../rightSidebar/StickerSetSkeleton'
+import Preloader from '../auth/Preloader'
 import animationIntersector from '../animationIntersector'
+import { useLazyVisibility } from '../useLazyVisibility'
 import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
@@ -66,6 +67,49 @@ const ANIMATION_GROUP = 'STICKERS-POPUP' as const
 // отслеживаем (mediaSizes.active в React-коде не порт, JS-ресайз стикера при
 // смене брейкпоинта — известное упрощение).
 const ITEM_SIZE = 80
+
+// Запас предзагрузки сетки: один ряд ячеек за краем тела попапа — то же
+// правило, что у кладки GIF (там это высота ряда).
+const PRELOAD_MARGIN = `${ITEM_SIZE}px 0px`
+
+/**
+ * Ячейка сетки. Медиа монтируется, ТОЛЬКО когда ячейка видима: `StickerMedia`
+ * фетчит файл на маунте, и без этого гейта открытие набора на 120 стикеров
+ * запускало 120 параллельных загрузок и декодов сразу (у emoji-наборов — до
+ * 200+). tweb на этом же попапе создаёт `new LazyLoadQueue()`
+ * (popups/stickers.tsx:196) и отдаёт её каждому `wrapSticker` (:240).
+ * Сама ячейка рендерится всегда — иначе поехала бы геометрия сетки и скролл.
+ */
+function StickerCell({ st, visible, register, onPick }: {
+  st: Sticker
+  visible: boolean
+  register: (key: string, el: HTMLElement | null) => void
+  onPick?: () => void
+}) {
+  // ref-колбэк стабилен: инлайновая стрелка меняла бы идентичность на каждый
+  // рендер, React отцеплял бы и прицеплял узел заново, а наблюдатель на каждое
+  // прицепление отчитывался бы снова.
+  const ref = useCallback((el: HTMLDivElement | null) => register(String(st.id), el), [register, st.id])
+  return (
+    <div
+      ref={ref}
+      className="sticker-set-sticker media-sticker-wrapper"
+      onClick={onPick}
+    >
+      {visible && (
+        <StickerMedia
+          mediaId={st.mediaId}
+          width={ITEM_SIZE}
+          height={ITEM_SIZE}
+          autoplay
+          loop
+          group={ANIMATION_GROUP}
+          thumb={st.thumb}
+        />
+      )}
+    </div>
+  )
+}
 
 /** Русские формы числительного (1 стикер / 2 стикера / 5 стикеров). */
 function stickerWord(n: number): string {
@@ -110,6 +154,10 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
   // отдельно наш busy на время toggle, как в useStickersSearch.toggle).
   const [busy, setBusy] = useState(false)
   const loaded = set !== null
+  // Ленивая загрузка ячеек по видимости — корень наблюдения — тело попапа
+  // (оно и есть скроллер карточки).
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const { visible, register } = useLazyVisibility(bodyRef, PRELOAD_MARGIN)
 
   // onClose/managers держим в ref: эффект загрузки не должен перезапускаться
   // из-за смены их ссылки между рендерами (onClose — обычный колбэк владельца;
@@ -207,6 +255,7 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
       onClose={onClose}
       onExitComplete={onExitComplete}
       bodyClassName={loaded ? undefined : 'is-loading'}
+      bodyRef={bodyRef}
       headerRight={
         loaded && (
           <>
@@ -262,26 +311,22 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
       }
     >
       {!loaded ? (
-        <StickerSetSkeleton count={1} />
+        // tweb popups/stickers.tsx:339-342 — под `.is-loading` в теле попапа
+        // лежит putPreloader, а не заглушка набора: у попапа уже есть свои
+        // заголовок и кнопка, и «скелетная» шапка набора дорисовывала бы
+        // фантомную вторую пару.
+        <Preloader />
       ) : (
         <div className="sticker-set">
           <div className={classNames('sticker-set-stickers', onPickSticker ? '' : 'is-read-only')}>
             {stickers.map((st) => (
-              <div
+              <StickerCell
                 key={st.id}
-                className="sticker-set-sticker media-sticker-wrapper"
-                onClick={onPickSticker && (() => { onPickSticker(st); onClose() })}
-              >
-                <StickerMedia
-                  mediaId={st.mediaId}
-                  width={ITEM_SIZE}
-                  height={ITEM_SIZE}
-                  autoplay
-                  loop
-                  group={ANIMATION_GROUP}
-                  thumb={st.thumb}
-                />
-              </div>
+                st={st}
+                visible={visible.has(String(st.id))}
+                register={register}
+                onPick={onPickSticker && (() => { onPickSticker(st); onClose() })}
+              />
             ))}
           </div>
         </div>

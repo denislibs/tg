@@ -16,7 +16,7 @@
 // можно в onExitComplete (он вызывается после окончания перехода).
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import classNames from '../../lib/classNames'
 import { pushEsc } from '../../../core/hotkeys'
 import IconButton from '../IconButton'
@@ -53,6 +53,8 @@ interface PopupProps {
   body?: boolean
   /** доп. класс(ы) на `.popup-body` — например `is-loading` (tweb popups/_stickers.scss) */
   bodyClassName?: string
+  /** ref на `.popup-body` — скроллер карточки; корень IntersectionObserver ленивых сеток */
+  bodyRef?: RefObject<HTMLDivElement | null>
   /** ширина карточки, по умолчанию 420 */
   width?: number
   children: ReactNode
@@ -79,7 +81,7 @@ export function PopupFooterButton({ label, onClick }: { label: string; onClick: 
 }
 
 export default function Popup({
-  open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, bodyClassName, width = 420, children,
+  open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, bodyClassName, bodyRef, width = 420, children,
 }: PopupProps) {
   const container = usePortalContainer()
   useNavLayer(open, onClose) // браузерный/аппаратный Back закрывает попап
@@ -155,7 +157,7 @@ export default function Popup({
           <div className="popup-title">{title}</div>
           {headerRight}
         </div>
-        {body ? <div className={classNames('popup-body', s.body, bodyClassName ?? '')}>{children}</div> : children}
+        {body ? <div ref={bodyRef} className={classNames('popup-body', s.body, bodyClassName ?? '')}>{children}</div> : children}
         {footer}
         {action && (
           <div className="popup-footer popup-footer-abitlarger">
