@@ -1125,6 +1125,105 @@ git commit -m "feat(stickers): набор по media id и открытие мо
 
 ---
 
+### Task 11: сид досидирует недостающие стикеры в существующий набор
+
+Найдена живой проверкой на стенде. `seedSet` идемпотентен по слагу: набор, который уже есть в БД, пропускается целиком. На стенде из-за этого в `animated_emoji` остались **6** самодельных эмодзи вместо приехавших **599** — большие эмодзи в чате не анимируются ни для чего, кроме шести. То же случится с любым набором, в который Telegram позже добавит стикеров.
+
+Ключ сопоставления — позиция стикера в наборе (индекс в `meta.json`): `media_id` при каждой заливке новый, а позиция стабильна.
+
+**Files:**
+- Modify: `backend/cmd/seed-stickers/main.go` (функция `seedSet`)
+- Modify: `backend/internal/adapter/repo/postgres/stickersrepo.go` (метод `StickerPositions`)
+- Modify: `backend/internal/usecase/stickers/ports.go`, `interactor.go` (проброс)
+- Test: `backend/cmd/seed-stickers/main_test.go`, `backend/internal/adapter/repo/postgres/stickersrepo_test.go`
+
+**Interfaces:**
+- Consumes: `SetBySlug`, `AddSticker`, `SetRank`, `SetCover` (Task 2, 3)
+- Produces: `StickersRepo.StickerPositions(ctx, setID int64) (map[int]struct{}, error)` — занятые позиции набора
+
+- [ ] **Step 1: Написать падающий тест репозитория**
+
+В `backend/internal/adapter/repo/postgres/stickersrepo_test.go` (хелперы — фактические из пакета):
+
+```go
+// StickerPositions отдаёт занятые позиции набора: по ним сид понимает, каких
+// стикеров в наборе ещё нет, и досидирует только их.
+func TestStickerPositions(t *testing.T) {
+	ctx := context.Background()
+	pool := newTestPool(t)
+	repo := NewStickersRepo(pool)
+
+	set, err := repo.CreateSet(ctx, domain.StickerSet{Slug: "positions", Title: "P", Kind: "sticker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pos := range []int{0, 1, 3} {
+		if _, err := repo.AddSticker(ctx, set.ID, insertTestMedia(t, pool), "🦆", pos); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := repo.StickerPositions(ctx, set.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("позиций %d, ожидалось 3", len(got))
+	}
+	if _, ok := got[2]; ok {
+		t.Error("позиция 2 не занята, а вернулась занятой")
+	}
+	if _, ok := got[3]; !ok {
+		t.Error("позиция 3 занята, но не вернулась")
+	}
+}
+```
+
+- [ ] **Step 2: Прогнать тест — убедиться, что падает**
+
+Run: `cd backend && go test ./internal/adapter/repo/postgres/ -run TestStickerPositions -v`
+Expected: FAIL — `repo.StickerPositions undefined`
+
+- [ ] **Step 3: Реализовать запрос**
+
+```sql
+SELECT position FROM stickers WHERE set_id = $1
+```
+
+Собрать в `map[int]struct{}`. Пробросить через `ports.go` и `interactor.go` тем же способом, что `SetRank`/`SetCover`.
+
+- [ ] **Step 4: Прогнать тест — должен пройти**
+
+Run: `cd backend && go test ./internal/adapter/repo/postgres/ -run TestStickerPositions -v`
+Expected: PASS
+
+- [ ] **Step 5: Написать падающий тест сида**
+
+Тест на фейковом сидере (по образцу тестов из Task 3, где уже есть `setSeeder`): набор существует и содержит стикеры на позициях 0 и 1, в `meta.json` четыре файла — сид должен залить ровно два недостающих (позиции 2 и 3), не тронув существующие и не создав дублей.
+
+- [ ] **Step 6: Прогнать тест — убедиться, что падает**
+
+Run: `cd backend && go test ./cmd/seed-stickers/ -v`
+Expected: FAIL — сид пропускает существующий набор целиком, залито 0 стикеров вместо 2
+
+- [ ] **Step 7: Переписать ветку существующего набора в `seedSet`**
+
+Вместо раннего `return nil` при существующем слаге: получить занятые позиции, пройти по `meta.Stickers` и залить только те, чьей позиции нет; в конце — та же логика `SetRank`/`SetCover`, что уже есть. Если недостающих нет, залогировать «набор X уже полон» и выйти, не трогая БД. Существующие стикеры не удалять и не переупорядочивать: набор в Telegram мог измениться, но сносить историю сообщений, ссылающихся на старые media, нельзя.
+
+- [ ] **Step 8: Прогнать тесты**
+
+Run: `cd backend && go test ./cmd/seed-stickers/ ./internal/usecase/stickers/` и `go test ./internal/adapter/repo/postgres/`
+Expected: PASS
+
+- [ ] **Step 9: Коммит**
+
+```bash
+git add backend/cmd/seed-stickers/ backend/internal/adapter/repo/postgres/ backend/internal/usecase/stickers/
+git commit -m "feat(stickers): сид досидирует недостающие стикеры в существующий набор"
+```
+
+---
+
 ## Что НЕ входит в этот план
 
 - **Анимированные реакции** — отдельная подсистема (своя таблица, свой сид, свой API, свой рендер поверх `MessageReactions`). Вынесены в план `docs/superpowers/plans/2026-08-15-animated-reactions.md`.
