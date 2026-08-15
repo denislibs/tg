@@ -9,7 +9,7 @@
 
 Раскладка на диске — ровно та, что ждёт backend/cmd/seed-stickers:
 
-    <out>/<short_name>/meta.json  {title, kind, stickers: [{file, emoji}]}
+    <out>/<short_name>/meta.json  {title, kind, stickers: [{file, emoji, path?}]}
     <out>/<short_name>/1.tgs      (или .webm / .webp)
 
 Файлы кладутся как есть: .tgs остаётся gzip'нутым (бэкенд читает из него
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -109,6 +110,17 @@ def sticker_emoji(document: types.Document) -> str:
         if isinstance(attr, (types.DocumentAttributeSticker, types.DocumentAttributeCustomEmoji)):
             return attr.alt or ""
     return ""
+
+
+def sticker_path(document: types.Document) -> str | None:
+    """Векторный контур стикера (photoPathSize) в base64 — мгновенный силуэт до
+    загрузки файла (tweb wrappers/sticker.ts:268 → createSvgFromBytes). Байты уже
+    лежат в документе, отдельного запроса не требуют; у части документов их нет.
+    """
+    thumb = next((t for t in (document.thumbs or []) if isinstance(t, types.PhotoPathSize)), None)
+    if thumb is None or not thumb.bytes:
+        return None
+    return base64.b64encode(thumb.bytes).decode("ascii")
 
 
 async def call(client: TelegramClient, request):
@@ -220,7 +232,11 @@ async def fetch_set(
         path = target / name
         if not path.exists():
             await client.download_media(doc, file=str(path))
-        stickers.append({"file": name, "emoji": sticker_emoji(doc)})
+        entry = {"file": name, "emoji": sticker_emoji(doc)}
+        outline = sticker_path(doc)
+        if outline:
+            entry["path"] = outline
+        stickers.append(entry)
         total += path.stat().st_size
 
     if not stickers:
@@ -268,6 +284,63 @@ async def fetch_missing_covers(client: TelegramClient, out: Path) -> int:
             meta["cover"] = cover
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"+ {slug}: обложка {cover or '— нет, будет первый стикер'}", flush=True)
+        done += 1
+    return done
+
+
+async def fetch_missing_paths(client: TelegramClient, out: Path) -> int:
+    """Дописывает контуры (photoPathSize) стикерам в уже выгруженных наборах.
+
+    meta.json пишется один раз при первой выгрузке, поэтому новое поле 'path'
+    само туда не попадёт — перезапрашиваем набор и сопоставляем документы со
+    стикерами в meta по позиции (порядок getStickerSet стабилен, так же сделано
+    в fetch_missing_covers). Если набор в Telegram успел измениться и длины
+    разошлись — сопоставление по позиции испортит существующие записи, поэтому
+    набор целиком пропускается, а не дописывается частично.
+
+    Набор без short_name (выгружен до --covers) перезапрашивается по slug —
+    как и в fetch_missing_covers, для обычных наборов slug и есть short_name.
+    Если у части стикеров контура у Telegram просто нет, поле 'path' у них не
+    появится и набор при следующем прогоне --path-thumbs перезапросится снова —
+    это один дешёвый метаданных-запрос без докачки файлов, так что не страшно.
+    """
+    special_by_slug = {slug: inp for slug, _, inp in SPECIAL_SETS}
+    done = 0
+    for meta_path in sorted(out.glob("*/meta.json")):
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        slug = meta_path.parent.name
+        stickers = meta.get("stickers", [])
+        if not stickers or all("path" in st for st in stickers):
+            continue
+
+        short_name = meta.get("short_name", slug)
+        input_set = special_by_slug.get(slug) or types.InputStickerSetShortName(short_name=short_name)
+        try:
+            full = await call(client, functions.messages.GetStickerSetRequest(stickerset=input_set, hash=0))
+        except RPCError as e:
+            print(f"! {slug}: {e.__class__.__name__} {e}", flush=True)
+            continue
+
+        if len(full.documents) != len(stickers):
+            print(
+                f"! {slug}: набор изменился ({len(stickers)} стикеров в meta, "
+                f"{len(full.documents)} у Telegram) — пропускаю, чтобы не сбить позиции",
+                flush=True,
+            )
+            continue
+
+        added = 0
+        for st, doc in zip(stickers, full.documents):
+            if "path" in st:
+                continue
+            outline = sticker_path(doc)
+            if outline:
+                st["path"] = outline
+                added += 1
+
+        if added:
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"+ {slug}: контуры {added}/{len(stickers)}", flush=True)
         done += 1
     return done
 
@@ -326,6 +399,9 @@ async def main() -> None:
     ap.add_argument("--special", action="store_true", help="выгрузить спец-наборы: большие эмодзи, эффекты, кубик")
     ap.add_argument("--reactions", action="store_true", help="выгрузить анимированные реакции в assets/reactions/")
     ap.add_argument("--covers", action="store_true", help="докачать обложки наборам, выгруженным раньше")
+    ap.add_argument(
+        "--path-thumbs", action="store_true", help="дописать векторные контуры (photoPathSize) в выгруженные наборы"
+    )
     ap.add_argument("--skip-sets", action="store_true", help="не качать стикер-наборы (например, только --reactions)")
     ap.add_argument(
         "--reactions-out",
@@ -349,6 +425,10 @@ async def main() -> None:
     if args.covers:
         print("докачка обложек:", flush=True)
         print(f"обновлено наборов: {await fetch_missing_covers(client, out)}\n", flush=True)
+
+    if args.path_thumbs:
+        print("докачка контуров (photoPathSize):", flush=True)
+        print(f"обновлено наборов: {await fetch_missing_paths(client, out)}\n", flush=True)
 
     if args.reactions:
         print("анимированные реакции:", flush=True)
