@@ -461,3 +461,33 @@ func TestFeaturedSetsOrderByRank(t *testing.T) {
 	}
 	_ = noRank
 }
+
+// Индексы стикеров (миграция 0094). Тест пинит два решения, а не «схема как
+// написана»: (1) stickers.media_id обязан быть проиндексирован — по нему идут
+// SetByMediaID (клик по стикеру в чате) и IsStickerMedia (каждая отправка
+// стикера и каждая выдача его файла), а строк в таблице тысячи; (2) частичный
+// индекс sticker_sets_rank_idx снят как заведомо неиспользуемый — FeaturedSets
+// сортирует по выражению (s.rank = 0), которое btree по rank не обслуживает.
+func TestStickerIndexes(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+
+	var mediaIdx bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_indexes
+		                WHERE tablename='stickers' AND indexdef LIKE '%(media_id)%')`).Scan(&mediaIdx); err != nil {
+		t.Fatalf("pg_indexes stickers: %v", err)
+	}
+	if !mediaIdx {
+		t.Error("нет индекса по stickers(media_id) — SetByMediaID/IsStickerMedia уходят в seq scan")
+	}
+
+	var rankIdx bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname='sticker_sets_rank_idx')`).Scan(&rankIdx); err != nil {
+		t.Fatalf("pg_indexes sticker_sets: %v", err)
+	}
+	if rankIdx {
+		t.Error("sticker_sets_rank_idx жив — его снимает 0094 как неиспользуемый планировщиком")
+	}
+}
