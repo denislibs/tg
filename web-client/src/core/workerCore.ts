@@ -30,6 +30,7 @@ import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
 import { newBoostsManager } from './managers/boostsManager'
 import { newStickersManager } from './managers/stickersManager'
+import { newReactionsManager } from './managers/reactionsManager'
 import { newReportManager } from './managers/reportManager'
 import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
@@ -251,6 +252,7 @@ export function createWorkerCore() {
   const stats = newStatsManager({ rest })
   const bots = newBotsManager({ rest })
   const stickers = newStickersManager({ rest })
+  const reactions = newReactionsManager({ rest })
   const iv = newIVManager({ rest })
   const health = newHealthManager(rest)
   // Единый writer офлайн-стора: диалоги/me/папки/черновики теперь пишет воркер (не
@@ -530,7 +532,7 @@ export function createWorkerCore() {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
     folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
-    stickers, iv, secret, persist,
+    stickers, reactions, iv, secret, persist,
   }
 
   function bind(ep: Endpoint) {
