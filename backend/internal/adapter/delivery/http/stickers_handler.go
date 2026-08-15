@@ -66,6 +66,26 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"set": set, "stickers": stickersJSON(sts)})
 }
 
+// SetByMediaID — GET /stickers/by-media/{mediaID}: набор, которому принадлежит
+// файл стикера. Нужен клику по стикеру в чате (tweb wrapSticker →
+// showStickersPopup): сообщение несёт только media_id.
+func (h *StickersHandler) SetByMediaID(w http.ResponseWriter, r *http.Request) {
+	mediaID, ok := pathInt(w, r, "mediaID")
+	if !ok {
+		return
+	}
+	set, err := h.svc.SetByMediaID(r.Context(), mediaID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "media has no set")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load set")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"set": set})
+}
+
 // Install — POST /sticker-sets/{id}/install.
 func (h *StickersHandler) Install(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathInt(w, r, "id")

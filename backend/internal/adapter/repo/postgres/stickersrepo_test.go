@@ -91,6 +91,36 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 	}
 }
 
+// SetByMediaID — обратный поиск: по файлу стикера найти набор. Нужен клику по
+// стикеру в чате: сообщение несёт только media_id.
+func TestSetByMediaID(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7816")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "utyaduck", Title: "Duck", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaID := seedStickerMedia(t, pool, owner, "utyaduck/0")
+	if _, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "🦆"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.SetByMediaID(ctx, mediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Slug != "utyaduck" {
+		t.Errorf("slug = %q, ожидался utyaduck", got.Slug)
+	}
+
+	if _, err := r.SetByMediaID(ctx, mediaID+99999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("для чужого медиа err = %v, ожидался ErrNotFound", err)
+	}
+}
+
 func TestStickersRepo_InstallAndMySets(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	r := NewStickersRepo(pool)

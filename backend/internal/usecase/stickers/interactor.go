@@ -62,6 +62,12 @@ func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSet, 
 	return set, sts, err
 }
 
+// SetByMediaID — набор по файлу стикера (обратный поиск для клика по стикеру
+// в чате: сообщение несёт только media_id, а не set_id/slug).
+func (i *Interactor) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+	return i.repo.SetByMediaID(ctx, mediaID)
+}
+
 // Install добавляет набор пользователю (идемпотентно). Нет набора → ErrNotFound.
 func (i *Interactor) Install(ctx context.Context, userID, setID int64) error {
 	if _, err := i.repo.SetByID(ctx, setID); err != nil {

@@ -78,6 +78,17 @@ func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSet, erro
 	return s, nil
 }
 
+func (f *fakeRepo) SetByMediaID(_ context.Context, mediaID int64) (domain.StickerSet, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, st := range f.stickers {
+		if st.MediaID == mediaID {
+			return f.sets[st.SetID], nil
+		}
+	}
+	return domain.StickerSet{}, domain.ErrNotFound
+}
+
 func (f *fakeRepo) Stickers(_ context.Context, setID int64) ([]domain.Sticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -538,6 +549,25 @@ func TestSearchGifs_NoProviderIsEmptyPage(t *testing.T) {
 	page, err := in.SearchGifs(context.Background(), "cats", "")
 	if err != nil || page.Gifs == nil || len(page.Gifs) != 0 || page.Next != "" {
 		t.Fatalf("без провайдера: want пустая страница, got %+v, %v", page, err)
+	}
+}
+
+// SetByMediaID — usecase лишь пробрасывает вызов в репозиторий (см. SetByMediaID
+// в stickersrepo.go для SQL-версии); здесь проверяем сам факт проводки.
+func TestSetByMediaID(t *testing.T) {
+	f := newFakeRepo()
+	in := New(f)
+	ctx := context.Background()
+	set, ids := seedSet(t, in, f, 1, "media_id_set", 1)
+	sticker, _ := f.StickerByID(ctx, ids[0])
+
+	got, err := in.SetByMediaID(ctx, sticker.MediaID)
+	if err != nil || got.ID != set.ID {
+		t.Fatalf("SetByMediaID: %+v, %v", got, err)
+	}
+
+	if _, err := in.SetByMediaID(ctx, 999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужое media: want ErrNotFound, got %v", err)
 	}
 }
 

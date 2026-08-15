@@ -73,6 +73,25 @@ func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet
 	return set, err
 }
 
+// SetByMediaID — обратный поиск: набор, которому принадлежит файл стикера.
+// Нужен клику по стикеру в чате (tweb wrapSticker → showStickersPopup):
+// сообщение несёт только media_id, а не set_id/slug набора. LIMIT 1
+// осознанный — один и тот же файл может числиться в двух наборах (Telegram
+// переиспользует документы), клику достаточно любого, как и в tweb, где набор
+// берётся из атрибута самого документа.
+func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+setCols+`
+		   FROM sticker_sets s
+		   JOIN stickers st ON st.set_id = s.id
+		  WHERE st.media_id=$1
+		  LIMIT 1`, mediaID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.StickerSet{}, domain.ErrNotFound
+	}
+	return set, err
+}
+
 // stickerCols — колонки стикера + метаданные его файла из media. Размеры, mime и
 // stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
 // рендерера, нижний слой показа) — см. domain.Sticker.

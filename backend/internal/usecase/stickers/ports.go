@@ -15,6 +15,10 @@ type Repo interface {
 	CreateSet(ctx context.Context, set domain.StickerSet) (domain.StickerSet, error)
 	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) // domain.ErrNotFound
 	SetByID(ctx context.Context, id int64) (domain.StickerSet, error)      // domain.ErrNotFound
+	// SetByMediaID — обратный поиск: набор по файлу стикера (клик по стикеру в
+	// чате, где сообщение несёт только media_id). domain.ErrNotFound, если
+	// медиа не принадлежит ни одному набору.
+	SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error)
 	Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error)
 	// AddSticker добавляет стикер в конец набора (position назначает хранилище).
 	AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error)

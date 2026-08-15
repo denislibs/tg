@@ -261,6 +261,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/sticker-sets/{id}/install", stickersH.Install)
 			pr.Delete("/sticker-sets/{id}/install", stickersH.Uninstall)
 			pr.Post("/sticker-sets/{id}/stickers", stickersH.AddSticker)
+			// by-media — до {id}-веток остальных /stickers/*: обратный поиск набора
+			// по media_id (клик по стикеру в чате, ConvMsg несёт только его).
+			pr.Get("/stickers/by-media/{mediaID}", stickersH.SetByMediaID)
 			pr.Get("/stickers/recent", stickersH.Recent)
 			pr.Delete("/stickers/recent", stickersH.ClearRecent)
 			pr.Get("/stickers/faved", stickersH.Faved)

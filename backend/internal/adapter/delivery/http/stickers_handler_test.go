@@ -3,9 +3,11 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 )
@@ -101,6 +103,72 @@ func TestFeatured_ReturnsSets(t *testing.T) {
 	}
 	if len(body.Sets) != 2 || body.Sets[0].ID != 2 || body.Sets[1].ID != 1 {
 		t.Fatalf("sets = %+v, want порядок репозитория [2 1]", body.Sets)
+	}
+}
+
+// setByMediaIDRepoStub — стаб порта stickers.Repo только под SetByMediaID.
+type setByMediaIDRepoStub struct {
+	usecasestickers.Repo
+	set domain.StickerSet
+	err error
+}
+
+func (s *setByMediaIDRepoStub) SetByMediaID(context.Context, int64) (domain.StickerSet, error) {
+	return s.set, s.err
+}
+
+// requestWithMediaID — httptest-запрос с chi-параметром {mediaID}, как если бы
+// его положил роутер (в тесте хендлер зовётся напрямую, без реального роутера).
+func requestWithMediaID(mediaID string) *http.Request {
+	r := httptest.NewRequest("GET", "/stickers/by-media/"+mediaID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("mediaID", mediaID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+// GET /stickers/by-media/{mediaID}: медиа принадлежит набору → 200 с набором
+// в конверте {"set": …} (клик по стикеру в чате, ConvMsg несёт только media_id).
+func TestSetByMediaID_Found(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{
+		set: domain.StickerSet{ID: 7, Slug: "utyaduck", Title: "Duck", Kind: "sticker"},
+	}))
+
+	w := httptest.NewRecorder()
+	h.SetByMediaID(w, requestWithMediaID("42"))
+	if w.Code != 200 {
+		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Set domain.StickerSet `json:"set"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Set.Slug != "utyaduck" {
+		t.Fatalf("set.slug = %q, want utyaduck", body.Set.Slug)
+	}
+}
+
+// Медиа без набора (не стикер / стикер удалён) → 404, как и остальные
+// stickers-ручки на domain.ErrNotFound.
+func TestSetByMediaID_NotFound(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{err: domain.ErrNotFound}))
+
+	w := httptest.NewRecorder()
+	h.SetByMediaID(w, requestWithMediaID("999999"))
+	if w.Code != 404 {
+		t.Fatalf("code = %d, want 404 (body %s)", w.Code, w.Body.String())
+	}
+}
+
+// Нечисловой mediaID в пути → 400, как у остальных pathInt-ручек.
+func TestSetByMediaID_BadParam(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{}))
+
+	w := httptest.NewRecorder()
+	h.SetByMediaID(w, requestWithMediaID("not-a-number"))
+	if w.Code != 400 {
+		t.Fatalf("code = %d, want 400 (body %s)", w.Code, w.Body.String())
 	}
 }
 
