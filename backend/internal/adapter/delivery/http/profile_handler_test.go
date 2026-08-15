@@ -36,7 +36,7 @@ func signInToken(t *testing.T, h http.Handler, phone string) (string, int64) {
 
 func TestProfileEndpoints_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	token, _ := signInToken(t, h, "+79990000001")
 
 	// PATCH /me — set names, bio, birthday, phone visibility.
@@ -119,7 +119,7 @@ func TestSetAvatarPreview_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	authUC := newAuthUC(pool)
 	authUC.SetAvatarPreviewer(httpFakePreviewer{preview: []byte{0xff, 0xd8, 0xff, 0xe0, 5}})
-	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	token, _ := signInToken(t, h, "+79990000021")
 
 	const wantB64 = `"avatar_preview":"/9j/4AU="` // base64([ff d8 ff e0 05])

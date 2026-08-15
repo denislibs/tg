@@ -29,7 +29,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	)
 	storySvc.SetMessageSender(chatUC)
 	storyH := NewStoryHandler(storySvc)
-	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
+	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
 func TestStories_Lifecycle_HTTP(t *testing.T) {

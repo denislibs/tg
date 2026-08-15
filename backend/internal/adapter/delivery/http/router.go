@@ -17,7 +17,7 @@ import (
 	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor, reactionsH *ReactionsHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestLogger) // вместо middleware.Logger: не пишет токены в логи
 	r.Use(middleware.Recoverer)
@@ -275,6 +275,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/gifs/saved", stickersH.SaveGif)
 			pr.Delete("/gifs/saved/{mediaID}", stickersH.DeleteGif)
 			pr.Get("/gifs/search", stickersH.SearchGifs)
+		}
+
+		// Каталог доступных реакций (Telegram messages.getAvailableReactions) —
+		// публичный справочник, как наборы стикеров, но ручка в защищённой
+		// группе: анонимный доступ не нужен.
+		if reactionsH != nil {
+			pr.Get("/reactions", reactionsH.List)
 		}
 
 		gh := NewGroupHandler(chatUC, memberPresence, privacyQ)
