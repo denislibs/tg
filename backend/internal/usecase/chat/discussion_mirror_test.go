@@ -356,3 +356,111 @@ func TestAlbum_MirrorsAllElements_SingleThread(t *testing.T) {
 		t.Fatalf("зеркало второго элемента альбома потеряло grouped_id: %v", second.GroupedID)
 	}
 }
+
+// Ленивое зеркалирование домиграционного альбома: пост опубликован ДО
+// EnableDiscussion (зеркала ещё нет), и первый комментарий приходит НЕ к
+// первому кадру альбома, а ко второму. Регрессия (найдена ревью): если бы
+// PostComment лениво зеркалировал только переданный клиенту элемент (a2), то
+// MirrorByPost(a2) после этого продолжил бы резолвиться в корень альбома —
+// зеркало a1 (правило «один тред на альбом», Task 7) — которого нет и
+// неоткуда взяться, и клиент получал бы ErrNotFound на валидном посте.
+// Правильно: ленивая дозаводка обязана зеркалировать ВЕСЬ альбом, чтобы и
+// корень (a1), и запрошенный элемент (a2) получили свои строки-зеркала, а
+// комментарий приземлился на тот же корень, что и комментарий к первому кадру.
+func TestPostComment_AlbumLazyMirror_NonFirstFrame_SameThread(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	// Альбом публикуется ДО включения обсуждения — mirrorChannelPost на
+	// вставке был no-op (GetDiscussion возвращал 0), зеркал нет вовсе.
+	m1 := int64(101)
+	m2 := int64(102)
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	if root, _ := i.msgs.MirrorByPost(ctx, ch, a1.ID); root != 0 {
+		t.Fatalf("зеркало альбома уже есть до первого комментария: %d", root)
+	}
+
+	// Комментируем НЕ первый, а второй кадр — первым обращением к альбому.
+	c2, err := i.PostComment(ctx, ch, a2.ID, 8, "к второму кадру", "c2")
+	if err != nil {
+		t.Fatalf("PostComment(a2) вернул ошибку вместо ленивой дозаводки зеркала альбома: %v", err)
+	}
+	c1, err := i.PostComment(ctx, ch, a1.ID, 8, "к первому кадру", "c1")
+	if err != nil {
+		t.Fatalf("PostComment(a1) вернул ошибку: %v", err)
+	}
+	if c1.ThreadRootID == nil || c2.ThreadRootID == nil {
+		t.Fatalf("у комментария нет thread_root_id: c1=%v c2=%v", c1.ThreadRootID, c2.ThreadRootID)
+	}
+	if *c1.ThreadRootID != *c2.ThreadRootID {
+		t.Fatalf("комментарии к разным кадрам одного альбома легли в разные треды: %d и %d", *c1.ThreadRootID, *c2.ThreadRootID)
+	}
+}
+
+// Та же ленивая дозаводка (комментарий приходит ко ВТОРОМУ кадру
+// домиграционного альбома первым), но проверяется отсутствие «осиротевших»
+// зеркал: резолв по КАЖДОМУ элементу альбома обязан давать один и тот же
+// корень, и у каждого элемента обязана быть собственная физическая
+// строка-зеркало (иначе альбом в группе обсуждения приезжает обрезанным).
+func TestPostComment_AlbumLazyMirror_NoOrphanedMirrors(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	m1 := int64(101)
+	m2 := int64(102)
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	// Единственное обращение к альбому — комментарий ко ВТОРОМУ элементу.
+	if _, err := i.PostComment(ctx, ch, a2.ID, 8, "hi", ""); err != nil {
+		t.Fatalf("PostComment(a2): %v", err)
+	}
+
+	r1, err := i.msgs.MirrorByPost(ctx, ch, a1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := i.msgs.MirrorByPost(ctx, ch, a2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1 == 0 || r1 != r2 {
+		t.Fatalf("резолв разошёлся после ленивого зеркалирования: MirrorByPost(a1)=%d MirrorByPost(a2)=%d", r1, r2)
+	}
+
+	own1, err := i.msgs.MirrorOfExactPost(ctx, ch, a1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own2, err := i.msgs.MirrorOfExactPost(ctx, ch, a2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own1 == 0 {
+		t.Fatal("первый элемент альбома не дозеркалирован — корень треда указывает в никуда")
+	}
+	if own2 == 0 {
+		t.Fatal("второй элемент альбома не дозеркалирован — альбом в группе обсуждения обрезан")
+	}
+}

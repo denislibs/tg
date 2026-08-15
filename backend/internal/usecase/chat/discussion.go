@@ -114,14 +114,39 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 		if e != nil || post.ChatID != channelID || post.Deleted {
 			return domain.Message{}, domain.ErrNotFound
 		}
-		createErr := i.mirrorChannelPost(ctx, post)
+		// Если пост — элемент альбома (grouped_id), дозеркалировать нужно
+		// ВЕСЬ альбом, а не только элемент, на который комментирует клиент:
+		// корень треда — зеркало ПЕРВОГО элемента группы (см. MirrorByPost /
+		// правило «один тред на альбом», Task 7), а MirrorByPost для ЛЮБОГО
+		// элемента резолвит именно его. Если бы здесь зеркалился только
+		// переданный postID, MirrorByPost(postID) после этого продолжил бы
+		// искать зеркало ДРУГОГО (первого) элемента, которого нет, — root
+		// остался бы 0, и клиент получил бы ErrNotFound на валидном посте, а
+		// в группе повисла бы осиротевшая строка-зеркало без единого
+		// потребителя. Зеркалируем все элементы best-effort (ошибка на
+		// одном — не повод обрывать остальные, см. про гонку ниже).
+		var createErr error
+		if post.GroupedID != nil {
+			album, e := i.msgs.AlbumMessages(ctx, channelID, *post.GroupedID)
+			if e != nil {
+				return domain.Message{}, e
+			}
+			for _, m := range album {
+				if e := i.mirrorChannelPost(ctx, m); e != nil && createErr == nil {
+					createErr = e
+				}
+			}
+		} else {
+			createErr = i.mirrorChannelPost(ctx, post)
+		}
 		// Гонка: два параллельных первых комментария к одному немигрированному
-		// посту оба увидят root==0 и оба попробуют создать зеркало. Проигравший
-		// падает на уникальном индексе uq_messages_discussion_mirror —
-		// createErr тут не «поста нет», а «кто-то уже создал зеркало параллельно».
-		// Резолвим ещё раз и берём то, что уже есть в базе; createErr отдаём
-		// наружу, только если зеркала и правда нет (значит, ошибка реальная, а
-		// не проигрыш гонки) — не глушим её молча.
+		// посту (или альбому) оба увидят root==0 и оба попробуют создать
+		// зеркало(а). Проигравший падает на уникальном индексе
+		// uq_messages_discussion_mirror по каждому элементу, где его обогнали
+		// — createErr тут не «поста нет», а «кто-то уже создал зеркало
+		// параллельно». Резолвим ещё раз и берём то, что уже есть в базе;
+		// createErr отдаём наружу, только если корня и правда нет (значит,
+		// ошибка реальная, а не проигрыш гонки) — не глушим её молча.
 		root, err = i.msgs.MirrorByPost(ctx, channelID, postID)
 		if err != nil {
 			return domain.Message{}, err

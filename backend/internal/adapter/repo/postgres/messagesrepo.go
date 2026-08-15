@@ -817,6 +817,24 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 // с этим grouped_id в канале). Поэтому для любого элемента альбома резолв
 // сначала находит корень (CTE root), а уже потом ищет его зеркало — как
 // getMainGroupedMessage в tweb.
+//
+// Сознательное решение: выбор корня (MIN(g.id)) НЕ фильтрует g.deleted_at —
+// удалённый первый элемент по-прежнему считается корнем. Альтернатива
+// (пропускать удалённые и брать первый ЖИВОЙ элемент) на первый взгляд
+// выглядит аккуратнее, но ломает стабильность треда: если корень уже
+// зеркалирован и на нём висят комментарии (их thread_root_id физически
+// указывает на зеркало ПЕРВОНАЧАЛЬНОГО первого элемента), а затем этот
+// элемент удаляют, резолв «переехал» бы на зеркало следующего элемента —
+// новые комментарии ушли бы на ДРУГОЕ зеркало, отличное от того, где лежит
+// уже написанная переписка, и тред бы физически раздвоился. Игнорируя
+// deleted_at, корень треда навсегда остаётся одной и той же строкой — ту же
+// стабильность выбрало и ленивое зеркалирование (см. AlbumMessages: та же
+// политика «без фильтра deleted_at», согласованно).
+//
+// Замечание на будущее (вне рамок этой задачи): резолв корня — это скан по
+// (chat_id, grouped_id) без индекса; при больших альбомных каналах может
+// стоить завести партиальный индекс messages(chat_id, grouped_id) WHERE
+// grouped_id IS NOT NULL, если профилирование покажет проблему.
 func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error) {
 	q := querier(ctx, r.pool)
 	var id int64
@@ -891,6 +909,34 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 			return nil, err
 		}
 		out[post] = mirror
+	}
+	return out, rows.Err()
+}
+
+// AlbumMessages — все сообщения одной медиагруппы (grouped_id) в чате
+// chatID, по возрастанию id (первый элемент альбома — первым). Нужен
+// ленивому зеркалированию домиграционных постов (Interactor.PostComment):
+// раз корень треда альбома — зеркало первого элемента, дозаводить надо
+// зеркала ВСЕГО альбома, а не только запрошенного клиентом элемента.
+// Сознательно БЕЗ фильтра deleted_at — та же политика, что и у выбора корня
+// в MirrorByPost (см. её комментарий): если удалённый первый элемент
+// продолжает считаться корнем, ленивое зеркалирование обязано суметь
+// создать зеркало и для него, иначе резолв треда для остальных элементов
+// альбома будет вечно указывать в никуда.
+func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND grouped_id=$2 ORDER BY id`, chatID, groupedID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }

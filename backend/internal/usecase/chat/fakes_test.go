@@ -1094,6 +1094,9 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 // (минимального) элемента группы среди сообщений канала channelID; если нет
 // — id самого поста без изменений. Тред у альбома один — на зеркале первого
 // элемента, как getMainGroupedMessage в tweb (см. MessagesRepo.MirrorByPost).
+// Сознательно БЕЗ фильтра по m.Deleted при поиске минимума — та же политика
+// стабильности корня, что и в Postgres-версии (см. её комментарий): корень
+// не «переезжает», если первый элемент альбома потом удалили.
 // Вызывается уже под r.s.mu — своей блокировки не берёт.
 func (r fakeMsgs) resolveAlbumRoot(channelID, postID int64) int64 {
 	var grouped *string
@@ -1188,6 +1191,24 @@ func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []i
 	for postID, root := range roots {
 		if mirror, ok := mirrorByRoot[root]; ok {
 			out[postID] = mirror
+		}
+	}
+	return out, nil
+}
+
+// AlbumMessages — см. комментарий у Postgres-версии (messagesrepo.go): все
+// сообщения альбома в чате, по возрастанию id, БЕЗ фильтра по Deleted (та же
+// политика, что и у resolveAlbumRoot — стабильность корня треда важнее).
+// r.s.messages[chatID] уже упорядочен по возрастанию ID (Insert только
+// добавляет в конец под общим счётчиком r.s.nextMsgID), досортировывать не
+// нужно.
+func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if m.GroupedID != nil && *m.GroupedID == groupedID {
+			out = append(out, m)
 		}
 	}
 	return out, nil
