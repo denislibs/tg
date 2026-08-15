@@ -21,6 +21,11 @@ export interface StickerSet { id: number; slug: string; title: string; kind: 'st
  * а thumb (base64 JPEG, как `blur_preview` у медиа) показывает нижним слоем,
  * пока файл летит. Нули/пустые значения — «метаданных нет» (медиа загружено до
  * появления процессинга): бокс тогда квадратный, нижнего слоя нет.
+ *
+ * pathThumb — векторный контур (Telegram photoPathSize, base64) для ещё более
+ * раннего нижнего слоя — SVG-силуэта (см. `core/stickers/getPathFromBytes`,
+ * `components/StickerMedia.tsx`). undefined — контур не выгружен для этого
+ * стикера (у части импортированных документов его не было).
  */
 export interface Sticker {
   id: number
@@ -31,6 +36,7 @@ export interface Sticker {
   height: number
   mime: string
   thumb: string
+  pathThumb?: string
 }
 /** Сохранённый GIF — media нашего сервера (лимит 200 LIFO на бэке). */
 export interface SavedGif { mediaId: number }
@@ -57,6 +63,8 @@ interface RawSticker {
   mime?: string
   /** base64 JPEG stripped-превью; null у медиа без сгенерированного превью */
   thumb?: string | null
+  /** base64 векторного контура (photoPathSize); null — контур не выгружен */
+  path_thumb?: string | null
 }
 interface RawTenorGif { id: string; mp4_url: string; gif_url: string; preview_url: string; width: number; height: number }
 
@@ -77,6 +85,7 @@ const mapSticker = (r: RawSticker): Sticker => ({
   height: r.height ?? 0,
   mime: r.mime ?? '',
   thumb: r.thumb ?? '',
+  pathThumb: r.path_thumb ?? undefined,
 })
 const mapTenorGif = (r: RawTenorGif): TenorGif => ({
   id: r.id, mp4Url: r.mp4_url, gifUrl: r.gif_url, previewUrl: r.preview_url, width: r.width, height: r.height,

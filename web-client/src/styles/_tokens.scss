@@ -316,6 +316,8 @@
   --spoiler-draft-background-color: #d9d9d9;
   --monospace-text-color: var(--danger-color);
   --old-input-background-color: #F1F3F5;
+  // Заливка SVG-силуэта стикера (tweb base.scss:311 .lottie-vector fill)
+  --lottie-vector-fill: rgba(0, 0, 0, #{$hover-alpha});
 }
 
 [data-theme='night'],
@@ -346,6 +348,12 @@
   --spoiler-draft-background-color: #484848;
   --monospace-text-color: var(--primary-text-color);
   --old-input-background-color: var(--background-color);
+  // tweb base.scss:339 (.night .lottie-vector fill) берёт var(--light-secondary-text-color) —
+  // «светлый» дериватив secondary-text-color (генерируется миксином splitColor). У нас этот
+  // миксин нигде не вызывается (--light-* токены реально не заведены), поэтому берём сам
+  // --secondary-text-color: он инжектится themeController.setTheme() под любой пресет и уже
+  // достаточно приглушённый для силуэта.
+  --lottie-vector-fill: var(--secondary-text-color);
   // Время/тик на тёмной теме (tweb base.scss:345-355 блок `.night .chat`): тик
   // входящего ярче времени (--secondary-color), у исходящего тик белый, а время —
   // белое с alpha .6.

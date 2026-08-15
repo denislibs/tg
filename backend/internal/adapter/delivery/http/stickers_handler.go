@@ -26,13 +26,21 @@ func (h *StickersHandler) meID(r *http.Request) int64 {
 // stickersJSON — представление стикера для клиента. Кроме идентификаторов едут
 // метаданные файла (см. domain.Sticker): по width/height клиент вписывает стикер
 // в бокс по пропорции, по mime заранее знает рендерер, thumb (base64 JPEG, как
-// blur_preview у медиа) показывает нижним слоем, пока файл летит.
+// blur_preview у медиа) показывает нижним слоем, пока файл летит. path_thumb
+// (векторный контур photoPathSize) отдаём во ВСЕХ ручках, а не только в наборе:
+// одна и та же карточка стикера у клиента приходит то из набора, то из Recent/
+// Faved/поиска и складывается в общий кэш по media_id — расхождение по составу
+// полей между источниками там неуместно. Байтовый оверхед по размеру мал даже
+// там, где список короткий (Recent — 20 записей, Faved — ~10), а там, где список
+// большой (набор до 120 стикеров, до +50 КБ base64), силуэт нужнее всего — это
+// холодный первый показ набора целиком.
 func stickersJSON(sts []domain.Sticker) []map[string]any {
 	out := make([]map[string]any, 0, len(sts))
 	for _, s := range sts {
 		out = append(out, map[string]any{
 			"id": s.ID, "set_id": s.SetID, "media_id": s.MediaID, "emoji": s.Emoji,
 			"width": s.Width, "height": s.Height, "mime": s.Mime, "thumb": s.Thumb,
+			"path_thumb": s.PathThumb,
 		})
 	}
 	return out

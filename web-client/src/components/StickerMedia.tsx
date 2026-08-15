@@ -6,11 +6,17 @@
 // результат кэшируется на сессию — повторный маунт (перелистывание категорий
 // пикера, скролл ленты) не перекачивает файл.
 //
-// Показ — трёхслойный, как в tweb `wrapSticker` + `stickerAppearance`:
-//   1) нижний слой — превью: stripped-JPEG с бэка (`thumb`) либо кадр,
-//      сохранённый прошлым показом (`core/stickers/stickerThumbs`);
+// Показ — до четырёх слоёв снизу вверх, как в tweb `wrapSticker` +
+// `stickerAppearance`:
+//   0) самый нижний — SVG-силуэт из векторного контура (`pathThumb`, tweb
+//      photoPathSize): встаёт, только если этой ячейке ещё совсем нечего
+//      показать (свежий контейнер, DOM прошлого поколения не усыновлён —
+//      см. `canBuildSilhouette`), и рисуется синхронно, ещё до decode() у
+//      превью-картинки ниже;
+//   1) превью: stripped-JPEG с бэка (`thumb`) либо кадр, сохранённый прошлым
+//      показом (`core/stickers/stickerThumbs`) — заменяет силуэт, когда готов;
 //   2) верхний — само медиа (canvas плеера / <video> / <img>);
-//   3) нижний снимается ТОЛЬКО когда верхний доказанно прокрасился
+//   3) нижние слои снимаются ТОЛЬКО когда верхний доказанно прокрасился
 //      (`ensurePresented` у lottie) — поэтому ячейка не мигает пустотой.
 // Медиа создаётся императивно (не JSX): слоями владеет контроллер
 // `stickerAppearance`, он же усыновляет DOM прошлого поколения — React не должен
@@ -25,6 +31,7 @@ import type LottiePlayer from '../lib/lottie/lottiePlayer'
 import animationIntersector, { type AnimationItemGroup } from './animationIntersector'
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 import createStickerAppearance from './wrappers/stickerAppearance'
+import { createSvgFromBase64 } from '../core/stickers/getPathFromBytes'
 import { getStickerThumb, saveStickerThumb, saveStickerThumbFromPlayer } from '../core/stickers/stickerThumbs'
 import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
@@ -98,6 +105,7 @@ const StickerMedia = memo(function StickerMedia({
   replayToken = 0,
   group = 'chat',
   thumb,
+  pathThumb,
   loadQueue,
   isVisible,
   onComplete,
@@ -117,6 +125,10 @@ const StickerMedia = memo(function StickerMedia({
   group?: AnimationItemGroup
   /** stripped-превью файла (base64 JPEG) — нижний слой, пока медиа грузится */
   thumb?: string
+  /** base64 векторного контура (Telegram photoPathSize) — самый нижний слой,
+   * SVG-силуэт мгновенно на месте пустой ячейки, пока не декодировался даже
+   * `thumb` (см. `core/stickers/getPathFromBytes`, tweb wrapSticker:268) */
+  pathThumb?: string
   /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
    * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
    * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
@@ -153,6 +165,23 @@ const StickerMedia = memo(function StickerMedia({
       thumbKey: String(mediaId),
       middleware,
     })
+
+    // Самый нижний слой: SVG-силуэт из контура — рисуется синхронно, раньше
+    // decode() у thumb-картинки ниже. canBuildSilhouette() пускает его только
+    // в пустой контейнер: если предыдущее поколение уже оставило свой thumb/
+    // медиа (усыновление выше), силуэт там был бы шагом назад.
+    //
+    // viewBox — из render-бокса (width/height), а не из натуральных пикселей
+    // стикера (`doc.w`/`doc.h`, как в tweb): их сюда никто не пробрасывает —
+    // вызывающие знают только размер ячейки, обычно квадратный. Координаты
+    // контура заданы в системе исходного канваса стикера (у Telegram почти
+    // всегда 512×512 — квадрат совпадает с боксом), так что при не-квадратном
+    // исходнике силуэт долю секунды рисуется слегка приплюснутым по одной оси —
+    // не критично для мгновенного плейсхолдера, который тут же заменяется thumb.
+    if (pathThumb && appearance.canBuildSilhouette()) {
+      const { svg } = createSvgFromBase64(pathThumb, width, height)
+      appearance.setSilhouette(svg)
+    }
 
     // Нижний слой: превью с бэка, иначе — кадр, сохранённый прошлым показом.
     const cached = getStickerThumb(mediaId)
@@ -301,7 +330,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
+  }, [mediaId, thumb, pathThumb, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.

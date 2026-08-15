@@ -256,6 +256,12 @@ samp {
   max-height: 100%;
 }
 
+// Заливка SVG-силуэта (самый нижний слой, `stickerAppearance.setSilhouette`) —
+// 1:1 tweb base.scss `.lottie-vector { fill: var(--lottie-vector-fill); }`.
+.lottie-vector {
+  fill: var(--lottie-vector-fill);
+}
+
 .fade-in {
   @include animation-level(2) {
     animation: fade-in-opacity .2s ease-in-out forwards;

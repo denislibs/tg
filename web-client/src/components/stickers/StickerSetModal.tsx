@@ -105,6 +105,7 @@ function StickerCell({ st, visible, register, onPick }: {
           loop
           group={ANIMATION_GROUP}
           thumb={st.thumb}
+          pathThumb={st.pathThumb}
         />
       )}
     </div>

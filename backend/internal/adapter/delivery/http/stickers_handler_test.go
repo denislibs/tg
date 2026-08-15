@@ -15,12 +15,14 @@ import (
 // Представление стикера для клиента: кроме идентификаторов обязаны ехать
 // метаданные файла. Без width/height фронт не может вписать стикер в бокс по
 // пропорции, без mime — выбрать рендерер до загрузки байтов, без thumb — показать
-// нижний слой, пока файл летит. Байты превью едут base64-строкой — тем же
-// способом, что blur_preview у медиа и avatar_preview у аватарок.
+// нижний слой, пока файл летит, без path_thumb (векторный контур) — нарисовать
+// SVG-силуэт мгновенно, до самого thumb. Байты превью едут base64-строкой — тем
+// же способом, что blur_preview у медиа и avatar_preview у аватарок.
 func TestStickersJSON_CarriesMediaMetadata(t *testing.T) {
 	raw, err := json.Marshal(stickersJSON([]domain.Sticker{{
 		ID: 7, SetID: 3, MediaID: 42, Emoji: "😀", Position: 1,
 		Width: 512, Height: 384, Mime: "image/webp", Thumb: []byte{0xFF, 0xD8, 0xFF},
+		PathThumb: []byte{0x4D, 0x7A},
 	}}))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -37,7 +39,8 @@ func TestStickersJSON_CarriesMediaMetadata(t *testing.T) {
 	want := map[string]any{
 		"id": float64(7), "set_id": float64(3), "media_id": float64(42), "emoji": "😀",
 		"width": float64(512), "height": float64(384), "mime": "image/webp",
-		"thumb": "/9j/", // base64 от {0xFF,0xD8,0xFF}
+		"thumb":      "/9j/", // base64 от {0xFF,0xD8,0xFF}
+		"path_thumb": "TXo=", // base64 от {0x4D,0x7A}
 	}
 	for k, v := range want {
 		if got[0][k] != v {
@@ -59,7 +62,7 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	for _, k := range []string{"width", "height", "mime", "thumb"} {
+	for _, k := range []string{"width", "height", "mime", "thumb", "path_thumb"} {
 		if _, ok := got[0][k]; !ok {
 			t.Fatalf("поле %q пропало из ответа", k)
 		}
@@ -69,6 +72,9 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 	}
 	if got[0]["thumb"] != nil {
 		t.Fatalf("thumb = %#v, want null", got[0]["thumb"])
+	}
+	if got[0]["path_thumb"] != nil {
+		t.Fatalf("path_thumb = %#v, want null", got[0]["path_thumb"])
 	}
 }
 
