@@ -995,6 +995,136 @@ git commit -m "fix(emoji): нормализация вариаций для на
 
 ---
 
+### Task 10: набор по media id и открытие модалки из чата
+
+Добавлена по ходу исполнения. Task 8 не смог связать стикер в сообщении с его набором: `ConvMsg` несёт только `mediaId`, а в роутере нет ни ручки «набор по media id», ни даже «набор по id» — только по слагу. Владелец проекта выбрал правку контракта вместо отказа от фичи.
+
+**Files:**
+- Modify: `backend/internal/adapter/repo/postgres/stickersrepo.go` (метод `SetByMediaID`)
+- Modify: `backend/internal/usecase/stickers/ports.go`, `interactor.go` (проброс)
+- Modify: `backend/internal/adapter/delivery/http/stickers_handler.go` (хендлер), `router.go:254-274` (маршрут)
+- Modify: `web-client/src/core/managers/stickersManager.ts` (метод менеджера)
+- Modify: место рендера стикера в сообщении (`web-client/src/components/messages/`)
+- Test: `backend/internal/adapter/repo/postgres/stickersrepo_test.go`, `backend/internal/adapter/delivery/http/stickers_handler_test.go`
+
+**Interfaces:**
+- Consumes: `StickerSetModal` из Task 8, `domain.StickerSet` из Task 2
+- Produces: `GET /api/stickers/by-media/{mediaID}` → `{"set": StickerSet}` (404 `domain.ErrNotFound`, если медиа не принадлежит ни одному набору); `StickersRepo.SetByMediaID(ctx, mediaID int64) (domain.StickerSet, error)`; менеджер `setByMediaId(mediaId: number): Promise<StickerSet | null>`
+
+- [ ] **Step 1: Написать падающий тест репозитория**
+
+В `backend/internal/adapter/repo/postgres/stickersrepo_test.go` (хелперы поднятия базы — как в соседних тестах пакета):
+
+```go
+// SetByMediaID — обратный поиск: по файлу стикера найти набор. Нужен клику по
+// стикеру в чате: сообщение несёт только media_id.
+func TestSetByMediaID(t *testing.T) {
+	ctx := context.Background()
+	pool := newTestPool(t)
+	repo := NewStickersRepo(pool)
+
+	set, err := repo.CreateSet(ctx, domain.StickerSet{Slug: "utyaduck", Title: "Duck", Kind: "sticker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaID := insertTestMedia(t, pool)
+	if _, err := repo.AddSticker(ctx, set.ID, mediaID, "🦆", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.SetByMediaID(ctx, mediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Slug != "utyaduck" {
+		t.Errorf("slug = %q, ожидался utyaduck", got.Slug)
+	}
+
+	if _, err := repo.SetByMediaID(ctx, mediaID+99999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("для чужого медиа err = %v, ожидался ErrNotFound", err)
+	}
+}
+```
+
+Имена хелперов (`newTestPool`, `insertTestMedia`) и сигнатуры `CreateSet`/`AddSticker` сверить с фактическими в пакете и подогнать, сохранив смысл.
+
+- [ ] **Step 2: Прогнать тест — убедиться, что падает**
+
+Run: `cd backend && go test ./internal/adapter/repo/postgres/ -run TestSetByMediaID -v`
+Expected: FAIL — `repo.SetByMediaID undefined`
+
+- [ ] **Step 3: Реализовать запрос**
+
+В `stickersrepo.go`, рядом с `SetBySlug`, тем же стилем (`setCols`, `scanSet`, `domain.ErrNotFound` на `pgx.ErrNoRows`):
+
+```sql
+SELECT <setCols>
+  FROM sticker_sets s
+  JOIN stickers st ON st.set_id = s.id
+ WHERE st.media_id = $1
+ LIMIT 1
+```
+
+`LIMIT 1` осознанный: один и тот же файл может числиться в двух наборах (Telegram переиспользует документы), клику достаточно любого — как и в tweb, где набор берётся из атрибута самого документа.
+
+- [ ] **Step 4: Прогнать тест — должен пройти**
+
+Run: `cd backend && go test ./internal/adapter/repo/postgres/ -run TestSetByMediaID -v`
+Expected: PASS
+
+- [ ] **Step 5: Написать падающий тест хендлера**
+
+В `backend/internal/adapter/delivery/http/stickers_handler_test.go` по образцу соседних тестов: запрос `GET /stickers/by-media/42` отдаёт 200 и набор; для медиа без набора — 404.
+
+- [ ] **Step 6: Реализовать хендлер и маршрут**
+
+`StickersHandler.SetByMediaID` читает `chi.URLParam(r, "mediaID")`, парсит в int64 (нечисло → 400), зовёт usecase, на `domain.ErrNotFound` отдаёт 404, иначе `{"set": set}`. Маршрут в защищённой группе рядом с прочими стикерными:
+
+```go
+			pr.Get("/stickers/by-media/{mediaID}", stickersH.SetByMediaID)
+```
+
+- [ ] **Step 7: Прогнать тесты хендлера**
+
+Run: `cd backend && go test ./internal/adapter/delivery/http/`
+Expected: PASS
+
+- [ ] **Step 8: Метод менеджера на фронте**
+
+В `web-client/src/core/managers/stickersManager.ts`, рядом с `setBySlug`:
+
+```ts
+    /** Набор, которому принадлежит файл стикера. Нужен клику по стикеру в чате:
+     * сообщение несёт только mediaId (бэк: GET /stickers/by-media/{mediaID}).
+     * null — файл не из набора (стикер удалён или прислан как обычное медиа). */
+    async setByMediaId(mediaId: number): Promise<StickerSet | null> {
+      const r = await rest.get<{ set: RawStickerSet }>(`/stickers/by-media/${mediaId}`).catch(() => null)
+      return r?.set ? mapStickerSet(r.set) : null
+    },
+```
+
+- [ ] **Step 9: Открытие модалки по клику на стикер в сообщении**
+
+Найти место рендера стикера в сообщении (`web-client/src/components/messages/`), повесить обработчик: по клику — `setByMediaId(mediaId)`, при непустом ответе открыть `StickerSetModal` с его слагом. Ответ `null` — не открывать ничего (не показывать пустую модалку). Поведение референса: tweb вешает открытие `PopupStickers` на клик по стикеру в бабле.
+
+- [ ] **Step 10: Тест на открытие**
+
+Тест в каталоге `web-client/src/components/messages/`: клик по стикеру сообщения зовёт `setByMediaId` с его `mediaId` и открывает модалку с полученным слагом; при `null` модалка не появляется. Мок менеджеров — по образцу `StickerSetModal.test.tsx` из Task 8. Клик — через `fireEvent`, как в остальных тестах проекта.
+
+- [ ] **Step 11: Прогнать тесты**
+
+Run: `cd web-client && npm test` и `cd backend && go test ./internal/adapter/delivery/http/ ./internal/usecase/stickers/`
+Expected: PASS
+
+- [ ] **Step 12: Коммит**
+
+```bash
+git add backend/internal web-client/src
+git commit -m "feat(stickers): набор по media id и открытие модалки по клику в чате"
+```
+
+---
+
 ## Что НЕ входит в этот план
 
 - **Анимированные реакции** — отдельная подсистема (своя таблица, свой сид, свой API, свой рендер поверх `MessageReactions`). Вынесены в план `docs/superpowers/plans/2026-08-15-animated-reactions.md`.
