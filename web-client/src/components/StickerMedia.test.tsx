@@ -1,18 +1,21 @@
 // StickerMedia: различение типа файла по Content-Type — image/webp рендерится
-// как <img>, application/json монтирует lottie-web (canvas, первый кадр без
-// autoplay). Сеть и lottie замоканы.
+// как <img>, video/webm как <video>, lottie (несжатый application/json и
+// gzip'нутый application/x-tgsticker) уходит в движок tlottie.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
+import { gzipSync } from 'node:zlib'
 
-const { loadAnimation } = vi.hoisted(() => ({
-  loadAnimation: vi.fn((_opts: { autoplay: boolean; loop: boolean; renderer: string }) => ({
-    goToAndStop: vi.fn(),
-    play: vi.fn(),
-    stop: vi.fn(),
-    destroy: vi.fn(),
+// Движок анимации — вендорный tlottie (декод в воркере); здесь важен сам факт
+// попадания в lottie-ветку и то, ЧТО в неё приехало (разжатый JSON).
+const { loadAnimationWorker } = vi.hoisted(() => ({
+  loadAnimationWorker: vi.fn(async (_opts: { animationData: Blob; loop: boolean; autoplay: boolean }) => ({
+    canvas: [document.createElement('canvas')],
+    onFirstFrame: vi.fn(),
+    restart: vi.fn(),
+    remove: vi.fn(),
   })),
 }))
-vi.mock('lottie-web', () => ({ default: { loadAnimation } }))
+vi.mock('../lib/lottie/lottieLoader', () => ({ default: { loadAnimationWorker } }))
 vi.mock('../core/mediaUrl', () => ({
   mediaContentUrl: (id: number) => `/api/media/${id}/content?token=t`,
   primeMediaToken: () => Promise.resolve(),
@@ -31,8 +34,17 @@ function stubFetch(contentType: string) {
   return fetchMock
 }
 
+/** Настоящий Response с телом-потоком: lottie-ветка снимает gzip через DecompressionStream. */
+function stubFetchTgs(body: Uint8Array, contentType: string) {
+  const fetchMock = vi.fn(async () => new Response(body, { headers: { 'content-type': contentType } }))
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+const LOTTIE = { v: '5.5.7', fr: 60, layers: [] }
+
 beforeEach(() => {
-  loadAnimation.mockClear()
+  loadAnimationWorker.mockClear()
   URL.createObjectURL = vi.fn(() => 'blob:sticker') as typeof URL.createObjectURL
   // happy-dom не реализует IntersectionObserver — заглушка для видео-ветки.
   vi.stubGlobal(
@@ -55,33 +67,37 @@ describe('StickerMedia', () => {
       expect(img!.getAttribute('src')).toBe('blob:sticker')
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/media/101/content?token=t')
-    expect(loadAnimation).not.toHaveBeenCalled()
+    expect(loadAnimationWorker).not.toHaveBeenCalled()
   })
 
-  // УСТАРЕЛО: StickerMedia перешёл с lottie-web на движок tlottie
-  // (lib/lottie/lottieLoader.loadAnimationWorker, декод в воркере). Эти два теста
-  // мокают lottie-web/loadAnimation, которого компонент больше не зовёт, поэтому
-  // помечены skip до переписывания под tlottie-воркер. Раньше не ловилось, т.к.
-  // весь файл не грузился в vitest (не был настроен alias @config).
-  it.skip('lottie-json: монтирует lottie-web без autoplay (первый кадр статично)', async () => {
-    stubFetch('application/json')
-    render(<StickerMedia mediaId={102} width={72} height={72} playOnHover />)
-    await waitFor(() => expect(loadAnimation).toHaveBeenCalledTimes(1))
-    const args = loadAnimation.mock.calls[0][0]
-    expect(args.autoplay).toBe(false)
-    expect(args.renderer).toBe('canvas')
-    // без autoplay первый кадр показывается через goToAndStop
-    const anim = loadAnimation.mock.results[0].value
-    expect(anim.goToAndStop).toHaveBeenCalledWith(0, true)
+  // .tgs — то, чем Telegram отдаёт анимированные стикеры (gzip поверх того же
+  // lottie-json, mime application/x-tgsticker; все 13 тыс. залитых стикеров
+  // такие). Без этой проверки сужение детекта обратно до 'application/json'
+  // оставляло прогон зелёным, а каждый .tgs уходил в image-ветку — битые
+  // квадраты вместо стикеров.
+  it('tgs (application/x-tgsticker): снимает gzip и отдаёт разобранный lottie движку', async () => {
+    const fetchMock = stubFetchTgs(gzipSync(Buffer.from(JSON.stringify(LOTTIE))), 'application/x-tgsticker')
+    const { container } = render(<StickerMedia mediaId={107} width={200} height={200} autoplay loop />)
+
+    await waitFor(() => expect(loadAnimationWorker).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith('/api/media/107/content?token=t')
+    // в image-ветку не свалились
+    expect(container.querySelector('img')).toBeNull()
+
+    const opts = loadAnimationWorker.mock.calls[0][0]
+    expect(opts.autoplay).toBe(true)
+    expect(opts.loop).toBe(true)
+    // движку уходит уже разжатый json
+    await expect(opts.animationData.text()).resolves.toBe(JSON.stringify(LOTTIE))
   })
 
-  it.skip('в бабле чата autoplay+loop уходят в lottie как есть', async () => {
+  it('несжатый lottie-json тоже уходит в движок (сид-наборы времён ручной сборки)', async () => {
     stubFetch('application/json')
-    render(<StickerMedia mediaId={103} width={200} height={200} autoplay loop />)
-    await waitFor(() => expect(loadAnimation).toHaveBeenCalledTimes(1))
-    const args = loadAnimation.mock.calls[0][0]
-    expect(args.autoplay).toBe(true)
-    expect(args.loop).toBe(true)
+    render(<StickerMedia mediaId={108} width={72} height={72} playOnHover />)
+
+    await waitFor(() => expect(loadAnimationWorker).toHaveBeenCalledTimes(1))
+    const opts = loadAnimationWorker.mock.calls[0][0]
+    expect(opts.autoplay).toBe(false)
   })
 
   // Слой превью: stripped-JPEG с бэка показывается СРАЗУ, до загрузки файла —
@@ -116,6 +132,6 @@ describe('StickerMedia', () => {
       expect(video!.getAttribute('src')).toBe('blob:sticker')
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/media/104/content?token=t')
-    expect(loadAnimation).not.toHaveBeenCalled()
+    expect(loadAnimationWorker).not.toHaveBeenCalled()
   })
 })
