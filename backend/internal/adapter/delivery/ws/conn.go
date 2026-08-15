@@ -319,10 +319,27 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				encBody = b
 			}
 		}
+		nack := func(reason string) {
+			f, _ := json.Marshal(map[string]any{
+				"t": "message_error",
+				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason},
+			})
+			c.Send(f)
+		}
 		// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
 		// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
 		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
-		threadRoot := c.svc.ResolveThreadRootForSend(ctx, d.ChatID, d.ThreadRootID)
+		// Ошибка (нет зеркала и дозавести нечего) — понятный NACK, а не запись
+		// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
+		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, d.ChatID, d.ThreadRootID)
+		if errors.Is(terr, domain.ErrNotFound) {
+			nack("not_found")
+			return
+		}
+		if terr != nil {
+			nack("failed")
+			return
+		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
@@ -350,11 +367,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			} else if errors.Is(err, domain.ErrPaidRequired) {
 				reason = "paid_required"
 			}
-			nack, _ := json.Marshal(map[string]any{
-				"t": "message_error",
-				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason},
-			})
-			c.Send(nack)
+			nack(reason)
 			return
 		}
 		ack, _ := json.Marshal(map[string]any{

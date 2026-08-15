@@ -247,13 +247,31 @@ func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64
 	return &root
 }
 
-// ResolveThreadRootForSend — та же трансляция id поста в id зеркала, что и
-// resolveThreadRootForQuery, но для ВХОДЯЩЕЙ записи (generic Send). Блокер:
-// resolveThreadRootForQuery применялась только на чтении (GetHistory/
-// GetHistoryAround), а thread_root_id, приходящий в Send с HTTP/WS,
-// оставался буквальным id ПОСТА — комментарий, отправленный generic-путём
-// (не через PostComment), приземлялся на несуществующий/чужой корень и в
-// треде никогда не появлялся.
+// ResolveThreadRootForSend — трансляция id поста в id зеркала для ВХОДЯЩЕЙ
+// записи (generic Send). Блокер: resolveThreadRootForQuery применялась
+// только на чтении (GetHistory/GetHistoryAround), а thread_root_id,
+// приходящий в Send с HTTP/WS, оставался буквальным id ПОСТА — комментарий,
+// отправленный generic-путём (не через PostComment), приземлялся на
+// несуществующий/чужой корень и в треде никогда не появлялся.
+//
+// НЕ переиспользует resolveThreadRootForQuery — это отдельная, специально
+// разведённая логика, а не обёртка над ней. Причина: resolveThreadRootForQuery
+// при отсутствии зеркала возвращает указатель на 0 — безопасный sentinel
+// ТОЛЬКО для SQL-фильтра чтения (0 не совпадёт ни с одним реальным id).
+// На записи thread_root_id уходит в INSERT: у колонки нет FK, так что 0
+// молча запишется как валидное значение, а НЕ как «треда нет» — и тогда
+// СХЛОПНЕТ в один «тред» все комментарии к РАЗНЫМ домиграционным постам,
+// у которых зеркала ещё нет (у всех thread_root_id=0 читался бы как один и
+// тот же корень). Ревью на живом стенде воспроизвело это буквально: два
+// поста, опубликованные до EnableDiscussion, generic-send с
+// thread_root_id=<post1> и thread_root_id=<post2> → обе строки получали
+// thread_root_id=0, а GetHistory(thread_root=post1) резолвился в тот же 0 и
+// отдавал ОБА комментария разом.
+//
+// Вместо sentinel запись обязана вести себя как PostComment: если зеркала
+// нет — дозеркалировать пост тем же lazyMirrorPost (включая правило
+// альбома), а если корня и после этого нет — отклонить domain.ErrNotFound,
+// а не писать 0.
 //
 // Резолвить нужно СНАРУЖИ Send, на границе HTTP/WS-хендлера, а не внутри
 // самого Send: PostComment уже вызывает Send с ThreadRootID = id зеркала
@@ -263,6 +281,38 @@ func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64
 // для того, чтобы единственными легальными вызывающими были пограничные
 // хендлеры (delivery/http.ChatHandler.Send, delivery/ws dispatch
 // send_message), а не usecase-код.
-func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64, threadRoot *int64) *int64 {
-	return i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
+func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64, threadRoot *int64) (*int64, error) {
+	if threadRoot == nil || i.groups == nil {
+		return threadRoot, nil
+	}
+	disc, err := i.groups.IsDiscussionGroup(ctx, chatID)
+	if err != nil || !disc {
+		// не discussion-группа (форум-топик и т.п.) — вход не трогаем, как раньше.
+		return threadRoot, nil
+	}
+	channelID, err := i.groups.DiscussionChannel(ctx, chatID)
+	if err != nil || channelID == 0 {
+		return threadRoot, nil
+	}
+	root, err := i.msgs.MirrorByPost(ctx, channelID, *threadRoot)
+	if err != nil {
+		return nil, err
+	}
+	if root == 0 {
+		// Зеркала нет — почти наверняка домиграционный пост (опубликован до
+		// EnableDiscussion/LinkDiscussion): дозаводим ровно тем же путём, что
+		// и первый комментарий через PostComment (см. её комментарий и
+		// правило альбома), а не пишем sentinel и не молчим.
+		root, err = i.lazyMirrorPost(ctx, channelID, *threadRoot)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if root == 0 {
+		// Дозаводка не помогла (поста нет / чужой канал / удалён) — треда
+		// действительно нет, отклоняем запрос понятной доменной ошибкой
+		// вместо записи 0.
+		return nil, domain.ErrNotFound
+	}
+	return &root, nil
 }

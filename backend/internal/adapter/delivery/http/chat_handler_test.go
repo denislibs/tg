@@ -101,6 +101,75 @@ func TestChatFlow_HTTP(t *testing.T) {
 	}
 }
 
+// Дыра, найдена ре-ревью (2026-08-15): prependForeignThreadRoot резолвит
+// ?thread_root=<id> через GetByID — прямой PK-запрос, который не проверяет,
+// состоит ли запрашивающий в чате найденного сообщения. Механизм задуман для
+// форум-топиков/зеркал (root физически в ТОМ ЖЕ чате, что и сам запрос), но
+// ничто не мешает клиенту передать thread_root=<id ЧУЖОГО сообщения из
+// совершенно другого чата> — до фикса такое сообщение подшивалось бы первым
+// в окно, даже если у читателя нет к нему доступа вовсе (например, приватная
+// переписка третьих лиц). Проверяем: participant группы B, не имеющий
+// отношения к приватному чату X↔Y, не видит секретный текст X→Y через
+// ?thread_root=<id секретного сообщения>.
+func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenX, _ := signUp(t, h, pool, "+79990001001")
+	_, idY := signUp(t, h, pool, "+79990001002")
+	tokenB, _ := signUp(t, h, pool, "+79990001003")
+
+	// X и Y — приватный чат с секретным сообщением, B к нему отношения не имеет.
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenX, map[string]int64{"user_id": idY})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create private chat: %d %s", rec.Code, rec.Body.String())
+	}
+	var xy struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &xy)
+
+	const secretText = "совершенно секретный текст X и Y"
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy.ChatID)+"/messages", tokenX, map[string]any{
+		"text": secretText, "client_msg_id": "s1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("secret message: %d %s", rec.Code, rec.Body.String())
+	}
+	var secret struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &secret)
+
+	// B — участник обычной группы G, никак не связанной ни с X, ни с Y.
+	rec = authedReq(t, h, http.MethodPost, "/groups", tokenB, map[string]any{
+		"title": "Just a group",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	var g struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &g)
+
+	// B запрашивает историю G с thread_root, указывающим на ЧУЖОЕ (X↔Y) сообщение.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(g.ChatID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Messages []struct {
+			ID   int64  `json:"id"`
+			Text string `json:"text"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	for _, m := range hist.Messages {
+		if m.ID == secret.ID || m.Text == secretText {
+			t.Fatalf("секретное сообщение чужого чата утекло через thread_root: %s", rec.Body.String())
+		}
+	}
+}
+
 // getChats делает GET /chats(+query) с токеном и декодирует ответ в форму
 // {chats, count, is_end}; падает тестом, если код ответа не 200.
 func getChats(t *testing.T, h http.Handler, token, query string) struct {

@@ -39,7 +39,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	// подшиваем корневой бабл треда первым сообщением, если пагинация его не
 	// зацепила (tweb: пост форварднут в discussion-группу и открывает тред).
 	if threadRoot != nil && len(msgs) < limit && addOffset >= 0 {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, *queryRoot, msgs)
+		msgs = i.prependForeignThreadRoot(ctx, chatID, userID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return HistoryResult{}, e
@@ -77,24 +77,39 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 // для discussion-группы это id ЗЕРКАЛА поста (лежит в ТОМ ЖЕ чате chatID,
 // не в канале), для форум-топика — id сообщения темы (тоже в chatID).
 //
-// Регрессия (найдена ревью): раньше сюда передавали исходный threadRoot (id
-// ПОСТА, внешний контракт) — сравнение `m.ID == threadRoot` никогда не
-// совпадало с зеркалом (у него другой, внутренний id), поэтому функция
-// каждый раз считала, что корня в окне нет, шла в канал за ОРИГИНАЛОМ поста
-// (GetByID(id поста)) и подшивала его — а зеркало с тем же текстом к этому
-// моменту уже приезжало в msgs через SQL-условие `thread_root_id=root OR
-// id=root` (см. MessagesRepo.GetHistory/GetAround). Результат — один и тот
-// же пост дважды: зеркало из выборки плюс синтетически подшитый оригинал.
+// История правок (обе — находки ревью):
 //
-// Зеркало — самое раннее сообщение треда (вставлено до любых комментариев),
-// поэтому «дошли до верха треда» (условие вызова ниже) почти всегда значит,
-// что оно уже в msgs — цикл находит совпадение по id и возвращает окно как
-// есть. GetByID-фолбэк — подстраховка на случай, если зеркало/корень темы
-// исключены из выборки видимостью (history_for_new/message_hides):
-// комментарии читаются и НЕ-членами группы (см. checkHistoryAccess), и
-// открывающий тред бабл обязан быть виден им всегда, эти фильтры на него не
-// должны действовать.
-func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, root int64, msgs []domain.Message) []domain.Message {
+//  1. Раньше сюда передавали исходный threadRoot (id ПОСТА, внешний
+//     контракт) — сравнение `m.ID == threadRoot` никогда не совпадало с
+//     зеркалом (у него другой, внутренний id), поэтому функция каждый раз
+//     считала, что корня в окне нет, шла в канал за ОРИГИНАЛОМ поста
+//     (GetByID(id поста)) и подшивала его — а зеркало с тем же текстом уже
+//     приезжало в msgs через SQL-условие `thread_root_id=root OR id=root`
+//     (MessagesRepo.GetHistory/GetAround). Один и тот же пост дважды.
+//     Почина — сравнивать по РЕЗОЛВЛЕННОМУ root (см. сигнатуру).
+//  2. Фикс (1) по пути снял проверку `rootMsg.ChatID == chatID` — идея
+//     была «зеркало обязано быть видно всегда, эти фильтры на него не
+//     действуют». Регрессия: для форум-топика (root физически в ЭТОМ ЖЕ
+//     chatID) это заставляло синтетически показывать корень темы, даже
+//     если персональная видимость (message_hides/clearedSeq/
+//     history_for_new) намеренно его скрыла — то, что раньше уважалось.
+//     Проверка возвращена: если root физически в ЭТОМ ЖЕ чате, но не попал
+//     в окно — значит видимость исключила его намеренно, форсировать показ
+//     нельзя (ни для форум-топика, ни для зеркала — единообразно, без
+//     специального обхода для зеркала: обход не был частью исходного
+//     требования блокера, только дедупликация).
+//
+// Если root физически в ДРУГОМ чате (после резолва queryRoot это уже НЕ
+// штатный кейс discussion-группы — там root всегда в chatID; остаётся
+// только вырожденный путь resolveThreadRootForQuery, когда i.groups==nil
+// или сбоит IsDiscussionGroup, и thread_root долетает сюда НЕпереведённым,
+// всё ещё указывая на пост в другом чате) — GetByID сам по себе доступ не
+// проверяет (PK-резолв по любому чату), поэтому без явной проверки
+// членства `?thread_root=<id чужого сообщения>` подшивал бы контент ИЗ
+// ЛЮБОГО чужого чата, включая приватные, независимо от того, есть ли у
+// запрашивающего туда доступ (дыра, найдена ревью). Подшиваем такой корень,
+// только если userID реально состоит в его чате.
+func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, userID, root int64, msgs []domain.Message) []domain.Message {
 	for _, m := range msgs {
 		if m.ID == root {
 			return msgs // корень уже в окне
@@ -102,6 +117,17 @@ func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, root 
 	}
 	rootMsg, err := i.msgs.GetByID(ctx, root)
 	if err != nil || rootMsg.Deleted {
+		return msgs
+	}
+	if rootMsg.ChatID == chatID {
+		// В своём чате, но вне окна — видимость (message_hides/clearedSeq/
+		// history_for_new) исключила его намеренно; не форсируем показ.
+		return msgs
+	}
+	// Чужой чат — легитимно только в вырожденном случае, см. комментарий
+	// функции; проверяем реальный доступ, а не доверяем самому факту «не
+	// тот чат».
+	if ok, e := i.chats.IsMember(ctx, rootMsg.ChatID, userID); e != nil || !ok {
 		return msgs
 	}
 	rootMsg.Seq = 0
@@ -330,7 +356,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 		return AroundResult{}, err
 	}
 	if threadRoot != nil && top {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, *queryRoot, msgs)
+		msgs = i.prependForeignThreadRoot(ctx, chatID, userID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return AroundResult{}, e
