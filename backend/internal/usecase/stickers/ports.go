@@ -36,6 +36,10 @@ type Repo interface {
 	SetRank(ctx context.Context, setID int64, rank int) error
 	// SetCover привязывает медиа обложки к набору.
 	SetCover(ctx context.Context, setID, mediaID int64) error
+	// StickerPositions — занятые позиции набора; сид (cmd/seed-stickers)
+	// использует их, чтобы досидировать только недостающие стикеры, не трогая
+	// существующие.
+	StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error)
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error

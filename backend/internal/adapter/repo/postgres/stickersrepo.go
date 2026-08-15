@@ -55,6 +55,27 @@ func (r *StickersRepo) SetCover(ctx context.Context, setID, mediaID int64) error
 	return err
 }
 
+// StickerPositions отдаёт занятые позиции набора: по ним сид (cmd/seed-stickers)
+// понимает, каких стикеров в наборе ещё нет, и заливает только недостающие, не
+// трогая существующие — на них ссылаются уже отправленные сообщения.
+func (r *StickersRepo) StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT position FROM stickers WHERE set_id = $1`, setID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]struct{}{}
+	for rows.Next() {
+		var pos int
+		if err := rows.Scan(&pos); err != nil {
+			return nil, err
+		}
+		out[pos] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
 func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+` FROM sticker_sets s WHERE s.slug=$1`, slug))

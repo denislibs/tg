@@ -212,6 +212,18 @@ func (f *fakeRepo) SetCover(_ context.Context, setID, mediaID int64) error {
 	return nil
 }
 
+func (f *fakeRepo) StickerPositions(_ context.Context, setID int64) (map[int]struct{}, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[int]struct{}{}
+	for _, s := range f.stickers {
+		if s.SetID == setID {
+			out[s.Position] = struct{}{}
+		}
+	}
+	return out, nil
+}
+
 // trim оставляет keep записей с наибольшим временем.
 func trim(m map[int64]int64, keep int) {
 	for len(m) > keep {

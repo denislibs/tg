@@ -462,6 +462,52 @@ func TestFeaturedSetsOrderByRank(t *testing.T) {
 	_ = noRank
 }
 
+// StickerPositions отдаёт занятые позиции набора: по ним сид понимает, каких
+// стикеров в наборе ещё нет, и досидирует только их.
+func TestStickerPositions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7817")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "positions", Title: "P", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AddSticker сам назначает позицию как max(position)+1, поэтому чтобы
+	// получить набор {0,1,3} с дыркой на 2, вставляем 4 стикера подряд
+	// (0,1,2,3), а затем стикер с позиции 2 удаляем — остаются заняты ровно
+	// 0,1,3.
+	var toDelete int64
+	for k := 0; k < 4; k++ {
+		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("positions/%d", k))
+		s, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "🦆"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Position == 2 {
+			toDelete = s.ID
+		}
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM stickers WHERE id=$1`, toDelete); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.StickerPositions(ctx, set.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("позиций %d, ожидалось 3", len(got))
+	}
+	if _, ok := got[2]; ok {
+		t.Error("позиция 2 не занята, а вернулась занятой")
+	}
+	if _, ok := got[3]; !ok {
+		t.Error("позиция 3 занята, но не вернулась")
+	}
+}
+
 // Индексы стикеров (миграция 0094). Тест пинит два решения, а не «схема как
 // написана»: (1) stickers.media_id обязан быть проиндексирован — по нему идут
 // SetByMediaID (клик по стикеру в чате) и IsStickerMedia (каждая отправка

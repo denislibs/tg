@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,6 +64,9 @@ func TestLoadRanksNoFile(t *testing.T) {
 // в этих тестах нет.
 type fakeSeeder struct {
 	sets map[string]domain.StickerSet
+	// positions — занятые позиции набора по его id; наполняется тестом заранее
+	// (существующий набор) и через AddSticker (досидированные позиции).
+	positions map[int64]map[int]struct{}
 
 	created  []string
 	stickers []int64
@@ -71,7 +75,12 @@ type fakeSeeder struct {
 }
 
 func newFakeSeeder() *fakeSeeder {
-	return &fakeSeeder{sets: map[string]domain.StickerSet{}, ranks: map[int64]int{}, covers: map[int64]int64{}}
+	return &fakeSeeder{
+		sets:      map[string]domain.StickerSet{},
+		positions: map[int64]map[int]struct{}{},
+		ranks:     map[int64]int{},
+		covers:    map[int64]int64{},
+	}
 }
 
 func (f *fakeSeeder) SetBySlug(_ context.Context, slug string) (domain.StickerSet, []domain.Sticker, error) {
@@ -91,7 +100,29 @@ func (f *fakeSeeder) CreateSet(_ context.Context, ownerID int64, slug, title, ki
 
 func (f *fakeSeeder) AddSticker(_ context.Context, _, setID, mediaID int64, _ string) (domain.Sticker, error) {
 	f.stickers = append(f.stickers, mediaID)
-	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID}, nil
+	occ := f.positions[setID]
+	if occ == nil {
+		occ = map[int]struct{}{}
+		f.positions[setID] = occ
+	}
+	// Позиция — max(занятых)+1, как в реальном StickersRepo.AddSticker.
+	pos := -1
+	for p := range occ {
+		if p > pos {
+			pos = p
+		}
+	}
+	pos++
+	occ[pos] = struct{}{}
+	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID, Position: pos}, nil
+}
+
+func (f *fakeSeeder) StickerPositions(_ context.Context, setID int64) (map[int]struct{}, error) {
+	out := make(map[int]struct{}, len(f.positions[setID]))
+	for pos := range f.positions[setID] {
+		out[pos] = struct{}{}
+	}
+	return out, nil
 }
 
 func (f *fakeSeeder) SetRank(_ context.Context, setID int64, rank int) error {
@@ -169,6 +200,10 @@ func TestSeedSetExistingGetsRankAndCover(t *testing.T) {
 	writeSetDir(t, dir, "utyaduck")
 	seeder := newFakeSeeder()
 	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Title: "Утята", Kind: "sticker"}
+	// Единственный стикер из writeSetDir (позиция 0) уже залит — тест проверяет
+	// именно доставку rank/обложки, а не досидирование стикеров (для него своя
+	// проверка — TestSeedSetFillsMissingPositions).
+	seeder.positions[7] = map[int]struct{}{0: {}}
 	uploads := 0
 
 	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 5); err != nil {
@@ -181,8 +216,7 @@ func TestSeedSetExistingGetsRankAndCover(t *testing.T) {
 	if seeder.covers[7] == 0 {
 		t.Error("обложка не проставлена существующему набору")
 	}
-	// Стикеры существующего набора не перезаливаются: единственная заливка —
-	// файл обложки.
+	// Стикеры набора уже все на месте — единственная заливка — файл обложки.
 	if len(seeder.created) != 0 || len(seeder.stickers) != 0 {
 		t.Errorf("created=%v stickers=%v — существующий набор перезалит", seeder.created, seeder.stickers)
 	}
@@ -192,12 +226,14 @@ func TestSeedSetExistingGetsRankAndCover(t *testing.T) {
 }
 
 // Второй прогон по уже полному набору не должен ни перезаливать обложку
-// (иначе копия media на каждом деплое), ни трогать совпадающий ранг.
+// (иначе копия media на каждом деплое), ни трогать совпадающий ранг, ни
+// пытаться залить уже занятые позиции стикеров.
 func TestSeedSetCompleteSetUntouched(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDir(t, dir, "utyaduck")
 	seeder := newFakeSeeder()
 	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 5, CoverMediaID: 42}
+	seeder.positions[7] = map[int]struct{}{0: {}}
 	uploads := 0
 
 	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 5); err != nil {
@@ -205,9 +241,81 @@ func TestSeedSetCompleteSetUntouched(t *testing.T) {
 	}
 
 	if uploads != 0 {
-		t.Errorf("uploads = %d, ожидался 0 — обложка уже есть", uploads)
+		t.Errorf("uploads = %d, ожидался 0 — набор уже полон", uploads)
+	}
+	if len(seeder.stickers) != 0 {
+		t.Errorf("stickers=%v — набор уже полон, лишних стикеров быть не должно", seeder.stickers)
 	}
 	if len(seeder.covers) != 0 || len(seeder.ranks) != 0 {
 		t.Errorf("covers=%v ranks=%v — набор уже в нужном виде, записи лишние", seeder.covers, seeder.ranks)
 	}
+}
+
+// writeSetDirN раскладывает каталог набора с n стикерами (meta.json + файлы,
+// без обложки) — для проверки досидирования недостающих позиций.
+func writeSetDirN(t *testing.T, dir, slug string, n int) {
+	t.Helper()
+	sub := filepath.Join(dir, slug)
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := setMeta{Title: "Утята", Kind: "sticker"}
+	for k := 0; k < n; k++ {
+		file := fmt.Sprintf("%d.tgs", k)
+		meta.Stickers = append(meta.Stickers, struct {
+			File  string `json:"file"`
+			Emoji string `json:"emoji"`
+		}{File: file, Emoji: "🦆"})
+		if err := os.WriteFile(filepath.Join(sub, file), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "meta.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Главный сценарий Task 11: набор уже есть в БД, но неполон (например, в него
+// на бою досидировали только часть Telegram-набора). Сид должен залить РОВНО
+// недостающие позиции, не тронув существующие (на них ссылаются отправленные
+// сообщения) и не создав дублей. Раньше seedSet при existing-наборе не заливал
+// вообще ничего — так animated_emoji застрял на 6 самодельных стикерах вместо
+// 599 приехавших из Telegram.
+func TestSeedSetFillsMissingPositions(t *testing.T) {
+	dir := t.TempDir()
+	writeSetDirN(t, dir, "utyaduck", 4)
+	seeder := newFakeSeeder()
+	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}}
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet: %v", err)
+	}
+
+	if uploads != 2 {
+		t.Fatalf("uploads = %d, ожидалось 2 — недостающие позиции 2 и 3", uploads)
+	}
+	if len(seeder.stickers) != 2 {
+		t.Fatalf("stickers=%v — ожидалось 2 новых стикера", seeder.stickers)
+	}
+	got := seeder.positions[7]
+	if len(got) != 4 {
+		t.Fatalf("positions = %v, ожидалось 4 занятых позиции", got)
+	}
+	for _, pos := range []int{2, 3} {
+		if _, ok := got[pos]; !ok {
+			t.Errorf("позиция %d не залита", pos)
+		}
+	}
+	// Набор уже существует — CreateSet повторно не зовём.
+	if len(seeder.created) != 0 {
+		t.Errorf("created=%v — существующий набор пересоздан", seeder.created)
+	}
+	// Обложка уже есть — cover не перезаливаем: 2 заливки — это ровно недостающие
+	// стикеры, ни одной лишней.
 }

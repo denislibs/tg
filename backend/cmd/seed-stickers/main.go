@@ -1,7 +1,8 @@
 // seed-stickers заливает наборы стикеров из assets/stickers/<slug>/ в БД и
 // MinIO (env те же, что у сервера: DATABASE_URL, MINIO_*). Идемпотентно, так что
-// можно гонять при каждом деплое: существующему набору стикеры не перезаливаются,
-// а недостающие метаданные (rank трендов, обложка) доставляются — см. seedSet.
+// можно гонять при каждом деплое: существующие стикеры набора не перезаливаются
+// и не переупорядочиваются, а недостающие (по позиции в meta.json) и метаданные
+// (rank трендов, обложка) доставляются — см. seedSet.
 //
 //	go run ./cmd/seed-stickers            # каталоги из ./assets/stickers
 //	go run ./cmd/seed-stickers -dir path  # свой каталог с наборами
@@ -174,21 +175,26 @@ type setSeeder interface {
 	AddSticker(ctx context.Context, ownerID, setID, mediaID int64, emoji string) (domain.Sticker, error)
 	SetRank(ctx context.Context, setID int64, rank int) error
 	SetCover(ctx context.Context, setID, mediaID int64) error
+	// StickerPositions — занятые позиции набора; по ним seedSet понимает, каких
+	// стикеров ещё нет, и заливает только недостающие.
+	StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error)
 }
 
 // uploadFunc — заливка одного файла набора в media; в бою это uploadFile поверх
 // usecase медиа, в тесте — счётчик.
 type uploadFunc func(ctx context.Context, path string) (int64, error)
 
-// seedSet заливает набор и приводит его метаданные (rank/обложка) к тому, что
-// написано в выгрузке.
+// seedSet заливает набор и приводит его к тому, что написано в выгрузке:
+// недостающие стикеры (по позиции) и метаданные (rank/обложка).
 //
-// Идемпотентность здесь построчная, а не «набор целиком»: существующему набору
-// стикеры не перезаливаются, но rank и обложка проставляются НА КАЖДОМ прогоне.
-// Иначе прерванный прогон (а он прерывается — это гигабайты файлов) оставлял бы
-// уже созданные наборы с rank = 0 и без обложки навсегда: повторный запуск
-// упирался бы в ранний возврат «набор уже есть», и порядок панели тихо
-// разъезжался бы с Telegram.
+// Идемпотентность здесь построчная, а не «набор целиком»: у существующего
+// набора не трогаются и не переупорядочиваются уже залитые стикеры (на них
+// ссылаются отправленные сообщения), но недостающие позиции досидируются, а
+// rank и обложка проставляются НА КАЖДОМ прогоне. Иначе прерванный прогон (а
+// он прерывается — это гигабайты файлов) навсегда оставлял бы набор неполным,
+// с rank = 0 и без обложки: повторный запуск упирался бы в ранний возврат
+// «набор уже есть», и набор тихо расходился бы с тем, что приехало из
+// Telegram (так на стенде animated_emoji застрял на 6 стикерах из 599).
 func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug string, rank int) error {
 	raw, err := os.ReadFile(filepath.Join(dir, slug, "meta.json"))
 	if err != nil {
@@ -202,7 +208,9 @@ func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug s
 	set, _, err := sets.SetBySlug(ctx, slug)
 	switch {
 	case err == nil:
-		log.Printf("набор %s уже есть — стикеры не перезаливаю", slug)
+		if err := fillMissingStickers(ctx, sets, upload, dir, slug, set.ID, meta); err != nil {
+			return err
+		}
 	case errors.Is(err, domain.ErrNotFound):
 		// Владелец сид-наборов — сервисный аккаунт: он есть в любой БД (миграция
 		// 0014) и наборы не окажутся «ничьими».
@@ -241,6 +249,38 @@ func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug s
 		if err := sets.SetCover(ctx, set.ID, coverID); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// fillMissingStickers досидировает набор, который уже есть в БД: заливает
+// только те стикеры meta.Stickers, чьей позиции ещё нет среди занятых
+// (StickerPositions), не трогая и не переупорядочивая существующие — на них
+// ссылаются уже отправленные сообщения. Ключ сопоставления — позиция стикера
+// в meta.json: media_id при каждой заливке новый, а позиция стабильна.
+func fillMissingStickers(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug string, setID int64, meta setMeta) error {
+	occupied, err := sets.StickerPositions(ctx, setID)
+	if err != nil {
+		return err
+	}
+	added := 0
+	for pos, s := range meta.Stickers {
+		if _, ok := occupied[pos]; ok {
+			continue
+		}
+		mediaID, err := upload(ctx, filepath.Join(dir, slug, s.File))
+		if err != nil {
+			return err
+		}
+		if _, err := sets.AddSticker(ctx, domain.ServiceUserID, setID, mediaID, s.Emoji); err != nil {
+			return err
+		}
+		added++
+	}
+	if added == 0 {
+		log.Printf("набор %s уже полон", slug)
+	} else {
+		log.Printf("набор %s: залито %d недостающих стикеров", slug, added)
 	}
 	return nil
 }

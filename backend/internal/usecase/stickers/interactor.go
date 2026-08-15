@@ -232,3 +232,8 @@ func (i *Interactor) SetRank(ctx context.Context, setID int64, rank int) error {
 func (i *Interactor) SetCover(ctx context.Context, setID, mediaID int64) error {
 	return i.repo.SetCover(ctx, setID, mediaID)
 }
+
+// StickerPositions — занятые позиции набора (см. Repo.StickerPositions).
+func (i *Interactor) StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error) {
+	return i.repo.StickerPositions(ctx, setID)
+}
