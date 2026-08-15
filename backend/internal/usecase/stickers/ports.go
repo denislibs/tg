@@ -26,7 +26,8 @@ type Repo interface {
 	// (cmd/seed-stickers), где позиция берётся из meta.json и обязана
 	// совпасть с БД; AddSticker с автопозицией для этого не годится, так как
 	// при дыре в середине набора всегда аппендит в хвост, а не в дыру.
-	AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error)
+	// pathThumb — контур стикера (domain.Sticker.PathThumb), едет со вставкой.
+	AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error)
 	StickerByID(ctx context.Context, id int64) (domain.Sticker, error) // domain.ErrNotFound
 
 	Install(ctx context.Context, userID, setID int64) error   // идемпотентно
@@ -45,6 +46,11 @@ type Repo interface {
 	// использует их, чтобы досидировать только недостающие стикеры, не трогая
 	// существующие.
 	StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error)
+	// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора
+	// по позиции — сид использует его, чтобы контур доехал и до стикеров,
+	// залитых раньше появления этого поля. Уже проставленный контур не
+	// трогает (см. StickersRepo.BackfillPathThumbs).
+	BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error

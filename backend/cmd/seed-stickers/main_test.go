@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -67,17 +68,26 @@ type fakeSeeder struct {
 	// positions — занятые позиции набора по его id; наполняется тестом заранее
 	// (существующий набор) и через AddSticker (досидированные позиции).
 	positions map[int64]map[int]struct{}
+	// thumbs — контуры стикеров по (setID, position): пишутся и вставкой
+	// (AddStickerAt), и досидированием (BackfillPathThumbs), чтобы тест мог
+	// проверить итоговое состояние независимо от того, каким путём контур
+	// доехал.
+	thumbs map[int64]map[int][]byte
 
 	created  []string
 	stickers []int64
 	ranks    map[int64]int
 	covers   map[int64]int64
+	// backfillCalls — сколько раз позвали BackfillPathThumbs (для проверки,
+	// что уже полностью контурный набор второй раз не дёргает Backfill).
+	backfillCalls int
 }
 
 func newFakeSeeder() *fakeSeeder {
 	return &fakeSeeder{
 		sets:      map[string]domain.StickerSet{},
 		positions: map[int64]map[int]struct{}{},
+		thumbs:    map[int64]map[int][]byte{},
 		ranks:     map[int64]int{},
 		covers:    map[int64]int64{},
 	}
@@ -101,7 +111,7 @@ func (f *fakeSeeder) CreateSet(_ context.Context, ownerID int64, slug, title, ki
 // AddStickerAt — позиция берётся из аргумента буквально, не пересчитывается
 // (как и у реального StickersRepo.AddStickerAt): именно это делает
 // досидирование дыры в середине набора идемпотентным на повторном прогоне.
-func (f *fakeSeeder) AddStickerAt(_ context.Context, _, setID, mediaID int64, _ string, position int) (domain.Sticker, error) {
+func (f *fakeSeeder) AddStickerAt(_ context.Context, _, setID, mediaID int64, _ string, position int, pathThumb []byte) (domain.Sticker, error) {
 	f.stickers = append(f.stickers, mediaID)
 	occ := f.positions[setID]
 	if occ == nil {
@@ -109,7 +119,15 @@ func (f *fakeSeeder) AddStickerAt(_ context.Context, _, setID, mediaID int64, _ 
 		f.positions[setID] = occ
 	}
 	occ[position] = struct{}{}
-	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID, Position: position}, nil
+	if len(pathThumb) > 0 {
+		th := f.thumbs[setID]
+		if th == nil {
+			th = map[int][]byte{}
+			f.thumbs[setID] = th
+		}
+		th[position] = pathThumb
+	}
+	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID, Position: position, PathThumb: pathThumb}, nil
 }
 
 func (f *fakeSeeder) StickerPositions(_ context.Context, setID int64) (map[int]struct{}, error) {
@@ -118,6 +136,27 @@ func (f *fakeSeeder) StickerPositions(_ context.Context, setID int64) (map[int]s
 		out[pos] = struct{}{}
 	}
 	return out, nil
+}
+
+// BackfillPathThumbs — как реальный StickersRepo.BackfillPathThumbs: не
+// трогает позиции, у которых контур уже есть.
+func (f *fakeSeeder) BackfillPathThumbs(_ context.Context, setID int64, incoming map[int][]byte) error {
+	f.backfillCalls++
+	if len(incoming) == 0 {
+		return nil
+	}
+	th := f.thumbs[setID]
+	if th == nil {
+		th = map[int][]byte{}
+		f.thumbs[setID] = th
+	}
+	for pos, thumb := range incoming {
+		if _, ok := th[pos]; ok {
+			continue
+		}
+		th[pos] = thumb
+	}
+	return nil
 }
 
 func (f *fakeSeeder) SetRank(_ context.Context, setID int64, rank int) error {
@@ -139,10 +178,7 @@ func writeSetDir(t *testing.T, dir, slug string) {
 		t.Fatal(err)
 	}
 	meta := setMeta{Title: "Утята", Kind: "sticker", Cover: "cover.tgs"}
-	meta.Stickers = append(meta.Stickers, struct {
-		File  string `json:"file"`
-		Emoji string `json:"emoji"`
-	}{File: "1.tgs", Emoji: "🦆"})
+	meta.Stickers = append(meta.Stickers, stickerMetaEntry{File: "1.tgs", Emoji: "🦆"})
 	raw, err := json.Marshal(meta)
 	if err != nil {
 		t.Fatal(err)
@@ -250,6 +286,13 @@ func TestSeedSetCompleteSetUntouched(t *testing.T) {
 // без обложки) — для проверки досидирования недостающих позиций.
 func writeSetDirN(t *testing.T, dir, slug string, n int) {
 	t.Helper()
+	writeSetDirNWithPaths(t, dir, slug, n, nil)
+}
+
+// writeSetDirNWithPaths — как writeSetDirN, но с контуром (base64) у
+// перечисленных в paths позиций — для проверки чтения/backfill path_thumb.
+func writeSetDirNWithPaths(t *testing.T, dir, slug string, n int, paths map[int]string) {
+	t.Helper()
 	sub := filepath.Join(dir, slug)
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
@@ -257,10 +300,7 @@ func writeSetDirN(t *testing.T, dir, slug string, n int) {
 	meta := setMeta{Title: "Утята", Kind: "sticker"}
 	for k := 0; k < n; k++ {
 		file := fmt.Sprintf("%d.tgs", k)
-		meta.Stickers = append(meta.Stickers, struct {
-			File  string `json:"file"`
-			Emoji string `json:"emoji"`
-		}{File: file, Emoji: "🦆"})
+		meta.Stickers = append(meta.Stickers, stickerMetaEntry{File: file, Emoji: "🦆", Path: paths[k]})
 		if err := os.WriteFile(filepath.Join(sub, file), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -353,5 +393,97 @@ func TestSeedSetFillsMiddleGapIdempotently(t *testing.T) {
 	}
 	if len(seeder.stickers) != 1 {
 		t.Errorf("stickers=%v — второй прогон добавил дубль", seeder.stickers)
+	}
+}
+
+// Новый набор: контур из meta.json (path) едет прямо во вставку.
+func TestSeedSetNewCarriesPathThumb(t *testing.T) {
+	dir := t.TempDir()
+	outline := base64.StdEncoding.EncodeToString([]byte{1, 2, 3})
+	writeSetDirNWithPaths(t, dir, "utyaduck", 1, map[int]string{0: outline})
+	seeder := newFakeSeeder()
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 0); err != nil {
+		t.Fatalf("seedSet: %v", err)
+	}
+
+	got := seeder.thumbs[1][0]
+	if string(got) != "\x01\x02\x03" {
+		t.Fatalf("PathThumb = %v, want [1 2 3]", got)
+	}
+}
+
+// Главный сценарий Task 5: набор уже полностью залит на стенде (13.5к таких
+// стикеров), но path_thumb у стикеров ещё нет, потому что появилось позже.
+// Повторный прогон сида обязан дописать контур существующим стикерам через
+// BackfillPathThumbs — иначе поле останется пустым навсегда, ведь
+// fillMissingStickers эти позиции не трогает как «уже занятые».
+func TestSeedSetBackfillsExistingPathThumb(t *testing.T) {
+	dir := t.TempDir()
+	outline0 := base64.StdEncoding.EncodeToString([]byte{9, 9})
+	outline1 := base64.StdEncoding.EncodeToString([]byte{7, 7})
+	writeSetDirNWithPaths(t, dir, "utyaduck", 2, map[int]string{0: outline0, 1: outline1})
+	seeder := newFakeSeeder()
+	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	// Оба стикера уже залиты (как на стенде) — недостающих позиций нет.
+	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}}
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet: %v", err)
+	}
+
+	if uploads != 0 {
+		t.Fatalf("uploads = %d, ожидался 0 — новых стикеров нет, только backfill", uploads)
+	}
+	if got := seeder.thumbs[7][0]; string(got) != "\x09\x09" {
+		t.Fatalf("thumbs[0] = %v, want [9 9]", got)
+	}
+	if got := seeder.thumbs[7][1]; string(got) != "\x07\x07" {
+		t.Fatalf("thumbs[1] = %v, want [7 7]", got)
+	}
+	if seeder.backfillCalls != 1 {
+		t.Fatalf("backfillCalls = %d, want 1", seeder.backfillCalls)
+	}
+
+	// Второй прогон — контур уже проставлен, но seedSet всё равно должен
+	// оставаться идемпотентным (не менять уже записанные значения).
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet (2-й прогон): %v", err)
+	}
+	if got := seeder.thumbs[7][0]; string(got) != "\x09\x09" {
+		t.Fatalf("thumbs[0] после 2-го прогона = %v, изменился", got)
+	}
+}
+
+// Пустое поле path (у Telegram-документа контура не было) — не ошибка:
+// BackfillPathThumbs не зовётся вовсе, если ни у одной позиции нет контура.
+func TestSeedSetNoPathIsNotError(t *testing.T) {
+	dir := t.TempDir()
+	writeSetDirN(t, dir, "utyaduck", 1) // Path не задан
+	seeder := newFakeSeeder()
+	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.positions[7] = map[int]struct{}{0: {}}
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet: %v", err)
+	}
+	if seeder.backfillCalls != 0 {
+		t.Errorf("backfillCalls = %d, want 0 — нет ни одного контура, звать Backfill незачем", seeder.backfillCalls)
+	}
+}
+
+// Битый base64 в meta.json — это порча данных выгрузки, а не штатный случай
+// («контура нет»), поэтому seedSet обязан упасть с ошибкой, а не проглотить её.
+func TestSeedSetBadPathIsError(t *testing.T) {
+	dir := t.TempDir()
+	writeSetDirNWithPaths(t, dir, "utyaduck", 1, map[int]string{0: "not-base64!!"})
+	seeder := newFakeSeeder()
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 0); err == nil {
+		t.Fatal("seedSet: want ошибку на битом base64, got nil")
 	}
 }

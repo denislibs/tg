@@ -43,6 +43,12 @@ type Sticker struct {
 	// domain.Media.BlurPreview). nil у lottie (на бэке не растеризуем — первый
 	// кадр клиент кэширует сам) и у медиа без сгенерированного превью.
 	Thumb []byte `json:"thumb,omitempty"`
+	// PathThumb — векторный контур стикера (Telegram photoPathSize), которым
+	// клиент рисует SVG-силуэт мгновенно, пока грузится сам файл (tweb
+	// wrappers/sticker.ts:268). В отличие от Thumb лежит не в media, а в самой
+	// строке стикера: это метаданные набора, а не отдельный файл. nil, если у
+	// Telegram-документа контура не было.
+	PathThumb []byte `json:"path_thumb,omitempty"`
 }
 
 // SavedGif — сохранённый пользователем GIF (вкладка GIF в панели стикеров).

@@ -118,11 +118,11 @@ func (f *fakeRepo) AddSticker(_ context.Context, s domain.Sticker) (domain.Stick
 	return s, nil
 }
 
-func (f *fakeRepo) AddStickerAt(_ context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+func (f *fakeRepo) AddStickerAt(_ context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextStick++
-	s := domain.Sticker{ID: f.nextStick, SetID: setID, MediaID: mediaID, Emoji: emoji, Position: position}
+	s := domain.Sticker{ID: f.nextStick, SetID: setID, MediaID: mediaID, Emoji: emoji, Position: position, PathThumb: pathThumb}
 	f.stickers[s.ID] = s
 	return s, nil
 }
@@ -231,6 +231,20 @@ func (f *fakeRepo) StickerPositions(_ context.Context, setID int64) (map[int]str
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) BackfillPathThumbs(_ context.Context, setID int64, thumbs map[int][]byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for pos, thumb := range thumbs {
+		for id, s := range f.stickers {
+			if s.SetID == setID && s.Position == pos && len(s.PathThumb) == 0 {
+				s.PathThumb = thumb
+				f.stickers[id] = s
+			}
+		}
+	}
+	return nil
 }
 
 // trim оставляет keep записей с наибольшим временем.

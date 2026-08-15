@@ -527,13 +527,13 @@ func TestAddStickerAt(t *testing.T) {
 	// Дыра на позиции 3: заняты 0,1,2,4,5 (стикер позиции 3 будто удалили).
 	for _, pos := range []int{0, 1, 2, 4, 5} {
 		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("gap/%d", pos))
-		if _, err := r.AddStickerAt(ctx, set.ID, mediaID, "🦆", pos); err != nil {
+		if _, err := r.AddStickerAt(ctx, set.ID, mediaID, "🦆", pos, nil); err != nil {
 			t.Fatalf("AddStickerAt(%d): %v", pos, err)
 		}
 	}
 
 	gapMedia := seedStickerMedia(t, pool, owner, "gap/3")
-	added, err := r.AddStickerAt(ctx, set.ID, gapMedia, "🦆", 3)
+	added, err := r.AddStickerAt(ctx, set.ID, gapMedia, "🦆", 3, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,6 +550,101 @@ func TestAddStickerAt(t *testing.T) {
 	}
 	if _, ok := got[6]; ok {
 		t.Error("позиция 6 занята — AddStickerAt уехал в хвост вместо дыры")
+	}
+}
+
+// path_thumb едет со стикером с самой вставки (AddStickerAt): непустой контур
+// сохраняется и возвращается назад, а его отсутствие — пустой срез, не ошибка.
+func TestStickerPathThumb(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7819")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "outline", Title: "O", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outline := []byte{1, 2, 3, 4, 5}
+	mediaWith := seedStickerMedia(t, pool, owner, "outline/0")
+	withThumb, err := r.AddStickerAt(ctx, set.ID, mediaWith, "🦆", 0, outline)
+	if err != nil {
+		t.Fatalf("AddStickerAt: %v", err)
+	}
+	if !bytes.Equal(withThumb.PathThumb, outline) {
+		t.Fatalf("AddStickerAt PathThumb = %v, want %v", withThumb.PathThumb, outline)
+	}
+
+	mediaWithout := seedStickerMedia(t, pool, owner, "outline/1")
+	withoutThumb, err := r.AddStickerAt(ctx, set.ID, mediaWithout, "🦆", 1, nil)
+	if err != nil {
+		t.Fatalf("AddStickerAt(без контура): %v", err)
+	}
+	if len(withoutThumb.PathThumb) != 0 {
+		t.Fatalf("PathThumb без контура = %v, want пусто", withoutThumb.PathThumb)
+	}
+
+	sts, err := r.Stickers(ctx, set.ID)
+	if err != nil || len(sts) != 2 {
+		t.Fatalf("Stickers: %+v, %v", sts, err)
+	}
+	if !bytes.Equal(sts[0].PathThumb, outline) {
+		t.Fatalf("Stickers[0].PathThumb = %v, want %v", sts[0].PathThumb, outline)
+	}
+	if len(sts[1].PathThumb) != 0 {
+		t.Fatalf("Stickers[1].PathThumb = %v, want пусто", sts[1].PathThumb)
+	}
+}
+
+// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора —
+// сценарий уже залитых наборов (на стенде — 13.5к стикеров без контура на
+// момент выгрузки Task 4): AddSticker/AddStickerAt их заново не создают,
+// значит контур обязан доехать отдельным проходом по позиции. Уже
+// проставленный контур Backfill не трогает (WHERE path_thumb IS NULL) — иначе
+// на каждом прогоне сида (а он гоняется при каждом деплое) впустую
+// перезаписывались бы все 13.5к строк.
+func TestBackfillPathThumbs(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7820")
+
+	// AddSticker (не At) — как уже залитые на стенде стикеры: без контура,
+	// позиция назначена автоматически.
+	set, ids := seedFullSet(t, pool, r, owner, "legacy", 3)
+
+	preset := []byte{9, 9, 9}
+	if _, err := pool.Exec(ctx, `UPDATE stickers SET path_thumb=$1 WHERE id=$2`, preset, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	thumbs := map[int][]byte{
+		0: {1, 2, 3},
+		1: {8, 8, 8}, // должен остаться preset, Backfill не перезаписывает занятое
+		2: {5, 6, 7},
+	}
+	if err := r.BackfillPathThumbs(ctx, set.ID, thumbs); err != nil {
+		t.Fatalf("BackfillPathThumbs: %v", err)
+	}
+
+	sts, err := r.Stickers(ctx, set.ID)
+	if err != nil || len(sts) != 3 {
+		t.Fatalf("Stickers: %+v, %v", sts, err)
+	}
+	if !bytes.Equal(sts[0].PathThumb, thumbs[0]) {
+		t.Errorf("sts[0].PathThumb = %v, want %v", sts[0].PathThumb, thumbs[0])
+	}
+	if !bytes.Equal(sts[1].PathThumb, preset) {
+		t.Errorf("sts[1].PathThumb = %v, want сохранённый %v (не перезаписан)", sts[1].PathThumb, preset)
+	}
+	if !bytes.Equal(sts[2].PathThumb, thumbs[2]) {
+		t.Errorf("sts[2].PathThumb = %v, want %v", sts[2].PathThumb, thumbs[2])
+	}
+
+	// Пустая карта (набор без контуров в meta.json) — no-op, не ошибка.
+	if err := r.BackfillPathThumbs(ctx, set.ID, nil); err != nil {
+		t.Fatalf("BackfillPathThumbs(пусто): %v", err)
 	}
 }
 

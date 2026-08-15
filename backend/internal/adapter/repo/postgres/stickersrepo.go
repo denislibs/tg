@@ -117,7 +117,7 @@ func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.
 // stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
 // рендерера, нижний слой показа) — см. domain.Sticker.
 const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position,
-	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview`
+	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview, st.path_thumb`
 
 // stickerMediaJoin — INNER JOIN безопасен: stickers.media_id NOT NULL и
 // ссылается на media(id), строк не теряем.
@@ -126,7 +126,7 @@ const stickerMediaJoin = ` JOIN media m ON m.id = st.media_id`
 func scanSticker(s scanner) (domain.Sticker, error) {
 	var st domain.Sticker
 	err := s.Scan(&st.ID, &st.SetID, &st.MediaID, &st.Emoji, &st.Position,
-		&st.Width, &st.Height, &st.Mime, &st.Thumb)
+		&st.Width, &st.Height, &st.Mime, &st.Thumb, &st.PathThumb)
 	return st, err
 }
 
@@ -162,7 +162,7 @@ func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain
 		`WITH ins AS (
 		   INSERT INTO stickers (set_id, media_id, emoji, position)
 		   VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM stickers WHERE set_id=$1), 0))
-		   RETURNING id, set_id, media_id, emoji, position
+		   RETURNING id, set_id, media_id, emoji, position, path_thumb
 		 )
 		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
 		s.SetID, s.MediaID, s.Emoji))
@@ -175,15 +175,44 @@ func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain
 // середине набора есть дыра (стикер удалили), max+1 промахивается мимо дыры
 // и уезжает в хвост, из-за чего повторный прогон сида находит ту же дыру
 // «недостающей» снова и плодит дубль на каждом запуске.
-func (r *StickersRepo) AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+//
+// pathThumb — контур стикера (см. domain.Sticker.PathThumb), едет вместе со
+// вставкой: он известен сиду сразу из meta.json, отдельный проход не нужен.
+func (r *StickersRepo) AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
 	return scanSticker(querier(ctx, r.pool).QueryRow(ctx,
 		`WITH ins AS (
-		   INSERT INTO stickers (set_id, media_id, emoji, position)
-		   VALUES ($1,$2,$3,$4)
-		   RETURNING id, set_id, media_id, emoji, position
+		   INSERT INTO stickers (set_id, media_id, emoji, position, path_thumb)
+		   VALUES ($1,$2,$3,$4,$5)
+		   RETURNING id, set_id, media_id, emoji, position, path_thumb
 		 )
 		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
-		setID, mediaID, emoji, position))
+		setID, mediaID, emoji, position, pathThumb))
+}
+
+// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора —
+// по позиции, одним запросом. Нужен сиду: стикеры могли быть залиты раньше
+// появления этого поля (на стенде — уже 13.5к штук без контура), а
+// AddStickerAt/fillMissingStickers трогают только позиции, которых в наборе
+// ещё нет. Уже проставленный контур не перезаписываем (WHERE path_thumb IS
+// NULL) — сид гоняется при каждом деплое, и без этого условия каждый прогон
+// впустую переписывал бы все строки набора.
+func (r *StickersRepo) BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error {
+	if len(thumbs) == 0 {
+		return nil
+	}
+	positions := make([]int64, 0, len(thumbs))
+	data := make([][]byte, 0, len(thumbs))
+	for pos, thumb := range thumbs {
+		positions = append(positions, int64(pos))
+		data = append(data, thumb)
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE stickers st
+		    SET path_thumb = v.thumb
+		   FROM unnest($2::bigint[], $3::bytea[]) AS v(position, thumb)
+		  WHERE st.set_id = $1 AND st.position = v.position AND st.path_thumb IS NULL`,
+		setID, positions, data)
+	return err
 }
 
 func (r *StickersRepo) StickerByID(ctx context.Context, id int64) (domain.Sticker, error) {

@@ -189,7 +189,7 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 // AddSticker (владелец, существование media), но используется только сидом
 // (cmd/seed-stickers): публичному API взять позицию неоткуда, там позицию
 // назначает хранилище через AddSticker.
-func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
 	if len(emoji) > maxEmojiBytes {
 		return domain.Sticker{}, domain.ErrInvalid
 	}
@@ -207,7 +207,7 @@ func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID i
 	if !ok {
 		return domain.Sticker{}, domain.ErrNotFound
 	}
-	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position)
+	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position, pathThumb)
 }
 
 // SavedGifs — сохранённые GIF пользователя, новые первыми.
@@ -261,4 +261,9 @@ func (i *Interactor) SetCover(ctx context.Context, setID, mediaID int64) error {
 // StickerPositions — занятые позиции набора (см. Repo.StickerPositions).
 func (i *Interactor) StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error) {
 	return i.repo.StickerPositions(ctx, setID)
+}
+
+// BackfillPathThumbs — см. Repo.BackfillPathThumbs.
+func (i *Interactor) BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error {
+	return i.repo.BackfillPathThumbs(ctx, setID, thumbs)
 }
