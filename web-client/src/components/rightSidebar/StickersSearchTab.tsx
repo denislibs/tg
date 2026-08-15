@@ -102,21 +102,36 @@ function StickerSetRow({
         </button>
       </div>
       <div className="sticker-set-stickers">
-        {stickers.map((st) => (
-          <div
-            key={st.id}
-            className="sticker-set-sticker media-sticker-wrapper"
-            data-doc-id={st.mediaId}
-            onClick={(e) => {
-              // превью шлёт стикер (ранний return в tweb attachClickEvent) — до onOpen не доходит
-              e.stopPropagation()
-              onPickSticker?.(st)
-            }}
-          >
-            {/* превью — play:true, loop:true (tweb wrapSticker в этом экране) */}
-            <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} />
-          </div>
-        ))}
+        {/* tweb stickers.tsx:57-64 — ровно min(5, count) ячеек создаются ДО
+            ответа за составом набора, фиксированного размера (.sticker-set-sticker
+            68×68, см. _rightSidebar.scss), и наполняются по мере прихода
+            стикеров (stickers.tsx:66-87) — строка не «схлопывается» на время
+            запроса и список не дёргается по мере подгрузки. */}
+        {Array.from({ length: Math.min(PREVIEW_COUNT, set.count) }, (_, i) => {
+          const st = stickers[i]
+          return (
+            <div
+              key={i}
+              data-testid="sticker-set-cell"
+              className="sticker-set-sticker media-sticker-wrapper"
+              data-doc-id={st?.mediaId}
+              onClick={st
+                ? (e) => {
+                    // превью шлёт стикер (ранний return в tweb attachClickEvent) — до onOpen не доходит
+                    e.stopPropagation()
+                    onPickSticker?.(st)
+                  }
+                : undefined}
+            >
+              {/* превью — play:true, loop:true (tweb wrapSticker в этом экране);
+                  пока стикер для этого слота не приехал — ячейка пустая, но
+                  геометрию держит сама (fixed width/height, не по контенту) */}
+              {st && (
+                <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} />
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
