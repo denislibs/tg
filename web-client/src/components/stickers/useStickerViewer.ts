@@ -12,7 +12,14 @@
 //            слушатели;
 //   379    — после отпускания следующий `click` (тот же жест mousedown→mouseup
 //            рождает его сам браузер) глушится одноразовым capture-слушателем
-//            на `document` — иначе удержание стикера ещё и отправляло бы его.
+//            на `document` — иначе удержание стикера ещё и отправляло бы его;
+//   198-201,372-373 — пока предпросмотр открыт, играет ТОЛЬКО его группа
+//            анимаций (`animationIntersector.setOnlyOnePlayableGroup`,
+//            `checkAnimations2(true)`) — фон (лента/панель) замирает; на
+//            закрытии/размонтировании во время удержания возвращается прежняя
+//            группа, а не жёстко `''` — если предпросмотр открылся ПОВЕРХ уже
+//            запертого экрана (например, модалки набора стикеров), нельзя
+//            размораживать чужой фон вместо возврата ему его собственного лока.
 //
 // Хост не обязан знать разметку ячеек: он передаёт `findSticker(el)`, которая
 // сама поднимается по DOM (`closest`) до своей ячейки и возвращает стикер —
@@ -33,6 +40,7 @@ import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactElement, RefObject } from 'react'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import cancelEvent from '@helpers/dom/cancelEvent'
+import animationIntersector from '../animationIntersector'
 import type { Sticker } from '../../core/managers/stickersManager'
 import StickerViewer from './StickerViewer'
 
@@ -72,6 +80,14 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
     if (!root) return
 
     let holding = false
+    // tweb :83 — `previousGroup = animationIntersector.getOnlyOnePlayableGroup()`,
+    // снятое ДО лока значение группы, которую нужно вернуть на закрытии (а не
+    // жёсткий `''`) — предпросмотр мог открыться поверх уже запертого экрана.
+    let previousGroup: ReturnType<typeof animationIntersector.getOnlyOnePlayableGroup> = ''
+    // Одноразовый click-swallow (см. onMouseUp) — ссылка нужна, чтобы cleanup
+    // мог снять его, если хост размонтировался ДО того, как браузер успел
+    // прислать сам глушимый click (см. Minor 1 code review).
+    let pendingClickSwallow: ((e: MouseEvent) => void) | null = null
 
     const onMouseMove = (e: MouseEvent) => {
       const target = e.target as Node | null
@@ -84,17 +100,30 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
       setSticker((prev) => (prev && prev.id === next.id ? prev : next))
     }
 
+    const unlockAnimations = () => {
+      // tweb :372-373 — `setOnlyOnePlayableGroup(previousGroup)` +
+      // `checkAnimations2(false)`: разморозка фона и возврат ИМЕННО прежней
+      // группы, а не `''`.
+      animationIntersector.setOnlyOnePlayableGroup(previousGroup)
+      animationIntersector.checkAnimations2(false)
+    }
+
     const onMouseUp = () => {
       if (!holding) return
       holding = false
       hasViewer = false
       document.removeEventListener('mousemove', onMouseMove)
+      unlockAnimations()
       setSticker(null)
 
       // tweb :379 — глушим следующий `click`: это тот же клик, которым браузер
       // естественно завершает пару mousedown→mouseup на одном элементе. Без
       // этого удержание стикера ещё и отправляло бы его при отпускании.
-      document.addEventListener('click', cancelEvent as EventListener, { capture: true, once: true })
+      pendingClickSwallow = (e) => {
+        pendingClickSwallow = null
+        cancelEvent(e)
+      }
+      document.addEventListener('click', pendingClickSwallow, { capture: true, once: true })
     }
 
     const onMouseDown = (e: MouseEvent) => {
@@ -108,6 +137,12 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
       holding = true
       setSticker(found)
 
+      // tweb :199-200 — на время предпросмотра играет только его группа,
+      // остальные анимации (лента/панель под затемнением) замирают.
+      previousGroup = animationIntersector.getOnlyOnePlayableGroup()
+      animationIntersector.setOnlyOnePlayableGroup('STICKER-VIEWER')
+      animationIntersector.checkAnimations2(true)
+
       document.addEventListener('mousemove', onMouseMove)
       document.addEventListener('mouseup', onMouseUp, { capture: true, once: true })
     }
@@ -116,13 +151,19 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
     return () => {
       root.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp, { capture: true } as EventListenerOptions)
+      document.removeEventListener('mouseup', onMouseUp, { capture: true })
+      if (pendingClickSwallow) {
+        document.removeEventListener('click', pendingClickSwallow, { capture: true })
+        pendingClickSwallow = null
+      }
       // Хост размонтировался, пока стикер удерживался (например, ушёл с экрана
-      // вместе со своей вкладкой) — снимаем модульный флаг, иначе следующий
-      // mousedown где угодно на странице считался бы «уже есть предпросмотр».
+      // вместе со своей вкладкой) — снимаем модульный флаг и возвращаем лок
+      // анимаций, иначе следующий mousedown где угодно на странице считался бы
+      // «уже есть предпросмотр», а фон навсегда остался бы замороженным.
       if (holding) {
         holding = false
         hasViewer = false
+        unlockAnimations()
       }
     }
   }, [rootRef])

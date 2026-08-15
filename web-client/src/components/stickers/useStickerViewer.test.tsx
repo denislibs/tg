@@ -10,6 +10,7 @@ import { render, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useRef } from 'react'
 import { useStickerViewer } from './useStickerViewer'
+import animationIntersector from '../animationIntersector'
 import type { Sticker } from '../../core/managers/stickersManager'
 
 vi.mock('../StickerMedia', () => ({
@@ -54,6 +55,10 @@ describe('useStickerViewer', () => {
   // в одном файле без cleanup() оставляют предыдущие DOM-деревья и путают
   // querySelector/getByTestId следующего теста.
   afterEach(cleanup)
+  // animationIntersector — модульный синглтон, общий с другими тестовыми
+  // файлами (например, StickerSetModal.test.tsx): падение теста ДО mouseup не
+  // должно оставлять его залоченным на 'STICKER-VIEWER' для чужих тестов.
+  afterEach(() => animationIntersector.setOnlyOnePlayableGroup(''))
 
   it('зажатие на ячейке открывает предпросмотр', () => {
     const onPick = vi.fn()
@@ -116,5 +121,42 @@ describe('useStickerViewer', () => {
     const viewer = queryByTestId('sticker-viewer')
     expect(viewer).not.toBeNull()
     expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('103')
+  })
+
+  // tweb stickerViewer.ts:198-201,372-373 — на время предпросмотра играет
+  // ТОЛЬКО его группа (фон замирает), а на закрытии возвращается ИМЕННО
+  // прежняя группа (не жёсткий сброс) — предпросмотр мог открыться поверх
+  // уже запертого экрана.
+  it('на время удержания играет только группа STICKER-VIEWER', () => {
+    const onPick = vi.fn()
+    const { getByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+
+    expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('STICKER-VIEWER')
+  })
+
+  it('на отпускание возвращается прежняя группа animationIntersector, а не пустая', () => {
+    const onPick = vi.fn()
+    animationIntersector.setOnlyOnePlayableGroup('chat')
+    const { getByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('STICKER-VIEWER')
+
+    fireEvent.mouseUp(document)
+    expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('chat')
+  })
+
+  it('размонтирование во время удержания тоже возвращает прежнюю группу', () => {
+    const onPick = vi.fn()
+    animationIntersector.setOnlyOnePlayableGroup('chat')
+    const { getByTestId, unmount } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('STICKER-VIEWER')
+
+    unmount()
+    expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('chat')
   })
 })
