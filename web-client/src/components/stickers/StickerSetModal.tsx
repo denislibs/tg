@@ -4,14 +4,12 @@
 // по клику на заголовок набора в «Поиске стикеров» (StickersSearchTab), там
 // же пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
 //
-// Открытие МОДАЛКИ по клику на стикер В ЧАТЕ (tweb wrapSticker →
-// showStickersPopup) НЕ подключено: сообщение несёт только `mediaId` стикера
-// (`ConvMsg` в `data.ts`), а бэкенд не отдаёт ни `set_id`, ни slug набора для
-// произвольного `media_id` — только для стикеров ВНУТРИ уже загруженного
-// набора (`Sticker.SetID` в `domain/sticker.go`, отдаётся лишь эндпоинтами
-// `/sticker-sets/{slug}` и т.п.). Разрешить это без нового бэкенд-эндпоинта
-// (или встраивания slug'а набора прямо в сообщение) нельзя — контракт не
-// трогаем (см. отчёт задачи), открытие из чата не реализовано.
+// Открытие по клику на стикер В ЧАТЕ (tweb wrapSticker → showStickersPopup) —
+// в `StickerRealBubble` (`components/messages/MessageContent.tsx`): бэк
+// резолвит mediaId в набор ручкой `GET /stickers/by-media/{mediaID}`
+// (`stickersManager.setByMediaId`), т.к. `ConvMsg` несёт только mediaId, не
+// slug. Там модалка открывается БЕЗ `onPickSticker` (только просмотр/установка
+// набора) — нажатие на стикер в чате не подразумевает отправку из него.
 //
 // Каркас — общий `shared/ui/Popup/Popup` (тот же, что у DatePickerPopup/
 // EmojiStatusPicker/…): глобальные классы `.popup`/`.popup-header`/

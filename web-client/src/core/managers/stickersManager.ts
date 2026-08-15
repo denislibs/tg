@@ -90,6 +90,13 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ set: RawStickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
       return { set: mapStickerSet(r.set), stickers: (r.stickers ?? []).map(mapSticker) }
     },
+    /** Набор, которому принадлежит файл стикера. Нужен клику по стикеру в чате:
+     * сообщение несёт только mediaId (бэк: GET /stickers/by-media/{mediaID}).
+     * null — файл не из набора (стикер удалён или прислан как обычное медиа). */
+    async setByMediaId(mediaId: number): Promise<StickerSet | null> {
+      const r = await rest.get<{ set: RawStickerSet }>(`/stickers/by-media/${mediaId}`).catch(() => null)
+      return r?.set ? mapStickerSet(r.set) : null
+    },
     async searchSets(q: string): Promise<StickerSet[]> {
       const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/search', { q })
       return (r.sets ?? []).map(mapStickerSet)
