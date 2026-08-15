@@ -8,6 +8,8 @@ import MessageRow, { type FeedFns, type MessageRowProps } from './MessageRow'
 import type { ConvMsg } from '../../data'
 
 const set = { id: 7, slug: 'utyaduck', title: 'Duck', kind: 'sticker' as const, count: 1 }
+// Один стикер в наборе — цель клика ВНУТРИ попапа (тест «отправляет и закрывает»).
+const setStickers = [{ id: 55, setId: 7, mediaId: 555, emoji: '🦆', position: 0, width: 100, height: 100, mime: 'image/webp', thumb: '' }]
 const setByMediaId = vi.fn()
 
 vi.mock('../StickerMedia', () => ({
@@ -18,7 +20,7 @@ vi.mock('../../core/hooks/useManagers', () => ({
     stickers: {
       setByMediaId,
       // StickerSetModal, открывшись, сам грузит набор по slug.
-      setBySlug: async () => ({ set, stickers: [] }),
+      setBySlug: async () => ({ set, stickers: setStickers }),
       mySets: async () => [],
     },
   }),
@@ -86,5 +88,38 @@ describe('клик по стикеру в бабле', () => {
 
     expect(setByMediaId).not.toHaveBeenCalled()
     expect(feedFns.toggleSelect).toHaveBeenCalledWith(1)
+  })
+
+  // Ревью Task 10 (important): tweb PopupStickers.onStickersClick отправляет
+  // стикер вне зависимости от точки входа — тот же путь, что и у попапа из
+  // поиска (StickerSetModal.test.tsx: «клик по стикеру шлёт его через
+  // onPickSticker и закрывает попап»). feedFns.sendSticker — проводка в
+  // Chat.tsx до sendSticker/slowmodeMarkSent композера.
+  it('клик по стикеру ВНУТРИ попапа, открытого из бабла, отправляет его и закрывает попап', async () => {
+    const sendSticker = vi.fn()
+    setByMediaId.mockResolvedValueOnce(set)
+    renderRow({ feedFns: { ...feedFns, sendSticker } as unknown as FeedFns })
+
+    fireEvent.click(screen.getByTestId('sticker'))
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+
+    // сетка попапа кликабельна — без is-read-only, когда есть onPickSticker
+    expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(false)
+    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+
+    expect(sendSticker).toHaveBeenCalledTimes(1)
+    expect(sendSticker.mock.calls[0][0]).toMatchObject({ id: 55, mediaId: 555, emoji: '🦆' })
+    // попап закрылся — заголовок набора ушёл из DOM
+    await waitFor(() => expect(screen.queryByText('Duck')).toBeNull())
+  })
+
+  it('без права слать (sendSticker=undefined) сетка попапа read-only', async () => {
+    setByMediaId.mockResolvedValueOnce(set)
+    renderRow()
+
+    fireEvent.click(screen.getByTestId('sticker'))
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+
+    expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(true)
   })
 })

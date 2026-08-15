@@ -61,6 +61,14 @@ export interface FeedFns {
   unlockPaid: (msgId: number) => Promise<void>
   /** переслать сообщение — кнопка сбоку поста канала (tweb bubble-beside-button) */
   forwardMsg: (msgId: number) => void
+  /** отправить стикер в текущий чат — клик по стикеру ВНУТРИ попапа набора,
+   *  открытого из бабла чата (tweb PopupStickers.onStickersClick: тот же путь,
+   *  что и у отправки из поиска/композера — components/messages/MessageContent.tsx
+   *  StickerRealBubble передаёт это как onPickSticker в StickerSetModal).
+   *  undefined там, где отправка недоступна (тот же гейт, что у кнопки стикеров
+   *  композера: !canType/!canSendMedia/канал/секретный чат) — тогда сетка попапа
+   *  read-only (см. StickerSetModal is-read-only). */
+  sendSticker?: (st: { id: number; mediaId: number; emoji: string }) => void
 }
 
 export interface MessageRowProps {

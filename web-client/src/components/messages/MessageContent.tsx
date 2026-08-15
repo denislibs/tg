@@ -137,8 +137,12 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // (различает StickerMedia). Бейдж времени — тот же, что у big-emoji. Клик
 // открывает попап набора (tweb wrapSticker → showStickersPopup): сообщение
 // несёт только mediaId, набор резолвит бэк (GET /stickers/by-media/{id}).
+// Клик по стикеру ВНУТРИ попапа отправляет его в текущий чат и закрывает
+// попап (tweb PopupStickers.onStickersClick — тот же путь, без read-only
+// режима в зависимости от точки входа): feedFns.sendSticker пробрасывается
+// как onPickSticker, StickerSetModal сама зовёт его и onClose по клику.
 const STICKER_BOX = 200
-function StickerRealBubble({ m, time, selecting }: { m: ConvMsg; time: ReactNode; selecting: boolean }) {
+function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: ReactNode; selecting: boolean; feedFns: FeedFns }) {
   const loopStickers = useSettings((st) => st.loopStickers)
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
@@ -169,9 +173,9 @@ function StickerRealBubble({ m, time, selecting }: { m: ConvMsg; time: ReactNode
           нижний слой, пока файл стикера летит (tweb показывает тумб документа) */}
       <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} thumb={m.mediaBlur} />
       {time}
-      {/* Без onPickSticker: клик по стикеру В ЧАТЕ открывает набор на
-          просмотр/установку, а не на отправку из него (см. докблок модалки). */}
-      {openSlug && <StickerSetModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
+      {openSlug && (
+        <StickerSetModal slug={openSlug} onClose={() => setOpenSlug(null)} onPickSticker={feedFns.sendSticker} />
+      )}
     </div>
   )
 }
@@ -369,7 +373,7 @@ export default function MessageContent({
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // reply/имя в группе не рисуются (как voice/round). Реакции — колонкой под
           // стикером, прижаты к его inline-концу (tweb is-message-empty).
-          withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} selecting={selecting} />)
+          withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} selecting={selecting} feedFns={feedFns} />)
         ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).

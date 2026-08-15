@@ -8,8 +8,13 @@
 // в `StickerRealBubble` (`components/messages/MessageContent.tsx`): бэк
 // резолвит mediaId в набор ручкой `GET /stickers/by-media/{mediaID}`
 // (`stickersManager.setByMediaId`), т.к. `ConvMsg` несёт только mediaId, не
-// slug. Там модалка открывается БЕЗ `onPickSticker` (только просмотр/установка
-// набора) — нажатие на стикер в чате не подразумевает отправку из него.
+// slug. `onPickSticker` там — `feedFns.sendSticker` (проводка через
+// `Chat.tsx`, тот же `sendSticker` из `useChatSend`, что и у композера):
+// клик по стикеру ВНУТРИ попапа отправляет его в текущий чат, ровно как в
+// tweb `onStickersClick` (там нет read-only режима в зависимости от точки
+// входа — тот же вызов `sendMessageWithDocument`, что и из поиска).
+// `undefined`, когда отправка недоступна (тот же гейт, что у кнопки стикеров
+// композера — канал/секретный чат/нет прав на медиа): сетка тогда read-only.
 //
 // Каркас — общий `shared/ui/Popup/Popup` (тот же, что у DatePickerPopup/
 // EmojiStatusPicker/…): глобальные классы `.popup`/`.popup-header`/
