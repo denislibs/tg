@@ -16,7 +16,7 @@
 // setBySlug на строку; setBySlug в моках ниже остаётся только ради
 // StickerSetModal (клик по строке вне превью/кнопки её открывает).
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import StickersSearchTab, { openStickersSearchTab } from './StickersSearchTab'
 import { openGifsSearchTab } from './GifsSearchTab'
 import PopupHost from '../PopupHost'
@@ -120,18 +120,33 @@ describe('StickersSearchTab — разметка tweb', () => {
 
   // Task 2 (подключение useStickerViewer) — tweb sidebarRight/tabs/stickers.tsx:164
   // (attachStickerViewerListeners на том же диве, что рисует все строки). Обычный
-  // клик по превью (без удержания) уже проверен тестом ниже («ввод запроса...»).
-  it('долгое зажатие ЛКМ на превью-стикере строки открывает предпросмотр, отпускание закрывает его', async () => {
+  // клик по превью (короче порога показа) уже проверен тестом ниже («ввод
+  // запроса...»). Порог (HOLD_THRESHOLD_MS, useStickerViewer.ts) — реальные
+  // 125мс, поэтому здесь фейковые часы продвигают время удержания.
+  it('долгое зажатие ЛКМ на превью-стикере строки открывает предпросмотр, отпускание закрывает его; клик после такого удержания стикер НЕ отправляет', async () => {
+    const onPickSticker = vi.fn()
     const { managers } = makeManagers()
-    renderTab({}, managers)
+    renderTab({ onPickSticker }, managers)
     await waitFor(() => expect(document.querySelector('.sticker-set-sticker')).not.toBeNull())
 
-    const cell = document.querySelector('.sticker-set-sticker')!
-    fireEvent.mouseDown(cell, { button: 0 })
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+    // Фейковые часы включаем ПОСЛЕ waitFor выше — он сам опирается на реальные
+    // таймеры для поллинга.
+    vi.useFakeTimers()
+    try {
+      const cell = document.querySelector('.sticker-set-sticker')!
+      fireEvent.mouseDown(cell, { button: 0 })
+      expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // порог ещё не истёк
+      void act(() => vi.advanceTimersByTime(150))
+      expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
 
-    fireEvent.mouseUp(document)
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+      fireEvent.mouseUp(document)
+      expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+
+      fireEvent.click(cell)
+      expect(onPickSticker).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('клик по строке набора (не по кнопке/превью) открывает StickerSetModal с её слагом (tweb showStickersPopup)', async () => {
@@ -179,7 +194,11 @@ describe('StickersSearchTab — разметка tweb', () => {
     expect(fns.uninstall).toHaveBeenCalledWith(1)
   })
 
-  it('ввод запроса — searchSets (дебаунс); клик по превью — onPickSticker', async () => {
+  // mousedown→mouseup→click (не голый click) — та же связка, которой браузер
+  // физически рождает обычный клик; проходит через хук предпросмотра первой
+  // (см. «долгое зажатие...» выше) — голый fireEvent.click эту связку не
+  // проверяет (ревью V2).
+  it('ввод запроса — searchSets (дебаунс); клик по превью (mousedown→mouseup→click) — onPickSticker', async () => {
     const searched = makeSet(9, 'Utya', 27)
     const { managers, fns } = makeManagers({
       searchSets: vi.fn().mockResolvedValue({ sets: [searched], covers: new Map([[searched.id, [makeSticker(1)]]]) }),
@@ -189,7 +208,11 @@ describe('StickersSearchTab — разметка tweb', () => {
     fireEvent.change(document.querySelector<HTMLInputElement>('.input-search-input')!, { target: { value: 'duck' } })
     await waitFor(() => expect(fns.searchSets).toHaveBeenCalledWith('duck'))
     await waitFor(() => expect(document.querySelector('.sticker-set-sticker')).not.toBeNull())
-    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    const cell = document.querySelector('.sticker-set-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    fireEvent.mouseUp(document)
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // не мелькнул
+    fireEvent.click(cell)
     expect(onPickSticker).toHaveBeenCalledTimes(1)
     expect(onPickSticker.mock.calls[0][0].mediaId).toBe(101)
   })

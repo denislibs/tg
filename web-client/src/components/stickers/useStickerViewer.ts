@@ -6,19 +6,23 @@
 //   31     — модульный флаг `hasViewer`: на всей странице одновременно открыт
 //            только один предпросмотр, даже если хук используется в
 //            нескольких местах разом (лента + панель стикеров);
+//   243-290— показ ОТЛОЖЕН на `HOLD_THRESHOLD_MS` (`timeout`): пока порог не
+//            истёк, оверлей не создаётся вовсе — это и есть критерий
+//            «клик vs удержание», а не отдельный отсчёт времени. `hasViewer`
+//            выставляется В МОМЕНТ открытия (внутри таймера), а не на
+//            mousedown — до открытия конкурирующий mousedown в другом месте
+//            странице не блокируется (как и в tweb).
 //   289-336— `mousemove` на `document` переключает стикер под курсором, пока
-//            кнопка держится;
-//   358-385— `mouseup`(один раз, capture) закрывает предпросмотр и снимает все
-//            слушатели;
-//   379    — после отпускания следующий `click` (тот же жест mousedown→mouseup
-//            рождает его сам браузер) глушится одноразовым capture-слушателем
-//            на `document` — иначе удержание стикера ещё и отправляло бы его;
-//            НО только если это был настоящий hold, а не обычный быстрый клик
-//            (см. `HOLD_THRESHOLD_MS` ниже — критично: без порога свойство
-//            «глушить после ЛЮБОГО mousedown→mouseup» глушило бы обычную
-//            отправку/открытие модалки стикера кликом ВООБЩЕ ВСЕГДА, потому что
-//            каждый клик физически и есть пара mousedown→mouseup, за которой
-//            браузер сам шлёт click);
+//            кнопка держится, — но только ПОСЛЕ открытия (слушатель вешается
+//            внутри таймера, не на mousedown).
+//   358-385— `mouseup`(один раз, capture) закрывает предпросмотр (если он был
+//            открыт) и снимает все слушатели;
+//   364,379— критерий глушения следующего `click` — `if(container)`, то есть
+//            «оверлей реально был показан», а НЕ отдельный расчёт длительности
+//            удержания. Без этого (первая версия этого хука до ревью V2)
+//            обычный клик — та же самая пара mousedown→mouseup, которой
+//            браузер и рождает сам click, — глушился бы ВСЕГДА, а не только
+//            настоящее удержание;
 //   198-201,372-373 — пока предпросмотр открыт, играет ТОЛЬКО его группа
 //            анимаций (`animationIntersector.setOnlyOnePlayableGroup`,
 //            `checkAnimations2(true)`) — фон (лента/панель) замирает; на
@@ -33,10 +37,13 @@
 // ячейку по отдельности (как tweb делает через `listenTo`/`selector`).
 //
 // Упрощения против tweb (см. также StickerViewer.tsx):
-//   — нет 125мс-задержки перед показом (stickerViewer.ts:245-290, `timeout`)
-//     — предпросмотр открывается сразу по mousedown, без промежуточной фазы
-//     "premove" (`onMousePreMove`, которая в tweb ещё и не даёт открыться,
-//     если курсор уполз с ячейки до истечения задержки);
+//   — нет фазы "premove" (`onMousePreMove`, stickerViewer.ts:349-352) — в tweb
+//     курсор, ушедший с исходной ячейки ДО истечения порога, обрывает жест
+//     целиком (эквивалент раннего mouseup, без показа и без глушения клика).
+//     У нас до открытия движение мыши просто игнорируется (слушатель включается
+//     только внутри таймера открытия) — жест не обрывается, а просто ждёт
+//     истечения порога независимо от того, где сейчас курсор; практическая
+//     разница мала (сам показ и переключение всё равно недоступны до открытия);
 //   — нет опроса `isInDOM` (tweb :389-393, `unmountInterval`) — ячейка,
 //     исчезнувшая из DOM во время удержания (например, скролл виртуального
 //     списка снял её), в React-модели снимается размонтированием хоста, а не
@@ -55,18 +62,14 @@ import StickerViewer from './StickerViewer'
 // даже если этот хук подключён к нескольким гридам одновременно.
 let hasViewer = false
 
-// tweb stickerViewer.ts:243 — тот же порог (125мс), которым там задержан САМ
-// показ оверлея (`timeout`/`onMousePreMove`): пока он не истёк, `container` не
-// создаётся вовсе, и в `onMouseUp` `if(container)` не вешает click-swallow —
-// обычный быстрый клик просто закрывает несостоявшийся предпросмотр и доходит
-// как click до хоста (отправка/открытие модалки). У нас (см. докблок выше)
-// показ оверлея НЕ отложен — упрощение принято сознательно. Но БЕЗ какого-то
-// порога свойство «после mouseup глушить следующий click» становится
-// безусловным: обычный клик — это те же самые mousedown→mouseup, так что
-// глушился бы КАЖДЫЙ клик по стикеру, а не только настоящее удержание — то
-// есть отправка/открытие набора отказывали бы всегда. Порог применяется не к
-// показу (тот остаётся мгновенным), а только к решению «глушить ли клик»:
-// мышь была прижата дольше порога — воспринимаем как намеренный hold.
+// tweb stickerViewer.ts:243 — тот же порог (125мс), которым там отложен САМ
+// показ оверлея. Единственный смысл константы: сколько ждать перед тем, как
+// считать нажатие удержанием, а не кликом. (До ревью V2 порог по ошибке решал
+// ДВЕ разные вещи одновременно — отдельно от показа ещё и глушение клика по
+// сырому `Date.now()`-таймеру, из-за чего оверлей мелькал на каждом обычном
+// клике — StickerMedia 360×360 монтировался и тут же размонтировался. Теперь,
+// как в оригинале, порог отвечает только за показ, а глушение решается по
+// факту «оверлей открыт», см. `shown` ниже.)
 const HOLD_THRESHOLD_MS = 125
 
 export interface UseStickerViewerOptions {
@@ -99,17 +102,24 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
     const root = rootRef.current
     if (!root) return
 
+    // Мышь зажата после успешного mousedown (найдена ячейка) — держится, пока
+    // не пришёл mouseup, независимо от того, успел ли открыться оверлей.
     let holding = false
+    // Оверлей РЕАЛЬНО показан (таймер открытия сработал раньше mouseup) — это
+    // и есть критерий tweb `if(container)`: только тогда клик после отпускания
+    // нужно глушить и только тогда лок анимаций/подписку на mousemove нужно снимать.
+    let shown = false
+    let openTimer: ReturnType<typeof setTimeout> | null = null
+    // Стикер, найденный на mousedown, — то, что покажет таймер открытия, если
+    // мышь не отпустят раньше порога.
+    let pendingSticker: Sticker | null = null
     // tweb :83 — `previousGroup = animationIntersector.getOnlyOnePlayableGroup()`,
     // снятое ДО лока значение группы, которую нужно вернуть на закрытии (а не
     // жёсткий `''`) — предпросмотр мог открыться поверх уже запертого экрана.
     let previousGroup: ReturnType<typeof animationIntersector.getOnlyOnePlayableGroup> = ''
-    // Момент mousedown — см. `HOLD_THRESHOLD_MS`: решает, было ли отпускание
-    // настоящим удержанием (глушить click) или обычным быстрым кликом (не глушить).
-    let downAt = 0
     // Одноразовый click-swallow (см. onMouseUp) — ссылка нужна, чтобы cleanup
     // мог снять его, если хост размонтировался ДО того, как браузер успел
-    // прислать сам глушимый click (см. Minor 1 code review).
+    // прислать сам глушимый click (см. Minor 1 code review Task 1).
     let pendingClickSwallow: ((e: MouseEvent) => void) | null = null
 
     const onMouseMove = (e: MouseEvent) => {
@@ -123,29 +133,52 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
       setSticker((prev) => (prev && prev.id === next.id ? prev : next))
     }
 
-    const unlockAnimations = () => {
-      // tweb :372-373 — `setOnlyOnePlayableGroup(previousGroup)` +
-      // `checkAnimations2(false)`: разморозка фона и возврат ИМЕННО прежней
-      // группы, а не `''`.
+    // tweb :199-200,372-373 — показ оверлея сам по себе, вызывается ТОЛЬКО из
+    // таймера открытия (см. onMouseDown) — то есть только когда порог реально
+    // истёк, пока кнопка ещё зажата.
+    const openNow = () => {
+      openTimer = null
+      shown = true
+      hasViewer = true
+      previousGroup = animationIntersector.getOnlyOnePlayableGroup()
+      animationIntersector.setOnlyOnePlayableGroup('STICKER-VIEWER')
+      animationIntersector.checkAnimations2(true)
+      setSticker(pendingSticker)
+      document.addEventListener('mousemove', onMouseMove)
+    }
+
+    // Закрытие УЖЕ показанного оверлея — разморозка анимаций (см. `openNow`) и
+    // снятие подписки на переключение. Вызывается и из штатного mouseup, и из
+    // cleanup-ветки «размонтировались во время показа».
+    const closeShown = () => {
+      document.removeEventListener('mousemove', onMouseMove)
       animationIntersector.setOnlyOnePlayableGroup(previousGroup)
       animationIntersector.checkAnimations2(false)
+      setSticker(null)
+      hasViewer = false
+      shown = false
     }
 
     const onMouseUp = () => {
       if (!holding) return
       holding = false
-      hasViewer = false
-      document.removeEventListener('mousemove', onMouseMove)
-      unlockAnimations()
-      setSticker(null)
 
-      // tweb :379 — глушим следующий `click`: это тот же клик, которым браузер
-      // естественно завершает пару mousedown→mouseup на одном элементе. Без
-      // этого удержание стикера ещё и отправляло бы его при отпускании. НО
-      // только если удержание было настоящим (см. `HOLD_THRESHOLD_MS`) —
-      // иначе глушился бы и обычный быстрый клик, которым стикер как раз и
-      // отправляют/открывают.
-      if (Date.now() - downAt >= HOLD_THRESHOLD_MS) {
+      if (openTimer) {
+        // Порог ещё не истёк — оверлей ни разу не показывался: это обычный
+        // быстрый клик. Отменяем отложенное открытие и НЕ трогаем ни лок
+        // анимаций (он ещё не ставился), ни следующий click (глушить нечего).
+        clearTimeout(openTimer)
+        openTimer = null
+        return
+      }
+
+      if (shown) {
+        closeShown()
+        // tweb :379 — глушим следующий `click`: это тот же клик, которым
+        // браузер естественно завершает пару mousedown→mouseup на одном
+        // элементе. Без этого удержание стикера ещё и отправляло бы его при
+        // отпускании. Достигаем этой ветки, только если оверлей РЕАЛЬНО был
+        // показан (`shown`) — обычный клик сюда не попадает вовсе (см. выше).
         pendingClickSwallow = (e) => {
           pendingClickSwallow = null
           cancelEvent(e)
@@ -156,24 +189,19 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
 
     const onMouseDown = (e: MouseEvent) => {
       // tweb :58 — `hasViewer || e.buttons > 1 || e.button !== 0`: только левая
-      // кнопка, и только если по странице ещё не открыт другой предпросмотр.
+      // кнопка, и только если по странице уже ОТКРЫТ другой предпросмотр (не
+      // просто ожидает открытия — см. докблок про `hasViewer`).
       if (hasViewer || e.button !== 0) return
       const found = findStickerRef.current(e.target as HTMLElement)
       if (!found) return
 
-      hasViewer = true
       holding = true
-      downAt = Date.now()
-      setSticker(found)
-
-      // tweb :199-200 — на время предпросмотра играет только его группа,
-      // остальные анимации (лента/панель под затемнением) замирают.
-      previousGroup = animationIntersector.getOnlyOnePlayableGroup()
-      animationIntersector.setOnlyOnePlayableGroup('STICKER-VIEWER')
-      animationIntersector.checkAnimations2(true)
-
-      document.addEventListener('mousemove', onMouseMove)
+      pendingSticker = found
       document.addEventListener('mouseup', onMouseUp, { capture: true, once: true })
+      // tweb :243 — показ отложен на HOLD_THRESHOLD_MS; если mouseup придёт
+      // раньше (обычный клик), таймер будет отменён в onMouseUp и оверлей
+      // так и не будет создан.
+      openTimer = setTimeout(openNow, HOLD_THRESHOLD_MS)
     }
 
     root.addEventListener('mousedown', onMouseDown)
@@ -181,19 +209,22 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
       root.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp, { capture: true })
+      if (openTimer) {
+        clearTimeout(openTimer)
+        openTimer = null
+      }
       if (pendingClickSwallow) {
         document.removeEventListener('click', pendingClickSwallow, { capture: true })
         pendingClickSwallow = null
       }
-      // Хост размонтировался, пока стикер удерживался (например, ушёл с экрана
-      // вместе со своей вкладкой) — снимаем модульный флаг и возвращаем лок
-      // анимаций, иначе следующий mousedown где угодно на странице считался бы
-      // «уже есть предпросмотр», а фон навсегда остался бы замороженным.
-      if (holding) {
-        holding = false
-        hasViewer = false
-        unlockAnimations()
+      // Хост размонтировался, пока оверлей был реально показан (например, ушёл
+      // с экрана вместе со своей вкладкой) — снимаем модульный флаг, лок
+      // анимаций И состояние `sticker` (иначе оверлей остался бы смонтирован
+      // поверх уже отвязанных слушателей — правка по ревью V2, Minor 3).
+      if (shown) {
+        closeShown()
       }
+      holding = false
     }
   }, [rootRef])
 
