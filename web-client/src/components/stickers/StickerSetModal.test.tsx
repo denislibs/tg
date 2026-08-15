@@ -1,12 +1,7 @@
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-// toBeInTheDocument — jest-dom матчер; в проекте больше нигде не используется
-// (остальные тесты обходятся toBeTruthy()/getByRole, который и так бросает при
-// отсутствии узла), но код теста берём дословно из брифа — подключаем матчер
-// локально в файле, не трогая общий vitest.config.ts/setupFiles.
-import '@testing-library/jest-dom/vitest'
 import StickerSetModal from './StickerSetModal'
+import animationIntersector from '../animationIntersector'
 
 const set = { id: 7, slug: 'utyaduck', title: 'Duck', kind: 'sticker' as const, count: 40 }
 const stickers = Array.from({ length: 40 }, (_, i) => ({
@@ -46,8 +41,8 @@ describe('StickerSetModal', () => {
 
   it('показывает заголовок набора и кнопку с числом стикеров', async () => {
     render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Duck')).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /добавить 40 стикеров/i })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+    expect(screen.getByRole('button', { name: /добавить 40 стикеров/i })).toBeTruthy()
   })
 
   it('рисует все стикеры набора', async () => {
@@ -58,16 +53,48 @@ describe('StickerSetModal', () => {
   it('добавляет набор по клику на кнопку', async () => {
     render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
     const button = await screen.findByRole('button', { name: /добавить 40 стикеров/i })
-    await userEvent.click(button)
+    fireEvent.click(button)
     expect(install).toHaveBeenCalledWith(7)
   })
 
-  it('у установленного набора кнопка удаляет набор', async () => {
+  it('у установленного набора кнопка удаляет набор — с числом и падежом, как в tweb', async () => {
     installed = [set]
     render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
-    const button = await screen.findByRole('button', { name: /удалить стикеров/i })
-    await userEvent.click(button)
+    const button = await screen.findByRole('button', { name: /удалить 40 стикеров/i })
+    fireEvent.click(button)
     expect(uninstall).toHaveBeenCalledWith(7)
     expect(install).not.toHaveBeenCalled()
+  })
+
+  it('клик по стикеру шлёт его через onPickSticker и закрывает попап (tweb onStickersClick)', async () => {
+    const onPickSticker = vi.fn()
+    const onClose = vi.fn()
+    render(<StickerSetModal slug="utyaduck" onClose={onClose} onPickSticker={onPickSticker} />)
+    await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
+    // сетка кликабельна — без is-read-only, когда есть колбэк отправки
+    expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(false)
+    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    expect(onPickSticker).toHaveBeenCalledTimes(1)
+    expect(onPickSticker.mock.calls[0][0].mediaId).toBe(100)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('без onPickSticker сетка помечена is-read-only и клик по стикеру ничего не делает', async () => {
+    const onClose = vi.fn()
+    render(<StickerSetModal slug="utyaduck" onClose={onClose} />)
+    await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
+    expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(true)
+    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('пока попап открыт, играет только его группа animationIntersector; на закрытии — сброс', async () => {
+    const spy = vi.spyOn(animationIntersector, 'setOnlyOnePlayableGroup')
+    const { unmount } = render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+    expect(spy).toHaveBeenCalledWith('STICKERS-POPUP')
+    unmount()
+    expect(spy).toHaveBeenLastCalledWith()
+    spy.mockRestore()
   })
 })

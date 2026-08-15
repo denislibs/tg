@@ -98,6 +98,26 @@ describe('StickersSearchTab — разметка tweb', () => {
     })
   })
 
+  it('клик по строке набора (не по кнопке/превью) открывает StickerSetModal с её слагом (tweb showStickersPopup)', async () => {
+    const { managers, fns } = makeManagers()
+    renderTab({}, managers)
+    await waitFor(() => expect(document.querySelector('.sticker-set')).not.toBeNull())
+    expect(document.querySelector('.popup-stickers')).toBeNull()
+    fireEvent.click(document.querySelector('.sticker-set')!)
+    await waitFor(() => expect(document.querySelector('.popup-stickers')).not.toBeNull())
+    expect(fns.setBySlug).toHaveBeenCalled()
+  })
+
+  it('клик по кнопке Add или превью-стикеру НЕ открывает StickerSetModal (stopPropagation, tweb attachClickEvent)', async () => {
+    const { managers } = makeManagers()
+    renderTab({}, managers)
+    await waitFor(() => expect(document.querySelector('.sticker-set-button')).not.toBeNull())
+    fireEvent.click(document.querySelector('.sticker-set-button')!)
+    await waitFor(() => expect(document.querySelector('.sticker-set-sticker')).not.toBeNull())
+    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    expect(document.querySelector('.popup-stickers')).toBeNull()
+  })
+
   it('кнопка: не установлен — "Add"; клик — install, после ответа "Added" + класс gray (tweb toggleStickerSet)', async () => {
     const { managers, fns } = makeManagers()
     renderTab({}, managers)

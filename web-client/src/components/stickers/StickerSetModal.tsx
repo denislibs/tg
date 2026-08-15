@@ -1,8 +1,11 @@
 // StickerSetModal — модалка набора стикеров («ADD N STICKERS»), порт tweb
 // `components/popups/stickers.tsx` (шапка/тело/футер — строки 330-363, сборка
-// сетки — 196-260). Открывается по клику на заголовок набора в «Поиске
-// стикеров» (StickersSearchTab). Клик по стикеру В ЧАТЕ (tweb wrapSticker →
-// showStickersPopup) НЕ подключён: сообщение несёт только `mediaId` стикера
+// сетки — 196-260, клик по стикеру — 145-162 `onStickersClick`). Открывается
+// по клику на заголовок набора в «Поиске стикеров» (StickersSearchTab), там
+// же пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
+//
+// Открытие МОДАЛКИ по клику на стикер В ЧАТЕ (tweb wrapSticker →
+// showStickersPopup) НЕ подключено: сообщение несёт только `mediaId` стикера
 // (`ConvMsg` в `data.ts`), а бэкенд не отдаёт ни `set_id`, ни slug набора для
 // произвольного `media_id` — только для стикеров ВНУТРИ уже загруженного
 // набора (`Sticker.SetID` в `domain/sticker.go`, отдаётся лишь эндпоинтами
@@ -25,17 +28,15 @@
 // достижима ни из одного места, которое открывает эту модалку.
 //
 // Отступление от tweb: тексты кнопок/заголовка на время загрузки — литеральный
-// русский («Загрузка», «Добавить N стикеров», «Удалить стикеров»), а не через
+// русский («Загрузка», «Добавить N стикеров», «Удалить N стикеров»), а не через
 // `useT()`. У tweb это ключи i18n-пакета (`Loading`, `AddStickersCount`,
-// `RemoveStickersCount`), которых в нашем `i18n/dict.*` нет — заводить их
-// ради одной этой модалки не стали (как `StoriesRow`'s aria-label — тоже
-// литеральный русский без ключа). Текст кнопки удаления — «Удалить стикеров»
-// (родительный падеж) буквально из теста задачи (task-8-brief.md Step 1);
-// грамматически ожидался бы винительный «Удалить стикеры» — код теста берём
-// дословно, а не подгоняем под него разметку.
+// `RemoveStickersCount` + плюрал `Stickers: '%1$d stickers'` — число есть у ОБЕИХ
+// кнопок), которых в нашем `i18n/dict.*` нет — заводить их ради одной этой
+// модалки не стали (как `StoriesRow`'s aria-label — тоже литеральный русский
+// без ключа), но число и падеж — как в tweb, через ту же `stickerWord(count)`.
 import { useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
-import Popup from '../../shared/ui/Popup/Popup'
+import Popup from '../../shared/ui/Popup'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import IconButton from '../../shared/ui/IconButton'
 import TgIcon from '../TgIcon'
@@ -70,7 +71,21 @@ function stickerWord(n: number): string {
   return 'стикеров'
 }
 
-export default function StickerSetModal({ slug, onClose }: { slug: string; onClose: () => void }) {
+export default function StickerSetModal({ slug, onClose, onPickSticker }: {
+  slug: string
+  onClose: () => void
+  /**
+   * Клик по стикеру внутри сетки — отправка в текущий чат + закрытие (tweb
+   * `onStickersClick` → `sendMessageWithDocument` → `handle.hide()`,
+   * popups/stickers.tsx:145-162). Опционально: у модалки самой по себе нет
+   * доступа к «текущему чату» (это Composer-состояние, см.
+   * `core/hooks/useChatSend.ts::sendSticker`) без правки контракта — контракт
+   * не трогаем, поэтому колбэк пробрасывает владелец, у которого он уже есть
+   * (`StickersSearchTab`). Без колбэка ячейки НЕ кликабельны (см. класс
+   * `is-read-only` на сетке ниже) — аффорданс не изображает то, чего нет.
+   */
+  onPickSticker?: (st: Sticker) => void
+}) {
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
 
@@ -184,6 +199,11 @@ export default function StickerSetModal({ slug, onClose }: { slug: string; onClo
                 onClose={() => setMenuOpen(false)}
                 onExitComplete={() => setMenuAnchor(null)}
                 corner="bottom-left"
+                // .popup — 4090 (Popup.module.scss); без явного zIndex Menu
+                // кладёт панель на 2001 (Menu.module.scss) — под попапом,
+                // недостижимо. Тот же приём, что SendMediaPopup.tsx:118 (4100)
+                // и StoryViewer.tsx:511 (3100) для меню поверх своего попапа.
+                zIndex={4100}
                 style={{ top: menuAnchor.top, right: menuAnchor.right, width: 220 }}
               >
                 <MenuItem icon={<TgIcon name="copy" size={20} />} label="Скопировать ссылку" onClick={copyLink} />
@@ -207,7 +227,9 @@ export default function StickerSetModal({ slug, onClose }: { slug: string; onClo
             onClick={() => void toggle()}
           >
             {footerRipple}
-            {!loaded ? 'Загрузка' : installed ? 'Удалить стикеров' : `Добавить ${set.count} ${stickerWord(set.count)}`}
+            {!loaded
+              ? 'Загрузка'
+              : `${installed ? 'Удалить' : 'Добавить'} ${set.count} ${stickerWord(set.count)}`}
           </button>
         </div>
       }
@@ -216,9 +238,13 @@ export default function StickerSetModal({ slug, onClose }: { slug: string; onClo
         <StickerSetSkeleton count={1} />
       ) : (
         <div className="sticker-set">
-          <div className="sticker-set-stickers">
+          <div className={classNames('sticker-set-stickers', onPickSticker ? '' : 'is-read-only')}>
             {stickers.map((st) => (
-              <div key={st.id} className="sticker-set-sticker media-sticker-wrapper">
+              <div
+                key={st.id}
+                className="sticker-set-sticker media-sticker-wrapper"
+                onClick={onPickSticker && (() => { onPickSticker(st); onClose() })}
+              >
                 <StickerMedia
                   mediaId={st.mediaId}
                   width={ITEM_SIZE}

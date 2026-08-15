@@ -170,7 +170,16 @@ export default function StickersSearchTab({
               />
             ))}
       </div>
-      {openSlug && <StickerSetModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
+      {openSlug && (
+        <StickerSetModal
+          slug={openSlug}
+          onClose={() => setOpenSlug(null)}
+          // Клик по стикеру внутри модалки шлёт его тем же путём, что и превью
+          // строки набора (`pick` уже закрывает узкий экран после отправки) —
+          // здесь модалка САМА закроется в StickerSetModal (см. её докблок).
+          onPickSticker={pick}
+        />
+      )}
       {/* пустой div после списка — как в живом DOM (хвост tweb Scrollable) */}
       <div />
     </RightSearchTab>
