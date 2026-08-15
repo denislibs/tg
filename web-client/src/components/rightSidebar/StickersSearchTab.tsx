@@ -16,7 +16,7 @@
 // `attachClickEvent`: превью → send, кнопка → toggle, иначе → showStickersPopup).
 // Отступление от tweb (нет аналога в нашем API): data-access_hash не рендерим —
 // у наших наборов нет access_hash.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { useT } from '../../i18n'
@@ -24,6 +24,7 @@ import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import { createLazyLoadQueue, type LazyLoadQueue } from '../../core/lazyLoadQueue'
 import { useLazyVisibility } from '../useLazyVisibility'
+import { useStickerViewer } from '../stickers/useStickerViewer'
 import StickerMedia from '../StickerMedia'
 import StickerSetSkeleton from './StickerSetSkeleton'
 import StickerSetModal from '../stickers/StickerSetModal'
@@ -234,6 +235,29 @@ export default function StickersSearchTab({
   const scrollRef = useRef<HTMLDivElement>(null)
   const { visible, register } = useLazyVisibility(scrollRef, ROW_PRELOAD_MARGIN)
 
+  // Плоская карта mediaId→стикер по ВСЕМ строкам сразу — `data-doc-id` ячейки
+  // превью (ниже, StickerSetRow) несёт именно `mediaId` (см. её докблок), не
+  // `st.id`: у превью нет доступа к полному составу набора, только к covers.
+  const coversByMediaId = useMemo(() => {
+    const map = new Map<number, Sticker>()
+    for (const arr of covers.values()) for (const st of arr) map.set(st.mediaId, st)
+    return map
+  }, [covers])
+
+  // Предпросмотр по зажатию ЛКМ на превью-стикере строки — tweb
+  // sidebarRight/tabs/stickers.tsx:164 (`attachStickerViewerListeners({listenTo:
+  // setsDiv, ...})` на том же диве, что держит все строки набора — `setsDiv` =
+  // наш `.sticker-sets`, корень наблюдения ниже — обёртывающий его скроллер).
+  // Один слушатель на весь экран, ROW не заводит собственный.
+  const stickerViewer = useStickerViewer({
+    rootRef: scrollRef,
+    findSticker: (el) => {
+      const cell = el.closest('.sticker-set-sticker') as HTMLElement | null
+      const id = cell?.dataset.docId
+      return id ? coversByMediaId.get(Number(id)) : undefined
+    },
+  })
+
   const pick = onPickSticker
     ? (st: Sticker) => {
         onPickSticker(st)
@@ -283,6 +307,7 @@ export default function StickersSearchTab({
       )}
       {/* пустой div после списка — как в живом DOM (хвост tweb Scrollable) */}
       <div />
+      {stickerViewer}
     </RightSearchTab>
   )
 }

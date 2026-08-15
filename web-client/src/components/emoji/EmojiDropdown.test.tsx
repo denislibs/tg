@@ -310,6 +310,36 @@ describe('StickersTab — Recent с крестиком очистки (tweb stic
   })
 })
 
+// Task 2 (подключение useStickerViewer) — tweb stickersHelper.ts:118, у нас та
+// же панель, что и для Recent-очистки выше: панель композера.
+describe('StickersTab — предпросмотр по зажатию ЛКМ (useStickerViewer)', () => {
+  it('долгое зажатие ЛКМ на ячейке стикера открывает предпросмотр, отпускание закрывает его', async () => {
+    const { managers } = makeManagers([stk(1), stk(2)])
+    renderDropdown(managers, { onPickSticker: noop })
+    fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
+    await waitFor(() => expect(document.querySelector('#content-stickers .grid-item.super-sticker')).not.toBeNull())
+
+    const cell = document.querySelector('#content-stickers .grid-item.super-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+
+    fireEvent.mouseUp(document)
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+  })
+
+  it('обычный клик по ячейке (без удержания) по-прежнему отправляет стикер', async () => {
+    const onPickSticker = vi.fn()
+    const { managers } = makeManagers([stk(1)])
+    renderDropdown(managers, { onPickSticker })
+    fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
+    await waitFor(() => expect(document.querySelector('#content-stickers .grid-item.super-sticker')).not.toBeNull())
+
+    fireEvent.click(document.querySelector('#content-stickers .grid-item.super-sticker')!)
+    expect(onPickSticker).toHaveBeenCalledTimes(1)
+    expect(onPickSticker.mock.calls[0][0].id).toBe(1)
+  })
+})
+
 describe('EmojiDropdown — кнопка-лупа футера открывает экраны правой колонки (tweb index.ts:295-303)', () => {
   // Экраны сами дёргают менеджеры при монтировании — стабы поверх базовых
   // (плюс savedGifs/media.meta: GIF-вкладка дропдауна монтируется при клике).

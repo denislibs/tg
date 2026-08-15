@@ -130,6 +130,22 @@ describe('StickerSetModal', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  // Task 2 (подключение useStickerViewer): tweb popups/stickers.tsx:310 —
+  // attachStickerViewerListeners на том же скроллере, что и сетка. Обычный
+  // клик (без предварительного удержания) уже проверен тестом выше
+  // («клик по стикеру шлёт его...») — здесь именно жест удержания.
+  it('долгое зажатие ЛКМ на стикере открывает предпросмотр (tweb popups/stickers.tsx:310), отпускание закрывает его', async () => {
+    render(<StickerSetModal slug="utyaduck" onClose={() => {}} onPickSticker={vi.fn()} />)
+    await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
+
+    const cell = document.querySelector('.sticker-set-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    expect(screen.getByTestId('sticker-viewer')).toBeTruthy()
+
+    fireEvent.mouseUp(document)
+    expect(screen.queryByTestId('sticker-viewer')).toBeNull()
+  })
+
   it('пока попап открыт, играет только его группа animationIntersector; на закрытии — сброс', async () => {
     const spy = vi.spyOn(animationIntersector, 'setOnlyOnePlayableGroup')
     const { unmount } = render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)

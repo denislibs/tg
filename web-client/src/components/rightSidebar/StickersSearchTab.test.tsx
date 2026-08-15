@@ -118,6 +118,22 @@ describe('StickersSearchTab — разметка tweb', () => {
     })
   })
 
+  // Task 2 (подключение useStickerViewer) — tweb sidebarRight/tabs/stickers.tsx:164
+  // (attachStickerViewerListeners на том же диве, что рисует все строки). Обычный
+  // клик по превью (без удержания) уже проверен тестом ниже («ввод запроса...»).
+  it('долгое зажатие ЛКМ на превью-стикере строки открывает предпросмотр, отпускание закрывает его', async () => {
+    const { managers } = makeManagers()
+    renderTab({}, managers)
+    await waitFor(() => expect(document.querySelector('.sticker-set-sticker')).not.toBeNull())
+
+    const cell = document.querySelector('.sticker-set-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+
+    fireEvent.mouseUp(document)
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+  })
+
   it('клик по строке набора (не по кнопке/превью) открывает StickerSetModal с её слагом (tweb showStickersPopup)', async () => {
     const { managers, fns } = makeManagers()
     renderTab({}, managers)

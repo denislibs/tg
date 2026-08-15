@@ -48,6 +48,7 @@ import StickerMedia from '../StickerMedia'
 import Preloader from '../auth/Preloader'
 import animationIntersector from '../animationIntersector'
 import { useLazyVisibility } from '../useLazyVisibility'
+import { useStickerViewer } from './useStickerViewer'
 import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
@@ -94,6 +95,10 @@ function StickerCell({ st, visible, register, onPick }: {
     <div
       ref={ref}
       className="sticker-set-sticker media-sticker-wrapper"
+      // tweb wrapSticker (wrappers/sticker.ts:138) — `div.dataset.docId = doc.id`
+      // на этом же контейнере; useStickerViewer.findSticker ниже переиспользует
+      // тот же атрибут, свой не заводим.
+      data-doc-id={st.id}
       onClick={onPick}
     >
       {visible && (
@@ -161,6 +166,20 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
   // (оно и есть скроллер карточки).
   const bodyRef = useRef<HTMLDivElement>(null)
   const { visible, register } = useLazyVisibility(bodyRef, PRELOAD_MARGIN)
+
+  // Предпросмотр по зажатию ЛКМ — tweb popups/stickers.tsx:310
+  // (attachStickerViewerListeners({listenTo: scrollableEl, ...})), корень тот
+  // же, что и у ленивой видимости (тело попапа — оно и есть скроллер сетки).
+  // Работает независимо от `onPickSticker` — в tweb предпросмотр не завязан на
+  // read-only режим сетки, гейтится только САМА отправка по клику.
+  const stickerViewer = useStickerViewer({
+    rootRef: bodyRef,
+    findSticker: (el) => {
+      const cell = el.closest('.sticker-set-sticker') as HTMLElement | null
+      const id = cell?.dataset.docId
+      return id ? stickers.find((st) => st.id === Number(id)) : undefined
+    },
+  })
 
   // onClose/managers держим в ref: эффект загрузки не должен перезапускаться
   // из-за смены их ссылки между рендерами (onClose — обычный колбэк владельца;
@@ -334,6 +353,10 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
           </div>
         </div>
       )}
+      {/* StickerViewer рендерится порталом (usePortalContainer) — место в
+          дереве не влияет на позиционирование, поэтому кладём его прямо
+          рядом с телом попапа, а не оборачиваем весь return фрагментом. */}
+      {stickerViewer}
     </Popup>
   )
 }
