@@ -720,6 +720,6 @@ func TestStickerIndexes(t *testing.T) {
 		t.Fatalf("pg_indexes sticker_sets: %v", err)
 	}
 	if rankIdx {
-		t.Error("sticker_sets_rank_idx жив — его снимает 0094 как неиспользуемый планировщиком")
+		t.Error("sticker_sets_rank_idx жив — 0097 не должна его создавать (планировщик его не берёт)")
 	}
 }
