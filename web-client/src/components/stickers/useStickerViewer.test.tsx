@@ -91,21 +91,49 @@ describe('useStickerViewer', () => {
     expect(queryByTestId('sticker-viewer')).toBeNull()
   })
 
-  it('клик после отпускания проглатывается', () => {
-    const onPick = vi.fn()
-    const { getByTestId } = render(<TestHost onPick={onPick} />)
+  // Глушение зависит от длительности удержания (HOLD_THRESHOLD_MS) — без этого
+  // порога глушился бы КАЖДЫЙ клик (обычный клик — те же mousedown→mouseup,
+  // которыми браузер и порождает сам click), и отправка/открытие модалки
+  // стикера кликом отказывали бы всегда. Порог — реальное время (`Date.now()`),
+  // поэтому тест продвигает часы фейковым таймером между mousedown и mouseup,
+  // а не полагается на то, сколько реального времени займёт сам fireEvent.
+  it('клик после НАСТОЯЩЕГО удержания (дольше порога) проглатывается', () => {
+    vi.useFakeTimers()
+    try {
+      const onPick = vi.fn()
+      const { getByTestId } = render(<TestHost onPick={onPick} />)
 
-    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
-    fireEvent.mouseUp(document)
-    fireEvent.click(getByTestId('cell-1'))
+      fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+      vi.advanceTimersByTime(200)
+      fireEvent.mouseUp(document)
+      fireEvent.click(getByTestId('cell-1'))
 
-    expect(onPick).not.toHaveBeenCalled()
+      expect(onPick).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('обычный клик без удержания стикер отправляет', () => {
     const onPick = vi.fn()
     const { getByTestId } = render(<TestHost onPick={onPick} />)
 
+    fireEvent.click(getByTestId('cell-1'))
+
+    expect(onPick).toHaveBeenCalledWith(stickers[0])
+  })
+
+  // Регрессия найдена при подключении хука к реальным хостам (Task 2): реальный
+  // клик мышью — это ФИЗИЧЕСКИ та же пара mousedown→mouseup, что и удержание.
+  // Без порога на длительность (см. HOLD_THRESHOLD_MS) быстрый клик глушился
+  // бы точно так же, как настоящий hold, — отправка стикера кликом была бы
+  // сломана целиком, во всех хостах разом.
+  it('быстрый клик (mousedown→mouseup без реальной задержки, затем click) НЕ глушится', () => {
+    const onPick = vi.fn()
+    const { getByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    fireEvent.mouseUp(document)
     fireEvent.click(getByTestId('cell-1'))
 
     expect(onPick).toHaveBeenCalledWith(stickers[0])

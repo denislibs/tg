@@ -13,6 +13,12 @@
 //   379    — после отпускания следующий `click` (тот же жест mousedown→mouseup
 //            рождает его сам браузер) глушится одноразовым capture-слушателем
 //            на `document` — иначе удержание стикера ещё и отправляло бы его;
+//            НО только если это был настоящий hold, а не обычный быстрый клик
+//            (см. `HOLD_THRESHOLD_MS` ниже — критично: без порога свойство
+//            «глушить после ЛЮБОГО mousedown→mouseup» глушило бы обычную
+//            отправку/открытие модалки стикера кликом ВООБЩЕ ВСЕГДА, потому что
+//            каждый клик физически и есть пара mousedown→mouseup, за которой
+//            браузер сам шлёт click);
 //   198-201,372-373 — пока предпросмотр открыт, играет ТОЛЬКО его группа
 //            анимаций (`animationIntersector.setOnlyOnePlayableGroup`,
 //            `checkAnimations2(true)`) — фон (лента/панель) замирает; на
@@ -49,6 +55,20 @@ import StickerViewer from './StickerViewer'
 // даже если этот хук подключён к нескольким гридам одновременно.
 let hasViewer = false
 
+// tweb stickerViewer.ts:243 — тот же порог (125мс), которым там задержан САМ
+// показ оверлея (`timeout`/`onMousePreMove`): пока он не истёк, `container` не
+// создаётся вовсе, и в `onMouseUp` `if(container)` не вешает click-swallow —
+// обычный быстрый клик просто закрывает несостоявшийся предпросмотр и доходит
+// как click до хоста (отправка/открытие модалки). У нас (см. докблок выше)
+// показ оверлея НЕ отложен — упрощение принято сознательно. Но БЕЗ какого-то
+// порога свойство «после mouseup глушить следующий click» становится
+// безусловным: обычный клик — это те же самые mousedown→mouseup, так что
+// глушился бы КАЖДЫЙ клик по стикеру, а не только настоящее удержание — то
+// есть отправка/открытие набора отказывали бы всегда. Порог применяется не к
+// показу (тот остаётся мгновенным), а только к решению «глушить ли клик»:
+// мышь была прижата дольше порога — воспринимаем как намеренный hold.
+const HOLD_THRESHOLD_MS = 125
+
 export interface UseStickerViewerOptions {
   /** Делегирующий контейнер — `mousedown` слушается на нём, не на ячейках. */
   rootRef: RefObject<HTMLElement | null>
@@ -84,6 +104,9 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
     // снятое ДО лока значение группы, которую нужно вернуть на закрытии (а не
     // жёсткий `''`) — предпросмотр мог открыться поверх уже запертого экрана.
     let previousGroup: ReturnType<typeof animationIntersector.getOnlyOnePlayableGroup> = ''
+    // Момент mousedown — см. `HOLD_THRESHOLD_MS`: решает, было ли отпускание
+    // настоящим удержанием (глушить click) или обычным быстрым кликом (не глушить).
+    let downAt = 0
     // Одноразовый click-swallow (см. onMouseUp) — ссылка нужна, чтобы cleanup
     // мог снять его, если хост размонтировался ДО того, как браузер успел
     // прислать сам глушимый click (см. Minor 1 code review).
@@ -118,12 +141,17 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
 
       // tweb :379 — глушим следующий `click`: это тот же клик, которым браузер
       // естественно завершает пару mousedown→mouseup на одном элементе. Без
-      // этого удержание стикера ещё и отправляло бы его при отпускании.
-      pendingClickSwallow = (e) => {
-        pendingClickSwallow = null
-        cancelEvent(e)
+      // этого удержание стикера ещё и отправляло бы его при отпускании. НО
+      // только если удержание было настоящим (см. `HOLD_THRESHOLD_MS`) —
+      // иначе глушился бы и обычный быстрый клик, которым стикер как раз и
+      // отправляют/открывают.
+      if (Date.now() - downAt >= HOLD_THRESHOLD_MS) {
+        pendingClickSwallow = (e) => {
+          pendingClickSwallow = null
+          cancelEvent(e)
+        }
+        document.addEventListener('click', pendingClickSwallow, { capture: true, once: true })
       }
-      document.addEventListener('click', pendingClickSwallow, { capture: true, once: true })
     }
 
     const onMouseDown = (e: MouseEvent) => {
@@ -135,6 +163,7 @@ export function useStickerViewer({ rootRef, findSticker }: UseStickerViewerOptio
 
       hasViewer = true
       holding = true
+      downAt = Date.now()
       setSticker(found)
 
       // tweb :199-200 — на время предпросмотра играет только его группа,
