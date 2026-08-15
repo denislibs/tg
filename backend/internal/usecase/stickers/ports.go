@@ -15,9 +15,19 @@ type Repo interface {
 	CreateSet(ctx context.Context, set domain.StickerSet) (domain.StickerSet, error)
 	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) // domain.ErrNotFound
 	SetByID(ctx context.Context, id int64) (domain.StickerSet, error)      // domain.ErrNotFound
+	// SetByMediaID — обратный поиск: набор по файлу стикера (клик по стикеру в
+	// чате, где сообщение несёт только media_id). domain.ErrNotFound, если
+	// медиа не принадлежит ни одному набору.
+	SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error)
 	Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error)
 	// AddSticker добавляет стикер в конец набора (position назначает хранилище).
 	AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error)
+	// AddStickerAt добавляет стикер на явную позицию — использует сид
+	// (cmd/seed-stickers), где позиция берётся из meta.json и обязана
+	// совпасть с БД; AddSticker с автопозицией для этого не годится, так как
+	// при дыре в середине набора всегда аппендит в хвост, а не в дыру.
+	// pathThumb — контур стикера (domain.Sticker.PathThumb), едет со вставкой.
+	AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error)
 	StickerByID(ctx context.Context, id int64) (domain.Sticker, error) // domain.ErrNotFound
 
 	Install(ctx context.Context, userID, setID int64) error   // идемпотентно
@@ -25,8 +35,22 @@ type Repo interface {
 	// InstalledSets — установленные наборы пользователя по position.
 	InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSet, error)
 	SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSet, error)
-	// FeaturedSets — «трендовые» наборы: новейшие первыми, не больше limit.
+	// FeaturedSets — «трендовые» наборы: по рангу (порядок Telegram-выдачи),
+	// затем наборы без ранга новейшими первыми; не больше limit.
 	FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error)
+	// SetRank проставляет позицию набора в трендах (0 — вне трендов).
+	SetRank(ctx context.Context, setID int64, rank int) error
+	// SetCover привязывает медиа обложки к набору.
+	SetCover(ctx context.Context, setID, mediaID int64) error
+	// StickerPositions — занятые позиции набора; сид (cmd/seed-stickers)
+	// использует их, чтобы досидировать только недостающие стикеры, не трогая
+	// существующие.
+	StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error)
+	// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора
+	// по позиции — сид использует его, чтобы контур доехал и до стикеров,
+	// залитых раньше появления этого поля. Уже проставленный контур не
+	// трогает (см. StickersRepo.BackfillPathThumbs).
+	BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error

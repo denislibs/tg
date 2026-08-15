@@ -24,6 +24,7 @@ import IconButton from '../../shared/ui/IconButton'
 import InputSearch from '../../shared/ui/InputSearch'
 import TgIcon from '../TgIcon'
 import type { PopupApi } from '../../stores/popupStore'
+import { useRightColumnShown } from '../../core/hooks/useRightColumnShown'
 import s from './RightSearchTab.module.scss'
 
 // Порог догрузки по скроллу вниз — tweb Scrollable onScrollOffset (300).
@@ -75,6 +76,12 @@ export default function RightSearchTab({
   children: ReactNode
 }) {
   const narrow = useMediaQuery('(max-width:900px)')
+  // Экран смонтирован ровно пока открыт (popupStore/RightSearchPopup снимает
+  // узел на закрытии — своего prop'а open здесь нет), поэтому сужаем чат
+  // тем же классом, что и панель профиля (UserInfoPanel), на весь срок жизни
+  // компонента. Счётчик (не булев toggle) — потому что обе панели могут быть
+  // открыты одновременно, см. докблок useRightColumnShown.
+  useRightColumnShown(true)
   const ownScrollRef = useRef<HTMLDivElement>(null)
   const scrollRef = scrollRefProp ?? ownScrollRef
   // attachBorderListeners: оба класса стоят с монтирования, обновляются скроллом

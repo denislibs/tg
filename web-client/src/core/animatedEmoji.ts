@@ -8,10 +8,14 @@ import type { Sticker } from './managers/stickersManager'
 
 export const ANIMATED_EMOJI_SLUG = 'animated_emoji'
 
-// tweb (emoji: fixEmoji): при сравнении эмодзи вариационный селектор U+FE0F
-// игнорируется — '❤️' (с FE0F) и '❤' это один и тот же глиф.
+// tweb (richTextProcessor/fixEmoji.ts: cleanEmoji — её и зовёт
+// appStickersManager.getAnimatedEmojiSticker перед сравнением с alt набора):
+// вариационный селектор U+FE0F игнорируется — '❤️' (с FE0F) и '❤' это один
+// и тот же глиф; так же игнорируются модификаторы тона кожи (🏻🏼🏽🏾🏿,
+// U+1F3FB–U+1F3FF) — '👍🏽' должен матчиться на ту же анимацию, что и '👍'
+// (в сид-наборе лежит эмодзи без тона кожи, набор один на всех).
 export function normalizeEmoji(emoji: string): string {
-  return emoji.replace(/\uFE0F/g, '').trim()
+  return emoji.replace(/\uFE0F/g, '').replace(/🏻|🏼|🏽|🏾|🏿/g, '').trim()
 }
 
 /** Чистое построение кэша: нормализованный эмодзи → mediaId (первый выигрывает). */

@@ -102,6 +102,50 @@ describe('stickerAppearance', () => {
     expect(onApplied).toHaveBeenCalled() // ожидающий колбэк обязан разрешиться
   })
 
+  it('силуэт встаёт нижним слоем с классами и ключом', () => {
+    const container = document.createElement('div')
+    const appearance = createStickerAppearance({ container, thumbKey: '46' })
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement
+    expect(appearance.canBuildSilhouette()).toBe(true)
+    appearance.setSilhouette(svg)
+
+    expect(container.children).toHaveLength(1)
+    expect(svg.classList.contains('lottie-vector')).toBe(true)
+    expect(svg.classList.contains('media-sticker')).toBe(true)
+    expect(svg.classList.contains('thumbnail')).toBe(true)
+    expect((svg as unknown as HTMLElement).dataset.stickerThumb).toBe('46')
+  })
+
+  it('setThumb апгрейдит силуэт до превью (замена, а не второй слой)', async () => {
+    const container = document.createElement('div')
+    const appearance = createStickerAppearance({ container, thumbKey: '47' })
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement
+    appearance.setSilhouette(svg)
+    expect(container.contains(svg as unknown as Node)).toBe(true)
+
+    const image = makeThumb()
+    appearance.setThumb(image)
+    await Promise.resolve()
+
+    expect(container.contains(svg as unknown as Node)).toBe(false)
+    expect(container.contains(image)).toBe(true)
+    expect(container.children).toHaveLength(1) // силуэт заменён, не добавлен рядом
+  })
+
+  it('живой underlay/медиа не даёт построить силуэт поверх (силуэт — только в пустой контейнер)', () => {
+    const container = document.createElement('div')
+    container.append(document.createElement('canvas')) // усыновляемое медиа прошлого поколения
+
+    const appearance = createStickerAppearance({ container, thumbKey: '48' })
+    expect(appearance.canBuildSilhouette()).toBe(false)
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement
+    appearance.setSilhouette(svg)
+    expect(container.contains(svg as unknown as Node)).toBe(false)
+  })
+
   it('протухший контроллер (middleware) слои не трогает', async () => {
     const container = document.createElement('div')
     const cleaners: (() => void)[] = []
@@ -112,6 +156,8 @@ describe('stickerAppearance', () => {
     const appearance = createStickerAppearance({ container, thumbKey: '45', middleware })
     cleaners.forEach((cb) => cb()) // поколение погасили
 
+    expect(appearance.canBuildSilhouette()).toBe(false)
+    appearance.setSilhouette(document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement)
     appearance.setThumb(makeThumb())
     await Promise.resolve()
     expect(container.children).toHaveLength(0)

@@ -21,11 +21,12 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 
 // setCols — колонки набора + число стикеров (для клиентских превью наборов).
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
-	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id)`
+	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
 func scanSet(s scanner) (domain.StickerSet, error) {
 	var set domain.StickerSet
-	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount)
+	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
+		&set.Rank, &set.CoverMediaID)
 	return set, err
 }
 
@@ -37,6 +38,42 @@ func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (do
 		return domain.StickerSet{}, domain.ErrConflict
 	}
 	return set, err
+}
+
+// SetRank проставляет набору позицию в трендах. Зовётся сидом: только он
+// знает порядок выдачи messages.getFeaturedStickers.
+func (r *StickersRepo) SetRank(ctx context.Context, setID int64, rank int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE sticker_sets SET rank = $2 WHERE id = $1`, setID, rank)
+	return err
+}
+
+// SetCover привязывает медиа обложки к набору.
+func (r *StickersRepo) SetCover(ctx context.Context, setID, mediaID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE sticker_sets SET cover_media_id = $2 WHERE id = $1`, setID, mediaID)
+	return err
+}
+
+// StickerPositions отдаёт занятые позиции набора: по ним сид (cmd/seed-stickers)
+// понимает, каких стикеров в наборе ещё нет, и заливает только недостающие, не
+// трогая существующие — на них ссылаются уже отправленные сообщения.
+func (r *StickersRepo) StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT position FROM stickers WHERE set_id = $1`, setID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]struct{}{}
+	for rows.Next() {
+		var pos int
+		if err := rows.Scan(&pos); err != nil {
+			return nil, err
+		}
+		out[pos] = struct{}{}
+	}
+	return out, rows.Err()
 }
 
 func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) {
@@ -57,11 +94,30 @@ func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet
 	return set, err
 }
 
+// SetByMediaID — обратный поиск: набор, которому принадлежит файл стикера.
+// Нужен клику по стикеру в чате (tweb wrapSticker → showStickersPopup):
+// сообщение несёт только media_id, а не set_id/slug набора. LIMIT 1
+// осознанный — один и тот же файл может числиться в двух наборах (Telegram
+// переиспользует документы), клику достаточно любого, как и в tweb, где набор
+// берётся из атрибута самого документа.
+func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+setCols+`
+		   FROM sticker_sets s
+		   JOIN stickers st ON st.set_id = s.id
+		  WHERE st.media_id=$1
+		  LIMIT 1`, mediaID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.StickerSet{}, domain.ErrNotFound
+	}
+	return set, err
+}
+
 // stickerCols — колонки стикера + метаданные его файла из media. Размеры, mime и
 // stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
 // рендерера, нижний слой показа) — см. domain.Sticker.
 const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position,
-	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview`
+	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview, st.path_thumb`
 
 // stickerMediaJoin — INNER JOIN безопасен: stickers.media_id NOT NULL и
 // ссылается на media(id), строк не теряем.
@@ -70,7 +126,7 @@ const stickerMediaJoin = ` JOIN media m ON m.id = st.media_id`
 func scanSticker(s scanner) (domain.Sticker, error) {
 	var st domain.Sticker
 	err := s.Scan(&st.ID, &st.SetID, &st.MediaID, &st.Emoji, &st.Position,
-		&st.Width, &st.Height, &st.Mime, &st.Thumb)
+		&st.Width, &st.Height, &st.Mime, &st.Thumb, &st.PathThumb)
 	return st, err
 }
 
@@ -106,10 +162,57 @@ func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain
 		`WITH ins AS (
 		   INSERT INTO stickers (set_id, media_id, emoji, position)
 		   VALUES ($1,$2,$3, COALESCE((SELECT max(position)+1 FROM stickers WHERE set_id=$1), 0))
-		   RETURNING id, set_id, media_id, emoji, position
+		   RETURNING id, set_id, media_id, emoji, position, path_thumb
 		 )
 		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
 		s.SetID, s.MediaID, s.Emoji))
+}
+
+// AddStickerAt добавляет стикер на явную позицию (в отличие от AddSticker,
+// который всегда аппендит в конец через max(position)+1). Нужен сиду
+// (cmd/seed-stickers): при досидировании недостающих позиций существующего
+// набора позиция берётся из meta.json, а не назначается хранилищем — если в
+// середине набора есть дыра (стикер удалили), max+1 промахивается мимо дыры
+// и уезжает в хвост, из-за чего повторный прогон сида находит ту же дыру
+// «недостающей» снова и плодит дубль на каждом запуске.
+//
+// pathThumb — контур стикера (см. domain.Sticker.PathThumb), едет вместе со
+// вставкой: он известен сиду сразу из meta.json, отдельный проход не нужен.
+func (r *StickersRepo) AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
+	return scanSticker(querier(ctx, r.pool).QueryRow(ctx,
+		`WITH ins AS (
+		   INSERT INTO stickers (set_id, media_id, emoji, position, path_thumb)
+		   VALUES ($1,$2,$3,$4,$5)
+		   RETURNING id, set_id, media_id, emoji, position, path_thumb
+		 )
+		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
+		setID, mediaID, emoji, position, pathThumb))
+}
+
+// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора —
+// по позиции, одним запросом. Нужен сиду: стикеры могли быть залиты раньше
+// появления этого поля (на стенде — уже 13.5к штук без контура), а
+// AddStickerAt/fillMissingStickers трогают только позиции, которых в наборе
+// ещё нет. Уже проставленный контур не перезаписываем (WHERE path_thumb IS
+// NULL) — сид гоняется при каждом деплое, и без этого условия каждый прогон
+// впустую переписывал бы все строки набора.
+func (r *StickersRepo) BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error {
+	if len(thumbs) == 0 {
+		return nil
+	}
+	positions := make([]int64, 0, len(thumbs))
+	data := make([][]byte, 0, len(thumbs))
+	for pos, thumb := range thumbs {
+		positions = append(positions, int64(pos))
+		data = append(data, thumb)
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE stickers st
+		    SET path_thumb = v.thumb
+		   FROM unnest($2::bigint[], $3::bytea[]) AS v(position, thumb)
+		  WHERE st.set_id = $1 AND st.position = v.position AND st.path_thumb IS NULL`,
+		setID, positions, data)
+	return err
 }
 
 func (r *StickersRepo) StickerByID(ctx context.Context, id int64) (domain.Sticker, error) {
@@ -180,13 +283,14 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 	return out, rows.Err()
 }
 
-// FeaturedSets — «трендовые» наборы: все наборы публичны, поэтому фичед — это
-// просто новейшие по созданию (id — serial, растёт с созданием), новые первыми.
+// FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
+// messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
+// новейшими первыми.
 func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
-		  ORDER BY s.id DESC
+		  ORDER BY (s.rank = 0), s.rank, s.id DESC
 		  LIMIT $1`, limit)
 	if err != nil {
 		return nil, err

@@ -1,11 +1,18 @@
 // src/core/managers/stickersManager.ts
 // Тонкие REST-обёртки над бэкенд-эндпоинтами стикеров и GIF (/sticker-sets,
 // /stickers, /gifs — домен общий, tweb тоже держит их в одной панели).
-// Файл стикера лежит в media: mime 'application/json' — lottie-json,
-// image/webp|png — статичный; URL клиент строит сам (core/mediaUrl).
+// Файл стикера лежит в media: mime 'application/json' — несжатый lottie-json,
+// 'application/x-tgsticker' — он же под gzip (.tgs, так отдаёт Telegram — им
+// залиты все выгруженные наборы; разбор — core/stickers/tgs), 'video/webm' —
+// видео-стикер, image/webp|png — статичный. URL клиент строит сам (core/mediaUrl).
 import type { RestClient } from '../net/restClient'
 
-export interface StickerSet { id: number; slug: string; title: string; kind: 'sticker' | 'emoji'; count: number }
+/**
+ * coverMediaId — обложка набора (не у всех: из 334 наборов есть у 230,
+ * `omitempty` на бэке). Когда её нет, вкладка панели показывает первый
+ * стикер набора — правило кодирует `core/stickers/setThumb.ts`.
+ */
+export interface StickerSet { id: number; slug: string; title: string; kind: 'sticker' | 'emoji'; count: number; coverMediaId?: number }
 /**
  * Метаданные файла (width/height/mime/thumb) приезжают вместе со стикером —
  * бэк снимает их джойном на media. Клиенту они нужны ДО загрузки байтов:
@@ -14,6 +21,11 @@ export interface StickerSet { id: number; slug: string; title: string; kind: 'st
  * а thumb (base64 JPEG, как `blur_preview` у медиа) показывает нижним слоем,
  * пока файл летит. Нули/пустые значения — «метаданных нет» (медиа загружено до
  * появления процессинга): бокс тогда квадратный, нижнего слоя нет.
+ *
+ * pathThumb — векторный контур (Telegram photoPathSize, base64) для ещё более
+ * раннего нижнего слоя — SVG-силуэта (см. `core/stickers/getPathFromBytes`,
+ * `components/StickerMedia.tsx`). undefined — контур не выгружен для этого
+ * стикера (у части импортированных документов его не было).
  */
 export interface Sticker {
   id: number
@@ -24,6 +36,7 @@ export interface Sticker {
   height: number
   mime: string
   thumb: string
+  pathThumb?: string
 }
 /** Сохранённый GIF — media нашего сервера (лимит 200 LIFO на бэке). */
 export interface SavedGif { mediaId: number }
@@ -31,6 +44,15 @@ export interface SavedGif { mediaId: number }
 export interface TenorGif { id: string; mp4Url: string; gifUrl: string; previewUrl: string; width: number; height: number }
 export interface GifPage { gifs: TenorGif[]; next: string }
 
+interface RawStickerSet {
+  id: number
+  slug: string
+  title: string
+  kind: 'sticker' | 'emoji'
+  count: number
+  /** обложка набора; отсутствует в ответе (omitempty) у наборов без обложки */
+  cover_media_id?: number
+}
 interface RawSticker {
   id: number
   set_id: number
@@ -41,9 +63,19 @@ interface RawSticker {
   mime?: string
   /** base64 JPEG stripped-превью; null у медиа без сгенерированного превью */
   thumb?: string | null
+  /** base64 векторного контура (photoPathSize); null — контур не выгружен */
+  path_thumb?: string | null
 }
 interface RawTenorGif { id: string; mp4_url: string; gif_url: string; preview_url: string; width: number; height: number }
 
+const mapStickerSet = (r: RawStickerSet): StickerSet => ({
+  id: r.id,
+  slug: r.slug,
+  title: r.title,
+  kind: r.kind,
+  count: r.count,
+  coverMediaId: r.cover_media_id,
+})
 const mapSticker = (r: RawSticker): Sticker => ({
   id: r.id,
   setId: r.set_id,
@@ -53,6 +85,7 @@ const mapSticker = (r: RawSticker): Sticker => ({
   height: r.height ?? 0,
   mime: r.mime ?? '',
   thumb: r.thumb ?? '',
+  pathThumb: r.path_thumb ?? undefined,
 })
 const mapTenorGif = (r: RawTenorGif): TenorGif => ({
   id: r.id, mp4Url: r.mp4_url, gifUrl: r.gif_url, previewUrl: r.preview_url, width: r.width, height: r.height,
@@ -61,22 +94,29 @@ const mapTenorGif = (r: RawTenorGif): TenorGif => ({
 export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
   return {
     async mySets(): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets')
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets')
+      return (r.sets ?? []).map(mapStickerSet)
     },
     async setBySlug(slug: string): Promise<{ set: StickerSet; stickers: Sticker[] }> {
-      const r = await rest.get<{ set: StickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
-      return { set: r.set, stickers: (r.stickers ?? []).map(mapSticker) }
+      const r = await rest.get<{ set: RawStickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
+      return { set: mapStickerSet(r.set), stickers: (r.stickers ?? []).map(mapSticker) }
+    },
+    /** Набор, которому принадлежит файл стикера. Нужен клику по стикеру в чате:
+     * сообщение несёт только mediaId (бэк: GET /stickers/by-media/{mediaID}).
+     * null — файл не из набора (стикер удалён или прислан как обычное медиа). */
+    async setByMediaId(mediaId: number): Promise<StickerSet | null> {
+      const r = await rest.get<{ set: RawStickerSet }>(`/stickers/by-media/${mediaId}`).catch(() => null)
+      return r?.set ? mapStickerSet(r.set) : null
     },
     async searchSets(q: string): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/search', { q })
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/search', { q })
+      return (r.sets ?? []).map(mapStickerSet)
     },
     /** Трендовые наборы (новые первыми, лимит 40 на бэке) — экран поиска
      * стикеров показывает их при пустом запросе (tweb getFeaturedStickers). */
     async featuredSets(): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets/featured')
-      return r.sets ?? []
+      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/featured')
+      return (r.sets ?? []).map(mapStickerSet)
     },
     async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
     async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },

@@ -20,3 +20,20 @@ slice3-real-chat-verified.png
 # MaxMind GeoLite2 DB (licensed, not redistributable)
 backend/data/geoip/*.mmdb
 .claude/worktrees/
+
+# Выгрузка стикеров: venv, сессия MTProto и креды api_id/api_hash
+tools/.venv/
+tools/.tg_session*
+tools/.tg.env
+
+# Сами наборы качает tools/fetch_stickers.py — это гигабайты, в git их нет.
+# Два каталога остаются в репо целиком и потому исключены из правила:
+#   duck          — образец раскладки для seed-stickers и данные для тестов;
+#   animated_emoji — сид больших анимированных эмодзи (7 lottie-json, их
+#                    рендерит BigEmojiBubble). Без исключения каталог был
+#                    полутрекнутым: старые файлы в git, любой новый молча
+#                    игнорируется, а после регенерации каталог закоммитился бы
+#                    пустым — и большие эмодзи перестали бы анимироваться.
+backend/assets/stickers/*
+!backend/assets/stickers/duck/
+!backend/assets/stickers/animated_emoji/

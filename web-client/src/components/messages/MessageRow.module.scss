@@ -72,6 +72,10 @@
 .stickerReal {
   position: relative;
   display: inline-block;
+  // tweb _chatBubble.scss:831 — курсор у медиа-вложения бабла живёт в CSS
+  // (`.attachment { cursor: pointer }`), а не выставляется из JS; наш
+  // .stickerReal и есть `.attachment` стикера.
+  cursor: pointer;
   // tweb _chatBubble.scss:760 (.just-media) — без фона бабла тайм-пилюля берёт
   // цвет подсветки темы вместо дефолтного тёмного оверлея.
   --message-time-background: var(--message-highlighting-color);
@@ -265,6 +269,14 @@
   justify-content: center;
   pointer-events: none;
   overflow: hidden;
+}
+
+// Пока играет эффект вокруг (ReactionAroundEffect, tweb effectSize=80) — он
+// физически крупнее самого бокса иконки и не должен обрезаться его собственным
+// overflow:hidden; снимаем clip ровно на время эффекта, не трогая базовое
+// правило выше (иконка в покое по-прежнему обрезана 1:1 с tweb).
+.reactionEmojiEffectActive {
+  overflow: visible;
 }
 
 // tweb `.reaction-block .reaction-counter`

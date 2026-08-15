@@ -91,6 +91,36 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 	}
 }
 
+// SetByMediaID — обратный поиск: по файлу стикера найти набор. Нужен клику по
+// стикеру в чате: сообщение несёт только media_id.
+func TestSetByMediaID(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7816")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "utyaduck", Title: "Duck", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaID := seedStickerMedia(t, pool, owner, "utyaduck/0")
+	if _, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "🦆"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.SetByMediaID(ctx, mediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Slug != "utyaduck" {
+		t.Errorf("slug = %q, ожидался utyaduck", got.Slug)
+	}
+
+	if _, err := r.SetByMediaID(ctx, mediaID+99999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("для чужого медиа err = %v, ожидался ErrNotFound", err)
+	}
+}
+
 func TestStickersRepo_InstallAndMySets(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	r := NewStickersRepo(pool)
@@ -385,5 +415,265 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 	limited, err := r.FeaturedSets(ctx, 2)
 	if err != nil || len(limited) != 2 || limited[0].ID != third.ID {
 		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
+	}
+}
+
+// FeaturedSets отдаёт наборы в порядке трендов: сначала rank 1,2,3…, затем
+// наборы без ранга. Порядок — то, что пользователь видит в панели стикеров.
+func TestFeaturedSetsOrderByRank(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7815")
+
+	noRank, err := r.CreateSet(ctx, domain.StickerSet{Slug: "zzz-no-rank", Title: "Без ранга", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.CreateSet(ctx, domain.StickerSet{Slug: "bbb", Title: "Второй", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := r.CreateSet(ctx, domain.StickerSet{Slug: "aaa", Title: "Первый", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetRank(ctx, first.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetRank(ctx, second.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	sets, err := r.FeaturedSets(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{sets[0].Slug, sets[1].Slug, sets[2].Slug}
+	want := []string{"aaa", "bbb", "zzz-no-rank"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("порядок %v, ожидался %v", got, want)
+		}
+	}
+	if sets[0].Rank != 1 {
+		t.Errorf("Rank = %d, ожидался 1", sets[0].Rank)
+	}
+	_ = noRank
+}
+
+// StickerPositions отдаёт занятые позиции набора: по ним сид понимает, каких
+// стикеров в наборе ещё нет, и досидирует только их.
+func TestStickerPositions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7817")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "positions", Title: "P", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AddSticker сам назначает позицию как max(position)+1, поэтому чтобы
+	// получить набор {0,1,3} с дыркой на 2, вставляем 4 стикера подряд
+	// (0,1,2,3), а затем стикер с позиции 2 удаляем — остаются заняты ровно
+	// 0,1,3.
+	var toDelete int64
+	for k := 0; k < 4; k++ {
+		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("positions/%d", k))
+		s, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "🦆"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Position == 2 {
+			toDelete = s.ID
+		}
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM stickers WHERE id=$1`, toDelete); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.StickerPositions(ctx, set.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("позиций %d, ожидалось 3", len(got))
+	}
+	if _, ok := got[2]; ok {
+		t.Error("позиция 2 не занята, а вернулась занятой")
+	}
+	if _, ok := got[3]; !ok {
+		t.Error("позиция 3 занята, но не вернулась")
+	}
+}
+
+// AddStickerAt не пересчитывает позицию через max(position)+1 — она берётся
+// из аргумента буквально. Это и есть фикс ревью Task 11: сиду при
+// досидировании дыры в середине набора (стикер удалили) нужно попасть ровно
+// в дыру, а не в хвост — иначе повторный прогон снова находит ту же дыру
+// «недостающей» и плодит дубль на каждом прогоне (сид гоняется при каждом
+// деплое).
+func TestAddStickerAt(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7818")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "gap", Title: "G", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Дыра на позиции 3: заняты 0,1,2,4,5 (стикер позиции 3 будто удалили).
+	for _, pos := range []int{0, 1, 2, 4, 5} {
+		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("gap/%d", pos))
+		if _, err := r.AddStickerAt(ctx, set.ID, mediaID, "🦆", pos, nil); err != nil {
+			t.Fatalf("AddStickerAt(%d): %v", pos, err)
+		}
+	}
+
+	gapMedia := seedStickerMedia(t, pool, owner, "gap/3")
+	added, err := r.AddStickerAt(ctx, set.ID, gapMedia, "🦆", 3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added.Position != 3 {
+		t.Fatalf("Position = %d, ожидалось 3 — AddStickerAt не должен пересчитывать позицию", added.Position)
+	}
+
+	got, err := r.StickerPositions(ctx, set.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 6 {
+		t.Fatalf("позиций %d, ожидалось 6 — дыра залита, дубля в хвосте нет", len(got))
+	}
+	if _, ok := got[6]; ok {
+		t.Error("позиция 6 занята — AddStickerAt уехал в хвост вместо дыры")
+	}
+}
+
+// path_thumb едет со стикером с самой вставки (AddStickerAt): непустой контур
+// сохраняется и возвращается назад, а его отсутствие — пустой срез, не ошибка.
+func TestStickerPathThumb(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7819")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "outline", Title: "O", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outline := []byte{1, 2, 3, 4, 5}
+	mediaWith := seedStickerMedia(t, pool, owner, "outline/0")
+	withThumb, err := r.AddStickerAt(ctx, set.ID, mediaWith, "🦆", 0, outline)
+	if err != nil {
+		t.Fatalf("AddStickerAt: %v", err)
+	}
+	if !bytes.Equal(withThumb.PathThumb, outline) {
+		t.Fatalf("AddStickerAt PathThumb = %v, want %v", withThumb.PathThumb, outline)
+	}
+
+	mediaWithout := seedStickerMedia(t, pool, owner, "outline/1")
+	withoutThumb, err := r.AddStickerAt(ctx, set.ID, mediaWithout, "🦆", 1, nil)
+	if err != nil {
+		t.Fatalf("AddStickerAt(без контура): %v", err)
+	}
+	if len(withoutThumb.PathThumb) != 0 {
+		t.Fatalf("PathThumb без контура = %v, want пусто", withoutThumb.PathThumb)
+	}
+
+	sts, err := r.Stickers(ctx, set.ID)
+	if err != nil || len(sts) != 2 {
+		t.Fatalf("Stickers: %+v, %v", sts, err)
+	}
+	if !bytes.Equal(sts[0].PathThumb, outline) {
+		t.Fatalf("Stickers[0].PathThumb = %v, want %v", sts[0].PathThumb, outline)
+	}
+	if len(sts[1].PathThumb) != 0 {
+		t.Fatalf("Stickers[1].PathThumb = %v, want пусто", sts[1].PathThumb)
+	}
+}
+
+// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора —
+// сценарий уже залитых наборов (на стенде — 13.5к стикеров без контура на
+// момент выгрузки Task 4): AddSticker/AddStickerAt их заново не создают,
+// значит контур обязан доехать отдельным проходом по позиции. Уже
+// проставленный контур Backfill не трогает (WHERE path_thumb IS NULL) — иначе
+// на каждом прогоне сида (а он гоняется при каждом деплое) впустую
+// перезаписывались бы все 13.5к строк.
+func TestBackfillPathThumbs(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7820")
+
+	// AddSticker (не At) — как уже залитые на стенде стикеры: без контура,
+	// позиция назначена автоматически.
+	set, ids := seedFullSet(t, pool, r, owner, "legacy", 3)
+
+	preset := []byte{9, 9, 9}
+	if _, err := pool.Exec(ctx, `UPDATE stickers SET path_thumb=$1 WHERE id=$2`, preset, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	thumbs := map[int][]byte{
+		0: {1, 2, 3},
+		1: {8, 8, 8}, // должен остаться preset, Backfill не перезаписывает занятое
+		2: {5, 6, 7},
+	}
+	if err := r.BackfillPathThumbs(ctx, set.ID, thumbs); err != nil {
+		t.Fatalf("BackfillPathThumbs: %v", err)
+	}
+
+	sts, err := r.Stickers(ctx, set.ID)
+	if err != nil || len(sts) != 3 {
+		t.Fatalf("Stickers: %+v, %v", sts, err)
+	}
+	if !bytes.Equal(sts[0].PathThumb, thumbs[0]) {
+		t.Errorf("sts[0].PathThumb = %v, want %v", sts[0].PathThumb, thumbs[0])
+	}
+	if !bytes.Equal(sts[1].PathThumb, preset) {
+		t.Errorf("sts[1].PathThumb = %v, want сохранённый %v (не перезаписан)", sts[1].PathThumb, preset)
+	}
+	if !bytes.Equal(sts[2].PathThumb, thumbs[2]) {
+		t.Errorf("sts[2].PathThumb = %v, want %v", sts[2].PathThumb, thumbs[2])
+	}
+
+	// Пустая карта (набор без контуров в meta.json) — no-op, не ошибка.
+	if err := r.BackfillPathThumbs(ctx, set.ID, nil); err != nil {
+		t.Fatalf("BackfillPathThumbs(пусто): %v", err)
+	}
+}
+
+// Индексы стикеров (миграция 0094). Тест пинит два решения, а не «схема как
+// написана»: (1) stickers.media_id обязан быть проиндексирован — по нему идут
+// SetByMediaID (клик по стикеру в чате) и IsStickerMedia (каждая отправка
+// стикера и каждая выдача его файла), а строк в таблице тысячи; (2) частичный
+// индекс sticker_sets_rank_idx снят как заведомо неиспользуемый — FeaturedSets
+// сортирует по выражению (s.rank = 0), которое btree по rank не обслуживает.
+func TestStickerIndexes(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+
+	var mediaIdx bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_indexes
+		                WHERE tablename='stickers' AND indexdef LIKE '%(media_id)%')`).Scan(&mediaIdx); err != nil {
+		t.Fatalf("pg_indexes stickers: %v", err)
+	}
+	if !mediaIdx {
+		t.Error("нет индекса по stickers(media_id) — SetByMediaID/IsStickerMedia уходят в seq scan")
+	}
+
+	var rankIdx bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname='sticker_sets_rank_idx')`).Scan(&rankIdx); err != nil {
+		t.Fatalf("pg_indexes sticker_sets: %v", err)
+	}
+	if rankIdx {
+		t.Error("sticker_sets_rank_idx жив — его снимает 0094 как неиспользуемый планировщиком")
 	}
 }

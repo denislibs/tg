@@ -74,6 +74,9 @@ export default function StickersHelper({
                 playOnHover
                 loop
                 thumb={st.thumb}
+                pathThumb={st.pathThumb}
+                docWidth={st.width}
+                docHeight={st.height}
               />
             </div>
           ))}

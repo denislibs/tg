@@ -62,6 +62,12 @@ func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSet, 
 	return set, sts, err
 }
 
+// SetByMediaID — набор по файлу стикера (обратный поиск для клика по стикеру
+// в чате: сообщение несёт только media_id, а не set_id/slug).
+func (i *Interactor) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+	return i.repo.SetByMediaID(ctx, mediaID)
+}
+
 // Install добавляет набор пользователю (идемпотентно). Нет набора → ErrNotFound.
 func (i *Interactor) Install(ctx context.Context, userID, setID int64) error {
 	if _, err := i.repo.SetByID(ctx, setID); err != nil {
@@ -179,6 +185,31 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 	return i.repo.AddSticker(ctx, domain.Sticker{SetID: setID, MediaID: mediaID, Emoji: emoji})
 }
 
+// AddStickerAt пополняет набор на явную позицию — те же проверки, что у
+// AddSticker (владелец, существование media), но используется только сидом
+// (cmd/seed-stickers): публичному API взять позицию неоткуда, там позицию
+// назначает хранилище через AddSticker.
+func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
+	if len(emoji) > maxEmojiBytes {
+		return domain.Sticker{}, domain.ErrInvalid
+	}
+	set, err := i.repo.SetByID(ctx, setID)
+	if err != nil {
+		return domain.Sticker{}, err
+	}
+	if set.CreatedBy != ownerID {
+		return domain.Sticker{}, domain.ErrForbidden
+	}
+	ok, err := i.repo.MediaExists(ctx, mediaID)
+	if err != nil {
+		return domain.Sticker{}, err
+	}
+	if !ok {
+		return domain.Sticker{}, domain.ErrNotFound
+	}
+	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position, pathThumb)
+}
+
 // SavedGifs — сохранённые GIF пользователя, новые первыми.
 func (i *Interactor) SavedGifs(ctx context.Context, userID int64) ([]domain.SavedGif, error) {
 	return i.repo.SavedGifs(ctx, userID)
@@ -215,4 +246,24 @@ func (i *Interactor) SearchGifs(ctx context.Context, q, pos string) (GifPage, er
 		return GifPage{Gifs: []Gif{}}, nil
 	}
 	return i.gifs.SearchGifs(ctx, strings.TrimSpace(q), pos, gifSearchLim)
+}
+
+// SetRank — позиция набора в трендах (см. domain.StickerSet.Rank).
+func (i *Interactor) SetRank(ctx context.Context, setID int64, rank int) error {
+	return i.repo.SetRank(ctx, setID, rank)
+}
+
+// SetCover — обложка набора (иконка вкладки панели).
+func (i *Interactor) SetCover(ctx context.Context, setID, mediaID int64) error {
+	return i.repo.SetCover(ctx, setID, mediaID)
+}
+
+// StickerPositions — занятые позиции набора (см. Repo.StickerPositions).
+func (i *Interactor) StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error) {
+	return i.repo.StickerPositions(ctx, setID)
+}
+
+// BackfillPathThumbs — см. Repo.BackfillPathThumbs.
+func (i *Interactor) BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error {
+	return i.repo.BackfillPathThumbs(ctx, setID, thumbs)
 }

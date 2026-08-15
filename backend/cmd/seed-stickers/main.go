@@ -1,6 +1,8 @@
 // seed-stickers заливает наборы стикеров из assets/stickers/<slug>/ в БД и
-// MinIO (env те же, что у сервера: DATABASE_URL, MINIO_*). Идемпотентно:
-// существующий slug пропускается целиком, так что можно гонять при каждом деплое.
+// MinIO (env те же, что у сервера: DATABASE_URL, MINIO_*). Идемпотентно, так что
+// можно гонять при каждом деплое: существующие стикеры набора не перезаливаются
+// и не переупорядочиваются, а недостающие (по позиции в meta.json) и метаданные
+// (rank трендов, обложка) доставляются — см. seedSet.
 //
 //	go run ./cmd/seed-stickers            # каталоги из ./assets/stickers
 //	go run ./cmd/seed-stickers -dir path  # свой каталог с наборами
@@ -9,6 +11,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -27,14 +30,57 @@ import (
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 )
 
-// setMeta — meta.json набора: заголовок, вид и список файлов с эмодзи.
+// setMeta — meta.json набора: заголовок, вид, обложка и список файлов стикеров.
 type setMeta struct {
-	Title    string `json:"title"`
-	Kind     string `json:"kind"`
-	Stickers []struct {
-		File  string `json:"file"`
-		Emoji string `json:"emoji"`
-	} `json:"stickers"`
+	Title    string             `json:"title"`
+	Kind     string             `json:"kind"`
+	Cover    string             `json:"cover"`
+	Stickers []stickerMetaEntry `json:"stickers"`
+}
+
+// stickerMetaEntry — один стикер набора из meta.json: файл, эмодзи и
+// опциональный контур. Path — контур стикера (Telegram photoPathSize) в
+// base64, tools/fetch_stickers.py кладёт его не у всех: часть
+// Telegram-документов контура просто не несёт.
+type stickerMetaEntry struct {
+	File  string `json:"file"`
+	Emoji string `json:"emoji"`
+	Path  string `json:"path,omitempty"`
+}
+
+// decodePathThumb декодирует поле path из meta.json — контур в base64.
+// Пустая строка (контура у Telegram-документа не было) — не ошибка, а
+// nil-контур; она не долетает до AddStickerAt/BackfillPathThumbs как ошибка.
+func decodePathThumb(encoded string) ([]byte, error) {
+	if encoded == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(encoded)
+}
+
+// setIndex — _index.json рядом с наборами: порядок трендов из выгрузки
+// (tools/fetch_stickers.py). Без него наборы сидируются в алфавитном порядке
+// каталогов, и панель показывает их не так, как Telegram.
+type setIndex struct {
+	Order []string `json:"order"`
+}
+
+// loadRanks читает _index.json и отдаёт slug → позиция (с единицы). Файла нет —
+// пустая карта: все наборы получают rank 0 («вне трендов»).
+func loadRanks(dir string) map[string]int {
+	raw, err := os.ReadFile(filepath.Join(dir, "_index.json"))
+	if err != nil {
+		return map[string]int{}
+	}
+	var idx setIndex
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return map[string]int{}
+	}
+	ranks := make(map[string]int, len(idx.Order))
+	for i, slug := range idx.Order {
+		ranks[slug] = i + 1
+	}
+	return ranks
 }
 
 func main() {
@@ -52,6 +98,11 @@ func main() {
 // статичный. .json остаётся application/json, чтобы не сломать lottie-детект.
 func stickerMime(file string) string {
 	switch strings.ToLower(filepath.Ext(file)) {
+	case ".tgs":
+		// .tgs — gzip'нутый lottie-json Telegram. Не распаковываем: бэкенд читает
+		// из него размеры сам (ffmpeg.lottieDims разжимает по magic-байтам), а
+		// фронт — DecompressionStream в StickerMedia.
+		return "application/x-tgsticker"
 	case ".webm":
 		return "video/webm"
 	case ".webp":
@@ -97,25 +148,83 @@ func run(dir string) error {
 	if err != nil {
 		return err
 	}
+	ranks := loadRanks(dir)
+	upload := func(ctx context.Context, path string) (int64, error) { return uploadFile(ctx, mediaUC, path) }
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		if err := seedSet(ctx, stickersUC, mediaUC, dir, e.Name()); err != nil {
+		if err := seedSet(ctx, stickersUC, upload, dir, e.Name(), ranks[e.Name()]); err != nil {
 			return fmt.Errorf("набор %s: %w", e.Name(), err)
 		}
 	}
 	return nil
 }
 
-func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaUC *usecasemedia.Interactor, dir, slug string) error {
-	if _, _, err := stickersUC.SetBySlug(ctx, slug); err == nil {
-		log.Printf("набор %s уже есть — пропускаю", slug)
-		return nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
-		return err
+// uploadFile читает файл набора и заливает его как media (тот же путь, что у
+// обычной загрузки: CreateUpload + PutContent). Общий код для стикеров набора
+// и его обложки — им обеим нужна ровно эта пара вызовов.
+func uploadFile(ctx context.Context, mediaUC *usecasemedia.Interactor, path string) (int64, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
 	}
+	name := filepath.Base(path)
+	m, _, err := mediaUC.CreateUpload(ctx, usecasemedia.UploadInput{
+		OwnerID: domain.ServiceUserID, Mime: stickerMime(name),
+		Size: int64(len(data)), Width: 512, Height: 512, FileName: name,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := mediaUC.PutContent(ctx, m.ID, domain.ServiceUserID, bytes.NewReader(data), int64(len(data))); err != nil {
+		return 0, err
+	}
+	return m.ID, nil
+}
 
+// setSeeder — та часть usecase стикеров, которой пользуется seedSet. Узкий
+// интерфейс вместо *usecasestickers.Interactor нужен затем, что вся логика
+// идемпотентности сида живёт в seedSet, и её надо проверять тестом без
+// Postgres и MinIO (cmd/seed-stickers/main_test.go).
+type setSeeder interface {
+	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, []domain.Sticker, error)
+	CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error)
+	// AddStickerAt заливает стикер на явную позицию — а не на «следующую
+	// свободную», как обычный AddSticker: позиция берётся из meta.json и
+	// обязана совпасть с БД буквально, иначе дыра в середине набора (стикер
+	// удалили) даёт неидемпотентность — каждый прогон сида находит ту же дыру
+	// «недостающей» и плодит дубль.
+	AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error)
+	SetRank(ctx context.Context, setID int64, rank int) error
+	SetCover(ctx context.Context, setID, mediaID int64) error
+	// StickerPositions — занятые позиции набора; по ним seedSet понимает, каких
+	// стикеров ещё нет, и заливает только недостающие.
+	StickerPositions(ctx context.Context, setID int64) (map[int]struct{}, error)
+	// BackfillPathThumbs дозаписывает контур уже существующим стикерам набора
+	// (тем, чья позиция уже занята) — нужен затем, что стикеры могли быть
+	// залиты раньше появления этого поля: на стенде их уже 13.5к без контура,
+	// и без отдельного прохода по позиции контур на них остался бы пустым
+	// навсегда — AddStickerAt/fillMissingStickers трогают только недостающие.
+	BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error
+}
+
+// uploadFunc — заливка одного файла набора в media; в бою это uploadFile поверх
+// usecase медиа, в тесте — счётчик.
+type uploadFunc func(ctx context.Context, path string) (int64, error)
+
+// seedSet заливает набор и приводит его к тому, что написано в выгрузке:
+// недостающие стикеры (по позиции) и метаданные (rank/обложка).
+//
+// Идемпотентность здесь построчная, а не «набор целиком»: у существующего
+// набора не трогаются и не переупорядочиваются уже залитые стикеры (на них
+// ссылаются отправленные сообщения), но недостающие позиции досидируются, а
+// rank и обложка проставляются НА КАЖДОМ прогоне. Иначе прерванный прогон (а
+// он прерывается — это гигабайты файлов) навсегда оставлял бы набор неполным,
+// с rank = 0 и без обложки: повторный запуск упирался бы в ранний возврат
+// «набор уже есть», и набор тихо расходился бы с тем, что приехало из
+// Telegram (так на стенде animated_emoji застрял на 6 стикерах из 599).
+func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug string, rank int) error {
 	raw, err := os.ReadFile(filepath.Join(dir, slug, "meta.json"))
 	if err != nil {
 		return err
@@ -125,31 +234,106 @@ func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaU
 		return err
 	}
 
-	// Владелец сид-наборов — сервисный аккаунт: он есть в любой БД (миграция
-	// 0014) и наборы не окажутся «ничьими».
-	set, err := stickersUC.CreateSet(ctx, domain.ServiceUserID, slug, meta.Title, meta.Kind)
+	set, _, err := sets.SetBySlug(ctx, slug)
+	switch {
+	case err == nil:
+		if err := fillMissingStickers(ctx, sets, upload, dir, slug, set.ID, meta); err != nil {
+			return err
+		}
+	case errors.Is(err, domain.ErrNotFound):
+		// Владелец сид-наборов — сервисный аккаунт: он есть в любой БД (миграция
+		// 0014) и наборы не окажутся «ничьими».
+		set, err = sets.CreateSet(ctx, domain.ServiceUserID, slug, meta.Title, meta.Kind)
+		if err != nil {
+			return err
+		}
+		for pos, s := range meta.Stickers {
+			pathThumb, err := decodePathThumb(s.Path)
+			if err != nil {
+				return fmt.Errorf("набор %s, стикер %d: контур: %w", slug, pos, err)
+			}
+			mediaID, err := upload(ctx, filepath.Join(dir, slug, s.File))
+			if err != nil {
+				return err
+			}
+			if _, err := sets.AddStickerAt(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji, pos, pathThumb); err != nil {
+				return err
+			}
+		}
+		log.Printf("набор %s (%s, %d стикеров) залит", slug, meta.Kind, len(meta.Stickers))
+	default:
+		return err
+	}
+
+	if rank > 0 && set.Rank != rank {
+		if err := sets.SetRank(ctx, set.ID, rank); err != nil {
+			return err
+		}
+	}
+	// Обложка — такое же медиа, как стикер, но в наборе не числится: это
+	// иконка вкладки панели (tweb stickerSetThumb), а не отправляемый стикер.
+	// Заливаем её, только пока её нет: файл уже в media, и повторная заливка
+	// плодила бы его копию на каждом прогоне сида.
+	if meta.Cover != "" && set.CoverMediaID == 0 {
+		coverID, err := upload(ctx, filepath.Join(dir, slug, meta.Cover))
+		if err != nil {
+			return err
+		}
+		if err := sets.SetCover(ctx, set.ID, coverID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fillMissingStickers досидировает набор, который уже есть в БД: заливает
+// только те стикеры meta.Stickers, чьей позиции ещё нет среди занятых
+// (StickerPositions), не трогая и не переупорядочивая существующие — на них
+// ссылаются уже отправленные сообщения. Ключ сопоставления — позиция стикера
+// в meta.json: media_id при каждой заливке новый, а позиция стабильна.
+//
+// Контур (path) уезжает по обеим веткам: недостающим стикерам — прямо при
+// вставке (AddStickerAt), а уже занятым позициям — отдельным проходом
+// (BackfillPathThumbs), потому что их AddStickerAt не создаёт заново. Без
+// этого стикеры, залитые до появления поля (на стенде — 13.5к штук), навсегда
+// остались бы без контура: fillMissingStickers их не трогает как «уже
+// заполненные».
+func fillMissingStickers(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug string, setID int64, meta setMeta) error {
+	occupied, err := sets.StickerPositions(ctx, setID)
 	if err != nil {
 		return err
 	}
-	for _, s := range meta.Stickers {
-		data, err := os.ReadFile(filepath.Join(dir, slug, s.File))
+	added := 0
+	thumbs := make(map[int][]byte)
+	for pos, s := range meta.Stickers {
+		pathThumb, err := decodePathThumb(s.Path)
+		if err != nil {
+			return fmt.Errorf("набор %s, стикер %d: контур: %w", slug, pos, err)
+		}
+		if _, ok := occupied[pos]; ok {
+			if len(pathThumb) > 0 {
+				thumbs[pos] = pathThumb
+			}
+			continue
+		}
+		mediaID, err := upload(ctx, filepath.Join(dir, slug, s.File))
 		if err != nil {
 			return err
 		}
-		m, _, err := mediaUC.CreateUpload(ctx, usecasemedia.UploadInput{
-			OwnerID: domain.ServiceUserID, Mime: stickerMime(s.File),
-			Size: int64(len(data)), Width: 512, Height: 512, FileName: s.File,
-		})
-		if err != nil {
+		if _, err := sets.AddStickerAt(ctx, domain.ServiceUserID, setID, mediaID, s.Emoji, pos, pathThumb); err != nil {
 			return err
 		}
-		if err := mediaUC.PutContent(ctx, m.ID, domain.ServiceUserID, bytes.NewReader(data), int64(len(data))); err != nil {
-			return err
-		}
-		if _, err := stickersUC.AddSticker(ctx, domain.ServiceUserID, set.ID, m.ID, s.Emoji); err != nil {
+		added++
+	}
+	if len(thumbs) > 0 {
+		if err := sets.BackfillPathThumbs(ctx, setID, thumbs); err != nil {
 			return err
 		}
 	}
-	log.Printf("набор %s (%s, %d стикеров) залит", slug, meta.Kind, len(meta.Stickers))
+	if added == 0 {
+		log.Printf("набор %s уже полон", slug)
+	} else {
+		log.Printf("набор %s: залито %d недостающих стикеров", slug, added)
+	}
 	return nil
 }

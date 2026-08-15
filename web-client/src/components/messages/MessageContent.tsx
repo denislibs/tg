@@ -32,6 +32,9 @@ import {
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
+import { openStickerSetModal } from '../stickers/StickerSetModal'
+import { useManagers } from '../../core/hooks/useManagers'
+import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
 import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
 import { useT } from '../../i18n'
@@ -131,10 +134,20 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // Стикер с бэка (m.type 'sticker' + mediaId): бокс аспект-фитится в 200×200
 // (tweb mediaSizes desktop static/animatedSticker), lottie-json играет через
 // lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
-// (различает StickerMedia). Бейдж времени — тот же, что у big-emoji.
+// (различает StickerMedia). Бейдж времени — тот же, что у big-emoji. Клик
+// открывает попап набора (tweb wrapSticker → showStickersPopup): сообщение
+// несёт только mediaId, набор резолвит бэк (GET /stickers/by-media/{id}).
+// Клик по стикеру ВНУТРИ попапа отправляет его в текущий чат и закрывает
+// попап (tweb PopupStickers.onStickersClick — тот же путь, без read-only
+// режима в зависимости от точки входа): feedFns.sendSticker пробрасывается
+// как onPickSticker, StickerSetModal сама зовёт его и onClose по клику.
+// Сам попап открывается в глобальном стеке (openStickerSetModal), а не
+// рендерится потомком бабла — почему именно так, см. её докблок.
 const STICKER_BOX = 200
-function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
+function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: ReactNode; selecting: boolean; feedFns: FeedFns }) {
   const loopStickers = useSettings((st) => st.loopStickers)
+  const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
   let w = STICKER_BOX
   let h = STICKER_BOX
   if (m.mediaWidth && m.mediaHeight) {
@@ -142,8 +155,25 @@ function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
     w = Math.round(m.mediaWidth * k)
     h = Math.round(m.mediaHeight * k)
   }
+  // В selecting клик занят выбором ряда, у error-бабла — меню переотправки
+  // (тот же список условий, что у BigEmojiBubble выше).
+  const clickable = !selecting && m.status !== 'error'
+  const onClick = clickable
+    ? () => {
+        // .get() — в момент клика, не в теле компонента: ряд может уйти из
+        // окна (смена чата) до того, как ответ долетит.
+        const middleware = middlewareHelper.get()
+        void managers.stickers.setByMediaId(m.mediaId!).then((set) => {
+          // Попап открывается в ГЛОБАЛЬНОМ стеке попапов, а не рендерится
+          // потомком этого бабла: React-события портала всплывают по
+          // React-дереву, и попап-потомок отдавал бы свои клики обратно в
+          // onClick бабла и onContextMenu ряда — см. докблок openStickerSetModal.
+          if (middleware() && set) openStickerSetModal(set.slug, feedFns.sendSticker)
+        })
+      }
+    : undefined
   return (
-    <div className={s.stickerReal}>
+    <div className={s.stickerReal} onClick={onClick}>
       {/* mediaBlur — то же stripped-превью, что у остальных медиа сообщения:
           нижний слой, пока файл стикера летит (tweb показывает тумб документа) */}
       <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} thumb={m.mediaBlur} />
@@ -230,6 +260,7 @@ export default function MessageContent({
   const reactionsRow = (trailing?: ReactNode) =>
     showReactions ? (
       <MessageReactions
+        msgId={m.id!}
         inside={!!trailing}
         reactions={m.reactions ?? []}
         star={m.starReaction && m.starReaction.total > 0 ? m.starReaction : undefined}
@@ -345,7 +376,7 @@ export default function MessageContent({
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // reply/имя в группе не рисуются (как voice/round). Реакции — колонкой под
           // стикером, прижаты к его inline-концу (tweb is-message-empty).
-          withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} />)
+          withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} selecting={selecting} feedFns={feedFns} />)
         ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).

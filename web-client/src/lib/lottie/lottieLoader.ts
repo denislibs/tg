@@ -158,6 +158,13 @@ export class LottieLoader {
     .then((res) => {
       // .tgs приходит gzip'нутым (application/octet-stream) — распаковываем нативным
       // DecompressionStream (tweb делает это в crypto-воркере, нам хватает браузерного).
+      // Не переиспользуем core/stickers/tgs.ts::readLottie: этот метод по умолчанию
+      // отдаёт Blob для tlottie-воркера (аргумент method==='blob'), а не разобранный
+      // json, и различает gzip по 'application/octet-stream' — тому, чем реально
+      // отвечает сервер статики на assets/tgs/*.json, а не по mime бэкенда
+      // 'application/x-tgsticker' (у readLottie). Контракты разные — это вендоренный
+      // островок (шапка файла: @ts-nocheck, порт tweb 1:1), трогаем только при
+      // расхождении с апстримом.
       if(!res.headers || res.headers.get('content-type') === 'application/octet-stream') {
         const decompressed = new Response(res.body!.pipeThrough(new DecompressionStream('gzip')));
         return method === 'json' ? decompressed.json() : decompressed.blob();

@@ -22,6 +22,26 @@ describe('normalizeEmoji', () => {
     expect(normalizeEmoji('❤')).toBe('❤')
     expect(normalizeEmoji(' 👍 ')).toBe('👍')
   })
+
+  // Telegram отдаёт alt-эмодзи то с FE0F, то без — набор из 599 эмодзи не
+  // гарантирует, какой вариант лёг в базу, а какой пришлёт сообщение. tweb
+  // (cleanEmoji) срезает оба класса вариативности перед сравнением.
+  it('другие реальные пары с/без FE0F совпадают после нормализации', () => {
+    expect(normalizeEmoji('☺️')).toBe(normalizeEmoji('☺'))
+    expect(normalizeEmoji('☺️')).toBe('☺')
+  })
+
+  it('FE0F внутри ZWJ-составного эмодзи тоже срезается (❤️‍🔥 — heart on fire)', () => {
+    // U+2764 U+FE0F U+200D U+1F525: селектор стоит не в конце строки, а
+    // перед ZWJ — глобальный /️/g обязан снять его и там.
+    expect(normalizeEmoji('❤️‍🔥')).toBe('❤‍🔥')
+  })
+
+  it('срезает модификатор тона кожи — 👍🏽 матчится на ту же запись, что и 👍', () => {
+    expect(normalizeEmoji('👍🏽')).toBe('👍')
+    expect(normalizeEmoji('👍🏻')).toBe('👍')
+    expect(normalizeEmoji('👍🏿')).toBe('👍')
+  })
 })
 
 describe('buildEmojiMap', () => {
@@ -35,6 +55,23 @@ describe('buildEmojiMap', () => {
   it('дубль эмодзи не перетирает первый mediaId', () => {
     const map = buildEmojiMap([{ emoji: '🔥', mediaId: 1 }, { emoji: '🔥', mediaId: 2 }])
     expect(map.get('🔥')).toBe(1)
+  })
+
+  // Набор из 599 эмодзи хранит альты в исходном виде Telegram — с FE0F,
+  // без него, с тоном кожи. Лукап обязан нормализовать сторону запроса тем
+  // же правилом, каким построен ключ, независимо от того, какой вариант
+  // реально лёг в БД.
+  it('лукап независим от селектора вариации на других реальных парах', () => {
+    const map = buildEmojiMap([{ emoji: '☺', mediaId: 1 }, { emoji: '😚', mediaId: 2 }])
+    expect(map.get(normalizeEmoji('☺️'))).toBe(1) // с FE0F
+    expect(map.get(normalizeEmoji('☺'))).toBe(1) // без
+    expect(map.get(normalizeEmoji('😚'))).toBe(2)
+  })
+
+  it('лукап независим от модификатора тона кожи', () => {
+    const map = buildEmojiMap([{ emoji: '👍', mediaId: 5 }])
+    expect(map.get(normalizeEmoji('👍🏽'))).toBe(5)
+    expect(map.get(normalizeEmoji('👍🏻'))).toBe(5)
   })
 })
 

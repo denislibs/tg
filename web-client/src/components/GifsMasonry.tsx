@@ -16,58 +16,19 @@
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { GifItem } from '../core/gifs'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { useLazyVisibility, type LazyVisibility } from './useLazyVisibility'
 import ProgressivePreloader from './preloader'
 
 // tweb GifsMasonry: высота ряда кладки — запас rootMargin ленивой загрузки.
 const ROW_H = 117
 
 /**
- * Один IntersectionObserver на все ячейки кладки (порт механики
- * LazyLoadQueueRepeat2 из tweb gifsMasonry.ts в React-форме): возвращает
- * набор видимых ключей и ref-регистратор ячеек.
+ * Ленивость кладки — общий механизм `useLazyVisibility` (порт роли tweb
+ * LazyLoadQueue): один IntersectionObserver на все ячейки. Здесь он лишь
+ * фиксирует запас предзагрузки кладки — высоту ряда, как в tweb gifsMasonry.
  */
-export function useGifsMasonryVisibility(scrollRef: RefObject<HTMLElement | null>) {
-  const cellsRef = useRef(new Map<string, HTMLElement>())
-  const ioRef = useRef<IntersectionObserver | null>(null)
-  const [visible, setVisible] = useState<ReadonlySet<string>>(new Set())
-
-  useEffect(() => {
-    const sc = scrollRef.current
-    if (!sc) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        setVisible((prev) => {
-          const next = new Set(prev)
-          for (const en of entries) {
-            const key = (en.target as HTMLElement).dataset.gifKey
-            if (!key) continue
-            if (en.isIntersecting) next.add(key)
-            else next.delete(key)
-          }
-          return next
-        })
-      },
-      { root: sc, rootMargin: `${ROW_H}px 0px` },
-    )
-    ioRef.current = io
-    for (const el of cellsRef.current.values()) io.observe(el)
-    return () => { io.disconnect(); ioRef.current = null }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const register = useCallback((key: string, el: HTMLElement | null) => {
-    const prev = cellsRef.current.get(key)
-    if (el) {
-      el.dataset.gifKey = key
-      cellsRef.current.set(key, el)
-      ioRef.current?.observe(el)
-    } else if (prev) {
-      ioRef.current?.unobserve(prev)
-      cellsRef.current.delete(key)
-    }
-  }, [])
-
-  return { visible, register }
+export function useGifsMasonryVisibility(scrollRef: RefObject<HTMLElement | null>): LazyVisibility {
+  return useLazyVisibility(scrollRef, `${ROW_H}px 0px`)
 }
 
 const GifCell = memo(function GifCell({

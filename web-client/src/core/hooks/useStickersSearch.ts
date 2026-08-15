@@ -5,7 +5,9 @@
 // Add/Added — toggleStickerSet: на время запроса гасится (disabled), состояние
 // «установлен» ведётся по mySets (у tweb — set.installed_date).
 import { useCallback, useEffect, useRef, useState } from 'react'
+import rootScope from '@lib/rootScope'
 import { useManagers } from './useManagers'
+import { toggleStickerSet } from '../stickers/toggleStickerSet'
 import type { StickerSet } from '../managers/stickersManager'
 
 export function useStickersSearch(query: string) {
@@ -13,6 +15,9 @@ export function useStickersSearch(query: string) {
   const [sets, setSets] = useState<StickerSet[]>([])
   const [installedIds, setInstalledIds] = useState<ReadonlySet<number>>(new Set())
   const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(new Set())
+  // Скелетон экрана держится, пока идёт актуальный запрос (Task 6 «скелетоны
+  // в панели») — включая первую загрузку трендов без ввода.
+  const [loading, setLoading] = useState(true)
   // Устаревшие ответы отбрасываются счётчиком поколений (как useGifsSearch).
   const reqRef = useRef(0)
   const firstRef = useRef(true)
@@ -27,14 +32,33 @@ export function useStickersSearch(query: string) {
     return () => { alive = false }
   }, [managers])
 
+  // Набор мог быть поставлен/снят не отсюда (попап набора, другая вкладка) —
+  // Add/Added пересчитывается по объявлению, а не по своему же ответу
+  // (tweb sidebarLeft/tabs/stickersAndEmoji.tsx:252-260).
+  useEffect(() => {
+    const onInstalled = (set: StickerSet) => setInstalledIds((ids) => new Set(ids).add(set.id))
+    const onDeleted = (set: StickerSet) => setInstalledIds((ids) => {
+      const next = new Set(ids)
+      next.delete(set.id)
+      return next
+    })
+    rootScope.addEventListener('stickers_installed', onInstalled)
+    rootScope.addEventListener('stickers_deleted', onDeleted)
+    return () => {
+      rootScope.removeEventListener('stickers_installed', onInstalled)
+      rootScope.removeEventListener('stickers_deleted', onDeleted)
+    }
+  }, [])
+
   useEffect(() => {
     const q = query.trim()
     const req = ++reqRef.current
     const run = () => {
+      setLoading(true)
       const p = q ? managers.stickers.searchSets(q) : managers.stickers.featuredSets()
       p.then(
-        (res) => { if (req === reqRef.current) setSets(res) },
-        () => { if (req === reqRef.current) setSets([]) },
+        (res) => { if (req === reqRef.current) { setSets(res); setLoading(false) } },
+        () => { if (req === reqRef.current) { setSets([]); setLoading(false) } },
       )
     }
     if (firstRef.current) {
@@ -50,30 +74,20 @@ export function useStickersSearch(query: string) {
   // Add/Added — toggleStickerSet (tweb: кнопка disabled на время запроса).
   // Занятость ведёт ref (setState-апдейтер не должен нести сайд-эффекты —
   // React вправе позвать его дважды), state — только зеркало для рендера.
+  // installedIds здесь не правится: результат объявляет toggleStickerSet, и
+  // применяет его подписка выше — одним путём для своего и чужого действия.
   const busyRef = useRef<Set<number>>(new Set())
   const toggle = useCallback((set: StickerSet) => {
     if (busyRef.current.has(set.id)) return
     busyRef.current.add(set.id)
     setBusyIds(new Set(busyRef.current))
-    const installed = installedIds.has(set.id)
-    const op = installed ? managers.stickers.uninstall(set.id) : managers.stickers.install(set.id)
-    void op
-      .then(
-        () => {
-          setInstalledIds((ids) => {
-            const next = new Set(ids)
-            if (installed) next.delete(set.id)
-            else next.add(set.id)
-            return next
-          })
-        },
-        () => {},
-      )
+    void toggleStickerSet(managers.stickers, set, installedIds.has(set.id))
+      .catch(() => {})
       .finally(() => {
         busyRef.current.delete(set.id)
         setBusyIds(new Set(busyRef.current))
       })
   }, [managers, installedIds])
 
-  return { sets, installedIds, busyIds, toggle }
+  return { sets, installedIds, busyIds, toggle, loading }
 }

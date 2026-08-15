@@ -68,6 +68,9 @@ export type LottiePlayerEvents = {
   enterFrame: (frameNo: number) => void,
   ready: () => void,
   firstFrame: () => void,
+  // Одноразовое проигрывание (loop=false) дошло до последнего кадра и встало
+  // (onLap: !this.loop → pause). Зацикленный плеер это событие не шлёт никогда.
+  complete: () => void,
   error: (error: unknown) => void,
   cached: () => void,
   destroy: () => void,
@@ -436,6 +439,13 @@ export default class LottiePlayer extends EventListenerBase<LottiePlayerEvents> 
     } else {
       this.addEventListener('firstFrame', callback, {once: true});
     }
+  }
+
+  // Разовый сигнал конца проигрывания без loop (см. onLap → dispatchEvent('complete')).
+  // Зацикленный плеер (loop=true) его не пришлёт — вызывающая сторона должна
+  // сама гарантировать loop=false для сценариев, которым нужен этот колбэк.
+  public onComplete(callback: () => void) {
+    this.addEventListener('complete', callback, {once: true});
   }
 
   private getResolvedColor(): string {
@@ -996,6 +1006,9 @@ export default class LottiePlayer extends EventListenerBase<LottiePlayerEvents> 
     if(!this.loop) {
       this.pause(false);
       this.clearCacheWhenSafe();
+      // Разовое проигрывание (эффект вокруг реакции и т.п.) дошло до конца —
+      // потребитель ждёт этот сигнал, чтобы снять оверлей (см. onComplete).
+      this.dispatchEvent('complete');
       return false;
     }
 

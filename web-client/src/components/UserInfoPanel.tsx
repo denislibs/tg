@@ -37,16 +37,19 @@ import SharedMedia from './userInfo/SharedMedia'
 import RightsEditor from './userInfo/RightsEditor'
 import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
+import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
   useNavLayer(open, onClose) // Back закрывает панель профиля (tweb right column)
   // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
   // над чатом, #column-center сдвигает свою translateX-центровку (_chat.scss:439).
-  useEffect(() => {
-    document.body.classList.toggle('is-right-column-shown', open)
-    return () => document.body.classList.remove('is-right-column-shown')
-  }, [open])
+  // Счётчик (useRightColumnShown), а не булев toggle: экран поиска правой
+  // колонки (RightSearchTab — «Поиск стикеров»/«Поиск GIF») пользуется тем же
+  // классом и может быть открыт одновременно с этой панелью (композер, из
+  // которого он открывается, доступен независимо от профиля) — булев toggle
+  // в двух местах гасил бы класс раньше времени.
+  useRightColumnShown(open)
   // Правая колонка тоже тянется ручкой (tweb sidebarRight/index.ts:40
   // `installColumnResize({columnEl: this.sidebarEl, side: 'right'})`): ширина
   // без свёрнутого состояния, зажата в MIN/MAX. `.sidebar-resize-handle-right`

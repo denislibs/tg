@@ -79,6 +79,7 @@
 // Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).
 @use "popups/popup"; // :83
 @use "popups/peer"; // :87
+@use "popups/stickers"; // :88
 @use "popups/datePicker"; // :89
 @use "popups/forward"; // :90
 @use "popups/premium"; // :110

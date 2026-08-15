@@ -868,28 +868,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   })
   // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).
   const forwardMsgE = useEvent((msgId: number) => openForwardFor([msgId]))
-  const feedFns = useMemo(
-    () => ({
-      openSender: openSenderE,
-      playVoice: playVoiceE,
-      toggleSelect: toggleSelectE,
-      selectAlbum: selectAlbumE,
-      openMsgMenu: openMsgMenuE,
-      jumpToSeq: jumpToSeqE,
-      openDatePicker: openDatePickerE,
-      openLightbox: openLightboxE,
-      recall: recallE,
-      mediaPlayed: mediaPlayedE,
-      roundPlaying: roundPlayingE,
-      toggleReaction,
-      showReactedUsers,
-      openStarReaction,
-      cancelUpload: cancelUploadE,
-      unlockPaid: unlockPaidE,
-      forwardMsg: forwardMsgE,
-    }),
-    [openSenderE, playVoiceE, toggleSelectE, selectAlbumE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
-  )
+  // feedFns строится НИЖЕ (после onComposerPickSticker — см. sendSticker в
+  // объекте), т.к. ей нужен slowmodeMarkSent из useSlowmode, объявленного
+  // дальше по функции.
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
   // edit/delete keyed by chat_id; pinned-bar state in usePinnedBar. The read-marker
@@ -1068,6 +1049,34 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Стикер из пикера/саджестов; каналы постят через REST (стикеры не шлём),
   // секретные чаты — E2E-путь без обычного медиа.
   const onComposerPickSticker = useEvent((st: { id: number; mediaId: number; emoji: string }) => { sendSticker(st); slowmodeMarkSent() })
+  // Тот же гейт, что у кнопки стикеров композера (JSX ниже,
+  // onPickSticker={canSendStickers ? onComposerPickSticker : undefined}):
+  // держим оба входа (композер/поиск и клик по стикеру в бабле — попап
+  // StickerSetModal из StickerRealBubble) идентичными по правам отправки.
+  const canSendStickers = canType && canSendMedia && !isChannel && chat.type !== 'secret'
+  const feedFns = useMemo(
+    () => ({
+      openSender: openSenderE,
+      playVoice: playVoiceE,
+      toggleSelect: toggleSelectE,
+      selectAlbum: selectAlbumE,
+      openMsgMenu: openMsgMenuE,
+      jumpToSeq: jumpToSeqE,
+      openDatePicker: openDatePickerE,
+      openLightbox: openLightboxE,
+      recall: recallE,
+      mediaPlayed: mediaPlayedE,
+      roundPlaying: roundPlayingE,
+      toggleReaction,
+      showReactedUsers,
+      openStarReaction,
+      cancelUpload: cancelUploadE,
+      unlockPaid: unlockPaidE,
+      forwardMsg: forwardMsgE,
+      sendSticker: canSendStickers ? onComposerPickSticker : undefined,
+    }),
+    [openSenderE, playVoiceE, toggleSelectE, selectAlbumE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE, canSendStickers, onComposerPickSticker],
+  )
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
@@ -1460,7 +1469,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
               rec={rec}
               onSend={onComposerSend}
               onTyping={onComposerTyping}
-              onPickSticker={canType && canSendMedia && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
+              onPickSticker={canSendStickers ? onComposerPickSticker : undefined}
               onPickGif={canType && canSendMedia && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}

@@ -133,6 +133,10 @@ func registerServer(p serverParams) {
 	}
 	stickersH := httptransport.NewStickersHandler(stickersUC)
 
+	// Каталог доступных реакций (available_reactions, заливается cmd/seed-reactions):
+	// без usecase-слоя — чистое чтение справочника, бизнес-логики нет.
+	reactionsH := httptransport.NewReactionsHandler(pgadapter.NewAvailableReactionsRepo(p.Pool))
+
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
@@ -327,7 +331,7 @@ func registerServer(p serverParams) {
 		log.Printf("passkeys enabled (rp id %q)", p.Cfg.WebAuthnRPID)
 	}
 
-	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC)
+	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH)
 	// Позднее связывание: RouterRPC реплеит DNP rpc_req через тот же роутер.
 	// Разрывает цикл wsHandler↔router (роутеру нужен wsHandler, диспетчеру — роутер).
 	// wsHandler остаётся nil-типизированным http.Handler, если Redis не поднят —

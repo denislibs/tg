@@ -26,10 +26,23 @@ import { useSettings } from '../../settings'
 import { useSetTransition } from '../../core/hooks/useSetTransition'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
+import { isLottieMime } from '../../core/stickers/tgs'
 import s from './MessageRow.module.scss'
 
-// Stable handler bundle the feed/rows close over (identities never change — see
-// Chat's useEvent wrappers), so passing it through doesn't bust memo.
+// Stable handler bundle the feed/rows close over (identities are `useEvent`
+// wrappers in Chat), so passing it through doesn't bust memo.
+//
+// ОДНО исключение, и оно осознанное: `sendSticker` — не колбэк, а колбэк ИЛИ
+// undefined, и это несёт информацию, а не только действие. `undefined` значит
+// «слать стикеры в этом чате нельзя» (канал, секретный чат, нет прав на медиа),
+// и по нему `StickerSetModal` рисует сетку read-only — аффорданс не изображает
+// того, чего нет. Права чата доезжают асинхронно, поэтому на их приходе
+// `canSendStickers` (Chat.tsx) флипается, `feedFns` пересобирается и лента
+// перерисовывается ОДИН раз. Спрятать флип в стабильный `useEvent` («колбэк
+// есть всегда, гейт внутри») нельзя: тогда витрина не отличит «можно» от
+// «нельзя» и стала бы предлагать отправку, которая молча ничего не делает, —
+// пришлось бы завести второй проп с ровно тем же флипом. Разовая перерисовка
+// на смене прав дешевле обоих вариантов.
 export interface FeedFns {
   openSender: (senderId: number, fallbackName: string) => void
   playVoice: (mediaId: number) => void
@@ -60,6 +73,14 @@ export interface FeedFns {
   unlockPaid: (msgId: number) => Promise<void>
   /** переслать сообщение — кнопка сбоку поста канала (tweb bubble-beside-button) */
   forwardMsg: (msgId: number) => void
+  /** отправить стикер в текущий чат — клик по стикеру ВНУТРИ попапа набора,
+   *  открытого из бабла чата (tweb PopupStickers.onStickersClick: тот же путь,
+   *  что и у отправки из поиска/композера — components/messages/MessageContent.tsx
+   *  StickerRealBubble передаёт это как onPickSticker в StickerSetModal).
+   *  undefined там, где отправка недоступна (тот же гейт, что у кнопки стикеров
+   *  композера: !canType/!canSendMedia/канал/секретный чат) — тогда сетка попапа
+   *  read-only (см. StickerSetModal is-read-only). */
+  sendSticker?: (st: { id: number; mediaId: number; emoji: string }) => void
 }
 
 export interface MessageRowProps {
@@ -117,10 +138,11 @@ function MessageRow({
   // Сообщение из одних эмодзи (tweb bigEmojis) — та же чистая функция, что и в
   // MessageContent; здесь нужна для модификаторов бабла.
   const bigEmojiCount = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
-  // sticker-animated: лотти-стикер отдаётся с mime application/json (StickerMedia
-  // различает его по Content-Type); у big-emoji анимация решается асинхронно —
-  // класс ставим только по достоверно известному признаку.
-  const animatedSticker = m.type === 'sticker' && m.mediaMime === 'application/json'
+  // sticker-animated: лотти-стикер отдаётся с mime application/json либо gzip'нутым
+  // application/x-tgsticker (StickerMedia различает его по Content-Type); у
+  // big-emoji анимация решается асинхронно — класс ставим только по достоверно
+  // известному признаку.
+  const animatedSticker = m.type === 'sticker' && isLottieMime(m.mediaMime ?? '')
 
   // Реакции — единый Block-ряд под контентом бабла у ВСЕХ типов (tweb: reactions
   // всегда крепятся внутрь структуры бабла, не выносятся наружу). Само размещение

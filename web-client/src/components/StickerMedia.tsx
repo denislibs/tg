@@ -1,15 +1,22 @@
 // StickerMedia — единый рендер файла стикера (пикер, саджесты, бабл в чате).
-// Файл лежит в media: lottie-json (mime application/json) либо статичный
-// webp/png, либо webm-видео. Тип заранее не известен (в списках стикеров есть
-// только media_id), поэтому контент грузится fetch'ем и различается по
-// Content-Type; результат кэшируется на сессию — повторный маунт (перелистывание
-// категорий пикера, скролл ленты) не перекачивает файл.
+// Файл лежит в media: lottie-json (mime application/json либо gzip'нутый
+// application/x-tgsticker — см. core/stickers/tgs) либо статичный webp/png,
+// либо webm-видео. Тип заранее не известен (в списках стикеров есть только
+// media_id), поэтому контент грузится fetch'ем и различается по Content-Type;
+// результат кэшируется на сессию — повторный маунт (перелистывание категорий
+// пикера, скролл ленты) не перекачивает файл.
 //
-// Показ — трёхслойный, как в tweb `wrapSticker` + `stickerAppearance`:
-//   1) нижний слой — превью: stripped-JPEG с бэка (`thumb`) либо кадр,
-//      сохранённый прошлым показом (`core/stickers/stickerThumbs`);
+// Показ — до четырёх слоёв снизу вверх, как в tweb `wrapSticker` +
+// `stickerAppearance`:
+//   0) самый нижний — SVG-силуэт из векторного контура (`pathThumb`, tweb
+//      photoPathSize): встаёт, только если этой ячейке ещё совсем нечего
+//      показать (свежий контейнер, DOM прошлого поколения не усыновлён —
+//      см. `canBuildSilhouette`), и рисуется синхронно, ещё до decode() у
+//      превью-картинки ниже;
+//   1) превью: stripped-JPEG с бэка (`thumb`) либо кадр, сохранённый прошлым
+//      показом (`core/stickers/stickerThumbs`) — заменяет силуэт, когда готов;
 //   2) верхний — само медиа (canvas плеера / <video> / <img>);
-//   3) нижний снимается ТОЛЬКО когда верхний доказанно прокрасился
+//   3) нижние слои снимаются ТОЛЬКО когда верхний доказанно прокрасился
 //      (`ensurePresented` у lottie) — поэтому ячейка не мигает пустотой.
 // Медиа создаётся императивно (не JSX): слоями владеет контроллер
 // `stickerAppearance`, он же усыновляет DOM прошлого поколения — React не должен
@@ -24,9 +31,13 @@ import type LottiePlayer from '../lib/lottie/lottiePlayer'
 import animationIntersector, { type AnimationItemGroup } from './animationIntersector'
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 import createStickerAppearance from './wrappers/stickerAppearance'
+import { createSvgFromBase64 } from '../core/stickers/getPathFromBytes'
 import { getStickerThumb, saveStickerThumb, saveStickerThumbFromPlayer } from '../core/stickers/stickerThumbs'
+import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
+import { useEvent } from '../core/hooks/useEvent'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
+import type { LazyLoadQueue } from '../core/lazyLoadQueue'
 
 export type StickerContent =
   | { kind: 'lottie'; data: unknown }
@@ -35,10 +46,30 @@ export type StickerContent =
 
 const cache = new Map<number, Promise<StickerContent>>()
 
-export function loadStickerContent(mediaId: number): Promise<StickerContent> {
+/**
+ * @param loadQueue общая на экран очередь загрузки (tweb `wrapSticker`'s
+ *   `lazyLoadQueue`, `PARALLEL_LIMIT=8`) — без неё вьюпорт с десятками
+ *   стикеров запускал бы столько же параллельных fetch'ей разом. Как и в
+ *   tweb (`wrapSticker.ts:735` — уже скачанное грузится в обход очереди),
+ *   через неё идёт ТОЛЬКО настоящая новая загрузка: кэш-хит возвращает
+ *   существующий промис напрямую, не занимая место в очереди повторно.
+ * @param isVisible живой геттер видимости ЭТОЙ ячейки прямо сейчас — уходит в
+ *   `queue.push` для приоритезации (порт tweb `LazyLoadQueue.onVisibilityChange`,
+ *   см. `core/lazyLoadQueue.ts`): пока превью ждёт своей очереди, строка
+ *   могла уже уйти за край вьюпорта — такая задача уступает место тому, что
+ *   сейчас перед глазами.
+ *
+ * ВАЖНО: если `loadQueue` передана и её `clear()` снимает эту задачу ДО
+ * старта (панель закрылась), промис РЕДЖЕКТИТСЯ (см. `lazyLoadQueue.ts`) —
+ * `p.catch(() => cache.delete(mediaId))` ниже вычищает кэш, чтобы следующий
+ * запрос того же `mediaId` (в ЛЮБОМ месте приложения — бабл в чате, пикер,
+ * медиаредактор, они делят этот модульный кэш) грузил заново, а не наследовал
+ * навсегда отклонённый промис.
+ */
+export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue, isVisible?: () => boolean): Promise<StickerContent> {
   let p = cache.get(mediaId)
   if (!p) {
-    p = (async (): Promise<StickerContent> => {
+    const fetchContent = async (): Promise<StickerContent> => {
       await primeMediaToken()
       // Медиа-bytes грузим прямым fetch к media-эндпоинту (не через managers/worker-RPC),
       // санкц. исключение — см. web-client/CLAUDE.md «МОЖНО». Тип стикера неизвестен
@@ -46,12 +77,14 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
       const res = await fetch(mediaContentUrl(mediaId))
       if (!res.ok) throw new Error(`sticker media ${mediaId}: HTTP ${res.status}`)
       const ct = res.headers.get('content-type') ?? ''
-      if (ct.includes('application/json')) return { kind: 'lottie', data: await res.json() }
+      if (isLottieMime(ct)) return { kind: 'lottie', data: await readLottie(res) }
       // video/webm (vp9) — видео-стикер (tweb wrapSticker WebM-ветка).
       if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
-    })()
-    // упавшую загрузку не кэшировать — следующий маунт попробует снова
+    }
+    p = loadQueue ? loadQueue.push(fetchContent, isVisible) : fetchContent()
+    // упавшую загрузку (включая реджект от queue.clear()) не кэшировать —
+    // следующий запрос попробует снова, а не унаследует мёртвый промис
     p.catch(() => cache.delete(mediaId))
     cache.set(mediaId, p)
   }
@@ -72,6 +105,12 @@ const StickerMedia = memo(function StickerMedia({
   replayToken = 0,
   group = 'chat',
   thumb,
+  pathThumb,
+  docWidth,
+  docHeight,
+  loadQueue,
+  isVisible,
+  onComplete,
 }: {
   mediaId: number
   width: number
@@ -88,11 +127,41 @@ const StickerMedia = memo(function StickerMedia({
   group?: AnimationItemGroup
   /** stripped-превью файла (base64 JPEG) — нижний слой, пока медиа грузится */
   thumb?: string
+  /** base64 векторного контура (Telegram photoPathSize) — самый нижний слой,
+   * SVG-силуэт мгновенно на месте пустой ячейки, пока не декодировался даже
+   * `thumb` (см. `core/stickers/getPathFromBytes`, tweb wrapSticker:268) */
+  pathThumb?: string
+  /** натуральные пиксели стикера (`Sticker.width/height`, tweb `doc.w`/`doc.h`) —
+   * система координат, в которой заданы точки контура `pathThumb`. НЕ путать
+   * с `width`/`height` выше (те — размер ячейки на экране): контур почти
+   * всегда авторится в каноничном канвасе Telegram-документа (масштаб точек
+   * доходит до ~500), а не в пикселях конкретного рендера, поэтому viewBox
+   * силуэта обязан браться отсюда — иначе путь съезжает/обрезается вьюпортом
+   * SVG. 0/undefined — метаданные неизвестны, откат на дефолт tweb 512×512. */
+  docWidth?: number
+  docHeight?: number
+  /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
+   * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
+   * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
+   * там же, где им гейтится и запрос состава набора. */
+  loadQueue?: LazyLoadQueue
+  /** живой геттер видимости ЭТОЙ ячейки — приоритезация внутри `loadQueue`
+   * (см. `loadStickerContent`); без `loadQueue` не используется. */
+  isVisible?: () => boolean
+  /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
+   * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
+   * Нужен потребителям, которые снимают себя по завершении одноразовой
+   * анимации (эффект вокруг реакции — ReactionAroundEffect). */
+  onComplete?: () => void
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<LottiePlayer | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const middlewareHelper = useMiddlewareHelper()
+  // Стабильная обёртка: onComplete не входит в зависимости эффекта ниже (его
+  // identity меняется у вызывающих без useEvent на своей стороне) — иначе
+  // смена ссылки на колбэк пересоздавала бы плеер/appearance целиком.
+  const onCompleteEvent = useEvent(() => onComplete?.())
 
   useEffect(() => {
     const container = boxRef.current
@@ -108,6 +177,24 @@ const StickerMedia = memo(function StickerMedia({
       middleware,
     })
 
+    // Самый нижний слой: SVG-силуэт из контура — рисуется синхронно, раньше
+    // decode() у thumb-картинки ниже. canBuildSilhouette() пускает его только
+    // в пустой контейнер: если предыдущее поколение уже оставило свой thumb/
+    // медиа (усыновление выше), силуэт там был бы шагом назад.
+    //
+    // viewBox — из натуральных пикселей стикера (docWidth/docHeight, tweb
+    // `doc.w`/`doc.h`), НЕ из render-бокса (width/height — размер ячейки на
+    // экране, обычно 64×64/72×72 и т.п.). Точки контура заданы в системе
+    // исходного канваса Telegram-документа (масштаб координат доходит до
+    // ~500) — viewBox из размера ячейки растягивал/обрезал бы путь в разы.
+    // createSvgFromBase64 возвращает undefined на битой base64 — сеть/бэк не
+    // гарантируют валидность чужих данных, а плейсхолдер не стоит того, чтобы
+    // ронять эффект целиком.
+    if (pathThumb && appearance.canBuildSilhouette()) {
+      const built = createSvgFromBase64(pathThumb, docWidth || 512, docHeight || 512)
+      if (built) appearance.setSilhouette(built.svg)
+    }
+
     // Нижний слой: превью с бэка, иначе — кадр, сохранённый прошлым показом.
     const cached = getStickerThumb(mediaId)
     const thumbSrc = thumb ? `data:image/jpeg;base64,${thumb}` : cached?.url
@@ -119,7 +206,7 @@ const StickerMedia = memo(function StickerMedia({
     let player: LottiePlayer | null = null
     let video: HTMLVideoElement | null = null
 
-    void loadStickerContent(mediaId).then((content) => {
+    void loadStickerContent(mediaId, loadQueue, isVisible).then((content) => {
       if (!middleware()) return
 
       if (content.kind === 'lottie') {
@@ -169,6 +256,12 @@ const StickerMedia = memo(function StickerMedia({
               void saveStickerThumbFromPlayer(mediaId, p)
               void appearance.onMediaFirstFrame({ animation: p, media: p.canvas[0] })
             })
+            // 'complete' шлёт только one-shot (loop=false, см. onLap в lottiePlayer);
+            // у зацикленных потребитель onComplete просто никогда не позовётся.
+            p.onComplete(() => {
+              if (!middleware()) return
+              onCompleteEvent()
+            })
           })
           .catch(() => {}) // NO_WASM (нет SIMD) и т.п. — стикер просто не анимируется
         return
@@ -201,6 +294,11 @@ const StickerMedia = memo(function StickerMedia({
         container.append(video)
         videoRef.current = video
         video.src = content.url
+        // Видео с loop=false доходит до конца и шлёт 'ended' ровно раз
+        // (зацикленное — никогда, браузер сам заворачивает воспроизведение).
+        if (!loop) {
+          video.addEventListener('ended', () => { if (middleware()) onCompleteEvent() }, { once: true })
+        }
 
         // Видео-стикер — в общий animationIntersector, как tweb делает для любого
         // <video> (wrappers/video.ts:649): пауза вне вьюпорта, в фоновой вкладке и
@@ -219,8 +317,11 @@ const StickerMedia = memo(function StickerMedia({
         if (!middleware()) return
         container.append(image)
         void appearance.onMediaFirstFrame({ media: image })
+        // Статика не «доигрывает» — сигнал завершения шлём сразу по отрисовке,
+        // иначе потребитель onComplete (эффект вокруг реакции) ждал бы вечно.
+        onCompleteEvent()
       })
-    })
+    }).catch(() => {}) // сеть упала ИЛИ задачу снял queue.clear() (панель закрылась) — ячейке просто нечем наполниться
 
     return () => {
       if (player) {
@@ -241,7 +342,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, middlewareHelper])
+  }, [mediaId, thumb, pathThumb, docWidth, docHeight, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.
