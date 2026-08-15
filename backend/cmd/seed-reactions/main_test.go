@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -116,7 +118,9 @@ func writeReactionsDir(t *testing.T, dir string, entries []reactionEntry) {
 }
 
 // Новая реакция: заливаются ровно присутствующие в files роли, позиция —
-// индекс в reactions.json, отсутствующие роли остаются нулями.
+// индекс в reactions.json, отсутствующие роли остаются нулями. Upsert зовётся
+// после КАЖДОЙ роли (не один раз в конце) — так прогресс сохраняется
+// инкрементально (см. TestSeedReactionsFailureMidRolesIsRecoverable).
 func TestSeedReactionsNewEntry(t *testing.T) {
 	dir := t.TempDir()
 	entries := []reactionEntry{{
@@ -134,10 +138,10 @@ func TestSeedReactionsNewEntry(t *testing.T) {
 	if len(paths) != 3 {
 		t.Fatalf("заливок = %d, ожидалось 3 (static+select+around): %v", len(paths), paths)
 	}
-	if len(repo.upserted) != 1 {
-		t.Fatalf("upsert-ов = %d, ожидался 1", len(repo.upserted))
+	if len(repo.upserted) != 3 {
+		t.Fatalf("upsert-ов = %d, ожидалось 3 — по одному после каждой залитой роли", len(repo.upserted))
 	}
-	got := repo.upserted[0]
+	got := repo.upserted[len(repo.upserted)-1]
 	if got.Emoji != "❤" || got.Position != 0 {
 		t.Errorf("emoji/position = %q/%d, ожидалось ❤/0", got.Emoji, got.Position)
 	}
@@ -175,17 +179,18 @@ func TestSeedReactionsPositionFollowsIndexOrder(t *testing.T) {
 	}
 }
 
-// Идемпотентность: реакция с уже проставленным static_media_id пропускается
-// целиком — повторный прогон не должен ни заливать файлы заново (дубли в
-// MinIO), ни звать Upsert.
-func TestSeedReactionsSkipsAlreadySeeded(t *testing.T) {
+// Строгий no-op: реакция, у которой ВСЕ роли из files уже проставлены в БД,
+// пропускается целиком на повторном прогоне — ни заливок, ни Upsert-ов.
+func TestSeedReactionsSkipsFullyLoadedEntry(t *testing.T) {
 	dir := t.TempDir()
 	entries := []reactionEntry{{
 		Reaction: "❤", Title: "Red Heart", Slug: "2764",
 		Files: map[string]string{"static": "static.webp", "select": "select.tgs"},
 	}}
 	writeReactionsDir(t, dir, entries)
-	repo := &fakeReactionsRepo{existing: []domain.AvailableReaction{{Emoji: "❤", StaticMediaID: 42}}}
+	repo := &fakeReactionsRepo{existing: []domain.AvailableReaction{
+		{Emoji: "❤", Title: "Red Heart", StaticMediaID: 42, SelectMediaID: 43},
+	}}
 	var paths []string
 
 	if err := seedReactions(context.Background(), repo, recordingUpload(&paths), dir, entries); err != nil {
@@ -193,10 +198,10 @@ func TestSeedReactionsSkipsAlreadySeeded(t *testing.T) {
 	}
 
 	if len(paths) != 0 {
-		t.Errorf("заливок = %d, ожидалось 0 — реакция уже засеяна", len(paths))
+		t.Errorf("заливок = %d, ожидалось 0 — все роли реакции уже залиты", len(paths))
 	}
 	if len(repo.upserted) != 0 {
-		t.Errorf("upsert-ов = %d, ожидалось 0 — реакция уже засеяна", len(repo.upserted))
+		t.Errorf("upsert-ов = %d, ожидалось 0 — реакция уже полностью такая, как в индексе", len(repo.upserted))
 	}
 }
 
@@ -222,5 +227,108 @@ func TestSeedReactionsRetriesIncompleteEntry(t *testing.T) {
 	}
 	if len(repo.upserted) != 1 {
 		t.Errorf("upsert-ов = %d, ожидался 1", len(repo.upserted))
+	}
+}
+
+// Ревью R2, находка Important 2: реакция, у которой прошлый прогон залил
+// только часть ролей (например, потому что API в тот момент не отдал
+// остальные — REACTION_ROLES в tools/fetch_stickers.py молча пропускает
+// отсутствующую роль), должна дозаливать именно недостающие роли на
+// следующем прогоне, а не считаться готовой из-за одного static_media_id.
+func TestSeedReactionsFillsMissingRoleOfPartiallySeededEntry(t *testing.T) {
+	dir := t.TempDir()
+	entries := []reactionEntry{{
+		Reaction: "❤", Title: "Red Heart", Slug: "2764",
+		Files: map[string]string{"static": "static.webp", "select": "select.tgs", "around": "around.tgs"},
+	}}
+	writeReactionsDir(t, dir, entries)
+	// В прошлый раз выгрузка принесла только static — select/around появились
+	// в API позже.
+	repo := &fakeReactionsRepo{existing: []domain.AvailableReaction{{Emoji: "❤", Title: "Red Heart", StaticMediaID: 42}}}
+	var paths []string
+
+	if err := seedReactions(context.Background(), repo, recordingUpload(&paths), dir, entries); err != nil {
+		t.Fatalf("seedReactions: %v", err)
+	}
+
+	if len(paths) != 2 {
+		t.Fatalf("заливок = %d, ожидалось 2 (select+around, static не трогаем): %v", len(paths), paths)
+	}
+	for _, p := range paths {
+		if strings.Contains(p, "static") {
+			t.Errorf("уже залитая роль static перезалита: %v", paths)
+		}
+	}
+	final := repo.upserted[len(repo.upserted)-1]
+	if final.StaticMediaID != 42 {
+		t.Errorf("static media id изменился при дозаливке: было 42, стало %d", final.StaticMediaID)
+	}
+	if final.SelectMediaID == 0 || final.AroundMediaID == 0 {
+		t.Errorf("недостающие роли не долиты: %+v", final)
+	}
+}
+
+// Ревью R2, находка Important 1: сбой заливки посреди ролей одной реакции не
+// должен ни оставлять сирот в MinIO (уже залитая роль сохранена в БД сразу
+// после заливки, а не одним Upsert в конце всей реакции), ни блокировать её
+// навсегда — на следующем прогоне недостающие роли доливаются, а уже залитая
+// не трогается.
+func TestSeedReactionsFailureMidRolesIsRecoverable(t *testing.T) {
+	dir := t.TempDir()
+	entries := []reactionEntry{{
+		Reaction: "❤", Title: "Red Heart", Slug: "2764",
+		Files: map[string]string{"static": "static.webp", "select": "select.tgs", "around": "around.tgs"},
+	}}
+	writeReactionsDir(t, dir, entries)
+	repo := &fakeReactionsRepo{}
+
+	// Первый прогон: заливка падает ровно на роли "select" (второй по порядку
+	// reactionRoles после static).
+	failingUpload := func(_ context.Context, path string) (int64, error) {
+		if strings.Contains(path, "select") {
+			return 0, errors.New("сеть моргнула")
+		}
+		return 101, nil
+	}
+	if err := seedReactions(context.Background(), repo, failingUpload, dir, entries); err == nil {
+		t.Fatal("ожидалась ошибка заливки роли select")
+	}
+
+	// Не сирота: уже залитая роль static сохранена в БД ровно один раз, без
+	// незалитых до конца ролей, «зависших» без ссылки в media/MinIO.
+	if len(repo.upserted) != 1 {
+		t.Fatalf("upsert-ов после сбоя = %d, ожидался 1 (только static, сохранённая сразу после заливки)", len(repo.upserted))
+	}
+	saved := repo.upserted[0]
+	if saved.StaticMediaID == 0 {
+		t.Error("static не сохранён сразу после заливки — на следующем прогоне он будет залит повторно (сирота множится)")
+	}
+	if saved.SelectMediaID != 0 || saved.AroundMediaID != 0 {
+		t.Errorf("незалитые роли не должны попасть в сохранённую строку: %+v", saved)
+	}
+
+	// Второй прогон подаёт состояние БД после первого (static уже есть),
+	// заливка теперь без сбоев.
+	repo2 := &fakeReactionsRepo{existing: []domain.AvailableReaction{saved}}
+	var paths []string
+	if err := seedReactions(context.Background(), repo2, recordingUpload(&paths), dir, entries); err != nil {
+		t.Fatalf("seedReactions (2-й прогон): %v", err)
+	}
+
+	// Долиты ровно недостающие роли — select и around, static не трогали.
+	if len(paths) != 2 {
+		t.Fatalf("заливок на 2-м прогоне = %d, ожидалось 2 (select+around): %v", len(paths), paths)
+	}
+	for _, p := range paths {
+		if strings.Contains(p, "static") {
+			t.Errorf("static перезалит повторно: %v", paths)
+		}
+	}
+	final := repo2.upserted[len(repo2.upserted)-1]
+	if final.StaticMediaID != saved.StaticMediaID {
+		t.Errorf("static media id изменился при досидировании: было %d, стало %d", saved.StaticMediaID, final.StaticMediaID)
+	}
+	if final.SelectMediaID == 0 || final.AroundMediaID == 0 {
+		t.Errorf("недостающие роли не долиты: %+v", final)
 	}
 }

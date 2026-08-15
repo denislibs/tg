@@ -186,48 +186,79 @@ func setRole(rc *domain.AvailableReaction, role string, mediaID int64) error {
 	return nil
 }
 
+// roleMediaID читает текущий id роли из AvailableReaction — обратная операция
+// к setRole. Нужна, чтобы понять, какие роли уже залиты прошлым прогоном, не
+// дублируя список полей ещё раз через reflection.
+func roleMediaID(rc domain.AvailableReaction, role string) int64 {
+	switch role {
+	case "static":
+		return rc.StaticMediaID
+	case "appear":
+		return rc.AppearMediaID
+	case "select":
+		return rc.SelectMediaID
+	case "activate":
+		return rc.ActivateMediaID
+	case "effect":
+		return rc.EffectMediaID
+	case "around":
+		return rc.AroundMediaID
+	case "center":
+		return rc.CenterMediaID
+	default:
+		return 0
+	}
+}
+
 // seedReactions заливает реакции индекса в порядке позиции (индекс элемента в
 // reactions.json — это и есть порядок пикера в Telegram).
 //
-// Идемпотентность здесь не построчная, как у стикеров (там неполный набор
-// досидируется по недостающим позициям), а целиком по реакции: признак «уже
-// залито» — непустой static_media_id в БД. static — единственная роль,
-// которая по описанию выгрузки есть всегда (static.webp — база, остальные
-// шесть .tgs опциональны сверху), поэтому её отсутствие однозначно значит
-// «эта реакция ещё не обработана ни разу или обработка прервалась». Так
-// повторный (в том числе прерванный на середине) прогон не плодит копии
-// медиа в MinIO ни для одной уже засеянной реакции, а недосеянные (упавшие
-// до Upsert — см. ниже) досеиваются заново.
-//
-// Заливка и Upsert реакции — одна неделимая операция: если загрузка любой её
-// роли падает, функция возвращает ошибку до вызова Upsert, и в БД для этой
-// реакции не остаётся частично заполненной строки — на следующем прогоне она
-// просто будет обработана заново (см. TestSeedReactionsRetriesIncompleteEntry).
+// Идемпотентность здесь построчная по РОЛИ, а не по реакции целиком (первая
+// версия сида ошибочно считала признаком «готово» непустой static_media_id и
+// пропускала всю реакцию разом — ревью R2 нашло на этом два бага: сирота в
+// MinIO при сбое посреди ролей и реакция, которая после частичной выгрузки
+// API не досеивалась никогда). Для каждой роли отдельно: если её файл есть в
+// entry.Files, но в уже сохранённой реакции id этой роли пуст — заливаем и
+// сохраняем ИМЕННО ЭТУ роль (repo.Upsert сразу после каждой успешной
+// заливки, не одним вызовом в конце). Из этого следует:
+//   - прерывание посреди ролей одной реакции не оставляет сирот: последняя
+//     успешно залитая роль уже привязана к строке в БД до того, как упадёт
+//     следующая (TestSeedReactionsFailureMidRolesIsRecoverable);
+//   - на следующем прогоне уже привязанные роли не трогаются (roleMediaID
+//     не равен 0 → пропуск), а недостающие — те, что появились в новой
+//     выгрузке API, или которые не успели залиться раньше — доливаются;
+//   - реакция, у которой все нужные по индексу роли уже на месте, вообще не
+//     вызывает upload/Upsert — строгий no-op на повторном прогоне (в том
+//     числе Title/Position/Premium/Inactive не переписываются лишний раз;
+//     если Telegram когда-нибудь переставит готовую реакцию в пикере, это
+//     не подхватится без доливки хотя бы одной роли — вне области этого
+//     фикса, ревью просило только границу по ролям).
 func seedReactions(ctx context.Context, repo reactionsRepo, upload uploadFunc, dir string, list []reactionEntry) error {
 	existing, err := repo.List(ctx)
 	if err != nil {
 		return err
 	}
-	seeded := make(map[string]bool, len(existing))
+	byEmoji := make(map[string]domain.AvailableReaction, len(existing))
 	for _, rc := range existing {
-		if rc.StaticMediaID != 0 {
-			seeded[rc.Emoji] = true
-		}
+		byEmoji[rc.Emoji] = rc
 	}
 
 	for pos, entry := range list {
-		if seeded[entry.Reaction] {
-			continue
-		}
-		rc := domain.AvailableReaction{
-			Emoji: entry.Reaction, Title: entry.Title, Position: pos,
-			Premium: entry.Premium, Inactive: entry.Inactive,
-		}
-		filesUploaded := 0
+		rc, hadRow := byEmoji[entry.Reaction]
+		rc.Emoji = entry.Reaction
+		rc.Title = entry.Title
+		rc.Position = pos
+		rc.Premium = entry.Premium
+		rc.Inactive = entry.Inactive
+
+		uploaded := 0
 		for _, role := range reactionRoles {
 			file, ok := entry.Files[role]
 			if !ok {
-				continue
+				continue // выгрузка не принесла эту роль для данной реакции
+			}
+			if roleMediaID(rc, role) != 0 {
+				continue // роль уже залита прошлым прогоном — не трогаем и не плодим дубль
 			}
 			mediaID, err := upload(ctx, filepath.Join(dir, entry.Slug, file))
 			if err != nil {
@@ -236,12 +267,30 @@ func seedReactions(ctx context.Context, repo reactionsRepo, upload uploadFunc, d
 			if err := setRole(&rc, role, mediaID); err != nil {
 				return fmt.Errorf("%s: %w", entry.Reaction, err)
 			}
-			filesUploaded++
+			// Сохраняем сразу после каждой роли: если следующая роль этой же
+			// реакции упадёт, уже залитая не осиротеет в MinIO — ссылка на неё
+			// уже в БД, и следующий прогон увидит её как «залитую», а не
+			// «недостающую».
+			if err := repo.Upsert(ctx, rc); err != nil {
+				return err
+			}
+			uploaded++
 		}
-		if err := repo.Upsert(ctx, rc); err != nil {
-			return err
+
+		switch {
+		case uploaded > 0:
+			log.Printf("+ %s %s: залито %d ролей", entry.Reaction, entry.Title, uploaded)
+		case !hadRow:
+			// Реакция без единой роли в files (в реальной выгрузке не
+			// встречалось, но JSON это не запрещает) — заводим строку хотя бы
+			// с метаданными, иначе она вообще не попадёт в каталог.
+			if err := repo.Upsert(ctx, rc); err != nil {
+				return err
+			}
+			log.Printf("+ %s %s: 0 файлов (роли отсутствуют в выгрузке)", entry.Reaction, entry.Title)
+		default:
+			log.Printf("= %s уже полностью залита", entry.Reaction)
 		}
-		log.Printf("+ %s %s: %d файлов", entry.Reaction, entry.Title, filesUploaded)
 	}
 	return nil
 }
