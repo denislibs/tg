@@ -286,12 +286,20 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 // FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
 // messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
 // новейшими первыми.
+//
+// limit <= 0 — отдать весь каталог: tweb (appStickersManager.getFeaturedStickers)
+// лимита не накладывает и рендерит все строки, полагаясь на ленивую загрузку
+// содержимого. В ответе только метаданные наборов, сами стикеры едут отдельно.
 func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setCols+`
+	sql := `SELECT ` + setCols + `
 		   FROM sticker_sets s
-		  ORDER BY (s.rank = 0), s.rank, s.id DESC
-		  LIMIT $1`, limit)
+		  ORDER BY (s.rank = 0), s.rank, s.id DESC`
+	args := []any{}
+	if limit > 0 {
+		sql += ` LIMIT $1`
+		args = append(args, limit)
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,6 @@ const (
 	savedGifsLimit = 200
 	emojiSearchLim = 16
 	setSearchLim   = 20
-	featuredLim    = 40
 	gifSearchLim   = 30
 	maxTitleRunes  = 64
 	maxEmojiBytes  = 32
@@ -91,10 +90,15 @@ func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.Sticker
 }
 
 // Featured — трендовые наборы для экрана поиска стикеров при пустом запросе
-// (аналог tweb messages.getFeaturedStickers): наборы публичны, поэтому фичед —
-// просто новейшие, лимит featuredLim.
+// (аналог tweb messages.getFeaturedStickers): наборы публичны, порядок задаёт
+// rank из выгрузки.
+//
+// Лимита нет намеренно — tweb тоже отдаёт весь каталог разом и рендерит все
+// строки, а содержимое набора догружается лениво по видимости. Обрезка здесь
+// молча прячет часть каталога: с прежним лимитом 40 из 338 наборов до экрана
+// доезжали первые сорок.
 func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, error) {
-	return i.repo.FeaturedSets(ctx, featuredLim)
+	return i.repo.FeaturedSets(ctx, 0)
 }
 
 // Recent — недавно использованные стикеры, новые первыми.
