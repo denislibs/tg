@@ -1,26 +1,19 @@
 package http
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecasereactions "github.com/messenger-denis/backend/internal/usecase/reactions"
 )
 
-// availableReactionsRepo — порт каталога доступных реакций, которого хватает
-// хендлеру (только чтение списка). Не путать с pgadapter.ReactionsRepo: тот
-// хранит реакции пользователей на конкретных сообщениях, а этот — общий для
-// всех справочник эмодзи-реакций (backend реализация — AvailableReactionsRepo).
-type availableReactionsRepo interface {
-	List(ctx context.Context) ([]domain.AvailableReaction, error)
-}
-
 // ReactionsHandler — HTTP для каталога доступных реакций (Telegram
-// messages.getAvailableReactions): без usecase-слоя, т.к. это чистое чтение
-// справочника без бизнес-логики и без привязки к пользователю.
-type ReactionsHandler struct{ repo availableReactionsRepo }
+// messages.getAvailableReactions): без интерактора между хендлером и портом,
+// т.к. это чистое чтение справочника без бизнес-логики и без привязки к
+// пользователю (см. usecase/reactions/ports.go).
+type ReactionsHandler struct{ repo usecasereactions.CatalogRepo }
 
-func NewReactionsHandler(repo availableReactionsRepo) *ReactionsHandler {
+func NewReactionsHandler(repo usecasereactions.CatalogRepo) *ReactionsHandler {
 	return &ReactionsHandler{repo: repo}
 }
 

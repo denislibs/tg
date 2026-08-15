@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,13 @@ type fakeReactions struct{ list []domain.AvailableReaction }
 
 func (f *fakeReactions) List(context.Context) ([]domain.AvailableReaction, error) {
 	return f.list, nil
+}
+
+// fakeReactionsErr — репозиторий, падающий на List (например, БД недоступна).
+type fakeReactionsErr struct{}
+
+func (fakeReactionsErr) List(context.Context) ([]domain.AvailableReaction, error) {
+	return nil, errors.New("db down")
 }
 
 func TestReactionsList(t *testing.T) {
@@ -51,5 +59,17 @@ func TestReactionsListEmpty(t *testing.T) {
 
 	if got := rec.Body.String(); got != `{"reactions":[]}`+"\n" {
 		t.Errorf("тело %q", got)
+	}
+}
+
+// Ошибка репозитория (например, БД недоступна) не должна утекать наружу
+// сырым текстом — 500 с обобщённым сообщением, как у остальных хендлеров.
+func TestReactionsListError(t *testing.T) {
+	h := NewReactionsHandler(fakeReactionsErr{})
+	rec := httptest.NewRecorder()
+	h.List(rec, httptest.NewRequest(http.MethodGet, "/reactions", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("код %d, ожидался 500", rec.Code)
 	}
 }
