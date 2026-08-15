@@ -30,6 +30,7 @@ import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useEvent } from '../core/hooks/useEvent'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
+import type { LazyLoadQueue } from '../core/lazyLoadQueue'
 
 export type StickerContent =
   | { kind: 'lottie'; data: unknown }
@@ -38,10 +39,18 @@ export type StickerContent =
 
 const cache = new Map<number, Promise<StickerContent>>()
 
-export function loadStickerContent(mediaId: number): Promise<StickerContent> {
+/**
+ * @param loadQueue общая на экран очередь загрузки (tweb `wrapSticker`'s
+ *   `lazyLoadQueue`, `PARALLEL_LIMIT=8`) — без неё вьюпорт с десятками
+ *   стикеров запускал бы столько же параллельных fetch'ей разом. Как и в
+ *   tweb (`wrapSticker.ts:735` — уже скачанное грузится в обход очереди),
+ *   через неё идёт ТОЛЬКО настоящая новая загрузка: кэш-хит возвращает
+ *   существующий промис напрямую, не занимая место в очереди повторно.
+ */
+export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue): Promise<StickerContent> {
   let p = cache.get(mediaId)
   if (!p) {
-    p = (async (): Promise<StickerContent> => {
+    const fetchContent = async (): Promise<StickerContent> => {
       await primeMediaToken()
       // Медиа-bytes грузим прямым fetch к media-эндпоинту (не через managers/worker-RPC),
       // санкц. исключение — см. web-client/CLAUDE.md «МОЖНО». Тип стикера неизвестен
@@ -53,7 +62,8 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
       // video/webm (vp9) — видео-стикер (tweb wrapSticker WebM-ветка).
       if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
-    })()
+    }
+    p = loadQueue ? loadQueue.push(fetchContent) : fetchContent()
     // упавшую загрузку не кэшировать — следующий маунт попробует снова
     p.catch(() => cache.delete(mediaId))
     cache.set(mediaId, p)
@@ -75,6 +85,7 @@ const StickerMedia = memo(function StickerMedia({
   replayToken = 0,
   group = 'chat',
   thumb,
+  loadQueue,
   onComplete,
 }: {
   mediaId: number
@@ -92,6 +103,11 @@ const StickerMedia = memo(function StickerMedia({
   group?: AnimationItemGroup
   /** stripped-превью файла (base64 JPEG) — нижний слой, пока медиа грузится */
   thumb?: string
+  /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
+   * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
+   * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
+   * там же, где им гейтится и запрос состава набора. */
+  loadQueue?: LazyLoadQueue
   /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
    * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
    * Нужен потребителям, которые снимают себя по завершении одноразовой
@@ -132,7 +148,7 @@ const StickerMedia = memo(function StickerMedia({
     let player: LottiePlayer | null = null
     let video: HTMLVideoElement | null = null
 
-    void loadStickerContent(mediaId).then((content) => {
+    void loadStickerContent(mediaId, loadQueue).then((content) => {
       if (!middleware()) return
 
       if (content.kind === 'lottie') {
@@ -268,7 +284,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, middlewareHelper])
+  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, loadQueue, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.

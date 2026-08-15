@@ -22,12 +22,21 @@ import type { Managers } from '../../client/bootstrap'
 
 const noop = () => {}
 
-// happy-dom не реализует IntersectionObserver (нужен экрану GIF в kind-тесте).
+// happy-dom объявляет класс IntersectionObserver, но записей никогда не
+// порождает (нет layout-движка) — реальный класс молча ничего бы не сделал.
+// Строки набора теперь ленивые (Task 3, useLazyVisibility): без стаба,
+// который сам отчитывается о пересечении, ни одна строка не считалась бы
+// видимой и setBySlug не звался бы вовсе. Здесь достаточно «видимо всё сразу» —
+// сама ленивость (кто видим, кто нет) пином не тестов этого файла, а
+// StickersSearchTab.lazy.test.tsx.
 beforeAll(() => {
   vi.stubGlobal(
     'IntersectionObserver',
     class {
-      observe() {}
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe(el: Element) {
+        this.cb([{ target: el, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
       unobserve() {}
       disconnect() {}
     },

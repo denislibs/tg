@@ -16,16 +16,18 @@
 // `attachClickEvent`: превью → send, кнопка → toggle, иначе → showStickersPopup).
 // Отступление от tweb (нет аналога в нашем API): data-access_hash не рендерим —
 // у наших наборов нет access_hash.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { useT } from '../../i18n'
 import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
+import { createLazyLoadQueue, type LazyLoadQueue } from '../../core/lazyLoadQueue'
+import { useLazyVisibility } from '../useLazyVisibility'
 import StickerMedia from '../StickerMedia'
 import StickerSetSkeleton from './StickerSetSkeleton'
-import StickerSetModal from '../stickers/StickerSetModal'
+import StickerSetModal, { PRELOAD_MARGIN } from '../stickers/StickerSetModal'
 import RightSearchTab, { RIGHT_SEARCH_POPUP_KIND, RightSearchPopup } from './RightSearchTab'
 
 // Без скелетона первая загрузка (и любой новый поиск) на время запроса висит
@@ -42,10 +44,15 @@ const PREVIEW_SIZE = 68
 // поиске, а состав набора в рамках сессии не меняется.
 const setStickersCache = new Map<string, Promise<Sticker[]>>()
 
-function loadSetStickers(managers: ReturnType<typeof useManagers>, slug: string): Promise<Sticker[]> {
+function loadSetStickers(managers: ReturnType<typeof useManagers>, slug: string, queue: LazyLoadQueue): Promise<Sticker[]> {
   let p = setStickersCache.get(slug)
   if (!p) {
-    p = managers.stickers.setBySlug(slug).then((r) => r.stickers)
+    // Сам запрос идёт через общую на экран очередь (Task 3) — как и загрузка
+    // превью внутри StickerMedia ниже, одним лимитом на оба уровня; кэш-хит
+    // (набор уже запрашивался) возвращает существующий промис МИМО очереди —
+    // повторная прокрутка к уже открытому набору не должна ждать своей
+    // очереди за то, что уже приехало.
+    p = queue.push(() => managers.stickers.setBySlug(slug)).then((r) => r.stickers)
     p.catch(() => setStickersCache.delete(slug)) // упавшую загрузку не кэшировать
     setStickersCache.set(slug, p)
   }
@@ -56,6 +63,9 @@ function StickerSetRow({
   set,
   installed,
   busy,
+  visible,
+  register,
+  queue,
   onToggle,
   onPickSticker,
   onOpen,
@@ -63,6 +73,12 @@ function StickerSetRow({
   set: StickerSet
   installed: boolean
   busy: boolean
+  /** строка попала во вьюпорт скроллера (запас — PRELOAD_MARGIN, как в модалке набора) */
+  visible: boolean
+  /** ref-колбэк регистрации строки в общем IntersectionObserver экрана (useLazyVisibility) */
+  register: (key: string, el: HTMLElement | null) => void
+  /** общая на экран очередь загрузки (Task 3, tweb LazyLoadQueue) */
+  queue: LazyLoadQueue
   onToggle: () => void
   onPickSticker?: (st: Sticker) => void
   /** клик по строке вне кнопки/превью — открыть StickerSetModal (tweb showStickersPopup) */
@@ -72,17 +88,29 @@ function StickerSetRow({
   const managers = useManagers()
   const [stickers, setStickers] = useState<Sticker[]>([])
 
+  // Состав набора запрашивается ТОЛЬКО когда строка видима — иначе выдача
+  // из десятков наборов на маунте залпом бьёт setBySlug по каждому, хотя во
+  // вьюпорте видно 3-4 строки. Эффект перезапускается при каждой смене
+  // visible, но реальный сетевой запрос уходит ровно один раз на slug —
+  // `loadSetStickers` отдаёт уже созданный промис из кэша при возврате
+  // строки во вьюпорт повторно (прокрутка туда-обратно дублей не рождает).
   useEffect(() => {
+    if (!visible) return
     let alive = true
-    loadSetStickers(managers, set.slug).then(
+    loadSetStickers(managers, set.slug, queue).then(
       (sts) => { if (alive) setStickers(sts.slice(0, PREVIEW_COUNT)) },
       () => {},
     )
     return () => { alive = false }
-  }, [managers, set.slug])
+  }, [managers, set.slug, visible, queue])
+
+  // ref стабилен: инлайновая стрелка меняла бы идентичность на каждый рендер,
+  // React отцеплял бы и прицеплял узел заново на каждый чих — тот же приём,
+  // что и у StickerCell в StickerSetModal.
+  const rowRef = useCallback((el: HTMLDivElement | null) => register(set.slug, el), [register, set.slug])
 
   return (
-    <div className="sticker-set" data-sticker-set={set.id} data-title={set.title} onClick={onOpen}>
+    <div ref={rowRef} className="sticker-set" data-sticker-set={set.id} data-title={set.title} onClick={onOpen}>
       <div className="sticker-set-header">
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
@@ -130,7 +158,7 @@ function StickerSetRow({
                   пока стикер для этого слота не приехал — ячейка пустая, но
                   геометрию держит сама (fixed width/height, не по контенту) */}
               {st && (
-                <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} />
+                <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} loadQueue={queue} />
               )}
             </div>
           )
@@ -156,6 +184,24 @@ export default function StickersSearchTab({
   // строка не кликнута.
   const [openSlug, setOpenSlug] = useState<string | null>(null)
 
+  // Одна очередь загрузки на весь экран (tweb `Stickers`: `const lazyLoadQueue
+  // = new LazyLoadQueue()` в sidebarRight/tabs/stickers.tsx:25, отдаётся
+  // каждому wrapSticker строки — :77) — и запрос состава набора, и загрузка
+  // превью внутри StickerMedia делят один и тот же лимит параллелизма.
+  const [queue] = useState<LazyLoadQueue>(() => createLazyLoadQueue())
+  useEffect(() => {
+    // На закрытии экрана снимаем ещё не начатые задачи — иначе строки,
+    // прокрученные мимо и так и не дождавшиеся своей очереди, продолжали бы
+    // качать данные уже закрытой панели (tweb `clear()` — тот же смысл).
+    return () => queue.clear()
+  }, [queue])
+
+  // Корень наблюдения — сам скроллер вкладки (тот же элемент, что рисует
+  // RightSearchTab через `scrollRef`), запас предзагрузки — тот же, что и у
+  // сетки StickerSetModal (PRELOAD_MARGIN).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { visible, register } = useLazyVisibility(scrollRef, PRELOAD_MARGIN)
+
   const pick = onPickSticker
     ? (st: Sticker) => {
         onPickSticker(st)
@@ -172,6 +218,7 @@ export default function StickersSearchTab({
       value={query}
       onChange={setQuery}
       onClose={onClose}
+      scrollRef={scrollRef}
     >
       <div className="sticker-sets">
         {loading && sets.length === 0
@@ -182,6 +229,9 @@ export default function StickersSearchTab({
                 set={set}
                 installed={installedIds.has(set.id)}
                 busy={busyIds.has(set.id)}
+                visible={visible.has(set.slug)}
+                register={register}
+                queue={queue}
                 onToggle={() => toggle(set)}
                 onPickSticker={pick}
                 onOpen={() => setOpenSlug(set.slug)}

@@ -12,13 +12,33 @@
 // доходя до showStickersPopup). Иначе клик по ещё не наполненному (или
 // навсегда пустому — набор усох ниже count) слоту всплывает на строку и
 // открывает StickerSetModal вместо «ничего не происходит».
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 
 const noop = () => {}
+
+// happy-dom объявляет класс IntersectionObserver, но записей никогда не
+// порождает (нет layout-движка) — строки набора ленивые (Task 3,
+// useLazyVisibility), и без стаба, который сам отчитывается о пересечении,
+// ни одна строка не считалась бы видимой. Этому файлу гейт видимости сам по
+// себе не интересен (это заглушки ячеек ДО/ПОСЛЕ ответа setBySlug) — здесь
+// достаточно «видимо всё сразу».
+beforeAll(() => {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe(el: Element) {
+        this.cb([{ target: el, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
 
 // Файл стикера в тестах не грузим (fetch к media) — превью пинится по обёртке
 // .sticker-set-sticker; сам StickerMedia покрыт своим StickerMedia.test.tsx.
