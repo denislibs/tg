@@ -2,9 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ReactionChip, MessageReactions } from './MessageReactions'
 
-// Emoji и StackedAvatars тянут контекст (managers) — мокаем: тестируем ветвление
-// «аватары vs число» (tweb reaction.ts renderCounter/renderAvatars).
-vi.mock('../emoji/Emoji', () => ({ default: ({ e }: { e: string }) => <span>{e}</span> }))
+// ReactionIcon и StackedAvatars тянут контекст (managers/каталог реакций) —
+// мокаем: тестируем ветвление «аватары vs число» (tweb reaction.ts
+// renderCounter/renderAvatars), а не рендер самой иконки (см. ReactionIcon.test.tsx).
+vi.mock('./ReactionIcon', () => ({ default: ({ emoji }: { emoji: string }) => <span>{emoji}</span> }))
 vi.mock('./StackedAvatars', () => ({
   default: ({ peers }: { peers: { id: number }[] }) => (
     <div data-testid="stacked">{peers.length}</div>

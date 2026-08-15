@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import classNames from '../../shared/lib/classNames'
 import StarIcon from '../stars/StarIcon'
-import Emoji from '../emoji/Emoji'
+import ReactionIcon from './ReactionIcon'
 import StackedAvatars from './StackedAvatars'
 import type { ConvMsg } from '../../data'
 import s from './MessageRow.module.scss'
@@ -132,7 +132,10 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
       <div className={classNames('reaction-sticker', 'is-regular', 'media-sticker-wrapper', s.reactionEmoji)}>
-        <Emoji e={r.emoji} size={22} />
+        {/* play=false — чип в покое рисует center/static кадром (tweb renderDoc:
+            static:true); проигрывание select-анимации по клику вяжет следующая
+            задача (эффект вокруг чипа) вместе со вспышкой вокруг него. */}
+        <ReactionIcon emoji={r.emoji} play={false} />
       </div>
       {showAvatars ? (
         <StackedAvatars peers={r.recent!} size={24} />
