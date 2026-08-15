@@ -19,6 +19,10 @@ vi.mock('../StickerMedia', () => ({
   default: ({ mediaId }: { mediaId: number }) => <div data-testid="media" data-media={mediaId} />,
 }))
 vi.mock('../../core/hooks/useReactions', () => ({ useReactions: () => reactions }))
+// Фолбэк рендерит настоящий Emoji (см. ReactionIcon.tsx) — на не-Apple UA он
+// падает на img+CDN, поэтому текстом эмодзи не найти (getByText ниже). Тот же
+// приём, что EmojiDropdown.test.tsx: принудительно нативная ветка.
+vi.mock('@environment/emojiSupport', () => ({ default: true }))
 
 afterEach(cleanup)
 

@@ -8,11 +8,13 @@
 //
 // Реакция может быть неизвестна каталогу (старое сообщение с реакцией, которую
 // сервер больше не отдаёт в /reactions, либо каталог ещё не успел загрузиться,
-// см. useReactions) — тогда рисуем текстовый эмодзи, как рисовали чипы раньше
-// (до этой задачи — components/emoji/Emoji), а не оставляем пустоту.
+// см. useReactions) — тогда рисуем ТЕМ ЖЕ компонентом, что рисовали чипы до
+// этой задачи (components/emoji/Emoji: нативный глиф на Apple, иначе PNG с CDN),
+// а не оставляем пустоту и не теряем его фолбэк-цепочку для не-Apple систем.
 import { useMemo } from 'react'
 import { useReactions } from '../../core/hooks/useReactions'
 import StickerMedia from '../StickerMedia'
+import Emoji from '../emoji/Emoji'
 
 // tweb `.reaction-sticker` — бокс 22px (--reaction-size: 1.375rem в
 // MessageRow.module.scss), под него сверстан весь чип; величина фиксирована,
@@ -32,9 +34,7 @@ export default function ReactionIcon({ emoji, play }: { emoji: string; play: boo
     : undefined
 
   if (mediaId === undefined) {
-    return (
-      <span style={{ fontSize: ICON_SIZE * 0.95, lineHeight: 1, userSelect: 'none' }}>{emoji}</span>
-    )
+    return <Emoji e={emoji} size={ICON_SIZE} />
   }
 
   return <StickerMedia mediaId={mediaId} width={ICON_SIZE} height={ICON_SIZE} autoplay={play} loop={false} />
