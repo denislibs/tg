@@ -72,6 +72,10 @@
 .stickerReal {
   position: relative;
   display: inline-block;
+  // tweb _chatBubble.scss:831 — курсор у медиа-вложения бабла живёт в CSS
+  // (`.attachment { cursor: pointer }`), а не выставляется из JS; наш
+  // .stickerReal и есть `.attachment` стикера.
+  cursor: pointer;
   // tweb _chatBubble.scss:760 (.just-media) — без фона бабла тайм-пилюля берёт
   // цвет подсветки темы вместо дефолтного тёмного оверлея.
   --message-time-background: var(--message-highlighting-color);

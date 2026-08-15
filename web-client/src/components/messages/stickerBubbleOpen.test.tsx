@@ -2,9 +2,18 @@
 // showStickersPopup): ConvMsg несёт только mediaId, набор резолвит бэк (GET
 // /stickers/by-media/{mediaID}, StickerRealBubble в MessageContent.tsx).
 // Мок менеджеров/StickerMedia — по образцу StickerSetModal.test.tsx.
+//
+// Попап живёт в глобальном стеке попапов, поэтому в рендер входит PopupHost —
+// ровно так же, как в приложении (App монтирует его один раз). `setByMediaId`
+// отвечает ВСЕГДА (mockResolvedValue, не …Once): одноразовый мок скрывал бы
+// повторное открытие — а именно им и проявлялась ошибка «попап-потомок бабла»
+// (клик по затемнению закрывал попап и тут же переоткрывал его через onClick
+// бабла, потому что React-события портала всплывают по React-дереву).
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MessageRow, { type FeedFns, type MessageRowProps } from './MessageRow'
+import PopupHost from '../PopupHost'
+import { usePopupStore } from '../../stores/popupStore'
 import type { ConvMsg } from '../../data'
 
 const set = { id: 7, slug: 'utyaduck', title: 'Duck', kind: 'sticker' as const, count: 1 }
@@ -47,20 +56,28 @@ function renderRow(extra: Partial<MessageRowProps> = {}) {
     feedFns,
     ...extra,
   }
-  return render(<MessageRow {...props} />)
+  return render(
+    <>
+      <MessageRow {...props} />
+      <PopupHost />
+    </>,
+  )
 }
 
 describe('клик по стикеру в бабле', () => {
   // В проекте нет глобального автоклинапа testing-library — без cleanup()
   // предыдущий рендер остаётся в DOM и ломает getByTestId следующего теста.
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    usePopupStore.getState().clear()
+  })
   beforeEach(() => {
-    setByMediaId.mockClear()
+    setByMediaId.mockReset()
+    setByMediaId.mockResolvedValue(set)
     ;(feedFns.toggleSelect as ReturnType<typeof vi.fn>).mockClear()
   })
 
   it('зовёт setByMediaId с mediaId стикера и открывает попап с полученным слагом', async () => {
-    setByMediaId.mockResolvedValueOnce(set)
     renderRow()
 
     fireEvent.click(screen.getByTestId('sticker'))
@@ -70,7 +87,7 @@ describe('клик по стикеру в бабле', () => {
   })
 
   it('ответ null — попап не открывается', async () => {
-    setByMediaId.mockResolvedValueOnce(null)
+    setByMediaId.mockResolvedValue(null)
     renderRow()
 
     fireEvent.click(screen.getByTestId('sticker'))
@@ -97,7 +114,6 @@ describe('клик по стикеру в бабле', () => {
   // Chat.tsx до sendSticker/slowmodeMarkSent композера.
   it('клик по стикеру ВНУТРИ попапа, открытого из бабла, отправляет его и закрывает попап', async () => {
     const sendSticker = vi.fn()
-    setByMediaId.mockResolvedValueOnce(set)
     renderRow({ feedFns: { ...feedFns, sendSticker } as unknown as FeedFns })
 
     fireEvent.click(screen.getByTestId('sticker'))
@@ -114,12 +130,43 @@ describe('клик по стикеру в бабле', () => {
   })
 
   it('без права слать (sendSticker=undefined) сетка попапа read-only', async () => {
-    setByMediaId.mockResolvedValueOnce(set)
     renderRow()
 
     fireEvent.click(screen.getByTestId('sticker'))
     await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
 
     expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(true)
+  })
+
+  // Регрессия: попап рендерился React-потомком кликабельного бабла, а
+  // синтетические события портала всплывают по React-дереву — клик по
+  // затемнению закрывал попап и тем же событием доходил до onClick бабла,
+  // который открывал его заново.
+  it('клик по затемнению закрывает попап ОКОНЧАТЕЛЬНО — бабл его не переоткрывает', async () => {
+    renderRow()
+
+    fireEvent.click(screen.getByTestId('sticker'))
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+    expect(setByMediaId).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(document.querySelector('.popup')!)
+
+    await waitFor(() => expect(screen.queryByText('Duck')).toBeNull())
+    // бабл не получил клика по затемнению — второго запроса набора нет
+    expect(setByMediaId).toHaveBeenCalledTimes(1)
+  })
+
+  // Тот же корень: правый клик где угодно внутри попапа проваливался в
+  // onContextMenu ряда и открывал меню сообщения поверх попапа.
+  it('правый клик внутри попапа не доходит до контекстного меню сообщения', async () => {
+    const openMsgMenu = vi.fn()
+    renderRow({ feedFns: { ...feedFns, openMsgMenu } as unknown as FeedFns })
+
+    fireEvent.click(screen.getByTestId('sticker'))
+    await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+
+    fireEvent.contextMenu(document.querySelector('.popup-container')!)
+
+    expect(openMsgMenu).not.toHaveBeenCalled()
   })
 })

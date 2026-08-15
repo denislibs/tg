@@ -32,7 +32,7 @@ import {
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
-import StickerSetModal from '../stickers/StickerSetModal'
+import { openStickerSetModal } from '../stickers/StickerSetModal'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
@@ -141,12 +141,13 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // попап (tweb PopupStickers.onStickersClick — тот же путь, без read-only
 // режима в зависимости от точки входа): feedFns.sendSticker пробрасывается
 // как onPickSticker, StickerSetModal сама зовёт его и onClose по клику.
+// Сам попап открывается в глобальном стеке (openStickerSetModal), а не
+// рендерится потомком бабла — почему именно так, см. её докблок.
 const STICKER_BOX = 200
 function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: ReactNode; selecting: boolean; feedFns: FeedFns }) {
   const loopStickers = useSettings((st) => st.loopStickers)
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
-  const [openSlug, setOpenSlug] = useState<string | null>(null)
   let w = STICKER_BOX
   let h = STICKER_BOX
   if (m.mediaWidth && m.mediaHeight) {
@@ -163,19 +164,20 @@ function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: 
         // окна (смена чата) до того, как ответ долетит.
         const middleware = middlewareHelper.get()
         void managers.stickers.setByMediaId(m.mediaId!).then((set) => {
-          if (middleware() && set) setOpenSlug(set.slug)
+          // Попап открывается в ГЛОБАЛЬНОМ стеке попапов, а не рендерится
+          // потомком этого бабла: React-события портала всплывают по
+          // React-дереву, и попап-потомок отдавал бы свои клики обратно в
+          // onClick бабла и onContextMenu ряда — см. докблок openStickerSetModal.
+          if (middleware() && set) openStickerSetModal(set.slug, feedFns.sendSticker)
         })
       }
     : undefined
   return (
-    <div className={s.stickerReal} onClick={onClick} style={clickable ? { cursor: 'pointer' } : undefined}>
+    <div className={s.stickerReal} onClick={onClick}>
       {/* mediaBlur — то же stripped-превью, что у остальных медиа сообщения:
           нижний слой, пока файл стикера летит (tweb показывает тумб документа) */}
       <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} thumb={m.mediaBlur} />
       {time}
-      {openSlug && (
-        <StickerSetModal slug={openSlug} onClose={() => setOpenSlug(null)} onPickSticker={feedFns.sendSticker} />
-      )}
     </div>
   )
 }

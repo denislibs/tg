@@ -39,6 +39,7 @@
 // без ключа), но число и падеж — как в tweb, через ту же `stickerWord(count)`.
 import { useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
+import { openPopup } from '../../stores/popupStore'
 import Popup from '../../shared/ui/Popup'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import IconButton from '../../shared/ui/IconButton'
@@ -74,9 +75,18 @@ function stickerWord(n: number): string {
   return 'стикеров'
 }
 
-export default function StickerSetModal({ slug, onClose, onPickSticker }: {
+export default function StickerSetModal({ slug, open = true, onClose, onExitComplete, onPickSticker }: {
   slug: string
+  /**
+   * Контракт popupStore «open-controlled» (см. stores/popupStore): владелец из
+   * стека попапов ведёт закрытие сам (`open={p.open}` + `onExitComplete`), а
+   * владелец, который держит модалку своим состоянием (StickersSearchTab),
+   * просто размонтирует её — для него по умолчанию `true`.
+   */
+  open?: boolean
   onClose: () => void
+  /** exit-анимация попапа доиграла — можно снимать со стека (popupStore) */
+  onExitComplete?: () => void
   /**
    * Клик по стикеру внутри сетки — отправка в текущий чат + закрытие (tweb
    * `onStickersClick` → `sendMessageWithDocument` → `handle.hide()`,
@@ -178,10 +188,11 @@ export default function StickerSetModal({ slug, onClose, onPickSticker }: {
 
   return (
     <Popup
-      open
+      open={open}
       className="popup-stickers"
       title={loaded ? set.title : 'Загрузка'}
       onClose={onClose}
+      onExitComplete={onExitComplete}
       bodyClassName={loaded ? undefined : 'is-loading'}
       headerRight={
         loaded && (
@@ -263,5 +274,39 @@ export default function StickerSetModal({ slug, onClose, onPickSticker }: {
         </div>
       )}
     </Popup>
+  )
+}
+
+/**
+ * kind попапа набора: второй открытый набор заменяет первый, а не встаёт поверх
+ * (tweb PopupElement kind — см. popupStore).
+ */
+export const STICKER_SET_POPUP_KIND = 'sticker-set'
+
+/**
+ * Публичный путь открытия — симметрично `openStickersSearchTab`.
+ *
+ * Попап обязан жить в ГЛОБАЛЬНОМ стеке (stores/popupStore), а не React-потомком
+ * того узла, откуда его открыли. `Popup` монтируется через `createPortal`, но
+ * синтетические события React всплывают по React-дереву, а не по DOM: попап,
+ * отрендеренный внутри кликабельного бабла ленты, отдавал клик по своему
+ * затемнению обратно в `onClick` бабла (попап закрывался и тут же
+ * переоткрывался), а правый клик где угодно внутри попапа доходил до
+ * `onContextMenu` ряда и открывал меню сообщения поверх. Плюс состояние
+ * «какой набор открыт» жило в строке ленты — прунинг ленты или смена чата
+ * убивали открытый попап.
+ */
+export function openStickerSetModal(slug: string, onPickSticker?: (st: Sticker) => void) {
+  return openPopup(
+    (p) => (
+      <StickerSetModal
+        slug={slug}
+        open={p.open}
+        onClose={p.requestClose}
+        onExitComplete={p.onExitComplete}
+        onPickSticker={onPickSticker}
+      />
+    ),
+    STICKER_SET_POPUP_KIND,
   )
 }
