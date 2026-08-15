@@ -22,7 +22,8 @@ vi.mock('../core/mediaUrl', () => ({
   primeMediaToken: () => Promise.resolve(),
 }))
 
-import StickerMedia from './StickerMedia'
+import StickerMedia, { loadStickerContent } from './StickerMedia'
+import { createLazyLoadQueue } from '../core/lazyLoadQueue'
 
 function stubFetch(contentType: string) {
   const fetchMock = vi.fn(async () => ({
@@ -140,5 +141,37 @@ describe('StickerMedia', () => {
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/media/104/content?token=t')
     expect(loadAnimationWorker).not.toHaveBeenCalled()
+  })
+
+  // Ревью L3, Critical: loadStickerContent мемоизирует промис `queue.push()` в
+  // МОДУЛЬНОМ кэше — общем на всё приложение (им же пользуется
+  // mediaEditor/stickerAssets.ts). Сценарий из ревью: панель стикеров открыта,
+  // превью встали в очередь, панель закрылась (queue.clear()) ДО того, как
+  // очередь добралась до этой конкретной задачи. Без явного реджекта снятой
+  // задачи кэш навсегда хранил бы вечно pending промис — и следующий запрос
+  // ТОГО ЖЕ mediaId в ЛЮБОМ месте приложения (бабл в чате, пикер,
+  // медиаредактор) молча зависал бы до перезагрузки вкладки.
+  it('после queue.clear() кэш не отравлен: повторный запрос того же mediaId реально грузит, а не виснет навсегда', async () => {
+    const queue = createLazyLoadQueue(1)
+    // занимает единственный слот — гарантирует, что следующий push ниже
+    // застрянет в очереди, а не стартует сразу
+    let releaseBlocker!: () => void
+    queue.push(() => new Promise<void>((resolve) => { releaseBlocker = resolve }))
+    await Promise.resolve()
+
+    const MEDIA_ID = 555
+    const first = loadStickerContent(MEDIA_ID, queue)
+    queue.clear() // «панель закрылась» — задача снята до старта
+
+    // без Critical-фикса это зависло бы навсегда (тест упал бы таймаутом)
+    await expect(first).rejects.toThrow()
+
+    // повторный запрос ТОГО ЖЕ mediaId — реальная новая загрузка, а не
+    // унаследованный мёртвый промис
+    releaseBlocker()
+    const fetchMock = stubFetch('image/webp')
+    const second = loadStickerContent(MEDIA_ID, queue)
+    await expect(second).resolves.toMatchObject({ kind: 'image' })
+    expect(fetchMock).toHaveBeenCalledWith(`/api/media/${MEDIA_ID}/content?token=t`)
   })
 })

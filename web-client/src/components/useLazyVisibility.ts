@@ -5,10 +5,6 @@
 // (gifsMasonry.ts), сетку попапа набора (popups/stickers.tsx:196) — и передаёт
 // её в каждый wrap*; здесь ту же роль играет пара «набор видимых ключей +
 // регистратор ячейки».
-//
-// Если IntersectionObserver в среде нет (happy-dom тестов; тот же гард стоит в
-// animationIntersector.ts:162), зарегистрированная ячейка считается видимой
-// сразу — витрина деградирует в неленивую, а не в пустую.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 export interface LazyVisibility {
@@ -29,7 +25,7 @@ export function useLazyVisibility(rootRef: RefObject<HTMLElement | null>, rootMa
 
   useEffect(() => {
     const root = rootRef.current
-    if (!root || typeof IntersectionObserver === 'undefined') return
+    if (!root) return
     const io = new IntersectionObserver(
       (entries) => {
         setVisible((prev) => {
@@ -60,14 +56,21 @@ export function useLazyVisibility(rootRef: RefObject<HTMLElement | null>, rootMa
     if (el) {
       el.dataset.lazyKey = key
       cellsRef.current.set(key, el)
-      if (typeof IntersectionObserver === 'undefined') {
-        setVisible((cur) => (cur.has(key) ? cur : new Set(cur).add(key)))
-        return
-      }
       ioRef.current?.observe(el)
     } else if (prev) {
       ioRef.current?.unobserve(prev)
       cellsRef.current.delete(key)
+      // Иначе ключ снятой ячейки остаётся в `visible` НАВСЕГДА: следующая
+      // ячейка, зарегистрированная под тем же ключом (тот же slug/mediaId
+      // после нового поиска, ремаунт), читала бы `visible.has(key)` как true
+      // ещё ДО того, как наблюдатель вообще успел её увидеть — гейт
+      // ленивости становился бы фиктивным для повторно использованных ключей.
+      setVisible((cur) => {
+        if (!cur.has(key)) return cur
+        const next = new Set(cur)
+        next.delete(key)
+        return next
+      })
     }
   }, [])
 

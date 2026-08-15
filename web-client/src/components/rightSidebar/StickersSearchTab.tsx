@@ -22,12 +22,13 @@ import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { useT } from '../../i18n'
 import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import { useManagers } from '../../core/hooks/useManagers'
+import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import { createLazyLoadQueue, type LazyLoadQueue } from '../../core/lazyLoadQueue'
 import { useLazyVisibility } from '../useLazyVisibility'
 import StickerMedia from '../StickerMedia'
 import StickerSetSkeleton from './StickerSetSkeleton'
-import StickerSetModal, { PRELOAD_MARGIN } from '../stickers/StickerSetModal'
+import StickerSetModal from '../stickers/StickerSetModal'
 import RightSearchTab, { RIGHT_SEARCH_POPUP_KIND, RightSearchPopup } from './RightSearchTab'
 
 // Без скелетона первая загрузка (и любой новый поиск) на время запроса висит
@@ -40,20 +41,35 @@ const PREVIEW_COUNT = 5
 // tweb stickers.tsx:81-82 — превью 68×68.
 const PREVIEW_SIZE = 68
 
+// Запас предзагрузки строки — её собственная высота (не размер ячейки
+// сетки модалки набора, у которой другая геометрия — ревью L3: экран поиска
+// не должен зависеть от внутренностей StickerSetModal). Высота строки
+// зафиксирована в CSS: `.sticker-set { height: 140px }`
+// (styles/tweb/_rightSidebar.scss) — по образцу `ROW_H` в GifsMasonry.tsx,
+// который берёт высоту ряда своей же кладки.
+const ROW_PRELOAD_MARGIN = '140px 0px'
+
 // Кэш стикеров набора на сессию: строки перемонтируются при каждом новом
 // поиске, а состав набора в рамках сессии не меняется.
 const setStickersCache = new Map<string, Promise<Sticker[]>>()
 
-function loadSetStickers(managers: ReturnType<typeof useManagers>, slug: string, queue: LazyLoadQueue): Promise<Sticker[]> {
+function loadSetStickers(
+  managers: ReturnType<typeof useManagers>,
+  slug: string,
+  queue: LazyLoadQueue,
+  isVisible: () => boolean,
+): Promise<Sticker[]> {
   let p = setStickersCache.get(slug)
   if (!p) {
     // Сам запрос идёт через общую на экран очередь (Task 3) — как и загрузка
     // превью внутри StickerMedia ниже, одним лимитом на оба уровня; кэш-хит
     // (набор уже запрашивался) возвращает существующий промис МИМО очереди —
     // повторная прокрутка к уже открытому набору не должна ждать своей
-    // очереди за то, что уже приехало.
-    p = queue.push(() => managers.stickers.setBySlug(slug)).then((r) => r.stickers)
-    p.catch(() => setStickersCache.delete(slug)) // упавшую загрузку не кэшировать
+    // очереди за то, что уже приехало. `isVisible` — приоритезация внутри
+    // очереди (см. core/lazyLoadQueue.ts): строка, прокрученная мимо ПОСЛЕ
+    // постановки в очередь, уступает место той, что сейчас перед глазами.
+    p = queue.push(() => managers.stickers.setBySlug(slug), isVisible).then((r) => r.stickers)
+    p.catch(() => setStickersCache.delete(slug)) // упавшую загрузку (в т.ч. queue.clear()) не кэшировать
     setStickersCache.set(slug, p)
   }
   return p
@@ -73,7 +89,7 @@ function StickerSetRow({
   set: StickerSet
   installed: boolean
   busy: boolean
-  /** строка попала во вьюпорт скроллера (запас — PRELOAD_MARGIN, как в модалке набора) */
+  /** строка попала во вьюпорт скроллера (запас — ROW_PRELOAD_MARGIN, высота строки) */
   visible: boolean
   /** ref-колбэк регистрации строки в общем IntersectionObserver экрана (useLazyVisibility) */
   register: (key: string, el: HTMLElement | null) => void
@@ -86,7 +102,16 @@ function StickerSetRow({
 }) {
   const t = useT()
   const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
   const [stickers, setStickers] = useState<Sticker[]>([])
+
+  // Живой геттер видимости ЭТОЙ строки — для приоритезации внутри очереди
+  // (core/lazyLoadQueue.ts): проп `visible` меняется только на РЕНДЕРАХ, а
+  // задача в очереди может ждать своей очереди дольше — очереди нужен способ
+  // спросить «а сейчас?», а не то, каким visible был в момент постановки.
+  const visibleRef = useRef(visible)
+  useEffect(() => { visibleRef.current = visible }, [visible])
+  const isRowVisible = useCallback(() => visibleRef.current, [])
 
   // Состав набора запрашивается ТОЛЬКО когда строка видима — иначе выдача
   // из десятков наборов на маунте залпом бьёт setBySlug по каждому, хотя во
@@ -94,15 +119,20 @@ function StickerSetRow({
   // visible, но реальный сетевой запрос уходит ровно один раз на slug —
   // `loadSetStickers` отдаёт уже созданный промис из кэша при возврате
   // строки во вьюпорт повторно (прокрутка туда-обратно дублей не рождает).
+  // Актуальность ответа — дочерний scope middleware (web-client/CLAUDE.md
+  // «Асинхронщина и актуальность»), а не ручной alive-флаг: он гасится в
+  // cleanup КАЖДОГО прогона (смена visible, размонтирование), запросу нового
+  // поколения принадлежит свежий scope.
   useEffect(() => {
     if (!visible) return
-    let alive = true
-    loadSetStickers(managers, set.slug, queue).then(
-      (sts) => { if (alive) setStickers(sts.slice(0, PREVIEW_COUNT)) },
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
+    loadSetStickers(managers, set.slug, queue, isRowVisible).then(
+      (sts) => { if (middleware()) setStickers(sts.slice(0, PREVIEW_COUNT)) },
       () => {},
     )
-    return () => { alive = false }
-  }, [managers, set.slug, visible, queue])
+    return () => { scope.destroy() }
+  }, [managers, set.slug, visible, queue, isRowVisible, middlewareHelper])
 
   // ref стабилен: инлайновая стрелка меняла бы идентичность на каждый рендер,
   // React отцеплял бы и прицеплял узел заново на каждый чих — тот же приём,
@@ -158,7 +188,17 @@ function StickerSetRow({
                   пока стикер для этого слота не приехал — ячейка пустая, но
                   геометрию держит сама (fixed width/height, не по контенту) */}
               {st && (
-                <StickerMedia mediaId={st.mediaId} width={PREVIEW_SIZE} height={PREVIEW_SIZE} autoplay loop group="STICKERS-SEARCH" thumb={st.thumb} loadQueue={queue} />
+                <StickerMedia
+                  mediaId={st.mediaId}
+                  width={PREVIEW_SIZE}
+                  height={PREVIEW_SIZE}
+                  autoplay
+                  loop
+                  group="STICKERS-SEARCH"
+                  thumb={st.thumb}
+                  loadQueue={queue}
+                  isVisible={isRowVisible}
+                />
               )}
             </div>
           )
@@ -197,10 +237,10 @@ export default function StickersSearchTab({
   }, [queue])
 
   // Корень наблюдения — сам скроллер вкладки (тот же элемент, что рисует
-  // RightSearchTab через `scrollRef`), запас предзагрузки — тот же, что и у
-  // сетки StickerSetModal (PRELOAD_MARGIN).
+  // RightSearchTab через `scrollRef`), запас предзагрузки — своя высота
+  // строки (ROW_PRELOAD_MARGIN), а не чужая — сетки модалки набора.
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { visible, register } = useLazyVisibility(scrollRef, PRELOAD_MARGIN)
+  const { visible, register } = useLazyVisibility(scrollRef, ROW_PRELOAD_MARGIN)
 
   const pick = onPickSticker
     ? (st: Sticker) => {

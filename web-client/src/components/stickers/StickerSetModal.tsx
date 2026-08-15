@@ -69,10 +69,8 @@ const ANIMATION_GROUP = 'STICKERS-POPUP' as const
 const ITEM_SIZE = 80
 
 // Запас предзагрузки сетки: один ряд ячеек за краем тела попапа — то же
-// правило, что у кладки GIF (там это высота ряда). Экспорт — строки набора
-// в StickersSearchTab используют то же значение для своего наблюдателя
-// видимости (см. импорт там).
-export const PRELOAD_MARGIN = `${ITEM_SIZE}px 0px`
+// правило, что у кладки GIF (там это высота ряда).
+const PRELOAD_MARGIN = `${ITEM_SIZE}px 0px`
 
 /**
  * Ячейка сетки. Медиа монтируется, ТОЛЬКО когда ячейка видима: `StickerMedia`

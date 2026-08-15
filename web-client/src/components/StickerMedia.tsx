@@ -46,8 +46,20 @@ const cache = new Map<number, Promise<StickerContent>>()
  *   tweb (`wrapSticker.ts:735` — уже скачанное грузится в обход очереди),
  *   через неё идёт ТОЛЬКО настоящая новая загрузка: кэш-хит возвращает
  *   существующий промис напрямую, не занимая место в очереди повторно.
+ * @param isVisible живой геттер видимости ЭТОЙ ячейки прямо сейчас — уходит в
+ *   `queue.push` для приоритезации (порт tweb `LazyLoadQueue.onVisibilityChange`,
+ *   см. `core/lazyLoadQueue.ts`): пока превью ждёт своей очереди, строка
+ *   могла уже уйти за край вьюпорта — такая задача уступает место тому, что
+ *   сейчас перед глазами.
+ *
+ * ВАЖНО: если `loadQueue` передана и её `clear()` снимает эту задачу ДО
+ * старта (панель закрылась), промис РЕДЖЕКТИТСЯ (см. `lazyLoadQueue.ts`) —
+ * `p.catch(() => cache.delete(mediaId))` ниже вычищает кэш, чтобы следующий
+ * запрос того же `mediaId` (в ЛЮБОМ месте приложения — бабл в чате, пикер,
+ * медиаредактор, они делят этот модульный кэш) грузил заново, а не наследовал
+ * навсегда отклонённый промис.
  */
-export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue): Promise<StickerContent> {
+export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue, isVisible?: () => boolean): Promise<StickerContent> {
   let p = cache.get(mediaId)
   if (!p) {
     const fetchContent = async (): Promise<StickerContent> => {
@@ -63,8 +75,9 @@ export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue): 
       if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
     }
-    p = loadQueue ? loadQueue.push(fetchContent) : fetchContent()
-    // упавшую загрузку не кэшировать — следующий маунт попробует снова
+    p = loadQueue ? loadQueue.push(fetchContent, isVisible) : fetchContent()
+    // упавшую загрузку (включая реджект от queue.clear()) не кэшировать —
+    // следующий запрос попробует снова, а не унаследует мёртвый промис
     p.catch(() => cache.delete(mediaId))
     cache.set(mediaId, p)
   }
@@ -86,6 +99,7 @@ const StickerMedia = memo(function StickerMedia({
   group = 'chat',
   thumb,
   loadQueue,
+  isVisible,
   onComplete,
 }: {
   mediaId: number
@@ -108,6 +122,9 @@ const StickerMedia = memo(function StickerMedia({
    * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
    * там же, где им гейтится и запрос состава набора. */
   loadQueue?: LazyLoadQueue
+  /** живой геттер видимости ЭТОЙ ячейки — приоритезация внутри `loadQueue`
+   * (см. `loadStickerContent`); без `loadQueue` не используется. */
+  isVisible?: () => boolean
   /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
    * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
    * Нужен потребителям, которые снимают себя по завершении одноразовой
@@ -148,7 +165,7 @@ const StickerMedia = memo(function StickerMedia({
     let player: LottiePlayer | null = null
     let video: HTMLVideoElement | null = null
 
-    void loadStickerContent(mediaId, loadQueue).then((content) => {
+    void loadStickerContent(mediaId, loadQueue, isVisible).then((content) => {
       if (!middleware()) return
 
       if (content.kind === 'lottie') {
@@ -263,7 +280,7 @@ const StickerMedia = memo(function StickerMedia({
         // иначе потребитель onComplete (эффект вокруг реакции) ждал бы вечно.
         onCompleteEvent()
       })
-    })
+    }).catch(() => {}) // сеть упала ИЛИ задачу снял queue.clear() (панель закрылась) — ячейке просто нечем наполниться
 
     return () => {
       if (player) {
@@ -284,7 +301,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, loadQueue, middlewareHelper])
+  }, [mediaId, thumb, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.
