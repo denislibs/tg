@@ -17,9 +17,16 @@ const (
 	savedGifsLimit = 200
 	emojiSearchLim = 16
 	setSearchLim   = 20
-	gifSearchLim   = 30
-	maxTitleRunes  = 64
-	maxEmojiBytes  = 32
+	// featuredLim — потолок выдачи трендов, а не витрина «топ-N»: экран поиска
+	// показывает весь каталог (tweb getFeaturedStickers лимита не знает вовсе,
+	// содержимое наборов догружается лениво). Значение с запасом над полным
+	// каталогом Telegram (~992 набора: 231 трендовых + архив + emoji), но
+	// ограничивает ответ, потому что POST /sticker-sets доступен любому
+	// пользователю и без потолка чужие наборы раздували бы выдачу всем.
+	featuredLim   = 2000
+	gifSearchLim  = 30
+	maxTitleRunes = 64
+	maxEmojiBytes = 32
 )
 
 // slugRe — допустимый slug набора (как короткое имя аддона: t.me/addstickers/<slug>).
@@ -92,13 +99,8 @@ func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.Sticker
 // Featured — трендовые наборы для экрана поиска стикеров при пустом запросе
 // (аналог tweb messages.getFeaturedStickers): наборы публичны, порядок задаёт
 // rank из выгрузки.
-//
-// Лимита нет намеренно — tweb тоже отдаёт весь каталог разом и рендерит все
-// строки, а содержимое набора догружается лениво по видимости. Обрезка здесь
-// молча прячет часть каталога: с прежним лимитом 40 из 338 наборов до экрана
-// доезжали первые сорок.
 func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, error) {
-	return i.repo.FeaturedSets(ctx, 0)
+	return i.repo.FeaturedSets(ctx, featuredLim)
 }
 
 // Recent — недавно использованные стикеры, новые первыми.

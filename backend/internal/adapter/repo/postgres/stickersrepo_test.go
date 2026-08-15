@@ -417,13 +417,6 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
 	}
 
-	// limit<=0 — весь каталог: Interactor.Featured зовёт именно так, потому что
-	// tweb лимита не накладывает. Обрезка здесь молча прячет наборы от экрана
-	// поиска (с прежним лимитом 40 из 338 доезжали первые сорок).
-	all, err := r.FeaturedSets(ctx, 0)
-	if err != nil || len(all) != 3 {
-		t.Fatalf("FeaturedSets(limit=0): %d наборов, %v — want все 3", len(all), err)
-	}
 }
 
 // FeaturedSets отдаёт наборы в порядке трендов: сначала rank 1,2,3…, затем

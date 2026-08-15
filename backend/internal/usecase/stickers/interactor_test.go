@@ -191,8 +191,7 @@ func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerS
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
-	// limit<=0 — весь каталог, как в SQL-реализации (там LIMIT просто не ставится).
-	if limit > 0 && len(out) > limit {
+	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
@@ -637,10 +636,14 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
 		t.Fatalf("Featured: want [%d %d] (новые первыми), got %+v", newer.ID, older.ID, got)
 	}
-	// Лимита нет: репозиторию уходит 0 — «весь каталог», как в tweb. Ненулевой
-	// лимит здесь молча прячет часть наборов от экрана поиска (с прежними 40 из
-	// 338 выгруженных доезжали только первые сорок).
-	if f.featuredLimit != 0 {
-		t.Fatalf("Featured: лимит репозиторию %d, want 0 (без лимита)", f.featuredLimit)
+	// Потолок должен быть заведомо выше реального каталога: он страхует от
+	// раздувания выдачи чужими наборами (POST /sticker-sets открыт всем), а не
+	// работает витриной «топ-N». С прежними 40 из 338 выгруженных наборов до
+	// экрана доезжали только первые сорок — список обрывался на середине.
+	if f.featuredLimit != featuredLim {
+		t.Fatalf("Featured: лимит репозиторию %d, want featuredLim=%d", f.featuredLimit, featuredLim)
+	}
+	if featuredLim < 1000 {
+		t.Fatalf("featuredLim = %d — ниже полного каталога Telegram (~992 набора)", featuredLim)
 	}
 }
