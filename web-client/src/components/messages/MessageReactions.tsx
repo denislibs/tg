@@ -7,7 +7,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import classNames from '../../shared/lib/classNames'
 import StarIcon from '../stars/StarIcon'
 import ReactionIcon from './ReactionIcon'
+import ReactionAroundEffect from './ReactionAroundEffect'
 import StackedAvatars from './StackedAvatars'
+import { useReactionEffectStore } from '../../stores/reactionEffectStore'
 import type { ConvMsg } from '../../data'
 import s from './MessageRow.module.scss'
 
@@ -15,7 +17,10 @@ import s from './MessageRow.module.scss'
 // с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
 // trailing — время+тики, вливаемые в конец строки (tweb appendBubbleTime); align
 // прижимает строку вправо у исходящих (tweb is-out is-message-empty flex-end).
-export function MessageReactions({ reactions, star, rowLive, canSeeList, inside, trailing, onToggle, onShow, onStar }: {
+export function MessageReactions({ msgId, reactions, star, rowLive, canSeeList, inside, trailing, onToggle, onShow, onStar }: {
+  /** id сообщения — ключ reactionEffectStore (различает «свою только что
+   * поставленную» реакцию у ЭТОГО сообщения от такой же реакции на другом) */
+  msgId: number
   reactions: NonNullable<ConvMsg['reactions']>
   /** платная ⭐-реакция сообщения (total>0) — отдельный чип-звезда перед эмодзи */
   star?: { total: number; mine: number }
@@ -60,6 +65,7 @@ export function MessageReactions({ reactions, star, rowLive, canSeeList, inside,
       {reactions.map((r, i) => (
         <ReactionChip
           key={r.emoji}
+          msgId={msgId}
           r={r}
           live={rowLive || liveRef.current}
           canRenderAvatars={canRenderAvatars}
@@ -97,7 +103,8 @@ function StarReactionChip({ total, mine, onClick }: { total: number; mine: numbe
 // Один чип. Свежедобавленная «моя» реакция монтируется без is-chosen и получает
 // класс кадром позже — CSS-transition подложки играет как tweb SetTransition(300).
 // Тап — тоггл своей реакции; long-press / правый клик — попап «кто отреагировал».
-export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onShow }: {
+export function ReactionChip({ msgId, r, live, canRenderAvatars, isLast, onToggle, onShow }: {
+  msgId: number
   r: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }
   live: boolean
   /** список реагировавших доступен и реакций мало — можно показать аватары */
@@ -114,6 +121,12 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
     return () => cancelAnimationFrame(raf)
   }, [defer])
   const chosen = r.mine && !defer
+  // Эта реакция у ЭТОГО сообщения — та, что пользователь только что сам
+  // поставил (см. toggleReaction в useMessageActions.tsx, единственный писатель
+  // reactionEffectStore): играем select-анимацию иконки и эффект вокруг РОВНО
+  // здесь, а не у той же реакции на другом сообщении и не у чужой, приехавшей
+  // по WS (applyReaction — отдельный путь, этот стор не трогает).
+  const justReacted = useReactionEffectStore((st) => st.active.has(`${msgId}:${r.emoji}`))
   // tweb reaction.ts:1013-1084 — счётчик рисуется при count >= порога ЛИБО когда
   // аватары показать нельзя; аватары — ровно в обратном случае.
   const showAvatars = canRenderAvatars && r.count < REACTIONS_DISPLAY_COUNTER_AT && !!r.recent?.length
@@ -131,11 +144,22 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
       onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
-      <div className={classNames('reaction-sticker', 'is-regular', 'media-sticker-wrapper', s.reactionEmoji)}>
-        {/* play=false — чип в покое рисует center/static кадром (tweb renderDoc:
-            static:true); проигрывание select-анимации по клику вяжет следующая
-            задача (эффект вокруг чипа) вместе со вспышкой вокруг него. */}
-        <ReactionIcon emoji={r.emoji} play={false} />
+      <div
+        className={classNames(
+          'reaction-sticker', 'is-regular', 'media-sticker-wrapper', s.reactionEmoji,
+          justReacted ? s.reactionEmojiEffectActive : '',
+        )}
+      >
+        {/* play — select-анимация играет один раз, ровно в момент постановки
+            своей реакции; в покое (в т.ч. у чужих/старых реакций) — center/static
+            кадром (tweb renderDoc: static:true). */}
+        <ReactionIcon emoji={r.emoji} play={justReacted} />
+        {justReacted && (
+          <ReactionAroundEffect
+            emoji={r.emoji}
+            onDone={() => useReactionEffectStore.getState().clear(msgId, r.emoji)}
+          />
+        )}
       </div>
       {showAvatars ? (
         <StackedAvatars peers={r.recent!} size={24} />

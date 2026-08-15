@@ -260,6 +260,7 @@ export default function MessageContent({
   const reactionsRow = (trailing?: ReactNode) =>
     showReactions ? (
       <MessageReactions
+        msgId={m.id!}
         inside={!!trailing}
         reactions={m.reactions ?? []}
         star={m.starReaction && m.starReaction.total > 0 ? m.starReaction : undefined}

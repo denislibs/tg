@@ -11,6 +11,7 @@ const { loadAnimationWorker } = vi.hoisted(() => ({
   loadAnimationWorker: vi.fn(async (_opts: { animationData: Blob; loop: boolean; autoplay: boolean }) => ({
     canvas: [document.createElement('canvas')],
     onFirstFrame: vi.fn(),
+    onComplete: vi.fn(),
     restart: vi.fn(),
     remove: vi.fn(),
   })),

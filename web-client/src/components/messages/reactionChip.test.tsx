@@ -15,7 +15,7 @@ vi.mock('./StackedAvatars', () => ({
 afterEach(cleanup)
 
 const noop = () => {}
-const chipProps = { live: false, isLast: true, onToggle: noop, onShow: noop }
+const chipProps = { msgId: 1, live: false, isLast: true, onToggle: noop, onShow: noop }
 
 describe('ReactionChip — аватары vs счётчик', () => {
   const recent = [{ id: 2, name: 'B' }, { id: 3, name: 'C' }]
@@ -51,7 +51,7 @@ describe('ReactionChip — аватары vs счётчик', () => {
 })
 
 describe('MessageReactions — порог считается по сумме реакций сообщения', () => {
-  const rowProps = { rowLive: false, canSeeList: true, onToggle: noop, onShow: noop, onStar: noop }
+  const rowProps = { msgId: 1, rowLive: false, canSeeList: true, onToggle: noop, onShow: noop, onStar: noop }
   const recent = [{ id: 2, name: 'B' }]
 
   it('суммарно меньше порога → аватары', () => {

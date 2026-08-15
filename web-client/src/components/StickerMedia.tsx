@@ -28,6 +28,7 @@ import createStickerAppearance from './wrappers/stickerAppearance'
 import { getStickerThumb, saveStickerThumb, saveStickerThumbFromPlayer } from '../core/stickers/stickerThumbs'
 import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
+import { useEvent } from '../core/hooks/useEvent'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
 
 export type StickerContent =
@@ -74,6 +75,7 @@ const StickerMedia = memo(function StickerMedia({
   replayToken = 0,
   group = 'chat',
   thumb,
+  onComplete,
 }: {
   mediaId: number
   width: number
@@ -90,11 +92,20 @@ const StickerMedia = memo(function StickerMedia({
   group?: AnimationItemGroup
   /** stripped-превью файла (base64 JPEG) — нижний слой, пока медиа грузится */
   thumb?: string
+  /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
+   * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
+   * Нужен потребителям, которые снимают себя по завершении одноразовой
+   * анимации (эффект вокруг реакции — ReactionAroundEffect). */
+  onComplete?: () => void
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<LottiePlayer | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const middlewareHelper = useMiddlewareHelper()
+  // Стабильная обёртка: onComplete не входит в зависимости эффекта ниже (его
+  // identity меняется у вызывающих без useEvent на своей стороне) — иначе
+  // смена ссылки на колбэк пересоздавала бы плеер/appearance целиком.
+  const onCompleteEvent = useEvent(() => onComplete?.())
 
   useEffect(() => {
     const container = boxRef.current
@@ -171,6 +182,12 @@ const StickerMedia = memo(function StickerMedia({
               void saveStickerThumbFromPlayer(mediaId, p)
               void appearance.onMediaFirstFrame({ animation: p, media: p.canvas[0] })
             })
+            // 'complete' шлёт только one-shot (loop=false, см. onLap в lottiePlayer);
+            // у зацикленных потребитель onComplete просто никогда не позовётся.
+            p.onComplete(() => {
+              if (!middleware()) return
+              onCompleteEvent()
+            })
           })
           .catch(() => {}) // NO_WASM (нет SIMD) и т.п. — стикер просто не анимируется
         return
@@ -203,6 +220,11 @@ const StickerMedia = memo(function StickerMedia({
         container.append(video)
         videoRef.current = video
         video.src = content.url
+        // Видео с loop=false доходит до конца и шлёт 'ended' ровно раз
+        // (зацикленное — никогда, браузер сам заворачивает воспроизведение).
+        if (!loop) {
+          video.addEventListener('ended', () => { if (middleware()) onCompleteEvent() }, { once: true })
+        }
 
         // Видео-стикер — в общий animationIntersector, как tweb делает для любого
         // <video> (wrappers/video.ts:649): пауза вне вьюпорта, в фоновой вкладке и
@@ -221,6 +243,9 @@ const StickerMedia = memo(function StickerMedia({
         if (!middleware()) return
         container.append(image)
         void appearance.onMediaFirstFrame({ media: image })
+        // Статика не «доигрывает» — сигнал завершения шлём сразу по отрисовке,
+        // иначе потребитель onComplete (эффект вокруг реакции) ждал бы вечно.
+        onCompleteEvent()
       })
     })
 

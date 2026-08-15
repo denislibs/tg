@@ -15,6 +15,7 @@ import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
+import { useReactionEffectStore } from '../../stores/reactionEffectStore'
 
 // tweb getLimit('reactions') → appConfig reactions_user_max_default/premium:
 // сколько РАЗНЫХ своих реакций помещается на одном сообщении.
@@ -456,6 +457,12 @@ export function useMessageActions({
     const meCard = me ? { id: me.id, name: me.displayName, avatarUrl: me.avatarUrl || undefined } : undefined
 
     if (action === 'add') {
+      // Эффект вокруг чипа + select-анимация иконки (tweb reaction.ts
+      // fireAroundAnimation) — играют РОВНО здесь: это единственный писатель
+      // reactionEffectStore, поэтому чужая реакция, приехавшая по WS
+      // (applyReaction в storeProjection — отдельный путь), эффект не триггерит.
+      useReactionEffectStore.getState().trigger(msgId, emoji)
+
       // Снимаем свои прежние реакции, которые не помещаются в лимит вместе с новой.
       // Порядок постановки (tweb chosen_order) сервер нам не отдаёт, поэтому
       // старшинство берём по позиции в агрегате.
