@@ -1,0 +1,120 @@
+// useStickerViewer — тесты жеста «зажал ЛКМ → стикер увеличивается поверх
+// затемнения → отпустил → закрылось, не отправив». Референс — tweb
+// components/stickerViewer.ts (см. комментарии в useStickerViewer.ts).
+//
+// StickerMedia замокан, как и в StickerSetModal.test.tsx: реальный рендер
+// стикера (fetch байтов, lottie/webm-декод) — предмет собственных тестов
+// StickerMedia.test.tsx, здесь важен только факт «оверлей показывает ТОТ
+// стикер», не как он отрисован внутри.
+import { render, cleanup, fireEvent } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useRef } from 'react'
+import { useStickerViewer } from './useStickerViewer'
+import type { Sticker } from '../../core/managers/stickersManager'
+
+vi.mock('../StickerMedia', () => ({
+  default: ({ mediaId }: { mediaId: number }) => <div data-testid="sticker-media" data-media={mediaId} />,
+}))
+
+const stickers: Sticker[] = [
+  { id: 1, setId: 1, mediaId: 101, emoji: '🦆', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
+  { id: 2, setId: 1, mediaId: 102, emoji: '🐸', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
+  { id: 3, setId: 1, mediaId: 103, emoji: '🐱', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
+]
+
+/** Тестовый хост — список из трёх ячеек с `data-sticker-id`. */
+function TestHost({ onPick }: { onPick: (st: Sticker) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const overlay = useStickerViewer({
+    rootRef,
+    findSticker: (el) => {
+      const cell = el.closest('[data-sticker-id]') as HTMLElement | null
+      if (!cell) return undefined
+      const id = Number(cell.dataset.stickerId)
+      return stickers.find((st) => st.id === id)
+    },
+  })
+
+  return (
+    <>
+      <div ref={rootRef}>
+        {stickers.map((st) => (
+          <div key={st.id} data-testid={`cell-${st.id}`} data-sticker-id={st.id} onClick={() => onPick(st)}>
+            {st.emoji}
+          </div>
+        ))}
+      </div>
+      {overlay}
+    </>
+  )
+}
+
+describe('useStickerViewer', () => {
+  // В проекте нет глобального автоклинапа testing-library — несколько render()
+  // в одном файле без cleanup() оставляют предыдущие DOM-деревья и путают
+  // querySelector/getByTestId следующего теста.
+  afterEach(cleanup)
+
+  it('зажатие на ячейке открывает предпросмотр', () => {
+    const onPick = vi.fn()
+    const { getByTestId, queryByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+
+    const viewer = queryByTestId('sticker-viewer')
+    expect(viewer).not.toBeNull()
+    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('101')
+  })
+
+  it('отпускание закрывает предпросмотр', () => {
+    const onPick = vi.fn()
+    const { getByTestId, queryByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    expect(queryByTestId('sticker-viewer')).not.toBeNull()
+
+    fireEvent.mouseUp(document)
+    expect(queryByTestId('sticker-viewer')).toBeNull()
+  })
+
+  it('правая кнопка не открывает предпросмотр', () => {
+    const onPick = vi.fn()
+    const { getByTestId, queryByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 2 })
+
+    expect(queryByTestId('sticker-viewer')).toBeNull()
+  })
+
+  it('клик после отпускания проглатывается', () => {
+    const onPick = vi.fn()
+    const { getByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    fireEvent.mouseUp(document)
+    fireEvent.click(getByTestId('cell-1'))
+
+    expect(onPick).not.toHaveBeenCalled()
+  })
+
+  it('обычный клик без удержания стикер отправляет', () => {
+    const onPick = vi.fn()
+    const { getByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.click(getByTestId('cell-1'))
+
+    expect(onPick).toHaveBeenCalledWith(stickers[0])
+  })
+
+  it('движение мыши над другой ячейкой переключает предпросмотр, не отпуская кнопку', () => {
+    const onPick = vi.fn()
+    const { getByTestId, queryByTestId } = render(<TestHost onPick={onPick} />)
+
+    fireEvent.mouseDown(getByTestId('cell-1'), { button: 0 })
+    fireEvent.mouseMove(getByTestId('cell-3'))
+
+    const viewer = queryByTestId('sticker-viewer')
+    expect(viewer).not.toBeNull()
+    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('103')
+  })
+})
