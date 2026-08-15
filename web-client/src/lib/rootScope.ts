@@ -26,6 +26,7 @@ import type { PeerOp } from '@core/managers/peersManager'
 import type { DialogOp } from '@core/dialogs/dialogOps'
 import type { User } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
+import type { StickerSet } from '@core/managers/stickersManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -143,6 +144,17 @@ export type BroadcastEvents = {
   'rt:resync': [null]
   'media:upload_progress': [{ id: string; loaded: number; total: number }]
   'state:mirror': [{ key: string; value: unknown }]
+
+  // ── стикеры ──
+  // Порт tweb rootScope.ts:120-121: appStickersManager.toggleStickerSet шлёт
+  // 'stickers_installed'/'stickers_deleted' с самим набором, и по ним
+  // пересчитываются ВСЕ витрины наборов сразу (панель пикера
+  // emoticonsDropdown/tabs/stickers.ts:247,271, экран поиска
+  // sidebarLeft/tabs/stickersAndEmoji.tsx:252,258, открытый попап набора
+  // popups/stickers.tsx:114-115). Единственный отправитель у нас —
+  // core/stickers/toggleStickerSet.ts.
+  'stickers_installed': [StickerSet]
+  'stickers_deleted': [StickerSet]
 
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]

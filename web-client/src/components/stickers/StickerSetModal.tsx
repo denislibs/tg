@@ -47,6 +47,7 @@ import TgIcon from '../TgIcon'
 import StickerMedia from '../StickerMedia'
 import StickerSetSkeleton from '../rightSidebar/StickerSetSkeleton'
 import animationIntersector from '../animationIntersector'
+import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
@@ -155,17 +156,29 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
     }
   }, [slug, middlewareHelper])
 
+  // Своё состояние «установлен» ведёт не toggle, а подписка на объявление
+  // (tweb popups/stickers.tsx:114-115 onStickerSetUpdate): набор могли поставить
+  // или снять и не отсюда — из строки экрана поиска или вообще в другой вкладке.
+  useEffect(() => {
+    const onUpdate = (updated: StickerSet) => {
+      if (set && updated.id === set.id) setInstalled(true)
+    }
+    const onDelete = (updated: StickerSet) => {
+      if (set && updated.id === set.id) setInstalled(false)
+    }
+    rootScope.addEventListener('stickers_installed', onUpdate)
+    rootScope.addEventListener('stickers_deleted', onDelete)
+    return () => {
+      rootScope.removeEventListener('stickers_installed', onUpdate)
+      rootScope.removeEventListener('stickers_deleted', onDelete)
+    }
+  }, [set])
+
   const toggle = async () => {
     if (!set || busy) return
     setBusy(true)
     try {
-      if (installed) {
-        await managers.stickers.uninstall(set.id)
-        setInstalled(false)
-      } else {
-        await managers.stickers.install(set.id)
-        setInstalled(true)
-      }
+      await toggleStickerSet(managers.stickers, set, installed)
     } finally {
       setBusy(false)
     }

@@ -6,7 +6,9 @@
 // fave/unfave) — как tweb appStickersManager, но состояние живёт в компоненте
 // на время сессии пикера.
 import { useEffect, useRef, useState } from 'react'
+import rootScope from '@lib/rootScope'
 import { useManagers } from './useManagers'
+import { useMiddlewareHelper } from './useMiddlewareHelper'
 import type { Sticker, StickerSet } from '../managers/stickersManager'
 import { ANIMATED_EMOJI_SLUG } from '../animatedEmoji'
 
@@ -22,6 +24,7 @@ export interface StickersPanelData {
 
 export function useStickersPanel(active: boolean) {
   const managers = useManagers()
+  const middlewareHelper = useMiddlewareHelper()
   const [data, setData] = useState<StickersPanelData>({ recent: [], faved: [], sets: [], loaded: false })
   const startedRef = useRef(false)
 
@@ -46,6 +49,37 @@ export function useStickersPanel(active: boolean) {
     })()
     return () => { alive = false }
   }, [active, managers])
+
+  // Установка/удаление набора приходит объявлением (tweb emoticonsDropdown/
+  // tabs/stickers.ts:247 renderStickerSet на 'stickers_installed', :271
+  // deleteCategory на 'stickers_deleted'). Без этой подписки панель узнавала бы
+  // о новом наборе только при следующем открытии дропдауна: загрузка данных
+  // одноразовая (startedRef выше).
+  useEffect(() => {
+    // Догрузка состава установленного набора — асинхронна, поэтому под
+    // middleware-скоупом этого прогона эффекта (web-client/CLAUDE.md).
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
+    const onInstalled = (set: StickerSet) => {
+      void managers.stickers.setBySlug(set.slug).then(
+        (full) => {
+          if (!middleware() || full.stickers.length === 0) return
+          setData((d) => (d.sets.some((x) => x.set.id === set.id) ? d : { ...d, sets: [...d.sets, full] }))
+        },
+        () => {},
+      )
+    }
+    const onDeleted = (set: StickerSet) => {
+      setData((d) => ({ ...d, sets: d.sets.filter((x) => x.set.id !== set.id) }))
+    }
+    rootScope.addEventListener('stickers_installed', onInstalled)
+    rootScope.addEventListener('stickers_deleted', onDeleted)
+    return () => {
+      rootScope.removeEventListener('stickers_installed', onInstalled)
+      rootScope.removeEventListener('stickers_deleted', onDeleted)
+      scope.destroy()
+    }
+  }, [managers, middlewareHelper])
 
   // Отправка стикера: recent обновляется локально (LIFO, лимит бэка), сам
   // POST /use делает sendSticker — здесь только зеркалим его эффект.

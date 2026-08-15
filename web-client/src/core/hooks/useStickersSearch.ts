@@ -5,7 +5,9 @@
 // Add/Added — toggleStickerSet: на время запроса гасится (disabled), состояние
 // «установлен» ведётся по mySets (у tweb — set.installed_date).
 import { useCallback, useEffect, useRef, useState } from 'react'
+import rootScope from '@lib/rootScope'
 import { useManagers } from './useManagers'
+import { toggleStickerSet } from '../stickers/toggleStickerSet'
 import type { StickerSet } from '../managers/stickersManager'
 
 export function useStickersSearch(query: string) {
@@ -29,6 +31,24 @@ export function useStickersSearch(query: string) {
     )
     return () => { alive = false }
   }, [managers])
+
+  // Набор мог быть поставлен/снят не отсюда (попап набора, другая вкладка) —
+  // Add/Added пересчитывается по объявлению, а не по своему же ответу
+  // (tweb sidebarLeft/tabs/stickersAndEmoji.tsx:252-260).
+  useEffect(() => {
+    const onInstalled = (set: StickerSet) => setInstalledIds((ids) => new Set(ids).add(set.id))
+    const onDeleted = (set: StickerSet) => setInstalledIds((ids) => {
+      const next = new Set(ids)
+      next.delete(set.id)
+      return next
+    })
+    rootScope.addEventListener('stickers_installed', onInstalled)
+    rootScope.addEventListener('stickers_deleted', onDeleted)
+    return () => {
+      rootScope.removeEventListener('stickers_installed', onInstalled)
+      rootScope.removeEventListener('stickers_deleted', onDeleted)
+    }
+  }, [])
 
   useEffect(() => {
     const q = query.trim()
@@ -54,25 +74,15 @@ export function useStickersSearch(query: string) {
   // Add/Added — toggleStickerSet (tweb: кнопка disabled на время запроса).
   // Занятость ведёт ref (setState-апдейтер не должен нести сайд-эффекты —
   // React вправе позвать его дважды), state — только зеркало для рендера.
+  // installedIds здесь не правится: результат объявляет toggleStickerSet, и
+  // применяет его подписка выше — одним путём для своего и чужого действия.
   const busyRef = useRef<Set<number>>(new Set())
   const toggle = useCallback((set: StickerSet) => {
     if (busyRef.current.has(set.id)) return
     busyRef.current.add(set.id)
     setBusyIds(new Set(busyRef.current))
-    const installed = installedIds.has(set.id)
-    const op = installed ? managers.stickers.uninstall(set.id) : managers.stickers.install(set.id)
-    void op
-      .then(
-        () => {
-          setInstalledIds((ids) => {
-            const next = new Set(ids)
-            if (installed) next.delete(set.id)
-            else next.add(set.id)
-            return next
-          })
-        },
-        () => {},
-      )
+    void toggleStickerSet(managers.stickers, set, installedIds.has(set.id))
+      .catch(() => {})
       .finally(() => {
         busyRef.current.delete(set.id)
         setBusyIds(new Set(busyRef.current))
