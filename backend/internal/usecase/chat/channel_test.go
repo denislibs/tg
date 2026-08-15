@@ -139,6 +139,24 @@ func (c groupMembershipChats) FindSaved(context.Context, int64) (int64, error) {
 }
 func (c groupMembershipChats) CreateSaved(context.Context, int64) (int64, error) { return 0, nil }
 func (c groupMembershipChats) MemberIDs(context.Context, int64) ([]int64, error) { return nil, nil }
+
+// groupMembershipChatsFanout — groupMembershipChats с настоящим MemberIDs.
+// Обычный стаб выше всегда отдаёт nil: часть тестов канала не заводит
+// updates-фейк, и Send() гейтит AppendUpdateBulk по len(members) именно
+// поэтому (см. комментарий в message.go). Этот вариант нужен только тестам,
+// которым важен реальный per-member WS-фанаут (например, сверка
+// thread_root_id в live-кадре комментария).
+type groupMembershipChatsFanout struct{ groupMembershipChats }
+
+func (c groupMembershipChatsFanout) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	ids := make([]int64, 0, len(c.fg.members[chatID]))
+	for uid := range c.fg.members[chatID] {
+		ids = append(ids, uid)
+	}
+	return ids, nil
+}
 func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) (bool, error) {
 	c.fg.mu.Lock()
 	defer c.fg.mu.Unlock()
@@ -199,13 +217,29 @@ func (c groupMembershipChats) Viewers(context.Context, int64, int64, int64) ([]i
 // requireRight, IsMember and AddMember all observe the same chat.
 func newChannelTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeSearchRepo, *fakeChannelPublisher) {
 	t.Helper()
+	return newChannelTestInteractorMsgs(t, func(s *store) MessageRepo { return fakeMsgs{s} })
+}
+
+// newChannelTestInteractorMsgs — то же самое, что newChannelTestInteractor, но
+// с MessageRepo, собранным по store самим вызывающим (нужно тестам, которым
+// требуется обернуть fakeMsgs — например, сымитировать сбой Insert в гонке за
+// создание зеркала).
+func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (*Interactor, *fakeGroupRepo, *fakeSearchRepo, *fakeChannelPublisher) {
+	t.Helper()
 	s := newStore()
 	fg := newFakeGroupRepo()
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
 	fpub := &fakeChannelPublisher{}
-	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, nil, nil, nil, fg, nil, fch, fs, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg}, msgs(s), nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	in.SetChannelPublisher(fpub)
+	// Media-фикстура для тестов Send с медиа (TestSendToChannel_CreatesMirror):
+	// mediaID=42 принадлежит пользователю 7 — стандартному создателю канала
+	// во всех тестах этого пакета. 101/102 — элементы альбома в
+	// TestAlbum_MirrorsAllElements_SingleThread (discussion_mirror_test.go).
+	s.seedMedia(42, 7)
+	s.seedMedia(101, 7)
+	s.seedMedia(102, 7)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.
 	fg.onCreate = func(id int64) {
@@ -214,6 +248,9 @@ func newChannelTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeS
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}
+	// Зеркалим привязку группы обсуждения в общий store — MirrorByPost/
+	// MirrorsByPosts (fakeMsgs) резолвят её оттуда, а не из fg.discussion.
+	fg.onSetDiscussion = s.seedDiscussion
 	return in, fg, fs, fpub
 }
 

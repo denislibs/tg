@@ -245,6 +245,52 @@ type MessageRepo interface {
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
+	// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
+	// считается: она без флага is_discussion_mirror.
+	//
+	// Альбом (сообщения с общим grouped_id): тред у него один, на зеркале
+	// ПЕРВОГО (минимальный id) элемента группы — поэтому для любого элемента
+	// альбома MirrorByPost отдаёт id ОДНОГО И ТОГО ЖЕ зеркала (корня), а не
+	// зеркала конкретно этого элемента. Для «есть ли у ЭТОГО конкретного
+	// сообщения собственная строка-зеркало» (нужно mirrorChannelPost для
+	// идемпотентности вставки — иначе второй и последующие элементы альбома
+	// решат, что они «уже зеркалены» через зеркало первого, и не заведут
+	// СВОИХ строк, альбом в группе обсуждения приедет обрезанным) — см.
+	// MirrorOfExactPost.
+	MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error)
+	// MirrorOfExactPost — как MirrorByPost, но БЕЗ коллапса альбома в корень:
+	// возвращает id зеркала строго этого postID (0, если своей строки-зеркала
+	// у него нет). Нужен только для идемпотентности вставки (mirrorChannelPost)
+	// — все read-пути треда используют MirrorByPost/MirrorsByPosts.
+	MirrorOfExactPost(ctx context.Context, channelID, postID int64) (int64, error)
+	// MirrorsByPosts — батч того же резолва, что и MirrorByPost (включая
+	// коллапс альбома в корень): postID -> id зеркала. Посты без зеркала в
+	// карту не попадают.
+	MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error)
+	// AlbumMessages — все сообщения одной медиагруппы (Telegram grouped_id)
+	// в чате chatID, отсортированные по возрастанию id (первый элемент —
+	// первым). Нужен ленивому зеркалированию (mirrorChannelPost по
+	// требованию первого комментария к домиграционному посту, см.
+	// Interactor.PostComment): раз корень треда альбома — зеркало ПЕРВОГО
+	// элемента, лениво создавать зеркало нужно для ВСЕГО альбома, а не
+	// только для того элемента, который передал клиент, — иначе в группе
+	// обсуждения останется обрезанный альбом из одного кадра. Сознательно
+	// БЕЗ фильтра deleted_at — та же логика, что и у выбора корня в
+	// MirrorByPost (см. Postgres-реализацию): если удалить фильтр здесь, но
+	// не в резолве корня, ленивое зеркалирование не сможет создать зеркало
+	// для (возможно, удалённого) первого элемента, на который резолв
+	// продолжит указывать как на корень, — комментирование остальных
+	// элементов альбома снова сломается.
+	AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error)
+	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
+	// сообщений (это могут быть id зеркал, обычных сообщений или корней
+	// форум-топиков вперемешку — вызывающий не обязан их различать) отдаёт
+	// id постов, зеркалами которых они являются: mirrorID -> postID. Не-
+	// зеркала в карту не попадают. Единая точка внешнего перевода
+	// thread_root_id (id зеркала -> id поста) для любого набора отдаваемых
+	// наружу сообщений — см. Interactor.ExternalizeThreadRoots.
+	PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)

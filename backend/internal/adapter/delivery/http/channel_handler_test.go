@@ -208,6 +208,547 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	}
 }
 
+// Комментарий обязан нести ОДИН И ТОТ ЖЕ thread_root_id (id ПОСТА) что через
+// /comments, что через generic-историю группы обсуждения (GET
+// /chats/{id}/history?thread_root=<postId>) — именно так текущий клиент
+// читает тред комментариев. Плюс: (b) чтение по thread_root=<id поста>
+// обязано найти комментарий, а не вернуть пусто (тред физически висит на id
+// ЗЕРКАЛА, не поста — без перевода на входе страница молча пустая), и (c)
+// редактирование не меняет наружный id.
+func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990005001")
+	tokenB, _ := signUp(t, h, pool, "+79990005002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss3", "username": "discusschan3", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": "discuss this too", "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	pid := itoa(post.ID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
+		"text": "nice", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var comment struct {
+		ID           int64  `json:"id"`
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &comment)
+	if comment.ThreadRootID == nil || *comment.ThreadRootID != post.ID {
+		t.Fatalf("POST /comments thread_root_id = %v, want %d", comment.ThreadRootID, post.ID)
+	}
+
+	// (b) generic-история группы обсуждения по thread_root=<id поста> находит
+	// комментарий (а не пустую страницу).
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+pid, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Count    int `json:"count"`
+		Messages []struct {
+			ID           int64  `json:"id"`
+			ThreadRootID *int64 `json:"thread_root_id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	found := false
+	for _, m := range hist.Messages {
+		if m.ID != comment.ID {
+			continue
+		}
+		found = true
+		// (a) тот же id, что и через /comments.
+		if m.ThreadRootID == nil || *m.ThreadRootID != post.ID {
+			t.Fatalf("generic history thread_root_id = %v, want %d (как в /comments)", m.ThreadRootID, post.ID)
+		}
+	}
+	if !found {
+		t.Fatalf("комментарий %d не найден в generic-истории (%d сообщений, count=%d): %s",
+			comment.ID, len(hist.Messages), hist.Count, rec.Body.String())
+	}
+
+	// (c) редактирование не меняет наружный id треда.
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+discCid+"/messages/"+itoa(comment.ID), tokenB, map[string]any{
+		"text": "nice (edited)",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var edited struct {
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
+	if edited.ThreadRootID == nil || *edited.ThreadRootID != post.ID {
+		t.Fatalf("edited comment thread_root_id = %v, want %d", edited.ThreadRootID, post.ID)
+	}
+}
+
+// Блокер 2 (финальное ревью 2026-08-14): generic-история треда
+// (?thread_root=<postId>) не должна возвращать текст поста дважды.
+// resolveThreadRootForQuery переводит входящий thread_root (id поста) в id
+// ЗЕРКАЛА для SQL-запроса; зеркало (копия поста, включая текст) приезжает в
+// выборке само (SQL: thread_root_id=root OR id=root). Раньше
+// prependForeignThreadRoot сверялась по СЫРОМУ id поста, а не по id
+// зеркала — совпадения не находила и синтетически подшивала СВЕРХУ ещё и
+// оригинал поста из канала: тот же текст приезжал клиенту дважды.
+func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990006001")
+	tokenB, _ := signUp(t, h, pool, "+79990006002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss4", "username": "discusschan4", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	const postText = "уникальный текст поста для проверки дубликата в треде"
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": postText, "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	pid := itoa(post.ID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
+		"text": "первый комментарий", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+pid, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Messages []struct {
+			ID   int64  `json:"id"`
+			Text string `json:"text"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	n := 0
+	for _, m := range hist.Messages {
+		if m.Text == postText {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("текст поста встречается в истории треда %d раз(а), want ровно 1: %s", n, rec.Body.String())
+	}
+}
+
+// Блокер 4 (финальное ревью 2026-08-14): generic-отправка (POST
+// /chats/{chatID}/messages, тот же путь, которым идёт WS send_message) с
+// thread_root_id = id ПОСТА обязана приземлить сообщение в тот же тред, что
+// и штатный POST /channels/{ch}/posts/{id}/comments — resolveThreadRootForQuery
+// применялась только на чтении (GetHistory/GetHistoryAround), а вход в Send
+// шёл нерезолвленным (chat_handler.go/conn.go передавали body.ThreadRootID
+// как есть) — комментарий, отправленный generic-путём, ложился на
+// буквальный id поста и в треде не появлялся вовсе.
+func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990007001")
+	tokenB, _ := signUp(t, h, pool, "+79990007002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss5", "username": "discusschan5", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": "discuss via generic send", "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	pid := post.ID
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	// Сперва штатный /comments — заводит зеркало поста и оставляет "эталонный"
+	// комментарий, с которым сравниваем thread_root_id ниже.
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(pid)+"/comments", tokenB, map[string]any{
+		"text": "через /comments", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var viaComments struct {
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &viaComments)
+	if viaComments.ThreadRootID == nil || *viaComments.ThreadRootID != pid {
+		t.Fatalf("/comments thread_root_id = %v, want %d", viaComments.ThreadRootID, pid)
+	}
+
+	// Тот же тред, но generic-путём: thread_root_id в теле = id ПОСТА.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
+		"text": "через generic send", "thread_root_id": pid, "client_msg_id": "k2",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic send: %d %s", rec.Code, rec.Body.String())
+	}
+	var viaGeneric struct {
+		ID           int64  `json:"id"`
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &viaGeneric)
+	if viaGeneric.ThreadRootID == nil || *viaGeneric.ThreadRootID != pid {
+		t.Fatalf("generic send thread_root_id = %v, want %d (тот же тред, что и через /comments)", viaGeneric.ThreadRootID, pid)
+	}
+
+	// И физически лежит в том же треде — виден через /comments наравне с первым.
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/posts/"+itoa(pid)+"/comments", tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list comments: %d %s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Messages []struct {
+			ID int64 `json:"id"`
+		} `json:"messages"`
+		Count int `json:"count"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	found := false
+	for _, m := range list.Messages {
+		if m.ID == viaGeneric.ID {
+			found = true
+		}
+	}
+	if !found || list.Count != 2 {
+		t.Fatalf("generic-сообщение %d не в треде комментариев (count=%d): %s", viaGeneric.ID, list.Count, rec.Body.String())
+	}
+}
+
+// Critical (ре-ревью 2026-08-15): generic-send с thread_root_id = id ДОМИГРАЦИОННОГО
+// поста (опубликован ДО EnableDiscussion, зеркала ещё нет) раньше писал sentinel
+// 0 в thread_root_id (ResolveThreadRootForSend переиспользовала
+// resolveThreadRootForQuery, который для ЧТЕНИЯ безопасно кодирует «зеркала нет»
+// указателем на 0 — но на ЗАПИСИ этот 0 реально уходит в INSERT, а не остаётся
+// признаком «треда нет»). Итог на живом стенде: у комментариев к ДВУМ разным
+// домиграционным постам оказывался ОДИНАКОВЫЙ thread_root_id=0 — треды
+// схлопывались в один.
+//
+// Проверяем: (а) generic-send приземляет комментарий в тот же тред, что и
+// штатный POST /comments, thread_root_id в ответе — id ПОСТА, а не 0;
+// (б) комментарии к ДВУМ разным домиграционным постам не схлопываются —
+// GET /history?thread_root=<post1> отдаёт только свой, не чужой.
+func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990008001")
+	tokenB, _ := signUp(t, h, pool, "+79990008002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss6", "username": "discusschan6", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	// Два поста ДО EnableDiscussion — зеркал ещё не существует ни у одного.
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": "post one", "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post1: %d %s", rec.Code, rec.Body.String())
+	}
+	var post1 struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post1)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": "post two", "client_msg_id": "p2",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post2: %d %s", rec.Code, rec.Body.String())
+	}
+	var post2 struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post2)
+	if post1.ID == 0 || post2.ID == 0 || post1.ID == post2.ID {
+		t.Fatalf("посты некорректны: post1=%d post2=%d", post1.ID, post2.ID)
+	}
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	// generic-send к ОБОИМ домиграционным постам — зеркала дозаводятся лениво.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
+		"text": "comment on post1", "thread_root_id": post1.ID, "client_msg_id": "c1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic send к post1: %d %s", rec.Code, rec.Body.String())
+	}
+	var c1 struct {
+		ID           int64  `json:"id"`
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &c1)
+	if c1.ThreadRootID == nil || *c1.ThreadRootID != post1.ID {
+		t.Fatalf("thread_root_id комментария к post1 = %v, want %d (не sentinel 0)", c1.ThreadRootID, post1.ID)
+	}
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
+		"text": "comment on post2", "thread_root_id": post2.ID, "client_msg_id": "c2",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("generic send к post2: %d %s", rec.Code, rec.Body.String())
+	}
+	var c2 struct {
+		ID           int64  `json:"id"`
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &c2)
+	if c2.ThreadRootID == nil || *c2.ThreadRootID != post2.ID {
+		t.Fatalf("thread_root_id комментария к post2 = %v, want %d (не sentinel 0)", c2.ThreadRootID, post2.ID)
+	}
+
+	// (а) тот же тред, что и штатный /comments.
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(post1.ID)+"/comments", tokenB, map[string]any{
+		"text": "via comments", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/comments к post1: %d %s", rec.Code, rec.Body.String())
+	}
+	var viaComments struct {
+		ThreadRootID *int64 `json:"thread_root_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &viaComments)
+	if viaComments.ThreadRootID == nil || *viaComments.ThreadRootID != post1.ID {
+		t.Fatalf("/comments thread_root_id = %v, want %d — разошлось с generic-send", viaComments.ThreadRootID, post1.ID)
+	}
+
+	// (б) треды НЕ схлопнулись: history для post1 не содержит комментарий post2 и наоборот.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post1.ID), tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history post1: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist1 struct {
+		Messages []struct {
+			ID int64 `json:"id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist1)
+	for _, m := range hist1.Messages {
+		if m.ID == c2.ID {
+			t.Fatalf("тред post1 содержит комментарий post2 (%d) — треды схлопнулись: %s", c2.ID, rec.Body.String())
+		}
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post2.ID), tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history post2: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist2 struct {
+		Messages []struct {
+			ID int64 `json:"id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist2)
+	for _, m := range hist2.Messages {
+		if m.ID == c1.ID {
+			t.Fatalf("тред post2 содержит комментарий post1 (%d) — треды схлопнулись: %s", c1.ID, rec.Body.String())
+		}
+	}
+}
+
+// Minor-регрессия (ре-ревью 2026-08-15): фикс дублирования корня (см.
+// TestComments_ThreadRootHistory_RootAppearsOnce) по пути снял проверку
+// «корень физически в этом же чате» в prependForeignThreadRoot — зеркало,
+// скрытое персонально для читателя через message_hides («удалить у себя»),
+// снова принудительно показывалось первым сообщением окна, хотя видимость
+// его явно исключила. Проверяем: комментатор, скрывший у себя зеркало поста
+// («delete for me»), НЕ видит его текст, синтетически подшитым сверху
+// generic-истории треда.
+func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990009001")
+	tokenB, _ := signUp(t, h, pool, "+79990009002")
+
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "Discuss7", "username": "discusschan7", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	const postText = "пост со скрываемым зеркалом"
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
+		"text": postText, "client_msg_id": "p1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var disc struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
+	discCid := itoa(disc.DiscussionChatID)
+
+	// B комментирует — заводит зеркало и авто-вступает в группу обсуждения.
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(post.ID)+"/comments", tokenB, map[string]any{
+		"text": "comment", "client_msg_id": "k1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
+	}
+	var comment struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &comment)
+
+	// Достаём реальный id зеркала — физический msg_id виден в generic-истории
+	// группы (не переводится, в отличие от thread_root_id).
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history", tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("full history: %d %s", rec.Code, rec.Body.String())
+	}
+	var full struct {
+		Messages []struct {
+			ID           int64  `json:"id"`
+			Text         string `json:"text"`
+			FwdFromMsgID *int64 `json:"fwd_from_msg_id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &full)
+	var mirrorID int64
+	for _, m := range full.Messages {
+		if m.FwdFromMsgID != nil && *m.FwdFromMsgID == post.ID {
+			mirrorID = m.ID
+		}
+	}
+	if mirrorID == 0 {
+		t.Fatalf("зеркало не найдено в истории группы: %s", rec.Body.String())
+	}
+
+	// B прячет зеркало у себя ("удалить для меня" — message_hides, не soft-delete).
+	rec = authedReq(t, h, http.MethodDelete, "/chats/"+discCid+"/messages/"+itoa(mirrorID), tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("hide mirror for me: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Читаем тред тем же generic-путём, каким клиент открывает комментарии —
+	// зеркало скрыто персонально для B и НЕ обязано принудительно вернуться.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post.ID), tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("thread history: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Messages []struct {
+			ID   int64  `json:"id"`
+			Text string `json:"text"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	for _, m := range hist.Messages {
+		if m.ID == mirrorID || m.Text == postText {
+			t.Fatalf("скрытое у себя зеркало снова принудительно показано: %s", rec.Body.String())
+		}
+	}
+}
+
 func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990004001")

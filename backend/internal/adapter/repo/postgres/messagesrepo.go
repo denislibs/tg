@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text, is_discussion_mirror`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -505,8 +505,8 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text, is_discussion_mirror, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
@@ -514,7 +514,7 @@ func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Mes
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
 		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect), m.GiveawayID, m.ChecklistID, m.SendAsChatID,
-		m.ReplyToPeerID, m.ReplySnapshotName, m.ReplySnapshotText))
+		m.ReplyToPeerID, m.ReplySnapshotName, m.ReplySnapshotText, m.IsDiscussionMirror))
 }
 
 // SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
@@ -802,6 +802,185 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
+// MirrorByPost возвращает id зеркала поста канала в его ТЕКУЩЕЙ группе
+// обсуждения (0 — зеркала нет). Ограничение chat_id=discussion_chat_id
+// обязательно: канал можно перепривязать на другую группу (LinkDiscussion/
+// UnlinkDiscussion), а уникальный индекс из Task 1 стоит на
+// (chat_id, fwd_from_chat_id, fwd_from_msg_id) — он не запрещает зеркала
+// одного поста в разных (старой и новой) группах. Без этого условия резолв
+// мог бы найти зеркало в уже отвязанной группе. Пользовательская пересылка
+// того же поста зеркалом не считается: она без флага is_discussion_mirror.
+//
+// Альбом (сообщения с общим grouped_id) зеркалится целиком — иначе альбом в
+// группе обсуждения приедет обрезанным, — но тред у него один: корнем
+// считается зеркало ПЕРВОГО элемента группы (минимальный id среди сообщений
+// с этим grouped_id в канале). Поэтому для любого элемента альбома резолв
+// сначала находит корень (CTE root), а уже потом ищет его зеркало — как
+// getMainGroupedMessage в tweb.
+//
+// Сознательное решение: выбор корня (MIN(g.id)) НЕ фильтрует g.deleted_at —
+// удалённый первый элемент по-прежнему считается корнем. Альтернатива
+// (пропускать удалённые и брать первый ЖИВОЙ элемент) на первый взгляд
+// выглядит аккуратнее, но ломает стабильность треда: если корень уже
+// зеркалирован и на нём висят комментарии (их thread_root_id физически
+// указывает на зеркало ПЕРВОНАЧАЛЬНОГО первого элемента), а затем этот
+// элемент удаляют, резолв «переехал» бы на зеркало следующего элемента —
+// новые комментарии ушли бы на ДРУГОЕ зеркало, отличное от того, где лежит
+// уже написанная переписка, и тред бы физически раздвоился. Игнорируя
+// deleted_at, корень треда навсегда остаётся одной и той же строкой — ту же
+// стабильность выбрало и ленивое зеркалирование (см. AlbumMessages: та же
+// политика «без фильтра deleted_at», согласованно).
+//
+// Замечание на будущее (вне рамок этой задачи): резолв корня — это скан по
+// (chat_id, grouped_id) без индекса; при больших альбомных каналах может
+// стоить завести партиальный индекс messages(chat_id, grouped_id) WHERE
+// grouped_id IS NOT NULL, если профилирование покажет проблему.
+func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx,
+		`WITH root AS (
+			SELECT COALESCE(
+				(SELECT MIN(g.id) FROM messages g
+				  WHERE g.chat_id = p.chat_id AND g.grouped_id = p.grouped_id AND p.grouped_id IS NOT NULL),
+				p.id) AS id
+			FROM messages p WHERE p.id = $2
+		 )
+		 SELECT m.id FROM messages m, root
+		 WHERE m.fwd_from_chat_id=$1 AND m.fwd_from_msg_id=root.id AND m.is_discussion_mirror AND m.deleted_at IS NULL
+		   AND m.chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
+		channelID, postID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// MirrorOfExactPost — как MirrorByPost, но БЕЗ коллапса альбома в корень
+// группы: ищет строку-зеркало строго этого postID. Нужен только
+// mirrorChannelPost для идемпотентности вставки — если бы он использовал
+// MirrorByPost, второй и последующие элементы альбома видели бы «зеркало уже
+// есть» (зеркало ПЕРВОГО элемента) и не заводили бы СВОИХ строк — альбом в
+// группе обсуждения приехал бы обрезанным.
+func (r *MessagesRepo) MirrorOfExactPost(ctx context.Context, channelID, postID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx,
+		`SELECT id FROM messages
+		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id=$2 AND is_discussion_mirror AND deleted_at IS NULL
+		   AND chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
+		channelID, postID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// MirrorsByPosts — батч того же резолва (см. MirrorByPost про ограничение
+// текущей группой обсуждения и про правило «один тред на альбом»): postID ->
+// id зеркала корня его группы (для одиночного поста — зеркало самого себя).
+// Посты без зеркала в карту не попадают.
+func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`WITH targets AS (
+			SELECT p.id AS post_id, COALESCE(
+				(SELECT MIN(g.id) FROM messages g
+				  WHERE g.chat_id = p.chat_id AND g.grouped_id = p.grouped_id AND p.grouped_id IS NOT NULL),
+				p.id) AS root_id
+			FROM messages p WHERE p.id = ANY($2)
+		 )
+		 SELECT t.post_id, m.id FROM targets t
+		 JOIN messages m ON m.fwd_from_chat_id=$1 AND m.fwd_from_msg_id=t.root_id
+		 WHERE m.is_discussion_mirror AND m.deleted_at IS NULL
+		   AND m.chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
+		channelID, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var post, mirror int64
+		if err := rows.Scan(&post, &mirror); err != nil {
+			return nil, err
+		}
+		out[post] = mirror
+	}
+	return out, rows.Err()
+}
+
+// AlbumMessages — все сообщения одной медиагруппы (grouped_id) в чате
+// chatID, по возрастанию id (первый элемент альбома — первым). Нужен
+// ленивому зеркалированию домиграционных постов (Interactor.PostComment):
+// раз корень треда альбома — зеркало первого элемента, дозаводить надо
+// зеркала ВСЕГО альбома, а не только запрошенного клиентом элемента.
+// Сознательно БЕЗ фильтра deleted_at — та же политика, что и у выбора корня
+// в MirrorByPost (см. её комментарий): если удалённый первый элемент
+// продолжает считаться корнем, ленивое зеркалирование обязано суметь
+// создать зеркало и для него, иначе резолв треда для остальных элементов
+// альбома будет вечно указывать в никуда.
+func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND grouped_id=$2 ORDER BY id`, chatID, groupedID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по id сообщений
+// отдаёт id постов, зеркалами которых они являются (mirrorID -> postID).
+// В отличие от MirrorByPost/MirrorsByPosts, здесь резолв по PRIMARY KEY
+// конкретной строки-зеркала, а не «текущее зеркало канала» — ограничение
+// chat_id=discussion_chat_id тут не нужно и не действует: зеркало уже
+// физически существует по этому id, привязку канала переигрывать незачем.
+//
+// Согласованность с правилом «один тред на альбом» здесь не требует
+// отдельной логики: MirrorByPost/MirrorsByPosts для ЛЮБОГО элемента альбома
+// теперь резолвят зеркало КОРНЯ (fwd_from_msg_id = id первого элемента), а не
+// зеркало самого элемента. Значит thread_root_id, который клиент получает и
+// потом присылает назад, всегда указывает на строку-зеркало, чей
+// fwd_from_msg_id уже равен id первого элемента — простой обратный SELECT по
+// PK возвращает ровно его. «Чужие» зеркала прочих элементов альбома (не
+// первого) в качестве thread_root_id наружу никогда не отдаются, так что их
+// сюда и не передадут.
+func (r *MessagesRepo) PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT id, fwd_from_msg_id FROM messages
+		 WHERE id = ANY($1) AND is_discussion_mirror AND deleted_at IS NULL`,
+		ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mirror, post int64
+		if err := rows.Scan(&mirror, &post); err != nil {
+			return nil, err
+		}
+		out[mirror] = post
+	}
+	return out, rows.Err()
+}
+
 // RecentThreadRepliers returns, for each thread root, the авторы последних
 // комментариев (новейшие первыми, не более limit различных). Нужен футеру
 // «N комментариев» под постом канала — Telegram показывает там стек аватаров
@@ -940,7 +1119,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
 		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID, &factCheckRaw, &m.SendAsChatID, &m.Transcription,
-		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.ReplySnapshotText)
+		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.ReplySnapshotText, &m.IsDiscussionMirror)
 	m.Deleted = deletedAt != nil
 	if effect != nil {
 		m.Effect = *effect

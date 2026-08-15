@@ -159,6 +159,10 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	// Realtime: раскрываем баббл только на устройствах покупателя (медиа не должно
 	// утечь другим участникам) — кадром paid_media_unlock с полным медиа. Логируем
 	// в его же апдейт-лог, чтобы разблокировка доехала и через /sync (плотный pts).
-	_ = i.logAndPublish(ctx, []int64{userID}, "paid_media_unlock", messageUpdatePayload(msg))
+	// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot):
+	// платное медиа может быть и на комментарии, чокпоинт применяем безусловно.
+	unlockOut := messageUpdatePayload(msg)
+	unlockOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+	_ = i.logAndPublish(ctx, []int64{userID}, "paid_media_unlock", unlockOut)
 	return msg, bal, nil
 }

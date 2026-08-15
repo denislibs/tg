@@ -36,6 +36,10 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 	}
 	var msg domain.Message
 	var pts int64
+	// Зеркало поста (если у канала есть обсуждение) — доставляется участникам
+	// группы обсуждения ПОСЛЕ коммита, тем же publishMessageDelivery, что и
+	// обычная отправка (см. mirrorChannelPost/fanout.go).
+	var mirrorDeliv *mirrorDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		seq, e := i.msgs.NextSeq(ctx, channelID)
 		if e != nil {
@@ -48,6 +52,13 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 			return e
 		}
 		msg = m
+		// Зеркало поста в группе обсуждения — в той же транзакции: пост без
+		// зеркала остался бы без треда комментариев.
+		md, e := i.mirrorChannelPost(ctx, m)
+		if e != nil {
+			return e
+		}
+		mirrorDeliv = md
 		payload, _ := json.Marshal(channelPostPayload(m, actorID))
 		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
 		return e
@@ -59,6 +70,10 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 	// gates it against the per-channel cursor (same envelope /difference replays).
 	if i.chPub != nil {
 		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", channelPostPayload(msg, actorID), pts))
+	}
+	if mirrorDeliv != nil {
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	return msg, nil
 }

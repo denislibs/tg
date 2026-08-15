@@ -272,7 +272,11 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	// thread_root_id наружу — id поста (messageJSONOut, единый чокпоинт,
+	// см. usecase/chat/discussion_mirror.go): внутри PostComment комментарий
+	// тредится на id зеркала поста в группе обсуждения, но клиент про
+	// зеркало ничего не знает и сверяет thread_root_id с постом, который открыл.
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.uc, m))
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
@@ -292,10 +296,7 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.uc, msgs)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
