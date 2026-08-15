@@ -27,6 +27,13 @@ tools/.tg_session*
 tools/.tg.env
 
 # Сами наборы качает tools/fetch_stickers.py — это гигабайты, в git их нет.
-# В репо остаётся duck: образец раскладки для seed-stickers и данные для тестов.
+# Два каталога остаются в репо целиком и потому исключены из правила:
+#   duck          — образец раскладки для seed-stickers и данные для тестов;
+#   animated_emoji — сид больших анимированных эмодзи (7 lottie-json, их
+#                    рендерит BigEmojiBubble). Без исключения каталог был
+#                    полутрекнутым: старые файлы в git, любой новый молча
+#                    игнорируется, а после регенерации каталог закоммитился бы
+#                    пустым — и большие эмодзи перестали бы анимироваться.
 backend/assets/stickers/*
 !backend/assets/stickers/duck/
+!backend/assets/stickers/animated_emoji/

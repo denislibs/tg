@@ -35,10 +35,16 @@ function stubFetch(contentType: string) {
 }
 
 /** Настоящий Response с телом-потоком: lottie-ветка снимает gzip через DecompressionStream. */
-function stubFetchTgs(body: Uint8Array, contentType: string) {
+function stubFetchTgs(body: ArrayBuffer, contentType: string) {
   const fetchMock = vi.fn(async () => new Response(body, { headers: { 'content-type': contentType } }))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+/** .tgs — gzip поверх lottie-json (ровно то, чем Telegram отдаёт стикеры). */
+function tgsOf(json: unknown): ArrayBuffer {
+  const buf = gzipSync(Buffer.from(JSON.stringify(json)))
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 }
 
 const LOTTIE = { v: '5.5.7', fr: 60, layers: [] }
@@ -76,7 +82,7 @@ describe('StickerMedia', () => {
   // оставляло прогон зелёным, а каждый .tgs уходил в image-ветку — битые
   // квадраты вместо стикеров.
   it('tgs (application/x-tgsticker): снимает gzip и отдаёт разобранный lottie движку', async () => {
-    const fetchMock = stubFetchTgs(gzipSync(Buffer.from(JSON.stringify(LOTTIE))), 'application/x-tgsticker')
+    const fetchMock = stubFetchTgs(tgsOf(LOTTIE), 'application/x-tgsticker')
     const { container } = render(<StickerMedia mediaId={107} width={200} height={200} autoplay loop />)
 
     await waitFor(() => expect(loadAnimationWorker).toHaveBeenCalledTimes(1))

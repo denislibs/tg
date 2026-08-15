@@ -1,8 +1,10 @@
 // src/core/managers/stickersManager.ts
 // Тонкие REST-обёртки над бэкенд-эндпоинтами стикеров и GIF (/sticker-sets,
 // /stickers, /gifs — домен общий, tweb тоже держит их в одной панели).
-// Файл стикера лежит в media: mime 'application/json' — lottie-json,
-// image/webp|png — статичный; URL клиент строит сам (core/mediaUrl).
+// Файл стикера лежит в media: mime 'application/json' — несжатый lottie-json,
+// 'application/x-tgsticker' — он же под gzip (.tgs, так отдаёт Telegram — им
+// залиты все выгруженные наборы; разбор — core/stickers/tgs), 'video/webm' —
+// видео-стикер, image/webp|png — статичный. URL клиент строит сам (core/mediaUrl).
 import type { RestClient } from '../net/restClient'
 
 /**

@@ -29,8 +29,20 @@ import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import { isLottieMime } from '../../core/stickers/tgs'
 import s from './MessageRow.module.scss'
 
-// Stable handler bundle the feed/rows close over (identities never change — see
-// Chat's useEvent wrappers), so passing it through doesn't bust memo.
+// Stable handler bundle the feed/rows close over (identities are `useEvent`
+// wrappers in Chat), so passing it through doesn't bust memo.
+//
+// ОДНО исключение, и оно осознанное: `sendSticker` — не колбэк, а колбэк ИЛИ
+// undefined, и это несёт информацию, а не только действие. `undefined` значит
+// «слать стикеры в этом чате нельзя» (канал, секретный чат, нет прав на медиа),
+// и по нему `StickerSetModal` рисует сетку read-only — аффорданс не изображает
+// того, чего нет. Права чата доезжают асинхронно, поэтому на их приходе
+// `canSendStickers` (Chat.tsx) флипается, `feedFns` пересобирается и лента
+// перерисовывается ОДИН раз. Спрятать флип в стабильный `useEvent` («колбэк
+// есть всегда, гейт внутри») нельзя: тогда витрина не отличит «можно» от
+// «нельзя» и стала бы предлагать отправку, которая молча ничего не делает, —
+// пришлось бы завести второй проп с ровно тем же флипом. Разовая перерисовка
+// на смене прав дешевле обоих вариантов.
 export interface FeedFns {
   openSender: (senderId: number, fallbackName: string) => void
   playVoice: (mediaId: number) => void
