@@ -235,8 +235,11 @@ func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (
 	in.SetChannelPublisher(fpub)
 	// Media-фикстура для тестов Send с медиа (TestSendToChannel_CreatesMirror):
 	// mediaID=42 принадлежит пользователю 7 — стандартному создателю канала
-	// во всех тестах этого пакета.
+	// во всех тестах этого пакета. 101/102 — элементы альбома в
+	// TestAlbum_MirrorsAllElements_SingleThread (discussion_mirror_test.go).
 	s.seedMedia(42, 7)
+	s.seedMedia(101, 7)
+	s.seedMedia(102, 7)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.
 	fg.onCreate = func(id int64) {

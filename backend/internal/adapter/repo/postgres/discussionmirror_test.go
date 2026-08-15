@@ -328,3 +328,88 @@ func TestMessages_PostsByMirrors(t *testing.T) {
 		t.Fatal("PostsByMirrors принял обычный комментарий за зеркало")
 	}
 }
+
+// Альбом (общий grouped_id): зеркалится КАЖДЫЙ элемент (иначе альбом в
+// группе обсуждения приедет обрезанным), но тред — один, на зеркале ПЕРВОГО
+// (минимальный id) элемента группы. MirrorByPost/MirrorsByPosts для любого
+// элемента альбома обязаны отдавать id зеркала именно первого; собственная
+// же строка-зеркало второго элемента при этом должна существовать (её ищет
+// MirrorOfExactPost — без коллапса в корень).
+func TestMessages_MirrorByPost_Album(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	groups := NewGroupRepo(pool)
+	ctx := context.Background()
+
+	u := seedUser(t, pool, "+7908")
+	ch, _ := groups.CreateMultiMember(ctx, "channel", "Chan", "", "", true, u)
+	_ = groups.AddMember(ctx, ch, u, domain.RoleCreator, domain.AllRights)
+	disc, _ := groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, u)
+	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
+	_ = groups.SetDiscussion(ctx, ch, disc)
+
+	grouped := "g1"
+	seq1, _ := msgs.NextSeq(ctx, ch)
+	post1, err := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq1, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq2, _ := msgs.NextSeq(ctx, ch)
+	post2, err := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq2, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post1.ID >= post2.ID {
+		t.Fatalf("ожидался возрастающий id (post1=%d < post2=%d) — тест полагается на порядок вставки", post1.ID, post2.ID)
+	}
+
+	mseq1, _ := msgs.NextSeq(ctx, disc)
+	mirror1, err := msgs.Insert(ctx, domain.Message{
+		ChatID: disc, Seq: mseq1, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped,
+		SendAsChatID: &ch, FwdFromChatID: &ch, FwdFromMsgID: &post1.ID, IsDiscussionMirror: true,
+	})
+	if err != nil {
+		t.Fatalf("зеркало первого элемента: %v", err)
+	}
+	mseq2, _ := msgs.NextSeq(ctx, disc)
+	mirror2, err := msgs.Insert(ctx, domain.Message{
+		ChatID: disc, Seq: mseq2, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped,
+		SendAsChatID: &ch, FwdFromChatID: &ch, FwdFromMsgID: &post2.ID, IsDiscussionMirror: true,
+	})
+	if err != nil {
+		t.Fatalf("зеркало второго элемента: %v", err)
+	}
+
+	// MirrorByPost для ЛЮБОГО элемента альбома отдаёт зеркало ПЕРВОГО.
+	r1, err := msgs.MirrorByPost(ctx, ch, post1.ID)
+	if err != nil || r1 != mirror1.ID {
+		t.Fatalf("MirrorByPost(post1) = %d, %v; want %d", r1, err, mirror1.ID)
+	}
+	r2, err := msgs.MirrorByPost(ctx, ch, post2.ID)
+	if err != nil || r2 != mirror1.ID {
+		t.Fatalf("MirrorByPost(post2) = %d, %v; want зеркало первого элемента %d (получен корень своего же зеркала %d — тред не един)", r2, err, mirror1.ID, mirror2.ID)
+	}
+
+	// MirrorsByPosts — та же коллапсирующая логика, батчем.
+	m, err := msgs.MirrorsByPosts(ctx, ch, []int64{post1.ID, post2.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m[post1.ID] != mirror1.ID {
+		t.Fatalf("MirrorsByPosts[post1] = %d, want %d", m[post1.ID], mirror1.ID)
+	}
+	if m[post2.ID] != mirror1.ID {
+		t.Fatalf("MirrorsByPosts[post2] = %d, want зеркало первого элемента %d", m[post2.ID], mirror1.ID)
+	}
+
+	// Но своя строка-зеркало у второго элемента реально существует — альбом
+	// в группе не обрезан. MirrorOfExactPost её находит без коллапса.
+	own1, err := msgs.MirrorOfExactPost(ctx, ch, post1.ID)
+	if err != nil || own1 != mirror1.ID {
+		t.Fatalf("MirrorOfExactPost(post1) = %d, %v; want %d", own1, err, mirror1.ID)
+	}
+	own2, err := msgs.MirrorOfExactPost(ctx, ch, post2.ID)
+	if err != nil || own2 != mirror2.ID {
+		t.Fatalf("MirrorOfExactPost(post2) = %d, %v; want %d (собственное зеркало второго элемента отсутствует — альбом обрезан)", own2, err, mirror2.ID)
+	}
+}

@@ -248,9 +248,25 @@ type MessageRepo interface {
 	// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
 	// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
 	// считается: она без флага is_discussion_mirror.
+	//
+	// Альбом (сообщения с общим grouped_id): тред у него один, на зеркале
+	// ПЕРВОГО (минимальный id) элемента группы — поэтому для любого элемента
+	// альбома MirrorByPost отдаёт id ОДНОГО И ТОГО ЖЕ зеркала (корня), а не
+	// зеркала конкретно этого элемента. Для «есть ли у ЭТОГО конкретного
+	// сообщения собственная строка-зеркало» (нужно mirrorChannelPost для
+	// идемпотентности вставки — иначе второй и последующие элементы альбома
+	// решат, что они «уже зеркалены» через зеркало первого, и не заведут
+	// СВОИХ строк, альбом в группе обсуждения приедет обрезанным) — см.
+	// MirrorOfExactPost.
 	MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error)
-	// MirrorsByPosts — батч того же резолва: postID -> id зеркала. Посты без
-	// зеркала в карту не попадают.
+	// MirrorOfExactPost — как MirrorByPost, но БЕЗ коллапса альбома в корень:
+	// возвращает id зеркала строго этого postID (0, если своей строки-зеркала
+	// у него нет). Нужен только для идемпотентности вставки (mirrorChannelPost)
+	// — все read-пути треда используют MirrorByPost/MirrorsByPosts.
+	MirrorOfExactPost(ctx context.Context, channelID, postID int64) (int64, error)
+	// MirrorsByPosts — батч того же резолва, что и MirrorByPost (включая
+	// коллапс альбома в корень): postID -> id зеркала. Посты без зеркала в
+	// карту не попадают.
 	MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error)
 	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
 	// сообщений (это могут быть id зеркал, обычных сообщений или корней

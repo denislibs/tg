@@ -285,3 +285,74 @@ func TestApproveSuggestedPost_ToChannelWithDiscussion_CreatesMirror(t *testing.T
 		t.Fatal("зеркало не создано для одобренного предложенного поста")
 	}
 }
+
+// Альбом: зеркалится каждый элемент, но тред — один, на зеркале первого.
+func TestAlbum_MirrorsAllElements_SingleThread(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	m1 := int64(101)
+	m2 := int64(102)
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r1, err := i.msgs.MirrorByPost(ctx, ch, a1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := i.msgs.MirrorByPost(ctx, ch, a2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1 == 0 {
+		t.Fatal("зеркало первого элемента альбома не создано")
+	}
+	if r1 != r2 {
+		t.Fatalf("у альбома два корня треда: %d и %d — ожидался один (зеркало первого элемента)", r1, r2)
+	}
+
+	// но в группе лежат ОБА элемента — альбом не должен приехать обрезанным.
+	// MirrorByPost/MirrorsByPosts коллапсируют тред в корень (r1==r2 выше),
+	// но у КАЖДОГО элемента альбома обязана быть СВОЯ физическая строка-
+	// зеркало — иначе группа реально получит только один кадр из альбома.
+	// Проверяем это через MirrorOfExactPost (без коллапса в корень) — именно
+	// её использует mirrorChannelPost для идемпотентности вставки; используй
+	// он здесь коллапсирующий MirrorByPost, второй элемент решил бы, что уже
+	// зеркалён (через зеркало первого), и не завёл бы своей строки.
+	own1, err := i.msgs.MirrorOfExactPost(ctx, ch, a1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own2, err := i.msgs.MirrorOfExactPost(ctx, ch, a2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own1 == 0 || own2 == 0 {
+		t.Fatalf("у элемента альбома нет собственного зеркала: own1=%d own2=%d — альбом в группе обрезан", own1, own2)
+	}
+	if own1 == own2 {
+		t.Fatalf("оба элемента альбома делят одну строку-зеркало (own=%d) — второй кадр альбома не попал в группу", own1)
+	}
+	if own1 != r1 {
+		t.Fatalf("собственное зеркало первого элемента (%d) не совпадает с корнем треда (%d)", own1, r1)
+	}
+
+	root, _ := i.msgs.GetByID(ctx, r1)
+	if root.GroupedID == nil || *root.GroupedID != "g1" {
+		t.Fatalf("зеркало потеряло grouped_id: %v", root.GroupedID)
+	}
+	second, _ := i.msgs.GetByID(ctx, own2)
+	if second.GroupedID == nil || *second.GroupedID != "g1" {
+		t.Fatalf("зеркало второго элемента альбома потеряло grouped_id: %v", second.GroupedID)
+	}
+}

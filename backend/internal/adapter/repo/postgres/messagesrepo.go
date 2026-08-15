@@ -810,7 +810,41 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 // одного поста в разных (старой и новой) группах. Без этого условия резолв
 // мог бы найти зеркало в уже отвязанной группе. Пользовательская пересылка
 // того же поста зеркалом не считается: она без флага is_discussion_mirror.
+//
+// Альбом (сообщения с общим grouped_id) зеркалится целиком — иначе альбом в
+// группе обсуждения приедет обрезанным, — но тред у него один: корнем
+// считается зеркало ПЕРВОГО элемента группы (минимальный id среди сообщений
+// с этим grouped_id в канале). Поэтому для любого элемента альбома резолв
+// сначала находит корень (CTE root), а уже потом ищет его зеркало — как
+// getMainGroupedMessage в tweb.
 func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx,
+		`WITH root AS (
+			SELECT COALESCE(
+				(SELECT MIN(g.id) FROM messages g
+				  WHERE g.chat_id = p.chat_id AND g.grouped_id = p.grouped_id AND p.grouped_id IS NOT NULL),
+				p.id) AS id
+			FROM messages p WHERE p.id = $2
+		 )
+		 SELECT m.id FROM messages m, root
+		 WHERE m.fwd_from_chat_id=$1 AND m.fwd_from_msg_id=root.id AND m.is_discussion_mirror AND m.deleted_at IS NULL
+		   AND m.chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
+		channelID, postID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// MirrorOfExactPost — как MirrorByPost, но БЕЗ коллапса альбома в корень
+// группы: ищет строку-зеркало строго этого postID. Нужен только
+// mirrorChannelPost для идемпотентности вставки — если бы он использовал
+// MirrorByPost, второй и последующие элементы альбома видели бы «зеркало уже
+// есть» (зеркало ПЕРВОГО элемента) и не заводили бы СВОИХ строк — альбом в
+// группе обсуждения приехал бы обрезанным.
+func (r *MessagesRepo) MirrorOfExactPost(ctx context.Context, channelID, postID int64) (int64, error) {
 	q := querier(ctx, r.pool)
 	var id int64
 	err := q.QueryRow(ctx,
@@ -825,8 +859,9 @@ func (r *MessagesRepo) MirrorByPost(ctx context.Context, channelID, postID int64
 }
 
 // MirrorsByPosts — батч того же резолва (см. MirrorByPost про ограничение
-// текущей группой обсуждения): postID -> id зеркала. Посты без зеркала в
-// карту не попадают.
+// текущей группой обсуждения и про правило «один тред на альбом»): postID ->
+// id зеркала корня его группы (для одиночного поста — зеркало самого себя).
+// Посты без зеркала в карту не попадают.
 func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
 	if len(postIDs) == 0 {
@@ -834,9 +869,17 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 	}
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT fwd_from_msg_id, id FROM messages
-		 WHERE fwd_from_chat_id=$1 AND fwd_from_msg_id = ANY($2) AND is_discussion_mirror AND deleted_at IS NULL
-		   AND chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
+		`WITH targets AS (
+			SELECT p.id AS post_id, COALESCE(
+				(SELECT MIN(g.id) FROM messages g
+				  WHERE g.chat_id = p.chat_id AND g.grouped_id = p.grouped_id AND p.grouped_id IS NOT NULL),
+				p.id) AS root_id
+			FROM messages p WHERE p.id = ANY($2)
+		 )
+		 SELECT t.post_id, m.id FROM targets t
+		 JOIN messages m ON m.fwd_from_chat_id=$1 AND m.fwd_from_msg_id=t.root_id
+		 WHERE m.is_discussion_mirror AND m.deleted_at IS NULL
+		   AND m.chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`,
 		channelID, postIDs)
 	if err != nil {
 		return nil, err
@@ -858,6 +901,16 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 // конкретной строки-зеркала, а не «текущее зеркало канала» — ограничение
 // chat_id=discussion_chat_id тут не нужно и не действует: зеркало уже
 // физически существует по этому id, привязку канала переигрывать незачем.
+//
+// Согласованность с правилом «один тред на альбом» здесь не требует
+// отдельной логики: MirrorByPost/MirrorsByPosts для ЛЮБОГО элемента альбома
+// теперь резолвят зеркало КОРНЯ (fwd_from_msg_id = id первого элемента), а не
+// зеркало самого элемента. Значит thread_root_id, который клиент получает и
+// потом присылает назад, всегда указывает на строку-зеркало, чей
+// fwd_from_msg_id уже равен id первого элемента — простой обратный SELECT по
+// PK возвращает ровно его. «Чужие» зеркала прочих элементов альбома (не
+// первого) в качестве thread_root_id наружу никогда не отдаются, так что их
+// сюда и не передадут.
 func (r *MessagesRepo) PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
 	if len(ids) == 0 {
