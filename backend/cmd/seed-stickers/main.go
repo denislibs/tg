@@ -1,6 +1,7 @@
 // seed-stickers заливает наборы стикеров из assets/stickers/<slug>/ в БД и
-// MinIO (env те же, что у сервера: DATABASE_URL, MINIO_*). Идемпотентно:
-// существующий slug пропускается целиком, так что можно гонять при каждом деплое.
+// MinIO (env те же, что у сервера: DATABASE_URL, MINIO_*). Идемпотентно, так что
+// можно гонять при каждом деплое: существующему набору стикеры не перезаливаются,
+// а недостающие метаданные (rank трендов, обложка) доставляются — см. seedSet.
 //
 //	go run ./cmd/seed-stickers            # каталоги из ./assets/stickers
 //	go run ./cmd/seed-stickers -dir path  # свой каталог с наборами
@@ -129,11 +130,12 @@ func run(dir string) error {
 		return err
 	}
 	ranks := loadRanks(dir)
+	upload := func(ctx context.Context, path string) (int64, error) { return uploadFile(ctx, mediaUC, path) }
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		if err := seedSet(ctx, stickersUC, mediaUC, dir, e.Name(), ranks[e.Name()]); err != nil {
+		if err := seedSet(ctx, stickersUC, upload, dir, e.Name(), ranks[e.Name()]); err != nil {
 			return fmt.Errorf("набор %s: %w", e.Name(), err)
 		}
 	}
@@ -162,14 +164,32 @@ func uploadFile(ctx context.Context, mediaUC *usecasemedia.Interactor, path stri
 	return m.ID, nil
 }
 
-func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaUC *usecasemedia.Interactor, dir, slug string, rank int) error {
-	if _, _, err := stickersUC.SetBySlug(ctx, slug); err == nil {
-		log.Printf("набор %s уже есть — пропускаю", slug)
-		return nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
-		return err
-	}
+// setSeeder — та часть usecase стикеров, которой пользуется seedSet. Узкий
+// интерфейс вместо *usecasestickers.Interactor нужен затем, что вся логика
+// идемпотентности сида живёт в seedSet, и её надо проверять тестом без
+// Postgres и MinIO (cmd/seed-stickers/main_test.go).
+type setSeeder interface {
+	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, []domain.Sticker, error)
+	CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error)
+	AddSticker(ctx context.Context, ownerID, setID, mediaID int64, emoji string) (domain.Sticker, error)
+	SetRank(ctx context.Context, setID int64, rank int) error
+	SetCover(ctx context.Context, setID, mediaID int64) error
+}
 
+// uploadFunc — заливка одного файла набора в media; в бою это uploadFile поверх
+// usecase медиа, в тесте — счётчик.
+type uploadFunc func(ctx context.Context, path string) (int64, error)
+
+// seedSet заливает набор и приводит его метаданные (rank/обложка) к тому, что
+// написано в выгрузке.
+//
+// Идемпотентность здесь построчная, а не «набор целиком»: существующему набору
+// стикеры не перезаливаются, но rank и обложка проставляются НА КАЖДОМ прогоне.
+// Иначе прерванный прогон (а он прерывается — это гигабайты файлов) оставлял бы
+// уже созданные наборы с rank = 0 и без обложки навсегда: повторный запуск
+// упирался бы в ранний возврат «набор уже есть», и порядок панели тихо
+// разъезжался бы с Telegram.
+func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug string, rank int) error {
 	raw, err := os.ReadFile(filepath.Join(dir, slug, "meta.json"))
 	if err != nil {
 		return err
@@ -179,36 +199,46 @@ func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaU
 		return err
 	}
 
-	// Владелец сид-наборов — сервисный аккаунт: он есть в любой БД (миграция
-	// 0014) и наборы не окажутся «ничьими».
-	set, err := stickersUC.CreateSet(ctx, domain.ServiceUserID, slug, meta.Title, meta.Kind)
-	if err != nil {
-		return err
-	}
-	for _, s := range meta.Stickers {
-		mediaID, err := uploadFile(ctx, mediaUC, filepath.Join(dir, slug, s.File))
+	set, _, err := sets.SetBySlug(ctx, slug)
+	switch {
+	case err == nil:
+		log.Printf("набор %s уже есть — стикеры не перезаливаю", slug)
+	case errors.Is(err, domain.ErrNotFound):
+		// Владелец сид-наборов — сервисный аккаунт: он есть в любой БД (миграция
+		// 0014) и наборы не окажутся «ничьими».
+		set, err = sets.CreateSet(ctx, domain.ServiceUserID, slug, meta.Title, meta.Kind)
 		if err != nil {
 			return err
 		}
-		if _, err := stickersUC.AddSticker(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji); err != nil {
-			return err
+		for _, s := range meta.Stickers {
+			mediaID, err := upload(ctx, filepath.Join(dir, slug, s.File))
+			if err != nil {
+				return err
+			}
+			if _, err := sets.AddSticker(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji); err != nil {
+				return err
+			}
 		}
+		log.Printf("набор %s (%s, %d стикеров) залит", slug, meta.Kind, len(meta.Stickers))
+	default:
+		return err
 	}
-	log.Printf("набор %s (%s, %d стикеров) залит", slug, meta.Kind, len(meta.Stickers))
 
-	if rank > 0 {
-		if err := stickersUC.SetRank(ctx, set.ID, rank); err != nil {
+	if rank > 0 && set.Rank != rank {
+		if err := sets.SetRank(ctx, set.ID, rank); err != nil {
 			return err
 		}
 	}
 	// Обложка — такое же медиа, как стикер, но в наборе не числится: это
 	// иконка вкладки панели (tweb stickerSetThumb), а не отправляемый стикер.
-	if meta.Cover != "" {
-		coverID, err := uploadFile(ctx, mediaUC, filepath.Join(dir, slug, meta.Cover))
+	// Заливаем её, только пока её нет: файл уже в media, и повторная заливка
+	// плодила бы его копию на каждом прогоне сида.
+	if meta.Cover != "" && set.CoverMediaID == 0 {
+		coverID, err := upload(ctx, filepath.Join(dir, slug, meta.Cover))
 		if err != nil {
 			return err
 		}
-		if err := stickersUC.SetCover(ctx, set.ID, coverID); err != nil {
+		if err := sets.SetCover(ctx, set.ID, coverID); err != nil {
 			return err
 		}
 	}
