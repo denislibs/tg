@@ -33,7 +33,9 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
       return
     }
     const timer = window.setTimeout(() => {
-      managers.stickers.searchSets(query).then(setResults, () => setResults([]))
+      // covers (превью строки поиска) здесь не нужны — этот экран не рисует
+      // превью-ячейки, только список наборов с кнопкой install/uninstall.
+      managers.stickers.searchSets(query).then((r) => setResults(r.sets), () => setResults([]))
     }, 300)
     return () => window.clearTimeout(timer)
   }, [q, managers])

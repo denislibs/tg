@@ -38,8 +38,8 @@ function makeManagers(mine: StickerSet[] = []) {
     mySets: vi.fn().mockResolvedValue(mine),
     recent: vi.fn().mockResolvedValue([]),
     faved: vi.fn().mockResolvedValue([]),
-    featuredSets: vi.fn().mockResolvedValue([duck]),
-    searchSets: vi.fn().mockResolvedValue([]),
+    featuredSets: vi.fn().mockResolvedValue({ sets: [duck], covers: new Map() }),
+    searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     setBySlug: vi.fn(async (slug: string) => {
       const set = slug === duck.slug ? duck : croco
       return { set, stickers: stickersOf(set.id) }

@@ -2,10 +2,10 @@
 // приоритезации из `components/lazyLoadQueue.ts` (`onVisibilityChange`/`getItem`):
 // одна очередь на экран, из которой одновременно исполняется не больше
 // `parallelLimit` задач. Использует экран стикеров (`StickersSearchTab`) для
-// ОБОИХ уровней ленивости — запроса состава набора (`setBySlug`) и загрузки
-// самих превью (внутри `StickerMedia`), кладя их в одну и ту же очередь: лимит
-// общий на экран, а не свой у каждого уровня — как в tweb, где `Stickers`
-// заводит один `new LazyLoadQueue()` и отдаёт его каждому `wrapSticker`
+// загрузки ФАЙЛОВ превью (внутри `StickerMedia`) — состав набора (covers)
+// приезжает одним пакетом с самой выдачей (Task 2 covered sets), через
+// очередь не идёт — как в tweb, где `Stickers` заводит один
+// `new LazyLoadQueue()` и отдаёт его каждому `wrapSticker`
 // (`sidebarRight/tabs/stickers.tsx:25,77`).
 //
 // PARALLEL_LIMIT = 8 — константа из tweb (`lazyLoadQueueBase.ts:6`), не
@@ -30,9 +30,9 @@ export interface LazyLoadQueue {
   /**
    * снять невыполненные задачи (tweb `clear()` — `this.queue.length = 0`) —
    * КАЖДУЮ явно реджектит (не просто роняет со счетов молча): вызывающий код
-   * мемоизирует промис `push()` в кэше (`setStickersCache`/`StickerMedia`'s
-   * `cache`), и подвисший НАВСЕГДА промис отравил бы кэш до перезагрузки
-   * вкладки — see `StickersSearchTab.tsx` докблок у `queue.clear()`. Реджект
+   * мемоизирует промис `push()` в кэше (`StickerMedia`'s `cache`), и
+   * подвисший НАВСЕГДА промис отравил бы кэш до перезагрузки вкладки —
+   * see `StickersSearchTab.tsx` докблок у `queue.clear()`. Реджект
    * будит существующие `.catch(() => cache.delete(...))` у этих кэшей, и
    * следующий запрос того же ключа грузит заново, а не наследует вечно
    * pending промис. Уже исполняющиеся задачи не отменяются — доигрывают сами

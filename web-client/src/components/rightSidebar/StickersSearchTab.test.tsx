@@ -11,6 +11,10 @@
 // Поведение: featured при пустом запросе, searchSets по вводу (дебаунс),
 // Add → install (кнопка disabled на время запроса, потом "Added"+gray),
 // клик по превью — onPickSticker; открытие извне — openStickersSearchTab.
+// Превью строки (Task 2 covered sets) идёт из carты `covers`, приехавшей
+// ОДНИМ пакетом с самой выдачей (featuredSets/searchSets) — не отдельным
+// setBySlug на строку; setBySlug в моках ниже остаётся только ради
+// StickerSetModal (клик по строке вне превью/кнопки её открывает).
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import StickersSearchTab, { openStickersSearchTab } from './StickersSearchTab'
@@ -48,16 +52,22 @@ beforeAll(() => {
 vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
 
 let slugSeq = 0
-// slug уникален на тест: кэш стикеров набора в компоненте — модульный, по slug.
+// slug уникален на тест: StickerSetModal, открытый кликом по строке, кэширует
+// свой запрос по slug на модуль.
 const makeSet = (id: number, title: string, count = 40) => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker' as const, count })
 const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '🦆', width: 512, height: 512, mime: 'application/json', thumb: '' })
 
 function makeManagers(over: Record<string, unknown> = {}) {
+  const duck = makeSet(1, 'Duck')
   const fns = {
     mySets: vi.fn().mockResolvedValue([]),
-    featuredSets: vi.fn().mockResolvedValue([makeSet(1, 'Duck')]),
-    searchSets: vi.fn().mockResolvedValue([]),
-    setBySlug: vi.fn().mockResolvedValue({ set: makeSet(1, 'Duck'), stickers: [1, 2, 3, 4, 5, 6, 7].map(makeSticker) }),
+    // covers — превью строки, приезжает ОДНИМ пакетом с самой выдачей
+    // (Task 2): семь стикеров набора, строка покажет первые min(5, count).
+    featuredSets: vi.fn().mockResolvedValue({ sets: [duck], covers: new Map([[duck.id, [1, 2, 3, 4, 5, 6, 7].map(makeSticker)]]) }),
+    searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
+    // setBySlug строке больше не нужен (превью — из covers) — используется
+    // только StickerSetModal, когда клик по строке открывает полный набор.
+    setBySlug: vi.fn().mockResolvedValue({ set: duck, stickers: [1, 2, 3, 4, 5, 6, 7].map(makeSticker) }),
     install: vi.fn().mockResolvedValue(undefined),
     uninstall: vi.fn().mockResolvedValue(undefined),
     // экран GIF (kind-тест ниже рендерит оба экрана через PopupHost)
@@ -155,8 +165,7 @@ describe('StickersSearchTab — разметка tweb', () => {
   it('ввод запроса — searchSets (дебаунс); клик по превью — onPickSticker', async () => {
     const searched = makeSet(9, 'Utya', 27)
     const { managers, fns } = makeManagers({
-      searchSets: vi.fn().mockResolvedValue([searched]),
-      setBySlug: vi.fn().mockResolvedValue({ set: searched, stickers: [makeSticker(1)] }),
+      searchSets: vi.fn().mockResolvedValue({ sets: [searched], covers: new Map([[searched.id, [makeSticker(1)]]]) }),
     })
     const onPickSticker = vi.fn()
     renderTab({ onPickSticker }, managers)

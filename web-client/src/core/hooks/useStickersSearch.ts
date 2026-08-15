@@ -8,11 +8,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
 import { useManagers } from './useManagers'
 import { toggleStickerSet } from '../stickers/toggleStickerSet'
-import type { StickerSet } from '../managers/stickersManager'
+import type { Covers, StickerSet } from '../managers/stickersManager'
 
 export function useStickersSearch(query: string) {
   const managers = useManagers()
   const [sets, setSets] = useState<StickerSet[]>([])
+  // Превью строк (covered sets, Task 2) — первые стикеры каждого набора,
+  // приехавшие ОДНИМ запросом вместе с самой выдачей. Пустая карта — до
+  // первого ответа/при пустой выдаче; отдельного набора для конкретного
+  // set.id может не быть (набор без стикеров) — строка тогда рисует пустые
+  // ячейки-заглушки (см. StickersSearchTab).
+  const [covers, setCovers] = useState<Covers>(new Map())
   const [installedIds, setInstalledIds] = useState<ReadonlySet<number>>(new Set())
   const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(new Set())
   // Скелетон экрана держится, пока идёт актуальный запрос (Task 6 «скелетоны
@@ -57,8 +63,8 @@ export function useStickersSearch(query: string) {
       setLoading(true)
       const p = q ? managers.stickers.searchSets(q) : managers.stickers.featuredSets()
       p.then(
-        (res) => { if (req === reqRef.current) { setSets(res); setLoading(false) } },
-        () => { if (req === reqRef.current) { setSets([]); setLoading(false) } },
+        (res) => { if (req === reqRef.current) { setSets(res.sets); setCovers(res.covers); setLoading(false) } },
+        () => { if (req === reqRef.current) { setSets([]); setCovers(new Map()); setLoading(false) } },
       )
     }
     if (firstRef.current) {
@@ -89,5 +95,5 @@ export function useStickersSearch(query: string) {
       })
   }, [managers, installedIds])
 
-  return { sets, installedIds, busyIds, toggle, loading }
+  return { sets, covers, installedIds, busyIds, toggle, loading }
 }

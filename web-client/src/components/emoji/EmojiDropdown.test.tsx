@@ -316,8 +316,8 @@ describe('EmojiDropdown — кнопка-лупа футера открывае�
   function searchManagers() {
     const { managers, stickers } = makeManagers()
     Object.assign(stickers, {
-      featuredSets: vi.fn(async () => []),
-      searchSets: vi.fn(async () => []),
+      featuredSets: vi.fn(async () => ({ sets: [], covers: new Map() })),
+      searchSets: vi.fn(async () => ({ sets: [], covers: new Map() })),
       searchGifs: vi.fn(async () => ({ gifs: [], next: '' })),
       savedGifs: vi.fn(async () => []),
     })
