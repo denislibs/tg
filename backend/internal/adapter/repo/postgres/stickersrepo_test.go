@@ -508,6 +508,51 @@ func TestStickerPositions(t *testing.T) {
 	}
 }
 
+// AddStickerAt не пересчитывает позицию через max(position)+1 — она берётся
+// из аргумента буквально. Это и есть фикс ревью Task 11: сиду при
+// досидировании дыры в середине набора (стикер удалили) нужно попасть ровно
+// в дыру, а не в хвост — иначе повторный прогон снова находит ту же дыру
+// «недостающей» и плодит дубль на каждом прогоне (сид гоняется при каждом
+// деплое).
+func TestAddStickerAt(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7818")
+
+	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "gap", Title: "G", Kind: "sticker", CreatedBy: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Дыра на позиции 3: заняты 0,1,2,4,5 (стикер позиции 3 будто удалили).
+	for _, pos := range []int{0, 1, 2, 4, 5} {
+		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("gap/%d", pos))
+		if _, err := r.AddStickerAt(ctx, set.ID, mediaID, "🦆", pos); err != nil {
+			t.Fatalf("AddStickerAt(%d): %v", pos, err)
+		}
+	}
+
+	gapMedia := seedStickerMedia(t, pool, owner, "gap/3")
+	added, err := r.AddStickerAt(ctx, set.ID, gapMedia, "🦆", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added.Position != 3 {
+		t.Fatalf("Position = %d, ожидалось 3 — AddStickerAt не должен пересчитывать позицию", added.Position)
+	}
+
+	got, err := r.StickerPositions(ctx, set.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 6 {
+		t.Fatalf("позиций %d, ожидалось 6 — дыра залита, дубля в хвосте нет", len(got))
+	}
+	if _, ok := got[6]; ok {
+		t.Error("позиция 6 занята — AddStickerAt уехал в хвост вместо дыры")
+	}
+}
+
 // Индексы стикеров (миграция 0094). Тест пинит два решения, а не «схема как
 // написана»: (1) stickers.media_id обязан быть проиндексирован — по нему идут
 // SetByMediaID (клик по стикеру в чате) и IsStickerMedia (каждая отправка

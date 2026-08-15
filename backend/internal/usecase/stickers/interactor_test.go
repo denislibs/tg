@@ -118,6 +118,15 @@ func (f *fakeRepo) AddSticker(_ context.Context, s domain.Sticker) (domain.Stick
 	return s, nil
 }
 
+func (f *fakeRepo) AddStickerAt(_ context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextStick++
+	s := domain.Sticker{ID: f.nextStick, SetID: setID, MediaID: mediaID, Emoji: emoji, Position: position}
+	f.stickers[s.ID] = s
+	return s, nil
+}
+
 func (f *fakeRepo) StickerByID(_ context.Context, id int64) (domain.Sticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -98,23 +98,18 @@ func (f *fakeSeeder) CreateSet(_ context.Context, ownerID int64, slug, title, ki
 	return set, nil
 }
 
-func (f *fakeSeeder) AddSticker(_ context.Context, _, setID, mediaID int64, _ string) (domain.Sticker, error) {
+// AddStickerAt — позиция берётся из аргумента буквально, не пересчитывается
+// (как и у реального StickersRepo.AddStickerAt): именно это делает
+// досидирование дыры в середине набора идемпотентным на повторном прогоне.
+func (f *fakeSeeder) AddStickerAt(_ context.Context, _, setID, mediaID int64, _ string, position int) (domain.Sticker, error) {
 	f.stickers = append(f.stickers, mediaID)
 	occ := f.positions[setID]
 	if occ == nil {
 		occ = map[int]struct{}{}
 		f.positions[setID] = occ
 	}
-	// Позиция — max(занятых)+1, как в реальном StickersRepo.AddSticker.
-	pos := -1
-	for p := range occ {
-		if p > pos {
-			pos = p
-		}
-	}
-	pos++
-	occ[pos] = struct{}{}
-	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID, Position: pos}, nil
+	occ[position] = struct{}{}
+	return domain.Sticker{ID: int64(len(f.stickers)), SetID: setID, MediaID: mediaID, Position: position}, nil
 }
 
 func (f *fakeSeeder) StickerPositions(_ context.Context, setID int64) (map[int]struct{}, error) {
@@ -318,4 +313,45 @@ func TestSeedSetFillsMissingPositions(t *testing.T) {
 	}
 	// Обложка уже есть — cover не перезаливаем: 2 заливки — это ровно недостающие
 	// стикеры, ни одной лишней.
+}
+
+// Регрессия ревью Task 11: дыра НЕ с хвоста набора (стикер удалили из
+// середины, а не из конца). AddSticker с автопозицией (max(position)+1)
+// не умеет вставлять в дыру — файл дырявой позиции уехал бы в хвост набора,
+// из-за чего повторный прогон снова находил бы ту же дыру «недостающей» и
+// плодил дубль на КАЖДОМ прогоне (а сид гоняется при каждом деплое).
+// AddStickerAt с явной позицией из meta.json чинит это: второй прогон по
+// уже дозалитому набору обязан быть строгим no-op.
+func TestSeedSetFillsMiddleGapIdempotently(t *testing.T) {
+	dir := t.TempDir()
+	writeSetDirN(t, dir, "utyaduck", 10) // meta.json на 10 файлов: 0..9
+	seeder := newFakeSeeder()
+	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	// Занято всё, кроме позиции 3 (её стикер как будто удалили из середины).
+	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}, 2: {}, 4: {}, 5: {}, 6: {}, 7: {}, 8: {}, 9: {}}
+	uploads := 0
+
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet (1-й прогон): %v", err)
+	}
+	if uploads != 1 {
+		t.Fatalf("uploads после 1-го прогона = %d, ожидался 1 — недостающая позиция 3", uploads)
+	}
+	if _, ok := seeder.positions[7][3]; !ok {
+		t.Fatalf("позиция 3 не залита: %v", seeder.positions[7])
+	}
+	if len(seeder.positions[7]) != 10 {
+		t.Fatalf("positions = %v, ожидалось 10 занятых позиций", seeder.positions[7])
+	}
+
+	// Второй прогон — набор уже полон, ни одной новой заливки быть не должно.
+	if err := seedSet(context.Background(), seeder, countingUpload(&uploads), dir, "utyaduck", 3); err != nil {
+		t.Fatalf("seedSet (2-й прогон): %v", err)
+	}
+	if uploads != 1 {
+		t.Errorf("uploads после 2-го прогона = %d, ожидался 1 — повторный прогон не no-op, плодит дубль", uploads)
+	}
+	if len(seeder.stickers) != 1 {
+		t.Errorf("stickers=%v — второй прогон добавил дубль", seeder.stickers)
+	}
 }

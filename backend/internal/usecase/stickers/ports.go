@@ -22,6 +22,11 @@ type Repo interface {
 	Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error)
 	// AddSticker добавляет стикер в конец набора (position назначает хранилище).
 	AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error)
+	// AddStickerAt добавляет стикер на явную позицию — использует сид
+	// (cmd/seed-stickers), где позиция берётся из meta.json и обязана
+	// совпасть с БД; AddSticker с автопозицией для этого не годится, так как
+	// при дыре в середине набора всегда аппендит в хвост, а не в дыру.
+	AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error)
 	StickerByID(ctx context.Context, id int64) (domain.Sticker, error) // domain.ErrNotFound
 
 	Install(ctx context.Context, userID, setID int64) error   // идемпотентно

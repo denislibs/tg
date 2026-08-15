@@ -168,6 +168,24 @@ func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain
 		s.SetID, s.MediaID, s.Emoji))
 }
 
+// AddStickerAt добавляет стикер на явную позицию (в отличие от AddSticker,
+// который всегда аппендит в конец через max(position)+1). Нужен сиду
+// (cmd/seed-stickers): при досидировании недостающих позиций существующего
+// набора позиция берётся из meta.json, а не назначается хранилищем — если в
+// середине набора есть дыра (стикер удалили), max+1 промахивается мимо дыры
+// и уезжает в хвост, из-за чего повторный прогон сида находит ту же дыру
+// «недостающей» снова и плодит дубль на каждом запуске.
+func (r *StickersRepo) AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+	return scanSticker(querier(ctx, r.pool).QueryRow(ctx,
+		`WITH ins AS (
+		   INSERT INTO stickers (set_id, media_id, emoji, position)
+		   VALUES ($1,$2,$3,$4)
+		   RETURNING id, set_id, media_id, emoji, position
+		 )
+		 SELECT `+stickerCols+` FROM ins st`+stickerMediaJoin,
+		setID, mediaID, emoji, position))
+}
+
 func (r *StickersRepo) StickerByID(ctx context.Context, id int64) (domain.Sticker, error) {
 	s, err := scanSticker(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+stickerCols+` FROM stickers st`+stickerMediaJoin+` WHERE st.id=$1`, id))

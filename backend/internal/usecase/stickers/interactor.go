@@ -185,6 +185,31 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 	return i.repo.AddSticker(ctx, domain.Sticker{SetID: setID, MediaID: mediaID, Emoji: emoji})
 }
 
+// AddStickerAt пополняет набор на явную позицию — те же проверки, что у
+// AddSticker (владелец, существование media), но используется только сидом
+// (cmd/seed-stickers): публичному API взять позицию неоткуда, там позицию
+// назначает хранилище через AddSticker.
+func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int) (domain.Sticker, error) {
+	if len(emoji) > maxEmojiBytes {
+		return domain.Sticker{}, domain.ErrInvalid
+	}
+	set, err := i.repo.SetByID(ctx, setID)
+	if err != nil {
+		return domain.Sticker{}, err
+	}
+	if set.CreatedBy != ownerID {
+		return domain.Sticker{}, domain.ErrForbidden
+	}
+	ok, err := i.repo.MediaExists(ctx, mediaID)
+	if err != nil {
+		return domain.Sticker{}, err
+	}
+	if !ok {
+		return domain.Sticker{}, domain.ErrNotFound
+	}
+	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position)
+}
+
 // SavedGifs — сохранённые GIF пользователя, новые первыми.
 func (i *Interactor) SavedGifs(ctx context.Context, userID int64) ([]domain.SavedGif, error) {
 	return i.repo.SavedGifs(ctx, userID)

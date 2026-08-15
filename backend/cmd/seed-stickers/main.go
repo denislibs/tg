@@ -172,7 +172,12 @@ func uploadFile(ctx context.Context, mediaUC *usecasemedia.Interactor, path stri
 type setSeeder interface {
 	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, []domain.Sticker, error)
 	CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error)
-	AddSticker(ctx context.Context, ownerID, setID, mediaID int64, emoji string) (domain.Sticker, error)
+	// AddStickerAt заливает стикер на явную позицию — а не на «следующую
+	// свободную», как обычный AddSticker: позиция берётся из meta.json и
+	// обязана совпасть с БД буквально, иначе дыра в середине набора (стикер
+	// удалили) даёт неидемпотентность — каждый прогон сида находит ту же дыру
+	// «недостающей» и плодит дубль.
+	AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int) (domain.Sticker, error)
 	SetRank(ctx context.Context, setID int64, rank int) error
 	SetCover(ctx context.Context, setID, mediaID int64) error
 	// StickerPositions — занятые позиции набора; по ним seedSet понимает, каких
@@ -218,12 +223,12 @@ func seedSet(ctx context.Context, sets setSeeder, upload uploadFunc, dir, slug s
 		if err != nil {
 			return err
 		}
-		for _, s := range meta.Stickers {
+		for pos, s := range meta.Stickers {
 			mediaID, err := upload(ctx, filepath.Join(dir, slug, s.File))
 			if err != nil {
 				return err
 			}
-			if _, err := sets.AddSticker(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji); err != nil {
+			if _, err := sets.AddStickerAt(ctx, domain.ServiceUserID, set.ID, mediaID, s.Emoji, pos); err != nil {
 				return err
 			}
 		}
@@ -272,7 +277,7 @@ func fillMissingStickers(ctx context.Context, sets setSeeder, upload uploadFunc,
 		if err != nil {
 			return err
 		}
-		if _, err := sets.AddSticker(ctx, domain.ServiceUserID, setID, mediaID, s.Emoji); err != nil {
+		if _, err := sets.AddStickerAt(ctx, domain.ServiceUserID, setID, mediaID, s.Emoji, pos); err != nil {
 			return err
 		}
 		added++
