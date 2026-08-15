@@ -126,18 +126,33 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 		// потребителя. Зеркалируем все элементы best-effort (ошибка на
 		// одном — не повод обрывать остальные, см. про гонку ниже).
 		var createErr error
+		// Зовём здесь БЕЗ окружающей транзакции (в отличие от PostToChannel/
+		// Send/ForwardMessages/publishApprovedPost) — каждый вызов
+		// mirrorChannelPost уже сам довозит зеркало до pts-лога/unread внутри
+		// СВОЕЙ отдельной транзакции (WithinTx внутри репозиториев по одному
+		// insert/update — автокоммит per-statement вне явной tx), так что
+		// публикация (кадры/кэш) идёт СРАЗУ по возврату, а не после какого-то
+		// внешнего коммита, которого тут нет.
 		if post.GroupedID != nil {
 			album, e := i.msgs.AlbumMessages(ctx, channelID, *post.GroupedID)
 			if e != nil {
 				return domain.Message{}, e
 			}
 			for _, m := range album {
-				if e := i.mirrorChannelPost(ctx, m); e != nil && createErr == nil {
+				md, e := i.mirrorChannelPost(ctx, m)
+				if e != nil && createErr == nil {
 					createErr = e
+				}
+				if md != nil {
+					i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
 				}
 			}
 		} else {
-			createErr = i.mirrorChannelPost(ctx, post)
+			md, e := i.mirrorChannelPost(ctx, post)
+			createErr = e
+			if md != nil {
+				i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+			}
 		}
 		// Гонка: два параллельных первых комментария к одному немигрированному
 		// посту (или альбому) оба увидят root==0 и оба попробуют создать

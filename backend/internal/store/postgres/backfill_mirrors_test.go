@@ -339,3 +339,136 @@ func TestBackfillDiscussionMirrors_CopiesPollID(t *testing.T) {
 		t.Fatalf("poll_id зеркала = %d, ожидалось %d", mirrorPollID, pollID)
 	}
 }
+
+// Блокер 1 (финальное ревью 2026-08-14): альбом × бэкфилл. Старый комментарий
+// висит на ВТОРОМ (не первом) кадре альбома g1 — так тред читается «по
+// старой схеме». Правило «один тред на альбом» (MirrorByPost) резолвит
+// ЛЮБОЙ кадр в зеркало ПЕРВОГО — если бы бэкфилл зеркалировал только кадр,
+// упомянутый в исходной выборке (второй), MirrorByPost(любой кадр) искал бы
+// fwd_from_msg_id=<id первого кадра> и не находил бы ничего: старый
+// комментарий стал бы невидим, а первый НОВЫЙ комментарий дозеркалировал бы
+// альбом и лёг на другой (настоящий) корень — переписка разъехалась бы на
+// два треда. Идемпотентность по факту существования зеркала делает такую
+// ошибку неисправимой повторным прогоном.
+//
+// Проверяем: после ОДНОГО прогона бэкфилла (а) у обоих кадров есть
+// собственное зеркало (альбом не обрезан), (б) MirrorByPost для ЛЮБОГО из
+// двух кадров отдаёт ОДИН И ТОТ ЖЕ корень, (в) старый комментарий виден и
+// висит именно на этом корне.
+func TestBackfillDiscussionMirrors_Album_CommentOnNonFirstFrame(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+
+	var userID, ch, disc, frame1, frame2, commentID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (phone) VALUES ('+79990000006') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, is_public) VALUES ('channel','Chan',true) RETURNING id`).Scan(&ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, is_public) VALUES ('group','Disc',false) RETURNING id`).Scan(&disc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chats SET discussion_chat_id=$2 WHERE id=$1`, ch, disc); err != nil {
+		t.Fatal(err)
+	}
+	// альбом g1: два кадра в канале, frame1 — первый (меньший id).
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,1,$2,'photo','','g1') RETURNING id`,
+		ch, userID).Scan(&frame1); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,2,$2,'photo','','g1') RETURNING id`,
+		ch, userID).Scan(&frame2); err != nil {
+		t.Fatal(err)
+	}
+	if frame1 >= frame2 {
+		t.Fatalf("ожидался frame1 < frame2 (frame1 — первый кадр альбома), получено %d/%d", frame1, frame2)
+	}
+	// старый комментарий висит на ВТОРОМ кадре — не на корне альбома.
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, thread_root_id) VALUES ($1,1,$2,'text','к второму кадру',$3) RETURNING id`,
+		disc, userID, frame2).Scan(&commentID); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := storepostgres.BackfillDiscussionMirrors(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("создано зеркал: %d, ожидалось 2 (оба кадра альбома)", n)
+	}
+
+	// (а) у обоих кадров есть собственное зеркало.
+	var mirror1, mirror2 int64
+	if err := pool.QueryRow(ctx,
+		`SELECT id FROM messages WHERE chat_id=$1 AND is_discussion_mirror AND fwd_from_msg_id=$2`,
+		disc, frame1).Scan(&mirror1); err != nil {
+		t.Fatalf("зеркало первого кадра не создано: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT id FROM messages WHERE chat_id=$1 AND is_discussion_mirror AND fwd_from_msg_id=$2`,
+		disc, frame2).Scan(&mirror2); err != nil {
+		t.Fatalf("зеркало второго кадра не создано: %v", err)
+	}
+	if mirror1 == mirror2 {
+		t.Fatalf("оба кадра альбома делят одну строку-зеркало (%d) — альбом в группе обрезан", mirror1)
+	}
+
+	// (б) MirrorByPost для ЛЮБОГО кадра отдаёт один и тот же корень — зеркало
+	// первого кадра (mirror1), в точности как резолвит usecase-порт (тот же
+	// SQL — CTE root=MIN(id) по grouped_id, см. MessagesRepo.MirrorByPost).
+	rootFor := func(postID int64) int64 {
+		t.Helper()
+		var id int64
+		err := pool.QueryRow(ctx, `
+			WITH root AS (
+				SELECT COALESCE(
+					(SELECT MIN(g.id) FROM messages g
+					  WHERE g.chat_id = p.chat_id AND g.grouped_id = p.grouped_id AND p.grouped_id IS NOT NULL),
+					p.id) AS id
+				FROM messages p WHERE p.id = $2
+			)
+			SELECT m.id FROM messages m, root
+			 WHERE m.fwd_from_chat_id=$1 AND m.fwd_from_msg_id=root.id AND m.is_discussion_mirror AND m.deleted_at IS NULL
+			   AND m.chat_id = (SELECT discussion_chat_id FROM chats WHERE id=$1)`, ch, postID).Scan(&id)
+		if err != nil {
+			t.Fatalf("MirrorByPost(%d): %v", postID, err)
+		}
+		return id
+	}
+	rootViaFrame1 := rootFor(frame1)
+	rootViaFrame2 := rootFor(frame2)
+	if rootViaFrame1 == 0 {
+		t.Fatal("MirrorByPost(frame1) = 0, корень альбома не резолвится")
+	}
+	if rootViaFrame1 != rootViaFrame2 {
+		t.Fatalf("MirrorByPost(frame1)=%d, MirrorByPost(frame2)=%d — два разных корня у одного альбома", rootViaFrame1, rootViaFrame2)
+	}
+	if rootViaFrame1 != mirror1 {
+		t.Fatalf("корень треда (%d) — не зеркало первого кадра (%d)", rootViaFrame1, mirror1)
+	}
+
+	// (в) старый комментарий виден и висит на этом самом корне.
+	var commentRoot int64
+	if err := pool.QueryRow(ctx, `SELECT thread_root_id FROM messages WHERE id=$1`, commentID).Scan(&commentRoot); err != nil {
+		t.Fatal(err)
+	}
+	if commentRoot != rootViaFrame1 {
+		t.Fatalf("комментарий висит на %d, ожидался корень треда %d", commentRoot, rootViaFrame1)
+	}
+
+	// идемпотентность: второй прогон ничего не создаёт.
+	n2, err := storepostgres.BackfillDiscussionMirrors(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n2 != 0 {
+		t.Fatalf("повторный прогон создал %d зеркал, ожидалось 0", n2)
+	}
+}

@@ -67,6 +67,11 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	// a forward fans out one new_message per copy, each with its own cursor.
 	var ptsMaps []map[int64]int64
 	var unreadMaps []map[int64]int64
+	// Зеркала постов канала (parallel to created; nil entry — не было
+	// зеркала для этой копии) — доставляются участникам групп обсуждения
+	// ПОСЛЕ коммита, тем же publishMessageDelivery (см. mirrorChannelPost/
+	// fanout.go).
+	var mirrorDelivs []*mirrorDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		mem, e := i.chats.MemberIDs(ctx, in.ToChatID)
 		if e != nil {
@@ -144,9 +149,11 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
 			// Что считать постом — решает сам хелпер (по типу чата-получателя), не
 			// клиентское ThreadRootID (ForwardMessages его и не проставляет).
-			if e := i.mirrorChannelPost(ctx, msg); e != nil {
+			md, e := i.mirrorChannelPost(ctx, msg)
+			if e != nil {
 				return e
 			}
+			mirrorDelivs = append(mirrorDelivs, md)
 			msg.SenderName = senderName
 			// Медиа-мета в live-кадр — как в Send (иначе файл у получателя
 			// заглушкой «media-N» до перезагрузки истории).
@@ -206,6 +213,15 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				}
 			}
 		}
+	}
+	// Зеркала пересланных постов (для форвардов в канал с обсуждением) —
+	// участникам соответствующих групп обсуждения, тем же путём, что и
+	// обычная отправка (см. mirrorChannelPost/fanout.go).
+	for _, md := range mirrorDelivs {
+		if md == nil {
+			continue
+		}
+		i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
 	}
 	return created, nil
 }

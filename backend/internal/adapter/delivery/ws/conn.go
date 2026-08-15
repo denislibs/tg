@@ -319,6 +319,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				encBody = b
 			}
 		}
+		// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+		// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
+		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
+		threadRoot := c.svc.ResolveThreadRootForSend(ctx, d.ChatID, d.ThreadRootID)
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
@@ -326,7 +330,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
 			GeoTitle: d.GeoTitle, GeoAddress: d.GeoAddress,
 			GeoLivePeriod: d.GeoLivePeriod, GeoHeading: d.GeoHeading,
-			ThreadRootID: d.ThreadRootID,
+			ThreadRootID: threadRoot,
 			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
 			Silent: d.Silent, Effect: d.Effect,
 			PaidMediaPrice: d.PaidMediaPrice,

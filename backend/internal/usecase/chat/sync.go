@@ -26,20 +26,20 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	}
 	// Комментарии: клиент адресует тред id ПОСТА (внешний контракт), а
 	// физически он висит на id ЗЕРКАЛА в группе обсуждения — резолвим перед
-	// запросом к хранилищу (см. resolveThreadRootForQuery). Саму переменную
-	// threadRoot не трогаем: ниже, в исходном виде, она ещё нужна
-	// prependForeignThreadRoot, которая читает id ПОСТА (по нему находит
-	// оригинал в канале, а не зеркало).
+	// запросом к хранилищу (см. resolveThreadRootForQuery). queryRoot (не
+	// исходный threadRoot) идёт и в prependForeignThreadRoot ниже: корневой
+	// бабл треда — это САМО зеркало (см. её комментарий), а зеркало лежит в
+	// ЭТОМ чате под id queryRoot, а не под id поста в канале.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, queryRoot, cleared, tag)
 	if err != nil {
 		return HistoryResult{}, err
 	}
 	// Верх треда достигнут (короткая страница при чтении от新ейших/старее) —
-	// подшиваем корневой пост канала первым сообщением (tweb: пост форварднут
-	// в discussion-группу и открывает тред).
+	// подшиваем корневой бабл треда первым сообщением, если пагинация его не
+	// зацепила (tweb: пост форварднут в discussion-группу и открывает тред).
 	if threadRoot != nil && len(msgs) < limit && addOffset >= 0 {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, *threadRoot, msgs)
+		msgs = i.prependForeignThreadRoot(ctx, chatID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return HistoryResult{}, e
@@ -71,21 +71,41 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
-// prependForeignThreadRoot: корень треда комментариев — пост КАНАЛА (другой
-// чат); в окно треда он подшивается синтетическим seq=0, чтобы встать первым
-// (у форум-топиков корень в том же чате и попадает в выборку сам). Best-effort.
-func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, threadRoot int64, msgs []domain.Message) []domain.Message {
+// prependForeignThreadRoot подшивает корневой бабл треда первым сообщением
+// окна синтетическим seq=0, если пагинация его не захватила. root —
+// РЕЗОЛВЛЕННЫЙ id (см. вызывающих: queryRoot из resolveThreadRootForQuery) —
+// для discussion-группы это id ЗЕРКАЛА поста (лежит в ТОМ ЖЕ чате chatID,
+// не в канале), для форум-топика — id сообщения темы (тоже в chatID).
+//
+// Регрессия (найдена ревью): раньше сюда передавали исходный threadRoot (id
+// ПОСТА, внешний контракт) — сравнение `m.ID == threadRoot` никогда не
+// совпадало с зеркалом (у него другой, внутренний id), поэтому функция
+// каждый раз считала, что корня в окне нет, шла в канал за ОРИГИНАЛОМ поста
+// (GetByID(id поста)) и подшивала его — а зеркало с тем же текстом к этому
+// моменту уже приезжало в msgs через SQL-условие `thread_root_id=root OR
+// id=root` (см. MessagesRepo.GetHistory/GetAround). Результат — один и тот
+// же пост дважды: зеркало из выборки плюс синтетически подшитый оригинал.
+//
+// Зеркало — самое раннее сообщение треда (вставлено до любых комментариев),
+// поэтому «дошли до верха треда» (условие вызова ниже) почти всегда значит,
+// что оно уже в msgs — цикл находит совпадение по id и возвращает окно как
+// есть. GetByID-фолбэк — подстраховка на случай, если зеркало/корень темы
+// исключены из выборки видимостью (history_for_new/message_hides):
+// комментарии читаются и НЕ-членами группы (см. checkHistoryAccess), и
+// открывающий тред бабл обязан быть виден им всегда, эти фильтры на него не
+// должны действовать.
+func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, root int64, msgs []domain.Message) []domain.Message {
 	for _, m := range msgs {
-		if m.ID == threadRoot {
-			return msgs // корень уже в окне (тред форум-топика)
+		if m.ID == root {
+			return msgs // корень уже в окне
 		}
 	}
-	root, err := i.msgs.GetByID(ctx, threadRoot)
-	if err != nil || root.Deleted || root.ChatID == chatID {
+	rootMsg, err := i.msgs.GetByID(ctx, root)
+	if err != nil || rootMsg.Deleted {
 		return msgs
 	}
-	root.Seq = 0
-	return append([]domain.Message{root}, msgs...)
+	rootMsg.Seq = 0
+	return append([]domain.Message{rootMsg}, msgs...)
 }
 
 // checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
@@ -303,14 +323,14 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 		return AroundResult{}, err
 	}
 	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса,
-	// threadRoot (id поста) остаётся исходным для prependForeignThreadRoot.
+	// queryRoot (не исходный threadRoot) идёт и в prependForeignThreadRoot.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
 	}
 	if threadRoot != nil && top {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, *threadRoot, msgs)
+		msgs = i.prependForeignThreadRoot(ctx, chatID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return AroundResult{}, e

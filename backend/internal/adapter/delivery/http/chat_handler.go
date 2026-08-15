@@ -359,11 +359,15 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid type")
 		return
 	}
+	// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+	// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
+	// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
+	threadRoot := h.svc.ResolveThreadRootForSend(r.Context(), chatID, body.ThreadRootID)
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
 		ReplyToID: body.ReplyToID, ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
-		ThreadRootID: body.ThreadRootID,
+		ThreadRootID: threadRoot,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,

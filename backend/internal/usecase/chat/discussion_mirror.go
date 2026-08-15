@@ -2,9 +2,22 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
+
+// mirrorDelivery — результат mirrorChannelPost, нужный ПОСЛЕ коммита
+// транзакции вызывающего, чтобы зеркало было опубликовано участникам группы
+// обсуждения тем же путём, что и обычное сообщение (см. publishMessageDelivery
+// в fanout.go). nil, если зеркала не было (обсуждения нет / уже зеркалировано
+// / чат-получатель — не канал) — вызывающий тогда просто ничего не публикует.
+type mirrorDelivery struct {
+	msg          domain.Message
+	recipients   []int64
+	ptsByUser    map[int64]int64
+	unreadByUser map[int64]int64
+}
 
 // mirrorChannelPost кладёт зеркало поста канала в его группу обсуждения.
 // Telegram-модель: комментарии — это обычный тред в группе, отвечающий на
@@ -26,9 +39,16 @@ import (
 // в канале, поэтому досюда как «пост» и не долетают: проверка типа чата
 // ниже отсекает их так же надёжно, как заодно отсекает Send в любой
 // private/group чат.
-func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message) error {
+//
+// Возвращает mirrorDelivery, если зеркало было создано И довезено до
+// pts-лога/unread участников группы ВНУТРИ этой же (амбиентной) транзакции —
+// вызывающий обязан после коммита позвать publishMessageDelivery с этим
+// результатом (см. её комментарий и вызовы в message.go/channel.go/
+// message_forward.go/suggested.go), иначе зеркало осядет в БД, но не
+// доедет до подписчиков в реальном времени/через /sync.
+func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message) (*mirrorDelivery, error) {
 	if i.groups == nil {
-		return nil
+		return nil, nil
 	}
 	// GetDiscussion ниже сам по себе почти достаточен (у группы/привата
 	// discussion_chat_id не выставляется штатными путями), но
@@ -41,10 +61,10 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		// та же логика, что и у ошибки GetDiscussion ниже: пост уже вставлен
 		// этой же транзакцией, chats-строка точно существует — любая ошибка
 		// тут реальный сбой и обязана откатить публикацию.
-		return err
+		return nil, err
 	}
 	if typ != "channel" {
-		return nil
+		return nil, nil
 	}
 	disc, err := i.groups.GetDiscussion(ctx, post.ChatID)
 	if err != nil {
@@ -54,11 +74,11 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		// пост уже вставлен той же транзакцией, так что chats-строка канала
 		// точно существует — любая ошибка тут реальный сбой и обязана откатить
 		// публикацию, иначе пост останется без треда комментариев навсегда.
-		return err
+		return nil, err
 	}
 	if disc == 0 {
 		// у канала нет привязанного обсуждения — зеркалить некуда, это не ошибка
-		return nil
+		return nil, nil
 	}
 	// идемпотентность: ретрай/повторная доставка не должны плодить зеркала
 	// (в базе то же самое держит уникальный индекс). Намеренно
@@ -69,20 +89,25 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// (через зеркало первого), и не завели бы СВОИХ строк — альбом в группе
 	// обсуждения приехал бы обрезанным. Каждый элемент альбома обязан
 	// получить собственное зеркало, даже когда тред у них общий.
+	//
+	// Повторная попытка (existing != 0) не переделивает зеркало: если строка
+	// уже есть, её ПЕРВАЯ вставка уже прошла ту же самую транзакцию целиком
+	// (включая fan-out ниже) — иначе строки просто не было бы, обе части
+	// коммитятся или откатываются вместе.
 	if existing, err := i.msgs.MirrorOfExactPost(ctx, post.ChatID, post.ID); err != nil {
-		return err
+		return nil, err
 	} else if existing != 0 {
-		return nil
+		return nil, nil
 	}
 
 	seq, err := i.msgs.NextSeq(ctx, disc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	channelID := post.ChatID
 	postID := post.ID
 	date := post.CreatedAt
-	_, err = i.msgs.Insert(ctx, domain.Message{
+	mirror, err := i.msgs.Insert(ctx, domain.Message{
 		ChatID: disc, Seq: seq, SenderID: post.SenderID,
 		Type: post.Type, Text: post.Text, Entities: post.Entities,
 		MediaID: post.MediaID, GroupedID: post.GroupedID, PollID: post.PollID,
@@ -92,7 +117,30 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		FwdFromChatID: &channelID, FwdFromMsgID: &postID, FwdDate: &date,
 		IsDiscussionMirror: true,
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	// Доставка зеркала переиспользует обычный путь группового сообщения — тот
+	// же веер по MemberIDs, что у Send (design-doc, раздел «Создание»): без
+	// него зеркало ложится в БД, но не попадает в pts-лог получателей (клиент
+	// не увидит его в /sync), в unread, в realtime-кадр, а кэш диалогов
+	// участников группы не инвалидируется — подписчики канала узнают о
+	// комментируемом посте только перезагрузив историю руками.
+	// thread_root_id у зеркала не нуждается в переводе (в отличие от Send):
+	// зеркало САМО корень треда, messageUpdatePayload(mirror) уже несёт
+	// thread_root_id=nil.
+	mentioned := mentionedUserIDs(mirror.Entities)
+	payload, err := json.Marshal(messageUpdatePayload(mirror))
+	if err != nil {
+		return nil, err
+	}
+	recipients, ptsByUser, unreadByUser, err := i.fanOutNewMessage(
+		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, payload, nil, mentioned)
+	if err != nil {
+		return nil, err
+	}
+	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser, unreadByUser: unreadByUser}, nil
 }
 
 // ExternalizeThreadRoots — обратный перевод mirrorChannelPost и ЕДИНАЯ точка
@@ -197,4 +245,24 @@ func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64
 		return threadRoot
 	}
 	return &root
+}
+
+// ResolveThreadRootForSend — та же трансляция id поста в id зеркала, что и
+// resolveThreadRootForQuery, но для ВХОДЯЩЕЙ записи (generic Send). Блокер:
+// resolveThreadRootForQuery применялась только на чтении (GetHistory/
+// GetHistoryAround), а thread_root_id, приходящий в Send с HTTP/WS,
+// оставался буквальным id ПОСТА — комментарий, отправленный generic-путём
+// (не через PostComment), приземлялся на несуществующий/чужой корень и в
+// треде никогда не появлялся.
+//
+// Резолвить нужно СНАРУЖИ Send, на границе HTTP/WS-хендлера, а не внутри
+// самого Send: PostComment уже вызывает Send с ThreadRootID = id зеркала
+// (см. PostComment в discussion.go) — если бы Send резолвил ещё раз, он
+// попытался бы найти «зеркало зеркала» (несуществующее, root=0) и сломал бы
+// комментарии, отправленные штатным путём PostComment. Экспортирован ровно
+// для того, чтобы единственными легальными вызывающими были пограничные
+// хендлеры (delivery/http.ChatHandler.Send, delivery/ws dispatch
+// send_message), а не usecase-код.
+func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64, threadRoot *int64) *int64 {
+	return i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 }

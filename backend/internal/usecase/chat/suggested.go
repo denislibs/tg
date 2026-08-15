@@ -212,6 +212,10 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	}
 	var msg domain.Message
 	var pts int64
+	// Зеркало поста (если у канала есть обсуждение) — доставляется участникам
+	// группы обсуждения ПОСЛЕ коммита, тем же publishMessageDelivery, что и
+	// обычная отправка (см. mirrorChannelPost/fanout.go).
+	var mirrorDeliv *mirrorDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		seq, e := i.msgs.NextSeq(ctx, sp.ChatID)
 		if e != nil {
@@ -228,9 +232,11 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
 		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
 		// клиентское ThreadRootID (publishApprovedPost его и не проставляет).
-		if e := i.mirrorChannelPost(ctx, msg); e != nil {
+		md, e := i.mirrorChannelPost(ctx, msg)
+		if e != nil {
 			return e
 		}
+		mirrorDeliv = md
 		if msg.MediaID != nil {
 			one := []domain.Message{msg}
 			if e := i.hydrateMedia(ctx, one); e == nil {
@@ -257,6 +263,10 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		base := messageUpdatePayload(msg)
 		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
+	}
+	if mirrorDeliv != nil {
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	return msg, nil
 }

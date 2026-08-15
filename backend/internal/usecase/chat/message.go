@@ -331,6 +331,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRoot
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
+	// Зеркало поста канала (если вставленное сообщение — пост в канал с
+	// обсуждением, см. mirrorChannelPost): доставка публикуется ПОСЛЕ коммита
+	// этой же transaction, тем же publishMessageDelivery, что и msg ниже.
+	var mirrorDeliv *mirrorDelivery
 	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
 	// tx so the live frame carries exactly the values persisted for each member.
 	ptsByUser := map[int64]int64{}
@@ -386,10 +390,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
 		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
-		// клиентское ThreadRootID.
-		if e := i.mirrorChannelPost(ctx, msg); e != nil {
+		// клиентское ThreadRootID. mirrorChannelPost уже доставляет зеркало
+		// участникам группы (pts/unread) ВНУТРИ этой транзакции — mirrorDeliv
+		// публикуется (кадры/кэш) ниже, после коммита, как и сам msg.
+		md, e := i.mirrorChannelPost(ctx, msg)
+		if e != nil {
 			return e
 		}
+		mirrorDeliv = md
 		msg.SenderName = senderName
 		// Применяем гидратацию, посчитанную ДО транзакции (send-as title/photo,
 		// poll/checklist/giveaway/gift-представления одинаковы для всех получателей
@@ -420,11 +428,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 			msg.PaidMediaPrice = &price
 		}
-		members, e := i.chats.MemberIDs(ctx, in.ChatID)
-		if e != nil {
-			return e
-		}
-		slices.Sort(members)
 		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
@@ -451,71 +454,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				return e
 			}
 		}
-		date := nowMillis()
-		// Fan-out батчами: 3 запроса вместо 3×M. Раньше на каждого участника шли
-		// AppendUpdate (2 запроса) + IncUnread — под локом строки chats это O(M)
-		// запросов в одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс).
-		others := make([]int64, 0, len(members))
-		senderIn := false
-		for _, uid := range members {
-			if uid == in.SenderID {
-				senderIn = true
-				continue
-			}
-			others = append(others, uid)
-		}
-		// pts-лог: автору — обычный payload, получателям — обычный или locked
-		// (платное медиа). Один payload на батч.
-		// len-гарды сохраняют семантику прежнего `for range members` (пустой список
-		// — ни одного вызова репозитория; часть тест-стабов не задаёт updates).
-		if payloadLocked != nil {
-			if senderIn {
-				m1, e := i.updates.AppendUpdateBulk(ctx, []int64{in.SenderID}, 1, date, "new_message", payload)
-				if e != nil {
-					return e
-				}
-				for u, p := range m1 {
-					ptsByUser[u] = p
-				}
-			}
-			if len(others) > 0 {
-				m2, e := i.updates.AppendUpdateBulk(ctx, others, 1, date, "new_message", payloadLocked)
-				if e != nil {
-					return e
-				}
-				for u, p := range m2 {
-					ptsByUser[u] = p
-				}
-			}
-		} else if len(members) > 0 {
-			pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "new_message", payload)
-			if e != nil {
-				return e
-			}
-			for u, p := range pm {
-				ptsByUser[u] = p
-			}
-		}
-		// Непрочитанные — одним запросом всем получателям (кроме автора).
-		if len(others) > 0 {
-			um, e := i.chats.IncUnreadBulk(ctx, in.ChatID, others)
-			if e != nil {
-				return e
-			}
-			for u, n := range um {
-				unreadByUser[u] = n
-			}
-			// Упоминания редки — точечно (по остатку text_mention).
-			for _, uid := range others {
-				if mentioned[uid] {
-					if e := i.chats.AddMention(ctx, in.ChatID, msg.ID, msg.Seq, uid); e != nil {
-						return e
-					}
-				}
-			}
-		}
-		recipients = members
-		return nil
+		// Веер по участникам чата (pts-лог + unread + упоминания), батчами: 3
+		// запроса вместо 3×M. Раньше на каждого участника шли AppendUpdate (2
+		// запроса) + IncUnread — под локом строки chats это O(M) запросов в
+		// одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс). Общий с
+		// доставкой зеркала поста канала — см. fanOutNewMessage.
+		recipients, ptsByUser, unreadByUser, e = i.fanOutNewMessage(
+			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, payload, payloadLocked, mentioned)
+		return e
 	})
 	if err != nil {
 		return domain.Message{}, err
@@ -528,38 +474,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 	if recipients != nil {
-		// Список диалогов получателей изменился (unread/порядок/превью) — сбрасываем
-		// их кэш снапшота (следующий /chats пересчитает).
-		if i.dialogsCache != nil {
-			i.dialogsCache.Invalidate(ctx, recipients...)
-		}
-		base := messageUpdatePayload(msg)
-		base["thread_root_id"] = extRoot // см. извлечение extRoot выше по функции
-		var baseLocked map[string]any
-		if msg.PaidMediaPrice != nil {
-			baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
-			baseLocked["thread_root_id"] = extRoot
-		}
-		// Realtime-кадры всем получателям — одним pipeline'ом (было M
-		// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
-		// unread — только у получателей, не автора).
-		if i.publisher != nil {
-			uids := make([]int64, 0, len(recipients))
-			frames := make([][]byte, 0, len(recipients))
-			for _, uid := range recipients {
-				b := base
-				if baseLocked != nil && uid != in.SenderID {
-					b = baseLocked
-				}
-				extra := map[string]any{"pts": ptsByUser[uid]}
-				if uid != in.SenderID {
-					extra["unread"] = unreadByUser[uid]
-				}
-				uids = append(uids, uid)
-				frames = append(frames, frameFields("new_message", b, extra))
-			}
-			_ = i.publisher.PublishToUsers(ctx, uids, frames)
-		}
+		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
+		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
+		i.publishMessageDelivery(ctx, msg, extRoot, in.SenderID, recipients, ptsByUser, unreadByUser)
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
@@ -571,6 +488,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.Type != "service" {
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
+	}
+	// Зеркало поста канала (если было создано выше) — доставляем участникам
+	// группы обсуждения ТЕМ ЖЕ путём, тоже после коммита. Отдельно от блока
+	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.
+	if mirrorDeliv != nil {
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -86,7 +87,7 @@ func TestMirrorChannelPost_Idempotent(t *testing.T) {
 	post, _ := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
 
 	first, _ := i.msgs.MirrorByPost(ctx, ch, post.ID)
-	if err := i.mirrorChannelPost(ctx, post); err != nil {
+	if _, err := i.mirrorChannelPost(ctx, post); err != nil {
 		t.Fatalf("повторное зеркалирование вернуло ошибку: %v", err)
 	}
 	second, _ := i.msgs.MirrorByPost(ctx, ch, post.ID)
@@ -462,5 +463,106 @@ func TestPostComment_AlbumLazyMirror_NoOrphanedMirrors(t *testing.T) {
 	}
 	if own2 == 0 {
 		t.Fatal("второй элемент альбома не дозеркалирован — альбом в группе обсуждения обрезан")
+	}
+}
+
+// Блокер 3 (финальное ревью 2026-08-14): зеркало поста канала должно
+// доставляться участникам группы обсуждения ТЕМ ЖЕ путём, что и обычное
+// сообщение группы (спека, раздел «Создание»: «доставка зеркала переиспользует
+// обычный путь группового сообщения — тот же веер по MemberIDs, что у Send»).
+// Раньше mirrorChannelPost делал только NextSeq+Insert — зеркало оседало в
+// БД, но не попадало ни в pts-лог получателя (значит, не появилось бы и в
+// /sync), ни в realtime WS-кадр.
+//
+// Проверяем ТЕМ ЖЕ механизмом, каким в пакете уже проверяется доставка
+// обычных сообщений (см. TestPostComment_WSFrame_ThreadRootMatchesPost) —
+// groupMembershipChatsFanout + fakeUpdates + fakePublisher: единственная в
+// пакете комбинация фейков, где Send()/фан-аут реально работают per-member
+// (обычный стаб groupMembershipChats.MemberIDs всегда nil).
+func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
+	s := newStore()
+	fg := newFakeGroupRepo()
+	fch := newFakeChannelRepo()
+	fs := newFakeSearchRepo()
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg}}, fakeMsgs{s},
+		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
+	i.SetChannelPublisher(&fakeChannelPublisher{})
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "channel"
+		s.chatSeq[id] = 0
+		s.mu.Unlock()
+	}
+	fg.onSetDiscussion = s.seedDiscussion
+	pub := &fakePublisher{}
+	i.SetPublisher(pub)
+
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	disc, err := i.EnableDiscussion(ctx, ch, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Подписчик группы обсуждения — НЕ автор поста (7 — creator и автор).
+	if err := fg.AddMember(ctx, disc, 8, domain.RoleMember, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	post, err := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirrorID, err := i.msgs.MirrorByPost(ctx, ch, post.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mirrorID == 0 {
+		t.Fatal("зеркало не создано")
+	}
+
+	// pts-лог участника группы обязан вырасти — иначе зеркала не будет в /sync
+	// (см. UpdateRepo.AppendUpdateBulk/GetUserState/UpdatesSince).
+	s.mu.Lock()
+	updates := append([]domain.Update(nil), s.updates[8]...)
+	s.mu.Unlock()
+	foundUpdate := false
+	for _, u := range updates {
+		if u.Type != "new_message" {
+			continue
+		}
+		var d struct {
+			MsgID int64 `json:"msg_id"`
+		}
+		if err := json.Unmarshal(u.Payload, &d); err == nil && d.MsgID == mirrorID {
+			foundUpdate = true
+		}
+	}
+	if !foundUpdate {
+		t.Fatalf("участник группы обсуждения (8) не получил зеркало %d в pts-лог: %+v", mirrorID, updates)
+	}
+
+	// realtime WS-кадр — штатным механизмом (fakePublisher), как и обычное
+	// сообщение группы.
+	var env struct {
+		T string `json:"t"`
+		D struct {
+			MsgID int64 `json:"msg_id"`
+		} `json:"d"`
+	}
+	found := false
+	for _, f := range pub.frames {
+		if f.userID != 8 {
+			continue
+		}
+		if err := json.Unmarshal(f.frame, &env); err != nil {
+			t.Fatalf("frame decode: %v", err)
+		}
+		if env.T == "new_message" && env.D.MsgID == mirrorID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("участник группы обсуждения (8) не получил зеркало %d штатным путём доставки (WS-кадр)", mirrorID)
 	}
 }
