@@ -106,6 +106,8 @@ function StickerCell({ st, visible, register, onPick }: {
           group={ANIMATION_GROUP}
           thumb={st.thumb}
           pathThumb={st.pathThumb}
+          docWidth={st.width}
+          docHeight={st.height}
         />
       )}
     </div>

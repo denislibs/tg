@@ -197,6 +197,8 @@ function StickerSetRow({
                   group="STICKERS-SEARCH"
                   thumb={st.thumb}
                   pathThumb={st.pathThumb}
+                  docWidth={st.width}
+                  docHeight={st.height}
                   loadQueue={queue}
                   isVisible={isRowVisible}
                 />

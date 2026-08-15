@@ -56,9 +56,25 @@ export function createSvgFromBytes(
  * бэк отдаёт `path_thumb` в JSON (tweb работает поверх бинарного MTProto,
  * `photoPathSize.bytes` там сразу Uint8Array; у нас транспорт другой, поэтому
  * шаг декодирования appended сверху, а не часть портируемого алгоритма).
+ *
+ * `atob` кидает `DOMException` на невалидной base64 — вызывающая сторона
+ * (`StickerMedia`) дёргает это синхронно в теле эффекта, где необработанное
+ * исключение уронило бы весь эффект (и вместе с ним — загрузку самого
+ * стикера), а не только необязательный плейсхолдер-силуэт. Битые данные с
+ * сети — ожидаемый случай, не программная ошибка, поэтому проглатываем и
+ * возвращаем `undefined`: вызывающая сторона просто не покажет силуэт.
  */
-export function createSvgFromBase64(base64: string, width = 512, height = 512) {
-  const bin = atob(base64)
+export function createSvgFromBase64(
+  base64: string,
+  width = 512,
+  height = 512,
+): { svg: SVGSVGElement; path: SVGPathElement } | undefined {
+  let bin: string
+  try {
+    bin = atob(base64)
+  } catch {
+    return undefined
+  }
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
   return createSvgFromBytes(bytes, width, height)

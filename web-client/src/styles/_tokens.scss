@@ -348,12 +348,13 @@
   --spoiler-draft-background-color: #484848;
   --monospace-text-color: var(--primary-text-color);
   --old-input-background-color: var(--background-color);
-  // tweb base.scss:339 (.night .lottie-vector fill) берёт var(--light-secondary-text-color) —
-  // «светлый» дериватив secondary-text-color (генерируется миксином splitColor). У нас этот
-  // миксин нигде не вызывается (--light-* токены реально не заведены), поэтому берём сам
-  // --secondary-text-color: он инжектится themeController.setTheme() под любой пресет и уже
-  // достаточно приглушённый для силуэта.
-  --lottie-vector-fill: var(--secondary-text-color);
+  // tweb base.scss:339 (.night .lottie-vector fill) — 1:1: 'secondary-text-color'
+  // объявлен с флагом light:true в appColorMap (config/themePresets.ts), поэтому
+  // --light-secondary-text-color реально инжектится ПОД ЛЮБУЮ тему в рантайме
+  // (core/theme/themeController.ts::applyAppColor — `rgba(r,g,b, lightenAlpha)`,
+  // lightenAlpha по умолчанию 0.08 = tweb $hover-alpha) в <style id="theme">, а
+  // не пишется статикой в SCSS — grep по styles/ его поэтому не находит.
+  --lottie-vector-fill: var(--light-secondary-text-color);
   // Время/тик на тёмной теме (tweb base.scss:345-355 блок `.night .chat`): тик
   // входящего ярче времени (--secondary-color), у исходящего тик белый, а время —
   // белое с alpha .6.

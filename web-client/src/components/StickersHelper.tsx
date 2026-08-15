@@ -75,6 +75,8 @@ export default function StickersHelper({
                 loop
                 thumb={st.thumb}
                 pathThumb={st.pathThumb}
+                docWidth={st.width}
+                docHeight={st.height}
               />
             </div>
           ))}

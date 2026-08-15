@@ -106,6 +106,8 @@ const StickerMedia = memo(function StickerMedia({
   group = 'chat',
   thumb,
   pathThumb,
+  docWidth,
+  docHeight,
   loadQueue,
   isVisible,
   onComplete,
@@ -129,6 +131,15 @@ const StickerMedia = memo(function StickerMedia({
    * SVG-силуэт мгновенно на месте пустой ячейки, пока не декодировался даже
    * `thumb` (см. `core/stickers/getPathFromBytes`, tweb wrapSticker:268) */
   pathThumb?: string
+  /** натуральные пиксели стикера (`Sticker.width/height`, tweb `doc.w`/`doc.h`) —
+   * система координат, в которой заданы точки контура `pathThumb`. НЕ путать
+   * с `width`/`height` выше (те — размер ячейки на экране): контур почти
+   * всегда авторится в каноничном канвасе Telegram-документа (масштаб точек
+   * доходит до ~500), а не в пикселях конкретного рендера, поэтому viewBox
+   * силуэта обязан браться отсюда — иначе путь съезжает/обрезается вьюпортом
+   * SVG. 0/undefined — метаданные неизвестны, откат на дефолт tweb 512×512. */
+  docWidth?: number
+  docHeight?: number
   /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
    * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
    * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
@@ -171,16 +182,17 @@ const StickerMedia = memo(function StickerMedia({
     // в пустой контейнер: если предыдущее поколение уже оставило свой thumb/
     // медиа (усыновление выше), силуэт там был бы шагом назад.
     //
-    // viewBox — из render-бокса (width/height), а не из натуральных пикселей
-    // стикера (`doc.w`/`doc.h`, как в tweb): их сюда никто не пробрасывает —
-    // вызывающие знают только размер ячейки, обычно квадратный. Координаты
-    // контура заданы в системе исходного канваса стикера (у Telegram почти
-    // всегда 512×512 — квадрат совпадает с боксом), так что при не-квадратном
-    // исходнике силуэт долю секунды рисуется слегка приплюснутым по одной оси —
-    // не критично для мгновенного плейсхолдера, который тут же заменяется thumb.
+    // viewBox — из натуральных пикселей стикера (docWidth/docHeight, tweb
+    // `doc.w`/`doc.h`), НЕ из render-бокса (width/height — размер ячейки на
+    // экране, обычно 64×64/72×72 и т.п.). Точки контура заданы в системе
+    // исходного канваса Telegram-документа (масштаб координат доходит до
+    // ~500) — viewBox из размера ячейки растягивал/обрезал бы путь в разы.
+    // createSvgFromBase64 возвращает undefined на битой base64 — сеть/бэк не
+    // гарантируют валидность чужих данных, а плейсхолдер не стоит того, чтобы
+    // ронять эффект целиком.
     if (pathThumb && appearance.canBuildSilhouette()) {
-      const { svg } = createSvgFromBase64(pathThumb, width, height)
-      appearance.setSilhouette(svg)
+      const built = createSvgFromBase64(pathThumb, docWidth || 512, docHeight || 512)
+      if (built) appearance.setSilhouette(built.svg)
     }
 
     // Нижний слой: превью с бэка, иначе — кадр, сохранённый прошлым показом.
@@ -330,7 +342,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, pathThumb, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
+  }, [mediaId, thumb, pathThumb, docWidth, docHeight, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.
