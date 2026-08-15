@@ -178,7 +178,20 @@ func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.Stic
 }
 
 func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSet, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.StickerSet
+	for _, s := range f.sets {
+		if strings.Contains(strings.ToLower(s.Title), strings.ToLower(q)) ||
+			strings.Contains(strings.ToLower(s.Slug), strings.ToLower(q)) {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSet, error) {
@@ -193,6 +206,29 @@ func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerS
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	if len(out) > limit {
 		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) CoverStickers(_ context.Context, setIDs []int64, perSet int) (map[int64][]domain.Sticker, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[int64][]domain.Sticker{}
+	for _, setID := range setIDs {
+		var sts []domain.Sticker
+		for _, s := range f.stickers {
+			if s.SetID == setID {
+				sts = append(sts, s)
+			}
+		}
+		if len(sts) == 0 {
+			continue
+		}
+		sort.Slice(sts, func(i, j int) bool { return sts[i].Position < sts[j].Position })
+		if len(sts) > perSet {
+			sts = sts[:perSet]
+		}
+		out[setID] = sts
 	}
 	return out, nil
 }
@@ -626,17 +662,59 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	older, _ := seedSet(t, in, f, 1, "older_set", 1)
-	newer, _ := seedSet(t, in, f, 1, "newer_set", 1)
+	older, olderIDs := seedSet(t, in, f, 1, "older_set", 1)
+	newer, newerIDs := seedSet(t, in, f, 1, "newer_set", 1)
 
-	got, err := in.Featured(ctx)
+	got, covers, err := in.Featured(ctx)
 	if err != nil {
 		t.Fatalf("Featured: %v", err)
 	}
 	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
 		t.Fatalf("Featured: want [%d %d] (новые первыми), got %+v", newer.ID, older.ID, got)
 	}
+	// Превью (covered sets) едут вместе с наборами — одним запросом на всю
+	// выдачу, без похода по SetBySlug на каждую строку.
+	if len(covers[newer.ID]) != 1 || covers[newer.ID][0].ID != newerIDs[0] {
+		t.Fatalf("covers[newer]: %+v, want [%d]", covers[newer.ID], newerIDs[0])
+	}
+	if len(covers[older.ID]) != 1 || covers[older.ID][0].ID != olderIDs[0] {
+		t.Fatalf("covers[older]: %+v, want [%d]", covers[older.ID], olderIDs[0])
+	}
+	// Потолок должен быть заведомо выше реального каталога: он страхует от
+	// раздувания выдачи чужими наборами (POST /sticker-sets открыт всем), а не
+	// работает витриной «топ-N». С прежними 40 из 338 выгруженных наборов до
+	// экрана доезжали только первые сорок — список обрывался на середине.
 	if f.featuredLimit != featuredLim {
 		t.Fatalf("Featured: лимит репозиторию %d, want featuredLim=%d", f.featuredLimit, featuredLim)
+	}
+	if featuredLim < 1000 {
+		t.Fatalf("featuredLim = %d — ниже полного каталога Telegram (~992 набора)", featuredLim)
+	}
+}
+
+// SearchSets — экран поиска стикеров по запросу: usecase отдаёт найденные
+// наборы вместе с превью (covered sets), той же связкой, что и Featured.
+// Пустой запрос — пустая выдача без похода в репозиторий.
+func TestSearchSets_ReturnsCovers(t *testing.T) {
+	f := newFakeRepo()
+	in := New(f)
+	ctx := context.Background()
+	duck, duckIDs := seedSet(t, in, f, 1, "duck_pack", 3)
+	seedSet(t, in, f, 1, "cat_pack", 1) // не матчится по запросу
+
+	sets, covers, err := in.SearchSets(ctx, "duck")
+	if err != nil {
+		t.Fatalf("SearchSets: %v", err)
+	}
+	if len(sets) != 1 || sets[0].ID != duck.ID {
+		t.Fatalf("SearchSets: %+v, want [%d]", sets, duck.ID)
+	}
+	if len(covers[duck.ID]) != 3 || covers[duck.ID][0].ID != duckIDs[0] {
+		t.Fatalf("covers[duck]: %+v, want превью из %v", covers[duck.ID], duckIDs)
+	}
+
+	sets, covers, err = in.SearchSets(ctx, "  ")
+	if err != nil || len(sets) != 0 || len(covers) != 0 {
+		t.Fatalf("SearchSets(пусто): %+v, %+v, %v — want пустую выдачу", sets, covers, err)
 	}
 }

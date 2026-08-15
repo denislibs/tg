@@ -17,10 +17,19 @@ const (
 	savedGifsLimit = 200
 	emojiSearchLim = 16
 	setSearchLim   = 20
-	featuredLim    = 40
-	gifSearchLim   = 30
-	maxTitleRunes  = 64
-	maxEmojiBytes  = 32
+	// featuredLim — потолок выдачи трендов, а не витрина «топ-N»: экран поиска
+	// показывает весь каталог (tweb getFeaturedStickers лимита не знает вовсе,
+	// содержимое наборов догружается лениво). Значение с запасом над полным
+	// каталогом Telegram (~992 набора: 231 трендовых + архив + emoji), но
+	// ограничивает ответ, потому что POST /sticker-sets доступен любому
+	// пользователю и без потолка чужие наборы раздували бы выдачу всем.
+	featuredLim   = 2000
+	gifSearchLim  = 30
+	maxTitleRunes = 64
+	maxEmojiBytes = 32
+	// coverLim — превью на набор в covered sets (Featured/SearchSets): tweb
+	// показывает min(5, count) стикеров, пока набор не открыт целиком.
+	coverLim = 5
 )
 
 // slugRe — допустимый slug набора (как короткое имя аддона: t.me/addstickers/<slug>).
@@ -81,20 +90,47 @@ func (i *Interactor) Uninstall(ctx context.Context, userID, setID int64) error {
 	return i.repo.Uninstall(ctx, userID, setID)
 }
 
-// SearchSets ищет наборы по title/slug (ilike). Пустой запрос — пустая выдача.
-func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.StickerSet, error) {
+// SearchSets ищет наборы по title/slug (ilike) и отдаёт вместе с ними превью
+// (covered sets): без превью строка поиска пуста до похода за полным набором,
+// а по 338 наборам разом это N+1 запросов — CoverStickers берёт все одним.
+// Пустой запрос — пустая выдача.
+func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.StickerSet, map[int64][]domain.Sticker, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return []domain.StickerSet{}, nil
+		return []domain.StickerSet{}, map[int64][]domain.Sticker{}, nil
 	}
-	return i.repo.SearchSets(ctx, q, setSearchLim)
+	sets, err := i.repo.SearchSets(ctx, q, setSearchLim)
+	if err != nil {
+		return nil, nil, err
+	}
+	covers, err := i.covers(ctx, sets)
+	return sets, covers, err
 }
 
 // Featured — трендовые наборы для экрана поиска стикеров при пустом запросе
-// (аналог tweb messages.getFeaturedStickers): наборы публичны, поэтому фичед —
-// просто новейшие, лимит featuredLim.
-func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, error) {
-	return i.repo.FeaturedSets(ctx, featuredLim)
+// (аналог tweb messages.getFeaturedStickers): наборы публичны, порядок задаёт
+// rank из выгрузки. Вместе с наборами отдаёт превью (covered sets) — тем же
+// приёмом, что SearchSets.
+func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, map[int64][]domain.Sticker, error) {
+	sets, err := i.repo.FeaturedSets(ctx, featuredLim)
+	if err != nil {
+		return nil, nil, err
+	}
+	covers, err := i.covers(ctx, sets)
+	return sets, covers, err
+}
+
+// covers — превью наборов одним запросом (covered sets): setIDs собираются из
+// уже полученной выдачи, а не гоняются циклом по одному набору за раз.
+func (i *Interactor) covers(ctx context.Context, sets []domain.StickerSet) (map[int64][]domain.Sticker, error) {
+	if len(sets) == 0 {
+		return map[int64][]domain.Sticker{}, nil
+	}
+	setIDs := make([]int64, len(sets))
+	for k, s := range sets {
+		setIDs[k] = s.ID
+	}
+	return i.repo.CoverStickers(ctx, setIDs, coverLim)
 }
 
 // Recent — недавно использованные стикеры, новые первыми.

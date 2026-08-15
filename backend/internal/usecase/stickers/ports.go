@@ -38,6 +38,11 @@ type Repo interface {
 	// FeaturedSets — «трендовые» наборы: по рангу (порядок Telegram-выдачи),
 	// затем наборы без ранга новейшими первыми; не больше limit.
 	FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error)
+	// CoverStickers — превью первых perSet стикеров каждого набора из setIDs,
+	// ОДНИМ запросом на всю выдачу (covered sets Telegram): экран поиска
+	// показывает сотни наборов разом, по SetBySlug на строку — N+1. Наборов
+	// без стикеров в карте нет.
+	CoverStickers(ctx context.Context, setIDs []int64, perSet int) (map[int64][]domain.Sticker, error)
 	// SetRank проставляет позицию набора в трендах (0 — вне трендов).
 	SetRank(ctx context.Context, setID int64, rank int) error
 	// SetCover привязывает медиа обложки к набору.

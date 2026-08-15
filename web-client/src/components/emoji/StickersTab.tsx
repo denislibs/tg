@@ -16,6 +16,7 @@ import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { setThumbMediaId } from '../../core/stickers/setThumb'
+import { useStickerViewer } from '../stickers/useStickerViewer'
 import { useT } from '../../i18n'
 
 // tweb base.scss: --esg-sticker-size 72px (desktop); EmoticonsTabStyles.Stickers
@@ -36,6 +37,10 @@ const StickerCell = memo(function StickerCell({
   return (
     <div
       className="grid-item super-sticker"
+      // tweb SuperStickerRenderer.ts:61-63 — `element.dataset.docId = doc.id`;
+      // тот же атрибут переиспользует useStickerViewer.findSticker ниже, чтобы
+      // сопоставить ячейку под курсором со стикером — свой атрибут не заводим.
+      data-doc-id={st.id}
       onClick={() => onPick(st)}
       onContextMenu={(e) => {
         e.preventDefault()
@@ -121,6 +126,31 @@ export default function StickersTab({
 
   const sections = allSections
   const searching = focused || !!q
+
+  // Плоская карта id→стикер по ВСЕМ сейчас отрисованным ячейкам (категории +
+  // результаты поиска — оба дерева могут быть в DOM одновременно, см. `result`/
+  // children ниже) — нужна `findSticker` предпросмотра, чтобы по `data-doc-id`
+  // ячейки достать сам объект `Sticker`.
+  const stickersById = useMemo(() => {
+    const map = new Map<number, Sticker>()
+    for (const sec of allSections) for (const st of sec.stickers) map.set(st.id, st)
+    if (results) for (const st of results) map.set(st.id, st)
+    return map
+  }, [allSections, results])
+
+  // Предпросмотр по зажатию ЛКМ — tweb emoticonsDropdown/tab.ts:441
+  // (`attachHelpers`: `attachStickerViewerListeners({listenTo: this.content, ...})`,
+  // общий код базового класса вкладки, которым пользуется и Stickers, и GIF).
+  // Корень — скроллер вкладки (`scrollRef`, тот же DOM-узел, что `this.content`
+  // в tweb), он покрывает и категории, и результаты поиска одним слушателем.
+  const stickerViewer = useStickerViewer({
+    rootRef: scrollRef,
+    findSticker: (el) => {
+      const cell = el.closest('.super-sticker') as HTMLElement | null
+      const id = cell?.dataset.docId
+      return id ? stickersById.get(Number(id)) : undefined
+    },
+  })
 
   // Число колонок из фактической ширины (как у эмодзи-сетки).
   useLayoutEffect(() => {
@@ -326,6 +356,8 @@ export default function StickersTab({
           />
         </Menu>
       )}
+
+      {stickerViewer}
     </>
   )
 }

@@ -1,9 +1,10 @@
 // Ревью L3, Important 3: `StickersSearchTab.lazy.test.tsx` мокает StickerMedia
 // целиком, поэтому не может поймать мутацию «убрать loadQueue={queue} у
-// StickerMedia» — потолок ПРЕВЬЮ (второй уровень ленивости из Task 3) с ней
-// исчезает, а тот файл этого не заметит. Здесь StickerMedia НЕ мокаем —
-// нужен настоящий `loadStickerContent`, чтобы поймать потолок на уровне
-// самого fetch (обвязка мока — как в StickerMedia.test.tsx).
+// StickerMedia» — потолок ПРЕВЬЮ исчезает, а тот файл этого не заметит. Здесь
+// StickerMedia НЕ мокаем — нужен настоящий `loadStickerContent`, чтобы
+// поймать потолок на уровне самого fetch (обвязка мока — как в
+// StickerMedia.test.tsx). Task 2 covered sets: превью (covers) едут вместе с
+// самой выдачей (featuredSets), не отдельным setBySlug на набор.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, cleanup, waitFor } from '@testing-library/react'
 import StickersSearchTab from './StickersSearchTab'
@@ -41,19 +42,17 @@ const makeSticker = (setN: number, i: number) => ({
   width: 512, height: 512, mime: 'image/webp', thumb: '',
 })
 
-/** setCount наборов по perSet превью каждый, все резолвятся сразу (без искусственного зависания). */
+/** setCount наборов по perSet превью каждый; covers приезжают сразу (одним
+ * пакетом с самой выдачей, Task 2), без отдельного запроса на набор. */
 function makeManagers(setCount: number, perSet: number) {
   const prefix = `qset_r${++runSeq}_`
   const makeSet = (n: number) => ({ id: n, slug: `${prefix}${n}`, title: `Set ${n}`, kind: 'sticker' as const, count: perSet })
   const sets = Array.from({ length: setCount }, (_, i) => makeSet(i + 1))
+  const covers = new Map(sets.map((s) => [s.id, Array.from({ length: perSet }, (_, i) => makeSticker(s.id, i))]))
   const fns = {
     mySets: vi.fn().mockResolvedValue([]),
-    featuredSets: vi.fn().mockResolvedValue(sets),
-    searchSets: vi.fn().mockResolvedValue([]),
-    setBySlug: vi.fn((slug: string) => {
-      const n = Number(slug.slice(prefix.length))
-      return Promise.resolve({ set: makeSet(n), stickers: Array.from({ length: perSet }, (_, i) => makeSticker(n, i)) })
-    }),
+    featuredSets: vi.fn().mockResolvedValue({ sets, covers }),
+    searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     install: vi.fn().mockResolvedValue(undefined),
     uninstall: vi.fn().mockResolvedValue(undefined),
   }

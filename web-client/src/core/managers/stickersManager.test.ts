@@ -106,6 +106,33 @@ describe('StickersManager', () => {
     ])
   })
 
+  // Task 2 covered sets: featured/search отдают наборы ВМЕСТЕ с превью
+  // (карта setID→стикеры, ключи строками — JSON не умеет числовые ключи) —
+  // строка экрана поиска рисует силуэт без отдельного setBySlug на каждую.
+  it('featuredSets маппит covers (строковые ключи бэка) в Map<number, Sticker[]> тем же mapSticker', async () => {
+    const { rest, calls } = fakeRest({
+      sets: [{ id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 5 }],
+      covers: { '1': [{ id: 10, set_id: 1, media_id: 100, emoji: '🦆', width: 512, height: 512, mime: 'image/webp', thumb: '/9j/', path_thumb: 'AAA' }] },
+    })
+    const mgr = newStickersManager({ rest })
+    const r = await mgr.featuredSets()
+    expect(calls[0]).toEqual({ method: 'GET', path: '/sticker-sets/featured', query: undefined })
+    expect(r.sets).toEqual([{ id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 5 }])
+    expect(r.covers).toBeInstanceOf(Map)
+    expect(r.covers.get(1)).toEqual([
+      { id: 10, setId: 1, mediaId: 100, emoji: '🦆', width: 512, height: 512, mime: 'image/webp', thumb: '/9j/', pathThumb: 'AAA' },
+    ])
+  })
+
+  it('searchSets маппит covers так же; отсутствующая карта (старый бэк) даёт пустую Map, а не падает', async () => {
+    const { rest, calls } = fakeRest({ sets: [] })
+    const mgr = newStickersManager({ rest })
+    const r = await mgr.searchSets('duck')
+    expect(calls[0]).toEqual({ method: 'GET', path: '/sticker-sets/search', query: { q: 'duck' } })
+    expect(r.sets).toEqual([])
+    expect(r.covers).toEqual(new Map())
+  })
+
   it('install/uninstall hit POST/DELETE /sticker-sets/:id/install', async () => {
     const { rest, calls } = fakeRest()
     const mgr = newStickersManager({ rest })

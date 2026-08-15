@@ -416,6 +416,7 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 	if err != nil || len(limited) != 2 || limited[0].ID != third.ID {
 		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
 	}
+
 }
 
 // FeaturedSets отдаёт наборы в порядке трендов: сначала rank 1,2,3…, затем
@@ -645,6 +646,51 @@ func TestBackfillPathThumbs(t *testing.T) {
 	// Пустая карта (набор без контуров в meta.json) — no-op, не ошибка.
 	if err := r.BackfillPathThumbs(ctx, set.ID, nil); err != nil {
 		t.Fatalf("BackfillPathThumbs(пусто): %v", err)
+	}
+}
+
+// CoverStickers — превью наборов для экрана поиска: первые perSet стикеров
+// каждого набора одним запросом (аналог covered sets Telegram).
+func TestCoverStickers(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7900")
+
+	big, _ := seedFullSet(t, pool, r, owner, "cover_big", 7)
+	small, _ := seedFullSet(t, pool, r, owner, "cover_small", 2)
+	empty, err := r.CreateSet(ctx, domain.StickerSet{Slug: "cover_empty", Title: "Empty", Kind: "sticker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	covers, err := r.CoverStickers(ctx, []int64{big.ID, small.ID, empty.ID}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(covers[big.ID]) != 5 {
+		t.Errorf("big: %d превью, ожидалось 5", len(covers[big.ID]))
+	}
+	if len(covers[small.ID]) != 2 {
+		t.Errorf("small: %d превью, ожидалось 2", len(covers[small.ID]))
+	}
+	if _, ok := covers[empty.ID]; ok {
+		t.Error("пустой набор не должен попадать в выдачу")
+	}
+	// Порядок — тот же, что у Stickers: по position.
+	all, err := r.Stickers(ctx, big.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, st := range covers[big.ID] {
+		if st.ID != all[i].ID {
+			t.Fatalf("превью %d: id %d, ожидался %d (порядок по position)", i, st.ID, all[i].ID)
+		}
+	}
+	// Пустой список наборов — пустая карта, без похода в БД с ANY('{}').
+	none, err := r.CoverStickers(ctx, nil, 5)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("CoverStickers(nil): %v, %v", none, err)
 	}
 }
 

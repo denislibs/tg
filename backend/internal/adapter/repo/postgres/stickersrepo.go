@@ -31,8 +31,12 @@ func scanSet(s scanner) (domain.StickerSet, error) {
 }
 
 func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (domain.StickerSet, error) {
+	// NULLIF(.., 0): CreatedBy — zero value доменной структуры для «набора без
+	// владельца» (created_by в схеме NULLABLE), а не ссылка на реального
+	// пользователя с id=0 — такого не существует, INSERT литерального 0 уронил
+	// бы FK sticker_sets_created_by_fkey.
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO sticker_sets (slug, title, kind, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
+		`INSERT INTO sticker_sets (slug, title, kind, created_by) VALUES ($1,$2,$3,NULLIF($4,0)) RETURNING id`,
 		set.Slug, set.Title, set.Kind, set.CreatedBy).Scan(&set.ID)
 	if isUniqueViolation(err) {
 		return domain.StickerSet{}, domain.ErrConflict
@@ -151,6 +155,38 @@ func (r *StickersRepo) Stickers(ctx context.Context, setID int64) ([]domain.Stic
 		return nil, err
 	}
 	return scanStickers(rows)
+}
+
+// CoverStickers — превью первых perSet стикеров каждого набора из setIDs,
+// ОДНИМ запросом на всю выдачу (аналог covered sets Telegram messages.
+// getFeaturedStickers: набор едет вместе с первыми документами). Экран поиска
+// показывает разом сотни наборов — по одному SetBySlug на строку это N+1,
+// здесь вместо цикла оконная функция row_number() OVER (PARTITION BY set_id).
+// Порядок внутри набора — тот же, что у Stickers: position, id.
+func (r *StickersRepo) CoverStickers(ctx context.Context, setIDs []int64, perSet int) (map[int64][]domain.Sticker, error) {
+	if len(setIDs) == 0 {
+		return map[int64][]domain.Sticker{}, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+stickerCols+` FROM (
+		   SELECT st.*, row_number() OVER (PARTITION BY st.set_id ORDER BY st.position, st.id) AS rn
+		     FROM stickers st WHERE st.set_id = ANY($1)
+		 ) st`+stickerMediaJoin+`
+		 WHERE rn <= $2
+		 ORDER BY st.set_id, st.position, st.id`, setIDs, perSet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]domain.Sticker{}
+	for rows.Next() {
+		s, err := scanSticker(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[s.SetID] = append(out[s.SetID], s)
+	}
+	return out, rows.Err()
 }
 
 func (r *StickersRepo) AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error) {

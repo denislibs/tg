@@ -310,14 +310,71 @@ describe('StickersTab — Recent с крестиком очистки (tweb stic
   })
 })
 
+// Task 2 (подключение useStickerViewer) — tweb emoticonsDropdown/tab.ts:441
+// (attachHelpers → attachStickerViewerListeners({listenTo: this.content, ...})),
+// у нас та же панель, что и для Recent-очистки выше: панель композера.
+//
+// Порог показа (HOLD_THRESHOLD_MS, useStickerViewer.ts) — реальные 125мс,
+// поэтому тесты на «настоящее удержание» продвигают фейковые часы; тесты на
+// «обычный клик» бьют полную связку mousedown→mouseup→click БЕЗ продвижения
+// часов — синхронный fireEvent занимает ~0мс реального времени, короче
+// порога, ровно как физический быстрый клик мышью (см. ревью V2: голый
+// fireEvent.click(cell) без предшествующих mousedown/mouseup не ловит
+// регрессию — реальный клик мышью физически ЕСТЬ эта пара).
+describe('StickersTab — предпросмотр по зажатию ЛКМ (useStickerViewer)', () => {
+  // `vi.useRealTimers()` на каждый тест — уже в глобальном afterEach файла (выше).
+
+  it('долгое зажатие ЛКМ на ячейке стикера открывает предпросмотр, отпускание закрывает его; клик после такого удержания стикер НЕ отправляет', async () => {
+    const onPickSticker = vi.fn()
+    const { managers } = makeManagers([stk(1), stk(2)])
+    renderDropdown(managers, { onPickSticker })
+    fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
+    await waitFor(() => expect(document.querySelector('#content-stickers .grid-item.super-sticker')).not.toBeNull())
+
+    // Фейковые часы включаем ТОЛЬКО теперь — `waitFor` выше сам опирается на
+    // реальные таймеры для поллинга, фейковые их бы заморозили и тест бы завис.
+    vi.useFakeTimers()
+    const cell = document.querySelector('#content-stickers .grid-item.super-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // порог ещё не истёк
+    void act(() => vi.advanceTimersByTime(150))
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+
+    fireEvent.mouseUp(document)
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+
+    // Тот же click, которым браузер естественно завершает пару mousedown→mouseup, —
+    // должен быть проглочен: удержание не должно ещё и отправить стикер.
+    fireEvent.click(cell)
+    expect(onPickSticker).not.toHaveBeenCalled()
+  })
+
+  it('обычный клик по ячейке (mousedown→mouseup→click короче порога) по-прежнему отправляет стикер', async () => {
+    const onPickSticker = vi.fn()
+    const { managers } = makeManagers([stk(1)])
+    renderDropdown(managers, { onPickSticker })
+    fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
+    await waitFor(() => expect(document.querySelector('#content-stickers .grid-item.super-sticker')).not.toBeNull())
+
+    const cell = document.querySelector('#content-stickers .grid-item.super-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    fireEvent.mouseUp(document)
+    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // не мелькнул
+    fireEvent.click(cell)
+
+    expect(onPickSticker).toHaveBeenCalledTimes(1)
+    expect(onPickSticker.mock.calls[0][0].id).toBe(1)
+  })
+})
+
 describe('EmojiDropdown — кнопка-лупа футера открывает экраны правой колонки (tweb index.ts:295-303)', () => {
   // Экраны сами дёргают менеджеры при монтировании — стабы поверх базовых
   // (плюс savedGifs/media.meta: GIF-вкладка дропдауна монтируется при клике).
   function searchManagers() {
     const { managers, stickers } = makeManagers()
     Object.assign(stickers, {
-      featuredSets: vi.fn(async () => []),
-      searchSets: vi.fn(async () => []),
+      featuredSets: vi.fn(async () => ({ sets: [], covers: new Map() })),
+      searchSets: vi.fn(async () => ({ sets: [], covers: new Map() })),
       searchGifs: vi.fn(async () => ({ gifs: [], next: '' })),
       savedGifs: vi.fn(async () => []),
     })

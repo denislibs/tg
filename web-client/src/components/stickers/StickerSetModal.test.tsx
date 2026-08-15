@@ -1,4 +1,4 @@
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StickerSetModal from './StickerSetModal'
 import animationIntersector from '../animationIntersector'
@@ -108,14 +108,22 @@ describe('StickerSetModal', () => {
     expect(install).not.toHaveBeenCalled()
   })
 
-  it('клик по стикеру шлёт его через onPickSticker и закрывает попап (tweb onStickersClick)', async () => {
+  // mousedown→mouseup→click (не голый click) — та же связка, которой браузер
+  // физически рождает обычный клик; после подключения useStickerViewer (Task 2)
+  // именно она проходит через хук предпросмотра первой (см. «долгое зажатие...»
+  // ниже) — голый fireEvent.click эту связку не проверяет (ревью V2).
+  it('клик по стикеру (mousedown→mouseup→click) шлёт его через onPickSticker и закрывает попап (tweb onStickersClick)', async () => {
     const onPickSticker = vi.fn()
     const onClose = vi.fn()
     render(<StickerSetModal slug="utyaduck" onClose={onClose} onPickSticker={onPickSticker} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
     // сетка кликабельна — без is-read-only, когда есть колбэк отправки
     expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(false)
-    fireEvent.click(document.querySelector('.sticker-set-sticker')!)
+    const cell = document.querySelector('.sticker-set-sticker')!
+    fireEvent.mouseDown(cell, { button: 0 })
+    fireEvent.mouseUp(document)
+    expect(screen.queryByTestId('sticker-viewer')).toBeNull() // не мелькнул
+    fireEvent.click(cell)
     expect(onPickSticker).toHaveBeenCalledTimes(1)
     expect(onPickSticker.mock.calls[0][0].mediaId).toBe(100)
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -128,6 +136,37 @@ describe('StickerSetModal', () => {
     expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(true)
     fireEvent.click(document.querySelector('.sticker-set-sticker')!)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  // Task 2 (подключение useStickerViewer): tweb popups/stickers.tsx:310 —
+  // attachStickerViewerListeners на том же скроллере, что и сетка. Обычный
+  // клик (короче порога показа) уже проверен тестом выше («клик по стикеру
+  // (mousedown→mouseup→click)...») — здесь именно жест удержания, дольше
+  // HOLD_THRESHOLD_MS (useStickerViewer.ts) — фейковые часы продвигают
+  // реальное время, поэтому оверлей успевает открыться.
+  it('долгое зажатие ЛКМ на стикере открывает предпросмотр (tweb popups/stickers.tsx:310), отпускание закрывает его; клик после такого удержания стикер НЕ отправляет', async () => {
+    const onPickSticker = vi.fn()
+    render(<StickerSetModal slug="utyaduck" onClose={() => {}} onPickSticker={onPickSticker} />)
+    await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
+
+    // Фейковые часы включаем ПОСЛЕ waitFor выше — он сам опирается на реальные
+    // таймеры для поллинга.
+    vi.useFakeTimers()
+    try {
+      const cell = document.querySelector('.sticker-set-sticker')!
+      fireEvent.mouseDown(cell, { button: 0 })
+      expect(screen.queryByTestId('sticker-viewer')).toBeNull() // порог ещё не истёк
+      void act(() => vi.advanceTimersByTime(150))
+      expect(screen.getByTestId('sticker-viewer')).toBeTruthy()
+
+      fireEvent.mouseUp(document)
+      expect(screen.queryByTestId('sticker-viewer')).toBeNull()
+
+      fireEvent.click(cell)
+      expect(onPickSticker).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('пока попап открыт, играет только его группа animationIntersector; на закрытии — сброс', async () => {

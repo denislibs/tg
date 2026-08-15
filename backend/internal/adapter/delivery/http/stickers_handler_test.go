@@ -78,23 +78,42 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 	}
 }
 
-// featuredRepoStub — стаб порта stickers.Repo только под FeaturedSets: остальные
-// методы (встроенный nil-интерфейс) в этом хендлере не вызываются.
+// featuredRepoStub — стаб порта stickers.Repo только под FeaturedSets и
+// CoverStickers (Featured зовёт оба — наборы и их превью, covered sets):
+// остальные методы (встроенный nil-интерфейс) в этом хендлере не вызываются.
 type featuredRepoStub struct {
 	usecasestickers.Repo
-	sets []domain.StickerSet
+	sets   []domain.StickerSet
+	covers map[int64][]domain.Sticker
 }
 
 func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSet, error) {
 	return s.sets, nil
 }
 
-// GET /sticker-sets/featured: 200 с наборами из usecase в конверте {"sets": […]}.
+func (s *featuredRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ int) (map[int64][]domain.Sticker, error) {
+	out := map[int64][]domain.Sticker{}
+	for _, id := range setIDs {
+		if sts, ok := s.covers[id]; ok {
+			out[id] = sts
+		}
+	}
+	return out, nil
+}
+
+// GET /sticker-sets/featured: 200 с наборами из usecase в конверте {"sets": […]},
+// а также превью каждого набора (covered sets) в "covers" — по ним строка
+// поиска рисует силуэт стикеров, не дожидаясь отдельного похода за набором.
 func TestFeatured_ReturnsSets(t *testing.T) {
-	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{sets: []domain.StickerSet{
-		{ID: 2, Slug: "newer", Title: "Newer", Kind: "sticker", StickerCount: 5},
-		{ID: 1, Slug: "older", Title: "Older", Kind: "sticker", StickerCount: 3},
-	}}))
+	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{
+		sets: []domain.StickerSet{
+			{ID: 2, Slug: "newer", Title: "Newer", Kind: "sticker", StickerCount: 5},
+			{ID: 1, Slug: "older", Title: "Older", Kind: "sticker", StickerCount: 3},
+		},
+		covers: map[int64][]domain.Sticker{
+			2: {{ID: 20, SetID: 2, MediaID: 200, Emoji: "😀"}},
+		},
+	}))
 
 	w := httptest.NewRecorder()
 	h.Featured(w, httptest.NewRequest("GET", "/sticker-sets/featured", nil))
@@ -102,13 +121,74 @@ func TestFeatured_ReturnsSets(t *testing.T) {
 		t.Fatalf("code = %d, want 200", w.Code)
 	}
 	var body struct {
-		Sets []domain.StickerSet `json:"sets"`
+		Sets   []domain.StickerSet         `json:"sets"`
+		Covers map[string][]map[string]any `json:"covers"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v (body %s)", err, w.Body.String())
 	}
 	if len(body.Sets) != 2 || body.Sets[0].ID != 2 || body.Sets[1].ID != 1 {
 		t.Fatalf("sets = %+v, want порядок репозитория [2 1]", body.Sets)
+	}
+	cover2, ok := body.Covers["2"]
+	if !ok || len(cover2) != 1 || cover2[0]["id"] != float64(20) {
+		t.Fatalf("covers[2] = %+v, want превью стикера 20", body.Covers["2"])
+	}
+	if _, ok := body.Covers["1"]; ok {
+		t.Fatalf("covers[1] не должен присутствовать — набор без превью в стабе")
+	}
+}
+
+// searchSetsRepoStub — стаб порта stickers.Repo под SearchSets и CoverStickers
+// (SearchSets зовёт оба, тем же приёмом, что Featured).
+type searchSetsRepoStub struct {
+	usecasestickers.Repo
+	sets   []domain.StickerSet
+	covers map[int64][]domain.Sticker
+}
+
+func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSet, error) {
+	return s.sets, nil
+}
+
+func (s *searchSetsRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ int) (map[int64][]domain.Sticker, error) {
+	out := map[int64][]domain.Sticker{}
+	for _, id := range setIDs {
+		if sts, ok := s.covers[id]; ok {
+			out[id] = sts
+		}
+	}
+	return out, nil
+}
+
+// GET /sticker-sets/search?q=: та же связка «наборы + covers», что у Featured —
+// строка поиска не пуста до отдельного похода за полным набором.
+func TestSearchSets_ReturnsCovers(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&searchSetsRepoStub{
+		sets: []domain.StickerSet{{ID: 5, Slug: "duck_pack", Title: "Duck", Kind: "sticker"}},
+		covers: map[int64][]domain.Sticker{
+			5: {{ID: 50, SetID: 5, MediaID: 500, Emoji: "🦆"}},
+		},
+	}))
+
+	w := httptest.NewRecorder()
+	h.SearchSets(w, httptest.NewRequest("GET", "/sticker-sets/search?q=duck", nil))
+	if w.Code != 200 {
+		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Sets   []domain.StickerSet         `json:"sets"`
+		Covers map[string][]map[string]any `json:"covers"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v (body %s)", err, w.Body.String())
+	}
+	if len(body.Sets) != 1 || body.Sets[0].ID != 5 {
+		t.Fatalf("sets = %+v, want [5]", body.Sets)
+	}
+	cover5, ok := body.Covers["5"]
+	if !ok || len(cover5) != 1 || cover5[0]["id"] != float64(50) {
+		t.Fatalf("covers[5] = %+v, want превью стикера 50", body.Covers["5"])
 	}
 }
 
@@ -178,7 +258,8 @@ func TestSetByMediaID_BadParam(t *testing.T) {
 	}
 }
 
-// Пустая выдача сериализуется как [], а не null — клиент мапит r.sets ?? [].
+// Пустая выдача сериализуется как {"sets":[],"covers":{}}, а не null — клиент
+// мапит r.sets ?? [] и обходит r.covers объектом, не ожидая null.
 func TestFeatured_EmptyIsArray(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{}))
 
@@ -193,5 +274,8 @@ func TestFeatured_EmptyIsArray(t *testing.T) {
 	}
 	if string(body["sets"]) != "[]" {
 		t.Fatalf(`sets = %s, want []`, body["sets"])
+	}
+	if string(body["covers"]) != "{}" {
+		t.Fatalf(`covers = %s, want {}`, body["covers"])
 	}
 }

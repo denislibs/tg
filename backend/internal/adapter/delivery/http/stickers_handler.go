@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -125,9 +126,21 @@ func (h *StickersHandler) Uninstall(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// coversJSON — превью наборов (covered sets) в конверте ответа: карта
+// setID → []стикер, сериализованная той же stickersJSON, что и остальные
+// выборки стикеров (path_thumb едет и здесь). nil-карта — это {}, а не null,
+// тем же приёмом, что sets — [] вместо null.
+func coversJSON(covers map[int64][]domain.Sticker) map[string]any {
+	out := make(map[string]any, len(covers))
+	for setID, sts := range covers {
+		out[strconv.FormatInt(setID, 10)] = stickersJSON(sts)
+	}
+	return out
+}
+
 // SearchSets — GET /sticker-sets/search?q=.
 func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
-	sets, err := h.svc.SearchSets(r.Context(), r.URL.Query().Get("q"))
+	sets, covers, err := h.svc.SearchSets(r.Context(), r.URL.Query().Get("q"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
@@ -135,13 +148,16 @@ func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 	if sets == nil {
 		sets = []domain.StickerSet{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
+	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
 }
 
 // Featured — GET /sticker-sets/featured: трендовые наборы (новые первыми) —
 // экран поиска стикеров показывает их при пустом запросе (tweb getFeaturedStickers).
+// Вместе с наборами едут превью (covered sets, tweb messages.getFeaturedStickers):
+// первые стикеры каждого набора одним запросом, чтобы строка не была пустой до
+// отдельного похода за полным набором.
 func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
-	sets, err := h.svc.Featured(r.Context())
+	sets, covers, err := h.svc.Featured(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load featured")
 		return
@@ -149,7 +165,7 @@ func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
 	if sets == nil {
 		sets = []domain.StickerSet{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
+	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
 }
 
 // CreateSet — POST /sticker-sets {slug,title,kind}.

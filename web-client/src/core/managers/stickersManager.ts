@@ -90,6 +90,16 @@ const mapSticker = (r: RawSticker): Sticker => ({
 const mapTenorGif = (r: RawTenorGif): TenorGif => ({
   id: r.id, mp4Url: r.mp4_url, gifUrl: r.gif_url, previewUrl: r.preview_url, width: r.width, height: r.height,
 })
+/** Ключ набора → его первые стикеры (covered sets, см. StickerSet.coverMediaId
+ * докблок). Бэк отдаёт карту JSON-объектом (ключи — строки set_id), клиенту
+ * удобнее Map<number, Sticker[]> — быстрый lookup по StickerSet.id при рендере
+ * строки набора (StickersSearchTab), без парсинга строки на каждый чих. */
+export type Covers = Map<number, Sticker[]>
+const mapCovers = (raw: Record<string, RawSticker[]> | undefined): Covers => {
+  const out = new Map<number, Sticker[]>()
+  for (const [setId, sts] of Object.entries(raw ?? {})) out.set(Number(setId), (sts ?? []).map(mapSticker))
+  return out
+}
 
 export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
   return {
@@ -108,15 +118,19 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ set: RawStickerSet }>(`/stickers/by-media/${mediaId}`).catch(() => null)
       return r?.set ? mapStickerSet(r.set) : null
     },
-    async searchSets(q: string): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/search', { q })
-      return (r.sets ?? []).map(mapStickerSet)
+    /** covers — первые 5 стикеров каждого набора выдачи (одним запросом,
+     * без похода за полным составом на каждую строку) — экран поиска рисует
+     * превью строки сразу из них, не дожидаясь setBySlug. */
+    async searchSets(q: string): Promise<{ sets: StickerSet[]; covers: Covers }> {
+      const r = await rest.get<{ sets: RawStickerSet[]; covers?: Record<string, RawSticker[]> }>('/sticker-sets/search', { q })
+      return { sets: (r.sets ?? []).map(mapStickerSet), covers: mapCovers(r.covers) }
     },
-    /** Трендовые наборы (новые первыми, лимит 40 на бэке) — экран поиска
-     * стикеров показывает их при пустом запросе (tweb getFeaturedStickers). */
-    async featuredSets(): Promise<StickerSet[]> {
-      const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets/featured')
-      return (r.sets ?? []).map(mapStickerSet)
+    /** Трендовые наборы (новые первыми, лимит featuredLim=2000 на бэке) — экран поиска
+     * стикеров показывает их при пустом запросе (tweb getFeaturedStickers).
+     * covers — см. searchSets. */
+    async featuredSets(): Promise<{ sets: StickerSet[]; covers: Covers }> {
+      const r = await rest.get<{ sets: RawStickerSet[]; covers?: Record<string, RawSticker[]> }>('/sticker-sets/featured')
+      return { sets: (r.sets ?? []).map(mapStickerSet), covers: mapCovers(r.covers) }
     },
     async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
     async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },
