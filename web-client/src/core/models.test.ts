@@ -1,6 +1,6 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
+import { deriveOut, mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
 
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
@@ -178,5 +178,28 @@ describe('mapChecklist', () => {
     expect(c.items).toEqual([])
     expect(c.othersCanAdd).toBe(false)
     expect(c.othersCanMark).toBe(false)
+  })
+})
+
+// Порт tweb `message.pFlags.out`. Бэкенд поля не отдаёт (ни REST-витрина
+// messageJSON, ни WS-кадр messageUpdatePayload), поэтому предикат — ЕДИНСТВЕННОЕ
+// место вывода этого факта: его зовут границы маппинга владельца (messagesManager,
+// pending, pollMethods, boostsManager). Прежде тот же вывод жил в витрине
+// (messageToConvMsg) — правило перенесено сюда дословно, включая send-as.
+describe('deriveOut — исходящее/входящее', () => {
+  it('моё сообщение — исходящее', () => {
+    expect(deriveOut({ senderId: 7 }, 7)).toBe(true)
+  })
+
+  it('чужое сообщение — входящее', () => {
+    expect(deriveOut({ senderId: 2 }, 7)).toBe(false)
+  })
+
+  it('личность ещё не известна (meId === null) — входящее', () => {
+    expect(deriveOut({ senderId: 7 }, null)).toBe(false)
+  })
+
+  it('send-as: пост от имени канала/группы рисуется ВХОДЯЩИМ, хотя отправитель — я', () => {
+    expect(deriveOut({ senderId: 7, sendAs: { chatId: 9, title: 'Канал' } }, 7)).toBe(false)
   })
 })

@@ -30,7 +30,11 @@ export function replyMediaLabel(type?: string): string {
 }
 
 // Convert a backend Message into the renderer's ConvMsg shape.
-// meId decides out/in. For outgoing messages status is 'read' (double check) once
+// out/in — свойство САМОГО сообщения (`Message.out`, порт tweb pFlags.out):
+// выводит его владелец на границе маппинга (core/models.ts::deriveOut, зовётся из
+// менеджеров воркера), витрина только читает. `meId` здесь остался ради ДРУГОГО:
+// автор превью ответа («Вы» vs имя собеседника) — у replyTo своего `out` нет.
+// For outgoing messages status is 'read' (double check) once
 // the peer has read up to this message's seq (opts.readUpToSeq, tracked by the
 // caller from rt:read events), otherwise 'sent'.
 // opts.senderName, when provided for an incoming message, populates `sender`
@@ -40,10 +44,7 @@ export function messageToConvMsg(
   meId: number | null,
   opts?: { senderName?: string; readUpToSeq?: number; forwardFromName?: string; replyToName?: string },
 ): ConvMsg {
-  // Send-as (Telegram send_as): сообщение авторства канала/группы — рисуется
-  // входящим от имени send-as личности (как автофорвард поста канала), даже если
-  // реальный отправитель — я. Реальный senderId в бабле не показываем.
-  const out = meId != null && m.senderId === meId && !m.sendAs
+  const out = !!m.out
   // Voice messages get their own bubble; service events render as a centered
   // pill (no sender/ticks); other media render via the generic media bubble
   // (keyed off mediaId), so everything else maps to 'text'.

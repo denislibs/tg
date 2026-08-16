@@ -276,7 +276,7 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
 
   it('cacheLive(fullEvt).msg равен fromNewMessageEvt(fullEvt) без исключений', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
-    const mgr = newMessagesManager({ rest })
+    const mgr = newMessagesManager({ rest, getMeId: () => fullEvt.sender_id })
     await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
     const ops = mgr.cacheLive(fullEvt)
     const main = ops.find((o) => o.key === '3')
@@ -284,18 +284,21 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     // Исключений нет: fromNewMessageEvt уже сама делает то, что раньше cacheLive
     // дублировал вручную (инжект secretMedia/secret, clientId) — единственный
     // источник вставки теперь один и тот же маппер, вызванный один раз.
-    expect(main && main.op === 'insert' ? main.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+    // Единственная НАДБАВКА поверх маппера — `out` (порт tweb pFlags.out): его
+    // ставит граница маппинга владельца (withOut в messagesManager.ts), потому
+    // что проводного поля у бэка нет. Здесь отправитель кадра — я, значит true.
+    expect(main && main.op === 'insert' ? main.msg : null).toEqual({ ...fromNewMessageEvt(fullEvt), out: true })
   })
 
   it('тред-ключ той же операции тоже несёт полный (не урезанный) msg', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
-    const mgr = newMessagesManager({ rest })
+    const mgr = newMessagesManager({ rest, getMeId: () => fullEvt.sender_id })
     await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
     await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
     const ops = mgr.cacheLive(fullEvt)
     const thread = ops.find((o) => o.key === '3:100')
     expect(thread?.op).toBe('insert')
-    expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+    expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual({ ...fromNewMessageEvt(fullEvt), out: true })
   })
 })
 
@@ -701,5 +704,83 @@ describe('MessagesManager.cacheGiveaway', () => {
     await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cacheGiveaway({ chat_id: 1, giveaway: rawGiveaway({ id: 999 }) })
     expect(ops).toEqual([])
+  })
+})
+
+// ── `out` на границе маппинга (порт tweb pFlags.out) ────────────────────────
+// Бэкенд флага не отдаёт (ни REST-витрина messageJSON, ни WS-кадр
+// messageUpdatePayload) — его выводит владелец, ЗДЕСЬ, на каждой границе, где
+// сообщение уходит наружу. Ставить его в `put()` было бы недостаточно: `put` —
+// единственный вход в SSOT, но мимо него сообщения отдают getAround, офлайн-ветка
+// getHistory и вся поисковая группа методов (они в SSOT вообще не пишут).
+describe('MessagesManager: `out` ставит владелец на границе маппинга', () => {
+  const mixedPage = (): { messages: RawMessage[]; count: number } => ({
+    messages: [
+      { id: 2, chat_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
+      { id: 1, chat_id: 1, seq: 1, sender_id: 2, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
+    ],
+    count: 2,
+  })
+
+  it('страница истории: моё → out=true, чужое → out=false', async () => {
+    const { rest } = countingRest({ '0:0:40': mixedPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => 7 })
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    expect(r.messages.map((m) => [m.seq, m.out])).toEqual([[1, false], [2, true]])
+  })
+
+  it('send-as: пост от имени канала — входящий, хотя отправитель я', async () => {
+    const page = mixedPage()
+    page.messages[0].send_as = { chat_id: 9, title: 'Канал' }
+    const { rest } = countingRest({ '0:0:40': page })
+    const mgr = newMessagesManager({ rest, getMeId: () => 7 })
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    expect(r.messages.find((m) => m.seq === 2)?.out).toBe(false)
+  })
+
+  it('повторная выдача из кэша (без сети) несёт тот же out', async () => {
+    const { rest, calls } = countingRest({ '0:0:40': mixedPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => 7 })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const cached = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    expect(cached.cached).toBe(true)
+    expect(calls()).toBe(1)
+    expect(cached.messages.map((m) => m.out)).toEqual([false, true])
+  })
+
+  it('getAround (jump-to-message) идёт мимо put — и всё равно несёт out', async () => {
+    const rest = {
+      get: async () => ({ messages: mixedPage().messages, reached_top: true, reached_bottom: true }),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => 7 })
+    const r = await mgr.getAround(1, 2, 40)
+    expect(r.messages.map((m) => m.out)).toEqual([true, false])
+  })
+
+  it('поиск по чату (в SSOT не пишет вовсе) — тоже несёт out', async () => {
+    const rest = { get: async () => mixedPage() } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => 7 })
+    const r = await mgr.searchMessages(1, 'м')
+    expect(r.messages.map((m) => m.out)).toEqual([true, false])
+  })
+
+  // Гонка личности. `me` появляется у воркера асинхронно; страница истории,
+  // обслуженная раньше, уехала бы вкладке с out=false у ВСЕХ сообщений —
+  // молчаливая регрессия (все свои сообщения слева, без галочек). Гейт meReady
+  // (workerCore: гидрация `me` с диска / первый setMe) обязан удержать маппинг.
+  // Мутация «убрать await whenMeReady()» красит именно этот тест: сеть отвечает
+  // микротаском, а личность приезжает макротаском, поэтому без гейта маппинг
+  // гарантированно застаёт meId === null.
+  it('ранняя страница истории ЖДЁТ готовности `me` (иначе всё стало бы входящим)', async () => {
+    let meId: number | null = null
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => { release = resolve })
+    const { rest } = countingRest({ '0:0:40': mixedPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => meId, meReady: () => ready })
+
+    setTimeout(() => { meId = 7; release() }, 0)
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+
+    expect(r.messages.map((m) => m.out)).toEqual([false, true])
   })
 })

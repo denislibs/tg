@@ -61,7 +61,7 @@
 //     сравнивать не с чем, это наша фича, а не расхождение с оригиналом;
 //   • пост канала уходит по REST (`channelsManager.post`) — транспорт другой,
 //     но владелец бабла тот же: он зовёт `beforeMessageSending` явно.
-import type { Message, MessageEntity } from '../../models'
+import { deriveOut, type Message, type MessageEntity } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { AckEvt, PendingMedia, PendingNewEvt, TypingAction } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
@@ -138,6 +138,10 @@ export interface PendingCtx {
   hkey: (chatId: number, threadRoot?: number | null) => string
   slices: Map<string, SlicedArray<number>>
   msgsFor: (chatId: number) => Map<number, Message>
+  /** id текущего пользователя — временный бабл получает `out` тем же предикатом
+   *  (`deriveOut`), что и настоящие сообщения на границе маппинга. Геттер, а не
+   *  значение: `me` у воркера разрешается лениво. */
+  getMeId: () => number | null
   /** Публикация изменений окна всем вкладкам (rt:message_op). Правило: публикует
    *  ТОТ, КТО инициировал изменение. Пути отправки инициирует этот модуль —
    *  поэтому emit здесь; кадры message_ack/message_error инициирует роутер
@@ -279,6 +283,10 @@ export function newPendingMethods(ctx: PendingCtx) {
       contact: e.contact,
       secret: e.secret,
       sendAs: e.send_as,
+      // Тот же предикат, что на границе маппинга (порт tweb pFlags.out): бабл
+      // «отправляется…» исходящий, но send-as (пост от имени канала/группы)
+      // рисуется входящим — как и его серверное эхо.
+      out: deriveOut({ senderId: e.sender_id, sendAs: e.send_as }, ctx.getMeId()),
     }
     const d: PendingDetails = { chatId: e.chat_id, threadRootId: e.thread_root_id, tempSeq: seq, keys }
     pendingByClientId.set(e.client_msg_id, d)

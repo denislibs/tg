@@ -7,9 +7,22 @@ const base: Message = {
   replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
 }
 
+// `out` больше НЕ выводится здесь: это поле самого сообщения (Message.out, порт
+// tweb pFlags.out), которое ставит владелец в воркере (core/models.ts::deriveOut,
+// зовётся на границе маппинга messagesManager/pending). Витрина его читает —
+// поэтому в стендах ниже исходящее сообщение задаётся полем `out: true`, а не
+// совпадением senderId с meId. Сам предикат пинится в core/models.test.ts.
 describe('messageToConvMsg', () => {
+  it('берёт out из поля сообщения, а не из сравнения senderId с meId', () => {
+    // senderId === meId, но владелец флага не поставил (сообщение пришло с
+    // границы, которая его не выводит) — витрина СВОЕГО вывода не имеет.
+    expect(messageToConvMsg({ ...base, senderId: 7 }, 7).out).toBe(false)
+    // И наоборот: флаг владельца сильнее любого совпадения id.
+    expect(messageToConvMsg({ ...base, senderId: 2, out: true }, 7).out).toBe(true)
+  })
+
   it('marks messages from me as out with sent status', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7 }, 7)
+    const c = messageToConvMsg({ ...base, senderId: 7, out: true }, 7)
     expect(c.out).toBe(true)
     expect(c.status).toBe('sent')
     expect(c.text).toBe('hi')
@@ -28,22 +41,22 @@ describe('messageToConvMsg', () => {
   })
 
   it('marks an outgoing message as read once the peer has read up to its seq', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5 }, 7, { readUpToSeq: 5 })
+    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5, out: true }, 7, { readUpToSeq: 5 })
     expect(c.status).toBe('read')
   })
 
   it('marks an outgoing message as read when readUpToSeq is past its seq', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5 }, 7, { readUpToSeq: 9 })
+    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5, out: true }, 7, { readUpToSeq: 9 })
     expect(c.status).toBe('read')
   })
 
   it('keeps an outgoing message as sent when readUpToSeq is below its seq', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5 }, 7, { readUpToSeq: 4 })
+    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5, out: true }, 7, { readUpToSeq: 4 })
     expect(c.status).toBe('sent')
   })
 
   it('keeps an outgoing message as sent when readUpToSeq is not provided', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5 }, 7)
+    const c = messageToConvMsg({ ...base, senderId: 7, seq: 5, out: true }, 7)
     expect(c.status).toBe('sent')
   })
 
@@ -79,7 +92,7 @@ describe('messageToConvMsg', () => {
   })
 
   it('never sets sender on outgoing messages even with senderName', () => {
-    const c = messageToConvMsg({ ...base, senderId: 7 }, 7, { senderName: 'Bob' })
+    const c = messageToConvMsg({ ...base, senderId: 7, out: true }, 7, { senderName: 'Bob' })
     expect(c.out).toBe(true)
     expect(c.sender).toBeUndefined()
   })

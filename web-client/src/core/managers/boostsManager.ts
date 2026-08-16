@@ -1,6 +1,6 @@
 import type { RestClient } from '../net/restClient'
 import {
-  mapBoostStatus, mapGiveaway, mapMessage,
+  mapBoostStatus, mapGiveaway, mapMessage, deriveOut,
   type BoostStatus, type RawBoostStatus,
   type Giveaway, type RawGiveaway,
   type Message, type RawMessage,
@@ -18,7 +18,14 @@ export interface CreateGiveawayArgs {
   clientMsgId?: string
 }
 
-export function newBoostsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
+export function newBoostsManager({ rest, getMeId }: {
+  rest: Pick<RestClient, 'get' | 'post'>
+  /** id текущего пользователя — созданный розыгрыш вкладка кладёт прямо в окно
+   *  (useChatPopups → applyIncoming), минуя SSOT воркера и его маппер, поэтому
+   *  `out` (порт tweb pFlags.out) выводится здесь тем же предикатом. Лениво,
+   *  геттер: `me` у воркера разрешается асинхронно. */
+  getMeId?: () => number | null
+}) {
   return {
     async status(chatId: number): Promise<BoostStatus> {
       const r = await rest.get<RawBoostStatus>(`/channels/${chatId}/boosts`)
@@ -39,7 +46,8 @@ export function newBoostsManager({ rest }: { rest: Pick<RestClient, 'get' | 'pos
         until_date: a.untilDate,
         client_msg_id: a.clientMsgId ?? '',
       })
-      return mapMessage(r)
+      const m = mapMessage(r)
+      return { ...m, out: deriveOut(m, getMeId?.() ?? null) }
     },
     // participateGiveaway перенесён в messagesManager (single-writer: пуш в SSOT
     // сообщений + broadcast → storeProjection). Здесь остаётся только чтение статуса.

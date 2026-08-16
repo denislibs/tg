@@ -3,11 +3,18 @@
 // Опросы + чек-листы + розыгрыши (порт tweb appPolls). Выделено из God-объекта
 // messagesManager: зависит только от rest и точечного патча SSOT (patchMsg через
 // ctx). Публичный API не меняется — методы спредятся в объект messagesManager.
-import { mapMessage, mapPoll, mapChecklist, mapGiveaway, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
+import { mapMessage, mapPoll, mapChecklist, mapGiveaway, deriveOut, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { MessagesCtx } from './ctx'
 
-export function newPollMethods({ rest, patchMsg, opWindowsFor }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: MessagesCtx) {
+  // Та же граница маппинга, что в messagesManager: созданный опрос/чек-лист
+  // вкладка кладёт прямо в окно (useChatPopups → applyIncoming), минуя SSOT
+  // воркера и его маппер, — без `out` бабл своего же опроса рисовался бы входящим.
+  const mapOne = (r: RawMessage): Message => {
+    const m = mapMessage(r)
+    return { ...m, out: deriveOut(m, getMeId?.() ?? null) }
+  }
   // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
   // Возвращает id патченного сообщения (для построения операций у cacheChecklist) —
   // undefined, если чек-лист ни на одном сообщении SSOT не найден.
@@ -26,7 +33,7 @@ export function newPollMethods({ rest, patchMsg, opWindowsFor }: MessagesCtx) {
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
       })
-      return mapMessage(r)
+      return mapOne(r)
     },
     // Голос (пустой список — отзыв); ответ авторитетен и несёт МОЙ выбор (myVotes),
     // которого нет в общем WS-событии poll_update. Ставим опрос ПОЛНОСТЬЮ в SSOT
@@ -49,7 +56,7 @@ export function newPollMethods({ rest, patchMsg, opWindowsFor }: MessagesCtx) {
         others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
         client_msg_id: c.clientMsgId ?? '',
       })
-      return mapMessage(r)
+      return mapOne(r)
     },
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
     // отметку) → пушим в SSOT; main-стор обновляет вызыватель (storeProjection чист).

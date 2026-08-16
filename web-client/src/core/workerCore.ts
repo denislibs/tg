@@ -52,7 +52,7 @@ import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type Pending
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
 import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
@@ -76,6 +76,19 @@ export function createWorkerCore() {
   // «мои» реакций) — теперь кэшируем полного User и рассылаем его вкладкам
   // (rt:me) через setMe при каждом изменении, а не только держим id при себе.
   let me: User | null = null
+  // Гейт «личность известна» (Message.out — порт tweb pFlags.out). `out`
+  // выводится сравнением senderId с id текущего пользователя, а тот появляется у
+  // воркера асинхронно: раньше — только с ответом /me. Страница истории,
+  // обслуженная до него, уехала бы вкладке с out=false у ВСЕХ сообщений —
+  // молчаливая регрессия (все свои сообщения слева, без галочек). Гейт снимает
+  // либо гидрация `me` с диска в start() (симметрично write-through `saveMe`
+  // ниже — на диске лежит `me` прошлого запуска), либо первый setMe, что
+  // случится раньше; на первом в жизни браузера входе диска ещё нет, но там
+  // `me` ставит сам вход (authManager.persist → onMeChanged → setMe) ДО того,
+  // как вкладка попросит историю. Ждут гейт только сетевые пути messagesManager
+  // (см. meReady в MessagesDeps); воркер без start() истории не обслуживает.
+  let markMeReady!: () => void
+  const meReady = new Promise<void>((resolve) => { markMeReady = resolve })
   // Публикует свежий `me` всем вкладкам + обновляет локальный кэш. Зовётся на
   // старте (auth.me() ниже) и как onMeChanged профиля/премиума/логаута.
   // `broadcast` объявлен ниже — функция дёргает его лениво (тот же приём, что
@@ -96,6 +109,7 @@ export function createWorkerCore() {
   // раньше: внутри `saveMe` (core/store/persist.ts), новый путь его не обходит.
   function setMe(u: User | null): void {
     me = u
+    markMeReady() // личность разрешена — гейт `out` снимаем (идемпотентно)
     void saveMe(u)
     broadcast(RT.me, u)
   }
@@ -154,6 +168,8 @@ export function createWorkerCore() {
     rest,
     decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
     getMeId: () => me?.id ?? null,
+    // Гейт вывода `out` (см. объявление meReady выше).
+    meReady: () => meReady,
     broadcast: (event, payload) => broadcast(event, payload),
     // ТРАНСПОРТ И АПЛОАД — ИНЪЕКЦИЕЙ (порт модели tweb: менеджер получает
     // зависимости при сборке через реестр AppManagers, а не импортирует их).
@@ -269,7 +285,9 @@ export function createWorkerCore() {
   const calls = newCallsManager({ rest })
   const livestream = newLivestreamManager({ rest })
   const stars = newStarsManager({ rest })
-  const boosts = newBoostsManager({ rest })
+  // getMeId — по той же причине, что у messages выше: созданный розыгрыш вкладка
+  // кладёт прямо в окно, минуя SSOT воркера, поэтому `out` на нём ставит владелец.
+  const boosts = newBoostsManager({ rest, getMeId: () => me?.id ?? null })
   const report = newReportManager({ rest })
   const stats = newStatsManager({ rest })
   const bots = newBotsManager({ rest })
@@ -619,7 +637,23 @@ export function createWorkerCore() {
   function start(): void {
     // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
     // предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
-    void tokens.load().then(() => persistScope(tokens.get()))
+    //
+    // Тем же хвостом — гидрация `me` с диска и снятие гейта `out` (см. объявление
+    // meReady выше). Порядок обязателен: читать `me` можно ТОЛЬКО после
+    // persistScope — тот стирает данные прошлого аккаунта, и чтение до него
+    // отдало бы чужой профиль (а он определяет, чьи сообщения «мои»). Гейт
+    // снимаем в любом исходе, включая пустой диск и недоступный IndexedDB:
+    // подвисший навсегда гейт хуже неверного `out` — он бы заморозил историю.
+    // Значение кладём в кэш владельца молча, без setMe: setMe — точка ПУБЛИКАЦИИ
+    // факта (веер rt:me + write-through на диск), а публиковать здесь нечего —
+    // это тот же снимок, который воркер сам туда и записал, и вкладке его отдаёт
+    // её собственный boot-запрос /me.
+    void tokens.load()
+      .then(() => persistScope(tokens.get()))
+      .then(() => loadMe())
+      .then((u) => { if (u && !me) me = u })
+      .catch(() => {})
+      .finally(() => { markMeReady() })
     // Первый вывод `me` (Stage 1C.2, Task 1). Публикует сам auth.me()
     // (authManager::fetchMe зовёт onMeChanged на любой свежий ответ сервера и
     // на 401), поэтому здесь остаётся ровно один непокрытый им случай —

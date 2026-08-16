@@ -54,4 +54,22 @@ describe('storeProjection — rt:me применяется к chatsStore (еди
     rootScope.dispatchEventSingle(RT.me, updated)
     expect(useChatsStore.getState().me).toEqual(updated)
   })
+
+  // Второе зеркало того же факта — `rootScope.myId` (порт tweb rootScope.ts:253),
+  // его читает императивная лента (`components/chat/bubbles.ts`), которой нельзя
+  // знать про zustand. Писатель обязан быть ОДИН (этот проектор) — иначе два
+  // зеркала разъедутся; пин на «нет второго писателя» — stores/noDuplicateMe.test.ts.
+  // Что ломается без строки `rootScope.myId = ...`: лента считает себя
+  // неавторизованной (myId === 0) и, например, подписывает превью ответа на своё
+  // же сообщение чужим именем вместо «Вы».
+  it('rt:me пишет и второе зеркало — rootScope.myId (для императивной ленты)', () => {
+    rootScope.myId = 0
+    rootScope.dispatchEventSingle(RT.me, ME)
+    expect(rootScope.myId).toBe(7)
+
+    // Логаут: зеркало обязано вернуться в «никого» (у tweb — NULL_PEER_ID),
+    // иначе следующий пользователь получил бы чужой id до первого rt:me.
+    rootScope.dispatchEventSingle(RT.me, null)
+    expect(rootScope.myId).toBe(0)
+  })
 })

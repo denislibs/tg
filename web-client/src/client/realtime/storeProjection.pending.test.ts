@@ -43,6 +43,9 @@ function worker(keys: string[]) {
       if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
       return c
     },
+    // `out` бабла (порт tweb pFlags.out) выводит владелец — здесь это тот же
+    // отправитель, что у всех сообщений стенда (SENDER).
+    getMeId: () => SENDER,
     // Предмет этого файла — путь «операция → окно», поэтому веер и транспорт
     // здесь заглушены: операции emit'ятся вручную (см. emit ниже), а отправка/
     // аплоад покрыты у владельца (managers/messages/pending.test.ts).

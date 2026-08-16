@@ -47,6 +47,10 @@ function makeCtx() {
     upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
     ctx: {
       hkey, slices, msgsFor,
+      // Тот же id, что `sender_id` в evt() ниже: временный бабл — моё
+      // сообщение, и `out` на нём ставит владелец (deriveOut), иначе бабл
+      // «отправляется…» рисовался бы входящим, без часов и галочек.
+      getMeId: () => 42,
       emit: (ops: MessageOp[]) => { if (ops.length) { order.push('emit'); emitted.push(ops) } },
       send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
       upload: (a: UploadArgs) => h.upload(a),

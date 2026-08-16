@@ -192,10 +192,28 @@ export type BroadcastEventsListeners = {
 interface RootScopePort { emit(event: string, payload: unknown, meta?: EventMeta): void }
 
 export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
+  /** Порт tweb `rootScope.myId` (rootScope.ts:253): id текущего пользователя
+   *  публичным полем шины. Императивной ленте (`chat/bubbles.ts`, порт tweb —
+   *  там `rootScope.myId` читают bubbles.ts:740, 813, 928, 2719, 4236) нужен
+   *  синхронный доступ к своей личности, а тянуть в неё zustand нельзя.
+   *  Начальное значение у tweb — `NULL_PEER_ID`; у нас id — обычное число, и
+   *  «никого» это 0.
+   *
+   *  РАСХОЖДЕНИЕ С TWEB, СОЗНАТЕЛЬНОЕ. В оригинале поле пишет сам rootScope из
+   *  своей подписки на `user_auth` (rootScope.ts:265-267). У нас так нельзя:
+   *  это завело бы ВТОРОГО писателя факта `me` мимо проектора, вопреки таблице
+   *  владения фактами (web-client/CLAUDE.md). Пишет ровно та же единственная
+   *  точка, что пишет `chatsStore.meId` — проектор на событие `rt:me`
+   *  (`client/realtime/storeProjection.ts`): один писатель на два зеркала, как
+   *  `[RT.messageOp]` там же пишет и стор, и `messagesMirror`. Держит пин
+   *  `stores/noDuplicateMe.test.ts` (скан `.myId = `). */
+  public myId: number
+
   private port: RootScopePort | null = null
 
   constructor() {
     super()
+    this.myId = 0
     // Порождённое вкладкой событие уходит и локальным подписчикам, и в воркер —
     // тот ретранслирует его ОСТАЛЬНЫМ вкладкам (tweb rootScope.ts:280-290).
     // Принятое из воркера ре-эмитится через dispatchEventSingle, иначе кольцо.

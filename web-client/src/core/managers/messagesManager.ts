@@ -12,7 +12,7 @@ export interface CalendarDay {
   /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
   has_thumb: boolean
 }
-import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, deriveOut, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import { mapReplyMarkup } from './botsManager'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
@@ -64,9 +64,17 @@ export interface MessagesDeps {
   /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
   decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[]; media?: SecretMedia } | null>
   /** id текущего пользователя — воркеру нужен, чтобы кэшировать `mine` реакций
-   * (событие reaction несёт user_id реагирующего, а не флаг «моё»). Разрешается
-   * лениво (воркер зовёт /me), поэтому геттер, а не значение. */
+   * (событие reaction несёт user_id реагирующего, а не флаг «моё») и чтобы
+   * выводить `Message.out` на границе маппинга. Разрешается лениво (воркер зовёт
+   * /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
+  /** Гейт «личность уже известна» (workerCore: гидрация `me` с диска / первый
+   *  setMe). Сетевые пути, отдающие сообщения, ждут его ПЕРЕД маппингом: `out`
+   *  выводится сравнением с `getMeId()`, а страница истории, обслуженная раньше
+   *  ответа /me, уехала бы вкладке с out=false у ВСЕХ сообщений (молчаливая
+   *  регрессия). Опционален: юнит-тесты кэш-методов собирают менеджер одним
+   *  `rest` — без гейта маппинг идёт сразу, как раньше. */
+  meReady?: () => Promise<void>
   /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
    * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
    * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
@@ -87,7 +95,30 @@ export interface MessagesDeps {
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
+  // ── Граница маппинга: здесь на сообщении появляется `out` ───────────────────
+  // Порт tweb `message.pFlags.out` — свойство самого сообщения, а не вывод
+  // витрины. Ставится ИМЕННО ЗДЕСЬ, а не в `put()`: `put` — единственный вход в
+  // SSOT, но не единственный ВЫХОД сообщений наружу. Мимо `put` идут `getAround`
+  // и офлайн-ветка `getHistory`, а `mediaHistory`/`searchMessages`/`searchGlobal`/
+  // `listPins`/`threadMessages`/`sendScheduledNow` возвращают сообщения, вообще
+  // не кладя их в SSOT.
+  const withOut = (m: Message): Message => ({ ...m, out: deriveOut(m, getMeId?.() ?? null) })
+  const mapOne = (r: RawMessage): Message => withOut(mapMessage(r))
+  // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути, у
+  // которых `out` выводится впервые. `cacheLive`/`insertPending` синхронны и
+  // ждать не могут: живой кадр приходит по уже поднятому WS, а неотправленный
+  // бабл заводит сам пользователь — оба заведомо позже гидрации `me`, которая
+  // стартует в `workerCore.start()` до подключения сокета.
+  const whenMeReady = meReady ?? (() => Promise.resolve())
+  const mapPage = async (list: RawMessage[] | undefined): Promise<Message[]> => {
+    await whenMeReady()
+    return (list ?? []).map(mapOne)
+  }
+  const mapNet = async (r: RawMessage): Promise<Message> => {
+    await whenMeReady()
+    return mapOne(r)
+  }
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в workerCore.ts.
@@ -203,6 +234,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
     hkey, slices, msgsFor,
+    getMeId: () => getMeId?.() ?? null,
     emit: (ops) => { if (ops.length) broadcast?.(RT.messageOp, { ops }) },
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
@@ -270,7 +302,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
         // основного окна чата (тред офлайн не поднимаем — его срез не хранится
         // отдельно). Сидим кэш+срез напрямую (минуя put, чтобы не перезаписывать).
         if (!(e instanceof HttpError) && !threadRoot) {
-          const persisted = await loadMessages(chatId)
+          // `out` ПЕРЕСЧИТЫВАЕМ, а не берём с диска: сохранённое значение
+          // привязано к сессии, а офлайн-стор её переживает (разбор — докблок
+          // поля `out` в core/models.ts).
+          await whenMeReady()
+          const persisted = (await loadMessages(chatId)).map(withOut)
           if (persisted.length) {
             for (const m of persisted) c.set(m.seq, m)
             const seqsDesc = persisted.map((m) => m.seq).sort((a, b) => b - a)
@@ -281,7 +317,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
         }
         throw e
       }
-      const fetched = await decryptPage((r.messages ?? []).map(mapMessage))
+      const fetched = await decryptPage(await mapPage(r.messages))
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
@@ -325,7 +361,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
         media_id: args.mediaId ?? null,
         thread_root_id: args.threadRootId ?? null,
       })
-      const m = mapMessage(created)
+      const m = await mapNet(created)
       // Кладём и в основное окно чата, и в окно треда (если это тред-сообщение).
       for (const key of m.threadRootId ? [hkey(args.chatId), hkey(args.chatId, m.threadRootId)] : [hkey(args.chatId)]) {
         put(key, [m])
@@ -340,7 +376,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
     // message and refreshes the cache entry.
     async editMessage(chatId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message> {
       const updated = await rest.patch<RawMessage>(`/chats/${chatId}/messages/${msgId}`, { text, entities: entities ?? null })
-      const m = mapMessage(updated)
+      const m = await mapNet(updated)
       // upsert правки в SSOT (только если сообщение уже загружено в чат).
       if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       return m
@@ -353,7 +389,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
       const updated = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/factcheck`, {
         text, entities: entities ?? null, country: country ?? '',
       })
-      const m = mapMessage(updated)
+      const m = await mapNet(updated)
       if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
       return m
@@ -401,7 +437,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
       })
-      const msgs = (r.messages ?? []).map(mapMessage)
+      const msgs = await mapPage(r.messages)
       put(hkey(toChatId), msgs)
       return msgs
     },
@@ -416,7 +452,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
 
     async listPins(chatId: number): Promise<Message[]> {
       const r = await rest.get<{ messages: RawMessage[] }>(`/chats/${chatId}/pins`)
-      return decryptPage((r.messages ?? []).map(mapMessage))
+      return decryptPage(await mapPage(r.messages))
     },
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
@@ -425,7 +461,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
       const r = await rest.get<{ messages: RawMessage[]; reached_top: boolean; reached_bottom: boolean }>(
         `/chats/${chatId}/history`, { around: centerSeq, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
-      const asc = await decryptPage((r.messages ?? []).map(mapMessage))
+      const asc = await decryptPage(await mapPage(r.messages))
       const key = hkey(chatId, threadRoot)
       const sa = new SlicedArray<number>()
       slices.set(key, sa)
@@ -446,7 +482,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
     // одного типа, новые сверху (tweb inputMessagesFilter*).
     async mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/media`, { filter, offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+      return { messages: await mapPage(r.messages), count: r.count }
     },
 
     // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —
@@ -462,7 +498,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
       if (opts.mediaType) query.media_type = opts.mediaType
       if (opts.reaction) query.reaction = opts.reaction
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, query)
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+      return { messages: await mapPage(r.messages), count: r.count }
     },
 
     // Jump-to-date: seq ближайшего сообщения на/после даты (unix, сек). null, если
@@ -491,13 +527,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
     // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
     async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+      return { messages: await mapPage(r.messages), count: r.count }
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(chatId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/threads/${rootId}`, { offset, limit })
-      return { messages: await decryptPage((r.messages ?? []).map(mapMessage)), count: r.count }
+      return { messages: await decryptPage(await mapPage(r.messages)), count: r.count }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──
@@ -527,7 +563,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
     // Отправить запланированное немедленно; возвращает созданное сообщение.
     async sendScheduledNow(chatId: number, id: number): Promise<Message> {
       const r = await rest.post<RawMessage>(`/chats/${chatId}/scheduled/${id}/send_now`, {})
-      return mapMessage(r)
+      return mapNet(r)
     },
 
     // Кто сейчас в видеочате группы (для баннера Join).
@@ -563,7 +599,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
       // забота, см. storeProjection.ts), у воркера его нет; сама fromNewMessageEvt
       // уже делает то же, что раньше делал этот метод вручную: инжект secretMedia/
       // secret расшифрованного E2E-медиа и clientId эха своей отправки.
-      const m = fromNewMessageEvt(evt)
+      const m = withOut(fromNewMessageEvt(evt))
       // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт client_msg_id —
       // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
       // хранилище остались бы два объекта, и переоткрытие чата показало бы
@@ -672,7 +708,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
         type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
         geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
       })
-      const m = mapMessage(created)
+      const m = await mapNet(created)
       put(hkey(chatId), [m])
       const sa = sliceFor(hkey(chatId))
       if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
@@ -684,7 +720,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, se
       const r = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/geo_live`, {
         lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
       })
-      const m = mapMessage(r)
+      const m = await mapNet(r)
       if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       return m
     },

@@ -394,6 +394,33 @@ export interface Message {
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) — бабл
    * рисуется от его имени; senderId остаётся реальным. undefined — обычная. */
   sendAs?: { chatId: number; title: string; photoId?: number }
+  /** Исходящее ли сообщение — порт tweb `message.pFlags.out`: свойство САМОГО
+   * сообщения, а не вывод витрины (императивная лента читает его синхронно,
+   * `bubbles.ts`). Ставит владелец на границе маппинга (`messagesManager`,
+   * `pending.ts`) чистым предикатом `deriveOut` ниже.
+   *
+   * Бэкенд поля не отдаёт (ни `messageJSON` в chat_handler.go, ни
+   * `messageUpdatePayload` в frame.go) — выводим сами, поэтому значение
+   * ПРИВЯЗАНО К СЕССИИ и на диске может протухнуть: `onLoggingOut` в воркере
+   * IndexedDB не чистит (это делает вкладка — useAuthGate → persist.clearAll(),
+   * и только в ветке migrateTo === null), а вход другого пользователя на
+   * вкладке, которая была на экране входа, идёт без reload — история прошлого
+   * аккаунта остаётся на диске. Поэтому читатель офлайн-кэша (`loadMessages` в
+   * `messagesManager.getHistory`) ПЕРЕСЧИТЫВАЕТ `out`, а не доверяет
+   * сохранённому. undefined — сообщение пришло с границы, где владелец ещё не
+   * проставил флаг (витрина трактует как входящее). */
+  out?: boolean
+}
+
+/** Порт tweb `message.pFlags.out` — единственное место, где выводится
+ *  «исходящее/входящее». Чистый предикат: `meId` приходит аргументом, владельцем
+ *  факта `me` предикат от этого не становится (владелец — воркер, `workerCore.ts::setMe`).
+ *
+ *  Send-as (Telegram send_as): сообщение авторства канала/группы — рисуется
+ *  входящим от имени send-as личности (как автофорвард поста канала), даже если
+ *  реальный отправитель — я. Реальный senderId в бабле не показываем. */
+export function deriveOut(m: Pick<Message, 'senderId' | 'sendAs'>, meId: number | null): boolean {
+  return meId != null && m.senderId === meId && !m.sendAs
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
