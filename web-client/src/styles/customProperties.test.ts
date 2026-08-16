@@ -85,3 +85,39 @@ describe('правая колонка: чтения кастомных проп�
     expect(closed).toMatch(/--right-column-width/)
   })
 })
+
+describe('константы tweb base.scss, чьи потребители к нам доехали', () => {
+  /**
+   * Каждая из этих пропертей читается нашими правилами БЕЗ фолбэка, и каждая
+   * когда-то отсутствовала — вместе с правилом, которое её читает. Это тот же
+   * класс дефекта, что и `--safe-area-inset-inline-end`, найденный на стенде:
+   * партиал портируют, определение из `base.scss` — нет.
+   */
+  const PORTED = [
+    '--z-below',
+    '--reaction-paid-transition',
+    '--call-button-size',
+    '--call-button-margin',
+    '--premium-gradient',
+    '--input-message-placeholder-color',
+    '--premium-color',
+    '--avatar-border-radius-forum',
+  ]
+
+  it.each(PORTED)('%s объявлена', (name) => {
+    expect(css).toMatch(new RegExp(`${name}\\s*:`))
+  })
+
+  /**
+   * Палитра аватарок: генератор `avatar-color` (`_functions.scss`) у нас был, а
+   * восьми его вызовов (tweb base.scss:168-176) не было — то есть миксин стоял
+   * мёртвым, а `--color-top`/`--color-bottom` в `tweb/_avatar.scss` умирали.
+   * "saved" закомментирован и в оригинале, поэтому его здесь нет.
+   */
+  const AVATAR_COLORS = ['red', 'orange', 'violet', 'green', 'cyan', 'blue', 'pink', 'archive']
+
+  it.each(AVATAR_COLORS)('палитра аватарки "%s" объявлена сверху и снизу', (color) => {
+    expect(css).toMatch(new RegExp(`--peer-avatar-${color}-top\\s*:`))
+    expect(css).toMatch(new RegExp(`--peer-avatar-${color}-bottom\\s*:`))
+  })
+})
