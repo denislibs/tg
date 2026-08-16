@@ -15,6 +15,7 @@ import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
+import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
@@ -67,7 +68,10 @@ const APPLY: Projector = {
   // экрана входа, куда вкладку привёл этот самый кадр, уже сбросивший зеркало.
   // Второе зеркало того же кадра (Task 6): blob:-URL медиа — владелец их уже
   // отозвал (resetDownloads), витрина обязана перестать их отдавать.
-  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror() },
+  // Третье зеркало того же кадра (этап «лента на императивном DOM»): окна
+  // сообщений прошлой сессии — лента читает их синхронно на рендере, поэтому
+  // чужая история обязана исчезнуть тем же кадром.
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
@@ -88,7 +92,14 @@ const APPLY: Projector = {
   // правит ТОЛЬКО applyOps без исключений. Вкладочных обогащений здесь тоже
   // больше НЕТ: blob-URL локального превью (`localUrl`) минтит воркер внутри
   // messages.sendFile, поэтому он приезжает обычным полем операции.
-  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
+  // Этап «лента на императивном DOM» (шаг 1): та же пачка операций едет во
+  // ВТОРУЮ копию окна — НЕреактивное зеркало главного потока
+  // (core/history/messagesMirror.ts, порт apiManagerProxy.mirrors), которое
+  // читает синхронно императивная лента и которое объявляет изменения
+  // событиями history_append/history_update/message_edit/history_delete.
+  // Обе копии правит одна точка (эта строка) одной и той же чистой applyOp —
+  // заводить второй вход в зеркало нельзя, копии разъедутся.
+  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops); applyOpsToMirror(e.ops) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
   // проектор — ЕДИНСТВЕННЫЙ писатель peersStore (пин — stores/noDuplicatePeers.test.ts).

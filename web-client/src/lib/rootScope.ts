@@ -17,7 +17,7 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState, UserUpdateEvt,
 } from '@core/realtime/events'
-import type { RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
+import type { Message, RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
@@ -136,6 +136,29 @@ export type BroadcastEvents = {
   // бабла живёт в менеджере воркера (core/managers/messages/pending.ts) и
   // объявляется наружу теми же MessageOp (RT.messageOp выше), что и любое другое
   // изменение окна.
+
+  // ── история окна сообщений (порт tweb rootScope.ts:77-88, имена и формы 1:1) ──
+  // Порождает их НЕ воркер, а зеркало окон главного потока
+  // (core/history/messagesMirror.ts) при переигрывании MessageOp: «в этом
+  // хранилище появилось/изменилось/исчезло вот это сообщение». Подписчик —
+  // императивная лента (порт chat/bubbles.ts:765, 882, 1104, 1860, 1903).
+  //
+  // `storageKey` у tweb — ключ MessagesStorage (`${peerId}_history`); у нас —
+  // ключ окна (winKey: "chatId" | "chatId:threadRoot"), то же назначение:
+  // подписчик сверяет его со своим окном и чужие пропускает.
+  // `tempId` — id временного (оптимистичного) сообщения, которое заменил
+  // серверный ответ (tweb pendingData.tempId); `history_update` в tweb значит
+  // ровно смену идентификатора, а не правку содержимого — правку объявляет
+  // `message_edit`.
+  // `mid` у tweb — id сообщения внутри пира; у нас ту же роль адреса в операциях
+  // играет `Message.id` (у неотправленного бабла он отрицательный, а `seq` —
+  // выдумка владельца, поэтому адресуем именно по id).
+  // Опущены относительно формы tweb: `sequential` в `history_update` (у нас нет
+  // источника этого признака — в tweb он из pendingData).
+  'history_append': [{ storageKey: string; message: Message }]
+  'history_update': [{ storageKey: string; message: Message; tempId?: number }]
+  'message_edit': [{ storageKey: string; peerId: number; mid: number; message: Message }]
+  'history_delete': [{ peerId: number; msgs: Set<number> }]
 
   // ── служебные ──
   'rt:resync': [null]

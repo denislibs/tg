@@ -1,0 +1,144 @@
+// src/core/history/messagesMirror.ts
+//
+// НЕреактивное зеркало окон сообщений на главном потоке — порт модели tweb
+// `apiManagerProxy.mirrors` (обычные структуры, читаются СИНХРОННО на рендере:
+// `getMessageByPeer`, tweb lib/apiManagerProxy.ts:1108) + объявление изменений
+// типизированными событиями `rootScope` (`history_append`/`history_update`/
+// `message_edit`/`history_delete`, tweb lib/rootScope.ts:77-88).
+//
+// Зачем оно рядом с `stores/messagesStore`: zustand-копия окна существует ради
+// React (подписка на срез → перерисовка). Императивной ленте (порт
+// `chat/bubbles.ts`, этап 2) нужно другое — синхронное чтение окна и точечное
+// «изменилось вот это». Обе копии кормит ОДИН поток операций
+// (`core/realtime/messageOps.ts`) из ОДНОЙ точки — `client/realtime/
+// storeProjection.ts` — и переигрывает их ТА ЖЕ чистая `applyOp`: второй
+// независимый вывод того же факта развёл бы копии (см. «Владение фактами» в
+// web-client/CLAUDE.md).
+//
+// Чего здесь нет и почему:
+// * страничного API (setWindow/prepend/append): страницу истории в зеркало
+//   кладёт тот, кто её грузит, а грузит её сама лента (`bubbles.ts` в tweb зовёт
+//   `getHistory` и вставляет полученное). Ленты ещё нет — значит нет и
+//   потребителя, а мёртвый код мы не заводим (CLAUDE.md). Придёт с этапом 2;
+// * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
+//   tweb — у нас нет источника (наш поток операций per-окно, а multiappend в
+//   tweb per-сообщение);
+// * `sequential` в `history_update` — признак «бабл встал подряд со своим
+//   соседом» приходит в tweb из `pendingData`, у нас в операции его нет;
+// * применения кадров, которые ещё НЕ переведены на операции (edit_message,
+//   geo_live_update, reaction/star_reaction — таблица в web-client/CLAUDE.md):
+//   их правит только стор, зеркало узнает о них, когда они станут операциями.
+import type { Message } from '../models'
+import { applyOp, type MessageOp } from '../realtime/messageOps'
+import rootScope from '@lib/rootScope'
+
+// key (winKey: "chatId" | "chatId:threadRoot") → сообщения окна, по возрастанию
+// seq — тот же порядок и та же дедупликация, что у окна в сторе.
+const windows = new Map<string, Message[]>()
+
+// Окно, которого ещё нет: применяем операцию поверх пустого списка. Для
+// replace/remove/patch `applyOp` вернёт ЭТУ ЖЕ ссылку (нечего править) — окно не
+// заведётся; заводит его только `insert`, то есть ровно то, что в окне реально
+// появилось. Так зеркало ведёт себя как `apiManagerProxy.mirrors` в tweb: оно
+// зеркалит всё, что объявил владелец, а не только открытый чат (bubbles.ts
+// отсеивает чужое сам — сверкой `storageKey`/`peerId`). У zustand-копии гейт
+// другой (окно должно быть открыто React'ом) — единственное структурное
+// расхождение копий, см. storeProjection.mirror.test.ts.
+const EMPTY: Message[] = []
+
+/** Синхронное чтение окна (аналог `historyStorage.history` в tweb).
+ *  undefined — про это окно зеркало ещё ничего не знает. */
+export function mirrorWindow(key: string): readonly Message[] | undefined {
+  return windows.get(key)
+}
+
+/** Синхронное чтение сообщения — аналог tweb `getMessageByPeer(peerId, mid)`:
+ *  сначала основное окно чата, затем его окна тредов (сообщение треда попадает
+ *  и туда, и туда, но открыто может быть только окно треда). */
+export function mirrorMessage(chatId: number, seq: number): Message | undefined {
+  const main = windows.get(String(chatId))
+  const found = main?.find((m) => m.seq === seq)
+  if (found) return found
+  const prefix = `${chatId}:`
+  for (const [key, msgs] of windows) {
+    if (!key.startsWith(prefix)) continue
+    const m = msgs.find((x) => x.seq === seq)
+    if (m) return m
+  }
+  return undefined
+}
+
+/** Кадр rt:logging_out: окна прошлой сессии обязаны исчезнуть — зеркало отдаёт
+ *  сообщения синхронно на рендере, и без сброса лента следующего аккаунта
+ *  прочитала бы чужую историю (та же причина, что у
+ *  `core/mediaCache.ts::resetMediaUrlMirror`). */
+export function resetMessagesMirror(): void {
+  windows.clear()
+}
+
+// Чат окна: и у основного ключа ("50"), и у ключа треда ("50:60") это первый
+// сегмент — тот самый peerId, которым tweb адресует history_delete/message_edit.
+const peerIdOf = (key: string): number => Number(key.split(':')[0])
+
+// Применить операции воркера к зеркалу и объявить изменения событиями.
+//
+// Отображение операций на каталог tweb (имена и формы 1:1, tweb
+// rootScope.ts:77-88):
+//   insert нового сообщения                → 'history_append'
+//   insert, слившийся с оптимистичным      → 'history_update' + tempId
+//     баблом — порт finalizePendingMessage → checkPendingMessage
+//     (tweb appMessagesManager.ts:8722-8737: там tempId тоже несёт id
+//     временного). В tweb 'history_update' значит ровно это и только это —
+//     «у сообщения сменился идентификатор, переставь бабл»
+//     (bubbles.ts:765-830 репозиционирует бабл, содержимое не трогает).
+//   replace / patch                        → 'message_edit'
+//     Изменение СОДЕРЖИМОГО уже существующего сообщения tweb объявляет именно
+//     этим событием (appMessagesManager.ts:7921/8577/8977, подписчик —
+//     bubbles.ts:1104 → onMessageEdit перерисовывает бабл). Отправить сюда
+//     'history_update' было бы отступлением от оригинала с конкретной ценой:
+//     обработчик history_update в bubbles.ts на message.mid === item.mid
+//     логирует «wow what» и выходит, то есть правка молча не доехала бы.
+//   remove                                 → 'history_delete'
+//
+// События собираются в callbacks и отправляются ПОСЛЕ применения всей пачки
+// (порт приёма tweb `callbacks.push(...)`, appMessagesManager.ts:2791):
+// подписчик, читающий зеркало синхронно, обязан видеть пачку применённой
+// целиком, а не наполовину.
+//
+// Отправляем `dispatchEventSingle`: событие выведено НА ВКЛАДКЕ из уже
+// принятого кадра, обычный `dispatchEvent` уехал бы в воркер и закольцевался
+// (инвариант rootScope, см. web-client/CLAUDE.md).
+export function applyOpsToMirror(ops: MessageOp[]): void {
+  const callbacks: (() => void)[] = []
+  for (const op of ops) {
+    const prev = windows.get(op.key) ?? EMPTY
+    const next = applyOp(prev, op)
+    // Операция ничего не изменила (ack-then-echo дубль, remove/patch по
+    // отсутствующему id, идемпотентный реплей) — applyOp вернул ту же ссылку,
+    // объявлять нечего.
+    if (next === prev) continue
+    windows.set(op.key, next)
+
+    const peerId = peerIdOf(op.key)
+    if (op.op === 'remove') {
+      callbacks.push(() => rootScope.dispatchEventSingle('history_delete', { peerId, msgs: new Set([op.msgId]) }))
+      continue
+    }
+
+    const mid = op.op === 'patch' ? op.msgId : op.msg.id
+    // Сообщение объявляем таким, каким оно легло в зеркало (после слияния с
+    // оптимистикой / патча), а не сырым op.msg — лента рисует то, что лежит.
+    const message = next.find((m) => m.id === mid)
+    if (!message) continue
+    if (op.op !== 'insert') {
+      callbacks.push(() => rootScope.dispatchEventSingle('message_edit', { storageKey: op.key, peerId, mid, message }))
+      continue
+    }
+    // Слияние с оптимистичным баблом: в окне БЫЛ временный с тем же clientId
+    // (его id — tempId события, как в tweb pendingData.tempId).
+    const optimistic = op.msg.clientId ? prev.find((m) => m.clientId === op.msg.clientId) : undefined
+    if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id }))
+    else callbacks.push(() => rootScope.dispatchEventSingle('history_append', { storageKey: op.key, message }))
+  }
+  for (const fire of callbacks) fire()
+}
