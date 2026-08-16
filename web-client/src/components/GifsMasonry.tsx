@@ -13,9 +13,10 @@
 // Вкладка дропдауна (emoji/GifsTab.tsx) пока держит свою копию ячейки — её
 // перевод на этот модуль отложен: файлы emoji/* параллельно правит другая
 // задача (перевод — за оркестратором).
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { memo, useCallback, useRef, useState, type RefObject } from 'react'
 import type { GifItem } from '../core/gifs'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useLazyVisibility, type LazyVisibility } from './useLazyVisibility'
 import ProgressivePreloader from './preloader'
 
@@ -48,22 +49,17 @@ const GifCell = memo(function GifCell({
   // только видимая ячейка (ленивость IO сохранена: id → null).
   const savedUrl = useMediaUrl(visible && g.mediaId != null ? g.mediaId : null)
   const cellRef = useRef<HTMLElement | null>(null)
-  const preloaderRef = useRef<ProgressivePreloader | null>(null)
   // Прелоадер поверх ячейки, пока медиа не прокрасилось (tweb wrapVideo вешает
   // ProgressivePreloader на .media-container; наш components/preloader.ts).
   const [loaded, setLoaded] = useState(false)
   const markLoaded = useCallback(() => setLoaded(true), [])
 
-  useEffect(() => {
-    const el = cellRef.current
-    if (!el || !visible || loaded) {
-      preloaderRef.current?.detach()
-      return
-    }
-    const p = (preloaderRef.current ??= new ProgressivePreloader())
-    p.attach(el)
-    return () => p.detach()
-  }, [visible, loaded])
+  useImperativeIsland((cell) => {
+    if (!visible || loaded) return
+    const preloader = new ProgressivePreloader()
+    preloader.attach(cell)
+    return () => preloader.detach()
+  }, [visible, loaded], { host: cellRef })
 
   let content = null
   if (visible) {

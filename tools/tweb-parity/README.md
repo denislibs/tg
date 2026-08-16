@@ -66,6 +66,32 @@ node tools/tweb-parity/dom-parity.mjs 01-skeleton /tmp/ours.txt
 
 Код возврата: `1`, если есть недостающие или переехавшие классы, — годится для CI.
 
+## `ownership-audit.mjs` — граница React ↔ императивный код
+
+```bash
+node tools/tweb-parity/ownership-audit.mjs                 # сводка по файлам
+node tools/tweb-parity/ownership-audit.mjs --check layout   # одна проверка
+node tools/tweb-parity/ownership-audit.mjs --json           # полный список
+```
+
+Три класса дефектов, которые появляются, когда портированный из tweb императивный код
+живёт внутри React-компонента:
+
+| Проверка | Что ищет | Чем плохо |
+|---|---|---|
+| `ownership` | `classList`, `setAttribute`, `appendChild`, `innerHTML`, `querySelector` в React-файле | React на следующем рендере затирает или теряет правку |
+| `layout` | `useEffect`, который меряет геометрию или двигает скролл | выполняется после пейнта — правка видна как прыжок, нужен `useLayoutEffect` |
+| `reflow` | переключение классов перехода без чтения `offsetWidth` рядом | браузер схлопывает два класса в один кадр, анимация не играет |
+
+Проверяются только React-файлы. Vanilla-модули (`scrollable.ts`, `preloader.ts`, ядро
+медиавьювера) — это островной слой, императивность там норма: признак — файл монтирует
+React сам через `react-dom/client`.
+
+Лечится обычно переносом в остров — `core/hooks/useImperativeIsland`. Осознанное место
+глушится комментарием `// ownership-ok: причина` на той же или предыдущей строке.
+
+Проверки эвристические: это карта, где смотреть, а не список багов.
+
 ## Тесты
 
 ```bash
