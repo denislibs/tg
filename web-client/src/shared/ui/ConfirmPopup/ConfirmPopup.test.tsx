@@ -1,5 +1,5 @@
 // Пин DOM-структуры конфирма по дампам tweb
-// (`docs/research/tweb-dom/17-popup-03-delete-message.json`, `06-delete-popup.json`):
+// (`docs/tweb/dom/dumps/17-popup-03-delete-message.json`, `06-delete-popup.json`):
 //   div.popup.popup-peer.popup-delete-chat >
 //     div.popup-container.z-depth-1[.have-checkbox] >
 //       div.popup-header (avatar + div.popup-title)

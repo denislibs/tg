@@ -254,7 +254,7 @@ export function EntryRow({
  * (`styles/tweb/_row.scss`), своего CSS-модуля у неё нет.
  *
  * Дерево, которое собирает `Row` в tweb (см. дампы
- * `docs/research/tweb-dom/15-right-02-edit-channel`, `…-12-edit-group`,
+ * `docs/tweb/dom/dumps/15-right-02-edit-channel`, `…-12-edit-group`,
  * `07-right-sidebar`):
  *
  *   div|label.row[.no-subtitle][.row-with-icon][.row-with-padding]

@@ -518,7 +518,7 @@ button:focus {
   // а auth-хост (`#auth-flow-root` → `#auth-pages`) смонтирован ВНЕ `#page-chats`.
   // Из-за этого в самом tweb аватар на карточке регистрации схлопнут по высоте —
   // замерено 120×66.5 при `--sticker-size: 120px`
-  // (docs/research/2026-08-09-tweb-auth-dom-reference.md §2.5, «Найденный баг оригинала»).
+  // (docs/tweb/dom/auth.md §2.5, «Найденный баг оригинала»).
   // Завязываем размер на `--sticker-size` родительского `.sticker` из mediaHeader,
   // фолбэк 120px = значение из `.page-chats`. Специфичность 0,1,0 ниже, чем у
   // `.page-chats .avatar-edit` (0,2,0), поэтому внутри мессенджера ничего не меняется.

@@ -3,7 +3,7 @@
 // `ButtonMenuSync` (buttonMenu.ts:230-278) и `createSubmenuTrigger.ts`.
 //
 // Что держит этот файл (всё — реальные расхождения, найденные сверкой с живым
-// дампом `docs/research/tweb-dom/18-burger-menu-full.json`):
+// дампом `docs/tweb/dom/dumps/18-burger-menu-full.json`):
 //   1. разделители групп — элемент <hr>, а не div с инлайн-фоном: правило
 //      `_button.scss:633` (`margin: var(--btn-menu-padding) 0`) написано на тег;
 //   2. пункт «More» — `submenu-trigger`, подменю раскрывается ПО НАВЕДЕНИЮ

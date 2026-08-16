@@ -1,6 +1,6 @@
 // Контекстное меню сообщения — обычный ui-kit Menu (портал/бэкдроп/анимация из
 // кита, как у attach-меню). DOM — 1:1 с живым дампом tweb
-// (`docs/research/tweb-dom/05-context-menu.json`, разметку строят
+// (`docs/tweb/dom/dumps/05-context-menu.json`, разметку строят
 // `chat/contextMenu.ts::appendReactionsMenu` + `chat/reactionsMenu.ts`):
 //
 //   div.btn-menu.contextmenu.has-items-wrapper.<угол>

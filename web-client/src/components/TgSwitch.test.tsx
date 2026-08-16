@@ -2,7 +2,7 @@
 // дерево tweb: до этой задачи компонент рисовал три собственных div'а
 // (`TgSwitch.module.scss`), и вся геометрия/анимация портированного
 // `styles/tweb/_checkbox.scss` мимо него проходила. Эталон — дампы
-// docs/research/tweb-dom/07-right-sidebar (строка Notifications) и
+// docs/tweb/dom/dumps/07-right-sidebar (строка Notifications) и
 // 15-right-13-group-permissions (тумблер-ограничение).
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'

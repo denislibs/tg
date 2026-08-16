@@ -4,7 +4,7 @@
 // ровно как в оригинале (`appSelectPeers.ts:234-238`):
 //   container.classList.add('selector', 'selector-' + design, 'selector-' + checkboxSide)
 //
-// Дерево 1:1 с живыми дампами (`docs/research/tweb-dom/`):
+// Дерево 1:1 с живыми дампами (`docs/tweb/dom/dumps/`):
 //   `15-right-06-administrators`, `15-right-07-subscribers`, `15-right-09-removed-users`,
 //   `15-right-14-group-members` — правый вариант (`selector-round selector-right`);
 //   `14-left-30-new-group-members`, `-30b-…-selected` — левый мастер с чипами

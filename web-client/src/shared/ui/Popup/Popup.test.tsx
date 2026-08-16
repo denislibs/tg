@@ -1,4 +1,4 @@
-// Пин DOM-структуры попапа по дампам tweb (`docs/research/tweb-dom/
+// Пин DOM-структуры попапа по дампам tweb (`docs/tweb/dom/dumps/
 // 17-popup-01-forward-share.json`, `17-popup-06-date-picker.json`):
 //   div.popup[.<модификатор>] > div.popup-container.z-depth-1 >
 //     div.popup-header + div.popup-body +

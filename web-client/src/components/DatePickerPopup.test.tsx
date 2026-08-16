@@ -1,5 +1,5 @@
 // Пин DOM-структуры календаря по дампу tweb
-// (`docs/research/tweb-dom/17-popup-06-date-picker.json`):
+// (`docs/tweb/dom/dumps/17-popup-06-date-picker.json`):
 //   div.popup.popup-schedule.popup-date-picker > div.popup-container.z-depth-1 >
 //     div.popup-header (popup-close + div.popup-title > .date-picker-month-title
 //                       + .date-picker-controls > .date-picker-prev/.date-picker-next)

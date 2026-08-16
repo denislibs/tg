@@ -3,7 +3,7 @@
 // Секция-группа результатов поиска. Ключевое здесь —
 // `.search-group-people .chatlist { display: flex; flex-direction: row }`:
 // именно этот класс разворачивает ряд «недавних» в попапе «Поделиться»
-// (дамп `docs/research/tweb-dom/17-popup-01-forward-share.json`:
+// (дамп `docs/tweb/dom/dumps/17-popup-01-forward-share.json`:
 // `.search-group.search-group-contacts.search-group-people.popup-forward-top-peers`)
 // в горизонтальную ленту. Без партиала `ul.chatlist` остаётся блочным
 // списком и чипы уезжают в колонку.

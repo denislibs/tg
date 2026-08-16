@@ -11,7 +11,7 @@ import { useT } from '../i18n'
 //
 // Ripple tweb вешает на пункт ТОЛЬКО на мобильных (`if(IS_MOBILE) ripple(el)`),
 // поэтому узла `.c-ripple` внутри нет — остаётся лишь класс-клип `.rp-overflow`.
-// Живое десктопное дерево это подтверждает: docs/research/tweb-dom/04-attach-menu.json.
+// Живое десктопное дерево это подтверждает: docs/tweb/dom/dumps/04-attach-menu.json.
 //
 // Размеры/паддинги/шрифт/ховер/`active: scale(.96)` — из глобального `_button.scss`
 // (секция `.btn-menu-item`), здесь ничего своего.

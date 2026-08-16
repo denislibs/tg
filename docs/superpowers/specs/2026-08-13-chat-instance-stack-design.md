@@ -3,7 +3,7 @@
 **Дата:** 2026-08-13
 **Статус:** дизайн согласован
 **Референс:** `~/Documents/tweb` (`e52b5d931`) + живые дампы
-[`../../research/2026-08-13-tweb-channels-comments-reference.md`](../../research/2026-08-13-tweb-channels-comments-reference.md)
+[`../../research/comments.md`](../../research/comments.md)
 **Ворктри:** `.worktrees/chat-stack`, ветка `feat/chat-instance-stack`
 
 ## Задача

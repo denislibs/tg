@@ -1,7 +1,7 @@
 // Модалка Telegram Premium — тело порт 1:1 из tweb `components/popups/premium.ts` +
 // `components/premium/promoSlideTab.ts` (тарифы/фичи) на глобальные классы
 // партиала `styles/tweb/popups/_premium.scss` (эталон — живой дамп
-// `docs/research/tweb-dom/14-left-24-premium-popup.json`, читать `python3 -c
+// `docs/tweb/dom/dumps/14-left-24-premium-popup.json`, читать `python3 -c
 // "import json;print(json.load(open('...')))"`):
 //
 //   div.popup.popup-premium.active > div.popup-container.z-depth-1 >

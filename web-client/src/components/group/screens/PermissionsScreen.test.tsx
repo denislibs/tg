@@ -1,6 +1,6 @@
 // PermissionsScreen — экран прав группы (tweb `sidebarRight/tabs/groupPermissions`).
 // Пин держит форму строк из живого дампа
-// `docs/research/tweb-dom/15-right-13-group-permissions`:
+// `docs/tweb/dom/dumps/15-right-13-group-permissions`:
 //   label.row.no-subtitle.row-with-toggle.row-clickable.hover-effect.rp
 //     > div.c-ripple
 //     + div.row-row.row-title-row

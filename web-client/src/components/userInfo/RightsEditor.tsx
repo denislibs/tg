@@ -1,6 +1,6 @@
 // userInfo/RightsEditor.tsx
 // Экран прав администратора — порт tweb `sidebarRight/tabs/userPermissions.tsx`.
-// Эталон разметки — живой дамп `docs/research/tweb-dom/15-right-16-user-admin-rights`:
+// Эталон разметки — живой дамп `docs/tweb/dom/dumps/15-right-16-user-admin-rights`:
 //
 //   div.tabs-tab.sidebar-slider-item.scrollable-y-bordered
 //      .edit-peer-container.user-permissions-container.active

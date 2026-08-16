@@ -66,7 +66,7 @@ describe('SettingsScreen', () => {
 
 // Row — порт `tweb components/row.ts` на глобальные классы `_row.scss`.
 // Пины ниже держат ИМЕННО дерево tweb (эталоны — дампы
-// docs/research/tweb-dom/15-right-02-edit-channel, …-12-edit-group,
+// docs/tweb/dom/dumps/15-right-02-edit-channel, …-12-edit-group,
 // …-13-group-permissions, 07-right-sidebar): у собственных CSS-модулей
 // имена хешируются, поэтому «переименовали класс — молча отвалилась вся
 // портированная геометрия» ловится только таким пином.

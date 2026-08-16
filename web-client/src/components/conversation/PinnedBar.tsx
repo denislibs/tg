@@ -1,6 +1,6 @@
 // src/components/conversation/PinnedBar.tsx
 // Плашка закреплённого сообщения — разметка tweb (`components/chat/pinnedMessage.tsx`
-// + `topbarPlate.tsx`, живой DOM-референс docs/research/tweb-dom/03-pinned-plate.json):
+// + `topbarPlate.tsx`, живой DOM-референс docs/tweb/dom/dumps/03-pinned-plate.json):
 // сегмент стека `.topbar-floating-plates`.
 //
 //   div.pinned-container.pinned-message[.is-many][.is-media] [data-mid]

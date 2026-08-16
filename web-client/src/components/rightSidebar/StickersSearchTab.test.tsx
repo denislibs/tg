@@ -1,5 +1,5 @@
 // Пин DOM-структуры экрана «Поиск стикеров» правой колонки по живому дампу tweb
-// (`docs/research/tweb-dom/19-emoticons-06-sticker-search-right.json`):
+// (`docs/tweb/dom/dumps/19-emoticons-06-sticker-search-right.json`):
 //   div#stickers-container.tabs-tab.sidebar-slider-item….chatlist-container.active
 //     div.sidebar-header (sidebar-close-button + input-search "Search Stickers")
 //     div.sidebar-content > div.scrollable.scrollable-y > div.sticker-sets
