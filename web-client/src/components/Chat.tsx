@@ -7,8 +7,8 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import StickyIntersector from './stickyIntersector'
-import { observeNewSections, pickStickyDateKey, pruneEvictedSections } from './chatStickyDates'
+import { useChatStickyDates } from '@core/hooks/useChatStickyDates'
+import { useImperativeIsland } from '@core/hooks/useImperativeIsland'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
@@ -467,10 +467,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, scrollRef)
   // Контейнер ленты tweb (.bubbles): класс has-sticky-dates ставится по замеру, см. эффект ниже.
   const bubblesRef = useRef<HTMLDivElement>(null)
-  // Ключ дня прилипшей даты (tweb `.bubble.is-date.is-sticky`) — считаем по
-  // скроллу и отдаём в ChatFeed: класс рендерит React, иначе его стёр бы
-  // ближайший ре-рендер ленты.
-  const [stickyDateKey, setStickyDateKey] = useState<string | null>(null)
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -636,10 +632,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Спиннер держится в DOM до конца обратного перехода — tweb снимает узел в
   // onTransitionEnd у SetTransition (preloader.ts:248-256).
   const { mounted: spinnerMount, cls: spinnerCls } = useMountTransition(showSpinner, 'is-visible', 200)
-  // Кольцо в оверлей спиннера — vanilla ProgressivePreloader (порт tweb;
-  // инстанс на монтирование узла, умирает вместе с ним — как tweb detach).
-  const chatSpinnerHost = useCallback((el: HTMLDivElement | null) => {
-    if (el) new ProgressivePreloader({ cancelable: false }).attach(el)
+  // Кольцо в оверлей спиннера — vanilla ProgressivePreloader (порт tweb).
+  // Островом, а не голым ref-колбэком: инстанс должен сниматься явным detach,
+  // иначе при ремаунте узла (StrictMode, смена чата) их накладывается два.
+  const chatSpinnerHost = useImperativeIsland<HTMLDivElement>((el) => {
+    const preloader = new ProgressivePreloader({ cancelable: false })
+    preloader.attach(el)
+    return () => preloader.detach()
   }, [])
 
   // Лестница появления баблов при открытии чата — порт tweb
@@ -1160,78 +1159,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
     return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
   }, [scrollRef, contentRef])
 
-  // tweb bubbles.ts:1382-1408 (колбэк StickyIntersector) + 4867
-  // (observeStickyHeaderChanges на каждой `.bubbles-date-group`) — какая дата
-  // прилипла, считает портированный StickyIntersector по sentinel-узлам, а не
-  // обход `.bubble.is-date` с getBoundingClientRect на каждое событие скролла.
-  // ChatFeed рендерит секции `.bubbles-date-group` прямыми детьми contentRef;
-  // выбор «нижней» застрявшей секции и обвязка «наблюдать новую секцию ровно
-  // один раз» вынесены в chatStickyDates.ts (там же — почему они тестируемы
-  // отдельно от Chat, который нигде не рендерится в vitest).
-  //
-  // Инстанс интерсектора живёт в рефе на весь срок жизни scrollRef/contentRef
-  // (как this.stickyIntersector в tweb — заводится один раз в setListeners,
-  // а не пересоздаётся на каждое сообщение): пересоздание на каждый ререндер
-  // плодило бы новые sentinel-узлы поверх старых в каждой уже наблюдаемой
-  // секции (StickyIntersector.observeStickyHeaderChanges не идемпотентна —
-  // см. chatStickyDates.test.ts).
-  const stickyIntersectorRef = useRef<StickyIntersector | null>(null)
-  const stickyObservedRef = useRef<Set<HTMLElement>>(new Set())
-  const stuckSectionsRef = useRef<Set<HTMLElement>>(new Set())
-
-  useEffect(() => {
-    const sc = scrollRef.current
-    const inner = contentRef.current
-    if (!sc || !inner) return
-
-    const stuckSections = stuckSectionsRef.current
-    const observedSections = stickyObservedRef.current
-    const intersector = new StickyIntersector(sc, (stuck, target) => {
-      if (stuck) stuckSections.add(target)
-      else stuckSections.delete(target)
-      setStickyDateKey((prev) => {
-        const key = pickStickyDateKey(inner.children, stuckSections)
-        return prev === key ? prev : key
-      })
-    })
-    stickyIntersectorRef.current = intersector
-
-    return () => {
-      intersector.disconnect()
-      stickyIntersectorRef.current = null
-      stuckSections.clear()
-      observedSections.clear()
-      // Same class of leak as Б-4 (useChatScroll.ts's `.scrollable-thumb-container`
-      // cleanup): StickyIntersector.disconnect() clears its own element→sentinel Map
-      // but doesn't remove the `.sticky_sentinel` divs addSentinel() appended into
-      // each date-group section — tweb's own container is throwaway so it never
-      // needed to; ours (`inner`) is React's persistent node. Belt-and-braces against
-      // StrictMode's dev mount→unmount→mount doubling up leftover sentinels.
-      inner.querySelectorAll('.sticky_sentinel').forEach((el) => el.remove())
-    }
-  }, [scrollRef, contentRef])
-
-  // Новые дата-секции (загрузка страницы истории, новое сообщение сменило
-  // день) — наблюдаем только те, что ещё не видели; уже наблюдаемые трогать
-  // нельзя (см. комментарий выше). Перед этим — секции, которых больше нет в
-  // DOM (jumpTo/reloadNewest подменяют win.msgs целиком, см.
-  // chatStickyDates.ts's pruneEvictedSections): снять с обоих observer'ов и
-  // вычистить из реестров, иначе они удерживаются бессрочно (утечка).
-  useEffect(() => {
-    const inner = contentRef.current
-    const intersector = stickyIntersectorRef.current
-    if (!inner || !intersector) return
-    pruneEvictedSections(inner, intersector, stickyObservedRef.current, stuckSectionsRef.current)
-    observeNewSections(inner, intersector, stickyObservedRef.current)
-  }, [contentRef, feedMsgs, feedLoading])
-
-  // tweb bubbles.ts:4900-4905 (updateStickyIntersectorRootMargin) — тот же
-  // паддинг топбара/инпута, что резервируют распорки `.bubbles-padding-top/bottom`;
-  // меняется независимо от ленты, поэтому отдельный эффект и `setRootMargin`
-  // (переподписывает существующие сентинелы, а не плодит новые).
-  useEffect(() => {
-    stickyIntersectorRef.current?.setRootMargin(`-${padTopPx}px 0px -${padBottomPx}px 0px`)
-  }, [padTopPx, padBottomPx])
+  // Липкая дата: вся проводка поверх StickyIntersector — в useChatStickyDates
+  // (там же комментарии про идемпотентность и уборку сентинелов). Вынесена из
+  // Chat, потому что здесь она не покрывалась ничем: Chat не рендерится в vitest.
+  const stickyDateKey = useChatStickyDates({
+    scrollRef, contentRef, feedRevision: feedMsgs, feedLoading, padTopPx, padBottomPx,
+  })
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же

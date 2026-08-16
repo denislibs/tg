@@ -198,38 +198,24 @@ describe('pruneEvictedSections', () => {
   })
 })
 
-// Тот же приём, что и для observeNewSections ниже: Chat нигде не рендерится в
-// vitest, поэтому единственный способ поймать «вызов тихо снят из useEffect» —
-// прочитать исходник текстом.
-describe('Chat.tsx: выселенные секции реально снимаются (pruneEvictedSections подключена)', () => {
-  it('useEffect на [contentRef, feedMsgs, feedLoading] реально зовёт pruneEvictedSections ДО observeNewSections', () => {
-    const src = readFileSync(join(__dirname, 'Chat.tsx'), 'utf8')
-    const depsIdx = src.indexOf('[contentRef, feedMsgs, feedLoading]')
+// Проводка переехала из Chat.tsx в core/hooks/useChatStickyDates.ts, и та уже
+// покрыта поведенчески (useChatStickyDates.test.tsx: сентинелы, StrictMode,
+// rootMargin). Здесь остаётся то, чего поведенческий тест не видит: ПОРЯДОК
+// вызовов. Выселение секции наблюдаемо только через внутренние Set'ы хука, так
+// что порядок дешевле пинить текстом исходника — тем же приёмом, что
+// core/scrollWriters.test.ts.
+describe('useChatStickyDates: выселенные секции снимаются до наблюдения новых', () => {
+  it('эффект на [contentRef, feedRevision, feedLoading] зовёт pruneEvictedSections ДО observeNewSections', () => {
+    const src = readFileSync(join(__dirname, '../core/hooks/useChatStickyDates.ts'), 'utf8')
+    const depsIdx = src.indexOf('[contentRef, feedRevision, feedLoading]')
     expect(depsIdx).toBeGreaterThan(-1)
     const effectBody = src.slice(Math.max(0, depsIdx - 600), depsIdx)
     expect(effectBody).toMatch(
-      /pruneEvictedSections\(\s*inner\s*,\s*intersector\s*,\s*stickyObservedRef\.current\s*,\s*stuckSectionsRef\.current\s*\)\s*[\s\S]*?observeNewSections\(/,
+      /pruneEvictedSections\(\s*inner\s*,\s*intersector\s*,\s*observedRef\.current\s*,\s*stuckRef\.current\s*\)\s*[\s\S]*?observeNewSections\(/,
     )
   })
 })
 
-// Финальное ревью ветки (I-5): всё выше тестирует ЛОГИКУ observeNewSections как
-// чистую функцию — это не ловит регрессию в её ПРОВОДКЕ внутри Chat.tsx. Chat
-// нигде не рендерится в vitest (см. шапку chatStickyDates.ts — тяжёлое дерево
-// зависимостей), поэтому единственный способ поймать «вызов тихо снят из
-// useEffect» — прочитать исходник текстом, тем же приёмом, что
-// core/scrollWriters.test.ts/stores/noManualOrder.test.ts. Ревьюер проверил
-// мутацией: снятие строки `observeNewSections(inner, intersector,
-// stickyObservedRef.current)` из Chat.tsx переживает и npm test, и typecheck
-// (TS6133 «unused var» гасится одним `void`) — без этого пина такая регрессия
-// молча ломает липкие даты в реальном приложении.
-describe('Chat.tsx: наблюдение новых секций реально подключено', () => {
-  it('useEffect на [contentRef, feedMsgs, feedLoading] реально зовёт observeNewSections', () => {
-    const src = readFileSync(join(__dirname, 'Chat.tsx'), 'utf8')
-    const depsIdx = src.indexOf('[contentRef, feedMsgs, feedLoading]')
-    // Deps-массив переименовали/убрали — почини тест осознанно, а не подгоняй.
-    expect(depsIdx).toBeGreaterThan(-1)
-    const effectBody = src.slice(Math.max(0, depsIdx - 400), depsIdx)
-    expect(effectBody).toMatch(/observeNewSections\(\s*inner\s*,\s*intersector\s*,\s*stickyObservedRef\.current\s*\)/)
-  })
-})
+// Сам факт вызова observeNewSections теперь ловится поведенчески — новая секция
+// дня получает сентинел (useChatStickyDates.test.tsx). Текстовый пин на него
+// больше не нужен: проводка живёт в хуке, а хук в vitest рендерится.

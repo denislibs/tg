@@ -156,6 +156,9 @@ export function useImperativeIsland<T extends HTMLElement = HTMLElement>(
     }
     const host = hostRef.current
     if (host) start(host)
+    // Список зависимостей приходит от вызывающего — статически он здесь и не
+    // может быть литералом; проверяет его линтер на стороне вызова.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 
   // Размонтирование компонента. Обычно ref-колбэк с null отрабатывает сам, но
