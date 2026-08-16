@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useManagers } from './useManagers'
 import type { Peer } from '../managers/peersManager'
-import { usePeersStore } from '../../stores/peersStore'
+import { cachedPeer, peerMirrorVersion, subscribePeerMirror } from '../peerCache'
 
 // Stable cache key for a set of ids: sorted, deduped, comma-joined.
 // Used as the effect dependency so reorderings/duplicates don't refetch.
@@ -11,45 +11,51 @@ export function peersKey(ids: number[]): string {
     .join(',')
 }
 
-// Resolve a set of user ids to a name map. Reads the shared peersStore (SSOT),
-// fetching only the ids not yet cached. Realtime user_update patches the store,
-// so every usePeers consumer of a changed peer re-renders automatically.
+// Resolve a set of user ids to a name map. Reads the shared peer mirror (SSOT
+// витрины), fetching only the ids not yet cached. Realtime user_update patches
+// the mirror, so every usePeers consumer of a changed peer re-renders automatically.
 //
-// Stage 1C.2 (Task 2): хук объявляет ПРОБЕЛ зеркала (каких id нет в peersStore) —
-// он единственный, кто этот пробел видит. Что за карточка и какой операцией её
-// внести, решает владелец (peersManager), применяет проектор по rt:peer_op.
-// Прежний `.then(upsert)` был вторым писателем стора и вторым походом в /users
-// в паре с до-фетчем из storeProjection.
+// Stage 1C.2 (Task 2): хук объявляет ПРОБЕЛ зеркала (каких id нет в зеркале) —
+// он единственный, кто этот пробел видит СО СТОРОНЫ REACT. Что за карточка и
+// какой операцией её внести, решает владелец (peersManager), применяет проектор
+// по rt:peer_op. Прежний `.then(upsert)` был вторым писателем и вторым походом
+// в /users в паре с до-фетчем из storeProjection.
 //
-// ЧИТАЕШЬ peersStore ИЗ НОВОГО МЕСТА — сначала прочти это. Наполнить зеркало
+// Зеркало — `core/peerCache.ts`, обычный модуль, а не zustand: ту же карточку
+// читает синхронно императивная лента (`components/chat/peerTitle.ts`), которой
+// стор запрещён; второе зеркало того же факта завести нельзя. Отсюда
+// `useSyncExternalStore` вместо селектора стора — ровно как `useMediaUrl` над
+// `core/mediaCache.ts`.
+//
+// ЧИТАЕШЬ ЗЕРКАЛО ПИРОВ ИЗ НОВОГО МЕСТА — сначала прочти это. Наполнить его
 // может только объявленный пробел (`peers.fillMirror`) либо объявление
 // изменившегося факта. Обычные чтения карточек (`peers.getUsers` — двенадцать
-// вызовов: инфо группы, права, закреплённые, звонки, тосты) в стор НЕ пишут:
+// вызовов: инфо группы, права, закреплённые, звонки, тосты) в зеркало НЕ пишут:
 // они рисуют по возвращённому массиву, а веером слали бы всем вкладкам карточки,
-// которых ни одно зеркало не просило. Раньше слали — и это попутно наполняло стор,
-// маскируя забытое объявление. Теперь не маскирует: пир, прочитанный из стора по
-// id, который не проходил через usePeers, будет молча пустым. Либо бери его этим
-// хуком, либо объяви пробел сам. На сегодня читатель стора ровно один — этот хук.
+// которых ни одно зеркало не просило. Раньше слали — и это попутно наполняло
+// зеркало, маскируя забытое объявление. Теперь не маскирует: пир, прочитанный
+// из зеркала по id, который не проходил через объявление пробела, будет молча
+// пустым. Либо бери его этим хуком, либо объяви пробел сам.
 export function usePeers(ids: number[]): Map<number, Peer> {
   const managers = useManagers()
   const key = peersKey(ids)
-  const byId = usePeersStore((s) => s.byId)
+  const version = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
 
   useEffect(() => {
     if (ids.length === 0) return
-    const missing = ids.filter((id) => !usePeersStore.getState().byId[id])
+    const missing = ids.filter((id) => !cachedPeer(id))
     if (missing.length) void managers.peers.fillMirror(missing)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  // Subset map for the requested ids (recomputed when the store or ids change).
+  // Subset map for the requested ids (recomputed when the mirror or ids change).
   return useMemo(() => {
     const m = new Map<number, Peer>()
     for (const id of ids) {
-      const p = byId[id]
+      const p = cachedPeer(id)
       if (p) m.set(id, p)
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, byId])
+  }, [key, version])
 }

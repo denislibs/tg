@@ -17,6 +17,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import type { Peer } from '@core/managers/peersManager'
 import type { Message } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, {
@@ -42,9 +44,23 @@ function msg(over: Partial<Message> & { id: number; seq: number }): Message {
 const historyResult = (messages: Message[]): HistoryResult =>
   ({ messages, count: messages.length, reachedTop: true, reachedBottom: true })
 
-function managersWith(messages: Message[]): BubblesManagers & { getHistory: ReturnType<typeof vi.fn> } {
+function managersWith(messages: Message[]) {
   const getHistory = vi.fn(async () => historyResult(messages))
-  return { messages: { getHistory }, getHistory }
+  // Владелец карточек пиров: узел имени объявляет ему пробел зеркала
+  // (`peerTitle.ts`), ответ приезжает операцией — в тестах её подаём руками
+  // через `applyPeerOps`.
+  const fillMirror = vi.fn(async () => {})
+  const managers: BubblesManagers = { messages: { getHistory }, peers: { fillMirror } }
+  return Object.assign(managers, { getHistory, fillMirror })
+}
+
+/** Дать очереди рендера (`BatchProcessor`, `pause(0)` + микрозадачи) разобраться.
+ *  Прогон макрозадач, а не одна: обработчик `history_update` ждёт сначала
+ *  `renderNewPromises`, потом саму очередь. */
+async function settle() {
+  for (let i = 0; i < 5; ++i) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
 }
 
 let bubbles: ChatBubbles | undefined
@@ -56,7 +72,13 @@ afterEach(() => {
 
 beforeEach(() => {
   resetMessagesMirror()
+  resetPeerMirror()
 })
+
+/** Карточка пира в форме владельца (`peersManager`). Кладём её в зеркало через
+ *  ту же операцию, которой её объявляет воркер, — руками в зеркало не пишем. */
+const peerCard = (id: number, displayName: string): Peer =>
+  ({ id, username: `u${id}`, displayName, avatarUrl: '', avatarPreview: '' })
 
 /** Отрисованные баблы СООБЩЕНИЙ в порядке DOM. `.service` исключены: дата-бабл
  *  секции дня (и его `is-fake`-дубль) — тоже `.bubble`, но сообщения за ними не
@@ -177,7 +199,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
   it('протухший ответ (лента убита, пока летел запрос) не пишет ни в зеркало, ни в DOM', async () => {
     let release!: (r: HistoryResult) => void
     const pending = new Promise<HistoryResult>((res) => { release = res })
-    const b = new ChatBubbles(chatContext(), { messages: { getHistory: () => pending } })
+    const b = new ChatBubbles(chatContext(), { messages: { getHistory: () => pending }, peers: { fillMirror: async () => {} } })
 
     const promise = b.getHistory()
     b.destroy()
@@ -198,23 +220,26 @@ describe('ChatBubbles — подписки на события истории', 
   })
 
   describe('history_append', () => {
-    it('рисует РОВНО один новый узел', () => {
+    it('рисует РОВНО один новый узел', async () => {
       rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 3, seq: 3, text: 'новое' }) })
+      await settle()
 
       expect(rendered(bubbles!).map((el) => el.dataset.mid)).toEqual(['1', '2', '3'])
       expect(rendered(bubbles!)[2].querySelector('.bubble-content')!.textContent).toBe('новое')
       expect(bubbles!.getBubble(makeFullMid(CHAT, 3))).toBe(rendered(bubbles!)[2])
     })
 
-    it('событие про ЧУЖОЕ окно игнорируется', () => {
+    it('событие про ЧУЖОЕ окно игнорируется', async () => {
       rootScope.dispatchEventSingle('history_append', { storageKey: String(OTHER_CHAT), message: msg({ id: 3, seq: 3 }) })
+      await settle()
       expect(rendered(bubbles!)).toHaveLength(2)
     })
   })
 
   describe('history_update', () => {
-    it('переклеивает ключ бабла на новый идентификатор, НЕ пересоздавая узел', () => {
+    it('переклеивает ключ бабла на новый идентификатор, НЕ пересоздавая узел', async () => {
       rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: -7, seq: 3, clientId: 'c1' }) })
+      await settle()
       const before = bubbles!.getBubble(makeFullMid(CHAT, -7))
       expect(before).toBeDefined()
 
@@ -223,6 +248,7 @@ describe('ChatBubbles — подписки на события истории', 
         message: msg({ id: 9, seq: 3, clientId: 'c1' }),
         tempId: -7,
       })
+      await settle()
 
       expect(bubbles!.getBubble(makeFullMid(CHAT, -7))).toBeUndefined()
       // ТОТ ЖЕ элемент под новым ключом — не пересоздан.
@@ -231,12 +257,13 @@ describe('ChatBubbles — подписки на события истории', 
       expect(rendered(bubbles!)).toHaveLength(3)
     })
 
-    it('событие про ЧУЖОЕ окно игнорируется', () => {
+    it('событие про ЧУЖОЕ окно игнорируется', async () => {
       rootScope.dispatchEventSingle('history_update', {
         storageKey: String(OTHER_CHAT),
         message: msg({ id: 9, seq: 1 }),
         tempId: 1,
       })
+      await settle()
       expect(bubbles!.getBubble(makeFullMid(CHAT, 1))).toBeDefined()
       expect(bubbles!.getBubble(makeFullMid(CHAT, 9))).toBeUndefined()
     })
@@ -291,6 +318,7 @@ describe('ChatBubbles.destroy/cleanup', () => {
     rootScope.dispatchEventSingle('message_edit', { storageKey: String(CHAT), peerId: CHAT, mid: 1, message: msg({ id: 1, seq: 1, text: 'правка' }) })
     rootScope.dispatchEventSingle('history_update', { storageKey: String(CHAT), message: msg({ id: 5, seq: 1 }), tempId: 1 })
     rootScope.dispatchEventSingle('history_delete', { peerId: CHAT, msgs: new Set([1]) })
+    await settle()
 
     expect(rendered(b).map((el) => el.dataset.mid)).toEqual(['1'])
     expect(rendered(b)[0].querySelector('.bubble-content')!.textContent).toBe('m1')
@@ -479,6 +507,7 @@ describe('ChatBubbles — серии и секции дней', () => {
       storageKey: String(CHAT),
       message: msg({ id: 4, seq: 4, senderId: AUTHOR, createdAt: at('2026-08-15T12:01:30Z') }),
     })
+    await settle()
 
     const after = rendered(bubbles)
     expect(after).toHaveLength(4)
@@ -591,21 +620,27 @@ describe('ChatBubbles — делегированный слушатель кли
     expect(event.defaultPrevented).toBe(true)
   })
 
-  it('`.peer-title[data-peer-id]` внутри бабла уходит в openPeer', async () => {
+  // Узел НАСТОЯЩИЙ — тот, что лента строит сама (имя автора, порт tweb
+  // `PeerTitle`). Раньше здесь лежал `span.peer-title`, вставленный самим
+  // тестом: такой пин держал ровно селектор в слушателе и молчал бы, если бы
+  // имя автора никто не рисовал (а его никто и не рисовал).
+  it('`.peer-title[data-peer-id]` имени автора уходит в openPeer', async () => {
+    rootScope.myId = 999
     const navigation = nav()
-    bubbles = withNav(navigation, [msg({ id: 1, seq: 1 })])
+    bubbles = new ChatBubbles(
+      { peerId: CHAT, messagesStorageKey: String(CHAT), isLikeGroup: true, navigation },
+      managersWith([msg({ id: 1, seq: 1, senderId: 42 })]),
+    )
+    applyPeerOps([{ op: 'upsert', peers: [peerCard(42, 'Пётр')] }])
     await bubbles.getHistory()
 
-    // Такой узел рисует имя автора / сервисное сообщение (порт tweb
-    // `wrapPeerTitle`) — рядом с рич-текстом он живёт в том же бабле.
-    const title = document.createElement('span')
-    title.className = 'peer-title'
-    title.dataset.peerId = '42'
-    bubbles.getBubble(makeFullMid(CHAT, 1))!.querySelector('.message')!.append(title)
+    const title = bubbles.chatInner.querySelector<HTMLElement>('.bubble .name > .peer-title')!
+    expect(title.textContent).toBe('Пётр')
 
-    click(title)
+    const event = click(title)
 
     expect(navigation.openPeer).toHaveBeenCalledWith(42, title)
+    expect(event.defaultPrevented).toBe(true)
   })
 
   it('обычный текст бабла НЕ ловится, а необработанный клик не гасится', async () => {
@@ -654,5 +689,243 @@ describe('ChatBubbles — делегированный слушатель кли
     click(anchor)
 
     expect(navigation.openInternalLink).not.toHaveBeenCalled()
+  })
+})
+
+// ─── Очередь рендера (`renderMessagesQueue` → `batchProcessor`) ─────────────
+//
+// Порт tweb bubbles.ts:5808/5961/2190 + `helpers/batchProcessor.ts`. Предмет
+// пинов ниже — ровно то, ради чего очередь существует:
+//   • всё, что отрисовано за один ход, группируется ОДНИМ вызовом и в порядке
+//     постановки (до очереди группировка звалась побабльно);
+//   • у отрисовки есть точка ожидания (`messagesQueuePromise`), и ждущий её код
+//     действительно её дожидается — на этом стоит и репозиция бабла по ack, и
+//     будущая компенсация скролла.
+describe('ChatBubbles — очередь рендера', () => {
+  const page = (n: number) =>
+    Array.from({ length: n }, (_, i) => msg({
+      id: i + 1, seq: i + 1, senderId: 2 + i,
+      createdAt: `2026-08-15T12:${String(i * 5).padStart(2, '0')}:00Z`,
+    }))
+
+  it('пачка группируется ОДНИМ вызовом groupBubbles — и в порядке постановки в очередь', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith(page(3)))
+    const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
+
+    await bubbles.getHistory()
+
+    expect(groupBubbles).toHaveBeenCalledTimes(1)
+    expect(groupBubbles.mock.calls[0][0].map((d) => d.message.id)).toEqual([1, 2, 3])
+    expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['1', '2', '3'])
+  })
+
+  it('несколько history_append одним ходом — тоже одна пачка, порядок сохранён', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([]))
+    await bubbles.getHistory()
+    const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
+
+    for (const m of page(3)) {
+      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: m })
+    }
+    await settle()
+
+    expect(groupBubbles).toHaveBeenCalledTimes(1)
+    expect(groupBubbles.mock.calls[0][0].map((d) => d.message.id)).toEqual([1, 2, 3])
+    expect(rendered(bubbles!).map((el) => el.dataset.mid)).toEqual(['1', '2', '3'])
+  })
+
+  // Отрисовка отложена до пачки — это и есть очередь, а не синхронный рендер.
+  // Адрес бабла при этом заводится СРАЗУ (tweb bubbles.ts:6341): на него
+  // опирается и дедуп повторного рендера, и подписка history_update.
+  it('узел появляется в DOM только после пачки, а адрес бабла — сразу', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([]))
+    await bubbles.getHistory()
+
+    rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 7, seq: 7 }) })
+
+    expect(bubbles.getBubble(makeFullMid(CHAT, 7))).toBeDefined()
+    expect(rendered(bubbles)).toHaveLength(0)
+
+    await bubbles.messagesQueuePromise
+    expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['7'])
+  })
+
+  // `getHistory` разрешается только когда страница ДЕЙСТВИТЕЛЬНО отрисована
+  // (tweb `performHistoryResult` → `await this.messagesQueuePromise`, :10152).
+  it('getHistory дожидается очереди — после await страница уже в DOM', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith(page(2)))
+
+    await bubbles.getHistory()
+
+    expect(rendered(bubbles)).toHaveLength(2)
+    // очередь разобрана целиком — ждать больше нечего
+    expect(bubbles.messagesQueuePromise).toBeUndefined()
+  })
+
+  // ГЛАВНЫЙ пин ожидания. Пока пачка не разобрана, окно НЕПОЛНО: узлы уже
+  // созданы, а элементов серий у них ещё нет. Обработчик `history_update`,
+  // который переставляет бабл по новому идентификатору, обязан считать позицию
+  // по ПОЛНОМУ окну — поэтому в tweb он сначала ждёт `renderNewPromises`, потом
+  // `messagesQueuePromise` (bubbles.ts:780-787) и только затем трогает серии.
+  // Пин смотрит на порядок: группировка пачки — раньше, перекладка бабла —
+  // позже. Без ожидания порядок обратный, и бабл раскладывается в окно, в
+  // котором соседа ещё нет.
+  it('history_update ждёт очередь: сначала группируется пачка, потом переставляется бабл', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([
+      msg({ id: -5, seq: 5, senderId: 3, clientId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
+    ]))
+    await bubbles.getHistory()
+    const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
+
+    // Пачка в полёте: узел соседа создан, серии у него ещё нет.
+    rootScope.dispatchEventSingle('history_append', {
+      storageKey: String(CHAT),
+      message: msg({ id: 6, seq: 6, senderId: 3, createdAt: '2026-08-15T12:00:30Z' }),
+    })
+    // ...и в этот момент приезжает ack бабла «отправляется…».
+    rootScope.dispatchEventSingle('history_update', {
+      storageKey: String(CHAT),
+      message: msg({ id: 9, seq: 5, senderId: 3, clientId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
+      tempId: -5,
+    })
+
+    await settle()
+
+    expect(groupBubbles.mock.calls.map((c) => c[0].map((d) => d.message.id))).toEqual([[6], [9]])
+    expect(bubbles.getBubble(makeFullMid(CHAT, -5))).toBeUndefined()
+    expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['9', '6'])
+    // соседа нашли — оба бабла в одной серии
+    expect(bubbles.chatInner.querySelectorAll('.bubbles-group')).toHaveLength(1)
+  })
+})
+
+// ─── Имя автора в бабле (порт tweb `PeerTitle` + `needName`) ────────────────
+describe('ChatBubbles — имя автора', () => {
+  const AUTHOR = 42
+  const groupContext = (over: Partial<ChatContext> = {}): ChatContext =>
+    ({ peerId: CHAT, messagesStorageKey: String(CHAT), isLikeGroup: true, ...over })
+
+  const nameOf = (b: ChatBubbles, mid: number) =>
+    b.getBubble(makeFullMid(CHAT, mid))!.querySelector<HTMLElement>('.name')
+
+  beforeEach(() => {
+    rootScope.myId = 999
+    applyPeerOps([{ op: 'upsert', peers: [peerCard(AUTHOR, 'Пётр')] }])
+  })
+
+  it('входящее в групповом чате: .bubble-content > .name.colored-name > span.peer-title[data-peer-id]', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    await bubbles.getHistory()
+
+    const nameDiv = nameOf(bubbles, 1)!
+    // порядок в .bubble-content: имя перед телом сообщения (tweb :9587)
+    expect(nameDiv.parentElement!.className).toBe('bubble-content')
+    expect(nameDiv.nextElementSibling!.classList.contains('message')).toBe(true)
+    expect(nameDiv.className.split(' ').sort()).toEqual(['colored-name', 'floating-part', 'name', 'next-is-message'])
+    expect(nameDiv.dataset.peerId).toBe(String(AUTHOR))
+
+    const title = nameDiv.firstElementChild as HTMLElement
+    expect(title.tagName).toBe('SPAN')
+    expect(title.className).toBe('peer-title')
+    expect(title.dataset.peerId).toBe(String(AUTHOR))
+    expect(title.textContent).toBe('Пётр')
+    // модификатор бабла согласован с узлом
+    expect(bubbles.getBubble(makeFullMid(CHAT, 1))!.classList.contains('hide-name')).toBe(false)
+  })
+
+  it('своё исходящее в группе имени НЕ получает (bubble.hide-name)', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: 999, out: true })]))
+    await bubbles.getHistory()
+
+    expect(nameOf(bubbles, 1)).toBeNull()
+    expect(bubbles.getBubble(makeFullMid(CHAT, 1))!.classList.contains('hide-name')).toBe(true)
+  })
+
+  it('НЕ группа (isLikeGroup не взведён): имени нет и у входящего', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    await bubbles.getHistory()
+
+    expect(nameOf(bubbles, 1)).toBeNull()
+    expect(bubbles.getBubble(makeFullMid(CHAT, 1))!.classList.contains('hide-name')).toBe(true)
+  })
+
+  // send-as (порт `iPostedAsSomeoneElse`, tweb :9325): пост от имени
+  // канала/группы подписывается ДАЖЕ будучи своим. Карточки у чат-личности
+  // нет — заголовок приезжает в самом сообщении (`fromName` в tweb).
+  it('send-as в группе: имя из sendAs.title, data-peer-id — отрицательный id чата', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([
+      msg({ id: 1, seq: 1, senderId: 999, sendAs: { chatId: 7, title: 'Канал' } }),
+    ]))
+    await bubbles.getHistory()
+
+    const nameDiv = nameOf(bubbles, 1)!
+    expect(nameDiv.dataset.peerId).toBe('-7')
+    expect(nameDiv.firstElementChild!.textContent).toBe('Канал')
+  })
+
+  it('чужое имя цветное, а имя своего сообщения — нет (colored-name по !out)', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([
+      msg({ id: 1, seq: 1, senderId: AUTHOR }),
+      msg({ id: 2, seq: 2, senderId: 999, out: true, sendAs: { chatId: 7, title: 'Канал' } }),
+    ]))
+    await bubbles.getHistory()
+
+    expect(nameOf(bubbles, 1)!.classList.contains('colored-name')).toBe(true)
+    expect(nameOf(bubbles, 2)!.classList.contains('colored-name')).toBe(false)
+  })
+
+  // 1:1 с tweb: узел строится у КАЖДОГО бабла серии, лишние прячет CSS
+  // (`_chatBubble.scss:663-670`). Гейт «первый в серии» в DOM был бы нашей
+  // отсебятиной и ломался бы при слиянии/разрыве серии.
+  it('узел имени — у каждого бабла серии, а не только у первого', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([
+      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: '2026-08-15T12:00:00Z' }),
+      msg({ id: 2, seq: 2, senderId: AUTHOR, createdAt: '2026-08-15T12:00:30Z' }),
+    ]))
+    await bubbles.getHistory()
+
+    expect(bubbles.chatInner.querySelectorAll('.bubbles-group')).toHaveLength(1)
+    expect(nameOf(bubbles, 1)).not.toBeNull()
+    expect(nameOf(bubbles, 2)).not.toBeNull()
+  })
+
+  // Промах зеркала — объявленный ПРОБЕЛ: узел просит владельца
+  // (`peers.fillMirror`) и подхватывает карточку, когда та приезжает операцией.
+  it('карточки ещё нет: узел объявляет пробел владельцу и дорисовывает имя по операции', async () => {
+    resetPeerMirror()
+    const managers = managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })])
+    bubbles = new ChatBubbles(groupContext(), managers)
+    await bubbles.getHistory()
+
+    const title = nameOf(bubbles, 1)!.firstElementChild!
+    expect(title.textContent).toBe('')
+    expect(managers.fillMirror).toHaveBeenCalledWith([AUTHOR])
+
+    applyPeerOps([{ op: 'upsert', peers: [peerCard(AUTHOR, 'Пётр')] }])
+
+    expect(title.textContent).toBe('Пётр')
+  })
+
+  it('переименование пира (операция patch) перерисовывает уже нарисованное имя', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    await bubbles.getHistory()
+    const title = nameOf(bubbles, 1)!.firstElementChild!
+    expect(title.textContent).toBe('Пётр')
+
+    applyPeerOps([{ op: 'patch', id: AUTHOR, fields: { displayName: 'Пётр I' } }])
+
+    expect(title.textContent).toBe('Пётр I')
+  })
+
+  // Утечки нет: у убитой ленты узлы уходят из реестра по middleware.onClean.
+  it('после destroy() узел уже не перерисовывается', async () => {
+    const b = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    await b.getHistory()
+    const title = b.chatInner.querySelector('.name > .peer-title')!
+
+    b.destroy()
+    applyPeerOps([{ op: 'patch', id: AUTHOR, fields: { displayName: 'Пётр I' } }])
+
+    expect(title.textContent).toBe('Пётр')
   })
 })

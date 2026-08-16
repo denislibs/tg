@@ -45,6 +45,10 @@ export function newChannelsManager({ rest, beforeSending }: {
         beforeSending({
           chat_id: chatId, thread_root_id: optimistic.threadRootId ?? null, client_msg_id: clientMsgId,
           sender_id: optimistic.senderId, text, type: 'text', entities,
+          // Тот же класс, что `messages.sendText` в tweb: между баблом и уходом
+          // запроса ничего не ждём, поэтому позиция бабла внизу окна переживёт
+          // финализацию (см. докблок `PendingNewEvt.sequential`).
+          sequential: true,
         })
       }
       const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, entities, client_msg_id: clientMsgId })

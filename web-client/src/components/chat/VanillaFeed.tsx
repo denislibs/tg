@@ -15,7 +15,14 @@ import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
 import { useManagers } from '@core/hooks/useManagers'
 
-export default function VanillaFeed({ chatId, threadRootId }: { chatId: number; threadRootId?: number }) {
+export default function VanillaFeed({ chatId, threadRootId, isLikeGroup }: {
+  chatId: number
+  threadRootId?: number
+  /** Порт tweb `chat.isLikeGroup` — гейт показа имени автора в бабле. Считает
+   *  его хост: в tweb это `Chat` (`appPeersManager.isLikeGroup`), у нас тип
+   *  чата знает React-экран, а ленте про сторы знать нельзя. */
+  isLikeGroup?: boolean
+}) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -32,7 +39,7 @@ export default function VanillaFeed({ chatId, threadRootId }: { chatId: number; 
     // открывается новой вкладкой (`target="_blank"`), клик по имени ничего не
     // делает. Придёт навигация — пробрасывается одним полем здесь.
     const bubbles = new ChatBubbles(
-      { peerId: chatId, threadId: threadRootId, messagesStorageKey: winKey(chatId, threadRootId) },
+      { peerId: chatId, threadId: threadRootId, messagesStorageKey: winKey(chatId, threadRootId), isLikeGroup },
       managers,
     )
     host.append(bubbles.container)
@@ -42,7 +49,7 @@ export default function VanillaFeed({ chatId, threadRootId }: { chatId: number; 
     // который React убирает из документа сам. `remove()` здесь был бы строкой,
     // удаление которой ничего не меняет, — то есть мёртвым кодом (CLAUDE.md).
     return () => bubbles.destroy()
-  }, [chatId, threadRootId, managers])
+  }, [chatId, threadRootId, isLikeGroup, managers])
 
   return <div ref={hostRef} style={{ display: 'contents' }} />
 }

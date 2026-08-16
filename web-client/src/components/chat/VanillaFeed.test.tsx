@@ -32,7 +32,8 @@ function managersWith(messages: Message[]) {
   const getHistory = vi.fn(
     async (): Promise<HistoryResult> => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true }),
   )
-  return { managers: { messages: { getHistory } } as unknown as Managers, getHistory }
+  const fillMirror = vi.fn(async () => {})
+  return { managers: { messages: { getHistory }, peers: { fillMirror } } as unknown as Managers, getHistory }
 }
 
 function mount(messages: Message[], props: { chatId: number; threadRootId?: number } = { chatId: CHAT }) {
@@ -85,14 +86,18 @@ describe('VanillaFeed — проводка императивной ленты �
 
     expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ chatId: CHAT, threadRoot: 60 }))
     // Подписки сверяют событие по этому же ключу: событие окна треда доезжает,
-    // событие основного окна того же чата — нет.
+    // событие основного окна того же чата — нет. Рисуется бабл не сразу:
+    // отрисовкой владеет очередь рендера ленты (порт tweb `batchProcessor`).
     rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 1, seq: 1 }) })
-    expect(bubblesIn(container)).toHaveLength(0)
 
     rootScope.dispatchEventSingle('history_append', {
       storageKey: winKey(CHAT, 60), message: msg({ id: 2, seq: 2, threadRootId: 60 }),
     })
-    expect(bubblesIn(container)).toHaveLength(1)
+    await vi.waitFor(() => {
+      expect(bubblesIn(container)).toHaveLength(1)
+    })
+    // ...и это бабл ИМЕННО окна треда
+    expect(container.querySelector('.bubble:not(.service)')!.getAttribute('data-mid')).toBe('2')
   })
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {
@@ -112,6 +117,7 @@ describe('VanillaFeed — проводка императивной ленты �
     // Живая подписка после размонтирования — утечка: лента продолжала бы
     // рисовать в оторванное от документа дерево.
     rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 2, seq: 2 }) })
+    await new Promise((resolve) => setTimeout(resolve, 10))
     expect(bubblesIn(detached)).toHaveLength(1)
   })
 })

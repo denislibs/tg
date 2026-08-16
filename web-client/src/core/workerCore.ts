@@ -270,7 +270,7 @@ export function createWorkerCore() {
   const channels = newChannelsManager({ rest, beforeSending })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
   // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
-  // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
+  // переигрывают (`core/peerCache.ts` — зеркало). broadcast объявлен ниже — стрелка
   // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
   const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
   const presence = newPresenceManager({ rest })

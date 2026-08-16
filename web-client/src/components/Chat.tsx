@@ -1330,7 +1330,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             развилку — `Chat.vanillaFeed.test.ts` (Chat.tsx нельзя отрендерить в
             тесте, см. «Тесты» в web-client/CLAUDE.md). */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed chatId={numericChatId} threadRootId={threadRootId} />
+          <VanillaFeed chatId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} />
         ) : (
         <div
           ref={bubblesRef}

@@ -50,7 +50,7 @@ export const RT = {
   // пробел (fillMirror) либо изменился сам факт (user_update). Обычные чтения
   // карточек (getUsers) кадров не порождают. Рассылается всем вкладкам: карточка
   // пира — общий факт сессии (avatar_url приватен per-viewer, но зритель у всех
-  // вкладок один). peersStore зеркалит операции через storeProjection и больше
+  // вкладок один). core/peerCache.ts зеркалит операции через storeProjection и больше
   // ниоткуда не пишется (пин — stores/noDuplicatePeers.test.ts).
   peerOp: 'rt:peer_op',
   // Stage «владение диалогами» (этап 1): список диалогов — владелец воркерный
@@ -276,6 +276,17 @@ export interface PendingNewEvt {
   contact?: { userId: number; name: string; phone: string }
   secret?: boolean
   send_as?: { chatId: number; title: string; photoId?: number }
+  /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
+   *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
+   *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит
+   *  на сервер В ТОМ ЖЕ ходу, что и появление бабла», поэтому серверный
+   *  идентификатор сохранит ту позицию внизу окна, которую бабл уже занял.
+   *  tweb ставит его у `sendText`/`sendOther`/`forwardMessages` и НЕ ставит у
+   *  `sendFile`/`sendPoll` — там между баблом и кадром стоит аплоад, за время
+   *  которого вперёд может уйти другое сообщение. Мы ставим его по тому же
+   *  правилу (`messages.sendText`, `channels.post`), а лента на нём срезает
+   *  перекладку бабла — `chat/bubbles.ts`, подписка `history_update`. */
+  sequential?: boolean
 }
 
 // One envelope for every 1:1 call signaling frame (call_request / call_accept /

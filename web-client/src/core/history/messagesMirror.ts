@@ -19,8 +19,6 @@
 // * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
 //   tweb — у нас нет источника (наш поток операций per-окно, а multiappend в
 //   tweb per-сообщение);
-// * `sequential` в `history_update` — признак «бабл встал подряд со своим
-//   соседом» приходит в tweb из `pendingData`, у нас в операции его нет;
 // * применения кадров, которые ещё НЕ переведены на операции (edit_message,
 //   geo_live_update, reaction/star_reaction — таблица в web-client/CLAUDE.md):
 //   их правит только стор, зеркало узнает о них, когда они станут операциями.
@@ -165,7 +163,10 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
     // Слияние с оптимистичным баблом: в окне БЫЛ временный с тем же clientId
     // (его id — tempId события, как в tweb pendingData.tempId).
     const optimistic = op.msg.clientId ? prev.find((m) => m.clientId === op.msg.clientId) : undefined
-    if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id }))
+    // `sequential` едет от отправителя как есть: его посчитал владелец бабла
+    // (`managers/messages/pending.ts`), зеркало его не выводит — ровно как в
+    // tweb, где `checkPendingMessage` кладёт в событие `pendingData.sequential`.
+    if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id, sequential: op.sequential }))
     else callbacks.push(() => rootScope.dispatchEventSingle('history_append', { storageKey: op.key, message }))
   }
   for (const fire of callbacks) fire()

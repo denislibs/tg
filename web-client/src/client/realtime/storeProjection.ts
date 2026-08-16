@@ -4,7 +4,7 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import { usePeersStore } from '../../stores/peersStore'
+import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
@@ -77,7 +77,10 @@ const APPLY: Projector = {
   // Третье зеркало того же кадра (этап «лента на императивном DOM»): окна
   // сообщений прошлой сессии — лента читает их синхронно на рендере, поэтому
   // чужая история обязана исчезнуть тем же кадром.
-  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror() },
+  // Зеркала прошлой сессии обязаны исчезнуть: их читают СИНХРОННО на рендере, и
+  // без сброса следующий аккаунт увидит чужие карточки/историю/медиа-URL (у
+  // пиров это ещё и `avatarUrl`, приватный per-viewer).
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
@@ -108,25 +111,21 @@ const APPLY: Projector = {
   [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops); applyOpsToMirror(e.ops) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
-  // проектор — ЕДИНСТВЕННЫЙ писатель peersStore (пин — stores/noDuplicatePeers.test.ts).
+  // проектор — ЕДИНСТВЕННЫЙ писатель зеркала (пин — core/noDuplicatePeers.test.ts).
   // Прежний обработчик RT.userUpdate (patch имени + refresh().then(upsert)) убран:
   // это был второй, независимый вывод того же факта, расходившийся с воркерным
-  // на упавшем до-фетче аватара. Один кадр несёт одну операцию, а upsert батчевый
-  // сам по себе (op.peers) — на событие приходится один set(), как и раньше.
-  [RT.peerOp]: (e) => {
-    const st = usePeersStore.getState()
-    for (const op of e.ops) {
-      if (op.op === 'upsert') st.upsert(op.peers)
-      else st.patch(op.id, op.fields)
-    }
-  },
+  // на упавшем до-фетче аватара. Один кадр несёт одну операцию, а зеркало будит
+  // подписчиков один раз на пачку — как и раньше один set() на событие.
+  // Зеркало — обычный модуль (core/peerCache.ts), а не zustand: карточку читает
+  // и императивная лента, которой стор запрещён (докблок peerCache.ts).
+  [RT.peerOp]: (e) => { applyPeerOps(e.ops) },
   // Task 2 (перенос владения диалогами): список диалогов — владелец воркерный
   // dialogsManager (порядок считает единожды он, порт tweb generateDialogIndex).
   // applyDialogOps — единственный вход зеркала для операций воркера. Task 6
   // снесла легаси-мутаторы chatsStore (setDialogs/applyDialogs и т.п.), которые
   // раньше писали в dialogs напрямую параллельно — пин «один писатель» (плюс
   // allow-listed client/boot.ts и core/hooks/useAuthGate.ts, см. докблок там же)
-  // держит stores/noDuplicateDialogs.test.ts, как и у peersStore.
+  // держит stores/noDuplicateDialogs.test.ts, как и у зеркала пиров.
   [RT.dialogOp]: (e) => { useChatsStore.getState().applyDialogOps(e.ops) },
   // Task 3 (realtime-кадры применяет владелец): удаление диалога (chat_removed)
   // теперь тоже операция владельца (dialogsManager.applyRemoved → rt:dialog_op

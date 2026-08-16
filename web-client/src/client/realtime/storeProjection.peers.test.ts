@@ -1,7 +1,7 @@
 // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
-// решает, ЧТО изменилось, и публикует это операцией (rt:peer_op). peersStore —
-// зеркало, единственный писатель которого проектор (см. также
-// stores/noDuplicatePeers.test.ts — что вторых писателей не завелось).
+// решает, ЧТО изменилось, и публикует это операцией (rt:peer_op).
+// `core/peerCache.ts` — зеркало, единственный писатель которого проектор (см.
+// также core/noDuplicatePeers.test.ts — что вторых писателей не завелось).
 //
 // Стенд склеивает настоящий менеджер с настоящим проектором тем же каналом, что
 // и прод: peersManager.onPeerOps → (в проде: broadcast rt:peer_op → веер портов →
@@ -14,7 +14,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
-import { usePeersStore } from '../../stores/peersStore'
+import { cachedPeer, resetPeerMirror } from '../../core/peerCache'
 import { newPeersManager } from '../../core/managers/peersManager'
 import type { RestClient } from '../../core/net/restClient'
 import type { Managers } from '../bootstrap'
@@ -45,7 +45,7 @@ function stand(users: RawUser[]) {
 describe('storeProjection — карточки пиров: воркер владеет, витрина зеркалит', () => {
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
-  beforeEach(() => { usePeersStore.setState({ byId: {} }) })
+  beforeEach(() => { resetPeerMirror() })
 
   // Базовый канал: витрина объявила пробел — карточка доезжает сама, без
   // `.then(upsert)` на вызывающей стороне (тот второй писатель убран из usePeers).
@@ -54,7 +54,7 @@ describe('storeProjection — карточки пиров: воркер влад
 
     await mgr.fillMirror([2])
 
-    expect(usePeersStore.getState().byId[2]).toEqual({ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' })
+    expect(cachedPeer(2)).toEqual({ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' })
   })
 
   // Полнота канала: карточку мог уже вытянуть другой хук или другая вкладка —
@@ -64,13 +64,13 @@ describe('storeProjection — карточки пиров: воркер влад
   it('пробел зеркала при попадании в кэш воркера всё равно наполняет пустую витрину', async () => {
     const { mgr, net } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
     await mgr.getUsers([2])
-    // Витрина «второй вкладки»: кэш воркера уже прогрет, стор пуст.
-    usePeersStore.setState({ byId: {} })
+    // Витрина «второй вкладки»: кэш воркера уже прогрет, зеркало пусто.
+    resetPeerMirror()
 
     await mgr.fillMirror([2])
 
     expect(net.calls).toBe(1)
-    expect(usePeersStore.getState().byId[2]).toMatchObject({ displayName: 'Боб' })
+    expect(cachedPeer(2)).toMatchObject({ displayName: 'Боб' })
   })
 
   // user_update (имя) — точечная операция patch: чужие карточки не пересобираются
@@ -81,13 +81,13 @@ describe('storeProjection — карточки пиров: воркер влад
       { id: 3, username: 'eve', display_name: 'Ева', avatar_url: '/e.png' },
     ])
     await mgr.fillMirror([2, 3])
-    const before = usePeersStore.getState().byId
+    const before3 = cachedPeer(3)
 
     mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
 
-    const after = usePeersStore.getState().byId
-    expect(after[2]).toEqual({ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png', avatarPreview: '' })
-    expect(after[3]).toBe(before[3])
+    expect(cachedPeer(2)).toEqual({ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png', avatarPreview: '' })
+    // чужая карточка не пересобрана — та же ссылка
+    expect(cachedPeer(3)).toBe(before3)
   })
 
   // ГЛАВНЫЙ ПИН задачи. Раньше кадр правил два кэша порознь: воркер выселял
@@ -109,7 +109,7 @@ describe('storeProjection — карточки пиров: воркер влад
     // Что отдаёт воркер (сеть всё ещё лежит — до-фетч падает снова) против того,
     // что показывает витрина. Расхождение здесь — ровно тот дефект.
     const [fromWorker] = await mgr.getUsers([2])
-    const fromStore = usePeersStore.getState().byId[2]
+    const fromStore = cachedPeer(2)
     expect(fromWorker).toEqual(fromStore)
     expect(fromStore).toMatchObject({ avatarUrl: '/old.png' })
 
@@ -119,7 +119,7 @@ describe('storeProjection — карточки пиров: воркер влад
     net.offline = false
     const [refreshed] = await mgr.getUsers([2])
     expect(refreshed).toMatchObject({ avatarUrl: '/new.png' })
-    expect(usePeersStore.getState().byId[2]).toEqual(refreshed)
+    expect(cachedPeer(2)).toEqual(refreshed)
   })
 
   // Тот же инвариант «не расходятся», но по оси ИМЕНИ, а не аватара, и он
@@ -137,7 +137,7 @@ describe('storeProjection — карточки пиров: воркер влад
 
     const [fromWorker] = await mgr.getUsers([2])
     expect(net.calls).toBe(1)
-    expect(fromWorker).toEqual(usePeersStore.getState().byId[2])
+    expect(fromWorker).toEqual(cachedPeer(2))
     expect(fromWorker).toMatchObject({ displayName: 'Бобби' })
   })
 
@@ -151,8 +151,22 @@ describe('storeProjection — карточки пиров: воркер влад
     mgr.applyUserUpdate({ id: 2, username: 'bob', display_name: 'Боб', avatar_changed: true })
     await vi_flush()
 
-    expect(usePeersStore.getState().byId[2]).toMatchObject({ avatarUrl: '/new.png' })
+    expect(cachedPeer(2)).toMatchObject({ avatarUrl: '/new.png' })
     expect(net.calls).toBe(2) // первичный getUsers + один до-фетч, не два
+  })
+
+  // Уход активной сессии. Зеркало читают СИНХРОННО на рендере (императивная
+  // лента строит имя автора прямо из него), а `avatarUrl` приватен per-viewer —
+  // без сброса следующий аккаунт увидит чужие карточки. Строка
+  // `resetPeerMirror()` в APPLY[RT.loggingOut] иначе не покрыта ничем.
+  it('кадр rt:logging_out сбрасывает зеркало', async () => {
+    const { mgr } = stand([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }])
+    await mgr.fillMirror([2])
+    expect(cachedPeer(2)).toBeDefined()
+
+    rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null })
+
+    expect(cachedPeer(2)).toBeUndefined()
   })
 })
 

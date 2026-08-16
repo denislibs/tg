@@ -3,8 +3,8 @@
 // Императивная лента сообщений — порт tweb `src/components/chat/bubbles.ts`
 // (класс `ChatBubbles`). Класс владеет DOM-деревом ленты, скроллом, картой
 // отрисованных баблов, подписками на события истории, группировкой серий
-// (`bubbleGroups.ts`) и секциями дней. Медиа, реакции, время, имя автора и
-// прочий состав бабла приезжают следующими этапами.
+// (`bubbleGroups.ts`), секциями дней, очередью рендера и именем автора. Медиа,
+// реакции, время, превью ответа и шапка пересылки приезжают следующими этапами.
 //
 // Источник данных — НЕреактивное зеркало окон `core/history/messagesMirror.ts`
 // (порт `apiManagerProxy.mirrors`): страницу истории лента кладёт туда сама
@@ -19,9 +19,10 @@
 //    (`chat.messagesStorageKey`) и адресат кликов (`navigation`), — поэтому
 //    конструктор берёт узкий структурный тип. Полный `Chat` — этап 7, когда
 //    лента заберёт себе и остальное окружение.
-//  • `BubblesManagers` вместо всего `AppManagers`: ленте нужен единственный
-//    метод `messages.getHistory`. Узкий тип позволяет поднять ленту в тесте
-//    без RPC-моста.
+//  • `BubblesManagers` вместо всего `AppManagers`: ленте нужны ровно два
+//    метода — `messages.getHistory` и `peers.fillMirror` (объявить пробел
+//    зеркала карточек, см. `peerTitle.ts`). Узкий тип позволяет поднять ленту в
+//    тесте без RPC-моста.
 //  • `attachContainerListeners()` портирован ЧАСТИЧНО — ровно тем составом, у
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
 //    rich-text. Контекстное меню, выделение, dblclick-ответ и свайпы —
@@ -31,6 +32,13 @@
 //  • `performHistoryResult` без параметра `reverse`: `reverse` в tweb значит
 //    «подгрузка НАД вьюпортом», а пагинации ещё нет — единственный
 //    потребитель грузит первую страницу и дописывает её вниз.
+//  • `processBatch` портирован в объёме своего КАРКАСА: фильтр протухших
+//    единиц, ОДНА группировка на пачку и монтирование затронутых серий. Всё
+//    остальное тело оригинала (bubbles.ts:5808-5959) — про подсистемы, которых
+//    ещё нет: сохранение/восстановление скролла (`prepareToSaveScroll`,
+//    `changedTop`/`changedBottom`, `reverse`), ожидание медиа-промисов и
+//    `fastRafPromise`, подмена баблов (`bubblesToReplace`/`ejectBubbles`),
+//    лестница (`canAnimateLadder`), выделение, sponsored, `lazyLoadQueue`.
 //  • Ре-кей бабла на новый идентификатор в tweb живёт в подписке `message_sent`
 //    (bubbles.ts:900-906: `delete this.bubbles[fullTempMid]` →
 //    `this.bubbles[fullMid] = bubble` → `bubble.dataset.mid = mid`), а
@@ -39,16 +47,16 @@
 //    `history_update` вместе с `tempId` (см. докблок `lib/rootScope.ts` и
 //    `core/history/messagesMirror.ts`), поэтому ре-кей выполняет он —
 //    строки тела перенесены дословно.
-//  • Группировка вызывается ПОБАБЛЬНО, а не пачкой. В tweb баблы копятся в
-//    очереди рендера (`renderMessagesQueue` → `batchProcessor` →
-//    `groupBubbles(loadQueue)` один раз на пачку, bubbles.ts:5997-6000);
-//    очереди рендера у нас ещё нет, поэтому каждый бабл группируется своим
-//    вызовом `groupBubbles([...])`. Результат тот же: `groupUngrouped`
-//    инкрементальна по построению — она разбирает всё, что ещё без группы,
-//    и ищет соседа в СМЕЖНЫХ элементах окна (см. докблок `bubbleGroups.ts`).
+//  • Ветка `hide-name` живёт не здесь, а в `bubbleClasses` (общий с React-лентой
+//    вычислитель модификаторов бабла): в tweb класс ставится прямо по ходу
+//    сборки имени (bubbles.ts:9516/9648), у нас — по тому же признаку
+//    `showName`, который лента считает `needName`.
 import Scrollable from '@components/scrollable'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware } from '@helpers/middleware'
+import BatchProcessor from '@helpers/batchProcessor'
+import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
+import noop from '@helpers/noop'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
@@ -65,6 +73,7 @@ import BubbleGroups, {
   type GroupAvatar,
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
+import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -120,13 +129,35 @@ export interface ChatContext {
   /** ключ окна в зеркале — аналог tweb `chat.messagesStorageKey`, которым
    *  подписки сверяют «событие про ТЕКУЩИЙ чат» */
   messagesStorageKey: string
+  /** Порт tweb `chat.isLikeGroup` (chat.ts:145, считается
+   *  `appPeersManager.isLikeGroup`): «чат, где у сообщений есть подписанный
+   *  автор» — любая группа, а также канал с `signature_profiles`. Единственный
+   *  гейт показа имени автора в бабле (`needName`, bubbles.ts:9331).
+   *  `signature_profiles` в нашей модели нет, поэтому хост передаёт сюда просто
+   *  «это группа» (`Chat.tsx`). */
+  isLikeGroup?: boolean
   /** адресат кликов по ссылкам/именам — аналог tweb `chat.appImManager` */
   navigation?: BubblesNavigation
 }
 
 /** Срез менеджеров, которым пользуется лента (см. расхождения в шапке). */
-export interface BubblesManagers {
+export interface BubblesManagers extends PeerTitleManagers {
   messages: { getHistory(args: HistoryArgs): Promise<HistoryResult> }
+}
+
+/** Порт tweb bubbles.ts:308. Ошибка, которой `BatchProcessor` отвергает пачку,
+ *  когда поколение ленты умерло за время её обработки: для ждущего это не сбой,
+ *  а «дальше не работаем». */
+const PEER_CHANGED_ERROR = new Error('peer changed')
+
+/** Единица очереди рендера — порт того, что `safeRenderMessage` возвращает в
+ *  tweb (bubbles.ts:6307-6310: результат `renderMessage` + `updatePosition`).
+ *  У нас состав бабла — текст, поэтому от результата остаются ровно сообщение и
+ *  его узел; `updatePosition` (в tweb — «не трогать позицию», для баблов
+ *  плейсхолдеров и sponsored) предмета не имеет. */
+interface RenderedMessage {
+  message: Message
+  bubble: HTMLElement
 }
 
 // tweb считает размер страницы от высоты окна (`Math.min(40, windowSize.height / 40)`,
@@ -134,8 +165,7 @@ export interface BubblesManagers {
 const PAGE_COUNT = 40
 
 // Модификаторы бабла, которых на рендере ещё неоткуда взять: подсветка
-// jump-to-message и граница непрочитанных (этап 5), имя автора и признаки
-// канала (этап 3).
+// jump-to-message и граница непрочитанных (этап 5) и признаки канала.
 //
 // `firstInGroup`/`lastInGroup` здесь — СЕМЯ РЕНДЕРА, а не позиция в серии:
 // из них `bubbleClasses` выводит `can-have-tail`, который tweb тоже ставит на
@@ -143,10 +173,9 @@ const PAGE_COUNT = 40
 // `.is-group-last`). Сами `is-group-first`/`is-group-last` перевешивает
 // владелец серий — `BubbleGroup.updateClassNames` (bubbleGroups.ts:297) на
 // каждом монтировании группы.
-const STUB_CTX: Omit<BubbleCtx, 'out'> = {
+const STUB_CTX: Omit<BubbleCtx, 'out' | 'showName'> = {
   firstInGroup: true,
   lastInGroup: true,
-  showName: false,
   isChannel: false,
   isHighlighted: false,
   isFirstUnread: false,
@@ -174,13 +203,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // группы лезут в ленту через `chat.bubbles`, у нас хост — сама лента).
   private bubbleGroups = new BubbleGroups(this)
 
+  // Очередь рендера — tweb bubbles.ts:657/747. Всё, что отрисовано за один ход,
+  // группируется и монтируется ОДНОЙ пачкой; `messagesQueuePromise` — точка, на
+  // которую опирается всё, что обязано дождаться отрисовки (обработчик
+  // `history_update`, а дальше — компенсация скролла).
+  private batchProcessor: BatchProcessor<RenderedMessage | undefined>
+  // tweb bubbles.ts:651. Рендер нового сообщения асинхронен (ждёт свою пачку),
+  // и ждущий обязан дождаться сначала ЕГО, а потом уже очереди: иначе бабл
+  // ещё не попал в очередь, и ожидание очереди ничего не даст (bubbles.ts:780-783).
+  private renderNewPromises: Set<Promise<void>> = new Set()
+
   private listenerSetter = new ListenerSetter()
   public middlewareHelper = getMiddleware()
 
   constructor(private chat: ChatContext, private managers: BubblesManagers) {
     this.constructBubbles()
+    // Порядок как в tweb (bubbles.ts:743-751): очередь заводится сразу после
+    // построения дерева и ДО подписок — первая же из них может в неё положить.
+    this.batchProcessor = new BatchProcessor({
+      process: this.processBatch,
+      possibleError: PEER_CHANGED_ERROR,
+    })
     this.constructPeerHelpers()
     this.attachContainerListeners()
+  }
+
+  /** Порт tweb bubbles.ts:2190. */
+  public get messagesQueuePromise(): Promise<void> | undefined {
+    return this.batchProcessor.queuePromise
   }
 
   public get peerId() {
@@ -261,7 +311,53 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // («Вы» vs имя собеседника) — 1:1 с оригиналом, где лента берёт свой id
     // оттуда же (bubbles.ts:740, 813, 928).
     const conv = messageToConvMsg(message, rootScope.myId)
-    return bubbleClasses(conv, { ...STUB_CTX, out: !!message.out })
+    return bubbleClasses(conv, { ...STUB_CTX, out: !!message.out, showName: this.needName(message) })
+  }
+
+  /**
+   * Порт tweb `needName` (bubbles.ts:9325-9335) — единственное условие показа
+   * имени автора в бабле.
+   *
+   *   needName = ((iPostedAsSomeoneElse || !isOut) && chat.isLikeGroup)
+   *              || viaBotId || storyFromPeerId || guestChatViaFromId
+   *              || (showNameForVerificationCodes && !replyTo)
+   *
+   * Из пяти слагаемых применимо первое; у остальных нет предмета: `via @bot`,
+   * репост истории, guest-chat и сообщения бота-верификатора в нашей модели
+   * сообщения отсутствуют как понятия (не «не сделано», а нечего проверять).
+   *
+   * `iPostedAsSomeoneElse` (tweb :9325 — `message.fromId !== rootScope.myId`)
+   * держит send-as: пост от имени канала/группы подписывается именем ДАЖЕ у
+   * своего сообщения. Наш `fromId` считает `bubbleGroups.getMessageFromId` —
+   * тот же ключ автора, по которому бьются серии (send-as кодируется
+   * отрицательным id чата, как peerId в самом tweb).
+   *
+   * ПЕРВОЕ СООБЩЕНИЕ СЕРИИ здесь НЕ проверяется — и это тоже 1:1 с tweb: узел
+   * имени рисуется у КАЖДОГО бабла серии, а прячет его у всех, кроме первого,
+   * CSS (`_chatBubble.scss:663-670`: `&:not(.forwarded):not(.must-have-name)
+   * &:not(.is-group-first) .name { display: none }`). Иначе слияние/разрыв
+   * серии требовал бы пересборки узлов, а не одного класса.
+   */
+  private needName(message: Message): boolean {
+    const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
+    return (iPostedAsSomeoneElse || !message.out) && !!this.chat.isLikeGroup
+  }
+
+  /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира
+   *  (`getPeerColorIndexByPeer` → `peer-N-color-rgb`) и значок премиума не
+   *  портированы: палитры пиров и премиум-статусов в нашей модели нет — сам
+   *  класс `colored-name` при этом ставится, его CSS берёт цвет от
+   *  `data-peer-id` бабла. */
+  private createTitle(message: Message, fromId: number): PeerTitle {
+    return new PeerTitle({
+      peerId: fromId,
+      // send-as: карточки у чат-личности нет (владелец знает только
+      // пользователей), а её заголовок приезжает прямо в сообщении — это ровно
+      // случай `fromName` в оригинале (peerTitle.ts:105-113).
+      fromName: message.sendAs?.title,
+      middleware: this.getMiddleware(),
+      managers: this.managers,
+    })
   }
 
   // Каркас бабла: `.bubble > .bubble-content-wrapper > .bubble-content >
@@ -288,6 +384,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv.append(this.wrapMessageContent(message))
 
     bubbleContainer.append(messageDiv)
+
+    // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
+    // её вставки (:9567-9590); `nameContainer` в оригинале — тот же
+    // `bubbleContainer`, пока сообщение не standalone-медиа (:7782).
+    //
+    // НЕ портирована ветка ПЕРЕСЫЛКИ (:9410-9497) — «Переслано от …» с
+    // аватаркой 20px, вторым заголовком форварда-форварда и `post_author`.
+    // У неё нет ни данных (модель форварда у нас — плоские `fwdFrom*`, без
+    // `saved_from`/`from_name`/`post_author`), ни подсистем (`avatarNew`,
+    // langPack-ключи `ForwardedFrom*`); классы `forwarded`/`must-have-name`
+    // при этом уже ставит `bubbleClasses`, так что шапка форварда приедет
+    // сюда же вместе с самим форвардом — отдельной работой, как и медиа.
+    if (this.needName(message)) {
+      const fromId = this.bubbleGroups.getMessageFromId(message)
+      const nameDiv = document.createElement('div')
+      nameDiv.append(this.createTitle(message, fromId).element)
+      // tweb :9502-9513. `noColor` в оригинале не присваивается никогда, так что
+      // ветка всегда живая; `our` для группы — ровно `pFlags.out`
+      // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`).
+      if (!message.out) {
+        nameDiv.classList.add('colored-name')
+      }
+      nameDiv.dataset.peerId = '' + fromId
+
+      nameDiv.classList.add('name')
+      nameDiv.setAttribute('dir', 'auto') // tweb setDirection(nameDiv), :9569
+      nameDiv.classList.add('floating-part') // :9584
+      bubbleContainer.prepend(nameDiv)
+      // tweb `updateMessageDiv` (:9571-9575): имя вплотную к телу сообщения
+      // съедает верхний отступ тела.
+      if (nameDiv.nextElementSibling === messageDiv) {
+        nameDiv.classList.add('next-is-message')
+      }
+    }
+
     contentWrapper.append(bubbleContainer)
     bubble.append(contentWrapper)
 
@@ -322,7 +453,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  `chat.isLikeGroup && !isOutMessage`), а `isLikeGroup` — знание о типе
    *  пира, которого в `ChatContext` ещё нет; поэтому и гейт, и сам узел
    *  аватара приедут одной работой (см. `createAvatar` ниже). */
-  private groupBubbles(items: { bubble: HTMLElement, message: Message }[]): BubbleGroup[] {
+  public groupBubbles(items: { bubble: HTMLElement, message: Message }[]): BubbleGroup[] {
     items.forEach(({ bubble, message }) => {
       this.bubbleGroups.prepareForGrouping(bubble, message)
     })
@@ -330,21 +461,109 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return [...this.bubbleGroups.groupUngrouped()]
   }
 
-  /** Порт tweb `safeRenderMessage`: отрисовать сообщение и запомнить его бабл.
-   *  Повторный вызов по уже отрисованному адресу — no-op (в tweb ту же роль
-   *  играет проверка `this.bubbles[fullMid]` перед рендером).
+  /**
+   * Порт tweb `processBatch` (bubbles.ts:5808) в объёме каркаса — см. шапку.
    *
-   *  В `chatInner` бабл НЕ кладётся: его место в DOM определяет серия
-   *  (`BubbleGroup.mount` внутри секции своего дня) — как в tweb, где рендер
-   *  только создаёт узел, а монтирует его `mountUnmountGroups` (bubbles.ts:5945). */
-  private safeRenderMessage(message: Message): HTMLElement | undefined {
+   * Здесь и только здесь группируется пачка: ОДИН вызов `groupBubbles` на всю
+   * очередь (оригинал — :5824) и одно `mountUnmountGroups` на посчитанный им
+   * набор серий (:5936). Порядок единиц — порядок постановки в очередь, его
+   * держит сам `BatchProcessor` (`queue.splice` + `Promise.all`).
+   *
+   * `filterQueue` (:5811-5819) — единицы, протухшие ПОКА пачка ждала: бабл могли
+   * удалить (`history_delete`) или переклеить на другой узел. Сверка ровно как в
+   * оригинале — «по адресу бабла лежит именно ЭТОТ узел».
+   *
+   * Второй сторож оригинала — `changedMids` (:685/5816, «message is sent faster
+   * than temporary one was rendered») — не портирован СОЗНАТЕЛЬНО: он ловит ровно
+   * тот же случай, что и сверка выше. Бабл, которому ack сменил идентификатор до
+   * разбора пачки, уже не лежит по адресу своего temp-mid (ре-кей делает
+   * `history_update`), поэтому единица отсеивается первым же условием, а карта
+   * temp→final была бы вторым выражением того же факта.
+   */
+  private processBatch = async (loadQueue: (RenderedMessage | undefined)[]) => {
+    const filtered = loadQueue.filter((details): details is RenderedMessage =>
+      !!details && this.getBubble(makeFullMid(this.peerId, details.message.id)) === details.bubble)
+
+    if (!filtered.length) {
+      return
+    }
+
+    this.bubbleGroups.mountUnmountGroups(this.groupBubbles(filtered))
+  }
+
+  /** Порт tweb bubbles.ts:5961. В оригинале аргумент — ПРОМИС результата
+   *  (`renderMessage` там асинхронен: медиа, стикеры, кастом-эмодзи); у нас
+   *  состав бабла синхронный, поэтому в очередь кладётся готовое значение —
+   *  `BatchProcessor` принимает и то и другое (`Item | Promise<Item>`). */
+  public renderMessagesQueue(details: RenderedMessage | undefined): Promise<void> {
+    return this.batchProcessor.addToQueue(details)
+  }
+
+  /** Порт tweb `safeRenderMessage`: отрисовать сообщение, запомнить его бабл и
+   *  ПОСТАВИТЬ ЕГО В ОЧЕРЕДЬ РЕНДЕРА. Повторный вызов по уже отрисованному
+   *  адресу — no-op (в tweb ту же роль играет проверка `this.bubbles[fullMid]`
+   *  перед рендером, bubbles.ts:6286).
+   *
+   *  В `chatInner` бабл НЕ кладётся, и в серию тоже: и то и другое делает
+   *  очередь (`processBatch` → `groupBubbles` → `mountUnmountGroups`) — как в
+   *  tweb, где `safeRenderMessage` только создаёт узел и кладёт его в
+   *  `renderMessagesQueue` (bubbles.ts:6360).
+   *
+   *  Адрес в `this.bubbles` при этом проставляется СИНХРОННО (оригинал —
+   *  :6341 `bubble = this.bubbles[fullMid] = newBubble`, тоже до очереди): на
+   *  это опирается и дедуп повторного рендера, и подписка `history_update`,
+   *  которая находит бабл ещё до того, как он попал в серию.
+   *
+   *  `.catch(noop)` на промисе очереди: пачку отвергает `PEER_CHANGED_ERROR`,
+   *  когда поколение ленты умерло за время её обработки. Здесь результат никому
+   *  не нужен (в tweb он тоже отбрасывается — :6360), а необработанное
+   *  отвержение шумело бы в консоли. */
+  private safeRenderMessage(message: Message): RenderedMessage | undefined {
     const fullMid = makeFullMid(this.peerId, message.id)
     if (this.bubbles[fullMid]) return undefined
 
     const bubble = this.renderMessage(message)
     this.bubbles[fullMid] = bubble
-    this.bubbleGroups.mountUnmountGroups(this.groupBubbles([{ bubble, message }]))
-    return bubble
+
+    const details: RenderedMessage = { message, bubble }
+    this.renderMessagesQueue(details).catch(noop)
+    return details
+  }
+
+  /** Дождаться, пока очередь рендера разберётся целиком — порт ожиданий tweb
+   *  (bubbles.ts:785-787, 10152, 10157). Отдельный метод, а не голое
+   *  `await this.messagesQueuePromise`, ровно из-за `.catch(noop)`: см.
+   *  `safeRenderMessage`. Ждущий обязан после этого проверить свою
+   *  актуальность сам — как и в оригинале (:789 `if(this.getBubble(fullMid)
+   *  !== bubble) return`). */
+  private async awaitMessagesQueue(): Promise<void> {
+    const promise = this.messagesQueuePromise
+    if (promise) {
+      await promise.catch(noop)
+    }
+  }
+
+  /** Порт tweb `renderNewMessage` (bubbles.ts:4528): промис рендера нового
+   *  сообщения живёт в реестре, пока не разрешится, — на него смотрит
+   *  обработчик `history_update` (:780-783). */
+  private renderNewMessage(message: Message): Promise<void> {
+    const promise = this._renderNewMessage(message)
+    this.renderNewPromises.add(promise)
+    promise.catch(noop).finally(() => {
+      this.renderNewPromises.delete(promise)
+    })
+    return promise
+  }
+
+  /** Порт tweb `_renderNewMessage` (bubbles.ts:4537) в применимом объёме:
+   *  ветки про несведённый низ окна, треды, `savedReaction` и доводку скролла
+   *  к новому баблу приедут со своими подсистемами (пагинация, скролл). */
+  private async _renderNewMessage(message: Message): Promise<void> {
+    if (this.getBubble(makeFullMid(this.peerId, message.id))) {
+      return
+    }
+
+    await this.performHistoryResult([message])
   }
 
   // ─── BubbleGroupsHost: секции дней, актуальность, аватар серии ────────────
@@ -528,29 +747,37 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
   /** Порт tweb bubbles.ts:10037. Порядок тела — как в оригинале: сначала края
    *  окна (`setLoaded('top'/'bottom')`, bubbles.ts:10069-10101), потом рендер
-   *  (bubbles.ts:10139-10146).
+   *  (bubbles.ts:10139-10146), потом ОЖИДАНИЕ ОЧЕРЕДИ (:10152) — метод
+   *  разрешается, когда пачка действительно отрисована.
    *
-   *  Страница приходит СПИСКОМ ИДЕНТИФИКАТОРОВ, а сами сообщения разрешаются
-   *  через зеркало (`getMessage`) — это ровно шаг tweb `history.map((mid) =>
-   *  this.chat.getMessage(mid))` (bubbles.ts:10065-10067). Не сокращаем его до
-   *  «рисуем то, что вернул запрос»: у зеркала уже могут лежать более свежие
-   *  копии тех же сообщений (правка/патч приехали операцией, пока летел
-   *  `getHistory`), и рисовать надо лежащее, а не ответ сети.
+   *  Аргумент — как в tweb (:10065-10067): элемент списка либо готовое
+   *  сообщение, либо ИДЕНТИФИКАТОР, который разрешается через зеркало
+   *  (`typeof(mid) === 'number' ? this.chat.getMessage(mid) : mid`). Обе формы
+   *  нужны и здесь: страницу `getHistory` отдаёт идентификаторами намеренно —
+   *  у зеркала уже могут лежать более свежие копии тех же сообщений (правка
+   *  приехала операцией, пока летел запрос), и рисовать надо лежащее, а не
+   *  ответ сети; а `renderNewMessage` передаёт объект, который сам приехал
+   *  событием, — ровно как оригинал.
    *
    *  Края в tweb выводятся из слайсов `historyStorage` (`SliceEnd.Top/Bottom`),
    *  потому что там страница может лечь в середину уже известного окна; у нашего
    *  `messages.getHistory` они приезжают готовыми полями ответа. Как и в
    *  оригинале, край только ВЗВОДИТСЯ (`if(isEnd.top) setLoaded('top', true)`) —
    *  ответ, не дошедший до края, не гасит уже известный край. */
-  public performHistoryResult(historyResult: HistoryResult) {
-    if (historyResult.reachedTop) this.scrollable.loadedAll.top = true
-    if (historyResult.reachedBottom) this.scrollable.loadedAll.bottom = true
+  public async performHistoryResult(
+    history: readonly (Message | number)[],
+    isEnd?: { top?: boolean, bottom?: boolean },
+  ): Promise<void> {
+    if (isEnd?.top) this.scrollable.loadedAll.top = true
+    if (isEnd?.bottom) this.scrollable.loadedAll.bottom = true
 
-    for (const mid of historyResult.messages.map((m) => m.id)) {
-      const message = this.getMessage(mid)
+    for (const item of history) {
+      const message = typeof item === 'number' ? this.getMessage(item) : item
       if (!message) continue
       this.safeRenderMessage(message)
     }
+
+    await this.awaitMessagesQueue()
   }
 
   /** Порт tweb bubbles.ts:11380: лента сама грузит свою страницу истории,
@@ -567,24 +794,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (!middleware()) return
 
     putMirrorPage(this.chat.messagesStorageKey, historyResult.messages)
-    this.performHistoryResult(historyResult)
+    await this.performHistoryResult(
+      historyResult.messages.map((m) => m.id),
+      { top: historyResult.reachedTop, bottom: historyResult.reachedBottom },
+    )
   }
 
   /** Порт tweb bubbles.ts:1860/765/1104/1903 (`constructPeerHelpers`). Каждая
    *  подписка сверяет, что событие про ТЕКУЩЕЕ окно: по `storageKey`, а где его
    *  в каталоге нет (`history_delete`) — по `peerId`, ровно как в оригинале. */
   private constructPeerHelpers() {
-    // will call when message is sent (only 1) — tweb bubbles.ts:1860
+    // will call when message is sent (only 1) — tweb bubbles.ts:1860.
+    // Рендер идёт через `renderNewMessage` (:1891), а не прямым
+    // `safeRenderMessage`: его промис обязан лежать в `renderNewPromises` —
+    // иначе `history_update`, прилетевший тем же ходом (ack своей отправки
+    // догоняет собственный бабл), дождётся пустой очереди и выйдет ни с чем.
     this.listenerSetter.add(rootScope)('history_append', ({ storageKey, message }) => {
       if (storageKey !== this.chat.messagesStorageKey) return
-      this.safeRenderMessage(message)
+      void this.renderNewMessage(message)
     })
 
     // Смена идентификатора сообщения (ack оптимистичного бабла): бабл НЕ
     // пересоздаётся, переклеивается только его ключ в карте и data-mid —
     // порт tweb bubbles.ts:900-906; следом бабл переезжает на своё место по
     // новому порядку — порт тела `history_update` (tweb bubbles.ts:794-865).
-    this.listenerSetter.add(rootScope)('history_update', ({ storageKey, message, tempId }) => {
+    this.listenerSetter.add(rootScope)('history_update', async ({ storageKey, message, tempId, sequential }) => {
       if (storageKey !== this.chat.messagesStorageKey || tempId === undefined) return
 
       const fullTempMid = makeFullMid(this.peerId, tempId)
@@ -596,16 +830,66 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.bubbles[fullMid] = bubble
       bubble.dataset.mid = '' + message.id
 
+      // Порт tweb bubbles.ts:780-789. Бабл, который надо переставить, может быть
+      // ещё НЕ РАЗЛОЖЕН по сериям: узел и адрес заводятся синхронно
+      // (`safeRenderMessage`), а серия — только в пачке очереди рендера. Поэтому
+      // сначала дожидаемся всех начатых рендеров новых сообщений, потом самой
+      // очереди, и лишь затем проверяем, что за адресом всё ещё ЭТОТ узел.
+      if (this.renderNewPromises.size) {
+        await Promise.all(Array.from(this.renderNewPromises)).catch(noop)
+      }
+
+      await this.awaitMessagesQueue()
+
+      if (this.getBubble(fullMid) !== bubble) return
+
       // tweb bubbles.ts:794-800: репозиционируется только то, что лежит в
       // группах; `item.mid === mid` — событие уже применено.
       const item = this.bubbleGroups.getItemByBubble(bubble)
       if (!item || item.mid === message.id) return
 
-      // Ветка `sequential` (tweb bubbles.ts:802-819, «бабл и так на своём
-      // месте — только подменить сообщение») не портируется: признака
-      // `sequential` в нашем каталоге нет — его источник в tweb, `pendingData`,
-      // живёт у отправителя (см. докблок `lib/rootScope.ts:156`). Идём общим
-      // путём tweb — снять и разложить заново; УЗЕЛ при этом тот же.
+      // Порт tweb bubbles.ts:802-819.
+      //
+      // ЧТО ЗНАЧИТ `sequential`. Признак приходит от отправителя
+      // (`PendingDetails.sequential`, `core/managers/messages/pending.ts`; в tweb
+      // — `pendingData.sequential`) и означает «кадр отправки ушёл на сервер тем
+      // же ходом, что и появление бабла». Отсюда следует главное: пока бабл
+      // висел «отправляется…», ВПЕРЁД НЕГО ничего уйти не могло, поэтому
+      // серверный идентификатор почти наверняка сохранит ту позицию внизу окна,
+      // которую бабл уже занимает. У отправки с аплоадом (`sendFile`) признака
+      // нет — там между баблом и кадром стоят байты, и обогнать его успевают.
+      //
+      // ЧТО ДЕЛАЕТ ВЕТКА. Проверяет догадку, не трогая DOM: строит ВРЕМЕННЫЙ
+      // элемент серии для нового сообщения (`createItem` — он никуда не
+      // регистрируется) и ищет ему соседа в копии окна БЕЗ старого элемента.
+      // Если сосед оказался в той же серии, где бабл уже лежит, — переставлять
+      // нечего, достаточно подменить сообщение (`changeBubbleMessage`
+      // перевешивает адрес и порядок, узел и серию не трогает). Два запасных
+      // условия оригинала — про случаи, где соседа нет вовсе: бабл один в самой
+      // нижней серии того же дня, и «Избранное» (`peerId === myId`), где чужих
+      // сообщений не бывает. Третье условие tweb перепроверяет `sequential`
+      // внутри уже взведённого `if(sequential)` — тавтология, не переносим.
+      //
+      // ЦЕНА ОТСУТСТВИЯ ВЕТКИ — не только лишняя работа: общий путь ниже снимает
+      // бабл из серии и раскладывает заново, а это `is-group-first/last` на
+      // соседях и перестановка узлов в DOM на каждом ack самой частой операции
+      // в мессенджере.
+      if (sequential) {
+        const group = item.group
+        const newItem = this.bubbleGroups.createItem(bubble, message)
+        const items = this.bubbleGroups.itemsArr.slice()
+        indexOfAndSplice(items, item)
+        const foundItem = this.bubbleGroups.findGroupSiblingByItem(newItem, items)
+        if (
+          group === foundItem?.group ||
+          (group === this.bubbleGroups.lastGroup && group?.items.length === 1 && newItem.dateTimestamp === item.dateTimestamp) ||
+          (this.peerId === rootScope.myId && newItem.dateTimestamp === item.dateTimestamp)
+        ) {
+          this.bubbleGroups.changeBubbleMessage(bubble, message)
+          return
+        }
+      }
+
       this.bubbleGroups.removeAndUnmountBubble(bubble)
       this.bubbleGroups.mountUnmountGroups(this.groupBubbles([{ bubble, message }]))
     })
@@ -666,6 +950,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.scrollable.loadedAll.bottom = false
 
     this.dateMessages = {}
+    // Порт tweb bubbles.ts:4943/4956: незакрытые рендеры и недоработанная
+    // очередь принадлежат ПРОШЛОМУ поколению ленты. `clear()` не просто
+    // опустошает очередь, а гасит её middleware — уже стартовавшая пачка
+    // отвергается `PEER_CHANGED_ERROR` и в новое окно ничего не допишет.
+    this.renderNewPromises.clear()
+    this.batchProcessor.clear()
     this.bubbleGroups.cleanup()
     // Новый инстанс, а не только `cleanup()` — как в tweb (bubbles.ts:4938):
     // у групп остаются собственные middleware-хелперы, привязанные к прошлому
@@ -683,10 +973,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.middlewareHelper.clean()
   }
 
-  /** Порт tweb bubbles.ts:4880. */
+  /** Порт tweb bubbles.ts:4880. `batchProcessor.clear()` здесь — наше
+   *  дополнение: в tweb очередь гасит `cleanup()`, который лента обязательно
+   *  проходит на смене пира, а у нас `destroy()` — единственная точка гашения
+   *  (`VanillaFeed` зовёт только его). Без этой строки уже стартовавшая пачка
+   *  домонтировала бы серии в оторванное от документа дерево. */
   public destroy() {
     this.destroyScrollable()
     this.listenerSetter.removeAll()
+    this.renderNewPromises.clear()
+    this.batchProcessor.clear()
     this.middlewareHelper.destroy()
   }
 }

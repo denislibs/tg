@@ -138,6 +138,12 @@ export function createSecretManager(deps: SecretDeps) {
     // Бабл (плейнтекст локально) заводится ДО криптографии — иначе он появлялся бы
     // только после её конца; реальный бабл приедет расшифрованным эхом
     // new_message с тем же clientMsgId и сольётся с ним по нему же.
+    //
+    // `sequential` в заявке НЕ ставится (и здесь, и в sendMedia ниже) — по тому
+    // же правилу, по которому его не ставит tweb у `sendFile`: между появлением
+    // бабла и уходом кадра стоит ожидание (чтение ключа из IDB + шифрование), за
+    // которое вперёд успевает уйти другое сообщение. См. докблок
+    // `PendingNewEvt.sequential` (core/realtime/events.ts).
     async sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string; optimistic?: SecretOptimistic }): Promise<{ ok: boolean }> {
       if (args.optimistic) {
         deps.beforeSending({

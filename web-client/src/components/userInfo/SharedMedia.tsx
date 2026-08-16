@@ -29,7 +29,8 @@ import type { SavedDialog } from '../../core/managers/chatsManager'
 import type { GiftInfo } from '../../core/managers/starsManager'
 import type { Message } from '../../core/models'
 import type { OpenPeer } from '../../data'
-import { usePeersStore } from '../../stores/peersStore'
+import { cachedPeer } from '../../core/peerCache'
+import type { Peer } from '../../core/managers/peersManager'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import DeferredSortedVirtualList, {
@@ -234,7 +235,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
   // Просмотрщик медиа — тот же vanilla-вьювер, что в чате (клик по тайлу,
   // Task 16). items — из сообщений таба (messageToViewerItem); имена авторов —
-  // из зеркала карточек пиров (peersStore), фолбэков чата у панели нет.
+  // из зеркала карточек пиров (core/peerCache), фолбэков чата у панели нет.
   // jump/forward/delete не пробрасываются — их не было и у старого лайтбокса.
   const openMedia = (rawIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
     const list = (msgs ?? []).filter((m) => m.mediaId != null)
@@ -242,11 +243,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const clicked = msgs?.[rawIndex]
     const index = clicked ? list.indexOf(clicked) : -1
     if (index < 0) return
-    const peersById = usePeersStore.getState().byId
     const ctx = {
       meId,
       meName: useChatsStore.getState().me?.displayName,
-      peers: new Map(list.map((m) => [m.senderId, peersById[m.senderId]]).filter((p): p is [number, (typeof peersById)[number]] => !!p[1])),
+      peers: new Map(
+        list.map((m) => [m.senderId, cachedPeer(m.senderId)] as const)
+          .filter((p): p is [number, Peer] => !!p[1]),
+      ),
       lang,
     }
     const el = e.currentTarget

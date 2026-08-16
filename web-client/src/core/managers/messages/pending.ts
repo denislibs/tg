@@ -128,6 +128,13 @@ interface PendingDetails {
   tempSeq: number
   /** окна, куда бабл вставлен: основное чата и, для тред-сообщения, окно треда */
   keys: string[]
+  /** Порт поля tweb `PendingMessageDetails.sequential` (appMessagesManager.ts:228):
+   *  кадр отправки ушёл в том же ходу, что и появление бабла, — значит серверный
+   *  идентификатор сохранит уже занятую баблом позицию внизу окна. Заводится
+   *  здесь, уезжает наружу полем операции `insert` из `finalizePendingMessage`
+   *  (в tweb — полем события `history_update` из `checkPendingMessage`,
+   *  appMessagesManager.ts:8730-8737). */
+  sequential?: boolean
 }
 
 /** Внутренности хранилища истории, которые нужны pending-механике. Отдельно от
@@ -226,7 +233,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       const sa = slices.get(key)
       if (sa && !sa.findSlice(final.seq)) sa.unshift(final.seq)
     }
-    return opsFor(d, (key) => ({ op: 'insert', key, msg: final }))
+    // `sequential` объявляется вместе с финальным сообщением — ровно как в tweb,
+    // где `checkPendingMessage` кладёт `pendingData.sequential` в `history_update`
+    // (appMessagesManager.ts:8730-8737). Лента по нему решает, надо ли вообще
+    // перекладывать бабл (`chat/bubbles.ts`, порт bubbles.ts:802-819).
+    return opsFor(d, (key) => ({ op: 'insert', key, msg: final, sequential: d.sequential }))
   }
 
   /** Порт tweb `beforeMessageSending`: временное сообщение попадает в SSOT и в
@@ -288,7 +299,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       // рисуется входящим — как и его серверное эхо.
       out: deriveOut({ senderId: e.sender_id, sendAs: e.send_as }, ctx.getMeId()),
     }
-    const d: PendingDetails = { chatId: e.chat_id, threadRootId: e.thread_root_id, tempSeq: seq, keys }
+    const d: PendingDetails = { chatId: e.chat_id, threadRootId: e.thread_root_id, tempSeq: seq, keys, sequential: e.sequential }
     pendingByClientId.set(e.client_msg_id, d)
     msgsFor(e.chat_id).set(seq, msg)
     for (const key of keys) {
@@ -404,6 +415,10 @@ export function newPendingMethods(ctx: PendingCtx) {
         contact: args.contactUserId != null ? { userId: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
         secret: optimistic.secret,
         send_as: optimistic.sendAs,
+        // Порт tweb `sendText → beforeMessageSending({sequential: true})`
+        // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
+        // ходом, что и бабл, — позиция внизу окна за ним и останется.
+        sequential: true,
       }, send)
       return { ok: true }
     },
@@ -447,6 +462,11 @@ export function newPendingMethods(ctx: PendingCtx) {
         grouped_id: o.groupedId,
         local_url: localUrl,
         media: { width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName },
+        // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
+        // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
+        // этой опции): между баблом и кадром стоит аплоад, за время которого
+        // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
+        // с позицией бабла. Такой бабл лента перекладывает общим путём.
       }, () => { sent = uploadAndSend(o, mime, wire) })
       return { mediaId: await sent }
     },

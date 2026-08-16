@@ -153,10 +153,15 @@ export type BroadcastEvents = {
   // `mid` у tweb — id сообщения внутри пира; у нас ту же роль адреса в операциях
   // играет `Message.id` (у неотправленного бабла он отрицательный, а `seq` —
   // выдумка владельца, поэтому адресуем именно по id).
-  // Опущены относительно формы tweb: `sequential` в `history_update` (у нас нет
-  // источника этого признака — в tweb он из pendingData).
+  // `sequential` — 1:1 с tweb (rootScope.ts:78): признак приходит от отправителя
+  // (`pendingData.sequential`, у нас `PendingDetails.sequential` в
+  // `core/managers/messages/pending.ts`) и означает «кадр отправки ушёл тем же
+  // ходом, что и появление бабла», то есть серверный идентификатор сохранит уже
+  // занятую баблом позицию внизу окна. До ленты он доезжает полем операции
+  // `insert` (`core/realtime/messageOps.ts`) — канал «воркер → вкладка» у нас
+  // один; сюда его перекладывает зеркало окон.
   'history_append': [{ storageKey: string; message: Message }]
-  'history_update': [{ storageKey: string; message: Message; tempId?: number }]
+  'history_update': [{ storageKey: string; message: Message; tempId?: number; sequential?: boolean }]
   'message_edit': [{ storageKey: string; peerId: number; mid: number; message: Message }]
   'history_delete': [{ peerId: number; msgs: Set<number> }]
 

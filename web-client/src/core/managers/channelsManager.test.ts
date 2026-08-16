@@ -64,6 +64,10 @@ describe('ChannelsManager.post', () => {
     expect(order).toEqual(['pending', 'post'])
     expect(pendings).toEqual([{
       chat_id: 7, thread_root_id: null, client_msg_id: 'c9', sender_id: 3, text: 'пост', type: 'text', entities,
+      // Порт опции tweb `beforeMessageSending({sequential})`: между баблом и
+      // уходом запроса ничего не ждём, поэтому позиция бабла внизу окна
+      // переживёт финализацию — лента на этом признаке срезает перекладку.
+      sequential: true,
     }])
   })
 

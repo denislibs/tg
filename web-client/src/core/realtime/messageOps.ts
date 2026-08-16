@@ -10,7 +10,16 @@
 import type { Message } from '../models'
 
 export type MessageOp =
-  | { op: 'insert'; key: string; msg: Message }
+  // `sequential` — порт поля tweb `PendingMessageDetails.sequential`, которое
+  // `checkPendingMessage` кладёт в событие `history_update`
+  // (appMessagesManager.ts:8730-8737). Ставится ТОЛЬКО на `insert`, которым
+  // владелец финализирует свой же неотправленный бабл (`finalizePendingMessage`
+  // в `managers/messages/pending.ts`) — обычная вставка чужого сообщения его не
+  // несёт. Здесь это транспорт: канал «воркер → вкладка» у нас один, операции,
+  // и признак отправителя доезжает до ленты только ими. Смысл — в докблоке
+  // `PendingNewEvt.sequential` (`core/realtime/events.ts`), потребитель —
+  // подписка `history_update` в `components/chat/bubbles.ts`.
+  | { op: 'insert'; key: string; msg: Message; sequential?: boolean }
   | { op: 'replace'; key: string; msg: Message }
   | { op: 'remove'; key: string; msgId: number }
   | { op: 'patch'; key: string; msgId: number; fields: Partial<Message> }
