@@ -50,6 +50,10 @@ afterEach(() => {
   resetMessagesMirror()
 })
 
+/** Баблы СООБЩЕНИЙ: `.service` — это дата-бабл секции дня и его is-fake-дубль
+ *  (порт tweb `createDateBubble`), сообщений за ними не стоит. */
+const bubblesIn = (root: ParentNode) => root.querySelectorAll('.bubble:not(.service)')
+
 describe('VanillaFeed — проводка императивной ленты в React-дерево', () => {
   it('поднимает ChatBubbles и вешает её дерево в хост (`new ChatBubbles` + `host.append`)', () => {
     const { container } = mount([])
@@ -71,9 +75,9 @@ describe('VanillaFeed — проводка императивной ленты �
 
     expect(getHistory).toHaveBeenCalledTimes(1)
     await vi.waitFor(() => {
-      expect(container.querySelectorAll('.bubbles-inner > .bubble')).toHaveLength(2)
+      expect(bubblesIn(container)).toHaveLength(2)
     })
-    expect(container.querySelectorAll('.bubble-content')[1].textContent).toBe('привет')
+    expect(container.querySelectorAll('.message')[1].textContent).toBe('привет')
   })
 
   it('ключ окна берётся из winKey — на треде лента открывает окно ТРЕДА', async () => {
@@ -83,18 +87,18 @@ describe('VanillaFeed — проводка императивной ленты �
     // Подписки сверяют событие по этому же ключу: событие окна треда доезжает,
     // событие основного окна того же чата — нет.
     rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 1, seq: 1 }) })
-    expect(container.querySelectorAll('.bubble')).toHaveLength(0)
+    expect(bubblesIn(container)).toHaveLength(0)
 
     rootScope.dispatchEventSingle('history_append', {
       storageKey: winKey(CHAT, 60), message: msg({ id: 2, seq: 2, threadRootId: 60 }),
     })
-    expect(container.querySelectorAll('.bubble')).toHaveLength(1)
+    expect(bubblesIn(container)).toHaveLength(1)
   })
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {
     const { container, unmount } = mount([msg({ id: 1, seq: 1 })])
     await vi.waitFor(() => {
-      expect(container.querySelectorAll('.bubble')).toHaveLength(1)
+      expect(bubblesIn(container)).toHaveLength(1)
     })
     // Держим ссылку на оторвавшееся дерево: после размонтирования оно уходит из
     // документа, и «нарисовала ли живая подписка ещё один бабл» видно только по
@@ -108,6 +112,6 @@ describe('VanillaFeed — проводка императивной ленты �
     // Живая подписка после размонтирования — утечка: лента продолжала бы
     // рисовать в оторванное от документа дерево.
     rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 2, seq: 2 }) })
-    expect(detached.querySelectorAll('.bubble')).toHaveLength(1)
+    expect(bubblesIn(detached)).toHaveLength(1)
   })
 })
