@@ -21,6 +21,7 @@ import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
+import { newPendingMethods } from './messages/pending'
 import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
@@ -183,11 +184,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
   // реакции/теги/⭐ выделены в отдельные файлы, спредятся сюда — публичный API
   // messages.* не меняется.
   const ctx = { rest, patchMsg, getMeId, opWindowsFor }
+  // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
+  // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
+  const pending = newPendingMethods({ hkey, slices, msgsFor })
 
   return {
     ...newReactionMethods(ctx),
     ...newPollMethods(ctx),
     ...newTranslationMethods(ctx),
+    // Жизненный цикл неотправленного сообщения (порт формы tweb
+    // appMessagesManager) — ему нужны не точечные хелперы, а сама структура
+    // хранилища: временный бабл живёт в том же SSOT и в том же срезе окна, что и
+    // настоящие, как `messagesStorage` + `historyStorage.history` в оригинале.
+    // Поэтому у него свой ctx, а не общий MessagesCtx.
+    ...pending,
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
       const { chatId, offsetSeq = 0, addOffset = 0, limit = 40, threadRoot } = args
       const key = hkey(chatId, threadRoot)
@@ -528,6 +538,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       // уже делает то же, что раньше делал этот метод вручную: инжект secretMedia/
       // secret расшифрованного E2E-медиа и clientId эха своей отправки.
       const m = fromNewMessageEvt(evt)
+      // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт client_msg_id —
+      // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
+      // хранилище остались бы два объекта, и переоткрытие чата показало бы
+      // «отправляется…» рядом с уже отправленным. Слияние полей (clientId,
+      // localUrl, secret) делает потребитель — messageOps.insert.
+      pending.checkPendingMessage(m.clientId)
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
       const ops: MessageOp[] = []
       for (const key of keys) {
