@@ -290,8 +290,25 @@ func dialogRow(d domain.Dialog) map[string]any {
 	return row
 }
 
-// ListDialogs — GET /chats?limit=&offset_chat_id=: без параметров отдаёт весь
-// список (обратная совместимость), с ними — страницу по курсору chat_id.
+// dialogFolder — реальная папка из query. Значения на проводе — как у tweb
+// (FOLDER_ID_ALL=0, FOLDER_ID_ARCHIVE=1); отсутствие параметра и любое другое
+// значение означают «весь набор»: это прежнее поведение эндпоинта, и деградация
+// к нему безопаснее 400 — клиент с неизвестным номером папки увидит больше
+// диалогов, а не пустой список.
+func dialogFolder(r *http.Request) domain.DialogFolder {
+	switch queryInt(r, "folder_id", -1) {
+	case 0:
+		return domain.FolderAll
+	case 1:
+		return domain.FolderArchive
+	default:
+		return domain.FolderGlobal
+	}
+}
+
+// ListDialogs — GET /chats?limit=&offset_chat_id=&folder_id=: без параметров
+// отдаёт весь список (обратная совместимость), с ними — страницу по курсору
+// chat_id внутри реальной папки.
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 0)
 	if limit < 0 {
@@ -302,6 +319,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	page := domain.DialogPage{
 		Limit:        int(limit),
 		OffsetChatID: queryInt(r, "offset_chat_id", 0),
+		Folder:       dialogFolder(r),
 	}
 	res, err := h.svc.ListDialogsPage(r.Context(), h.meID(r), page)
 	if err != nil {

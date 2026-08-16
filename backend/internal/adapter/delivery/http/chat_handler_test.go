@@ -260,6 +260,93 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 	}
 }
 
+// doGet делает GET /chats(+query) с токеном и декодирует ответ через body.
+func doGet(t *testing.T, h http.Handler, token, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, query, token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", query, rec.Code, rec.Body.String())
+	}
+	return rec
+}
+
+func decode(t *testing.T, rr *httptest.ResponseRecorder, out any) {
+	t.Helper()
+	if err := json.Unmarshal(rr.Body.Bytes(), out); err != nil {
+		t.Fatalf("decode %s: %v", rr.Body.String(), err)
+	}
+}
+
+// folder_id режет выборку на бэкенде: без него клиент не знает размера набора
+// архива и его виртуальный список не создаёт дырок, то есть не догружается.
+func TestListDialogsFolderID(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000040")
+	_, idB := signUp(t, h, pool, "+79990000041")
+	_, idC := signUp(t, h, pool, "+79990000042")
+	_, idD := signUp(t, h, pool, "+79990000043")
+
+	var chatIDs []int64
+	for _, peer := range []int64{idB, idC, idD} {
+		rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": peer})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+		}
+		var created struct {
+			ChatID int64 `json:"chat_id"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &created)
+		chatIDs = append(chatIDs, created.ChatID)
+	}
+
+	// Архивируем третий чат — фикстура: 2 обычных + 1 архивный.
+	rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(chatIDs[2])+"/archive", tokenA, map[string]bool{"archived": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("archive: %d %s", rec.Code, rec.Body.String())
+	}
+
+	t.Run("folder_id=1 — только архив и его count", func(t *testing.T) {
+		rr := doGet(t, h, tokenA, "/chats?folder_id=1")
+		var body struct {
+			Chats []map[string]any `json:"chats"`
+			Count int              `json:"count"`
+			IsEnd bool             `json:"is_end"`
+		}
+		decode(t, rr, &body)
+		if len(body.Chats) != 1 || body.Count != 1 || !body.IsEnd {
+			t.Fatalf("chats=%d count=%d isEnd=%v, want 1 1 true", len(body.Chats), body.Count, body.IsEnd)
+		}
+		if body.Chats[0]["archived"] != true {
+			t.Fatalf("отдан не архивный диалог: %v", body.Chats[0])
+		}
+	})
+
+	t.Run("folder_id=0 — всё, кроме архива", func(t *testing.T) {
+		rr := doGet(t, h, tokenA, "/chats?folder_id=0")
+		var body struct {
+			Chats []map[string]any `json:"chats"`
+			Count int              `json:"count"`
+		}
+		decode(t, rr, &body)
+		if len(body.Chats) != 2 || body.Count != 2 {
+			t.Fatalf("chats=%d count=%d, want 2 2", len(body.Chats), body.Count)
+		}
+	})
+
+	// Отсутствие параметра — прежний контракт: весь набор. Мутация «по
+	// умолчанию FolderAll» краснит здесь.
+	t.Run("без folder_id — весь набор", func(t *testing.T) {
+		rr := doGet(t, h, tokenA, "/chats")
+		var body struct {
+			Count int `json:"count"`
+		}
+		decode(t, rr, &body)
+		if body.Count != 3 {
+			t.Fatalf("count=%d, want 3", body.Count)
+		}
+	})
+}
+
 func TestSync_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990000003")

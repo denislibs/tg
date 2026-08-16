@@ -8,11 +8,12 @@
 // логика вынесена в fillDialogsMirror/applyDialogsMirror — их тестируем здесь
 // напрямую с фейковым managers.dialogs, без SharedWorker/IDB.
 //
-// Сквозное ревью этапа 3: первичная загрузка снова ПОЛНАЯ (`refresh()`), а не
-// страница (`getDialogs({limit: guessLoadCount()})`) — усечённое зеркало молча
-// ломает архив и пользовательские папки (см. докблок applyDialogsMirror в
-// boot.ts). Пины на это — в describe «первичная загрузка полная»; сквозной
-// путь до самих списков — `client/boot.fullList.test.tsx`.
+// Первичная сетевая загрузка — `refresh()`, и страничность живёт ВНУТРИ него
+// (`dialogsManager.ts::doRefresh` просит окно удерживаемого, на пустом кэше —
+// одну страницу). Здесь пинится только развилка boot: догон идёт через
+// `refresh()` и без единой собственной страницы `getDialogs` — иначе у boot
+// появился бы второй, свой размер первого окна. Сквозной путь до самих списков
+// (архив, папки) — `client/boot.firstPage.test.tsx`.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fillDialogsMirror, applyDialogsMirror } from './boot'
 import { useChatsStore } from '../stores/chatsStore'
@@ -124,12 +125,11 @@ describe('boot: холодный старт диалогов — зеркало 
     })
   })
 
-  // Сквозное ревью этапа 3: постраничный первичный догон откачен. Зеркало —
-  // источник и для архива, и для пользовательских папок, а размера их наборов
-  // нет ни у бэкенда, ни у воркера, поэтому усечённое зеркало делает эти списки
-  // неполными БЕЗ ЕДИНОГО ПРИЗНАКА В UI (см. докблок applyDialogsMirror).
-  describe('applyDialogsMirror: первичная загрузка полная, а не первая страница', () => {
-    it('не под локом — зовёт ПОЛНЫЙ refresh() и ни одной страницы getDialogs', async () => {
+  // Размер первого окна знает ровно один слой — владелец (`doRefresh`). Своей
+  // страницы boot не просит: второй размер первого окна на витрине разошёлся бы
+  // с владельцем при первой же правке одного из них.
+  describe('applyDialogsMirror: догон идёт через refresh(), а не своей страницей', () => {
+    it('не под локом — зовёт refresh() и ни одной страницы getDialogs', async () => {
       const op: DialogOp = { op: 'reset', items: [] }
       const { managers, refresh, getDialogs } = fakeManagers(op)
 
@@ -138,7 +138,7 @@ describe('boot: холодный старт диалогов — зеркало 
       // Мутация: вернуть `getDialogs({limit: guessLoadCount()})` вместо
       // `refresh()` — оба ассерта краснеют.
       expect(refresh).toHaveBeenCalledTimes(1)
-      expect(refresh).toHaveBeenCalledWith() // без limit/курсора — весь список
+      expect(refresh).toHaveBeenCalledWith() // окно выбирает владелец, а не boot
       expect(getDialogs).not.toHaveBeenCalled()
     })
 

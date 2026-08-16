@@ -42,6 +42,10 @@ import type { Chat } from '../../data'
  */
 export type DialogListItem = { id: number; value: Chat }
 
+/** `archiveDialog.tsx:27` — страница архива, которой живёт строка «Архив»
+ *  (там же её лимит показа имён, см. `ArchiveRow.LIMIT`). */
+const ARCHIVE_ROW_LIMIT = 10
+
 export type DialogListSource = {
   /**
    * Диалоги папки в порядке зеркала (не пересортированы).
@@ -209,6 +213,53 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
   })
 
   /**
+   * Строка «Архив» — порт `AutonomousDialogList.ensureArchiveDialogHydrated`
+   * (`autonomousDialogList/dialogs.ts:263-276`): список «Всех чатов» тянет её
+   * страницу ПАРАЛЛЕЛЬНО каждой своей загрузке, а состояние строки просит у
+   * хранилища `getDialogs({filterId: FOLDER_ID_ARCHIVE, limit: 10})`
+   * (`archiveDialog.tsx:27,124-137`) и показывает ряд, если та непуста.
+   *
+   * Без этого запроса строки не бывает вовсе: её гейт — архивные диалоги в
+   * зеркале (`ChatList.tsx`, `pinnedArchive`), первичный `refresh()` страничный
+   * и старый архив в первое окно не попадает, а страницы «Всех чатов» уходят с
+   * `folder_id=0` и архива не приносят никогда (спека
+   * `2026-08-13-dialogs-count-and-refresh-design.md`, «Дополнение: вход в архив»).
+   *
+   * Зовётся из `fetchPage`, а не из эффекта монтирования, — ровно по месту
+   * оригинала, и это же даёт РЕТРАЙ: запрос fire-and-forget, и упади он
+   * (моргнула сеть на старте), следующая же страница «Всех чатов» — прокрутка,
+   * дырка, новый `requestItemForIdx` — попросит архив заново. Условие «архива в
+   * зеркале нет» — порт правила перезапроса `archiveDialog.tsx:162-171`
+   * («список строки сократился — перезапросить»): у нас архив штатно выпадает
+   * из окна `refresh()`, а пока он в зеркале есть, повторный запрос не нужен.
+   *
+   * Ответ здесь НЕ применяется: владелец объявляет страницу сам (`upsert` →
+   * `rt:dialog_op` → проектор → зеркало), витрина своего вывода того же факта
+   * не держит (`web-client/CLAUDE.md`, «Владение фактами»). Читается из него
+   * ровно одно — «архива нет вовсе» (`isEnd` при пустой странице), и только
+   * чтобы БОЛЬШЕ НЕ СПРАШИВАТЬ: у пользователя без архива гейт по зеркалу не
+   * закроется никогда, и запрос уходил бы на каждую страницу списка (в сеть при
+   * этом сходил бы только первый — дальше владелец отвечает из кэша, — но RPC
+   * воркеру летели бы все). У оригинала на этом месте свой признак «уже
+   * спрашивали» (`archiveDialog.tsx:170` — `if(canFetch()) return`); наш
+   * опирается на ОТВЕТ, потому что перезапрос при выпавшем из зеркала архиве
+   * обязан остаться. `.catch` — как у прочих fire-and-forget колсайтов
+   * владельца, и он же сохраняет ретрай: упавший запрос признака не ставит.
+   *
+   * Только список «Всех чатов»: строку архива несёт он один (`Sidebar.tsx`
+   * отдаёт `archived` только ему), а сам оверлей архива страницы просит уже
+   * своим курсором — обычным `fetchPage` ниже.
+   */
+  const noArchiveRef = useRef(false)
+  const ensureArchiveHydrated = useEvent((forFilterId: number): void => {
+    if (forFilterId !== ALL_FOLDER_ID || noArchiveRef.current) return
+    if (useChatsStore.getState().dialogs.some((d) => d.archived)) return
+    void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT })
+      .then((r) => { if (!r.dialogs.length && r.isEnd) noArchiveRef.current = true })
+      .catch(() => {})
+  })
+
+  /**
    * Одна страница — порт `base.ts:247-299` (`loadDialogsInner`) + обёртка
    * первой загрузки из `dialogs.ts:248-256`. Отступления от оригинала:
    *
@@ -222,6 +273,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     const middleware = helper.get()
     // `isFirstLoad = !offsetIndex` — дословно dialogs.ts:249.
     const unblock = offsetIndex ? noop : blockAnimation()
+    ensureArchiveHydrated(forFilterId)
     try {
       const result = await managers.dialogs.getDialogs({ offsetIndex, limit: guessLoadCount(), filterId: forFilterId })
       // Хук размонтирован либо папку успели переключить: писать в состояние

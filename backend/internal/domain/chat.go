@@ -121,6 +121,24 @@ type Dialog struct {
 	ThemeID string
 }
 
+// DialogFolder — РЕАЛЬНАЯ папка выборки диалогов. Порт tweb REAL_FOLDER_ID
+// (lib/appManagers/constants.ts:37-39): на сервере существуют ровно две папки,
+// «все чаты» и «архив»; пользовательские папки — клиентский фильтр поверх них
+// и до бэкенда не доходят.
+type DialogFolder int
+
+const (
+	// FolderGlobal — запрос без папки: весь набор. Нулевое значение выбрано
+	// сознательно — уже существующие domain.DialogPage{} без явного поля
+	// обязаны означать «как раньше», а не «всё, кроме архива». Порт tweb
+	// GLOBAL_FOLDER_ID (dialogs.ts:68).
+	FolderGlobal DialogFolder = iota
+	// FolderAll — всё, кроме архива (на проводе folder_id=0, tweb FOLDER_ID_ALL).
+	FolderAll
+	// FolderArchive — только архив (на проводе folder_id=1, tweb FOLDER_ID_ARCHIVE).
+	FolderArchive
+)
+
 // DialogPage — запрос страницы списка диалогов.
 //
 // Курсор — chat_id последнего полученного диалога, а не смещение: список
@@ -136,6 +154,9 @@ type DialogPage struct {
 	// в архив или быть удалён между страницами); клиент сливает страницы по
 	// chat_id, поэтому последствие — повторная страница, а не дыра.
 	OffsetChatID int64
+	// Выборка, внутри которой считаются Count, IsEnd и курсор. FolderGlobal
+	// (нулевое значение) — весь набор.
+	Folder DialogFolder
 }
 
 // DialogPageResult — страница плюс метаданные для виртуального списка:

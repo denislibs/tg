@@ -1,12 +1,13 @@
 // Размер страницы списка диалогов — порт tweb
 // `components/autonomousDialogList/base.ts:23,216-219`.
 //
-// Отдельный модуль (а не экспорт из хука-потребителя): чистые функции без
-// React, которые читают и `core/hooks/useDialogListSource.ts` (размер страницы
-// догрузки), и тесты холодного старта (`client/boot.fullList.test.tsx` — там
-// это граница «первая страница / остальной список»). Сам `client/boot.ts`
-// страницу больше НЕ просит: первичная загрузка полная, см. докблок
-// `applyDialogsMirror`.
+// Отдельный модуль (а не экспорт из хука-потребителя): чистые константы и
+// функции без React. `guessLoadCount()` читает `core/hooks/useDialogListSource.ts`
+// (размер страницы догрузки), `DIALOG_LOAD_COUNT` — владелец списка
+// (`core/managers/dialogsManager.ts::doRefresh`: окно первичной загрузки на
+// пустом кэше) и тест холодного старта `client/boot.firstPage.test.tsx`, где
+// это граница «первая страница / остальной список». Сам `client/boot.ts`
+// размера страницы не знает вовсе: он зовёт `refresh()`, а тот страничный.
 
 /** `DIALOG_LOAD_COUNT` — константа tweb `base.ts:23`. */
 export const DIALOG_LOAD_COUNT = 20

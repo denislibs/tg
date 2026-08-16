@@ -23,7 +23,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useFoldersStore } from '../stores/foldersStore'
 import { useNotifyStore } from '../stores/notifyStore'
 import { useAppStateStore } from '../stores/appState'
-import { ALL_FOLDER_ID } from '../core/folderIds'
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import itemStyles from './virtual/DeferredSortedVirtualList.module.scss'
 import rowStyles from './ChatListItem.module.scss'
 import type { Dialog } from '../core/models'
@@ -123,6 +123,18 @@ function fakeManagers(response: DialogsPage | ((o: { filterId: number }) => Dial
     typeof response === 'function' ? response(o) : response)
   return { managers: { dialogs: { getDialogs } } as never, getDialogs }
 }
+
+/**
+ * Запросы СТРАНИЦ ПАПКИ. Список, несущий строку «Архив», отдельно гидрирует её
+ * саму (`getDialogs({filterId: ARCHIVE_FOLDER_ID})` из
+ * `useDialogListSource::ensureArchiveHydrated` — порт
+ * `ensureArchiveDialogHydrated`, `autonomousDialogList/dialogs.ts:263-276`), и
+ * этот запрос к пагинации папки отношения не имеет — свой пин у него ниже
+ * («список «Всех чатов» гидрирует строку архива»), а правила запроса и ретрая —
+ * в `core/hooks/useDialogListSource.test.tsx`.
+ */
+const folderPages = (getDialogs: { mock: { calls: [{ filterId: number }][] } }) =>
+  getDialogs.mock.calls.filter(([o]) => o.filterId !== ARCHIVE_FOLDER_ID)
 
 /** Пропы харнесса: пропы списка + внешний ref (его Sidebar отдаёт ряду историй). */
 type HarnessProps = Partial<ChatListProps> & { listRef?: RefObject<HTMLDivElement | null> }
@@ -264,8 +276,22 @@ describe('ChatList — ul виртуального списка', () => {
 
     await renderList(managers)
 
-    expect(getDialogs).toHaveBeenCalledTimes(1)
+    expect(folderPages(getDialogs)).toHaveLength(1)
     expect(getDialogs).toHaveBeenCalledWith(expect.objectContaining({ offsetIndex: undefined, filterId: ALL_FOLDER_ID }))
+  })
+
+  // Проводка строки «Архив» в сборе: список «Всех чатов» просит её страницу у
+  // владельца (порт `ensureArchiveDialogHydrated`; правила запроса и ретрая —
+  // у самого источника, `core/hooks/useDialogListSource.test.tsx`). Мутация:
+  // снять вызов `ensureArchiveHydrated` в `fetchPage` — запроса с
+  // `filterId: ARCHIVE_FOLDER_ID` не будет.
+  it('список «Всех чатов» гидрирует строку архива страницей архивной выборки', async () => {
+    seedDialogs(3)
+    const { managers, getDialogs } = fakeManagers(page({ count: 3 }))
+
+    await renderList(managers)
+
+    expect(getDialogs).toHaveBeenCalledWith({ filterId: ARCHIVE_FOLDER_ID, limit: 10 })
   })
 
   it('смена папки запускает первую загрузку НОВОЙ папки', async () => {
@@ -279,11 +305,11 @@ describe('ChatList — ul виртуального списка', () => {
     const { managers, getDialogs } = fakeManagers((o) => page({ count: o.filterId === ALL_FOLDER_ID ? 3 : 0 }))
 
     const { rerender } = await renderList(managers)
-    expect(getDialogs).toHaveBeenCalledTimes(1)
+    expect(folderPages(getDialogs)).toHaveLength(1)
 
     await act(async () => { rerender({ folder: 7, folderOrder: [ALL_FOLDER_ID, 7] }) })
 
-    expect(getDialogs).toHaveBeenCalledTimes(2)
+    expect(folderPages(getDialogs)).toHaveLength(2)
     expect(getDialogs).toHaveBeenLastCalledWith(expect.objectContaining({ filterId: 7 }))
   })
 })
@@ -556,20 +582,20 @@ describe('ChatList — свой скроллер и свой ul на кажду�
 
   it('второй список не дёргает загрузку: страница просится по разу на папку', async () => {
     const { rerender, getDialogs } = await renderTwoFolders()
-    expect(getDialogs).toHaveBeenCalledTimes(1)
+    expect(folderPages(getDialogs)).toHaveLength(1)
 
     await act(async () => { rerender({ folder: WORK.id }) })
     await flushSlide()
 
     // Ушедшая папка своей страницы не перезапрашивает — её курсор на месте.
-    expect(getDialogs).toHaveBeenCalledTimes(2)
+    expect(folderPages(getDialogs)).toHaveLength(2)
     expect(getDialogs).toHaveBeenLastCalledWith(expect.objectContaining({ filterId: WORK.id }))
 
     await act(async () => { rerender({ folder: ALL_FOLDER_ID }) })
     await flushSlide()
 
     // Возврат на живой кадр — тоже не загрузка: первый показ у папки был один.
-    expect(getDialogs).toHaveBeenCalledTimes(2)
+    expect(folderPages(getDialogs)).toHaveLength(2)
   })
 
   it('наружу отдаётся скроллер АКТИВНОЙ папки', async () => {

@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore } from '../stores/chatsStore'
-import { ALL_FOLDER_ID } from '../core/folderIds'
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
 import DeferredSortedVirtualList, {
-  type DeferredSortedVirtualListItem,
   type DeferredSortedVirtualListRenderItemProps,
 } from './virtual/DeferredSortedVirtualList'
+import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
@@ -364,7 +364,7 @@ export default function Sidebar({
                     <Text size={15} color="var(--secondary-text-color)">{t('No archived chats')}</Text>
                   </div>
                 ) : (
-                  <ArchiveList chats={archivedChats} selectedId={selectedId} onSelect={handleSelect} />
+                  <ArchiveList chats={chats} selectedId={selectedId} onSelect={handleSelect} />
                 )}
               </div>
             </div>
@@ -431,42 +431,38 @@ export default function Sidebar({
 const ARCHIVE_ITEM_HEIGHT = 72
 
 /**
- * Пагинации у архива нет (см. докблок `ArchiveList`), поэтому просить страницу
- * некому. Ссылка обязана быть СТАБИЛЬНОЙ — контракт пропа `requestItemForIdx`
- * ядра: он зовётся из эффекта каждой непоказанной строки.
- *
- * Сама эта стабильность СОЗНАТЕЛЬНО НЕ ПОКРЫТА тестом: у списка без пагинации
- * непоказанных строк не бывает вовсе, а если бы и были — вызов пустой (проверено
- * мутацией «инлайновая стрелка вместо константы»: прогон остаётся зелёным).
- * Константа держится ради контракта, а не ради наблюдаемого поведения.
- */
-const NO_ITEM_REQUEST = () => {}
-
-/**
  * Архивные чаты — тот же виртуальный список, что и у папки (`ChatList`): строки
  * лежат абсолютом в `ul` фиксированной высоты, в DOM живут только те, что попали
  * в окно видимости. Оригинал — `tweb/src/components/sidebarLeft/tabs/archivedTab.tsx`:
- * там архив это обычный `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`, то есть то
- * же ядро `createDeferredSortedVirtualList`, что и у остальных списков диалогов.
+ * там архив это обычный `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`
+ * (`archivedTab.tsx:19,80-96`), то есть то же ядро
+ * `createDeferredSortedVirtualList` и ТОТ ЖЕ курсор догрузки, что у остальных
+ * списков диалогов, — поэтому источник здесь общий, `useDialogListSource`:
+ * фильтр выборки, размер набора, признак конца и запрос страницы у владельца
+ * считаются ровно там же, где у папки, вторых правил не заводится.
  *
- * Отличия от списка папки — от нашей модели данных, а не от tweb:
- * 1. **закреплённых строк нет** — закреплён сам архив, и не здесь, а в списке
- *    уровнем выше (`ChatList`, `pinnedItems`);
- * 2. **пагинации нет**: архив приезжает витрине целиком
- *    (`useSidebarFolders.archivedChats` — фильтр по всему зеркалу), поэтому
- *    `totalCount` это длина набора. Дырок в `fullItems` ядра при этом не
- *    возникает вовсе — а значит, ни скелетонов, ни запроса страницы
- *    (`NO_ITEM_REQUEST`), — и `wasAtLeastOnceFetched` взведён с первого рендера:
- *    ждать здесь нечего, всё, что есть, показывается разом (при `false` `ul` был
- *    бы ростом с хост, а строки открывались бы волной reveal — поведение
- *    оригинала для СВЕЖЕПРИЕХАВШИХ строк, не для уже известных);
- * 3. `animate` — константа: в оригинале это `blockedAnimationCount() === 0`, а
- *    счётчик глушилки держит владелец ПЕРВОЙ ЗАГРУЗКИ (`dialogs.ts:248-256`,
- *    `isFirstLoad`), которой у архива нет — счётчик остался бы нулевым всегда.
- *    Значение пропа СОЗНАТЕЛЬНО НЕ ПОКРЫТО: оно доходит до `useAnimatedTop`,
- *    который анимирует `top` в DOM покадрово, и в happy-dom наблюдаемой разницы
- *    у `animate={false}` нет (проверено мутацией — прогон зелёный); сама
- *    механика анимации покрыта `virtual/useAnimatedTop.test.ts`.
+ * Своей пагинации у архива не было (список жил тем, что случайно оказалось в
+ * зеркале) — и это делало его недостижимым, как только первичная загрузка стала
+ * страничной: страницы «Всех чатов» уходят с `folder_id=0` и архивных диалогов
+ * не приносят вовсе (спека `2026-08-13-dialogs-count-and-refresh-design.md`,
+ * «Дополнение: вход в архив»). Теперь оверлей просит свои страницы сам —
+ * `getDialogs({filterId: ARCHIVE_FOLDER_ID})` уходит с `folder_id=1` и приносит
+ * настоящий размер архивной выборки.
+ *
+ * Отличие от списка папки одно и оно от нашей модели данных, а не от tweb:
+ * **закреплённых строк нет** — закреплён сам архив, и не здесь, а в списке
+ * уровнем выше (`ChatList`, `pinnedItems`).
+ *
+ * Следствие своей пагинации: `wasAtLeastOnceFetched` и `animate` — ЖИВЫЕ
+ * значения источника, а не константы (константами они стояли ровно потому, что
+ * первой загрузки у архива не существовало). Наблюдаемы они только ПОКА первая
+ * страница архива летит: до ответа `ul` ростом с хост, а переезд строки не
+ * анимируется (глушилка `blockedAnimationCount`, порт `dialogs.ts:248-256`).
+ * Оба пина — `Sidebar.archive.test.tsx`, describe «первая страница архива ещё
+ * летит»: он краснеет и на возврате любого из двух пропов в константу.
+ *
+ * `chats` — витрина зеркала ЦЕЛИКОМ (как у `ChatList`), а не отфильтрованная:
+ * архивность строки решает тот же `useDialogListSource`, что и её набор.
  */
 function ArchiveList({ chats, selectedId, onSelect }: {
   chats: Chat[]
@@ -483,44 +479,21 @@ function ArchiveList({ chats, selectedId, onSelect }: {
     setScrollHost(ul?.parentElement ?? null)
   }, [])
 
-  // Обёртки строк, живущие между пересчётами, — контракт пропа `items` ядра
-  // (`DeferredSortedVirtualList.tsx:64-80`): ссылка на массив меняется только
-  // при реальном изменении состава, а обёртка строки приезжает НОВОЙ, только
-  // когда изменилось её витринное значение. Кэш обязателен: `chats` приходит
-  // новым массивом на ЛЮБУЮ операцию зеркала (`useChatList` → `useMemo` по
-  // `dialogs`), и без него `useShouldAnimate` сравнивал бы по ссылке всегда
-  // разные обёртки — пересечение «видимые до» и «видимые сейчас» стало бы
-  // пустым, а компенсация равномерного сдвига не звалась бы никогда (разбор —
-  // `core/hooks/useDialogListSource.ts:124-142`, тот же кэш и та же причина).
-  const itemCacheRef = useRef<Map<string, DeferredSortedVirtualListItem<Chat>>>(new Map())
-  const prevItemsRef = useRef<readonly DeferredSortedVirtualListItem<Chat>[]>([])
+  // Обёртки строк, размер набора, признак «хоть раз загружались», глушилка
+  // анимации первой загрузки и запрос страницы — всё из общего источника списка
+  // диалогов (там же живут и кэш обёрток, без которого `useShouldAnimate`
+  // сравнивал бы по ссылке всегда разные элементы, и правило принадлежности
+  // строки выборке).
+  const { items, totalCount, wasAtLeastOnceFetched, animate, requestItemForIdx } =
+    useDialogListSource(ARCHIVE_FOLDER_ID, chats)
 
-  const items = useMemo<readonly DeferredSortedVirtualListItem<Chat>[]>(() => {
-    const cache = itemCacheRef.current
-    const seen = new Set<string>()
-    const next = chats.map((chat) => {
-      seen.add(chat.id)
-      const hit = cache.get(chat.id)
-      if (hit && hit.value === chat) return hit
-      const item: DeferredSortedVirtualListItem<Chat> = { id: chat.id, value: chat }
-      cache.set(chat.id, item)
-      return item
-    })
-    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id)
-
-    // Вторая половина контракта — ссылка на САМ массив. СОЗНАТЕЛЬНО НЕ ПОКРЫТА:
-    // при живом кэше выше её снятие не наблюдаемо (проверено мутацией) — состав
-    // пересчёта тот же и по ссылкам, поэтому `useShouldAnimate` находит все
-    // видимые строки на прежних местах и компенсирует нулевой сдвиг, то есть
-    // ничего не делает. Оставлена, потому что этого требует докблок пропа
-    // `items` ядра, а стоит она одного сравнения: без неё каждая операция
-    // зеркала гоняла бы вхолостую и пересчёт `fullItems`, и проход
-    // `useShouldAnimate` по всему окну.
-    const prev = prevItemsRef.current
-    if (prev.length === next.length && prev.every((it, i) => it === next[i])) return prev
-    prevItemsRef.current = next
-    return next
-  }, [chats])
+  // Порт `AutonomousDialogList.onChatsScroll()` (`base.ts:144-146` —
+  // `requestItemForIdx(0)`): показанный список просит нулевой индекс. Это
+  // ЕДИНСТВЕННЫЙ старт его первой загрузки — тот же эффект, что у
+  // `ChatList.ChatListFolder` на первом показе папки.
+  useEffect(() => {
+    requestItemForIdx(0)
+  }, [requestItemForIdx])
 
   // `handleSelect` Sidebar пересоздаётся на каждом его рендере, а `renderItem`
   // обязан быть стабильным: он входит в пропсы `memo`-строки, и его смена
@@ -540,11 +513,11 @@ function ArchiveList({ chats, selectedId, onSelect }: {
       className={s.archiveVirtualList}
       scrollableHost={scrollHost}
       items={items}
-      totalCount={items.length}
-      wasAtLeastOnceFetched
+      totalCount={totalCount}
+      wasAtLeastOnceFetched={wasAtLeastOnceFetched}
       itemSize={ARCHIVE_ITEM_HEIGHT}
-      animate
-      requestItemForIdx={NO_ITEM_REQUEST}
+      animate={animate}
+      requestItemForIdx={requestItemForIdx}
       renderItem={renderItem}
     />
   )
