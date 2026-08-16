@@ -699,3 +699,21 @@ JS — единственный владелец ширин; SCSS только �
 | Навигация | `src/components/appNavigationController.ts`, `src/lib/internalLink.ts`, `src/lib/internalLinkProcessor.ts`, `src/lib/appImManager.ts` |
 | Layout | `/index.html`, `src/helpers/mediaSizes.ts`, `src/helpers/updateColumnWidths.ts`, `src/scss/base.scss`, `src/scss/partials/_chat.scss` |
 | QoL | `src/helpers/liteMode.ts`, `src/helpers/idleController.ts`, `src/hooks/useHeavyAnimationCheck.ts`, `src/helpers/schedulers.ts`, `src/helpers/fastSmoothScroll.ts`, `src/components/animationIntersector.ts`, `src/components/swipeHandler.ts` |
+
+---
+
+## Проверка после порта
+
+Прощёлкать на стенде, прежде чем говорить «готово».
+
+- [ ] Ресайз окна через все брейкпоинты: колонки перестраиваются, мобильный режим включается.
+- [ ] Тема светлая / тёмная / системная и смена обоев — без перезагрузки и мигания.
+- [ ] Deep link открывает нужный экран; back и forward браузера ходят по стеку.
+- [ ] Неактивная вкладка: тяжёлые анимации на паузе (idleController).
+- [ ] liteMode и режим энергосбережения отключают то же, что в tweb.
+- [ ] Перезагрузка страницы восстанавливает открытый чат и позицию.
+- [ ] Классы состояния на `body` / `html` совпадают с дампом скелета.
+
+Машинная сверка разметки: снять DOM через `tools/tweb-parity/snapshot-dom.js` и
+сравнить с эталоном — `node tools/tweb-parity/dom-parity.mjs <дамп> ours.txt`.
+Подходящие дампы: 01-skeleton, 12-theme-toggle, 11-load-anims.

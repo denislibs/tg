@@ -1,0 +1,542 @@
+{
+  "meta": {
+    "generatedAt": "2026-08-16",
+    "twebDir": "/Users/denisurevic/Documents/tweb",
+    "twebCommit": "e52b5d931"
+  },
+  "popups": [
+    {
+      "file": "src/components/popups/aboutAd.tsx",
+      "name": "aboutAd",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/addBotToChat.ts",
+      "name": "addBotToChat",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/ageVerification.tsx",
+      "name": "ageVerification",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/aiEditorPopup/index.ts",
+      "name": "aiEditorPopup",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/birthday.tsx",
+      "name": "birthday",
+      "ours": "BirthdayModal",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/channelsTooMuch.tsx",
+      "name": "channelsTooMuch",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/chatPreview.tsx",
+      "name": "chatPreview",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/checklist.tsx",
+      "name": "checklist",
+      "ours": "CreateChecklistPopup",
+      "match": "fuzzy"
+    },
+    {
+      "file": "src/components/popups/convertToGigagroup.ts",
+      "name": "convertToGigagroup",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/createBot/index.tsx",
+      "name": "createBot",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/createContact.tsx",
+      "name": "createContact",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/createPoll/index.tsx",
+      "name": "createPoll",
+      "ours": "CreatePollPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/createStarGiftOffer.tsx",
+      "name": "createStarGiftOffer",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/datePicker.tsx",
+      "name": "datePicker",
+      "ours": "DatePickerPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/emailSetup.tsx",
+      "name": "emailSetup",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/featureDetails.tsx",
+      "name": "featureDetails",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/floatingStarsBalance.tsx",
+      "name": "floatingStarsBalance",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/forward.tsx",
+      "name": "forward",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/frozen.tsx",
+      "name": "frozen",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/limit.ts",
+      "name": "limit",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/logOut.ts",
+      "name": "logOut",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/myQrCode.tsx",
+      "name": "myQrCode",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/noForwards.tsx",
+      "name": "noForwards",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/passkey.tsx",
+      "name": "passkey",
+      "ours": "PasskeyIntroPopup",
+      "match": "fuzzy"
+    },
+    {
+      "file": "src/components/popups/password.tsx",
+      "name": "password",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/pickCountry.ts",
+      "name": "pickCountry",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/pickUser.tsx",
+      "name": "pickUser",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/pollLink/index.tsx",
+      "name": "pollLink",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/avatar.ts",
+      "name": "PopupAvatar",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/boost.ts",
+      "name": "PopupBoost",
+      "ours": "BoostPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/boostsViaGifts.tsx",
+      "name": "PopupBoostsViaGifts",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/buyResaleGift.tsx",
+      "name": "PopupBuyResaleGift",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/chooseGiftPopup.tsx",
+      "name": "PopupChooseGift",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/chooseStoryPopup.tsx",
+      "name": "PopupChooseStory",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/deleteDialog.ts",
+      "name": "PopupDeleteDialog",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/deleteMegagroupMessages.tsx",
+      "name": "PopupDeleteMegagroupMessages",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/deleteMessages.ts",
+      "name": "PopupDeleteMessages",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/giftLink.tsx",
+      "name": "PopupGiftLink",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/giftPremium.ts",
+      "name": "PopupGiftPremium",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/joinChatInvite.ts",
+      "name": "PopupJoinChatInvite",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/makePaid.tsx",
+      "name": "PopupMakePaid",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/mute.ts",
+      "name": "PopupMute",
+      "ours": "MutePopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/newMedia.ts",
+      "name": "PopupNewMedia",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/payment.ts",
+      "name": "PopupPayment",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentCard.ts",
+      "name": "PopupPaymentCard",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentCardConfirmation.ts",
+      "name": "PopupPaymentCardConfirmation",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentMethods.tsx",
+      "name": "PopupPaymentMethods",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentShipping.ts",
+      "name": "PopupPaymentShipping",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentShippingMethods.ts",
+      "name": "PopupPaymentShippingMethods",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/paymentVerification.ts",
+      "name": "PopupPaymentVerification",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/peer.ts",
+      "name": "PopupPeer",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/unpinMessage.ts",
+      "name": "PopupPinMessage",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/premium.ts",
+      "name": "PopupPremium",
+      "ours": "PremiumModal",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/reactedList.ts",
+      "name": "PopupReactedList",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/reassignBoost.tsx",
+      "name": "PopupReassignBoost",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/sellStarGift.tsx",
+      "name": "PopupSellStarGift",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/sendGift.tsx",
+      "name": "PopupSendGift",
+      "ours": "SendGiftPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/sendNow.ts",
+      "name": "PopupSendNow",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/sharedFolderInvite.ts",
+      "name": "PopupSharedFolderInvite",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/sponsored.ts",
+      "name": "PopupSponsored",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starGiftInfo.tsx",
+      "name": "PopupStarGiftInfo",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starGiftValue.tsx",
+      "name": "PopupStarGiftValue",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starGiftWear.tsx",
+      "name": "PopupStarGiftWear",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starReaction.tsx",
+      "name": "PopupStarReaction",
+      "ours": "StarReactionPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/stars.tsx",
+      "name": "PopupStars",
+      "ours": "StarsPopup",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/starsPay.tsx",
+      "name": "PopupStarsPay",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/toggleReadDate.tsx",
+      "name": "PopupToggleReadDate",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/webApp.ts",
+      "name": "PopupWebApp",
+      "ours": "WebAppModal",
+      "match": "exact"
+    },
+    {
+      "file": "src/components/popups/webAppEmojiStatusAccess.tsx",
+      "name": "PopupWebAppEmojiStatusAccess",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/webAppLocationAccess.tsx",
+      "name": "PopupWebAppLocationAccess",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/webAppPreparedMessage.tsx",
+      "name": "PopupWebAppPreparedMessage",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/previewCard/index.tsx",
+      "name": "previewCard",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/reportAd.tsx",
+      "name": "reportAd",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/requestPeer.ts",
+      "name": "requestPeer",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/scheduleSendingPopup.tsx",
+      "name": "scheduleSendingPopup",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/shareUrl.ts",
+      "name": "shareUrl",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/simpleConfirmation.ts",
+      "name": "simpleConfirmation",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starGiftUpgrade.tsx",
+      "name": "starGiftUpgrade",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starGiftUpgradePrice.tsx",
+      "name": "starGiftUpgradePrice",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/starsRating.tsx",
+      "name": "starsRating",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/stickers.tsx",
+      "name": "stickers",
+      "ours": "StickerSetModal",
+      "match": "fuzzy"
+    },
+    {
+      "file": "src/components/popups/storiesStealthMode.tsx",
+      "name": "storiesStealthMode",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/transferStarGift.tsx",
+      "name": "transferStarGift",
+      "ours": null,
+      "match": null
+    },
+    {
+      "file": "src/components/popups/translate/index.tsx",
+      "name": "translate",
+      "ours": "TranslatePopup",
+      "match": "exact"
+    }
+  ],
+  "extraOurs": [
+    "AddContactView",
+    "AddStorySheet",
+    "CallsView",
+    "CloseFriendsSheet",
+    "ConfirmPopup",
+    "ContactsView",
+    "CreateGiveawayPopup",
+    "EditContactView",
+    "EditStorySheet",
+    "FolderInvitePopup",
+    "GiftInfoPopup",
+    "InstantView",
+    "KeyVerificationPopup",
+    "NewContactPopup",
+    "ReportPopup",
+    "RepostStorySheet",
+    "SchedulePopup",
+    "ScheduledView",
+    "SearchView",
+    "SendMediaPopup",
+    "SettingsView",
+    "StealthModePopup",
+    "StoriesArchiveSheet",
+    "StreamSettingsPopup",
+    "SuggestPostPopup",
+    "SuggestedPostsView",
+    "WalletView"
+  ]
+}
