@@ -6,6 +6,7 @@ import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decrypt
 import { fingerprintEmoji } from '../secret/fingerprint'
 import { saveKey, loadKey, savePending, loadPending, clearPending } from '../secret/keyStore'
 import { RT } from '../realtime/events'
+import type { PendingMedia, PendingNewEvt } from '../realtime/events'
 import type { SecretMedia } from '../models'
 
 export interface SecretDeps {
@@ -14,6 +15,20 @@ export interface SecretDeps {
   broadcast: (event: string, payload: unknown) => void
   /** Аплоад непрозрачного ciphertext-блоба (media.upload воркера) → media_id. */
   upload: (bytes: ArrayBuffer, mime: string, size: number, fileName?: string) => Promise<number>
+  /** Временный («неотправленный») бабл — та же механика, что у обычной отправки
+   *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
+  beforeSending: (p: PendingNewEvt) => void
+}
+
+/** Что отрисовать в бабле секретной отправки, пока летит шифрование/аплоад.
+ *  Отсутствует — бабла нет вовсе (голосовое и документ приезжают уже
+ *  расшифрованным эхом new_message, как и раньше). */
+export interface SecretOptimistic {
+  senderId: number
+  /** тип бабла (text/photo/video) — у шифртекста на проводе его не видно */
+  type: string
+  /** локальная мета файла: размеры/mime/имя до аплоада */
+  media?: PendingMedia
 }
 
 // Расшифрованный payload секретного сообщения: текст+сущности и/или медиа.
@@ -116,7 +131,16 @@ export function createSecretManager(deps: SecretDeps) {
     },
 
     // Шифрует текст ключом чата и отправляет как type:'encrypted' по WS.
-    async sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }> {
+    // Бабл (плейнтекст локально) заводится ДО криптографии — иначе он появлялся бы
+    // только после её конца; реальный бабл приедет расшифрованным эхом
+    // new_message с тем же clientMsgId и сольётся с ним по нему же.
+    async sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string; optimistic?: SecretOptimistic }): Promise<{ ok: boolean }> {
+      if (args.optimistic) {
+        deps.beforeSending({
+          chat_id: args.chatId, client_msg_id: args.clientMsgId, sender_id: args.optimistic.senderId,
+          text: args.text, type: args.optimistic.type, entities: args.entities as PendingNewEvt['entities'], secret: true,
+        })
+      }
       const stored = await loadKey(args.chatId)
       if (!stored) throw new Error('secret: chat key missing')
       const encBody = await encryptPayload(stored.key, { text: args.text, entities: args.entities ?? [] })
@@ -127,7 +151,15 @@ export function createSecretManager(deps: SecretDeps) {
     // Шифрует файл (свой AES-ключ на файл), грузит ciphertext как непрозрачный blob,
     // а key+iv+метаданные кладёт в зашифрованный payload сообщения (type:'encrypted').
     // media_id указывает на blob; расшифровка — на просмотре у получателя.
-    async sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }> {
+    async sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string; text?: string; optimistic?: SecretOptimistic }): Promise<{ ok: boolean }> {
+      // Бабл — до шифрования и аплоада (см. sendText); без optimistic его нет
+      // вовсе (голос/документ приходят эхом).
+      if (args.optimistic) {
+        deps.beforeSending({
+          chat_id: args.chatId, client_msg_id: args.clientMsgId, sender_id: args.optimistic.senderId,
+          text: args.text ?? '', type: args.optimistic.type, media: args.optimistic.media, secret: true,
+        })
+      }
       const stored = await loadKey(args.chatId)
       if (!stored) throw new Error('secret: chat key missing')
       const { cipher, keyB64, ivB64 } = await encryptMedia(new Uint8Array(args.bytes))

@@ -64,16 +64,17 @@ describe('useMessageWindow', () => {
     expect(call).toBe(1)
   })
 
-  it('appendOptimistic then reconcileAck swaps the tentative seq', async () => {
+  // Хук — тонкая обёртка над окном: неотправленный бабл и его ack приезжают
+  // операциями владельца (воркер), хук обязан отдать их наверх как есть.
+  it('операции неотправленного бабла и его ack доезжают до хука', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    // Оптимистичная отправка теперь пишется в стор через storeProjection (воркер-funnel);
-    // логику стора проверяем прямым вызовом экшенов на окне '1' (winKey(1)).
-    act(() => { useMessagesStore.getState().appendOptimistic('1', 'hi', 7, 'c1', 42) })
+    const temp: Message = { id: -1, chatId: 1, seq: 1, senderId: 7, type: 'text', text: 'hi', replyToId: null, mediaId: 42, createdAt: 'now', threadRootId: null, clientId: 'c1' }
+    act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: temp }]) })
     expect(result.current.msgs[result.current.msgs.length - 1]?.text).toBe('hi')
     expect(result.current.msgs[result.current.msgs.length - 1]?.mediaId).toBe(42)
-    act(() => { useMessagesStore.getState().reconcileAck('1', 'c1', { msgId: 50, seq: 12, createdAt: 'now' }) })
+    act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: { ...temp, id: 50, seq: 12 } }]) })
     const last = result.current.msgs[result.current.msgs.length - 1]!
     expect(last.id).toBe(50); expect(last.seq).toBe(12)
   })
@@ -92,8 +93,11 @@ describe('useMessageWindow', () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    // Send → optimistic entry carries a stable clientId at tentative seq 1.
-    act(() => { useMessagesStore.getState().appendOptimistic('1', 'hey', 7, 'c-stable') })
+    // Send → optimistic entry carries a stable clientId at tentative seq 1 (the
+    // worker-side owner builds it; here we put the same shape in directly).
+    act(() => {
+      useMessagesStore.getState().appendLocal('1', { id: -1, chatId: 1, seq: 1, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' })
+    })
     // Wave 3: the realtime echo carries the real server id/seq AND the client_msg_id
     // (mapped to clientId). Matched by clientId, it replaces the optimistic bubble
     // (no duplicate even if the server seq differs) and preserves clientId so the

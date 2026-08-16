@@ -48,7 +48,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
@@ -151,6 +151,16 @@ export function createWorkerCore() {
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
   const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => me?.id ?? null, broadcast: (event, payload) => broadcast(event, payload) })
+  // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
+  // beforeMessageSending), наружу это обычные операции над окном. Обёртка нужна
+  // путям отправки, которые идут МИМО realtime.sendMessage и потому не могут
+  // позвать её сами: пост канала (уходит по REST) и секретный чат (по WS уходит
+  // шифртекст, а не текст бабла). broadcast — та же ленивая стрелка, что у
+  // соседей выше.
+  const beforeSending = (p: PendingNewEvt) => {
+    const ops = messages.beforeMessageSending(p)
+    if (ops.length) broadcast(RT.messageOp, { ops })
+  }
   // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
   // аплоада порты уже подняты)
   const media = newMediaManager({
@@ -229,7 +239,7 @@ export function createWorkerCore() {
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
   const groups = newGroupsManager({ rest, dialogs })
-  const channels = newChannelsManager({ rest })
+  const channels = newChannelsManager({ rest, beforeSending })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
   // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
   // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
@@ -477,6 +487,20 @@ export function createWorkerCore() {
           return
         }
       }
+      // message_ack / message_error: кадры эфемерные (без pts — идут мимо funnel,
+      // в eventCatalog так и помечены), но реконсилить по ним нужно ВРЕМЕННЫЙ
+      // БАБЛ, а он живёт в SSOT воркера (messages/pending.ts). Поэтому владелец
+      // применяет их РОВНО ОДИН РАЗ здесь и объявляет результат операциями —
+      // раньше это делала каждая вкладка у себя из сырого кадра.
+      // return НЕТ сознательно: сырой кадр летит дальше (PASS_THROUGH внизу) — у
+      // него остались другие потребители, звук «пак» на ack
+      // (client/realtime/soundSubscriber.ts) и тост paid_required на ошибке.
+      if (type === 'message_ack' || type === 'message_error') {
+        const ops = type === 'message_ack'
+          ? messages.ackPendingMessage(payload as AckEvt)
+          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
+        if (ops.length) broadcast(RT.messageOp, { ops })
+      }
       // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
       if (type === 'new_message') {
         const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown; pts?: number }
@@ -518,6 +542,10 @@ export function createWorkerCore() {
   const secret = createSecretManager({
     rest, conn, broadcast,
     upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
+    // Временный бабл секретной отправки заводит ТОТ ЖЕ владелец, что и у обычной
+    // (см. beforeSending выше) — жизненный цикл общий, разный только транспорт:
+    // плейнтекст на сервер не уходит, вместо него шифртекст type:'encrypted'.
+    beforeSending,
   })
 
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая

@@ -151,7 +151,11 @@ export function newPendingMethods(ctx: PendingCtx) {
         threadRootId: e.thread_root_id ?? null,
         groupedId: e.grouped_id ?? null,
         clientId: e.client_msg_id,
-        localUrl: e.media?.localUrl,
+        // localUrl (blob-URL локального превью) здесь НЕТ сознательно: SSOT
+        // воркера общий на все вкладки, а blob валиден только в породившей —
+        // разослав его, мы бы дали остальным битый превью навсегда (localUrl
+        // приоритетнее mediaId и не очищается). Своё превью вкладка накладывает
+        // на пришедшую операцию сама (core/media/localPreview.ts).
         mediaWidth: e.media?.width,
         mediaHeight: e.media?.height,
         mediaMime: e.media?.mime,

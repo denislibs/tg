@@ -8,15 +8,47 @@
 // генерится автоматически, ручной RealtimeApi больше не нужен.
 //
 // sendMessage принимает SendArgs напрямую (единый контракт с транспортом
-// connectionManager) — три копии аргументов схлопываются в одну.
+// connectionManager) — три копии аргументов схлопываются в одну; сверху —
+// `optimistic`/`awaitMedia` (см. RealtimeSendArgs), которые на провод не идут.
+//
+// Здесь же живёт ВСЯ проводка неотправленного («отправляется…») сообщения к его
+// владельцу — менеджеру воркера (core/managers/messages/pending.ts). Пяти
+// RPC-эх (appendPending/attachPendingMedia/failPending/retryPending/removePending),
+// которые ничего не хранили и просто бродкастили пять событий rt:pending_*,
+// больше нет: состояние держит владелец, наружу идут только MessageOp.
 
 import type { newConnectionManager } from './connectionManager'
 import type { SendArgs } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
-import { RT, type TypingAction, type PendingNewEvt } from './events'
+import { RT, type TypingAction, type PendingMedia, type PendingNewEvt } from './events'
 import type { MessageOp } from './messageOps'
 
 type Conn = ReturnType<typeof newConnectionManager>
+
+/** Данные временного бабла, которых нет в проводных полях send_message: автор,
+ *  локальная мета файла, имя контакта, заголовок send-as, метка секретного чата.
+ *  Присутствие объекта = «завести бабл»; пути без оптимистики (черновик →
+ *  createPrivate, комментарий к форварду, переотправка уже существующего бабла)
+ *  его не передают. */
+export interface SendOptimistic {
+  senderId: number
+  media?: PendingMedia
+  /** имя контакта для бабла — проводной contactUserId имени не несёт */
+  contactName?: string
+  /** send-as: бабл сразу от имени выбранной личности, а не «от себя» */
+  sendAs?: { chatId: number; title: string }
+  /** секретный чат: бабл с плейнтекстом, помеченный secret */
+  secret?: boolean
+}
+
+export interface RealtimeSendArgs extends SendArgs {
+  optimistic?: SendOptimistic
+  /** Медиа ещё грузится: бабл появляется СЕЙЧАС, а кадр уходит на сервер из
+   *  attachPendingMedia (аплоад завершился и принёс media_id). В tweb обе фазы
+   *  внутри одного sendFile; у нас байты грузит вкладка (перенос аплоада в
+   *  воркер — отдельная задача), поэтому фаза «отправить» приезжает вторым RPC. */
+  awaitMedia?: boolean
+}
 
 export interface RealtimeDeps {
   conn: Conn
@@ -30,12 +62,30 @@ export interface RealtimeDeps {
   // однажды уже дал компилятору молча проглотить их потерю (Regression 1,
   // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
   // выбрасывал результат.
-  messages: { cacheMediaRead(p: { chat_id: number; msg_id: number }): MessageOp[] }
+  messages: {
+    cacheMediaRead(p: { chat_id: number; msg_id: number }): MessageOp[]
+    beforeMessageSending(e: PendingNewEvt): MessageOp[]
+    attachPendingMedia(clientMsgId: string, mediaId: number): MessageOp[]
+    failPendingMessage(clientMsgId: string): MessageOp[]
+    retryPendingMessage(clientMsgId: string): MessageOp[]
+    cancelPendingMessage(clientMsgId: string): MessageOp[]
+  }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
 }
 
 export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
+  // Кадры, ждущие конца аплоада (awaitMedia): clientMsgId → аргументы отправки.
+  // Живут ровно до attachPendingMedia/failPending/cancelPending. Вкладка, умершая
+  // посреди аплоада, оставляет здесь запись — она никогда не уйдёт на сервер
+  // (кадр без media_id и не должен), только займёт место в памяти воркера.
+  const awaitingMedia = new Map<string, SendArgs>()
+  // Единственный выход pending-механики наружу: операции над окном. Пустой
+  // список — не повод для кадра (идемпотентный повтор: бабла уже нет).
+  const emit = (ops: MessageOp[]) => {
+    if (ops.length) broadcast(RT.messageOp, { ops })
+    return { ok: true as const }
+  }
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     // Источник правды о `{state, retryAt}` — pull, а не разовый снапшот. Для ЭТОЙ
@@ -78,7 +128,38 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // другой — сверяющий не должен читать ЭТО как расхождение с оригиналом
     // (в отличие от `syncing` выше, которое расхождение и есть).
     async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
-    async sendMessage(args: SendArgs) { conn.sendMessage(args); return { ok: true } },
+    // Единственная точка отправки. Порт tweb `appMessagesManager.sendText`: сперва
+    // `beforeMessageSending` (временный бабл в SSOT + операции наружу), потом
+    // отправка. ОСОЗНАННОЕ ОТСТУПЛЕНИЕ от tweb: в оригинале отправку делает сам
+    // менеджер (`message.send()` внутри), у нас транспорт остался здесь — иначе
+    // messagesManager и connectionManager закольцевались бы импортом. Менеджер про
+    // транспорт по-прежнему не знает: он только считает, что стало с окном, и
+    // отдаёт операции; кому их разослать и когда уйдёт кадр — забота этого файла.
+    async sendMessage({ optimistic, awaitMedia, ...args }: RealtimeSendArgs) {
+      if (optimistic) {
+        emit(messages.beforeMessageSending({
+          chat_id: args.chatId,
+          thread_root_id: args.threadRootId ?? null,
+          client_msg_id: args.clientMsgId,
+          sender_id: optimistic.senderId,
+          text: args.text,
+          type: args.type,
+          entities: args.entities ?? undefined,
+          media_id: args.mediaId ?? null,
+          grouped_id: args.groupedId,
+          media: optimistic.media,
+          geo: args.geo,
+          // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
+          // только локальный снимок имени.
+          contact: args.contactUserId != null ? { userId: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+          secret: optimistic.secret,
+          send_as: optimistic.sendAs,
+        }))
+      }
+      if (awaitMedia) awaitingMedia.set(args.clientMsgId, args)
+      else conn.sendMessage(args)
+      return { ok: true }
+    },
     async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
     async markMediaRead(args: { chatId: number; msgId: number }) {
       // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
@@ -91,14 +172,33 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
       conn.markMediaRead(args.chatId, args.msgId)
       return { ok: true }
     },
-    // Оптимистичный бабл отправки: воркер — funnel жизненного цикла, бродкастит эхо
-    // всем вкладкам → storeProjection (единственный писатель окна). Транспорт (outbox)
-    // и reconcile ack/err — прежним путём (conn), ack/err воркер обогащает маршрутом.
-    async appendPending(p: PendingNewEvt) { broadcast(RT.pendingNew, p); return { ok: true } },
-    async attachPendingMedia(args: { chatId: number; threadRootId?: number | null; clientMsgId: string; mediaId: number }) { broadcast(RT.pendingMedia, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId, media_id: args.mediaId }); return { ok: true } },
-    async failPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingFail, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-    async retryPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRetry, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-    async removePending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRemove, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
+    // Остальные шаги жизненного цикла неотправленного бабла. Маршрут к окну
+    // (чат/тред) здесь не нужен: его знает сам менеджер — бабл зарегистрирован по
+    // clientMsgId ещё в beforeMessageSending (порт tweb pendingByRandomId).
+    //
+    // Аплоад завершился: media_id приклеивается к баблу И ровно здесь кадр,
+    // придержанный awaitMedia, уходит на сервер — раньше его слала вкладка вторым
+    // вызовом sendMessage.
+    async attachPendingMedia(args: { clientMsgId: string; mediaId: number }) {
+      emit(messages.attachPendingMedia(args.clientMsgId, args.mediaId))
+      const held = awaitingMedia.get(args.clientMsgId)
+      if (held) { awaitingMedia.delete(args.clientMsgId); conn.sendMessage({ ...held, mediaId: args.mediaId }) }
+      return { ok: true }
+    },
+    // Аплоад сорвался/отменён: бабл остаётся с красной пометкой, придержанный
+    // кадр выбрасываем — отправлять нечего (переотправку решает пользователь).
+    async failPending(args: { clientMsgId: string }) {
+      awaitingMedia.delete(args.clientMsgId)
+      return emit(messages.failPendingMessage(args.clientMsgId))
+    },
+    // «Повторить» на упавшем бабле: снимаем пометку ошибки — сам кадр вкладка
+    // шлёт следом обычным sendMessage (бабл уже есть, optimistic не передаётся).
+    async retryPending(args: { clientMsgId: string }) { return emit(messages.retryPendingMessage(args.clientMsgId)) },
+    // Отмена аплоада с бабла / «удалить» на упавшем: бабл уходит из окна.
+    async cancelPending(args: { clientMsgId: string }) {
+      awaitingMedia.delete(args.clientMsgId)
+      return emit(messages.cancelPendingMessage(args.clientMsgId))
+    },
     async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые

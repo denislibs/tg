@@ -51,7 +51,9 @@ describe('storeProjection — RT.messageOp переигрывается пове
   it('insert сливается с оптимистикой по clientId — один элемент, localUrl сохранён', () => {
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
-    st.appendOptimistic(winKey(CHAT), 'photo', ME, 'c-op', undefined, 'photo', undefined, undefined, { localUrl: 'blob:local-1' })
+    // Неотправленный бабл кладёт операция владельца; localUrl — своё, вкладочное
+    // (core/media/localPreview.ts), поэтому здесь он просто уже на сообщении.
+    st.appendLocal(winKey(CHAT), msg({ id: -1, seq: 1, senderId: ME, type: 'photo', text: 'photo', clientId: 'c-op', localUrl: 'blob:local-1' }))
     const echo = msg({ id: 700, seq: 5, senderId: ME, type: 'photo', text: 'photo', clientId: 'c-op' })
     rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(CHAT), msg: echo }] })
     const list = bubbles(winKey(CHAT))
@@ -64,11 +66,14 @@ describe('storeProjection — RT.messageOp переигрывается пове
   // Что ломается: если бы applyOp('insert') не делал ack-then-echo дедуп по id
   // (та же семантика, что была в applyIncoming), повторная insert-операция с уже
   // сверенным id создала бы дубль-бабл вместо no-op.
-  it('ack-then-echo: reconcileAck, затем insert-операция с тем же id → без дубля', () => {
+  it('ack-then-echo: сначала операция ack, затем insert с тем же id → без дубля', () => {
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
-    st.appendOptimistic(winKey(CHAT), 'hi', ME, 'c-ack')
-    st.reconcileAckByClient('c-ack', { msgId: 900, seq: 50, createdAt: '2026-08-10T12:00:05Z' })
+    // ack от владельца — это insert уже сверенного сообщения на месте бабла.
+    st.appendLocal(winKey(CHAT), msg({ id: -1, seq: 1, senderId: ME, text: 'hi', clientId: 'c-ack' }))
+    rootScope.dispatchEventSingle(RT.messageOp, {
+      ops: [{ op: 'insert', key: winKey(CHAT), msg: msg({ id: 900, seq: 50, senderId: ME, text: 'hi', clientId: 'c-ack' }) }],
+    })
     expect(bubbles(winKey(CHAT))).toHaveLength(1)
     const echo = msg({ id: 900, seq: 50, senderId: ME, text: 'hi', clientId: 'c-ack' })
     rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(CHAT), msg: echo }] })

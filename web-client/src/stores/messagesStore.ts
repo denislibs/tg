@@ -19,16 +19,6 @@ import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
   threadRootId ? `${chatId}:${threadRootId}` : String(chatId)
 
-// Локальные данные файла для мгновенного оптимистичного медиабабла.
-export interface OptimisticMedia {
-  localUrl?: string
-  width?: number
-  height?: number
-  mime?: string
-  size?: number
-  name?: string
-}
-
 export interface ChatWindow {
   msgs: Message[]
   reachedTop: boolean
@@ -46,11 +36,12 @@ export const EMPTY_WINDOW: ChatWindow = {
   loadingOlder: false, loadingNewer: false, loading: true, loadedFromCache: false,
 }
 
-// Reverse index clientMsgId -> window key. An ack/error frame carries only the
-// client_msg_id (no chat_id), so realtimeBridge resolves the window through this.
-// Wave 3: бабл матчится по clientId напрямую (эхо new_message несёт client_msg_id),
-// поэтому tentative-seq индекс больше не нужен — остался только этот reverse-индекс.
-const clientToWin = new Map<string, string>()
+// Жизненный цикл неотправленного сообщения (оптимистичный бабл, его ack/ошибка/
+// отмена) здесь больше НЕ живёт: он переехал в менеджер воркера
+// (core/managers/messages/pending.ts, порт формы tweb appMessagesManager), а
+// сюда приезжает готовыми операциями через applyOps. Вместе с ним ушёл и
+// reverse-индекс clientMsgId → окно: маршрут знает владелец, регистрация бабла
+// по clientMsgId живёт у него (pendingByClientId).
 
 // dedupAsc/dedupKey вынесены в core/realtime/messageOps.ts (Stage 1B.2, Task 2) —
 // та же семантика нужна чистой applyOp над окном без стора; см. комментарий там.
@@ -93,20 +84,6 @@ interface MessagesState {
   prepend: (key: string, msgs: Message[], reachedTop: boolean) => void
   append: (key: string, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (key: string, m: Message) => void
-  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number; secret?: boolean; sendAs?: { chatId: number; title: string; photoId?: number } }) => void
-  /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
-  setOptimisticMedia: (key: string, clientMsgId: string, mediaId: number) => void
-  reconcileAck: (key: string, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
-  failOptimistic: (key: string, clientMsgId: string) => void
-  /** Reconcile/fail by clientMsgId alone (ack/error frames carry no chat_id). */
-  reconcileAckByClient: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
-  failOptimisticByClient: (clientMsgId: string) => void
-  /** Failed bubble → back to 'sending' before the send is retried. */
-  retryOptimistic: (key: string, clientMsgId: string) => void
-  /** Drop a failed optimistic bubble entirely (user chose «delete»). */
-  removeOptimistic: (key: string, clientMsgId: string) => void
-  /** То же по одному clientMsgId (отмена аплоада с бабла — окно ищем сами). */
-  removeOptimisticByClient: (clientMsgId: string) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
   /** Stage 1B.2 (Task 4): переигрывает операции воркера (rt:message_op) поверх
@@ -185,7 +162,7 @@ function patchChat(
   return next ? { byKey: next } : {}
 }
 
-export const useMessagesStore = create<MessagesState>((set, get) => ({
+export const useMessagesStore = create<MessagesState>((set) => ({
   byKey: {},
 
   beginLoad: (key) =>
@@ -213,94 +190,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   appendLocal: (key, m) =>
     set((s) => patch(s, key, (w) => ({ msgs: dedupAsc([...w.msgs, m]) }))),
-
-  appendOptimistic: (key, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId, media, extra) =>
-    set((s) =>
-      patch(s, key, (w) => {
-        // tentativeSeq лишь упорядочивает бабл внизу окна (dedupAsc сортирует по seq);
-        // reconcile матчит по clientId, не по этому seq.
-        const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
-        const tentativeSeq = maxSeq + 1
-        clientToWin.set(clientMsgId, key)
-        const tmp: Message = {
-          id: -Date.now(), chatId: Number(key.split(':')[0]), seq: tentativeSeq, senderId: meId, type, text, entities,
-          replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(),
-          threadRootId: extra?.threadRootId ?? null, groupedId: groupedId ?? null, clientId: clientMsgId,
-          // локальное превью + размеры файла: бабл появляется сразу, до аплоада
-          localUrl: media?.localUrl,
-          mediaWidth: media?.width, mediaHeight: media?.height,
-          mediaMime: media?.mime, mediaSize: media?.size, mediaName: media?.name,
-          // сервер ставит media_unread на voice/roundVideo — отразить сразу в
-          // оптимистичном бабле, чтобы точка не «моргала» после ack
-          mediaUnread: type === 'voice' || type === 'roundVideo' || undefined,
-          // гео/контакт: бабл рисуется сразу из локальных данных, до ack
-          geo: extra?.geo,
-          contact: extra?.contact,
-          // секретный чат: плейнтекст локально, бабл сразу помечается secret
-          secret: extra?.secret,
-          // send-as: бабл сразу от имени выбранной личности (канал/группа),
-          // иначе свежий бабл показывался бы как «от себя» до reconcile.
-          sendAs: extra?.sendAs,
-        }
-        return { msgs: dedupAsc([...w.msgs, tmp]) }
-      }),
-    ),
-
-  setOptimisticMedia: (key, clientMsgId, mediaId) =>
-    set((s) =>
-      patch(s, key, (w) => ({
-        msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, mediaId } : m)),
-      })),
-    ),
-
-  // Wave 3: матч по clientId (не по фабричному tentative seq). Идемпотентно, если
-  // echo new_message уже сверил бабл раньше (ack-then-echo/echo-then-ack — оба
-  // порядка сходятся на одном бабле, без дубля).
-  reconcileAck: (key, clientMsgId, ack) =>
-    set((s) => {
-      clientToWin.delete(clientMsgId)
-      const w = s.byKey[key]
-      if (!w || !w.msgs.some((m) => m.clientId === clientMsgId)) return {}
-      return patch(s, key, (win) => ({
-        msgs: dedupAsc(
-          win.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, id: ack.msgId, seq: ack.seq, createdAt: ack.createdAt } : m)),
-        ),
-      }))
-    }),
-
-  // Rejected send: keep the bubble with a red error mark (tweb sendingerror) —
-  // the user decides to retry or delete it. The pending maps stay so a later
-  // retry's ack can still reconcile the same bubble.
-  failOptimistic: (key, clientMsgId) =>
-    set((s) => patch(s, key, (w) => ({
-      msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, failed: true } : m)),
-    }))),
-
-  retryOptimistic: (key, clientMsgId) =>
-    set((s) => patch(s, key, (w) => ({
-      msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, failed: undefined } : m)),
-    }))),
-
-  removeOptimistic: (key, clientMsgId) =>
-    set((s) => {
-      clientToWin.delete(clientMsgId)
-      return patch(s, key, (w) => ({ msgs: w.msgs.filter((m) => m.clientId !== clientMsgId) }))
-    }),
-
-  reconcileAckByClient: (clientMsgId, ack) => {
-    const key = clientToWin.get(clientMsgId)
-    if (key !== undefined) get().reconcileAck(key, clientMsgId, ack)
-  },
-
-  failOptimisticByClient: (clientMsgId) => {
-    const key = clientToWin.get(clientMsgId)
-    if (key !== undefined) get().failOptimistic(key, clientMsgId)
-  },
-
-  removeOptimisticByClient: (clientMsgId) => {
-    const key = clientToWin.get(clientMsgId)
-    if (key !== undefined) get().removeOptimistic(key, clientMsgId)
-  },
 
   applyIncoming: (chatId, m) =>
     set((s) => {

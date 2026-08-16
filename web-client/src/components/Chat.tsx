@@ -66,6 +66,7 @@ import { useLivestreamStore } from '../stores/livestreamStore'
 
 const EMPTY_IDS: number[] = []
 import { useUploadsStore } from '../stores/uploadsStore'
+import { dropLocalPreview } from '../core/media/localPreview'
 import ChatHeader from './conversation/ChatHeader'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
@@ -851,8 +852,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // затем оборвать PUT в воркере (upload() кинет 'aborted' — fail будет no-op).
   const cancelUploadE = useEvent((clientId: string) => {
     useUploadsStore.getState().clear(clientId)
-    // Убрать бабл через воркер-funnel (storeProjection единственный писатель окна).
-    void managers.realtime.removePending({ chatId: numericChatId, threadRootId: threadRootId ?? null, clientMsgId: clientId })
+    // Бабл убирает владелец (messages.cancelPendingMessage → операция remove);
+    // здесь же снимаем своё локальное превью — накладывать его больше не на что.
+    dropLocalPreview(clientId)
+    void managers.realtime.cancelPending({ clientMsgId: clientId })
     void managers.media.cancelUpload(clientId)
   })
   // Разблокировать платное медиа за звёзды (Telegram paid media): списание +

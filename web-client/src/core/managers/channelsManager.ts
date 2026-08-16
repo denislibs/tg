@@ -1,4 +1,5 @@
 import type { RestClient } from '../net/restClient'
+import type { PendingNewEvt } from '../realtime/events'
 import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
@@ -18,7 +19,12 @@ export interface DiscussionCandidate { id: number; title: string; username: stri
 export interface CommentReplier { id: number; name: string; avatarUrl?: string }
 interface RawReplier { id: number; display_name: string; avatar_url: string }
 
-export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'> }) {
+export function newChannelsManager({ rest, beforeSending }: {
+  rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
+  /** Временный бабл поста — та же механика, что у обычной отправки
+   *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
+  beforeSending: (p: PendingNewEvt) => void
+}) {
   return {
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
       const r = await rest.post<{ chat_id: number }>('/channels', {
@@ -28,7 +34,18 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
     },
     // entities — разметка поста (bold/text_link/mention/hashtag…): тот же формат,
     // что у обычной отправки; на бэке проходит sanitizeEntities.
-    async post(chatId: number, text: string, clientMsgId: string, entities?: MessageEntity[]): Promise<Message> {
+    // optimistic — временный бабл поста (тот же владелец, что у обычной отправки:
+    // messages.beforeMessageSending, см. workerCore.ts). Пост канала уходит по
+    // REST, а не по WS, поэтому realtime.sendMessage тут не участвует — бабл
+    // заводится здесь, живое эхо приезжает кадром new_message и сливается по
+    // clientMsgId, как у всех остальных путей.
+    async post(chatId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<Message> {
+      if (optimistic) {
+        beforeSending({
+          chat_id: chatId, thread_root_id: optimistic.threadRootId ?? null, client_msg_id: clientMsgId,
+          sender_id: optimistic.senderId, text, type: 'text', entities,
+        })
+      }
       const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, entities, client_msg_id: clientMsgId })
       return mapMessage(r)
     },

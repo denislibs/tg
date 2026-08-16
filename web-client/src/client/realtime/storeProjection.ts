@@ -4,7 +4,7 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import tabId from '../../config/tabId'
+import { withLocalPreview } from '../../core/media/localPreview'
 import { usePeersStore } from '../../stores/peersStore'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
@@ -18,7 +18,7 @@ import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
@@ -83,7 +83,13 @@ const APPLY: Projector = {
   // edit_message/geo_live_update НЕ переведены — см. комментарии у
   // messages.cacheEdit/cacheGeoLive (messagesManager.ts). reaction/star_reaction —
   // тоже НЕ переведены (Stage 1B.3, Task 5), обработчики ниже остаются на сыром кадре.
-  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
+  // Этап «оптимистика в воркере»: этой же операцией приезжает и временный бабл
+  // своей отправки (insert), и его ack (insert финального), и ошибка (patch
+  // {failed}), и отмена (remove) — пяти кадров rt:pending_* больше нет, окно
+  // правит ТОЛЬКО applyOps без исключений. withLocalPreview — единственное, что
+  // вкладка добавляет от себя: blob-URL превью, которого у воркера нет by
+  // construction (см. core/media/localPreview.ts).
+  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(withLocalPreview(e.ops)) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
   // проектор — ЕДИНСТВЕННЫЙ писатель peersStore (пин — stores/noDuplicatePeers.test.ts).
@@ -127,19 +133,6 @@ const APPLY: Projector = {
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
-  // Оптимистичная отправка (воркер — funnel): вставка/медиа/ошибка/ретрай/удаление
-  // бабла. storeProjection единственный писатель окна; reconcile ack/err — ниже.
-  [RT.pendingNew]: (e) => {
-    // localUrl (blob-URL) валиден только во вкладке-инициаторе — в остальных
-    // вырезаем, иначе битый превью-бабл навсегда (localUrl приоритетнее mediaId и
-    // не очищается). В своей вкладке — оставляем для мгновенного превью.
-    const media = e.media && e.origin_tab !== tabId ? { ...e.media, localUrl: undefined } : e.media
-    useMessagesStore.getState().appendOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.text, e.sender_id, e.client_msg_id, e.media_id ?? undefined, e.type, e.entities, e.grouped_id, media, { geo: e.geo, contact: e.contact, threadRootId: e.thread_root_id ?? undefined, secret: e.secret, sendAs: e.send_as })
-  },
-  [RT.pendingMedia]: (e) => { useMessagesStore.getState().setOptimisticMedia(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id, e.media_id) },
-  [RT.pendingFail]: (e) => { useMessagesStore.getState().failOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
-  [RT.pendingRetry]: (e) => { useMessagesStore.getState().retryOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
-  [RT.pendingRemove]: (e) => { useMessagesStore.getState().removeOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
 }
 
 // Регистрирует все стор-подписки на rootScope. Вызывается один раз из realtimeBridge.
@@ -243,16 +236,15 @@ export function registerStoreProjection(managers: Managers): void {
     const meId = useChatsStore.getState().meId
     useMessagesStore.getState().applyStarReaction(e.chat_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
   })
-  // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
-  rootScope.addEventListener(RT.ack, (raw) => {
-    const a = raw as AckEvt
-    useMessagesStore.getState().reconcileAckByClient(a.client_msg_id, { msgId: a.msg_id, seq: a.seq, createdAt: a.created_at })
-    // Звук подтверждения отправки («пак») — отдельный подписчик rootScope (sound).
-  })
+  // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
+  // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его
+  // операция. У кадра остался ровно один потребитель на витрине — звук
+  // подтверждения отправки («пак»), см. soundSubscriber.
   rootScope.addEventListener(RT.messageError, (raw) => {
     const err = raw as MessageErrorEvt
-    useMessagesStore.getState().failOptimisticByClient(err.client_msg_id)
-    // Платное сообщение отвергнуто из-за нехватки звёзд — тост (Telegram paid messages).
+    // Пометку failed на бабле ставит владелец (messages.failPendingMessage,
+    // тот же onFrame) — здесь осталась только реакция витрины: платное
+    // сообщение отвергнуто из-за нехватки звёзд (Telegram paid messages).
     if (err.reason === 'paid_required') rootScope.dispatchEvent('ui:toast', 'Недостаточно звёзд для отправки сообщения')
   })
   // RT.paidMediaUnlock: раньше отдельный addEventListener строил incoming через

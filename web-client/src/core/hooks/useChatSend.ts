@@ -22,7 +22,7 @@ import { useManagers } from './useManagers'
 import { startLiveShare } from '../liveShareEngine'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { scaleImageForSend } from '../media/scaleImageForSend'
-import tabId from '../../config/tabId'
+import { setLocalPreview } from '../media/localPreview'
 
 /**
  * Длительность аудио/видео файла до аплоада — порт tweb (popups/newMedia.ts:1562-1579:
@@ -131,6 +131,7 @@ export function useChatSend({
         let cid = numericChatId
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         try {
+          // Без optimistic — бабла у secret-голоса нет и не было (см. выше).
           await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId })
         } catch { /* ключ чата отсутствует / оффлайн — бабл не появится */ }
         if (draftPeerId != null) onChatCreated?.(cid)
@@ -141,8 +142,9 @@ export function useChatSend({
       const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs, waveform: type === 'voice' ? (waveform ?? undefined) : undefined })
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type, media_id: mediaId })
-      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId })
+      // Бабл — только в уже существующем чате (в черновике окна ещё нет, оно
+      // откроется на созданный чат и подтянет сообщение обычным путём).
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
       if (draftPeerId != null) onChatCreated?.(cid)
     },
   })
@@ -158,12 +160,12 @@ export function useChatSend({
     const fx = effect ?? sendEffectForText(text)
     if (fx) playEmojiEffect(fx)
     if (chat.type === 'secret') {
-      // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (тем же путём, что обычная
-      // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование
-      // и отправка type:'encrypted' по WS. Реальный бабл приедет расшифрованным echo
-      // new_message с тем же clientMsgId. reply/thread здесь пока не поддержаны.
-      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text, type: 'text', entities, secret: true })
-      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds })
+      // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (заводит тот же владелец,
+      // что и у обычной отправки — см. secretManager.beforeSending), затем
+      // E2E-шифрование и отправка type:'encrypted' по WS. Реальный бабл приедет
+      // расшифрованным echo new_message с тем же clientMsgId. reply/thread здесь
+      // пока не поддержаны.
+      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds, optimistic: { senderId: meId ?? -1, type: 'text' } })
       return
     }
     // reply quote прикреплён к первому сообщению (там же, где и сам reply).
@@ -172,8 +174,7 @@ export function useChatSend({
     // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
     const replyToPeerId = replyTo != null && reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null
     const sendAs = sendAsChatId != null ? { chatId: sendAsChatId, title: sendAsTitle ?? '' } : undefined
-    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text, type: 'text', entities, send_as: sendAs })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId, optimistic: { senderId: meId ?? -1, sendAs } })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -191,8 +192,7 @@ export function useChatSend({
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
-    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'geo', geo })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId, optimistic: { senderId: meId ?? -1 } })
   }
 
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
@@ -205,8 +205,7 @@ export function useChatSend({
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'sticker', media_id: st.mediaId })
-      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId })
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
@@ -227,10 +226,10 @@ export function useChatSend({
       void (async () => {
         let cid = numericChatId
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-        if (isRealChat) {
-          void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media_id: mediaId, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } })
-        }
-        void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        void managers.realtime.sendMessage({
+          chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId,
+          optimistic: isRealChat ? { senderId: meId ?? -1, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } } : undefined,
+        })
         if (draftPeerId != null) onChatCreated?.(cid)
       })()
       return
@@ -245,16 +244,20 @@ export function useChatSend({
       } catch {
         return // CDN не отдал mp4 — отправлять нечего
       }
-      const localUrl = URL.createObjectURL(blob)
-      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media: { localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4' }, origin_tab: tabId })
+      // Бабл — сразу, кадр — после аплоада (awaitMedia): его дошлёт
+      // attachPendingMedia, когда появится media_id.
+      setLocalPreview(clientMsgId, URL.createObjectURL(blob))
+      void managers.realtime.sendMessage({
+        chatId: numericChatId, text: '', clientMsgId, type: 'video', threadRootId, awaitMedia: true,
+        optimistic: { senderId: meId ?? -1, media: { width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4' } },
+      })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       try {
         const mediaId = await managers.media.upload({ blob, mime: 'video/mp4', size: blob.size, width: g.width, height: g.height, fileName: 'tenor.mp4', progressId: clientMsgId })
-        void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
-        void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        void managers.realtime.attachPendingMedia({ clientMsgId, mediaId })
         void managers.stickers.saveGif(mediaId).catch(() => {})
       } catch {
-        void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
+        void managers.realtime.failPending({ clientMsgId })
       } finally {
         useUploadsStore.getState().clear(clientMsgId)
       }
@@ -266,8 +269,7 @@ export function useChatSend({
   const sendContact = (userId: number, name: string) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false
-    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'contact', contact: { userId, name, phone: '' } })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId, optimistic: { senderId: meId ?? -1, contactName: name } })
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -331,28 +333,35 @@ export function useChatSend({
     // без оптимистичного бабла (приезжают echo). reply/thread здесь не поддержаны.
     if (chat.type === 'secret') {
       const bytes = await file.arrayBuffer()
-      if (isVisual) {
-        const localUrl = URL.createObjectURL(file)
-        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, media: { localUrl, width, height, mime, size: file.size, name: file.name }, secret: true, origin_tab: tabId })
-      }
+      // Бабл (для фото/видео) заводит сам secret.sendMedia — до шифрования и
+      // аплоада, как раньше это делал отдельный appendPending.
+      if (isVisual) setLocalPreview(clientMsgId, URL.createObjectURL(file))
       try {
-        await managers.secret.sendMedia({ chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId })
+        await managers.secret.sendMedia({
+          chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId,
+          ...(isVisual ? { text: caption, optimistic: { senderId: meId ?? -1, type, media: { width, height, mime, size: file.size, name: file.name } } } : {}),
+        })
       } catch {
-        if (isVisual) void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
+        if (isVisual) void managers.realtime.failPending({ clientMsgId })
       }
       return
     }
     if (isVisual) {
-      const localUrl = URL.createObjectURL(file)
-      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, grouped_id: groupedId, media: { localUrl, width, height, mime, size: file.size, name: file.name }, origin_tab: tabId })
+      // Бабл появляется СЕЙЧАС (с локальным превью и кольцом прогресса), кадр
+      // уходит на сервер из attachPendingMedia — по завершении аплоада (awaitMedia).
+      setLocalPreview(clientMsgId, URL.createObjectURL(file))
+      void managers.realtime.sendMessage({
+        chatId: numericChatId, text: caption, clientMsgId, type, groupedId, threadRootId,
+        paidMediaPrice: paidMediaPrice ?? undefined, awaitMedia: true,
+        optimistic: { senderId: meId ?? -1, media: { width, height, mime, size: file.size, name: file.name } },
+      })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       const typingTimer = startUploadTyping()
       try {
         const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, duration, fileName: file.name, progressId: clientMsgId })
-        void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
-        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId, paidMediaPrice: paidMediaPrice ?? undefined })
+        void managers.realtime.attachPendingMedia({ clientMsgId, mediaId })
       } catch {
-        void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
+        void managers.realtime.failPending({ clientMsgId })
       } finally {
         window.clearInterval(typingTimer)
         useUploadsStore.getState().clear(clientMsgId)
@@ -363,16 +372,18 @@ export function useChatSend({
     // кольцом прогресса аплоада с отменой (tweb ProgressivePreloader) — раньше
     // бабл ждал конца аплоада, и было непонятно, грузится ли файл вообще.
     // Большие файлы идут чанковым/резюмируемым путём (blob → uploadChunked).
-    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, grouped_id: groupedId, media: { mime, size: file.size, name: file.name } })
+    void managers.realtime.sendMessage({
+      chatId: numericChatId, text: caption, clientMsgId, type, groupedId, threadRootId, awaitMedia: true,
+      optimistic: { senderId: meId ?? -1, media: { mime, size: file.size, name: file.name } },
+    })
     useUploadsStore.getState().setProgress(clientMsgId, 0)
     const typingTimer = startUploadTyping()
     try {
       const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, duration, fileName: file.name, progressId: clientMsgId })
-      void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
-      void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
+      void managers.realtime.attachPendingMedia({ clientMsgId, mediaId })
     } catch {
-      // Отменённый аплоад бабл уже удалил (removePending) — fail будет no-op.
-      void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
+      // Отменённый аплоад бабл уже удалил (cancelPending) — fail будет no-op.
+      void managers.realtime.failPending({ clientMsgId })
     } finally {
       window.clearInterval(typingTimer)
       useUploadsStore.getState().clear(clientMsgId)
@@ -461,8 +472,9 @@ export function useChatSend({
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
         const entities = entOf(parts[k])
-        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: parts[k].text, type: 'text', entities })
-        void managers.channels.post(numericChatId, parts[k].text, clientMsgId, entities)
+        // Пост канала уходит по REST (не через WS-путь sendMessage), поэтому бабл
+        // здесь заводится отдельным вызовом — sendMessage тут не участвует вовсе.
+        void managers.channels.post(numericChatId, parts[k].text, clientMsgId, entities, { senderId: meId ?? -1, threadRootId })
       }
       return
     }

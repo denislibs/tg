@@ -107,7 +107,10 @@ describe('applyIncoming: маршрутизация по основному ок
   it('слияние с оптимистикой в треде: эхо с тем же clientId → один элемент с серверным id, без дубля', () => {
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT, ROOT), { msgs: [], reachedTop: true, reachedBottom: true })
-    st.appendOptimistic(winKey(CHAT, ROOT), 'draft', ME, 'c-thread', undefined, 'text', undefined, undefined, undefined, { threadRootId: ROOT })
+    // Неотправленный бабл заводит владелец (менеджер воркера) и присылает
+    // операцией; здесь предмет — только слияние в СТОРЕ, поэтому кладём такой же
+    // объект (временный отрицательный id + clientId) напрямую.
+    st.appendLocal(winKey(CHAT, ROOT), { ...threadMsg(1, -1, 'c-thread'), text: 'draft' })
 
     st.applyIncoming(CHAT, threadMsg(5, 900, 'c-thread'))
 

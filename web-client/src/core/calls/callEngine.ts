@@ -147,9 +147,10 @@ function logCallMessage(reason: CallEndReason) {
   const text = JSON.stringify({ video: call.video, reason: mapped, duration })
   const clientMsgId = crypto.randomUUID()
   const meId = useChatsStore.getState().meId
-  // Оптимистичный лог звонка через воркер-funnel (storeProjection единственный писатель).
-  if (meId != null) void managers().realtime.appendPending({ chat_id: call.chatId, client_msg_id: clientMsgId, sender_id: meId, text, type: 'call' })
-  void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call' })
+  // Оптимистичный бабл лога звонка заводит владелец окна (единственная точка
+  // отправки — realtime.sendMessage); без известного meId бабл не рисуем — он
+  // отрисовался бы как чужой.
+  void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
 }
 
 // Завершение с показом финального статуса; экран закрывается через паузу.

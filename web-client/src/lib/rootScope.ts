@@ -15,7 +15,7 @@ import type {
   TypingEvt, PresenceEvt, ReactionEvt, StarReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
-  StoryReactionEvt, ConnState, PendingNewEvt, PendingMediaEvt, PendingRouteEvt, UserUpdateEvt,
+  StoryReactionEvt, ConnState, UserUpdateEvt,
 } from '@core/realtime/events'
 import type { RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
@@ -32,8 +32,8 @@ export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
 
 // Каталог 1:1 переносит бывший core/realtime/eventBus.ts:RtEventMap (ключ за ключом,
-// удалён — все потребители переведены на rootScope), дополненный: pending*-событиями
-// оптимистичной отправки, RT.folderUpdate/userUpdate (в RtEventMap их не было),
+// удалён — все потребители переведены на rootScope), дополненный:
+// RT.folderUpdate/userUpdate (в RtEventMap их не было),
 // служебными rt:resync/media:upload_progress/state:mirror и бывшими UI-командами
 // core/hooks/uiEvents.ts (toast, savedTagsChanged; тоже удалён).
 export type BroadcastEvents = {
@@ -132,13 +132,10 @@ export type BroadcastEvents = {
   // {id, thumb, url, size}. Витрина (core/mediaCache.ts) его только зеркалит.
   [RT.mediaUrl]: [MediaUrlEvt]
 
-  // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
-  //    клиентские события — вне funnel'а сервера, meta не несут ──
-  [RT.pendingNew]: [PendingNewEvt]
-  [RT.pendingMedia]: [PendingMediaEvt]
-  [RT.pendingFail]: [PendingRouteEvt]
-  [RT.pendingRetry]: [PendingRouteEvt]
-  [RT.pendingRemove]: [PendingRouteEvt]
+  // Пяти событий rt:pending_* здесь больше нет: жизненный цикл неотправленного
+  // бабла живёт в менеджере воркера (core/managers/messages/pending.ts) и
+  // объявляется наружу теми же MessageOp (RT.messageOp выше), что и любое другое
+  // изменение окна.
 
   // ── служебные ──
   'rt:resync': [null]

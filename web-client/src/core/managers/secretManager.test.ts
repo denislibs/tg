@@ -19,6 +19,9 @@ function makeDeps() {
   const sends: Parameters<SecretDeps['conn']['sendMessage']>[0][] = []
   const events: { event: string; payload: unknown }[] = []
   const uploads: { bytes: ArrayBuffer; mime: string; size: number; fileName?: string }[] = []
+  // Заявки на временный бабл (порт tweb beforeMessageSending) — в воркере их
+  // исполняет messages.beforeMessageSending, здесь просто копим.
+  const pendings: Parameters<SecretDeps['beforeSending']>[0][] = []
   // Тест выставляет handshake (или бросает) перед вызовом sync.
   const getState = { handshake: null as Handshake | null, err: null as Error | null }
   const deps: SecretDeps = {
@@ -37,8 +40,9 @@ function makeDeps() {
     conn: { sendMessage: (args) => { sends.push(args) } },
     broadcast: (event, payload) => { events.push({ event, payload }) },
     upload: async (bytes, mime, size, fileName) => { uploads.push({ bytes, mime, size, fileName }); return 42 },
+    beforeSending: (p) => { pendings.push(p) },
   }
-  return { deps, restCalls, getCalls, sends, events, uploads, getState }
+  return { deps, restCalls, getCalls, sends, events, uploads, getState, pendings }
 }
 
 describe('secretManager', () => {
@@ -130,6 +134,48 @@ describe('secretManager', () => {
     expect(dec?.media?.mime).toBe('image/jpeg')
     expect(typeof dec?.media?.keyB64).toBe('string')
     expect(typeof dec?.media?.ivB64).toBe('string')
+  })
+
+  // Что ломается, если гарантия нарушена: секретная отправка идёт МИМО
+  // realtime.sendMessage (по проводу уходит шифртекст, а не текст бабла), поэтому
+  // временный бабл заводит этот путь. Пропади вызов — своё сообщение в секретном
+  // чате не появлялось бы на экране до расшифрованного эха new_message.
+  it('sendText c optimistic: временный бабл заявлен ДО шифрования, с плейнтекстом и пометкой secret', async () => {
+    const { deps, pendings } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const initiatorKp = await generateKeyPair()
+    mgr.stashRequest(1, b64FromBytes(await exportPublicKey(initiatorKp.publicKey)))
+    await mgr.accept(1)
+
+    await mgr.sendText({ chatId: 1, text: 'секрет 🔒', clientMsgId: 'cm3', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })
+
+    expect(pendings).toEqual([{
+      chat_id: 1, client_msg_id: 'cm3', sender_id: 5, text: 'секрет 🔒', type: 'text', entities: undefined, secret: true,
+    }])
+  })
+
+  // Что ломается: у голосового и документа в секретном чате бабла нет и не было
+  // (они приезжают уже расшифрованным эхом) — начни sendMedia заводить его
+  // безусловно, после отправки висел бы вечный «отправляется…» рядом с настоящим.
+  it('sendMedia без optimistic бабл не заводит, с optimistic — заводит с локальной метой файла', async () => {
+    const { deps, pendings } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const initiatorKp = await generateKeyPair()
+    mgr.stashRequest(1, b64FromBytes(await exportPublicKey(initiatorKp.publicKey)))
+    await mgr.accept(1)
+    const bytes = new TextEncoder().encode('файл-байты').buffer
+
+    await mgr.sendMedia({ chatId: 1, bytes, name: 'voice', mime: 'audio/ogg', size: 10, mediaType: 'voice', clientMsgId: 'cm4', ttlSeconds: null })
+    expect(pendings).toEqual([])
+
+    await mgr.sendMedia({
+      chatId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm5', ttlSeconds: null,
+      text: 'подпись', optimistic: { senderId: 5, type: 'photo', media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' } },
+    })
+    expect(pendings).toEqual([{
+      chat_id: 1, client_msg_id: 'cm5', sender_id: 5, text: 'подпись', type: 'photo',
+      media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' }, secret: true,
+    }])
   })
 
   it('sendText без ключа чата бросает ошибку', async () => {

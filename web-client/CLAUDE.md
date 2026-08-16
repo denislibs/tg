@@ -114,11 +114,28 @@ npx vite build --outDir ../client-build
   | `reaction` | отдельный `rootScope.addEventListener(RT.reaction)` → `applyReaction`/`applyReactionOptimistic` | деривация `mine` — поэлементное слияние массива `ReactionCount[]` по emoji двумя сигналами вне самого агрегата (`myEmoji`/`myAction`), не выражается как значение поля `patch`; плюс независимый оптимистичный путь клика и риск затереть его чужой копией с другой вкладки (разбор — `docs/research/2026-08-10-message-enrichments.md`, задача 5) |
   | `star_reaction` | отдельный `rootScope.addEventListener(RT.starReaction)` → `applyStarReaction` | тот же класс причин, что у `reaction` — `mine` обновляется только у отправителя, деривация не сводится к готовому полю |
 
-  Кадры `pending_new`/`pending_media`/`pending_fail`/`pending_retry`/`pending_remove`
-  (оптимистичная отправка) и `ack`/`message_error` тоже пишут в окно сообщений, но
-  это не операции над серверным SSOT, а funnel собственной отправки вкладки —
-  вне периметра `messageOps` по построению (нет кадра-первоисточника с `pts`,
-  который воркер мог бы зеркалить).
+  **Исключения для оптимистичной отправки больше нет.** Жизненный цикл
+  неотправленного («отправляется…») сообщения живёт в менеджере воркера —
+  `core/managers/messages/pending.ts` (порт формы tweb `appMessagesManager`:
+  `beforeMessageSending`/`finalizePendingMessage`/`checkPendingMessage`/
+  `cancelPendingMessage`), временный бабл лежит в ТОМ ЖЕ SSOT и в том же срезе
+  окна, что и настоящие сообщения. Наружу он объявляется теми же `MessageOp`:
+  появление бабла — `insert`, ack — `insert` финального (слияние по `clientId`
+  живёт в `messageOps.insert`), ошибка отправки — `patch {failed}`, отмена —
+  `remove`. Пяти кадров `rt:pending_*` и сторных мутаторов
+  (`appendOptimistic`/`reconcileAck*`/`failOptimistic*`/`removeOptimistic*`) больше
+  нет. Точки входа: `realtime.sendMessage` (единственная точка отправки: сперва
+  `beforeMessageSending`, затем `conn.sendMessage`; `awaitMedia` придерживает кадр
+  до конца аплоада) и `workerCore.ts::onFrame`, который перехватывает
+  `message_ack`/`message_error` (эфемерные, без `pts`) и применяет их владельцем
+  один раз — сырой кадр при этом летит дальше, у него остались потребители
+  (звук отправки, тост `paid_required`). Пути, идущие мимо WS-отправки, зовут
+  владельца сами через `beforeSending` (`workerCore.ts`): пост канала
+  (`channelsManager.post`, REST) и секретный чат (`secretManager.sendText/sendMedia`,
+  по проводу шифртекст). **Единственное вкладочное обогащение — `localUrl`**
+  (`core/media/localPreview.ts`): blob-URL валиден только в породившей вкладке,
+  поэтому в SSOT воркера его нет by construction, и проектор накладывает его на
+  свои же `insert`-операции (`withLocalPreview`).
 - Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
   в новом модуле — подписывайся на `rootScope.addEventListener`, а не на `smp`. Компоненты/хуки
   **читают из стора**.
@@ -367,7 +384,8 @@ CacheStorage-корзину `cachedFiles` (`core/files/cacheStorage.ts`; сох�
 ## Связь с бэком
 
 - REST + WS через `core/net/*`; реалтайм и outbox — `core/realtime/connectionManager.ts`.
-- Оптимистичная отправка: бабл сразу (`client_msg_id`), затем `reconcileAck`/`failOptimistic` по ответу WS.
+- Оптимистичная отправка: бабл заводит воркер сразу (`client_msg_id`), по ответу WS он же
+  реконсилит (`message_ack`/`message_error` → операции окна) — см. «Владение фактами» выше.
 - Dev ходит на бэкенд `:38080` (за nginx) через прокси Vite.
 - **Индикатор в поле поиска сайдбара показывает состояние соединения, а не загрузку списка
   диалогов.** Автомат — `src/components/connectionStatus.ts` (порт tweb

@@ -1,8 +1,12 @@
-// Семантика неотправленного сообщения — та же, что раньше пинили десять тестов
-// stores/messagesStore.*.test.ts (dedup, ackEcho, tentativeSeq, threadRouting,
-// sendStatus, uploadCancel). Она переехала из стора вкладки в менеджер воркера
-// (порт формы tweb appMessagesManager), поэтому и тесты живут здесь: механика
-// проверяется напрямую, без React и без zustand.
+// Семантика неотправленного сообщения — та же, что раньше пинили тесты
+// stores/messagesStore.*.test.ts (ackEcho, tentativeSeq, sendStatus,
+// uploadCancel — файлы удалены, их смысл перенесён сюда). Она переехала из
+// стора вкладки в менеджер воркера (порт формы tweb appMessagesManager),
+// поэтому и тесты живут здесь: механика проверяется напрямую, без React и без
+// zustand. Оконная половина тех же гарантий (дедуп бабла по clientId, слияние
+// эха, ack-then-echo) живёт в core/realtime/messageOps.test.ts — она про
+// применение операции к списку, а не про жизненный цикл; путь целиком
+// (операция → окно) пинит client/realtime/storeProjection.pending.test.ts.
 //
 // Что тут НЕ проверяется и почему: отсутствие персиста временного бабла. Оно
 // структурное — в ctx pending-механики персиста нет вовсе (см. pending.ts,
@@ -10,7 +14,9 @@
 import { describe, it, expect } from 'vitest'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { newPendingMethods } from './pending'
+import { messageToConvMsg } from '../../messageToConvMsg'
 import type { Message } from '../../models'
+import type { MessageOp } from '../../realtime/messageOps'
 import type { PendingNewEvt } from '../../realtime/events'
 
 function makeCtx() {
@@ -68,6 +74,40 @@ describe('pending: появление бабла', () => {
     // Отрицательный id помечает неотправленное: dedupKey ключует такое по
     // clientId, иначе чужое входящее с тем же seq вытеснило бы бабл из окна.
     expect(msg.id).toBeLessThan(0)
+  })
+
+  // Переехало из stores/messagesStore.tentativeSeq.test.ts. Что ломается: если
+  // расчёт tentativeSeq перестанет учитывать уже добавленный первый бабл, второй
+  // получит тот же seq — и dedupAsc схлопнет их в один (тот же класс бага, что
+  // коллизия с чужим входящим, только между двумя СВОИМИ баблами).
+  it('два бабла подряд без ack между ними: оба на месте, seq различны', () => {
+    const { ctx, slices, msgsFor } = makeCtx()
+    openWindow(slices, '1')
+    const p = newPendingMethods(ctx)
+
+    const first = (p.beforeMessageSending(evt({ client_msg_id: 'c1', text: 'first' }))[0] as { msg: Message }).msg
+    const second = (p.beforeMessageSending(evt({ client_msg_id: 'c2', text: 'second' }))[0] as { msg: Message }).msg
+
+    expect(second.seq).toBe(first.seq + 1)
+    expect([...msgsFor(1).keys()].sort((a, b) => a - b)).toEqual([first.seq, second.seq])
+  })
+
+  // Переехало оттуда же. Что ломается: если бы ack матчился не строго по
+  // clientId (а по позиции/seq), соседний бабл пропал бы или потерял clientId —
+  // ломая React-ключ и подхват его собственного ack/эха.
+  it('ack первого не трогает второй: второй остаётся неотправленным', () => {
+    const { ctx, slices, msgsFor } = makeCtx()
+    openWindow(slices, '1')
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt({ client_msg_id: 'c1', text: 'first' }))
+    const second = (p.beforeMessageSending(evt({ client_msg_id: 'c2', text: 'second' }))[0] as { msg: Message }).msg
+
+    p.ackPendingMessage({ client_msg_id: 'c1', msg_id: 900, seq: 50, created_at: 'x' })
+
+    expect(p.hasPending('c2')).toBe(true)
+    const still = msgsFor(1).get(second.seq)!
+    expect(still.clientId).toBe('c2')
+    expect(still.id).toBeLessThan(0)
   })
 
   it('окно, не держащее низ истории, бабл не получает — и операции не рождаются', () => {
@@ -198,5 +238,100 @@ describe('pending: ошибка, ретрай, отмена', () => {
 
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: temp.id, fields: { mediaId: 909 } }])
     expect(msgsFor(1).get(temp.seq)!.mediaId).toBe(909)
+  })
+
+  // Переехало из stores/messagesStore.uploadCancel.test.ts. Что ломается: бабл
+  // документа появляется ДО аплоада, и рисовать его не из чего, если локальная
+  // мета (имя/размер/mime) не доехала — пользователь видел бы пустую плашку
+  // файла, пока идёт загрузка. mediaId на этот момент ещё нет (null).
+  it('бабл документа несёт имя/размер/mime до аплоада, mediaId ещё нет', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+
+    const msg = (p.beforeMessageSending(evt({
+      text: '', type: 'document', media: { mime: 'application/pdf', size: 1234, name: 'оферта.pdf' },
+    }))[0] as { msg: Message }).msg
+
+    expect(msg.mediaName).toBe('оферта.pdf')
+    expect(msg.mediaSize).toBe(1234)
+    expect(msg.mediaMime).toBe('application/pdf')
+    expect(msg.mediaId).toBeNull()
+  })
+
+  // Переехало оттуда же. Отменённый аплоад роняет upload() с 'aborted', и
+  // катч-ветка зовёт fail уже по снятому баблу. Что ломается: не будь это no-op,
+  // бабл «воскрес» бы на экране красной ошибкой после собственной отмены.
+  it('поздний fail после отмены бабл не воскрешает', () => {
+    const { ctx, slices, msgsFor } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt({ text: '', type: 'document' }))
+    p.cancelPendingMessage('c-1')
+
+    expect(p.failPendingMessage('c-1')).toEqual([])
+    expect(msgsFor(1).size).toBe(0)
+  })
+
+  // Переехало оттуда же: отмена по неизвестному clientMsgId — no-op (никакого
+  // «удалить хоть что-нибудь» по соседнему баблу).
+  it('отмена по неизвестному clientMsgId — no-op', () => {
+    const { ctx, slices, msgsFor } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt({ text: '', type: 'document' }))
+
+    expect(p.cancelPendingMessage('nope')).toEqual([])
+    expect(msgsFor(1).size).toBe(1)
+  })
+})
+
+// Переехало из stores/messagesStore.sendStatus.test.ts: как жизненный цикл
+// выглядит в UI. Статус бабла витрина выводит из самого сообщения
+// (messageToConvMsg), поэтому пин остаётся осмысленным и после переезда
+// механики в воркер — меняется только источник этих сообщений.
+describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
+  const bubble = (ops: MessageOp[]): Message => {
+    const op = ops[0]
+    if (op?.op !== 'insert') throw new Error('ожидалась insert-операция')
+    return op.msg
+  }
+
+  it('неотправленное рисуется часами (sending), а не галочкой', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+
+    const msg = bubble(p.beforeMessageSending(evt()))
+
+    expect(msg.id).toBeLessThan(0)
+    expect(messageToConvMsg(msg, 42).status).toBe('sending')
+  })
+
+  it('ошибка → status error (бабл остаётся), ретрай → снова sending', () => {
+    const { ctx, slices, msgsFor } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+    const temp = bubble(p.beforeMessageSending(evt()))
+
+    p.failPendingMessage('c-1')
+    expect(messageToConvMsg(msgsFor(1).get(temp.seq)!, 42).status).toBe('error')
+
+    p.retryPendingMessage('c-1')
+    expect(messageToConvMsg(msgsFor(1).get(temp.seq)!, 42).status).toBe('sending')
+  })
+
+  it('ack после ретрая → status sent', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [10])
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt())
+    p.failPendingMessage('c-1')
+    p.retryPendingMessage('c-1')
+
+    const acked = bubble(p.ackPendingMessage({ client_msg_id: 'c-1', msg_id: 100, seq: 12, created_at: '2026-07-14T00:00:00Z' }))
+
+    expect(acked.id).toBe(100)
+    expect(messageToConvMsg(acked, 42).status).toBe('sent')
   })
 })
