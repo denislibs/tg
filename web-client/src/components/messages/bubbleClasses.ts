@@ -2,7 +2,7 @@
 // Один источник правды для MessageRow: от этих классов питаются радиусы группы,
 // хвост, фон/тень, плавающее время, реакции и отступы в _chatBubble.scss.
 //
-// Проверено по живому DOM (docs/research/tweb-dom/*.json → scripts/domdiff/expected):
+// Проверено по живому DOM (docs/tweb/dom/dumps/*.json → scripts/domdiff/expected):
 //   текст out   → bubble hide-name is-out can-have-tail is-read is-group-first is-group-last
 //   голосовое   → bubble voice-message min-content is-single-document … can-have-tail
 //   документ    → bubble document-message is-single-document … can-have-tail

@@ -1,6 +1,6 @@
 // Попап «Поделиться» в tweb собран НЕ из своей вёрстки, а из того же селектора
 // пиров, что участники и админы в правой колонке (дамп
-// `docs/research/tweb-dom/17-popup-01-forward-share.json`):
+// `docs/tweb/dom/dumps/17-popup-01-forward-share.json`):
 //
 //   div.popup.popup-forward > div.popup-body
 //     div.selector.selector-round.selector-right.selector-multiselect-hidden

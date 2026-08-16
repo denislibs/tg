@@ -3,7 +3,7 @@
 **Дата:** 2026-08-14
 **Статус:** дизайн согласован
 **Ворктри:** `.worktrees/discussion-mirror`, ветка `feat/discussion-mirror`
-**Референс:** [`../../research/2026-08-13-tweb-channels-comments-reference.md`](../../research/2026-08-13-tweb-channels-comments-reference.md)
+**Референс:** [`../../research/comments.md`](../../research/comments.md)
 **Следующая работа поверх:** страница комментариев 1:1 (отдельная спека)
 
 ## Задача

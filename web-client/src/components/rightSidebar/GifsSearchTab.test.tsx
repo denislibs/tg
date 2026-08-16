@@ -1,5 +1,5 @@
 // Пин DOM-структуры экрана «Поиск GIF» правой колонки по живому дампу tweb
-// (`docs/research/tweb-dom/19-emoticons-04-gif-search-right.json`,
+// (`docs/tweb/dom/dumps/19-emoticons-04-gif-search-right.json`,
 //  `…-05-gif-search-results.json`):
 //   div.sidebar-content.sidebar-slider.tabs-container [data-animation=navigation]
 //     div.tabs-tab.sidebar-slider-item.scrolled-start.scrolled-end

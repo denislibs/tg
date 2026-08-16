@@ -1,5 +1,5 @@
 // Пин DOM-структуры тела попапа Premium по живому дампу tweb
-// (`docs/research/tweb-dom/14-left-24-premium-popup.json`):
+// (`docs/tweb/dom/dumps/14-left-24-premium-popup.json`):
 //   div.popup.popup-premium.active > div.popup-container.z-depth-1 >
 //     div.tabs-container.premium-tabs.fixed-size >
 //       div.premium-promo-tab...tabs-tab.premium-tab.active >

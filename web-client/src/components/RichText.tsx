@@ -42,7 +42,7 @@ export function emojiOnlyCount(text: string): number {
  * tweb wrapRichText.ts: URL → `a.anchor-url` (601-603), @mention →
  * `a.mention` c t.me-ссылкой (660-663), #hashtag → `a.anchor-hashtag` c
  * `tg://search_hashtag?hashtag=` (627-636). Живой пример всех трёх — дамп поста
- * канала `docs/research/tweb-dom/20-channel-01-post-formatted.json`.
+ * канала `docs/tweb/dom/dumps/20-channel-01-post-formatted.json`.
  */
 function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = []
@@ -189,7 +189,7 @@ function toSegments(text: string, entities: MessageEntity[]): Seg[] {
  * strikethrough → `<del>` (239-248). Раньше здесь были инлайновые
  * `font-weight`/`font-style`/`text-decoration` на `<span>` — визуально похоже,
  * но DOM расходился с дампом поста канала
- * (`docs/research/tweb-dom/20-channel-01-post-formatted.json`), а вес шрифта
+ * (`docs/tweb/dom/dumps/20-channel-01-post-formatted.json`), а вес шрифта
  * не брался из темы (--font-weight-bold).
  */
 function wrapFormatting(types: Set<EntityType>, content: ReactNode): ReactNode {

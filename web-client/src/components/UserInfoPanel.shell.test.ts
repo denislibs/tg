@@ -1,6 +1,6 @@
 // Каркас панели профиля — ТОЛЬКО глобальные классы tweb, без CSS-модуля.
 //
-// Эталон — живой дамп docs/research/tweb-dom/07-right-sidebar.json:
+// Эталон — живой дамп docs/tweb/dom/dumps/07-right-sidebar.json:
 //   div.tabs-tab.sidebar.sidebar-right.main-column
 //     > div.sidebar-content.sidebar-slider.tabs-container
 //       > div.tabs-tab.sidebar-slider-item.…shared-media-container.profile-container.active

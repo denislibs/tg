@@ -14,7 +14,7 @@
 //
 // Классы `emoticons-will-move-*` вешаются только когда у вкладки есть меню
 // (tab.ts:104-109) — у GIF-вкладки (noMenu) их нет, как и в живом дампе
-// docs/research/tweb-dom/04-emoji-dropdown.json.
+// docs/tweb/dom/dumps/04-emoji-dropdown.json.
 import { type ReactNode, type RefObject, type UIEvent } from 'react'
 import InputSearch from '../../shared/ui/InputSearch'
 import IconButton from '../../shared/ui/IconButton'

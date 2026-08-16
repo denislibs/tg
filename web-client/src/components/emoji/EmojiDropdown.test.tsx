@@ -1,5 +1,5 @@
 // Структурные пины эмодзи-дропдауна по живым дампам tweb
-// (docs/research/tweb-dom/19-emoticons-01..07*.json) и исходникам
+// (docs/tweb/dom/dumps/19-emoticons-01..07*.json) и исходникам
 // emoticonsDropdown/{index.ts,tab.ts,search.tsx,category.ts}:
 //   • .tabs-container[data-animation="tabs"] + классы слайда Transition;
 //   • id контента вкладок (#content-emoji / #content-stickers);

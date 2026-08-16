@@ -1,5 +1,5 @@
 // Контекстное меню сообщения обязано рождать ровно то дерево, что и tweb
-// (живой дамп — `docs/research/tweb-dom/05-context-menu.json`, строят
+// (живой дамп — `docs/tweb/dom/dumps/05-context-menu.json`, строят
 // `chat/contextMenu.ts::appendReactionsMenu` + `chat/reactionsMenu.ts`):
 //
 //   div.btn-menu.contextmenu.has-items-wrapper

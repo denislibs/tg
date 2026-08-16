@@ -1,5 +1,5 @@
 // Эмодзи-дропдаун — React-порт tweb EmoticonsDropdown (components/emoticonsDropdown).
-// Дерево и классы 1:1 с живыми дампами docs/research/tweb-dom/19-emoticons-0*.json:
+// Дерево и классы 1:1 с живыми дампами docs/tweb/dom/dumps/19-emoticons-0*.json:
 //
 //   div.emoji-dropdown[.active]
 //     div.emoji-container > div.tabs-container[data-animation="tabs"]

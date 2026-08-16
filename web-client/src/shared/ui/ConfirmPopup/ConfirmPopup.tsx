@@ -1,6 +1,6 @@
 // ConfirmPopup — порт tweb PopupPeer (src/components/popups/peer.ts + index.ts
 // setButtons + scss/partials/popups/_popup.scss/_peer.scss). Разметка 1:1 с
-// дампом `docs/research/tweb-dom/17-popup-03-delete-message.json`:
+// дампом `docs/tweb/dom/dumps/17-popup-03-delete-message.json`:
 //   div.popup.popup-peer[.<модификатор>] >
 //     div.popup-container.z-depth-1[.have-checkbox] >
 //       div.popup-header ([avatar 32] + div.popup-title)

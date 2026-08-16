@@ -1,6 +1,6 @@
 // DOM разметки сообщения — 1:1 с tweb.
 //
-// Эталон — живой дамп поста канала `docs/research/tweb-dom/20-channel-01-post-formatted.json`
+// Эталон — живой дамп поста канала `docs/tweb/dom/dumps/20-channel-01-post-formatted.json`
 // (снят с web.telegram.org/k) и `tweb/src/lib/richTextProcessor/wrapRichText.ts`:
 //
 //   strong "Голова"                                   ← messageEntityBold (215-221)

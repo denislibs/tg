@@ -1,8 +1,8 @@
 // Пин модификаторов попапов чата (tweb вешает их вторым классом на `.popup`):
 //   deleteMessages.ts:182 `PopupPeer('popup-delete-chat')` → .popup.popup-peer.popup-delete-chat
 //   pickUser.tsx/forward.tsx `class="popup-forward"`      → .popup.popup-forward
-// Дампы: `docs/research/tweb-dom/17-popup-03-delete-message.json`,
-//        `docs/research/tweb-dom/17-popup-01-forward-share.json`.
+// Дампы: `docs/tweb/dom/dumps/17-popup-03-delete-message.json`,
+//        `docs/tweb/dom/dumps/17-popup-01-forward-share.json`.
 // К этим классам цепляются партиалы `popups/_peer.scss` и `popups/_forward.scss`.
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
