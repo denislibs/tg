@@ -242,6 +242,24 @@
   // tweb base.scss:32,46-47 — множитель зеркалирования и origin'ы для RTL.
   // Класс is-rtl мы не ставим (RTL-режима нет) — значения LTR-ветки.
   --reflect: 1;
+  // tweb base.scss:33-37, вместе с его комментарием: «Real value is set in the
+  // @supports block by the html safe-area padding below; 0 here is the no-env()
+  // fallback so calc() consumers never see an undefined var».
+  //
+  // Ноль здесь — не заглушка, а несущая строка. Её потребитель — закрытое
+  // состояние правой колонки (`tweb/_rightSidebar.scss`: transform панели
+  // считается через эту переменную), и без объявления весь calc() становится
+  // «invalid at computed-value time», а `transform` откатывается к `none`:
+  // панель не уезжает за край (не закрывается) и открывается без анимации,
+  // потому что открытое и закрытое состояния совпадают. Пин —
+  // `styles/rightColumnVars.test.ts`.
+  //
+  // Переопределение из tweb base.scss:408-424 (`min(16px, env(safe-area-inset-
+  // right))` под @supports) НЕ портировано сознательно: оно компенсирует
+  // safe-area-padding у `html`, которого у нас нет вовсе (`env(safe-area-inset-*)`
+  // по стилям не встречается ни разу). Портировать его в отрыве от padding'а
+  // значило бы сдвигать панель на величину, которую никто не занял.
+  --safe-area-inset-inline-end: 0px;
   --transform-origin-left-center: left center;
   --transform-origin-right-center: right center;
 }
