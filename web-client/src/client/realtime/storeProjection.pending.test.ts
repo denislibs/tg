@@ -12,7 +12,6 @@ import rootScope from '@lib/rootScope'
 import { RT, type PendingNewEvt } from '../../core/realtime/events'
 import { newPendingMethods } from '../../core/managers/messages/pending'
 import SlicedArray, { SliceEnd } from '../../core/history/slicedArray'
-import { setLocalPreview, dropLocalPreview } from '../../core/media/localPreview'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import type { Message } from '../../core/models'
 import type { Managers } from '../bootstrap'
@@ -44,10 +43,19 @@ function worker(keys: string[]) {
       if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
       return c
     },
+    // Предмет этого файла — путь «операция → окно», поэтому веер и транспорт
+    // здесь заглушены: операции emit'ятся вручную (см. emit ниже), а отправка/
+    // аплоад покрыты у владельца (managers/messages/pending.test.ts).
+    emit: () => {},
+    send: () => {},
+    upload: () => Promise.resolve(0),
+    cancelUpload: () => {},
+    sendTyping: () => {},
+    uploadProgress: () => {},
   })
 }
 
-/** Кадр воркера с операциями — ровно то, что рассылает realtime.sendMessage. */
+/** Кадр воркера с операциями — ровно то, что рассылает владелец окна. */
 function emit(ops: ReturnType<ReturnType<typeof worker>['beforeMessageSending']>) {
   rootScope.dispatchEventSingle(RT.messageOp, { ops })
 }
@@ -153,11 +161,11 @@ describe('storeProjection — жизненный цикл неотправлен
   })
 })
 
-// localUrl — вкладочное обогащение (core/media/localPreview.ts): в SSOT воркера
-// его нет by construction, поэтому «чужая вкладка» здесь = вкладка, которая
-// setLocalPreview не звала. Раньше ту же задачу решал origin_tab в кадре
-// pending_new, и вырезание чужого localUrl было обязанностью проектора.
-describe('storeProjection — локальное превью накладывает только вкладка-инициатор', () => {
+// localUrl больше НЕ вкладочное обогащение: blob-URL минтит воркер внутри
+// messages.sendFile, поэтому он лежит в SSOT и приезжает обычным полем
+// операции — одинаково во все вкладки. Раньше здесь проверялось обратное
+// (своя вкладка накладывает превью, чужая — нет) и жил модуль localPreview.ts.
+describe('storeProjection — локальное превью приезжает полем операции воркера', () => {
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   beforeEach(() => {
@@ -165,44 +173,29 @@ describe('storeProjection — локальное превью накладыва
     useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
   })
 
-  // Что ломается: не наложи вкладка своё превью — мгновенного показа
-  // отправляемого фото/видео (единственная причина существования поля) не было
-  // бы вовсе, бабл ждал бы конца аплоада и серверной картинки.
-  it('своя вкладка (setLocalPreview звался) → localUrl на бабле', () => {
+  // Что ломается: не доедь превью до окна — мгновенного показа отправляемого
+  // фото/видео (единственная причина существования поля) не было бы вовсе,
+  // бабл ждал бы конца аплоада и серверной картинки.
+  it('local_url заявки становится localUrl бабла', () => {
     const w = worker([winKey(CHAT)])
-    setLocalPreview('c7a', 'blob:own-tab')
 
-    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7a', type: 'photo' })))
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7a', type: 'photo', local_url: 'blob:worker-minted' })))
 
-    expect(bubbles(winKey(CHAT))[0].localUrl).toBe('blob:own-tab')
-    dropLocalPreview('c7a')
+    expect(bubbles(winKey(CHAT))[0].localUrl).toBe('blob:worker-minted')
   })
 
-  // Что ломается: попади blob-URL в операцию (т.е. в SSOT воркера), остальные
-  // вкладки получили бы ссылку, которая в их контексте не резолвится никогда, —
-  // «битый превью навсегда» (localUrl приоритетнее mediaId и не очищается).
-  it('чужая вкладка (своего превью нет) → localUrl не появляется', () => {
+  // Что ломается: пришло настоящее сообщение (положительный id) — его localUrl
+  // переносится слиянием по clientId (messageOps.insert), иначе картинка
+  // моргнула бы на подложку, пока грузится серверная.
+  it('пришло настоящее сообщение → localUrl перенесён слиянием', () => {
     const w = worker([winKey(CHAT)])
-
-    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7b', type: 'photo' })))
-
-    expect(bubbles(winKey(CHAT))[0].localUrl).toBeUndefined()
-  })
-
-  // Что ломается: держи вкладка запись вечно — превью накладывалось бы и на
-  // ПОСЛЕДУЮЩИЕ сообщения того же clientMsgId... но важнее другое: настоящее
-  // сообщение приходит с положительным id, и его localUrl уже перенесён слиянием
-  // по clientId (messageOps.insert) — накладывать заново не на что.
-  it('пришло настоящее сообщение → localUrl перенесён слиянием, запись снята', () => {
-    const w = worker([winKey(CHAT)])
-    setLocalPreview('c7c', 'blob:own-tab')
-    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7c', type: 'photo' })))
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7c', type: 'photo', local_url: 'blob:worker-minted' })))
 
     emit(w.ackPendingMessage({ client_msg_id: 'c7c', msg_id: 901, seq: 51, created_at: 'now' }))
 
     const msgs = bubbles(winKey(CHAT))
     expect(msgs).toHaveLength(1)
     expect(msgs[0].id).toBe(901)
-    expect(msgs[0].localUrl).toBe('blob:own-tab')
+    expect(msgs[0].localUrl).toBe('blob:worker-minted')
   })
 })

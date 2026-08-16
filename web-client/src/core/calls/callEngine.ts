@@ -148,9 +148,9 @@ function logCallMessage(reason: CallEndReason) {
   const clientMsgId = crypto.randomUUID()
   const meId = useChatsStore.getState().meId
   // Оптимистичный бабл лога звонка заводит владелец окна (единственная точка
-  // отправки — realtime.sendMessage); без известного meId бабл не рисуем — он
+  // отправки — messages.sendText); без известного meId бабл не рисуем — он
   // отрисовался бы как чужой.
-  void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
+  void managers().messages.sendText({ chatId: call.chatId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
 }
 
 // Завершение с показом финального статуса; экран закрывается через паузу.

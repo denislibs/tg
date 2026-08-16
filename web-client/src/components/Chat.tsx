@@ -65,8 +65,6 @@ import { useGroupCallStore } from '../stores/groupCallStore'
 import { useLivestreamStore } from '../stores/livestreamStore'
 
 const EMPTY_IDS: number[] = []
-import { useUploadsStore } from '../stores/uploadsStore'
-import { dropLocalPreview } from '../core/media/localPreview'
 import ChatHeader from './conversation/ChatHeader'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
@@ -848,15 +846,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const mediaPlayedE = useEvent((msgId: number) => {
     if (isRealChat) markMediaPlayed(numericChatId, msgId)
   })
-  // Отмена аплоада с бабла (tweb ProgressivePreloader cancel): убрать бабл сразу,
-  // затем оборвать PUT в воркере (upload() кинет 'aborted' — fail будет no-op).
+  // Отмена аплоада с бабла (tweb ProgressivePreloader cancel) — ОДИН вызов
+  // владельца: он и рвёт аплоад (аплоад теперь его, внутри messages.sendFile),
+  // и убирает бабл операцией remove, и гасит кольцо прогресса.
   const cancelUploadE = useEvent((clientId: string) => {
-    useUploadsStore.getState().clear(clientId)
-    // Бабл убирает владелец (messages.cancelPendingMessage → операция remove);
-    // здесь же снимаем своё локальное превью — накладывать его больше не на что.
-    dropLocalPreview(clientId)
-    void managers.realtime.cancelPending({ clientMsgId: clientId })
-    void managers.media.cancelUpload(clientId)
+    void managers.messages.cancelPending({ clientMsgId: clientId })
   })
   // Разблокировать платное медиа за звёзды (Telegram paid media): списание +
   // раскрытие бабла приезжают кадром paid_media_unlock (store), баланс —

@@ -18,6 +18,10 @@ export interface SecretDeps {
   /** Временный («неотправленный») бабл — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
   beforeSending: (p: PendingNewEvt) => void
+  /** Красная пометка на бабле, если шифрование/аплоад/отправка сорвались —
+   *  тот же владелец (messages.failPendingMessage). Ошибка случается ЗДЕСЬ, в
+   *  воркере, поэтому и помечает бабл он, а не вкладка вторым RPC. */
+  failSending: (clientMsgId: string) => void
 }
 
 /** Что отрисовать в бабле секретной отправки, пока летит шифрование/аплоад.
@@ -141,10 +145,15 @@ export function createSecretManager(deps: SecretDeps) {
           text: args.text, type: args.optimistic.type, entities: args.entities as PendingNewEvt['entities'], secret: true,
         })
       }
-      const stored = await loadKey(args.chatId)
-      if (!stored) throw new Error('secret: chat key missing')
-      const encBody = await encryptPayload(stored.key, { text: args.text, entities: args.entities ?? [] })
-      deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, ttlSeconds: args.ttlSeconds ?? null })
+      try {
+        const stored = await loadKey(args.chatId)
+        if (!stored) throw new Error('secret: chat key missing')
+        const encBody = await encryptPayload(stored.key, { text: args.text, entities: args.entities ?? [] })
+        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, ttlSeconds: args.ttlSeconds ?? null })
+      } catch (e) {
+        if (args.optimistic) deps.failSending(args.clientMsgId)
+        throw e
+      }
       return { ok: true }
     },
 
@@ -155,17 +164,30 @@ export function createSecretManager(deps: SecretDeps) {
       // Бабл — до шифрования и аплоада (см. sendText); без optimistic его нет
       // вовсе (голос/документ приходят эхом).
       if (args.optimistic) {
+        // Локальное превью минтит ВОРКЕР — из того же плейнтекста, который он и
+        // так держит до шифрования (тот же приём, что в messages.sendFile:
+        // воркерный blob-URL валиден во всех вкладках, вкладочный — только в
+        // одной). Шифрование при этом остаётся здесь, в воркере, вместе с
+        // ключами; секретных чатов у tweb нет вовсе, сверять этот путь с
+        // оригиналом не с чем — это наша фича, а не расхождение.
+        const visual = args.optimistic.type === 'photo' || args.optimistic.type === 'video'
         deps.beforeSending({
           chat_id: args.chatId, client_msg_id: args.clientMsgId, sender_id: args.optimistic.senderId,
           text: args.text ?? '', type: args.optimistic.type, media: args.optimistic.media, secret: true,
+          local_url: visual ? URL.createObjectURL(new Blob([args.bytes], { type: args.mime })) : undefined,
         })
       }
-      const stored = await loadKey(args.chatId)
-      if (!stored) throw new Error('secret: chat key missing')
-      const { cipher, keyB64, ivB64 } = await encryptMedia(new Uint8Array(args.bytes))
-      const mediaId = await deps.upload(cipher, 'application/octet-stream', cipher.byteLength, args.name)
-      const encBody = await encryptPayload(stored.key, { media: { mediaId, keyB64, ivB64, name: args.name, mime: args.mime, size: args.size, mediaType: args.mediaType } })
-      deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, mediaId, ttlSeconds: args.ttlSeconds ?? null })
+      try {
+        const stored = await loadKey(args.chatId)
+        if (!stored) throw new Error('secret: chat key missing')
+        const { cipher, keyB64, ivB64 } = await encryptMedia(new Uint8Array(args.bytes))
+        const mediaId = await deps.upload(cipher, 'application/octet-stream', cipher.byteLength, args.name)
+        const encBody = await encryptPayload(stored.key, { media: { mediaId, keyB64, ivB64, name: args.name, mime: args.mime, size: args.size, mediaType: args.mediaType } })
+        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, mediaId, ttlSeconds: args.ttlSeconds ?? null })
+      } catch (e) {
+        if (args.optimistic) deps.failSending(args.clientMsgId)
+        throw e
+      }
       return { ok: true }
     },
 

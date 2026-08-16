@@ -150,17 +150,29 @@ export function createWorkerCore() {
   // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
-  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => me?.id ?? null, broadcast: (event, payload) => broadcast(event, payload) })
+  const messages = newMessagesManager({
+    rest,
+    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
+    getMeId: () => me?.id ?? null,
+    broadcast: (event, payload) => broadcast(event, payload),
+    // ТРАНСПОРТ И АПЛОАД — ИНЪЕКЦИЕЙ (порт модели tweb: менеджер получает
+    // зависимости при сборке через реестр AppManagers, а не импортирует их).
+    // Именно это снимает кольцо messagesManager ↔ connectionManager, из-за
+    // которого отправка раньше жила в realtime.ts. Все пять стрелок ленивые:
+    // conn/media объявлены НИЖЕ, но исполняются только на первой отправке —
+    // тот же приём, что у broadcast/decryptSecret выше.
+    send: (a) => conn.sendMessage(a),
+    upload: (a) => media.upload(a),
+    cancelUpload: (id) => { void media.cancelUpload(id) },
+    sendTyping: (chatId, action) => conn.sendTyping(chatId, action),
+    uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
+  })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
-  // beforeMessageSending), наружу это обычные операции над окном. Обёртка нужна
-  // путям отправки, которые идут МИМО realtime.sendMessage и потому не могут
-  // позвать её сами: пост канала (уходит по REST) и секретный чат (по WS уходит
-  // шифртекст, а не текст бабла). broadcast — та же ленивая стрелка, что у
-  // соседей выше.
-  const beforeSending = (p: PendingNewEvt) => {
-    const ops = messages.beforeMessageSending(p)
-    if (ops.length) broadcast(RT.messageOp, { ops })
-  }
+  // beforeMessageSending), наружу это обычные операции над окном (публикует их
+  // сам менеджер). Обёртка нужна путям отправки, которые идут МИМО
+  // messages.sendText/sendFile и потому не могут позвать её сами: пост канала
+  // (уходит по REST) и секретный чат (по WS уходит шифртекст, а не текст бабла).
+  const beforeSending = (p: PendingNewEvt) => { messages.beforeMessageSending(p) }
   // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
   // аплоада порты уже подняты)
   const media = newMediaManager({
@@ -546,6 +558,10 @@ export function createWorkerCore() {
     // (см. beforeSending выше) — жизненный цикл общий, разный только транспорт:
     // плейнтекст на сервер не уходит, вместо него шифртекст type:'encrypted'.
     beforeSending,
+    // Тот же владелец помечает бабл упавшим: ошибка (нет ключа / оффлайн /
+    // сорвался аплоад шифртекста) случается ЗДЕСЬ, в воркере, — вкладке не за
+    // чем возвращать её обратно вторым RPC.
+    failSending: (clientMsgId) => { void messages.failPending({ clientMsgId }) },
   })
 
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая

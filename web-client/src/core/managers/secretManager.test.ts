@@ -22,6 +22,9 @@ function makeDeps() {
   // Заявки на временный бабл (порт tweb beforeMessageSending) — в воркере их
   // исполняет messages.beforeMessageSending, здесь просто копим.
   const pendings: Parameters<SecretDeps['beforeSending']>[0][] = []
+  // Красная пометка на бабле — её ставит владелец из ВОРКЕРА (см. failSending
+  // в secretManager): ошибка «нет ключа / оффлайн / упал аплоад» случается здесь.
+  const failed: string[] = []
   // Тест выставляет handshake (или бросает) перед вызовом sync.
   const getState = { handshake: null as Handshake | null, err: null as Error | null }
   const deps: SecretDeps = {
@@ -38,11 +41,12 @@ function makeDeps() {
       },
     },
     conn: { sendMessage: (args) => { sends.push(args) } },
+    failSending: (id) => { failed.push(id) },
     broadcast: (event, payload) => { events.push({ event, payload }) },
     upload: async (bytes, mime, size, fileName) => { uploads.push({ bytes, mime, size, fileName }); return 42 },
     beforeSending: (p) => { pendings.push(p) },
   }
-  return { deps, restCalls, getCalls, sends, events, uploads, getState, pendings }
+  return { deps, restCalls, getCalls, sends, events, uploads, getState, pendings, failed }
 }
 
 describe('secretManager', () => {
@@ -137,7 +141,7 @@ describe('secretManager', () => {
   })
 
   // Что ломается, если гарантия нарушена: секретная отправка идёт МИМО
-  // realtime.sendMessage (по проводу уходит шифртекст, а не текст бабла), поэтому
+  // messages.sendText/sendFile (по проводу уходит шифртекст, а не текст бабла), поэтому
   // временный бабл заводит этот путь. Пропади вызов — своё сообщение в секретном
   // чате не появлялось бы на экране до расшифрованного эха new_message.
   it('sendText c optimistic: временный бабл заявлен ДО шифрования, с плейнтекстом и пометкой secret', async () => {
@@ -172,10 +176,27 @@ describe('secretManager', () => {
       chatId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm5', ttlSeconds: null,
       text: 'подпись', optimistic: { senderId: 5, type: 'photo', media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' } },
     })
-    expect(pendings).toEqual([{
+    expect(pendings[0]).toMatchObject({
       chat_id: 1, client_msg_id: 'cm5', sender_id: 5, text: 'подпись', type: 'photo',
       media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' }, secret: true,
-    }])
+    })
+    // Локальное превью минтит ВОРКЕР — из плейнтекста, который у него и так на
+    // руках до шифрования (вкладочный blob-URL был бы битым в остальных вкладках).
+    expect(pendings[0].local_url).toMatch(/^blob:/)
+  })
+
+  // Что ломается: сорвись шифрование/аплоад/отправка — бабл остался бы вечным
+  // «отправляется…». Ошибка случается ЗДЕСЬ, в воркере, поэтому и пометку
+  // ставит владелец отсюда, а не вкладка вторым RPC.
+  it('ошибка отправки помечает бабл упавшим — но только если бабл заводился', async () => {
+    const { deps, failed } = makeDeps()
+    const mgr = createSecretManager(deps)
+
+    await expect(mgr.sendText({ chatId: 99, text: 'x', clientMsgId: 'cm6', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })).rejects.toThrow(/key missing/)
+    expect(failed).toEqual(['cm6'])
+
+    await expect(mgr.sendText({ chatId: 99, text: 'x', clientMsgId: 'cm7', ttlSeconds: null })).rejects.toThrow(/key missing/)
+    expect(failed).toEqual(['cm6'])
   })
 
   it('sendText без ключа чата бросает ошибку', async () => {

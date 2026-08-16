@@ -560,10 +560,10 @@ export function useMessageActions({
     closeMsgMenu()
     if (!raw?.failed || !raw.clientId) return
     // Снять пометку ошибки (владелец → операция patch) и переотправить тем же
-    // clientId. `optimistic` в sendMessage НЕ передаём: бабл уже есть и в окне, и
+    // clientId. `optimistic` в sendText НЕ передаём: бабл уже есть и в окне, и
     // в pending-реестре воркера — beforeMessageSending завёл бы рядом второй.
-    void managers.realtime.retryPending({ clientMsgId: raw.clientId })
-    void managers.realtime.sendMessage({
+    void managers.messages.retryPending({ clientMsgId: raw.clientId })
+    void managers.messages.sendText({
       chatId: numericChatId, text: raw.text, entities: raw.entities,
       clientMsgId: raw.clientId, replyToId: raw.replyToId, mediaId: raw.mediaId,
       type: raw.type !== 'text' ? raw.type : undefined, threadRootId: raw.threadRootId,
@@ -572,7 +572,7 @@ export function useMessageActions({
   const removeFailed = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.clientId) void managers.realtime.cancelPending({ clientMsgId: raw.clientId })
+    if (raw?.clientId) void managers.messages.cancelPending({ clientMsgId: raw.clientId })
   }
   const failedMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="send" size={20} />, label: 'Resend', onClick: resendFailed },

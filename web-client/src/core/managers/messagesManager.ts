@@ -14,7 +14,9 @@ export interface CalendarDay {
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import { mapReplyMarkup } from './botsManager'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
+import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
+import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
@@ -70,9 +72,22 @@ export interface MessagesDeps {
    * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
    * тесты кэш-методов (cacheX) его не используют. */
   broadcast?: (event: string, payload: unknown) => void
+  /** ТРАНСПОРТ — ИНЪЕКЦИЕЙ, не импортом (workerCore подставляет
+   * `conn.sendMessage`). В tweb ту же роль играет реестр `AppManagers`: менеджер
+   * зовёт зависимость, полученную при сборке, поэтому кольца импортов
+   * messagesManager ↔ connectionManager не возникает. */
+  send?: (args: WireSendArgs) => void
+  /** Отгрузка байтов медиа (mediaManager.upload) — её владеет `sendFile`. */
+  upload?: (a: UploadArgs) => Promise<number>
+  /** Оборвать активный аплоад по progressId (=clientMsgId). */
+  cancelUpload?: (progressId: string) => void
+  /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
+  sendTyping?: (chatId: number, action: TypingAction) => void
+  /** Прогресс аплоада вкладкам (media:upload_progress). */
+  uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в workerCore.ts.
@@ -186,7 +201,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
   const ctx = { rest, patchMsg, getMeId, opWindowsFor }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
-  const pending = newPendingMethods({ hkey, slices, msgsFor })
+  const pending = newPendingMethods({
+    hkey, slices, msgsFor,
+    emit: (ops) => { if (ops.length) broadcast?.(RT.messageOp, { ops }) },
+    // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
+    // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
+    // (пин проводки — core/workerCore.send.test.ts).
+    send: send ?? (() => {}),
+    upload: upload ?? (() => Promise.reject(new Error('messages: upload не подключён'))),
+    cancelUpload: cancelUpload ?? (() => {}),
+    sendTyping: sendTyping ?? (() => {}),
+    uploadProgress: uploadProgress ?? (() => {}),
+  })
 
   return {
     ...newReactionMethods(ctx),

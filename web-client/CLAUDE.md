@@ -124,18 +124,27 @@ npx vite build --outDir ../client-build
   живёт в `messageOps.insert`), ошибка отправки — `patch {failed}`, отмена —
   `remove`. Пяти кадров `rt:pending_*` и сторных мутаторов
   (`appendOptimistic`/`reconcileAck*`/`failOptimistic*`/`removeOptimistic*`) больше
-  нет. Точки входа: `realtime.sendMessage` (единственная точка отправки: сперва
-  `beforeMessageSending`, затем `conn.sendMessage`; `awaitMedia` придерживает кадр
-  до конца аплоада) и `workerCore.ts::onFrame`, который перехватывает
-  `message_ack`/`message_error` (эфемерные, без `pts`) и применяет их владельцем
-  один раз — сырой кадр при этом летит дальше, у него остались потребители
-  (звук отправки, тост `paid_required`). Пути, идущие мимо WS-отправки, зовут
-  владельца сами через `beforeSending` (`workerCore.ts`): пост канала
-  (`channelsManager.post`, REST) и секретный чат (`secretManager.sendText/sendMedia`,
-  по проводу шифртекст). **Единственное вкладочное обогащение — `localUrl`**
-  (`core/media/localPreview.ts`): blob-URL валиден только в породившей вкладке,
-  поэтому в SSOT воркера его нет by construction, и проектор накладывает его на
-  свои же `insert`-операции (`withLocalPreview`).
+  нет. **Отправка тоже там** — `messages.sendText` / `messages.sendFile` (порт
+  tweb `sendText`/`sendFile`): `beforeMessageSending` заканчивается вызовом
+  транспорта, как `message.send()` в оригинале. Транспорт (`conn.sendMessage`),
+  аплоад (`media.upload`), отмена аплоада, typing-пинг и канал прогресса
+  приходят в менеджер **инъекцией при сборке** (`workerCore.ts`) — так же, как
+  tweb раздаёт зависимости через реестр `AppManagers`; именно это, а не вынос
+  отправки наружу, снимает кольцо импортов. `sendFile` владеет аплоадом целиком
+  (бабл → байты → `attachPendingMedia` → **один** кадр с `media_id`), поэтому
+  двухфазной отправки (`awaitMedia`) больше нет, а `localUrl` — обычное поле
+  SSOT: blob-URL минтит воркер (воркерный blob виден всем вкладкам, ровно как у
+  `downloadMediaURL`), вкладочных обогащений над операциями не осталось.
+  Второй вход владельца — `workerCore.ts::onFrame`, который перехватывает
+  `message_ack`/`message_error` (эфемерные, без `pts`) и применяет их один раз —
+  сырой кадр при этом летит дальше, у него остались потребители (звук отправки,
+  тост `paid_required`). Пути, идущие мимо WS-отправки, зовут владельца сами
+  через `beforeSending` (`workerCore.ts`): пост канала (`channelsManager.post`,
+  REST) и секретный чат (`secretManager.sendText/sendMedia`, по проводу
+  шифртекст; шифрование и локальное превью — тоже в воркере, ключи живут там).
+  На вкладке осталась только мета файла (`scaleImageForSend`,
+  `probeMediaDuration`) — ей нужен DOM, и tweb считает её там же
+  (`width`/`height`/`duration` в `SendFileArgs`).
 - Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
   в новом модуле — подписывайся на `rootScope.addEventListener`, а не на `smp`. Компоненты/хуки
   **читают из стора**.

@@ -139,7 +139,9 @@ export type BroadcastEvents = {
 
   // ── служебные ──
   'rt:resync': [null]
-  'media:upload_progress': [{ id: string; loaded: number; total: number }]
+  // done — аплоад завершился (успех/ошибка/отмена): кольцо на бабле снимается.
+  // Границы аплоада объявляет владелец (messages.sendFile в воркере), а не вкладка.
+  'media:upload_progress': [{ id: string; loaded: number; total: number; done?: boolean }]
   'state:mirror': [{ key: string; value: unknown }]
 
   // ── стикеры ──

@@ -254,9 +254,10 @@ export interface MessageErrorEvt { client_msg_id: string; reason: string }
 // больше НЕ является: наружу воркер объявляет только MessageOp.
 //
 // Локальная мета файла (размеры/mime/имя) нужна, чтобы бабл документа/фото
-// нарисовался до аплоада. blob-URL превью (`localUrl`) сюда НЕ входит СОЗНАТЕЛЬНО:
-// он валиден только в породившей его вкладке, а SSOT воркера общий на все — см.
-// core/media/localPreview.ts (вкладочное обогащение поверх пришедшей операции).
+// нарисовался до аплоада. `local_url` — blob-URL превью, СМИНЧЕННЫЙ ВОРКЕРОМ
+// (messages.sendFile): воркерный blob-URL резолвится во всех вкладках, поэтому
+// он лежит в SSOT как обычное поле. Вкладочного blob-URL здесь быть не может —
+// он был бы битым во всех вкладках, кроме породившей.
 export interface PendingMedia { width?: number; height?: number; mime?: string; size?: number; name?: string }
 export interface PendingNewEvt {
   chat_id: number
@@ -269,6 +270,8 @@ export interface PendingNewEvt {
   entities?: MessageEntity[]
   grouped_id?: string
   media?: PendingMedia
+  /** blob-URL локального превью, сминченный воркером (см. выше) */
+  local_url?: string
   geo?: GeoData
   contact?: { userId: number; name: string; phone: string }
   secret?: boolean

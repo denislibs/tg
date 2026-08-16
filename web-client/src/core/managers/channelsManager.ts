@@ -36,9 +36,10 @@ export function newChannelsManager({ rest, beforeSending }: {
     // что у обычной отправки; на бэке проходит sanitizeEntities.
     // optimistic — временный бабл поста (тот же владелец, что у обычной отправки:
     // messages.beforeMessageSending, см. workerCore.ts). Пост канала уходит по
-    // REST, а не по WS, поэтому realtime.sendMessage тут не участвует — бабл
+    // REST, а не по WS, поэтому messages.sendText тут не участвует — бабл
     // заводится здесь, живое эхо приезжает кадром new_message и сливается по
-    // clientMsgId, как у всех остальных путей.
+    // clientMsgId, как у всех остальных путей. Транспорт другой, владелец бабла
+    // тот же — это и есть граница tweb.
     async post(chatId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<Message> {
       if (optimistic) {
         beforeSending({

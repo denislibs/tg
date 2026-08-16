@@ -199,7 +199,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     if (!group || !t) return
     const chatId = await managers.chats.createPrivate(group.author.id)
     const clientMsgId = `story-${chatId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    await managers.realtime.sendMessage({ chatId, text: t, clientMsgId })
+    await managers.messages.sendText({ chatId, text: t, clientMsgId })
     rootScope.dispatchEvent('ui:toast', 'Сообщение отправлено')
   }
 

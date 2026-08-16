@@ -4,7 +4,6 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import { withLocalPreview } from '../../core/media/localPreview'
 import { usePeersStore } from '../../stores/peersStore'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
@@ -86,10 +85,10 @@ const APPLY: Projector = {
   // Этап «оптимистика в воркере»: этой же операцией приезжает и временный бабл
   // своей отправки (insert), и его ack (insert финального), и ошибка (patch
   // {failed}), и отмена (remove) — пяти кадров rt:pending_* больше нет, окно
-  // правит ТОЛЬКО applyOps без исключений. withLocalPreview — единственное, что
-  // вкладка добавляет от себя: blob-URL превью, которого у воркера нет by
-  // construction (см. core/media/localPreview.ts).
-  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(withLocalPreview(e.ops)) },
+  // правит ТОЛЬКО applyOps без исключений. Вкладочных обогащений здесь тоже
+  // больше НЕТ: blob-URL локального превью (`localUrl`) минтит воркер внутри
+  // messages.sendFile, поэтому он приезжает обычным полем операции.
+  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
   // проектор — ЕДИНСТВЕННЫЙ писатель peersStore (пин — stores/noDuplicatePeers.test.ts).
@@ -303,10 +302,14 @@ export function registerStoreProjection(managers: Managers): void {
     // myReaction обновляем только для эха собственного действия (user_id === me).
     useStoriesStore.getState().applyStoryReaction(e.story_id, e.reactions_count, e.user_id === meId ? e.reaction : undefined)
   })
-  // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
+  // Прогресс отгрузки медиа (кольцо на оптимистичном бабле). Владелец — воркер:
+  // и сами байты, и границы аплоада теперь его (messages.sendFile), поэтому
+  // `done` (аплоад кончился успехом/ошибкой/отменой) приезжает тем же каналом,
+  // а не снимается вкладкой у себя.
   rootScope.addEventListener('media:upload_progress', (raw) => {
-    const e = raw as { id: string; loaded: number; total: number }
-    if (e.total > 0) useUploadsStore.getState().setProgress(e.id, e.loaded / e.total)
+    const e = raw as { id: string; loaded: number; total: number; done?: boolean }
+    if (e.done) useUploadsStore.getState().clear(e.id)
+    else if (e.total > 0) useUploadsStore.getState().setProgress(e.id, e.loaded / e.total)
   })
 
   // Ключ State изменила ДРУГАЯ вкладка: воркер разослал зеркало всем портам

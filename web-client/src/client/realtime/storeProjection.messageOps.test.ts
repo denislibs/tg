@@ -51,8 +51,8 @@ describe('storeProjection — RT.messageOp переигрывается пове
   it('insert сливается с оптимистикой по clientId — один элемент, localUrl сохранён', () => {
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
-    // Неотправленный бабл кладёт операция владельца; localUrl — своё, вкладочное
-    // (core/media/localPreview.ts), поэтому здесь он просто уже на сообщении.
+    // Неотправленный бабл кладёт операция владельца; localUrl приезжает на нём
+    // же обычным полем (blob-URL минтит воркер в messages.sendFile).
     st.appendLocal(winKey(CHAT), msg({ id: -1, seq: 1, senderId: ME, type: 'photo', text: 'photo', clientId: 'c-op', localUrl: 'blob:local-1' }))
     const echo = msg({ id: 700, seq: 5, senderId: ME, type: 'photo', text: 'photo', clientId: 'c-op' })
     rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(CHAT), msg: echo }] })

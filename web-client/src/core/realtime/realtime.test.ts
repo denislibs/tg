@@ -15,21 +15,11 @@ import { RT } from './events'
 import type { MessageOp } from './messageOps'
 import type { Cursor } from './cursor'
 
-// Pending-механика в этих кейсах не участвует: заглушки возвращают пустой список
-// операций (свой предмет — describe'ы ниже).
-const noPending = {
-  beforeMessageSending: () => [] as MessageOp[],
-  attachPendingMedia: () => [] as MessageOp[],
-  failPendingMessage: () => [] as MessageOp[],
-  retryPendingMessage: () => [] as MessageOp[],
-  cancelPendingMessage: () => [] as MessageOp[],
-}
-
 describe('realtime.markMediaRead', () => {
   it('broadcasts the MessageOp[] returned by cacheMediaRead as rt:message_op', async () => {
     const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }]
     const conn = { markMediaRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
-    const messages = { ...noPending, cacheMediaRead: vi.fn(() => ops) }
+    const messages = { cacheMediaRead: vi.fn(() => ops) }
     const broadcast = vi.fn()
     const rt = newRealtime({
       conn,
@@ -47,7 +37,7 @@ describe('realtime.markMediaRead', () => {
 
   it('does not broadcast rt:message_op when cacheMediaRead produces no ops (idempotent replay)', async () => {
     const conn = { markMediaRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
-    const messages = { ...noPending, cacheMediaRead: vi.fn(() => []) }
+    const messages = { cacheMediaRead: vi.fn(() => []) }
     const broadcast = vi.fn()
     const rt = newRealtime({
       conn,
@@ -83,7 +73,7 @@ describe('realtime.getStatus', () => {
       conn,
       sync,
       tokens: { load: async () => undefined },
-      messages: { ...noPending, cacheMediaRead: vi.fn(() => []) },
+      messages: { cacheMediaRead: vi.fn(() => []) },
       broadcast: vi.fn(),
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
@@ -141,7 +131,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
     const rt = newRealtime({
       conn, sync,
       tokens: { load: async () => undefined },
-      messages: { ...noPending, cacheMediaRead: () => [] },
+      messages: { cacheMediaRead: () => [] },
       broadcast: () => {},
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
@@ -166,132 +156,8 @@ describe('realtime.getStatus — иммунность к потере push-ув�
   })
 })
 
-// Этап «оптимистика в воркере»: sendMessage — ЕДИНСТВЕННАЯ точка отправки, она же
-// заводит временный бабл (порт tweb beforeMessageSending → message.send()).
-// Раньше вкладка звала два независимых RPC (appendPending + sendMessage), а
-// воркер своего бабла не держал вовсе. Тесты ниже пинят проводку: менеджер
-// зовётся, его операции уходят веером, кадр уходит транспортом, и порядок
-// «бабл → кадр» сохранён (иначе бабл появлялся бы уже после сети).
-describe('realtime.sendMessage — временный бабл + отправка', () => {
-  function makeRt() {
-    const sends: unknown[] = []
-    const order: string[] = []
-    const broadcasts: { event: string; payload: unknown }[] = []
-    const conn = { sendMessage: (a: unknown) => { order.push('send'); sends.push(a) } } as unknown as Parameters<typeof newRealtime>[0]['conn']
-    const ops: MessageOp[] = [{ op: 'insert', key: '1', msg: { id: -1, chatId: 1, seq: 1, senderId: 5, type: 'text', text: 'hi', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c1' } }]
-    const messages = {
-      cacheMediaRead: () => [] as MessageOp[],
-      beforeMessageSending: vi.fn(() => { order.push('pending'); return ops }),
-      attachPendingMedia: vi.fn(() => [{ op: 'patch', key: '1', msgId: -1, fields: { mediaId: 9 } }] as MessageOp[]),
-      failPendingMessage: vi.fn(() => [{ op: 'patch', key: '1', msgId: -1, fields: { failed: true } }] as MessageOp[]),
-      retryPendingMessage: vi.fn(() => [{ op: 'patch', key: '1', msgId: -1, fields: { failed: undefined } }] as MessageOp[]),
-      cancelPendingMessage: vi.fn(() => [{ op: 'remove', key: '1', msgId: -1 }] as MessageOp[]),
-    }
-    const rt = newRealtime({
-      conn,
-      sync: { isSyncing: () => false },
-      tokens: { load: async () => undefined },
-      messages,
-      broadcast: (event, payload) => { broadcasts.push({ event, payload }) },
-      channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
-    })
-    return { rt, sends, order, broadcasts, messages, ops }
-  }
-
-  it('с optimistic: заявка собрана из проводных полей, операции разосланы, бабл — ДО кадра', async () => {
-    const { rt, sends, order, broadcasts, messages, ops } = makeRt()
-
-    await rt.sendMessage({
-      chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42,
-      optimistic: { senderId: 5, contactName: 'Маша', sendAs: { chatId: 9, title: 'Канал' } },
-    })
-
-    expect(messages.beforeMessageSending).toHaveBeenCalledWith({
-      chat_id: 1, thread_root_id: 7, client_msg_id: 'c1', sender_id: 5, text: 'hi', type: 'contact',
-      entities: undefined, media_id: null, grouped_id: undefined, media: undefined, geo: undefined,
-      contact: { userId: 42, name: 'Маша', phone: '' }, secret: undefined, send_as: { chatId: 9, title: 'Канал' },
-    })
-    expect(broadcasts).toEqual([{ event: RT.messageOp, payload: { ops } }])
-    // порядок обязателен: сперва бабл на экран, потом сеть
-    expect(order).toEqual(['pending', 'send'])
-    // на провод уходят только поля SendArgs — служебные optimistic/awaitMedia отрезаны
-    expect(sends[0]).toEqual({ chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42 })
-  })
-
-  // Пути без оптимистики: черновик → createPrivate (окна ещё нет), комментарий к
-  // форварду, переотправка упавшего бабла (он уже зарегистрирован — второй
-  // beforeMessageSending завёл бы рядом дубль).
-  it('без optimistic: бабл не заводится, кадр уходит', async () => {
-    const { rt, sends, broadcasts, messages } = makeRt()
-
-    await rt.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
-
-    expect(messages.beforeMessageSending).not.toHaveBeenCalled()
-    expect(broadcasts).toEqual([])
-    expect(sends).toHaveLength(1)
-  })
-
-  // awaitMedia: бабл нужен СРАЗУ (кольцо прогресса аплоада), а кадр — только когда
-  // появился media_id. Уйди кадр сразу — сервер создал бы сообщение без медиа.
-  it('awaitMedia: кадр придержан до attachPendingMedia и уходит уже с media_id', async () => {
-    const { rt, sends, broadcasts, messages } = makeRt()
-
-    await rt.sendMessage({ chatId: 1, text: 'подпись', clientMsgId: 'c1', type: 'photo', awaitMedia: true, optimistic: { senderId: 5 } })
-    expect(sends).toEqual([])
-
-    await rt.attachPendingMedia({ clientMsgId: 'c1', mediaId: 9 })
-
-    expect(messages.attachPendingMedia).toHaveBeenCalledWith('c1', 9)
-    expect(sends).toEqual([{ chatId: 1, text: 'подпись', clientMsgId: 'c1', type: 'photo', mediaId: 9 }])
-    expect(broadcasts.map((b) => b.event)).toEqual([RT.messageOp, RT.messageOp])
-    // повторный attach ничего не досылает — придержанный кадр уже ушёл
-    await rt.attachPendingMedia({ clientMsgId: 'c1', mediaId: 9 })
-    expect(sends).toHaveLength(1)
-  })
-
-  it('failPending выбрасывает придержанный кадр: поздний attach его уже не шлёт', async () => {
-    const { rt, sends, messages } = makeRt()
-
-    await rt.sendMessage({ chatId: 1, text: '', clientMsgId: 'c1', type: 'photo', awaitMedia: true, optimistic: { senderId: 5 } })
-    await rt.failPending({ clientMsgId: 'c1' })
-    await rt.attachPendingMedia({ clientMsgId: 'c1', mediaId: 9 })
-
-    expect(messages.failPendingMessage).toHaveBeenCalledWith('c1')
-    expect(sends).toEqual([])
-  })
-
-  it('cancelPending (отмена аплоада) выбрасывает придержанный кадр и снимает бабл', async () => {
-    const { rt, sends, broadcasts, messages } = makeRt()
-
-    await rt.sendMessage({ chatId: 1, text: '', clientMsgId: 'c1', type: 'document', awaitMedia: true, optimistic: { senderId: 5 } })
-    await rt.cancelPending({ clientMsgId: 'c1' })
-    await rt.attachPendingMedia({ clientMsgId: 'c1', mediaId: 9 })
-
-    expect(messages.cancelPendingMessage).toHaveBeenCalledWith('c1')
-    // [0] — insert бабла из sendMessage, [1] — remove из отмены (заглушка
-    // attachPendingMedia в этом стенде отвечает и на неизвестный clientMsgId).
-    expect(broadcasts[1]).toEqual({ event: RT.messageOp, payload: { ops: [{ op: 'remove', key: '1', msgId: -1 }] } })
-    expect(sends).toEqual([])
-  })
-
-  it('retryPending снимает пометку ошибки операцией владельца', async () => {
-    const { rt, broadcasts, messages } = makeRt()
-
-    await rt.retryPending({ clientMsgId: 'c1' })
-
-    expect(messages.retryPendingMessage).toHaveBeenCalledWith('c1')
-    expect(broadcasts).toEqual([{ event: RT.messageOp, payload: { ops: [{ op: 'patch', key: '1', msgId: -1, fields: { failed: undefined } }] } }])
-  })
-
-  // Пустой список операций — не повод для кадра: бабла в окнах нет (окно не
-  // держит низ истории / бабл уже снят). Лишний rt:message_op заставил бы каждую
-  // вкладку впустую пересобирать окно.
-  it('пустой список операций кадром не рассылается', async () => {
-    const { rt, broadcasts, messages } = makeRt()
-    messages.cancelPendingMessage.mockReturnValueOnce([])
-
-    await rt.cancelPending({ clientMsgId: 'c-unknown' })
-
-    expect(broadcasts).toEqual([])
-  })
-})
+// Отправка сообщений из этого файла УШЛА: она переехала к владельцу окна
+// (core/managers/messages/pending.ts — sendText/sendFile, порт tweb), вместе с
+// аплоадом и с транспортом, который туда приходит инъекцией. Её тесты — там же
+// (managers/messages/pending.test.ts): бабл → аплоад → attach → ровно один
+// кадр, ошибка и отмена аплоада.

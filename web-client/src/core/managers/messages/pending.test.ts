@@ -11,14 +11,19 @@
 // Что тут НЕ проверяется и почему: отсутствие персиста временного бабла. Оно
 // структурное — в ctx pending-механики персиста нет вовсе (см. pending.ts,
 // «ЧЕГО НЕ ДЕЛАЕМ»), подделать его вызов неоткуда.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { newPendingMethods } from './pending'
 import { messageToConvMsg } from '../../messageToConvMsg'
 import type { Message } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { PendingNewEvt } from '../../realtime/events'
+import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
+import type { UploadArgs } from '../mediaManager'
 
+/** Стенд владельца: SSOT + срезы окон + все инъекции (транспорт, аплоад, typing,
+ *  прогресс). `order` фиксирует порядок «бабл на экран → сеть», ради которого в
+ *  tweb `message.send()` стоит именно в хвосте beforeMessageSending. */
 function makeCtx() {
   const slices = new Map<string, SlicedArray<number>>()
   const msgsByChat = new Map<number, Map<number, Message>>()
@@ -29,7 +34,28 @@ function makeCtx() {
     if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
     return c
   }
-  return { ctx: { hkey, slices, msgsFor }, slices, msgsFor }
+  const emitted: MessageOp[][] = []
+  const sends: WireSendArgs[] = []
+  const uploads: UploadArgs[] = []
+  const typings: { chatId: number; action: string }[] = []
+  const progress: { id: string; loaded: number; total: number; done?: boolean }[] = []
+  const cancelled: string[] = []
+  const order: string[] = []
+  const h = {
+    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order,
+    /** подменяется в тестах аплоада (успех с другим id, отказ, «зависший» промис) */
+    upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
+    ctx: {
+      hkey, slices, msgsFor,
+      emit: (ops: MessageOp[]) => { if (ops.length) { order.push('emit'); emitted.push(ops) } },
+      send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
+      upload: (a: UploadArgs) => h.upload(a),
+      cancelUpload: (id: string) => { cancelled.push(id) },
+      sendTyping: (chatId: number, action: string) => { typings.push({ chatId, action }) },
+      uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => { progress.push({ id, loaded, total, done }) },
+    },
+  }
+  return h
 }
 
 /** Открытое окно, держащее НИЗ истории — только в такое вставляется бабл. */
@@ -333,5 +359,207 @@ describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
 
     expect(acked.id).toBe(100)
     expect(messageToConvMsg(acked, 42).status).toBe('sent')
+  })
+})
+
+// ── Транспорт и аплоад ВНУТРИ менеджера (порт tweb) ─────────────────────────
+// До этого этапа кадр слал realtime.ts («иначе циклический импорт»), а байты
+// грузила вкладка вторым RPC (флаг awaitMedia придерживал кадр в воркере до
+// конца аплоада). Теперь и то, и другое — здесь: `ctx.send` приходит инъекцией,
+// `sendFile` владеет аплоадом целиком, как оригинальный appMessagesManager.
+describe('sendText: бабл + кадр (порт tweb sendText → beforeMessageSending → message.send)', () => {
+  it('с optimistic: заявка собрана из проводных полей, операции разосланы, бабл — ДО кадра', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({
+      chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42,
+      optimistic: { senderId: 5, contactName: 'Маша', sendAs: { chatId: 9, title: 'Канал' } },
+    })
+
+    // порядок обязателен: сперва бабл на экран, потом сеть
+    expect(h.order).toEqual(['emit', 'send'])
+    const msg = (h.emitted[0][0] as { msg: Message }).msg
+    expect(msg.clientId).toBe('c1')
+    expect(msg.senderId).toBe(5)
+    expect(msg.contact).toEqual({ userId: 42, name: 'Маша', phone: '' })
+    expect(msg.sendAs).toEqual({ chatId: 9, title: 'Канал' })
+    // на провод уходят только проводные поля — служебный optimistic отрезан
+    expect(h.sends).toEqual([{ chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42 }])
+  })
+
+  // Что ломается: не зовись транспорт внутри менеджера — сообщение просто не
+  // ушло бы на сервер (это и есть мутация, которой проверяется проводка).
+  it('без optimistic: бабла нет, кадр уходит', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+
+    expect(h.emitted).toEqual([])
+    expect(h.sends).toHaveLength(1)
+  })
+
+  // Окно чата не открыто (или прокручено в середину истории) — бабла быть не
+  // может, но отправку это не отменяет. Что ломается: сообщение, отправленное
+  // из чата, чьё окно не держит низ, молча пропало бы.
+  it('окно не держит низ истории: бабла нет, кадр всё равно уходит', async () => {
+    const h = makeCtx()
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1', optimistic: { senderId: 5 } })
+
+    expect(h.emitted).toEqual([])
+    expect(h.sends).toHaveLength(1)
+  })
+})
+
+describe('sendFile: бабл → аплоад → attach → отправка (порт tweb sendFile)', () => {
+  const file = (bytes = 'xxx', type = 'image/jpeg') => new Blob([bytes], { type })
+
+  it('весь путь одним вызовом, кадр уходит РОВНО ОДИН РАЗ и уже с media_id', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    const r = await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      fileName: 'photo.jpg', caption: 'подпись', width: 640, height: 480, isMedia: true,
+      uploadAction: 'upload_photo',
+    })
+
+    expect(r).toEqual({ mediaId: 909 })
+    // бабл появился ДО аплоада, кадр ушёл ПОСЛЕ него (emit бабла → emit attach → send)
+    expect(h.order).toEqual(['emit', 'emit', 'send'])
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(bubble.clientId).toBe('c1')
+    expect(bubble.text).toBe('подпись')
+    expect(bubble.mediaWidth).toBe(640)
+    expect(bubble.mediaId).toBeNull() // media_id ещё нет — он приедет патчем
+    // localUrl минтит ВОРКЕР (blob-URL воркера валиден во всех вкладках)
+    expect(bubble.localUrl).toMatch(/^blob:/)
+    // байты ушли в аплоад с progressId === clientMsgId (по нему же идёт отмена)
+    expect(h.uploads[0]).toMatchObject({ mime: 'image/jpeg', fileName: 'photo.jpg', width: 640, height: 480, progressId: 'c1' })
+    // attach приклеил media_id к тому же баблу
+    expect(h.emitted[1]).toEqual([{ op: 'patch', key: '1', msgId: bubble.id, fields: { mediaId: 909 } }])
+    // ОДИН кадр, и он несёт media_id (двухфазной отправки awaitMedia больше нет)
+    expect(h.sends).toEqual([{
+      chatId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
+      groupedId: undefined, threadRootId: null, paidMediaPrice: null, mediaId: 909,
+    }])
+  })
+
+  // Что ломается: без isMedia превью минтилось бы и для документа — лишний
+  // blob-URL, который никто не отзовёт, и плашка файла с «картинкой».
+  it('документ (isMedia не задан): превью не минтится, мета файла в бабле есть', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('pdf', 'application/pdf'), type: 'document', fileName: 'оферта.pdf' })
+
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(bubble.localUrl).toBeUndefined()
+    expect(bubble.mediaName).toBe('оферта.pdf')
+    expect(bubble.mediaMime).toBe('application/pdf')
+  })
+
+  // Что ломается: без пинга собеседник не видит «отправляет фото…» всё время
+  // аплоада (tweb sendMessageUpload*Action), а без гашения прогресса на бабле
+  // навсегда остаётся кольцо загрузки.
+  it('typing-пинг и границы прогресса объявляет владелец', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true, uploadAction: 'upload_photo' })
+
+    expect(h.typings[0]).toEqual({ chatId: 1, action: 'upload_photo' })
+    expect(h.progress[0]).toEqual({ id: 'c1', loaded: 0, total: 1, done: undefined })
+    expect(h.progress[h.progress.length - 1]).toEqual({ id: 'c1', loaded: 0, total: 0, done: true })
+  })
+
+  // Что ломается: сорвавшийся аплоад оставлял бы бабл вечно «отправляется…», а
+  // кадр без media_id ушёл бы на сервер и создал сообщение без медиа.
+  it('ошибка аплоада: бабл помечен failed, кадр НЕ уходит', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.upload.mockRejectedValueOnce(new Error('boom'))
+    const p = newPendingMethods(h.ctx)
+
+    const r = await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+
+    expect(r).toEqual({ mediaId: null })
+    expect(h.sends).toEqual([])
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(h.emitted[1]).toEqual([{ op: 'patch', key: '1', msgId: bubble.id, fields: { failed: true } }])
+    expect(h.progress[h.progress.length - 1]).toEqual({ id: 'c1', loaded: 0, total: 0, done: true })
+  })
+
+  // Отмена на полпути: аплоад рвёт САМ владелец (он им и владеет), бабл уходит
+  // из окна, а поздний отказ upload() его не воскрешает.
+  it('отмена на полпути: аплоад оборван, бабл снят, поздний fail — no-op', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    let rejectUpload: (e: Error) => void = () => {}
+    h.upload.mockImplementationOnce(() => new Promise<number>((_, rej) => { rejectUpload = rej }))
+    const p = newPendingMethods(h.ctx)
+
+    const sending = p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+    await p.cancelPending({ clientMsgId: 'c1' })
+
+    expect(h.cancelled).toEqual(['c1']) // аплоад оборван владельцем
+    expect(h.emitted[1][0]).toMatchObject({ op: 'remove', key: '1' })
+    rejectUpload(new Error('aborted'))
+    await sending
+    expect(h.sends).toEqual([]) // кадр не ушёл
+    expect(h.emitted).toHaveLength(2) // fail по снятому баблу операций не породил
+    expect(p.hasPending('c1')).toBe(false)
+  })
+
+  // Альбом (grouped_id) и платное медиа едут проводными полями кадра — иначе
+  // сервер разложил бы фото альбома по отдельным сообщениям, а платное медиа
+  // ушло бы бесплатным.
+  it('groupedId и paidMediaPrice доезжают до кадра, groupedId — и до бабла', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      isMedia: true, groupedId: 'g7', paidMediaPrice: 50, caption: 'подпись', threadRootId: null,
+    })
+
+    expect((h.emitted[0][0] as { msg: Message }).msg.groupedId).toBe('g7')
+    expect(h.sends[0]).toMatchObject({ groupedId: 'g7', paidMediaPrice: 50, text: 'подпись' })
+  })
+})
+
+// Механизма awaitMedia/awaitingMedia (кадр придерживается в воркере до конца
+// аплоада, потому что байты грузила вкладка) больше НЕТ — он был следствием
+// того, что аплоад жил на вкладке. Проверяем структурно: у sendFile нет ни
+// такого поля, ни второй фазы, а кадр за отправку рождается ровно один.
+describe('двухфазной отправки медиа не существует', () => {
+  it('пока аплоад идёт, кадра нет; после — ровно один, и второго входа для него не нужно', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    let finishUpload: (id: number) => void = () => {}
+    h.upload.mockImplementationOnce(() => new Promise<number>((res) => { finishUpload = res }))
+    const p = newPendingMethods(h.ctx)
+
+    const sending = p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: new Blob(['x']), type: 'photo', isMedia: true })
+    await Promise.resolve()
+    // бабл уже на экране, кадр ещё нет — но придерживает его сам sendFile, а не
+    // карта awaitingMedia, ждущая второго RPC с вкладки
+    expect(h.emitted).toHaveLength(1)
+    expect(h.sends).toEqual([])
+
+    finishUpload(77)
+    await sending
+
+    expect(h.sends).toHaveLength(1)
+    expect(h.sends[0].mediaId).toBe(77)
   })
 })
