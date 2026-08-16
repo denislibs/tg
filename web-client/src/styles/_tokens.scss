@@ -87,6 +87,17 @@
   --badge-text-color: #fff;
   --avatar-online-color: var(--primary-color);
   --input-placeholder-color: #9BA0A5;
+  // Ниже — константы tweb base.scss, чьи потребители к нам доехали, а сами
+  // определения нет. Каждая ломала своё правило ЦЕЛИКОМ (`var()` без фолбэка на
+  // необъявленную проперти делает объявление невалидным), поэтому пропажа была
+  // не «значение по умолчанию», а исчезнувший z-index / размер / цвет.
+  --z-below: -1; // base.scss:30 — z-index подложек
+  --reaction-paid-transition: .2s ease-in-out; // base.scss:65
+  --call-button-size: 3.375rem; // base.scss:150
+  --call-button-margin: 2rem; // base.scss:151
+  --premium-gradient: linear-gradient(52.62deg, #6B93FF 12.22%, #976FFF 50.25%, #E46ACE 98.83%); // base.scss:194
+  --input-message-placeholder-color: #a2acb4; // base.scss:239
+  --premium-color: #9275ff; // base.scss:262
   // Кольцо историй вокруг аватарки (tweb base.scss:184-188) — их читает
   // `.avatar-stories-simple` в tweb/_avatar.scss.
   --avatar-color-story-unread-from: #34c76f;
@@ -94,6 +105,21 @@
   --avatar-color-story-close-from: #88D93A;
   --avatar-color-story-close-to: #30B73B;
   --avatar-color-story-read: var(--secondary-color);
+  // Палитра аватарок (tweb base.scss:168-176) — генератор `avatar-color`
+  // (`_functions.scss`) был портирован, а вызовы его к нам не доехали, поэтому
+  // все шестнадцать `--peer-avatar-*` оставались необъявленными и правила
+  // `--color-top`/`--color-bottom` в `tweb/_avatar.scss` умирали целиком.
+  // Значения дословные; "saved" закомментирован и в оригинале (base.scss:175).
+  @include avatar-color("red", #FF845E, #D45246);
+  @include avatar-color("orange", #FEBB5B, #F68136);
+  @include avatar-color("violet", #B694F9, #6C61DF);
+  @include avatar-color("green", #9AD164, #46BA43);
+  @include avatar-color("cyan", #53edd6, #28c9b7);
+  @include avatar-color("blue", #5CAFFA, #408ACF);
+  @include avatar-color("pink", #FF8AAC, #D95574);
+  @include avatar-color("archive", #B8C2CC, #9EAAB5);
+  // Форумная аватарка — скруглённый квадрат (tweb base.scss:192).
+  --avatar-border-radius-forum: 37%;
   // ── Шкала размеров шрифта (tweb base.scss:105-115) — единый набор токенов
   // вместо хардкода font-size: NNpx по компонентам. Значения 1:1; шкала
   // ФИКСИРОВАННАЯ (UI-хром не масштабируется настройкой размера текста — им
@@ -245,6 +271,24 @@
   // tweb base.scss:32,46-47 — множитель зеркалирования и origin'ы для RTL.
   // Класс is-rtl мы не ставим (RTL-режима нет) — значения LTR-ветки.
   --reflect: 1;
+  // tweb base.scss:33-37, вместе с его комментарием: «Real value is set in the
+  // @supports block by the html safe-area padding below; 0 here is the no-env()
+  // fallback so calc() consumers never see an undefined var».
+  //
+  // Ноль здесь — не заглушка, а несущая строка. Её потребитель — закрытое
+  // состояние правой колонки (`tweb/_rightSidebar.scss`: transform панели
+  // считается через эту переменную), и без объявления весь calc() становится
+  // «invalid at computed-value time», а `transform` откатывается к `none`:
+  // панель не уезжает за край (не закрывается) и открывается без анимации,
+  // потому что открытое и закрытое состояния совпадают. Пин —
+  // `styles/rightColumnVars.test.ts`.
+  //
+  // Переопределение из tweb base.scss:408-424 (`min(16px, env(safe-area-inset-
+  // right))` под @supports) НЕ портировано сознательно: оно компенсирует
+  // safe-area-padding у `html`, которого у нас нет вовсе (`env(safe-area-inset-*)`
+  // по стилям не встречается ни разу). Портировать его в отрыве от padding'а
+  // значило бы сдвигать панель на величину, которую никто не занял.
+  --safe-area-inset-inline-end: 0px;
   --transform-origin-left-center: left center;
   --transform-origin-right-center: right center;
 }
