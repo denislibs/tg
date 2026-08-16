@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import rootScope, { type BroadcastEvents } from '@lib/rootScope'
 import type { Message } from '../models'
 import type { MessageOp } from '../realtime/messageOps'
-import { applyOpsToMirror, mirrorWindow, mirrorMessage, resetMessagesMirror } from './messagesMirror'
+import { applyOpsToMirror, mirrorWindow, mirrorMessage, putMirrorPage, resetMessagesMirror, winKey } from './messagesMirror'
+import { winKey as winKeyFromStore } from '@stores/messagesStore'
 
 const CHAT = 50
 const THREAD = 60
@@ -51,9 +52,9 @@ afterEach(() => {
 
 const ids = (key: string) => (mirrorWindow(key) ?? []).map((m) => m.id)
 
-// Единственный вход в зеркало на этом этапе — поток операций. Страничного API
-// (setWindow/prepend/append) здесь нет: страницу истории кладёт тот, кто её
-// грузит, а грузить её будет сама императивная лента (этап 2).
+// Точечные изменения приезжают в зеркало потоком операций; страницу истории
+// кладёт тот, кто её грузит, — императивная лента через `putMirrorPage`
+// (см. отдельный describe ниже).
 const seed = (key: string, msgs: Message[]) =>
   applyOpsToMirror(msgs.map((m): MessageOp => ({ op: 'insert', key, msg: m })))
 
@@ -262,5 +263,71 @@ describe('messagesMirror — операции объявляются событ�
     applyOpsToMirror(ops)
     rootScope.removeEventListener('history_append', spy)
     expect(seen).toEqual([[1, 2], [1, 2]])
+  })
+})
+
+// Ключ окна переехал сюда из `stores/messagesStore` (этап 2): он принадлежит
+// САМОМУ окну, а не его zustand-копии, и стор уходит вместе с React-лентой
+// (этап 7) — императивная лента не имеет права на него ссылаться.
+describe('winKey — ключ окна живёт в зеркале', () => {
+  it('основное окно чата и окно треда', () => {
+    expect(winKey(CHAT)).toBe('50')
+    expect(winKey(CHAT, THREAD)).toBe('50:60')
+    // null/undefined треда — основное окно, а не "50:null".
+    expect(winKey(CHAT, null)).toBe('50')
+    expect(winKey(CHAT, undefined)).toBe('50')
+  })
+
+  it('stores/messagesStore реэкспортирует ТУ ЖЕ функцию, а не свою копию', () => {
+    // Две независимые реализации ключа развели бы окно стора и окно зеркала:
+    // проектор кормит обе копии одним и тем же `op.key`.
+    expect(winKeyFromStore).toBe(winKey)
+  })
+})
+
+// Страница истории — единственный вход в зеркало, идущий НЕ от операции воркера
+// (порт tweb: `historyStorage` наполняет тот, кто грузит историю, а
+// `bubbles.ts::performHistoryResult` читает загруженное).
+describe('putMirrorPage — страница истории', () => {
+  it('заводит окно, которого ещё не было', () => {
+    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2 })])
+    expect(ids(winKey(CHAT))).toEqual([1, 2])
+  })
+
+  it('не объявляет событий: страницу рисует сам загрузивший, синхронно после вызова', () => {
+    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 })])
+    expect(captured).toEqual([])
+  })
+
+  it('сливается с окном по возрастанию seq, а не подменяет его', () => {
+    seed(winKey(CHAT), [msg({ id: 5, seq: 5 })])
+    captured.length = 0
+    putMirrorPage(winKey(CHAT), [msg({ id: 3, seq: 3 }), msg({ id: 4, seq: 4 })])
+    expect(ids(winKey(CHAT))).toEqual([3, 4, 5])
+  })
+
+  it('НЕ вытесняет бабл «отправляется…»: у него ключ дедупа c:${clientId}', () => {
+    // Ровно тот дефект, ради которого слияние идёт через dedupAsc: у
+    // неотправленного бабла seq — выдумка владельца (maxSeq + 1), и страница с
+    // настоящим сообщением того же seq не должна стирать бабл с экрана.
+    seed(winKey(CHAT), [msg({ id: -1, seq: 9, senderId: ME, clientId: 'c-1', out: true })])
+    captured.length = 0
+    putMirrorPage(winKey(CHAT), [msg({ id: 700, seq: 9 })])
+    // Оба живы. Порядок при равном seq — стабильный (`[...prev, ...page]`), то
+    // есть уже стоящий бабл остаётся на месте, а страница дописывается за ним.
+    expect(ids(winKey(CHAT))).toEqual([-1, 700])
+  })
+
+  it('своя более свежая копия того же сообщения выигрывает у старой', () => {
+    putMirrorPage(winKey(CHAT), [msg({ id: 8, seq: 8, text: 'старое' })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 8, seq: 8, text: 'новое' })])
+    expect(mirrorWindow(winKey(CHAT))?.map((m) => m.text)).toEqual(['новое'])
+  })
+
+  it('окна разных ключей не смешиваются', () => {
+    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 })])
+    putMirrorPage(winKey(CHAT, THREAD), [msg({ id: 2, seq: 2, threadRootId: THREAD })])
+    expect(ids(winKey(CHAT))).toEqual([1])
+    expect(ids(winKey(CHAT, THREAD))).toEqual([2])
   })
 })

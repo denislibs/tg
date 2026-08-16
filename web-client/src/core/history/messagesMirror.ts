@@ -16,10 +16,6 @@
 // web-client/CLAUDE.md).
 //
 // Чего здесь нет и почему:
-// * страничного API (setWindow/prepend/append): страницу истории в зеркало
-//   кладёт тот, кто её грузит, а грузит её сама лента (`bubbles.ts` в tweb зовёт
-//   `getHistory` и вставляет полученное). Ленты ещё нет — значит нет и
-//   потребителя, а мёртвый код мы не заводим (CLAUDE.md). Придёт с этапом 2;
 // * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
 //   tweb — у нас нет источника (наш поток операций per-окно, а multiappend в
 //   tweb per-сообщение);
@@ -29,8 +25,19 @@
 //   geo_live_update, reaction/star_reaction — таблица в web-client/CLAUDE.md):
 //   их правит только стор, зеркало узнает о них, когда они станут операциями.
 import type { Message } from '../models'
-import { applyOp, type MessageOp } from '../realtime/messageOps'
+import { applyOp, dedupAsc, type MessageOp } from '../realtime/messageOps'
 import rootScope from '@lib/rootScope'
+
+/** Ключ окна: основное окно чата ("50") или его тред — форум-топик /
+ *  комментарии ("50:60"). Аналог tweb `chat.messagesStorageKey`, которым
+ *  подписки `bubbles.ts` отсеивают события чужого окна.
+ *
+ *  Живёт здесь, а не в `stores/messagesStore`: ключ — свойство САМОГО окна, а не
+ *  его zustand-копии, и потребитель у него теперь не один (императивная лента
+ *  зеркала и React-лента стора). `stores/messagesStore` реэкспортирует его
+ *  отсюда — лента не имеет права зависеть от стора (см. этап 7). */
+export const winKey = (chatId: number, threadRootId?: number | null): string =>
+  threadRootId ? `${chatId}:${threadRootId}` : String(chatId)
 
 // key (winKey: "chatId" | "chatId:threadRoot") → сообщения окна, по возрастанию
 // seq — тот же порядок и та же дедупликация, что у окна в сторе.
@@ -66,6 +73,27 @@ export function mirrorMessage(chatId: number, seq: number): Message | undefined 
     if (m) return m
   }
   return undefined
+}
+
+/** Положить в окно страницу истории — единственный вход, которым в зеркало
+ *  попадает НЕ операция воркера, а результат `messages.getHistory`.
+ *
+ *  Так же устроен tweb: `historyStorage` наполняет тот, кто грузит историю
+ *  (`appMessagesManager.getHistory` → `mergeHistoryResult`), а лента
+ *  (`bubbles.ts::performHistoryResult`) уже читает загруженное. Событий здесь
+ *  НЕТ намеренно: `history_append` в tweb объявляет появление НОВОГО сообщения,
+ *  а не доезд страницы — страницу рисует сам загрузивший, синхронно после
+ *  этого вызова.
+ *
+ *  Слияние (а не подмена окна) идёт через тот же `dedupAsc`, что и операции:
+ *  ключ неотправленного бабла — `c:${clientId}`, серверного — `s:${seq}`
+ *  (`core/realtime/messageOps.ts::dedupKey`), поэтому страница не может
+ *  вытеснить из окна бабл «отправляется…», который воркер уже объявил
+ *  операцией, а пришедшая позже страница выигрывает у своей же более старой
+ *  копии того же сообщения. */
+export function putMirrorPage(key: string, msgs: readonly Message[]): void {
+  const prev = windows.get(key) ?? EMPTY
+  windows.set(key, dedupAsc([...prev, ...msgs]))
 }
 
 /** Кадр rt:logging_out: окна прошлой сессии обязаны исчезнуть — зеркало отдаёт

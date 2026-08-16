@@ -14,10 +14,13 @@ import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCh
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
+import { winKey } from '../core/history/messagesMirror'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
-export const winKey = (chatId: number, threadRootId?: number | null): string =>
-  threadRootId ? `${chatId}:${threadRootId}` : String(chatId)
+// Определение переехало в `core/history/messagesMirror` — ключ принадлежит окну,
+// а не его zustand-копии, и этот стор уходит вместе с React-лентой (этап 7).
+// Реэкспорт — чтобы существующие импорты `@stores/messagesStore` не разъехались.
+export { winKey }
 
 export interface ChatWindow {
   msgs: Message[]

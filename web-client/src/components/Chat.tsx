@@ -54,6 +54,8 @@ import { shiftGradientWithScroll } from '../core/chat/activeGradient'
 import liteMode from '../helpers/liteMode'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
+import VanillaFeed from './chat/VanillaFeed'
+import { AppConfig } from '../config/app'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import SimilarChannels from './messages/SimilarChannels'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
@@ -1322,6 +1324,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
             меняется вместе с плейтами, и скролл компенсируется по дельте. */}
         {/* `no-select` — как в tweb (selection.ts:433): гасит `user-select: text`
             у .bubble-content, чтобы drag-выделение не красило текст. */}
+        {/* Перенос ленты на императивный DOM идёт под флагом VITE_VANILLA_FEED
+            (по умолчанию ВЫКЛЮЧЕН): под ним React-лента не рендерится вовсе, всё
+            дерево `.bubbles` строит vanilla-порт `chat/bubbles.ts`. Пин на эту
+            развилку — `Chat.vanillaFeed.test.ts` (Chat.tsx нельзя отрендерить в
+            тесте, см. «Тесты» в web-client/CLAUDE.md). */}
+        {AppConfig.vanillaFeed ? (
+          <VanillaFeed chatId={numericChatId} threadRootId={threadRootId} />
+        ) : (
         <div
           ref={bubblesRef}
           className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'no-select' : '', selectingCls)}
@@ -1375,6 +1385,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           )}
         </div>
         </div>
+        )}
 
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width
