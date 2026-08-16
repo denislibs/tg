@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -213,7 +214,7 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(msg))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
 }
 
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
@@ -376,11 +377,25 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid type")
 		return
 	}
+	// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+	// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
+	// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
+	// Ошибка (нет зеркала и дозавести нечего) — понятный 404, а не запись
+	// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
+	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, body.ThreadRootID)
+	if errors.Is(terr, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "comment thread not found")
+		return
+	}
+	if terr != nil {
+		writeError(w, http.StatusInternalServerError, "send failed")
+		return
+	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
 		ReplyToID: body.ReplyToID, ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
-		ThreadRootID: body.ThreadRootID,
+		ThreadRootID: threadRoot,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
@@ -411,7 +426,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "send failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(msg))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
 }
 
 func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
@@ -436,10 +451,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "history failed")
 			return
 		}
-		out := make([]map[string]any, 0, len(a.Messages))
-		for _, m := range a.Messages {
-			out = append(out, messageJSON(m))
-		}
+		out := messagesJSON(r.Context(), h.svc, a.Messages)
 		writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": a.Count, "reached_top": a.ReachedTop, "reached_bottom": a.ReachedBottom})
 		return
 	}
@@ -457,10 +469,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(res.Messages))
-	for _, m := range res.Messages {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, res.Messages)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -595,7 +604,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "edit failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(msg))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
 }
 
 type factCheckBody struct {
@@ -641,7 +650,7 @@ func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "set fact check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(msg))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
 }
 
 // RemoveFactCheck — DELETE /chats/{chatID}/messages/{msgID}/factcheck.
@@ -758,10 +767,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "forward failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, msgs)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
 }
 
@@ -803,10 +809,7 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list pins")
 		return
 	}
-	out := make([]map[string]any, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, msgs)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
 }
 
@@ -874,10 +877,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "media history failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(res.Messages))
-	for _, m := range res.Messages {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, res.Messages)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -904,10 +904,7 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(res.Messages))
-	for _, m := range res.Messages {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, res.Messages)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -977,10 +974,7 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(res.Messages))
-	for _, m := range res.Messages {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, res.Messages)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -1036,7 +1030,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send poll")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
 }
 
 // VotePoll — POST /polls/{pollID}/vote {options:[0,2]}: голос (пустой список — отзыв).
@@ -1126,7 +1120,7 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send checklist")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
 }
 
 // ToggleChecklistItem — POST /checklists/{id}/items/{itemID}/toggle: отметить/
@@ -1318,7 +1312,7 @@ func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSON(m))
+	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
 }
 
 func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
@@ -1569,10 +1563,7 @@ func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, messageJSON(m))
-	}
+	out := messagesJSON(r.Context(), h.svc, msgs)
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
@@ -1958,6 +1949,32 @@ func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
 		})
 	}
 	return out
+}
+
+// messagesJSON — ЕДИНАЯ точка, которой обязан отдавать наружу список
+// сообщений любой хендлер: батчево переводит thread_root_id из внутреннего
+// id зеркала (где комментарий физически висит — см.
+// usecase/chat/discussion.go) в id ПОСТА, который знает клиент (см.
+// Interactor.ExternalizeThreadRoots), и только потом сериализует. Один
+// резолв на весь список — не по запросу на сообщение (N+1 недопустим).
+// Использовать вместо messageJSON(m) в цикле; сбой резолва не должен ронять
+// всю выдачу — тогда сообщения уезжают с внутренним id, что лучше 500-й.
+func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domain.Message) []map[string]any {
+	ext, err := svc.ExternalizeThreadRoots(ctx, msgs)
+	if err != nil {
+		ext = msgs
+	}
+	out := make([]map[string]any, 0, len(ext))
+	for _, m := range ext {
+		out = append(out, messageJSON(m))
+	}
+	return out
+}
+
+// messageJSONOut — то же самое для одного сообщения (Send/EditMessage/
+// SetFactCheck/UpdateGeoLive/PostComment и т.п. — ответы с одним сообщением).
+func messageJSONOut(ctx context.Context, svc *usecasechat.Interactor, m domain.Message) map[string]any {
+	return messagesJSON(ctx, svc, []domain.Message{m})[0]
 }
 
 func messageJSON(m domain.Message) map[string]any {

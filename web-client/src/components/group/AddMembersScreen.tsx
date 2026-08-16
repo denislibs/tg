@@ -2,20 +2,20 @@
 // поиск (локально + глобально по людям), кандидаты с квадратными чекбоксами и
 // статусом; уже состоящие в группе видны с проставленным неактивным чекбоксом.
 // Угловая кнопка-галочка добавляет выбранных.
+//
+// Разметка — левый вариант селектора tweb: `selector-square selector-left`
+// с чипами выбранных в поле поиска (дампы `14-left-30-new-group-members`
+// и `14-left-30b-new-group-members-selected`).
 import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from '../settings/kit'
-import InputSearch from '../../shared/ui/InputSearch'
-import UserAvatar from '../UserAvatar'
-import Checkbox from '../../shared/ui/Checkbox'
+import PeerSelector from '../../shared/ui/PeerSelector'
 import Spinner from '../../shared/ui/Spinner'
-import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../../stores/chatsStore'
 import { lastSeenLabel } from '../../core/presence'
-import s from './GroupEditFlow.module.scss'
 
 export default function AddMembersScreen({
   chatId,
@@ -60,19 +60,27 @@ export default function AddMembersScreen({
     }
   }, [q, managers])
 
-  const list = useMemo(() => {
+  // Фильтрация своя (`noFilter` у селектора): выдачу глобального поиска
+  // повторно по имени фильтровать нельзя — сервер матчит и по username.
+  const peers = useMemo(() => {
     const query = q.trim().toLowerCase()
     const base = candidates.filter((c) => !query || c.name.toLowerCase().includes(query))
     const seen = new Set(base.map((c) => c.id))
     const extra = found.filter((u) => !seen.has(u.id))
     // уже участники — видны с проставленным неактивным чекбоксом (как в Telegram)
-    return [...base, ...extra]
-  }, [candidates, q, found])
-
-  const toggle = (id: number) => {
-    if (existing.has(id)) return
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
+    return [...base, ...extra].map((c) => {
+      const p = presence[c.id]
+      return {
+        id: c.id,
+        name: c.name,
+        avatarUrl: c.avatarUrl,
+        subtitle: p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang),
+        // уже участник: галочка стоит, снять нельзя, чипа не даёт
+        disabled: existing.has(c.id),
+        checked: existing.has(c.id),
+      }
+    })
+  }, [candidates, q, found, presence, existing, t, lang])
 
   const confirm = async () => {
     if (!selected.length || saving) return
@@ -88,37 +96,22 @@ export default function AddMembersScreen({
 
   return (
     <SettingsScreen title="Add Members" onBack={onClose} zIndex={70}>
-      <div className={s.search}>
-        <InputSearch value={q} onChange={setQ} placeholder={t('Search')} />
-      </div>
-      <div className={s.cardList}>
-        {list.length === 0 && (
-          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: 16, display: 'block', textAlign: 'center' }}>
-            {t('No Results')}
-          </Text>
-        )}
-        {list.map((c) => {
-          const p = presence[c.id]
-          const isMember = existing.has(c.id)
-          return (
-            <div key={c.id} className={s.memberRow} onClick={() => toggle(c.id)} style={isMember ? { cursor: 'default' } : undefined}>
-              <Checkbox checked={isMember || selected.includes(c.id)} disabled={isMember} shape="square" size={20} />
-              <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} online={p?.online} />
-              <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--primary-text-color)">{c.name}</Text>
-                <Text noWrap size={14} color="var(--secondary-text-color)">
-                  {p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang)}
-                </Text>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <PeerSelector
+        peers={peers}
+        mode="multi"
+        design="square"
+        side="left"
+        noFilter
+        onQueryChange={setQ}
+        selected={selected}
+        onSelectedChange={setSelected}
+        empty={{ title: 'No Results' }}
+      />
 
       {selected.length > 0 && (
-        <div className={s.fab} onClick={() => void confirm()}>
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => void confirm()}>
           {saving ? <Spinner size={24} /> : <TgIcon name="check" />}
-        </div>
+        </button>
       )}
     </SettingsScreen>
   )

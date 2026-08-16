@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
 import { useAuthGate } from './useAuthGate'
+import { useChatInfoCard } from './useChatInfoCard'
 import { ManagersProvider } from './useManagers'
 import type { Managers } from '../../client/bootstrap'
 import rootScope from '@lib/rootScope'
@@ -30,6 +31,8 @@ import { RT } from '../realtime/events'
 import type { User } from '../managers/authManager'
 import { useAppStateStore, setAppState } from '../../stores/appState'
 import { useChatsStore } from '../../stores/chatsStore'
+import { useChatStackStore } from '../../stores/chatStackStore'
+import { saveChatPosition, getChatPosition, clearChatPositions } from '../chat/chatPositions'
 import { bootPrefetch, setBootData } from '../../client/bootData'
 
 const ME: User = {
@@ -65,6 +68,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     vi.restoreAllMocks()
     useAppStateStore.setState({ folders: [] })
     useChatsStore.setState({ dialogs: [] })
+    useChatStackStore.setState({ stack: [] }, false)
+    clearChatPositions()
   })
 
   // Ключевой пин раунда 4: канал ЗНАЧЕНИЯ сессией не управляет. Любая
@@ -106,6 +111,8 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     setAppState('folders', [folder])
     useChatsStore.setState({ dialogs: [{ chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
+    useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' })
+    saveChatPosition(1, undefined, { top: 777 })
     const clearAll = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers(clearAll)) })
 
@@ -118,8 +125,37 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     // аккаунта не должны дожить до входа под следующим.
     expect(useAppStateStore.getState().folders).toEqual([])
     expect(useChatsStore.getState().dialogs).toEqual([])
+    // Стек колонки чата и сохранённые позиции ленты — то же самое: без явной
+    // очистки `resolveChat` (App.tsx) всегда возвращает ChatEntity (реальный/
+    // черновик/синтетический фолбэк), поэтому колонка после входа под другим
+    // аккаунтом показала бы прежний peerId прошлого аккаунта.
+    expect(useChatStackStore.getState().stack).toEqual([])
+    expect(getChatPosition(1, undefined)).toBeUndefined()
     await act(async () => { await Promise.resolve() }) // managers.persist.clearAll() — микротаска
     expect(clearAll).toHaveBeenCalled()
+  })
+
+  // Карточки чатов (права/memberCount) useChatInfoCard показывает из кэша
+  // синхронно, ДО ответа сети — без сброса на логауте следующий аккаунт увидел
+  // бы права предыдущего (например, композер вместо плашки в чужом канале).
+  it('логаут стирает кэш карточек чатов — следующий вход стартует с «права неизвестны»', async () => {
+    const cardOf = vi.fn().mockResolvedValue({
+      type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionChatId: 0,
+      slowmodeSeconds: 0, chargeStars: 0, defaultPermissions: 31,
+    })
+    const managers = { ...testManagers(), groups: { card: cardOf, members: async () => [] } } as unknown as Managers
+    const info = () => useChatInfoCard({ isRealChat: true, isChannel: true, numericChatId: 909 })
+
+    const first = renderHook(() => ({ gate: useAuthGate(), info: info() }), { wrapper: withManagers(managers) })
+    await act(async () => { await Promise.resolve() }) // карточка приезжает → в кэш
+    expect(first.result.current.info.permissionsKnown).toBe(true)
+
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
+    first.unmount()
+
+    const second = renderHook(() => info(), { wrapper: withManagers(managers) })
+    expect(second.result.current.card).toBeNull()
+    expect(second.result.current.permissionsKnown).toBe(false)
   })
 
   // Что ломается без reload: соседняя вкладка осталась бы authed=true (или

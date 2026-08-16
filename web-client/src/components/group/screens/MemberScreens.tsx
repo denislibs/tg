@@ -1,31 +1,35 @@
 // group/screens/MemberScreens.tsx
 // Управление участниками: чёрный список (tweb removedUsers), ограниченные
 // участники и экран гранулярных ограничений (tweb userPermissions).
+// Списки — `shared/ui/PeerSelector` (порт tweb appSelectPeers), дамп
+// `15-right-09-removed-users` (включая пустое состояние с уточкой UtyanSearch).
 import { useMemo, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
-import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
-import InputSearch from '../../../shared/ui/InputSearch'
+import PeerSelector from '../../../shared/ui/PeerSelector'
 import TgIcon from '../../TgIcon'
-import LottieSticker from '../../LottieSticker'
 import { useT } from '../../../i18n'
 import { type GroupEdit, type EditMember, PERMS } from '../../../core/hooks/useGroupEdit'
-import UserAvatar from '../../UserAvatar'
-import { MemberPicker } from './shared'
-import s from '../GroupEditFlow.module.scss'
+import { MemberPicker, memberToPeer } from './shared'
+import { MemberHeaderSection } from './AdminScreens'
 
 // ── Чёрный список (tweb removedUsers, уточка UtyanSearch при пустоте) ────────
 export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const [q, setQ] = useState('')
   const [picking, setPicking] = useState(false)
-  const list = useMemo(
-    () => g.bans.filter((b) => b.name.toLowerCase().includes(q.trim().toLowerCase())),
-    [g.bans, q],
-  )
   const bannable = useMemo(
     () => g.members.filter((m) => m.role === 'member'),
     [g.members],
+  )
+  const peers = useMemo(
+    () => g.bans.map((b) => memberToPeer(b, {
+      actions: (
+        <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unban(b.userId)} title={t('Unban')}>
+          <TgIcon name="close" size={20} />
+        </IconButton>
+      ),
+    })),
+    [g, t],
   )
 
   return (
@@ -45,36 +49,18 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
         />
       ) : null}
     >
-      <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
-      <Text size={13.5} color="var(--secondary-text-color)" className={s.bansCaption}>
-        {t('Users removed by group admins cannot rejoin via invite links.')}
-      </Text>
-      {list.length === 0 ? (
-        <div className={s.duck}>
-          <LottieSticker name="UtyanSearch" size={120} />
-          <Text size={17} weight={600} color="var(--primary-text-color)">{t('No Results')}</Text>
-          <Text size={14.5} color="var(--secondary-text-color)">{t('Try searching.')}</Text>
-        </div>
-      ) : (
-        <Section>
-          {list.map((b) => (
-            <div key={b.userId} className={s.memberRow}>
-              <UserAvatar id={b.userId} name={b.name} avatarUrl={b.avatarUrl} />
-              <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--primary-text-color)">{b.name}</Text>
-              </div>
-              <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unban(b.userId)} title={t('Unban')}>
-                <TgIcon name="close" size={20} />
-              </IconButton>
-            </div>
-          ))}
-        </Section>
-      )}
+      <PeerSelector
+        peers={peers}
+        caption={t('Users removed by group admins cannot rejoin via invite links.')}
+        empty={{ title: 'No Results', description: 'Try searching.' }}
+      />
 
+      {/* Кнопка-действие экрана — вендорная `.btn-circle.btn-corner`
+          (tweb `btnAddMembers`), а не свой FAB. */}
       {g.canBan && (
-        <div className={s.fab} onClick={() => setPicking(true)}>
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => setPicking(true)}>
           <TgIcon name="adduser" />
-        </div>
+        </button>
       )}
 
     </SettingsScreen>
@@ -114,14 +100,9 @@ export function MemberRestrictScreen({
         </IconButton>
       }
     >
-      <Section>
-        <div className={s.memberRow}>
-          <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
-          <div className={s.memberBody}>
-            <Text noWrap size={16} color="var(--primary-text-color)">{member.name}</Text>
-          </div>
-        </div>
-      </Section>
+      <MemberHeaderSection member={member} />
+      {/* tweb userPermissions: те же тумблеры-ограничения, что в правах группы
+          (дамп `15-right-16-user-admin-rights`) — снятый тумблер красный. */}
       <Section caption="What can this member do?">
         {PERMS.map((p) => (
           <Row
@@ -129,6 +110,7 @@ export function MemberRestrictScreen({
             label={p.label}
             translate={false}
             toggle
+            restriction
             checked={(allowed & p.bit) !== 0}
             onClick={() => setAllowed((a) => (a ^ p.bit) >>> 0)}
           />
@@ -146,43 +128,28 @@ export function MemberRestrictScreen({
 // ── Ограниченные участники (tweb список restricted, кнопка «снять ограничение») ──
 export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const [q, setQ] = useState('')
-  const list = useMemo(
-    () => g.restricted.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase())),
-    [g.restricted, q],
-  )
-  const deniedLabels = (denied: number): string => {
-    const off = PERMS.filter((p) => (denied & p.bit) !== 0).map((p) => t(p.label))
-    return off.length ? off.join(', ') : t('None')
-  }
+  const peers = useMemo(() => {
+    const deniedLabels = (denied: number): string => {
+      const off = PERMS.filter((p) => (denied & p.bit) !== 0).map((p) => t(p.label))
+      return off.length ? off.join(', ') : t('None')
+    }
+    return g.restricted.map((r) => memberToPeer(r, {
+      subtitle: `${t('Restricted')}: ${deniedLabels(r.deniedRights)}`,
+      actions: (
+        <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
+          <TgIcon name="close" size={20} />
+        </IconButton>
+      ),
+    }))
+  }, [g, t])
 
   return (
     <SettingsScreen title="Restricted Users" onBack={onBack} zIndex={70}>
-      <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
-      <Text size={13.5} color="var(--secondary-text-color)" className={s.bansCaption}>
-        {t('These members have limited rights in this group.')}
-      </Text>
-      {list.length === 0 ? (
-        <div className={s.duck}>
-          <LottieSticker name="UtyanSearch" size={120} />
-          <Text size={17} weight={600} color="var(--primary-text-color)">{t('No Results')}</Text>
-        </div>
-      ) : (
-        <Section>
-          {list.map((r) => (
-            <div key={r.userId} className={s.memberRow}>
-              <UserAvatar id={r.userId} name={r.name} avatarUrl={r.avatarUrl} />
-              <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--primary-text-color)">{r.name}</Text>
-                <Text noWrap size={14} color="var(--secondary-text-color)">{t('Restricted')}: {deniedLabels(r.deniedRights)}</Text>
-              </div>
-              <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
-                <TgIcon name="close" size={20} />
-              </IconButton>
-            </div>
-          ))}
-        </Section>
-      )}
+      <PeerSelector
+        peers={peers}
+        caption={t('These members have limited rights in this group.')}
+        empty={{ title: 'No Results' }}
+      />
     </SettingsScreen>
   )
 }

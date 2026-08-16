@@ -180,6 +180,29 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 	return out, rows.Err()
 }
 
+// FeaturedSets — «трендовые» наборы: все наборы публичны, поэтому фичед — это
+// просто новейшие по созданию (id — serial, растёт с созданием), новые первыми.
+func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+setCols+`
+		   FROM sticker_sets s
+		  ORDER BY s.id DESC
+		  LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.StickerSet
+	for rows.Next() {
+		set, e := scanSet(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, set)
+	}
+	return out, rows.Err()
+}
+
 func (r *StickersRepo) TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error {
 	q := querier(ctx, r.pool)
 	if _, err := q.Exec(ctx,
@@ -193,6 +216,14 @@ func (r *StickersRepo) TouchRecent(ctx context.Context, userID, stickerID int64,
 		  WHERE user_id=$1 AND sticker_id NOT IN (
 		        SELECT sticker_id FROM recent_stickers
 		         WHERE user_id=$1 ORDER BY used_at DESC, sticker_id DESC LIMIT $2)`, userID, keep)
+	return err
+}
+
+// ClearRecent — стереть весь список недавних пользователя (кнопка «очистить»
+// в заголовке Recent эмодзи-дропдауна, tweb clearRecentStickers).
+func (r *StickersRepo) ClearRecent(ctx context.Context, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM recent_stickers WHERE user_id=$1`, userID)
 	return err
 }
 

@@ -61,7 +61,8 @@ export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps
           open={open}
           onClose={() => setOpen(false)}
           onExitComplete={() => setPos(null)}
-          style={{ left: pos.left, bottom: pos.bottom, transformOrigin: 'bottom left', minWidth: 220 }}
+          corner="top-right"
+          style={{ left: pos.left, bottom: pos.bottom, minWidth: 220 }}
         >
           <div className={s.sendAsHeader}>{t('Send As…')}</div>
           {peers.map((p) => (

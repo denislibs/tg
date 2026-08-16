@@ -87,7 +87,9 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
   ))
 
   const openTabMenu = (id: number, pos: CSSProperties) => openPopup((p) => (
-    <Menu open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} style={pos}>
+    // Правый клик всегда несёт left+top (координаты курсора) — панель растёт
+    // вниз-вправо от точки клика, transform-origin 'top left' (_button.scss:250).
+    <Menu open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} corner="bottom-right" style={pos}>
       {id === ALL_FOLDER_ID ? (
         <MenuItem
           icon={<TgIcon name="edit" size={20} />}

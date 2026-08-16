@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EntityType, MessageEntity } from '../core/models'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 import StickerMedia from './StickerMedia'
 import MessageSpoilerOverlay from './messages/MessageSpoilerOverlay'
 import { revealSpoiler } from '@lib/spoiler/spoilerReveal'
+import classNames from '../shared/lib/classNames'
 import s from './RichText.module.scss'
 
 // Matches URLs, t.me links, @usernames and #hashtags
@@ -36,19 +37,52 @@ export function emojiOnlyCount(text: string): number {
   return matches.length
 }
 
-/** Linkifies a plain text run (auto-links URLs / @mentions / #hashtags). */
+/**
+ * Автолинковка plain-прогона (URL / @mention / #hashtag). Классы и href — из
+ * tweb wrapRichText.ts: URL → `a.anchor-url` (601-603), @mention →
+ * `a.mention` c t.me-ссылкой (660-663), #hashtag → `a.anchor-hashtag` c
+ * `tg://search_hashtag?hashtag=` (627-636). Живой пример всех трёх — дамп поста
+ * канала `docs/research/tweb-dom/20-channel-01-post-formatted.json`.
+ */
 function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = []
   let last = 0
   for (const m of text.matchAll(ENTITY_RE)) {
     const idx = m.index ?? 0
     if (idx > last) out.push(text.slice(last, idx))
+    const raw = m[0]
+    const key = `${keyBase}-${idx}`
+    let cls = 'anchor-url'
+    let href: string | undefined
+    if (raw.startsWith('@')) {
+      cls = 'mention'
+      href = `https://t.me/${raw.slice(1)}`
+    } else if (raw.startsWith('#')) {
+      cls = 'anchor-hashtag'
+      href = `tg://search_hashtag?hashtag=${encodeURIComponent(raw.slice(1))}`
+    } else {
+      href = safeUrl(raw.startsWith('t.me/') ? `https://${raw}` : raw)
+    }
     out.push(
-      <span key={`${keyBase}-${idx}`} className={s.link} style={{ color: linkColor }}>
-        {m[0]}
-      </span>,
+      href ? (
+        <a
+          key={key}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          className={classNames(cls, s.link)}
+          style={{ color: linkColor }}
+        >
+          {raw}
+        </a>
+      ) : (
+        <span key={key} className={classNames(cls, s.link)} style={{ color: linkColor }}>
+          {raw}
+        </span>
+      ),
     )
-    last = idx + m[0].length
+    last = idx + raw.length
   }
   if (last < text.length) out.push(text.slice(last))
   return out
@@ -149,15 +183,23 @@ function toSegments(text: string, entities: MessageEntity[]): Seg[] {
   return segs
 }
 
-function segStyle(types: Set<EntityType>): CSSProperties {
-  const s: CSSProperties = {}
-  if (types.has('bold')) s.fontWeight = 600
-  if (types.has('italic')) s.fontStyle = 'italic'
-  const deco: string[] = []
-  if (types.has('underline')) deco.push('underline')
-  if (types.has('strikethrough')) deco.push('line-through')
-  if (deco.length) s.textDecoration = deco.join(' ')
-  return s
+/**
+ * Оборачивает содержимое семантическими тегами tweb (wrapRichText.ts): bold →
+ * `<strong>` (215-221), italic → `<em>` (227-233), underline → `<u>` (253-262),
+ * strikethrough → `<del>` (239-248). Раньше здесь были инлайновые
+ * `font-weight`/`font-style`/`text-decoration` на `<span>` — визуально похоже,
+ * но DOM расходился с дампом поста канала
+ * (`docs/research/tweb-dom/20-channel-01-post-formatted.json`), а вес шрифта
+ * не брался из темы (--font-weight-bold).
+ */
+function wrapFormatting(types: Set<EntityType>, content: ReactNode): ReactNode {
+  let out = content
+  // порядок вложения — как в tweb: сущности применяются по мере обхода списка
+  if (types.has('strikethrough')) out = <del>{out}</del>
+  if (types.has('underline')) out = <u>{out}</u>
+  if (types.has('italic')) out = <em>{out}</em>
+  if (types.has('bold')) out = <strong>{out}</strong>
+  return out
 }
 
 /**
@@ -237,21 +279,23 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
 
         // custom mention юзера без username (tweb messageEntityMentionName):
         // акцентный текст, как @mention-автолинк
+        // tweb messageEntityMentionName → `a.follow[data-follow]` (wrapRichText.ts:643-650)
         if (seg.types.has('text_mention')) {
           return (
-            <span key={key} style={{ color: linkColor, ...segStyle(seg.types) }}>
-              {seg.text}
+            <span key={key} className="follow" style={{ color: linkColor }}>
+              {wrapFormatting(seg.types, seg.text)}
             </span>
           )
         }
 
         let content: ReactNode = isLink ? (
+          // tweb messageEntityTextUrl/Url → `a.anchor-url` (wrapRichText.ts:601-603)
           <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className={s.anchor}
+            className={classNames('anchor-url', s.anchor)}
             style={{ color: linkColor }}
           >
             {seg.text}
@@ -263,17 +307,12 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
         )
 
         if (isCode) {
-          content = <code className={s.code}>{content}</code>
+          // tweb messageEntityCode → `code.code-code` (wrapRichText.ts:268-290)
+          content = <code className={classNames('code-code', s.code)}>{content}</code>
         }
         if (seg.types.has('spoiler')) content = <Spoiler>{content}</Spoiler>
 
-        const style = segStyle(seg.types)
-        const wrapped =
-          Object.keys(style).length > 0 ? (
-            <span style={style}>{content}</span>
-          ) : (
-            content
-          )
+        const wrapped = wrapFormatting(seg.types, content)
 
         if (isQuote) {
           return (

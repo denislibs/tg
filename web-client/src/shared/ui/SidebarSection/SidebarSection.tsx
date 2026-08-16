@@ -10,6 +10,15 @@ interface SidebarSectionProps {
   onActionClick?: () => void
   /** убрать тень карточки (tweb .no-shadow) */
   noShadow?: boolean
+  /** без `<hr>`-разделителя внутри секции (tweb settingSection.ts:42-47) */
+  noDelimiter?: boolean
+  /**
+   * Подпись ПОД содержимым секции — второй `.sidebar-left-section-content`
+   * с классом `sidebar-left-section-caption` (дамп 15-right-12: пояснение под
+   * полями «You can provide an optional description…»). В tweb это
+   * `SettingSection({caption})`, а не отдельный текст ниже карточки.
+   */
+  caption?: ReactNode
   /** убрать нижний margin (tweb .no-margin-bottom) */
   noMargin?: boolean
   /** контент без бокового инсета (tweb .full-width) */
@@ -29,6 +38,8 @@ export default function SidebarSection({
   action,
   onActionClick,
   noShadow,
+  noDelimiter,
+  caption,
   noMargin,
   fullWidth,
   className,
@@ -40,6 +51,7 @@ export default function SidebarSection({
         className={classNames(
           'sidebar-left-section',
           noShadow ? 'no-shadow' : '',
+          noDelimiter ? 'no-delimiter' : '',
           noMargin ? 'no-margin-bottom' : '',
           className ?? '',
         )}
@@ -55,6 +67,9 @@ export default function SidebarSection({
           </div>
         )}
         <div className={classNames('sidebar-left-section-content', fullWidth ? 'full-width' : '')}>{children}</div>
+        {caption != null && (
+          <div className="sidebar-left-section-content sidebar-left-section-caption">{caption}</div>
+        )}
       </div>
     </div>
   )

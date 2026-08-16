@@ -28,6 +28,15 @@ type fakeGroupRepo struct {
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
 	onCreate     func(id int64)                               // optional hook fired after a chat is created
+	// onSetDiscussion — опциональный хук, зеркалящий привязку группы обсуждения
+	// в общий store (store.discussionChat), которым пользуется fakeMsgs
+	// (MirrorByPost/MirrorsByPosts). В реальной БД оба репозитория читают одну
+	// колонку chats.discussion_chat_id — фейки обязаны вести себя так же.
+	onSetDiscussion func(channelID, groupID int64)
+	// getDiscussionErr — если не nil, GetDiscussion возвращает эту ошибку вместо
+	// обычного резолва; имитирует транзиентный сбой (обрыв соединения и т.п.)
+	// отдельно от легального «обсуждения нет» (disc==0, err==nil).
+	getDiscussionErr error
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
@@ -201,14 +210,21 @@ func (r *fakeGroupRepo) DeleteChat(_ context.Context, chatID int64) error {
 
 func (r *fakeGroupRepo) SetDiscussion(_ context.Context, channelID, groupID int64) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.discussion[channelID] = groupID
+	hook := r.onSetDiscussion
+	r.mu.Unlock()
+	if hook != nil {
+		hook(channelID, groupID)
+	}
 	return nil
 }
 
 func (r *fakeGroupRepo) GetDiscussion(_ context.Context, channelID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.getDiscussionErr != nil {
+		return 0, r.getDiscussionErr
+	}
 	return r.discussion[channelID], nil
 }
 

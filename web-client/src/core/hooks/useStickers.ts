@@ -65,7 +65,14 @@ export function useStickersPanel(active: boolean) {
     void managers.stickers.unfave(st.id).catch(() => {})
   }
 
-  return { ...data, markUsed, fave, unfave }
+  // Очистка недавних (tweb appStickersManager.clearRecentStickers): у сервера
+  // стирается список, локально секция recent схлопывается сразу.
+  const clearRecent = () => {
+    setData((d) => ({ ...d, recent: [] }))
+    void managers.stickers.clearRecent().catch(() => {})
+  }
+
+  return { ...data, markUsed, fave, unfave, clearRecent }
 }
 
 // Саджесты стикеров по эмодзи в композере (tweb StickersHelper.checkEmoticon):

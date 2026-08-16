@@ -25,6 +25,8 @@ type fakeRepo struct {
 	faved     map[int64]map[int64]int64
 	gifs      map[int64]map[int64]int64 // userID -> mediaID -> savedAt
 	media     map[int64]bool
+	// featuredLimit — лимит, с которым usecase позвал FeaturedSets (для пина featuredLim).
+	featuredLimit int
 }
 
 func newFakeRepo() *fakeRepo {
@@ -159,6 +161,22 @@ func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.
 	return nil, nil
 }
 
+func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSet, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.featuredLimit = limit
+	// Новейшие первыми (id растёт с созданием), не больше limit — как SQL-реализация.
+	var out []domain.StickerSet
+	for _, s := range f.sets {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 // trim оставляет keep записей с наибольшим временем.
 func trim(m map[int64]int64, keep int) {
 	for len(m) > keep {
@@ -206,6 +224,13 @@ func (f *fakeRepo) TouchRecent(_ context.Context, userID, stickerID int64, keep 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	touch(f.recent, userID, stickerID, f.tick(), keep)
+	return nil
+}
+
+func (f *fakeRepo) ClearRecent(_ context.Context, userID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.recent, userID)
 	return nil
 }
 
@@ -503,5 +528,26 @@ func TestCanUseStickerMedia(t *testing.T) {
 	}
 	if ok, _ := in.CanUseStickerMedia(ctx, 7, 555555); ok {
 		t.Fatalf("постороннее медиа: want false")
+	}
+}
+
+// Featured — тренды экрана поиска стикеров при пустом запросе: usecase отдаёт
+// новейшие наборы первыми и ограничивает выдачу featuredLim (40).
+func TestFeatured_NewestFirstAndLimit(t *testing.T) {
+	f := newFakeRepo()
+	in := New(f)
+	ctx := context.Background()
+	older, _ := seedSet(t, in, f, 1, "older_set", 1)
+	newer, _ := seedSet(t, in, f, 1, "newer_set", 1)
+
+	got, err := in.Featured(ctx)
+	if err != nil {
+		t.Fatalf("Featured: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
+		t.Fatalf("Featured: want [%d %d] (новые первыми), got %+v", newer.ID, older.ID, got)
+	}
+	if f.featuredLimit != featuredLim {
+		t.Fatalf("Featured: лимит репозиторию %d, want featuredLim=%d", f.featuredLimit, featuredLim)
 	}
 }

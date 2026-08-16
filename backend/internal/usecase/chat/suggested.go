@@ -212,6 +212,10 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	}
 	var msg domain.Message
 	var pts int64
+	// Зеркало поста (если у канала есть обсуждение) — доставляется участникам
+	// группы обсуждения ПОСЛЕ коммита, тем же publishMessageDelivery, что и
+	// обычная отправка (см. mirrorChannelPost/fanout.go).
+	var mirrorDeliv *mirrorDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		seq, e := i.msgs.NextSeq(ctx, sp.ChatID)
 		if e != nil {
@@ -225,13 +229,27 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 			return e
 		}
 		msg = m
+		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
+		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
+		// клиентское ThreadRootID (publishApprovedPost его и не проставляет).
+		md, e := i.mirrorChannelPost(ctx, msg)
+		if e != nil {
+			return e
+		}
+		mirrorDeliv = md
 		if msg.MediaID != nil {
 			one := []domain.Message{msg}
 			if e := i.hydrateMedia(ctx, one); e == nil {
 				msg = one[0]
 			}
 		}
-		payload, e := json.Marshal(messageUpdatePayload(msg))
+		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
+		// публикация одобренного поста сама не проставляет ThreadRootID (см.
+		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
+		// безусловно, тем же путём, что Send/ForwardMessages.
+		spOut := messageUpdatePayload(msg)
+		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+		payload, e := json.Marshal(spOut)
 		if e != nil {
 			return e
 		}
@@ -242,7 +260,13 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", messageUpdatePayload(msg), pts))
+		base := messageUpdatePayload(msg)
+		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
+	}
+	if mirrorDeliv != nil {
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	return msg, nil
 }

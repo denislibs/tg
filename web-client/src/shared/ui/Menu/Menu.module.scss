@@ -1,20 +1,16 @@
-// Menu рендерит глобальный `.btn-menu[.active]` (_button.scss:98): min-width,
-// padding var(--btn-menu-padding), radius, --menu-box-shadow, width:max-content,
-// фон/backdrop-filter и весь показ/скрытие (visibility + opacity + scale(.8)
-// с переходом --btn-menu-transition). От --btn-menu-padding считается инсетный
-// ховер пунктов, поэтому класс на панели обязателен.
+// Панель меню целиком стилизуется глобальным `.btn-menu` из
+// `styles/tweb/_button.scss` (min-width, padding var(--btn-menu-padding), radius,
+// --menu-box-shadow, фон/backdrop-filter, показ/скрытие через `.active`) —
+// своих классов у неё нет, позиционирование приходит инлайном из Menu.tsx.
 //
-// Здесь — только позиционирование: у tweb меню лежит абсолютом внутри
-// `.btn-menu-toggle`-хоста (`top: 100%`) и угол выбирается классом; у нас
-// вызывающий даёт fixed-координаты точки клика, панель живёт в портале.
+// Здесь остался только бэкдроп. У tweb его нет: там закрытие по клику вне ведёт
+// глобальный `contextMenuController` (слушает документ), а меню лежит абсолютом
+// внутри своего хоста. У нас панель уезжает в портал с fixed-координатами, и
+// перехватывающий слой — единственный способ поймать клик мимо, не заводя
+// глобальный контроллер. Узел лежит СНАРУЖИ `.btn-menu`, поэтому дерево самого
+// меню от него не отличается от tweb-эталона.
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 2000;
-}
-
-.panel.panel {
-  position: fixed;
-  top: auto;
-  z-index: 2001;
 }

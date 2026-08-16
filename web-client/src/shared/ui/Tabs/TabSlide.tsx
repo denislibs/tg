@@ -31,6 +31,7 @@ export default function TabSlide({
   tab,
   order,
   className,
+  containerClassName,
   keepMounted,
   children,
 }: {
@@ -38,6 +39,8 @@ export default function TabSlide({
   /** значения табов в порядке отображения — по нему считается направление */
   order: readonly TabValue[]
   className?: string
+  /** доп. классы самого `.tabs-container` (у tweb они свои у каждого хоста) */
+  containerClassName?: string
   /**
    * Держать в DOM ВСЕ уже показанные табы — так устроен оригинал: `.tabs-container`
    * хранит все свои `.tabs-tab`, а `selectTab` лишь переставляет класс `active`
@@ -148,6 +151,7 @@ export default function TabSlide({
     <div
       className={classNames(
         'tabs-container',
+        containerClassName ?? '',
         exiting ? 'animating' : '',
         exiting && backwardsRef.current ? 'backwards' : '',
       )}

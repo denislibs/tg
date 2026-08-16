@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -60,6 +61,11 @@ type store struct {
 	mentions   []mentionRow                        // message_mentions rows
 	readMarks  map[int64]map[int64][]readMark      // chatID -> userID -> история горизонта чтения
 
+	// discussionChat — channelID -> текущая привязанная группа обсуждения
+	// (chats.discussion_chat_id в реальной БД); 0/отсутствие — не привязана.
+	// Заполняется тестами напрямую (seedDiscussion), как и chatType.
+	discussionChat map[int64]int64
+
 	// автоудаление: период чата / глобальный период пользователя
 	autoDelete     map[int64]int
 	userAutoDelete map[int64]int
@@ -78,18 +84,28 @@ type destructCall struct{ ChatID, ReaderID, ReadSeq int64 }
 
 func newStore() *store {
 	return &store{
-		chatType:  map[int64]string{},
-		chatSeq:   map[int64]int64{},
-		members:   map[int64]map[int64]*member{},
-		messages:  map[int64][]domain.Message{},
-		owners:    map[int64]int64{},
-		mediaDims: map[int64]MediaDims{},
-		reactions: map[int64]map[int64]map[string]bool{},
-		viewed:    map[int64]map[int64]bool{},
-		pts:       map[int64]int64{},
-		date:      map[int64]int64{},
-		updates:   map[int64][]domain.Update{},
+		chatType:       map[int64]string{},
+		chatSeq:        map[int64]int64{},
+		members:        map[int64]map[int64]*member{},
+		messages:       map[int64][]domain.Message{},
+		owners:         map[int64]int64{},
+		mediaDims:      map[int64]MediaDims{},
+		reactions:      map[int64]map[int64]map[string]bool{},
+		viewed:         map[int64]map[int64]bool{},
+		pts:            map[int64]int64{},
+		date:           map[int64]int64{},
+		updates:        map[int64][]domain.Update{},
+		discussionChat: map[int64]int64{},
 	}
+}
+
+// seedDiscussion привязывает к каналу группу обсуждения (эквивалент
+// chats.discussion_chat_id=groupID в реальной БД) — нужно для MirrorByPost/
+// MirrorsByPosts, которые резолвят зеркало только в ТЕКУЩЕЙ группе канала.
+func (s *store) seedDiscussion(channelID, groupID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.discussionChat[channelID] = groupID
 }
 
 func (s *store) seedMedia(mediaID, ownerID int64) {
@@ -512,6 +528,30 @@ func (r fakeMsgs) Insert(_ context.Context, m domain.Message) (domain.Message, e
 	}
 	r.s.messages[m.ChatID] = append(r.s.messages[m.ChatID], m)
 	return m, nil
+}
+
+// racyMirrorMsgs оборачивает fakeMsgs и имитирует проигрыш гонки за создание
+// зеркала поста: следующая вставка зеркала (IsDiscussionMirror) сначала
+// молча кладёт строку в стор — как будто её только что успел вставить
+// параллельный «победитель» — а самому вызывающему возвращает ошибку, как
+// это делает уникальный индекс uq_messages_discussion_mirror в реальной БД
+// при конфликте. Нужен TestPostComment_RaceLazyMirror_UsesWinnersMirror.
+type racyMirrorMsgs struct {
+	fakeMsgs
+	failNextMirrorInsert *bool
+}
+
+var errMirrorConflict = errors.New("conflict: uq_messages_discussion_mirror")
+
+func (r racyMirrorMsgs) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
+	if m.IsDiscussionMirror && r.failNextMirrorInsert != nil && *r.failNextMirrorInsert {
+		*r.failNextMirrorInsert = false
+		if _, err := r.fakeMsgs.Insert(ctx, m); err != nil {
+			return domain.Message{}, err
+		}
+		return domain.Message{}, errMirrorConflict
+	}
+	return r.fakeMsgs.Insert(ctx, m)
 }
 
 func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPagePreview) error {
@@ -1047,6 +1087,155 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 		picked = picked[:limit]
 	}
 	return picked, nil
+}
+
+// resolveAlbumRoot возвращает id, на зеркало которого должен резолвиться
+// postID: если пост — элемент альбома (общий grouped_id), это id ПЕРВОГО
+// (минимального) элемента группы среди сообщений канала channelID; если нет
+// — id самого поста без изменений. Тред у альбома один — на зеркале первого
+// элемента, как getMainGroupedMessage в tweb (см. MessagesRepo.MirrorByPost).
+// Сознательно БЕЗ фильтра по m.Deleted при поиске минимума — та же политика
+// стабильности корня, что и в Postgres-версии (см. её комментарий): корень
+// не «переезжает», если первый элемент альбома потом удалили.
+// Вызывается уже под r.s.mu — своей блокировки не берёт.
+func (r fakeMsgs) resolveAlbumRoot(channelID, postID int64) int64 {
+	var grouped *string
+	for _, m := range r.s.messages[channelID] {
+		if m.ID == postID {
+			grouped = m.GroupedID
+			break
+		}
+	}
+	if grouped == nil {
+		return postID
+	}
+	root := int64(0)
+	for _, m := range r.s.messages[channelID] {
+		if m.GroupedID != nil && *m.GroupedID == *grouped && (root == 0 || m.ID < root) {
+			root = m.ID
+		}
+	}
+	return root
+}
+
+// MirrorByPost ищет зеркало ТОЛЬКО в текущей группе обсуждения канала
+// (discussionChat[channelID]) — сообщение с IsDiscussionMirror и совпадающими
+// FwdFromChatID/FwdFromMsgID. Зеркало в старой (отвязанной) группе обсуждения
+// найдено быть не должно — эквивалент SQL-версии MessagesRepo.MirrorByPost,
+// которая ограничивает выборку chat_id=(SELECT discussion_chat_id ...).
+// Для элемента альбома резолвится зеркало корня группы (resolveAlbumRoot).
+func (r fakeMsgs) MirrorByPost(_ context.Context, channelID, postID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	discID, ok := r.s.discussionChat[channelID]
+	if !ok || discID == 0 {
+		return 0, nil
+	}
+	root := r.resolveAlbumRoot(channelID, postID)
+	for _, m := range r.s.messages[discID] {
+		if m.IsDiscussionMirror && !m.Deleted &&
+			m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+			m.FwdFromMsgID != nil && *m.FwdFromMsgID == root {
+			return m.ID, nil
+		}
+	}
+	return 0, nil
+}
+
+// MirrorOfExactPost — как MirrorByPost, но БЕЗ resolveAlbumRoot: ищет
+// строку-зеркало строго этого postID. См. комментарий у Postgres-версии про
+// то, зачем mirrorChannelPost нужна именно эта, не коллапсирующая, проверка
+// идемпотентности.
+func (r fakeMsgs) MirrorOfExactPost(_ context.Context, channelID, postID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	discID, ok := r.s.discussionChat[channelID]
+	if !ok || discID == 0 {
+		return 0, nil
+	}
+	for _, m := range r.s.messages[discID] {
+		if m.IsDiscussionMirror && !m.Deleted &&
+			m.FwdFromChatID != nil && *m.FwdFromChatID == channelID &&
+			m.FwdFromMsgID != nil && *m.FwdFromMsgID == postID {
+			return m.ID, nil
+		}
+	}
+	return 0, nil
+}
+
+// MirrorsByPosts — батч-версия MirrorByPost, той же ограничивающей логики
+// (включая резолв через resolveAlbumRoot): результат ключуется исходным
+// postID, но найден по зеркалу корня его альбома.
+func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	discID, ok := r.s.discussionChat[channelID]
+	if !ok || discID == 0 {
+		return out, nil
+	}
+	roots := make(map[int64]int64, len(postIDs))
+	for _, id := range postIDs {
+		roots[id] = r.resolveAlbumRoot(channelID, id)
+	}
+	mirrorByRoot := map[int64]int64{}
+	for _, m := range r.s.messages[discID] {
+		if m.IsDiscussionMirror && !m.Deleted &&
+			m.FwdFromChatID != nil && *m.FwdFromChatID == channelID && m.FwdFromMsgID != nil {
+			mirrorByRoot[*m.FwdFromMsgID] = m.ID
+		}
+	}
+	for postID, root := range roots {
+		if mirror, ok := mirrorByRoot[root]; ok {
+			out[postID] = mirror
+		}
+	}
+	return out, nil
+}
+
+// AlbumMessages — см. комментарий у Postgres-версии (messagesrepo.go): все
+// сообщения альбома в чате, по возрастанию id, БЕЗ фильтра по Deleted (та же
+// политика, что и у resolveAlbumRoot — стабильность корня треда важнее).
+// r.s.messages[chatID] уже упорядочен по возрастанию ID (Insert только
+// добавляет в конец под общим счётчиком r.s.nextMsgID), досортировывать не
+// нужно.
+func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if m.GroupedID != nil && *m.GroupedID == groupedID {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// PostsByMirrors — обратный резолв к MirrorsByPosts: по id сообщений отдаёт
+// id постов, зеркалами которых они являются (перебор по PRIMARY KEY id, без
+// привязки к «текущей» группе обсуждения — см. комментарий у Postgres-версии).
+func (r fakeMsgs) PostsByMirrors(_ context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.IsDiscussionMirror && !m.Deleted && want[m.ID] && m.FwdFromMsgID != nil {
+				out[m.ID] = *m.FwdFromMsgID
+			}
+		}
+	}
+	return out, nil
 }
 
 func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {

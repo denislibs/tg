@@ -1,0 +1,92 @@
+// Порт tweb `src/scss/partials/_searchGroup.scss` (1:1).
+//
+// Секция-группа результатов поиска. Ключевое здесь —
+// `.search-group-people .chatlist { display: flex; flex-direction: row }`:
+// именно этот класс разворачивает ряд «недавних» в попапе «Поделиться»
+// (дамп `docs/research/tweb-dom/17-popup-01-forward-share.json`:
+// `.search-group.search-group-contacts.search-group-people.popup-forward-top-peers`)
+// в горизонтальную ленту. Без партиала `ul.chatlist` остаётся блочным
+// списком и чипы уезжают в колонку.
+//
+// Блоки `is-short`/`is-short-5` — обрезка выдачи в глобальном поиске
+// (tweb searchGroup.ts), `-with-scroll` — вариант со своим скроллером.
+@use '../foundation' as *;
+
+.search-group {
+  &-scrollable-x {
+    position: relative !important;
+    padding-inline: var(--section-margin-inline);
+    display: flex;
+
+    .chatlist {
+      width: auto;
+    }
+  }
+
+  &-with-scroll {
+    .search-group-content {
+      margin-inline: 0;
+    }
+
+    .search-group-inner {
+      overflow: hidden;
+    }
+  }
+
+  &.is-short {
+    .chatlist-chat:nth-child(n + 4) {
+      display: none;
+    }
+  }
+
+  &.is-short-5 {
+    .chatlist-chat:nth-child(n + 6) {
+      display: none;
+    }
+  }
+}
+
+.search-group-people {
+  .chatlist {
+    display: flex;
+    flex-direction: row;
+
+    &-chat {
+      width: 4.875rem;
+      max-width: 4.875rem;
+      height: 6.125rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      flex: 0 0 auto;
+      padding: 0 !important;
+      border-radius: $border-radius-medium;
+    }
+  }
+
+  .dialog {
+    &-title-details,
+    &-subtitle {
+      display: none;
+    }
+
+    &-title {
+      max-width: 65px;
+      padding-bottom: .75rem;
+
+      .user-title {
+        font-size: .75rem !important;
+      }
+
+      .peer-title {
+        font-weight: var(--font-weight-normal) !important;
+      }
+    }
+
+    &-avatar {
+      inset-inline-start: auto !important;
+      top: .75rem !important;
+    }
+  }
+}

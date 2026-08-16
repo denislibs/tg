@@ -271,7 +271,8 @@ export function useChatPopups(d: ChatPopupDeps) {
         open={p.open}
         onClose={p.requestClose}
         onExitComplete={p.onExitComplete}
-        style={{ top: anchor.top, right: anchor.right, transformOrigin: 'top right' }}
+        corner="bottom-left"
+        style={{ top: anchor.top, right: anchor.right }}
       >
         <MenuItem
           icon={<TgIcon name="checkround" size={20} />}

@@ -1,6 +1,8 @@
-// Popup рендерит глобальные `.popup[.active]` / `.popup-container` /
-// `.popup-header` / `.popup-close` / `.popup-title` (popups/_popup.scss):
-// скрим, паддинг, радиус карточки, фон, показ/скрытие и выезд снизу.
+// Popup рендерит глобальные `.popup[.active]` / `.popup-container.z-depth-1` /
+// `.popup-header` / `.popup-close` / `.popup-title` / `.popup-body` /
+// `.popup-footer` / `.popup-footer-button` (popups/_popup.scss + _bridge.scss):
+// скрим, паддинг, радиус карточки, фон, тень, показ/скрытие, выезд снизу и
+// геометрию футера с широкой кнопкой.
 // Здесь — только то, чего в партиале нет.
 
 .popup.popup {
@@ -24,38 +26,17 @@
   max-height: min(86vh, 720px);
 }
 
-// отступление от tweb: узел тела не носит глобальный класс `popup-body`.
-// В tweb (popups/index.ts) носит, но там `.popup-body { overflow: hidden }`, а
-// скроллит вложенный `.scrollable`; у нас скроллер — само тело, и глобальное
-// правило (та же специфичность, эмитится позже) задушило бы `overflow-y: auto`.
-// Поэтому `.popup-body` из партиала осознанно ни к чему не применяется.
-.body {
-  flex: 1;
+// ЗАДОКУМЕНТИРОВАННОЕ ОТСТУПЛЕНИЕ. Узел носит глобальный `popup-body` (класс из
+// tweb popups/index.ts:208), но две строки партиала перебиваются: там
+// `.popup-body { display: flex; flex-direction: column; overflow: hidden }` —
+// тело лишь контейнер, а скроллит вложенный `.scrollable` (Scrollable из
+// popups/index.ts:213). У нас скроллер — само тело, и дети выкладываются
+// потоком: под `display: flex` они бы сжимались flex-shrink'ом вместо
+// переполнения, а `overflow: hidden` задушил бы прокрутку. Класс удвоен
+// (0,2,0 против 0,1,0), потому что партиалы эмитятся ПОСЛЕ CSS-модулей.
+.body.body {
+  display: block;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-}
-
-// широкая accent-кнопка снизу (КОПИРОВАТЬ ССЫЛКУ / СОХРАНИТЬ / ...)
-// tweb $popup-footer-abitlarger-button-size: 48px
-.action {
-  flex: 0 0 auto;
-  margin: 14px 16px 16px;
-  text-align: center;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 24px;
-  background: var(--primary-color);
-  color: #fff;
-  font-size: var(--font-size-15);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  transition: background-color 0.15s ease-out;
-  text-transform: uppercase;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--dark-primary-color);
-  }
 }

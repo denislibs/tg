@@ -265,6 +265,28 @@
   white-space: nowrap !important;
 }
 
+// tweb base.scss:602-617 — цветовые классы-модификаторы. Их вешают прямо на
+// контейнер строки/кнопки (`removeRow.container.classList.add('danger')`,
+// `sidebarRight/tabs/chatInviteLinks.tsx:105`; `button.btn-icon.primary` в
+// дампе `15-right-13-group-permissions`). Наш `settings/kit` Row берёт
+// красный/акцентный цвет отсюда, а не инлайновым `color`.
+.danger {
+  color: var(--danger-color) !important;
+
+  .c-ripple__circle {
+    background-color: var(--light-danger-color);
+  }
+}
+
+.blue,
+.primary {
+  color: var(--primary-color) !important;
+
+  .c-ripple__circle {
+    background-color: var(--light-primary-color);
+  }
+}
+
 // tweb base.scss:554-558 — базовые цвета текста и каретки в полях ввода.
 // base.scss целиком не портируем (глобальный ресет), но без этого правила
 // набранный текст в поле поиска остаётся браузерно-чёрным и на тёмной теме
@@ -311,6 +333,24 @@ button:focus {
   &:after {
     transition: none !important;
   }
+}
+
+// tweb scss/components/_global.scss:131-141 — флекс-утилиты. `.justify-start`
+// несёт лента категорий эмодзи-дропдауна (`nav.menu-horizontal-div.no-stripe
+// .justify-start.emoticons-menu`, tab.ts:133): без него срабатывает дефолт
+// `.menu-horizontal-div { justify-content: space-around }` из _slider.scss и
+// кнопки категорий расползаются по всей ширине. `.justify-self-*` носят
+// кнопки search/delete нижней полосы `.emoji-tabs` (index.ts:77-81).
+.justify-start {
+  justify-content: flex-start !important;
+}
+
+.justify-self-start {
+  justify-self: flex-start !important;
+}
+
+.justify-self-end {
+  justify-self: flex-end !important;
 }
 
 // tweb base.scss:524-528 — узлы «только для узких экранов» (в медиавьюере это
@@ -593,3 +633,4 @@ button:focus {
 body > .btn-menu {
   z-index: 4000;
 }
+

@@ -1,6 +1,7 @@
 // src/core/gifs.ts
 // Общая GIF-логика вью-слоя: критерий «гифоподобного» медиа и модель элемента
 // вкладки GIF (сохранённый с нашего сервера или результат Tenor-поиска).
+import type { TenorGif } from './managers/stickersManager'
 
 /**
  * Элемент вкладки GIF. Ровно один источник:
@@ -20,6 +21,15 @@ export interface GifItem {
   mp4Url?: string
   previewUrl?: string
 }
+
+/** Tenor-результат → элемент кладки (общее для дропдауна и правой колонки). */
+export const tenorToItem = (g: TenorGif): GifItem => ({
+  key: `t-${g.id}`,
+  width: g.width,
+  height: g.height,
+  mp4Url: g.mp4Url,
+  previewUrl: g.previewUrl,
+})
 
 /**
  * «Гифоподобное» медиа рендерится автоплей-циклом без play-диска (tweb GIF):

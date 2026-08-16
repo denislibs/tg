@@ -57,12 +57,11 @@ export default function AttachMenu({
       open={open}
       onClose={() => setOpen(false)}
       onExitComplete={() => { onClose(); pending.current?.() }}
-      // Угол раскрытия — классом, как в tweb (btn-menu positionMenu ставит
+      // Угол раскрытия — проп `corner` (как в tweb positionMenu ставит
       // `top-right` = меню растёт ВВЕРХ от кнопки, начало трансформы снизу-слева).
-      // `was-open` tweb вешает вместе с `active` при открытии и больше не снимает
-      // (contextMenuController.ts:140); у нас панель монтируется уже открытой,
-      // поэтому класс стоит с рождения — это то же состояние.
-      className="top-right was-open"
+      // `was-open` навешивать вручную не нужно — Menu сам ставит его вместе с
+      // `active` при первом открытии и больше не снимает (см. Menu.tsx).
+      corner="top-right"
       style={{ left: anchor.left, bottom: anchor.bottom }}
     >
       <AttachMenuItem icon="image" text={t('Photo or Video')} onClick={pick(onPhotoVideo)} />

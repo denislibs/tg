@@ -13,12 +13,15 @@ export default function UserAvatar({
   avatarUrl,
   size = 'md',
   online,
+  className,
 }: {
   id?: number
   name: string
   avatarUrl?: string
   size?: AvatarSize | number
   online?: boolean
+  /** классы-модификаторы слота tweb (`dialog-avatar row-media`, `selector-user-avatar`) */
+  className?: string
 }) {
   const src = useAvatarSrc(avatarUrl)
   return (
@@ -28,6 +31,7 @@ export default function UserAvatar({
       src={src || undefined}
       text={name.charAt(0).toUpperCase() || '?'}
       online={online}
+      className={className}
     />
   )
 }

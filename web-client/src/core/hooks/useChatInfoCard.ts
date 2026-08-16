@@ -23,6 +23,23 @@ interface Card {
 const PERM_SEND_MESSAGES = 1
 const PERM_SEND_MEDIA = 2
 
+// Карточки уже открывавшихся чатов. Повторный вход отдаёт права СИНХРОННО, на
+// первом же рендере: без этого футер канала успевал показать плашку «нельзя
+// писать» (карточки нет → прав нет) и вернуть строку ввода, когда карточка
+// приезжала, — то самое дёрганье композера при переходе в канал из сайдбара.
+// Сеть при этом ходит как раньше (memberCount/права меняются), но её ответ уже
+// ничего не двигает — он совпадает с показанным.
+const cardCache = new Map<number, Card>()
+
+/**
+ * Сброс кэша при смене аккаунта — зовёт `resetAccountStateInMemory`
+ * (useAuthGate, обработчик rt:logging_out): права прошлого аккаунта в этих
+ * карточках чужие, а cache-first-показ выше отдал бы их следующему.
+ */
+export function resetChatCardCache(): void {
+  cardCache.clear()
+}
+
 interface InfoManagers {
   groups: {
     card(chatId: number): Promise<Card>
@@ -32,6 +49,12 @@ interface InfoManagers {
 
 export interface ChatInfoCard {
   card: Card | null
+  /**
+   * Известны ли права на запись. Для канала до приезда карточки это третье
+   * состояние — «неизвестно», а не «нельзя»: вывести из него плашку значит
+   * показать её всем, включая владельца канала (см. `canType` ниже).
+   */
+  permissionsKnown: boolean
   /** Channels: only posters (creator / POST_MESSAGES) may type; groups & private always can. */
   canType: boolean
   /** Групповые дефолт-права: может ли участник вообще писать (иначе — плашка вместо композера). */
@@ -51,22 +74,31 @@ export function useChatInfoCard(args: {
 }): ChatInfoCard {
   const { isRealChat, isChannel, numericChatId } = args
   const managers: InfoManagers = useManagers()
-  const [card, setCard] = useState<Card | null>(null)
+  // Загруженная карточка хранится ВМЕСТЕ с чатом, которому принадлежит. Сброс
+  // эффектом (`setCard(null)`) для этого не годится: на первом рендере после
+  // смены чата состояние ещё от прошлого — футер успевал вывести права чужого
+  // чата, и первая же раскладка _center уходила в плашку.
+  const [loaded, setLoaded] = useState<{ chatId: number; card: Card } | null>(null)
   const memberIds = useRef<Set<number>>(new Set())
   // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);
   // we seed members' presence on load and derive the count below — no local listener.
   const setPresence = useChatsStore((s) => s.setPresence)
 
+  // Карточка текущего чата: свежезагруженная, иначе снимок прошлого входа, иначе
+  // неизвестна. Проверка chatId — то самое отсечение чужого состояния.
+  const card = loaded?.chatId === numericChatId ? loaded.card : cardCache.get(numericChatId) ?? null
+
   // Fetch the card (type + memberCount) and, for groups, the member snapshot (seeds
   // memberIds + initial online state). Reset on chat change so no stale count leaks.
   useEffect(() => {
-    setCard(null)
     memberIds.current = new Set()
     if (!isRealChat) return
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive) return
-      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions })
+      const next: Card = { type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions }
+      cardCache.set(numericChatId, next)
+      setLoaded({ chatId: numericChatId, card: next })
       if (c.type === 'group') {
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return
@@ -85,6 +117,9 @@ export function useChatInfoCard(args: {
   const discussionsEnabled = isRealChat && isChannel && discussionChatId > 0
   const canPostChannel = card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) === 1
   const canType = !isChannel || canPostChannel
+  // Карточка не грузится вовсе (не «настоящий» чат — тред/черновик) — там прав
+  // и не будет, поведение прежнее; ждать надо только канал с карточкой в полёте.
+  const permissionsKnown = !isChannel || !isRealChat || card !== null
 
   // Групповые дефолт-права (admin/creator — без ограничений). До загрузки карточки
   // считаем, что можно (оптимистично), чтобы композер не мигал заблокированным.
@@ -102,5 +137,5 @@ export function useChatInfoCard(args: {
     return n
   })
 
-  return { card, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount }
+  return { card, permissionsKnown, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount }
 }

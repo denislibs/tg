@@ -158,7 +158,6 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
               icon={<TgIcon name="deleteuser" size={24} />}
               label={denyTitle}
               value={usersCountLabel(rule.denyUserIds.length, t)}
-              chevron
               onClick={() => setPicker('deny')}
             />
           )}
@@ -167,7 +166,6 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
               icon={<TgIcon name="adduser" size={24} />}
               label={allowTitle}
               value={usersCountLabel(rule.allowUserIds.length, t)}
-              chevron
               onClick={() => setPicker('allow')}
             />
           )}

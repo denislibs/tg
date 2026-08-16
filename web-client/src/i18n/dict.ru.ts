@@ -1176,6 +1176,9 @@ const ru: Dict = {
   // Стикеры (вкладка пикера, саджесты, настройки)
   Favorites: 'Избранное',
   'No stickers found': 'Стикеры не найдены',
+  // tweb ClearRecentStickersAlertTitle/AlertMessage (кнопка Clear уже есть выше)
+  'Clear Recent Stickers': 'Очистить недавние стикеры',
+  'Are you sure you want to clear your recent stickers?': 'Точно очистить недавние стикеры?',
   'Add to Favorites': 'В избранное',
   'Remove from Favorites': 'Убрать из избранного',
   'My Sticker Sets': 'Мои наборы стикеров',
@@ -1183,6 +1186,9 @@ const ru: Dict = {
   'Search sticker sets': 'Поиск наборов стикеров',
   stickers: 'стикеров',
   'No sticker sets installed': 'Нет установленных наборов',
+  // экраны поиска правой колонки (rightSidebar/StickersSearchTab)
+  'Search Stickers': 'Поиск стикеров',
+  Added: 'Добавлен',
   // GIF (вкладка пикера, контекстные меню)
   'Search GIFs': 'Поиск GIF',
   'Saved GIFs': 'Сохранённые GIF',

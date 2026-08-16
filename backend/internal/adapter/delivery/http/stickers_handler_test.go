@@ -1,10 +1,13 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 )
 
 // Представление стикера для клиента: кроме идентификаторов обязаны ехать
@@ -64,5 +67,57 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 	}
 	if got[0]["thumb"] != nil {
 		t.Fatalf("thumb = %#v, want null", got[0]["thumb"])
+	}
+}
+
+// featuredRepoStub — стаб порта stickers.Repo только под FeaturedSets: остальные
+// методы (встроенный nil-интерфейс) в этом хендлере не вызываются.
+type featuredRepoStub struct {
+	usecasestickers.Repo
+	sets []domain.StickerSet
+}
+
+func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSet, error) {
+	return s.sets, nil
+}
+
+// GET /sticker-sets/featured: 200 с наборами из usecase в конверте {"sets": […]}.
+func TestFeatured_ReturnsSets(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{sets: []domain.StickerSet{
+		{ID: 2, Slug: "newer", Title: "Newer", Kind: "sticker", StickerCount: 5},
+		{ID: 1, Slug: "older", Title: "Older", Kind: "sticker", StickerCount: 3},
+	}}))
+
+	w := httptest.NewRecorder()
+	h.Featured(w, httptest.NewRequest("GET", "/sticker-sets/featured", nil))
+	if w.Code != 200 {
+		t.Fatalf("code = %d, want 200", w.Code)
+	}
+	var body struct {
+		Sets []domain.StickerSet `json:"sets"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v (body %s)", err, w.Body.String())
+	}
+	if len(body.Sets) != 2 || body.Sets[0].ID != 2 || body.Sets[1].ID != 1 {
+		t.Fatalf("sets = %+v, want порядок репозитория [2 1]", body.Sets)
+	}
+}
+
+// Пустая выдача сериализуется как [], а не null — клиент мапит r.sets ?? [].
+func TestFeatured_EmptyIsArray(t *testing.T) {
+	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{}))
+
+	w := httptest.NewRecorder()
+	h.Featured(w, httptest.NewRequest("GET", "/sticker-sets/featured", nil))
+	if w.Code != 200 {
+		t.Fatalf("code = %d, want 200", w.Code)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if string(body["sets"]) != "[]" {
+		t.Fatalf(`sets = %s, want []`, body["sets"])
 	}
 }

@@ -14,6 +14,10 @@ import { enterAppPip, pipSupported } from '../core/pip'
 import rootScope from '@lib/rootScope'
 import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
+import { APP_VERSION_FULL } from '../core/version/versionCheck'
+
+/** куда ведёт футер подменю (tweb — свой CHANGELOG.md на гитхабе) */
+const CHANGELOG_URL = 'https://github.com/denislibs/messenger/blob/main/CHANGELOG.md'
 
 interface Props {
   open: boolean
@@ -33,7 +37,15 @@ interface Props {
 // Аватар аккаунта в списке (резолвит avatarUrl через media-токен воркера).
 function AccountAvatar({ account }: { account: PublicAccount }) {
   const src = useAvatarSrc(account.avatarUrl)
-  return <Avatar background={gradientFor(account.id)} text={account.name.charAt(0).toUpperCase()} src={src} size={26} />
+  return (
+    <Avatar
+      className="btn-menu-item-icon is-external btn-menu-item-avatar"
+      background={gradientFor(account.id)}
+      text={account.name.charAt(0).toUpperCase()}
+      src={src}
+      size={24}
+    />
+  )
 }
 
 export default function MainMenu({
@@ -58,17 +70,21 @@ export default function MainMenu({
   // Подменю «Ещё» якорится к своему пункту (не фикс-координаты).
   const moreItemRef = useRef<HTMLDivElement>(null)
   const [moreAnchor, setMoreAnchor] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
-  const toggleMore = () => {
+  // tweb раскрывает подменю ПО НАВЕДЕНИЮ (`createSubmenuTrigger.ts:53`
+  // `triggerEvent: 'mouseenter'`), клик по самому триггеру гасится
+  // (`stopPropagation`, там же:36-38) и меню не закрывает. Смещение [-5,-5] —
+  // оттуда же (offset в attachFloatingButtonMenu).
+  const openMore = () => {
     const r = moreItemRef.current?.getBoundingClientRect()
-    if (r) setMoreAnchor({ top: r.top, left: r.right + 4 })
-    setMoreOpen((o) => !o)
+    if (r) setMoreAnchor({ top: r.top - 5, left: r.right - 5 })
+    setMoreOpen(true)
   }
   const me = useChatsStore((s) => s.me)
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
-  const divider = (
-    <div style={{ height: '1px', background: 'var(--border-color)', margin: '6px 0' }} />
-  )
+  // Разделитель групп — обычный <hr>, как в tweb (`buttonMenu.ts:196`
+  // `options.separator = document.createElement('hr')`); стили — `_button.scss:633`.
+  const divider = <hr />
 
   // Мультиаккаунт: реестр аккаунтов (кроме активного) + лимит 4.
   const [accounts, setAccounts] = useState<PublicAccount[]>([])
@@ -109,6 +125,7 @@ export default function MainMenu({
   }
 
   const close = () => { setMoreOpen(false); onClose() }
+
   const openUrl = (url: string) => { window.open(url, '_blank', 'noopener'); close() }
 
   // Пункты подменю «Ещё» (tweb createMoreSubmenu). «Версию A» опускаем —
@@ -144,14 +161,22 @@ export default function MainMenu({
     <Menu
       open={open}
       onClose={close}
-      style={{ top: 68, left: 22, transformOrigin: 'top left' }}
+      corner="bottom-right"
+      style={{ top: 68, left: 22 }}
     >
-      {/* Account row — same height as items, small ringed avatar in the icon slot (tweb) */}
+      {/* Строка аккаунта: в tweb аватарка САМА является иконкой пункта —
+          `div.avatar.avatar-like.avatar-24.avatar-gradient.btn-menu-item-icon.is-external.btn-menu-item-avatar.active`
+          (дамп 18-burger-menu-full). Обёрток и колец инлайн-стилем нет: рамку
+          активного аккаунта рисует `.btn-menu-item-avatar.active`. */}
       <MenuItem
         icon={
-          <span style={{ padding: 2, borderRadius: '50%', border: '2px solid var(--primary-color)', display: 'flex' }}>
-            <Avatar background={gradientFor(me?.id ?? 0)} text={meName.charAt(0).toUpperCase()} src={meAvatar} size={26} />
-          </span>
+          <Avatar
+            className="btn-menu-item-icon is-external btn-menu-item-avatar active"
+            background={gradientFor(me?.id ?? 0)}
+            text={meName.charAt(0).toUpperCase()}
+            src={meAvatar}
+            size={24}
+          />
         }
         label={meName}
         onClick={onClose}
@@ -160,11 +185,7 @@ export default function MainMenu({
       {others.map((a) => (
         <MenuItem
           key={a.id}
-          icon={
-            <span style={{ padding: 2, display: 'flex' }}>
-              <AccountAvatar account={a} />
-            </span>
-          }
+          icon={<AccountAvatar account={a} />}
           label={a.name}
           onClick={() => void switchTo(a.id)}
         />
@@ -191,8 +212,9 @@ export default function MainMenu({
         <MenuItem
           icon={<TgIcon name="more" size={20} />}
           label={t('More')}
-          right={<TgIcon name="next" size={20} color="var(--secondary-text-color)" />}
-          onClick={toggleMore}
+          submenu
+          onMouseEnter={openMore}
+          onClick={openMore}
         />
       </div>
       {onLogout && (
@@ -203,17 +225,32 @@ export default function MainMenu({
       )}
     </Menu>
 
-    {/* Подменю «Ещё» (tweb createMoreSubmenu) — правее основного меню */}
+    {/* Подменю «Ещё» — правее основного меню. Классы панели 1:1 с tweb:
+        `btn-menu-submenu` вешает createSubmenuTrigger.ts:47, `sidebar-tools-submenu`
+        — sidebarLeft/index.ts:1007. */}
     <Menu
       open={moreOpen && open}
       onClose={close}
-      style={{ top: moreAnchor.top, left: moreAnchor.left, transformOrigin: 'top left' }}
+      className="btn-menu-submenu sidebar-tools-submenu"
+      corner="bottom-right"
+      style={{ top: moreAnchor.top, left: moreAnchor.left }}
     >
       {moreItems
         .filter((it) => it.show !== false)
         .map((it) => (
           <MenuItem key={it.label} icon={<TgIcon name={it.icon as never} size={20} />} label={t(it.label)} onClick={it.onClick} />
         ))}
+      {/* Футер меню — версия сборки ссылкой (tweb getVersionLink,
+          sidebarLeft/index.ts:1660-1672): a.btn-menu-footer > span.btn-menu-footer-text. */}
+      <a
+        className="btn-menu-footer"
+        href={CHANGELOG_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => { e.stopPropagation(); close() }}
+      >
+        <span className="btn-menu-footer-text">{`Telegram Web ${APP_VERSION_FULL}`}</span>
+      </a>
     </Menu>
     </>
   )
