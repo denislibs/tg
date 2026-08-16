@@ -273,16 +273,23 @@ export class TLottieItem {
     }
   }
 
+  // The export renders its OWN bitmap and never touches this.stagedFrame: the staged
+  // slot belongs to the playback loop, and deliver() empties it (the bitmap is
+  // transferred to the compositor) in a microtask that can land between our render
+  // and the paint below - painting from the slot then hits drawImage(undefined).
+  // A playing item (autoplay+loop: the sticker-search previews) delivers on every
+  // frame, so that window is the common case, not a corner one. One extra render
+  // per export is cheap - export runs once per sticker, for the thumb cache.
   public async exportFrame(frameNo?: number) {
     frameNo ??= this.stagedFrameNo ?? 0;
+    this.assertRenderable(frameNo);
 
-    if(this.stagedFrameNo !== frameNo || !this.stagedFrame) {
-      await this.renderOffscreen(frameNo, false); // no delivery - the staged bitmap must survive for the export
-    }
+    const bitmap = await this.heapToBitmap(this.renderToHeap(frameNo));
 
     const canvas = new OffscreenCanvas(this.width, this.height);
     const context = canvas.getContext('2d');
-    this.paintStaged(context);
+    paintFrameTinted(context, bitmap, this.color);
+    bitmap.close?.();
 
     const frame = canvas.transferToImageBitmap();
     return new SuperMessagePort.TransferableResult({frameNo, frame}, [frame]);
