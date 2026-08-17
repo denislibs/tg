@@ -110,6 +110,37 @@ function current(): HTMLMediaElement {
   return external ?? audio()
 }
 
+// ── Ванильный доступ к воспроизведению (для императивной ленты) ─────────────
+// tweb `AudioElement` не знает ни про какое реактивное состояние: он берёт СВОЙ
+// медиа-элемент у контроллера (`appMediaPlaybackController.addMedia({message})`,
+// audio.ts:591) и дальше слушает его же события (`addAudioListener`,
+// audio.ts:847-849). Порт обязан работать так же — иначе прогресс волны и
+// подпись времени поедут через сторовые ре-рендеры, которых в ленте нет.
+//
+// Отличие от оригинала (следствие нашей модели, не вкусовщина): у tweb <audio>
+// СВОЙ на каждое сообщение, поэтому `audio.paused` сам по себе отвечает «играю
+// ли я». У нас элемент один на приложение (плюс внешний <video> кружка), значит
+// «мой ли он сейчас» — отдельный факт, и его объявляет владелец: `currentTrack`
+// + подписка ниже. Второго состояния это не заводит — `subscribeCurrentTrack`
+// читает ровно ту запись, которую контроллер и так делает в стор.
+
+/** Медиа-элемент, который сейчас ведёт воспроизведение (tweb — результат `addMedia`). */
+export function getPlaybackMedia(): HTMLMediaElement {
+  return current()
+}
+
+/** Трек, который сейчас в плеере (`null` — плеер пуст). */
+export function getCurrentTrack(): AudioTrack | null {
+  return useAudioStore.getState().track
+}
+
+/** Подписка на СМЕНУ текущего трека; возвращает отписку. */
+export function subscribeCurrentTrack(cb: (track: AudioTrack | null) => void): () => void {
+  return useAudioStore.subscribe((s, p) => {
+    if (s.track !== p.track) cb(s.track)
+  })
+}
+
 // Отцепить внешний элемент (опционально ставя его на паузу).
 function detachExternal(pause: boolean) {
   if (!external) return
