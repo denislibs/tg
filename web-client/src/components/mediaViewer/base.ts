@@ -48,12 +48,16 @@ import { createElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import EventListenerBase from '@helpers/eventListenerBase'
-import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
+import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent, hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import findUpClassName from '@helpers/dom/findUpClassName'
+// Была локальная 16-строчная копия прямо в этом файле — вынесена в общий порт
+// (`helpers/dom/createVideo.ts`), чтобы у императивной ленты и вьювера был один
+// и тот же элемент, а не два разных набора атрибутов.
+import createVideo from '@helpers/dom/createVideo'
 import { isFullScreen } from '@helpers/dom/fullScreen'
 import getVisibleRect from '@helpers/dom/getVisibleRect'
 import liteMode from '@helpers/liteMode'
@@ -68,7 +72,6 @@ import blur from '@helpers/blur'
 import renderImageFromUrl, { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { glyph, type IconName } from '@core/tgico-icons'
-import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import { calcImageInBox } from '@core/dom/calcImageInBox'
 import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
 import { cachedMediaUrl } from '@core/mediaCache'
@@ -170,23 +173,6 @@ function resolveDirectMediaUrl(media: ViewerMedia): Promise<string> | undefined 
   const { url } = media
   if (url === undefined) return undefined
   return Promise.resolve(typeof url === 'function' ? url() : url)
-}
-
-// Порт tweb `helpers/dom/createVideo.ts` в объёме вьювера: элемент +
-// playsinline + уборка src по смерти middleware после тяжёлой анимации;
-// `pip` — разрешить видео уходить в Picture-in-Picture (живое видео плеера;
-// снапшоты/gif остаются с запретом, tweb createVideo:22). HLS/stream-учёт
-// tweb (`initVideoHls`/`toggleStreamInUse`) не портирован — HLS-качеств нет.
-function createVideo({ pip, middleware }: { pip?: boolean, middleware: Middleware }): HTMLVideoElement {
-  const video = document.createElement('video')
-  if (!pip) video.disablePictureInPicture = true
-  video.setAttribute('playsinline', 'true')
-  middleware.onDestroy(async () => {
-    await getHeavyAnimationPromise()
-    video.src = ''
-    video.load()
-  })
-  return video
 }
 
 // span.tgico — порт tweb `Icon()` (icon.ts:28-37): глиф шрифтом tgico + классы.
