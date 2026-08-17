@@ -456,3 +456,25 @@ func TestMessageJSON_AudioTags(t *testing.T) {
 		t.Fatalf("media_performer must be absent without tags: %v", bare["media_performer"])
 	}
 }
+
+// Признак гифки в витрине истории: media_animated (telegram
+// documentAttributeAnimated → tweb doc.type === 'gif'). У обычного видео ключа
+// нет — клиент рисует таймкод и кнопку play вместо бейджа «GIF».
+func TestMessageJSON_MediaAnimated(t *testing.T) {
+	gif := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "video",
+		MediaWidth: 320, MediaHeight: 240, MediaMime: "video/mp4",
+		MediaDuration: 3, MediaSize: 400000, MediaName: "cat.mp4", MediaAnimated: true,
+	})
+	if gif["media_animated"] != true {
+		t.Fatalf("media_animated = %v, want true", gif["media_animated"])
+	}
+
+	video := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "video",
+		MediaWidth: 1280, MediaHeight: 720, MediaMime: "video/mp4", MediaDuration: 61,
+	})
+	if _, ok := video["media_animated"]; ok {
+		t.Fatalf("media_animated must be absent for a plain video: %v", video["media_animated"])
+	}
+}

@@ -2147,6 +2147,12 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.MediaPerformer != "" {
 		j["media_performer"] = m.MediaPerformer
 	}
+	// Гифка (telegram documentAttributeAnimated → tweb doc.type === 'gif'):
+	// бабл рисуется бейджем «GIF» и зацикленным автоплеем, а не таймкодом.
+	// Ключа нет — обычное видео/картинка (как у остальных флагов витрины).
+	if m.MediaAnimated {
+		j["media_animated"] = true
+	}
 	if m.PaidMediaPrice != nil {
 		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}

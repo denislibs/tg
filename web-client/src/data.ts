@@ -81,6 +81,9 @@ export interface ConvMsg {
   // = mediaTitle ?? mediaName, подпись = mediaPerformer, а без него — размер файла
   mediaTitle?: string
   mediaPerformer?: string
+  /** медиа проигрывается как гифка (tweb doc.type === 'gif') — см.
+   * `core/models.ts::Message.mediaAnimated`; приходит только когда true */
+  mediaAnimated?: boolean
   // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
   paidMedia?: { price: number; locked: boolean }
   media?: MediaItem // single photo/video placeholder

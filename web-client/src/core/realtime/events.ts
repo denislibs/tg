@@ -149,6 +149,16 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
   /** ID3-теги трека (tweb documentAttributeAudio.title/performer) — опциональны */
   media_title?: string; media_performer?: string;
+  /** медиа проигрывается как гифка (tweb documentAttributeAnimated → doc.type ===
+   * 'gif'); ключ приходит только когда true — см. Message.mediaAnimated */
+  media_animated?: boolean;
+  /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
+   * sender_id, который остаётся реальным. Бэк кладёт ключ в кадр
+   * (usecase/chat/frame.go: messageUpdatePayload), и без него у живого
+   * сообщения не было ни имени автора, ни правила `out` (send-as рисуется
+   * ВХОДЯЩИМ даже когда отправитель — я, см. models.deriveOut) — расхождение
+   * держалось до перезагрузки истории. */
+  send_as?: { chat_id: number; title?: string; photo_id?: number } | null;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
   secret_media?: import('../models').SecretMedia;
   /** вид эффекта сообщения (наш аналог Telegram message effects) */

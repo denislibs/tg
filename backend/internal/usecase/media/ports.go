@@ -77,6 +77,9 @@ type ProcessResult struct {
 	// сторона ~40px, сотни байт), едет прямо в payload как blur_preview.
 	// nil для невизуального медиа.
 	Stripped []byte
+	// Animated — гифка (telegram documentAttributeAnimated → tweb doc.type ===
+	// 'gif'): image/gif либо видео без аудиодорожки. См. domain.Media.Animated.
+	Animated bool
 }
 
 // ProcessedMeta is the persisted form of a ProcessResult: the thumbnail is already
@@ -88,6 +91,11 @@ type ProcessedMeta struct {
 	ThumbKey                string
 	// BlurPreview — сгенерированное stripped-превью (см. ProcessResult.Stripped).
 	BlurPreview []byte
+	// Animated — см. ProcessResult.Animated. В отличие от остальных полей
+	// пишется ВСЕГДА (у bool нет «пустого» значения, отличимого от false),
+	// поэтому каждый вызывающий обязан передать сюда актуальный res.Animated,
+	// а не нулевое значение.
+	Animated bool
 }
 
 // MediaProcessor probes and derives assets from an uploaded original (ffmpeg).

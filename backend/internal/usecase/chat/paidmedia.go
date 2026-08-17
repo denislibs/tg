@@ -68,6 +68,7 @@ func stripLockedMedia(m *domain.Message) {
 	m.MediaDuration = 0
 	m.MediaTitle = ""
 	m.MediaPerformer = ""
+	m.MediaAnimated = false
 }
 
 // lockedPaidCopy — копия сообщения в заблокированном виде (для рассылки платного

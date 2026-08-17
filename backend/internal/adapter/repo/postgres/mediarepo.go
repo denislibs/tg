@@ -36,10 +36,10 @@ func (r *MediaRepo) GetByID(ctx context.Context, id int64) (domain.Media, error)
 	q := querier(ctx, r.pool)
 	var m domain.Media
 	err := q.QueryRow(ctx,
-		`SELECT id, owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, thumb_key, upload_id, upload_total, waveform, created_at
+		`SELECT id, owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, thumb_key, upload_id, upload_total, waveform, animated, created_at
 		 FROM media WHERE id=$1`, id).Scan(
 		&m.ID, &m.OwnerID, &m.Bucket, &m.ObjectKey, &m.Mime, &m.Size,
-		&m.Width, &m.Height, &m.Duration, &m.BlurPreview, &m.FileName, &m.ThumbKey, &m.UploadID, &m.UploadTotal, &m.Waveform, &m.CreatedAt)
+		&m.Width, &m.Height, &m.Duration, &m.BlurPreview, &m.FileName, &m.ThumbKey, &m.UploadID, &m.UploadTotal, &m.Waveform, &m.Animated, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Media{}, domain.ErrNotFound
 	}
@@ -50,6 +50,11 @@ func (r *MediaRepo) GetByID(ctx context.Context, id int64) (domain.Media, error)
 // audio tags, and the generated thumbnail/poster key). Zero/empty values are left
 // as-is so a probe that only learns dimensions doesn't clobber an existing thumb;
 // a file without title/artist tags leaves those columns NULL.
+//
+// Исключение — animated: у bool нет «пустого» значения, отличимого от false,
+// поэтому он пишется безусловно. Владелец признака один (обработка ffmpeg), и
+// оба её входа (process и StrippedPreview) прогоняют один и тот же Process,
+// т.е. кладут одинаковое значение — затирания не будет.
 func (r *MediaRepo) UpdateProcessed(ctx context.Context, id int64, res usecasemedia.ProcessedMeta) error {
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx,
@@ -60,9 +65,10 @@ func (r *MediaRepo) UpdateProcessed(ctx context.Context, id int64, res usecaseme
 		   thumb_key = CASE WHEN $5 <> '' THEN $5 ELSE thumb_key END,
 		   title     = CASE WHEN $6 <> '' THEN $6 ELSE title END,
 		   performer = CASE WHEN $7 <> '' THEN $7 ELSE performer END,
-		   blur_preview = CASE WHEN COALESCE(octet_length($8::bytea), 0) > 0 THEN $8::bytea ELSE blur_preview END
+		   blur_preview = CASE WHEN COALESCE(octet_length($8::bytea), 0) > 0 THEN $8::bytea ELSE blur_preview END,
+		   animated  = $9
 		 WHERE id=$1`,
-		id, res.Width, res.Height, res.Duration, res.ThumbKey, res.Title, res.Performer, res.BlurPreview)
+		id, res.Width, res.Height, res.Duration, res.ThumbKey, res.Title, res.Performer, res.BlurPreview, res.Animated)
 	return err
 }
 

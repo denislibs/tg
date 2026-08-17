@@ -681,6 +681,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
         mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
         mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
         mediaSize: evt.media_size, mediaName: evt.media_name,
+        // Теги трека и признак гифки — тоже мета контента, которую бэк вычищает
+        // у заблокированного медиа (stripLockedMedia) и возвращает в кадре
+        // разблокировки: без них платное аудио остаётся без подписи, а платная
+        // гифка рисуется видео-баблом до перезагрузки истории.
+        mediaTitle: evt.media_title, mediaPerformer: evt.media_performer,
+        mediaAnimated: evt.media_animated,
         paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
       }
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, ...fields }))

@@ -111,6 +111,11 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.MediaPerformer != "" {
 		p["media_performer"] = m.MediaPerformer
 	}
+	// Гифка — тот же ключ, что в history read model (chat_handler): иначе живая
+	// гифка приезжает видео-баблом (таймкод + кнопка play) до перезагрузки истории.
+	if m.MediaAnimated {
+		p["media_animated"] = true
+	}
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}

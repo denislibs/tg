@@ -1,6 +1,7 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { deriveOut, mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
+import { deriveOut, fromNewMessageEvt, mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
+import type { NewMessageEvt } from './realtime/events'
 
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
@@ -123,6 +124,51 @@ describe('mapMessage', () => {
     const base = { ...raw, factcheck: null }
     expect(mapMessage(base).factCheck).toBeUndefined()
   })
+
+  // Медиа-мета сообщения — то, из чего бабл строится ЦЕЛИКОМ, без отдельного
+  // запроса меты медиа: точный бокс (media_w/media_h → setAttachmentSize),
+  // мгновенное превью до сети (media_blur — наш аналог tweb photoStrippedSize),
+  // постер/thumb, mime, длительность, размер, имя, теги трека и признак гифки.
+  // Проверяем весь блок разом: пропуск одного ключа в маппере — это молча
+  // потерянное поле у КАЖДОГО медиа-бабла.
+  it('маппит медиа-мету сообщения (media_* → media*)', () => {
+    const raw: RawMessage = {
+      id: 30, chat_id: 1, seq: 7, sender_id: 1, type: 'video', text: '',
+      reply_to_id: null, media_id: 42, created_at: '2026-06-24T10:01:00Z',
+      media_w: 1600, media_h: 900, media_mime: 'video/mp4', media_blur: 'AAECAw==',
+      media_has_thumb: true, media_duration: 61, media_size: 9000000, media_name: 'clip.mp4',
+      media_title: 'Track One', media_performer: 'denis1488', media_animated: true,
+    }
+    const m = mapMessage(raw)
+    expect({
+      mediaId: m.mediaId,
+      mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight, mediaMime: m.mediaMime,
+      mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb, mediaDuration: m.mediaDuration,
+      mediaSize: m.mediaSize, mediaName: m.mediaName,
+      mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
+    }).toEqual({
+      mediaId: 42,
+      mediaWidth: 1600, mediaHeight: 900, mediaMime: 'video/mp4',
+      mediaBlur: 'AAECAw==', mediaHasThumb: true, mediaDuration: 61,
+      mediaSize: 9000000, mediaName: 'clip.mp4',
+      mediaTitle: 'Track One', mediaPerformer: 'denis1488', mediaAnimated: true,
+    })
+
+    // Медиа без обработки/без признака: ключей нет — поля undefined, а не false.
+    const bare = mapMessage({ ...raw, media_animated: undefined, media_has_thumb: undefined })
+    expect(bare.mediaAnimated).toBeUndefined()
+    expect(bare.mediaHasThumb).toBeUndefined()
+  })
+
+  it('маппит send_as (отображаемый автор канала/группы)', () => {
+    const raw: RawMessage = {
+      id: 31, chat_id: 1, seq: 8, sender_id: 7, type: 'text', text: 'post',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+      send_as: { chat_id: 9, title: 'Канал', photo_id: 5 },
+    }
+    expect(mapMessage(raw).sendAs).toEqual({ chatId: 9, title: 'Канал', photoId: 5 })
+    expect(mapMessage({ ...raw, send_as: null }).sendAs).toBeUndefined()
+  })
 })
 
 describe('mapDraft', () => {
@@ -201,5 +247,59 @@ describe('deriveOut — исходящее/входящее', () => {
 
   it('send-as: пост от имени канала/группы рисуется ВХОДЯЩИМ, хотя отправитель — я', () => {
     expect(deriveOut({ senderId: 7, sendAs: { chatId: 9, title: 'Канал' } }, 7)).toBe(false)
+  })
+})
+
+// Живой кадр new_message → Message. Единственная точка этого перехода
+// (зовётся из messagesManager.cacheLive), поэтому непереложенное здесь поле
+// отсутствует у сообщения до перезагрузки истории — и только у неё.
+describe('fromNewMessageEvt — проводной кадр в модель', () => {
+  const base: NewMessageEvt = {
+    chat_id: 1, msg_id: 10, seq: 5, sender_id: 7, type: 'text', text: 'hi',
+    media_id: null, created_at: '2026-06-24T10:01:00Z',
+  }
+
+  // Бэк кладёт send_as в кадр (usecase/chat/frame.go: messageUpdatePayload), но
+  // маппер его не переносил: у живого сообщения не было ни имени автора
+  // (бабл рисуется от имени канала/группы), ни правила `out` — send-as рисуется
+  // ВХОДЯЩИМ даже когда отправитель я. Расхождение держалось до перезагрузки.
+  it('переносит send_as живого кадра', () => {
+    const m = fromNewMessageEvt({ ...base, send_as: { chat_id: 9, title: 'Канал', photo_id: 5 } })
+    expect(m.sendAs).toEqual({ chatId: 9, title: 'Канал', photoId: 5 })
+  })
+
+  it('без send_as в кадре — sendAs undefined (обычная отправка)', () => {
+    expect(fromNewMessageEvt(base).sendAs).toBeUndefined()
+  })
+
+  it('send-as живого кадра делает сообщение ВХОДЯЩИМ у самого отправителя', () => {
+    const meId = 7
+    const asChannel = fromNewMessageEvt({ ...base, send_as: { chat_id: 9, title: 'Канал' } })
+    const asMyself = fromNewMessageEvt(base)
+    expect(deriveOut(asChannel, meId)).toBe(false)
+    expect(deriveOut(asMyself, meId)).toBe(true)
+  })
+
+  // Медиа-мета кадра — те же ключи, что у витрины истории: живой медиа-бабл
+  // обязан рисоваться полноценно (точный бокс, превью до сети, признак гифки),
+  // а не заглушкой до перезагрузки окна.
+  it('переносит медиа-мету кадра целиком', () => {
+    const m = fromNewMessageEvt({
+      ...base, type: 'video', media_id: 42,
+      media_w: 320, media_h: 240, media_mime: 'video/mp4', media_blur: 'AAECAw==',
+      media_has_thumb: true, media_duration: 3, media_size: 400000, media_name: 'cat.mp4',
+      media_title: 'T', media_performer: 'P', media_animated: true,
+    })
+    expect({
+      mediaId: m.mediaId, mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight,
+      mediaMime: m.mediaMime, mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb,
+      mediaDuration: m.mediaDuration, mediaSize: m.mediaSize, mediaName: m.mediaName,
+      mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
+    }).toEqual({
+      mediaId: 42, mediaWidth: 320, mediaHeight: 240,
+      mediaMime: 'video/mp4', mediaBlur: 'AAECAw==', mediaHasThumb: true,
+      mediaDuration: 3, mediaSize: 400000, mediaName: 'cat.mp4',
+      mediaTitle: 'T', mediaPerformer: 'P', mediaAnimated: true,
+    })
   })
 })

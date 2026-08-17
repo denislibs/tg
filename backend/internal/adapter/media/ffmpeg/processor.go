@@ -69,6 +69,7 @@ func (p *Processor) Process(ctx context.Context, src io.Reader, mime string) (us
 
 	isImage := strings.HasPrefix(mime, "image/")
 	isVideo := strings.HasPrefix(mime, "video/")
+	res.Animated = isAnimated(mime, meta)
 	// Теги трека — только для аудио (у Telegram они живут в
 	// documentAttributeAudio): у видео/картинок контейнерный title/artist от
 	// кодировщика к подписи бабла отношения не имеет.
@@ -86,12 +87,30 @@ func (p *Processor) Process(ctx context.Context, src io.Reader, mime string) (us
 	return res, nil
 }
 
+// isAnimated решает, гифка ли это (telegram documentAttributeAnimated, из
+// которого tweb выводит doc.type === 'gif', appDocsManager.ts:219-226):
+// настоящий image/gif либо видео БЕЗ аудиодорожки — ровно та семантика, по
+// которой Telegram помечает такие файлы nosound_video и относит их к гифкам.
+//
+// meta.HasVideo в условии обязателен: провалившийся ffprobe отдаёт нулевой
+// probeMeta, и без него КАЖДОЕ видео с непрочитанного файла стало бы гифкой.
+func isAnimated(mime string, meta probeMeta) bool {
+	if mime == "image/gif" {
+		return true
+	}
+	return strings.HasPrefix(mime, "video/") && meta.HasVideo && !meta.HasAudio
+}
+
 // probeMeta is everything a successful ffprobe run tells us about an original.
 // Zero values mean "unknown" — nothing is written over existing metadata then.
 type probeMeta struct {
 	Width, Height, Duration int
 	// Title/Performer — теги трека (ID3 title/artist), пустые если тегов нет.
 	Title, Performer string
+	// HasVideo/HasAudio — наличие дорожек соответствующего типа. HasVideo=false
+	// у нулевого probeMeta (ffprobe не отработал) и служит признаком «probe не
+	// дал ничего»: без него «нет аудио» неотличимо от «файл не прочитан».
+	HasVideo, HasAudio bool
 }
 
 // probe reads width/height (first video stream), duration (seconds) and the
@@ -130,9 +149,14 @@ func parseProbe(out []byte) probeMeta {
 	}
 	var meta probeMeta
 	for _, s := range p.Streams {
-		if s.CodecType == "video" && s.Width > 0 {
-			meta.Width, meta.Height = s.Width, s.Height
-			break
+		switch s.CodecType {
+		case "video":
+			meta.HasVideo = true
+			if s.Width > 0 && meta.Width == 0 {
+				meta.Width, meta.Height = s.Width, s.Height
+			}
+		case "audio":
+			meta.HasAudio = true
 		}
 	}
 	if f, err := strconv.ParseFloat(p.Format.Duration, 64); err == nil {

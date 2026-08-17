@@ -44,7 +44,7 @@ export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLE
       // GIF-детект — ровно критерий бабла (RealMediaBubble.tsx:124): tweb
       // `document.type === 'gif'`; duration — из меты сообщения (у бэка может
       // быть 0 — тогда видео получит loop как «короткое», см. ViewerMedia).
-      gif: sec ? undefined : (isGifLike({ mime: m.mediaMime, fileName: m.mediaName, duration: m.mediaDuration }) || undefined),
+      gif: sec ? undefined : (isGifLike({ mime: m.mediaMime, fileName: m.mediaName, duration: m.mediaDuration, animated: m.mediaAnimated }) || undefined),
       duration: m.mediaDuration,
       // Секретное медиа (E2E): сервер отдаёт только ciphertext — байты качает
       // и расшифровывает вкладка (общий кэш с баблом), воркерный конвейер

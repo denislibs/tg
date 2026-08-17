@@ -135,6 +135,13 @@ type Message struct {
 	// (tweb audio.ts — подпись из performer, иначе formatBytes).
 	MediaTitle     string
 	MediaPerformer string
+	// MediaAnimated — медиа проигрывается как гифка (telegram
+	// documentAttributeAnimated, из которого tweb выводит doc.type === 'gif'):
+	// image/gif либо видео без аудиодорожки. Бабл гифки в tweb отличается от
+	// видео (video.ts:120-123, :164-171): класс media-gif-wrapper, бейдж «GIF»
+	// вместо таймкода, зацикленный автоплей без кнопки play. Наполняется
+	// read-моделью из media.animated (не колонка messages).
+	MediaAnimated bool
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64

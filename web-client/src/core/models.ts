@@ -214,6 +214,9 @@ export interface RawMessage {
    * полей нет в JSON, подпись бабла падает в размер файла (tweb audio.ts:362-364) */
   media_title?: string
   media_performer?: string
+  /** медиа проигрывается как гифка (tweb documentAttributeAnimated → doc.type
+   * === 'gif'). Ключ приходит ТОЛЬКО когда true (как остальные флаги витрины) */
+  media_animated?: boolean
   views?: number
   forwards?: number
   media_unread?: boolean
@@ -344,6 +347,15 @@ export interface Message {
   /** ID3-теги трека (tweb documentAttributeAudio.title/performer) */
   mediaTitle?: string
   mediaPerformer?: string
+  /** Медиа проигрывается как гифка — порт tweb `doc.type === 'gif'`, который там
+   * выводится из documentAttributeAnimated (appDocsManager.ts:219-226). Бабл
+   * гифки отличается от видео: класс `media-gif-wrapper`, бейдж «GIF» вместо
+   * таймкода, зацикленный автоплей без кнопки play (tweb video.ts:120-123,164-171).
+   * Считает сервер (media.animated: image/gif либо видео без аудиодорожки —
+   * telegram-семантика nosound_video). Признак ОДНОСТОРОННИЙ: приходит только
+   * когда true, поэтому undefined — «сервер не сказал», а не «точно не гифка»
+   * (разбор и фолбэк — `core/gifs.ts::isGifLike`). */
+  mediaAnimated?: boolean
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
   /** number of times a channel post was forwarded (Telegram message.forwards) */
@@ -792,6 +804,7 @@ export function mapMessage(r: RawMessage): Message {
     mediaName: r.media_name,
     mediaTitle: r.media_title,
     mediaPerformer: r.media_performer,
+    mediaAnimated: r.media_animated,
     views: r.views,
     forwards: r.forwards,
     mediaUnread: r.media_unread,
@@ -841,7 +854,9 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
     media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
     media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
     media_title: evt.media_title, media_performer: evt.media_performer,
+    media_animated: evt.media_animated,
     effect: evt.effect ?? null, paid_media: evt.paid_media ?? null,
+    send_as: evt.send_as ?? null,
   })
   // E2E-медиа секретного чата: воркер расшифровал enc_body и положил key/iv/mime в
   // secret_media (не проводное поле → инжектим после mapMessage). Для paid-unlock кадра

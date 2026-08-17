@@ -267,7 +267,7 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     reply_markup: { inline: [[{ text: 'Click', callback: 'cb' }]] },
     media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
     media_has_thumb: true, media_duration: 12, media_size: 2048, media_name: 'photo.jpg',
-    media_title: 'Track', media_performer: 'Artist',
+    media_title: 'Track', media_performer: 'Artist', media_animated: true,
     secret_media: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
     effect: 'confetti',
     paid_media: { price: 10, locked: false },
@@ -299,6 +299,47 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     const thread = ops.find((o) => o.key === '3:100')
     expect(thread?.op).toBe('insert')
     expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual({ ...fromNewMessageEvt(fullEvt), out: true })
+  })
+})
+
+// Дефект (закрыт этой задачей): бэк кладёт send_as в кадр new_message
+// (backend/internal/usecase/chat/frame.go: messageUpdatePayload), но проводной
+// тип NewMessageEvt поля не объявлял, а fromNewMessageEvt его не переносила —
+// у ЖИВОГО сообщения sendAs не появлялся до перезагрузки истории. Ломались две
+// вещи сразу: правило `out` (порт tweb pFlags.out — send-as рисуется ВХОДЯЩИМ
+// даже когда отправитель я) и имя автора бабла (канал/группа вместо участника).
+// Проверяем весь путь целиком — кадр → cacheLive → операция окна, а не только
+// маппер: паритетный пин выше сравнивает cacheLive с fromNewMessageEvt и на
+// поле, отсутствующем в ОБОИХ, остаётся зелёным.
+describe('MessagesManager.cacheLive — send_as живого кадра', () => {
+  const sendAsEvt: NewMessageEvt = {
+    chat_id: 3, msg_id: 43, seq: 8, sender_id: 9, type: 'text', text: 'пост от канала',
+    media_id: null, created_at: '2026-08-10T13:05:00Z',
+    send_as: { chat_id: 77, title: 'Мой канал', photo_id: 5 },
+  }
+
+  it('sendAs доезжает до вставляемого сообщения, и оно считается ВХОДЯЩИМ у автора', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([1]) })
+    // getMeId — реальный отправитель кадра: без send-as это было бы исходящее.
+    const mgr = newMessagesManager({ rest, getMeId: () => sendAsEvt.sender_id })
+    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheLive(sendAsEvt)
+    const main = ops.find((o) => o.key === '3')
+    expect(main?.op).toBe('insert')
+    const msg = main && main.op === 'insert' ? main.msg : null
+    expect(msg?.sendAs).toEqual({ chatId: 77, title: 'Мой канал', photoId: 5 })
+    expect(msg?.out).toBe(false)
+  })
+
+  it('тот же кадр без send_as — обычное исходящее', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([1]) })
+    const mgr = newMessagesManager({ rest, getMeId: () => sendAsEvt.sender_id })
+    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheLive({ ...sendAsEvt, send_as: undefined })
+    const main = ops.find((o) => o.key === '3')
+    const msg = main && main.op === 'insert' ? main.msg : null
+    expect(msg?.sendAs).toBeUndefined()
+    expect(msg?.out).toBe(true)
   })
 })
 
@@ -503,9 +544,30 @@ describe('MessagesManager.cachePaidUnlock', () => {
       fields: {
         mediaId: 55, mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
         mediaHasThumb: true, mediaDuration: undefined, mediaSize: 2048, mediaName: 'p.jpg',
+        mediaTitle: undefined, mediaPerformer: undefined, mediaAnimated: undefined,
         paidMedia: { price: 10, locked: false },
       },
     }])
+  })
+
+  // Бэк вычищает у заблокированного медиа ВСЮ мету контента (stripLockedMedia:
+  // mime/name/duration/теги/animated) и возвращает её кадром разблокировки.
+  // Патч обязан нести её целиком, иначе оплаченное аудио остаётся без подписи,
+  // а оплаченная гифка рисуется видео-баблом до перезагрузки истории.
+  it('переносит теги трека и признак гифки из кадра разблокировки', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePaidUnlock({
+      chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'video', text: '',
+      media_id: 55, created_at: '2026-06-24T10:00:00Z',
+      media_mime: 'video/mp4', media_title: 'Track', media_performer: 'Artist', media_animated: true,
+      paid_media: { price: 10, locked: false },
+    } as unknown as NewMessageEvt)
+    const patch = ops[0]
+    expect(patch?.op === 'patch' ? patch.fields : null).toMatchObject({
+      mediaTitle: 'Track', mediaPerformer: 'Artist', mediaAnimated: true,
+    })
   })
 
   it('produces no op for a message absent from the SSOT', async () => {

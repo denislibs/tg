@@ -24,6 +24,12 @@ type Media struct {
 	// Waveform — 5-битно упакованные пики голосового (посчитаны клиентом при записи,
 	// ~63 байта; 1:1 tweb documentAttributeAudio.waveform). nil для не-голосовых.
 	Waveform []byte
+	// Animated — медиа проигрывается как гифка: аналог telegram-атрибута
+	// documentAttributeAnimated, из которого tweb выводит doc.type === 'gif'
+	// (appDocsManager.ts:219-226 — атрибут + mime gif/mp4). Ставит фоновая
+	// обработка: настоящий image/gif либо видео без аудиодорожки
+	// (telegram-семантика nosound_video). false у всего остального.
+	Animated bool
 	// FileName is the original upload name (shown for documents/music).
 	FileName string
 	// ThumbKey is the object key of a server-generated thumbnail/poster (jpeg),

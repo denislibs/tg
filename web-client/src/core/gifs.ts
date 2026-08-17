@@ -32,13 +32,24 @@ export const tenorToItem = (g: TenorGif): GifItem => ({
 })
 
 /**
- * «Гифоподобное» медиа рендерится автоплей-циклом без play-диска (tweb GIF):
- * настоящий image/gif либо mp4-гифка — по маркерам имени файла (tenor/giphy/
- * .gif.mp4). duration===0 учитывается ТОЛЬКО у безымянных mp4: бэк длительность
- * видео сам не считает (клиент шлёт её лишь для голосовых), поэтому у обычных
- * видео из пикера duration тоже 0 — но у них всегда есть имя файла.
+ * «Гифоподобное» медиа рендерится автоплей-циклом без play-диска (tweb GIF —
+ * `doc.type === 'gif'`, appDocsManager.ts:219-226).
+ *
+ * Авторитетный источник — серверный признак `animated` (media.animated, аналог
+ * telegram documentAttributeAnimated): его считает обработка ffmpeg по наличию
+ * аудиодорожки, гадать поверх него нечего. Признак ОДНОСТОРОННИЙ: витрина и
+ * кадр кладут ключ `media_animated` только когда он true, поэтому `false` и
+ * «сервер ничего не сказал» на проводе неразличимы — отсутствие признака
+ * означает «не знаем», а не «точно не гифка».
+ *
+ * Поэтому при отсутствии признака остаётся прежняя эвристика: настоящий
+ * image/gif либо mp4-гифка по маркерам имени файла (tenor/giphy/.gif.mp4).
+ * Она нужна и там, где серверного признака нет по построению: Tenor-результаты
+ * и локальный файл до отправки. duration===0 учитывается ТОЛЬКО у безымянных
+ * mp4 (у обычных видео из пикера всегда есть имя файла).
  */
-export function isGifLike(a: { mime?: string; fileName?: string; duration?: number }): boolean {
+export function isGifLike(a: { mime?: string; fileName?: string; duration?: number; animated?: boolean }): boolean {
+  if (a.animated) return true
   if (a.mime === 'image/gif') return true
   if (a.mime !== 'video/mp4') return false
   const fn = (a.fileName ?? '').toLowerCase()

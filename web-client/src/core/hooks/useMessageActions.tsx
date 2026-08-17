@@ -640,7 +640,7 @@ export function useMessageActions({
     ...(() => {
       const raw = menuRawMsg()
       return isRealChat && raw?.mediaId != null
-        && isGifLike({ mime: raw.mediaMime, fileName: raw.mediaName, duration: raw.mediaDuration })
+        && isGifLike({ mime: raw.mediaMime, fileName: raw.mediaName, duration: raw.mediaDuration, animated: raw.mediaAnimated })
         ? [{ icon: <TgIcon name="gifs" size={20} />, label: 'Save GIF', onClick: saveGifFromMsg }]
         : []
     })(),

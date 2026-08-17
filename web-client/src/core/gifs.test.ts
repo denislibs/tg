@@ -30,4 +30,20 @@ describe('isGifLike', () => {
     expect(isGifLike({ mime: 'video/webm', fileName: 'tenor.webm' })).toBe(false)
     expect(isGifLike({})).toBe(false)
   })
+
+  // Серверный признак (media.animated → media_animated, аналог telegram
+  // documentAttributeAnimated) — авторитетный: его считает обработка по наличию
+  // аудиодорожки, эвристика имени файла поверх него не нужна.
+  it('серверный animated перевешивает эвристику имени файла', () => {
+    expect(isGifLike({ mime: 'video/mp4', fileName: 'holiday.mp4', duration: 120, animated: true })).toBe(true)
+    expect(isGifLike({ mime: 'video/webm', fileName: 'x.webm', animated: true })).toBe(true)
+  })
+
+  // Признак односторонний: витрина/кадр кладут ключ только когда он true,
+  // поэтому false/undefined означают «сервер не сказал» — эвристика остаётся.
+  it('без признака (или с false) работает прежняя эвристика', () => {
+    expect(isGifLike({ mime: 'video/mp4', fileName: 'tenor.mp4', animated: false })).toBe(true)
+    expect(isGifLike({ mime: 'video/mp4', fileName: 'holiday.mp4', duration: 120, animated: false })).toBe(false)
+    expect(isGifLike({ mime: 'video/mp4', fileName: 'holiday.mp4', duration: 120 })).toBe(false)
+  })
 })

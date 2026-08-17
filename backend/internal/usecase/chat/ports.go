@@ -444,6 +444,10 @@ type MediaDims struct {
 	// показывает размер файла.
 	Title     string
 	Performer string
+	// Animated — гифка (telegram documentAttributeAnimated → tweb doc.type ===
+	// 'gif'): бабл рисуется бейджем «GIF» и зацикленным автоплеем без кнопки
+	// play, а не таймкодом видео. См. domain.Media.Animated.
+	Animated bool
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness
