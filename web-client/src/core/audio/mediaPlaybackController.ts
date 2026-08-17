@@ -1,17 +1,26 @@
 // src/core/audio/mediaPlaybackController.ts
 //
-// Императивный движок воспроизведения (порт tweb appMediaPlaybackController):
-// владеет общим <audio>-элементом, подключением внешнего элемента (видео-кружок),
-// кэшем расшифрованных секретных треков и логикой play/pause/seek/rate/очереди.
+// Порт tweb `components/appMediaPlaybackController.ts` — менеджер КОЛЛЕКЦИИ
+// медиа-элементов. Модель оригинала: у каждого сообщения СВОЙ <audio>/<video>
+// (`addMedia` заводит его и возвращает владельцу-витрине), контроллер держит
+// реестр (`media`/`mediaDetails`), знает, какой элемент сейчас играет
+// (`playingMedia`), и ведёт очередь. Вопрос «играю ли я» узел задаёт СВОЕМУ
+// элементу (`media.paused`), а не контроллеру, — поэтому ни гейтов «мой ли это
+// трек», ни подписок на смену трека здесь нет и быть не должно.
+//
 // Реактивное состояние (track/queue/playing/currentTime/…) живёт отдельно в
-// audioStore — движок его обновляет через set/_sync, UI читает оттуда. Это
-// разводит «железо» (медиа-элемент) и стейт, как в tweb.
-// mediaContentUrl здесь — байты аудио (fetch ciphertext) и стрим <audio>, не
-// картинки: Task 7 (перевод картинок на downloadMediaURL) их сознательно не трогает.
+// audioStore — это витрина для React-ленты и плашки плеера: контроллер пишет
+// туда из обработчиков СВОИХ событий (play/pause/ended/timeupdate + rAF), UI
+// читает. Ванильная лента (`components/audio.ts`) в стор не ходит вовсе.
+//
+// mediaContentUrl/resolveStreamUrl здесь — байты аудио (fetch ciphertext) и
+// стрим <audio>, не картинки: Task 7 (перевод картинок на downloadMediaURL) их
+// сознательно не трогает.
 import { decryptMedia } from '../secret/crypto'
 import { mediaContentUrl, primeMediaToken, resolveStreamUrl } from '../mediaUrl'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { useSettingsStore } from '../../settings'
+import safePlay from '@helpers/dom/safePlay'
 
 const RATES = [0.5, 1, 1.5, 2]
 
@@ -40,20 +49,49 @@ function persistRate(type: PlaybackMediaType, rate: number): void {
   update({ playbackRates: { ...playbackRates, [type]: rate } })
 }
 
-// A single shared <audio> element drives normal playback.
-let el: HTMLAudioElement | null = null
-function audio(): HTMLAudioElement {
-  if (el) return el
-  el = new Audio()
-  // Ошибку загрузки/декодирования src (напр. неподдерживаемый кодек) иначе не
-  // видно — .play() к тому моменту уже зарезолвился. Логируем явно для диагностики.
-  el.addEventListener('error', () => console.error('[audio] element error', el?.error?.code, el?.error?.message))
-  el.addEventListener('timeupdate', () => { if (!external && el!.paused) syncProgress(el!) })
-  el.addEventListener('loadedmetadata', () => { if (!external) useAudioStore.getState()._sync({ duration: el!.duration || 0 }) })
-  el.addEventListener('play', () => { if (!external) { useAudioStore.getState()._sync({ playing: true }); startProgress(el!) } })
-  el.addEventListener('pause', () => { if (!external) { stopProgress(); useAudioStore.getState()._sync({ playing: false, currentTime: el!.currentTime }) } })
-  el.addEventListener('ended', () => { if (!external) { stopProgress(); mediaPlayback.next() } })
-  return el
+// ── Коллекция медиа-элементов (tweb this.media / this.mediaDetails) ──────────
+
+/** Скрытый контейнер элементов — tweb `construct()`: `display: none` в body. */
+let container: HTMLElement | null = null
+function mediaContainer(): HTMLElement {
+  if (container) return container
+  container = document.createElement('div')
+  container.style.cssText = 'display: none;'
+  document.body.append(container)
+  return container
+}
+
+interface MediaEntry {
+  media: HTMLMediaElement
+  track: AudioTrack
+  /**
+   * Элемент ОДОЛЖЕН снаружи: видео-кружок React-ленты рисует свой <video> сам
+   * (превью крутится muted в цикле, звук включает клик), поэтому контроллер
+   * своего элемента для кружка не заводит, а берёт его на учёт. Аналог tweb
+   * `MediaDetails.clean` (appMediaPlaybackController.ts:63, снятие с учёта —
+   * в `stop`, :929-947): такой элемент уходит из коллекции, как только
+   * контроллер перестал им играть, и возвращается баблу.
+   * У tweb элемент кружка заводит сам контроллер (wrappers/video.ts:265), так
+   * что одалживать нечего; у нас это уйдёт вместе с React-лентой (этап 7).
+   */
+  clean: boolean
+  /** src уже проставлен (у нас URL резолвится асинхронно, у tweb — download-менеджером) */
+  loaded: boolean
+  /** промис проставления src — им же ждёт `playMedia` (tweb: `willBePlayed` + readyPromise) */
+  src: Promise<void> | null
+  unwire: () => void
+}
+
+const collection = new Map<number, MediaEntry>()
+const entryOf = new WeakMap<HTMLMediaElement, MediaEntry>()
+
+/** tweb `playingMedia` — элемент, который ведёт воспроизведение прямо сейчас. */
+let playingMedia: HTMLMediaElement | null = null
+/** tweb `willBePlayedMedia` (:126) — элемент, который попросили сыграть, пока грузится src. */
+let willBePlayedMedia: HTMLMediaElement | null = null
+
+function mediaDuration(media: HTMLMediaElement): number {
+  return Number.isFinite(media.duration) ? media.duration || 0 : 0
 }
 
 // rAF-прогресс (порт tweb MediaProgressLine: onPlay — components/mediaProgressLine.ts:348-368,
@@ -65,7 +103,7 @@ let progressRAF: number | undefined
 function syncProgress(media: HTMLMediaElement): void {
   useAudioStore.getState()._sync({
     currentTime: media.currentTime,
-    duration: Number.isFinite(media.duration) ? media.duration || 0 : 0,
+    duration: mediaDuration(media),
   })
 }
 
@@ -84,71 +122,6 @@ function startProgress(media: HTMLMediaElement): void {
     progressRAF = media.paused ? undefined : requestAnimationFrame(r)
   }
   r()
-}
-
-// Attached external element (round-video bubble) + its listener teardown.
-let external: HTMLMediaElement | null = null
-let unwireExternal: (() => void) | null = null
-
-// Кружки, смонтированные в ленте: mediaId → «сыграй меня со звуком». Кружок играет
-// СВОИМ <video> внутри бабла (tweb: элемент регистрируется в контроллере через
-// addMedia, а очередь запускает его playItem → media.play(),
-// appMediaPlaybackController.ts:959-973), поэтому очередь дёргает бабл, а тот уже
-// зовёт playExternal со своим элементом.
-const roundPlayers = new Map<number, () => void>()
-
-/** Регистрация кружка в контроллере на время жизни бабла; возвращает отписку. */
-export function registerRoundMedia(mediaId: number, play: () => void): () => void {
-  roundPlayers.set(mediaId, play)
-  return () => {
-    if (roundPlayers.get(mediaId) === play) roundPlayers.delete(mediaId)
-  }
-}
-
-// Элемент, которым сейчас управляют кнопки плеера.
-function current(): HTMLMediaElement {
-  return external ?? audio()
-}
-
-// ── Ванильный доступ к воспроизведению (для императивной ленты) ─────────────
-// tweb `AudioElement` не знает ни про какое реактивное состояние: он берёт СВОЙ
-// медиа-элемент у контроллера (`appMediaPlaybackController.addMedia({message})`,
-// audio.ts:591) и дальше слушает его же события (`addAudioListener`,
-// audio.ts:847-849). Порт обязан работать так же — иначе прогресс волны и
-// подпись времени поедут через сторовые ре-рендеры, которых в ленте нет.
-//
-// Отличие от оригинала (следствие нашей модели, не вкусовщина): у tweb <audio>
-// СВОЙ на каждое сообщение, поэтому `audio.paused` сам по себе отвечает «играю
-// ли я». У нас элемент один на приложение (плюс внешний <video> кружка), значит
-// «мой ли он сейчас» — отдельный факт, и его объявляет владелец: `currentTrack`
-// + подписка ниже. Второго состояния это не заводит — `subscribeCurrentTrack`
-// читает ровно ту запись, которую контроллер и так делает в стор.
-
-/** Медиа-элемент, который сейчас ведёт воспроизведение (tweb — результат `addMedia`). */
-export function getPlaybackMedia(): HTMLMediaElement {
-  return current()
-}
-
-/** Трек, который сейчас в плеере (`null` — плеер пуст). */
-export function getCurrentTrack(): AudioTrack | null {
-  return useAudioStore.getState().track
-}
-
-/** Подписка на СМЕНУ текущего трека; возвращает отписку. */
-export function subscribeCurrentTrack(cb: (track: AudioTrack | null) => void): () => void {
-  return useAudioStore.subscribe((s, p) => {
-    if (s.track !== p.track) cb(s.track)
-  })
-}
-
-// Отцепить внешний элемент (опционально ставя его на паузу).
-function detachExternal(pause: boolean) {
-  if (!external) return
-  stopProgress()
-  if (pause) external.pause()
-  unwireExternal?.()
-  unwireExternal = null
-  external = null
 }
 
 // Кэш blob-URL расшифрованных секретных треков по mediaId. Нужен, чтобы к моменту
@@ -178,148 +151,378 @@ export function prefetchSecretAudio(mediaId: number, secret: { keyB64: string; i
   return job
 }
 
-// Load + play a track. src выставляем СИНХРОННО в рамках жеста, где можем: обычный
-// трек — синхронный media-URL (токен уже primed фидом), секретный — из кэша
-// префетча. Только при промахе кэша/токена уходим в await (активация может
-// теряться, но это редкий путь).
-async function load(track: AudioTrack, autoplay: boolean) {
-  const a = audio()
-  let url: string
-  if (track.secret) {
-    url = secretUrlCache.get(track.mediaId) ?? await prefetchSecretAudio(track.mediaId, track.secret)
-  } else {
-    const resolved = resolveStreamUrl(track.mediaId)
-    url = typeof resolved === 'string' ? resolved : await resolved
+/**
+ * Проставить src элементу. У tweb байты добывает download-менеджер, а
+ * контроллер лишь ставит готовый `cacheContext.url` (`onMediaDocumentLoad`,
+ * :510-538); у нас URL резолвится здесь — СИНХРОННО, где можем (обычный трек
+ * при DNP-OFF, секретный из кэша префетча), чтобы play() остался в рамках
+ * user-gesture, и промисом на редком промахе.
+ */
+function ensureSrc(entry: MediaEntry): Promise<void> {
+  if (entry.src) return entry.src
+  const { track, media } = entry
+  const ready = track.secret ? secretUrlCache.get(track.mediaId) : resolveStreamUrl(track.mediaId)
+  if (typeof ready === 'string') {
+    media.src = ready
+    entry.loaded = true
+    return (entry.src = Promise.resolve())
   }
-  a.src = url
-  // tweb setMedia (:1113-1121): скорость берётся из playbackRates[тип трека].
-  a.playbackRate = useAudioStore.getState().rate
-  a.muted = useAudioStore.getState().muted
-  a.volume = useAudioStore.getState().volume
-  if (autoplay) await a.play().catch((e) => console.error('[audio] play() failed', e))
+
+  const job = (async () => {
+    media.src = track.secret
+      ? await prefetchSecretAudio(track.mediaId, track.secret)
+      : await (ready as Promise<string>)
+    entry.loaded = true
+  })()
+  entry.src = job
+  // Промах не должен залипать: следующий запуск попробует снова.
+  void job.catch(() => { entry.src = null })
+  return job
 }
 
-// Перевести очередь на индекс i и запустить трек (dir — направление обхода при
-// пропуске). Кружок играет своим <video> в бабле: зовём зарегистрированный
-// «сыграй со звуком», а бабл сам вернётся сюда через playExternal. Если бабл не
-// смонтирован (кружок уехал из окна ленты) — трек пропускаем, как tweb пропускает
-// элемент, для которого нет медиа.
-function goTo(i: number, dir: 1 | -1): void {
-  const { queue } = useAudioStore.getState()
-  for (let j = i; j >= 0 && j < queue.length; j += dir) {
-    const track = queue[j]
-    if (track.type === 'round') {
-      const play = roundPlayers.get(track.mediaId)
-      if (!play) continue
-      useAudioStore.setState({ index: j, track, currentTime: 0, duration: 0, rate: storedRate('voice') })
-      play()
-      return
-    }
-    detachExternal(true)
-    useAudioStore.setState({ index: j, track, currentTime: 0, duration: 0, rate: storedRate(playbackMediaType(track)) })
-    void load(track, true)
+export interface AddMediaArgs {
+  track: AudioTrack
+  /** tweb `AddMediaArgs.autoload` (:82-105): грузить сразу или ждать первого запуска */
+  autoload?: boolean
+  /** одолженный элемент (видео-кружок бабла) — см. `MediaEntry.clean` */
+  element?: HTMLMediaElement
+}
+
+/**
+ * tweb `addMedia` (:402-503) — элемент сообщения: заводится один раз, живёт в
+ * коллекции и возвращается всем, кто спросит про этот же трек.
+ */
+export function addMedia({ track, autoload = true, element }: AddMediaArgs): HTMLMediaElement {
+  const existing = collection.get(track.mediaId)
+  if (existing) {
+    // Бабл пересоздал свой <video> (перемонтирование React-ленты) — переучитываем.
+    if (!element || existing.media === element) return existing.media
+    unregister(existing)
+  }
+
+  const media = element ?? document.createElement(track.type === 'round' ? 'video' : 'audio')
+  const entry: MediaEntry = {
+    media,
+    track,
+    clean: !!element,
+    loaded: !!element,
+    src: element ? Promise.resolve() : null,
+    unwire: () => {},
+  }
+  collection.set(track.mediaId, entry)
+  entryOf.set(media, entry)
+
+  const onPlay = () => handlePlay(media)
+  const onPause = () => handlePause(media)
+  const onEnded = () => handleEnded(media)
+  const onTimeUpdate = () => handleTimeUpdate(media)
+  const onLoadedMetadata = () => {
+    if (media === playingMedia) useAudioStore.getState()._sync({ duration: mediaDuration(media) })
+  }
+  // Ошибку загрузки/декодирования src (напр. неподдерживаемый кодек) иначе не
+  // видно — .play() к тому моменту уже зарезолвился. Логируем явно для диагностики.
+  const onError = () => console.error('[audio] element error', media.error?.code, media.error?.message)
+
+  media.addEventListener('play', onPlay)
+  media.addEventListener('pause', onPause)
+  media.addEventListener('ended', onEnded)
+  media.addEventListener('timeupdate', onTimeUpdate)
+  media.addEventListener('loadedmetadata', onLoadedMetadata)
+  media.addEventListener('error', onError)
+  entry.unwire = () => {
+    media.removeEventListener('play', onPlay)
+    media.removeEventListener('pause', onPause)
+    media.removeEventListener('ended', onEnded)
+    media.removeEventListener('timeupdate', onTimeUpdate)
+    media.removeEventListener('loadedmetadata', onLoadedMetadata)
+    media.removeEventListener('error', onError)
+  }
+
+  if (!element) {
+    media.volume = 1
+    mediaContainer().append(media)
+    if (autoload) void ensureSrc(entry)
+  }
+
+  return media
+}
+
+/** tweb `getMedia` (:505-508). */
+export function getMedia(mediaId: number): HTMLMediaElement | undefined {
+  return collection.get(mediaId)?.media
+}
+
+/**
+ * Смена сессии (`rt:logging_out` → `client/realtime/storeProjection.ts`): элементы
+ * коллекции держат URL'ы прошлой сессии — токен-стрим и blob расшифрованного
+ * секретного голоса, — поэтому переход обязан снести и коллекцию, и кэш блобов.
+ * У tweb отдельного сброса нет: там логаут пересобирает приложение целиком.
+ */
+export function resetPlayback(): void {
+  mediaPlayback.close()
+  // удаление текущего ключа по ходу обхода Map безопасно — он уже пройден
+  for (const entry of collection.values()) unregister(entry)
+  secretUrlCache.forEach((url) => URL.revokeObjectURL(url))
+  secretUrlCache.clear()
+}
+
+/** Снять элемент с учёта (tweb `stop`, ветка `details.clean`, :930-947). */
+function unregister(entry: MediaEntry): void {
+  entry.unwire()
+  entryOf.delete(entry.media)
+  if (collection.get(entry.track.mediaId) === entry) collection.delete(entry.track.mediaId)
+  if (!entry.clean) {
+    entry.media.src = ''
+    entry.media.remove()
+  }
+}
+
+/**
+ * Элемент трека для очереди. Кружок — единственный, кому контроллер элемента не
+ * заводит (его рисует бабл, см. `MediaEntry.clean`): не зарегистрирован — трек
+ * пропускается, как tweb пропускает элемент, которого нет.
+ */
+function mediaFor(track: AudioTrack): HTMLMediaElement | undefined {
+  const entry = collection.get(track.mediaId)
+  if (entry) return entry.media
+  if (track.type === 'round') return undefined
+  return addMedia({ track })
+}
+
+/**
+ * Запуск конкретного элемента — tweb `playItem` (:960-974) + механика
+ * `willBePlayed` (:1028-1030): пока src не проставлен, «этот элемент попросили
+ * сыграть» — отдельный факт, иначе доехавшая загрузка запустила бы трек,
+ * который пользователь успел переключить.
+ */
+function playMedia(media: HTMLMediaElement): void {
+  const entry = entryOf.get(media)
+  if (!entry) return
+  if (entry.loaded) {
+    willBePlayedMedia = null
+    safePlay(media)
     return
   }
-  // Очередь кончилась — tweb onEnded зовёт stop() + dispatch('stop')
-  // (appMediaPlaybackController.ts:838-846), по которому прячется плашка плеера
-  // (chat/audio.tsx:258,272). У нас «спрятать плашку» = сброс track/queue в close().
-  mediaPlayback.close()
+
+  willBePlayedMedia = media
+  void ensureSrc(entry).then(() => {
+    if (willBePlayedMedia !== media) return
+    willBePlayedMedia = null
+    safePlay(media)
+  }, () => {})
+}
+
+/** tweb `setMedia` (:1112-1130) — сделать элемент текущим. */
+function setMedia(entry: MediaEntry): void {
+  const { media, track } = entry
+  playingMedia = media
+
+  const state = useAudioStore.getState()
+  const rate = storedRate(playbackMediaType(track))
+  media.playbackRate = rate
+  media.muted = state.muted
+  media.volume = state.volume
+
+  // tweb ищет трек в listLoader'е и подвигает его курсор (onPlay, :770-801);
+  // у нас очередь — значение в сторе, поэтому это findIndex, а трека вне
+  // очереди достаточно самого себя (tweb: `setTargets({peerId, mid})`).
+  let queue = state.queue
+  let index = queue.findIndex((t) => t.mediaId === track.mediaId)
+  if (index === -1) {
+    queue = [track]
+    index = 0
+  }
+
+  useAudioStore.setState({
+    queue,
+    index,
+    track,
+    rate,
+    currentTime: media.currentTime,
+    duration: mediaDuration(media),
+  })
+}
+
+/**
+ * tweb `stop` (:917-958): пауза, перемотка в начало и СИМУЛИРОВАННЫЙ `ended` —
+ * им узел сообщения прячет свои контролы (комментарий «! important» у
+ * оригинала).
+ */
+function stop(media = playingMedia): boolean {
+  if (!media) return false
+
+  const entry = entryOf.get(media)
+  // Одолженный элемент снимаем с учёта ДО симуляции `ended` (у tweb это тоже
+  // `stop`, но порядок неважен — элемент его собственный): наш бабл на `ended`
+  // возвращает кружок в muted-превью и снова зовёт play(), и этот play не
+  // должен вернуться к нам как «кружок опять текущий».
+  if (entry?.clean) unregister(entry)
+
+  if (!media.paused) media.pause()
+  media.currentTime = 0
+  simulateEnded(media)
+
+  if (media === playingMedia) playingMedia = null
+  if (willBePlayedMedia === media) willBePlayedMedia = null
+  return true
+}
+
+/**
+ * tweb отличает свой `ended` от настоящего по `e.isTrusted` (:830-833). В тестах
+ * ЛЮБОЕ событие нетрастовое, поэтому тот же факт («этот ended дослали мы»)
+ * держит флаг — семантика и место проверки те же.
+ */
+let simulatedEnded = false
+function simulateEnded(media: HTMLMediaElement): void {
+  simulatedEnded = true
+  media.dispatchEvent(new Event('ended'))
+  simulatedEnded = false
+}
+
+// ── Обработчики событий элементов коллекции (tweb onPlay/onPause/onEnded) ────
+
+/** tweb `onPlay` (:752-813). */
+function handlePlay(media: HTMLMediaElement): void {
+  const entry = entryOf.get(media)
+  if (!entry) return
+
+  if (willBePlayedMedia === media) willBePlayedMedia = null
+
+  if (playingMedia !== media) {
+    stop() // предыдущий трек останавливается ровно здесь
+    setMedia(entry)
+  }
+
+  useAudioStore.getState()._sync({
+    playing: true,
+    currentTime: media.currentTime,
+    duration: mediaDuration(media),
+  })
+  startProgress(media)
+}
+
+/** tweb `onPause` (:815-828). */
+function handlePause(media: HTMLMediaElement): void {
+  if (media !== playingMedia) return
+  stopProgress()
+  useAudioStore.getState()._sync({ playing: false, currentTime: media.currentTime })
+}
+
+/** tweb `onEnded` (:830-849): доиграли — едем по очереди, кончилась — стоп. */
+function handleEnded(media: HTMLMediaElement): void {
+  if (simulatedEnded) return
+  if (media !== playingMedia) return
+
+  handlePause(media)
+
+  const entry = entryOf.get(media)
+  if (entry?.clean) unregister(entry)
+
+  if (!go(1)) mediaPlayback.close()
+}
+
+function handleTimeUpdate(media: HTMLMediaElement): void {
+  if (media !== playingMedia) return
+  // Пока играет, прогресс тикает по rAF; timeupdate нужен на паузе (сик).
+  if (media.paused) syncProgress(media)
+}
+
+/** tweb `go` (:976-987) — шаг по очереди; вернёт false, если идти некуда. */
+function go(delta: 1 | -1): boolean {
+  const { queue, index } = useAudioStore.getState()
+  for (let j = index + delta; j >= 0 && j < queue.length; j += delta) {
+    const media = mediaFor(queue[j])
+    if (!media) continue
+    playMedia(media)
+    return true
+  }
+  return false
 }
 
 // Императивный контроллер: методы вызывают делегаты audioStore (публичный API
-// плеера не меняется), а стейт обновляют через set/_sync.
+// плеера не меняется), а витрину обновляют через set/_sync.
 export const mediaPlayback = {
+  addMedia,
+  getMedia,
+  /** tweb `setTargets` (:1051-1096) — объявить плейлист, не начиная играть. */
+  setTargets(queue: AudioTrack[], index: number): void {
+    useAudioStore.setState({ queue, index })
+  },
+  /** Запустить элемент (tweb: `safePlay(this.audio)` из узла сообщения). */
+  playMedia(media: HTMLMediaElement): void {
+    playMedia(media)
+  },
   playQueue(queue: AudioTrack[], index: number): void {
-    if (!queue[index]) return
-    useAudioStore.setState({ queue, index: -1 })
-    goTo(index, 1)
+    const track = queue[index]
+    if (!track) return
+    useAudioStore.setState({ queue, index })
+    const media = mediaFor(track)
+    if (media) playMedia(media)
   },
   playExternal(queue: AudioTrack[], index: number, media: HTMLMediaElement): void {
     const track = queue[index]
     if (!track) return
-    // предыдущий источник (внутренний audio или другой кружок) — на паузу
-    if (external && external !== media) detachExternal(true)
-    else if (!external) audio().pause()
-    unwireExternal?.()
-    const onPlay = () => { useAudioStore.getState()._sync({ playing: true }); startProgress(media) }
-    const onPause = () => { stopProgress(); useAudioStore.getState()._sync({ playing: false, currentTime: media.currentTime }) }
-    const onTimeUpdate = () => { if (media.paused) syncProgress(media) }
-    // кружок докручен до конца — едем по общей очереди voice+round дальше
-    // (tweb onEnded → next(), appMediaPlaybackController.ts:826-846)
-    const onEnded = () => { stopProgress(); mediaPlayback.next() }
-    media.addEventListener('timeupdate', onTimeUpdate)
-    media.addEventListener('play', onPlay)
-    media.addEventListener('pause', onPause)
-    media.addEventListener('ended', onEnded)
-    external = media
-    unwireExternal = () => {
-      media.removeEventListener('timeupdate', onTimeUpdate)
-      media.removeEventListener('play', onPlay)
-      media.removeEventListener('pause', onPause)
-      media.removeEventListener('ended', onEnded)
-    }
-    const rate = storedRate(playbackMediaType(track))
-    media.playbackRate = rate
-    useAudioStore.setState({
-      queue, index, track, rate,
-      playing: !media.paused,
-      currentTime: media.currentTime,
-      duration: Number.isFinite(media.duration) ? media.duration || 0 : 0,
-    })
-    if (!media.paused) startProgress(media)
+    useAudioStore.setState({ queue, index })
+    addMedia({ track, element: media })
+    // Бабл уже начал играть — событие 'play' прошло до регистрации, поэтому
+    // обработчик зовём руками (tweb делает так же в `setSingleMedia`, :1156-1158).
+    if (!media.paused) handlePlay(media)
+    else playMedia(media)
   },
+  /** tweb `toggle` (:860-880). */
   toggle(): void {
-    const a = current()
-    if (a.paused) void a.play().catch(() => {})
-    else a.pause()
+    const media = playingMedia
+    if (!media) return
+    if (media.paused) playMedia(media)
+    else media.pause()
   },
   seekFraction(f: number): void {
-    const a = current()
-    const d = useAudioStore.getState().duration || a.duration || 0
+    const media = playingMedia
+    if (!media) return
+    const d = mediaDuration(media) || useAudioStore.getState().duration
     if (d > 0) {
-      a.currentTime = Math.max(0, Math.min(1, f)) * d
-      useAudioStore.setState({ currentTime: a.currentTime })
+      media.currentTime = Math.max(0, Math.min(1, f)) * d
+      useAudioStore.setState({ currentTime: media.currentTime })
     }
   },
   cycleRate(): void {
     mediaPlayback.setRate(RATES[(RATES.indexOf(useAudioStore.getState().rate) + 1) % RATES.length])
   },
   setRate(r: number): void {
-    current().playbackRate = r
+    if (playingMedia) playingMedia.playbackRate = r
     useAudioStore.setState({ rate: r })
     persistRate(playbackMediaType(useAudioStore.getState().track), r)
   },
   toggleMute(): void {
     const m = !useAudioStore.getState().muted
-    current().muted = m
+    if (playingMedia) playingMedia.muted = m
     useAudioStore.setState({ muted: m })
   },
   setVolume(v: number): void {
     const vol = Math.max(0, Math.min(1, v))
-    const a = current()
-    a.volume = vol
-    a.muted = vol === 0
+    if (playingMedia) {
+      playingMedia.volume = vol
+      playingMedia.muted = vol === 0
+    }
     useAudioStore.setState({ volume: vol, muted: vol === 0 })
   },
+  /** tweb `next` (:1006-1008). */
   next(): void {
-    goTo(useAudioStore.getState().index + 1, 1)
+    go(1)
   },
+  /** tweb `previous`/`seekToStart` (:1010-1026): дальше 5-й секунды — в начало трека. */
   prev(): void {
-    // tweb previous() → seekToStart (:1017): дальше 5-й секунды кнопка перематывает
-    // текущий трек в начало, и только «в начале» уходит к предыдущему.
-    const { index, currentTime } = useAudioStore.getState()
-    if (currentTime > 5 || index <= 0) {
-      mediaPlayback.seekFraction(0)
-      void current().play().catch(() => {})
+    const media = playingMedia
+    if (media && media.currentTime > 5) {
+      media.currentTime = 0
+      useAudioStore.setState({ currentTime: 0 })
+      if (media.paused) playMedia(media)
       return
     }
-    goTo(index - 1, -1)
+    go(-1)
   },
   close(): void {
-    detachExternal(true)
-    const a = audio()
-    a.pause()
-    a.removeAttribute('src')
+    stop()
     stopProgress()
     useAudioStore.setState({ track: null, queue: [], index: -1, playing: false, currentTime: 0, duration: 0 })
   },

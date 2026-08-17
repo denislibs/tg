@@ -35,13 +35,13 @@ type FakeMedia = HTMLMediaElement & { _playing?: boolean, _time?: number, _dur?:
 
 let wrapDocument: typeof import('./wrappers/document').default
 let mediaPlayback: typeof import('@core/audio/mediaPlaybackController').mediaPlayback
+let resetPlayback: typeof import('@core/audio/mediaPlaybackController').resetPlayback
 let rootScope: typeof import('@lib/rootScope').default
 let RT: typeof import('@core/realtime/events').RT
 let getMiddleware: typeof import('@helpers/middleware').getMiddleware
 
-const created: HTMLMediaElement[] = []
-/** Внутренний <audio> движка (создаётся лениво при первом воспроизведении). */
-const player = () => created[created.length - 1] as FakeMedia
+/** СВОЙ медиа-элемент сообщения — тот же, что взял узел (tweb `this.audio`). */
+const media = (mediaId: number) => mediaPlayback.getMedia(mediaId) as FakeMedia
 
 beforeAll(async () => {
   const proto = HTMLMediaElement.prototype as unknown as Record<string, unknown>
@@ -69,15 +69,9 @@ beforeAll(async () => {
     this.dispatchEvent(new Event('pause'))
   }
 
-  const RealAudio = globalThis.Audio
-  vi.stubGlobal('Audio', function() {
-    const a = new RealAudio()
-    created.push(a)
-    return a
-  })
-
   wrapDocument = (await import('./wrappers/document')).default
   mediaPlayback = (await import('@core/audio/mediaPlaybackController')).mediaPlayback
+  resetPlayback = (await import('@core/audio/mediaPlaybackController')).resetPlayback
   rootScope = (await import('@lib/rootScope')).default
   RT = (await import('@core/realtime/events')).RT
   getMiddleware = (await import('@helpers/middleware')).getMiddleware
@@ -122,7 +116,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  mediaPlayback.close()
+  resetPlayback()
 })
 
 describe('AudioElement — настоящий web-component, а не пустой тег', () => {
@@ -226,21 +220,25 @@ describe('AudioElement — голосовое (tweb wrapVoiceMessage)', () => {
 })
 
 describe('AudioElement — воспроизведение', () => {
-  it('клик запускает трек, повторный ставит на паузу', async () => {
+  it('узел играет СВОИМ элементом: клик запускает, повторный ставит на паузу', async () => {
     const { element } = wrap(voiceDoc(), { mid: 5, peerId: 42 })
     const toggle = element.querySelector('.audio-toggle') as HTMLElement
+
+    // элемент сообщения заведён сразу при отрисовке узла (tweb onLoad → addMedia)
+    expect((element as unknown as { media: HTMLMediaElement }).media).toBe(media(100))
 
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    expect(player().src).toContain('https://media/100')
+    expect(media(100).src).toContain('https://media/100')
+    expect(media(100).paused).toBe(false)
     expect(toggle.classList.contains('playing')).toBe(true)
     expect(element.querySelector('.audio-time')?.textContent).toBe('0:00 / 0:10')
 
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    expect(player().paused).toBe(true)
+    expect(media(100).paused).toBe(true)
     expect(toggle.classList.contains('playing')).toBe(false)
   })
 
@@ -251,9 +249,9 @@ describe('AudioElement — воспроизведение', () => {
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    player()._dur = 10
-    player()._time = 5
-    player().dispatchEvent(new Event('timeupdate'))
+    media(100)._dur = 10
+    media(100)._time = 5
+    media(100).dispatchEvent(new Event('timeupdate'))
 
     const fake = element.querySelector('.audio-waveform-fake') as HTMLElement
     expect(fake.style.width).toBe('50%')
@@ -267,7 +265,14 @@ describe('AudioElement — воспроизведение', () => {
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
+    // tweb: точка снимается по первому движению времени, а не по клику
+    expect(markMediaPlayed).not.toHaveBeenCalled()
+
+    media(100)._time = 1
+    media(100).dispatchEvent(new Event('timeupdate'))
+
     expect(markMediaPlayed).toHaveBeenCalledWith(42, 5)
+    expect(markMediaPlayed).toHaveBeenCalledTimes(1)
   })
 
   it('плейлист — соседи по ленте, в порядке узлов (tweb findMediaTargets)', async () => {
@@ -284,22 +289,25 @@ describe('AudioElement — воспроизведение', () => {
     await settle()
 
     // доиграв второе, плеер не должен упереться — очередь несёт обоих соседей
-    expect(player().src).toContain('https://media/102')
+    expect(media(102).paused).toBe(false)
 
     mediaPlayback.prev()
     await settle()
-    expect(player().src).toContain('https://media/101')
+    expect(media(101).paused).toBe(false)
+    // предыдущий трек остановлен своим же элементом
+    expect(media(102).paused).toBe(true)
+    expect(second.element.querySelector('.audio-toggle')?.classList.contains('playing')).toBe(false)
   })
 
-  it('заиграло другое — волна остаётся на месте, прогресс сброшен', async () => {
+  it('заиграло другое — волна остаётся на месте, чужой прогресс в неё не течёт', async () => {
     const { element } = wrap(voiceDoc({ id: 111 }))
     const toggle = element.querySelector('.audio-toggle') as HTMLElement
 
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
-    player()._dur = 10
-    player()._time = 5
-    player().dispatchEvent(new Event('timeupdate'))
+    media(111)._dur = 10
+    media(111)._time = 5
+    media(111).dispatchEvent(new Event('timeupdate'))
     expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('50%')
 
     // плеер уехал на чужой трек
@@ -307,7 +315,15 @@ describe('AudioElement — воспроизведение', () => {
     await settle()
 
     expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
-    expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('')
+    expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('0%')
+    expect(element.querySelector('.audio-time')?.textContent).toBe('0:10')
+
+    // чужой трек тикает — наша волна и время стоят
+    media(999)._dur = 10
+    media(999)._time = 8
+    media(999).dispatchEvent(new Event('timeupdate'))
+
+    expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('0%')
     expect(element.querySelector('.audio-time')?.textContent).toBe('0:10')
   })
 
@@ -334,7 +350,7 @@ describe('AudioElement — воспроизведение', () => {
       .toEqual(['audio-time', 'progress-line'])
   })
 
-  it('middleware протух — узел отписан, чужое воспроизведение его не трогает', async () => {
+  it('middleware протух — узел отписан, воспроизведение его не трогает', async () => {
     const { element, helper } = wrap(voiceDoc({ id: 109 }), { mid: 9, peerId: 42 })
     const toggle = element.querySelector('.audio-toggle') as HTMLElement
 
@@ -352,7 +368,9 @@ describe('AudioElement — воспроизведение', () => {
     const { element } = wrap(voiceDoc())
     const toggle = element.querySelector('.audio-toggle') as HTMLElement
 
-    // кольцо садится СРАЗУ по клику — поток ещё не готов (tweb corner-download)
+    // кольца нет, пока трек не запускали (tweb вешает его на первый play)
+    expect(element.classList.contains('downloading')).toBe(false)
+
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
     expect(element.classList.contains('corner-download')).toBe(true)
@@ -360,8 +378,8 @@ describe('AudioElement — воспроизведение', () => {
     const download = element.querySelector('.audio-download') as HTMLElement
     expect(download.querySelector('.preloader-container')).not.toBeNull()
 
-    player()._ready = 2
-    player().dispatchEvent(new Event('canplay'))
+    media(100)._ready = 2
+    media(100).dispatchEvent(new Event('canplay'))
     await settle()
 
     expect(element.classList.contains('downloading')).toBe(false)
@@ -409,7 +427,7 @@ describe('AudioElement — музыка (tweb wrapAudio)', () => {
     const subtitle = element.querySelector('.audio-subtitle') as HTMLElement
     expect(subtitle.lastElementChild?.className).toContain('progress-line')
 
-    player().dispatchEvent(new Event('ended'))
+    media(200).dispatchEvent(new Event('ended'))
 
     expect(element.classList.contains('audio-show-progress')).toBe(false)
     expect(subtitle.lastElementChild?.className).toBe('audio-description')

@@ -20,12 +20,10 @@
  *
  * ВОСПРОИЗВЕДЕНИЕ. tweb берёт медиа-элемент у контроллера
  * (`appMediaPlaybackController.addMedia({message})`) и дальше слушает ЕГО
- * события (`addAudioListener`). Здесь так же — через
- * `getPlaybackMedia()`/`subscribeCurrentTrack()` (`core/audio/mediaPlaybackController`,
- * см. докблок этих функций): никакого чтения zustand-стора, поведение целиком на
- * событиях медиа-элемента. Отличие ровно одно и оно вынужденное: у tweb <audio>
- * свой на каждое сообщение, у нас один на приложение, поэтому «мой ли он сейчас»
- * — отдельный гейт (подписка на смену текущего трека).
+ * события (`addAudioListener`). Здесь так же: `addMedia({track})` отдаёт узлу
+ * СВОЙ элемент этого сообщения, а весь UI (кнопка, время, волна, полоса) висит
+ * на его событиях. Никакого чтения zustand-стора и никаких вопросов
+ * контроллеру «мой ли сейчас трек»: на это отвечает `this.media.paused`.
  *
  * ЧТО НЕ ПОРТИРОВАНО (и почему):
  *   • ТРАНСКРИБАЦИЯ (`audio-to-text-button`, tweb audio.ts:182-240). В tweb сам
@@ -45,7 +43,7 @@
  *   • ветка аплоада (`uploadingFileName`) — прогресс отдачи живёт в
  *     `stores/uploadsStore` и приезжает в бабл отдельно; это отдельный этап.
  */
-import { mediaPlayback, getPlaybackMedia, getCurrentTrack, subscribeCurrentTrack } from '@core/audio/mediaPlaybackController'
+import { mediaPlayback } from '@core/audio/mediaPlaybackController'
 import type { AudioTrack } from '@stores/audioStore'
 import { decodeTransmittedPeaks, buildWaveformBars, WAVEFORM_BAR_WIDTH, WAVEFORM_BAR_MARGIN, WAVEFORM_HEIGHT } from '@core/audio/waveform'
 import { markMediaPlayed } from '@core/mediaRead'
@@ -55,13 +53,12 @@ import ProgressivePreloader from '@components/preloader'
 import MediaProgressLine from '@components/mediaProgressLine'
 import { MiddleEllipsisElement } from '@components/middleEllipsis'
 import { formatVideoTime } from '@components/messages/videoPlayback'
-import { animateSingle, cancelAnimationByKey } from '@helpers/animation'
+import { animateSingle } from '@helpers/animation'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
-import safePlay from '@helpers/dom/safePlay'
-import ListenerSetter from '@helpers/listenerSetter'
+import ListenerSetter, { type Listener } from '@helpers/listenerSetter'
 import type { Middleware } from '@helpers/middleware'
 import { formatBytes } from '@core/mediaCache'
 import { startClient } from '../client/bootstrap'
@@ -190,17 +187,15 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
   // tweb вешает скраб на сам `<svg>` фоновой волны (audio.ts:275-324; клон
   // `.audio-waveform-fake` — `pointer-events: none`, `_audio.scss:390-399`).
   // Драг-версия (mousedown/mousemove с паузой на время перетаскивания) не
-  // портирована — остался клик, как и в React-версии.
-  //
-  // Отличие от оригинала: у tweb элемент владеет СВОИМ <audio>, поэтому скраб
-  // всегда двигает именно его. У нас плеер общий, и перемотка из узла, чей трек
-  // сейчас не играет, увела бы чужой, — отсюда гейт по `audioEl.media`.
+  // портирована — остался клик, как и в React-версии. Двигается СВОЁ медиа
+  // (tweb `scrub`: `setCurrentTime(audio, offsetX / availW * audio.duration)`).
   const onScrub = (e: Event) => {
     cancelEvent(e)
     const media = audioEl.media
-    if(!media || !media.duration) return
+    if(!media.duration) return
     const rect = (e.currentTarget as Element).getBoundingClientRect()
-    mediaPlayback.seekFraction(((e as MouseEvent).clientX - rect.left) / (rect.width || availW))
+    const fraction = ((e as MouseEvent).clientX - rect.left) / (rect.width || availW)
+    media.currentTime = Math.max(0, Math.min(1, fraction)) * media.duration
   }
 
   const renderWaveform = (peaks: number[]) => {
@@ -226,9 +221,6 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
 
   const onLoad = () => {
     const media = audioEl.media
-    if(!media) {
-      return () => {}
-    }
 
     const onTimeUpdate = () => {
       if(fakeSvgContainer && media.duration) {
@@ -236,6 +228,8 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
       }
     }
 
+    // rAF-цикл гаснет по `!media.paused` СВОЕГО медиа (tweb audio.ts:252-258):
+    // чужой трек играет на своём элементе и этот цикл не кормит.
     const setAnimation = () => {
       void animateSingle(() => {
         onTimeUpdate()
@@ -251,17 +245,10 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     audioEl.addAudioListener('ended', onTimeUpdate)
     audioEl.addAudioListener('play', setAnimation)
 
-    // tweb здесь удаляет `<svg>` волны (audio.ts:332-336) — у него отключение
-    // бывает ровно один раз, при смерти элемента. У нас узел отцепляется от
-    // медиа каждый раз, когда играть начали что-то другое, и волну надо не
-    // сносить, а вернуть в исходный вид.
+    // tweb audio.ts:332-336 — отключение бывает ровно один раз, при смерти узла.
     return () => {
-      // rAF-цикл прогресса гаснет по `!media.paused` (tweb audio.ts:252-258) —
-      // у tweb это ВСЕГДА своё медиа, а у нас общее: после переключения оно
-      // продолжает играть чужой трек и дорисовывало бы чужой прогресс в нашу
-      // волну. Поэтому цикл снимается явно.
-      cancelAnimationByKey(audioEl)
-      if(fakeSvgContainer) fakeSvgContainer.style.width = ''
+      waveformContainer.textContent = ''
+      fakeSvgContainer = undefined
     }
   }
 
@@ -316,28 +303,22 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
 
   const onLoad = () => {
     const media = audioEl.media
-    if(!media) {
-      return () => {}
-    }
 
     let launched = false
     const progressLine = new MediaProgressLine()
     progressLine.setMedia({ media, duration: doc.duration })
 
-    // tweb меняет местами описание и полосу через `subtitleDiv.lastChild`
-    // (audio.ts:415,425) — там у подписи один владелец на всю жизнь узла. У нас
-    // тот же узел проходит через отцепление от медиа и обратно, поэтому обмен
-    // идёт по ЯВНЫМ ссылкам: иначе повторный запуск подменил бы полосой уже не
-    // описание, а `.audio-time`.
-    const showDescription = () => {
-      if(progressLine.container.parentElement === subtitleDiv) {
-        progressLine.container.replaceWith(descriptionEl)
-      }
-    }
-
+    // tweb audio.ts:412-434: описание и полоса меняются местами через
+    // `subtitleDiv.lastChild` — на конце трека (в т.ч. на симулированном
+    // контроллером `ended`, которым он останавливает предыдущий) подпись
+    // возвращается, и следующий запуск снова подменяет ОПИСАНИЕ, а не время.
     audioEl.addAudioListener('ended', () => {
+      // Конец трека приходит дважды: настоящий и досланный контроллером в `stop`
+      // (tweb там тоже дважды — у него второй обмен вырождается в замену узла
+      // самим собой). Меняем местами по флагу запуска, а не по узлу подписи.
+      if(!launched) return
       audioEl.classList.remove('audio-show-progress')
-      showDescription()
+      subtitleDiv.lastChild?.replaceWith(descriptionEl)
       launched = false
     })
 
@@ -345,9 +326,7 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
       if(launched) return
       audioEl.classList.add('audio-show-progress')
       launched = true
-      if(descriptionEl.parentElement === subtitleDiv) {
-        descriptionEl.replaceWith(progressLine.container)
-      }
+      subtitleDiv.lastChild?.replaceWith(progressLine.container)
     }
 
     audioEl.addAudioListener('play', onPlay)
@@ -356,16 +335,10 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
       onPlay()
     }
 
-    // tweb здесь только снимает слушатели и выкидывает полосу (audio.ts:436-440):
-    // отключение у него бывает один раз, при смерти элемента. У нас узел
-    // отцепляется от медиа при каждом переключении трека, поэтому подпись надо
-    // ВЕРНУТЬ на место — иначе следующий запуск заменил бы полосой уже не
-    // описание, а `.audio-time`, и длительность из строки пропала бы.
+    // tweb audio.ts:436-440 — отключение бывает один раз, при смерти узла.
     return () => {
       progressLine.removeListeners()
-      showDescription()
-      audioEl.classList.remove('audio-show-progress')
-      launched = false
+      progressLine.container.remove()
     }
   }
 
@@ -417,16 +390,12 @@ export default class AudioElement extends HTMLElement {
   public middleware!: Middleware
   /** трек для плеера — этот же узел отдаёт его в плейлист (`findMediaTargets`) */
   public track!: AudioTrack
-  /** медиа-элемент воспроизведения, пока трек этого узла текущий (tweb `this.audio`) */
-  public media: HTMLMediaElement | null = null
+  /** СВОЙ медиа-элемент этого сообщения (tweb `this.audio` = результат `addMedia`) */
+  public media!: HTMLMediaElement
 
-  /** слушатели самого узла — живут всё время жизни элемента */
+  /** слушатели узла и его медиа — живут всё время жизни элемента (tweb 1:1) */
   public listenerSetter = new ListenerSetter()
-  /** слушатели медиа-элемента — снимаются, как только трек перестал быть текущим */
-  private mediaListeners = new ListenerSetter()
   private onTypeDisconnect: (() => void) | null = null
-  private onTypeLoad!: () => (() => void)
-  private unsubscribeTrack: (() => void) | null = null
   private toggle!: HTMLElement
   private downloadDiv!: HTMLElement
   private audioTimeDiv!: HTMLElement
@@ -435,7 +404,7 @@ export default class AudioElement extends HTMLElement {
 
   /** tweb `addAudioListener` (audio.ts:847-849) */
   public get addAudioListener() {
-    return this.mediaListeners.add(this.media!)
+    return this.listenerSetter.add(this.media)
   }
 
   public render() {
@@ -467,24 +436,51 @@ export default class AudioElement extends HTMLElement {
       this.classList.add('is-unread')
     }
 
-    this.onTypeLoad = isVoice ? wrapVoiceMessage(this) : wrapAudio(this)
+    const onTypeLoad = isVoice ? wrapVoiceMessage(this) : wrapAudio(this)
 
     const audioTimeDiv = this.audioTimeDiv = this.querySelector('.audio-time') as HTMLElement
     audioTimeDiv.textContent = this.getDurationStr()
 
     this.middleware.onDestroy(() => this.destroy())
 
-    // tweb: элемент слушает СВОЙ <audio>. У нас элемент один на приложение,
-    // поэтому слушатели ставятся, пока трек этого узла текущий, и снимаются,
-    // когда играть начали другое (см. докблок файла).
-    this.unsubscribeTrack = subscribeCurrentTrack(() => this.syncCurrent())
-    this.syncCurrent()
+    // tweb `onLoad` (audio.ts:588-639): узел берёт у контроллера СВОЙ элемент и
+    // дальше слушает только его. `autoload` — как в оригинале (audio.ts:664):
+    // голосовое грузится сразу, музыка — по первому запуску.
+    const media = this.media = mediaPlayback.addMedia({ track: this.track, autoload: doc.type !== 'audio' })
 
-    attachClickEvent(toggle, (e) => this.onToggleClick(e), { listenerSetter: this.listenerSetter })
-  }
+    const readyPromise = this.readyPromise = deferredPromise<void>()
+    if(media.readyState >= media.HAVE_CURRENT_DATA) {
+      readyPromise.resolve?.()
+    } else {
+      this.addAudioListener('canplay', () => readyPromise.resolve?.(), { once: true })
+    }
 
-  private isCurrent(): boolean {
-    return getCurrentTrack()?.mediaId === this.doc.id
+    this.onTypeDisconnect = onTypeLoad()
+
+    const onPlay = () => {
+      this.audioTimeDiv.textContent = this.getTimeStr()
+      this.toggle.classList.toggle('playing', !media.paused)
+    }
+
+    if(!media.paused || (media.currentTime > 0 && media.currentTime !== media.duration)) {
+      onPlay()
+    }
+
+    this.addAudioListener('play', onPlay)
+    this.addAudioListener('pause', () => this.toggle.classList.remove('playing'))
+    this.addAudioListener('ended', () => {
+      this.toggle.classList.remove('playing')
+      this.audioTimeDiv.textContent = this.getDurationStr()
+    })
+    this.addAudioListener('timeupdate', () => {
+      // tweb audio.ts:630: перемотка в начало на остановке — не «прослушивание».
+      if(!media.currentTime && media.paused) return
+      this.audioTimeDiv.textContent = this.getTimeStr()
+      this.markPlayed()
+    })
+
+    attachClickEvent(toggle, (e) => this.togglePlay(e), { listenerSetter: this.listenerSetter })
+    this.wireStreamPreloader()
   }
 
   private getDurationStr(): string {
@@ -499,63 +495,19 @@ export default class AudioElement extends HTMLElement {
     return isVoice ? current + ' / ' + this.getDurationStr() : current
   }
 
-  /** Появление/снятие подписки на медиа-элемент — аналог tweb `onLoad` (audio.ts:588). */
-  private syncCurrent() {
-    const current = this.isCurrent()
-    if(current === !!this.media) {
-      return
-    }
-
-    if(!current) {
-      this.detachMedia()
-      return
-    }
-
-    const media = this.media = getPlaybackMedia()
-
-    const readyPromise = this.readyPromise = deferredPromise<void>()
-    if(media.readyState >= media.HAVE_CURRENT_DATA) {
-      readyPromise.resolve?.()
-    } else {
-      this.addAudioListener('canplay', () => readyPromise.resolve?.(), { once: true })
-    }
-
-    this.onTypeDisconnect = this.onTypeLoad()
-
-    const onPlay = () => {
-      this.audioTimeDiv.textContent = this.getTimeStr()
-      this.toggle.classList.toggle('playing', !media.paused)
-    }
-
-    this.addAudioListener('play', onPlay)
-    this.addAudioListener('pause', () => this.toggle.classList.remove('playing'))
-    this.addAudioListener('ended', () => {
-      this.toggle.classList.remove('playing')
-      this.audioTimeDiv.textContent = this.getDurationStr()
-    })
-    this.addAudioListener('timeupdate', () => {
-      this.audioTimeDiv.textContent = this.getTimeStr()
-    })
-
-    if(!media.paused || (media.currentTime > 0 && media.currentTime !== media.duration)) {
-      onPlay()
-    }
-
-    this.wireStreamPreloader()
-  }
-
-  private detachMedia() {
-    this.mediaListeners.removeAll()
-    this.onTypeDisconnect?.()
-    this.onTypeDisconnect = null
-    this.readyPromise?.reject?.()
-    this.readyPromise = null
-    this.preloader = null
-    this.media = null
-    this.toggle.classList.remove('playing')
-    this.classList.remove('downloading', 'corner-download')
-    this.downloadDiv.remove()
-    this.audioTimeDiv.textContent = this.getDurationStr()
+  /**
+   * Чужое непрослушанное голосовое: точка снимается по первому реальному
+   * движению времени — tweb вешает ровно такой `timeupdate`-once в `addMedia`
+   * (appMediaPlaybackController.ts:452-456), но зовёт `readMessages` менеджера;
+   * у нас тот же смысл несёт `markMediaPlayed`.
+   */
+  private played = false
+  private markPlayed() {
+    if(this.played) return
+    const { mid, peerId, out, mediaUnread } = this.message
+    if(this.doc.type === 'audio' || !mediaUnread || out || mid === undefined || peerId === undefined) return
+    this.played = true
+    markMediaPlayed(peerId, mid)
   }
 
   /**
@@ -568,62 +520,64 @@ export default class AudioElement extends HTMLElement {
   private wireStreamPreloader() {
     const media = this.media
     const readyPromise = this.readyPromise
-    if(!media || !readyPromise || media.readyState >= media.HAVE_CURRENT_DATA) {
+    if(!readyPromise || media.readyState >= media.HAVE_CURRENT_DATA) {
       return
     }
 
-    this.classList.add('corner-download', 'downloading')
-    this.toggle.append(this.downloadDiv)
+    // tweb вешает кольцо на первый `play` (audio.ts:683-708), а не на монтирование:
+    // в ленте десятки голосовых, крутиться должно у того, что запустили.
+    const attach = () => {
+      this.listenerSetter.remove(playListener)
+      if(media.readyState >= media.HAVE_CURRENT_DATA) return
 
-    const preloader = this.preloader ??= constructDownloadPreloader(false)
-    const deferred = deferredPromise<void>()
-    deferred.notifyAll?.({ done: 75, total: 100 })
-    preloader.attach(this.downloadDiv, false, deferred)
+      this.classList.add('corner-download', 'downloading')
+      this.toggle.append(this.downloadDiv)
 
-    void readyPromise.then(() => {
-      deferred.resolve?.()
+      const preloader = this.preloader ??= constructDownloadPreloader(false)
+      const deferred = deferredPromise<void>()
+      deferred.notifyAll?.({ done: 75, total: 100 })
+      preloader.attach(this.downloadDiv, false, deferred)
 
-      if(UNMOUNT_PRELOADER) {
-        this.classList.remove('downloading')
-        this.downloadDiv.classList.add('downloaded')
-        setTimeout(() => this.downloadDiv.remove(), 200)
-      }
-    }, () => {})
-  }
+      void readyPromise.then(() => {
+        deferred.resolve?.()
 
-  private onToggleClick(e: Event) {
-    cancelEvent(e)
-
-    if(this.isCurrent()) {
-      this.togglePlay()
-      return
+        if(UNMOUNT_PRELOADER) {
+          this.classList.remove('downloading')
+          this.downloadDiv.classList.add('downloaded')
+          setTimeout(() => this.downloadDiv.remove(), 200)
+        }
+      }, () => {})
     }
 
-    // Чужое непрослушанное голосовое → снять media_unread (tweb делает это
-    // отдельно, `readMessagesContents` в бабле; у нас точка снимается по факту
-    // прослушивания, как и в React-ленте — `useVoiceQueue.playVoice`).
-    const { mid, peerId, out, mediaUnread } = this.message
-    if(mediaUnread && !out && mid !== undefined && peerId !== undefined) {
-      markMediaPlayed(peerId, mid)
-    }
-
-    const { queue, index } = findMediaTargets(this)
-    mediaPlayback.playQueue(queue, index)
+    // tweb audio.ts:708 — `const playListener: any = this.addAudioListener(...)`:
+    // тип-хелпер объявлен как `addEventListener` (void), сам сеттер возвращает Listener.
+    const playListener = this.addAudioListener('play', attach) as unknown as Listener
+    void readyPromise.then(() => this.listenerSetter.remove(playListener), () => {})
   }
 
   /** tweb audio.ts:804-813 */
-  public togglePlay(e?: Event, paused = this.media ? this.media.paused : true) {
+  public togglePlay(e?: Event, paused = this.media.paused) {
     if(e) cancelEvent(e)
 
-    if(!this.media) {
-      return
-    }
-
     if(paused) {
-      safePlay(this.media)
+      this.setTargets()
+      // tweb: `safePlay(this.audio)` — байты к этому моменту уже добыты
+      // download-менеджером. У нас src резолвит контроллер (`playMedia`), он же
+      // держит «этот элемент попросили сыграть» на время резолва.
+      mediaPlayback.playMedia(this.media)
     } else {
       this.media.pause()
     }
+  }
+
+  /**
+   * tweb `setTargetsIfNeeded` (audio.ts:815-828): перед запуском узел объявляет
+   * контроллеру плейлист вокруг себя. У tweb он передаёт пары `{peerId, mid}` и
+   * сверяется с searchContext'ом, у нас очередь идёт значением — сверять нечего.
+   */
+  private setTargets() {
+    const { queue, index } = findMediaTargets(this)
+    mediaPlayback.setTargets(queue, index)
   }
 
   /**
@@ -638,16 +592,12 @@ export default class AudioElement extends HTMLElement {
 
   /** tweb audio.ts:851-869 */
   private destroy() {
-    this.unsubscribeTrack?.()
-    this.unsubscribeTrack = null
     this.onTypeDisconnect?.()
     this.onTypeDisconnect = null
     this.readyPromise?.reject?.()
     this.readyPromise = null
-    this.mediaListeners.removeAll()
     this.listenerSetter.removeAll()
     this.preloader = null
-    this.media = null
   }
 }
 

@@ -15,6 +15,7 @@ import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
+import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
@@ -80,7 +81,11 @@ const APPLY: Projector = {
   // Зеркала прошлой сессии обязаны исчезнуть: их читают СИНХРОННО на рендере, и
   // без сброса следующий аккаунт увидит чужие карточки/историю/медиа-URL (у
   // пиров это ещё и `avatarUrl`, приватный per-viewer).
-  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror() },
+  // Четвёртое зеркало того же кадра: коллекция медиа-элементов плеера
+  // (core/audio/mediaPlaybackController) — её элементы держат URL'ы прошлой
+  // сессии (токен-стрим, blob расшифрованного секретного голоса) и продолжают
+  // играть после логаута, если их не снять.
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror(); resetPlayback() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
