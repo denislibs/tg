@@ -1,6 +1,7 @@
 // Порт tweb `src/scripts/generate_mtproto_types.js` 1:1.
 //
-// Читает схему (`in/schema.json`) плюс два файла надстроек и печатает
+// Читает схему (`schema/schema.json` в корне репозитория) плюс два файла
+// надстроек и печатает
 // `src/layer.d.ts` — типы всех конструкторов и методов. Запуск:
 // `npm run generate-mtproto-types`.
 //
@@ -20,11 +21,15 @@ import {dirname, join} from 'path';
 import {fileURLToPath} from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const readJSON = (path) => JSON.parse(readFileSync(join(__dirname, path), 'utf8'));
+// Схема — общий источник для обеих сторон: из неё генерируются типы фронта и
+// (фаза 2) кодек со структурами на Go. Поэтому она лежит не внутри web-client,
+// а в `schema/` в корне репозитория.
+const SCHEMA_DIR = join(__dirname, '../../schema');
+const readJSON = (name) => JSON.parse(readFileSync(join(SCHEMA_DIR, name), 'utf8'));
 
-const schema = readJSON('in/schema.json');
-const additional = readJSON('in/schema_additional_params.json');
-const replace = readJSON('in/schema_replace_types.json');
+const schema = readJSON('schema.json');
+const additional = readJSON('schema_additional_params.json');
+const replace = readJSON('schema_replace_types.json');
 
 const mtproto = schema.API;
 

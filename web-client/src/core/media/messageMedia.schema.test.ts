@@ -4,7 +4,7 @@
 // глазами, а именно этот класс расхождений чтением и пропускается: поведение
 // самосогласованное, просто поле называется иначе или лежит уровнем выше.
 // Здесь оно проверяется механически — по той же схеме, из которой генерируются
-// типы (`scripts/in/schema.json`).
+// типы (`schema/schema.json` в корне репозитория).
 //
 // Проверяется двумя утверждениями:
 //
@@ -22,8 +22,8 @@
 // (фаза 2) — там расхождение видно побайтово.
 import { describe, expect, it } from 'vitest'
 
-import schema from '../../../scripts/in/schema.json'
-import additionalParams from '../../../scripts/in/schema_additional_params.json'
+import schema from '../../../../schema/schema.json'
+import additionalParams from '../../../../schema/schema_additional_params.json'
 
 import { saveMessageMedia, type MessageMedia } from './messageMedia'
 
