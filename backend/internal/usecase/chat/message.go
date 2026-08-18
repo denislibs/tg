@@ -382,6 +382,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
 			SendAsChatID: in.SendAsChatID,
+			// Спойлер — свойство вложения, без медиа он бессмысленен (так же
+			// гейтится PaidMediaPrice ниже: только при msg.MediaID != nil).
+			MediaSpoiler: in.MediaSpoiler && in.MediaID != nil,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})

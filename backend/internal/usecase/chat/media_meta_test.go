@@ -66,6 +66,68 @@ func TestSend_NoAudioTagsNoKeys(t *testing.T) {
 	}
 }
 
+// Пики волны голосового (media.waveform) доезжают и до сообщения, и до
+// live-кадра. Без ключа в КАДРЕ у живого голосового волны нет до перезагрузки
+// истории — ровно тот дефект, что был у send_as; поэтому проверяются обе витрины.
+func TestSend_VoiceWaveformInMessageAndFrame(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	mediaID := int64(83)
+	peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
+	s.seedMedia(mediaID, 1)
+	s.seedMediaDims(mediaID, MediaDims{
+		Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks,
+	})
+
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "voice", MediaID: &mediaID})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if string(msg.MediaWaveform) != string(peaks) {
+		t.Fatalf("hydrated MediaWaveform = %v, want %v", msg.MediaWaveform, peaks)
+	}
+	p := messageUpdatePayload(msg)
+	got, ok := p["media_waveform"].([]byte)
+	if !ok || string(got) != string(peaks) {
+		t.Fatalf("payload media_waveform = %v (ok=%v), want %v", p["media_waveform"], ok, peaks)
+	}
+}
+
+// Медиа без пиков (фото/файл/старое голосовое): ключа в кадре нет вовсе —
+// клиент отличает «пиков нет» от «пустая волна».
+func TestSend_NoWaveformNoKey(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	mediaID := int64(84)
+	s.seedMedia(mediaID, 1)
+	s.seedMediaDims(mediaID, MediaDims{Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg"})
+
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "voice", MediaID: &mediaID})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	p := messageUpdatePayload(msg)
+	if _, ok := p["media_waveform"]; ok {
+		t.Fatalf("media_waveform must be absent: %v", p["media_waveform"])
+	}
+}
+
+// Платное медиа под замком: пики — тоже мета контента (по ним видно длину и
+// «форму» записи), до оплаты их быть не должно.
+func TestStripLockedMedia_ClearsWaveform(t *testing.T) {
+	m := domain.Message{MediaName: "voice.ogg", MediaWaveform: []byte{1, 2, 3}}
+	stripLockedMedia(&m)
+	if m.MediaWaveform != nil {
+		t.Fatalf("waveform survived lock: %v", m.MediaWaveform)
+	}
+}
+
 // Платное медиа под замком: теги трека вычищаются вместе с остальной метой
 // контента — до оплаты получатель не должен видеть исполнителя/название.
 func TestStripLockedMedia_ClearsAudioTags(t *testing.T) {
@@ -140,6 +202,93 @@ func TestStripLockedMedia_ClearsAnimated(t *testing.T) {
 	stripLockedMedia(&m)
 	if m.MediaAnimated {
 		t.Fatalf("animated survived lock")
+	}
+}
+
+// Спойлер (telegram messageMedia.pFlags.spoiler) доезжает и до сообщения, и до
+// live-кадра: без ключа в КАДРЕ живое медиа у получателя показывается открытым
+// до перезагрузки истории — то есть раскрывает ровно то, что отправитель просил
+// скрыть (тот же дефект, что был у send_as; поэтому проверяются обе витрины).
+func TestSend_SpoilerInMessageAndFrame(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	mediaID := int64(81)
+	s.seedMedia(mediaID, 1)
+	s.seedMediaDims(mediaID, MediaDims{
+		Mime: "image/jpeg", Width: 1280, Height: 960, Size: 250000, FileName: "secret.jpg",
+	})
+
+	msg, err := in.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &mediaID, MediaSpoiler: true,
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !msg.MediaSpoiler {
+		t.Fatalf("MediaSpoiler = false, want true")
+	}
+	p := messageUpdatePayload(msg)
+	if p["media_spoiler"] != true {
+		t.Fatalf("payload media_spoiler = %v, want true", p["media_spoiler"])
+	}
+}
+
+// Обычное медиа без спойлера: ключа в кадре нет вовсе — клиент отличает
+// «спойлера нет» от «спойлер снят», как у остальных флагов витрины.
+func TestSend_NoSpoilerNoKey(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	mediaID := int64(82)
+	s.seedMedia(mediaID, 1)
+	s.seedMediaDims(mediaID, MediaDims{Mime: "image/jpeg", Width: 800, Height: 600, Size: 90000})
+
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &mediaID})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if msg.MediaSpoiler {
+		t.Fatalf("MediaSpoiler = true without the flag")
+	}
+	p := messageUpdatePayload(msg)
+	if _, ok := p["media_spoiler"]; ok {
+		t.Fatalf("media_spoiler must be absent: %v", p["media_spoiler"])
+	}
+}
+
+// Спойлер — свойство ВЛОЖЕНИЯ: у текстового сообщения без media_id флаг с входа
+// игнорируется (как гейтится и цена платного медиа), иначе клиент получил бы
+// заслонку поверх пустоты.
+func TestSend_SpoilerIgnoredWithoutMedia(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	msg, err := in.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: 1, Type: "text", Text: "hi", MediaSpoiler: true,
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if msg.MediaSpoiler {
+		t.Fatalf("MediaSpoiler = true for a message without media")
+	}
+}
+
+// Платное медиа под замком: спойлер тоже гасится — заблокированное медиа уже
+// скрыто плейсхолдером с ценой, вторая заслонка похоронила бы кнопку
+// разблокировки (флаг остаётся в БД и вернётся после оплаты).
+func TestStripLockedMedia_ClearsSpoiler(t *testing.T) {
+	m := domain.Message{MediaName: "secret.jpg", MediaSpoiler: true}
+	stripLockedMedia(&m)
+	if m.MediaSpoiler {
+		t.Fatalf("spoiler survived lock")
 	}
 }
 

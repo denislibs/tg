@@ -9,7 +9,7 @@ import type { FileUpload } from '../net/dnp/fileUpload'
 // large files — sliced per-chunk so the whole file never sits in memory). Files
 // above CHUNK_THRESHOLD with a `blob` take the chunked/resumable path.
 export interface UploadArgs { bytes?: ArrayBuffer; blob?: Blob; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string; progressId?: string; waveform?: Uint8Array }
-export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean; waveform: string }
+export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean }
 /** Снимок короткоживущего медиа-токена: значение + момент истечения (ms epoch).
  * Владелец — воркер; вкладки получают этот же объект и ответом tokenInfo(), и
  * событием rt:media_token (Stage 1C.2, Task 3). */
@@ -225,8 +225,10 @@ export function newMediaManager({ rest, onUploadProgress, onToken, onMediaUrl, f
     // Don't cache until the server has finished processing (a thumb may appear
     // a moment after upload); re-fetch while hasThumb is still false.
     if (hit && hit.hasThumb) return hit
-    const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean; waveform?: string }>(`/media/${id}`)
-    const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb, waveform: r.waveform ?? '' }
+    // waveform в ответе есть, но клиент его отсюда НЕ читает: пики приезжают в
+    // самом сообщении (media_waveform), как documentAttributeAudio.waveform у tweb.
+    const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean }>(`/media/${id}`)
+    const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb }
     metaCache.set(id, m)
     return m
   }

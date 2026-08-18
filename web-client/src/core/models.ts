@@ -210,6 +210,9 @@ export interface RawMessage {
   media_duration?: number
   media_size?: number
   media_name?: string
+  /** пики волны голосового, base64 (5-битная упаковка) — наш
+   * documentAttributeAudio.waveform: волна рисуется прямо из сообщения */
+  media_waveform?: string
   /** ID3-теги трека (tweb documentAttributeAudio.title/performer); нет тегов —
    * полей нет в JSON, подпись бабла падает в размер файла (tweb audio.ts:362-364) */
   media_title?: string
@@ -217,6 +220,10 @@ export interface RawMessage {
   /** медиа проигрывается как гифка (tweb documentAttributeAnimated → doc.type
    * === 'gif'). Ключ приходит ТОЛЬКО когда true (как остальные флаги витрины) */
   media_animated?: boolean
+  /** медиа скрыто спойлером (tweb messageMedia.pFlags.spoiler): получатель
+   * видит шум из точек поверх размытого превью, пока не кликнет.
+   * Ключ приходит ТОЛЬКО когда true (как остальные флаги витрины) */
+  media_spoiler?: boolean
   views?: number
   forwards?: number
   media_unread?: boolean
@@ -344,6 +351,12 @@ export interface Message {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  /** Пики волны голосового, base64 (5-битная упаковка, ~63 байта) — наш
+   * documentAttributeAudio.waveform. Считает ОТПРАВИТЕЛЬ при записи, поэтому
+   * волна у всех получателей одинаковая и строится синхронно из самого
+   * сообщения (tweb audio.ts createWaveformBars), без запроса меты медиа и без
+   * скачивания аудиофайла. undefined — не голосовое либо запись старше поля. */
+  mediaWaveform?: string
   /** ID3-теги трека (tweb documentAttributeAudio.title/performer) */
   mediaTitle?: string
   mediaPerformer?: string
@@ -356,6 +369,11 @@ export interface Message {
    * когда true, поэтому undefined — «сервер не сказал», а не «точно не гифка»
    * (разбор и фолбэк — `core/gifs.ts::isGifLike`). */
   mediaAnimated?: boolean
+  /** Медиа скрыто спойлером — tweb `messageMedia.pFlags.spoiler`. Ставит
+   * ОТПРАВИТЕЛЬ в попапе отправки; получатель раскрывает кликом, и обратно
+   * спойлер уже не возвращается (в отличие от текстового). Признак
+   * ОДНОСТОРОННИЙ: приходит только когда true. */
+  mediaSpoiler?: boolean
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
   /** number of times a channel post was forwarded (Telegram message.forwards) */
@@ -802,9 +820,11 @@ export function mapMessage(r: RawMessage): Message {
     mediaDuration: r.media_duration,
     mediaSize: r.media_size,
     mediaName: r.media_name,
+    mediaWaveform: r.media_waveform,
     mediaTitle: r.media_title,
     mediaPerformer: r.media_performer,
     mediaAnimated: r.media_animated,
+    mediaSpoiler: r.media_spoiler,
     views: r.views,
     forwards: r.forwards,
     mediaUnread: r.media_unread,
@@ -853,8 +873,10 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
     thread_root_id: evt.thread_root_id ?? null, media_w: evt.media_w, media_h: evt.media_h,
     media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
     media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
+    media_waveform: evt.media_waveform,
     media_title: evt.media_title, media_performer: evt.media_performer,
     media_animated: evt.media_animated,
+    media_spoiler: evt.media_spoiler,
     effect: evt.effect ?? null, paid_media: evt.paid_media ?? null,
     send_as: evt.send_as ?? null,
   })

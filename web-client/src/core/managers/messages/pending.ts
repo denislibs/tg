@@ -66,6 +66,7 @@ import type { MessageOp } from '../../realtime/messageOps'
 import type { AckEvt, PendingMedia, PendingNewEvt, TypingAction } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
+import { b64FromBytes } from '../../secret/crypto'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 
 /** Данные временного бабла, которых нет в проводных полях send_message: автор,
@@ -116,6 +117,9 @@ export interface SendFileArgs {
   paidMediaPrice?: number | null
   /** tweb `isMedia`: фото/видео «как медиа» — бабл сразу с локальным превью */
   isMedia?: boolean
+  /** tweb `sendFile({spoiler})` (appMessagesManager.ts:134): отправитель прячет
+   * медиа под спойлером — признак едет и в кадр, и в оптимистичный бабл */
+  spoiler?: boolean
   /** «отправляет фото/файл…» у собеседника на время аплоада (tweb sendMessageUpload*Action) */
   uploadAction?: TypingAction
 }
@@ -287,6 +291,12 @@ export function newPendingMethods(ctx: PendingCtx) {
       mediaMime: e.media?.mime,
       mediaSize: e.media?.size,
       mediaName: e.media?.name,
+      mediaDuration: e.media?.duration,
+      // Пики волны голосового считает вкладка при записи (то же значение уедет
+      // в media.waveform) — бабл «отправляется…» рисует волну сразу, а не ждёт
+      // серверного эха.
+      mediaWaveform: e.media?.waveform,
+      mediaSpoiler: e.media?.spoiler,
       // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
       // чтобы точка не «моргала» после ack.
       mediaUnread: e.type === 'voice' || e.type === 'roundVideo' || undefined,
@@ -449,6 +459,7 @@ export function newPendingMethods(ctx: PendingCtx) {
         groupedId: o.groupedId,
         threadRootId: o.threadRootId ?? null,
         paidMediaPrice: o.paidMediaPrice ?? null,
+        mediaSpoiler: o.spoiler,
       }
       let sent: Promise<number | null> = Promise.resolve(null)
       beforeMessageSending({
@@ -461,7 +472,17 @@ export function newPendingMethods(ctx: PendingCtx) {
         entities: o.entities,
         grouped_id: o.groupedId,
         local_url: localUrl,
-        media: { width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName },
+        media: {
+          width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
+          duration: o.duration,
+          // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
+          // рисуется сразу и не меняется после ack — сервер вернёт их же.
+          waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
+          // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
+          // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
+          // должен на миг обнажить медиа до эха сервера.
+          spoiler: o.spoiler,
+        },
         // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
         // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
         // этой опции): между баблом и кадром стоит аплоад, за время которого

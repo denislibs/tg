@@ -29,8 +29,10 @@
  *    `wrapMediaSpoiler`+`DotRenderer` в дереве отсутствуют, фичи «скрытое
  *    медиа» у нас нет ни в модели сообщения, ни в UI. Вместе с ними отпали
  *    `containerWidth`/`containerHeight` (они считались только для спойлера);
- *  • `videoTimes` (готовые `.video-time` от вызывающего) не портирован: их
- *    строит видео-путь бабла, которого ещё нет (см. шов ниже);
+ *  • `videoTimes` портирован (см. параметр ниже): готовые узлы таймкода от
+ *    вызывающего кладутся в ячейку. Заполняет их в tweb бабл — для
+ *    НЕПРОПЛАЧЕННОГО платного медиа, где ячейку рисует не `wrapVideo`, а
+ *    псевдо-фото из превью; наш бабл — следующий этап порта;
  *  • `chat`/`managers`/`animationGroup` не портированы — в теле оригинала
  *    `chat`/`managers` уходят только в `wrapVideo`/`wrapPhoto` (у нас менеджеры
  *    берутся из точки входа), `animationGroup` — только в `wrapMediaSpoiler`.
@@ -41,6 +43,7 @@ import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import type { Message } from '@core/models'
 import prepareAlbum from '@components/prepareAlbum'
 import wrapPhoto from '@components/wrappers/photo'
+import wrapVideo, { videoDocFromMessage } from '@components/wrappers/video'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
 import type { Middleware } from '@helpers/middleware'
 
@@ -60,7 +63,7 @@ function isPhotoItem(message: Message): boolean {
 
 export default function wrapAlbum({
   messages, attachmentDiv, middleware, lazyLoadQueue, isVisible, loadPromises,
-  autoDownload, uploadPromises,
+  autoDownload, uploadPromises, videoTimes,
 }: {
   messages: Message[]
   attachmentDiv: HTMLElement
@@ -71,6 +74,16 @@ export default function wrapAlbum({
   autoDownload?: ChatAutoDownload
   /** промисы отгрузки по индексу элемента (tweb `uploadingFileName[idx]`) */
   uploadPromises?: (CancellablePromise<unknown> | undefined)[]
+  /**
+   * Готовые `.video-time` от вызывающего по индексу элемента (tweb `videoTimes`,
+   * album.ts:32,150-153). Механизм нужен там, где ЯЧЕЙКА ВИДЕО НЕ РИСУЕТСЯ
+   * враппером и потому не может построить бейдж сама: у tweb это непроплаченное
+   * платное медиа (`messageExtendedMediaPreview` — вместо документа приходит
+   * превью с `video_duration`, а бабл делает из него псевдо-фото). Длительность
+   * знает только вызывающий, поэтому таймкод приезжает готовым узлом и
+   * появляется ДО загрузки чего-либо.
+   */
+  videoTimes?: (HTMLElement | undefined)[]
 }): void {
   // ! lowest msgID will be the FIRST in album (комментарий tweb album.ts:37)
   const items = messages.map((message) => ({
@@ -93,46 +106,76 @@ export default function wrapAlbum({
     div.dataset.peerId = '' + message.chatId
     const mediaDiv = div.firstElementChild as HTMLElement
 
-    if (!isPhotoItem(message)) {
-      // ШОВ ПОД `wrapVideo` (пишется следующей задачей). Оригинал здесь зовёт
-      //   wrapVideo({doc: media, container: mediaDiv, message, boxWidth: 0,
-      //     boxHeight: 0, withTail: false, isOut, lazyLoadQueue, middleware,
-      //     loadPromises, autoDownload, noAutoplayAttribute: true,
-      //     uploadingFileName: uploadingFileName?.[idx]})
-      // — с ТЕМИ ЖЕ аргументами, что перечислены выше (album.ts:100-115).
-      // До появления враппера видео-ячейка остаётся ПУСТОЙ: подменять её
-      // картинкой нельзя — у видео свой слой (постер, `.video-time`,
-      // play-кнопка, автоплей), и такая подмена показала бы пользователю не то,
-      // молча и правдоподобно. Геометрия ячейки при этом уже верная: грид
-      // считается по размерам ВСЕХ элементов, включая видео.
-      return
-    }
-
-    if (message.mediaId == null) {
+    // tweb album.ts:82-116 — ветка по типу медиа; у обеих ветвей один и тот же
+    // нулевой бокс (размер ячейки уже задан гридом) и один и тот же промис,
+    // который уходит в `loadPromises`.
+    const thumbPromise = message.mediaId == null ?
       // Платное медиа до оплаты: сервер `media_id` не отдаёт вовсе, качать
-      // нечего. Плейсхолдер с оверлеем «разблокировать» — отдельная работа
-      // (у tweb это `wrapMediaSpoiler`, которого в дереве нет); просить URL по
-      // `null` нельзя, а рисовать пустую картинку — врать.
-      return
+      // нечего. У tweb на этом месте псевдо-фото из превью
+      // (`generatePhotoForExtendedMediaPreview`) под `wrapMediaSpoiler`;
+      // и то, и другое требует правок вне периметра этой задачи (`wrapPhoto`
+      // должен уметь показывать stripped-байты КАК медиа, а `DotRenderer`/
+      // `wrapMediaSpoiler` в дереве ещё нет) — вынесено в доклад. Таймкод такой
+      // ячейки при этом уже работает: он приходит готовым узлом в `videoTimes`.
+      undefined :
+      !isPhotoItem(message) ?
+        // tweb album.ts:100-115 — не-фото ячейку рисует `wrapVideo` теми же
+        // аргументами. `noAutoplayAttribute: true` (и нулевой бокс, из которого
+        // враппер выводит `isGroupedItem`) — почему видео в альбоме не
+        // автоплеится: иначе крутились бы до десяти файлов разом.
+        wrapVideoItem(message, mediaDiv, idx) :
+        wrapPhoto({
+          mediaId: message.mediaId,
+          width: message.mediaWidth,
+          height: message.mediaHeight,
+          strippedThumb: message.mediaBlur,
+          thumb: !!message.mediaHasThumb,
+          container: mediaDiv,
+          boxWidth: 0,
+          boxHeight: 0,
+          lazyLoadQueue,
+          isVisible,
+          middleware,
+          loadPromises,
+          autoDownloadSize: autoDownload?.photo,
+          uploadPromise: uploadPromises?.[idx],
+        })
+
+    if (thumbPromise) {
+      loadPromises?.push(thumbPromise)
     }
 
-    const thumbPromise = wrapPhoto({
-      mediaId: message.mediaId,
-      width: message.mediaWidth,
-      height: message.mediaHeight,
-      strippedThumb: message.mediaBlur,
-      thumb: !!message.mediaHasThumb,
+    // tweb album.ts:150-153 — готовый таймкод вызывающего кладётся в ячейку
+    // последним, поверх уже построенного медиа.
+    const videoTime = videoTimes?.[idx]
+    if (videoTime) {
+      mediaDiv.append(videoTime)
+    }
+  })
+
+  function wrapVideoItem(message: Message, mediaDiv: HTMLElement, idx: number) {
+    const doc = videoDocFromMessage(message)
+    if (!doc) return undefined
+
+    return wrapVideo({
+      doc,
       container: mediaDiv,
+      message: {
+        mid: message.id,
+        peerId: message.chatId,
+        mediaUnread: message.mediaUnread,
+        // tweb `pFlags.is_outgoing` — у нас оптимистичный id до ack (core/messageToConvMsg.ts:98)
+        isOutgoing: message.id < 0,
+      },
       boxWidth: 0,
       boxHeight: 0,
       lazyLoadQueue,
       isVisible,
       middleware,
       loadPromises,
-      autoDownloadSize: autoDownload?.photo,
+      autoDownload,
+      noAutoplayAttribute: true,
       uploadPromise: uploadPromises?.[idx],
     })
-
-    loadPromises?.push(thumbPromise)
-  })
+  }
 }

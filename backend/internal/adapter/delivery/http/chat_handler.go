@@ -359,6 +359,9 @@ type sendBody struct {
 	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
 	// медиа; применяется только к фото/видео с прикреплённым media_id.
 	PaidMediaPrice *int64 `json:"paid_media_price"`
+	// Скрыть медиа спойлером (Telegram messageMedia.pFlags.spoiler); работает
+	// только вместе с media_id.
+	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsChatID *int64 `json:"send_as_chat_id"`
 }
@@ -400,6 +403,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 		PaidMediaPrice: body.PaidMediaPrice,
+		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   body.SendAsChatID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
@@ -2138,6 +2142,13 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		j["media_name"] = m.MediaName
 	}
+	// Пики волны голосового (5-битная упаковка) — как documentAttributeAudio.waveform
+	// у telegram: волна рисуется прямо из сообщения (tweb audio.ts createWaveformBars),
+	// без отдельного запроса меты медиа. Ключа нет — пиков нет (не голосовое либо
+	// старое сообщение), клиент откатывается на пересчёт из аудиофайла.
+	if len(m.MediaWaveform) > 0 {
+		j["media_waveform"] = m.MediaWaveform // []byte → base64 string in JSON
+	}
 	// Теги трека: подпись музыкального бабла (tweb audio.ts — performer, иначе
 	// размер файла) и его заголовок (title ?? file_name). Отсутствуют, если файл
 	// без тегов.
@@ -2152,6 +2163,12 @@ func messageJSON(m domain.Message) map[string]any {
 	// Ключа нет — обычное видео/картинка (как у остальных флагов витрины).
 	if m.MediaAnimated {
 		j["media_animated"] = true
+	}
+	// Спойлер (telegram messageMedia.pFlags.spoiler): медиа рисуется под
+	// снимаемой кликом заслонкой, видео не автоплеится (tweb bubbles.ts:8570,
+	// :8579). Ключа нет — медиа показывается как обычно.
+	if m.MediaSpoiler {
+		j["media_spoiler"] = true
 	}
 	if m.PaidMediaPrice != nil {
 		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

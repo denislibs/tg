@@ -3,7 +3,7 @@ import { decryptMedia, b64ToBytes } from '../secret/crypto'
 // mediaContentUrl здесь — БАЙТЫ аудио для декода волны (fetch + decodeAudioData),
 // не картинка: Task 7 (перевод картинок на downloadMediaURL) их не трогает.
 import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
-import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
+import { unpack5bit, WAVEFORM_BYTES_LENGTH, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 
 // ПЕРЕДАННЫЕ пики (посчитаны при записи): base64 → 5-бит распаковка в СЫРЫЕ
 // значения 0..31, как у tweb `decodeWaveform`. Приоритетнее client-recompute:
@@ -18,7 +18,9 @@ export function decodeTransmittedPeaks(waveformB64: string): number[] {
     return []
   }
   if (!bytes.length) return []
-  return unpack5bit(bytes, WAVEFORM_SAMPLES_COUNT)
+  // 1:1 tweb `wrapVoiceMessage`: `decodeWaveform(waveform.slice(0, 63))` — не
+  // больше 63 байт (100 сэмплов), число значений выводится из длины буфера.
+  return unpack5bit(bytes.slice(0, WAVEFORM_BYTES_LENGTH))
 }
 
 // ── Геометрия волны — порт tweb `createWaveformBars` (components/audio.ts:83-126)
@@ -26,6 +28,11 @@ const BAR_WIDTH = 2
 const BAR_MARGIN = 2
 const BAR_HEIGHT_MIN = 4
 const BAR_HEIGHT_MAX = 23
+// tweb выбирает пару по `mediaSizes.isMobile` (152/190 на мобиле, 190/256 на
+// десктопе — audio.ts:87-89). Мобильной ветки здесь нет, потому что нет самого
+// `mediaSizes.isMobile`: `core/dom/mediaSizes.ts` портируется отдельной задачей,
+// и брать ширину из своего ad-hoc медиазапроса значило бы завести второго
+// владельца этого факта. Ветка возвращается вместе с портом mediaSizes.
 const WAVE_MIN_W = 190 // desktop minW
 const WAVE_MAX_W = 256 // desktop maxW
 
@@ -129,11 +136,18 @@ export async function computeWaveform(mediaId: number, url: string): Promise<num
 
 // React hook: returns the decoded waveform for a media id (empty until ready).
 // secret — расшифровать ciphertext (голос в E2E-чате).
-export function useWaveform(mediaId: number, secret?: WaveSecret): number[] {
-  const [bars, setBars] = useState<number[]>(() => cache.get(mediaId) ?? [])
+//
+// ПРЕДМЕТА В tweb НЕТ: оригинал волну из аудиофайла не считает НИКОГДА — пики
+// приезжают в документе сообщения (documentAttributeAudio.waveform). Пересчёт
+// остаётся ровно одному сценарию — голос в СЕКРЕТНОМ чате: сервер видит там
+// только шифртекст, посчитать и сохранить пики ему не с чего, а секретных чатов
+// у tweb нет вовсе. Отсюда `enabled`: обычное голосовое сюда не ходит.
+export function useWaveform(mediaId: number, secret?: WaveSecret, enabled = true): number[] {
+  const [bars, setBars] = useState<number[]>(() => (enabled ? cache.get(mediaId) ?? [] : []))
   const keyB64 = secret?.keyB64
   const ivB64 = secret?.ivB64
   useEffect(() => {
+    if (!enabled) return
     const hit = cache.get(mediaId)
     if (hit) {
       setBars(hit)
@@ -152,6 +166,6 @@ export function useWaveform(mediaId: number, secret?: WaveSecret): number[] {
     return () => {
       alive = false
     }
-  }, [mediaId, keyB64, ivB64])
+  }, [mediaId, keyB64, ivB64, enabled])
   return bars
 }

@@ -26,6 +26,9 @@ vi.mock('@core/mediaUrl', () => ({
 const markMediaPlayed = vi.fn()
 vi.mock('@core/mediaRead', () => ({ markMediaPlayed: (...args: unknown[]) => markMediaPlayed(...args) }))
 
+// Мок нужен как ПИН, а не как заглушка зависимости: пики приезжают в самом
+// сообщении, поэтому узел не должен ходить за метой медиа ВООБЩЕ. Тест волны
+// проверяет `meta` на «не звали» — если добор меты вернут, он покраснеет.
 const meta = vi.fn((_id: number) => Promise.resolve({ waveform: '' }))
 vi.mock('../client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { meta: (id: number) => meta(id) } } }),
@@ -192,29 +195,30 @@ describe('AudioElement — голосовое (tweb wrapVoiceMessage)', () => {
     expect(fake.querySelectorAll('rect').length).toBe(bars.length)
   })
 
-  it('пиков нет в сообщении — добираются метой и волна перерисовывается', async () => {
-    meta.mockResolvedValueOnce({ waveform: WAVEFORM_B64 })
+  // Пики едут в самом сообщении (`media_waveform` витрины истории и live-кадра),
+  // как documentAttributeAudio.waveform у telegram. Волна обязана быть готова к
+  // первому кадру — ни запроса меты медиа, ни перерисовки на месте.
+  it('волна готова синхронно: запроса меты медиа нет вовсе', async () => {
+    const { element } = wrap(voiceDoc())
+
+    expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
+
+    await settle()
+
+    expect(meta).not.toHaveBeenCalled()
+    // волна не перерисовывалась — узлы те же, что были на первом кадре
+    expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
+  })
+
+  it('пиков нет — волны нет и файл ради неё не качается (tweb 1:1)', async () => {
     const { element } = wrap(voiceDoc({ waveform: undefined }))
 
-    // без пиков волны нет вовсе (tweb: пустой waveform → нет svg)
+    // tweb: пустой waveform → createWaveformBars не отдаёт контейнер, svg нет
     expect(element.querySelector('.audio-waveform')).toBeNull()
 
     await settle()
 
-    expect(meta).toHaveBeenCalledWith(100)
-    expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
-  })
-
-  it('middleware протух — поздняя мета в DOM ничего не пишет', async () => {
-    let resolveMeta: (value: { waveform: string }) => void = () => {}
-    meta.mockReturnValueOnce(new Promise((r) => { resolveMeta = r }))
-
-    const { element, helper } = wrap(voiceDoc({ waveform: undefined }))
-    helper.destroy()
-
-    resolveMeta({ waveform: WAVEFORM_B64 })
-    await settle()
-
+    expect(meta).not.toHaveBeenCalled()
     expect(element.querySelector('.audio-waveform')).toBeNull()
   })
 })

@@ -1564,7 +1564,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           files={pendingMedia.files}
           initialAsFile={pendingMedia.asFile}
           onClose={() => setPendingMedia(null)}
-          onSend={(caption, asFile, paidPrice) => { void sendPendingMedia(caption, asFile, paidPrice); slowmodeMarkSent() }}
+          onSend={(caption, asFile, paidPrice, spoilers) => { void sendPendingMedia(caption, asFile, paidPrice, spoilers); slowmodeMarkSent() }}
         />
       )}
 

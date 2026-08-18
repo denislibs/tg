@@ -28,6 +28,15 @@ describe('messageToConvMsg', () => {
     expect(c.text).toBe('hi')
   })
 
+  // Пики волны голосового обязаны доехать до витрины: бабл рисует волну из них
+  // (1:1 tweb documentAttributeAudio.waveform). Не переложи их здесь — и волны
+  // не будет ни у одного голосового, хотя поле у сообщения есть.
+  it('переносит пики волны голосового в витрину', () => {
+    const voice: Message = { ...base, type: 'voice', mediaId: 55, mediaDuration: 7, mediaWaveform: 'HwAq/wc=' }
+    expect(messageToConvMsg(voice, 7).mediaWaveform).toBe('HwAq/wc=')
+    expect(messageToConvMsg({ ...voice, mediaWaveform: undefined }, 7).mediaWaveform).toBeUndefined()
+  })
+
   it('formats time as local HH:MM, not the raw ISO string', () => {
     const c = messageToConvMsg(base, 7)
     expect(c.time).toMatch(/^\d{2}:\d{2}$/)

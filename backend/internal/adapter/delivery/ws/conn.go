@@ -351,6 +351,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
 			Silent: d.Silent, Effect: d.Effect,
 			PaidMediaPrice: d.PaidMediaPrice,
+			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   d.SendAsChatID,
 		})
 		if err != nil {

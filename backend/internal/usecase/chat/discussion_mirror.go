@@ -111,6 +111,9 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		ChatID: disc, Seq: seq, SenderID: post.SenderID,
 		Type: post.Type, Text: post.Text, Entities: post.Entities,
 		MediaID: post.MediaID, GroupedID: post.GroupedID, PollID: post.PollID,
+		// Зеркало — та же публикация: спойлер поста обязан доехать до группы
+		// обсуждения, иначе зеркало раскрывает скрытое медиа.
+		MediaSpoiler: post.MediaSpoiler,
 		// автор бабла в UI — канал, как в Telegram
 		SendAsChatID: &channelID,
 		// отсюда кнопка «перейти к оригиналу»

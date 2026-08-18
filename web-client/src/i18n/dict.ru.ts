@@ -6,6 +6,12 @@ const ru: Dict = {
   'Your channels': 'Ваши каналы',
   Anonymously: 'Анонимно',
   'Personal account': 'Личный аккаунт',
+  // ── Спойлер на медиа (tweb EnablePhotoSpoiler/DisablePhotoSpoiler,
+  //    Popup.Attach.EnableSpoilers/RemoveSpoilers) ──
+  'Hide with spoiler': 'Скрыть спойлером',
+  'Remove spoiler': 'Убрать спойлер',
+  'Hide all with spoilers': 'Скрыть всё спойлерами',
+  'Remove all spoilers': 'Убрать все спойлеры',
   // ── Paid media (медиа за Stars) ──
   'Make paid': 'Сделать платным',
   'Paid media': 'Платное медиа',

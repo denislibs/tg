@@ -4,12 +4,19 @@
 // transform feedback: вершинный шейдер и считает физику (curl-noise), и рисует точку.
 //
 // Класс не знает про DOM: работает и с HTMLCanvasElement, и с OffscreenCanvas —
-// у нас используется только вторая ветка (симуляция крутится в воркере).
+// первая ветка нужна главному потоку (legacy-путь `DotRenderer`, когда WebGL2 в
+// OffscreenCanvas недоступен), вторая — воркеру.
 //
 // отступление от tweb: шейдеры не фетчатся по URL (`assets/img/spoiler_*.glsl`),
-// а импортируются `?raw` и вкомпиливаются в чанк воркера. Компиляция становится
-// синхронной — отпадают `callbackify`/промис-инит и сетевой запрос, который мог бы
-// не долететь (у нас нет папки `public/assets/img`, шейдеры жили бы отдельным ассетом).
+// а импортируются `?raw` и вкомпиливаются в чанк. Компиляция становится
+// синхронной — отпадает сетевой запрос, который мог бы не долететь (у нас нет
+// папки `public/assets/img`, шейдеры жили бы отдельным ассетом). Форма API от
+// этого не меняется: `init()` по-прежнему возвращает `MaybePromise<boolean>` и
+// мемоизируется в `initPromise`, а вызывающий разворачивает его `callbackify` —
+// ровно как в оригинале.
+//
+// отступление от tweb: 15 отдельных полей-`WebGLUniformLocation` свёрнуты в одну
+// карту `uniforms` — тот же набор юниформ, тот же порядок заливки.
 import fragmentShaderSource from './spoiler_fragment.glsl?raw'
 import vertexShaderSource from './spoiler_vertex.glsl?raw'
 
@@ -61,6 +68,29 @@ export function buildDotRendererConfig(
   }
 }
 
+/**
+ * Растущий из точки клика круг, вырезающий уже нарисованное (tweb
+ * `drawClippingCircle`). Им «проявляется» и слой точек, и подложка-превью под ним.
+ */
+export function drawClippingCircle(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  progress: number,
+  coords: { x: number; y: number },
+  maxDist: number,
+  dpr: number,
+) {
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.fillStyle = 'white'
+  ctx.shadowBlur = (maxDist / 3.5) * dpr * progress
+  ctx.shadowColor = 'white'
+  ctx.beginPath()
+  ctx.arc(coords.x, coords.y, maxDist * progress, 0, 2 * Math.PI)
+  ctx.fill()
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.restore()
+}
+
 // Юниформы шейдера: имя в GLSL → поле конфига. Порядок не важен, значения
 // заливаются перед каждым `drawArrays`.
 const UNIFORMS: Readonly<Record<string, keyof DotRendererConfig>> = {
@@ -83,17 +113,21 @@ const PARTICLE_STRIDE = 24
 export default class DotRendererCore {
   public inited = false
   public lastDrawTime = 0
+  public dpr = 1
+  public config: DotRendererConfig
+
+  public readonly canvas: OffscreenCanvas | HTMLCanvasElement
 
   private readonly context: WebGL2RenderingContext
-  private readonly config: DotRendererConfig
-  private readonly canvas: OffscreenCanvas | HTMLCanvasElement
 
   private reset = true
   private time = 0
   private bufferIndex = 0
   private buffer: [WebGLBuffer, WebGLBuffer] | null = null
+  private bufferParticlesCount = 0
   private program: WebGLProgram | null = null
   private uniforms = new Map<string, WebGLUniformLocation | null>()
+  private initPromise: boolean | undefined
 
   /** Бросает, если WebGL2 недоступен — вызывающий обязан поймать и деградировать. */
   constructor(canvas: OffscreenCanvas | HTMLCanvasElement, config: DotRendererConfig) {
@@ -105,17 +139,35 @@ export default class DotRendererCore {
     this.config = config
   }
 
+  /**
+   * tweb `resize`: меняет размер канвы и конфиг симуляции на лету. Уже
+   * проинициализированная симуляция сразу перерисовывается — иначе один кадр
+   * останется с прежним viewport'ом.
+   */
+  public resize(width: number, height: number, dpr: number, config: DotRendererConfig) {
+    this.dpr = dpr
+    this.canvas.width = width * dpr
+    this.canvas.height = height * dpr
+    this.config = config
+
+    if (this.inited) {
+      this.draw()
+    }
+  }
+
   private genBuffer() {
     const gl = this.context
+    if (this.buffer) {
+      gl.deleteBuffer(this.buffer[0])
+      gl.deleteBuffer(this.buffer[1])
+    }
+
+    this.bufferParticlesCount = Math.ceil(this.config.particlesCount)
     const buffer: WebGLBuffer[] = []
     for (let i = 0; i < 2; ++i) {
       buffer[i] = gl.createBuffer()
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer[i])
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        Math.ceil(this.config.particlesCount) * PARTICLE_STRIDE,
-        gl.DYNAMIC_DRAW,
-      )
+      gl.bufferData(gl.ARRAY_BUFFER, this.bufferParticlesCount * PARTICLE_STRIDE, gl.DYNAMIC_DRAW)
     }
     this.buffer = [buffer[0], buffer[1]]
   }
@@ -133,9 +185,12 @@ export default class DotRendererCore {
     return shader
   }
 
-  /** Компилирует шейдеры и заводит буферы. `false` — драйвер не смог, деградируем. */
+  /**
+   * Компилирует шейдеры и заводит буферы. `false` — драйвер не смог, деградируем.
+   * Мемоизируется (tweb `initPromise`): повторный вызов не пересобирает программу.
+   */
   public init() {
-    if (this.inited) return true
+    if (this.initPromise !== undefined) return this.initPromise
 
     const gl = this.context
     try {
@@ -171,10 +226,10 @@ export default class DotRendererCore {
 
       this.inited = true
       this.lastDrawTime = Date.now()
-      return true
+      return (this.initPromise = true)
     } catch {
       this.destroy()
-      return false
+      return (this.initPromise = false)
     }
   }
 
@@ -193,6 +248,12 @@ export default class DotRendererCore {
     this.lastDrawTime = now
 
     this.time += dt
+
+    // tweb: конфиг мог подрасти через resize — буфер надо перезалить и начать заново
+    if (this.bufferParticlesCount < config.particlesCount) {
+      this.genBuffer()
+      this.reset = true
+    }
 
     gl.viewport(0, 0, this.canvas.width, this.canvas.height)
     gl.clear(gl.COLOR_BUFFER_BIT)

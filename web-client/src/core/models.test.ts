@@ -138,19 +138,20 @@ describe('mapMessage', () => {
       media_w: 1600, media_h: 900, media_mime: 'video/mp4', media_blur: 'AAECAw==',
       media_has_thumb: true, media_duration: 61, media_size: 9000000, media_name: 'clip.mp4',
       media_title: 'Track One', media_performer: 'denis1488', media_animated: true,
+      media_waveform: 'HwAq/wc=',
     }
     const m = mapMessage(raw)
     expect({
       mediaId: m.mediaId,
       mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight, mediaMime: m.mediaMime,
       mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb, mediaDuration: m.mediaDuration,
-      mediaSize: m.mediaSize, mediaName: m.mediaName,
+      mediaSize: m.mediaSize, mediaName: m.mediaName, mediaWaveform: m.mediaWaveform,
       mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
     }).toEqual({
       mediaId: 42,
       mediaWidth: 1600, mediaHeight: 900, mediaMime: 'video/mp4',
       mediaBlur: 'AAECAw==', mediaHasThumb: true, mediaDuration: 61,
-      mediaSize: 9000000, mediaName: 'clip.mp4',
+      mediaSize: 9000000, mediaName: 'clip.mp4', mediaWaveform: 'HwAq/wc=',
       mediaTitle: 'Track One', mediaPerformer: 'denis1488', mediaAnimated: true,
     })
 
@@ -158,6 +159,19 @@ describe('mapMessage', () => {
     const bare = mapMessage({ ...raw, media_animated: undefined, media_has_thumb: undefined })
     expect(bare.mediaAnimated).toBeUndefined()
     expect(bare.mediaHasThumb).toBeUndefined()
+  })
+
+  // Скрытое медиа (tweb messageMedia.pFlags.spoiler). Признак ОДНОСТОРОННИЙ:
+  // сервер кладёт ключ только когда true, поэтому «нет ключа» обязано давать
+  // undefined, а не false — иначе спойлер нельзя отличить от «сервер не сказал».
+  it('маппит признак скрытого медиа (media_spoiler → mediaSpoiler)', () => {
+    const raw: RawMessage = {
+      id: 31, chat_id: 1, seq: 8, sender_id: 1, type: 'photo', text: '',
+      reply_to_id: null, media_id: 43, created_at: '2026-06-24T10:02:00Z',
+      media_blur: 'AAECAw==', media_spoiler: true,
+    }
+    expect(mapMessage(raw).mediaSpoiler).toBe(true)
+    expect(mapMessage({ ...raw, media_spoiler: undefined }).mediaSpoiler).toBeUndefined()
   })
 
   it('маппит send_as (отображаемый автор канала/группы)', () => {
@@ -289,17 +303,38 @@ describe('fromNewMessageEvt — проводной кадр в модель', ()
       media_w: 320, media_h: 240, media_mime: 'video/mp4', media_blur: 'AAECAw==',
       media_has_thumb: true, media_duration: 3, media_size: 400000, media_name: 'cat.mp4',
       media_title: 'T', media_performer: 'P', media_animated: true,
+      media_waveform: 'HwAq/wc=',
     })
     expect({
       mediaId: m.mediaId, mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight,
       mediaMime: m.mediaMime, mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb,
       mediaDuration: m.mediaDuration, mediaSize: m.mediaSize, mediaName: m.mediaName,
+      mediaWaveform: m.mediaWaveform,
       mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
     }).toEqual({
       mediaId: 42, mediaWidth: 320, mediaHeight: 240,
       mediaMime: 'video/mp4', mediaBlur: 'AAECAw==', mediaHasThumb: true,
       mediaDuration: 3, mediaSize: 400000, mediaName: 'cat.mp4',
+      mediaWaveform: 'HwAq/wc=',
       mediaTitle: 'T', mediaPerformer: 'P', mediaAnimated: true,
     })
+  })
+
+  // Спойлер — отдельным пином по той же причине, что и волна: если ключа нет в
+  // КАДРЕ, живое сообщение приедет БЕЗ спойлера и на миг обнажит медиа, а после
+  // перезагрузки истории спойлер появится. Ровно дефект класса send_as.
+  it('переносит признак скрытого медиа из живого кадра', () => {
+    const m = fromNewMessageEvt({ ...base, type: 'photo', media_id: 43, media_blur: 'AAECAw==', media_spoiler: true })
+    expect(m.mediaSpoiler).toBe(true)
+    expect(fromNewMessageEvt({ ...base, type: 'photo', media_id: 43 }).mediaSpoiler).toBeUndefined()
+  })
+
+  // Пики волны голосового — отдельным пином: их отсутствие в КАДРЕ не ломает
+  // ни один медиа-бабл, кроме голосового, и молча оставляет живое голосовое
+  // без волны до перезагрузки истории (дефект класса send_as).
+  it('переносит пики волны голосового из живого кадра', () => {
+    const m = fromNewMessageEvt({ ...base, type: 'voice', media_id: 55, media_duration: 7, media_waveform: 'HwAq/wc=' })
+    expect(m.mediaWaveform).toBe('HwAq/wc=')
+    expect(fromNewMessageEvt({ ...base, type: 'voice', media_id: 55 }).mediaWaveform).toBeUndefined()
   })
 })

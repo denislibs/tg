@@ -123,6 +123,21 @@ func TestMediaRepo_Waveform(t *testing.T) {
 	if len(got2.Waveform) != 0 {
 		t.Fatalf("expected empty waveform for image, got %v", got2.Waveform)
 	}
+
+	// Read-модель сообщения (DimsByIDs) читает те же пики — из них строится волна
+	// в бабле, без отдельного запроса меты медиа. У не-голосового колонка NULL и
+	// scan на этом не падает.
+	access := NewMediaAccessRepo(pool)
+	dims, err := access.DimsByIDs(ctx, []int64{m.ID, m2.ID})
+	if err != nil {
+		t.Fatalf("DimsByIDs: %v", err)
+	}
+	if !bytes.Equal(dims[m.ID].Waveform, wf) {
+		t.Fatalf("dims waveform = %v, want %v", dims[m.ID].Waveform, wf)
+	}
+	if len(dims[m2.ID].Waveform) != 0 {
+		t.Fatalf("expected empty dims waveform for image, got %v", dims[m2.ID].Waveform)
+	}
 }
 
 // Теги трека, найденные ffprobe, сохраняются через UpdateProcessed и читаются

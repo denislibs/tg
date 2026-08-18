@@ -105,6 +105,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		p["media_name"] = m.MediaName
 	}
+	// Пики волны голосового — тот же ключ, что в history read model (chat_handler):
+	// без него у ЖИВОГО голосового волны не будет до перезагрузки истории (ровно
+	// тот дефект, что был у send_as).
+	if len(m.MediaWaveform) > 0 {
+		p["media_waveform"] = m.MediaWaveform
+	}
 	if m.MediaTitle != "" {
 		p["media_title"] = m.MediaTitle
 	}
@@ -115,6 +121,13 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	// гифка приезжает видео-баблом (таймкод + кнопка play) до перезагрузки истории.
 	if m.MediaAnimated {
 		p["media_animated"] = true
+	}
+	// Спойлер — тот же ключ, что в history read model (chat_handler): иначе живое
+	// медиа приезжает БЕЗ заслонки и сразу показывает содержимое до перезагрузки
+	// истории (ровно тот дефект, что был у send_as) — а это утечка того, что
+	// отправитель просил скрыть.
+	if m.MediaSpoiler {
+		p["media_spoiler"] = true
 	}
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

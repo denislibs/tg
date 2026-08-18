@@ -77,6 +77,9 @@ export interface ConvMsg {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  /** пики волны голосового, base64 — наш documentAttributeAudio.waveform:
+   * волна бабла строится прямо из сообщения, без запроса меты медиа */
+  mediaWaveform?: string
   // ID3-теги трека (tweb documentAttributeAudio.title/performer): заголовок бабла
   // = mediaTitle ?? mediaName, подпись = mediaPerformer, а без него — размер файла
   mediaTitle?: string

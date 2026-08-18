@@ -164,23 +164,57 @@ describe('wrapAlbum', () => {
     expect(attachmentDiv.querySelector('img.media-photo')).toBeNull()
   })
 
-  // Шов под wrapVideo (пишется следующей задачей): геометрия ячейки уже верная,
-  // адрес сообщения на месте, но КАРТИНКОЙ видео не рисуется — подмена
-  // показала бы не то. Тест переписывается вместе с появлением враппера.
-  it('видео-элемент: ячейка и адрес есть, но картинкой он не подменяется', async () => {
+  // Не-фото ячейку рисует wrapVideo (tweb album.ts:100-115) — теми же
+  // аргументами: нулевой бокс (грид уже задал размер) и запрет автоплея.
+  it('видео-элемент: ячейка рисуется wrapVideo — превью, таймкод и кнопка воспроизведения', async () => {
     const attachmentDiv = attachment()
-    const messages = [msg(), msg({ type: 'video', mediaMime: 'video/mp4', mediaWidth: 900, mediaHeight: 1600 })]
+    const messages = [
+      msg(),
+      msg({ type: 'video', mediaMime: 'video/mp4', mediaWidth: 900, mediaHeight: 1600, mediaDuration: 46 }),
+    ]
 
     wrapAlbum({ messages, attachmentDiv })
     await flush()
 
     const videoItem = attachmentDiv.children[1] as HTMLElement
     expect(videoItem.dataset.mid).toBe('' + messages[1].id)
-    expect(videoItem.firstElementChild!.classList.contains('album-item-media')).toBe(true)
-    expect(videoItem.querySelector('img')).toBeNull()
-    expect(videoItem.querySelector('canvas')).toBeNull()
-    // геометрия при этом посчитана по ВСЕМ элементам, включая видео
+    const mediaDiv = videoItem.firstElementChild!
+    expect(mediaDiv.classList.contains('album-item-media')).toBe(true)
+    // элемент альбома автоплея не получает: таймкод + кнопка, самого <video> нет
+    expect(mediaDiv.querySelector('span.video-time')!.firstChild!.nodeValue).toBe('0:46')
+    expect(mediaDiv.querySelector('button.btn-circle.video-play.position-center')).toBeTruthy()
+    expect(mediaDiv.querySelector('.video-time-icon')).toBeNull()
+    expect(mediaDiv.querySelector('video')).toBeNull()
+    // превью ячейки — stripped из самого сообщения (постера у медиа нет)
+    expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-poster')).toBeTruthy()
+    // геометрия посчитана по ВСЕМ элементам, включая видео
     expect(parseFloat(videoItem.style.width)).toBeGreaterThan(0)
-    expect(downloadMediaURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('видео-элемент с серверным постером качает уменьшенную версию, а не полный файл', async () => {
+    const attachmentDiv = attachment()
+    const messages = [msg({ type: 'video', mediaMime: 'video/mp4', mediaHasThumb: true })]
+
+    wrapAlbum({ messages, attachmentDiv })
+    await flush()
+
+    expect(downloadMediaURL).toHaveBeenCalledWith(1001, { thumb: true })
+  })
+
+  // tweb album.ts:150-153 — готовый таймкод вызывающего. Нужен ячейке, которую
+  // враппер не рисует (непроплаченное платное медиа): длительность знает только
+  // вызывающий, и бейдж обязан появиться независимо от загрузки.
+  it('videoTimes: готовый таймкод вызывающего кладётся в ячейку, включая неоплаченную', async () => {
+    const attachmentDiv = attachment()
+    const messages = [msg(), msg({ mediaId: null, paidMedia: { price: 5, locked: true } })]
+    const badge = document.createElement('span')
+    badge.classList.add('video-time')
+    badge.textContent = '0:12'
+
+    wrapAlbum({ messages, attachmentDiv, videoTimes: [undefined, badge] })
+    await flush()
+
+    expect(attachmentDiv.children[0].querySelector('.video-time')).toBeNull()
+    expect(attachmentDiv.children[1].firstElementChild!.lastElementChild).toBe(badge)
   })
 })

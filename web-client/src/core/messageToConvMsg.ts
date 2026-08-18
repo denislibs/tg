@@ -124,6 +124,7 @@ export function messageToConvMsg(
     mediaDuration: m.mediaDuration,
     mediaSize: m.mediaSize,
     mediaName: m.mediaName,
+    mediaWaveform: m.mediaWaveform,
     mediaTitle: m.mediaTitle,
     mediaPerformer: m.mediaPerformer,
     mediaAnimated: m.mediaAnimated,

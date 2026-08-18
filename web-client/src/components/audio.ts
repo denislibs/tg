@@ -61,7 +61,6 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import ListenerSetter, { type Listener } from '@helpers/listenerSetter'
 import type { Middleware } from '@helpers/middleware'
 import { formatBytes } from '@core/mediaCache'
-import { startClient } from '../client/bootstrap'
 import { useI18nStore } from '../i18n'
 
 const UNMOUNT_PRELOADER = true
@@ -95,14 +94,11 @@ export interface AudioElementDoc {
   title?: string
   performer?: string
   /**
-   * Пики волны голосового, base64 (наш аналог `documentAttributeAudio.waveform`).
-   *
-   * ПРОБЕЛ МОДЕЛИ, а не оригинала: на бэке пики есть (`media.waveform`,
-   * миграция 0086) и отдаются в `GET /media/{id}`, но в read-model истории
-   * (`chat_handler.go::messageJSON`) их нет — в отличие от tweb, где waveform
-   * приезжает прямо в документе сообщения. Пока поля нет, враппер добирает его
-   * одним запросом меты и ПЕРЕРИСОВЫВАЕТ волну на месте (см. `wrapVoiceMessage`).
-   * Правильное закрытие — `media_waveform` в read-model истории.
+   * Пики волны голосового, base64 — наш `documentAttributeAudio.waveform`.
+   * Приезжают ПРЯМО в сообщении (`media_waveform` витрины истории и live-кадра),
+   * поэтому волна строится синхронно при первой отрисовке узла, как в tweb.
+   * Пусто — пиков нет (не голосовое либо запись старше поля): tweb в этом случае
+   * волну не рисует вовсе и файл ради неё не качает, здесь так же.
    */
   waveform?: string
 }
@@ -171,18 +167,30 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     audioEl.classList.add('is-out')
   }
 
+  // Пики едут в самом сообщении (`media_waveform`) — волна строится здесь и
+  // сейчас, ровно как в tweb (`documentAttributeAudio.waveform` → сразу
+  // `createWaveformBars`). Ни запроса меты, ни перерисовки на месте.
+  const { svg, container: svgContainer, availW } = createWaveformBars(
+    doc.waveform ? decodeTransmittedPeaks(doc.waveform) : [],
+    doc.duration || 0,
+  )
+
+  let fakeSvgContainer: HTMLElement | undefined
+  if(svgContainer) {
+    fakeSvgContainer = svgContainer.cloneNode(true) as HTMLElement
+    fakeSvgContainer.classList.add('audio-waveform-fake')
+    svgContainer.classList.add('audio-waveform-background')
+  }
+
   const waveformContainer = document.createElement('div')
   waveformContainer.classList.add('audio-waveform-container')
+  if(svgContainer && fakeSvgContainer) {
+    waveformContainer.append(svgContainer, fakeSvgContainer)
+  }
 
   const timeDiv = document.createElement('div')
   timeDiv.classList.add('audio-time')
   audioEl.append(waveformContainer, timeDiv)
-
-  // Ширина волны нужна скрабу, а волна может перерисоваться, когда доедут пики
-  // (см. `AudioElementDoc.waveform`) — поэтому это переменная, а не константа
-  // замыкания, как в tweb.
-  let availW = 0
-  let fakeSvgContainer: HTMLElement | undefined
 
   // tweb вешает скраб на сам `<svg>` фоновой волны (audio.ts:275-324; клон
   // `.audio-waveform-fake` — `pointer-events: none`, `_audio.scss:390-399`).
@@ -198,26 +206,9 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     media.currentTime = Math.max(0, Math.min(1, fraction)) * media.duration
   }
 
-  const renderWaveform = (peaks: number[]) => {
-    const built = createWaveformBars(peaks, doc.duration || 0)
-    availW = built.availW
-    waveformContainer.textContent = ''
-    fakeSvgContainer = undefined
-
-    if(!built.container || !built.svg) {
-      return
-    }
-
-    fakeSvgContainer = built.container.cloneNode(true) as HTMLElement
-    fakeSvgContainer.classList.add('audio-waveform-fake')
-    built.container.classList.add('audio-waveform-background')
-    waveformContainer.append(built.container, fakeSvgContainer)
-    // слушатель ставится на КАЖДУЮ отрисовку волны (их максимум две: сразу и
-    // после добора пиков), а не на каждое воспроизведение
-    audioEl.listenerSetter.add(built.svg)('click', onScrub as EventListener)
+  if(svg) {
+    audioEl.listenerSetter.add(svg)('click', onScrub as EventListener)
   }
-
-  renderWaveform(doc.waveform ? decodeTransmittedPeaks(doc.waveform) : [])
 
   const onLoad = () => {
     const media = audioEl.media
@@ -250,15 +241,6 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
       waveformContainer.textContent = ''
       fakeSvgContainer = undefined
     }
-  }
-
-  // Пики не приехали в сообщении — добрать метой и перерисовать волну на месте
-  // (см. докблок `AudioElementDoc.waveform`).
-  if(!doc.waveform) {
-    void audioEl.fetchWaveform().then((peaks) => {
-      if(!peaks.length || !audioEl.middleware()) return
-      renderWaveform(peaks)
-    }, () => {})
   }
 
   return onLoad
@@ -578,16 +560,6 @@ export default class AudioElement extends HTMLElement {
   private setTargets() {
     const { queue, index } = findMediaTargets(this)
     mediaPlayback.setTargets(queue, index)
-  }
-
-  /**
-   * Добор пиков волны метой — см. докблок `AudioElementDoc.waveform`. Байты
-   * тут не качаются: это метаданные файла (`GET /media/{id}`), REST через
-   * менеджер, как и любой read-путь.
-   */
-  public async fetchWaveform(): Promise<number[]> {
-    const meta = await startClient().managers.media.meta(this.doc.id)
-    return meta.waveform ? decodeTransmittedPeaks(meta.waveform) : []
   }
 
   /** tweb audio.ts:851-869 */

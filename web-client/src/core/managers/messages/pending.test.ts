@@ -539,6 +539,71 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     expect((h.emitted[0][0] as { msg: Message }).msg.groupedId).toBe('g7')
     expect(h.sends[0]).toMatchObject({ groupedId: 'g7', paidMediaPrice: 50, text: 'подпись' })
   })
+
+  // Спойлер ставит ОТПРАВИТЕЛЬ в попапе отправки — к моменту вызова sendFile
+  // превью там уже накрыто (tweb applyMediaSpoiler). Что ломается без этого:
+  // свой бабл на время аплоада показывает медиа ОТКРЫТЫМ и прячет его только
+  // после эха сервера — то есть скрытое медиа успевает засветиться отправителю.
+  it('спойлер доезжает и до кадра, и до оптимистичного бабла', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      isMedia: true, spoiler: true, threadRootId: null,
+    })
+
+    expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBe(true)
+    expect(h.sends[0]).toMatchObject({ mediaSpoiler: true })
+  })
+
+  it('без спойлера признака нет ни в бабле, ни в кадре', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      isMedia: true, threadRootId: null,
+    })
+
+    expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBeUndefined()
+    expect(h.sends[0].mediaSpoiler).toBeUndefined()
+  })
+
+  // Пики волны считает ВКЛАДКА при записи (core/audio/waveform), и это то же
+  // значение, что уедет в media.waveform. Что ломается без этого: свой бабл
+  // «отправляется…» стоит без волны (и без длительности) до ответа сервера, а
+  // потом волна выскакивает — при том, что данные были на руках с самого начала.
+  it('голосовое: бабл «отправляется…» несёт пики и длительность сразу', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+    const peaks = new Uint8Array([0x1f, 0x00, 0x2a, 0xff, 0x07])
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('ogg', 'audio/ogg'),
+      type: 'voice', duration: 7, waveform: peaks,
+    })
+
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(bubble.mediaWaveform).toBe('HwAq/wc=')
+    expect(bubble.mediaDuration).toBe(7)
+    // те же байты ушли и в аплоад — сервер вернёт их же, волна после ack не прыгнет
+    expect(h.uploads[0].waveform).toBe(peaks)
+  })
+
+  // Не голосовое: пиков нет — ключа на бабле тоже нет (не «пустая волна»).
+  it('фото: пиков нет — mediaWaveform undefined', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+
+    expect((h.emitted[0][0] as { msg: Message }).msg.mediaWaveform).toBeUndefined()
+  })
 })
 
 // Механизма awaitMedia/awaitingMedia (кадр придерживается в воркере до конца

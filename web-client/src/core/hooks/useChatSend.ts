@@ -280,7 +280,7 @@ export function useChatSend({
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  const onPickFile = async (input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null) => {
+  const onPickFile = async (input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null, spoiler = false) => {
     if (!isRealChat || secretLocked) return
     const origMime = input.type || 'application/octet-stream'
     const type = asFile
@@ -347,12 +347,15 @@ export function useChatSend({
       chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file, type, mime,
       fileName: file.name, caption, width, height, duration,
       threadRootId, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
+      // Спойлер имеет смысл только у визуального медиа: «как файл» прятать нечего
+      // (tweb гейтит пункт меню тем же условием — canToggleSpoilers).
+      spoiler: spoiler && isVisual,
     })
   }
 
   // Picked files awaiting the compose popup (caption + as-media/as-file choice).
   const [pendingMedia, setPendingMedia] = useState<{ files: File[]; asFile: boolean } | null>(null)
-  const sendPendingMedia = async (caption: string, asFile: boolean, paidMediaPrice?: number | null) => {
+  const sendPendingMedia = async (caption: string, asFile: boolean, paidMediaPrice?: number | null, spoilers?: boolean[]) => {
     const pm = pendingMedia
     setPendingMedia(null)
     if (!pm) return
@@ -365,7 +368,7 @@ export function useChatSend({
     // Платное медиа — только для одиночного фото/видео «как медиа» (см. SendMediaPopup).
     const price = !asFile && !asAlbum && pm.files.length === 1 ? paidMediaPrice ?? null : null
     for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price)
+      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price, !!spoilers?.[i])
     }
   }
 

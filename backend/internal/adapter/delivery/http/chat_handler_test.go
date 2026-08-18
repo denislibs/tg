@@ -457,6 +457,27 @@ func TestMessageJSON_AudioTags(t *testing.T) {
 	}
 }
 
+// Пики волны голосового в витрине истории: media_waveform (наш
+// documentAttributeAudio.waveform). Клиент строит волну прямо из сообщения —
+// без него ему пришлось бы добирать мету медиа отдельным запросом. У медиа без
+// пиков ключа нет вовсе.
+func TestMessageJSON_VoiceWaveform(t *testing.T) {
+	peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
+	voice := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "voice",
+		MediaDuration: 7, MediaSize: 4200, MediaName: "voice.ogg", MediaWaveform: peaks,
+	})
+	got, ok := voice["media_waveform"].([]byte)
+	if !ok || string(got) != string(peaks) {
+		t.Fatalf("media_waveform = %v (ok=%v), want %v", voice["media_waveform"], ok, peaks)
+	}
+
+	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "photo", MediaWidth: 100, MediaHeight: 100})
+	if _, ok := bare["media_waveform"]; ok {
+		t.Fatalf("media_waveform must be absent without peaks: %v", bare["media_waveform"])
+	}
+}
+
 // Признак гифки в витрине истории: media_animated (telegram
 // documentAttributeAnimated → tweb doc.type === 'gif'). У обычного видео ключа
 // нет — клиент рисует таймкод и кнопку play вместо бейджа «GIF».
@@ -476,5 +497,27 @@ func TestMessageJSON_MediaAnimated(t *testing.T) {
 	})
 	if _, ok := video["media_animated"]; ok {
 		t.Fatalf("media_animated must be absent for a plain video: %v", video["media_animated"])
+	}
+}
+
+// Признак спойлера в витрине истории: media_spoiler (telegram
+// messageMedia.pFlags.spoiler → tweb wrapMediaSpoiler, bubbles.ts:8579).
+// У обычного медиа ключа нет — оно показывается сразу, без заслонки.
+func TestMessageJSON_MediaSpoiler(t *testing.T) {
+	hidden := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "photo",
+		MediaWidth: 1280, MediaHeight: 960, MediaMime: "image/jpeg",
+		MediaName: "secret.jpg", MediaSpoiler: true,
+	})
+	if hidden["media_spoiler"] != true {
+		t.Fatalf("media_spoiler = %v, want true", hidden["media_spoiler"])
+	}
+
+	plain := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "photo",
+		MediaWidth: 1280, MediaHeight: 960, MediaMime: "image/jpeg",
+	})
+	if _, ok := plain["media_spoiler"]; ok {
+		t.Fatalf("media_spoiler must be absent without the flag: %v", plain["media_spoiler"])
 	}
 }

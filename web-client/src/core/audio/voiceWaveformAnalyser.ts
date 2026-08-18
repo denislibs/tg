@@ -32,8 +32,13 @@ export function pack5bit(values: number[]): Uint8Array {
   return out
 }
 
-/** Обратная распаковка 5-битных значений (0..31). count — сколько извлечь. */
-export function unpack5bit(bytes: Uint8Array, count = WAVEFORM_SAMPLES_COUNT): number[] {
+/**
+ * Обратная распаковка 5-битных значений (0..31) — порт tweb `decodeWaveform`
+ * (components/audio.ts:56-80). `count` по умолчанию ВЫВОДИТСЯ из длины буфера
+ * (`bitCount / 5 | 0` оригинала), а не берётся константой 100: у короткого
+ * waveform значений меньше, и фиксированные 100 дорисовывали бы к нему нули.
+ */
+export function unpack5bit(bytes: Uint8Array, count = ((bytes.length * 8) / 5) | 0): number[] {
   const out: number[] = []
   for (let i = 0; i < count; ++i) {
     const bitOffset = i * 5

@@ -12,6 +12,8 @@ import TgIcon from '../TgIcon'
 const MediaEditor = lazy(() => import('../mediaEditor/MediaEditor'))
 import { supportsVideoEncoding } from '../mediaEditor/videoSupport'
 import StarIcon from '../stars/StarIcon'
+import { getMiddleware } from '@helpers/middleware'
+import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
@@ -24,6 +26,85 @@ function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`
   if (n >= 1024) return `${Math.max(1, Math.round(n / 1024))} КБ`
   return `${n} Б`
+}
+
+/**
+ * Порт tweb `applyMediaSpoiler` (popups/newMedia.ts:592-607) в части подготовки
+ * подложки: превью ужимается в бокс 40×40 и кодируется в JPEG качества 0.2 —
+ * это и есть те самые `photoStrippedSize.bytes`, которые в оригинале уезжают с
+ * сообщением. Отдаём base64 без префикса — ровно то, что ждёт `wrapMediaSpoiler`.
+ */
+const STRIPPED_BOX = 40
+async function makeStrippedThumb(url: string, kind: 'image' | 'video'): Promise<string | undefined> {
+  try {
+    const media: HTMLImageElement | HTMLVideoElement = kind === 'image' ? new Image() : document.createElement('video')
+    const natural = await new Promise<{ w: number; h: number } | null>((resolve) => {
+      const done = () => resolve(
+        kind === 'image'
+          ? { w: (media as HTMLImageElement).naturalWidth, h: (media as HTMLImageElement).naturalHeight }
+          : { w: (media as HTMLVideoElement).videoWidth, h: (media as HTMLVideoElement).videoHeight },
+      )
+      media.addEventListener(kind === 'image' ? 'load' : 'loadeddata', done, { once: true })
+      media.addEventListener('error', () => resolve(null), { once: true })
+      media.src = url
+    })
+    if (!natural?.w || !natural.h) return undefined
+
+    const scale = Math.min(STRIPPED_BOX / natural.w, STRIPPED_BOX / natural.h, 1)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(natural.w * scale))
+    canvas.height = Math.max(1, Math.round(natural.h * scale))
+    const context = canvas.getContext('2d')
+    if (!context) return undefined
+    context.drawImage(media, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', 0.2).split(',')[1] || undefined
+  } catch {
+    // нет canvas (headless/тест) либо превью не декодировалось — спойлера в
+    // попапе не будет, но флаг отправки от этого не зависит
+    return undefined
+  }
+}
+
+/**
+ * Живой спойлер поверх превью в попапе — tweb накрывает превью настоящим
+ * `wrapMediaSpoiler`, а не «серым квадратиком»: отправитель видит ровно то, что
+ * увидит получатель. Хост-узел пустой для React, всё его содержимое императивно
+ * ставит и снимает враппер.
+ */
+function SpoilerCover({ url, kind }: { url: string; kind: 'image' | 'video' }) {
+  const hostRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || !url) return
+
+    const helper = getMiddleware()
+    const middleware = helper.get()
+    let container: HTMLElement | undefined
+
+    void (async () => {
+      const strippedThumb = await makeStrippedThumb(url, kind)
+      if (!strippedThumb || !middleware()) return
+
+      const box = host.getBoundingClientRect()
+      container = await wrapMediaSpoiler({
+        strippedThumb,
+        width: box.width || host.offsetWidth,
+        height: box.height || host.offsetHeight,
+        middleware,
+        animationGroup: 'NEW-MEDIA',
+      })
+      if (!container || !middleware()) return
+      host.append(container)
+    })()
+
+    return () => {
+      container?.remove()
+      helper.destroy()
+    }
+  }, [url, kind])
+
+  return <div ref={hostRef} className={s.spoilerCover} />
 }
 
 // Russian count word for the title.
@@ -43,7 +124,8 @@ export default function SendMediaPopup({
   files: File[]
   initialAsFile: boolean
   onClose: () => void
-  onSend: (caption: string, asFile: boolean, paidPrice?: number | null) => void
+  /** `spoilers[i]` — i-й файл уходит скрытым под спойлером (tweb sendFile({spoiler})) */
+  onSend: (caption: string, asFile: boolean, paidPrice?: number | null, spoilers?: boolean[]) => void
 }) {
   const t = useT()
   const [caption, setCaption] = useState('')
@@ -51,6 +133,9 @@ export default function SendMediaPopup({
   // Платное медиа (Telegram paid media): цена в звёздах. null — обычное медиа.
   // Доступно только для одиночного фото/видео «как медиа».
   const [paidPrice, setPaidPrice] = useState<number | null>(null)
+  // Скрытые спойлером вложения — по индексу в `files` (tweb держит признак на
+  // самом SendFileParams: `item.mediaSpoiler`).
+  const [spoilers, setSpoilers] = useState<ReadonlySet<number>>(() => new Set<number>())
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
   // exit-анимация Popup: отправка/закрытие гасят open, onSend/onClose — из
@@ -88,6 +173,50 @@ export default function SendMediaPopup({
     : allImages ? 'photo' : allVideos ? 'video' : 'media'
   const title = `${t('Send')} ${files.length} ${titleWord(files.length, kind)}`
 
+  // Спойлер применим только к фото/видео «как медиа» — tweb берёт
+  // `partition().media`, куда аудио не попадает (popups/newMedia.ts:759-767).
+  const spoilerableIdx = useMemo(
+    () => files.map((f, i) => (hasPreview(f) ? i : -1)).filter((i) => i >= 0),
+    [files],
+  )
+
+  /** Порт tweb `canToggleSpoilers` (popups/newMedia.ts:721-742). */
+  const canToggleSpoilers = (toggle: boolean, single: boolean) => {
+    if (paidPrice != null) return false // tweb: willSendPaidMedia()
+
+    let good = showAsMedia && spoilerableIdx.length > 0
+    if (single && good) {
+      good = spoilerableIdx.length === 1
+    }
+
+    if (good) {
+      const withSpoilers = spoilerableIdx.filter((i) => spoilers.has(i))
+      good = single ? true : spoilerableIdx.length > 1
+      if (good) {
+        good = toggle
+          ? spoilerableIdx.length !== withSpoilers.length
+          : spoilerableIdx.length === withSpoilers.length
+      }
+    }
+
+    return good
+  }
+
+  /** Порт tweb `changeSpoilers` (popups/newMedia.ts:759-767). */
+  const changeSpoilers = (toggle: boolean) => {
+    setSpoilers(toggle ? new Set(spoilerableIdx) : new Set<number>())
+    setMenuOpen(false)
+  }
+
+  const toggleSpoiler = (index: number) => {
+    setSpoilers((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
   const send = () => { sending.current = true; setOpen(false) }
 
   return (
@@ -96,7 +225,11 @@ export default function SendMediaPopup({
       title={title}
       width={420}
       onClose={() => setOpen(false)}
-      onExitComplete={() => { if (sending.current) onSend(caption.trim(), asFile, canPaid ? paidPrice : null); else onClose() }}
+      onExitComplete={() => {
+        if (sending.current) {
+          onSend(caption.trim(), asFile, canPaid ? paidPrice : null, files.map((_, i) => spoilers.has(i)))
+        } else onClose()
+      }}
       headerRight={anyMedia ? (
         <>
           <IconButton
@@ -139,6 +272,36 @@ export default function SendMediaPopup({
                   onClick={() => { setPaidPrice((p) => (p == null ? 10 : null)); setMenuOpen(false) }}
                 />
               )}
+              {/* Четыре пункта спойлера — как в tweb (popups/newMedia.ts:284-304):
+                  одиночный/все × включить/выключить, взаимоисключающие по verify */}
+              {canToggleSpoilers(true, true) && (
+                <MenuItem
+                  icon={<TgIcon name="mediaspoiler" size={20} />}
+                  label={t('Hide with spoiler')}
+                  onClick={() => changeSpoilers(true)}
+                />
+              )}
+              {canToggleSpoilers(true, false) && (
+                <MenuItem
+                  icon={<TgIcon name="mediaspoiler" size={20} />}
+                  label={t('Hide all with spoilers')}
+                  onClick={() => changeSpoilers(true)}
+                />
+              )}
+              {canToggleSpoilers(false, true) && (
+                <MenuItem
+                  icon={<TgIcon name="mediaspoileroff" size={20} />}
+                  label={t('Remove spoiler')}
+                  onClick={() => changeSpoilers(false)}
+                />
+              )}
+              {canToggleSpoilers(false, false) && (
+                <MenuItem
+                  icon={<TgIcon name="mediaspoileroff" size={20} />}
+                  label={t('Remove all spoilers')}
+                  onClick={() => changeSpoilers(false)}
+                />
+              )}
             </Menu>
           )}
         </>
@@ -177,10 +340,28 @@ export default function SendMediaPopup({
     >
       <div className={s.previews}>
         {files.map((f, i) => {
+          // Кнопка-переключатель спойлера на самом превью — tweb
+          // `spoiler-toggle` (popups/newMedia.ts:1427-1437): две иконки,
+          // состояние в data-toggled.
+          const spoilerToggle = paidPrice == null ? (
+            <IconButton
+              size="small"
+              color="#fff"
+              className={`${s.spoilerBtn} spoiler-toggle`}
+              data-toggled={spoilers.has(i) ? 'true' : undefined}
+              aria-label={spoilers.has(i) ? t('Remove spoiler') : t('Hide with spoiler')}
+              onClick={() => toggleSpoiler(i)}
+            >
+              <TgIcon name={spoilers.has(i) ? 'mediaspoileroff' : 'mediaspoiler'} size={20} />
+            </IconButton>
+          ) : null
+
           if (showAsMedia && f.type.startsWith('image/')) {
             return (
               <div key={`${i}-${rev}`} className={s.previewWrap}>
                 <img className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
+                {spoilers.has(i) && <SpoilerCover url={urls[i]} kind="image" />}
+                {spoilerToggle}
                 <IconButton size="small" color="#fff" className={s.editBtn} onClick={() => setEditIdx(i)}>
                   <TgIcon name="edit" size={20} />
                 </IconButton>
@@ -191,6 +372,8 @@ export default function SendMediaPopup({
             return (
               <div key={`${i}-${rev}`} className={s.previewWrap}>
                 <video className={s.preview} src={urls[i]} controls />
+                {spoilers.has(i) && <SpoilerCover url={urls[i]} kind="video" />}
+                {spoilerToggle}
                 {canEditVideo && (
                   <IconButton size="small" color="#fff" className={s.editBtn} onClick={() => setEditIdx(i)}>
                     <TgIcon name="edit" size={20} />

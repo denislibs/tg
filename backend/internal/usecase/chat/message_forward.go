@@ -142,6 +142,10 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				Type: src.Type, Text: text, Entities: entities, MediaID: src.MediaID,
 				FwdFromUserID: fwdUser, FwdFromChatID: fwdChat, FwdFromMsgID: fwdMsg, FwdDate: fwdDate,
 				FwdFromName: fwdName,
+				// Спойлер переживает пересылку (Telegram: у копии тот же
+				// messageMedia.pFlags.spoiler) — иначе форвард раскрывал бы то,
+				// что автор оригинала просил скрыть.
+				MediaSpoiler: src.MediaSpoiler,
 			})
 			if e != nil {
 				return e

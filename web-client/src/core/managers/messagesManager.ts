@@ -681,6 +681,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
         mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
         mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
         mediaSize: evt.media_size, mediaName: evt.media_name,
+        // Пики волны — тоже мета контента: stripLockedMedia чистит их у
+        // заблокированного, кадр разблокировки возвращает.
+        mediaWaveform: evt.media_waveform,
         // Теги трека и признак гифки — тоже мета контента, которую бэк вычищает
         // у заблокированного медиа (stripLockedMedia) и возвращает в кадре
         // разблокировки: без них платное аудио остаётся без подписи, а платная

@@ -2,8 +2,9 @@
 // «блеф-спойлер» адреса почты (bluffSpoilerController) и оверлей спойлеров в
 // сообщениях (messageSpoilerOverlayController).
 //
-// Модуль намеренно НЕ импортирует dotRendererCore: он попадает в главный чанк
-// (через RichText), а симуляция и её конфиг живут в чанке воркера.
+// Сам модуль НЕ импортирует dotRendererCore — он лист. (Симуляция и её конфиг
+// живут в чанке воркера; но с портом `components/dotRenderer.ts` ядро приезжает
+// и на страницу — этого требует legacy-путь оригинала, см. шапку того файла.)
 import { hasSpoilerRendererFailed } from './spoilerRendererConnection'
 
 // tweb components/dotRenderer.ts — размер тайла симуляции; его же ждёт

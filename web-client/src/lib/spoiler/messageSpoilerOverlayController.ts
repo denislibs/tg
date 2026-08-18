@@ -1,23 +1,17 @@
-// Ручка «оверлей спойлеров бабла ↔ воркер»: аналог tweb
-// `DotRenderer.attachTextSpoilerOverlay` (components/dotRenderer.ts).
+// Ручка «оверлей спойлеров бабла ↔ воркер».
+//
+// Сама механика живёт в `DotRenderer.attachTextSpoilerOverlay`
+// (`components/dotRenderer.ts`) — там же, где она в tweb; этот модуль лишь
+// подаёт её React-компоненту `MessageSpoilerOverlay` в привычной ему форме
+// (play/pause/detach одним объектом). Второй реализации не заводим.
 //
 // Канва бабла отдаётся воркеру через transferControlToOffscreen — страница после
 // этого только меряет DOM и шлёт геометрию/цвета/команды раскрытия, а рисует всё
 // воркер. Соединение рефкаунтное: последний отпустивший гасит воркер вместе с
 // GL-контекстом.
-import { retainSpoilerRenderer, type SpoilerRendererConnection } from './spoilerRendererConnection'
-import {
-  animationsEnabled,
-  isWorkerSimSupported,
-  spoilerSimDpr,
-  TEXT_SPOILER_HEIGHT,
-  TEXT_SPOILER_WIDTH,
-} from './spoilerSupport'
-import type {
-  SpoilerOverlayRect,
-  SpoilerOverlayUpdate,
-  SpoilerRendererOutMessage,
-} from './spoilerRenderer.worker'
+import DotRenderer from '@components/dotRenderer'
+import { animationsEnabled, isWorkerSimSupported } from './spoilerSupport'
+import type { SpoilerOverlayRect, SpoilerOverlayUpdate } from './spoilerRenderer.worker'
 
 export interface MessageSpoilerOverlayHandle {
   readonly dpr: number
@@ -34,8 +28,6 @@ export interface MessageSpoilerOverlayHandle {
 
 export type { SpoilerOverlayRect }
 
-let createdIndex = 0
-
 /** Оверлей вообще применим (иначе бабл остаётся на CSS-фолбэке из `_spoiler.scss`). */
 export const canUseMessageSpoilerOverlay = () => animationsEnabled() && isWorkerSimSupported()
 
@@ -45,52 +37,24 @@ export function attachMessageSpoilerOverlay(
 ): MessageSpoilerOverlayHandle | null {
   if (!canUseMessageSpoilerOverlay()) return null
 
-  let offscreen: OffscreenCanvas
-  try {
-    offscreen = canvas.transferControlToOffscreen()
-  } catch {
-    return null
-  }
-
-  const id = ++createdIndex
-  const dpr = spoilerSimDpr()
-
-  let connection: SpoilerRendererConnection | undefined
-  const onMessage = (message: SpoilerRendererOutMessage) => {
-    if (message.type === 'overlay-painted') {
-      if (message.id === id) callbacks.onPainted()
-    } else if (message.type === 'text-init-failed' || message.type === 'connection-error') {
-      // симуляции не будет — бабл обязан вернуться на CSS-фолбэк, иначе спойлер
-      // останется пустым местом (или, хуже, откроется)
-      callbacks.onUnavailable()
-    }
-  }
-
-  connection = retainSpoilerRenderer(onMessage)
-  // симуляция одна на весь клиент: повторный text-init воркер игнорирует
-  connection.postMessage({
-    type: 'text-init',
-    width: TEXT_SPOILER_WIDTH,
-    height: TEXT_SPOILER_HEIGHT,
-    dpr: spoilerSimDpr(),
+  const attached = DotRenderer.attachTextSpoilerOverlay({
+    canvas,
+    onPainted: callbacks.onPainted,
+    onUnavailable: callbacks.onUnavailable,
   })
-  connection.postMessage({ type: 'overlay-attach', id, canvas: offscreen, dpr }, [offscreen])
+  if (!attached) return null
+
+  const { animation, dpr, overlay, detach } = attached
 
   return {
     dpr,
-    update: (payload) => connection?.postMessage({ type: 'overlay-update', id, ...payload }),
-    unwrap: (coords, maxDist, duration) =>
-      connection?.postMessage({ type: 'overlay-unwrap', id, coords, maxDist, duration }),
-    wrap: (duration) => connection?.postMessage({ type: 'overlay-wrap', id, duration }),
-    reset: () => connection?.postMessage({ type: 'overlay-reset', id }),
-    clear: () => connection?.postMessage({ type: 'overlay-clear', id }),
-    play: () => connection?.postMessage({ type: 'overlay-play', id }),
-    pause: () => connection?.postMessage({ type: 'overlay-pause', id }),
-    detach: () => {
-      if (!connection) return
-      connection.postMessage({ type: 'overlay-detach', id })
-      connection.release()
-      connection = undefined
-    },
+    update: overlay.update,
+    unwrap: overlay.unwrap,
+    wrap: overlay.wrap,
+    reset: overlay.reset,
+    clear: overlay.clear,
+    play: () => animation.play(),
+    pause: () => animation.pause(),
+    detach,
   }
 }

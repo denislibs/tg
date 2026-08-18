@@ -328,6 +328,8 @@ export default function MessageContent({
               mediaId={m.mediaId}
               msgId={m.id}
               chatId={m.chatId}
+              waveform={m.mediaWaveform}
+              duration={m.mediaDuration}
               transcription={m.transcription}
               secretMedia={m.secretMedia}
               time={showReactions ? undefined : timeNode('corner', 'container')}

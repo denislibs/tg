@@ -130,6 +130,12 @@ type Message struct {
 	MediaDuration int
 	MediaSize     int64
 	MediaName     string
+	// MediaWaveform — 5-битно упакованные пики голосового (media.waveform,
+	// миграция 0086), посчитанные отправителем при записи. Едут ПРЯМО в
+	// сообщении — 1:1 telegram documentAttributeAudio.waveform, из которого tweb
+	// строит волну синхронно (audio.ts createWaveformBars), не запрашивая мету
+	// файла. nil у не-голосовых и у старых голосовых без пиков.
+	MediaWaveform []byte // JSON base64, как MediaBlur
 	// Теги аудиотрека (ID3 title/artist), вычитанные ffprobe при обработке. Пустые
 	// у файлов без тегов и у не-аудио: тогда клиент подписывает бабл размером файла
 	// (tweb audio.ts — подпись из performer, иначе formatBytes).
@@ -142,6 +148,13 @@ type Message struct {
 	// вместо таймкода, зацикленный автоплей без кнопки play. Наполняется
 	// read-моделью из media.animated (не колонка messages).
 	MediaAnimated bool
+	// MediaSpoiler — медиа скрыто спойлером (telegram messageMedia.pFlags.spoiler,
+	// tweb makeMessageMediaInput.ts:13,24). В отличие от MediaAnimated это не
+	// свойство файла, а свойство вложения В ЭТОМ сообщении — ставит отправитель,
+	// поэтому колонка messages.media_spoiler (миграция 0099). Клиент рисует медиа
+	// под снимаемой кликом заслонкой и не автоплеит видео (tweb bubbles.ts:8570,
+	// :8579 — wrapMediaSpoiler). Имеет смысл только при MediaID != nil.
+	MediaSpoiler bool
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64

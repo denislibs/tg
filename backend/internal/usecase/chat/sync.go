@@ -323,6 +323,7 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 			msgs[idx].MediaTitle = d.Title
 			msgs[idx].MediaPerformer = d.Performer
 			msgs[idx].MediaAnimated = d.Animated
+			msgs[idx].MediaWaveform = d.Waveform
 		}
 	}
 	return nil

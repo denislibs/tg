@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import AudioPlayIcon from './AudioPlayIcon'
-import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
 import {
   useWaveform,
@@ -14,9 +13,6 @@ import { useTranscription, TranscribeButton, TranscribedText } from './Transcrip
 import classNames from '../../shared/lib/classNames'
 import type { SecretMedia } from '../../core/models'
 
-// Пока пики не приехали — ровная «тихая» волна (пики 0..31, здесь минимум).
-const PLACEHOLDER_PEAKS = Array.from({ length: 100 }, () => 4)
-
 function fmt(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) sec = 0
   const m = Math.floor(sec / 60)
@@ -28,6 +24,8 @@ export default function VoiceMessage({
   mediaId,
   msgId,
   chatId,
+  waveform,
+  duration: recordedDuration,
   transcription,
   secretMedia,
   out,
@@ -40,6 +38,11 @@ export default function VoiceMessage({
   msgId?: number
   /** id чата (для транскрибации) */
   chatId?: number
+  /** пики волны, base64 (наш documentAttributeAudio.waveform) — приезжают в самом
+   * сообщении, поэтому волна рисуется синхронно, как в tweb wrapVoiceMessage */
+  waveform?: string
+  /** длительность записи (сек) из меты сообщения — tweb `doc.duration` */
+  duration?: number
   /** кэш расшифровки на сообщении (Telegram transcribeAudio) */
   transcription?: string
   /** секретный чат (E2E): ключ/iv/mime для расшифровки ciphertext'а голоса */
@@ -51,14 +54,18 @@ export default function VoiceMessage({
   mediaUnread?: boolean
   onPlay: () => void
 }) {
-  const managers = useManagers()
   const tr = useTranscription(chatId, msgId, transcription)
-  const decoded = useWaveform(mediaId, secretMedia ? { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64 } : undefined)
-  const [metaDur, setMetaDur] = useState(0)
-  // Переданные пики (посчитаны при записи, приоритетнее client-recompute);
-  // фолбэк — recompute (старые сообщения без пиков / секретный голос).
-  const [metaWaveform, setMetaWaveform] = useState('')
-  const transmitted = useMemo(() => decodeTransmittedPeaks(metaWaveform), [metaWaveform])
+  // ФОЛБЭК, помеченный явно: пересчёт волны из аудиофайла остаётся ТОЛЬКО
+  // секретному голосу (E2E) — сервер видит там шифртекст и пиков не знает.
+  // Обычное голосовое сюда не ходит (в tweb такого механизма нет вовсе).
+  const decoded = useWaveform(
+    mediaId,
+    secretMedia ? { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64 } : undefined,
+    !!secretMedia,
+  )
+  // Пики приезжают в самом сообщении — ни запроса меты медиа, ни ожидания сети:
+  // 1:1 tweb, где waveform лежит в documentAttributeAudio документа сообщения.
+  const transmitted = useMemo(() => decodeTransmittedPeaks(waveform ?? ''), [waveform])
 
   const isCurrent = useAudioStore((s) => s.track?.mediaId === mediaId)
   const playing = useAudioStore((s) => s.playing && s.track?.mediaId === mediaId)
@@ -67,22 +74,6 @@ export default function VoiceMessage({
   const seekFraction = useAudioStore((s) => s.seekFraction)
   const toggle = useAudioStore((s) => s.toggle)
 
-  // Backend-reported duration (recorded length) for the idle display. Для
-  // секретного голоса meta бесполезна (сервер видит только ciphertext) —
-  // длительность возьмётся из decoded blob при воспроизведении (curDur).
-  useEffect(() => {
-    if (secretMedia) return
-    let alive = true
-    void managers.media.meta(mediaId).then((m) => {
-      if (!alive) return
-      setMetaDur(m.duration || 0)
-      setMetaWaveform(m.waveform || '')
-    }).catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [mediaId, managers, secretMedia])
-
   // Секретный голос: заранее скачиваем+расшифровываем blob, чтобы к клику URL был
   // готов и .play() вызвался в рамках user-gesture (иначе await теряет активацию).
   useEffect(() => {
@@ -90,17 +81,14 @@ export default function VoiceMessage({
     void prefetchSecretAudio(mediaId, { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64, mime: secretMedia.mime }).catch(() => {})
   }, [mediaId, secretMedia])
 
-  const duration = isCurrent && curDur ? curDur : metaDur
+  const duration = isCurrent && curDur ? curDur : (recordedDuration ?? 0)
   const progress = isCurrent && duration ? curTime / duration : 0
   // Высоты баров в пикселях — порт tweb createWaveformBars: и число баров, и
-  // нормировка зависят от записи, поэтому считается после duration.
+  // нормировка зависят от записи, поэтому считается после duration. Пиков нет —
+  // волны нет вовсе (tweb: пустой waveform → createWaveformBars не отдаёт svg).
   const wave = useMemo(() => {
-    // recompute-фолбэк отдаёт 0..1 — приводим к шкале пиков 0..31
-    const src = transmitted.length
-      ? transmitted
-      : decoded.length
-        ? decoded.map((v) => Math.round(v * 31))
-        : PLACEHOLDER_PEAKS
+    // secret-фолбэк (см. useWaveform) отдаёт 0..1 — приводим к шкале пиков 0..31
+    const src = transmitted.length ? transmitted : decoded.map((v) => Math.round(v * 31))
     return buildWaveformBars(src, duration)
   }, [transmitted, decoded, duration])
 
@@ -171,16 +159,21 @@ export default function VoiceMessage({
         <AudioPlayIcon />
       </div>
       {/* tweb: два одинаковых SVG — фоновый (полупрозрачный) и его клон,
-          обрезаемый по ширине = прогрессу воспроизведения */}
+          обрезаемый по ширине = прогрессу воспроизведения. Пиков нет — контейнер
+          пуст (в оригинале svg просто не создаётся, audio.ts:164-176). */}
       <div
         className="audio-waveform-container"
         onClick={handleSeek}
         style={{ cursor: isCurrent ? 'pointer' : 'default' }}
       >
-        <div className="audio-waveform audio-waveform-background">{waveSvg}</div>
-        <div className="audio-waveform audio-waveform-fake" style={{ width: `${progress * 100}%` }}>
-          {waveSvg}
-        </div>
+        {!!wave.bars.length && (
+          <>
+            <div className="audio-waveform audio-waveform-background">{waveSvg}</div>
+            <div className="audio-waveform audio-waveform-fake" style={{ width: `${progress * 100}%` }}>
+              {waveSvg}
+            </div>
+          </>
+        )}
       </div>
       <div className="audio-time">
         {isCurrent && curTime > 0 && curTime !== duration
