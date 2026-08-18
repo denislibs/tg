@@ -24,7 +24,7 @@ const REACTIONS_USER_MAX_PREMIUM = 3
 import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import rootScope from '@lib/rootScope'
-import { isGifLike } from '../gifs'
+import { getDocumentFromMessage } from '../media/messageMedia'
 import { buildMessageLink } from '../messageLink'
 import { parseMarkdown } from '../richtext/markdown'
 import type { FactCheck } from '../models'
@@ -410,7 +410,7 @@ export function useMessageActions({
     a.remove()
   }
 
-  // «Сохранить GIF» для гифоподобных видео-сообщений (критерий core/gifs.isGifLike):
+  // «Сохранить GIF» для гифок (tweb: `doc.type === 'gif'`):
   // POST /gifs/saved — гиф появляется во вкладке GIF пикера (лимит 200 LIFO на бэке).
   const saveGifFromMsg = () => {
     const raw = menuRawMsg()
@@ -644,8 +644,11 @@ export function useMessageActions({
       : []),
     ...(() => {
       const raw = menuRawMsg()
+      // tweb contextMenu «Save GIF» — `doc.type === 'gif'` (тот же вопрос к
+      // документу, что и у бабла): признак выведен из `documentAttributeAnimated`
+      // в `saveDocument`, а не угадан по mime/имени файла.
       return isRealChat && raw?.mediaId != null
-        && isGifLike({ mime: raw.mediaMime, fileName: raw.mediaName, duration: raw.mediaDuration, animated: raw.mediaAnimated })
+        && getDocumentFromMessage(raw)?.type === 'gif'
         ? [{ icon: <TgIcon name="gifs" size={20} />, label: 'Save GIF', onClick: saveGifFromMsg }]
         : []
     })(),

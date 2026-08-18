@@ -39,6 +39,7 @@
  *     порта. Текст кладётся прямо в `span`, остальная структура дампа совпадает.
  */
 import { formatBytes } from '@core/mediaCache'
+import type { MyDocument } from '@core/media/messageMedia'
 import type { MediaTypeSizes } from '@core/dom/mediaSizes'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -47,21 +48,14 @@ import type { Middleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
 import ProgressivePreloader from '@components/preloader'
 import { MiddleEllipsisElement } from '@components/middleEllipsis'
-import AudioElement, { type AudioElementDoc, type AudioElementMessage } from '@components/audio'
+import AudioElement, { type AudioElementMessage } from '@components/audio'
 import { downloadToDisc, getDownload, isDownloading } from '@lib/appDownloadManager'
 import type { AudioTrack } from '@stores/audioStore'
 import { useI18nStore } from '../../i18n'
 
-/** Плоский аналог tweb `MyDocument` — то, что о файле знает read-model истории. */
-export interface WrapDocumentDoc extends Omit<AudioElementDoc, 'type'> {
-  /** tweb `doc.type`: аудио-виды уходят в `AudioElement`, остальные — в `.document` */
-  type: AudioElementDoc['type'] | 'document' | 'video' | 'photo' | 'gif'
-  /** MIME (tweb `doc.mime_type`) */
-  mime?: string
-}
-
 export interface WrapDocumentOptions {
-  doc: WrapDocumentDoc
+  /** документ вложения (tweb `doc: MyDocument`) */
+  doc: MyDocument
   /** сообщение-владелец (tweb `message`) */
   message?: AudioElementMessage
   /** зона актуальности вызывающего (tweb `middleware`) */
@@ -92,13 +86,17 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   const type = doc.type
   if(type === 'audio' || type === 'voice' || type === 'round') {
     const audioElement = new AudioElement()
-    audioElement.doc = { ...doc, type }
+    audioElement.doc = doc
     audioElement.message = message
     audioElement.middleware = middleware
+    // Трек для контроллера коллекции — наш узел поверх оригинала (tweb кладёт
+    // в плейлист сам документ). ID3-теги живут в атрибуте, а не в файле:
+    // `audioAttribute?.title ?? doc.file_name` (tweb audio.ts:159).
+    const audioAttribute = doc.attributes.find((attribute) => attribute._ === 'documentAttributeAudio')
     audioElement.track = options.track ?? {
       mediaId: doc.id,
-      title: doc.title ?? doc.fileName ?? '',
-      subtitle: doc.performer ?? '',
+      title: audioAttribute?.title ?? doc.file_name ?? '',
+      subtitle: audioAttribute?.performer ?? '',
       chatId: message.peerId,
       msgId: message.mid,
       type,
@@ -112,7 +110,7 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   }
 
   // tweb document.ts:154-158 — расширение из имени файла.
-  const extSplitted = doc.fileName ? doc.fileName.split('.') : ''
+  const extSplitted = doc.file_name ? doc.file_name.split('.') : ''
   const ext = extSplitted.length > 1 && Array.isArray(extSplitted) ?
     clearBadCharsAndTrim(extSplitted.pop()!.split(' ', 1)[0].toLowerCase()) :
     'file'
@@ -129,7 +127,7 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   icoDiv.append(icoTextEl)
 
   const t = useI18nStore.getState().t
-  const fileName = doc.fileName || 'Unknown.file'
+  const fileName = doc.file_name || 'Unknown.file'
   const bytesContainer = document.createElement('span')
   const bytesJoiner = ' / '
 
@@ -218,7 +216,7 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
     const download = downloadToDisc({
       mediaId: doc.id,
       fileName,
-      mime: doc.mime,
+      mime: doc.mime_type,
       size: doc.size,
     }, !save)
 

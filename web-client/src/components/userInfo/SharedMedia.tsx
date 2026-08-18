@@ -20,6 +20,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
+import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../../core/media/messageMedia'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
@@ -224,7 +225,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const list = (msgs ?? []).filter((x) => x.mediaId != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
+      title: x.type === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
       subtitle: when(x),
       chatId,
       msgId: x.id,
@@ -441,9 +442,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           {msgs.map((m, i) => (
             <div key={m.id} className="grid-item search-super-item media-container" data-mid={m.id} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && (
-                <MediaGridThumb className="grid-item-media" mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
+                <MediaGridThumb className="grid-item-media" mediaId={m.mediaId} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
               )}
-              {m.type === 'video' && <span className="video-time">{fmtDur(m.mediaDuration)}</span>}
+              {m.type === 'video' && <span className="video-time">{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
             </div>
           ))}
         </div>
@@ -462,7 +463,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
             `.document-size` (дамп 03-document). Цвет квадрата даёт
             `--background-color`, как у оригинала. */}
         {msgs.map((m) => {
-          const ext = extOf(m.mediaName)
+          // tweb wrapDocument: расширение/имя/размер — у САМОГО документа
+          // (`doc.file_name`, `doc.size`), а не отдельными полями сообщения.
+          const doc = getDocumentFromMessage(m)
+          const ext = extOf(doc?.file_name)
           return (
             <div key={m.id} className="document-container">
               <div className="document-wrapper">
@@ -473,9 +477,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   <div className="document-ico">
                     <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
                   </div>
-                  <div className="document-name">{m.mediaName || t('Document')}</div>
+                  <div className="document-name">{doc?.file_name || t('Document')}</div>
                   <div className="document-size">
-                    <span>{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</span>
+                    <span>{[fmtSize(doc?.size), when(m)].filter(Boolean).join(' · ')}</span>
                   </div>
                 </div>
               </div>
@@ -525,14 +529,14 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, m.mediaName || t('Audio'))}>
+              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('Audio'))}>
                 <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
                   <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{m.mediaName || t('Audio')}</div>
+                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('Audio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
                 </div>
               </div>
@@ -560,7 +564,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 <div className="audio-details">
                   <div className="audio-title">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
                 </div>
               </div>

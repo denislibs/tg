@@ -62,6 +62,10 @@
 //   • пост канала уходит по REST (`channelsManager.post`) — транспорт другой,
 //     но владелец бабла тот же: он зовёт `beforeMessageSending` явно.
 import { deriveOut, type Message, type MessageEntity } from '../../models'
+import {
+  saveDocument, THUMB_TYPE_FULL,
+  type DocumentAttribute, type MessageMedia, type MyDocument,
+} from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { AckEvt, PendingMedia, PendingNewEvt, TypingAction } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
@@ -126,6 +130,10 @@ export interface SendFileArgs extends MessageSendingParams {
   paidMediaPrice?: number | null
   /** tweb `isMedia`: фото/видео «как медиа» — бабл сразу с локальным превью */
   isMedia?: boolean
+  /** tweb `isAnimated` (appMessagesManager.ts:2010-2014): файл отправляется
+   * ГИФКОЙ — в документ уходит `documentAttributeAnimated`, из которого
+   * `saveDocument` и выводит `doc.type === 'gif'` */
+  isAnimated?: boolean
   /** tweb `sendFile({spoiler})` (appMessagesManager.ts:134): отправитель прячет
    * медиа под спойлером — признак едет и в кадр, и в оптимистичный бабл */
   spoiler?: boolean
@@ -186,6 +194,112 @@ export interface PendingCtx {
 
 /** Период пинга «отправляет фото/файл…» (TTL приёмника — 6 с). */
 const UPLOAD_TYPING_MS = 3000
+
+/**
+ * Порт tweb `makeDocumentAndMetaForSendingFile` (appMessagesManager.ts:1908-2112)
+ * в той его роли, ради которой он и зовётся из `sendFile`: собрать ВЛОЖЕНИЕ
+ * отправляемого файла — настоящий `messageMediaPhoto`/`messageMediaDocument` —
+ * ещё до аплоада, чтобы бабл «отправляется…» рисовался тем же кодом, что и
+ * пришедшее с сервера сообщение (в оригинале это `message.media = media`,
+ * :1596-1631: `photo`/`document`, собранные тут же, кладутся прямо в бабл).
+ *
+ * `attachType` берётся ГОТОВЫМ (проводное поле `type` кадра), а не выводится
+ * заново из mime, как в оригинале (:1932-2017): у нас этот вывод уже сделан
+ * вкладкой, уезжает на сервер полем кадра и там же описывает медиа
+ * (`domain.MediaSource.Kind`). Второй вывод того же факта здесь был бы вторым
+ * источником истины, а не портом.
+ *
+ * ── Чего нет и почему ───────────────────────────────────────────────────────
+ *  • `strippedBytes` (ступень `photoStrippedSize` в начало лестницы) — оригинал
+ *    получает stripped-байты из попапа отправки, где превью уже посчитано; у нас
+ *    их до аплоада не считает никто, роль подложки бабла несёт `localUrl`;
+ *  • `thumb` + `thumbsStorage.setCacheContextURL` — ступени в оригинале нужны,
+ *    чтобы повесить на них локальный objectURL; у нас его несёт `Message.localUrl`
+ *    (blob-URL минтит воркер, см. `sendFile`), а ступени адресуются id медиа,
+ *    которого до аплоада ещё нет. Поэтому `thumbs` у локального документа пуст.
+ */
+function makeDocumentAndMetaForSendingFile(o: PendingMedia & {
+  /** tweb `mediaTempId` (:1554): id, под которым файл живёт до ответа сервера */
+  mediaTempId: number
+  /** tweb `attachType` — 'photo' | 'video' | 'roundVideo' | 'voice' | 'audio' | … */
+  attachType: string
+}): MessageMedia {
+  const mime = o.mime ?? ''
+  // tweb `pFlags: {...(options.spoiler ? {spoiler: true} : {})}` (:1600-1602);
+  // у нас «выключено» — это ОТСУТСТВИЕ ключа, поэтому и самого pFlags нет.
+  const pFlags = o.spoiler ? { pFlags: { spoiler: true as const } } : {}
+
+  // tweb :1957-1979 — фото «как медиа» едет messageMediaPhoto с одной ступенью
+  // THUMB_TYPE_FULL (`photoSize` с размерами кадра и размером файла).
+  if (o.attachType === 'photo') {
+    return {
+      _: 'messageMediaPhoto',
+      ...pFlags,
+      photo: {
+        _: 'photo',
+        id: o.mediaTempId,
+        sizes: [{ _: 'photoSize', type: THUMB_TYPE_FULL, w: o.width ?? 0, h: o.height ?? 0, size: o.size ?? 0 }],
+      },
+    }
+  }
+
+  const attributes: DocumentAttribute[] = []
+  switch (o.attachType) {
+    // tweb :1932-1955 — аудио и голосовое отличаются одним битом атрибута.
+    case 'voice':
+    case 'audio':
+      attributes.push({
+        _: 'documentAttributeAudio',
+        ...(o.attachType === 'voice' ? { pFlags: { voice: true as const } } : {}),
+        duration: o.duration ?? 0,
+        ...(o.waveform ? { waveform: o.waveform } : {}),
+      })
+      break
+    // tweb :1991-2009 — видео и кружок, тоже одним битом (`round_message`).
+    case 'video':
+    case 'roundVideo':
+      attributes.push({
+        _: 'documentAttributeVideo',
+        pFlags: {
+          ...(o.attachType === 'roundVideo' ? { round_message: true as const } : {}),
+          supports_streaming: true,
+        },
+        duration: o.duration ?? 0,
+        w: o.width ?? 0,
+        h: o.height ?? 0,
+      })
+      break
+  }
+  // tweb :2010-2014 — «must follow after video attribute».
+  if (o.animated) attributes.push({ _: 'documentAttributeAnimated' })
+  // tweb :2019 — имя файла дописывается всегда, последним из «своих».
+  attributes.push({ _: 'documentAttributeFilename', file_name: o.name ?? '' })
+  // tweb :2043-2047 — картинка, отправленная файлом, описывается кадром: именно
+  // из этого атрибута оригинал выводит `doc.type === 'photo'`.
+  if (mime.startsWith('image/')) {
+    attributes.push({ _: 'documentAttributeImageSize', w: o.width ?? 0, h: o.height ?? 0 })
+  }
+
+  // tweb :2027-2098 — документ собирается и прогоняется через `saveDoc`: тип
+  // выводится из атрибутов и mime, а не задаётся отправителем.
+  const document: MyDocument = saveDocument({
+    _: 'document',
+    id: o.mediaTempId,
+    mime_type: mime,
+    size: o.size ?? 0,
+    attributes,
+    thumbs: [],
+  })
+  return { _: 'messageMediaDocument', ...pFlags, document }
+}
+
+/** Тот же документ/фото, но под настоящим id медиа: аплоад завершился, и файл,
+ *  живший под временным id (tweb `mediaTempId`), получил адрес на сервере. */
+function withMediaId(media: MessageMedia, id: number): MessageMedia {
+  return media._ === 'messageMediaDocument'
+    ? { ...media, document: { ...media.document, id } }
+    : { ...media, photo: { ...media.photo, id } }
+}
 
 export function newPendingMethods(ctx: PendingCtx) {
   const { hkey, slices, msgsFor, emit } = ctx
@@ -323,17 +437,19 @@ export function newPendingMethods(ctx: PendingCtx) {
       // в mediaManager). Раньше поля здесь не было, потому что URL создавала
       // вкладка и вкладка же накладывала его на операцию у себя.
       localUrl: e.local_url,
-      mediaWidth: e.media?.width,
-      mediaHeight: e.media?.height,
-      mediaMime: e.media?.mime,
-      mediaSize: e.media?.size,
-      mediaName: e.media?.name,
-      mediaDuration: e.media?.duration,
-      // Пики волны голосового считает вкладка при записи (то же значение уедет
-      // в media.waveform) — бабл «отправляется…» рисует волну сразу, а не ждёт
-      // серверного эха.
-      mediaWaveform: e.media?.waveform,
-      mediaSpoiler: e.media?.spoiler,
+      // Вложение бабла — НАСТОЯЩЕЕ `MessageMedia`, собранное здесь же (порт tweb
+      // `sendFile`: `message.media = media`, где media — результат
+      // `makeDocumentAndMetaForSendingFile`). Поэтому «отправляется…» рисуется
+      // тем же кодом, что и серверное сообщение: волна голосового, кадр видео,
+      // имя/размер файла и заслонка спойлера стоят на бабле сразу, а не после эха.
+      //
+      // id файла: настоящий, если он уже есть (сохранённый GIF/стикер уходят с
+      // `media_id` — это ветка `isDocument` оригинала, :1538-1541, где в бабл
+      // кладётся УЖЕ сохранённый документ), иначе временный — id самого бабла,
+      // ровно как tweb `mediaTempId = message.id` (:1554).
+      media: e.media
+        ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? -seq, attachType: e.type ?? 'document' })
+        : undefined,
       // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
       // чтобы точка не «моргала» после ack.
       mediaUnread: e.type === 'voice' || e.type === 'roundVideo' || undefined,
@@ -358,13 +474,20 @@ export function newPendingMethods(ctx: PendingCtx) {
 
   /** Аплоад завершился — к неотправленному баблу приклеился настоящий mediaId.
    *  В tweb ту же роль играет подмена temp-документа настоящим внутри `sendFile`;
-   *  зовётся отсюда же, из `sendFile`, а не вторым RPC с вкладки. */
+   *  зовётся отсюда же, из `sendFile`, а не вторым RPC с вкладки. Вместе с
+   *  `mediaId` настоящий адрес получает и сам файл вложения (`mediaTempId`
+   *  оригинала перестаёт быть временным) — иначе бабл остался бы с вложением,
+   *  указывающим в никуда. */
   const attachPendingMedia = (clientMsgId: string, mediaId: number): MessageOp[] => {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
-    const next = patchTemp(d, (m) => ({ ...m, mediaId }))
+    let fields: Partial<Message> = { mediaId }
+    const next = patchTemp(d, (m) => {
+      fields = m.media ? { mediaId, media: withMediaId(m.media, mediaId) } : { mediaId }
+      return { ...m, ...fields }
+    })
     if (!next) return []
-    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields: { mediaId } }))
+    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields }))
   }
 
   /** Сервер отверг отправку (`message_error`) либо сорвался аплоад. Бабл
@@ -521,6 +644,8 @@ export function newPendingMethods(ctx: PendingCtx) {
         media: {
           width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
           duration: o.duration,
+          // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
+          animated: o.isAnimated,
           // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
           // рисуется сразу и не меняется после ack — сервер вернёт их же.
           waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,

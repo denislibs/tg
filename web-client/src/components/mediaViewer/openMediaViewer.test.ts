@@ -123,7 +123,7 @@ describe('Esc/Back закрывают вьювер с анимацией (про
   })
 })
 
-describe('фолбэк размеров: у item без media_w/h бокс берётся от миниатюры', () => {
+describe('фолбэк размеров: у item без натуральных размеров бокс берётся от миниатюры', () => {
   it('нулевые width/height заменяются прямоугольником target', async () => {
     const el = document.createElement('div')
     el.getBoundingClientRect = () => ({ width: 320, height: 240, top: 0, left: 0, right: 320, bottom: 240, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect

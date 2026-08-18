@@ -22,6 +22,7 @@ import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appStat
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
+import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../core/media/messageMedia'
 import MediaGridThumb from './MediaGridThumb'
 import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
@@ -140,7 +141,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     const list = (msgs ?? []).filter((x) => x.mediaId != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
+      title: x.type === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
       subtitle: friendlyMsgTime(x.createdAt, lang),
       chatId: x.chatId,
       msgId: x.id,
@@ -163,7 +164,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
   const MsgRow = ({ m }: { m: Message }) => {
     const chat = byId.get(String(m.chatId))
-    const snippet = m.text || m.mediaName || mediaLabel(m.type)
+    const snippet = m.text || getDocumentFromMessage(m)?.file_name || mediaLabel(m.type)
     return (
       <div className={s.row} onClick={() => openMessage(m)}>
         <Avatar
@@ -305,9 +306,9 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     {msgs.map((m) => (
                       <div key={m.id} className={s.mediaTile} onClick={() => openMessage(m)}>
                         {m.mediaId != null && (
-                          <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
+                          <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
                         )}
-                        {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
+                        {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
                       </div>
                     ))}
                   </div>
@@ -344,21 +345,27 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
               {tab === 4 && msgs != null && (
                 msgs.length > 0 ? (
                   <SidebarSection>
-                    {msgs.map((m) => (
+                    {msgs.map((m) => {
+                      // tweb wrapDocument: имя, расширение и размер — у САМОГО
+                      // документа (`doc.file_name`, `doc.size`), не отдельными
+                      // полями сообщения.
+                      const doc = getDocumentFromMessage(m)
+                      return (
                       <div key={m.id} className={s.row} onClick={() => openMessage(m)}>
-                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
-                          {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
+                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(doc?.file_name)] ?? 'var(--primary-color)' }}>
+                          {extOf(doc?.file_name).toUpperCase().slice(0, 4) || 'FILE'}
                         </div>
                         <div className={s.body}>
                           <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
-                            <Highlighted text={m.mediaName || t('Document')} q={q} />
+                            <Highlighted text={doc?.file_name || t('Document')} q={q} />
                           </Text>
                           <Text size={13.5} color="var(--secondary-text-color)">
-                            {[fmtSize(m.mediaSize), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                            {[fmtSize(doc?.size), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
                           </Text>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </SidebarSection>
                 ) : (
                   emptyState
@@ -370,8 +377,9 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 msgs.length > 0 ? (
                   <SidebarSection>
                     {msgs.map((m) => {
+                      const doc = getDocumentFromMessage(m)
                       const title = tab === 5
-                        ? m.mediaName || t('Audio')
+                        ? doc?.file_name || t('Audio')
                         : m.type === 'roundVideo' ? t('Video message') : t('Voice message')
                       return (
                         <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
@@ -383,7 +391,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                               <Highlighted text={title} q={q} />
                             </Text>
                             <Text size={13.5} color="var(--secondary-text-color)">
-                              {[fmtDur(m.mediaDuration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                              {[fmtDur(doc?.duration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
                             </Text>
                           </div>
                         </div>

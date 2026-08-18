@@ -21,6 +21,7 @@ import safePlay from '@helpers/dom/safePlay'
 import type { Middleware } from '@helpers/middleware'
 import { setTransition } from '@core/dom/setTransition'
 import { getImageFromStrippedThumb } from '@core/media/getStrippedThumbIfNeeded'
+import { getStrippedThumb, type MyDocument, type MyPhoto } from '@core/media/messageMedia'
 import DotRenderer from '@components/dotRenderer'
 import type { AnimationItemGroup } from '@components/animationIntersector'
 import type { DotRendererConfig } from '@lib/spoiler/dotRendererCore'
@@ -92,8 +93,8 @@ export function onMediaSpoilerClick(options: { mediaSpoiler: HTMLElement; event:
 }
 
 interface WrapMediaSpoilerOptions {
-  /** base64-JPEG stripped-превью из самого сообщения (`Message.mediaBlur`) */
-  strippedThumb: string
+  /** вложение, которое прячем (tweb `media: Document.document | Photo.photo`) */
+  media: MyPhoto | MyDocument
   width?: number
   height?: number
   middleware: Middleware
@@ -102,7 +103,7 @@ interface WrapMediaSpoilerOptions {
 }
 
 function wrapMediaSpoilerWithImage(
-  options: Omit<WrapMediaSpoilerOptions, 'strippedThumb'> & {
+  options: Omit<WrapMediaSpoilerOptions, 'media'> & {
     image: HTMLImageElement | HTMLCanvasElement
   },
 ) {
@@ -128,15 +129,17 @@ function wrapMediaSpoilerWithImage(
 }
 
 export default async function wrapMediaSpoiler(options: WrapMediaSpoilerOptions) {
-  const { strippedThumb } = options
-  if (!strippedThumb) {
+  // tweb: `sizes.find((size) => size._ === 'photoStrippedSize')` — ровно это и
+  // делает `getStrippedThumb`, одинаково для `photo.sizes` и `doc.thumbs`.
+  const thumb = getStrippedThumb(options.media)
+  if (!thumb) {
     return
   }
 
   // tweb: `getImageFromStrippedThumb(media, thumb, true)` — третий аргумент
-  // `useBlur`; у нас stripped-превью приезжает готовой base64-строкой, лестницы
-  // PhotoSize нет (см. шапку `core/media/getStrippedThumbIfNeeded.ts`)
-  const { image, loadPromise } = getImageFromStrippedThumb(strippedThumb, true)
+  // `useBlur`; наш bytes-канал отдаёт байты ступени готовой base64-строкой
+  // (см. шапку `core/media/getStrippedThumbIfNeeded.ts`)
+  const { image, loadPromise } = getImageFromStrippedThumb(thumb, true)
   await loadPromise
 
   const wrapped = wrapMediaSpoilerWithImage({ ...options, image })

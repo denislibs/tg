@@ -2,43 +2,12 @@
 // Медиа-баблы: видео-кружок (превью и «настоящий» со звуком). Файл и трек живут в
 // RealMediaBubble на дереве tweb (.document / audio-element).
 import { useRef, useState, type ReactNode } from 'react'
-import Text from '../../../shared/ui/Text'
 import TgIcon from '../../TgIcon'
 import { useMediaUrl } from '../../../core/hooks/useMediaUrl'
+import { getDocumentFromMessage } from '../../../core/media/messageMedia'
 import type { ConvMsg } from '../../../data'
 import { useTranscription, TranscribeButton, TranscribedText } from '../Transcription'
-import { type Ctx } from './primitives'
 import s from '../MessageBubbles.module.scss'
-
-/** round video note (превью) */
-export function RoundVideoBubble({ m, out, time }: Ctx) {
-  return (
-    <div className={s.round} data-out={out || undefined}>
-      <div className={s.roundInner}>
-        <div className={s.roundDisc} style={{ background: m.media?.gradient ?? 'var(--tg-accentGradient)' }}>
-          <Text size={72} style={{ userSelect: 'none' }}>{m.media?.emoji ?? '🎥'}</Text>
-        </div>
-        {/* progress ring */}
-        <svg className={s.roundRing} viewBox="0 0 200 200">
-          <circle cx="100" cy="100" r="97" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="3" />
-          <circle
-            cx="100"
-            cy="100"
-            r="97"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 97}
-            strokeDashoffset={2 * Math.PI * 97 * 0.7}
-          />
-        </svg>
-        <div className={s.roundDur}>{m.videoDuration ?? '0:08'}</div>
-        {time}
-      </div>
-    </div>
-  )
-}
 
 /**
  * Настоящий видео-кружок (tweb wrappers/video.ts, doc.type === 'round'): без клика
@@ -61,7 +30,9 @@ export function RoundVideoRealBubble({ m, time, onPlayed, onSoundPlay }: {
   const [progress, setProgress] = useState(0) // 0..1, только в sound-режиме
   const [left, setLeft] = useState<number | null>(null)
   const reported = useRef(false)
-  const dur = m.mediaDuration ?? 0
+  // Длительность — из документа (tweb wrappers/video.ts:147 `toHHMMSS(doc.duration)`;
+  // `doc.duration` проставил saveDoc из documentAttributeVideo).
+  const dur = getDocumentFromMessage(m)?.duration ?? 0
   const toggle = () => {
     const v = ref.current
     if (!v) return

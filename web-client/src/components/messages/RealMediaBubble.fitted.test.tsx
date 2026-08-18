@@ -16,9 +16,25 @@ vi.mock('../../core/mediaUrl', () => ({
 }))
 
 import RealMediaBubble from './RealMediaBubble'
+import { saveDocument, THUMB_TYPE_FULL, type MyDocument, type MyPhoto } from '../../core/media/messageMedia'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import { applyMediaUrl } from '../../core/mediaCache'
 import type { Managers } from '../../client/bootstrap'
+
+// Вложения в форме оригинала: фотография — лестница `sizes`, видео — документ,
+// чей `w`/`h`/`duration`/`type` выводит `saveDocument` из documentAttributeVideo.
+const photoMedia = (w?: number, h?: number): MyPhoto => ({
+  _: 'photo',
+  id: 1,
+  sizes: w && h ? [{ _: 'photoSize', type: THUMB_TYPE_FULL, w, h, size: 0 }] : [],
+})
+const videoDoc = (w: number, h: number, duration: number): MyDocument => saveDocument({
+  _: 'document',
+  id: 2,
+  mime_type: 'video/mp4',
+  size: 1000,
+  attributes: [{ _: 'documentAttributeVideo', duration, w, h }],
+})
 
 const fakeManagers = { media: { downloadMediaURL: vi.fn(() => new Promise(() => {})) } } as unknown as Managers
 const withManagers = (ui: ReactElement) => (
@@ -31,7 +47,7 @@ describe('RealMediaBubble: расширенный бокс', () => {
   it('контейнер — boxSize (320×400), аспектер — вписанный size (300×400)', () => {
     applyMediaUrl({ id: 301, thumb: false, url: 'blob:media-301' })
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" mediaId={301} width={600} height={800} hasMessageBlock />,
+      <RealMediaBubble type="photo" mediaId={301} media={photoMedia(600, 800)} hasMessageBlock />,
     ))
 
     const media = container.querySelector('.media-container') as HTMLElement
@@ -50,7 +66,7 @@ describe('RealMediaBubble: расширенный бокс', () => {
   it('вписанное медиа аспектера не получает вовсе (isFit)', () => {
     applyMediaUrl({ id: 302, thumb: false, url: 'blob:media-302' })
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" mediaId={302} width={1600} height={900} hasMessageBlock />,
+      <RealMediaBubble type="photo" mediaId={302} media={photoMedia(1600, 900)} hasMessageBlock />,
     ))
 
     const media = container.querySelector('.media-container') as HTMLElement
@@ -66,7 +82,7 @@ describe('RealMediaBubble: расширенный бокс', () => {
   // фото. Парный кейс с ВКЛЮЧЁННОЙ константой — RealMediaBubble.videoObserver.test.tsx.
   it('узкое видео — вписанный бокс 133×400 (минимум 368 не срабатывает, как в tweb)', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="video" mediaId={303} width={200} height={600} mime="video/mp4" duration={46} />,
+      <RealMediaBubble type="video" mediaId={303} media={videoDoc(200, 600, 46)} />,
     ))
 
     const media = container.querySelector('.media-container') as HTMLElement
@@ -74,13 +90,13 @@ describe('RealMediaBubble: расширенный бокс', () => {
     expect(media.style.height).toBe('400px')
   })
 
-  // tweb setAttachmentSize.ts:52-62: медиа БЕЗ натуральных размеров (старое
-  // сообщение без media_w/media_h) резервирует бокс от дефолта, и дефолт этот
-  // разный — документу (видео, гифка) 512, фото 100. Пока подставлялось общее
-  // 100, видео открывалось крошечным квадратом 200×200.
+  // tweb setAttachmentSize.ts:52-62: медиа БЕЗ натуральных размеров (сообщение,
+  // у которого геометрии нет ни в атрибуте, ни в лестнице) резервирует бокс от
+  // дефолта, и дефолт этот разный — документу (видео, гифка) 512, фото 100. Пока
+  // подставлялось общее 100, видео открывалось крошечным квадратом 200×200.
   it('без размеров: видео резервирует бокс от 512 (400×400), фото — от 100 (200×200)', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="video" mediaId={304} mime="video/mp4" duration={46} />,
+      <RealMediaBubble type="video" mediaId={304} media={videoDoc(0, 0, 46)} />,
     ))
     const video = container.querySelector('.media-container') as HTMLElement
     expect(video.style.width).toBe('400px')
@@ -88,7 +104,7 @@ describe('RealMediaBubble: расширенный бокс', () => {
 
     cleanup()
     applyMediaUrl({ id: 305, thumb: false, url: 'blob:media-305' })
-    const shot = render(withManagers(<RealMediaBubble type="photo" mediaId={305} />))
+    const shot = render(withManagers(<RealMediaBubble type="photo" mediaId={305} media={photoMedia()} />))
     const photo = shot.container.querySelector('.media-container') as HTMLElement
     expect(photo.style.width).toBe('200px')
     expect(photo.style.height).toBe('200px')

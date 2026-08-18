@@ -26,13 +26,15 @@
 // раскрытия уже портирован (`wrappers/mediaSpoiler.ts`).
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import type { AnimationItemGroup } from '@components/animationIntersector'
+import type { MyDocument, MyPhoto } from '@core/media/messageMedia'
 import type { Middleware } from '@helpers/middleware'
 
 export default async function wrapBubbleMediaSpoiler({
-  strippedThumb, promise, middleware, attachmentDiv, animationGroup,
+  media, promise, middleware, attachmentDiv, animationGroup,
 }: {
-  /** stripped-превью самого сообщения (`Message.mediaBlur`; tweb берёт его из `media`) */
-  strippedThumb: string | undefined
+  /** вложение бабла (tweb `media: Photo.photo | MyDocument`) — ступень
+   * stripped-превью крышка достаёт из него сама, в `wrapMediaSpoiler` */
+  media: MyPhoto | MyDocument
   /** промис враппера медиа — tweb `promise` (`wrapPhoto`/`wrapVideo`) */
   promise: Promise<unknown>
   middleware: Middleware
@@ -47,7 +49,7 @@ export default async function wrapBubbleMediaSpoiler({
 
   const { width, height } = attachmentDiv.style
   const container = await wrapMediaSpoiler({
-    strippedThumb: strippedThumb || '',
+    media,
     width: parseInt(width),
     height: parseInt(height),
     middleware,

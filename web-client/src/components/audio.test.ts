@@ -12,6 +12,7 @@
 // Медиа-элементы окружения не играют — прототип подменён предсказуемыми
 // заглушками, дёргающими настоящие события (приём из mediaPlaybackController.test.ts).
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { saveDocument, type MyDocument } from '@core/media/messageMedia'
 
 vi.mock('@core/mediaUrl', () => ({
   resolveMediaContentUrl: (id: number) => `https://media/${id}`,
@@ -83,26 +84,43 @@ beforeAll(async () => {
 /** 63 байта пиков — тот же формат, что кладёт запись (5 бит на значение). */
 const WAVEFORM_B64 = btoa(String.fromCharCode(...Array.from({ length: 63 }, (_, i) => (i * 37) % 256)))
 
-const voiceDoc = (over: Record<string, unknown> = {}) => ({
-  id: 100,
-  type: 'voice' as const,
-  duration: 10,
-  waveform: WAVEFORM_B64,
-  ...over,
+// Документы — в форме оригинала: `type`/`duration`/`file_name` НЕ задаются рукой,
+// их выводит `saveDocument` из атрибутов и mime (порт `appDocsManager.saveDoc`).
+// Отсутствующий флаг/тег — это ОТСУТСТВУЮЩИЙ ключ, а не `undefined`.
+const voiceDoc = ({ id = 100, noWaveform }: { id?: number, noWaveform?: true } = {}): MyDocument => saveDocument({
+  _: 'document',
+  id,
+  mime_type: 'audio/ogg',
+  size: 12_000,
+  attributes: [{
+    _: 'documentAttributeAudio',
+    pFlags: { voice: true },
+    duration: 10,
+    ...(noWaveform ? {} : { waveform: WAVEFORM_B64 }),
+  }],
 })
 
-const musicDoc = (over: Record<string, unknown> = {}) => ({
-  id: 200,
-  type: 'audio' as const,
-  duration: 106,
+// Имя файла НАМЕРЕННО отличается от ID3-заголовка: tweb берёт
+// `audioAttribute?.title ?? doc.file_name` — приоритет у тега, а не у файла.
+const musicDoc = (
+  { id = 200, noPerformer, noTitle }: { id?: number, noPerformer?: true, noTitle?: true } = {},
+): MyDocument => saveDocument({
+  _: 'document',
+  id,
+  mime_type: 'audio/mpeg',
   size: 3_500_000,
-  fileName: 'я тимлид.mp3',
-  title: 'я тимлид.mp3',
-  performer: 'Дн',
-  ...over,
+  attributes: [
+    {
+      _: 'documentAttributeAudio',
+      duration: 106,
+      ...(noTitle ? {} : { title: 'я тимлид.mp3' }),
+      ...(noPerformer ? {} : { performer: 'Дн' }),
+    },
+    { _: 'documentAttributeFilename', file_name: 'audio_2026-08-19.mp3' },
+  ],
 })
 
-function wrap(doc: ReturnType<typeof voiceDoc> | ReturnType<typeof musicDoc>, message: Record<string, unknown> = {}) {
+function wrap(doc: MyDocument, message: Record<string, unknown> = {}) {
   const helper = getMiddleware()
   const element = wrapDocument({ doc, message, middleware: helper.get() })
   document.body.append(element)
@@ -228,7 +246,7 @@ describe('AudioElement — голосовое (tweb wrapVoiceMessage)', () => {
   })
 
   it('пиков нет — волны нет и файл ради неё не качается (tweb 1:1)', async () => {
-    const { element } = wrap(voiceDoc({ waveform: undefined }))
+    const { element } = wrap(voiceDoc({ noWaveform: true }))
 
     // tweb: пустой waveform → createWaveformBars не отдаёт контейнер, svg нет
     expect(element.querySelector('.audio-waveform')).toBeNull()
@@ -431,8 +449,16 @@ describe('AudioElement — музыка (tweb wrapAudio)', () => {
     expect(element.querySelector('.audio-waveform-container')).toBeNull()
   })
 
+  // tweb audio.ts:390 — `audioAttribute?.title ?? doc.file_name`: заголовок
+  // и исполнитель живут в ID3-теге документа, а не в самом файле.
+  it('без ID3-заголовка подписью становится имя файла', () => {
+    const { element } = wrap(musicDoc({ noTitle: true }))
+
+    expect(element.querySelector('.audio-title')?.textContent).toBe('audio_2026-08-19.mp3')
+  })
+
   it('без исполнителя описание — размер файла (tweb formatBytes-ветка)', () => {
-    const { element } = wrap(musicDoc({ performer: undefined }))
+    const { element } = wrap(musicDoc({ noPerformer: true }))
 
     expect(element.querySelector('.audio-description')?.textContent).toBe(' • 3.3 MB')
   })

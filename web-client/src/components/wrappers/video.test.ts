@@ -10,8 +10,8 @@
 //   • АДРЕС видео берётся через `resolveStreamUrl` (стрим), а не через конвейер
 //     картинок: при DNP-ON это асинхронный `/dnp-stream/{id}`, и путь не ломается;
 //   • смена медиа-токена доезжает до ЖИВОГО элемента (иначе 401 на середине);
-//   • постер строится из `media_blur` через `getStrippedThumbIfNeeded({isVideo})`
-//     — у видео «скачано» относится к файлу, а не к первому кадру;
+//   • постер строится из ступени `photoStrippedSize` вложения — у видео
+//     «скачано» относится к файлу, а не к первому кадру;
 //   • кружок играет ЧЕРЕЗ контроллер коллекции (элемент принадлежит сообщению),
 //     а не заводит себе второй звук;
 //   • протухший middleware в DOM ничего не дописывает.
@@ -21,6 +21,14 @@
 // Модульное состояние (зеркало URL, токен, коллекция) живёт в модулях, поэтому
 // каждый кейс поднимает свежий реестр (vi.resetModules), как в photo.test.ts.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  saveDocument,
+  THUMB_TYPE_SERVER,
+  THUMB_TYPE_STRIPPED,
+  type DocumentAttribute,
+  type MyDocument,
+  type PhotoSize,
+} from '@core/media/messageMedia'
 
 const { downloadMediaURL, contentUrl, streamUrl, tokenInfo } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number, opts?: { thumb?: boolean }) => Promise<string>>(),
@@ -46,7 +54,6 @@ vi.mock('@helpers/blur', () => ({
 type FakeMedia = HTMLMediaElement & { _playing?: boolean, _time?: number, _dur?: number }
 
 let wrapVideo: typeof import('./video').default
-let videoDocFromMessage: typeof import('./video').videoDocFromMessage
 let USE_VIDEO_OBSERVER: boolean
 let mediaUrl: typeof import('@core/mediaUrl')
 let mediaCache: typeof import('@core/mediaCache')
@@ -74,7 +81,6 @@ async function setup(opts: { dnp?: boolean } = {}) {
 
   const mod = await import('./video')
   wrapVideo = mod.default
-  videoDocFromMessage = mod.videoDocFromMessage
   USE_VIDEO_OBSERVER = mod.USE_VIDEO_OBSERVER
   mediaUrl = await import('@core/mediaUrl')
   mediaCache = await import('@core/mediaCache')
@@ -140,18 +146,30 @@ const box = () => {
   return container
 }
 
-/** Обычное видео истории: маленькое, с серверным постером и stripped-превью. */
-const videoDoc = (over: Partial<import('./video').WrapVideoDoc> = {}): import('./video').WrapVideoDoc => ({
-  id: 7,
-  type: 'video',
-  width: 1600,
-  height: 900,
-  duration: 46,
-  size: 3 * 1024 * 1024,
-  mime: 'video/mp4',
-  strippedThumb: STRIPPED,
-  hasThumb: true,
-  ...over,
+/**
+ * Обычное видео истории: с серверной ступенью постера и stripped-ступенью.
+ * Документ — в форме оригинала: `type`/`w`/`h`/`duration` рукой не задаются, их
+ * выводит `saveDocument` из атрибутов (порт `appDocsManager.saveDoc`).
+ */
+const videoDoc = ({
+  id = 7, w = 1600, h = 900, duration = 46, size = 3 * 1024 * 1024,
+  round, animated, serverThumb = true,
+}: {
+  id?: number, w?: number, h?: number, duration?: number, size?: number,
+  round?: true, animated?: true, serverThumb?: boolean,
+} = {}): MyDocument => saveDocument({
+  _: 'document',
+  id,
+  mime_type: 'video/mp4',
+  size,
+  attributes: [
+    { _: 'documentAttributeVideo', duration, w, h, ...(round ? { pFlags: { round_message: true as const } } : {}) },
+    ...(animated ? [{ _: 'documentAttributeAnimated' } as DocumentAttribute] : []),
+  ],
+  thumbs: [
+    { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED },
+    ...(serverThumb ? [{ _: 'photoSize', type: THUMB_TYPE_SERVER, w: 400, h: 225, size: 20_000 } as PhotoSize] : []),
+  ],
 })
 
 const REGULAR = { boxWidth: 420, boxHeight: 400 }
@@ -223,7 +241,7 @@ describe('wrapVideo: информационный слой и дерево', () 
     mediaUrl.applyMediaToken(TOKEN('T1'))
 
     const res = await wrapVideo({
-      doc: videoDoc({ type: 'gif', hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ animated: true, serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -248,7 +266,7 @@ describe('wrapVideo: информационный слой и дерево', () 
     const container = box()
 
     const res = await wrapVideo({
-      doc: videoDoc({ type: 'gif', hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ animated: true, serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -268,18 +286,18 @@ describe('wrapVideo: информационный слой и дерево', () 
 
 describe('wrapVideo: постер', () => {
   it('без серверного постера превью показывается КАК медиа и держится, даже когда байты уже в зеркале', async () => {
-    // Ветка `strippedSize` (tweb photo.ts:208): единственный подходящий размер
-    // документа — stripped из сообщения, поэтому постер рисует тот же
-    // `wrapPhoto` (класс `media-photo`, а не подложка `media-poster` кладки).
-    // «Скачано» при этом считается ПО ВЫБРАННОМУ размеру: у stripped своего
-    // файла нет, поэтому попадание полного файла в зеркало превью не снимает —
-    // иначе бабл открылся бы пустым прямоугольником.
+    // Ранний выход tweb photo.ts:207: подходящей ступени у документа нет
+    // (`photoSizeEmpty` у оригинала, отсутствие ступени у нас), поэтому постером
+    // работает stripped и рисует его тот же `wrapPhoto` (класс `media-photo`, а
+    // не подложка `media-poster` кладки). «Скачано» при этом считается ПО
+    // ВЫБРАННОЙ ступени: своего файла у stripped нет, поэтому попадание полного
+    // файла в зеркало превью не снимает — иначе бабл открылся бы пустым.
     mediaCache.applyMediaUrl({ id: 7, thumb: false, url: 'blob:7' })
     mediaUrl.applyMediaToken(TOKEN('T1'))
     const container = box()
 
     await wrapVideo({
-      doc: videoDoc({ hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -318,7 +336,7 @@ describe('wrapVideo: постер', () => {
     const container = box()
 
     await wrapVideo({
-      doc: videoDoc({ width: undefined, height: undefined }), container,
+      doc: videoDoc({ w: 0, h: 0, serverThumb: false }), container,
       message: { mid: 1, peerId: -42 }, ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -334,7 +352,7 @@ describe('wrapVideo: стриминг и токен', () => {
     const container = box()
 
     const res = await wrapVideo({
-      doc: videoDoc({ hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -350,7 +368,7 @@ describe('wrapVideo: стриминг и токен', () => {
     const container = box()
 
     const res = await wrapVideo({
-      doc: videoDoc({ hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -366,7 +384,7 @@ describe('wrapVideo: стриминг и токен', () => {
     const container = box()
 
     const res = await wrapVideo({
-      doc: videoDoc({ hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -387,7 +405,7 @@ describe('wrapVideo: стриминг и токен', () => {
     const container = box()
 
     const promise = wrapVideo({
-      doc: videoDoc({ hasThumb: false }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ serverThumb: false }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: helper.get(),
     })
     helper.destroy()
@@ -402,7 +420,7 @@ describe('wrapVideo: стриминг и токен', () => {
 })
 
 describe('wrapVideo: кружок', () => {
-  const roundDoc = () => videoDoc({ type: 'round', width: 240, height: 240, duration: 8, hasThumb: false })
+  const roundDoc = () => videoDoc({ round: true, w: 240, h: 240, duration: 8, serverThumb: false })
 
   it('дерево 1:1 с живым DOM tweb', async () => {
     mediaUrl.applyMediaToken(TOKEN('T1'))
@@ -517,24 +535,6 @@ describe('wrapVideo: кружок', () => {
   })
 })
 
-describe('videoDocFromMessage', () => {
-  const base = {
-    id: 1, chatId: -42, seq: 1, senderId: 1, text: '', replyToId: null,
-    createdAt: '2026-08-16T00:00:00Z', threadRootId: null,
-  }
-
-  it('тип медиа читается из данных сервера: roundVideo → кружок, media_animated → гифка', () => {
-    const doc = (patch: Record<string, unknown>) =>
-      videoDocFromMessage({ ...base, type: 'video', mediaId: 7, ...patch } as never)
-
-    expect(doc({})!.type).toBe('video')
-    expect(doc({ mediaAnimated: true })!.type).toBe('gif')
-    expect(doc({ type: 'roundVideo' })!.type).toBe('round')
-    // платное медиа до оплаты приезжает без media_id — качать нечего
-    expect(videoDocFromMessage({ ...base, type: 'video', mediaId: null } as never)).toBeNull()
-  })
-})
-
 // Минимальная ширина видео (MIN_VIDEO_SIDE_SIZE = 368) в оригинале принадлежит
 // НЕ типу медиа, а UI плеера: в `canHaveVideoPlayer` едет `willObserveSound`
 // (tweb video.ts:428), а он поднимается только под гейтом
@@ -549,7 +549,7 @@ describe('wrapVideo: бокс узкого видео — гейт USE_VIDEO_OBS
     mediaUrl.applyMediaToken(TOKEN('T1'))
 
     await wrapVideo({
-      doc: videoDoc({ width: 200, height: 600 }), container, message: { mid: 1, peerId: -42 },
+      doc: videoDoc({ w: 200, h: 600 }), container, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()

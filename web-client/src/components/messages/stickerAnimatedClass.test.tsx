@@ -1,12 +1,13 @@
-// Класс `sticker-animated` на бабле выводится в MessageRow из mime файла
-// (`isLottieMime(m.mediaMime)`), а не приходит готовым флагом: bubbleClasses.test
-// подаёт `animatedSticker` уже посчитанным, поэтому саму деривацию не держит.
-// Без этого пина возврат детекта к старому mime ('application/json') снимал
-// класс со ВСЕХ .tgs-баблов — а .tgs у нас все залитые анимированные стикеры —
-// и не красил ни одного теста.
+// Класс `sticker-animated` на бабле выводится в MessageRow из САМОГО документа
+// (`doc.animated` — tweb bubbles.ts:6102-6104 `isAnimated`), а не приходит
+// готовым флагом: bubbleClasses.test подаёт `animatedSticker` уже посчитанным,
+// поэтому саму деривацию не держит. Без этого пина возврат детекта к чему-то
+// помимо `doc.animated` снимал класс со ВСЕХ .tgs-баблов — а .tgs у нас все
+// залитые анимированные стикеры — и не красил ни одного теста.
 import { render, cleanup, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MessageRow, { type FeedFns, type MessageRowProps } from './MessageRow'
+import { saveDocument, type MessageMedia } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 
 vi.mock('../StickerMedia', () => ({
@@ -18,8 +19,26 @@ vi.mock('../../core/hooks/useManagers', () => ({
 
 const feedFns = { toggleSelect: vi.fn() } as unknown as FeedFns
 
-function renderSticker(mediaMime: string) {
-  const m = { id: 1, type: 'sticker', mediaId: 100, mediaMime, out: false } as ConvMsg
+// Стикер приезжает документом с documentAttributeSticker; `animated`/`sticker`
+// из него выводит saveDocument по mime — тот же механизм, что appDocsManager.
+function stickerMedia(mime: string): MessageMedia {
+  return {
+    _: 'messageMediaDocument',
+    document: saveDocument({
+      _: 'document',
+      id: 100,
+      mime_type: mime,
+      size: 1000,
+      attributes: [
+        { _: 'documentAttributeSticker', alt: '🔥' },
+        { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      ],
+    }),
+  }
+}
+
+function renderSticker(mime: string) {
+  const m = { id: 1, type: 'sticker', mediaId: 100, media: stickerMedia(mime), out: false } as ConvMsg
   const props: MessageRowProps = {
     m,
     out: false,
@@ -38,15 +57,15 @@ function renderSticker(mediaMime: string) {
   return screen.getByTestId('sticker').closest('.bubble')!
 }
 
-describe('MessageRow — деривация sticker-animated из mime стикера', () => {
+describe('MessageRow — деривация sticker-animated из документа стикера', () => {
   afterEach(cleanup)
 
   it('.tgs (application/x-tgsticker) — бабл помечен sticker-animated', () => {
     expect(renderSticker('application/x-tgsticker').classList.contains('sticker-animated')).toBe(true)
   })
 
-  it('несжатый lottie-json — тоже sticker-animated', () => {
-    expect(renderSticker('application/json').classList.contains('sticker-animated')).toBe(true)
+  it('видео-стикер (video/webm) — тоже sticker-animated', () => {
+    expect(renderSticker('video/webm').classList.contains('sticker-animated')).toBe(true)
   })
 
   it('статичный webp — без sticker-animated', () => {

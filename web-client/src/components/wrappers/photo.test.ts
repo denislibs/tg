@@ -20,6 +20,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import { createLazyLoadQueue } from '@core/lazyLoadQueue'
+import generatePhotoForExtendedMediaPreview from '@core/media/generatePhotoForExtendedMediaPreview'
+import {
+  THUMB_TYPE_FULL,
+  THUMB_TYPE_SERVER,
+  THUMB_TYPE_STRIPPED,
+  type MyDocument,
+  type MyPhoto,
+  type PhotoSize,
+} from '@core/media/messageMedia'
 
 const { downloadMediaURL } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number, opts?: { thumb?: boolean }) => Promise<string>>(),
@@ -45,6 +54,36 @@ let wrapPhoto: typeof import('./photo').default
 let cache: typeof import('@core/mediaCache')
 
 const STRIPPED = 'AAECAwQ='
+
+// Вложения — в форме оригинала (лестница `PhotoSize`), вопросы к ней задаёт
+// сам враппер: `choosePhotoSize` выбирает ступень, ступень решает адрес файла.
+const photo = ({ id = 7, w = 1600, h = 900, stripped = true, serverThumb = false } = {}): MyPhoto => ({
+  _: 'photo',
+  id,
+  sizes: [
+    ...(stripped ? [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED } as PhotoSize] : []),
+    ...(serverThumb ? [{ _: 'photoSize', type: THUMB_TYPE_SERVER, w: 400, h: 225, size: 20_000 } as PhotoSize] : []),
+    { _: 'photoSize', type: THUMB_TYPE_FULL, w, h, size: 200_000 },
+  ],
+})
+
+// Псевдо-фото неоплаченного платного медиа: единственная ступень — stripped
+// (её и производит `generatePhotoForExtendedMediaPreview` из превью).
+const previewPhoto = () => generatePhotoForExtendedMediaPreview(photo({ w: 600, h: 800 }))
+
+// Видео без серверного постера: подходящей ступени в `thumbs` нет вовсе —
+// у оригинала это `photoSizeEmpty`, у нас отсутствие ступени.
+const videoDocWithoutPoster = (): MyDocument => ({
+  _: 'document',
+  id: 9,
+  mime_type: 'video/mp4',
+  size: 3_000_000,
+  type: 'video',
+  w: 600,
+  h: 800,
+  attributes: [{ _: 'documentAttributeVideo', duration: 12, w: 600, h: 800 }],
+  thumbs: [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED }],
+})
 
 function deferred() {
   let resolve!: (url: string) => void
@@ -91,7 +130,7 @@ describe('wrapPhoto: дерево и слои', () => {
     const container = box()
 
     const promise = wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, middleware: getMiddleware().get(),
+      photo: photo(), container, middleware: getMiddleware().get(),
     })
 
     // ── синхронно, ДО сети ──
@@ -122,7 +161,7 @@ describe('wrapPhoto: дерево и слои', () => {
   it('превью снимается по событию animationend, а не по времени', async () => {
     vi.useFakeTimers()
     const container = box()
-    await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container }))
+    await rendered(wrapPhoto({ photo: photo(), container }))
 
     const thumb = container.querySelector('canvas.thumbnail')!
     const full = container.querySelector('img.media-photo')!
@@ -144,7 +183,7 @@ describe('wrapPhoto: дерево и слои', () => {
     const container = box()
 
     const ret = await rendered(wrapPhoto({
-      mediaId: 7, width: 600, height: 800, strippedThumb: STRIPPED, container, hasMessageBlock: true,
+      photo: photo({ w: 600, h: 800 }), container, hasMessageBlock: true,
     }))
 
     expect(container.classList.contains('media-container-fitted')).toBe(true)
@@ -170,7 +209,7 @@ describe('wrapPhoto: дерево и слои', () => {
     const container = box()
 
     const ret = await rendered(wrapPhoto({
-      mediaId: 7, width: 600, height: 800, strippedThumb: STRIPPED, container, boxWidth: 0, boxHeight: 0,
+      photo: photo({ w: 600, h: 800 }), container, boxWidth: 0, boxHeight: 0,
     }))
 
     expect(container.style.width).toBe('')
@@ -179,16 +218,14 @@ describe('wrapPhoto: дерево и слои', () => {
     expect(container.querySelector('img.media-photo')).toBeTruthy()
   })
 
-  // tweb photo.ts:208-210: выбранный размер САМ является байтами превью
-  // (`photoStrippedSize`) — оно и есть медиа. Так рисуются видео без серверного
-  // постера и неоплаченное платное медиа в ячейке альбома: без этой ветки
-  // враппер строил бы `<img>` и шёл за байтами, которых нет, — ячейка/бабл
-  // оставались бы пустыми.
-  it('strippedSize: превью из сообщения показано КАК медиа — без <img>, без сети', async () => {
+  // tweb photo.ts:207-209: показывать больше нечего — выбранная ступень САМА
+  // является байтами превью. Так рисуется неоплаченное платное медиа: без этой
+  // ветки враппер строил бы `<img>` и шёл за байтами, которых нет.
+  it('ступень stripped: превью показано КАК медиа — без <img>, без сети', async () => {
     const container = box()
 
     const ret = await rendered(wrapPhoto({
-      mediaId: 0, width: 600, height: 800, strippedThumb: STRIPPED, strippedSize: true, container,
+      photo: previewPhoto(), container,
     }))
 
     // бокс контейнера всё равно назначен (ветка сайзинга в оригинале идёт раньше)
@@ -206,12 +243,11 @@ describe('wrapPhoto: дерево и слои', () => {
     expect(container.querySelector('.preloader-container')).toBeNull()
   })
 
-  it('strippedSize + расширенный бокс: превью лежит в аспектере (медиа), а не подложкой', async () => {
+  it('ступень stripped + расширенный бокс: превью лежит в аспектере (медиа), а не подложкой', async () => {
     const container = box()
 
     const ret = await rendered(wrapPhoto({
-      mediaId: 0, width: 600, height: 800, strippedThumb: STRIPPED, strippedSize: true,
-      container, hasMessageBlock: true,
+      photo: previewPhoto(), container, hasMessageBlock: true,
     }))
 
     const aspecter = ret.aspecter!
@@ -223,9 +259,50 @@ describe('wrapPhoto: дерево и слои', () => {
     expect(downloadMediaURL).not.toHaveBeenCalled()
   })
 
+  // Вторая половина того же раннего выхода (tweb `photoSizeEmpty && isDocument`):
+  // у видео без серверного постера подходящей ступени НЕТ. Без неё враппер
+  // потянул бы в `<img>` полный mp4.
+  it('документ без подходящей ступени: постером работает stripped, за файлом не ходим', async () => {
+    const container = box()
+
+    const ret = await rendered(wrapPhoto({ photo: videoDocWithoutPoster(), container }))
+
+    expect(ret.images.thumb).toBeTruthy()
+    expect(ret.images.full).toBeNull()
+    expect(container.querySelector('img.media-photo')).toBeNull()
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+  })
+
+  // tweb photo.ts:73,120-126 (`isImageFromDocument`): настоящая картинка
+  // приезжает ДОКУМЕНТОМ (`image/gif` из `wrapVideo`), и ступенью ей работает
+  // сам файл. Без этой ветки документ без серверной ступени ушёл бы в ранний
+  // выход выше — гифка осталась бы одним stripped-превью.
+  it('картинка-документ: ступень собирается из самого файла, качается оригинал', async () => {
+    const container = box()
+    const gif: MyDocument = {
+      _: 'document',
+      id: 11,
+      mime_type: 'image/gif',
+      size: 400_000,
+      type: 'gif',
+      w: 1600,
+      h: 900,
+      attributes: [{ _: 'documentAttributeAnimated' }],
+      thumbs: [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED }],
+    }
+
+    const ret = await rendered(wrapPhoto({ photo: gif, container }))
+
+    // бокс посчитан по геометрии самого документа
+    expect(container.style.width).toBe('420px')
+    expect(container.style.height).toBe('236px')
+    expect(downloadMediaURL).toHaveBeenCalledWith(11, { thumb: false })
+    expect(ret.images.full).toBeTruthy()
+  })
+
   it('noThumb — превью не строится вовсе', async () => {
     const container = box()
-    const ret = await wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, noThumb: true })
+    const ret = await wrapPhoto({ photo: photo(), container, noThumb: true })
 
     expect(ret.images.thumb).toBeNull()
     expect(container.querySelector('canvas.thumbnail')).toBeNull()
@@ -235,20 +312,33 @@ describe('wrapPhoto: дерево и слои', () => {
 describe('wrapPhoto: URL медиа', () => {
   it('URL берётся через ensureMediaUrl — ответ владельца оказывается в зеркале', async () => {
     const container = box()
-    await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, container }))
+    await rendered(wrapPhoto({ photo: photo({ stripped: false }), container }))
 
     expect(downloadMediaURL).toHaveBeenCalledWith(7, { thumb: false })
     expect(cache.cachedMediaUrl(7)).toBe('blob:full')
     expect((container.querySelector('img.media-photo') as HTMLImageElement).src).toBe('blob:full')
   })
 
-  it('thumb:true — отдельный ключ владельца и зеркала', async () => {
+  // Адрес файла решает ВЫБРАННАЯ СТУПЕНЬ, а не флаг вызывающего (tweb отдаёт
+  // ступень в `downloadMediaURL({media, thumb: size})`): в бокс 320×180
+  // серверное превью (`y`) укладывается — качается оно, а не оригинал.
+  it('ступень `y` покрыла бокс — качается превью, отдельным ключом зеркала', async () => {
     downloadMediaURL.mockResolvedValue('blob:thumb')
-    await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, container: box(), thumb: true }))
+    await rendered(wrapPhoto({
+      photo: photo({ stripped: false, serverThumb: true }),
+      container: box(), boxWidth: 320, boxHeight: 180,
+    }))
 
     expect(downloadMediaURL).toHaveBeenCalledWith(7, { thumb: true })
     expect(cache.cachedMediaUrl(7, true)).toBe('blob:thumb')
     expect(cache.cachedMediaUrl(7, false)).toBeUndefined()
+  })
+
+  // Тот же ладдер в обычном боксе: `y` его не покрывает, выбирается оригинал.
+  it('ступень `y` бокс не покрыла — качается оригинал', async () => {
+    await rendered(wrapPhoto({ photo: photo({ stripped: false, serverThumb: true }), container: box() }))
+
+    expect(downloadMediaURL).toHaveBeenCalledWith(7, { thumb: false })
   })
 
   // Попадание в зеркало = tweb `cacheContext.downloaded`: ни сети, ни превью,
@@ -257,7 +347,7 @@ describe('wrapPhoto: URL медиа', () => {
     cache.applyMediaUrl({ id: 7, thumb: false, url: 'blob:hit' })
     const container = box()
 
-    const ret = await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container }))
+    const ret = await rendered(wrapPhoto({ photo: photo(), container }))
 
     expect(downloadMediaURL).not.toHaveBeenCalled()
     expect(ret.images.thumb).toBeNull()
@@ -276,7 +366,7 @@ describe('wrapPhoto: актуальность и очередь', () => {
     const helper = getMiddleware()
 
     const promise = wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, middleware: helper.get(),
+      photo: photo(), container, middleware: helper.get(),
     })
     helper.clean()
     d.resolve('blob:late')
@@ -292,7 +382,7 @@ describe('wrapPhoto: актуальность и очередь', () => {
     helper.clean()
     const container = box()
 
-    await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, middleware }))
+    await rendered(wrapPhoto({ photo: photo(), container, middleware }))
 
     expect(container.querySelector('img.media-photo')).toBeNull()
   })
@@ -301,7 +391,7 @@ describe('wrapPhoto: актуальность и очередь', () => {
     const queue = createLazyLoadQueue(0) // мест нет — задача стоит в очереди
     const container = box()
 
-    await rendered(wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, lazyLoadQueue: queue }))
+    await rendered(wrapPhoto({ photo: photo(), container, lazyLoadQueue: queue }))
 
     expect(downloadMediaURL).not.toHaveBeenCalled()
     expect(container.querySelector('canvas.thumbnail')).toBeTruthy() // превью уже видно
@@ -320,7 +410,7 @@ describe('wrapPhoto: ProgressivePreloader', () => {
     const container = box()
     document.body.append(container)
 
-    const promise = wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container })
+    const promise = wrapPhoto({ photo: photo(), container })
     await vi.advanceTimersByTimeAsync(32)
 
     const preloader = container.querySelector('.preloader-container')
@@ -341,7 +431,7 @@ describe('wrapPhoto: ProgressivePreloader', () => {
     const container = box()
     document.body.append(container)
 
-    void wrapPhoto({ mediaId: 7, width: 100, height: 80, strippedThumb: STRIPPED, container })
+    void wrapPhoto({ photo: photo({ w: 100, h: 80 }), container })
     await vi.advanceTimersByTimeAsync(32)
 
     expect(container.querySelector('.preloader-container')).toBeNull()
@@ -354,7 +444,7 @@ describe('wrapPhoto: ProgressivePreloader', () => {
     document.body.append(container)
 
     void wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, autoDownloadSize: 0,
+      photo: photo(), container, autoDownloadSize: 0,
     })
     await vi.advanceTimersByTimeAsync(32)
 
@@ -372,7 +462,7 @@ describe('wrapPhoto: ProgressivePreloader', () => {
     const d = deferred()
 
     void wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, container, uploadPromise: d.promise, autoDownloadSize: 0,
+      photo: photo({ stripped: false }), container, uploadPromise: d.promise, autoDownloadSize: 0,
     })
 
     expect(container.querySelector('.preloader-container')).toBeTruthy()

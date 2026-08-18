@@ -6,6 +6,7 @@ import { fromNewMessageEvt, mapFactCheck, mapWebPage, mapPoll, mapChecklist, map
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
+import { getDocumentFromMessage, type MessageMedia } from '../media/messageMedia'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
@@ -531,9 +532,23 @@ describe('MessagesManager.cachePaidUnlock', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    // Кадр разблокировки несёт ВЛОЖЕНИЕ целиком: у заблокированного сервер
+    // отдавал псевдо-фото из одной stripped-ступени (LockedPlaceholder), здесь
+    // приезжает настоящая лестница.
+    const media: MessageMedia = {
+      _: 'messageMediaPhoto',
+      photo: {
+        _: 'photo',
+        id: 55,
+        sizes: [
+          { _: 'photoStrippedSize', type: 'i', bytes: 'abc' },
+          { _: 'photoSize', type: 'w', w: 640, h: 480, size: 2048 },
+        ],
+      },
+    }
     const evt = {
       chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
-      media_id: 55, created_at: '2026-06-24T10:00:00Z',
+      media_id: 55, created_at: '2026-06-24T10:00:00Z', media,
       media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
       media_has_thumb: true, media_duration: undefined, media_size: 2048, media_name: 'p.jpg',
       paid_media: { price: 10, locked: false },
@@ -542,7 +557,8 @@ describe('MessagesManager.cachePaidUnlock', () => {
     expect(ops).toEqual([{
       op: 'patch', key: '1', msgId: 2,
       fields: {
-        mediaId: 55, mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
+        mediaId: 55, media,
+        mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
         mediaHasThumb: true, mediaDuration: undefined, mediaSize: 2048, mediaName: 'p.jpg',
         mediaTitle: undefined, mediaPerformer: undefined, mediaAnimated: undefined,
         paidMedia: { price: 10, locked: false },
@@ -550,24 +566,38 @@ describe('MessagesManager.cachePaidUnlock', () => {
     }])
   })
 
-  // Бэк вычищает у заблокированного медиа ВСЮ мету контента (stripLockedMedia:
-  // mime/name/duration/теги/animated) и возвращает её кадром разблокировки.
-  // Патч обязан нести её целиком, иначе оплаченное аудио остаётся без подписи,
-  // а оплаченная гифка рисуется видео-баблом до перезагрузки истории.
-  it('переносит теги трека и признак гифки из кадра разблокировки', async () => {
+  // Бэк вычищает у заблокированного медиа ВСЮ мету контента (stripLockedMedia
+  // оставляет только псевдо-фото из stripped-ступени) и возвращает её кадром
+  // разблокировки. Патч обязан нести вложение целиком и УЖЕ нормализованным
+  // (`saveMessageMedia`), иначе у оплаченного документа нет выведенного типа:
+  // оплаченное аудио остаётся без подписи, а оплаченная гифка рисуется
+  // видео-баблом до перезагрузки истории.
+  it('переносит вложение целиком, с выведенным типом документа', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cachePaidUnlock({
       chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'video', text: '',
       media_id: 55, created_at: '2026-06-24T10:00:00Z',
-      media_mime: 'video/mp4', media_title: 'Track', media_performer: 'Artist', media_animated: true,
+      media: {
+        _: 'messageMediaDocument',
+        document: {
+          _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
+          attributes: [
+            { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
+            { _: 'documentAttributeAnimated' },
+            { _: 'documentAttributeFilename', file_name: 'g.mp4' },
+          ],
+        },
+      },
       paid_media: { price: 10, locked: false },
     } as unknown as NewMessageEvt)
     const patch = ops[0]
-    expect(patch?.op === 'patch' ? patch.fields : null).toMatchObject({
-      mediaTitle: 'Track', mediaPerformer: 'Artist', mediaAnimated: true,
-    })
+    const fields = patch?.op === 'patch' ? patch.fields : null
+    const doc = getDocumentFromMessage({ media: fields?.media })
+    expect(doc?.type).toBe('gif') // выведен из documentAttributeAnimated
+    expect(doc?.file_name).toBe('g.mp4')
+    expect(doc?.duration).toBe(3)
   })
 
   it('produces no op for a message absent from the SSOT', async () => {

@@ -80,8 +80,30 @@ const { default: wrapVideo } = await import('@components/wrappers/video')
 const { getMiddleware } = await import('@helpers/middleware')
 const mediaUrl = await import('@core/mediaUrl')
 
+const { saveDocument, THUMB_TYPE_FULL, THUMB_TYPE_STRIPPED } = await import('@core/media/messageMedia')
+type MyPhoto = import('@core/media/messageMedia').MyPhoto
+
 const STRIPPED = 'AAECAwQ='
 const REGULAR = { boxWidth: 420, boxHeight: 400 }
+
+/** Вложение в форме оригинала: stripped-ступень крышка достаёт из него сама. */
+const photoMedia: MyPhoto = {
+  _: 'photo',
+  id: 7,
+  sizes: [
+    { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED },
+    { _: 'photoSize', type: THUMB_TYPE_FULL, w: 1600, h: 900, size: 512_000 },
+  ],
+}
+
+const videoMedia = saveDocument({
+  _: 'document',
+  id: 7,
+  mime_type: 'video/mp4',
+  size: 3 * 1024 * 1024,
+  attributes: [{ _: 'documentAttributeVideo', duration: 46, w: 1600, h: 900 }],
+  thumbs: [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED }],
+})
 
 const flush = async () => {
   for (let i = 0; i < 5; ++i) await new Promise<void>((r) => { setTimeout(r, 0) })
@@ -144,11 +166,10 @@ describe('wrapBubbleMediaSpoiler: фото-бабл', () => {
     const middleware = mw()
 
     const promise = wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED,
-      container: attachmentDiv, middleware, ...REGULAR,
+      photo: photoMedia, container: attachmentDiv, middleware, ...REGULAR,
     })
     await wrapBubbleMediaSpoiler({
-      strippedThumb: STRIPPED, promise, middleware, attachmentDiv, animationGroup: 'chat',
+      media: photoMedia, promise, middleware, attachmentDiv, animationGroup: 'chat',
     })
     await flush()
 
@@ -174,12 +195,11 @@ describe('wrapBubbleMediaSpoiler: фото-бабл', () => {
     const middleware = helper.get()
 
     const promise = wrapPhoto({
-      mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED,
-      container: attachmentDiv, middleware, ...REGULAR,
+      photo: photoMedia, container: attachmentDiv, middleware, ...REGULAR,
     })
     helper.destroy()
     await wrapBubbleMediaSpoiler({
-      strippedThumb: STRIPPED, promise, middleware, attachmentDiv, animationGroup: 'chat',
+      media: photoMedia, promise, middleware, attachmentDiv, animationGroup: 'chat',
     })
     await flush()
 
@@ -188,22 +208,17 @@ describe('wrapBubbleMediaSpoiler: фото-бабл', () => {
 })
 
 describe('wrapBubbleMediaSpoiler: видео-бабл', () => {
-  const videoDoc = {
-    id: 7, type: 'video' as const, width: 1600, height: 900, duration: 46,
-    size: 3 * 1024 * 1024, mime: 'video/mp4', strippedThumb: STRIPPED, hasThumb: true,
-  }
-
   /** Так бабл строит скрытое видео: `noAutoplayAttribute: !!spoiler` (bubbles.ts:8571). */
   const hiddenVideo = async () => {
     const attachmentDiv = attachment()
     const middleware = mw()
 
     const promise = wrapVideo({
-      doc: videoDoc, container: attachmentDiv, message: { mid: 1, peerId: -42 },
+      doc: videoMedia, container: attachmentDiv, message: { mid: 1, peerId: -42 },
       ...REGULAR, middleware, noAutoplayAttribute: true,
     })
     await wrapBubbleMediaSpoiler({
-      strippedThumb: STRIPPED, promise, middleware, attachmentDiv, animationGroup: 'chat',
+      media: videoMedia, promise, middleware, attachmentDiv, animationGroup: 'chat',
     })
     const res = await promise
     res.video?.dispatchEvent(new Event('canplay'))

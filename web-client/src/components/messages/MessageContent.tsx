@@ -22,7 +22,6 @@ import { MessageReactions } from './MessageReactions'
 import Time, { TimeClearfix, type TimeMode, type TimeCorner, type RenderTime } from './bubbleParts/Time'
 import {
   bubbleRadius,
-  RoundVideoBubble,
   WebPagePreview,
   FactCheckBox,
   CallBubble,
@@ -39,6 +38,14 @@ import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
 import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
 import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
+import mediaSizes, { setAttachmentSize } from '../../core/dom/mediaSizes'
+import {
+  getDocumentFromMessage,
+  getMediaFromMessage,
+  getPathThumb,
+  getStrippedThumb,
+  type MyDocument,
+} from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
@@ -131,8 +138,10 @@ function BigEmojiBubble({ m, count, selecting, time }: {
   )
 }
 
-// Стикер с бэка (m.type 'sticker' + mediaId): бокс аспект-фитится в 200×200
-// (tweb mediaSizes desktop static/animatedSticker), lottie-json играет через
+// Стикер с бэка (m.type 'sticker' + mediaId): бокс — `setAttachmentSize` по
+// натуральным `doc.w`/`doc.h` в `mediaSizes.active.animatedSticker` либо
+// `staticSticker` (tweb bubbles.ts:6102-6111 — выбор ступени решает `doc.animated`,
+// `noMinSize: true`), lottie-json играет через
 // lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
 // (различает StickerMedia). Бейдж времени — тот же, что у big-emoji. Клик
 // открывает попап набора (tweb wrapSticker → showStickersPopup): сообщение
@@ -143,18 +152,22 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // как onPickSticker, StickerSetModal сама зовёт его и onClose по клику.
 // Сам попап открывается в глобальном стеке (openStickerSetModal), а не
 // рендерится потомком бабла — почему именно так, см. её докблок.
-const STICKER_BOX = 200
 function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: ReactNode; selecting: boolean; feedFns: FeedFns }) {
   const loopStickers = useSettings((st) => st.loopStickers)
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
-  let w = STICKER_BOX
-  let h = STICKER_BOX
-  if (m.mediaWidth && m.mediaHeight) {
-    const k = Math.min(STICKER_BOX / m.mediaWidth, STICKER_BOX / m.mediaHeight)
-    w = Math.round(m.mediaWidth * k)
-    h = Math.round(m.mediaHeight * k)
-  }
+  const doc = getDocumentFromMessage(m)
+  // tweb bubbles.ts:6106-6111: ступень бокса выбирает `doc.animated`, дальше —
+  // обычный `setAttachmentSize` по натуральным размерам документа, без минимумов.
+  const boxSize = mediaSizes.active[doc?.animated ? 'animatedSticker' : 'staticSticker']
+  const { size } = setAttachmentSize({
+    width: doc?.w ?? 0,
+    height: doc?.h ?? 0,
+    boxWidth: boxSize.width,
+    boxHeight: boxSize.height,
+    isDocument: true,
+    noMinSize: true,
+  })
   // В selecting клик занят выбором ряда, у error-бабла — меню переотправки
   // (тот же список условий, что у BigEmojiBubble выше).
   const clickable = !selecting && m.status !== 'error'
@@ -174,9 +187,20 @@ function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: 
     : undefined
   return (
     <div className={s.stickerReal} onClick={onClick}>
-      {/* mediaBlur — то же stripped-превью, что у остальных медиа сообщения:
-          нижний слой, пока файл стикера летит (tweb показывает тумб документа) */}
-      <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} thumb={m.mediaBlur} />
+      {/* Ступени документа (tweb wrapSticker:259 `doc.thumbs`): stripped-JPEG —
+          нижний слой, пока файл стикера летит; векторный контур (photoPathSize)
+          — самый нижний, встаёт ещё до декода превью. */}
+      <StickerMedia
+        mediaId={m.mediaId!}
+        width={size.width}
+        height={size.height}
+        autoplay
+        loop={loopStickers}
+        thumb={getStrippedThumb(doc)}
+        pathThumb={getPathThumb(doc)}
+        docWidth={doc?.w}
+        docHeight={doc?.h}
+      />
       {time}
     </div>
   )
@@ -191,6 +215,16 @@ function replyColorVar(out: boolean, color?: string): CSSProperties {
   if (out) return { ['--peer-color-rgb' as string]: 'var(--message-out-primary-color-rgb)' } as CSSProperties
   const rgb = color ? hexToRgbTriplet(color) : ''
   return (rgb ? { ['--peer-color-rgb' as string]: rgb } : {}) as CSSProperties
+}
+
+/**
+ * `documentAttributeAudio` документа — тот же `attributes.find`, которым его
+ * достаёт оригинал (tweb audio.ts:159 для waveform, :352 для title/performer).
+ * Тип документа выводится из атрибутов заранее (`saveDocument`), а сами
+ * ID3-данные и пики волны живут только здесь.
+ */
+function audioAttribute(doc: MyDocument | undefined) {
+  return doc?.attributes.find((a) => a._ === 'documentAttributeAudio')
 }
 
 // Превью в цитате рисуется только у медиа, У КОТОРЫХ ОНО ЕСТЬ (tweb
@@ -301,11 +335,16 @@ export default function MessageContent({
   // разные точки вставки).
   const renderTime: RenderTime = (mode, corner, justMedia) => timeNode(mode, corner, justMedia)
 
-  // Файл/музыка (не фото и не видео) рендерятся строкой документа tweb, а не
-  // медиа-контейнером: у них другая обёртка (.document-container) и свои правила.
+  // Вложение сообщения в форме оригинала: у фотографии `photo`, у файла —
+  // `document` с выведенными saveDocument полями (tweb getMediaFromMessage).
+  const media = getMediaFromMessage(m)
+  const doc: MyDocument | undefined = media?._ === 'document' ? media : undefined
+  // Развилка дерева бабла — 1:1 tweb bubbles.ts:8510-8512: стикер и
+  // video/gif/round идут медиа-контейнером, ВСЁ остальное (файл, музыка, pdf) —
+  // строкой документа внутри тела сообщения (.document-container).
   const isFileLike = !m.secretMedia && !m.paidMedia?.locked
-    && (m.type === 'document' || m.type === 'audio')
-    && !(m.mediaMime?.startsWith('image/') || m.mediaMime?.startsWith('video/'))
+    && !!doc && !doc.sticker
+    && doc.type !== 'video' && doc.type !== 'gif' && doc.type !== 'round'
 
   return (
     <>
@@ -328,8 +367,8 @@ export default function MessageContent({
               mediaId={m.mediaId}
               msgId={m.id}
               chatId={m.chatId}
-              waveform={m.mediaWaveform}
-              duration={m.mediaDuration}
+              waveform={audioAttribute(doc)?.waveform}
+              duration={doc?.duration}
               transcription={m.transcription}
               secretMedia={m.secretMedia}
               time={showReactions ? undefined : timeNode('corner', 'container')}
@@ -373,31 +412,26 @@ export default function MessageContent({
           )
         ) : m.type === 'sticker' && m.mediaId != null ? (
           // Стикер (tweb .bubble.is-sticker + wrappers/sticker.ts): без фона
-          // бабла и хвостика; бокс аспект-фитится в 200×200 (mediaSizes
-          // staticSticker/animatedSticker desktop), lottie играет с loop из
+          // бабла и хвостика; бокс — по `doc.w`/`doc.h` в ступень
+          // staticSticker/animatedSticker, lottie играет с loop из
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // reply/имя в группе не рисуются (как voice/round). Реакции — колонкой под
           // стикером, прижаты к его inline-концу (tweb is-message-empty).
           withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} selecting={selecting} feedFns={feedFns} />)
-        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
+        ) : media || m.localUrl || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
-          // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
-          // clientId+mediaName без mediaId = исходящий документ/аудио в процессе
-          // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
+          // Вложение есть — рисуем его (tweb: развилка по `message.media`);
+          // localUrl без вложения = исходящее медиа в процессе аплоада
+          // (кольцо прогресса + отмена рисует RealMediaBubble).
           // Документ/музыка (файл без превью) идут в обёртках tweb для одиночного
           // документа; фото/видео — в своём медиа-контейнере.
           isFileLike ? (
             <DocumentContainer reactions={reactionsInside} mid={m.id} peerId={m.senderId}>
               <RealMediaBubble
                 mediaId={m.mediaId}
+                media={media}
                 type={m.type}
-                mime={m.mediaMime}
-                duration={m.mediaDuration}
-                size={m.mediaSize}
-                fileName={m.mediaName}
-                mediaTitle={m.mediaTitle}
-                mediaPerformer={m.mediaPerformer}
                 out={out}
                 mid={m.id}
                 peerId={m.senderId}
@@ -429,15 +463,8 @@ export default function MessageContent({
               ) : (
                 <RealMediaBubble
                   mediaId={m.mediaId}
+                  media={media}
                   type={m.type}
-                  width={m.mediaWidth}
-                  height={m.mediaHeight}
-                  mime={m.mediaMime}
-                  blur={m.mediaBlur}
-                  hasThumb={m.mediaHasThumb}
-                  duration={m.mediaDuration}
-                  size={m.mediaSize}
-                  fileName={m.mediaName}
                   renderTime={m.text ? undefined : renderTime}
                   onOpen={feedFns.openLightbox}
                   autoDownload={autoDownload}
@@ -472,8 +499,6 @@ export default function MessageContent({
           withReactionsOutside(
             <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,
           )
-        ) : m.type === 'roundVideo' ? (
-          withReactionsOutside(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'geo' && m.geo ? (
           withReactionsOutside(<GeoBubble m={m} out={out} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'contact' && m.contact ? (

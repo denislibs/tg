@@ -1,6 +1,12 @@
 // src/core/gifs.ts
-// Общая GIF-логика вью-слоя: критерий «гифоподобного» медиа и модель элемента
-// вкладки GIF (сохранённый с нашего сервера или результат Tenor-поиска).
+// Модель элемента вкладки GIF (сохранённый с нашего сервера или результат
+// Tenor-поиска).
+//
+// Критерия «гифоподобного» медиа (`isGifLike`) здесь больше нет: он гадал по
+// mime/имени файла/нулевой длительности ровно потому, что у сообщения не было
+// документа с атрибутами. Теперь ответ даёт сам документ — `doc.type === 'gif'`,
+// выведенный `saveDocument` из `documentAttributeAnimated` и mime (порт
+// `appDocsManager.saveDoc`), и спрашивают его так же, как tweb.
 import type { TenorGif } from './managers/stickersManager'
 
 /**
@@ -30,29 +36,3 @@ export const tenorToItem = (g: TenorGif): GifItem => ({
   mp4Url: g.mp4Url,
   previewUrl: g.previewUrl,
 })
-
-/**
- * «Гифоподобное» медиа рендерится автоплей-циклом без play-диска (tweb GIF —
- * `doc.type === 'gif'`, appDocsManager.ts:219-226).
- *
- * Авторитетный источник — серверный признак `animated` (media.animated, аналог
- * telegram documentAttributeAnimated): его считает обработка ffmpeg по наличию
- * аудиодорожки, гадать поверх него нечего. Признак ОДНОСТОРОННИЙ: витрина и
- * кадр кладут ключ `media_animated` только когда он true, поэтому `false` и
- * «сервер ничего не сказал» на проводе неразличимы — отсутствие признака
- * означает «не знаем», а не «точно не гифка».
- *
- * Поэтому при отсутствии признака остаётся прежняя эвристика: настоящий
- * image/gif либо mp4-гифка по маркерам имени файла (tenor/giphy/.gif.mp4).
- * Она нужна и там, где серверного признака нет по построению: Tenor-результаты
- * и локальный файл до отправки. duration===0 учитывается ТОЛЬКО у безымянных
- * mp4 (у обычных видео из пикера всегда есть имя файла).
- */
-export function isGifLike(a: { mime?: string; fileName?: string; duration?: number; animated?: boolean }): boolean {
-  if (a.animated) return true
-  if (a.mime === 'image/gif') return true
-  if (a.mime !== 'video/mp4') return false
-  const fn = (a.fileName ?? '').toLowerCase()
-  if (fn.includes('tenor') || fn.includes('giphy') || fn.endsWith('.gif.mp4')) return true
-  return fn === '' && a.duration === 0
-}

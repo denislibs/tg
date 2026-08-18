@@ -6,20 +6,26 @@
 // — поэтому оригинал собирает из превью ПСЕВДО-ФОТО: `id: 0` и единственный
 // размер `photoStrippedSize`. Дальше оно идёт в `wrapPhoto`/`wrapAlbum` как
 // обычное фото, а «единственный размер — stripped» и есть тот случай, ради
-// которого у `wrapPhoto` существует ранний выход (photo.ts:208, у нас —
-// `strippedSize`): качать нечего, превью показывается КАК медиа.
+// которого у `wrapPhoto` существует ранний выход (photo.ts:208): качать
+// нечего, превью показывается КАК медиа.
 //
 // ── Отступления от оригинала ────────────────────────────────────────────────
-//  • на выходе — плоский вход наших врапперов (`mediaId`/`width`/`height`/
-//    `strippedThumb`) вместо MTProto `Photo.photo` с `sizes[]`: лестницы
-//    `PhotoSize` у нас нет, поэтому «фото с одним stripped-размером»
-//    записывается парой полей. `access_hash`/`dc_id`/`file_reference`/`date`
-//    отпадают вместе с транспортом — это реквизиты MTProto-ссылки на файл,
-//    которого у неоплаченного медиа и нет;
-//  • `thumb.w = media.w; thumb.h = media.h` (оригинал дописывает размеры в сам
-//    stripped-размер, потому что дальше по коду геометрию читают из него) — у
-//    нас размеры и так лежат отдельными полями сообщения.
-import type { Message } from '@core/models'
+//  • вход — вложение сообщения (`messageMediaPhoto`/`messageMediaDocument`)
+//    вместо `messageExtendedMediaPreview`: конструктора «превью вместо медиа» у
+//    нас нет, заблокированное платное медиа приезжает обычным вложением, только
+//    без файла (`id: 0`). Спрашиваем у него ровно то же, что оригинал у превью,
+//    — геометрию и stripped-байты;
+//  • `access_hash`/`dc_id`/`file_reference`/`date` отпадают вместе с
+//    транспортом — это реквизиты MTProto-ссылки на файл, которого у
+//    неоплаченного медиа и нет.
+import {
+  getMediaDimensions,
+  getStrippedThumb,
+  THUMB_TYPE_STRIPPED,
+  type MyDocument,
+  type MyPhoto,
+  type PhotoStrippedSize,
+} from '@core/media/messageMedia'
 
 /**
  * Заглушка на случай, когда превью не пришло вовсе. Оригинал держит здесь
@@ -40,22 +46,29 @@ const EMPTY_STRIPPED_THUMB =
   'anN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP0' +
   '9fb3+Pn6/9oADAMBAAIRAxEAPwDFooooAKKKKACiiigAooooA//Z'
 
-/** Псевдо-фото из превью — плоский вход `wrapPhoto`. */
-export interface ExtendedMediaPreviewPhoto {
-  /** tweb `id: 0` — файла на сервере нет, скачивать нечего */
-  mediaId: number
-  width?: number
-  height?: number
-  strippedThumb: string
-}
+/**
+ * Размеры дописываются В САМУ stripped-ступень (оригинал: `thumb.w = media.w;
+ * thumb.h = media.h`) — не для красоты: только так `choosePhotoSize` перестаёт
+ * её пропускать (её гвард — `'w' in size`) и возвращает именно её, а
+ * `wrapPhoto` по её байтам уходит в ранний выход photo.ts:208. Схема
+ * `photoStrippedSize` этих полей не знает — у оригинала они тоже дописаны
+ * поверх конструктора, на провод не идут.
+ */
+type StrippedSizeWithDimensions = PhotoStrippedSize & { w?: number, h?: number }
 
 export default function generatePhotoForExtendedMediaPreview(
-  message: Pick<Message, 'mediaWidth' | 'mediaHeight' | 'mediaBlur'>,
-): ExtendedMediaPreviewPhoto {
-  return {
-    mediaId: 0,
-    width: message.mediaWidth,
-    height: message.mediaHeight,
-    strippedThumb: message.mediaBlur || EMPTY_STRIPPED_THUMB,
+  media: MyPhoto | MyDocument | undefined,
+): MyPhoto {
+  const { w, h } = getMediaDimensions(media)
+  const bytes = getStrippedThumb(media)
+
+  const thumb: StrippedSizeWithDimensions = {
+    _: 'photoStrippedSize',
+    type: THUMB_TYPE_STRIPPED,
+    bytes: bytes || EMPTY_STRIPPED_THUMB,
+    w,
+    h,
   }
+
+  return { _: 'photo', id: 0, sizes: [thumb] }
 }

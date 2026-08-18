@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { getDocumentFromMessage, saveMessageMedia } from './media/messageMedia'
 import { messageToConvMsg } from './messageToConvMsg'
 import type { Message } from './models'
 
@@ -28,13 +29,25 @@ describe('messageToConvMsg', () => {
     expect(c.text).toBe('hi')
   })
 
-  // Пики волны голосового обязаны доехать до витрины: бабл рисует волну из них
-  // (1:1 tweb documentAttributeAudio.waveform). Не переложи их здесь — и волны
-  // не будет ни у одного голосового, хотя поле у сообщения есть.
-  it('переносит пики волны голосового в витрину', () => {
-    const voice: Message = { ...base, type: 'voice', mediaId: 55, mediaDuration: 7, mediaWaveform: 'HwAq/wc=' }
-    expect(messageToConvMsg(voice, 7).mediaWaveform).toBe('HwAq/wc=')
-    expect(messageToConvMsg({ ...voice, mediaWaveform: undefined }, 7).mediaWaveform).toBeUndefined()
+  // Вложение обязано доехать до витрины ЦЕЛИКОМ: бабл спрашивает у него всё —
+  // и пики волны голосового (documentAttributeAudio.waveform), и тип документа.
+  // Не переложи его здесь — и волны не будет ни у одного голосового, хотя
+  // вложение у сообщения есть.
+  it('переносит вложение (с пиками волны голосового) в витрину', () => {
+    const media = saveMessageMedia({
+      _: 'messageMediaDocument',
+      document: {
+        _: 'document', id: 55, mime_type: 'audio/ogg', size: 100,
+        attributes: [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=' }],
+      },
+    })
+    const voice: Message = { ...base, type: 'voice', mediaId: 55, media }
+    const conv = messageToConvMsg(voice, 7)
+    expect(conv.media).toBe(media)
+    expect(getDocumentFromMessage(conv)?.attributes).toContainEqual({
+      _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=',
+    })
+    expect(messageToConvMsg({ ...voice, media: undefined }, 7).media).toBeUndefined()
   })
 
   it('formats time as local HH:MM, not the raw ISO string', () => {

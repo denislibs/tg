@@ -130,12 +130,13 @@ export type ViewerMedia = {
   /** stripped-превью (base64 JPEG, как `blur` бабла) — канвас-блюр в ghost */
   blurPreview?: string
   kind: 'photo' | 'video'
-  /** GIF-режим (tweb `document.type === 'gif'`): автоплей-цикл без плеера;
-   * Task 16 заполняет из isGifLike (core/gifs.ts) по mime/имени файла */
+  /** GIF-режим (tweb `document.type === 'gif'`): автоплей-цикл без плеера.
+   * Заполняется ровно этим — типом документа сообщения, выведенным
+   * `saveDocument` (collectLightboxItems) */
   gif?: boolean
-  /** длительность видео в секундах (tweb `media.duration`); < 60 → loop.
-   * У нашего бэка длительность видео может отсутствовать (см. core/gifs.ts) —
-   * тогда 0/undefined трактуется как «короткое» (loop), безвредно */
+  /** длительность видео в секундах (tweb `media.duration` = `doc.duration`);
+   * < 60 → loop. Атрибута видео у медиа может не быть — тогда 0/undefined
+   * трактуется как «короткое» (loop), безвредно */
   duration?: number
   /** Адаптация Task 16: источник байтов МИМО воркерного конвейера —
    * downloadMediaURL/resolveStreamUrl не зовутся. Секретные E2E-медиа
@@ -2350,7 +2351,7 @@ export default class AppMediaViewerBase<
       // tweb :2471 `photo: media` — вьювер отдаёт то же медиа, что и лента, а
       // оно у него либо фото, либо документ-видео (tweb :2359-2360 считает
       // `isDocument` ровно так же — по типу медиа). Отсюда дефолт натурального
-      // размера 512 у видео без media_w/media_h (:52-56).
+      // размера 512 у видео без размеров кадра в атрибутах (:52-56).
       isDocument: isVideo,
       documentType: isVideo ? (media.gif ? 'gif' : 'video') : undefined,
     })

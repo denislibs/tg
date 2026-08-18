@@ -26,14 +26,28 @@ vi.mock('./VoiceMessage', () => ({
 }))
 
 import MessageContent from './MessageContent'
+import { saveDocument, type MessageMedia } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 import type { FeedFns } from './MessageRow'
 
 const feedFns = { playVoice: vi.fn(), mediaPlayed: vi.fn() } as unknown as FeedFns
 
+// Голосовое — документ с documentAttributeAudio(voice): длительность выводит
+// saveDocument, пики волны бабл читает прямо из атрибута (tweb audio.ts:159).
+const voiceMedia: MessageMedia = {
+  _: 'messageMediaDocument',
+  document: saveDocument({
+    _: 'document',
+    id: 55,
+    mime_type: 'audio/ogg',
+    size: 5000,
+    attributes: [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=' }],
+  }),
+}
+
 const voice = {
   id: 5, chatId: 1, senderId: 2, type: 'voice', text: '', at: '', time: '10:00',
-  mediaId: 55, mediaDuration: 7, mediaWaveform: 'HwAq/wc=',
+  mediaId: 55, media: voiceMedia,
 } as unknown as ConvMsg
 
 afterEach(() => {

@@ -6,15 +6,23 @@
 // вручную, стал недостижим и удалён.
 import { describe, it, expect } from 'vitest'
 import { mapMessage, type RawMessage } from '../core/models'
+import { getMediaFromMessage, getStrippedThumb } from '../core/media/messageMedia'
 
 const base = (id: number, chatId = 5): RawMessage => ({
   id, chat_id: chatId, seq: id, sender_id: 1, type: 'photo', text: '',
   reply_to_id: null, media_id: null, created_at: '2026-07-01T00:00:00Z',
 })
 
-// Заблокированное платное фото: media_id отсутствует, есть blur/размеры + цена.
+// Заблокированное платное фото: media_id отсутствует, а вместо медиа сервер
+// отдаёт ПСЕВДО-ФОТО (domain.LockedPlaceholder) — одна stripped-ступень с
+// размерами кадра, ровно как оригинал собирает из messageExtendedMediaPreview.
 const locked = (id: number): RawMessage => ({
-  ...base(id), media_id: null, media_w: 800, media_h: 600, media_blur: 'AAAA',
+  ...base(id), media_id: null,
+  media: {
+    _: 'messageMediaPhoto',
+    photo: { _: 'photo', id: 0, sizes: [{ _: 'photoStrippedSize', type: 'i', bytes: 'AAAA' }] },
+  },
+  media_w: 800, media_h: 600, media_blur: 'AAAA',
   paid_media: { price: 25, locked: true },
 })
 
@@ -23,6 +31,8 @@ describe('mapMessage paid_media', () => {
     const m = mapMessage(locked(1))
     expect(m.mediaId).toBeNull()
     expect(m.paidMedia).toEqual({ price: 25, locked: true })
-    expect(m.mediaBlur).toBe('AAAA') // плейсхолдер остаётся
+    // плейсхолдер остаётся — но спрашиваем его у вложения (ступень
+    // photoStrippedSize), как это делает wrapPhoto оригинала
+    expect(getStrippedThumb(getMediaFromMessage(m))).toBe('AAAA')
   })
 })

@@ -18,9 +18,20 @@ vi.mock('../../core/mediaUrl', () => ({
 vi.mock('@environment/canvasFilterSupport', () => ({ default: true }))
 
 import RealMediaBubble from './RealMediaBubble'
+import { THUMB_TYPE_FULL, THUMB_TYPE_STRIPPED, type MyPhoto } from '../../core/media/messageMedia'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import { applyMediaUrl } from '../../core/mediaCache'
 import type { Managers } from '../../client/bootstrap'
+
+// Фотография в форме оригинала: лестница `sizes` — stripped-ступень + оригинал.
+const photo = (w: number, h: number, stripped: string): MyPhoto => ({
+  _: 'photo',
+  id: 1,
+  sizes: [
+    { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: stripped },
+    { _: 'photoSize', type: THUMB_TYPE_FULL, w, h, size: 0 },
+  ],
+})
 
 // 2D-контекст канваса (happy-dom его не умеет) — блюру достаточно заглушки.
 HTMLCanvasElement.prototype.getContext = (() => ({
@@ -39,7 +50,7 @@ afterEach(cleanup)
 describe('RealMediaBubble: канвас-превью из blurPreview', () => {
   it('до прихода полного URL в контейнере рендерится canvas .media-photo.thumbnail.canvas-thumbnail', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" mediaId={101} width={800} height={600} blur="QUJD" />,
+      <RealMediaBubble type="photo" mediaId={101} media={photo(800, 600, 'QUJD')} />,
     ))
     const canvas = container.querySelector('canvas.canvas-thumbnail')
     expect(canvas).toBeTruthy()
@@ -56,7 +67,7 @@ describe('RealMediaBubble: канвас-превью из blurPreview', () => {
   it('URL известен синхронно (зеркало конвейера) — превью не монтируется, как в tweb при cacheContext.downloaded', () => {
     applyMediaUrl({ id: 102, thumb: false, url: 'blob:media-102' })
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" mediaId={102} width={800} height={600} blur="QUJD" />,
+      <RealMediaBubble type="photo" mediaId={102} media={photo(800, 600, 'QUJD')} />,
     ))
     expect(container.querySelector('img.media-photo')?.getAttribute('src')).toBe('blob:media-102')
     expect(container.querySelector('canvas.canvas-thumbnail')).toBeNull()
@@ -64,7 +75,7 @@ describe('RealMediaBubble: канвас-превью из blurPreview', () => {
 
   it('платное заблокированное медиа: канвас-превью монтируется всегда (кроме blur у нас ничего нет)', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" width={800} height={600} blur="QUJD" paidMedia={{ price: 5, locked: true }} />,
+      <RealMediaBubble type="photo" media={photo(800, 600, 'QUJD')} paidMedia={{ price: 5, locked: true }} />,
     ))
     expect(container.querySelector('canvas.canvas-thumbnail')).toBeTruthy()
   })

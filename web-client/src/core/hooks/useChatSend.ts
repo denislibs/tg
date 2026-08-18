@@ -27,7 +27,8 @@ import type { MessageSendingParams } from '../managers/messages/sendingParams'
  * Длительность аудио/видео файла до аплоада — порт tweb (popups/newMedia.ts:1562-1579:
  * `new Audio()` на objectURL + onMediaLoad → `params.duration`). Сервер считает
  * длительность асинхронно, поэтому без этого первый `new_message` приезжает без
- * media_duration и подпись трека остаётся пустой до перезагрузки истории.
+ * `documentAttributeAudio.duration` и подпись трека остаётся пустой до
+ * перезагрузки истории.
  * Ошибку/недоступность метаданных глотаем — длительность просто не уедет.
  */
 function probeMediaDuration(file: File, kind: 'audio' | 'video'): Promise<number | undefined> {
@@ -291,7 +292,10 @@ export function useChatSend({
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         void managers.messages.sendText({
           chatId: cid, text: '', clientMsgId, mediaId, type: 'video', ...sendingParams,
-          optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } } : undefined,
+          // animated — это САМ предмет вкладки GIF (tweb sendFile({isAnimated}) для
+          // гифки): без него бабл «отправляется…» описан обычным видео и рисуется
+          // видео-баблом с плашкой play, а не автоплей-циклом.
+          optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName, animated: true } } : undefined,
         })
         if (draftPeerId != null) onChatCreated?.(cid)
       })()
@@ -313,7 +317,8 @@ export function useChatSend({
       const { mediaId } = await managers.messages.sendFile({
         chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file: blob, type: 'video',
         mime: 'video/mp4', fileName: 'tenor.mp4', width: g.width, height: g.height,
-        isMedia: true, ...sendingParams, replySnapshot,
+        // tweb `sendFile({isAnimated: true})` для гифки — см. sendGif выше.
+        isMedia: true, isAnimated: true, ...sendingParams, replySnapshot,
       })
       if (mediaId != null) void managers.stickers.saveGif(mediaId).catch(() => {})
     })()

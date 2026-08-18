@@ -116,6 +116,7 @@ export function messageToConvMsg(
     geo: m.geo,
     contact: m.contact,
     mediaId: m.mediaId ?? undefined,
+    media: m.media,
     mediaWidth: m.mediaWidth,
     mediaHeight: m.mediaHeight,
     mediaMime: m.mediaMime,

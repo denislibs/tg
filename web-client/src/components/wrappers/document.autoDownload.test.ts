@@ -26,8 +26,16 @@ vi.mock('@lib/appDownloadManager', () => ({
 
 const { default: wrapDocument } = await import('./document')
 const { getMiddleware } = await import('@helpers/middleware')
+const { saveDocument } = await import('@core/media/messageMedia')
 
-const doc = { id: 1, type: 'document' as const, fileName: 'report.pdf', size: 1000, mime: 'application/pdf' }
+// Документ в форме оригинала; `type`/`file_name` выводит `saveDocument`.
+const doc = saveDocument({
+  _: 'document',
+  id: 1,
+  mime_type: 'application/pdf',
+  size: 1000,
+  attributes: [{ _: 'documentAttributeFilename', file_name: 'report.pdf' }],
+})
 
 const wrap = (autoDownloadSize?: number) => {
   const helper = getMiddleware()

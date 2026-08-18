@@ -14,10 +14,16 @@ vi.mock('../../core/mediaUrl', () => ({
 }))
 
 import RealMediaBubble from './RealMediaBubble'
+import { saveDocument, type DocumentAttribute, type MyDocument } from '../../core/media/messageMedia'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { useAudioStore } from '../../stores/audioStore'
+
+// Документ в форме оригинала: `type`/`file_name`/`duration` выводит из атрибутов
+// `saveDocument` — тот же механизм, что `appDocsManager.saveDoc` у tweb.
+const document_ = (mime: string, size: number, attributes: DocumentAttribute[]): MyDocument =>
+  saveDocument({ _: 'document', id: 7, mime_type: mime, size, attributes })
 
 // Task 7: картинки бабла резолвит useMediaUrl → managers.media.downloadMediaURL.
 // Здесь баблы документ/трек — конвейер не зовётся, но провайдер обязателен.
@@ -38,8 +44,7 @@ describe('RealMediaBubble: аплоад документа', () => {
     const { container } = render(withManagers(
       <RealMediaBubble
         type="document"
-        fileName="оферта.pdf"
-        size={2 * 1024 * 1024}
+        media={document_('application/pdf', 2 * 1024 * 1024, [{ _: 'documentAttributeFilename', file_name: 'оферта.pdf' }])}
         clientId="c-9"
         onCancelUpload={onCancel}
       />,
@@ -57,8 +62,7 @@ describe('RealMediaBubble: аплоад документа', () => {
       <RealMediaBubble
         type="document"
         mediaId={7}
-        fileName="оферта.pdf"
-        size={2 * 1024 * 1024}
+        media={document_('application/pdf', 2 * 1024 * 1024, [{ _: 'documentAttributeFilename', file_name: 'оферта.pdf' }])}
         clientId="c-10"
       />,
     ))
@@ -78,22 +82,24 @@ describe('RealMediaBubble: музыкальный бабл', () => {
   })
   afterEach(cleanup)
 
-  const track = (extra: Record<string, unknown> = {}) => withManagers(
+  // Трек — документ с documentAttributeAudio: из него `saveDocument` выводит
+  // `doc.type === 'audio'` (tweb appDocsManager), а ID3-теги бабл читает прямо
+  // из атрибута (audio.ts:352). Имя файла — отдельным атрибутом.
+  const track = (tags: { title?: string; performer?: string } = {}) => withManagers(
     <RealMediaBubble
-      type="document"
-      mime="audio/mpeg"
+      type="audio"
       mediaId={42}
-      fileName="я тимлид.mp3"
-      duration={139}
-      size={3.3 * 1024 * 1024}
+      media={document_('audio/mpeg', 3.3 * 1024 * 1024, [
+        { _: 'documentAttributeAudio', duration: 139, ...tags },
+        { _: 'documentAttributeFilename', file_name: 'я тимлид.mp3' },
+      ])}
       out
       mid={21402}
-      {...extra}
     />,
   )
 
   it('в покое: заголовок из тега, длительность и исполнитель в описании', () => {
-    const { container } = render(track({ mediaTitle: 'я тимлид', mediaPerformer: 'denis1488' }))
+    const { container } = render(track({ title: 'я тимлид', performer: 'denis1488' }))
     const el = container.querySelector('audio-element')!
     expect(el.classList.contains('audio')).toBe(true)
     expect(el.classList.contains('is-out')).toBe(true)
@@ -117,7 +123,7 @@ describe('RealMediaBubble: музыкальный бабл', () => {
       track: { mediaId: 42, title: 'я тимлид', subtitle: 'denis1488' },
       playing: true, currentTime: 106, duration: 139,
     })
-    const { container } = render(track({ mediaTitle: 'я тимлид', mediaPerformer: 'denis1488' }))
+    const { container } = render(track({ title: 'я тимлид', performer: 'denis1488' }))
     const el = container.querySelector('audio-element')!
     expect(el.classList.contains('audio-show-progress')).toBe(true)
     expect(container.querySelector('.audio-time')!.textContent).toBe('1:46')

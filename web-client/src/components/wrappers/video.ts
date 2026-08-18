@@ -22,14 +22,12 @@
  *       video.media-video                              ← muted-превью в цикле
  *
  * ── Как оригинал ложится на нашу модель ─────────────────────────────────────
- *  • вход — `doc` с плоскими полями вместо MTProto `MyDocument`; собирает его
- *    `videoDocFromMessage` (единственное место, где `Message` превращается в
- *    `doc`, — им пользуются и альбом, и будущий бабл). `doc.type` там считается
- *    ровно по данным сервера: `roundVideo` → `round`, `media_animated` → `gif`
- *    (порт tweb `documentAttributeAnimated` → `doc.type === 'gif'`), иначе
- *    `video`. Эвристика `core/gifs.ts::isGifLike` сюда не тянется: она гадает по
- *    имени файла и нужна там, где серверного признака нет по построению
- *    (Tenor, локальный файл до отправки);
+ *  • вход — `doc: MyDocument`, как в оригинале. `doc.type` (`round`/`gif`/
+ *    `video`) уже выведен из атрибутов документа в `saveDocument`
+ *    (`core/media/messageMedia.ts`, порт `appDocsManager.saveDoc`), а не
+ *    пересчитывается здесь. Эвристика `core/gifs.ts::isGifLike` сюда не тянется:
+ *    она гадает по имени файла и нужна там, где серверных атрибутов нет по
+ *    построению (Tenor, локальный файл до отправки);
  *  • АДРЕС ВИДЕО — не картиночный конвейер. Картинки едут `ensureMediaUrl`
  *    (objectURL воркера), а `<video>` стримит: `resolveStreamUrl`
  *    (`core/mediaUrl.ts`). При DNP-ON он резолвится АСИНХРОННО (уходит на
@@ -50,16 +48,15 @@
  *  • `appDownloadManager.getUpload(uploadingFileName)` → `uploadPromise`:
  *    реестра аплоадов по имени файла у нас нет, промис прогресса даёт
  *    вызывающий (так же сделано в `wrapPhoto`);
- *  • `photoSize`/`videoSize`/`altDoc` (лестница `PhotoSize`, HEVC-дубль,
- *    анимированная обложка) — сущностей нет в модели: у медиа один id и два
- *    размера (`thumb: true|false`). Вместе с `altDoc` отпадает и ветка
- *    `<source>`-ов с `video.load()`;
+ *  • `videoSize`/`altDoc` (анимированная обложка, HEVC-дубль) — конструкторов
+ *    нет в модели; вместе с `altDoc` отпадает и ветка `<source>`-ов с
+ *    `video.load()`. Параметр `photoSize` оригинала = `size` нашего `wrapPhoto`;
+ *    сюда его, как и в tweb, никто не передаёт, ступень постера выбирает сам
+ *    `wrapPhoto` (`choosePhotoSize` по `doc.thumbs`);
  *  • постер: как и в оригинале, его целиком рисует `wrapPhoto` — одной веткой,
  *    без развилки «есть серверный постер / нет». Развилка живёт ВНУТРИ
- *    аргументов: tweb выбирает размер документа (`choosePhotoSize`), и если
- *    единственный подходящий — stripped, `wrapPhoto` показывает его КАК медиа
- *    (ранний выход photo.ts:208). У нас размеров два, поэтому тот же выбор
- *    записан парой `thumb: doc.hasThumb` / `strippedSize: !doc.hasThumb`.
+ *    `wrapPhoto`: подходящей ступени у документа нет (единственная — stripped) →
+ *    ранний выход photo.ts:207, и превью показывается КАК медиа.
  *    Ветка `getStrippedThumbIfNeeded` осталась ровно там же, где в оригинале, —
  *    у медиа БЕЗ сообщения (`* gifs masonry`, video.ts:454-479).
  *
@@ -111,9 +108,8 @@ import mediaSizesInstance, { ScreenSize } from '@core/dom/mediaSizes'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
-import { cachedMediaUrl } from '@core/mediaCache'
+import { getStrippedThumb, type MyDocument } from '@core/media/messageMedia'
 import { resolveStreamUrl, subscribeMediaToken } from '@core/mediaUrl'
-import type { Message } from '@core/models'
 import { IS_SAFARI } from '@environment/userAgent'
 import { animateSingle } from '@helpers/animation'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
@@ -195,27 +191,6 @@ function setTimeText(spanTime: HTMLElement, text: string): void {
   else spanTime.prepend(document.createTextNode(text))
 }
 
-/** Плоский аналог tweb `MyDocument` для видео-путей. */
-export interface WrapVideoDoc {
-  /** файл на медиа-эндпоинте (tweb `doc.id`) */
-  id: number
-  /** tweb `doc.type` */
-  type: 'video' | 'gif' | 'round'
-  /** натуральные пиксели (tweb `doc.w`/`doc.h`) */
-  width?: number
-  height?: number
-  /** длительность в секундах (tweb `doc.duration`) */
-  duration?: number
-  /** размер файла (tweb `doc.size`) — гейт автоплея */
-  size?: number
-  /** MIME (tweb `doc.mime_type`) */
-  mime?: string
-  /** stripped-JPEG превью из payload сообщения (tweb `photoStrippedSize.bytes`) */
-  strippedThumb?: string
-  /** у медиа есть серверный постер (наш аналог «есть подходящий `PhotoSize`») */
-  hasThumb?: boolean
-}
-
 /** То, что врапперу нужно от сообщения (tweb передаёт весь `Message.message`). */
 export interface WrapVideoMessage {
   /** tweb `message.mid` */
@@ -229,7 +204,8 @@ export interface WrapVideoMessage {
 }
 
 export interface WrapVideoOptions {
-  doc: WrapVideoDoc
+  /** документ вложения (tweb `doc: MyDocument`) */
+  doc: MyDocument
   container?: HTMLElement
   message?: WrapVideoMessage
   boxWidth?: number
@@ -280,28 +256,6 @@ export interface WrappedVideo {
   loadPromise: Promise<unknown>
   /** кольцо загрузки; tweb отдаёт его через `(container as any).preloader` */
   preloader?: ProgressivePreloader
-}
-
-/**
- * `Message` → `doc` враппера. ЕДИНСТВЕННОЕ место, где решается тип медиа для
- * видео-путей: `roundVideo` → кружок, серверный `media_animated` → гифка (порт
- * `documentAttributeAnimated`), иначе видео. Возвращает `null`, если качать
- * нечего — платное медиа до оплаты приезжает без `media_id`.
- */
-export function videoDocFromMessage(message: Message): WrapVideoDoc | null {
-  if (message.mediaId == null) return null
-
-  return {
-    id: message.mediaId,
-    type: message.type === 'roundVideo' ? 'round' : message.mediaAnimated ? 'gif' : 'video',
-    width: message.mediaWidth,
-    height: message.mediaHeight,
-    duration: message.mediaDuration,
-    size: message.mediaSize,
-    mime: message.mediaMime,
-    strippedThumb: message.mediaBlur,
-    hasThumb: message.mediaHasThumb,
-  }
 }
 
 export default async function wrapVideo(options: WrapVideoOptions): Promise<WrappedVideo> {
@@ -391,12 +345,12 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
   const res: WrappedVideo = { loadPromise: Promise.resolve() }
 
   // tweb video.ts:185-208 — настоящий image/gif это КАРТИНКА, её рисует wrapPhoto
-  if (doc.mime === 'image/gif' && container) {
+  if (doc.mime_type === 'image/gif' && container) {
     const photoRes = await wrapPhoto({
-      mediaId: doc.id,
-      width: doc.width,
-      height: doc.height,
-      strippedThumb: doc.strippedThumb,
+      // tweb video.ts:187 `photo: doc` — настоящий image/gif рисует wrapPhoto,
+      // но медиа при этом остаётся ДОКУМЕНТОМ (`type: 'gif'`), и все вопросы о
+      // нём (геометрия, ступени, гейт минимумов бокса) задаются ему самому
+      photo: doc,
       container,
       boxWidth,
       boxHeight,
@@ -409,10 +363,6 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       useBlur,
       hasMessage: !!message,
       hasMessageBlock,
-      // tweb video.ts:187 `photo: doc` — настоящий image/gif рисует wrapPhoto,
-      // но медиа при этом остаётся ДОКУМЕНТОМ (type 'gif')
-      isDocument: true,
-      documentType: doc.type,
       uploadPromise,
     })
 
@@ -438,18 +388,14 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
   if (message || onlyPreview || withPreview) {
     if (container) { // наш `wrapPhoto` требует контейнер (см. его шапку)
       photoRes = await wrapPhoto({
-        mediaId: doc.id,
-        // Наш аналог `choosePhotoSize(doc, …)` из оригинала: у документа
-        // выбирается ЕДИНСТВЕННЫЙ подходящий размер. Есть серверный постер —
-        // это он (`thumb: true`); нет — им оказывается stripped из самого
-        // сообщения, и тогда `wrapPhoto` показывает его КАК медиа, ничего не
-        // скачивая (`strippedSize`, ранний выход photo.ts:208). Без этого
-        // враппер потянул бы в `<img>` полный mp4.
-        thumb: doc.hasThumb,
-        strippedSize: !doc.hasThumb,
-        width: doc.width,
-        height: doc.height,
-        strippedThumb: doc.strippedThumb,
+        // tweb video.ts:412 `photo: doc` — постером работает САМ документ:
+        // ступень постера `wrapPhoto` выбирает из его `thumbs`
+        // (`choosePhotoSize`), и по нему же считает бокс — отсюда дефолт 512 у
+        // видео без размеров и внешний гейт минимумов (у `round` тип не
+        // video/gif, блок минимумов не работает). Подходящей ступени нет
+        // (единственная — stripped) → ранний выход photo.ts:207, превью
+        // показывается КАК медиа и полный mp4 в `<img>` не тянется.
+        photo: doc,
         container,
         boxWidth,
         boxHeight,
@@ -462,11 +408,6 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         useBlur,
         hasMessage: !!message,
         hasMessageBlock,
-        // tweb video.ts:412 `photo: doc` — постер считает бокс ПО САМОМУ
-        // документу: отсюда дефолт 512 у видео без размеров и внешний гейт
-        // минимумов (у `round` тип не video/gif — блок минимумов не работает).
-        isDocument: true,
-        documentType: doc.type,
         // tweb video.ts:428 — сюда едет ИМЕННО `willObserveSound`, а не «это
         // видео»: минимум 368 в setAttachmentSize принадлежит UI плеера, а не
         // типу медиа (там ещё и своя проверка `photo.type === 'video'`).
@@ -492,14 +433,14 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
     }
   } else if (!noPreview) { // * gifs masonry (комментарий tweb video.ts:454)
     // Медиа БЕЗ сообщения: сообщения нет — значит нет и вызывающего, который
-    // решил бы про размер, поэтому кадр строится прямо из stripped-превью.
-    // `isVideo` тут не декорация (tweb выводит его из `doc.type`): у видео
-    // «скачано» относится к файлу, а не к первому кадру, и без него подложка
-    // снималась бы у уже виденного медиа, оставляя пустой прямоугольник.
+    // решил бы про размер, поэтому кадр строится прямо из stripped-ступени.
+    // `downloaded` не передаётся — у оригинала здесь ПУСТОЙ кэш-контекст
+    // (`cacheContext: {} as ThumbCache`, video.ts:456): превью в кладке нужно
+    // всегда. `isVideo` считается из `doc.type`, как внутри самого хелпера у
+    // оригинала (getStrippedThumbIfNeeded.ts:22).
     const gotThumb = getMediaThumbIfNeeded({
-      strippedThumb: doc.strippedThumb,
-      downloaded: cachedMediaUrl(doc.id) !== undefined,
-      isVideo: true,
+      strippedThumb: getStrippedThumb(doc),
+      isVideo: doc.type === 'video' || doc.type === 'gif',
       useBlur: useBlur ?? true,
     })
     if (gotThumb) {
@@ -773,7 +714,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 function wrapRound({
   doc, message, container, video, spanTime, middleware, noAutoDownload, getPreloader,
 }: {
-  doc: WrapVideoDoc
+  doc: MyDocument
   message?: WrapVideoMessage
   container?: HTMLElement
   video: HTMLVideoElement
@@ -811,7 +752,7 @@ function wrapRound({
 
   const canvas = document.createElement('canvas')
   canvas.classList.add('video-round-canvas')
-  canvas.width = canvas.height = doc.width || size.width
+  canvas.width = canvas.height = doc.w || size.width
 
   if (spanTime) divRound.prepend(canvas, spanTime)
   else divRound.prepend(canvas)

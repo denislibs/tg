@@ -27,8 +27,19 @@ vi.mock('../../core/mediaUrl', () => ({
 vi.mock('../wrappers/video', () => ({ USE_VIDEO_OBSERVER: true }))
 
 import RealMediaBubble from './RealMediaBubble'
+import { saveDocument, type DocumentAttribute, type MyDocument } from '../../core/media/messageMedia'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
+
+// Видео/гифка — документ: `doc.type` выводит `saveDocument` из атрибутов
+// (documentAttributeAnimated + video/mp4 → 'gif', иначе 'video').
+const videoDoc = (w: number, h: number, extra: DocumentAttribute[] = []): MyDocument => saveDocument({
+  _: 'document',
+  id: 4,
+  mime_type: 'video/mp4',
+  size: 1000,
+  attributes: [{ _: 'documentAttributeVideo', duration: 46, w, h }, ...extra],
+})
 
 const fakeManagers = { media: { downloadMediaURL: vi.fn(() => new Promise(() => {})) } } as unknown as Managers
 const withManagers = (ui: ReactElement) => (
@@ -40,7 +51,7 @@ afterEach(cleanup)
 describe('RealMediaBubble: включённый USE_VIDEO_OBSERVER', () => {
   it('узкое видео добивается до MIN_VIDEO_SIDE_SIZE (368), вписанный size остаётся 133', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="video" mediaId={401} width={200} height={600} mime="video/mp4" duration={46} />,
+      <RealMediaBubble type="video" mediaId={401} media={videoDoc(200, 600)} />,
     ))
 
     const media = container.querySelector('.media-container') as HTMLElement
@@ -55,7 +66,7 @@ describe('RealMediaBubble: включённый USE_VIDEO_OBSERVER', () => {
 
   it('гифка плеера не получает и при включённом рубильнике (tweb: ветка doc.type !== gif)', () => {
     const { container } = render(withManagers(
-      <RealMediaBubble type="video" mediaId={402} width={200} height={600} mime="video/mp4" fileName="tenor.gif.mp4" />,
+      <RealMediaBubble type="video" mediaId={402} media={videoDoc(200, 600, [{ _: 'documentAttributeAnimated' }])} />,
     ))
 
     const media = container.querySelector('.media-container') as HTMLElement

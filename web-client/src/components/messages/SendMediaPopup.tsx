@@ -14,6 +14,7 @@ import { supportsVideoEncoding } from '../mediaEditor/videoSupport'
 import StarIcon from '../stars/StarIcon'
 import { getMiddleware } from '@helpers/middleware'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
+import { THUMB_TYPE_STRIPPED, type MyPhoto } from '@core/media/messageMedia'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
@@ -86,9 +87,20 @@ function SpoilerCover({ url, kind }: { url: string; kind: 'image' | 'video' }) {
       const strippedThumb = await makeStrippedThumb(url, kind)
       if (!strippedThumb || !middleware()) return
 
+      // Псевдо-фото с единственной stripped-ступенью — ровно то, что собирает
+      // оригинал в этом же месте (`popups/newMedia.ts:600-620`): врапперу нужно
+      // вложение, а не готовая строка превью, и ступень он достаёт сам.
+      // Полей транспорта (`access_hash`, `date`, `dc_id`, `file_reference`) у
+      // нас нет — предмета для них не существует.
+      const photo: MyPhoto = {
+        _: 'photo',
+        id: 0,
+        sizes: [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: strippedThumb }],
+      }
+
       const box = host.getBoundingClientRect()
       container = await wrapMediaSpoiler({
-        strippedThumb,
+        media: photo,
         width: box.width || host.offsetWidth,
         height: box.height || host.offsetHeight,
         middleware,

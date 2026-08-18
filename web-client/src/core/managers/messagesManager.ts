@@ -20,6 +20,7 @@ import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
+import { saveMessageMedia } from '../media/messageMedia'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
@@ -678,6 +679,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     cachePaidUnlock(evt: NewMessageEvt): MessageOp[] {
       const fields: Partial<Message> = {
         mediaId: evt.media_id ?? null,
+        // Вложение целиком — то же, что у обычного сообщения: у заблокированного
+        // сервер отдавал псевдо-фото из одной stripped-ступени (`LockedPlaceholder`),
+        // кадр разблокировки приносит настоящее медиа со ступенями и атрибутами.
+        // Нормализуем тем же `saveMessageMedia`, что и на границе маппинга —
+        // иначе у документа не было бы выведенного типа.
+        media: saveMessageMedia(evt.media),
         mediaWidth: evt.media_w, mediaHeight: evt.media_h,
         mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
         mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,

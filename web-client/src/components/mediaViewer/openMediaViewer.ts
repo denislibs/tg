@@ -39,8 +39,9 @@ export function openMediaViewer(args: OpenMediaViewerArgs): Promise<void> | unde
   if (!item) return
 
   const el = target ?? item.element ?? undefined
-  // Натуральных размеров нет (старые сообщения без media_w/h, недомеренное фото
-  // профиля) — бокс от прямоугольника миниатюры, как originRect-фолбэк старого
+  // Натуральных размеров нет (у медиа нет ни ступени с геометрией, ни атрибута
+  // кадра; недомеренное фото профиля) — бокс от прямоугольника миниатюры, как
+  // originRect-фолбэк старого
   // лайтбокса: с нулями setAttachmentSize-эквивалент дал бы пустой контейнер.
   if (el && (!item.media.width || !item.media.height)) {
     const r = el.getBoundingClientRect()

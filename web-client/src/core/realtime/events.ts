@@ -274,7 +274,18 @@ export interface MessageErrorEvt { client_msg_id: string; reason: string }
 // (messages.sendFile): воркерный blob-URL резолвится во всех вкладках, поэтому
 // он лежит в SSOT как обычное поле. Вкладочного blob-URL здесь быть не может —
 // он был бы битым во всех вкладках, кроме породившей.
+
+// Локальная мета отправляемого файла — АРГУМЕНТЫ сборки вложения, а не само
+// вложение: порт `MakeDocumentAndMetaForSendingFileArgs` из tweb
+// (appMessagesManager.ts:1908 — `width`/`height`/`duration`/`waveform`/
+// `isAnimated`/`spoiler` приходят в менеджер плоскими, ровно так же). Настоящий
+// `messageMediaPhoto`/`messageMediaDocument` собирает из них САМ менеджер —
+// `makeDocumentAndMetaForSendingFile` в `core/managers/messages/pending.ts`,
+// как это делает `sendFile` оригинала.
 export interface PendingMedia { width?: number; height?: number; mime?: string; size?: number; name?: string;
+  /** tweb `isAnimated` — файл отправляется гифкой: в документ уходит
+   * `documentAttributeAnimated`, из него выводится `doc.type === 'gif'` */
+  animated?: boolean;
   /** длительность голосового/видео (сек) — посчитана вкладкой при записи/probe */
   duration?: number;
   /** пики волны голосового, base64 — те же, что уедут в media.waveform: бабл

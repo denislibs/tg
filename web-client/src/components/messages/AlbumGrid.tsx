@@ -13,6 +13,13 @@ import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useBlurThumb } from './useBlurThumb'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
+import {
+  choosePhotoSize,
+  getDocumentFromMessage,
+  getMediaFromMessage,
+  getStrippedThumb,
+  hasServerThumb,
+} from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './AlbumGrid.module.scss'
@@ -38,9 +45,11 @@ function AlbumItem({ m, isVideo, isSel, selecting, blocked, uploadProgress, styl
   style: CSSProperties
   onClick: (e: MouseEvent<HTMLDivElement>) => void
 }) {
-  const url = useMediaUrl(m.localUrl || blocked ? null : m.mediaId ?? null, { thumb: !!m.mediaHasThumb })
+  const media = getMediaFromMessage(m)
+  const doc = getDocumentFromMessage(m)
+  const url = useMediaUrl(m.localUrl || blocked ? null : m.mediaId ?? null, { thumb: hasServerThumb(media) })
   const src = m.localUrl || url
-  const thumbRef = useBlurThumb(m.mediaBlur, !!src)
+  const thumbRef = useBlurThumb(getStrippedThumb(media), !!src)
   return (
     <div
       // is-selected + forwards — как tweb SetTransition в
@@ -67,9 +76,10 @@ function AlbumItem({ m, isVideo, isSel, selecting, blocked, uploadProgress, styl
           </div>
         </div>
       )}
-      {isVideo && !!m.mediaDuration && (
+      {isVideo && !!doc?.duration && (
         <div className={s.durBadge}>
-          <Text size={11.5} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(m.mediaDuration)}</Text>
+          {/* tweb wrappers/video.ts:147 — `toHHMMSS(doc.duration)` */}
+          <Text size={11.5} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(doc.duration)}</Text>
         </div>
       )}
     </div>
@@ -105,10 +115,15 @@ export default function AlbumGrid({
   const uploads = useUploadsStore((s) => s.byId)
 
   const layout = useMemo(() => {
-    const sizes = items.map((m) => ({
-      w: m.mediaWidth || 100,
-      h: m.mediaHeight || 100,
-    }))
+    // Размер ячейки — 1:1 tweb wrappers/album.ts:40-43: у фотографии ступень
+    // лестницы под 480×480, у документа его собственные `w`/`h`.
+    const sizes = items.map((m) => {
+      const media = getMediaFromMessage(m)
+      const size = media?._ === 'photo' ? choosePhotoSize(media, 480, 480) : undefined
+      return media?._ === 'document'
+        ? { w: media.w ?? 0, h: media.h ?? 0 }
+        : { w: size?.w ?? 0, h: size?.h ?? 0 }
+    })
     const album = mediaSizes.active.album
     return new Layouter(sizes, album.width, MIN_W, SPACING, album.height || undefined).layout()
   }, [items])
@@ -121,7 +136,11 @@ export default function AlbumGrid({
     <div className={classNames('attachment', 'media-container', 'no-background')} style={{ width, height }}>
       {items.map((m, i) => {
         const g = layout[i].geometry
-        const isVideo = m.type === 'video'
+        // Ячейку рисует wrapPhoto либо wrapVideo — развилка по варианту вложения
+        // (tweb wrappers/album.ts:80 `isPhoto = media._ === 'photo'`); у аплоада
+        // вложения ещё нет, тогда остаётся тип самого сообщения.
+        const media = getMediaFromMessage(m)
+        const isVideo = media ? media._ === 'document' : m.type === 'video'
         const blocked = !forced && !m.localUrl && !!autoDownload && (isVideo ? autoDownload.video === 0 : autoDownload.photo === 0)
         return (
           <AlbumItem

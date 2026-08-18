@@ -17,26 +17,25 @@
  *       img.media-photo                               ← полное, в аспекте
  *
  * ── Отличия от оригинала (каждое — следствие нашей модели данных) ───────────
- *  • вход — `mediaId` + плоские метаданные вместо `photo: MyPhoto | MyDocument |
- *    WebDocument | InputWebFileLocation`: MTProto-медиа с лестницей `sizes[]` у
- *    нас нет. Отсюда же отсутствуют ветки `isWebFile`/`isWebDoc`/
- *    `isImageFromDocument` и ранний выход «у медиа нет ни `sizes`, ни `thumbs`»
- *    (photo.ts:71-93) — различать нечего, любой `mediaId` скачивается;
- *  • tweb-параметр `size: PhotoSize` → `thumb?: boolean` + `strippedSize?:
- *    boolean`: у нашего медиа ровно два серверных размера
- *    (`thumb: true|false` у `mediaManager.downloadMediaURL`) плюс stripped-превью
- *    в самом сообщении (`media_blur`), лестницы и `choosePhotoSize` не
- *    существует. Ранний выход оригинала «выбранный размер САМ является байтами
- *    превью» (photo.ts:208) портирован — это и есть `strippedSize` (см. ниже у
- *    ветки). Вместе с `size` отпадают:
- *      – условие `size._ === 'photoSizeEmpty' && isDocument` в том же раннем
- *        выходе — `photoSizeEmpty` это MTProto-заглушка «размера нет», у нас
- *        отсутствие медиа выражается отсутствием `mediaId`, а не пустым
- *        размером;
- *      – ветка `size._ === 'videoSize'` (photo.ts:213-218, `<video autoplay loop
- *        muted class="media-photo">`) — это MTProto `videoSize`, анимированная
- *        обложка (профиля/эмодзи-статуса), а не видео сообщения; такого поля у
- *        нас нет вовсе. Видео сообщения рисует `wrapVideo`, не этот враппер;
+ *  • вход — `photo: MyPhoto | MyDocument` и `size: PhotoSize`, как в оригинале.
+ *    Не портированы ветки `isWebFile`/`isWebDoc` и ранний выход «у медиа нет ни
+ *    `sizes`, ни `thumbs`» (photo.ts:71-93): `WebDocument`/
+ *    `InputWebFileLocation` — медиа инлайн-ботов и веб-карточек MTProto,
+ *    которого в нашей модели нет вообще (`core/media/messageMedia.ts`);
+ *  • ступень выбирает `choosePhotoSize` (порт), а `photoSizeEmpty` заменён
+ *    ОТСУТСТВИЕМ ступени: наш `choosePhotoSize` возвращает `undefined` там, где
+ *    оригинал — заглушку `{_: 'photoSizeEmpty'}` (в модели «размера нет» это
+ *    отсутствующий элемент массива, см. шапку `messageMedia.ts`). Поэтому
+ *    условие раннего выхода `size._ === 'photoSizeEmpty' && isDocument`
+ *    (photo.ts:207) записано как `!size && isDocument`;
+ *  • выбранная ступень → адрес файла: у `downloadMediaURL` оригинала ступень
+ *    едет параметром `thumb: size`, у нашего медиа-эндпоинта тот же выбор
+ *    выражается булевым `thumb` — серверное превью (ступень `y`) против
+ *    оригинала (`w`);
+ *  • ветка `size._ === 'videoSize'` (photo.ts:213-218, `<video autoplay loop
+ *    muted class="media-photo">`) — это MTProto `videoSize`, анимированная
+ *    обложка (профиля/эмодзи-статуса), а не видео сообщения; такого
+ *    конструктора в модели нет. Видео сообщения рисует `wrapVideo`;
  *  • `cacheContext` (`apiManagerProxy.getCacheContext`) → зеркало URL:
  *    `cachedMediaUrl(id, thumb) !== undefined` — тот же смысл «байты уже на
  *    руках», см. `core/mediaCache.ts`. Как и в оригинале, оно перечитывается
@@ -63,6 +62,15 @@ import mediaSizes, { setAttachmentSize } from '@core/dom/mediaSizes'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
+import {
+  choosePhotoSize,
+  getStrippedThumb,
+  THUMB_TYPE_FULL,
+  THUMB_TYPE_SERVER,
+  type MyDocument,
+  type MyPhoto,
+  type PhotoSize,
+} from '@core/media/messageMedia'
 import { cachedMediaUrl } from '@core/mediaCache'
 import blur from '@helpers/blur'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
@@ -79,26 +87,13 @@ const MIN_PRELOADER_SIDE = 150
 const NO_AUTO_DOWNLOAD_ERROR = makeError('NO_AUTO_DOWNLOAD')
 
 export interface WrapPhotoOptions {
-  /** файл на media-эндпоинте (у tweb — `photo`/`doc` MTProto) */
-  mediaId: number
-  /** натуральные пиксели медиа (tweb `photoSize.w`/`h`) */
-  width?: number
-  height?: number
-  /** stripped-JPEG превью в base64 (наш `message.mediaBlur`, tweb `photoStrippedSize.bytes`) */
-  strippedThumb?: string
-  /** качать уменьшенную версию (наш аналог tweb-параметра `size: PhotoSize`) */
-  thumb?: boolean
+  /** вложение сообщения (tweb `photo`) — фотография либо документ */
+  photo: MyPhoto | MyDocument
   /**
-   * Выбранный размер САМ является байтами превью — tweb `size._ ===
-   * 'photoStrippedSize'` (`size.bytes`), ранний выход photo.ts:208. Качать
-   * нечего: показывается `strippedThumb` из сообщения, и он рисуется КАК медиа,
-   * а не как подложка. Так у оригинала выглядят видео без серверного постера
-   * (единственный подходящий `PhotoSize` документа — stripped) и неоплаченное
-   * платное медиа (`generatePhotoForExtendedMediaPreview` отдаёт псевдо-фото с
-   * `id: 0` и единственным stripped-размером — отсюда же и `mediaId: 0` у
-   * такого вызова).
+   * Ступень лестницы, которую показываем (tweb `size`). Не задана — её выберет
+   * `choosePhotoSize` по боксу, как в оригинале.
    */
-  strippedSize?: boolean
+  size?: PhotoSize
   /** контейнер показа; им владеет вызывающий (tweb `container`) */
   container: HTMLElement
   boxWidth?: number
@@ -129,11 +124,6 @@ export interface WrapPhotoOptions {
   hasMessageBlock?: boolean
   /** видео с плеером: минимальная ширина 368 вместо 120 (tweb `canHaveVideoPlayer`) */
   canHaveVideoPlayer?: boolean
-  /** медиа — документ, а не фото (tweb `photo._ === 'document'`): дефолт
-   * натурального размера 512 вместо 100 + внешний гейт минимумов бокса */
-  isDocument?: boolean
-  /** тип документа (tweb `photo.type`) — вместе с `isDocument` решает тот гейт */
-  documentType?: string
   /** промис отгрузки файла (tweb `appDownloadManager.getUpload(uploadingFileName)`) */
   uploadPromise?: CancellablePromise<unknown>
 }
@@ -151,12 +141,13 @@ export interface WrappedPhoto {
 
 export default async function wrapPhoto(options: WrapPhotoOptions): Promise<WrappedPhoto> {
   const {
-    mediaId, width, height, strippedThumb, thumb, strippedSize, container, isVisible, middleware,
+    photo, container, isVisible, middleware,
     loadPromises, noBlur, noThumb, noFadeIn, blurAfter, processUrl, fadeInElement,
     onRender, onRenderFinish, useBlur, useRenderCache, hasMessage, hasMessageBlock,
-    canHaveVideoPlayer, isDocument, documentType, uploadPromise,
+    canHaveVideoPlayer, uploadPromise,
   } = options
   const { withoutPreloader, lazyLoadQueue } = options
+  let size = options.size
 
   const ret: WrappedPhoto = {
     loadPromises: {
@@ -173,9 +164,19 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
 
   let noAutoDownload: boolean | undefined = options.autoDownloadSize === 0
 
-  // tweb photo.ts:97-100
-  const boxWidth = options.boxWidth === undefined ? mediaSizes.active.regular.width : options.boxWidth
-  const boxHeight = options.boxHeight === undefined ? mediaSizes.active.regular.height : options.boxHeight
+  // tweb photo.ts:71-73 — вопросы к САМОМУ вложению, а не к флагам вызывающего
+  const isDocument = photo._ === 'document'
+  // tweb photo.ts:73: картинка, приехавшая документом (настоящий `image/gif`
+  // из `wrapVideo`). Своей ступени у неё нет — ею работает сам файл.
+  const isImageFromDocument = isDocument && photo.mime_type.startsWith('image/') && !size
+  const strippedThumb = getStrippedThumb(photo)
+
+  // tweb photo.ts:95-100 — бокс нужен только когда ступень ещё не выбрана
+  let { boxWidth, boxHeight } = options
+  if (!size) {
+    if (boxWidth === undefined) boxWidth = mediaSizes.active.regular.width
+    if (boxHeight === undefined) boxHeight = mediaSizes.active.regular.height
+  }
 
   container.classList.add('media-container')
   let aspecter = container
@@ -184,30 +185,31 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   let loadThumbPromise: Promise<unknown> = Promise.resolve()
   let thumbImage: HTMLImageElement | HTMLCanvasElement | undefined
 
-  // Наш `cacheContext.downloaded`: попадание в зеркало URL. Геттер, а не
-  // значение — tweb перечитывает кэш-контекст внутри `load()` (photo.ts:309).
-  //
-  // `strippedSize` — тот же кэш-контекст, что у оригинала: tweb берёт его ПО
-  // ВЫБРАННОМУ размеру (`getCacheContext(photo, size.type)`), а у stripped-
-  // размера своего файла в кэше нет по построению — байты приезжают в самом
-  // сообщении, скачивать нечего. Отсюда `downloaded === false` всегда, и превью
-  // строится, даже когда полный файл уже на руках. Именно этим у оригинала
-  // держится постер видео: «скачано» относится к файлу, а не к первому кадру.
-  const isDownloaded = () => !strippedSize && cachedMediaUrl(mediaId, thumb) !== undefined
+  if (boxWidth && boxHeight && !size) { // !album
+    // Ступень оригинал выбирает внутри `setAttachmentSize` и оттуда же забирает
+    // (`size = set.photoSize`); наш `setAttachmentSize` (`core/dom/mediaSizes`)
+    // считает только бокс, поэтому выбор стоит перед ним — той же функцией.
+    size = isImageFromDocument ?
+      // tweb photo.ts:120-126 — у картинки-документа ступень собирается из него
+      // самого (`THUMB_TYPE_FULL`), лестница тут ни при чём
+      { _: 'photoSize', w: photo.w ?? 0, h: photo.h ?? 0, size: photo.size, type: THUMB_TYPE_FULL } :
+      choosePhotoSize(photo, boxWidth, boxHeight)
 
-  if (boxWidth && boxHeight) { // !album
     // размер контейнера ставит сам `setAttachmentSize` (`boxSize`), как в
-    // оригинале (setAttachmentSize.ts:102-103)
+    // оригинале (setAttachmentSize.ts:102-103). Натуральную геометрию он берёт
+    // так же: у документа — его собственную (`photo.w`), у фотографии — у
+    // выбранной ступени (setAttachmentSize.ts:52-62).
+    const sized = size && 'w' in size ? size : undefined
     const set = setAttachmentSize({
-      width: width || 0,
-      height: height || 0,
+      width: (isDocument ? photo.w || sized?.w : sized?.w) || 0,
+      height: (isDocument ? photo.h || sized?.h : sized?.h) || 0,
       element: container,
       boxWidth,
       boxHeight,
       hasMessage,
       hasMessageBlock,
       isDocument,
-      documentType,
+      documentType: isDocument ? photo.type : undefined,
       isVideoWithPlayer: canHaveVideoPlayer,
     })
     isFit = set.isFit
@@ -238,17 +240,10 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
         // `blurAfter` подменяет его размытой уменьшенной копией (tweb photo.ts:153-176).
         const res = await wrapPhoto({
           container,
-          mediaId,
-          width,
-          height,
-          strippedThumb,
-          thumb,
-          // tweb пробрасывает в рекурсивный вызов тот же `size` (photo.ts:157)
-          strippedSize,
-          // и то же самое медиа (`photo`, photo.ts:155) — а значит и ответы про
-          // него: это тот же документ/фото, что и во внешнем вызове
-          isDocument,
-          documentType,
+          // то же медиа и та же ступень, что и во внешнем вызове
+          // (tweb photo.ts:155,157)
+          photo,
+          size,
           boxWidth: 0,
           boxHeight: 0,
           lazyLoadQueue,
@@ -266,12 +261,37 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
       container.classList.add('media-container-fitted')
       container.append(aspecter)
     }
+  } else if (!size) {
+    // tweb photo.ts:179-183 — без бокса (ячейка альбома, рекурсивная подложка)
+    // ступень всё равно нужна: по ней адресуется файл и по ней же решается
+    // ранний выход ниже. Параметр `useBytes` оригинала сюда не едет — см.
+    // отступление в шапке `choosePhotoSize` (`core/media/messageMedia.ts`).
+    size = choosePhotoSize(photo, boxWidth, boxHeight)
   }
+
+  // Ступень → файл на нашем медиа-эндпоинте: серверное превью (`y`) против
+  // оригинала (`w`). У tweb этот же выбор едет объектом ступени в
+  // `downloadMediaURL({media, thumb: size})`.
+  const thumb = size?.type === THUMB_TYPE_SERVER
+  // tweb photo.ts:207 `(size as photoStrippedSize)?.bytes` — выбранная ступень
+  // САМА является байтами превью.
+  const isStrippedSize = !!size && 'bytes' in size
+
+  // Наш `cacheContext.downloaded`: попадание в зеркало URL. Геттер, а не
+  // значение — tweb перечитывает кэш-контекст внутри `load()` (photo.ts:309).
+  //
+  // У stripped-ступени своего файла в кэше нет по построению (байты приезжают
+  // в самом сообщении), поэтому `getCacheContext(photo, 'i')` у оригинала
+  // всегда «не скачано» — и превью строится, даже когда полный файл на руках.
+  const isDownloaded = () => !isStrippedSize && cachedMediaUrl(photo.id, thumb) !== undefined
 
   if (!noThumb) {
     const gotThumb = getMediaThumbIfNeeded({
       strippedThumb,
       downloaded: isDownloaded(),
+      // tweb выводит его внутри самого хелпера (getStrippedThumbIfNeeded.ts:22);
+      // у нашего порта это параметр — вопрос к медиа задаётся здесь
+      isVideo: isDocument && (photo.type === 'video' || photo.type === 'gif'),
       useBlur: useBlur !== undefined ? useBlur : !noBlur,
     })
 
@@ -286,12 +306,13 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
 
   ret.aspecter = aspecter
 
-  // tweb photo.ts:208-210 — выбранный размер САМ является байтами превью:
-  // показывать больше нечего, и превью, построенное выше, УЖЕ стоит в слоте
-  // медиа (`media-photo` в аспектере/контейнере — не подложка на весь бокс,
-  // которую кладёт ветка `!isFit`). Ни полного `<img>`, ни кольца, ни запроса
-  // байтов в этой ветке нет вовсе.
-  if (strippedSize) {
+  // tweb photo.ts:207-209 — показывать больше нечего: у документа не нашлось
+  // подходящей ступени (у оригинала это `photoSizeEmpty`, у нас — отсутствие
+  // ступени) либо выбранная ступень САМА является байтами превью. Превью,
+  // построенное выше, УЖЕ стоит в слоте медиа (`media-photo` в
+  // аспектере/контейнере — не подложка на весь бокс, которую кладёт ветка
+  // `!isFit`). Ни полного `<img>`, ни кольца, ни запроса байтов здесь нет.
+  if ((!size && isDocument) || isStrippedSize) {
     return ret
   }
 
@@ -323,11 +344,11 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
     // «поздняя вкладка, файл уже в корзине воркера»: tweb показал бы картинку,
     // мы — manual-кольцо до клика.
     if (noAutoDownload) {
-      const cached = cachedMediaUrl(mediaId, thumb)
+      const cached = cachedMediaUrl(photo.id, thumb)
       return cached === undefined ? Promise.reject(NO_AUTO_DOWNLOAD_ERROR) : Promise.resolve(cached)
     }
 
-    return ensureMediaUrl(mediaId, { thumb, middleware })
+    return ensureMediaUrl(photo.id, { thumb, middleware })
   }
 
   const renderOnLoad = (url: string) => {
@@ -366,11 +387,12 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   }
 
   let loadPromise: Promise<unknown> | undefined
-  // tweb photo.ts:297-301: на мелком медиа кольца нет — оно там больше картинки;
-  // у tweb размеры берутся из выбранного `PhotoSize`, у нас лестницы нет,
-  // ближайший аналог — натуральные пиксели медиа (у альбома tweb смотрит на
-  // `choosePhotoSize(480)`, то есть тоже на исходную геометрию, а не на бокс).
-  const canAttachPreloader = ((width ?? 0) >= MIN_PRELOADER_SIDE && (height ?? 0) >= MIN_PRELOADER_SIDE) || !!noAutoDownload
+  // tweb photo.ts:297-301: на мелком медиа кольца нет — оно там больше картинки.
+  // Размеры — у ВЫБРАННОЙ ступени, как в оригинале.
+  const preloaderSize = size && 'w' in size ? size : undefined
+  const canAttachPreloader =
+    ((preloaderSize?.w ?? 0) >= MIN_PRELOADER_SIDE && (preloaderSize?.h ?? 0) >= MIN_PRELOADER_SIDE) ||
+    !!noAutoDownload
   const load = async () => {
     if (noAutoDownload && !withoutPreloader && preloader) {
       preloader.construct?.()

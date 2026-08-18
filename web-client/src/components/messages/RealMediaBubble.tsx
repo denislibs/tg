@@ -2,11 +2,13 @@
 // The real-chat media bubble: renders a backend media object (by id) as a photo,
 // video, music row, or downloadable file — styled after tweb's wrappers.
 //
-// Everything needed to render comes from the message itself (history read model:
-// dims, mime, blur preview, thumb flag, duration, size, name) and media URLs are
-// built SYNCHRONOUSLY on the main thread (see core/mediaUrl). So a media bubble
-// does ZERO per-image requests on mount — no meta/contentUrl RPC round-trips —
-// which is what used to make the feed jitter while scrolling.
+// Вход — САМО вложение сообщения (`MyPhoto | MyDocument`, то есть результат
+// `getMediaFromMessage`), как у врапперов оригинала: `wrapPhoto({photo})` /
+// `wrapVideo({doc})` / `wrapDocument({message})` спрашивают у него `doc.type`,
+// `doc.w`/`doc.h`, `doc.attributes`, `photo.sizes` — и здесь спрашивается ровно
+// то же. Media URLs are built SYNCHRONOUSLY on the main thread (see core/mediaUrl).
+// So a media bubble does ZERO per-image requests on mount — no meta/contentUrl
+// RPC round-trips — which is what used to make the feed jitter while scrolling.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import classNames from '../../shared/lib/classNames'
@@ -20,7 +22,13 @@ import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useBlurThumb } from './useBlurThumb'
-import { isGifLike } from '../../core/gifs'
+import {
+  getMediaDimensions,
+  getStrippedThumb,
+  hasServerThumb,
+  type MyDocument,
+  type MyPhoto,
+} from '../../core/media/messageMedia'
 // Рубильник наблюдателя звука — там же, где в tweb (wrappers/video.ts:51);
 // его же оттуда импортирует и лента оригинала (bubbles.ts:110).
 import { USE_VIDEO_OBSERVER } from '../wrappers/video'
@@ -45,19 +53,10 @@ function fmtSize(n: number): string {
 interface Props {
   /** отсутствует, пока идёт аплоад оптимистичного сообщения (есть localUrl) */
   mediaId?: number
+  /** вложение сообщения (tweb `getMediaFromMessage`) — им и решается всё ниже */
+  media?: MyPhoto | MyDocument
+  /** тип сообщения; читается ТОЛЬКО когда вложения ещё нет (идёт аплоад) */
   type?: string
-  // History read model — the bubble renders entirely from these (no meta request).
-  width?: number
-  height?: number
-  mime?: string
-  blur?: string
-  hasThumb?: boolean
-  duration?: number
-  size?: number
-  fileName?: string
-  /** ID3-теги трека (tweb documentAttributeAudio): заголовок и исполнитель */
-  mediaTitle?: string
-  mediaPerformer?: string
   /** исходящее — tweb вешает `is-out` на сам audio-element (wrappers/document.ts:149) */
   out?: boolean
   /** tweb дублирует id сообщения/отправителя на audio-element (audio.ts:543-544) */
@@ -86,11 +85,18 @@ interface Props {
 }
 
 export default function RealMediaBubble({
-  mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  mediaTitle, mediaPerformer, out, mid, peerId,
+  mediaId, media, type, out, mid, peerId,
   renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
   hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
+  // Вложение — фотография (лестница `sizes`) либо документ (`attributes` уже
+  // сведены `saveDocument` в `type`/`w`/`h`/`duration`/`file_name`).
+  const doc = media?._ === 'document' ? media : undefined
+  const mime = doc?.mime_type
+  const size = doc?.size
+  const fileName = doc?.file_name
+  const duration = doc?.duration
+  const { w: width, h: height } = getMediaDimensions(media)
   // Токен нужен только видео-путям (videoSrc/href ниже) — картинки с Task 7 на
   // воркерном конвейере и от токена не зависят.
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh video URLs
@@ -113,19 +119,24 @@ export default function RealMediaBubble({
   const imgRef = useRef<HTMLImageElement>(null)
   useLayoutEffect(() => { setForced(false) }, [mediaId])
 
-  // An audio file (mp3 etc.) renders as a music player even when sent "as a file"
-  // (type document) — like Telegram. So audio mime overrides the document type.
-  const isAudioMime = !!mime?.startsWith('audio/')
-  const asFile = type === 'document' && !isAudioMime
-  const isImage = !asFile && (type === 'photo' || !!mime?.startsWith('image/'))
-  const isVideo = !asFile && (type === 'video' || !!mime?.startsWith('video/'))
-  const isAudio = !asFile && (type === 'audio' || isAudioMime)
-
-  const isGif = mime === 'image/gif'
-  // «Гифоподобное» видео (tenor/giphy mp4 или image/gif): автоплей-цикл прямо
-  // в бабле, бейдж GIF, без play-диска (tweb wrapVideo gif-путь). Клик — лайтбокс.
-  const gifLike = isGifLike({ mime, fileName, duration })
-  const gifVideo = gifLike && isVideo
+  // Каким баблом рисовать файл — решает `doc.type`, как в оригинале
+  // (tweb bubbles.ts:8510-8512): видео/гифка/кружок идут медиа-контейнером,
+  // музыка — audio-element'ом, всё остальное — строкой документа. Фотография
+  // приходит `messageMediaPhoto` и документа не имеет вовсе.
+  // Пока идёт аплоад, вложения ещё нет — тогда единственный признак это `type`
+  // самого сообщения.
+  const docType = doc?.type
+  // GIF (tweb `doc.type === 'gif'`, appDocsManager.ts:219-226): автоплей-цикл
+  // прямо в бабле, бейдж GIF, без play-диска. Клик — лайтбокс. Отступление от
+  // оригинала: Telegram перекодирует image/gif в mp4 и у него остаётся одна
+  // форма показа (<video>), наш бэкенд отдаёт gif как есть — поэтому настоящий
+  // image/gif показывается анимированной картинкой, а mp4-гифка — <video>.
+  const gifLike = docType === 'gif'
+  const isGif = gifLike && mime === 'image/gif'
+  const gifVideo = gifLike && !isGif
+  const isImage = media ? media._ === 'photo' || isGif : type === 'photo'
+  const isVideo = doc ? docType === 'video' || docType === 'round' || gifVideo : type === 'video'
+  const isAudio = doc ? docType === 'audio' : type === 'audio'
   // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
   // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
   // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
@@ -144,17 +155,19 @@ export default function RealMediaBubble({
   // автозагрузки (blocked обязан НЕ ходить в сеть до клика).
   const needMediaUrl = (isImage || isVideo) && !(canAutoplay && !gifVideo)
     && !localUrl && !blocked && !paidMedia?.locked && mediaId != null
-  const mediaUrl = useMediaUrl(needMediaUrl ? mediaId! : null, { thumb: !isGif && !gifVideo && !!hasThumb })
+  const mediaUrl = useMediaUrl(needMediaUrl ? mediaId! : null, { thumb: !isGif && !gifVideo && hasServerThumb(media) })
   // Канвас-превью (tweb-модель, Task 9): blur() → canvas-thumbnail prepend'ом в
   // контейнер медиа; НЕ монтируется, если полный URL известен уже на этом
   // рендере (localUrl / синхронное попадание в зеркало конвейера) — аналог
   // tweb `cacheContext.downloaded`.
+  // Ступень `photoStrippedSize` вложения (tweb getStrippedThumb).
+  const strippedThumb = getStrippedThumb(media)
   const blurHostRef = useBlurThumb(
-    (isImage || isVideo) && !paidMedia?.locked ? blur : undefined,
+    (isImage || isVideo) && !paidMedia?.locked ? strippedThumb : undefined,
     !!localUrl || !!mediaUrl,
   )
-  // Платное медиа: кроме blur у нас ничего нет — превью монтируется всегда.
-  const paidBlurHostRef = useBlurThumb(paidMedia?.locked ? blur : undefined)
+  // Платное медиа: кроме stripped-ступени у нас ничего нет — превью монтируется всегда.
+  const paidBlurHostRef = useBlurThumb(paidMedia?.locked ? strippedThumb : undefined)
 
   // документ/музыка уже на дереве tweb — время позиционируют правила
   // `.document .time` / `.audio .time` из портированных партиалов
@@ -177,10 +190,11 @@ export default function RealMediaBubble({
     // Фото у tweb — `messageMediaPhoto` (MyPhoto), всё прочее медиа приходит
     // ДОКУМЕНТОМ (`photo._ === 'document'`): и видео, и тенор-mp4, и настоящий
     // image/gif (documentAttributeAnimated → `type: 'gif'`). От этого зависят
-    // дефолт натурального размера (документу 512, фото 100 — старое сообщение
-    // без media_w/media_h) и внешний гейт минимумов бокса.
-    const isDocumentMedia = isVideo || isGif
-    const documentType = isDocumentMedia ? (gifVideo || isGif ? 'gif' : 'video') : undefined
+    // дефолт натурального размера (документу 512, фото 100 — сообщение без
+    // геометрии) и внешний гейт минимумов бокса. Оба вопроса задаются самому
+    // вложению — так же, как их задаёт `setAttachmentSize` оригинала.
+    const isDocumentMedia = !!doc
+    const documentType = docType
     // `boxSize` — размер САМОГО контейнера (расширенный минимумами), `size` —
     // вписанный, он уходит в `.media-container-aspecter` (tweb
     // setAttachmentSize.ts:64-103 + wrappers/photo.ts:136-137).
@@ -227,7 +241,7 @@ export default function RealMediaBubble({
     // подпись/минимальная ширина), tweb добавляет .media-container-fitted, кладёт
     // в контейнер приглушённую миниатюру .media-photo.thumbnail, а само медиа —
     // в .media-container-aspecter.
-    const media = videoSrc ? (
+    const mediaEl = videoSrc ? (
       <video
         className="media-video"
         src={videoSrc}
@@ -292,9 +306,9 @@ export default function RealMediaBubble({
             onAnimationEnd={(e) => e.currentTarget.classList.remove('fade-in')}
           />
         )}
-        {isFit ? media : (
+        {isFit ? mediaEl : (
           <div className="media-container-aspecter" style={{ width: fitted.width, height: fitted.height }}>
-            {media}
+            {mediaEl}
           </div>
         )}
         {uploadProgress != null && (
@@ -315,12 +329,15 @@ export default function RealMediaBubble({
 
   // ---- Music (audio, compressed) ----
   if (isAudio) {
+    // ID3-теги живут в documentAttributeAudio — тот же `attributes.find`,
+    // которым их достаёт оригинал (tweb audio.ts:352).
+    const audioAttribute = doc?.attributes.find((a) => a._ === 'documentAttributeAudio')
     return (
       <AudioRow
         mediaId={mediaId}
         // tweb audio.ts:391 — `audioAttribute?.title ?? doc.file_name`
-        title={mediaTitle || fileName || `audio-${mediaId}`}
-        performer={mediaPerformer}
+        title={audioAttribute?.title || fileName || `audio-${mediaId}`}
+        performer={audioAttribute?.performer}
         duration={duration} size={size}
         out={out} mid={mid} peerId={peerId}
         time={timeCluster}

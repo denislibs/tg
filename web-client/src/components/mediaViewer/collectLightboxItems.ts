@@ -1,12 +1,12 @@
 // Сбор items вьювера из сообщений — чистая логика бывшего useLightbox
 // (Task 16 медиа-суперпорта; сам хук снесён вместе с MediaLightbox).
-// Аналог tweb-квалификации медиа в bubbles.ts:3719-3722 (`media._ === 'photo' ||
-// ['video','gif'].includes(media.type)`) в нашей модели окна: фото/видео чата +
+// Квалификация медиа — тот же вопрос к самому медиа, что в bubbles.ts:3719-3722
+// (`media._ === 'photo' || ['video','gif'].includes(media.type)`), плюс
 // секретные (E2E) медиа того же вида. Элементы-миниатюры соседей отдаёт
 // вызывающий через findElement (tweb собирает их из отрендеренных баблов,
 // bubbles.ts:3744-3800) — у не отрендеренных element остаётся null.
 import { friendlyMsgTime } from '@core/format/friendlyTime'
-import { isGifLike } from '@core/gifs'
+import { getMediaDimensions, getMediaFromMessage, getStrippedThumb } from '@core/media/messageMedia'
 import { getSecretMediaUrl, peekSecretMediaUrl } from '@core/secret/mediaCache'
 import type { Message } from '@core/models'
 import type { ViewerItem } from './appMediaViewer'
@@ -31,21 +31,31 @@ const senderName = (m: Message, ctx: LightboxCtx): string =>
  * и маппингом ответа REST `/chats/{id}/media` (loadMoreMedia), и shared media. */
 export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLElement | null = null): ViewerItem {
   const sec = m.secretMedia
+  // Медиа сообщения — как у оригинала: вьювер спрашивает его у самого сообщения
+  // (tweb `getMediaFromMessage(message)`, mediaViewer/index.ts), а не собирает из
+  // отдельных полей. Секретное (E2E) медиа этой модели не имеет: сервер отдаёт
+  // только шифртекст, вид лежит в расшифрованном `secretMedia.mediaType`.
+  const media = getMediaFromMessage(m)
+  const doc = media?._ === 'document' ? media : undefined
+  // tweb base.ts:2360 — `isVideo` считается ровно так: документ с типом
+  // video/gif либо с video/*-mime; всё остальное вьювер ведёт как фото.
+  const isVideo = !!doc && (doc.type === 'video' || doc.type === 'gif' || doc.mime_type.startsWith('video/'))
+  const { w, h } = getMediaDimensions(media)
   return {
     element,
     mid: m.id,
     seq: m.seq,
     media: {
       mediaId: (sec?.mediaId ?? m.mediaId) as number,
-      width: m.mediaWidth ?? 0,
-      height: m.mediaHeight ?? 0,
-      blurPreview: m.mediaBlur,
-      kind: (sec?.mediaType ?? m.type) === 'video' ? 'video' : 'photo',
-      // GIF-детект — ровно критерий бабла (RealMediaBubble.tsx:124): tweb
-      // `document.type === 'gif'`; duration — из меты сообщения (у бэка может
-      // быть 0 — тогда видео получит loop как «короткое», см. ViewerMedia).
-      gif: sec ? undefined : (isGifLike({ mime: m.mediaMime, fileName: m.mediaName, duration: m.mediaDuration, animated: m.mediaAnimated }) || undefined),
-      duration: m.mediaDuration,
+      width: w ?? 0,
+      height: h ?? 0,
+      blurPreview: getStrippedThumb(media),
+      kind: sec ? (sec.mediaType === 'video' ? 'video' : 'photo') : (isVideo ? 'video' : 'photo'),
+      // tweb base.ts:2479 `(media as MyDocument).type !== 'gif'` — гифку от видео
+      // отличает ТИП ДОКУМЕНТА, выведенный из `documentAttributeAnimated`
+      // (`saveDocument`), а не догадка по mime/имени файла.
+      gif: doc?.type === 'gif' || undefined,
+      duration: doc?.duration,
       // Секретное медиа (E2E): сервер отдаёт только ciphertext — байты качает
       // и расшифровывает вкладка (общий кэш с баблом), воркерный конвейер
       // downloadMediaURL/resolveStreamUrl НЕ зовётся (ветка media.url в
@@ -77,11 +87,20 @@ export function collectLightboxItems({ msgs, mediaId, ctx, findElement }: {
   /** миниатюра сообщения в отрендеренных баблах (null — не отрендерено) */
   findElement?: (m: Message) => HTMLElement | null
 }): { items: ViewerItem[]; index: number } {
-  // Фото/видео чата + секретные (E2E) медиа того же вида; у секретного type в
-  // сторе — 'encrypted', вид лежит в secretMedia.mediaType.
-  const isViewable = (m: Message) =>
-    m.mediaId != null && (m.type === 'photo' || m.type === 'video' ||
-      m.secretMedia?.mediaType === 'photo' || m.secretMedia?.mediaType === 'video')
+  // Квалификация медиа — 1:1 критерий tweb (bubbles.ts:3722):
+  // `media._ === 'photo' || ['video','gif'].includes(media.type)`. Секретные
+  // (E2E) медиа модели не имеют (сервер отдаёт шифртекст) — их вид лежит в
+  // расшифрованном `secretMedia.mediaType`.
+  // `mediaId != null` остаётся гейтом ФАЙЛА: у платного медиа до оплаты его нет
+  // вовсе (сервер отдаёт псевдо-фото из одной stripped-ступени), открывать
+  // нечего.
+  const isViewable = (m: Message) => {
+    if (m.mediaId == null) return false
+    const sec = m.secretMedia?.mediaType
+    if (sec) return sec === 'photo' || sec === 'video'
+    const media = getMediaFromMessage(m)
+    return media?._ === 'photo' || (media?._ === 'document' && (media.type === 'video' || media.type === 'gif'))
+  }
   const viewable = msgs.filter(isViewable)
   const index = viewable.findIndex((m) => m.mediaId === mediaId)
   if (index >= 0) {

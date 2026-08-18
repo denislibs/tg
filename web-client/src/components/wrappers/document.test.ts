@@ -6,6 +6,7 @@
 //     div.document-name > middle-ellipsis-element "…pdf"
 //     div.document-size > span > (размер + скрытый дубль " / размер")
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { saveDocument } from '@core/media/messageMedia'
 
 // Байты файла качаются прямым fetch по токен-URL (санкционированный путь для
 // не-картинок) — в тесте и токен, и сеть подменены.
@@ -73,14 +74,16 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 })
 
-const doc = (over: Partial<Parameters<typeof wrapDocument>[0]['doc']> = {}) => ({
-  id: 7,
-  type: 'document' as const,
-  fileName: 'Оферта_Маркетплейс.pdf',
-  size: 318_464,
-  mime: 'application/pdf',
-  ...over,
-})
+// Документ — в форме оригинала: `type`/`file_name` рукой не задаются, их
+// выводит `saveDocument` из атрибутов и mime (порт `appDocsManager.saveDoc`).
+const doc = ({ id = 7, fileName = 'Оферта_Маркетплейс.pdf', size = 318_464, mime = 'application/pdf' } = {}) =>
+  saveDocument({
+    _: 'document',
+    id,
+    mime_type: mime,
+    size,
+    attributes: [{ _: 'documentAttributeFilename', file_name: fileName }],
+  })
 
 function wrap(over: Partial<Parameters<typeof wrapDocument>[0]> = {}) {
   const helper = getMiddleware()

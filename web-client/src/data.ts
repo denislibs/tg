@@ -1,14 +1,10 @@
 import type { MessageEntity, GeoData } from './core/models'
+import type { MessageMedia } from './core/media/messageMedia'
 
 export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved' | 'secret'
 // sending → часики до message_ack; error → красный значок (send отвергнут/упал),
 // как tweb sendingStatus.ts (sending / check / checks / sendingerror).
 export type MsgStatus = 'sending' | 'sent' | 'read' | 'error'
-
-export interface MediaItem {
-  gradient: string
-  emoji?: string
-}
 
 export interface ConvMsg {
   id?: number // stable backend message id (real chats) — used as the React key
@@ -89,8 +85,11 @@ export interface ConvMsg {
   mediaAnimated?: boolean
   // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
   paidMedia?: { price: number; locked: boolean }
-  media?: MediaItem // single photo/video placeholder
-  album?: MediaItem[] // album grid (2–10)
+  /** Вложение в форме оригинала (`messageMediaPhoto`/`messageMediaDocument`) —
+   *  то же значение, что в `Message.media`. Бабл читает его так же, как врапперы
+   *  tweb: `doc.type`, `doc.w`/`doc.h`, `doc.attributes`, `photo.sizes`
+   *  (см. `core/media/messageMedia.ts`). */
+  media?: MessageMedia
   groupedId?: string // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
@@ -99,7 +98,6 @@ export interface ConvMsg {
   giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
-  videoDuration?: string // overlay on video / round video
   // карточка превью ссылки под текстовым сообщением (сервер собирает её из
   // og-тегов; картинка — наше медиа, см. WebPageData)
   webPage?: import('./core/models').WebPageData

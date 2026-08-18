@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { bubbleClasses, type BubbleCtx } from './bubbleClasses'
+import { saveDocument, type DocumentAttribute, type MessageMedia } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
+
+/** Вложение-документ: `doc.type` выводит `saveDocument` из атрибутов + mime. */
+const docMedia = (mime: string, attributes: DocumentAttribute[] = []): MessageMedia => ({
+  _: 'messageMediaDocument',
+  document: saveDocument({ _: 'document', id: 7, mime_type: mime, size: 100, attributes }),
+})
 
 const msg = (over: Partial<ConvMsg> = {}): ConvMsg => ({ id: 1, type: 'text', text: 'hi', time: '12:00', ...over } as ConvMsg)
 const ctx = (over: Partial<BubbleCtx> = {}): BubbleCtx => ({
@@ -86,6 +93,39 @@ describe('bubbleClasses', () => {
     )
     expect(cls).toEqual(expect.arrayContaining(['is-reply', 'with-reply-markup', 'is-highlighted', 'is-first-unread']))
     expect(cls).not.toContain('is-selected')
+  })
+
+  // tweb bubbles.ts:8632-8642 — класс одиночного документа собирается ИЗ
+  // `doc.type`, а его выводит saveDocument из атрибутов. Пин держит именно эту
+  // деривацию: раньше трек угадывался по префиксу mime (`audio/`), и mp3,
+  // отправленный «как файл» (без documentAttributeAudio), ошибочно получал
+  // audio-message вместо строки файла.
+  describe('класс одиночного документа — из doc.type (tweb bubbles.ts:8632-8642)', () => {
+    it('трек (documentAttributeAudio) — audio-message + min-content', () => {
+      const media = docMedia('audio/mpeg', [{ _: 'documentAttributeAudio', duration: 139 }])
+      const cls = bubbleClasses(msg({ type: 'audio', text: '', mediaId: 7, media }), ctx())
+      expect(cls).toEqual(expect.arrayContaining(['audio-message', 'min-content', 'is-single-document']))
+    })
+
+    it('тот же mp3 «как файл» (без атрибута аудио) — document-message, без min-content', () => {
+      const media = docMedia('audio/mpeg', [{ _: 'documentAttributeFilename', file_name: 'track.mp3' }])
+      const cls = bubbleClasses(msg({ type: 'document', text: '', mediaId: 7, media }), ctx())
+      expect(cls).toContain('document-message')
+      expect(cls).not.toContain('audio-message')
+      expect(cls).not.toContain('min-content')
+    })
+
+    it('голосовое (documentAttributeAudio voice + ogg) — voice-message + min-content', () => {
+      const media = docMedia('audio/ogg', [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 3 }])
+      const cls = bubbleClasses(msg({ type: 'voice', text: '', mediaId: 7, media }), ctx())
+      expect(cls).toEqual(expect.arrayContaining(['voice-message', 'min-content', 'is-single-document']))
+    })
+
+    it('pdf — тоже document-message (tweb исключает photo/pdf из имени класса)', () => {
+      const cls = bubbleClasses(msg({ type: 'document', text: '', mediaId: 7, media: docMedia('application/pdf') }), ctx())
+      expect(cls).toContain('document-message')
+      expect(cls).not.toContain('pdf-message')
+    })
   })
 
   it('опрос и чеклист — poll-message', () => {

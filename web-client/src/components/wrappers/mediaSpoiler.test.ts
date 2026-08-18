@@ -16,6 +16,7 @@
 // декодирует — тот же приём, что в `photo.test.ts`) и `dotRendererCore` (за ним
 // начинается WebGL-драйвер, которого в happy-dom нет).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { THUMB_TYPE_FULL, THUMB_TYPE_STRIPPED, type MyPhoto } from '@core/media/messageMedia'
 
 vi.mock('@helpers/blur', () => ({
   default: vi.fn((dataUri: string) => {
@@ -77,12 +78,22 @@ const { getMiddleware } = await import('@helpers/middleware')
 
 const STRIPPED = 'AAECAwQ='
 
+/** Вложение в форме оригинала: ступень stripped крышка достаёт из него сама. */
+const photoWithStripped = (bytes: string): MyPhoto => ({
+  _: 'photo',
+  id: 7,
+  sizes: [
+    { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes },
+    { _: 'photoSize', type: THUMB_TYPE_FULL, w: 1600, h: 900, size: 100 },
+  ],
+})
+
 const helpers: { destroy: () => void }[] = []
 function makeSpoiler() {
   const helper = getMiddleware()
   helpers.push(helper)
   return wrapMediaSpoiler({
-    strippedThumb: STRIPPED,
+    media: photoWithStripped(STRIPPED),
     width: 100,
     height: 50,
     middleware: helper.get(),
@@ -123,14 +134,28 @@ describe('wrapMediaSpoiler — дерево оригинала', () => {
     expect(container!.middlewareHelper).toBeTruthy()
   })
 
-  it('без stripped-превью спойлера нет вовсе (закрывать нечем)', async () => {
+  it('без ступени stripped спойлера нет вовсе (закрывать нечем)', async () => {
     const helper = getMiddleware()
     helpers.push(helper)
     const container = await wrapMediaSpoiler({
-      strippedThumb: '',
+      // лестница есть, а stripped-ступени в ней нет — tweb `if(!thumb) return`
+      media: { _: 'photo', id: 7, sizes: [{ _: 'photoSize', type: THUMB_TYPE_FULL, w: 16, h: 9, size: 10 }] },
       width: 100, height: 50, middleware: helper.get(), animationGroup: 'chat',
     })
     expect(container).toBeUndefined()
+  })
+
+  it('ступень достаётся и из документа (`doc.thumbs`), не только из `photo.sizes`', async () => {
+    const helper = getMiddleware()
+    helpers.push(helper)
+    const container = await wrapMediaSpoiler({
+      media: {
+        _: 'document', id: 8, mime_type: 'video/mp4', size: 10, attributes: [],
+        thumbs: [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED }],
+      },
+      width: 100, height: 50, middleware: helper.get(), animationGroup: 'chat',
+    })
+    expect(container?.querySelector('canvas.media-spoiler-thumbnail')).toBeTruthy()
   })
 })
 

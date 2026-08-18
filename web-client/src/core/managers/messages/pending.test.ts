@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { newPendingMethods } from './pending'
+import { getDocumentFromMessage, getMediaDimensions, getMediaFromMessage, isMediaSpoiler } from '../../media/messageMedia'
 import { messageToConvMsg } from '../../messageToConvMsg'
 import type { Message } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
@@ -273,8 +274,9 @@ describe('pending: ошибка, ретрай, отмена', () => {
   // Переехало из stores/messagesStore.uploadCancel.test.ts. Что ломается: бабл
   // документа появляется ДО аплоада, и рисовать его не из чего, если локальная
   // мета (имя/размер/mime) не доехала — пользователь видел бы пустую плашку
-  // файла, пока идёт загрузка. mediaId на этот момент ещё нет (null).
-  it('бабл документа несёт имя/размер/mime до аплоада, mediaId ещё нет', () => {
+  // файла, пока идёт загрузка. mediaId на этот момент ещё нет (null), а сам
+  // файл живёт под ВРЕМЕННЫМ id бабла (tweb mediaTempId = message.id).
+  it('бабл документа несёт настоящий messageMediaDocument до аплоада, mediaId ещё нет', () => {
     const { ctx, slices } = makeCtx()
     openWindow(slices, '1', [10])
     const p = newPendingMethods(ctx)
@@ -283,9 +285,14 @@ describe('pending: ошибка, ретрай, отмена', () => {
       text: '', type: 'document', media: { mime: 'application/pdf', size: 1234, name: 'оферта.pdf' },
     }))[0] as { msg: Message }).msg
 
-    expect(msg.mediaName).toBe('оферта.pdf')
-    expect(msg.mediaSize).toBe(1234)
-    expect(msg.mediaMime).toBe('application/pdf')
+    expect(msg.media?._).toBe('messageMediaDocument')
+    const doc = getDocumentFromMessage(msg)!
+    expect(doc.file_name).toBe('оферта.pdf')
+    expect(doc.size).toBe(1234)
+    expect(doc.mime_type).toBe('application/pdf')
+    // тип выводит saveDocument из mime — как у пришедшего с сервера документа
+    expect(doc.type).toBe('pdf')
+    expect(doc.id).toBe(msg.id) // временный id = id бабла
     expect(msg.mediaId).toBeNull()
   })
 
@@ -447,14 +454,21 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const bubble = (h.emitted[0][0] as { msg: Message }).msg
     expect(bubble.clientId).toBe('c1')
     expect(bubble.text).toBe('подпись')
-    expect(bubble.mediaWidth).toBe(640)
+    // фото «как медиа» — messageMediaPhoto с одной ступенью `w` (tweb :1957-1979)
+    expect(bubble.media?._).toBe('messageMediaPhoto')
+    expect(getMediaDimensions(getMediaFromMessage(bubble))).toEqual({ w: 640, h: 480 })
     expect(bubble.mediaId).toBeNull() // media_id ещё нет — он приедет патчем
     // localUrl минтит ВОРКЕР (blob-URL воркера валиден во всех вкладках)
     expect(bubble.localUrl).toMatch(/^blob:/)
     // байты ушли в аплоад с progressId === clientMsgId (по нему же идёт отмена)
     expect(h.uploads[0]).toMatchObject({ mime: 'image/jpeg', fileName: 'photo.jpg', width: 640, height: 480, progressId: 'c1' })
-    // attach приклеил media_id к тому же баблу
-    expect(h.emitted[1]).toEqual([{ op: 'patch', key: '1', msgId: bubble.id, fields: { mediaId: 909 } }])
+    // attach приклеил media_id к тому же баблу — И САМОМУ ВЛОЖЕНИЮ: файл,
+    // живший под временным id, получил адрес на сервере
+    expect(h.emitted[1]).toHaveLength(1)
+    const patch = h.emitted[1][0] as { op: string; key: string; msgId: number; fields: Partial<Message> }
+    expect(patch).toMatchObject({ op: 'patch', key: '1', msgId: bubble.id })
+    expect(patch.fields.mediaId).toBe(909)
+    expect(getMediaFromMessage({ media: patch.fields.media })!.id).toBe(909)
     // ОДИН кадр, и он несёт media_id (двухфазной отправки awaitMedia больше нет)
     expect(h.sends).toEqual([{
       chatId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
@@ -475,8 +489,9 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
 
     const bubble = (h.emitted[0][0] as { msg: Message }).msg
     expect(bubble.localUrl).toBeUndefined()
-    expect(bubble.mediaName).toBe('оферта.pdf')
-    expect(bubble.mediaMime).toBe('application/pdf')
+    const doc = getDocumentFromMessage(bubble)!
+    expect(doc.file_name).toBe('оферта.pdf')
+    expect(doc.mime_type).toBe('application/pdf')
   })
 
   // Что ломается: без пинга собеседник не видит «отправляет фото…» всё время
@@ -563,7 +578,10 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
       isMedia: true, spoiler: true, threadId: null,
     })
 
-    expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBe(true)
+    // спойлер живёт в pFlags вложения, литералом true (tweb :1600-1602)
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(isMediaSpoiler(bubble)).toBe(true)
+    expect(bubble.media?.pFlags).toEqual({ spoiler: true })
     expect(h.sends[0]).toMatchObject({ mediaSpoiler: true })
   })
 
@@ -577,7 +595,10 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
       isMedia: true, threadId: null,
     })
 
-    expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBeUndefined()
+    // «выключено» — это ОТСУТСТВИЕ ключа, не false
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(isMediaSpoiler(bubble)).toBe(false)
+    expect(bubble.media?.pFlags).toBeUndefined()
     expect(h.sends[0].mediaSpoiler).toBeUndefined()
   })
 
@@ -597,21 +618,86 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     })
 
     const bubble = (h.emitted[0][0] as { msg: Message }).msg
-    expect(bubble.mediaWaveform).toBe('HwAq/wc=')
-    expect(bubble.mediaDuration).toBe(7)
+    // пики и длительность лежат там же, где у серверного голосового, —
+    // в documentAttributeAudio, а тип выводит saveDocument по voice+mime
+    const doc = getDocumentFromMessage(bubble)!
+    expect(doc.attributes).toContainEqual({
+      _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=',
+    })
+    expect(doc.duration).toBe(7)
+    expect(doc.type).toBe('voice')
     // те же байты ушли и в аплоад — сервер вернёт их же, волна после ack не прыгнет
     expect(h.uploads[0].waveform).toBe(peaks)
   })
 
-  // Не голосовое: пиков нет — ключа на бабле тоже нет (не «пустая волна»).
-  it('фото: пиков нет — mediaWaveform undefined', async () => {
+  // Порт tweb `sendFile({isAnimated})` → `documentAttributeAnimated` (:2010-2014):
+  // из этого атрибута `saveDocument` и выводит `doc.type === 'gif'`. Что ломается
+  // без него: свой гиф всё время аплоада рисуется обычным видео-баблом с
+  // play-диском и перескакивает в автоплей-цикл только после эха сервера.
+  it('гифка: documentAttributeAnimated → doc.type === gif', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
+      fileName: 'tenor.mp4', width: 320, height: 240, isMedia: true, isAnimated: true,
+    })
+
+    const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: Message }).msg)!
+    expect(doc.attributes).toContainEqual({ _: 'documentAttributeAnimated' })
+    expect(doc.type).toBe('gif')
+    expect(doc.animated).toBe(true)
+  })
+
+  it('без isAnimated то же видео остаётся видео', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
+      fileName: 'tenor.mp4', width: 320, height: 240, duration: 4, isMedia: true,
+    })
+
+    const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: Message }).msg)!
+    expect(doc.type).toBe('video')
+    expect(doc.w).toBe(320)
+    expect(doc.h).toBe(240)
+    expect(doc.duration).toBe(4)
+  })
+
+  // Кружок отличается от видео ОДНИМ битом атрибута (tweb :1991-2009) — тем же,
+  // по которому `saveDocument` выводит `doc.type === 'round'`.
+  it('кружок: round_message в documentAttributeVideo → doc.type === round', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('webm', 'video/webm'), type: 'roundVideo', duration: 5,
+    })
+
+    const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: Message }).msg)!
+    expect(doc.attributes).toContainEqual({
+      _: 'documentAttributeVideo', pFlags: { round_message: true, supports_streaming: true },
+      duration: 5, w: 0, h: 0,
+    })
+    expect(doc.type).toBe('round')
+  })
+
+  // Не голосовое: пиков нет — и атрибута аудио на вложении тоже нет
+  // (не «пустая волна» и не аудио-документ вместо фотографии).
+  it('фото: атрибута аудио нет вовсе', async () => {
     const h = makeCtx()
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
 
-    expect((h.emitted[0][0] as { msg: Message }).msg.mediaWaveform).toBeUndefined()
+    const bubble = (h.emitted[0][0] as { msg: Message }).msg
+    expect(bubble.media?._).toBe('messageMediaPhoto')
+    expect(getDocumentFromMessage(bubble)).toBeUndefined()
   })
 })
 
@@ -619,6 +705,30 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
 // аплоада, потому что байты грузила вкладка) больше НЕТ — он был следствием
 // того, что аплоад жил на вкладке. Проверяем структурно: у sendFile нет ни
 // такого поля, ни второй фазы, а кадр за отправку рождается ровно один.
+// Уже сохранённый файл (GIF из вкладки, стикер) уходит с ГОТОВЫМ media_id —
+// это ветка `isDocument` оригинала (:1538-1541), где в бабл кладётся уже
+// сохранённый документ, а не временный. Что ломается без этого: бабл ссылается
+// на несуществующий временный id и превью не грузится вовсе.
+describe('sendText с готовым media_id: вложение под НАСТОЯЩИМ id', () => {
+  it('сохранённый GIF: doc.id === media_id, тип выведен из атрибутов', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({
+      chatId: 1, text: '', clientMsgId: 'c1', mediaId: 777, type: 'video',
+      optimistic: {
+        senderId: 5,
+        media: { width: 320, height: 240, mime: 'video/mp4', size: 100, name: 'g.mp4', animated: true },
+      },
+    })
+
+    const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: Message }).msg)!
+    expect(doc.id).toBe(777)
+    expect(doc.type).toBe('gif')
+  })
+})
+
 describe('двухфазной отправки медиа не существует', () => {
   it('пока аплоад идёт, кадра нет; после — ровно один, и второго входа для него не нужно', async () => {
     const h = makeCtx()

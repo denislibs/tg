@@ -15,11 +15,9 @@
  *         img.media-photo
  *
  * ── Отличия от оригинала ────────────────────────────────────────────────────
- *  • вход — наши `Message[]` вместо `Message.message[]` MTProto; размер элемента
- *    берётся из полей самого сообщения (`mediaWidth`/`mediaHeight`), а не из
- *    `choosePhotoSize(media, 480, 480)`: лестницы `PhotoSize` у нас нет,
- *    пропорции ячейки задаёт исходная геометрия медиа — ровно тот же вход у
- *    `Layouter` (ему нужны только соотношения сторон);
+ *  • вход — наши `Message[]` вместо `Message.message[]` MTProto; вложение из них
+ *    достаётся так же, как в оригинале, — `getMediaFromMessage`, и дальше
+ *    ветвление идёт по САМОМУ вложению (`media._ === 'photo'`);
  *  • ветка `media` (album.ts:38-46, `noGroupedItem`/`data-index`) не портирована:
  *    в tweb она обслуживает ПРЕДПРОСМОТР ОТПРАВКИ (попап «прикрепить»), где
  *    сообщений ещё нет. Наш попап отправки — React (`SendMediaPopup`) и в
@@ -28,8 +26,7 @@
  *  • ветка `sensitive` (18+) не портирована — вместе с самой подсистемой
  *    «чувствительный контент» (модерация, аккаунт-настройка, проверка
  *    возраста), см. шапку `components/wrappers/mediaSpoiler.ts`. Признак
- *    `spoilered` и `messageMedia.pFlags.spoiler` портированы полностью:
- *    у нас это параметр `spoilered` и поле `message.mediaSpoiler`;
+ *    `spoilered` и `messageMedia.pFlags.spoiler` портированы полностью;
  *  • `videoTimes` портирован (см. параметр ниже): готовые узлы таймкода от
  *    вызывающего кладутся в ячейку. Заполняет их в tweb бабл — для
  *    НЕПРОПЛАЧЕННОГО платного медиа, где ячейку рисует не `wrapVideo`, а
@@ -42,11 +39,16 @@ import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import mediaSizes from '@core/dom/mediaSizes'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import generatePhotoForExtendedMediaPreview from '@core/media/generatePhotoForExtendedMediaPreview'
+import {
+  choosePhotoSize,
+  getMediaFromMessage,
+  type MyDocument,
+} from '@core/media/messageMedia'
 import type { Message } from '@core/models'
 import prepareAlbum from '@components/prepareAlbum'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import wrapPhoto from '@components/wrappers/photo'
-import wrapVideo, { videoDocFromMessage } from '@components/wrappers/video'
+import wrapVideo from '@components/wrappers/video'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
 import type { Middleware } from '@helpers/middleware'
 
@@ -54,15 +56,8 @@ import type { Middleware } from '@helpers/middleware'
 const ALBUM_SPACING = 1
 /** tweb album.ts:56 — минимальная ширина ячейки для `Layouter` */
 const ALBUM_MIN_WIDTH = 100
-
-/**
- * Фото или видео (tweb `media._ === 'photo'`). У нас тип медиа живёт в
- * `message.type` + `mediaMime` — та же развилка, что у бабла: `video/*` (и тип
- * `video`) идёт в `wrapVideo`, всё остальное в альбоме — картинка.
- */
-function isPhotoItem(message: Message): boolean {
-  return !(message.type === 'video' || !!message.mediaMime?.startsWith('video/'))
-}
+/** tweb album.ts:43 — бокс, по которому выбирается ступень ячейки-фотографии */
+const ALBUM_ITEM_BOX = 480
 
 export default function wrapAlbum({
   messages, attachmentDiv, middleware, lazyLoadQueue, isVisible, loadPromises,
@@ -98,14 +93,28 @@ export default function wrapAlbum({
   videoTimes?: (HTMLElement | undefined)[]
 }): void {
   // ! lowest msgID will be the FIRST in album (комментарий tweb album.ts:37)
-  const items = messages.map((message) => ({
-    message,
-    size: { w: message.mediaWidth ?? 0, h: message.mediaHeight ?? 0 },
-  }))
+  const items = messages.map((message) => {
+    // tweb album.ts:40 `getMediaFromMessage(message, true)`. Платное медиа до
+    // оплаты приезжает без файла — у вложения осталась одна stripped-ступень;
+    // оригинал подставляет вместо него ПСЕВДО-ФОТО из превью и отдаёт альбому
+    // параметром `media` (bubbles.ts:8926-8931), а мы эту ветку не портировали
+    // (см. шапку) — поэтому подстановка стоит здесь. У псевдо-фото ступень
+    // одна и она же stripped, поэтому `wrapPhoto` покажет её КАК медиа и
+    // ничего не скачает (ранний выход photo.ts:207).
+    const attachment = getMediaFromMessage(message)
+    const media = message.paidMedia?.locked ? generatePhotoForExtendedMediaPreview(attachment) : attachment
+
+    // tweb album.ts:42-44 — пропорции ячейки: у фотографии их даёт ступень,
+    // выбранная под 480×480, у документа — его собственная геометрия.
+    const size = media?._ === 'photo' ? choosePhotoSize(media, ALBUM_ITEM_BOX, ALBUM_ITEM_BOX) : undefined
+    return { message, media, size }
+  })
 
   prepareAlbum({
     container: attachmentDiv,
-    items: items.map((i) => ({ w: i.size.w, h: i.size.h })),
+    items: items.map(({ media, size }) => media?._ === 'document' ?
+      { w: media.w ?? 0, h: media.h ?? 0 } :
+      { w: size?.w ?? 0, h: size?.h ?? 0 }),
     maxWidth: mediaSizes.active.album.width,
     minWidth: ALBUM_MIN_WIDTH,
     spacing: ALBUM_SPACING,
@@ -118,42 +127,24 @@ export default function wrapAlbum({
   const containerWidth = parseInt(width)
   const containerHeight = parseInt(height)
 
-  items.forEach(({ message }, idx) => {
-    // tweb album.ts:71 (без ветки `sensitive`, см. шапку)
-    const hasSpoiler = spoilered || !!message.mediaSpoiler
+  items.forEach(({ message, media, size }, idx) => {
+    // tweb album.ts:70-71 (без ветки `sensitive`, см. шапку)
+    const hasSpoiler = spoilered || message.media?.pFlags?.spoiler === true
 
     const div = attachmentDiv.children[idx] as HTMLElement
     div.dataset.mid = '' + message.id
     div.dataset.peerId = '' + message.chatId
     const mediaDiv = div.firstElementChild as HTMLElement
 
-    // Медиа ячейки — аналог `getMediaFromMessage` у оригинала: платное медиа до
-    // оплаты приезжает БЕЗ `media_id`, и tweb подставляет вместо него
-    // ПСЕВДО-ФОТО из превью (`generatePhotoForExtendedMediaPreview`,
-    // bubbles.ts:8929-8931). У такого фото единственный размер — stripped-байты,
-    // поэтому ячейка перестаёт быть пустой, а `wrapPhoto` показывает превью КАК
-    // медиа (`strippedSize`), ничего не скачивая.
-    const isPreview = message.mediaId == null
-    const media = isPreview ?
-      generatePhotoForExtendedMediaPreview(message) :
-      {
-        mediaId: message.mediaId as number,
-        width: message.mediaWidth,
-        height: message.mediaHeight,
-        strippedThumb: message.mediaBlur,
-      }
-
-    // tweb album.ts:82-116 — ветка по типу медиа; у обеих ветвей один и тот же
-    // нулевой бокс (размер ячейки уже задан гридом) и один и тот же промис,
-    // который уходит в `loadPromises`.
-    const thumbPromise = isPreview || isPhotoItem(message) ?
+    // tweb album.ts:81-116 — ветка по САМОМУ вложению; у обеих ветвей один и
+    // тот же нулевой бокс (размер ячейки уже задан гридом) и один и тот же
+    // промис, который уходит в `loadPromises`.
+    const thumbPromise = !media ? undefined : media._ === 'photo' ?
       wrapPhoto({
-        mediaId: media.mediaId,
-        width: media.width,
-        height: media.height,
-        strippedThumb: media.strippedThumb,
-        thumb: !!message.mediaHasThumb,
-        strippedSize: isPreview,
+        photo: media,
+        // ступень ячейки уже выбрана выше — по ней же считался грид
+        // (tweb album.ts:93 `size`)
+        size,
         container: mediaDiv,
         boxWidth: 0,
         boxHeight: 0,
@@ -168,7 +159,7 @@ export default function wrapAlbum({
       // аргументами. `noAutoplayAttribute: true` (и нулевой бокс, из которого
       // враппер выводит `isGroupedItem`) — почему видео в альбоме не
       // автоплеится: иначе крутились бы до десяти файлов разом.
-      wrapVideoItem(message, mediaDiv, idx)
+      wrapVideoItem(media, message, mediaDiv, idx)
 
     if (thumbPromise) {
       loadPromises?.push(thumbPromise)
@@ -179,7 +170,9 @@ export default function wrapAlbum({
     // медиа под ним ничего не мешает грузиться (кольцо прогресса остаётся под
     // крышкой — `.media-spoiler-container` перекрывает его z-index'ом, а не
     // отменой загрузки).
-    if (hasSpoiler && middleware) { // у нас `middleware` опционален, tweb зовёт его безусловно
+    // `media` в условии — у нас вложения может не быть вовсе (сообщение без
+    // медиа в группе), у tweb оно гарантировано формой `Message.message`
+    if (hasSpoiler && middleware && media) { // `middleware` у нас опционален, tweb зовёт его безусловно
       const promise = (thumbPromise || Promise.resolve()).then(async() => {
         if (!middleware()) {
           return
@@ -189,7 +182,9 @@ export default function wrapAlbum({
         const itemWidth = +width.slice(0, -1) / 100 * containerWidth
         const itemHeight = +height.slice(0, -1) / 100 * containerHeight
         const container = await wrapMediaSpoiler({
-          strippedThumb: media.strippedThumb || '',
+          // tweb album.ts:132 `media` — ступень stripped-превью крышка достаёт
+          // из вложения сама
+          media,
           // tweb сюда группу не передаёт вовсе (`bubbles.ts` зовёт `wrapAlbum`
           // без `animationGroup`) — у нас тип строгий, и «без группы» пишется
           // пустой строкой `animationIntersector`.
@@ -217,10 +212,7 @@ export default function wrapAlbum({
     }
   })
 
-  function wrapVideoItem(message: Message, mediaDiv: HTMLElement, idx: number) {
-    const doc = videoDocFromMessage(message)
-    if (!doc) return undefined
-
+  function wrapVideoItem(doc: MyDocument, message: Message, mediaDiv: HTMLElement, idx: number) {
     return wrapVideo({
       doc,
       container: mediaDiv,

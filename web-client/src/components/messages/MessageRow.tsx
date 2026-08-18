@@ -26,7 +26,7 @@ import { useSettings } from '../../settings'
 import { useSetTransition } from '../../core/hooks/useSetTransition'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
-import { isLottieMime } from '../../core/stickers/tgs'
+import { getDocumentFromMessage } from '../../core/media/messageMedia'
 import s from './MessageRow.module.scss'
 
 // Stable handler bundle the feed/rows close over (identities are `useEvent`
@@ -138,11 +138,11 @@ function MessageRow({
   // Сообщение из одних эмодзи (tweb bigEmojis) — та же чистая функция, что и в
   // MessageContent; здесь нужна для модификаторов бабла.
   const bigEmojiCount = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
-  // sticker-animated: лотти-стикер отдаётся с mime application/json либо gzip'нутым
-  // application/x-tgsticker (StickerMedia различает его по Content-Type); у
-  // big-emoji анимация решается асинхронно — класс ставим только по достоверно
-  // известному признаку.
-  const animatedSticker = m.type === 'sticker' && isLottieMime(m.mediaMime ?? '')
+  // sticker-animated — 1:1 tweb bubbles.ts:6102-6104: `isAnimated = doc.animated`,
+  // и его вывел `saveDocument` из mime (.tgs / webm) ровно там же, где оригинал
+  // (appDocsManager). У big-emoji анимация решается асинхронно — класс ставим
+  // только по достоверно известному признаку.
+  const animatedSticker = m.type === 'sticker' && getDocumentFromMessage(m)?.animated === true
 
   // Реакции — единый Block-ряд под контентом бабла у ВСЕХ типов (tweb: reactions
   // всегда крепятся внутрь структуры бабла, не выносятся наружу). Само размещение

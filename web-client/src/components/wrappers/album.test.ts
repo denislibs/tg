@@ -2,8 +2,8 @@
 //
 // Пиним то, что делает альбом альбомом, а не колонкой картинок:
 //   • ОДИН общий контейнер с пиксельным боксом, ячейки внутри — в процентах;
-//   • раскладка считается ПО РАЗМЕРАМ КАЖДОГО элемента (у нас элемент — своё
-//     сообщение со своими mediaWidth/mediaHeight);
+//   • раскладка считается ПО РАЗМЕРАМ КАЖДОГО элемента: у фотографии — ступень
+//     лестницы под 480×480, у документа его собственные `w`/`h` (tweb album.ts:42-44);
 //   • на каждой ячейке свои data-mid/data-peer-id — по ним лента находит
 //     сообщение под кликом/меню/выделением;
 //   • дерево и классы совпадают с живым DOM tweb
@@ -11,12 +11,21 @@
 //   • скрытое медиа накрывается ПОЭЛЕМЕНТНО (tweb album.ts:122-148), а размер
 //     крышки считается из процента ячейки и пиксельного бокса контейнера;
 //   • неоплаченное платное медиа — не пустая ячейка, а псевдо-фото из превью
-//     (`generatePhotoForExtendedMediaPreview` + `wrapPhoto({strippedSize})`).
+//     (`generatePhotoForExtendedMediaPreview`: единственная ступень — stripped,
+//     и `wrapPhoto` уходит на ней в ранний выход photo.ts:207).
 //
 // Мокаем только границу владельца URL (managers.media.downloadMediaURL) и
 // драйверы, которых нет в happy-dom (blur/WebGL точек) — prepareAlbum,
 // wrapPhoto, wrapMediaSpoiler, ensureMediaUrl и зеркало работают настоящие.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  saveDocument,
+  THUMB_TYPE_FULL,
+  THUMB_TYPE_SERVER,
+  THUMB_TYPE_STRIPPED,
+  type MessageMedia,
+  type PhotoSize,
+} from '@core/media/messageMedia'
 import type { Message } from '@core/models'
 import { getMiddleware } from '@helpers/middleware'
 
@@ -82,9 +91,54 @@ const flush = async () => {
   for (let i = 0; i < 3; ++i) await new Promise<void>((r) => { setTimeout(r, 0) })
 }
 
+const STRIPPED = 'AAECAwQ='
+
+/** Ступени вложения: stripped-плейсхолдер, серверное превью, оригинал. */
+const sizes = ({ w, h, stripped, serverThumb }: {
+  w: number, h: number, stripped: boolean, serverThumb: boolean,
+}): PhotoSize[] => [
+  ...(stripped ? [{ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED } as PhotoSize] : []),
+  ...(serverThumb ? [{ _: 'photoSize', type: THUMB_TYPE_SERVER, w: 800, h: 450, size: 40_000 } as PhotoSize] : []),
+  { _: 'photoSize', type: THUMB_TYPE_FULL, w, h, size: 400_000 },
+]
+
+const photoMedia = (
+  id: number,
+  { w = 1600, h = 900, stripped = true, serverThumb = false, spoiler }: {
+    w?: number, h?: number, stripped?: boolean, serverThumb?: boolean, spoiler?: true,
+  } = {},
+): MessageMedia => ({
+  _: 'messageMediaPhoto',
+  ...(spoiler ? { pFlags: { spoiler } } : {}),
+  photo: { _: 'photo', id, sizes: sizes({ w, h, stripped, serverThumb }) },
+})
+
+/** Видео альбома: `type`/`w`/`h`/`duration` выводит `saveDocument` из атрибутов. */
+const videoMedia = (
+  id: number,
+  { w = 900, h = 1600, duration = 46, serverThumb = false }: {
+    w?: number, h?: number, duration?: number, serverThumb?: boolean,
+  } = {},
+): MessageMedia => ({
+  _: 'messageMediaDocument',
+  document: saveDocument({
+    _: 'document',
+    id,
+    mime_type: 'video/mp4',
+    size: 3 * 1024 * 1024,
+    attributes: [{ _: 'documentAttributeVideo', duration, w, h }],
+    thumbs: [
+      { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED },
+      ...(serverThumb ? [{ _: 'photoSize', type: THUMB_TYPE_SERVER, w: 800, h: 450, size: 40_000 } as PhotoSize] : []),
+    ],
+  }),
+})
+
 let seq = 0
-function msg(patch: Partial<Message> = {}): Message {
+/** Сообщение альбома; вложение строит фабрика по тому же id, что и `mediaId`. */
+function msg(patch: Partial<Message> = {}, makeMedia: (id: number) => MessageMedia = photoMedia): Message {
   ++seq
+  const mediaId = 1000 + seq
   return {
     id: 100 + seq,
     chatId: -42,
@@ -93,13 +147,11 @@ function msg(patch: Partial<Message> = {}): Message {
     type: 'photo',
     text: '',
     replyToId: null,
-    mediaId: 1000 + seq,
+    mediaId,
     createdAt: '2026-08-16T00:00:00Z',
     threadRootId: null,
     groupedId: 'g1',
-    mediaWidth: 1600,
-    mediaHeight: 900,
-    mediaBlur: 'AAECAwQ=',
+    media: makeMedia(mediaId),
     ...patch,
   }
 }
@@ -118,6 +170,13 @@ beforeEach(async () => {
 afterEach(() => {
   document.body.replaceChildren()
 })
+
+/**
+ * Неоплаченное платное медиа: бэк снял файл (`media_id`), оставив плейсхолдер —
+ * размеры и stripped-ступень (`stripLockedMedia`, backend paidmedia.go:63).
+ */
+const paid = ({ stripped = true }: { stripped?: boolean } = {}) =>
+  msg({ mediaId: null, paidMedia: { price: 5, locked: true } }, (id) => photoMedia(id, { stripped }))
 
 const attachment = () => {
   const div = document.createElement('div')
@@ -161,7 +220,10 @@ describe('wrapAlbum', () => {
 
     const tall = attachment()
     wrapAlbum({
-      messages: [msg({ mediaWidth: 900, mediaHeight: 1600 }), msg({ mediaWidth: 900, mediaHeight: 1600 })],
+      messages: [
+        msg({}, (id) => photoMedia(id, { w: 900, h: 1600 })),
+        msg({}, (id) => photoMedia(id, { w: 900, h: 1600 })),
+      ],
       attachmentDiv: tall,
     })
 
@@ -184,8 +246,10 @@ describe('wrapAlbum', () => {
     expect(srcs).toEqual(messages.map((m) => `blob:${m.mediaId}`))
   })
 
-  it('mediaHasThumb — качается уменьшенная версия', async () => {
-    wrapAlbum({ messages: [msg({ mediaHasThumb: true })], attachmentDiv: attachment() })
+  // Адрес файла ячейки решает ступень, выбранная под 480×480 (tweb album.ts:43):
+  // серверное превью бокс покрывает — качается оно, а не оригинал.
+  it('серверная ступень покрыла бокс ячейки — качается превью', async () => {
+    wrapAlbum({ messages: [msg({}, (id) => photoMedia(id, { serverThumb: true }))], attachmentDiv: attachment() })
     await flush()
 
     expect(downloadMediaURL).toHaveBeenCalledWith(1001, { thumb: true })
@@ -216,7 +280,7 @@ describe('wrapAlbum', () => {
     const attachmentDiv = attachment()
     const messages = [
       msg(),
-      msg({ type: 'video', mediaMime: 'video/mp4', mediaWidth: 900, mediaHeight: 1600, mediaDuration: 46 }),
+      msg({ type: 'video' }, (id) => videoMedia(id)),
     ]
 
     wrapAlbum({ messages, attachmentDiv })
@@ -231,8 +295,8 @@ describe('wrapAlbum', () => {
     expect(mediaDiv.querySelector('button.btn-circle.video-play.position-center')).toBeTruthy()
     expect(mediaDiv.querySelector('.video-time-icon')).toBeNull()
     expect(mediaDiv.querySelector('video')).toBeNull()
-    // превью ячейки — stripped из самого сообщения (постера у медиа нет):
-    // его рисует `wrapPhoto` веткой `strippedSize`, поэтому класс `media-photo`
+    // превью ячейки — ступень stripped вложения (серверной ступени у него нет):
+    // её рисует `wrapPhoto` ранним выходом photo.ts:207, отсюда класс `media-photo`
     expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')).toBeTruthy()
     // геометрия посчитана по ВСЕМ элементам, включая видео
     expect(parseFloat(videoItem.style.width)).toBeGreaterThan(0)
@@ -240,7 +304,7 @@ describe('wrapAlbum', () => {
 
   it('видео-элемент с серверным постером качает уменьшенную версию, а не полный файл', async () => {
     const attachmentDiv = attachment()
-    const messages = [msg({ type: 'video', mediaMime: 'video/mp4', mediaHasThumb: true })]
+    const messages = [msg({ type: 'video' }, (id) => videoMedia(id, { serverThumb: true }))]
 
     wrapAlbum({ messages, attachmentDiv })
     await flush()
@@ -253,7 +317,7 @@ describe('wrapAlbum', () => {
   // вызывающий, и бейдж обязан появиться независимо от загрузки.
   it('videoTimes: готовый таймкод вызывающего кладётся в ячейку, включая неоплаченную', async () => {
     const attachmentDiv = attachment()
-    const messages = [msg(), msg({ mediaId: null, paidMedia: { price: 5, locked: true } })]
+    const messages = [msg(), paid()]
     const badge = document.createElement('span')
     badge.classList.add('video-time')
     badge.textContent = '0:12'
@@ -290,7 +354,7 @@ describe('wrapAlbum: скрытое медиа', () => {
 
   it('признак сообщения накрывает ТОЛЬКО свою ячейку, поверх уже построенного медиа', async () => {
     const attachmentDiv = attachment()
-    const messages = [msg(), msg({ mediaSpoiler: true })]
+    const messages = [msg(), msg({}, (id) => photoMedia(id, { spoiler: true }))]
 
     wrapAlbum({ messages, attachmentDiv, middleware: mw() })
     await flush()
@@ -312,7 +376,7 @@ describe('wrapAlbum: скрытое медиа', () => {
   it('размер крышки — процент ячейки от пиксельного бокса контейнера', async () => {
     const attachmentDiv = attachment()
 
-    wrapAlbum({ messages: [msg({ mediaSpoiler: true })], attachmentDiv, middleware: mw() })
+    wrapAlbum({ messages: [msg({}, (id) => photoMedia(id, { spoiler: true }))], attachmentDiv, middleware: mw() })
     await flush()
 
     const cell = attachmentDiv.children[0] as HTMLElement
@@ -340,7 +404,7 @@ describe('wrapAlbum: скрытое медиа', () => {
     const attachmentDiv = attachment()
     const helper = getMiddleware()
 
-    wrapAlbum({ messages: [msg({ mediaSpoiler: true })], attachmentDiv, middleware: helper.get() })
+    wrapAlbum({ messages: [msg({}, (id) => photoMedia(id, { spoiler: true }))], attachmentDiv, middleware: helper.get() })
     helper.destroy()
     await flush()
 
@@ -351,9 +415,6 @@ describe('wrapAlbum: скрытое медиа', () => {
 // tweb bubbles.ts:8929-8931 — у неоплаченного платного медиа `media_id` нет, и
 // ячейку рисует ПСЕВДО-ФОТО из превью, а не пустой прямоугольник.
 describe('wrapAlbum: неоплаченное платное медиа', () => {
-  const paid = (patch: Partial<Message> = {}) =>
-    msg({ mediaId: null, paidMedia: { price: 5, locked: true }, ...patch })
-
   it('ячейка показывает превью сообщения как медиа и в сеть не ходит', async () => {
     const attachmentDiv = attachment()
 
@@ -369,11 +430,13 @@ describe('wrapAlbum: неоплаченное платное медиа', () => 
     expect(downloadMediaURL).not.toHaveBeenCalled()
   })
 
-  it('видео без оплаты — тоже псевдо-фото (wrapVideo без media_id рисовать нечем)', async () => {
+  it('видео без оплаты — тоже псевдо-фото (ячейку рисует не wrapVideo)', async () => {
     const attachmentDiv = attachment()
 
     wrapAlbum({
-      messages: [paid({ type: 'video', mediaMime: 'video/mp4', mediaDuration: 12 })],
+      // вложение приехало документом, но подстановка делает из него ФОТО —
+      // как `generatePhotoForExtendedMediaPreview` у оригинала
+      messages: [msg({ mediaId: null, paidMedia: { price: 5, locked: true } }, (id) => videoMedia(id))],
       attachmentDiv,
     })
     await flush()
@@ -386,7 +449,7 @@ describe('wrapAlbum: неоплаченное платное медиа', () => 
   it('превью не пришло вовсе — ячейка всё равно не пустая (заплатка оригинала)', async () => {
     const attachmentDiv = attachment()
 
-    wrapAlbum({ messages: [paid({ mediaBlur: undefined })], attachmentDiv })
+    wrapAlbum({ messages: [paid({ stripped: false })], attachmentDiv })
     await flush()
 
     const canvas = attachmentDiv.children[0].firstElementChild!

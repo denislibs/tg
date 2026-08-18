@@ -35,8 +35,9 @@
  *   • `voiceAsMusic`, `showSender`, `withTime`-подпись отправителя
  *     (`wrapSenderToPeer`/`wrapSentTime`) — это режимы поиска/shared-media
  *     (tweb `searchContext`), а не ленты; враппера `senderToPeer` у нас нет;
- *   • обложка трека (`doc.thumbs` → `wrapPhoto`, `audio-with-thumb`) — `wrapPhoto`
- *     портирует параллельная задача, а в нашей модели у аудиофайла нет обложки;
+ *   • обложка трека (`doc.thumbs` → `wrapPhoto`, `audio-with-thumb`) — ступени
+ *     аудиофайла наш бэкенд не производит (`domain/mtmedia.go::thumbs` строит их
+ *     из stripped-превью, которого у аудио нет), так что ветка была бы мёртвой;
  *   • `appMediaPlaybackController.setSearchContext/setTargets/isSafariBuffering`
  *     и `willBePlayed`-механика Safari — у нашего контроллера другой контракт
  *     (очередь передаётся значением, см. `findMediaTargets` ниже);
@@ -44,6 +45,7 @@
  *     `stores/uploadsStore` и приезжает в бабл отдельно; это отдельный этап.
  */
 import { mediaPlayback } from '@core/audio/mediaPlaybackController'
+import type { DocumentAttributeAudio, MyDocument } from '@core/media/messageMedia'
 import type { AudioTrack } from '@stores/audioStore'
 import { decodeTransmittedPeaks, buildWaveformBars, WAVEFORM_BAR_WIDTH, WAVEFORM_BAR_MARGIN, WAVEFORM_HEIGHT } from '@core/audio/waveform'
 import { markMediaPlayed } from '@core/mediaRead'
@@ -78,29 +80,9 @@ rootScope.addEventListener(RT.mediaRead, (evt) => {
   })
 })
 
-/** Документ в терминах враппера — плоский аналог tweb `MyDocument`. */
-export interface AudioElementDoc {
-  /** файл на медиа-эндпоинте (у tweb — `doc.id`) */
-  id: number
-  /** tweb `doc.type` */
-  type: 'voice' | 'round' | 'audio'
-  /** длительность в секундах (tweb `doc.duration`) */
-  duration?: number
-  /** размер файла (tweb `doc.size`) */
-  size?: number
-  /** имя файла (tweb `doc.file_name`) */
-  fileName?: string
-  /** ID3-теги (tweb `documentAttributeAudio.title`/`.performer`) */
-  title?: string
-  performer?: string
-  /**
-   * Пики волны голосового, base64 — наш `documentAttributeAudio.waveform`.
-   * Приезжают ПРЯМО в сообщении (`media_waveform` витрины истории и live-кадра),
-   * поэтому волна строится синхронно при первой отрисовке узла, как в tweb.
-   * Пусто — пиков нет (не голосовое либо запись старше поля): tweb в этом случае
-   * волну не рисует вовсе и файл ради неё не качает, здесь так же.
-   */
-  waveform?: string
+/** tweb audio.ts:159/352 — ID3-теги и пики живут в атрибуте, а не в самом файле. */
+function getAudioAttribute(doc: MyDocument): DocumentAttributeAudio | undefined {
+  return doc.attributes?.find((attribute) => attribute._ === 'documentAttributeAudio')
 }
 
 /** То, что врапперу нужно от сообщения (tweb передаёт весь `Message.message`). */
@@ -167,11 +149,12 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     audioEl.classList.add('is-out')
   }
 
-  // Пики едут в самом сообщении (`media_waveform`) — волна строится здесь и
-  // сейчас, ровно как в tweb (`documentAttributeAudio.waveform` → сразу
-  // `createWaveformBars`). Ни запроса меты, ни перерисовки на месте.
+  // tweb audio.ts:159-162 — пики берутся из атрибута документа и идут прямо в
+  // `createWaveformBars`. Ни запроса меты, ни перерисовки на месте: волна готова
+  // к первому кадру. Пиков нет — волны нет и файл ради неё не качается.
+  const waveform = getAudioAttribute(doc)?.waveform
   const { svg, container: svgContainer, availW } = createWaveformBars(
-    doc.waveform ? decodeTransmittedPeaks(doc.waveform) : [],
+    waveform ? decodeTransmittedPeaks(waveform) : [],
     doc.duration || 0,
   )
 
@@ -260,11 +243,13 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
   const descriptionEl = document.createElement('div')
   descriptionEl.classList.add('audio-description')
 
+  const audioAttribute = getAudioAttribute(doc)
+
   // tweb audio.ts:354-371: части описания — [performer]; размер файла идёт
   // ТОЛЬКО когда частей нет. Строка всегда начинается с ' • '.
   const parts: string[] = []
-  if(doc.performer) parts.push(doc.performer)
-  if(!parts.length && doc.size) parts.push(formatBytes(doc.size, t))
+  if(audioAttribute?.performer) parts.push(audioAttribute.performer)
+  if(!parts.length) parts.push(formatBytes(doc.size, t))
   if(parts.length) descriptionEl.append(' • ' + parts.join(' • '))
 
   const details = document.createElement('div')
@@ -284,7 +269,7 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
   middleEllipsisEl.dataset.fontSize = audioEl.dataset.fontSize
   if(audioEl.dataset.sizeType) middleEllipsisEl.dataset.sizeType = audioEl.dataset.sizeType
   // tweb audio.ts:390 — `audioAttribute?.title ?? doc.file_name`
-  middleEllipsisEl.textContent = doc.title ?? doc.fileName ?? ''
+  middleEllipsisEl.textContent = audioAttribute?.title ?? doc.file_name ?? ''
   titleEl.append(middleEllipsisEl)
 
   subtitleDiv.append(descriptionEl)
@@ -373,7 +358,7 @@ export function findMediaTargets(anchor: AudioElement): { queue: AudioTrack[], i
 }
 
 export default class AudioElement extends HTMLElement {
-  public doc!: AudioElementDoc
+  public doc!: MyDocument
   public message: AudioElementMessage = {}
   public middleware!: Middleware
   /** трек для плеера — этот же узел отдаёт его в плейлист (`findMediaTargets`) */
