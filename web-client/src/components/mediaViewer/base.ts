@@ -64,7 +64,7 @@ import { isFullScreen } from '@helpers/dom/fullScreen'
 import getVisibleRect from '@helpers/dom/getVisibleRect'
 import liteMode from '@helpers/liteMode'
 import { MediaSize } from '@helpers/mediaSize'
-import mediaSizes from '@helpers/mediaSizes'
+import mediaSizes, { setAttachmentSize } from '@helpers/mediaSizes'
 import clamp from '@helpers/number/clamp'
 import isBetween from '@helpers/number/isBetween'
 import { doubleRaf, fastRaf } from '@helpers/schedulers'
@@ -2332,14 +2332,22 @@ export default class AppMediaViewerBase<
 
     const mover = this.content.mover as MoverElement
 
-    // setAttachmentSize-эквивалент (tweb :2463-2477): вписать натуральные
-    // размеры медиа в mediaBoxSize (окно минус резервы, tweb :2267-2274) и
-    // прибить px на layout-ghost — от него считается containerRect всего полёта.
-    // noZoom на десктопе — как tweb (`noZoom: mediaSizes.isMobile ? false : true`).
+    // tweb :2463-2477 — бокс считает ОБЩАЯ `setAttachmentSize`, та же, что у
+    // баблов; она же и ставит px на layout-ghost (от него считается
+    // containerRect всего полёта). Своего расчёта у вьювера нет — иначе он
+    // терял бы минимальную сторону 200 (`MIN_SIDE_SIZE`), которую оригинал
+    // получает даром. `message` вьювер не передаёт, поэтому минимальная ШИРИНА
+    // (120/368) здесь не применяется — это ветка медиа В СООБЩЕНИИ.
+    // noZoom — как tweb (`noZoom: mediaSizes.isMobile ? false : true`).
     const mediaBoxSize = this.mediaBoxSize
-    const fit = calcImageInBox(media.width, media.height, mediaBoxSize.width, mediaBoxSize.height, !mediaSizes.isMobile)
-    container.style.width = `${fit.width}px`
-    container.style.height = `${fit.height}px`
+    setAttachmentSize({
+      width: media.width,
+      height: media.height,
+      element: container,
+      boxWidth: mediaBoxSize.width,
+      boxHeight: mediaBoxSize.height,
+      noZoom: mediaSizes.isMobile ? false : true,
+    })
 
     // Порт tweb :2479-2493: узкое видео с UI плеера добивается до
     // VIDEO_MIN_WIDTH (контролы не влезают), с сохранением пропорции и

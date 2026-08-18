@@ -7,4 +7,7 @@
 // факта. Полный порт tweb `helpers/mediaSizes.ts` (активный набор размеров +
 // `changeScreen`/`resize`) лежит в `core/dom/mediaSizes.ts`, вместе с
 // `setAttachmentSize`; здесь только ре-экспорт того же инстанса.
-export { MediaSizes, ScreenSize, default } from '@core/dom/mediaSizes'
+// `setAttachmentSize` в tweb — отдельный модуль `@helpers/setAttachmentSize`,
+// у нас он лежит в том же `core/dom/mediaSizes.ts`; вендорным островкам он
+// нужен так же (вьювер считает бокс им, tweb mediaViewer/base.ts:2465).
+export { MediaSizes, ScreenSize, setAttachmentSize, default } from '@core/dom/mediaSizes'

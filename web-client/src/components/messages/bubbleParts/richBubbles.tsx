@@ -40,6 +40,9 @@ function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
     height: wp.photoH || 0,
     boxWidth: mediaSizes.active.webpage.width,
     boxHeight: mediaSizes.active.webpage.height,
+    // tweb зовёт wrapPhoto карточки С сообщением (bubbles.ts:8221-8232), а
+    // `message` — гейт минимальной ширины внутри setAttachmentSize
+    hasMessage: true,
   })
   // tweb ставит квадратной картинке ровно 48px (bubbles.ts:8192).
   const box = square ? { width: SQUARE_PHOTO, height: SQUARE_PHOTO } : size

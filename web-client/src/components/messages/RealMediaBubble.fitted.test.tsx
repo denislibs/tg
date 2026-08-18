@@ -59,4 +59,18 @@ describe('RealMediaBubble: расширенный бокс', () => {
     expect(media.querySelector('.media-container-aspecter')).toBeNull()
     expect(media.querySelector('img.media-photo')).toBeTruthy()
   })
+
+  // Минимум 368 (MIN_VIDEO_SIDE_SIZE) в оригинале включает `canHaveVideoPlayer`,
+  // а это `willObserveSound` из wrapVideo — он стоит под `USE_VIDEO_OBSERVER`,
+  // и константа выключена. Поэтому узкое видео у tweb такое же узкое, как узкое
+  // фото. Парный кейс с ВКЛЮЧЁННОЙ константой — RealMediaBubble.videoObserver.test.tsx.
+  it('узкое видео — вписанный бокс 133×400 (минимум 368 не срабатывает, как в tweb)', () => {
+    const { container } = render(withManagers(
+      <RealMediaBubble type="video" mediaId={303} width={200} height={600} mime="video/mp4" duration={46} />,
+    ))
+
+    const media = container.querySelector('.media-container') as HTMLElement
+    expect(media.style.width).toBe('133px')
+    expect(media.style.height).toBe('400px')
+  })
 })

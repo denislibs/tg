@@ -2,6 +2,11 @@
 // size (imageW × imageH) into a box (boxW × boxH) preserving aspect ratio, without
 // upscaling when noZoom. Used to RESERVE a media bubble's exact dimensions before
 // the bytes load, so the row height never changes (no scroll jitter).
+//
+// Zero/negative natural size has NO special branch here — same as the original.
+// Callers guard it where the original does: setAttachmentSize substitutes 100×100
+// (`width || 100`), the viewer falls back to the thumbnail rect before opening
+// (openMediaViewer.ts), and refitMediaToViewport bails on `!w || !h`.
 export function calcImageInBox(
   imageW: number,
   imageH: number,
@@ -9,8 +14,6 @@ export function calcImageInBox(
   boxH: number,
   noZoom = true,
 ): { width: number; height: number } {
-  if (imageW <= 0 || imageH <= 0) return { width: boxW, height: Math.round((boxW * 3) / 4) }
-
   if (imageW < boxW && imageH < boxH && noZoom) {
     return { width: imageW, height: imageH }
   }

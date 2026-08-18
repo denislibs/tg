@@ -21,6 +21,9 @@ import { mediaContentUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion }
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useBlurThumb } from './useBlurThumb'
 import { isGifLike } from '../../core/gifs'
+// Рубильник наблюдателя звука — там же, где в tweb (wrappers/video.ts:51);
+// его же оттуда импортирует и лента оригинала (bubbles.ts:110).
+import { USE_VIDEO_OBSERVER } from '../wrappers/video'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
 import AudioPlayIcon from './AudioPlayIcon'
@@ -161,7 +164,16 @@ export default function RealMediaBubble({
   if (isImage || isVideo) {
     // Бокс — порт tweb setAttachmentSize (mediaSizes.regular 420×400 / 340×340
     // на узком экране + минимумы 200/320/120/368). Раньше был свой 320×420.
-    const canHavePlayer = isVideo && !isGifLike({ mime, fileName, duration })
+    //
+    // `canHaveVideoPlayer` оригинала — это НЕ «медиа является видео», а
+    // `willObserveSound` из wrapVideo (video.ts:139-157 → :428): флаг
+    // поднимается только в ветке «автоплей есть» и только под гейтом
+    // `observer && USE_VIDEO_OBSERVER`. Константа стоит `false` (см. её
+    // докблок), поэтому минимум 368 в оригинале не срабатывает ни разу — и у
+    // нас теперь тоже. Включат рубильник — поедет и здесь, той же дорогой.
+    // Отдельная проверка `photo.type === 'video'` внутри setAttachmentSize уже
+    // покрыта: `canAutoplay` истинен только у видео.
+    const willObserveSound = USE_VIDEO_OBSERVER && canAutoplay && !gifLike
     // `boxSize` — размер САМОГО контейнера (расширенный минимумами), `size` —
     // вписанный, он уходит в `.media-container-aspecter` (tweb
     // setAttachmentSize.ts:64-103 + wrappers/photo.ts:136-137).
@@ -170,8 +182,9 @@ export default function RealMediaBubble({
       height: height || 0,
       boxWidth: mediaSizes.active.regular.width,
       boxHeight: mediaSizes.active.regular.height,
+      hasMessage: true, // медиа бабла всегда принадлежит сообщению (tweb `message`)
       hasMessageBlock,
-      isVideoWithPlayer: canHavePlayer,
+      isVideoWithPlayer: willObserveSound,
     })
     // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —
     // размытый плейсхолдер (канвас-превью) с оверлеем «Разблокировать за N ⭐».

@@ -47,6 +47,7 @@ type FakeMedia = HTMLMediaElement & { _playing?: boolean, _time?: number, _dur?:
 
 let wrapVideo: typeof import('./video').default
 let videoDocFromMessage: typeof import('./video').videoDocFromMessage
+let USE_VIDEO_OBSERVER: boolean
 let mediaUrl: typeof import('@core/mediaUrl')
 let mediaCache: typeof import('@core/mediaCache')
 let playback: typeof import('@core/audio/mediaPlaybackController')
@@ -74,6 +75,7 @@ async function setup(opts: { dnp?: boolean } = {}) {
   const mod = await import('./video')
   wrapVideo = mod.default
   videoDocFromMessage = mod.videoDocFromMessage
+  USE_VIDEO_OBSERVER = mod.USE_VIDEO_OBSERVER
   mediaUrl = await import('@core/mediaUrl')
   mediaCache = await import('@core/mediaCache')
   playback = await import('@core/audio/mediaPlaybackController')
@@ -513,5 +515,44 @@ describe('videoDocFromMessage', () => {
     expect(doc({ type: 'roundVideo' })!.type).toBe('round')
     // платное медиа до оплаты приезжает без media_id — качать нечего
     expect(videoDocFromMessage({ ...base, type: 'video', mediaId: null } as never)).toBeNull()
+  })
+})
+
+// Минимальная ширина видео (MIN_VIDEO_SIDE_SIZE = 368) в оригинале принадлежит
+// НЕ типу медиа, а UI плеера: в `canHaveVideoPlayer` едет `willObserveSound`
+// (tweb video.ts:428), а он поднимается только под гейтом
+// `observer && USE_VIDEO_OBSERVER` (video.ts:151-157), и константа стоит
+// `false`. Значит, в tweb этот минимум не срабатывает НИ РАЗУ — узкое видео
+// рисуется вписанным, а не расширенным. Порт «намерения»
+// (`canHaveVideoPlayer: doc.type === 'video'`) делал наш бокс шире
+// оригинального; кейс краснеет на возврате такого порта.
+describe('wrapVideo: бокс узкого видео — гейт USE_VIDEO_OBSERVER', () => {
+  it('узкое видео получает ВПИСАННЫЙ бокс (133×400), а не расширенный до 368', async () => {
+    const container = box()
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+
+    await wrapVideo({
+      doc: videoDoc({ width: 200, height: 600 }), container, message: { mid: 1, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    expect(USE_VIDEO_OBSERVER).toBe(false) // причина: гейт закрыт, ровно как в tweb
+    expect(container.style.width).toBe('133px')
+    expect(container.style.height).toBe('400px')
+  })
+
+  it('второй потребитель того же флага: без наблюдателя звука у видео нет PiP', async () => {
+    const container = box()
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+
+    const res = await wrapVideo({
+      doc: videoDoc(), container, message: { mid: 1, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    // createVideo({pip: willObserveSound}) — tweb video.ts:217
+    expect(res.video!.disablePictureInPicture).toBe(true)
   })
 })

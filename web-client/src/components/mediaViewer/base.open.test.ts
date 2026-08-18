@@ -105,8 +105,8 @@ async function settleOpen(p: Promise<void>) {
   await p
 }
 
-describe('_openMedia: сайзинг layout-ghost (tweb :2463-2477, setAttachmentSize-эквивалент)', () => {
-  it('ghost получает px из calcImageInBox(медиа → mediaBoxSize)', async () => {
+describe('_openMedia: сайзинг layout-ghost (tweb :2465 — общая setAttachmentSize)', () => {
+  it('ghost получает px из setAttachmentSize(медиа → mediaBoxSize)', async () => {
     downloadMediaURL.mockResolvedValue('blob:full-size-test')
     const v = makeViewer()
     // happy-dom: окно 1024×768 → mediaBox = 1024 × (768 − 80 − 110) = 578;
@@ -126,6 +126,30 @@ describe('_openMedia: сайзинг layout-ghost (tweb :2463-2477, setAttachmen
     // applyLayoutPadding (tweb :2207-2213)
     expect(v.contentMap.main.style.paddingTop).toBe('80px')
     expect(v.contentMap.main.style.paddingBottom).toBe('110px')
+    await settleOpen(p)
+  })
+
+  // Вьювер tweb зовёт ту же `setAttachmentSize`, что и баблы, и потому даром
+  // получает её минимумы. Собственный расчёт (был `calcImageInBox` прямо здесь)
+  // терял `MIN_SIDE_SIZE` — крошечная картинка открывалась крошечной.
+  it('крошечное медиа растягивается покрытием до MIN_SIDE_SIZE (200)', async () => {
+    downloadMediaURL.mockResolvedValue('blob:tiny')
+    const v = makeViewer()
+    const p = v.callOpenMedia({ media: photo({ width: 100, height: 80 }), fromRight: 0 })
+    expect(v.contentMap.media.style.width).toBe('200px')
+    expect(v.contentMap.media.style.height).toBe('160px')
+    await settleOpen(p)
+  })
+
+  // ...но НЕ минимальную ширину (tweb :90 `&& message`): вьювер сообщения не
+  // передаёт, и узкому кадру нельзя рвать пропорцию добивкой до 120/368.
+  it('узкое медиа сохраняет пропорцию — минимальная ширина вне сообщения не применяется', async () => {
+    downloadMediaURL.mockResolvedValue('blob:narrow')
+    const v = makeViewer()
+    const p = v.callOpenMedia({ media: photo({ width: 100, height: 900 }), fromRight: 0 })
+    // 100×900 в бокс 1024×578 → 64×578; ни 120, ни 368 не вмешиваются
+    expect(v.contentMap.media.style.width).toBe('64px')
+    expect(v.contentMap.media.style.height).toBe('578px')
     await settleOpen(p)
   })
 })

@@ -123,6 +123,8 @@ export interface WrapPhotoOptions {
   onRenderFinish?: () => void
   useBlur?: boolean | number
   useRenderCache?: boolean
+  /** медиа принадлежит сообщению (tweb `message`) — гейт минимальной ширины бокса */
+  hasMessage?: boolean
   /** у сообщения есть подпись/reply/webpage — tweb расширяет бокс до 320 */
   hasMessageBlock?: boolean
   /** видео с плеером: минимальная ширина 368 вместо 120 (tweb `canHaveVideoPlayer`) */
@@ -146,7 +148,7 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   const {
     mediaId, width, height, strippedThumb, thumb, strippedSize, container, isVisible, middleware,
     loadPromises, noBlur, noThumb, noFadeIn, blurAfter, processUrl, fadeInElement,
-    onRender, onRenderFinish, useBlur, useRenderCache, hasMessageBlock,
+    onRender, onRenderFinish, useBlur, useRenderCache, hasMessage, hasMessageBlock,
     canHaveVideoPlayer, uploadPromise,
   } = options
   const { withoutPreloader, lazyLoadQueue } = options
@@ -197,6 +199,7 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
       element: container,
       boxWidth,
       boxHeight,
+      hasMessage,
       hasMessageBlock,
       isVideoWithPlayer: canHaveVideoPlayer,
     })

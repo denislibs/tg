@@ -205,8 +205,9 @@ export const MIN_VIDEO_SIDE_SIZE = 368
  * Бокс вложения — порт `setAttachmentSize` (tweb setAttachmentSize.ts:14-107).
  * Шаги ровно как в оригинале: вписать в бокс → если обе стороны меньше 200,
  * растянуть покрытием до 200 → если у сообщения есть текст/reply/webpage/
- * фактчек, расширить до 320 ради читаемости → добить минимальную ширину (120, а
- * для видео с плеером — 368). Как и оригинал, сама ставит размер элементу.
+ * фактчек, расширить до 320 ради читаемости → добить минимальную ширину МЕДИА
+ * СООБЩЕНИЯ (120, а для видео с плеером — 368; вне сообщения — вьювер — этого
+ * шага нет, tweb:90 `&& message`). Как и оригинал, сама ставит размер элементу.
  *
  * Возвращает ДВА размера, и это не удобство, а разные роли (tweb:64-66,83-92):
  *   • `size` — ВПИСАННЫЙ (aspect + покрытие до 200). Минимумы 320/120/368 его
@@ -219,11 +220,18 @@ export const MIN_VIDEO_SIDE_SIZE = 368
  *   • вместо `photo`/`photoSize`/`size`/`pushDocumentSize` (и возвращаемого
  *     `photoSize`) вход — натуральные `width`/`height`. Выбирать размер из
  *     лестницы (`choosePhotoSize`) не из чего;
- *   • `message` → `hasMessageBlock`: проверка «у сообщения есть текст,
- *     фактчек, reply, webpage или видимые комментарии» (:75-82) решается у
- *     вызывающего, потому что таких полей у плоского входа нет;
+ *   • `message` → ДВА флага, потому что оригинал читает его двумя разными
+ *     вопросами: «есть ли у сообщения блок текста» (:75-82) → `hasMessageBlock`
+ *     и «есть ли сообщение вообще» (:90 `&& message`) → `hasMessage`. Оба
+ *     решает вызывающий — таких полей у плоского входа нет. Как и в оригинале,
+ *     `hasMessageBlock` подразумевает `hasMessage` (там условие начинается с
+ *     `message &&`), поэтому вызывающий, ставящий первый, ставит и второй;
  *   • `canHaveVideoPlayer` + `photo.type === 'video'` → `isVideoWithPlayer`:
  *     тип медиа знает вызывающий (`wrapVideo`), сюда едет уже готовый ответ;
+ *   • внешний гейт блока минимумов `(!isDocument || ['video','gif'].includes(
+ *     photo.type) || _isWebDocument)` (:67) у всех наших вызывающих истинен:
+ *     сюда приходят только фото, видео и гифки (постер видео — тот же документ
+ *     с `type: 'video'`), документов не-медиа в этой функции не бывает;
  *   • `element` не обязателен: React-потребители считают бокс В РЕНДЕРЕ, где
  *     узла ещё нет, и кладут `boxSize` в `style` сами. Императивные
  *     потребители (`wrapPhoto`) передают элемент и стиль ставит функция.
@@ -235,6 +243,7 @@ export function setAttachmentSize({
   boxWidth,
   boxHeight,
   noZoom = true,
+  hasMessage = false,
   hasMessageBlock = false,
   isVideoWithPlayer = false,
   noMinSize = false,
@@ -246,6 +255,8 @@ export function setAttachmentSize({
   boxWidth: number
   boxHeight: number
   noZoom?: boolean
+  /** медиа принадлежит сообщению (tweb `message`) — гейт минимальной ширины */
+  hasMessage?: boolean
   /** у сообщения есть подпись / reply / webpage / фактчек — tweb расширяет бокс */
   hasMessageBlock?: boolean
   isVideoWithPlayer?: boolean
@@ -271,7 +282,7 @@ export function setAttachmentSize({
     }
 
     const minWidth = isVideoWithPlayer ? MIN_VIDEO_SIDE_SIZE : MIN_IMAGE_WIDTH
-    if(boxSize.width < minWidth) { // if image is too narrow
+    if(boxSize.width < minWidth && hasMessage) { // if image is too narrow
       boxSize = makeMediaSize(minWidth, boxSize.height)
       isFit = false
     }

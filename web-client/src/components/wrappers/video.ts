@@ -64,14 +64,18 @@
  *    у медиа БЕЗ сообщения (`* gifs masonry`, video.ts:454-479).
  *
  * ── ЧТО ЕЩЁ НЕ ПЕРЕНЕСЕНО (каждое — заявка на отдельную задачу, не «нам не надо») ─
- *  • ВЕСЬ блок мини-плеера/наблюдателя звука (video.ts:728-949, `willObserveSound`,
- *    `VideoPlayer`, `setSingleMedia`, `toggleVideoAutoplaySound`). Он включается
- *    только при `observer && USE_VIDEO_OBSERVER`, а `USE_VIDEO_OBSERVER = false`
- *    КОНСТАНТОЙ (video.ts:51): в самом tweb эта ветка сейчас не исполняется ни
- *    разу (`bubbles.ts:4101,4157` читают её как `!USE_VIDEO_OBSERVER`). Перенос
- *    тянет за собой `SuperIntersectionObserver`, события контроллера
- *    (`toggleVideoAutoplaySound`/`playbackParams`/`setSingleMedia`) и монтаж
- *    `VideoPlayer` в бабл — объём отдельной задачи, а не строчка здесь;
+ *  • ТЕЛО блока мини-плеера/наблюдателя звука (video.ts:728-949: `VideoPlayer`,
+ *    `video.mini`, `setSingleMedia`, `toggleVideoAutoplaySound`) вместе со своим
+ *    `observer` (`SuperIntersectionObserver` ленты) и ветками
+ *    `bubbles.ts:4101,4157`. Перенос тянет за собой наблюдателя, события
+ *    контроллера (`toggleVideoAutoplaySound`/`playbackParams`/`setSingleMedia`) и
+ *    монтаж `VideoPlayer` в бабл — объём отдельной задачи, а не строчка здесь.
+ *    САМ ГЕЙТ при этом портирован и живой: константа `USE_VIDEO_OBSERVER`
+ *    (video.ts:51) и флаг `willObserveSound` (video.ts:139) стоят на своих
+ *    местах и раздаются туда же, куда в оригинале, — `pip` у `createVideo`,
+ *    `locked` у `animationIntersector` и `canHaveVideoPlayer` у `wrapPhoto`
+ *    (минимальная ширина 368). При `USE_VIDEO_OBSERVER = false` (значение
+ *    оригинала) ни одна из трёх веток не включается — как и в tweb;
  *  • `withTail` (video.ts:448-453) — вставка видео в `<foreignObject>` хвоста
  *    бабла. Ветка не исполняется и в самом tweb: единственное место, которое
  *    создавало этот `<foreignObject>`, — `if(withTail) {` в `wrapPhoto`
@@ -130,6 +134,18 @@ import { formatVideoTime } from '@components/messages/videoPlayback'
 
 /** tweb video.ts:50 — видео крупнее 50 МБ инлайн не автоплеится */
 const MAX_VIDEO_AUTOPLAY_SIZE = 50 * 1024 * 1024
+
+/**
+ * tweb video.ts:51 — рубильник наблюдателя звука инлайн-видео (мини-плеер в
+ * бабле: `willObserveSound` ниже, `video.mini`, `setSingleMedia`,
+ * `bubbles.ts:4101,4157`). В оригинале стоит `false`, поэтому ВСЯ ветка
+ * наблюдателя там сейчас мертва — вместе с ней не срабатывает и
+ * `MIN_VIDEO_SIDE_SIZE` (368), который включается только `canHaveVideoPlayer`,
+ * а тот и есть `willObserveSound`. Значение держим то же, что в оригинале;
+ * механизм — переменная и её единственный источник истины — портирован, чтобы
+ * при включении рубильника мы поехали туда же, куда tweb.
+ */
+export const USE_VIDEO_OBSERVER = false
 
 /** автозагрузка выключена: ждём клика по manual-кольцу (tweb `makeError('NO_AUTO_DOWNLOAD')`) */
 const NO_AUTO_DOWNLOAD_ERROR = makeError('NO_AUTO_DOWNLOAD')
@@ -317,6 +333,13 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
   let spanTime: HTMLElement | undefined, spanPlay: HTMLElement | undefined
 
+  // tweb video.ts:139 — флаг «за звуком этого видео будет следить наблюдатель»
+  // (и, значит, у бабла будет UI плеера). Единственное место, где он
+  // поднимается, — гейт `observer && USE_VIDEO_OBSERVER` ниже; отсюда он едет в
+  // `pip` (createVideo), в `locked` (animationIntersector) и в
+  // `canHaveVideoPlayer` (wrapPhoto → setAttachmentSize, минимум 368).
+  let willObserveSound = false
+
   // tweb video.ts:140-177 — таймкод/бейдж и кнопка воспроизведения
   if (!noInfo && container) {
     spanTime = document.createElement('span')
@@ -329,6 +352,19 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
       if (!noPlayButton && doc.type !== 'round') {
         if (canAutoplay && !noAutoDownload) {
+          // tweb video.ts:151-157 — `if(observer && USE_VIDEO_OBSERVER)`.
+          // `observer` (SuperIntersectionObserver ленты) — часть той же
+          // непортированной подсистемы наблюдателя, что и блок video.ts:728-949
+          // (см. шапку файла): его негде взять, пока она не приедет. Вторая
+          // половина гейта — константа, и она же одна решает исход в оригинале
+          // (при `false` до `observer` дело не доходит). Подмену middleware
+          // (`myMiddlewareHelper`/`originalMiddleware`, tweb:154-156) сюда не
+          // тащим — её единственный потребитель живёт в том же непортированном
+          // блоке, здесь она была бы мёртвым кодом.
+          if (USE_VIDEO_OBSERVER) {
+            willObserveSound = true
+          }
+
           spanTime.append(Icon('nosound', 'video-time-icon'))
         } else {
           needPlayButton = true
@@ -371,6 +407,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       loadPromises,
       autoDownloadSize: autoDownload?.video,
       useBlur,
+      hasMessage: !!message,
       hasMessageBlock,
       uploadPromise,
     })
@@ -382,7 +419,8 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
   let preloader: ProgressivePreloader | undefined
 
-  const video = createVideo({ middleware })
+  // tweb video.ts:217 — PiP разрешён только видео с UI плеера
+  const video = createVideo({ middleware, pip: willObserveSound })
   video.classList.add('media-video')
   video.muted = true
 
@@ -418,8 +456,12 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         loadPromises,
         autoDownloadSize: autoDownload?.photo,
         useBlur,
+        hasMessage: !!message,
         hasMessageBlock,
-        canHaveVideoPlayer: doc.type === 'video',
+        // tweb video.ts:428 — сюда едет ИМЕННО `willObserveSound`, а не «это
+        // видео»: минимум 368 в setAttachmentSize принадлежит UI плеера, а не
+        // типу медиа (там ещё и своя проверка `photo.type === 'video'`).
+        canHaveVideoPlayer: willObserveSound,
         uploadPromise,
       })
 
@@ -621,6 +663,9 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
             observeElement: video,
             controlled: middleware,
             type: 'video',
+            // tweb video.ts:654 — видео под наблюдателем звука играет по его
+            // команде, а не по видимости: пауза остаётся за наблюдателем
+            locked: willObserveSound,
           })
         }
 

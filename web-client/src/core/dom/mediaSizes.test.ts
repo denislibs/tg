@@ -159,7 +159,7 @@ describe('setAttachmentSize', () => {
 
   it('видео с плеером не уже 368 — и это тоже только boxSize', () => {
     const { size, boxSize, isFit } = setAttachmentSize({
-      width: 200, height: 600, ...box, isVideoWithPlayer: true,
+      width: 200, height: 600, ...box, hasMessage: true, isVideoWithPlayer: true,
     })
     expect(boxSize.width).toBe(MIN_VIDEO_SIDE_SIZE)
     expect(size.width).toBe(133)
@@ -167,10 +167,25 @@ describe('setAttachmentSize', () => {
   })
 
   it('слишком узкая картинка добивается до 120 (tweb MIN_IMAGE_WIDTH)', () => {
-    const { size, boxSize, isFit } = setAttachmentSize({ width: 100, height: 900, ...box })
+    const { size, boxSize, isFit } = setAttachmentSize({ width: 100, height: 900, ...box, hasMessage: true })
     expect(boxSize.width).toBe(MIN_IMAGE_WIDTH)
     expect(size.width).toBeLessThan(MIN_IMAGE_WIDTH)
     expect(isFit).toBe(false)
+  })
+
+  // tweb setAttachmentSize.ts:90 — `if(boxSize.width < minWidth && message)`.
+  // Минимальная ШИРИНА принадлежит медиа В СООБЩЕНИИ; вызывающий без сообщения
+  // (медиавьювер, tweb mediaViewer/base.ts:2465) её не получает — иначе узкому
+  // кадру порвало бы пропорцию.
+  it('без сообщения минимальная ширина не применяется (ни 120, ни 368)', () => {
+    const photo = setAttachmentSize({ width: 100, height: 900, ...box })
+    expect(photo.boxSize.width).toBeLessThan(MIN_IMAGE_WIDTH)
+    expect(photo.boxSize).toEqual(photo.size)
+    expect(photo.isFit).toBe(true)
+
+    const video = setAttachmentSize({ width: 200, height: 600, ...box, isVideoWithPlayer: true })
+    expect(video.boxSize.width).toBe(133)
+    expect(video.isFit).toBe(true)
   })
 
   it('noMinSize отключает все минимумы (стикеры/кружки)', () => {
