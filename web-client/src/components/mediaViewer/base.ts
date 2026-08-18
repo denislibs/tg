@@ -23,11 +23,13 @@
 // tweb mediaViewer.scss:725,730) — не переставлять (пин — base.test.ts).
 //
 // Адаптации (поведение не менялось):
-//   • ButtonIcon/Icon tweb (`button.ts`/`buttonIcon.ts`/`icon.ts`) → локальные
-//     `btnIcon`/`iconSpan`: та же разметка `button.btn-icon > span.tgico.button-icon`,
+//   • Icon tweb (`icon.ts`) — общий модуль `@components/icon` (был локальной
+//     копией `iconSpan` прямо здесь; копий было три — вынесены в один порт, как
+//     в оригинале). ButtonIcon (`button.ts`/`buttonIcon.ts`) → локальный
+//     `btnIcon`: та же разметка `button.btn-icon > span.tgico.button-icon`,
 //     глифы — из нашей карты `@core/tgico-icons` (шрифт tgico); свап иконки
 //     zoomin↔zoomout — локальный `replaceButtonIcon` (порт tweb button.ts:48-53
-//     поверх `iconSpan`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
+//     поверх `Icon`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
 //     вешает `rp` + `div.c-ripple`) не портирован: наш ripple — React-хук
 //     (`shared/ui/Ripple`), vanilla-порт поедет вместе с оживлением кнопок в Task 13
 //   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container)
@@ -71,7 +73,8 @@ import windowSize from '@helpers/windowSize'
 import blur from '@helpers/blur'
 import renderImageFromUrl, { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
-import { glyph, type IconName } from '@core/tgico-icons'
+import { type IconName } from '@core/tgico-icons'
+import Icon from '@components/icon'
 import { calcImageInBox } from '@core/dom/calcImageInBox'
 import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
 import { cachedMediaUrl } from '@core/mediaCache'
@@ -175,16 +178,6 @@ function resolveDirectMediaUrl(media: ViewerMedia): Promise<string> | undefined 
   return Promise.resolve(typeof url === 'function' ? url() : url)
 }
 
-// span.tgico — порт tweb `Icon()` (icon.ts:28-37): глиф шрифтом tgico + классы.
-// RTL-отражение (`icon-reflect`) не портировано — RTL-локалей у нас нет.
-// Экспорт: подкласс AppMediaViewer строит из них пункты ⋮-меню и кнопку more.
-export function iconSpan(icon: IconName, ...classes: string[]): HTMLSpanElement {
-  const span = document.createElement('span')
-  span.classList.add('tgico', ...classes)
-  span.textContent = glyph(icon)
-  return span
-}
-
 // button.btn-icon > span.tgico.button-icon — порт tweb `ButtonIcon()` в объёме
 // вьювера (все кнопки топбара в tweb идут с `noRipple: true`; про mobile-close
 // см. шапку файла). `onlyMobile` → `only-handhelds` (button.ts:33-35).
@@ -194,18 +187,18 @@ export function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}):
   if (options.onlyMobile) {
     button.classList.add('only-handhelds')
   }
-  button.append(iconSpan(icon, 'button-icon'))
+  button.append(Icon(icon, 'button-icon'))
   return button
 }
 
-// Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх нашего `iconSpan`:
+// Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх общего `Icon`:
 // свап глифа кнопки заменой span.button-icon (зум-кнопка zoomin↔zoomout).
 // Экспорт: VolumeSelector/VideoPlayer (Task 15) свапают иконки тем же путём —
 // в tweb хелпер живёт в components/button.ts, у нас порт остался здесь; цикл
 // модулей base ↔ mediaPlayer идентичен tweb (их VideoPlayer тоже импортирует
 // mediaViewer/base ради типа), исполнение везде отложено до рантайма.
 export function replaceButtonIcon(element: HTMLElement, icon: IconName) {
-  const newIcon = iconSpan(icon, 'button-icon')
+  const newIcon = Icon(icon, 'button-icon')
   const oldIcon = element.querySelector('.button-icon')
   if (oldIcon) oldIcon.replaceWith(newIcon)
   else element.append(newIcon)
@@ -468,11 +461,11 @@ export default class AppMediaViewerBase<
 
     this.buttons.prev = document.createElement('div')
     this.buttons.prev.className = `${MEDIA_VIEWER_CLASSNAME}-switcher ${MEDIA_VIEWER_CLASSNAME}-switcher-left`
-    this.buttons.prev.append(iconSpan('previous', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-prev-button`))
+    this.buttons.prev.append(Icon('previous', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-prev-button`))
 
     this.buttons.next = document.createElement('div')
     this.buttons.next.className = `${MEDIA_VIEWER_CLASSNAME}-switcher ${MEDIA_VIEWER_CLASSNAME}-switcher-right`
-    this.buttons.next.append(iconSpan('next', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-next-button`))
+    this.buttons.next.append(Icon('next', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-next-button`))
 
     this.moversContainer = document.createElement('div')
     this.moversContainer.classList.add(MEDIA_VIEWER_CLASSNAME + '-movers')
@@ -1137,10 +1130,10 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:1036-1053 (в объёме окна: у tweb — getAppWindow(),
   // активное окно Document-PiP; у нас приложение в PiP не переезжает — всегда
-  // главный window). Ресайз: в tweb `mediaSizes.addEventListener('resize', ...)`
-  // (:1044, :1052); наш helpers/mediaSizes — шим без событийной части
-  // (см. его шапку) — слушаем window 'resize' напрямую, источник у tweb тот же
-  // (mediaSizes пересчитывается на resize окна). Esc — не здесь: см. шапку
+  // главный window). Ресайз — как в оригинале, событием `mediaSizes`
+  // (:1044, :1052): у него уже есть событийная часть (порт tweb
+  // helpers/mediaSizes.ts в `core/dom/mediaSizes.ts`), и снимок окна у вьювера с
+  // брейкпоинтом общий. Esc — не здесь: см. шапку
   // файла (appNavigationController → pushEsc контроллера openMediaViewer.ts).
   protected toggleGlobalListeners(active: boolean) {
     if (active) this.setGlobalListeners()
@@ -1150,13 +1143,13 @@ export default class AppMediaViewerBase<
   protected removeGlobalListeners() {
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
-    window.removeEventListener('resize', this.applyLayoutVariables)
+    mediaSizes.removeEventListener('resize', this.applyLayoutVariables)
   }
 
   protected setGlobalListeners() {
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
-    window.addEventListener('resize', this.applyLayoutVariables)
+    mediaSizes.addEventListener('resize', this.applyLayoutVariables)
   }
 
   // Порт tweb base.ts:2195-2205: вьюпорт изменился → пере-вписать content.media

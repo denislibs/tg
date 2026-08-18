@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SwipeHandlerOptions } from '@core/dom/swipeHandler'
 import windowSize from '@helpers/windowSize'
-import { MediaSizes } from '@helpers/mediaSizes'
+import mediaSizes from '@helpers/mediaSizes'
 import AppMediaViewerBase from './base'
 import ListLoader from './listLoader'
 
@@ -70,6 +70,12 @@ const FULL_RECT = { left: 0, top: 0, width: windowSize.width, height: windowSize
 type SwipeEvent = Parameters<SwipeHandlerOptions['onSwipe']>[2]
 const touchEvent = { type: 'touchmove' } as SwipeEvent
 
+// `mediaSizes.isMobile` — обычное поле объекта (порт tweb helpers/mediaSizes.ts:103),
+// которое пересчитывается по resize окна; тест ставит нужный экран прямо на
+// владельце и возвращает исходное значение после кейса.
+const wasMobile = mediaSizes.isMobile
+const setMobile = (value: boolean) => { mediaSizes.isMobile = value }
+
 beforeEach(() => {
   vi.useFakeTimers()
 })
@@ -77,6 +83,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  mediaSizes.isMobile = wasMobile
   document.body.replaceChildren()
 })
 
@@ -205,7 +212,7 @@ describe('разводка SwipeHandler (tweb base.ts:522-587)', () => {
 
 describe('клик (tweb base.ts:1058-1130, тач-профиль)', () => {
   it('тап на мобиле → toggle chrome-hidden (tweb :1077-1084)', () => {
-    vi.spyOn(MediaSizes.prototype, 'isMobile', 'get').mockReturnValue(true)
+    setMobile(true)
     const { v } = makeViewer()
 
     v.whole.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -216,7 +223,7 @@ describe('клик (tweb base.ts:1058-1130, тач-профиль)', () => {
   })
 
   it('тап по топбару на мобиле хром не прячет', () => {
-    vi.spyOn(MediaSizes.prototype, 'isMobile', 'get').mockReturnValue(true)
+    setMobile(true)
     const { v } = makeViewer()
 
     v.buttonsMap.close.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -224,7 +231,7 @@ describe('клик (tweb base.ts:1058-1130, тач-профиль)', () => {
   })
 
   it('тап (не мобила) → подсветка свитчеров highlight-switchers на 3000 мс (tweb :1086-1099)', () => {
-    vi.spyOn(MediaSizes.prototype, 'isMobile', 'get').mockReturnValue(false)
+    setMobile(false)
     const { v } = makeViewer()
 
     v.whole.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -235,7 +242,7 @@ describe('клик (tweb base.ts:1058-1130, тач-профиль)', () => {
   })
 
   it('ignoreNextClick после mouse-drag проглатывает ровно один клик (tweb :612-614, :1066-1069)', () => {
-    vi.spyOn(MediaSizes.prototype, 'isMobile', 'get').mockReturnValue(true)
+    setMobile(true)
     const { v, options } = makeViewer()
     stubRect(v.contentMap.media, FULL_RECT)
 

@@ -78,10 +78,6 @@
  *    (photo.ts:110), и оно ЗАКОММЕНТИРОВАНО, так что `photoRes.images.*`
  *    всегда лежат в обычном контейнере, а `getAttributeNS(null, 'width')` вернул
  *    бы null. Хвост в обеих кодовых базах рисует CSS;
- *  • глобальный `mediaSizes.addEventListener('changeScreen')` (video.ts:54-74) —
- *    пересчёт ВСЕХ живых колец кружков на смене брейкпоинта. Требует событийного
- *    `mediaSizes` (у нас функция без подписки), а этот файл правится соседней
- *    задачей — сюда его тянуть нельзя, поэтому вынесено в доклад;
  *  • `handleVideoLeak` (`helpers/dom/handleVideoLeak.ts`) — подсистема обхода
  *    утечки декодера Chromium (глобальные слушатели `seeked/canplay/seeking`,
  *    `getVideoPlaybackQuality`, пересборка `<source>`). Отдельный файл-хелпер
@@ -102,17 +98,18 @@
  *    `wrapPhoto` и путь отправки — соседние задачи.
  */
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
+import Icon from '@components/icon'
 import ProgressivePreloader from '@components/preloader'
+import { createProgressRing, getProgressRingRadius } from '@components/progressRing'
 import wrapPhoto, { type WrappedPhoto } from '@components/wrappers/photo'
 import { mediaPlayback } from '@core/audio/mediaPlaybackController'
-import { mediaSizes } from '@core/dom/mediaSizes'
+import mediaSizesInstance, { ScreenSize } from '@core/dom/mediaSizes'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
 import { cachedMediaUrl } from '@core/mediaCache'
 import { resolveStreamUrl, subscribeMediaToken } from '@core/mediaUrl'
 import type { Message } from '@core/models'
-import { glyph } from '@core/tgico-icons'
 import { IS_SAFARI } from '@environment/userAgent'
 import { animateSingle } from '@helpers/animation'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
@@ -126,6 +123,7 @@ import makeError from '@helpers/makeError'
 import type { Middleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
 import { fastRaf } from '@helpers/schedulers'
+import throttle from '@helpers/schedulers/throttle'
 import sequentialDom from '@helpers/sequentialDom'
 import { AppConfig } from '@config/app'
 import { formatVideoTime } from '@components/messages/videoPlayback'
@@ -136,77 +134,39 @@ const MAX_VIDEO_AUTOPLAY_SIZE = 50 * 1024 * 1024
 /** автозагрузка выключена: ждём клика по manual-кольцу (tweb `makeError('NO_AUTO_DOWNLOAD')`) */
 const NO_AUTO_DOWNLOAD_ERROR = makeError('NO_AUTO_DOWNLOAD')
 
-/** tweb progressRing.tsx:27 */
-const DEFAULT_STROKE_WIDTH = 3.5
-
 /** tweb video.ts:53 — длина окружности кольца кружка, общая на все кружки */
 let roundVideoCircumference = 0
 
-/** tweb `progressRing.tsx:32-34` — общая формула радиуса. */
-export function getProgressRingRadius(size: number, strokeWidth: number = DEFAULT_STROKE_WIDTH): number {
-  return size / 2 - strokeWidth * 2
-}
-
 /**
- * Кольцо прогресса кружка — разметка tweb `ProgressRing`
- * (`components/progressRing.tsx:42-65`) один в один. В оригинале это Solid-
- * компонент с императивной обёрткой `createProgressRing`, у нас Solid'а нет, а
- * React-копия (`composer/RoundRecordPreview.tsx`) — это ДРУГОЙ вызывающий
- * (панель записи). Общий модуль под оба — отдельная задача: он потребовал бы
- * править файл вне периметра этой.
+ * tweb video.ts:54-74 — на смене брейкпоинта размер кружка меняется
+ * (`HANDHELDS.round` ≠ `DESKTOP.round`), и ВСЕ живые кольца в ленте
+ * пересчитываются на месте: заново атрибуты svg/circle и полный (пустой)
+ * `stroke-dashoffset`. Пересборки бабла при этом не происходит, поэтому без
+ * этого обработчика кольцо осталось бы прежнего диаметра поверх кружка нового.
+ * Радиус считает та же формула, что при создании (`getProgressRingRadius`) —
+ * ровно для этого она и общая.
  */
-function createProgressRing(size: number, strokeWidth = DEFAULT_STROKE_WIDTH, strokeOpacity = 0.3) {
-  const NS = 'http://www.w3.org/2000/svg'
-  const radius = getProgressRingRadius(size, strokeWidth)
+mediaSizesInstance.addEventListener('changeScreen', (from, to) => {
+  if (to === ScreenSize.mobile || from === ScreenSize.mobile) {
+    const elements = Array.from(document.querySelectorAll<SVGSVGElement>('.media-round .progress-ring'))
+    const width = mediaSizesInstance.active.round.width
+    const halfSize = width / 2
+    const radius = getProgressRingRadius(width)
+    roundVideoCircumference = 2 * Math.PI * radius
+    elements.forEach((element) => {
+      element.setAttributeNS(null, 'width', '' + width)
+      element.setAttributeNS(null, 'height', '' + width)
 
-  const element = document.createElementNS(NS, 'svg')
-  element.classList.add('progress-ring')
-  element.setAttributeNS(null, 'width', '' + size)
-  element.setAttributeNS(null, 'height', '' + size)
-  element.style.transform = 'rotate(-90deg)'
+      const circle = element.firstElementChild as SVGCircleElement
+      circle.setAttributeNS(null, 'cx', '' + halfSize)
+      circle.setAttributeNS(null, 'cy', '' + halfSize)
+      circle.setAttributeNS(null, 'r', '' + radius)
 
-  const circle = document.createElementNS(NS, 'circle')
-  circle.classList.add('progress-ring__circle')
-  circle.setAttributeNS(null, 'stroke', 'white')
-  circle.setAttributeNS(null, 'stroke-opacity', '' + strokeOpacity)
-  circle.setAttributeNS(null, 'stroke-width', '' + strokeWidth)
-  circle.setAttributeNS(null, 'cx', '' + size / 2)
-  circle.setAttributeNS(null, 'cy', '' + size / 2)
-  circle.setAttributeNS(null, 'r', '' + radius)
-  circle.setAttributeNS(null, 'fill', 'transparent')
-  element.append(circle)
-
-  return { element, circle, radius }
-}
-
-/**
- * `span.tgico` с глифом — порт tweb `Icon()` (`components/icon.ts:28-37`).
- * Тот же порт есть в `components/mediaViewer/base.ts::iconSpan`, но тянуть его
- * сюда нельзя: тот модуль импортирует react/react-dom, а бабл ленты — нет.
- */
-function iconSpan(icon: 'nosound' | 'largeplay' | 'sendingerror', ...classes: string[]): HTMLSpanElement {
-  const span = document.createElement('span')
-  span.classList.add('tgico', ...classes)
-  span.textContent = glyph(icon)
-  return span
-}
-
-/**
- * tweb зовёт `throttle(fn, 1e3, false)` (`helpers/schedulers/throttle.ts`);
- * этого хелпера в дереве нет — локальный минимум с той же семантикой
- * (trailing-only: первый вызов планирует запуск через `ms`, промежуточные
- * гасятся). Без него `timeupdate` (~4 Гц) переписывал бы таймкод на каждый кадр.
- */
-function throttleTrailing(fn: () => void, ms: number): () => void {
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  return () => {
-    if (timeout !== undefined) return
-    timeout = setTimeout(() => {
-      timeout = undefined
-      fn()
-    }, ms)
+      circle.style.strokeDasharray = roundVideoCircumference + ' ' + roundVideoCircumference
+      circle.style.strokeDashoffset = '' + roundVideoCircumference
+    })
   }
-}
+})
 
 /**
  * Текст таймкода — tweb пишет `spanTime.firstChild.nodeValue` (video.ts:303):
@@ -369,7 +329,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
       if (!noPlayButton && doc.type !== 'round') {
         if (canAutoplay && !noAutoDownload) {
-          spanTime.append(iconSpan('nosound', 'video-time-icon'))
+          spanTime.append(Icon('nosound', 'video-time-icon'))
         } else {
           needPlayButton = true
         }
@@ -387,7 +347,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       // tweb `Button('btn-circle video-play position-center', {icon: 'largeplay', noRipple: true})`
       spanPlay = document.createElement('button')
       spanPlay.className = 'btn-circle video-play position-center'
-      spanPlay.append(iconSpan('largeplay', 'button-icon'))
+      spanPlay.append(Icon('largeplay', 'button-icon'))
       container.append(spanPlay)
     }
   }
@@ -568,7 +528,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       setTimeText(timeElement, formatVideoTime(video.duration - video.currentTime))
     }
 
-    const throttledTimeUpdate = throttleTrailing(() => { fastRaf(onTimeUpdate) }, 1e3)
+    const throttledTimeUpdate = throttle(() => { fastRaf(onTimeUpdate) }, 1e3, false)
     video.addEventListener('timeupdate', throttledTimeUpdate)
 
     if (spanPlay) {
@@ -638,7 +598,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         if (spanTime) {
           spanTime.classList.add('is-error')
           const previousIcon = spanTime.querySelector('.video-time-icon')
-          const newIcon = iconSpan('sendingerror', 'video-time-icon')
+          const newIcon = Icon('sendingerror', 'video-time-icon')
           if (previousIcon) previousIcon.replaceWith(newIcon)
           else spanTime.append(newIcon)
         }
@@ -770,12 +730,18 @@ function wrapRound({
   if (message?.mid !== undefined) divRound.dataset.mid = '' + message.mid
   if (message?.peerId !== undefined) divRound.dataset.peerId = '' + message.peerId
 
-  const size = mediaSizes().round
-  const ring = createProgressRing(size.width)
+  const size = mediaSizesInstance.active.round
+  const strokeWidth = 3.5
+  const radius = getProgressRingRadius(size.width, strokeWidth)
   if (!roundVideoCircumference) {
-    roundVideoCircumference = 2 * Math.PI * ring.radius
+    roundVideoCircumference = 2 * Math.PI * radius
   }
 
+  // Общее кольцо (тот же модуль у превью записи кружка). Ведём его императивно
+  // (кадры гонит `onFrame` ниже), поэтому прогресс — обычная запись в DOM,
+  // ровно как в оригинале (комментарий tweb video.ts:234-236).
+  const ring = createProgressRing({ size: size.width, strokeWidth, strokeOpacity: 0.3 })
+  middleware?.onClean(() => { ring.destroy() })
   divRound.append(ring.element)
 
   const circle = ring.circle
@@ -837,9 +803,9 @@ function wrapRound({
       if (spanTime) setTimeText(spanTime, formatVideoTime(globalVideo.duration - globalVideo.currentTime))
     }
 
-    const throttledTimeUpdate = throttleTrailing(() => { fastRaf(onTimeUpdate) }, 1000)
+    const throttledTimeUpdate = throttle(() => { fastRaf(onTimeUpdate) }, 1000, false)
 
-    const noSoundIcon = iconSpan('nosound', 'video-time-icon')
+    const noSoundIcon = Icon('nosound', 'video-time-icon')
     const setIsPaused = (paused: boolean) => {
       divRound.classList.toggle('is-paused', paused)
       if (paused) spanTime?.append(noSoundIcon)

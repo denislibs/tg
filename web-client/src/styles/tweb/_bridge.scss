@@ -610,6 +610,23 @@ button:focus {
   z-index: 1; // * overflow media-photo
 }
 
+// tweb base.scss:1202-1212 — кольцо прогресса (`components/progressRing`): один
+// набор правил на всех потребителей узла `svg.progress-ring` (кружок в ленте,
+// превью записи кружка). Правила в дереве не было вовсе: у кружка кольцо
+// оставалось static и распирало коробку, а скруглённый конец штриха
+// (`stroke-linecap`) каждый потребитель дописывал себе инлайном.
+.progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+
+  &__circle {
+    transition: stroke-dashoffset;
+    stroke-linecap: round;
+  }
+}
+
 // tweb base.scss:1334-1368 — коробка видео-кружка, которую строит
 // `components/wrappers/video.ts` (ветка `doc.type === 'round'`): круглый канвас
 // кадров, бейдж поверх него и белая точка «не просмотрено» псевдоэлементом

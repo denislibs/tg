@@ -60,4 +60,14 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+
+  // ОТСТУПЛЕНИЕ под наш пробел (не из tweb). Оригинал гонит прогресс кольца на
+  // каждый raf (chatRecording.ts:584 в цикле `fastRaf`), поэтому ему хватает
+  // `transition: stroke-dashoffset` (без времени = мгновенно) из общего
+  // `.progress-ring__circle`. Наш драйвер записи тикает раз в СЕКУНДУ (`secs` из
+  // `useVoiceRecorder` → `RoundRecordPreview`), и без этой анимации кольцо
+  // прыгало бы ступенями. Убрать вместе с портом raf-цикла таймера записи.
+  .progress-ring__circle {
+    transition: stroke-dashoffset 1s linear;
+  }
 }

@@ -179,6 +179,50 @@ describe('wrapPhoto: дерево и слои', () => {
     expect(container.querySelector('img.media-photo')).toBeTruthy()
   })
 
+  // tweb photo.ts:208-210: выбранный размер САМ является байтами превью
+  // (`photoStrippedSize`) — оно и есть медиа. Так рисуются видео без серверного
+  // постера и неоплаченное платное медиа в ячейке альбома: без этой ветки
+  // враппер строил бы `<img>` и шёл за байтами, которых нет, — ячейка/бабл
+  // оставались бы пустыми.
+  it('strippedSize: превью из сообщения показано КАК медиа — без <img>, без сети', async () => {
+    const container = box()
+
+    const ret = await rendered(wrapPhoto({
+      mediaId: 0, width: 600, height: 800, strippedThumb: STRIPPED, strippedSize: true, container,
+    }))
+
+    // бокс контейнера всё равно назначен (ветка сайзинга в оригинале идёт раньше)
+    expect(container.style.width).toBe('300px')
+    expect(container.style.height).toBe('400px')
+
+    const media = container.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')!
+    expect(media).toBeTruthy()
+    expect(ret.images.thumb).toBe(media)
+    // полного медиа нет вовсе — ни узла, ни байтов, ни кольца
+    expect(ret.images.full).toBeNull()
+    expect(container.querySelector('img.media-photo')).toBeNull()
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+    expect(ret.preloader).toBeNull()
+    expect(container.querySelector('.preloader-container')).toBeNull()
+  })
+
+  it('strippedSize + расширенный бокс: превью лежит в аспектере (медиа), а не подложкой', async () => {
+    const container = box()
+
+    const ret = await rendered(wrapPhoto({
+      mediaId: 0, width: 600, height: 800, strippedThumb: STRIPPED, strippedSize: true,
+      container, hasMessageBlock: true,
+    }))
+
+    const aspecter = ret.aspecter!
+    expect(aspecter.className).toBe('media-container-aspecter')
+    // слот медиа — аспектер; подложка на весь бокс — прямой ребёнок контейнера
+    expect(ret.images.thumb!.parentElement).toBe(aspecter)
+    expect(container.querySelector(':scope > canvas.thumbnail.media-photo')).toBeTruthy()
+    expect(aspecter.querySelector('img.media-photo')).toBeNull()
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+  })
+
   it('noThumb — превью не строится вовсе', async () => {
     const container = box()
     const ret = await wrapPhoto({ mediaId: 7, width: 1600, height: 900, strippedThumb: STRIPPED, container, noThumb: true })

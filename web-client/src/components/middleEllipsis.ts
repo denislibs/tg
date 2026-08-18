@@ -10,9 +10,7 @@
  * `styles/tweb/_document.scss`, то есть расширение файла (самая нужная часть
  * имени) пропадало первым. Здесь оно снова видно, как в Telegram.
  *
- * Отличия от оригинала (оба — следствие нашей модели, не вкусовщина):
- *   • `mediaSizes` у нас функция, а не класс с `active` (`core/dom/mediaSizes`),
- *     поэтому набор размеров берётся вызовом; ключ `data-size-type` тот же;
+ * Отличие от оригинала (следствие нашей модели, не вкусовщина):
  *   • `getTextWidth` в тестовой среде отдаёт 0 (канвас без 2D-контекста) —
  *     элемент тогда просто оставляет полный текст, см. шапку `getTextWidth.ts`.
  */
@@ -20,7 +18,7 @@ import { FontFamily, FontSize, FontWeight } from '@config/font'
 import getTextWidth from '@helpers/canvas/getTextWidth'
 import clamp from '@helpers/number/clamp'
 import { fastRaf } from '@helpers/schedulers'
-import { mediaSizes, type MediaTypeSizes } from '@core/dom/mediaSizes'
+import mediaSizes, { type MediaTypeSizes } from '@core/dom/mediaSizes'
 
 const ellipsis = '…'
 
@@ -76,7 +74,7 @@ function getElementWidth(element: HTMLElement): number {
 
   const type = element.dataset.sizeType as keyof MediaTypeSizes | undefined
   if(type) {
-    return mediaSizes()[type].width
+    return mediaSizes.active[type].width
   }
 
   return element.getBoundingClientRect().width

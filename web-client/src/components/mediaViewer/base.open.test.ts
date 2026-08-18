@@ -5,7 +5,11 @@
 // decode картинок стабится (happy-dom не декодирует), RPC managers и blur
 // замоканы — тесты пинят ПОРЯДОК конвейера, не сеть/пиксели.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import AppMediaViewerBase, { type MoverElement, type ViewerAuthor, type ViewerMedia } from './base'
+import mediaSizes from '@core/dom/mediaSizes'
+import AppMediaViewerBase, {
+  RESERVE_BOTTOM_DESKTOP, RESERVE_TOP_DESKTOP,
+  type MoverElement, type ViewerAuthor, type ViewerMedia,
+} from './base'
 import ListLoader from './listLoader'
 import { applyMediaUrl, resetMediaUrlMirror } from '@core/mediaCache'
 
@@ -41,6 +45,8 @@ class TestViewer extends AppMediaViewerBase<never, 'forward' | 'delete', Target>
   get rotationPub() { return this.rotation }
   set rotationPub(v: number) { this.rotation = v }
   get captionScrollablePub() { return this.captionScrollable }
+
+  callToggleGlobalListeners(active: boolean) { this.toggleGlobalListeners(active) }
 
   callOpenMedia(args: {
     media: ViewerMedia, author?: ViewerAuthor, fromRight: number, target?: HTMLElement,
@@ -377,5 +383,35 @@ describe('_openMedia: media.url минует downloadMediaURL (секретны�
     expect(img).not.toBeNull()
     expect(img!.src).toContain('blob:secret-ghost')
     await settleOpen(p)
+  })
+})
+
+// Проводка ресайза (tweb :1044,:1052 — `mediaSizes.addEventListener('resize')`,
+// а не свой window-слушатель: экран и вьюпорт вьювер обязан читать из одного
+// снимка). Без подписки паддинги лайтбокса остались бы от экрана открытия.
+describe('глобальные слушатели: ресайз приезжает событием mediaSizes', () => {
+  const wasMobile = mediaSizes.isMobile
+
+  afterEach(() => {
+    mediaSizes.isMobile = wasMobile
+  })
+
+  it('смена экрана пересчитывает резервы layout (tweb :2116-2122)', () => {
+    const v = makeViewer()
+    v.callToggleGlobalListeners(true)
+    try {
+      mediaSizes.isMobile = false
+      mediaSizes.dispatchEvent('resize')
+      expect(v.contentMap.main.style.paddingTop).toBe(`${RESERVE_TOP_DESKTOP}px`)
+      expect(v.contentMap.main.style.paddingBottom).toBe(`${RESERVE_BOTTOM_DESKTOP}px`)
+
+      // мобильный экран резервов не держит (топбар/подпись поверх медиа)
+      mediaSizes.isMobile = true
+      mediaSizes.dispatchEvent('resize')
+      expect(v.contentMap.main.style.paddingTop).toBe('0px')
+      expect(v.contentMap.main.style.paddingBottom).toBe('0px')
+    } finally {
+      v.callToggleGlobalListeners(false)
+    }
   })
 })

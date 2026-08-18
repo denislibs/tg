@@ -34,7 +34,7 @@ import parseEntities, { SITE_HASHTAGS } from './parseEntities'
 import type { WrapEntity, WrapEntityType } from './entities'
 import { EMOJI_CDN_BASE, isSafeEmojiUnicode } from './emoji'
 import { getCodeLanguage, highlightCodeInto } from './highlightCode'
-import icon from './icon'
+import Icon from '@components/icon'
 import {
   ANCHOR_ACTION_ATTRIBUTE,
   safeWrapUrl,
@@ -217,8 +217,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           headerName.append(language?.label ?? CODE_HEADER_FALLBACK_LABEL)
           header.append(
             headerName,
-            icon('menu', 'code-header-button', 'code-header-toggle-wrap'),
-            icon('copy', 'code-header-button', 'code-header-copy'),
+            Icon('menu', 'code-header-button', 'code-header-toggle-wrap'),
+            Icon('copy', 'code-header-button', 'code-header-copy'),
           )
 
           container.append(header, content)

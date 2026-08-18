@@ -55,7 +55,8 @@ import type { IconName } from '@core/tgico-icons'
 import { enterPip } from '@core/pip'
 import MediaProgressLine from '@components/mediaProgressLine'
 import VolumeSelector from '@components/volumeSelector'
-import { iconSpan, replaceButtonIcon } from '@components/mediaViewer/base'
+import Icon from '@components/icon'
+import { replaceButtonIcon } from '@components/mediaViewer/base'
 import { formatVideoTime, rateToString, VIDEO_RATES } from '@components/messages/videoPlayback'
 import { useSettingsStore } from '../../settings'
 import { useI18nStore } from '../../i18n'
@@ -233,7 +234,7 @@ export default class VideoPlayer extends ControlsHover {
     this.wrapper.classList.toggle('is-playing', isPlaying)
     this.toggles.forEach((toggle) => {
       // tweb :294 `Icon(...)` — голый span.tgico без класса button-icon
-      toggle.replaceChildren(iconSpan(isPlaying ? 'pause' : 'play'))
+      toggle.replaceChildren(Icon(isPlaying ? 'pause' : 'play'))
     })
   }
 
@@ -250,7 +251,7 @@ export default class VideoPlayer extends ControlsHover {
     // tweb Button(`${skin}__button--big toggle`, {noRipple: true, icon: 'play'})
     const mainToggle = this.mainToggle = document.createElement('button')
     mainToggle.className = `${skin}__button--big toggle`
-    mainToggle.append(iconSpan('play', 'button-icon'))
+    mainToggle.append(Icon('play', 'button-icon'))
     wrapper.firstElementChild!.after(mainToggle)
 
     const leftControls = wrapper.querySelector('.left-controls') as HTMLElement
@@ -267,7 +268,7 @@ export default class VideoPlayer extends ControlsHover {
     if (!IS_MOBILE && document.pictureInPictureEnabled) {
       const pipButton = this.pipButton = document.createElement('button')
       pipButton.className = `btn-icon pip ${skin}__button`
-      pipButton.append(iconSpan('pip', 'button-icon'))
+      pipButton.append(Icon('pip', 'button-icon'))
     }
     const fullScreenButton = document.createElement('button')
     fullScreenButton.className = `btn-icon ${skin}__button`
@@ -430,7 +431,7 @@ export default class VideoPlayer extends ControlsHover {
     const { skin } = this
     const toggle = document.createElement('button')
     toggle.className = `btn-icon ${skin}__button btn-menu-toggle checkable-button-menu playback-rate-button-menu`
-    toggle.append(iconSpan('mediaspeed_empty', 'button-icon'))
+    toggle.append(Icon('mediaspeed_empty', 'button-icon'))
 
     const floating = document.createElement('span')
     floating.classList.add('playback-speed-icon-floating')
@@ -444,7 +445,7 @@ export default class VideoPlayer extends ControlsHover {
     const items = VIDEO_RATES.map((rate) => {
       const el = document.createElement('div')
       el.className = 'btn-menu-item rp-overflow'
-      const iconEl = iconSpan('check', 'btn-menu-item-icon')
+      const iconEl = Icon('check', 'btn-menu-item-icon')
       el.append(iconEl)
       const textEl = document.createElement('span')
       textEl.classList.add('btn-menu-item-text')
@@ -467,7 +468,7 @@ export default class VideoPlayer extends ControlsHover {
       })
       floating.replaceChildren(...rateToString(rate).split('').map((char) => {
         const g = GEOMETRIC[char]
-        return iconSpan(g.icon, 'geometric-font-icon', `geometric-font-icon--${g.char}`)
+        return Icon(g.icon, 'geometric-font-icon', `geometric-font-icon--${g.char}`)
       }))
     }
     this.syncRate(this.video.playbackRate)

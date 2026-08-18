@@ -448,6 +448,49 @@ describe('wrapVideo: кружок', () => {
 
     playback.resetPlayback()
   })
+
+  // tweb video.ts:54-74 — размер кружка зависит от брейкпоинта
+  // (HANDHELDS.round ≠ DESKTOP.round), а бабл на смене экрана не пересобирается:
+  // кольцо обязано пересчитаться на месте, иначе оно останется прежнего диаметра
+  // поверх кружка нового размера.
+  it('смена брейкпоинта пересчитывает кольца ЖИВЫХ кружков на месте', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+    document.body.append(container) // хендлер ищет кольца по документу
+
+    await wrapVideo({
+      doc: roundDoc(), container, message: { mid: 5, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const svg = container.querySelector('.media-round .progress-ring') as SVGSVGElement
+    const circle = svg.firstElementChild as SVGCircleElement
+    const sizes = await import('@core/dom/mediaSizes')
+    const before = svg.getAttribute('width')
+    expect(before).toBe('' + sizes.DESKTOP.round.width)
+
+    sizes.default.active = sizes.HANDHELDS
+    sizes.default.dispatchEvent('changeScreen', sizes.ScreenSize.large, sizes.ScreenSize.mobile)
+
+    const width = sizes.HANDHELDS.round.width
+    // предмет проверки существует только пока размеры кружка РАЗНЫЕ
+    expect(width).not.toBe(sizes.DESKTOP.round.width)
+    const radius = width / 2 - 3.5 * 2
+    expect(svg.getAttribute('width')).toBe('' + width)
+    expect(svg.getAttribute('height')).toBe('' + width)
+    expect(circle.getAttribute('cx')).toBe('' + width / 2)
+    expect(circle.getAttribute('cy')).toBe('' + width / 2)
+    expect(circle.getAttribute('r')).toBe('' + radius)
+    // кольцо сброшено в пустое: dashoffset = полная новая окружность
+    const circumference = 2 * Math.PI * radius
+    expect(parseFloat(circle.style.strokeDashoffset)).toBeCloseTo(circumference, 6)
+    expect(circle.style.strokeDasharray).toBe(`${circumference} ${circumference}`)
+
+    sizes.default.active = sizes.DESKTOP
+    container.remove()
+    playback.resetPlayback()
+  })
 })
 
 describe('videoDocFromMessage', () => {

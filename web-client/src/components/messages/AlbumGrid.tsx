@@ -7,7 +7,7 @@ import TgIcon from '../TgIcon'
 import Checkbox from '../../shared/ui/Checkbox'
 import RadialProgress from '../RadialProgress'
 import { Layouter, RectPart } from '../../core/dom/groupedLayout'
-import { mediaSizes } from '../../core/dom/mediaSizes'
+import mediaSizes from '../../core/dom/mediaSizes'
 import classNames from '../../shared/lib/classNames'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useBlurThumb } from './useBlurThumb'
@@ -109,7 +109,7 @@ export default function AlbumGrid({
       w: m.mediaWidth || 100,
       h: m.mediaHeight || 100,
     }))
-    const album = mediaSizes().album
+    const album = mediaSizes.active.album
     return new Layouter(sizes, album.width, MIN_W, SPACING, album.height || undefined).layout()
   }, [items])
 

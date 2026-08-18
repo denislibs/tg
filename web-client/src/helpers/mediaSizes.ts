@@ -1,12 +1,10 @@
-// @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
-// Минимальная версия tweb helpers/mediaSizes: островку lottie нужен только флаг
-// isMobile (getLottiePixelRatio понижает pixelRatio на мобильных). Полный
-// реактивный mediaSizes на solid-js не тянем.
-export class MediaSizes {
-  public get isMobile(): boolean {
-    return typeof window !== 'undefined' && window.innerWidth <= 600;
-  }
-}
-
-const mediaSizes = new MediaSizes();
-export default mediaSizes;
+// Путь tweb (`@helpers/mediaSizes`), по которому mediaSizes импортируют
+// вендорные островки (медиавьювер `components/mediaViewer/base.ts`, lottie
+// `lib/lottie/lottiePlayer.ts`) — ровно как в оригинале.
+//
+// Своей реализации здесь БОЛЬШЕ НЕТ: до порта тут жил обрезанный класс с
+// собственным `isMobile` (`window.innerWidth <= 600`) — второй владелец того же
+// факта. Полный порт tweb `helpers/mediaSizes.ts` (активный набор размеров +
+// `changeScreen`/`resize`) лежит в `core/dom/mediaSizes.ts`, вместе с
+// `setAttachmentSize`; здесь только ре-экспорт того же инстанса.
+export { MediaSizes, ScreenSize, default } from '@core/dom/mediaSizes'

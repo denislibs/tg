@@ -40,7 +40,8 @@ import type { MessageEntity } from '@core/models'
 import { startClient } from '@/client/bootstrap'
 import { useI18nStore } from '../../i18n'
 import RichText from '../RichText'
-import AppMediaViewerBase, { btnIcon, iconSpan, type ViewerAuthor, type ViewerMedia } from './base'
+import Icon from '@components/icon'
+import AppMediaViewerBase, { btnIcon, type ViewerAuthor, type ViewerMedia } from './base'
 import ListLoader from './listLoader'
 
 // Наш аналог сообщения для вьювера (модель старого useLightbox + mid):
@@ -289,7 +290,7 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     const menuItem = (icon: IconName, text: string, onClick: () => void, danger = false) => {
       const el = document.createElement('div')
       el.className = 'btn-menu-item rp-overflow' + (danger ? ' danger' : '')
-      el.append(iconSpan(icon, 'btn-menu-item-icon'))
+      el.append(Icon(icon, 'btn-menu-item-icon'))
       const textEl = document.createElement('span')
       textEl.classList.add('btn-menu-item-text')
       textEl.textContent = t(text)

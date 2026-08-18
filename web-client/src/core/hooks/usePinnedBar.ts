@@ -10,6 +10,7 @@
 // следующий (более старый, циклически). Сброс — при смене чата и любом
 // изменении списка пинов (pin/unpin перезаписывает массив в pinsStore).
 import { useEffect, useState, type RefObject } from 'react'
+import throttle from '@helpers/schedulers/throttle'
 import { usePinsStore } from '../../stores/pinsStore'
 import { clampPinIndex, nextPinIndex, pinIndexForVisibleMid } from '../pinnedCycle'
 import { useEvent } from './useEvent'
@@ -58,10 +59,7 @@ export function usePinnedBar(
   useEffect(() => {
     const el = scrollRef?.current
     if (!el || pins.length === 0) return
-    let last = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
     const apply = () => {
-      last = Date.now()
       const bottom = el.getBoundingClientRect().bottom
       // getBubbleByPoint('bottom') — последний бабл, чей верх ещё выше нижней кромки.
       const bubbles = el.querySelectorAll<HTMLElement>('.bubble[data-mid]')
@@ -74,14 +72,14 @@ export function usePinnedBar(
       if (mid === undefined) return
       setRawIndex(pinIndexForVisibleMid(pins, mid))
     }
-    const onScroll = () => {
-      const wait = SCROLL_THROTTLE_MS - (Date.now() - last)
-      if (wait <= 0) { apply(); return }
-      if (timer === undefined) timer = setTimeout(() => { timer = undefined; apply() }, wait)
-    }
+    // Общий порт tweb `helpers/schedulers/throttle` с теми же аргументами, что в
+    // оригинале (`throttle(setCorrectIndex, 100, false)`, pinnedMessage.tsx:326):
+    // trailing-only. Здесь была своя реализация троттлинга, и она расходилась с
+    // оригиналом — считала первый скролл в окне «ведущим» и применяла его сразу.
+    const onScroll = throttle(apply, SCROLL_THROTTLE_MS, false)
     apply()
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => { el.removeEventListener('scroll', onScroll); clearTimeout(timer) }
+    return () => { el.removeEventListener('scroll', onScroll); onScroll.clear() }
   }, [scrollRef, pins])
 
   const index = clampPinIndex(rawIndex, pins.length)

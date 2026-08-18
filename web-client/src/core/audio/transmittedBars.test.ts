@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
+import mediaSizes from '@core/dom/mediaSizes'
 import { decodeTransmittedPeaks, buildWaveformBars, WAVEFORM_HEIGHT } from './waveform'
 import { pack5bit } from './voiceWaveformAnalyser'
 import { b64FromBytes } from '../secret/crypto'
@@ -23,10 +24,27 @@ describe('decodeTransmittedPeaks (переданные пики)', () => {
 
 describe('buildWaveformBars (порт tweb createWaveformBars)', () => {
   const peaks = Array.from({ length: 100 }, (_, i) => i % 32)
+  const wasMobile = mediaSizes.isMobile
+
+  afterEach(() => {
+    mediaSizes.isMobile = wasMobile
+  })
 
   it('ширина волны — 190px у короткой записи, 256px у минутной', () => {
     expect(buildWaveformBars(peaks, 3).width).toBe(190)
     expect(buildWaveformBars(peaks, 60).width).toBe(256)
+  })
+
+  // tweb audio.ts:88-89 — своя пара minW/maxW на мобильном экране; экран знает
+  // ОДИН владелец, `mediaSizes` (порт tweb helpers/mediaSizes.ts).
+  it('мобильный экран — своя пара 152/190', () => {
+    mediaSizes.isMobile = true
+    expect(buildWaveformBars(peaks, 3).width).toBe(152)
+    expect(buildWaveformBars(peaks, 60).width).toBe(190)
+    // и число баров считается от неё же: 152/4 = 38
+    expect(buildWaveformBars(peaks, 3).bars).toHaveLength(38)
+    // пиков нет — ширина всё равно мобильного минимума
+    expect(buildWaveformBars([], 3).width).toBe(152)
   })
 
   it('число баров = ширина волны / (бар + зазор); короткая запись → минимум 190px', () => {

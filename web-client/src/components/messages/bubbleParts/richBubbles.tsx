@@ -6,7 +6,7 @@ import Text from '../../../shared/ui/Text'
 import classNames from '../../../shared/lib/classNames'
 import { useMediaUrl } from '../../../core/hooks/useMediaUrl'
 import { useBlurThumb } from '../useBlurThumb'
-import { mediaSizes, setAttachmentSize } from '../../../core/dom/mediaSizes'
+import mediaSizes, { setAttachmentSize } from '../../../core/dom/mediaSizes'
 import Avatar from '../../../shared/ui/Avatar'
 import Spinner from '../../../shared/ui/Spinner'
 import TgIcon from '../../TgIcon'
@@ -38,8 +38,8 @@ function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
   const { size } = setAttachmentSize({
     width: wp.photoW || 0,
     height: wp.photoH || 0,
-    boxWidth: mediaSizes().webpage.width,
-    boxHeight: mediaSizes().webpage.height,
+    boxWidth: mediaSizes.active.webpage.width,
+    boxHeight: mediaSizes.active.webpage.height,
   })
   // tweb ставит квадратной картинке ровно 48px (bubbles.ts:8192).
   const box = square ? { width: SQUARE_PHOTO, height: SQUARE_PHOTO } : size

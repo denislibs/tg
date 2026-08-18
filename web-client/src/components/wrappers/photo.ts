@@ -22,12 +22,17 @@
  *    нас нет. Отсюда же отсутствуют ветки `isWebFile`/`isWebDoc`/
  *    `isImageFromDocument` и ранний выход «у медиа нет ни `sizes`, ни `thumbs`»
  *    (photo.ts:71-93) — различать нечего, любой `mediaId` скачивается;
- *  • tweb-параметр `size: PhotoSize` → `thumb?: boolean`: у нашего медиа ровно
- *    два размера — `thumb: true|false` у `mediaManager.downloadMediaURL`, лестницы и
- *    `choosePhotoSize` не существует. Вместе с `size` отпадают:
- *      – ранний выход `size._ === 'photoSizeEmpty' || size.bytes` (photo.ts:208)
- *        — «размер, который уже лежит в самом сообщении», у нас это
- *        `strippedThumb`, и он не подменяет собой полное медиа;
+ *  • tweb-параметр `size: PhotoSize` → `thumb?: boolean` + `strippedSize?:
+ *    boolean`: у нашего медиа ровно два серверных размера
+ *    (`thumb: true|false` у `mediaManager.downloadMediaURL`) плюс stripped-превью
+ *    в самом сообщении (`media_blur`), лестницы и `choosePhotoSize` не
+ *    существует. Ранний выход оригинала «выбранный размер САМ является байтами
+ *    превью» (photo.ts:208) портирован — это и есть `strippedSize` (см. ниже у
+ *    ветки). Вместе с `size` отпадают:
+ *      – условие `size._ === 'photoSizeEmpty' && isDocument` в том же раннем
+ *        выходе — `photoSizeEmpty` это MTProto-заглушка «размера нет», у нас
+ *        отсутствие медиа выражается отсутствием `mediaId`, а не пустым
+ *        размером;
  *      – ветка `size._ === 'videoSize'` (photo.ts:213-218, `<video autoplay loop
  *        muted class="media-photo">`) — это MTProto `videoSize`, анимированная
  *        обложка (профиля/эмодзи-статуса), а не видео сообщения; такого поля у
@@ -52,18 +57,9 @@
  *  • `isOut`/`withTail`/`managers` не портированы: в теле оригинала они не
  *    используются (только пробрасываются в рекурсивный вызов), а
  *    `wrapMediaWithTail` в tweb закомментирован.
- *
- * ── Пробел фундамента, который здесь обходится (доложено отдельно) ──────────
- * tweb `setAttachmentSize` возвращает ДВА размера: `size` — вписанный, и
- * `boxSize` — расширенный минимумами, который и уходит в `style` элемента.
- * Аспектеру нужен ПЕРВЫЙ (дамп: контейнер 320×400, аспектер 300×400). Наш порт
- * `core/dom/mediaSizes.ts::setAttachmentSize` отдаёт только второй, поэтому
- * вписанный размер считается здесь (`aspectFittedSize`) теми же двумя шагами
- * оригинала. Правильное место для этого — сам `setAttachmentSize`.
  */
 import ProgressivePreloader from '@components/preloader'
-import { calcImageInBox } from '@core/dom/calcImageInBox'
-import { MIN_SIDE_SIZE, mediaSizes, setAttachmentSize } from '@core/dom/mediaSizes'
+import mediaSizes, { setAttachmentSize } from '@core/dom/mediaSizes'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
@@ -92,6 +88,17 @@ export interface WrapPhotoOptions {
   strippedThumb?: string
   /** качать уменьшенную версию (наш аналог tweb-параметра `size: PhotoSize`) */
   thumb?: boolean
+  /**
+   * Выбранный размер САМ является байтами превью — tweb `size._ ===
+   * 'photoStrippedSize'` (`size.bytes`), ранний выход photo.ts:208. Качать
+   * нечего: показывается `strippedThumb` из сообщения, и он рисуется КАК медиа,
+   * а не как подложка. Так у оригинала выглядят видео без серверного постера
+   * (единственный подходящий `PhotoSize` документа — stripped) и неоплаченное
+   * платное медиа (`generatePhotoForExtendedMediaPreview` отдаёт псевдо-фото с
+   * `id: 0` и единственным stripped-размером — отсюда же и `mediaId: 0` у
+   * такого вызова).
+   */
+  strippedSize?: boolean
   /** контейнер показа; им владеет вызывающий (tweb `container`) */
   container: HTMLElement
   boxWidth?: number
@@ -135,24 +142,9 @@ export interface WrappedPhoto {
   aspecter: HTMLElement | null
 }
 
-/**
- * Вписанный размер (tweb `setAttachmentSize`'s `size`, а не `boxSize`) — те же
- * два шага оригинала: `aspect` в бокс, затем покрытие до 200 по стороне, если
- * обе стороны мельче. Расширения `EXPAND_TEXT_WIDTH`/`MIN_IMAGE_WIDTH` его НЕ
- * трогают — они меняют только `boxSize` (tweb setAttachmentSize.ts:83-93).
- */
-function aspectFittedSize(width: number, height: number, boxWidth: number, boxHeight: number) {
-  const box = calcImageInBox(width || 100, height || 100, boxWidth, boxHeight, true)
-  if (box.width < MIN_SIDE_SIZE && box.height < MIN_SIDE_SIZE) {
-    return calcImageInBox(box.width, box.height, MIN_SIDE_SIZE, MIN_SIDE_SIZE, false)
-  }
-
-  return box
-}
-
 export default async function wrapPhoto(options: WrapPhotoOptions): Promise<WrappedPhoto> {
   const {
-    mediaId, width, height, strippedThumb, thumb, container, isVisible, middleware,
+    mediaId, width, height, strippedThumb, thumb, strippedSize, container, isVisible, middleware,
     loadPromises, noBlur, noThumb, noFadeIn, blurAfter, processUrl, fadeInElement,
     onRender, onRenderFinish, useBlur, useRenderCache, hasMessageBlock,
     canHaveVideoPlayer, uploadPromise,
@@ -175,8 +167,8 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   let noAutoDownload: boolean | undefined = options.autoDownloadSize === 0
 
   // tweb photo.ts:97-100
-  const boxWidth = options.boxWidth === undefined ? mediaSizes().regular.width : options.boxWidth
-  const boxHeight = options.boxHeight === undefined ? mediaSizes().regular.height : options.boxHeight
+  const boxWidth = options.boxWidth === undefined ? mediaSizes.active.regular.width : options.boxWidth
+  const boxHeight = options.boxHeight === undefined ? mediaSizes.active.regular.height : options.boxHeight
 
   container.classList.add('media-container')
   let aspecter = container
@@ -190,25 +182,25 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   const isDownloaded = () => cachedMediaUrl(mediaId, thumb) !== undefined
 
   if (boxWidth && boxHeight) { // !album
+    // размер контейнера ставит сам `setAttachmentSize` (`boxSize`), как в
+    // оригинале (setAttachmentSize.ts:102-103)
     const set = setAttachmentSize({
       width: width || 0,
       height: height || 0,
+      element: container,
       boxWidth,
       boxHeight,
       hasMessageBlock,
       isVideoWithPlayer: canHaveVideoPlayer,
     })
     isFit = set.isFit
-    // tweb это делает сам setAttachmentSize (setAttachmentSize.ts:102-103)
-    container.style.width = set.size.width + 'px'
-    container.style.height = set.size.height + 'px'
 
     if (!isFit) {
-      const fitted = aspectFittedSize(width || 0, height || 0, boxWidth, boxHeight)
       aspecter = document.createElement('div')
       aspecter.classList.add('media-container-aspecter')
-      aspecter.style.width = fitted.width + 'px'
-      aspecter.style.height = fitted.height + 'px'
+      // ВПИСАННЫЙ размер, не расширенный бокс контейнера (tweb photo.ts:136-137)
+      aspecter.style.width = set.size.width + 'px'
+      aspecter.style.height = set.size.height + 'px'
 
       const gotThumb = getMediaThumbIfNeeded({
         strippedThumb,
@@ -234,6 +226,8 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
           height,
           strippedThumb,
           thumb,
+          // tweb пробрасывает в рекурсивный вызов тот же `size` (photo.ts:157)
+          strippedSize,
           boxWidth: 0,
           boxHeight: 0,
           lazyLoadQueue,
@@ -270,6 +264,15 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
   }
 
   ret.aspecter = aspecter
+
+  // tweb photo.ts:208-210 — выбранный размер САМ является байтами превью:
+  // показывать больше нечего, и превью, построенное выше, УЖЕ стоит в слоте
+  // медиа (`media-photo` в аспектере/контейнере — не подложка на весь бокс,
+  // которую кладёт ветка `!isFit`). Ни полного `<img>`, ни кольца, ни запроса
+  // байтов в этой ветке нет вовсе.
+  if (strippedSize) {
+    return ret
+  }
 
   const media = ret.images.full = new Image()
   media.classList.add('media-photo')

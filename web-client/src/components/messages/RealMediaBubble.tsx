@@ -11,7 +11,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
-import { mediaSizes, setAttachmentSize } from '../../core/dom/mediaSizes'
+import mediaSizes, { setAttachmentSize } from '../../core/dom/mediaSizes'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 // Токен-механизм остаётся ТОЛЬКО видео-путям этого бабла (инлайн-автоплей
@@ -162,11 +162,14 @@ export default function RealMediaBubble({
     // Бокс — порт tweb setAttachmentSize (mediaSizes.regular 420×400 / 340×340
     // на узком экране + минимумы 200/320/120/368). Раньше был свой 320×420.
     const canHavePlayer = isVideo && !isGifLike({ mime, fileName, duration })
-    const { size: box, isFit } = setAttachmentSize({
+    // `boxSize` — размер САМОГО контейнера (расширенный минимумами), `size` —
+    // вписанный, он уходит в `.media-container-aspecter` (tweb
+    // setAttachmentSize.ts:64-103 + wrappers/photo.ts:136-137).
+    const { size: fitted, boxSize: box, isFit } = setAttachmentSize({
       width: width || 0,
       height: height || 0,
-      boxWidth: mediaSizes().regular.width,
-      boxHeight: mediaSizes().regular.height,
+      boxWidth: mediaSizes.active.regular.width,
+      boxHeight: mediaSizes.active.regular.height,
       hasMessageBlock,
       isVideoWithPlayer: canHavePlayer,
     })
@@ -268,7 +271,7 @@ export default function RealMediaBubble({
           />
         )}
         {isFit ? media : (
-          <div className="media-container-aspecter" style={{ width: box.width, height: box.height }}>
+          <div className="media-container-aspecter" style={{ width: fitted.width, height: fitted.height }}>
             {media}
           </div>
         )}
