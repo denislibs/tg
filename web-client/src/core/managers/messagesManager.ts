@@ -684,20 +684,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
         // кадр разблокировки приносит настоящее медиа со ступенями и атрибутами.
         // Нормализуем тем же `saveMessageMedia`, что и на границе маппинга —
         // иначе у документа не было бы выведенного типа.
+        //
+        // Вся мета, которую бэк вычищает у заблокированного медиа
+        // (`stripLockedMedia`) и возвращает в кадре разблокировки, теперь едет
+        // ВНУТРИ вложения: пики волны — в `documentAttributeAudio`, теги трека
+        // там же, признак гифки — `documentAttributeAnimated`, размеры и
+        // превью — в ступенях. Раньше каждое из этих полей приходилось
+        // перекладывать отдельной строкой и легко было потерять поштучно.
         media: saveMessageMedia(evt.media),
-        mediaWidth: evt.media_w, mediaHeight: evt.media_h,
-        mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
-        mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
-        mediaSize: evt.media_size, mediaName: evt.media_name,
-        // Пики волны — тоже мета контента: stripLockedMedia чистит их у
-        // заблокированного, кадр разблокировки возвращает.
-        mediaWaveform: evt.media_waveform,
-        // Теги трека и признак гифки — тоже мета контента, которую бэк вычищает
-        // у заблокированного медиа (stripLockedMedia) и возвращает в кадре
-        // разблокировки: без них платное аудио остаётся без подписи, а платная
-        // гифка рисуется видео-баблом до перезагрузки истории.
-        mediaTitle: evt.media_title, mediaPerformer: evt.media_performer,
-        mediaAnimated: evt.media_animated,
         paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
       }
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, ...fields }))

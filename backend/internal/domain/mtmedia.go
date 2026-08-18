@@ -506,67 +506,6 @@ func attributeTag(a DocumentAttribute) string {
 	return ""
 }
 
-// LegacyFlatKeys дописывает в витрину ПЛОСКИЕ медиа-ключи (media_w/media_h/…),
-// выведенные из модели.
-//
-// ВРЕМЕННОЕ, УДАЛЯЕТСЯ ЦЕЛИКОМ. Это половина шага expand/contract: модель уже
-// едет объектом `media`, но фронт ещё читает плоские ключи, и одномоментно
-// переключить обе стороны нельзя (миграция потребителей витрины — отдельная
-// задача, см. отчёт). Как только фронт переедет на `media`, эта функция и оба
-// её вызова (chat_handler.go::messageJSON, frame.go::messageUpdatePayload)
-// удаляются одним коммитом — новых потребителей у плоских ключей заводить
-// нельзя, они не переживут переход на бинарный TL.
-func LegacyFlatKeys(md *MessageMedia, j map[string]any) {
-	if md == nil {
-		return
-	}
-	if w, h := md.Dimensions(); w > 0 && h > 0 {
-		j["media_w"], j["media_h"] = w, h
-	}
-	if b := md.StrippedThumb(); len(b) > 0 {
-		j["media_blur"] = b
-	}
-	for _, s := range md.sizeList() {
-		if v, ok := s.(PhotoSizeReal); ok && v.Type == SizeTypeThumb {
-			j["media_has_thumb"] = true
-		}
-	}
-	if md.PFlags["spoiler"] {
-		j["media_spoiler"] = true
-	}
-	if md.HasAttribute(AttrAnimated) {
-		j["media_animated"] = true
-	}
-	if name := md.FileName(); name != "" {
-		j["media_name"] = name
-	}
-	if md.Document != nil {
-		if md.Document.MimeType != "" {
-			j["media_mime"] = md.Document.MimeType
-		}
-		if md.Document.Size > 0 {
-			j["media_size"] = md.Document.Size
-		}
-	}
-	if a, ok := md.VideoAttr(); ok && a.Duration > 0 {
-		j["media_duration"] = int(a.Duration)
-	}
-	if a, ok := md.AudioAttr(); ok {
-		if a.Duration > 0 {
-			j["media_duration"] = a.Duration
-		}
-		if a.Title != "" {
-			j["media_title"] = a.Title
-		}
-		if a.Performer != "" {
-			j["media_performer"] = a.Performer
-		}
-		if len(a.Waveform) > 0 {
-			j["media_waveform"] = a.Waveform
-		}
-	}
-}
-
 // LockedPlaceholder — вложение в том виде, в каком его можно показать зрителю,
 // не оплатившему платное медиа: псевдо-фото без id (скачивать нечего) с одной
 // stripped-ступенью и размерами кадра. Та же форма, которую оригинал собирает

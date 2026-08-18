@@ -266,9 +266,17 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     contact: { user_id: 77, name: 'Bob', phone: '+1' },
     gift: { id: 1, gift: { id: 2, emoji: '🎁', title: 'Gift', price_stars: 100, convert_stars: 50, total: null, remains: null, sold_out: false }, from_id: 9, anonymous: false, hidden: false, converted: false, convert_stars: 50 },
     reply_markup: { inline: [[{ text: 'Click', callback: 'cb' }]] },
-    media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
-    media_has_thumb: true, media_duration: 12, media_size: 2048, media_name: 'photo.jpg',
-    media_title: 'Track', media_performer: 'Artist', media_animated: true,
+    media: {
+      _: 'messageMediaPhoto',
+      photo: {
+        _: 'photo', id: 555,
+        sizes: [
+          { _: 'photoStrippedSize', type: 'i', bytes: 'abc' },
+          { _: 'photoSize', type: 'y', w: 320, h: 240, size: 1024 },
+          { _: 'photoSize', type: 'w', w: 640, h: 480, size: 2048 },
+        ],
+      },
+    },
     secret_media: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
     effect: 'confetti',
     paid_media: { price: 10, locked: false },
@@ -549,8 +557,6 @@ describe('MessagesManager.cachePaidUnlock', () => {
     const evt = {
       chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
       media_id: 55, created_at: '2026-06-24T10:00:00Z', media,
-      media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
-      media_has_thumb: true, media_duration: undefined, media_size: 2048, media_name: 'p.jpg',
       paid_media: { price: 10, locked: false },
     } as unknown as NewMessageEvt
     const ops = mgr.cachePaidUnlock(evt)
@@ -558,9 +564,6 @@ describe('MessagesManager.cachePaidUnlock', () => {
       op: 'patch', key: '1', msgId: 2,
       fields: {
         mediaId: 55, media,
-        mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
-        mediaHasThumb: true, mediaDuration: undefined, mediaSize: 2048, mediaName: 'p.jpg',
-        mediaTitle: undefined, mediaPerformer: undefined, mediaAnimated: undefined,
         paidMedia: { price: 10, locked: false },
       },
     }])

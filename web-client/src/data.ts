@@ -65,24 +65,6 @@ export interface ConvMsg {
   replySnapshotText?: string
   // media (history read model — render the bubble fully, no per-media meta request)
   mediaId?: number
-  mediaWidth?: number // real media dims → reserve box, no shift
-  mediaHeight?: number
-  mediaMime?: string
-  mediaBlur?: string // base64 blur preview (LQIP placeholder)
-  mediaHasThumb?: boolean
-  mediaDuration?: number
-  mediaSize?: number
-  mediaName?: string
-  /** пики волны голосового, base64 — наш documentAttributeAudio.waveform:
-   * волна бабла строится прямо из сообщения, без запроса меты медиа */
-  mediaWaveform?: string
-  // ID3-теги трека (tweb documentAttributeAudio.title/performer): заголовок бабла
-  // = mediaTitle ?? mediaName, подпись = mediaPerformer, а без него — размер файла
-  mediaTitle?: string
-  mediaPerformer?: string
-  /** медиа проигрывается как гифка (tweb doc.type === 'gif') — см.
-   * `core/models.ts::Message.mediaAnimated`; приходит только когда true */
-  mediaAnimated?: boolean
   // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
   paidMedia?: { price: number; locked: boolean }
   /** Вложение в форме оригинала (`messageMediaPhoto`/`messageMediaDocument`) —

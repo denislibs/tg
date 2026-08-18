@@ -89,8 +89,6 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	// отправитель просил скрыть.
 	if m.Media != nil {
 		p["media"] = m.Media
-		// ВРЕМЕННО: плоские ключи той же меты — см. domain.LegacyFlatKeys.
-		domain.LegacyFlatKeys(m.Media, p)
 	}
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

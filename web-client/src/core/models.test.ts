@@ -125,53 +125,57 @@ describe('mapMessage', () => {
     expect(mapMessage(base).factCheck).toBeUndefined()
   })
 
-  // Медиа-мета сообщения — то, из чего бабл строится ЦЕЛИКОМ, без отдельного
-  // запроса меты медиа: точный бокс (media_w/media_h → setAttachmentSize),
-  // мгновенное превью до сети (media_blur — наш аналог tweb photoStrippedSize),
-  // постер/thumb, mime, длительность, размер, имя, теги трека и признак гифки.
-  // Проверяем весь блок разом: пропуск одного ключа в маппере — это молча
-  // потерянное поле у КАЖДОГО медиа-бабла.
-  it('маппит медиа-мету сообщения (media_* → media*)', () => {
+  // Вложение — то, из чего бабл строится ЦЕЛИКОМ, без отдельного запроса меты
+  // медиа. Маппер обязан прогнать его через `saveMessageMedia`: сам провод несёт
+  // только атрибуты и ступени, а `doc.type`/`doc.w`/`doc.h`/`doc.duration`
+  // выводит клиент — ровно как `appDocsManager.saveDoc` в оригинале. Без этого
+  // вывода у КАЖДОГО медиа-бабла не будет ни типа, ни бокса.
+  it('нормализует вложение: тип и геометрия выводятся из атрибутов', () => {
     const raw: RawMessage = {
       id: 30, chat_id: 1, seq: 7, sender_id: 1, type: 'video', text: '',
       reply_to_id: null, media_id: 42, created_at: '2026-06-24T10:01:00Z',
-      media_w: 1600, media_h: 900, media_mime: 'video/mp4', media_blur: 'AAECAw==',
-      media_has_thumb: true, media_duration: 61, media_size: 9000000, media_name: 'clip.mp4',
-      media_title: 'Track One', media_performer: 'denis1488', media_animated: true,
-      media_waveform: 'HwAq/wc=',
+      media: {
+        _: 'messageMediaDocument',
+        document: {
+          _: 'document', id: 42, mime_type: 'video/mp4', size: 9000000,
+          thumbs: [
+            { _: 'photoStrippedSize', type: 'i', bytes: 'AAECAw==' },
+            { _: 'photoSize', type: 'y', w: 320, h: 180, size: 4096 },
+          ],
+          attributes: [
+            { _: 'documentAttributeVideo', duration: 61, w: 1600, h: 900 },
+            { _: 'documentAttributeFilename', file_name: 'clip.mp4' },
+          ],
+        },
+      },
     }
-    const m = mapMessage(raw)
-    expect({
-      mediaId: m.mediaId,
-      mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight, mediaMime: m.mediaMime,
-      mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb, mediaDuration: m.mediaDuration,
-      mediaSize: m.mediaSize, mediaName: m.mediaName, mediaWaveform: m.mediaWaveform,
-      mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
-    }).toEqual({
-      mediaId: 42,
-      mediaWidth: 1600, mediaHeight: 900, mediaMime: 'video/mp4',
-      mediaBlur: 'AAECAw==', mediaHasThumb: true, mediaDuration: 61,
-      mediaSize: 9000000, mediaName: 'clip.mp4', mediaWaveform: 'HwAq/wc=',
-      mediaTitle: 'Track One', mediaPerformer: 'denis1488', mediaAnimated: true,
-    })
-
-    // Медиа без обработки/без признака: ключей нет — поля undefined, а не false.
-    const bare = mapMessage({ ...raw, media_animated: undefined, media_has_thumb: undefined })
-    expect(bare.mediaAnimated).toBeUndefined()
-    expect(bare.mediaHasThumb).toBeUndefined()
+    const media = mapMessage(raw).media
+    expect(media?._).toBe('messageMediaDocument')
+    const doc = media?._ === 'messageMediaDocument' ? media.document : undefined
+    expect({ type: doc?.type, w: doc?.w, h: doc?.h, duration: doc?.duration, file_name: doc?.file_name })
+      .toEqual({ type: 'video', w: 1600, h: 900, duration: 61, file_name: 'clip.mp4' })
+    // Ступени доезжают обе — превью до сети и серверный постер.
+    expect(doc?.thumbs?.map((t) => t._)).toEqual(['photoStrippedSize', 'photoSize'])
   })
 
-  // Скрытое медиа (tweb messageMedia.pFlags.spoiler). Признак ОДНОСТОРОННИЙ:
-  // сервер кладёт ключ только когда true, поэтому «нет ключа» обязано давать
-  // undefined, а не false — иначе спойлер нельзя отличить от «сервер не сказал».
-  it('маппит признак скрытого медиа (media_spoiler → mediaSpoiler)', () => {
+  // Скрытое медиа (`messageMedia.pFlags.spoiler`). Признак ОДНОСТОРОННИЙ: ключ
+  // есть только когда true, поэтому «нет ключа» обязано давать undefined, а не
+  // false — иначе спойлер не отличить от «сервер не сказал». В плоской модели
+  // это приходилось держать соглашением, теперь это семантика самого `pFlags`.
+  it('признак скрытого медиа живёт в pFlags и односторонний', () => {
     const raw: RawMessage = {
       id: 31, chat_id: 1, seq: 8, sender_id: 1, type: 'photo', text: '',
       reply_to_id: null, media_id: 43, created_at: '2026-06-24T10:02:00Z',
-      media_blur: 'AAECAw==', media_spoiler: true,
+      media: {
+        _: 'messageMediaPhoto',
+        pFlags: { spoiler: true },
+        photo: { _: 'photo', id: 43, sizes: [{ _: 'photoStrippedSize', type: 'i', bytes: 'AAECAw==' }] },
+      },
     }
-    expect(mapMessage(raw).mediaSpoiler).toBe(true)
-    expect(mapMessage({ ...raw, media_spoiler: undefined }).mediaSpoiler).toBeUndefined()
+    expect(mapMessage(raw).media?.pFlags?.spoiler).toBe(true)
+
+    const bare = mapMessage({ ...raw, media: { ...raw.media!, pFlags: {} } })
+    expect(bare.media?.pFlags?.spoiler).toBeUndefined()
   })
 
   it('маппит send_as (отображаемый автор канала/группы)', () => {
@@ -294,47 +298,37 @@ describe('fromNewMessageEvt — проводной кадр в модель', ()
     expect(deriveOut(asMyself, meId)).toBe(true)
   })
 
-  // Медиа-мета кадра — те же ключи, что у витрины истории: живой медиа-бабл
-  // обязан рисоваться полноценно (точный бокс, превью до сети, признак гифки),
-  // а не заглушкой до перезагрузки окна.
-  it('переносит медиа-мету кадра целиком', () => {
+  // Вложение живого кадра — то же самое, что у витрины истории, и нормализуется
+  // тем же `saveMessageMedia`. Раньше здесь стояли ТРИ отдельных пина (мета
+  // целиком, спойлер, пики волны): каждое поле терялось поштучно, и потеря
+  // проявлялась как «после перезагрузки истории появилось, а живьём не было» —
+  // дефект класса send_as. Со вложенной моделью потерять поштучно уже нечего,
+  // но проверяем оба исторически терявшихся признака явно.
+  it('переносит вложение кадра целиком и нормализует его', () => {
     const m = fromNewMessageEvt({
-      ...base, type: 'video', media_id: 42,
-      media_w: 320, media_h: 240, media_mime: 'video/mp4', media_blur: 'AAECAw==',
-      media_has_thumb: true, media_duration: 3, media_size: 400000, media_name: 'cat.mp4',
-      media_title: 'T', media_performer: 'P', media_animated: true,
-      media_waveform: 'HwAq/wc=',
+      ...base, type: 'voice', media_id: 55,
+      media: {
+        _: 'messageMediaDocument',
+        pFlags: { spoiler: true },
+        document: {
+          _: 'document', id: 55, mime_type: 'audio/ogg', size: 4200,
+          attributes: [
+            { _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=' },
+            { _: 'documentAttributeFilename', file_name: 'voice.ogg' },
+          ],
+        },
+      },
     })
-    expect({
-      mediaId: m.mediaId, mediaWidth: m.mediaWidth, mediaHeight: m.mediaHeight,
-      mediaMime: m.mediaMime, mediaBlur: m.mediaBlur, mediaHasThumb: m.mediaHasThumb,
-      mediaDuration: m.mediaDuration, mediaSize: m.mediaSize, mediaName: m.mediaName,
-      mediaWaveform: m.mediaWaveform,
-      mediaTitle: m.mediaTitle, mediaPerformer: m.mediaPerformer, mediaAnimated: m.mediaAnimated,
-    }).toEqual({
-      mediaId: 42, mediaWidth: 320, mediaHeight: 240,
-      mediaMime: 'video/mp4', mediaBlur: 'AAECAw==', mediaHasThumb: true,
-      mediaDuration: 3, mediaSize: 400000, mediaName: 'cat.mp4',
-      mediaWaveform: 'HwAq/wc=',
-      mediaTitle: 'T', mediaPerformer: 'P', mediaAnimated: true,
-    })
-  })
 
-  // Спойлер — отдельным пином по той же причине, что и волна: если ключа нет в
-  // КАДРЕ, живое сообщение приедет БЕЗ спойлера и на миг обнажит медиа, а после
-  // перезагрузки истории спойлер появится. Ровно дефект класса send_as.
-  it('переносит признак скрытого медиа из живого кадра', () => {
-    const m = fromNewMessageEvt({ ...base, type: 'photo', media_id: 43, media_blur: 'AAECAw==', media_spoiler: true })
-    expect(m.mediaSpoiler).toBe(true)
-    expect(fromNewMessageEvt({ ...base, type: 'photo', media_id: 43 }).mediaSpoiler).toBeUndefined()
-  })
+    const doc = m.media?._ === 'messageMediaDocument' ? m.media.document : undefined
+    // Тип выведен из атрибутов и mime — то есть кадр прошёл через saveDocument.
+    expect(doc?.type).toBe('voice')
+    expect(doc?.duration).toBe(7)
+    // Пики волны: без них живое голосовое рисовалось бы без волны до перезагрузки.
+    expect(doc?.attributes.find((a) => a._ === 'documentAttributeAudio')?.waveform).toBe('HwAq/wc=')
+    // Спойлер: без него живое сообщение на миг обнажило бы медиа.
+    expect(m.media?.pFlags?.spoiler).toBe(true)
 
-  // Пики волны голосового — отдельным пином: их отсутствие в КАДРЕ не ломает
-  // ни один медиа-бабл, кроме голосового, и молча оставляет живое голосовое
-  // без волны до перезагрузки истории (дефект класса send_as).
-  it('переносит пики волны голосового из живого кадра', () => {
-    const m = fromNewMessageEvt({ ...base, type: 'voice', media_id: 55, media_duration: 7, media_waveform: 'HwAq/wc=' })
-    expect(m.mediaWaveform).toBe('HwAq/wc=')
-    expect(fromNewMessageEvt({ ...base, type: 'voice', media_id: 55 }).mediaWaveform).toBeUndefined()
+    expect(fromNewMessageEvt({ ...base, type: 'voice', media_id: 55 }).media).toBeUndefined()
   })
 })

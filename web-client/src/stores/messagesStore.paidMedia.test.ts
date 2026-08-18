@@ -20,9 +20,16 @@ const locked = (id: number): RawMessage => ({
   ...base(id), media_id: null,
   media: {
     _: 'messageMediaPhoto',
-    photo: { _: 'photo', id: 0, sizes: [{ _: 'photoStrippedSize', type: 'i', bytes: 'AAAA' }] },
+    // Две ступени, как их и собирает `domain.LockedPlaceholder`: превью и
+    // размеры кадра ступенью `w` с нулевым `size` (скачивать нечего).
+    photo: {
+      _: 'photo', id: 0,
+      sizes: [
+        { _: 'photoStrippedSize', type: 'i', bytes: 'AAAA' },
+        { _: 'photoSize', type: 'w', w: 800, h: 600, size: 0 },
+      ],
+    },
   },
-  media_w: 800, media_h: 600, media_blur: 'AAAA',
   paid_media: { price: 25, locked: true },
 })
 

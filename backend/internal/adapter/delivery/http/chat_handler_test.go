@@ -626,47 +626,32 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 	})
 }
 
-// Шаг expand/contract: витрина отдаёт ОБЕ формы разом — новый объект `media`
-// и плоские ключи, ВЫВЕДЕННЫЕ ИЗ НЕГО (domain.LegacyFlatKeys). Второго
-// источника меты нет: плоские ключи не считаются заново из строки media, а
-// читаются из уже собранной модели — поэтому разъехаться они не могут, и
-// удаление их половины (когда фронт переедет на `media`) ничего не меняет в
-// самой модели. Тест держит именно эту связь, а не факт наличия ключей.
-func TestMessageJSON_FlatKeysDerivedFromModel(t *testing.T) {
+// Шаг expand/contract завершён: плоских медиа-ключей в витрине больше нет
+// вообще, вся мета едет ВНУТРИ `media`. Тест держит именно отсутствие — иначе
+// плоский ключ легко вернётся «на минутку» под конкретного потребителя, а
+// вместе с ним вернётся и второй источник истины, из-за которого расходились
+// бокс, тип документа и превью.
+func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 	msg := msgWithMedia("video", domain.MediaSource{
 		Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6,
 		FileName: "clip.mp4", Blur: []byte{1, 2, 3}, HasThumb: true, Spoiler: true,
 	})
 	j := messageJSON(msg)
-	md := j["media"].(*domain.MessageMedia)
 
-	w, h := md.Dimensions()
-	if j["media_w"] != w || j["media_h"] != h {
-		t.Fatalf("media_w/h = %v/%v, модель говорит %d/%d", j["media_w"], j["media_h"], w, h)
+	if _, ok := j["media"]; !ok {
+		t.Fatal("вложение в витрине отсутствует")
 	}
-	if j["media_mime"] != md.Document.MimeType {
-		t.Fatalf("media_mime = %v, модель говорит %q", j["media_mime"], md.Document.MimeType)
-	}
-	if j["media_name"] != md.FileName() {
-		t.Fatalf("media_name = %v, модель говорит %q", j["media_name"], md.FileName())
-	}
-	if string(j["media_blur"].([]byte)) != string(md.StrippedThumb()) {
-		t.Fatalf("media_blur разошёлся с stripped-ступенью модели")
-	}
-	if (j["media_spoiler"] == true) != md.PFlags["spoiler"] {
-		t.Fatalf("media_spoiler = %v, модель говорит %v", j["media_spoiler"], md.PFlags["spoiler"])
-	}
-	a, _ := md.VideoAttr()
-	if j["media_duration"] != int(a.Duration) {
-		t.Fatalf("media_duration = %v, модель говорит %v", j["media_duration"], a.Duration)
-	}
-	// Медиа нет — плоских ключей тоже нет ни одного.
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"})
-	for _, k := range []string{"media", "media_w", "media_h", "media_mime", "media_blur",
+	for _, k := range []string{"media_w", "media_h", "media_mime", "media_blur",
 		"media_has_thumb", "media_duration", "media_size", "media_name", "media_waveform",
 		"media_title", "media_performer", "media_animated", "media_spoiler"} {
-		if _, ok := bare[k]; ok {
-			t.Fatalf("ключ %q у сообщения без медиа: %v", k, bare[k])
+		if v, ok := j[k]; ok {
+			t.Fatalf("плоский ключ %q вернулся в витрину: %v", k, v)
 		}
+	}
+
+	// Медиа нет — нет и самого ключа `media`.
+	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"})
+	if _, ok := bare["media"]; ok {
+		t.Fatalf("ключ media у сообщения без медиа: %v", bare["media"])
 	}
 }

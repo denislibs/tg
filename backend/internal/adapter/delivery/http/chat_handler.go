@@ -2143,9 +2143,6 @@ func messageJSON(m domain.Message) map[string]any {
 	// Ровно тот же объект едет в live-кадре (usecase/chat/frame.go).
 	if m.Media != nil {
 		j["media"] = m.Media
-		// ВРЕМЕННО: плоские ключи той же меты, пока витрину читает ещё не
-		// мигрировавший фронт. Удаляются вместе с domain.LegacyFlatKeys.
-		domain.LegacyFlatKeys(m.Media, j)
 	}
 	if m.PaidMediaPrice != nil {
 		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

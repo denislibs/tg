@@ -207,23 +207,6 @@ export interface RawMessage {
    * лестницей PhotoSize[] и атрибутами. Тип документа выводит клиент
    * (`saveDocument`), спойлер лежит в `pFlags.spoiler`. */
   media?: MessageMedia
-  // ── ВРЕМЕННО: плоская проекция того же вложения ────────────────────────────
-  // Бэк выводит эти ключи ИЗ `media` (domain.LegacyFlatKeys) — второго источника
-  // меты нет. Живут ровно до тех пор, пока потребители витрины не переедут на
-  // `media`; новых читателей не заводить (на бинарном TL их не будет).
-  media_w?: number
-  media_h?: number
-  media_mime?: string
-  media_blur?: string
-  media_has_thumb?: boolean
-  media_duration?: number
-  media_size?: number
-  media_name?: string
-  media_waveform?: string
-  media_title?: string
-  media_performer?: string
-  media_animated?: boolean
-  media_spoiler?: boolean
   views?: number
   forwards?: number
   media_unread?: boolean
@@ -354,19 +337,6 @@ export interface Message {
   // (бэк выводит плоские ключи из модели), поэтому разъехаться не могут.
   // Новых читателей не заводить: правильный вопрос к модели — через
   // `getMediaFromMessage`/`choosePhotoSize`/`getStrippedThumb`.
-  mediaWidth?: number
-  mediaHeight?: number
-  mediaMime?: string
-  mediaBlur?: string
-  mediaHasThumb?: boolean
-  mediaDuration?: number
-  mediaSize?: number
-  mediaName?: string
-  mediaWaveform?: string
-  mediaTitle?: string
-  mediaPerformer?: string
-  mediaAnimated?: boolean
-  mediaSpoiler?: boolean
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
   /** number of times a channel post was forwarded (Telegram message.forwards) */
@@ -811,19 +781,6 @@ export function mapMessage(r: RawMessage): Message {
     // а не подделывают флагом.
     media: saveMessageMedia(r.media),
     // Плоская проекция — временная, см. комментарий у полей Message.
-    mediaWidth: r.media_w,
-    mediaHeight: r.media_h,
-    mediaMime: r.media_mime,
-    mediaBlur: r.media_blur,
-    mediaHasThumb: r.media_has_thumb,
-    mediaDuration: r.media_duration,
-    mediaSize: r.media_size,
-    mediaName: r.media_name,
-    mediaWaveform: r.media_waveform,
-    mediaTitle: r.media_title,
-    mediaPerformer: r.media_performer,
-    mediaAnimated: r.media_animated,
-    mediaSpoiler: r.media_spoiler,
     views: r.views,
     forwards: r.forwards,
     mediaUnread: r.media_unread,
@@ -870,13 +827,6 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
     media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null,
     contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null,
     thread_root_id: evt.thread_root_id ?? null, media: evt.media,
-    media_w: evt.media_w, media_h: evt.media_h,
-    media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
-    media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
-    media_waveform: evt.media_waveform,
-    media_title: evt.media_title, media_performer: evt.media_performer,
-    media_animated: evt.media_animated,
-    media_spoiler: evt.media_spoiler,
     effect: evt.effect ?? null, paid_media: evt.paid_media ?? null,
     send_as: evt.send_as ?? null,
   })

@@ -153,11 +153,6 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   media?: import('../media/messageMedia').MessageMedia;
   // ВРЕМЕННО: плоская проекция того же вложения — бэк выводит её ИЗ `media`
   // (domain.LegacyFlatKeys). Уходит вместе с переездом потребителей на `media`.
-  media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
-  media_waveform?: string;
-  media_title?: string; media_performer?: string;
-  media_animated?: boolean;
-  media_spoiler?: boolean;
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
    * sender_id, который остаётся реальным. Бэк кладёт ключ в кадр
    * (usecase/chat/frame.go: messageUpdatePayload), и без него у живого
