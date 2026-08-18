@@ -82,6 +82,7 @@ const emptyHistory: HistoryResult = { messages: [], count: 0, reachedTop: true, 
 const managers: BubblesManagers = {
   messages: { getHistory: async () => emptyHistory },
   peers: { fillMirror: async () => {} },
+  dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 },
 }
 
 async function settle() {
@@ -164,8 +165,8 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // разложил заново (`removeAndUnmountBubble` + `groupBubbles`).
   it('с признаком: бабл НЕ перекладывается, сообщение подменяется на месте', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY }, managers)
-    await bubbles.getHistory()
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await bubbles.loadFirstHistory()
 
     await sendAndRender(pending, 'c1', 'привет')
     const temp = (ops[0][0] as { msg: Message }).msg
@@ -187,8 +188,8 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // путём — снять бабл и разложить заново.
   it('без признака: тот же ack идёт общим путём (перегруппировка)', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY }, managers)
-    await bubbles.getHistory()
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await bubbles.loadFirstHistory()
 
     await pending.sendFile({
       chatId: CHAT, clientMsgId: 'c2', senderId: ME,
@@ -211,8 +212,8 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // совпал), ветка обязана пропустить его на общий путь.
   it('признак есть, но позиция изменилась — ветка отдаёт бабл общему пути', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY }, managers)
-    await bubbles.getHistory()
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await bubbles.loadFirstHistory()
 
     await sendAndRender(pending, 'c1', 'привет')
     const temp = (ops[0][0] as { msg: Message }).msg

@@ -203,11 +203,15 @@ export const MIN_VIDEO_SIDE_SIZE = 368
 
 /**
  * Бокс вложения — порт `setAttachmentSize` (tweb setAttachmentSize.ts:14-107).
- * Шаги ровно как в оригинале: вписать в бокс → если обе стороны меньше 200,
- * растянуть покрытием до 200 → если у сообщения есть текст/reply/webpage/
- * фактчек, расширить до 320 ради читаемости → добить минимальную ширину МЕДИА
- * СООБЩЕНИЯ (120, а для видео с плеером — 368; вне сообщения — вьювер — этого
- * шага нет, tweb:90 `&& message`). Как и оригинал, сама ставит размер элементу.
+ * Шаги ровно как в оригинале: взять натуральный размер (у документа дефолт
+ * 512, у фото 100 — tweb:52-62) → вписать в бокс → блок минимумов, и он под
+ * ВНЕШНИМ гейтом (tweb:69): у документа он работает только для видео/гифки, у
+ * прочих документов (файл, музыка, кружок) весь блок пропускается. Сам блок:
+ * если обе стороны меньше 200, растянуть покрытием до 200 → если у сообщения
+ * есть текст/reply/webpage/фактчек, расширить до 320 ради читаемости → добить
+ * минимальную ширину МЕДИА СООБЩЕНИЯ (120, а для видео с плеером — 368; вне
+ * сообщения — вьювер — этого шага нет, tweb:90 `&& message`). Как и оригинал,
+ * сама ставит размер элементу.
  *
  * Возвращает ДВА размера, и это не удобство, а разные роли (tweb:64-66,83-92):
  *   • `size` — ВПИСАННЫЙ (aspect + покрытие до 200). Минимумы 320/120/368 его
@@ -228,10 +232,15 @@ export const MIN_VIDEO_SIDE_SIZE = 368
  *     `message &&`), поэтому вызывающий, ставящий первый, ставит и второй;
  *   • `canHaveVideoPlayer` + `photo.type === 'video'` → `isVideoWithPlayer`:
  *     тип медиа знает вызывающий (`wrapVideo`), сюда едет уже готовый ответ;
- *   • внешний гейт блока минимумов `(!isDocument || ['video','gif'].includes(
- *     photo.type) || _isWebDocument)` (:67) у всех наших вызывающих истинен:
- *     сюда приходят только фото, видео и гифки (постер видео — тот же документ
- *     с `type: 'video'`), документов не-медиа в этой функции не бывает;
+ *   • `photo._ === 'document'` → `isDocument`, `photo.type` → `documentType`:
+ *     сам объект медиа сюда не едет (вход плоский), а от этих двух полей
+ *     зависят ДВЕ ветки оригинала сразу — дефолт натурального размера (:52-62:
+ *     документу 512, фото 100) и внешний гейт блока минимумов (:69). Оба поля
+ *     знает вызывающий, как и `hasMessage`;
+ *   • терм `_isWebDocument` из обеих веток (:52, :69) выпал: `WebDocument` —
+ *     MTProto-медиа инлайн-ботов/веб-карточек, которого в нашей модели нет
+ *     вообще (grep по `src` — ни одного упоминания вне комментариев), так что
+ *     подставлять в него нечего;
  *   • `element` не обязателен: React-потребители считают бокс В РЕНДЕРЕ, где
  *     узла ещё нет, и кладут `boxSize` в `style` сами. Императивные
  *     потребители (`wrapPhoto`) передают элемент и стиль ставит функция.
@@ -245,6 +254,8 @@ export function setAttachmentSize({
   noZoom = true,
   hasMessage = false,
   hasMessageBlock = false,
+  isDocument = false,
+  documentType,
   isVideoWithPlayer = false,
   noMinSize = false,
 }: {
@@ -259,16 +270,23 @@ export function setAttachmentSize({
   hasMessage?: boolean
   /** у сообщения есть подпись / reply / webpage / фактчек — tweb расширяет бокс */
   hasMessageBlock?: boolean
+  /** медиа — документ, а не фото (tweb `photo._ === 'document'`) */
+  isDocument?: boolean
+  /** тип документа (tweb `photo.type`): 'video'/'gif'/'round'/… — только у документа */
+  documentType?: string
   isVideoWithPlayer?: boolean
   noMinSize?: boolean
 }): { size: MediaSize; boxSize: MediaSize; isFit: boolean } {
-  let size = makeMediaSize(width || 100, height || 100)
+  // tweb :49-62 — дефолт натурального размера у документа 512, у фото 100
+  let size = isDocument ?
+    makeMediaSize(width || 512, height || 512) :
+    makeMediaSize(width || 100, height || 100)
   let boxSize = makeMediaSize(boxWidth, boxHeight)
 
   boxSize = size = size.aspect(boxSize, noZoom)
 
   let isFit = true
-  if(!noMinSize) {
+  if(!noMinSize && (!isDocument || ['video', 'gif'].includes(documentType ?? ''))) {
     const minSideSize = MIN_SIDE_SIZE
     if(boxSize.width < minSideSize && boxSize.height < minSideSize) { // make at least one side this big
       boxSize = size = size.aspectCovered(makeMediaSize(minSideSize, minSideSize))

@@ -194,6 +194,20 @@ describe('_openMedia video: добивка VIDEO_MIN_WIDTH (tweb :2479-2493)', (
   })
 })
 
+// tweb :2471 отдаёт в setAttachmentSize САМО медиа (`photo: media`), и у
+// документа дефолт натурального размера 512×512 (setAttachmentSize.ts:52-56).
+// Пока подставлялось общее 100, видео без media_w/media_h открывалось
+// квадратиком 200×200 (покрытие MIN_SIDE_SIZE) вместо 512×512.
+describe('_openMedia video: дефолт натурального размера документа (tweb :52-56)', () => {
+  it('видео без размеров открывается от 512, а не от 100', async () => {
+    const v = makeViewer()
+    await openWithPlayer(v, vid({ width: 0, height: 0 }))
+    // окно happy-dom 1024×768 → бокс 1024×578, 512×512 влезает целиком (noZoom)
+    expect(v.contentMap.media.style.width).toBe('512px')
+    expect(v.contentMap.media.style.height).toBe('512px')
+  })
+})
+
 describe('_openMedia video: loop-порог (tweb :2603-2605)', () => {
   it('duration < 60 → loop', async () => {
     const v = makeViewer()

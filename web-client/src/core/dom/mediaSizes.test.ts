@@ -188,6 +188,50 @@ describe('setAttachmentSize', () => {
     expect(video.isFit).toBe(true)
   })
 
+  // tweb setAttachmentSize.ts:52-62 — дефолт натурального размера РАЗНЫЙ:
+  // документу (и веб-документу) 512, фото 100. Старое сообщение без media_w/
+  // media_h иначе резервирует крошку: 100×100 → покрытие до 200×200.
+  it('без натуральных размеров дефолт документа 512, фото — 100', () => {
+    const photo = setAttachmentSize({ width: 0, height: 0, ...box })
+    expect(photo.boxSize).toEqual({ width: MIN_SIDE_SIZE, height: MIN_SIDE_SIZE })
+
+    // 512×512 вписывается в 420×400 по высоте → 400×400, минимумы не касаются
+    for (const documentType of ['video', 'gif', 'round', 'audio', undefined]) {
+      const doc = setAttachmentSize({ width: 0, height: 0, ...box, isDocument: true, documentType })
+      expect(doc.boxSize).toEqual({ width: 400, height: 400 })
+    }
+
+    // дефолт подставляется по КАЖДОЙ оси отдельно (tweb `photo.w || … || 512`)
+    const halfKnown = setAttachmentSize({ width: 1024, height: 0, ...box, isDocument: true, documentType: 'video' })
+    expect(halfKnown.boxSize).toEqual({ width: 420, height: 210 })
+  })
+
+  // tweb setAttachmentSize.ts:69 — ВЕСЬ блок минимумов под внешним гейтом
+  // `(!isDocument || ['video','gif'].includes(photo.type) || _isWebDocument)`.
+  it('внешний гейт: у документа минимумы работают только для video/gif', () => {
+    const small = { width: 90, height: 60, ...box }
+
+    for (const documentType of ['video', 'gif']) {
+      const { boxSize } = setAttachmentSize({ ...small, isDocument: true, documentType })
+      expect(Math.max(boxSize.width, boxSize.height)).toBe(MIN_SIDE_SIZE)
+    }
+
+    // прочий документ (файл, музыка, кружок) блок пропускает ЦЕЛИКОМ — ни
+    // покрытия до 200, ни расширения до 320, ни минимальной ширины 120
+    for (const documentType of ['document', 'audio', 'round', undefined]) {
+      const { size, boxSize, isFit } = setAttachmentSize({
+        ...small, isDocument: true, documentType, hasMessage: true, hasMessageBlock: true,
+      })
+      expect(boxSize).toEqual({ width: 90, height: 60 })
+      expect(size).toEqual({ width: 90, height: 60 })
+      expect(isFit).toBe(true)
+    }
+
+    // фото гейт проходит по ветке «не документ»
+    const { boxSize } = setAttachmentSize({ ...small })
+    expect(Math.max(boxSize.width, boxSize.height)).toBe(MIN_SIDE_SIZE)
+  })
+
   it('noMinSize отключает все минимумы (стикеры/кружки)', () => {
     const { size, boxSize } = setAttachmentSize({ width: 90, height: 60, ...box, noMinSize: true })
     expect(size).toEqual({ width: 90, height: 60 })

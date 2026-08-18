@@ -43,6 +43,11 @@ function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
     // tweb зовёт wrapPhoto карточки С сообщением (bubbles.ts:8221-8232), а
     // `message` — гейт минимальной ширины внутри setAttachmentSize
     hasMessage: true,
+    // Медиа карточки здесь — ФОТО: ветка оригинала, которая её рисует, живёт
+    // под `photo && !doc` (bubbles.ts:8184), и в setAttachmentSize уезжает
+    // `photo` (MyPhoto). Значит дефолт натурального размера 100, не 512, и
+    // внешний гейт минимумов истинен по ветке «не документ» — `isDocument`
+    // остаётся false.
   })
   // tweb ставит квадратной картинке ровно 48px (bubbles.ts:8192).
   const box = square ? { width: SQUARE_PHOTO, height: SQUARE_PHOTO } : size

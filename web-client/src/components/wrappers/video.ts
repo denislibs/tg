@@ -409,6 +409,10 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       useBlur,
       hasMessage: !!message,
       hasMessageBlock,
+      // tweb video.ts:187 `photo: doc` — настоящий image/gif рисует wrapPhoto,
+      // но медиа при этом остаётся ДОКУМЕНТОМ (type 'gif')
+      isDocument: true,
+      documentType: doc.type,
       uploadPromise,
     })
 
@@ -458,6 +462,11 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         useBlur,
         hasMessage: !!message,
         hasMessageBlock,
+        // tweb video.ts:412 `photo: doc` — постер считает бокс ПО САМОМУ
+        // документу: отсюда дефолт 512 у видео без размеров и внешний гейт
+        // минимумов (у `round` тип не video/gif — блок минимумов не работает).
+        isDocument: true,
+        documentType: doc.type,
         // tweb video.ts:428 — сюда едет ИМЕННО `willObserveSound`, а не «это
         // видео»: минимум 368 в setAttachmentSize принадлежит UI плеера, а не
         // типу медиа (там ещё и своя проверка `photo.type === 'video'`).

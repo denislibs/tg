@@ -129,6 +129,11 @@ export interface WrapPhotoOptions {
   hasMessageBlock?: boolean
   /** видео с плеером: минимальная ширина 368 вместо 120 (tweb `canHaveVideoPlayer`) */
   canHaveVideoPlayer?: boolean
+  /** медиа — документ, а не фото (tweb `photo._ === 'document'`): дефолт
+   * натурального размера 512 вместо 100 + внешний гейт минимумов бокса */
+  isDocument?: boolean
+  /** тип документа (tweb `photo.type`) — вместе с `isDocument` решает тот гейт */
+  documentType?: string
   /** промис отгрузки файла (tweb `appDownloadManager.getUpload(uploadingFileName)`) */
   uploadPromise?: CancellablePromise<unknown>
 }
@@ -149,7 +154,7 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
     mediaId, width, height, strippedThumb, thumb, strippedSize, container, isVisible, middleware,
     loadPromises, noBlur, noThumb, noFadeIn, blurAfter, processUrl, fadeInElement,
     onRender, onRenderFinish, useBlur, useRenderCache, hasMessage, hasMessageBlock,
-    canHaveVideoPlayer, uploadPromise,
+    canHaveVideoPlayer, isDocument, documentType, uploadPromise,
   } = options
   const { withoutPreloader, lazyLoadQueue } = options
 
@@ -201,6 +206,8 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
       boxHeight,
       hasMessage,
       hasMessageBlock,
+      isDocument,
+      documentType,
       isVideoWithPlayer: canHaveVideoPlayer,
     })
     isFit = set.isFit
@@ -238,6 +245,10 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
           thumb,
           // tweb пробрасывает в рекурсивный вызов тот же `size` (photo.ts:157)
           strippedSize,
+          // и то же самое медиа (`photo`, photo.ts:155) — а значит и ответы про
+          // него: это тот же документ/фото, что и во внешнем вызове
+          isDocument,
+          documentType,
           boxWidth: 0,
           boxHeight: 0,
           lazyLoadQueue,

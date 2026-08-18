@@ -74,7 +74,7 @@ class TestHost implements BubbleGroupsHost {
     }
     expect(container.childElementCount).toBe(STICKY_OFFSET)
 
-    const ret: DateContainer = { container, groupsLength: 0 }
+    const ret: DateContainer = { container, groupsLength: 0, div: container.firstElementChild as HTMLElement }
     this.dateMessages.set(dateTimestamp, ret)
 
     // Секции дней лежат по возрастанию даты (tweb bubbles.ts:4846-4864).

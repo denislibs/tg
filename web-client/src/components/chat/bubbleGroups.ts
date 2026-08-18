@@ -68,6 +68,9 @@ export const NEW_GROUP_DIFF = 121
 export interface DateContainer {
   container: HTMLElement
   groupsLength: number
+  /** сам дата-бабл секции — порт поля `div` реестра `dateMessages`
+   *  (tweb bubbles.ts:4837): именно на него наблюдатель вешает `is-sticky` */
+  div: HTMLElement
 }
 
 /** Аватар серии — срез tweb `avatarNew` (bubbleGroups.ts:140-146). */
@@ -110,8 +113,12 @@ export interface GroupItem {
 
 // ─── вендорные хелперы tweb (см. расхождения в шапке) ───────────────────────
 
-/** Порт tweb `helpers/dom/whichChild.ts`. */
-function whichChild(elem: Element): number {
+/** Порт tweb `helpers/dom/whichChild.ts`. Экспортируется, потому что тем же
+ *  хелпером считает позицию серии внутри секции дня `scrollToBubble`
+ *  (`bubbles.ts`, tweb bubbles.ts:4651) — в оригинале это отдельный модуль
+ *  `helpers/dom/whichChild.ts`, у нас он приехал сюда вместе с
+ *  `positionElementByIndex`. */
+export function whichChild(elem: Element): number {
   if (!elem.parentNode) return -1
 
   let i = 0

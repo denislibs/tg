@@ -5,7 +5,7 @@
 // нормой ЧЕТЫРЕ строки layout-эффекта `VanillaFeed`:
 //   `new ChatBubbles(...)`      — поднять ленту;
 //   `host.append(container)`    — вставить её дерево в React-хост;
-//   `void bubbles.getHistory()` — попросить у неё первую страницу;
+//   `void bubbles.loadFirstHistory()` — попросить у неё первую страницу;
 //   `bubbles.destroy()` в cleanup — снять подписки на размонтировании.
 // Каждая покрыта отдельным `it` ниже.
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -33,14 +33,20 @@ function managersWith(messages: Message[]) {
     async (): Promise<HistoryResult> => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true }),
   )
   const fillMirror = vi.fn(async () => {})
-  return { managers: { messages: { getHistory }, peers: { fillMirror } } as unknown as Managers, getHistory }
+  const dialogs = { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 }
+  return { managers: { messages: { getHistory }, peers: { fillMirror }, dialogs } as unknown as Managers, getHistory }
 }
 
+/** Колонка чата (`.chat`) вокруг хоста — как в проде (`Chat.tsx`). Без неё
+ *  эффект `VanillaFeed` не найдёт узел, которому лента вешает
+ *  `is-go-down-visible` (порт tweb `chat.container`), и не поднимется. */
 function mount(messages: Message[], props: { chatId: number; threadRootId?: number } = { chatId: CHAT }) {
   const { managers, getHistory } = managersWith(messages)
   const view = render(
     <ManagersProvider managers={managers}>
-      <VanillaFeed {...props} />
+      <div className="chat">
+        <VanillaFeed {...props} />
+      </div>
     </ManagersProvider>,
   )
   return { ...view, getHistory }
@@ -61,7 +67,7 @@ describe('VanillaFeed — проводка императивной ленты �
 
     // Хост объявлен display:contents намеренно — .bubbles обязан остаться
     // flex-ребёнком .chat, как в tweb (см. докблок VanillaFeed.tsx).
-    const host = container.firstElementChild as HTMLElement
+    const host = container.querySelector('.chat')!.firstElementChild as HTMLElement
     expect(host.style.display).toBe('contents')
 
     const bubbles = host.querySelector('.bubbles')
@@ -71,7 +77,7 @@ describe('VanillaFeed — проводка императивной ленты �
     expect(bubbles!.querySelector('.bubbles-scrollable > .bubbles-inner')).not.toBeNull()
   })
 
-  it('просит у ленты первую страницу и рисует её (`void bubbles.getHistory()`)', async () => {
+  it('просит у ленты первую страницу и рисует её (`void bubbles.loadFirstHistory()`)', async () => {
     const { container, getHistory } = mount([msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2, text: 'привет' })])
 
     expect(getHistory).toHaveBeenCalledTimes(1)
@@ -85,6 +91,12 @@ describe('VanillaFeed — проводка императивной ленты �
     const { container, getHistory } = mount([], { chatId: CHAT, threadRootId: 60 })
 
     expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ chatId: CHAT, threadRoot: 60 }))
+    // Ждём доезда первой страницы: новое сообщение лента рисует, только когда
+    // низ окна сведён с концом истории (tweb `_renderNewMessage`, :4538).
+    await vi.waitFor(() => {
+      expect(getHistory).toHaveBeenCalled()
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
     // Подписки сверяют событие по этому же ключу: событие окна треда доезжает,
     // событие основного окна того же чата — нет. Рисуется бабл не сразу:
     // отрисовкой владеет очередь рендера ленты (порт tweb `batchProcessor`).

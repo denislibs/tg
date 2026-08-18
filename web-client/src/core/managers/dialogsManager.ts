@@ -902,6 +902,32 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     /**
+     * Порт tweb `appMessagesManager.getReadMaxIdIfUnread` — горизонт прочтения,
+     * но ТОЛЬКО если в диалоге реально есть непрочитанное, иначе 0. На этом
+     * гейте стоит граница «Непрочитанные сообщения» в ленте
+     * (`components/chat/bubbles.ts::setUnreadDelimiter`, порт tweb
+     * bubbles.ts:11570): прочитанный чат черты не получает вовсе.
+     *
+     * Owner-факт: запись диалога живёт здесь, витрине она видна зеркалом, а
+     * императивной ленте (`bubbles.ts`) сторы читать нельзя — поэтому ответ
+     * приезжает ей RPC, как и в tweb, где это тоже вызов менеджера.
+     */
+    getReadMaxSeqIfUnread(chatId: number): number {
+      const d = findDialog(chatId)
+      return d && d.unread > 0 ? d.lastReadSeq : 0
+    },
+
+    /**
+     * Порт tweb `Chat.getHistoryMaxId` (chat.ts) — seq самого свежего сообщения
+     * чата. Ленте он нужен ровно за тем же, зачем оригиналу: НЕ рисовать черту
+     * непрочитанных перед последним сообщением (tweb bubbles.ts:11592
+     * `readMaxId !== historyMaxId`).
+     */
+    getHistoryMaxSeq(chatId: number): number {
+      return findDialog(chatId)?.lastMessage?.seq ?? 0
+    },
+
+    /**
      * Контакты для правил папок `contacts`/`non_contacts`. Зовётся оттуда же,
      * откуда наполняется UI-стор (`stores/foldersStore.ts::loadFolders` →
      * `setContacts`): один источник, два потребителя — отдельного владения

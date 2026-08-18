@@ -2347,6 +2347,12 @@ export default class AppMediaViewerBase<
       boxWidth: mediaBoxSize.width,
       boxHeight: mediaBoxSize.height,
       noZoom: mediaSizes.isMobile ? false : true,
+      // tweb :2471 `photo: media` — вьювер отдаёт то же медиа, что и лента, а
+      // оно у него либо фото, либо документ-видео (tweb :2359-2360 считает
+      // `isDocument` ровно так же — по типу медиа). Отсюда дефолт натурального
+      // размера 512 у видео без media_w/media_h (:52-56).
+      isDocument: isVideo,
+      documentType: isVideo ? (media.gif ? 'gif' : 'video') : undefined,
     })
 
     // Порт tweb :2479-2493: узкое видео с UI плеера добивается до

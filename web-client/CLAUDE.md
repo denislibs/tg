@@ -321,11 +321,24 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   (`loadOlder`): якорится по `DOMRect` первого видимого сообщения, а не по
   дельте `scrollHeight` — остаётся верным, если во время доводки резайзится
   что-то, кроме самого добавленного чанка (например, media ниже по ленте).
-  Подключён в `useChatScroll.ts` (`onScrolledTop` → `save()`, коммит нового
-  окна → `restore()`).
+  Подключён в обеих реализациях ленты — и по обе стороны флага это ОДНА и та же
+  лента: `useChatScroll.ts` (React: `onScrolledTop` → `save()`, коммит нового
+  окна → `restore()`) и `components/chat/bubbles.ts` (императивная:
+  `createScrollSaver(reverse)` → `prepareToSaveScroll` внутри `processBatch`,
+  порт tweb 1:1 — `save()` до `mountUnmountGroups`, `restore()` сразу после).
+  Параметр `reverse` — направление якоря: `true` = «контент дописывается
+  сверху» (якорь — первый видимый бабл, держим его верх), `false` = снизу.
 - **`components/stickyIntersector.ts`** (порт `TWEB/src/components/stickyIntersector.ts`)
-  — sticky-даты в ленте (`components/chatStickyDates.ts`), на IntersectionObserver,
-  не на ручном скролл-листенере.
+  — sticky-даты в ленте, на IntersectionObserver, не на ручном скролл-листенере.
+  Два владельца по обе стороны флага `VITE_VANILLA_FEED`:
+  `components/chatStickyDates.ts` (обвязка React-ленты: класс считается наверху
+  и едет пропом, потому что React затирает императивную запись) и
+  `components/chat/bubbles.ts` (императивная лента — как в tweb: наблюдатель
+  пишет `is-sticky` ПРЯМО на узел дата-бабла, лента при этом не
+  перерисовывается). Секцию наблюдает `observeStickyHeaderChanges`, и он же
+  кладёт в неё третий узел — `.sticky_sentinel--top`; на этом стоит
+  `STICKY_OFFSET === 3` (абсолютный индекс первой серии внутри секции), поэтому
+  второй вызов на ту же секцию сдвинул бы все серии.
 - **`helpers/fastSmoothScroll.ts`** (порт `TWEB/src/helpers/fastSmoothScroll.ts`)
   — JS-анимированный скролл с учётом паузы тяжёлых анимаций
   (`dispatchHeavyAnimationEvent`); используется `Scrollable.scrollIntoViewNew`.

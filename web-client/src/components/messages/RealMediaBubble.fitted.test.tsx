@@ -73,4 +73,24 @@ describe('RealMediaBubble: расширенный бокс', () => {
     expect(media.style.width).toBe('133px')
     expect(media.style.height).toBe('400px')
   })
+
+  // tweb setAttachmentSize.ts:52-62: медиа БЕЗ натуральных размеров (старое
+  // сообщение без media_w/media_h) резервирует бокс от дефолта, и дефолт этот
+  // разный — документу (видео, гифка) 512, фото 100. Пока подставлялось общее
+  // 100, видео открывалось крошечным квадратом 200×200.
+  it('без размеров: видео резервирует бокс от 512 (400×400), фото — от 100 (200×200)', () => {
+    const { container } = render(withManagers(
+      <RealMediaBubble type="video" mediaId={304} mime="video/mp4" duration={46} />,
+    ))
+    const video = container.querySelector('.media-container') as HTMLElement
+    expect(video.style.width).toBe('400px')
+    expect(video.style.height).toBe('400px')
+
+    cleanup()
+    applyMediaUrl({ id: 305, thumb: false, url: 'blob:media-305' })
+    const shot = render(withManagers(<RealMediaBubble type="photo" mediaId={305} />))
+    const photo = shot.container.querySelector('.media-container') as HTMLElement
+    expect(photo.style.width).toBe('200px')
+    expect(photo.style.height).toBe('200px')
+  })
 })

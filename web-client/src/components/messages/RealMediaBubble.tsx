@@ -174,6 +174,13 @@ export default function RealMediaBubble({
     // Отдельная проверка `photo.type === 'video'` внутри setAttachmentSize уже
     // покрыта: `canAutoplay` истинен только у видео.
     const willObserveSound = USE_VIDEO_OBSERVER && canAutoplay && !gifLike
+    // Фото у tweb — `messageMediaPhoto` (MyPhoto), всё прочее медиа приходит
+    // ДОКУМЕНТОМ (`photo._ === 'document'`): и видео, и тенор-mp4, и настоящий
+    // image/gif (documentAttributeAnimated → `type: 'gif'`). От этого зависят
+    // дефолт натурального размера (документу 512, фото 100 — старое сообщение
+    // без media_w/media_h) и внешний гейт минимумов бокса.
+    const isDocumentMedia = isVideo || isGif
+    const documentType = isDocumentMedia ? (gifVideo || isGif ? 'gif' : 'video') : undefined
     // `boxSize` — размер САМОГО контейнера (расширенный минимумами), `size` —
     // вписанный, он уходит в `.media-container-aspecter` (tweb
     // setAttachmentSize.ts:64-103 + wrappers/photo.ts:136-137).
@@ -184,6 +191,8 @@ export default function RealMediaBubble({
       boxHeight: mediaSizes.active.regular.height,
       hasMessage: true, // медиа бабла всегда принадлежит сообщению (tweb `message`)
       hasMessageBlock,
+      isDocument: isDocumentMedia,
+      documentType,
       isVideoWithPlayer: willObserveSound,
     })
     // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —

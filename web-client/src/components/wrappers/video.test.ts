@@ -309,6 +309,23 @@ describe('wrapVideo: постер', () => {
     // видео легло в тот же слой, что и постер (tweb: `photoRes.aspecter`)
     expect(res.video!.parentElement).toBe(res.thumb!.aspecter)
   })
+
+  // tweb video.ts:412 отдаёт в `wrapPhoto` САМ документ (`photo: doc`), а
+  // `setAttachmentSize` подставляет документу дефолт 512×512 (:52-56), не 100.
+  // Видео без media_w/media_h иначе резервировало бы 200×200.
+  it('видео без натуральных размеров резервирует бокс от 512 (400×400)', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    await wrapVideo({
+      doc: videoDoc({ width: undefined, height: undefined }), container,
+      message: { mid: 1, peerId: -42 }, ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    expect(container.style.width).toBe('400px')
+    expect(container.style.height).toBe('400px')
+  })
 })
 
 describe('wrapVideo: стриминг и токен', () => {
