@@ -1,7 +1,17 @@
-# Входные файлы генератора типов TL
+# Схема TL — общий источник обеих сторон
 
-Взяты из tweb (`src/scripts/in/`) без изменений. Генератор — `../generate_mtproto_types.mjs`,
-результат — `../../src/layer.d.ts`, запуск — `npm run generate-mtproto-types`.
+Взяты из tweb (`src/scripts/in/`) без изменений.
+
+Лежат в корне репозитория, а не внутри `web-client`, потому что владелец не один:
+из этой же схемы на фазе 2 генерируются кодек и структуры на Go.
+
+Потребители:
+
+| Кто | Что делает |
+|---|---|
+| `web-client/scripts/generate_mtproto_types.mjs` | печатает `web-client/src/layer.d.ts` (`npm run generate-mtproto-types`) |
+| `web-client/src/core/media/messageMedia.schema.test.ts` | сверяет модель медиа со схемой на стороне потребителя |
+| `backend/internal/domain/mtmedia_schema_test.go` | то же самое на стороне производителя витрины |
 
 | Файл | Что это |
 |---|---|
@@ -21,15 +31,15 @@
 
 ## Пины
 
-`../layerTypes.test.js`:
+`web-client/scripts/layerTypes.test.js`:
 
 1. **дрейф** — `src/layer.d.ts` перегенерируется во временный путь и сравнивается с
    закоммиченным; правка типов руками краснеет;
-2. **висячие ссылки** — `src/layer.d.ts` импортов не содержит вовсе и рассчитывает, что
+2. **висячие ссылки** — `layer.d.ts` импортов не содержит вовсе и рассчитывает, что
    `PeerId`/`Long`/`ApiError`/… объявлены глобально. При `skipLibCheck: true` (он и у нас,
    и у tweb) неразрешённое имя — не ошибка, поле молча становится нетипизированным.
    Поэтому отдельный прогон с `skipLibCheck: false` (`npm run check-layer-types`).
 
 Второй пин при первом же запуске нашёл четыре висячих имени, которые есть и в оригинале:
 `MessagesStorageKey`, `CancellablePromise`, `int256` и коллизия `ReferenceError` со
-встроенным глобальным. Разобраны комментариями в `src/global.d.ts`.
+встроенным глобальным. Разобраны комментариями в `web-client/src/global.d.ts`.
