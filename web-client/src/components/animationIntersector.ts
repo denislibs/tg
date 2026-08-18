@@ -94,6 +94,8 @@ export class AnimationIntersector {
 
   private intersectionLockedGroups: {[group in AnimationItemGroup]?: true};
   private idle: boolean;
+  /** tweb :59 — пока играет кружок, все видео-анимации стоят (см. toggleMediaPause). */
+  private videosLocked: boolean;
 
   constructor() {
     this.onObserve = (entries) => {
@@ -137,6 +139,7 @@ export class AnimationIntersector {
 
     this.intersectionLockedGroups = {};
     this.idle = false;
+    this.videosLocked = false;
 
     // tweb глушит анимации, пока вкладка не видна (там это idleController по
     // blur/focus окна, см. шапку файла).
@@ -164,6 +167,25 @@ export class AnimationIntersector {
     }
 
     return this.observer = new IntersectionObserver(this.onObserve);
+  }
+
+  /**
+   * tweb :148-158. Зовёт контроллер воспроизведения: `paused === false` значит
+   * «поехал кружок» — на это время ВСЕ зарегистрированные видео (видео-стикеры,
+   * гифки в ленте) встают, чтобы рядом с кружком ничего не дёргалось; `true`
+   * (кружок встал) снимает запрет. Инверсия имени — из оригинала: аргумент
+   * описывает состояние ПЛЕЕРА, а не видео-анимаций.
+   */
+  public toggleMediaPause(paused: boolean) {
+    if(paused) {
+      if(this.videosLocked) {
+        this.videosLocked = false;
+        this.checkAnimations2();
+      }
+    } else {
+      this.videosLocked = true;
+      this.checkAnimations2();
+    }
   }
 
   public getAnimations(element: HTMLElement) {
@@ -312,7 +334,9 @@ export class AnimationIntersector {
 
     if(
       blurred ||
-      (this.onlyOnePlayableGroup && this.onlyOnePlayableGroup !== group)
+      (this.onlyOnePlayableGroup && this.onlyOnePlayableGroup !== group) ||
+      // tweb :342 — третий терм: пока играет кружок, видео не крутятся
+      (player.type === 'video' && this.videosLocked)
     ) {
       if(!animation.paused) {
         animation.pause();

@@ -16,16 +16,15 @@
 // частицы — блеф-маска и оверлеи баблов) и медийная (тайл 480×480, дефолтный
 // конфиг — плитка, из которой каждый спойлер медиа вырезает свой кусок).
 //
-// отступление от tweb: конфиг симуляции строится ЗДЕСЬ, а не на странице
-// (в tweb он приходит в `text-init`/`media-init`). Так `dotRendererCore` и
-// шейдеры остаются в чанке воркера и не тянутся в главный чанк вслед за RichText.
+// Конфиг симуляции и адреса шейдеров приходят СО СТРАНИЦЫ (`text-init`/
+// `media-init`) — как в tweb. Шейдеры воркер фетчит по этим адресам сам, так что
+// GLSL не дублируется в двух чанках.
 import DotRendererCore, {
-  buildDotRendererConfig,
   drawClippingCircle,
-  getDefaultParticlesCount,
   type DotRendererConfig,
 } from './dotRendererCore'
 import { drawImageFromSource } from './drawImageFromSource'
+import callbackify from '@helpers/callbackify'
 import { defaultEasing, simpleEasing, unwrapEasing } from '@helpers/easings'
 import type { EasingFunction } from './bezierEasing'
 
@@ -33,6 +32,9 @@ export interface SpoilerRendererSimInit {
   width: number
   height: number
   dpr: number
+  config: DotRendererConfig
+  vertexURL: string
+  fragmentURL: string
 }
 
 /** Прямоугольник слова спойлера: координаты — CSS-пиксели относительно оверлея. */
@@ -89,7 +91,7 @@ export type SpoilerRendererOutMessage =
 // В tsconfig нет lib "webworker" (проект типизируется под DOM), поэтому глобалы
 // воркера описываем узко — ровно тем, чем пользуемся.
 interface WorkerContext {
-  onmessage: ((event: MessageEvent<SpoilerRendererInMessage>) => void) | null
+  onmessage: ((event: MessageEvent<SpoilerRendererInMessage | ImageBitmap>) => void) | null
   postMessage: (message: SpoilerRendererOutMessage) => void
   setTimeout: (handler: () => void, timeout: number) => number
 }
@@ -97,24 +99,6 @@ const ctx = self as unknown as WorkerContext
 
 const FRAME_INTERVAL = 1000 / 60
 const ENCODE_INTERVAL = 4 * (1000 / 60) // раз в 4 кадра (при 60fps) — чтобы не жечь CPU
-
-// tweb components/dotRenderer.ts getTextSpoilerConfig — текстовый спойлер мельче
-// и шустрее медийного
-const getTextSpoilerConfig = (
-  width: number,
-  height: number,
-  dpr: number,
-): Partial<DotRendererConfig> => ({
-  particlesCount: 4 * getDefaultParticlesCount(width, height),
-  noiseSpeed: 5,
-  maxVelocity: 10,
-  timeScale: 1.2,
-  radius: 1.8 * dpr,
-  forceMult: 0.2,
-  velocityMult: 0.4,
-  dampingMult: 2.2,
-  longevity: 5.0,
-})
 
 interface Sim {
   core: DotRendererCore
@@ -415,34 +399,41 @@ const ensureLoop = () => {
   frame()
 }
 
+/** tweb `createSim`: канвас тайла, ядро на присланных URL шейдеров, конфиг со страницы. */
+const createSim = (init: SpoilerRendererSimInit): Sim => {
+  const canvas = new OffscreenCanvas(init.width * init.dpr, init.height * init.dpr)
+  const core = new DotRendererCore(canvas, { vertex: init.vertexURL, fragment: init.fragmentURL })
+  core.resize(init.width, init.height, init.dpr, init.config)
+  return { core, canvas }
+}
+
 /** Симуляция создаётся один раз на воркер; повторные `text-init` — no-op. */
 const initTextSim = (message: SpoilerRendererSimInit) => {
-  if (textSim) return
-  if (textSimFailed) {
-    ctx.postMessage({ type: 'text-init-failed' })
+  if (textSim || textSimFailed) {
+    if (textSimFailed) ctx.postMessage({ type: 'text-init-failed' })
     return
   }
 
+  let sim: TextSim
   try {
-    const canvas = new OffscreenCanvas(message.width * message.dpr, message.height * message.dpr)
-    const core = new DotRendererCore(
-      canvas,
-      buildDotRendererConfig(
-        message.width,
-        message.height,
-        message.dpr,
-        getTextSpoilerConfig(message.width, message.height, message.dpr),
-      ),
-    )
-    if (!core.init()) throw new Error('init failed')
-    textSim = { core, canvas, encoding: false, lastEncodeTime: 0 }
+    sim = textSim = { ...createSim(message), encoding: false, lastEncodeTime: 0 }
   } catch {
     textSimFailed = true
     ctx.postMessage({ type: 'text-init-failed' })
     return
   }
 
-  ensureLoop()
+  // шейдеры грузятся по сети — готовность приходит асинхронно (tweb: `callbackify`)
+  void callbackify(sim.core.init(), (ok) => {
+    if (!ok) {
+      textSim = null
+      textSimFailed = true
+      ctx.postMessage({ type: 'text-init-failed' })
+      return
+    }
+
+    ensureLoop()
+  })
 }
 
 /**
@@ -461,15 +452,9 @@ const initMediaSim = (message: SpoilerRendererSimInit) => {
     return
   }
 
+  let sim: Sim
   try {
-    const canvas = new OffscreenCanvas(message.width * message.dpr, message.height * message.dpr)
-    const core = new DotRendererCore(
-      canvas,
-      buildDotRendererConfig(message.width, message.height, message.dpr),
-    )
-    core.resize(message.width, message.height, message.dpr, core.config)
-    if (!core.init()) throw new Error('init failed')
-    mediaSim = { core, canvas }
+    sim = mediaSim = createSim(message)
     mediaSimDpr = message.dpr
   } catch {
     mediaSimFailed = true
@@ -477,14 +462,51 @@ const initMediaSim = (message: SpoilerRendererSimInit) => {
     return
   }
 
-  ctx.postMessage({ type: 'media-inited' })
-  ensureLoop()
+  void callbackify(sim.core.init(), (ok) => {
+    if (!ok) {
+      mediaSim = null
+      mediaSimFailed = true
+      ctx.postMessage({ type: 'media-init-failed' })
+      return
+    }
+
+    ctx.postMessage({ type: 'media-inited' })
+    ensureLoop()
+  })
+}
+
+// legacy-режим для браузеров без WebGL2 в OffscreenCanvas: симуляция крутится в
+// главном потоке, воркер только кодирует присланные им кадры блеф-маски
+// (tweb `encodeBitmap`).
+let encodeCanvas: OffscreenCanvas | undefined
+let encodeContext: ImageBitmapRenderingContext | null = null
+const encodeBitmap = (bitmap: ImageBitmap) => {
+  if (
+    !encodeCanvas ||
+    encodeCanvas.width !== bitmap.width ||
+    encodeCanvas.height !== bitmap.height
+  ) {
+    encodeCanvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    encodeContext = encodeCanvas.getContext('bitmaprenderer')
+  }
+  if (!encodeContext) return
+
+  encodeContext.transferFromImageBitmap(bitmap)
+  encodeCanvas.convertToBlob({ type: 'image/webp', quality: 1 }).then(toDataURL).then(
+    (url) => ctx.postMessage({ type: 'bluff-mask', url }),
+    () => {},
+  )
 }
 
 // Разрушать симуляцию отдельным сообщением не нужно: последний потребитель
 // отпускает мост, тот делает terminate() — поток умирает вместе с GL-контекстом.
 ctx.onmessage = (event) => {
   const message = event.data
+  if (message instanceof ImageBitmap) {
+    encodeBitmap(message)
+    return
+  }
+
   switch (message.type) {
     case 'text-init': {
       initTextSim(message)

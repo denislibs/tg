@@ -1,10 +1,10 @@
 // Общие проверки доступности спойлер-рендера: их спрашивают оба потребителя —
 // «блеф-спойлер» адреса почты (bluffSpoilerController) и оверлей спойлеров в
-// сообщениях (messageSpoilerOverlayController).
+// сообщениях (components/messages/MessageSpoilerOverlay).
 //
-// Сам модуль НЕ импортирует dotRendererCore — он лист. (Симуляция и её конфиг
-// живут в чанке воркера; но с портом `components/dotRenderer.ts` ядро приезжает
-// и на страницу — этого требует legacy-путь оригинала, см. шапку того файла.)
+// В tweb `isWorkerSimSupported` — статический метод `BluffSpoilerController`;
+// у нас он вынесен сюда (одна реализация на подсистему), а метод оригинала
+// оставлен тонкой делегацией — вызовы выглядят как в tweb.
 import { hasSpoilerRendererFailed } from './spoilerRendererConnection'
 
 // tweb components/dotRenderer.ts — размер тайла симуляции; его же ждёт

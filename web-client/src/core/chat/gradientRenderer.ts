@@ -10,14 +10,6 @@ const HEIGHT = WIDTH
 
 type Point = { x: number; y: number }
 
-// RAF-цикл: зовёт cb каждый кадр, пока он возвращает true (порт tweb animateSingle).
-function animateSingle(cb: () => boolean): void {
-  const loop = () => {
-    if (cb()) requestAnimationFrame(loop)
-  }
-  requestAnimationFrame(loop)
-}
-
 // easeOutQuad(t)·mult (порт tweb easeOutQuadApply).
 function easeOutQuadApply(t: number, mult: number): number {
   return -mult * t * (t - 2)
@@ -48,6 +40,8 @@ export default class ChatBackgroundGradientRenderer {
     { x: 0.75, y: 0.4 },
   ]
   private readonly _phases = this._positions.length
+  /** Поколение живого rAF-цикла — см. `animateSingle` ниже. */
+  private _animationGeneration = 0
 
   private _ctx!: CanvasRenderingContext2D
   private _hc!: HTMLCanvasElement
@@ -107,6 +101,31 @@ export default class ChatBackgroundGradientRenderer {
       this._tail += this._tails
       if (--this._phase < 0) this._phase += this._phases
     }
+  }
+
+  /**
+   * RAF-цикл: зовёт cb каждый кадр, пока он возвращает true.
+   *
+   * Порт tweb `animateSingle(cb, this)` (helpers/animation.ts:44-59): второй
+   * аргумент там — КЛЮЧ инстанса, и `createAnimationInstance(key)` первым делом
+   * делает `cancelAnimationByKey(key)`, то есть новый `toNextPosition` отменяет
+   * предыдущий незавершённый цикл ЭТОГО ЖЕ рендерера. Здесь ключ выражен
+   * поколением: цикл прошлого поколения выходит на первом же кадре.
+   *
+   * Без отмены два цикла живут одновременно (две отправки быстрее, чем за
+   * `SCROLL_TIMEOUT` = 1000 мс в `activeGradient.ts`) и дерутся за общие
+   * `_nextPositionTail`/`_frames`: старший обнуляет их по своему `done`, младший
+   * следующим кадром считает `tail = 0`, получает скачок на целую фазу и рвёт
+   * картинку; в ветке без `getProgress` оба разбирают `_frames.shift()` — фон
+   * проигрывается вдвое быстрее и обрывается на середине.
+   */
+  private animateSingle(cb: () => boolean): void {
+    const generation = ++this._animationGeneration
+    const loop = () => {
+      if (generation !== this._animationGeneration) return
+      if (cb()) requestAnimationFrame(loop)
+    }
+    requestAnimationFrame(loop)
   }
 
   private changeTailAndDraw(diff: number): void {
@@ -251,7 +270,7 @@ export default class ChatBackgroundGradientRenderer {
       this._nextPositionLeft = this._tails + (this._nextPositionLeft ?? 0)
       this._nextPositionTails = this._nextPositionLeft
       this._nextPositionTail = undefined
-      animateSingle(() => this.drawNextPositionAnimated(getProgress))
+      this.animateSingle(() => this.drawNextPositionAnimated(getProgress))
       return
     }
 
@@ -285,7 +304,7 @@ export default class ChatBackgroundGradientRenderer {
       this._frames.push(...positions.map((pos) => this.getGradientImageData(pos)))
     })
 
-    animateSingle(this.drawNextPositionAnimated)
+    this.animateSingle(this.drawNextPositionAnimated)
   }
 
   public static createCanvas(colors?: string): HTMLCanvasElement {

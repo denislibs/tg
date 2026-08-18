@@ -203,7 +203,13 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     if(!media.duration) return
     const rect = (e.currentTarget as Element).getBoundingClientRect()
     const fraction = ((e as MouseEvent).clientX - rect.left) / (rect.width || availW)
-    media.currentTime = Math.max(0, Math.min(1, fraction)) * media.duration
+    let scrubTime = Math.max(0, Math.min(1, fraction)) * media.duration
+    // tweb audio.ts:318-320: ровно `duration` — это конец, браузер тут же шлёт
+    // `ended` и узел сбрасывается в «не проигрывалось» вместо перемотки в хвост.
+    if(media.duration && scrubTime >= media.duration) {
+      scrubTime = media.duration - 0.01
+    }
+    media.currentTime = scrubTime
   }
 
   if(svg) {

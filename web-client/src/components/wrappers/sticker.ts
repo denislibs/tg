@@ -245,9 +245,10 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
     video._autoplay = play
     video._loop = loop
 
-    // tweb ждёт `onMediaLoad` внутри `renderImageFromUrl` (наш порт для видео
-    // его ещё не умеет — см. шапку renderImageFromUrl.ts), поэтому первый кадр
-    // ловим тем же событием напрямую.
+    // tweb ждёт `onMediaLoad` внутри `renderImageFromUrl`; здесь нужен не
+    // «готов к воспроизведению» (`canplay`), а именно ПЕРВЫЙ КАДР — из него
+    // рисуется превью для следующего показа, — поэтому слушаем `loadeddata`
+    // напрямую, а не идём через общий хелпер.
     video.addEventListener(
       'loadeddata',
       () => {

@@ -1,22 +1,32 @@
 // Оверлей спойлеров сообщения — порт tweb `components/messageSpoilerOverlay`.
-// Абсолютная канва поверх текста: воркер закрашивает прямоугольники слов цветом
-// фона и сыплет по ним частицы, а по клику вырезает из закраски растущий круг —
+// Абсолютная канва поверх текста: прямоугольники слов закрашиваются цветом фона
+// и засыпаются частицами, а по клику из закраски вырезается растущий круг —
 // текст «проявляется».
 //
-// Компонент рендерит RichText рядом со своим текстом (см. RichText.tsx), меряет
-// DOM и отдаёт геометрию воркеру; сам ничего не рисует.
+// Путей ДВА, ровно как в оригинале (`useWorker` = есть ли WebGL2 в OffscreenCanvas):
+//   • воркерный — канва уезжает в воркер, компонент только меряет DOM и шлёт
+//     геометрию/цвета/команды раскрытия;
+//   • legacy — симуляция крутится в главном потоке (`DotRenderer.attachTextSpoilerTarget`),
+//     а рисует прямо здесь `draw()`, который зовёт цикл симуляции.
 //
-// Деградация: если оверлей недоступен (нет WebGL2, выключены анимации, воркер
-// упал) — компонент не рендерит НИЧЕГО, и спойлер прячет CSS из
-// `styles/tweb/_spoiler.scss` (заливка + `opacity: 0` на тексте), раскрытие
-// уходит на CSS-путь `spoilerReveal`. Открыться сам спойлер при отказе не может.
+// Ниже них третий уровень — чистый CSS (`styles/tweb/_spoiler.scss`: заливка
+// `.spoiler` + `opacity: 0` на `.spoiler-text`, раскрытие через `spoilerReveal`).
+// Он включается сам, когда оверлея в DOM нет: в Firefox (tweb выключает оверлей
+// там же — `bubbles.ts:addMessageSpoilerOverlay`), при выключенных анимациях и
+// когда WebGL2 не поднялся НИГДЕ (тогда `readyResult` legacy-пути = false).
 import { useEffect, useRef, useState } from 'react'
-import {
-  attachMessageSpoilerOverlay,
-  canUseMessageSpoilerOverlay,
-  type MessageSpoilerOverlayHandle,
-  type SpoilerOverlayRect,
-} from '@lib/spoiler/messageSpoilerOverlayController'
+import { IS_FIREFOX } from '@environment/userAgent'
+import callbackify from '@helpers/callbackify'
+import { animateValue } from '@helpers/animateValue'
+import { animate } from '@helpers/animation'
+import { unwrapEasing } from '@helpers/easings'
+import { getMiddleware } from '@helpers/middleware'
+import type { AnimationItemGroup } from '@components/animationIntersector'
+import BluffSpoilerController from '@lib/spoiler/bluffSpoilerController'
+import DotRenderer from '@components/dotRenderer'
+import { drawImageFromSource } from '@lib/spoiler/drawImageFromSource'
+import { animationsEnabled } from '@lib/spoiler/spoilerSupport'
+import type { SpoilerOverlayRect } from '@lib/spoiler/spoilerRenderer.worker'
 import {
   adjustSpaceBetweenCloseRects,
   computeFinalBackgroundColor,
@@ -35,6 +45,12 @@ const RETRY_MEASURE_DELAY = 3000 // tweb: не смерили прямоугол
 const RESIZE_DEBOUNCE = 100
 const SETTLE_RETRY_DELAY = 120 // бабл под анимацией появления — ждём, пока transform сядет
 const SETTLE_MAX_ATTEMPTS = 25
+
+// tweb: оверлей живёт в группе анимаций чата
+const ANIMATION_GROUP: AnimationItemGroup = 'chat'
+
+/** tweb `bubbles.ts:addMessageSpoilerOverlay` (`if(IS_FIREFOX) return`) + наш кламп по анимациям. */
+const canUseMessageSpoilerOverlay = () => !IS_FIREFOX && animationsEnabled()
 
 // Канву можно отдать воркеру только один раз. В StrictMode эффект прогоняется на
 // том же DOM-узле дважды, поэтому «использованные» канвы помечаем и просим React
@@ -88,30 +104,40 @@ export default function MessageSpoilerOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const overlay = overlayRef.current
+    const overlayElement = overlayRef.current
     const canvas = canvasRef.current
-    const messageElement = overlay?.parentElement
-    if (!overlay || !canvas || !messageElement) return
+    const messageElement = overlayElement?.parentElement
+    if (!overlayElement || !canvas || !messageElement) return
 
     // раскрытие живёт на `.spoilers-container` (ветки `_spoiler.scss`); без него
     // оверлею некуда сообщать состояние — бабл остаётся на чистом CSS-фолбэке
-    const container = overlay.closest('.spoilers-container')
+    const container = overlayElement.closest('.spoilers-container')
     if (!container) {
       setEnabled(false)
       return
     }
 
+    // when supported, the drawing runs inside the spoiler-renderer worker and this
+    // component only measures the DOM and pushes geometry/colors/unwraps to it
+    const useWorker = BluffSpoilerController.isWorkerSimSupported()
+
     // второй прогон эффекта (StrictMode) на уже отданной канве — просим новую
-    if (transferredCanvases.has(canvas)) {
+    if (useWorker && transferredCanvases.has(canvas)) {
       setCanvasKey((key) => key + 1)
       return
     }
-    transferredCanvases.add(canvas)
 
     let disposed = false
+    let dpr = window.devicePixelRatio
     let rects: SpoilerOverlayRect[] = []
+    let backgroundColor = 'transparent'
+    let particleColor = getParticleColor()
     let unwrapping = false
     let unwrapped = false
+    let unwrapProgress = 0
+    let clickCoordinates: [number, number] | undefined
+    let maxDist = 0
+    let cancelUnwrapAnimation: (() => void) | undefined
     let unwrapTimeout: number | undefined
     let unwrappedTimeout: number | undefined
     let retryTimeout: number | undefined
@@ -126,9 +152,9 @@ export default function MessageSpoilerOverlay() {
       canvas.classList.toggle('message-spoiler-overlay__canvas--hidden', !visible)
     }
 
-    // Настоящий текст (`opacity: 1` под канвой) показываем ТОЛЬКО когда воркер
-    // подтвердил, что слова закрашены, — и заново после каждого пересчёта
-    // геометрии, который эту закраску сбрасывал.
+    // Настоящий текст (`opacity: 1` под канвой) показываем ТОЛЬКО когда закраска
+    // слов подтверждена, — и заново после каждого пересчёта геометрии, который
+    // эту закраску сбрасывал.
     const scheduleCanShowText = () => {
       if (!painted || canShowTextTimeout !== undefined) return
       canShowTextTimeout = window.setTimeout(() => {
@@ -143,23 +169,101 @@ export default function MessageSpoilerOverlay() {
       container.classList.remove('can-show-spoiler-text')
     }
 
-    const handle: MessageSpoilerOverlayHandle | null = attachMessageSpoilerOverlay(canvas, {
-      onPainted: () => {
-        if (disposed || painted) return
-        painted = true
-        scheduleCanShowText()
-        setCanvasVisible(true)
-      },
-      onUnavailable: () => {
-        if (!disposed) setEnabled(false)
-      },
-    })
-    if (!handle) {
-      setEnabled(false)
-      return
+    const onPainted = () => {
+      if (disposed || painted) return
+      painted = true
+      scheduleCanShowText()
+      setCanvasVisible(true)
     }
 
-    const measure = (overlayRect = overlay.getBoundingClientRect()) => {
+    const onUnavailable = () => {
+      if (!disposed) setEnabled(false)
+    }
+
+    // --- legacy-путь: рисуем сами, сэмплируя канвас главнопоточной симуляции ---
+
+    const ctx = useWorker ? null : canvas.getContext('2d')
+    const offScreenCanvas = useWorker ? undefined : document.createElement('canvas')
+    const offScreenCtx = offScreenCanvas?.getContext('2d')
+    let sourceCanvas: HTMLCanvasElement | undefined
+
+    const timesDpr = <T extends number[]>(...values: T) => values.map((value) => value * dpr) as T
+
+    const drawSpoilerRects = () => {
+      if (!ctx) return
+
+      for (const rect of rects) {
+        const x = rect.left
+        const y = Math.max(0, rect.top)
+        const dw = rect.width
+        const dh = rect.height
+
+        ctx.fillStyle = rect.color || backgroundColor
+        ctx.fillRect(...timesDpr(x, y, dw, dh))
+
+        if (!sourceCanvas || !offScreenCanvas || !offScreenCtx) continue
+
+        offScreenCtx.clearRect(...timesDpr(x, y, dw, dh))
+        if (!clickCoordinates) {
+          drawImageFromSource(offScreenCtx, sourceCanvas, ...timesDpr(x, y, dw, dh, x, y, dw, dh))
+        } else {
+          // частицы «поддуваются» от точки клика
+          const scaledProgress = unwrapProgress ** 2 * 0.4
+          drawImageFromSource(
+            offScreenCtx,
+            sourceCanvas,
+            ...timesDpr(
+              x + (clickCoordinates[0] - x) * scaledProgress,
+              y + (clickCoordinates[1] - y) * scaledProgress,
+              dw * (1 - scaledProgress),
+              dh * (1 - scaledProgress),
+              x,
+              y,
+              dw,
+              dh,
+            ),
+          )
+        }
+
+        offScreenCtx.globalCompositeOperation = 'source-atop'
+        offScreenCtx.fillStyle = particleColor
+        offScreenCtx.fillRect(...timesDpr(x, y, dw, dh))
+        offScreenCtx.globalCompositeOperation = 'source-over'
+
+        ctx.drawImage(offScreenCanvas, ...timesDpr(x, y, dw, dh, x, y, dw, dh))
+      }
+    }
+
+    const drawClippingCircle = () => {
+      if (!ctx || !clickCoordinates || !maxDist) return
+
+      ctx.save()
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillStyle = 'white'
+      ctx.shadowBlur = (maxDist / 3.5) * dpr * unwrapProgress
+      ctx.shadowColor = 'white'
+      ctx.beginPath()
+      ctx.arc(
+        ...timesDpr(clickCoordinates[0], clickCoordinates[1], maxDist * unwrapProgress),
+        0,
+        2 * Math.PI,
+      )
+      ctx.fill()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.restore()
+    }
+
+    const draw = () => {
+      if (!ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      drawSpoilerRects()
+      drawClippingCircle()
+    }
+
+    let overlay: NonNullable<ReturnType<typeof DotRenderer.attachTextSpoilerOverlay>>['overlay'] | undefined
+    let animation: { paused: boolean } | undefined
+
+    const measure = (overlayRect: DOMRect) => {
       const spans = [...messageElement.querySelectorAll('.spoiler-text')].filter((span) =>
         ownsSpoiler(messageElement, span),
       )
@@ -167,11 +271,10 @@ export default function MessageSpoilerOverlay() {
         getCustomDOMRectsForSpoilerSpan(span as HTMLElement, overlayRect),
       )
       rects = adjustSpaceBetweenCloseRects(measured)
-      return overlayRect
     }
 
     const update = () => {
-      const overlayRect = overlay.getBoundingClientRect()
+      const overlayRect = overlayElement.getBoundingClientRect()
 
       // Бабл может быть под transform (анимация появления в ленте): тогда
       // getBoundingClientRect отдаёт масштабированную геометрию, а ResizeObserver
@@ -181,8 +284,8 @@ export default function MessageSpoilerOverlay() {
       // две одинаковые пробы подряд считаем устоявшейся геометрией.
       // отступление от tweb: там баблы не въезжают со scale, и такой проверки нет.
       const untransformed =
-        Math.abs(overlayRect.width - overlay.offsetWidth) <= 0.5 &&
-        Math.abs(overlayRect.height - overlay.offsetHeight) <= 0.5
+        Math.abs(overlayRect.width - overlayElement.offsetWidth) <= 0.5 &&
+        Math.abs(overlayRect.height - overlayElement.offsetHeight) <= 0.5
       const sameAsPrevious =
         !!lastSample &&
         Math.abs(overlayRect.width - lastSample[0]) < 0.01 &&
@@ -199,20 +302,28 @@ export default function MessageSpoilerOverlay() {
       settleAttempts = 0
 
       measure(overlayRect)
+      backgroundColor = computeFinalBackgroundColor(messageElement.parentElement) ?? 'transparent'
+      particleColor = getParticleColor()
 
-      // канва отдана воркеру, на странице у неё остаётся дефолтный
-      // внутренний размер — отображаемый задаём явно
-      canvas.style.width = `${overlayRect.width}px`
-      canvas.style.height = `${overlayRect.height}px`
+      if (overlay) {
+        // канва отдана воркеру, на странице у неё остаётся дефолтный
+        // внутренний размер — отображаемый задаём явно
+        canvas.style.width = `${overlayRect.width}px`
+        canvas.style.height = `${overlayRect.height}px`
 
-      handle.update({
-        width: Math.round(overlayRect.width * handle.dpr),
-        height: Math.round(overlayRect.height * handle.dpr),
-        rects,
-        // запасной цвет, если у слова не удалось вычислить свой непрозрачный фон
-        backgroundColor: computeFinalBackgroundColor(messageElement.parentElement) ?? 'transparent',
-        particleColor: getParticleColor(),
-      })
+        overlay.update({
+          width: Math.round(overlayRect.width * dpr),
+          height: Math.round(overlayRect.height * dpr),
+          rects,
+          // запасной цвет, если у слова не удалось вычислить свой непрозрачный фон
+          backgroundColor,
+          particleColor,
+        })
+      } else if (offScreenCanvas) {
+        // legacy: размером канвы владеем мы (у воркерного пути он уезжает сообщением)
+        offScreenCanvas.width = canvas.width = Math.round(overlayRect.width * dpr)
+        offScreenCanvas.height = canvas.height = Math.round(overlayRect.height * dpr)
+      }
 
       if (rects.length) {
         scheduleCanShowText()
@@ -227,21 +338,98 @@ export default function MessageSpoilerOverlay() {
       }
     }
 
+    // --- подключение к рендереру (после `update`/`draw`: обе ветки зовут их сразу) ---
+
+    const middlewareHelper = getMiddleware()
+
+    if (useWorker) {
+      transferredCanvases.add(canvas)
+      const attached = DotRenderer.attachTextSpoilerOverlay({
+        canvas,
+        middleware: middlewareHelper.get(),
+        animationGroup: ANIMATION_GROUP,
+        onPainted,
+        onUnavailable,
+      })
+      if (!attached) {
+        middlewareHelper.destroy()
+        setEnabled(false)
+        return
+      }
+      overlay = attached.overlay
+      animation = attached.animation
+      dpr = attached.dpr
+    } else {
+      const attached = DotRenderer.attachTextSpoilerTarget({
+        canvas,
+        draw,
+        middleware: middlewareHelper.get(),
+        animationGroup: ANIMATION_GROUP,
+      })
+      animation = attached.animation
+      dpr = attached.dpr
+      sourceCanvas = attached.sourceCanvas
+      void callbackify(attached.readyResult, (ok) => {
+        if (disposed) return
+        // симуляции нет и в главном потоке — уровнем ниже ждёт CSS-фолбэк
+        if (!ok) {
+          onUnavailable()
+          return
+        }
+        onPainted()
+        update()
+        draw()
+      })
+    }
+
+    const clearPainting = () => {
+      if (overlay) overlay.clear()
+      else ctx?.clearRect(0, 0, canvas.width, canvas.height)
+      rects = []
+    }
+
     const returnToInitial = () => {
       window.clearTimeout(unwrapTimeout)
       window.clearTimeout(unwrappedTimeout)
+      cancelUnwrapAnimation?.()
+
       if (unwrapped) {
-        handle.reset()
+        overlay?.reset()
+        unwrapProgress = 0
+        clickCoordinates = undefined
+        maxDist = 0
+        // цикл симуляции мог встать (цель вне экрана) — дорисовываем вручную
+        if (!useWorker && animation?.paused) {
+          animate(() => {
+            draw()
+            return false
+          })
+        }
       } else {
-        handle.wrap(WRAP_DURATION)
+        overlay?.wrap(WRAP_DURATION)
+        if (!useWorker) {
+          cancelUnwrapAnimation = animateValue(
+            unwrapProgress,
+            0,
+            WRAP_DURATION,
+            (value) => { unwrapProgress = value },
+            {
+              onEnd: () => {
+                clickCoordinates = undefined
+                maxDist = 0
+              },
+            },
+          )
+        }
       }
+
       unwrapping = false
       unwrapped = false
       setCanvasVisible(painted)
     }
 
     const onClick = (event: MouseEvent) => {
-      const overlayRect = overlay.getBoundingClientRect()
+      const overlayRect = overlayElement.getBoundingClientRect()
       if (!isMouseCloseToAnySpoilerElement(event.clientX, event.clientY, overlayRect, rects)) return
       if (unwrapping) return
 
@@ -253,15 +441,27 @@ export default function MessageSpoilerOverlay() {
         event.clientX - overlayRect.left,
         event.clientY - overlayRect.top,
       ]
-      const maxDist = computeMaxDistToMargin(event.clientX, event.clientY, overlayRect, rects) + 20
+      maxDist = computeMaxDistToMargin(event.clientX, event.clientY, overlayRect, rects) + 20
       const duration = getTimeForDist(maxDist)
+      clickCoordinates = coords
 
       messageElement.classList.remove('is-hovering-spoiler')
       unwrapping = true
-      handle.unwrap(coords, maxDist, duration)
+      // воркер повторяет ту же кривую для пикселей; здесь она нужна legacy-пути
+      overlay?.unwrap(coords, maxDist, duration)
+      if (!useWorker) {
+        cancelUnwrapAnimation = animateValue(
+          0,
+          1,
+          duration,
+          (value) => { unwrapProgress = value },
+          { easing: unwrapEasing },
+        )
+      }
 
       unwrapTimeout = window.setTimeout(() => {
         unwrapped = true
+        unwrapProgress = 1
         setCanvasVisible(false) // круг доел закраску — канву можно погасить
         unwrappedTimeout = window.setTimeout(returnToInitial, UNWRAPPED_TIMEOUT_MS)
       }, duration)
@@ -275,7 +475,7 @@ export default function MessageSpoilerOverlay() {
         isMouseCloseToAnySpoilerElement(
           event.clientX,
           event.clientY,
-          overlay.getBoundingClientRect(),
+          overlayElement.getBoundingClientRect(),
           rects,
         ),
       )
@@ -300,34 +500,25 @@ export default function MessageSpoilerOverlay() {
       resizeTimeout = window.setTimeout(() => {
         // при сворачивании/разворачивании цитаты размеры едут — гасим закраску,
         // пока не пересчитаем
-        handle.clear()
-        rects = []
+        clearPainting()
         hideRealText()
         waitResizeToBePainted(entry).then(
-          () => { if (!disposed) update() },
-          () => { if (!disposed) update() },
+          () => { if (!disposed) { update(); draw() } },
+          () => { if (!disposed) { update(); draw() } },
         )
       }, RESIZE_DEBOUNCE)
     })
-    resizeObserver.observe(overlay)
-
-    // вне экрана симуляция не крутится (в tweb это делает animationIntersector)
-    const intersectionObserver = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) handle.play()
-        else handle.pause()
-      }
-    })
-    intersectionObserver.observe(canvas)
+    resizeObserver.observe(overlayElement)
 
     const unsubscribeTheme = subscribeThemeChange(() => {
-      window.setTimeout(() => { if (!disposed) update() }, 200)
+      window.setTimeout(() => { if (!disposed) { update(); draw() } }, 200)
     })
 
     update()
 
     return () => {
       disposed = true
+      cancelUnwrapAnimation?.()
       window.clearTimeout(unwrapTimeout)
       window.clearTimeout(unwrappedTimeout)
       window.clearTimeout(retryTimeout)
@@ -340,9 +531,9 @@ export default function MessageSpoilerOverlay() {
       messageElement.classList.remove('is-hovering-spoiler')
       container.classList.remove('can-show-spoiler-text')
       resizeObserver.disconnect()
-      intersectionObserver.disconnect()
       unsubscribeTheme()
-      handle.detach()
+      // снимает анимацию из animationIntersector, а та — отпускает рендерер
+      middlewareHelper.destroy()
     }
   }, [canvasKey])
 

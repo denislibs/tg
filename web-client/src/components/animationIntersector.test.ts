@@ -223,6 +223,37 @@ describe('animationIntersector', () => {
     expect(animation.autoplay).toBe(false)
   })
 
+  // Порт tweb :148-158 + третий терм условия паузы (:342). Пока играет кружок,
+  // ВСЕ видео-анимации (видео-стикеры, гифки ленты) стоят — рядом с говорящей
+  // головой ничего не дёргается. На lottie запрет не распространяется.
+  it('toggleMediaPause глушит только видео и отпускает их обратно', () => {
+    const videoEl = makeElement()
+    const video = makePlayer()
+    players.push(video)
+    animationIntersector.addAnimation({
+      animation: video, group: 'chat', observeElement: videoEl, type: 'video',
+    })
+
+    const lottie = register('chat')
+
+    intersect(videoEl, true)
+    intersect(lottie.el, true)
+    expect(video.paused).toBe(false)
+    expect(lottie.animation.paused).toBe(false)
+
+    // false = «поехал кружок» (аргумент описывает состояние ПЛЕЕРА — как в tweb)
+    animationIntersector.toggleMediaPause(false)
+    expect(video.paused).toBe(true)
+    expect(lottie.animation.paused).toBe(false)
+
+    // пока запрет держится, интерсектор не возвращает видео в игру
+    animationIntersector.checkAnimations2()
+    expect(video.paused).toBe(true)
+
+    animationIntersector.toggleMediaPause(true)
+    expect(video.paused).toBe(false)
+  })
+
   it('video не уничтожается при снятии (его владелец — DOM/React)', () => {
     const el = makeElement()
     const animation = makePlayer()

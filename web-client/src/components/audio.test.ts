@@ -210,6 +210,23 @@ describe('AudioElement — голосовое (tweb wrapVoiceMessage)', () => {
     expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
   })
 
+  // tweb audio.ts:318-320. Клик в самый правый бар обязан перематывать В ХВОСТ,
+  // а не ставить ровно `duration`: на точном конце браузер немедленно шлёт
+  // `ended`, и узел сбрасывается в «не проигрывалось» вместо продолжения.
+  it('скраб в самый конец волны не доводит currentTime до duration', () => {
+    const { element } = wrap(voiceDoc())
+    const svg = element.querySelector('.audio-waveform-background > svg.audio-waveform-bars') as SVGSVGElement
+    const m = media(100)
+    m._dur = 10
+
+    // правый край дорожки: getBoundingClientRect в happy-dom нулевой, поэтому
+    // fraction = clientX / availW (190) — клик за правым краем даёт fraction > 1
+    svg.dispatchEvent(new MouseEvent('click', { clientX: 1000, bubbles: true }))
+
+    expect(m.currentTime).toBeLessThan(10)
+    expect(m.currentTime).toBeCloseTo(9.99, 5)
+  })
+
   it('пиков нет — волны нет и файл ради неё не качается (tweb 1:1)', async () => {
     const { element } = wrap(voiceDoc({ waveform: undefined }))
 

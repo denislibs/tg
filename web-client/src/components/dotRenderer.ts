@@ -13,16 +13,11 @@
 //   • legacy (`create`) — WebGL2 в OffscreenCanvas недоступен, симуляция крутится
 //     здесь, а каждая цель копирует из неё свой кусок в 2d-контекст.
 //
-// отступление от tweb: шейдеры у нас вкомпилены в `dotRendererCore` (`?raw`), а
-// не фетчатся по URL, поэтому в init-сообщения воркера не идут `vertexURL`/
-// `fragmentURL`, а конфиг симуляции строит сам воркер (см. шапку
-// `lib/spoiler/spoilerRenderer.worker.ts`). Форма API от этого не меняется:
-// `init()` по-прежнему `MaybePromise<boolean>` и разворачивается `callbackify`.
-//
-// Плата за legacy-путь: `dotRendererCore` (и с ним GLSL) попадает не только в
-// чанк воркера, но и туда, откуда импортируется этот модуль. Иначе legacy-путь
-// не портируется вовсе — а он и есть единственный рендер спойлера в браузерах
-// без WebGL2 в OffscreenCanvas.
+// Шейдеры, как в оригинале, лежат отдельным ассетом и фетчатся по URL: страница
+// знает адреса (`?url` — их выдаёт сборщик) и передаёт их и воркеру, и
+// главнопоточному ядру. Поэтому GLSL не вкомпилен ни в главный чанк, ни в
+// воркерный, хотя `dotRendererCore` нужен обоим (legacy-путь крутит симуляцию
+// прямо здесь).
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { animate } from '@helpers/animation'
 import callbackify from '@helpers/callbackify'
@@ -36,13 +31,14 @@ import DotRendererCore, {
   drawClippingCircle,
   getDefaultParticlesCount,
   type DotRendererConfig,
+  type DotRendererShaderURLs,
 } from '@lib/spoiler/dotRendererCore'
 import {
   retainSpoilerRenderer,
   type SpoilerRendererConnection,
 } from '@lib/spoiler/spoilerRendererConnection'
+import BluffSpoilerController from '@lib/spoiler/bluffSpoilerController'
 import {
-  isWorkerSimSupported,
   spoilerSimDpr,
   TEXT_SPOILER_HEIGHT,
   TEXT_SPOILER_WIDTH,
@@ -52,6 +48,18 @@ import animationIntersector, {
   type AnimationItemGroup,
   type AnimationItemWrapper,
 } from '@components/animationIntersector'
+// `no-inline` обязателен: без него сборщик зашивает шейдер base64-строкой в этот
+// же чанк, и весь смысл (GLSL отдельным кэшируемым ассетом, а не в JS обоих
+// потоков) теряется.
+import spoilerFragmentShaderURL from '@lib/spoiler/spoiler_fragment.glsl?url&no-inline'
+import spoilerVertexShaderURL from '@lib/spoiler/spoiler_vertex.glsl?url&no-inline'
+
+// tweb: `{vertex: 'assets/img/spoiler_vertex.glsl', fragment: …}` — у нас адреса
+// ассетов выдаёт сборщик, форма та же.
+const SHADER_URLS: DotRendererShaderURLs = {
+  vertex: spoilerVertexShaderURL,
+  fragment: spoilerFragmentShaderURL,
+}
 
 export const IMAGE_SPOILER_SIZE = 480
 
@@ -113,7 +121,8 @@ export class AnimationItemNested implements AnimationItemWrapper {
 
 export interface ImageSpoilerControls {
   canvas: HTMLCanvasElement
-  readyResult: boolean | CancellablePromise<void> | undefined
+  /** legacy-путь отдаёт результат `DotRendererCore.init()`, воркерный — свой deferred */
+  readyResult: boolean | Promise<boolean> | CancellablePromise<void> | undefined
   revealWithAnimation: (event: Event, underLyingCanvas: HTMLCanvasElement) => CancellablePromise<void> | false
 }
 
@@ -138,7 +147,7 @@ export default class DotRenderer implements AnimationItemWrapper {
   public dpr: number
 
   public loop: boolean = true
-  private initPromise: boolean | undefined
+  private initPromise: boolean | Promise<boolean> | undefined
 
   constructor() {
     const canvas = (this.canvas = document.createElement('canvas'))
@@ -148,21 +157,17 @@ export default class DotRenderer implements AnimationItemWrapper {
     this.paused = true
     this.autoplay = true
     this.tempId = 0
+    try {
+      this.core = new DotRendererCore(canvas, SHADER_URLS)
+    } catch {
+      // отступление от tweb: там контекст просто оказался бы null и всё упало бы
+      // позже. WebGL2 нет и в главном потоке — рисовать нечем, цели останутся под
+      // нижним уровнем деградации (stripped-превью у медиа, CSS-заливка у текста).
+    }
   }
 
   private resize(width: number, height: number, config: Partial<DotRendererConfig> = {}) {
-    const built = buildDotRendererConfig(width, height, this.dpr, config)
-    if (!this.core) {
-      try {
-        this.core = new DotRendererCore(this.canvas, built)
-      } catch {
-        // WebGL2 нет и в главном потоке — рисовать нечем, цели останутся под
-        // stripped-превью (оно и так покрывает медиа целиком)
-        return
-      }
-    }
-
-    this.core.resize(width, height, this.dpr, built)
+    this.core?.resize(width, height, this.dpr, buildDotRendererConfig(width, height, this.dpr, config))
   }
 
   private draw() {
@@ -230,7 +235,7 @@ export default class DotRenderer implements AnimationItemWrapper {
     animationGroup: AnimationItemGroup
     config?: Partial<DotRendererConfig>
   }): ImageSpoilerControls {
-    if (isWorkerSimSupported()) {
+    if (BluffSpoilerController.isWorkerSimSupported()) {
       return this.createWithWorker(options)
     }
 
@@ -422,16 +427,26 @@ export default class DotRenderer implements AnimationItemWrapper {
     this.mediaWorkerReady = this.textWorkerReady = undefined
   }
 
+  private static getShaderURLs() {
+    return {
+      vertexURL: new URL(SHADER_URLS.vertex, window.location.href).href,
+      fragmentURL: new URL(SHADER_URLS.fragment, window.location.href).href,
+    }
+  }
+
   private static initMediaSim() {
     if (this.mediaInited) return
     this.mediaInited = true
 
     this.mediaWorkerReady = deferredPromise<void>()
+    const dpr = window.devicePixelRatio
     this.connection?.postMessage({
       type: 'media-init',
       width: IMAGE_SPOILER_SIZE,
       height: IMAGE_SPOILER_SIZE,
-      dpr: window.devicePixelRatio,
+      dpr,
+      config: buildDotRendererConfig(IMAGE_SPOILER_SIZE, IMAGE_SPOILER_SIZE, dpr),
+      ...this.getShaderURLs(),
     })
   }
 
@@ -440,11 +455,19 @@ export default class DotRenderer implements AnimationItemWrapper {
     this.textInited = true
 
     this.textWorkerReady = deferredPromise<void>()
+    const dpr = spoilerSimDpr()
     this.connection?.postMessage({
       type: 'text-init',
       width: TEXT_SPOILER_WIDTH,
       height: TEXT_SPOILER_HEIGHT,
-      dpr: spoilerSimDpr(),
+      dpr,
+      config: buildDotRendererConfig(
+        TEXT_SPOILER_WIDTH,
+        TEXT_SPOILER_HEIGHT,
+        dpr,
+        getTextSpoilerConfig(dpr),
+      ),
+      ...this.getShaderURLs(),
     })
   }
 
@@ -703,10 +726,14 @@ export default class DotRenderer implements AnimationItemWrapper {
    */
   public static attachTextSpoilerOverlay({
     canvas,
+    middleware,
+    animationGroup,
     onPainted,
     onUnavailable,
   }: {
     canvas: HTMLCanvasElement
+    middleware: Middleware
+    animationGroup: AnimationItemGroup
     onPainted: () => void
     onUnavailable: () => void
   }) {
@@ -738,25 +765,30 @@ export default class DotRenderer implements AnimationItemWrapper {
     connection.postMessage({ type: 'overlay-attach', id, canvas: offscreen, dpr }, [offscreen])
 
     let released = false
-    const detach = () => {
-      if (released) return
-      released = true
-      this.connection?.postMessage({ type: 'overlay-detach', id })
-      listener.release()
-      this.releaseConnection()
-    }
-
     const animation = new AnimationItemNested({
       onPlay: () => this.connection?.postMessage({ type: 'overlay-play', id }),
       onPause: () => this.connection?.postMessage({ type: 'overlay-pause', id }),
-      onDestroy: detach,
+      onDestroy: () => {
+        if (released) return
+        released = true
+        this.connection?.postMessage({ type: 'overlay-detach', id })
+        listener.release()
+        this.releaseConnection()
+      },
+    })
+
+    animationIntersector.addAnimation({
+      animation,
+      group: animationGroup,
+      observeElement: canvas,
+      controlled: middleware,
+      type: 'dots',
     })
 
     return {
       animation,
       dpr,
       readyResult: this.textWorkerReady,
-      detach,
       overlay: {
         update: (payload: Omit<SpoilerOverlayUpdate, 'type' | 'id'>) =>
           this.connection?.postMessage({ type: 'overlay-update', id, ...payload }),
@@ -767,6 +799,93 @@ export default class DotRenderer implements AnimationItemWrapper {
         clear: () => this.connection?.postMessage({ type: 'overlay-clear', id }),
       },
     }
+  }
+
+  /**
+   * Блеф-спойлер: маскированный текст (у нас — адрес почты на экране
+   * восстановления доступа), у которого маскируется не канвас, а САМ элемент —
+   * кадр симуляции уезжает ему в `mask-image`. Поэтому здесь нет канваса-цели:
+   * элемент только «числится» анимацией, а всё рисование — в
+   * `BluffSpoilerController`.
+   */
+  public static attachBluffTextSpoilerTarget(element: HTMLElement) {
+    BluffSpoilerController.observeReconnection(element, (el) => this.attachBluffTextSpoilerTarget(el))
+
+    ++BluffSpoilerController.instancesCount
+
+    // Весь рендер (симуляция + кодирование) идёт в воркере, главный поток только
+    // получает готовые URL масок
+    if (BluffSpoilerController.isWorkerSimSupported()) {
+      const dpr = spoilerSimDpr()
+      BluffSpoilerController.setupWorkerSim({
+        width: TEXT_SPOILER_WIDTH,
+        height: TEXT_SPOILER_HEIGHT,
+        dpr,
+        config: buildDotRendererConfig(
+          TEXT_SPOILER_WIDTH,
+          TEXT_SPOILER_HEIGHT,
+          dpr,
+          getTextSpoilerConfig(dpr),
+        ),
+        ...this.getShaderURLs(),
+      })
+
+      const animation = new AnimationItemNested({
+        onPlay: () => BluffSpoilerController.activate(element),
+        onPause: () => BluffSpoilerController.deactivate(element),
+        onDestroy: () => {
+          if (!--BluffSpoilerController.instancesCount) {
+            BluffSpoilerController.destroy()
+          }
+        },
+      })
+
+      animationIntersector.addAnimation({
+        animation,
+        group: 'BLUFF-SPOILER',
+        // controlled: true, // should not be controlled! elements might reappear in the DOM after being removed
+        observeElement: element,
+        type: 'dots',
+      })
+
+      return
+    }
+
+    const instance = this.getTextSpoilerInstance()
+
+    ++instance.targetCanvasesCount
+
+    const animation = new AnimationItemNested({
+      onPlay: () => {
+        instance.drawCallbacks.set(element, () => BluffSpoilerController.draw(element, instance.canvas))
+        instance.play()
+      },
+      onPause: () => {
+        instance.drawCallbacks.delete(element)
+        if (!instance.drawCallbacks.size) {
+          instance.pause()
+        }
+      },
+      onDestroy: () => {
+        if (!--instance.targetCanvasesCount) {
+          instance.remove()
+          this.textSpoilerInstance = undefined
+        }
+        if (!--BluffSpoilerController.instancesCount) {
+          BluffSpoilerController.destroy()
+        }
+      },
+    })
+
+    animationIntersector.addAnimation({
+      animation,
+      group: 'BLUFF-SPOILER',
+      // controlled: true, // should not be controlled! elements might reappear in the DOM after being removed
+      observeElement: element,
+      type: 'dots',
+    })
+
+    void instance.init()
   }
 }
 

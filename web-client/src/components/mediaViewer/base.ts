@@ -2611,8 +2611,10 @@ export default class AppMediaViewerBase<
               video.removeEventListener('error', onError)
             })
 
-            // void: видео-ветка renderImageFromUrl синхронна (src + колбэк),
-            // тип-объединение с промисом — от картинок (oxlint no-floating-promises)
+            // void: без колбэка видео-ветка renderImageFromUrl только назначает
+            // `src` и возвращает undefined (ожидание `onMediaLoad` включается
+            // ТОЛЬКО когда колбэк передан) — тип-объединение с промисом идёт от
+            // картинок (oxlint no-floating-promises)
             void renderImageFromUrl(video, url)
 
             // tweb :2886-2889 onMediaLoadPromise.then(createPlayer): у нас гейт

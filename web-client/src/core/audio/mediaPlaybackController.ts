@@ -21,6 +21,7 @@ import { mediaContentUrl, primeMediaToken, resolveStreamUrl } from '../mediaUrl'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { useSettingsStore } from '../../settings'
 import safePlay from '@helpers/dom/safePlay'
+import animationIntersector from '@components/animationIntersector'
 
 const RATES = [0.5, 1, 1.5, 2]
 
@@ -388,6 +389,13 @@ function handlePlay(media: HTMLMediaElement): void {
 
   if (willBePlayedMedia === media) willBePlayedMedia = null
 
+  // tweb appMediaPlaybackController.ts:265-269 — поехал КРУЖОК: на это время
+  // все зарегистрированные видео (видео-стикеры, гифки ленты) встают, чтобы
+  // рядом с говорящей головой ничего не дёргалось.
+  if (entry.track.type === 'round') {
+    animationIntersector.toggleMediaPause(false)
+  }
+
   if (playingMedia !== media) {
     stop() // предыдущий трек останавливается ровно здесь
     setMedia(entry)
@@ -403,6 +411,11 @@ function handlePlay(media: HTMLMediaElement): void {
 
 /** tweb `onPause` (:815-828). */
 function handlePause(media: HTMLMediaElement): void {
+  // tweb :271-273 — снятие запрета безусловно (не только для кружка): оригинал
+  // вешает это на событие 'pause' контроллера, а `toggleMediaPause(true)` сам
+  // ничего не делает, если запрета не было.
+  animationIntersector.toggleMediaPause(true)
+
   if (media !== playingMedia) return
   stopProgress()
   useAudioStore.getState()._sync({ playing: false, currentTime: media.currentTime })

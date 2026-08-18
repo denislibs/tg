@@ -412,7 +412,13 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
       if (close !== -1) {
         const raw = input.slice(i + 3, close)
         const nlMatch = raw.match(/(.*?)\n/)
-        const language = nlMatch ? nlMatch[1] : ''
+        // Первая строка fence считается ЯЗЫКОМ только если это одиночный
+        // идентификатор (```json). Иначе это код, и съедать его нельзя —
+        // правило tweb `parseMarkdown.ts:66-74` (комментарий там: «previously
+        // ate the first character(s) of the code»). Без этой проверки
+        // ```{"a":1}``` терял содержимое целиком: язык = `{"a":1}`, код = ''.
+        const languageMatch = nlMatch ? nlMatch[1] : ''
+        const language = /^[\w+#.-]{1,32}$/.test(languageMatch) ? languageMatch : ''
         let code = language ? raw.slice(language.length) : raw
         const startNL = code[0] === '\n' ? 1 : 0
         const endNL = code.endsWith('\n') ? 1 : 0

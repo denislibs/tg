@@ -12,6 +12,14 @@ vi.mock('../mediaUrl', () => ({
 }))
 vi.mock('../secret/crypto', () => ({ decryptMedia: () => Promise.resolve(new ArrayBuffer(0)) }))
 
+// Проводка «кружок играет → видео-анимации стоят» (порт tweb
+// appMediaPlaybackController.ts:265-273). Интерсектор подменён: проверяем сам
+// факт вызова, а его собственное поведение держит animationIntersector.test.ts.
+const toggleMediaPause = vi.fn()
+vi.mock('@components/animationIntersector', () => ({
+  default: { toggleMediaPause: (paused: boolean) => toggleMediaPause(paused) },
+}))
+
 // Кадры анимации — вручную: так видно, что цикл заведён и что он гаснет.
 let frames: Array<[number, FrameRequestCallback]> = []
 let frameId = 0
@@ -181,6 +189,36 @@ describe('rAF-прогресс (tweb MediaProgressLine.onPlay)', () => {
     neighbour._time = 42
     neighbour.dispatchEvent(new Event('timeupdate'))
     expect(useAudioStore.getState().currentTime).toBe(7)
+  })
+})
+
+// Строки проводки: без них видео-стикеры и гифки ленты продолжают крутиться
+// рядом с играющим кружком (в tweb этого не бывает — см. animationIntersector
+// :342 и appMediaPlaybackController.ts:265-273).
+describe('кружок глушит видео-анимации (tweb toggleMediaPause)', () => {
+  beforeEach(() => {
+    toggleMediaPause.mockClear()
+  })
+
+  it('старт кружка запирает видео, пауза — отпускает', async () => {
+    const video = document.createElement('video') as FakeMedia
+    mediaPlayback.addMedia({ track: round(1), element: video })
+    mediaPlayback.playQueue([round(1)], 0)
+    await settle()
+
+    expect(toggleMediaPause).toHaveBeenCalledWith(false)
+
+    toggleMediaPause.mockClear()
+    video.pause()
+
+    expect(toggleMediaPause).toHaveBeenCalledWith(true)
+  })
+
+  it('голосовое видео не запирает (в tweb ветка только для round)', async () => {
+    mediaPlayback.playQueue([voice(1)], 0)
+    await settle()
+
+    expect(toggleMediaPause).not.toHaveBeenCalledWith(false)
   })
 })
 

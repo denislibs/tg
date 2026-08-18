@@ -24,8 +24,8 @@ class FakeCore {
   public config: unknown
   public destroyed = false
 
-  constructor(public canvas: HTMLCanvasElement, config: unknown) {
-    this.config = config
+  // сигнатура оригинала: ядро получает АДРЕСА шейдеров, а конфиг — первым `resize`
+  constructor(public canvas: HTMLCanvasElement, public shaderURLs: unknown) {
     cores.push(this)
   }
 

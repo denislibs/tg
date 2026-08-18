@@ -15,7 +15,8 @@
 //   • `messageEntityFormattedDate` (solid-js), `messageEntityDiff*`, `messageEntityTimestamp`,
 //     `messageEntityBotCommand`, `messageEntityAnchor`, `sub`/`sup`, `messageEntityHighlight`,
 //     `messageEntityPhone`, `messageEntityCaret` — таких сущностей у нас нет;
-//   • bluff-спойлер (tweb :685-694) — он строится `createElementFromMarkup`, т.е. `innerHTML`;
+//   (bluff-спойлер портирован; ЕДИНСТВЕННОЕ отличие — буквы строятся узлами,
+//    а не `createElementFromMarkup`, см. комментарий в ветке `spoiler`);
 //   • общий рендерер кастом-эмодзи (`CustomEmojiRendererElement`) — портов
 //     `lib/customEmoji/{element,renderer}` у нас нет, здесь только узел-плейсхолдер;
 //   • `pFlags.collapsed` у цитаты и `w`/`h` у кастом-эмодзи — этих полей нет в нашей модели;
@@ -27,9 +28,12 @@
 // подсветка кода — токенами, а не `innerHTML` (см. `highlightCode.ts`);
 // вместо inline `onclick` — `data-anchor-action` + делегирование на стороне ленты.
 import IS_EMOJI_SUPPORTED from '@environment/emojiSupport'
+import { IS_FIREFOX } from '@environment/userAgent'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { revealSpoiler } from '@lib/spoiler/spoilerReveal'
+import DotRenderer from '@components/dotRenderer'
 import { safeUrl } from '@core/safeUrl'
+import encodeSpoiler from './encodeSpoiler'
 import parseEntities, { SITE_HASHTAGS } from './parseEntities'
 import type { WrapEntity, WrapEntityType } from './entities'
 import { EMOJI_CDN_BASE, isSafeEmojiUnicode } from './emoji'
@@ -146,7 +150,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
     // 0xFFFF — как в tweb (:195): «конца текста нет», верхняя граница курсора.
     const endPartOffset = Math.min(endOffset, nextEntity?.offset ?? 0xFFFF)
     const fullEntityText = nasty.text.slice(startOffset, endOffset)
-    const partText = nasty.text.slice(startOffset, endPartOffset)
+    // не `const`: ветка блеф-спойлера подменяет текст брайлевой «кашей» (tweb :671-673)
+    let partText = nasty.text.slice(startOffset, endPartOffset)
 
     if (nasty.usedLength < startOffset) {
       (lastElement || fragment).append(nasty.text.slice(nasty.usedLength, startOffset))
@@ -427,6 +432,46 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       }
 
       case 'spoiler': {
+        if (options.noTextFormat) {
+          // Блеф-спойлер (tweb :670-694): текст под спойлером ПОДМЕНЯЕТСЯ брайлевой
+          // «кашей» той же длины, каждая «буква» — свой инлайн-блок с заливкой
+          // currentColor, а поверх обёртки ложится маска из кадра симуляции частиц.
+          const encoded = encodeSpoiler(nasty.text, entity)
+          nasty.text = encoded.text
+          partText = encoded.entityText
+          if (endPartOffset !== endOffset) {
+            nasty.usedLength += endOffset - endPartOffset
+          }
+          let n: WrapEntity | undefined
+          for (; (n = entities[nasty.i + 1]), n && n.offset < endOffset; ) {
+            ++nasty.i
+            nasty.lastEntity = n
+            nextEntity = entities[nasty.i + 1]
+          }
+
+          if (!IS_FIREFOX) { // Firefox has very poor performance when drawing on canvas
+            element = document.createElement('span')
+            element.className = 'bluff-spoiler'
+            // ЕДИНСТВЕННОЕ отличие от tweb: там буквы строятся
+            // `createElementFromMarkup(`<span …>${encodedLetter}</span>`)`, т.е.
+            // через innerHTML — правило безопасности репозитория это запрещает.
+            // Узлы те же.
+            element.append(...partText.split('').map((encodedLetter) => {
+              const letter = document.createElement('span')
+              letter.className = 'bluff-spoiler-letter'
+              letter.textContent = encodedLetter
+              return letter
+            }))
+            fragment.append(element)
+
+            DotRenderer.attachBluffTextSpoilerTarget(element)
+
+            usedText = true
+          }
+
+          break
+        }
+
         const container = document.createElement('span')
         container.className = 'spoiler'
         const spoilerText = document.createElement('span')

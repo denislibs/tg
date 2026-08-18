@@ -61,8 +61,18 @@ function saveToDisc(blob: Blob, fileName: string) {
 /**
  * Скачать файл на диск. Возвращает `CancellablePromise<Blob>`: `notifyAll`
  * шлёт `{done, total}` (формат tweb `Progress`), `cancel()` рвёт поток.
+ *
+ * `justAttach` — второй аргумент tweb `appDownloadManager.downloadToDisc(options,
+ * justAttach)` (appDownloadManager.ts:257,300): «качай, но НЕ отдавай файл
+ * пользователю». Так работает автозагрузка: она приезжает симулированным кликом
+ * (`isTrusted === false`), и весь блок создания якоря сохранения в оригинале
+ * стоит под `if(!justAttach)`. Без этого «автозагрузка файлов» роняла бы каждый
+ * документ ленты в папку «Загрузки» без ведома пользователя.
  */
-export function downloadToDisc({ mediaId, fileName, mime, size }: DownloadArgs): CancellablePromise<Blob> {
+export function downloadToDisc(
+  { mediaId, fileName, mime, size }: DownloadArgs,
+  justAttach?: boolean,
+): CancellablePromise<Blob> {
   const running = downloads.get(mediaId)
   if(running) {
     return running
@@ -102,7 +112,9 @@ export function downloadToDisc({ mediaId, fileName, mime, size }: DownloadArgs):
       }
 
       const blob = new Blob(chunks, { type: mime || 'application/octet-stream' })
-      saveToDisc(blob, fileName)
+      if(!justAttach) {
+        saveToDisc(blob, fileName)
+      }
       deferred.resolve?.(blob)
     } catch(err) {
       deferred.reject?.(err)

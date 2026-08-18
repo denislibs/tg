@@ -10,8 +10,8 @@ const nMap = (v: number, min: number, max: number, newMin: number, newMax: numbe
   ((v - min) * (newMax - newMin)) / (max - min) + newMin
 
 export function drawImageFromSource(
-  ctx: OffscreenCanvasRenderingContext2D,
-  sourceCanvas: OffscreenCanvas,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  sourceCanvas: HTMLCanvasElement | OffscreenCanvas,
   sx: number,
   sy: number,
   sw: number,

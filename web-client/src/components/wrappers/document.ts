@@ -209,13 +209,18 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   }
 
   // tweb document.ts:341-396 (`load`)
-  const load = () => {
+  const load = (e?: Event) => {
+    // tweb document.ts:342 — `const save = !e || e.isTrusted`. Отличает НАСТОЯЩИЙ
+    // клик пользователя от симулированного: автозагрузка приезжает через
+    // `simulateClickEvent` (:420), у которого `isTrusted === false`, и должна
+    // только положить байты в кэш, а не ронять файл в «Загрузки».
+    const save = !e || e.isTrusted
     const download = downloadToDisc({
       mediaId: doc.id,
       fileName,
       mime: doc.mime,
       size: doc.size,
-    })
+    }, !save)
 
     void download.catch(() => {
       docDiv.classList.remove('downloading')
@@ -247,9 +252,12 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
 
     // tweb document.ts:419-421 зовёт `simulateClickEvent(preloader.preloader)`;
     // `simulateClickEvent` у нас не портирован (см. шапку `helpers/dom/clickEvent.ts`),
-    // поэтому дёргается тот же обработчик напрямую — эффект тот же.
+    // поэтому дёргается тот же обработчик напрямую — но ОБЯЗАТЕЛЬНО с событием:
+    // именно по `isTrusted === false` синтетического клика `load` понимает, что
+    // это автозагрузка, и не сохраняет файл на диск (см. `save` в `load`).
+    // Вызов без аргумента дал бы `save === true` — молчаливое сохранение.
     if(!noAutoDownload && autoDownloadSize !== undefined && doc.size !== undefined && autoDownloadSize >= doc.size) {
-      preloader.onClick()
+      preloader.onClick(new Event('click'))
     }
   }
 

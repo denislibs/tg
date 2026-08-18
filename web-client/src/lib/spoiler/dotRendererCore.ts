@@ -7,19 +7,17 @@
 // первая ветка нужна главному потоку (legacy-путь `DotRenderer`, когда WebGL2 в
 // OffscreenCanvas недоступен), вторая — воркеру.
 //
-// отступление от tweb: шейдеры не фетчатся по URL (`assets/img/spoiler_*.glsl`),
-// а импортируются `?raw` и вкомпиливаются в чанк. Компиляция становится
-// синхронной — отпадает сетевой запрос, который мог бы не долететь (у нас нет
-// папки `public/assets/img`, шейдеры жили бы отдельным ассетом). Форма API от
-// этого не меняется: `init()` по-прежнему возвращает `MaybePromise<boolean>` и
-// мемоизируется в `initPromise`, а вызывающий разворачивает его `callbackify` —
-// ровно как в оригинале.
+// Шейдеры, как в оригинале, НЕ вкомпилены — они фетчатся по URL и кэшируются
+// статикой `shaderTexts` (URL'ы строит `components/dotRenderer.ts` через
+// `?url&no-inline` и передаёт сюда, а воркеру — сообщением). Так GLSL не дублируется в двух
+// JS-чанках (главном и воркерном), а лежит одним ассетом, который берётся из
+// HTTP-кэша. `init()` из-за этого возвращает `MaybePromise<boolean>` и
+// разворачивается `callbackify` — ровно как в tweb.
 //
 // отступление от tweb: 15 отдельных полей-`WebGLUniformLocation` свёрнуты в одну
 // карту `uniforms` — тот же набор юниформ, тот же порядок заливки.
-import fragmentShaderSource from './spoiler_fragment.glsl?raw'
-import vertexShaderSource from './spoiler_vertex.glsl?raw'
-
+import callbackify from '@helpers/callbackify'
+import callbackifyAll from '@helpers/callbackifyAll'
 import { IS_MOBILE } from '@environment/userAgent'
 
 export interface DotRendererConfig {
@@ -36,6 +34,12 @@ export interface DotRendererConfig {
   noiseMovement: number
   timeScale: number
   color: number
+}
+
+/** tweb `DotRendererShaderURLs` — адреса GLSL-ассетов, общие для страницы и воркера. */
+export interface DotRendererShaderURLs {
+  vertex: string
+  fragment: string
 }
 
 const clamp = (v: number, min: number, max: number) => (v < min ? min : v > max ? max : v)
@@ -111,10 +115,15 @@ const UNIFORMS: Readonly<Record<string, keyof DotRendererConfig>> = {
 const PARTICLE_STRIDE = 24
 
 export default class DotRendererCore {
+  // tweb: один текст шейдера на весь клиент — вторая симуляция компилируется из
+  // кэша синхронно, без второго запроса
+  private static shaderTexts: Record<string, string | Promise<string>> = {}
+
   public inited = false
   public lastDrawTime = 0
   public dpr = 1
-  public config: DotRendererConfig
+  /** tweb: заполняется первым `resize()`, который обязан предшествовать `init()`. */
+  public config!: DotRendererConfig
 
   public readonly canvas: OffscreenCanvas | HTMLCanvasElement
 
@@ -127,16 +136,18 @@ export default class DotRendererCore {
   private bufferParticlesCount = 0
   private program: WebGLProgram | null = null
   private uniforms = new Map<string, WebGLUniformLocation | null>()
-  private initPromise: boolean | undefined
+  private initPromise: boolean | Promise<boolean> | undefined
 
   /** Бросает, если WebGL2 недоступен — вызывающий обязан поймать и деградировать. */
-  constructor(canvas: OffscreenCanvas | HTMLCanvasElement, config: DotRendererConfig) {
+  constructor(
+    canvas: OffscreenCanvas | HTMLCanvasElement,
+    private shaderURLs: DotRendererShaderURLs,
+  ) {
     const context = canvas.getContext('webgl2')
     if (!context) throw new Error('webgl2 is not available')
 
     this.canvas = canvas
     this.context = context as WebGL2RenderingContext
-    this.config = config
   }
 
   /**
@@ -172,65 +183,99 @@ export default class DotRendererCore {
     this.buffer = [buffer[0], buffer[1]]
   }
 
-  private compileShader(type: number, source: string) {
+  private compileShader(type: number, url: string) {
     const gl = this.context
     const shader = gl.createShader(type)
     if (!shader) throw new Error('createShader failed')
 
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      throw new Error('compile shader error:\n' + gl.getShaderInfoLog(shader))
+    const shaderTextResult = (DotRendererCore.shaderTexts[url] ??= fetch(url)
+      .then((response) => response.text())
+      // tweb дописывает случайный комментарий: одинаковый исходник два раза —
+      // это шанс поймать кэш скомпилированной программы у драйвера
+      .then((text) => (DotRendererCore.shaderTexts[url] = text + '\n//' + Math.random())))
+
+    return callbackify(shaderTextResult, (shaderText) => {
+      gl.shaderSource(shader, shaderText)
+      gl.compileShader(shader)
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error('compile shader error:\n' + gl.getShaderInfoLog(shader))
+      }
+      return shader
+    })
+  }
+
+  private compileShaders() {
+    return callbackifyAll(
+      [
+        this.compileShader(this.context.VERTEX_SHADER, this.shaderURLs.vertex),
+        this.compileShader(this.context.FRAGMENT_SHADER, this.shaderURLs.fragment),
+      ],
+      (result) => result,
+    )
+  }
+
+  private _init(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
+    const gl = this.context
+
+    this.genBuffer()
+
+    const program = (this.program = gl.createProgram())
+    gl.attachShader(program, vertexShader)
+    gl.attachShader(program, fragmentShader)
+    // Выходы вершинного шейдера пишутся обратно в буфер — это и есть шаг симуляции.
+    gl.transformFeedbackVaryings(
+      program,
+      ['outPosition', 'outVelocity', 'outTime', 'outDuration'],
+      gl.INTERLEAVED_ATTRIBS,
+    )
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error('program link error:\n' + gl.getProgramInfoLog(program))
     }
-    return shader
+    gl.deleteShader(vertexShader)
+    gl.deleteShader(fragmentShader)
+
+    for (const name of ['time', 'deltaTime', 'size', 'reset', 'color', ...Object.keys(UNIFORMS)]) {
+      this.uniforms.set(name, gl.getUniformLocation(program, name))
+    }
+
+    gl.clearColor(0, 0, 0, 0)
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
+    this.inited = true
+    this.lastDrawTime = Date.now()
   }
 
   /**
-   * Компилирует шейдеры и заводит буферы. `false` — драйвер не смог, деградируем.
-   * Мемоизируется (tweb `initPromise`): повторный вызов не пересобирает программу.
+   * tweb `init()`: компилирует шейдеры (возможно — дождавшись их загрузки) и
+   * собирает программу. Мемоизируется в `initPromise`, повторный вызов ничего не
+   * пересобирает.
+   *
+   * отступление от tweb: отказ драйвера не пробрасывается наружу, а превращается
+   * в `false` — на этом ответе держится деградация (воркер шлёт `*-init-failed`,
+   * страница уходит на нижний уровень). В оригинале сбой просто улетал в консоль.
    */
-  public init() {
+  public init(): boolean | Promise<boolean> {
     if (this.initPromise !== undefined) return this.initPromise
 
-    const gl = this.context
-    try {
-      const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexShaderSource)
-      const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource)
-
-      const program = (this.program = gl.createProgram())
-      gl.attachShader(program, vertexShader)
-      gl.attachShader(program, fragmentShader)
-      // Выходы вершинного шейдера пишутся обратно в буфер — это и есть шаг симуляции.
-      gl.transformFeedbackVaryings(
-        program,
-        ['outPosition', 'outVelocity', 'outTime', 'outDuration'],
-        gl.INTERLEAVED_ATTRIBS,
-      )
-      gl.linkProgram(program)
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        throw new Error('program link error:\n' + gl.getProgramInfoLog(program))
-      }
-      gl.deleteShader(vertexShader)
-      gl.deleteShader(fragmentShader)
-
-      for (const name of ['time', 'deltaTime', 'size', 'reset', 'color', ...Object.keys(UNIFORMS)]) {
-        this.uniforms.set(name, gl.getUniformLocation(program, name))
-      }
-
-      this.genBuffer()
-
-      gl.clearColor(0, 0, 0, 0)
-      gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-      gl.enable(gl.BLEND)
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-
-      this.inited = true
-      this.lastDrawTime = Date.now()
-      return (this.initPromise = true)
-    } catch {
+    const failed = () => {
       this.destroy()
-      return (this.initPromise = false)
+      return false
     }
+
+    let result: boolean | Promise<boolean>
+    try {
+      result = callbackify(this.compileShaders(), (shaders) => {
+        this._init(shaders[0], shaders[1])
+        return true
+      })
+    } catch {
+      return (this.initPromise = failed())
+    }
+
+    return (this.initPromise = result instanceof Promise ? result.catch(failed) : result)
   }
 
   private u(name: string) {
