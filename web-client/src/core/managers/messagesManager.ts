@@ -24,6 +24,7 @@ import { saveMessages, loadMessages, deletePersistedMessage } from '../store/per
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
 import { newPendingMethods } from './messages/pending'
+import { sendingParamsToWire, type MessageSendingParams } from './messages/sendingParams'
 import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
@@ -712,10 +713,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,
     // чтобы затем слать обновления). Бабл появится WS-эхом new_message.
-    async sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message> {
+    // Пакет параметров тот же, что у остальных путей (порт tweb: `sendOther`
+    // принимает `MessageSendingParams` наравне с `sendText`/`sendFile`); из него
+    // REST `/chats/{id}/messages` понимает ответ+цитату, тред и send-as —
+    // `silent`/`effect` этот эндпоинт не принимает (`sendBody`,
+    // backend/internal/adapter/delivery/http/chat_handler.go:338), их несёт
+    // только WS-кадр.
+    async sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading: number | undefined, params: MessageSendingParams): Promise<Message> {
+      const wire = sendingParamsToWire(params)
       const created = await rest.post<RawMessage>(`/chats/${chatId}/messages`, {
         type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
         geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
+        reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
+        reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
+        send_as_chat_id: wire.sendAsChatId,
       })
       const m = await mapNet(created)
       put(hkey(chatId), [m])

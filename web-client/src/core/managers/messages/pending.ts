@@ -68,6 +68,7 @@ import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
 import { b64FromBytes } from '../../secret/crypto'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
+import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
 
 /** Данные временного бабла, которых нет в проводных полях send_message: автор,
  *  локальная мета файла, имя контакта, заголовок send-as, метка секретного чата.
@@ -83,20 +84,29 @@ export interface SendOptimistic {
   sendAs?: { chatId: number; title: string }
   /** секретный чат: бабл с плейнтекстом, помеченный secret */
   secret?: boolean
+  /** кросс-чат ответ: снимок превью оригинала (его нет в SSOT этого чата) */
+  replySnapshot?: { peerId: number; name: string; text: string }
 }
 
-/** Аргументы `sendText` — проводные поля send_message + заявка на бабл.
- *  Порт tweb `sendText(options)` (:1290); наш `sendText` покрывает и `sendOther`
- *  (стикер/гиф/гео/контакт): у них ровно та же форма — байтов нет, кадр один. */
-export interface SendTextArgs extends WireSendArgs {
+/** Проводные поля кадра МИНУС те, что целиком покрыты пакетом параметров:
+ *  передать `replyToId`/`silent`/`effect`/… мимо пакета теперь нельзя даже
+ *  типом — ровно то свойство, ради которого форма пакета и портируется. */
+export type SendWireArgs = Omit<WireSendArgs, keyof SendingParamsWireFields>
+
+/** Аргументы `sendText` — проводные поля send_message + ПАКЕТ ПАРАМЕТРОВ +
+ *  заявка на бабл. Порт tweb `sendText(options: MessageSendingParams & {...})`
+ *  (:1290); наш `sendText` покрывает и `sendOther` (стикер/гиф/гео/контакт): у
+ *  них ровно та же форма — байтов нет, кадр один, пакет тот же. */
+export interface SendTextArgs extends SendWireArgs, MessageSendingParams {
   optimistic?: SendOptimistic
 }
 
-/** Порт tweb `SendFileArgs` (:415). Совпадающие поля — `file`, `width`,
- *  `height`, `duration`, `waveform`, `caption`, `entities`, `groupId`,
- *  `isMedia`; `objectURL` у нас нет СОЗНАТЕЛЬНО (см. sendFile: blob-URL минтит
- *  воркер, а не вкладка). */
-export interface SendFileArgs {
+/** Порт tweb `SendFileArgs = MessageSendingParams & SendFileDetails & {...}`
+ *  (:415) — включая САМ ПАКЕТ параметров, ровно как в оригинале. Совпадающие
+ *  поля — `file`, `width`, `height`, `duration`, `waveform`, `caption`,
+ *  `entities`, `groupId`, `isMedia`; `objectURL` у нас нет СОЗНАТЕЛЬНО
+ *  (см. sendFile: blob-URL минтит воркер, а не вкладка). */
+export interface SendFileArgs extends MessageSendingParams {
   chatId: number
   clientMsgId: string
   senderId: number
@@ -111,7 +121,6 @@ export interface SendFileArgs {
   height?: number
   duration?: number
   waveform?: Uint8Array
-  threadRootId?: number | null
   /** альбом (Telegram grouped_id): общий id на все сообщения группы */
   groupedId?: string
   paidMediaPrice?: number | null
@@ -122,6 +131,8 @@ export interface SendFileArgs {
   spoiler?: boolean
   /** «отправляет фото/файл…» у собеседника на время аплоада (tweb sendMessageUpload*Action) */
   uploadAction?: TypingAction
+  /** кросс-чат ответ: снимок превью оригинала для бабла (см. SendOptimistic) */
+  replySnapshot?: { peerId: number; name: string; text: string }
 }
 
 /** Регистрация неотправленного сообщения — аналог tweb PendingMessageDetails. */
@@ -260,10 +271,29 @@ export function newPendingMethods(ctx: PendingCtx) {
     return ops
   }
 
+  /** Превью ответа для ВРЕМЕННОГО бабла. Порт tweb `generateReplyHeader`
+   *  (appMessagesManager.ts:2926 — исходящее сообщение получает `reply_to` ещё
+   *  до ухода на сервер): без этого бабл появлялся бы без цитаты и «прыгал» бы,
+   *  когда её принесёт эхо. Оригинал ищем в SSOT воркера — той же единой Map
+   *  сообщений чата, из которой живёт окно (у главного потока для входящих ту же
+   *  работу делает `storeProjection`, но у СВОЕЙ отправки владелец бабла — здесь). */
+  const resolveReplyTo = (chatId: number, replyToId: number, quoteText?: string): Message['replyTo'] => {
+    for (const m of msgsFor(chatId).values()) {
+      if (m.id !== replyToId) continue
+      return {
+        msgId: m.id, seq: m.seq, senderId: m.senderId, text: m.text,
+        entities: m.entities, type: m.type, mediaId: m.mediaId ?? undefined,
+        quoteText: quoteText || undefined,
+      }
+    }
+    return null
+  }
+
   const insertPending = (e: PendingNewEvt): MessageOp[] => {
     const keys = targetKeys(e.chat_id, e.thread_root_id)
     if (!keys.length) return []
     const seq = tentativeSeq(e.chat_id, keys)
+    const replyToId = e.reply_to_id ?? null
     const msg: Message = {
       // Отрицательный id помечает неотправленное (dedupKey ключует такое по
       // clientId — иначе чужое входящее с тем же tentative seq вытеснило бы
@@ -275,7 +305,14 @@ export function newPendingMethods(ctx: PendingCtx) {
       type: e.type ?? 'text',
       text: e.text,
       entities: e.entities,
-      replyToId: null,
+      replyToId,
+      // Кросс-чат ответ: оригинала в этом чате нет, превью рисуется из снимка
+      // (та же ветка `messageToConvMsg`, что у серверного `reply_snapshot_*`);
+      // обычный ответ — резолв оригинала по SSOT.
+      replyToPeerId: e.reply_snapshot?.peerId,
+      replySnapshotName: e.reply_snapshot?.name,
+      replySnapshotText: e.reply_snapshot?.text,
+      replyTo: replyToId != null && !e.reply_snapshot ? resolveReplyTo(e.chat_id, replyToId, e.reply_quote_text) : undefined,
       mediaId: e.media_id ?? null,
       createdAt: new Date().toISOString(),
       threadRootId: e.thread_root_id ?? null,
@@ -405,12 +442,14 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  байтов нет, поэтому весь метод — бабл + один кадр. Единственная точка
      *  отправки сообщения без файла; транспорт зовётся ВНУТРИ
      *  `beforeMessageSending`, как `message.send()` в оригинале. */
-    async sendText({ optimistic, ...args }: SendTextArgs): Promise<{ ok: true }> {
+    async sendText({ optimistic, ...o }: SendTextArgs): Promise<{ ok: true }> {
+      const { params, rest } = splitSendingParams(o)
+      const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params) }
       const send = () => ctx.send(args)
       if (!optimistic) { send(); return { ok: true } }
       beforeMessageSending({
         chat_id: args.chatId,
-        thread_root_id: args.threadRootId ?? null,
+        thread_root_id: params.threadId ?? null,
         client_msg_id: args.clientMsgId,
         sender_id: optimistic.senderId,
         text: args.text,
@@ -425,6 +464,9 @@ export function newPendingMethods(ctx: PendingCtx) {
         contact: args.contactUserId != null ? { userId: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
         secret: optimistic.secret,
         send_as: optimistic.sendAs,
+        reply_to_id: params.replyToMsgId ?? null,
+        reply_quote_text: params.replyToQuote?.text,
+        reply_snapshot: optimistic.replySnapshot,
         // Порт tweb `sendText → beforeMessageSending({sequential: true})`
         // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
         // ходом, что и бабл, — позиция внизу окна за ним и останется.
@@ -450,6 +492,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     async sendFile(o: SendFileArgs): Promise<{ mediaId: number | null }> {
       const mime = o.mime || o.file.type || 'application/octet-stream'
       const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
+      const { params } = splitSendingParams(o)
       const wire: WireSendArgs = {
         chatId: o.chatId,
         text: o.caption ?? '',
@@ -457,15 +500,18 @@ export function newPendingMethods(ctx: PendingCtx) {
         clientMsgId: o.clientMsgId,
         type: o.type,
         groupedId: o.groupedId,
-        threadRootId: o.threadRootId ?? null,
         paidMediaPrice: o.paidMediaPrice ?? null,
         mediaSpoiler: o.spoiler,
+        ...sendingParamsToWire(params),
       }
       let sent: Promise<number | null> = Promise.resolve(null)
       beforeMessageSending({
         chat_id: o.chatId,
-        thread_root_id: o.threadRootId ?? null,
+        thread_root_id: params.threadId ?? null,
         client_msg_id: o.clientMsgId,
+        reply_to_id: params.replyToMsgId ?? null,
+        reply_quote_text: params.replyToQuote?.text,
+        reply_snapshot: o.replySnapshot,
         sender_id: o.senderId,
         text: o.caption ?? '',
         type: o.type,

@@ -311,20 +311,12 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 		if msgs[idx].MediaID == nil {
 			continue
 		}
-		if d, ok := dims[*msgs[idx].MediaID]; ok {
-			msgs[idx].MediaWidth = d.Width
-			msgs[idx].MediaHeight = d.Height
-			msgs[idx].MediaMime = d.Mime
-			msgs[idx].MediaBlur = d.Blur
-			msgs[idx].MediaHasThumb = d.HasThumb
-			msgs[idx].MediaDuration = d.Duration
-			msgs[idx].MediaSize = d.Size
-			msgs[idx].MediaName = d.FileName
-			msgs[idx].MediaTitle = d.Title
-			msgs[idx].MediaPerformer = d.Performer
-			msgs[idx].MediaAnimated = d.Animated
-			msgs[idx].MediaWaveform = d.Waveform
-		}
+		// Вложение собирается ВСЕГДА, когда у сообщения есть media_id — даже если
+		// строки media ещё нет (медиа не обработано): у сообщения с медиа не
+		// бывает состояния «вложения нет вовсе», иначе клиенту пришлось бы
+		// держать вторую ветку рендера на этот случай. Незаполненное вложение —
+		// это документ без атрибутов и без превью, а не отсутствующий объект.
+		msgs[idx].Media = buildMedia(msgs[idx], dims[*msgs[idx].MediaID])
 	}
 	return nil
 }

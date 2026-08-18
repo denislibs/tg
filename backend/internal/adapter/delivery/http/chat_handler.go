@@ -1011,9 +1011,26 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		Quiz          bool     `json:"quiz"`
 		CorrectOption *int     `json:"correct_option"`
 		ClientMsgID   string   `json:"client_msg_id"`
+		// Общий пакет параметров отправки — те же имена полей, что у sendBody.
+		ReplyToID        *int64  `json:"reply_to_id"`
+		ReplyQuoteText   *string `json:"reply_quote_text"`
+		ReplyQuoteOffset *int    `json:"reply_quote_offset"`
+		ThreadRootID     *int64  `json:"thread_root_id"`
+		Silent           bool    `json:"silent"`
+		SendAsChatID     *int64  `json:"send_as_chat_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	// thread_root_id с клиента — id ПОСТА (внешний контракт), см. Send.
+	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, b.ThreadRootID)
+	if errors.Is(terr, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "comment thread not found")
+		return
+	}
+	if terr != nil {
+		writeError(w, http.StatusInternalServerError, "could not send poll")
 		return
 	}
 	m, err := h.svc.SendPoll(r.Context(), usecasechat.SendPollInput{
@@ -1021,6 +1038,8 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		Question: b.Question, Options: b.Options,
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
 		ClientMsgID: b.ClientMsgID,
+		ReplyToID:   b.ReplyToID, ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
+		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: b.SendAsChatID,
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid poll")
@@ -2117,58 +2136,16 @@ func messageJSON(m domain.Message) map[string]any {
 		j["reply_snapshot_name"] = m.ReplySnapshotName
 		j["reply_snapshot_text"] = m.ReplySnapshotText
 	}
-	// Media metadata (history read model) so the client renders the media bubble
-	// entirely from the message — exact box, blur placeholder, poster, mime, etc. —
-	// with no per-media meta request.
-	if m.MediaWidth > 0 && m.MediaHeight > 0 {
-		j["media_w"] = m.MediaWidth
-		j["media_h"] = m.MediaHeight
-	}
-	if m.MediaMime != "" {
-		j["media_mime"] = m.MediaMime
-	}
-	if len(m.MediaBlur) > 0 {
-		j["media_blur"] = m.MediaBlur // []byte → base64 string in JSON
-	}
-	if m.MediaHasThumb {
-		j["media_has_thumb"] = true
-	}
-	if m.MediaDuration > 0 {
-		j["media_duration"] = m.MediaDuration
-	}
-	if m.MediaSize > 0 {
-		j["media_size"] = m.MediaSize
-	}
-	if m.MediaName != "" {
-		j["media_name"] = m.MediaName
-	}
-	// Пики волны голосового (5-битная упаковка) — как documentAttributeAudio.waveform
-	// у telegram: волна рисуется прямо из сообщения (tweb audio.ts createWaveformBars),
-	// без отдельного запроса меты медиа. Ключа нет — пиков нет (не голосовое либо
-	// старое сообщение), клиент откатывается на пересчёт из аудиофайла.
-	if len(m.MediaWaveform) > 0 {
-		j["media_waveform"] = m.MediaWaveform // []byte → base64 string in JSON
-	}
-	// Теги трека: подпись музыкального бабла (tweb audio.ts — performer, иначе
-	// размер файла) и его заголовок (title ?? file_name). Отсутствуют, если файл
-	// без тегов.
-	if m.MediaTitle != "" {
-		j["media_title"] = m.MediaTitle
-	}
-	if m.MediaPerformer != "" {
-		j["media_performer"] = m.MediaPerformer
-	}
-	// Гифка (telegram documentAttributeAnimated → tweb doc.type === 'gif'):
-	// бабл рисуется бейджем «GIF» и зацикленным автоплеем, а не таймкодом.
-	// Ключа нет — обычное видео/картинка (как у остальных флагов витрины).
-	if m.MediaAnimated {
-		j["media_animated"] = true
-	}
-	// Спойлер (telegram messageMedia.pFlags.spoiler): медиа рисуется под
-	// снимаемой кликом заслонкой, видео не автоплеится (tweb bubbles.ts:8570,
-	// :8579). Ключа нет — медиа показывается как обычно.
-	if m.MediaSpoiler {
-		j["media_spoiler"] = true
+	// Вложение (history read model) в форме оригинала — messageMediaPhoto /
+	// messageMediaDocument с лестницей превью и атрибутами: клиент рисует бабл
+	// целиком из сообщения (точный бокс, stripped-плейсхолдер, контур стикера,
+	// тип документа, спойлер в pFlags) без отдельного запроса меты медиа.
+	// Ровно тот же объект едет в live-кадре (usecase/chat/frame.go).
+	if m.Media != nil {
+		j["media"] = m.Media
+		// ВРЕМЕННО: плоские ключи той же меты, пока витрину читает ещё не
+		// мигрировавший фронт. Удаляются вместе с domain.LegacyFlatKeys.
+		domain.LegacyFlatKeys(m.Media, j)
 	}
 	if m.PaidMediaPrice != nil {
 		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

@@ -27,10 +27,19 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 	q := querier(ctx, r.pool)
 	// blur_preview и waveform — bytea (сканируются в []byte; NULL → nil). COALESCE the
 	// nullable text columns so a NULL doesn't fail a scan into a Go string.
-	rows, err := q.Query(ctx, `SELECT id, COALESCE(width,0), COALESCE(height,0), COALESCE(mime,''),
-		blur_preview, COALESCE(thumb_key,''), COALESCE(duration,0), COALESCE(size,0), COALESCE(file_name,''),
-		COALESCE(title,''), COALESCE(performer,''), COALESCE(animated,FALSE), waveform
-		FROM media WHERE id = ANY($1)`, ids)
+	//
+	// Контур стикера (path_thumb) живёт не в media, а в строке стикера — это
+	// метаданные набора, а не отдельный файл, — поэтому приезжает LEFT JOIN'ом
+	// тем же батчем: в модели сообщения он всего лишь ещё одна ступень thumbs
+	// (photoPathSize), и без джойна до сообщения не доезжает вовсе.
+	rows, err := q.Query(ctx, `SELECT m.id, COALESCE(m.width,0), COALESCE(m.height,0), COALESCE(m.mime,''),
+		m.blur_preview, COALESCE(m.thumb_key,''), COALESCE(m.duration,0), COALESCE(m.size,0), COALESCE(m.file_name,''),
+		COALESCE(m.title,''), COALESCE(m.performer,''), COALESCE(m.animated,FALSE), m.waveform, s.path_thumb, COALESCE(s.emoji,'')
+		FROM media m
+		LEFT JOIN LATERAL (
+			SELECT path_thumb, emoji FROM stickers WHERE media_id = m.id ORDER BY (path_thumb IS NULL), id LIMIT 1
+		) s ON TRUE
+		WHERE m.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +49,7 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 		var d usecasechat.MediaDims
 		var thumbKey string
 		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName,
-			&d.Title, &d.Performer, &d.Animated, &d.Waveform); e != nil {
+			&d.Title, &d.Performer, &d.Animated, &d.Waveform, &d.PathThumb, &d.StickerAlt); e != nil {
 			return nil, e
 		}
 		d.HasThumb = thumbKey != ""

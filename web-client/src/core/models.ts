@@ -3,6 +3,7 @@ import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsMa
 import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 import type { NewMessageEvt } from './realtime/events'
+import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved' | 'secret'
 
@@ -202,6 +203,14 @@ export interface RawMessage {
   checklist?: RawChecklist | null
   giveaway_id?: number | null
   giveaway?: RawGiveaway | null
+  /** Вложение в форме оригинала (TL): messageMediaPhoto/messageMediaDocument с
+   * лестницей PhotoSize[] и атрибутами. Тип документа выводит клиент
+   * (`saveDocument`), спойлер лежит в `pFlags.spoiler`. */
+  media?: MessageMedia
+  // ── ВРЕМЕННО: плоская проекция того же вложения ────────────────────────────
+  // Бэк выводит эти ключи ИЗ `media` (domain.LegacyFlatKeys) — второго источника
+  // меты нет. Живут ровно до тех пор, пока потребители витрины не переедут на
+  // `media`; новых читателей не заводить (на бинарном TL их не будет).
   media_w?: number
   media_h?: number
   media_mime?: string
@@ -210,19 +219,10 @@ export interface RawMessage {
   media_duration?: number
   media_size?: number
   media_name?: string
-  /** пики волны голосового, base64 (5-битная упаковка) — наш
-   * documentAttributeAudio.waveform: волна рисуется прямо из сообщения */
   media_waveform?: string
-  /** ID3-теги трека (tweb documentAttributeAudio.title/performer); нет тегов —
-   * полей нет в JSON, подпись бабла падает в размер файла (tweb audio.ts:362-364) */
   media_title?: string
   media_performer?: string
-  /** медиа проигрывается как гифка (tweb documentAttributeAnimated → doc.type
-   * === 'gif'). Ключ приходит ТОЛЬКО когда true (как остальные флаги витрины) */
   media_animated?: boolean
-  /** медиа скрыто спойлером (tweb messageMedia.pFlags.spoiler): получатель
-   * видит шум из точек поверх размытого превью, пока не кликнет.
-   * Ключ приходит ТОЛЬКО когда true (как остальные флаги витрины) */
   media_spoiler?: boolean
   views?: number
   forwards?: number
@@ -340,9 +340,20 @@ export interface Message {
   replyToPeerId?: number | null
   replySnapshotName?: string
   replySnapshotText?: string
-  /** Media metadata (history read model) — lets the bubble render fully from the
-   * message (exact box, blur placeholder, poster, mime, …) with no per-media
-   * meta request. */
+  /** Вложение сообщения в форме оригинала (MTProto) —
+   * `messageMediaPhoto`/`messageMediaDocument` с лестницей `PhotoSize[]` и
+   * `DocumentAttribute[]`; см. `core/media/messageMedia.ts`. Бабл рисуется
+   * целиком из него — точный бокс, stripped-плейсхолдер, контур стикера,
+   * тип документа, заслонка (`pFlags.spoiler`) — без запроса меты медиа.
+   * Тип документа выводится ИЗ АТРИБУТОВ (`saveDocument`), а не подделывается
+   * флагами витрины. */
+  media?: MessageMedia
+  // ── ВРЕМЕННО: плоская проекция того же вложения ────────────────────────────
+  // Ровно те же данные, что в `media`, только развёрнутые полями — их читают
+  // ещё не мигрировавшие потребители. Оба набора приходят из ОДНОГО источника
+  // (бэк выводит плоские ключи из модели), поэтому разъехаться не могут.
+  // Новых читателей не заводить: правильный вопрос к модели — через
+  // `getMediaFromMessage`/`choosePhotoSize`/`getStrippedThumb`.
   mediaWidth?: number
   mediaHeight?: number
   mediaMime?: string
@@ -351,28 +362,10 @@ export interface Message {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
-  /** Пики волны голосового, base64 (5-битная упаковка, ~63 байта) — наш
-   * documentAttributeAudio.waveform. Считает ОТПРАВИТЕЛЬ при записи, поэтому
-   * волна у всех получателей одинаковая и строится синхронно из самого
-   * сообщения (tweb audio.ts createWaveformBars), без запроса меты медиа и без
-   * скачивания аудиофайла. undefined — не голосовое либо запись старше поля. */
   mediaWaveform?: string
-  /** ID3-теги трека (tweb documentAttributeAudio.title/performer) */
   mediaTitle?: string
   mediaPerformer?: string
-  /** Медиа проигрывается как гифка — порт tweb `doc.type === 'gif'`, который там
-   * выводится из documentAttributeAnimated (appDocsManager.ts:219-226). Бабл
-   * гифки отличается от видео: класс `media-gif-wrapper`, бейдж «GIF» вместо
-   * таймкода, зацикленный автоплей без кнопки play (tweb video.ts:120-123,164-171).
-   * Считает сервер (media.animated: image/gif либо видео без аудиодорожки —
-   * telegram-семантика nosound_video). Признак ОДНОСТОРОННИЙ: приходит только
-   * когда true, поэтому undefined — «сервер не сказал», а не «точно не гифка»
-   * (разбор и фолбэк — `core/gifs.ts::isGifLike`). */
   mediaAnimated?: boolean
-  /** Медиа скрыто спойлером — tweb `messageMedia.pFlags.spoiler`. Ставит
-   * ОТПРАВИТЕЛЬ в попапе отправки; получатель раскрывает кликом, и обратно
-   * спойлер уже не возвращается (в отличие от текстового). Признак
-   * ОДНОСТОРОННИЙ: приходит только когда true. */
   mediaSpoiler?: boolean
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
@@ -812,6 +805,12 @@ export function mapMessage(r: RawMessage): Message {
     replyToPeerId: r.reply_to_peer_id ?? undefined,
     replySnapshotName: r.reply_snapshot_name || undefined,
     replySnapshotText: r.reply_snapshot_text || undefined,
+    // Вложение нормализуется здесь один раз: `saveMessageMedia` выводит
+    // `doc.type`/`w`/`h`/`duration`/`file_name` из атрибутов и mime — порт
+    // `appDocsManager.saveDoc`. Дальше по коду тип медиа СПРАШИВАЮТ у модели,
+    // а не подделывают флагом.
+    media: saveMessageMedia(r.media),
+    // Плоская проекция — временная, см. комментарий у полей Message.
     mediaWidth: r.media_w,
     mediaHeight: r.media_h,
     mediaMime: r.media_mime,
@@ -870,7 +869,8 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
     reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text,
     media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null,
     contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null,
-    thread_root_id: evt.thread_root_id ?? null, media_w: evt.media_w, media_h: evt.media_h,
+    thread_root_id: evt.thread_root_id ?? null, media: evt.media,
+    media_w: evt.media_w, media_h: evt.media_h,
     media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
     media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
     media_waveform: evt.media_waveform,

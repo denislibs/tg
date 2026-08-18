@@ -46,21 +46,24 @@ func pinServiceText(actor domain.UserCard, m domain.Message) string {
 // это теги «название - исполнитель», иначе имя файла; у документа — имя файла.
 // У остального медиа имени нет — клиент подставляет лейбл по типу сообщения.
 func pinMediaName(m domain.Message) string {
+	fileName := m.Media.FileName()
 	switch m.Type {
 	case "audio":
 		tags := make([]string, 0, 2)
-		if m.MediaTitle != "" {
-			tags = append(tags, m.MediaTitle)
-		}
-		if m.MediaPerformer != "" {
-			tags = append(tags, m.MediaPerformer)
+		if a, ok := m.Media.AudioAttr(); ok {
+			if a.Title != "" {
+				tags = append(tags, a.Title)
+			}
+			if a.Performer != "" {
+				tags = append(tags, a.Performer)
+			}
 		}
 		if len(tags) > 0 {
 			return strings.Join(tags, " - ")
 		}
-		return m.MediaName
+		return fileName
 	case "document":
-		return m.MediaName
+		return fileName
 	default:
 		return ""
 	}

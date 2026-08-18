@@ -108,7 +108,7 @@ afterEach(() => {
 async function sendAndRender(pending: ReturnType<typeof owner>['pending'], clientMsgId: string, text: string) {
   await pending.sendText({
     chatId: CHAT, text, clientMsgId, type: 'text', entities: null,
-    threadRootId: null, groupedId: undefined, paidMediaPrice: null,
+    threadId: null, groupedId: undefined, paidMediaPrice: null,
     optimistic: { senderId: ME },
   })
   await settle()

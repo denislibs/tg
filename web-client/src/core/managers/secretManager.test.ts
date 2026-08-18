@@ -155,6 +155,7 @@ describe('secretManager', () => {
 
     expect(pendings).toEqual([{
       chat_id: 1, client_msg_id: 'cm3', sender_id: 5, text: 'секрет 🔒', type: 'text', entities: undefined, secret: true,
+      thread_root_id: null, reply_to_id: null,
     }])
   })
 

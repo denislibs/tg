@@ -21,6 +21,7 @@ import type { MessageWindow } from './useMessageWindow'
 import { useManagers } from './useManagers'
 import { startLiveShare } from '../liveShareEngine'
 import { scaleImageForSend } from '../media/scaleImageForSend'
+import type { MessageSendingParams } from '../managers/messages/sendingParams'
 
 /**
  * Длительность аудио/видео файла до аплоада — порт tweb (popups/newMedia.ts:1562-1579:
@@ -107,6 +108,50 @@ export function useChatSend({
   // Пересылка (tweb forwarding): плашка форварда в композере; финализируется в send().
   const [forward, setForward] = useState<ForwardState>(null)
 
+  /**
+   * ПАКЕТ ПАРАМЕТРОВ ОТПРАВКИ — порт tweb `Chat.getMessageSendingParams()`
+   * (`components/chat/chat.ts:1352`). Собирается ОДИН раз в момент отправки и
+   * уезжает целиком в любой метод отправки; ни один путь не дописывает
+   * `replyToId`/цитату/`silent`/… руками, поэтому и «забыть» их не может.
+   * Держит скан `core/sendingParams.test.ts`.
+   *
+   * `over` — то, что в оригинале живёт состоянием инпута (`this.input.sendSilent`,
+   * `this.input.effect()`), а у нас приезжает аргументом `send()` из композера
+   * (см. Composer: тихая отправка — пункт send-меню, эффект — его же пикер).
+   */
+  const getMessageSendingParams = (over?: Pick<MessageSendingParams, 'silent' | 'effect'>): MessageSendingParams => ({
+    threadId: threadRootId ?? null,
+    replyToMsgId: reply?.msgId ?? null,
+    replyToQuote: reply?.quote ?? null,
+    // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
+    // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
+    replyToPeerId: reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null,
+    sendAsPeerId: sendAsChatId,
+    ...over,
+  })
+
+  /** Снимок превью оригинала для ОПТИМИСТИЧНОГО бабла кросс-чат ответа: его нет
+   *  в SSOT текущего чата, а серверный `reply_snapshot_*` приедет только с эхом. */
+  const replySnapshotForBubble = () =>
+    reply?.msgId != null && reply.chatId != null && reply.chatId !== numericChatId
+      ? { peerId: reply.chatId, name: reply.snapshotName ?? reply.name, text: reply.snapshotText ?? reply.text }
+      : undefined
+
+  /**
+   * Порт tweb `ChatInput.onMessageSent()` (`components/chat/input.ts:4067`):
+   * ОТДЕЛЬНЫЙ вызов ПОСЛЕ отправки, который гасит плашку-хелпер
+   * (`clearHelper()`, :4100). Оригинал зовёт его из КАЖДОЙ точки отправки —
+   * текст (:4355), документ/стикер/гиф (`sendMessageWithDocument`, :4355),
+   * запись голоса/кружка (`chatRecording.ts:239`), попап медиа
+   * (`newMedia.ts:988` + `onHelperCancel` при активном ответе), меню сообщения
+   * (`contextMenu.ts:934`), инлайн-результаты (`inlineHelper.ts:62`).
+   * Именно поэтому он и здесь отдельная функция, а не строка внутри одного
+   * `send()`: у нас точек отправки столько же, и до этого порта плашка гасла
+   * только у текстовой — после стикера она оставалась висеть, и СЛЕДУЮЩЕЕ
+   * сообщение уходило ответом, которого пользователь уже не ждёт.
+   */
+  const onMessageSent = () => { setReply(null) }
+
   // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
   // do with a finished clip: upload + send (creating the private chat first on a draft).
   const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ chatId: numericChatId, action: 'voice' }) }
@@ -119,6 +164,12 @@ export function useChatSend({
       if (!blob) return
       const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+      // Пакет снимается ДО первого await (плашку гасим тут же — порт tweb
+      // `chatRecording.ts:215,239`: `getMessageSendingParams()` перед отправкой,
+      // `onMessageSent(false, true)` сразу после неё).
+      const sendingParams = getMessageSendingParams()
+      const replySnapshot = replySnapshotForBubble()
+      onMessageSent()
       atBottomRef.current = true; userScrolledUpRef.current = false
       // Секретный чат (E2E): голос шифруем своим ключом файла и шлём как secret-медиа
       // (иначе он уходил ПЛЕЙНТЕКСТОМ — дыра E2E). Без оптимистичного бабла — приедет
@@ -130,7 +181,7 @@ export function useChatSend({
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         try {
           // Без optimistic — бабла у secret-голоса нет и не было (см. выше).
-          await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId })
+          await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId, ...sendingParams })
         } catch { /* ключ чата отсутствует / оффлайн — бабл не появится */ }
         if (draftPeerId != null) onChatCreated?.(cid)
         return
@@ -145,56 +196,57 @@ export function useChatSend({
       await managers.messages.sendFile({
         chatId: cid, clientMsgId, senderId: meId ?? -1, file: blob, type, mime,
         duration: secs, waveform: type === 'voice' ? (waveform ?? undefined) : undefined,
-        threadRootId,
+        ...sendingParams, replySnapshot,
       })
       if (draftPeerId != null) onChatCreated?.(cid)
     },
   })
 
-  const replyToId = reply?.msgId ?? null
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false, effect: EmojiEffectKind | null = null) => {
+  const sendReal = (text: string, sendingParams: MessageSendingParams, entities?: MessageEntity[], ttlSeconds: number | null = null, playFx = true) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
     // Ровно один эффект-эмодзи (❤️/🎉/👍/…) → полноэкранный canvas-эффект сразу
     // после отправки; у получателя эффект играет только по клику на бабл.
     // Явно выбранный эффект сообщения (из send-меню) имеет приоритет и едет полем.
-    const fx = effect ?? sendEffectForText(text)
-    if (fx) playEmojiEffect(fx)
+    // playFx=false — части разбитого драфта, кроме первой: ПОЛЕ едет со всеми
+    // (пакет один на все части, как в tweb sendText:1508-1516), а локальную
+    // анимацию гоняем один раз — она глобальная (canvas на весь экран), не на бабле.
+    const fx = (sendingParams.effect as EmojiEffectKind | null | undefined) ?? sendEffectForText(text)
+    if (fx && playFx) playEmojiEffect(fx)
     if (chat.type === 'secret') {
       // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (заводит тот же владелец,
       // что и у обычной отправки — см. secretManager.beforeSending), затем
       // E2E-шифрование и отправка type:'encrypted' по WS. Реальный бабл приедет
-      // расшифрованным echo new_message с тем же clientMsgId. reply/thread здесь
-      // пока не поддержаны.
-      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds, optimistic: { senderId: meId ?? -1, type: 'text' } })
+      // расшифрованным echo new_message с тем же clientMsgId. Из пакета сюда едут
+      // только метаданные маршрутизации (ответ/тред/тихо) — почему не цитата,
+      // разобрано в `secretManager.secretWireFields`.
+      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds, ...sendingParams, optimistic: { senderId: meId ?? -1, type: 'text' } })
       return
     }
-    // reply quote прикреплён к первому сообщению (там же, где и сам reply).
-    const quote = replyTo != null ? reply?.quote : undefined
-    // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
-    // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
-    const replyToPeerId = replyTo != null && reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null
     const sendAs = sendAsChatId != null ? { chatId: sendAsChatId, title: sendAsTitle ?? '' } : undefined
-    void managers.messages.sendText({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId, optimistic: { senderId: meId ?? -1, sendAs } })
+    void managers.messages.sendText({ chatId: numericChatId, text, entities, clientMsgId, ...sendingParams, optimistic: { senderId: meId ?? -1, sendAs, replySnapshot: replySnapshotForBubble() } })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
   // на бэк — WS-полями geo_lat/geo_lng (type 'geo').
   const sendGeo = (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => {
+    const sendingParams = getMessageSendingParams()
+    const replySnapshot = replySnapshotForBubble()
+    onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     // Live location: шлём по REST (нужен msgId для последующих обновлений) и
     // запускаем трансляцию; бабл появится WS-эхом. Обычная точка/venue — как было,
     // оптимистичным WS-путём.
     if (opts?.livePeriod) {
-      void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading).then((m) => {
+      void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading, sendingParams).then((m) => {
         startLiveShare(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
       })
       return
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
-    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId, optimistic: { senderId: meId ?? -1 } })
+    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, ...sendingParams, optimistic: { senderId: meId ?? -1, replySnapshot } })
   }
 
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
@@ -203,11 +255,16 @@ export function useChatSend({
   const sendSticker = (st: { id: number; mediaId: number; emoji: string }) => {
     if (!canType || secretLocked || chat.type === 'secret') return
     const clientMsgId = mkClientMsgId()
+    // Порт tweb `sendMessageWithDocument` (input.ts:4341-4355): пакет снимается
+    // ДО отправки, `onMessageSent(clearDraft, true)` — сразу после неё.
+    const sendingParams = getMessageSendingParams()
+    const replySnapshot = replySnapshotForBubble()
+    onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      void managers.messages.sendText({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
+      void managers.messages.sendText({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
@@ -222,6 +279,10 @@ export function useChatSend({
   const sendGif = (g: GifItem) => {
     if (!canType || secretLocked || chat.type === 'secret') return
     const clientMsgId = mkClientMsgId()
+    // Тот же порядок, что у стикера (tweb `sendMessageWithDocument`).
+    const sendingParams = getMessageSendingParams()
+    const replySnapshot = replySnapshotForBubble()
+    onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     if (g.mediaId != null) {
       const mediaId = g.mediaId
@@ -229,8 +290,8 @@ export function useChatSend({
         let cid = numericChatId
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         void managers.messages.sendText({
-          chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId,
-          optimistic: isRealChat ? { senderId: meId ?? -1, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } } : undefined,
+          chatId: cid, text: '', clientMsgId, mediaId, type: 'video', ...sendingParams,
+          optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } } : undefined,
         })
         if (draftPeerId != null) onChatCreated?.(cid)
       })()
@@ -252,7 +313,7 @@ export function useChatSend({
       const { mediaId } = await managers.messages.sendFile({
         chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file: blob, type: 'video',
         mime: 'video/mp4', fileName: 'tenor.mp4', width: g.width, height: g.height,
-        isMedia: true, threadRootId,
+        isMedia: true, ...sendingParams, replySnapshot,
       })
       if (mediaId != null) void managers.stickers.saveGif(mediaId).catch(() => {})
     })()
@@ -262,8 +323,11 @@ export function useChatSend({
   // гидрирует по аккаунту — приедет с echo-фреймом new_message).
   const sendContact = (userId: number, name: string) => {
     const clientMsgId = mkClientMsgId()
+    const sendingParams = getMessageSendingParams()
+    const replySnapshot = replySnapshotForBubble()
+    onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
-    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId, optimistic: { senderId: meId ?? -1, contactName: name } })
+    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name, replySnapshot } })
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -280,7 +344,14 @@ export function useChatSend({
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  const onPickFile = async (input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null, spoiler = false) => {
+  // sendingParams/replySnapshot приходят СНАРУЖИ (sendPendingMedia снимает их до
+  // цикла): в tweb попап медиа тоже снимает пакет один раз и раздаёт его всем
+  // файлам выборки (`newMedia.ts:922` → `sendGrouped({...sendingParams, ...})`),
+  // а плашку гасит после цикла (`newMedia.ts:996-998`, `input.onHelperCancel()`).
+  const onPickFile = async (
+    input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null, spoiler = false,
+    sendingParams: MessageSendingParams = {}, replySnapshot?: { peerId: number; name: string; text: string },
+  ) => {
     if (!isRealChat || secretLocked) return
     const origMime = input.type || 'application/octet-stream'
     const type = asFile
@@ -322,13 +393,13 @@ export function useChatSend({
     // непрозрачный blob, key/iv кладём в зашифрованный payload (secret.sendMedia).
     // Шифрование и локальное превью — тоже в воркере (ключи живут там), см.
     // secretManager.sendMedia; сюда возвращается только плейнтекст-буфер.
-    // Документы — без оптимистичного бабла (приезжают echo). reply/thread здесь
-    // не поддержаны.
+    // Документы — без оптимистичного бабла (приезжают echo).
     if (chat.type === 'secret') {
       const bytes = await file.arrayBuffer()
       try {
         await managers.secret.sendMedia({
           chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId,
+          ...sendingParams,
           ...(isVisual ? { text: caption, optimistic: { senderId: meId ?? -1, type, media: { width, height, mime, size: file.size, name: file.name } } } : {}),
         })
       } catch {
@@ -346,7 +417,7 @@ export function useChatSend({
     await managers.messages.sendFile({
       chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file, type, mime,
       fileName: file.name, caption, width, height, duration,
-      threadRootId, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
+      ...sendingParams, replySnapshot, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
       // Спойлер имеет смысл только у визуального медиа: «как файл» прятать нечего
       // (tweb гейтит пункт меню тем же условием — canToggleSpoilers).
       spoiler: spoiler && isVisual,
@@ -359,6 +430,12 @@ export function useChatSend({
     const pm = pendingMedia
     setPendingMedia(null)
     if (!pm) return
+    // Пакет — один на всю выборку (tweb: попап снимает `getMessageSendingParams()`
+    // один раз до `iterate`), плашка гаснет здесь же: в оригинале это
+    // `input.onHelperCancel()` после цикла (`newMedia.ts:996-998`).
+    const sendingParams = getMessageSendingParams()
+    const replySnapshot = replySnapshotForBubble()
+    onMessageSent()
     // Несколько фото/видео «как медиа» → один альбом (Telegram grouped_id):
     // общий id на все сообщения группы, подпись — на первом (tweb).
     const asAlbum = !asFile
@@ -368,7 +445,7 @@ export function useChatSend({
     // Платное медиа — только для одиночного фото/видео «как медиа» (см. SendMediaPopup).
     const price = !asFile && !asAlbum && pm.files.length === 1 ? paidMediaPrice ?? null : null
     for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price, !!spoilers?.[i])
+      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price, !!spoilers?.[i], sendingParams, replySnapshot)
     }
   }
 
@@ -376,6 +453,10 @@ export function useChatSend({
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
   const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false, effect: EmojiEffectKind | null = null) => {
     if (!canType || secretLocked) return
+    // Пакет параметров — ОДИН на весь ход отправки (порт tweb: `send()` в
+    // `input.ts` снимает `getMessageSendingParams()` один раз и раздаёт всем
+    // вызовам, включая части разбитого драфта, :4341/4230).
+    const sendingParams = getMessageSendingParams({ silent, effect })
     // Forward finalize (tweb sendMessageWithForward): пересылаем отложенные
     // сообщения из исходного чата, затем — набранный комментарий как обычное
     // сообщение (если он есть). Комментарий шлём ПОСЛЕ форварда — как в Telegram
@@ -383,6 +464,7 @@ export function useChatSend({
     if (forward) {
       const fwd = forward
       setForward(null)
+      onMessageSent()
       atBottomRef.current = true; userScrolledUpRef.current = false
       void (async () => {
         try {
@@ -393,7 +475,7 @@ export function useChatSend({
         }
         if (text) {
           for (const p of splitRich(text, entities ?? [], MAX_MESSAGE_LEN)) {
-            void managers.messages.sendText({ chatId: numericChatId, text: p.text, entities: p.entities.length ? p.entities : undefined, clientMsgId: mkClientMsgId(), threadRootId })
+            void managers.messages.sendText({ chatId: numericChatId, text: p.text, entities: p.entities.length ? p.entities : undefined, clientMsgId: mkClientMsgId(), ...sendingParams })
           }
         }
       })()
@@ -414,11 +496,11 @@ export function useChatSend({
     if (draftPeerId != null) {
       // First message in a draft: create the private chat, send all parts, then let
       // the shell switch to the now-real chat (and surface it in the sidebar).
-      setReply(null)
+      onMessageSent()
       void (async () => {
         const id = await managers.chats.createPrivate(draftPeerId)
         for (let k = 0; k < parts.length; k++) {
-          await managers.messages.sendText({ chatId: id, text: parts[k].text, entities: entOf(parts[k]), clientMsgId: mkClientMsgId(k) })
+          await managers.messages.sendText({ chatId: id, text: parts[k].text, entities: entOf(parts[k]), clientMsgId: mkClientMsgId(k), ...sendingParams })
         }
         onChatCreated?.(id)
       })()
@@ -430,22 +512,29 @@ export function useChatSend({
       // optimistic + scroll-to-bottom pattern. Live echo arrives via rt:new_message.
       // Форматирование идёт тем же путём, что и в обычных чатах: разметка из
       // композера (entOf) — и в оптимистичный бабл, и в REST-тело поста.
-      setReply(null)
+      onMessageSent()
       atBottomRef.current = true; userScrolledUpRef.current = false
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
         const entities = entOf(parts[k])
         // Пост канала уходит по REST (не через WS-путь sendMessage), поэтому бабл
         // здесь заводится отдельным вызовом — sendMessage тут не участвует вовсе.
+        // ПАКЕТ СЮДА НЕ ЕДЕТ, и это не забывчивость: эндпоинт
+        // POST /channels/{id}/messages принимает ровно {text, entities,
+        // client_msg_id} (backend/internal/adapter/delivery/http/channel_handler.go:65-71
+        // → PostToChannel с позиционной сигнатурой). Довести пакет сюда = менять
+        // сигнатуру usecase и её шесть тест-вызовов — отдельная работа по бэкенду,
+        // см. отчёт задачи. Исключение зафиксировано в core/sendingParams.test.ts.
         void managers.channels.post(numericChatId, parts[k].text, clientMsgId, entities, { senderId: meId ?? -1, threadRootId })
       }
       return
     }
     // Plain real chat (private/group).
-    setReply(null)
-    // reply attaches to the first message only (Telegram behaviour); эффект тоже
-    // применяется только к первому сообщению разбитого драфта.
-    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent, k === 0 ? effect : null))
+    onMessageSent()
+    // Пакет (в т.ч. ответ и эффект) едет КАЖДОЙ части — 1:1 с tweb, где хвост
+    // `sendText` рекурсивно шлёт остаток тем же `options` (:1508-1516).
+    // Локальная canvas-анимация эффекта при этом одна на ход (см. sendReal).
+    parts.forEach((p, k) => sendReal(p.text, sendingParams, entOf(p), ttlSeconds ?? null, k === 0))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each
@@ -469,5 +558,8 @@ export function useChatSend({
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
     sendGeo, sendContact, sendSticker, sendGif,
+    // Пути отправки, живущие ВНЕ этого хука (опрос — свой попап и свой REST),
+    // получают тот же пакет и тот же сброс плашки, а не собирают поля сами.
+    getMessageSendingParams, onMessageSent,
   }
 }

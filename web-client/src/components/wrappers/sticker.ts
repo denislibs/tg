@@ -25,7 +25,8 @@
  * Слои показа (снизу вверх) и их снятие — целиком на `createStickerAppearance`
  * (`./stickerAppearance`, порт tweb 1:1):
  *   0) SVG-силуэт из векторного контура (`pathThumb`, tweb `photoPathSize`);
- *   1) превью: stripped-JPEG с бэка либо кадр, сохранённый прошлым показом;
+ *   1) превью-картинка: кадр, сохранённый прошлым показом (приоритет, tweb
+ *      `lottieCachedThumb`), иначе stripped-JPEG с бэка (tweb `doc.thumbs[0]`);
  *   2) медиа: canvas плеера lottie / `<video>` / `<img>` с классом `media-sticker`;
  *   3) нижние слои снимаются, только когда верхний ДОКАЗАННО прокрашен
  *      (`ensurePresented` у lottie), а не по таймеру.
@@ -65,7 +66,7 @@ import { getMiddleware, type Middleware } from '@helpers/middleware'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import createStickerAppearance from './stickerAppearance'
-import { hasStickerContent, loadStickerContent } from './stickerContent'
+import { getStickerContentKind, hasStickerContent, loadStickerContent } from './stickerContent'
 
 /**
  * `<video>` в роли анимации: `animationIntersector` хранит в `_autoplay`/`_loop`
@@ -143,12 +144,17 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
   // tweb: `liteModeKey ??= 'stickers_panel'` (sticker.ts:111)
   const liteModeKey = options.liteModeKey === undefined ? 'stickers_panel' : options.liteModeKey
 
-  // Собственная зона актуальности поколения. Родительская её убивает
-  // (`onClean` уже погашенного родителя зовёт колбэк сразу — тогда поколение
-  // мертво с самого начала и в DOM не пишет).
+  // Собственная зона актуальности поколения. Родительская её убивает — и
+  // МГНОВЕННО: в tweb middleware вызывающего используется как есть, поэтому
+  // родитель, погашенный ещё до вызова, обязан делать поколение мёртвым сразу.
+  // Одного `onClean` для этого мало: он зовёт колбэк сразу, но `helper.destroy()`
+  // пересоздаёт `details` — и `helper.get()` вернул бы ЖИВОЙ middleware. Поэтому
+  // родитель входит вторым термом в наш собственный (штатная композиция
+  // `MiddlewareHelper.get(additionalCallback)`).
   const helper = getMiddleware()
-  options.middleware?.onClean(() => helper.destroy())
-  const middleware = helper.get()
+  const parent = options.middleware
+  parent?.onClean(() => helper.destroy())
+  const middleware = helper.get(parent && (() => parent()))
 
   // tweb sticker.ts:137-147
   div.dataset.docId = String(mediaId)
@@ -177,22 +183,53 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
     middleware,
   })
 
-  if (withThumb !== false) {
-    // Самый нижний слой: силуэт рисуется синхронно, раньше decode() у превью.
-    // viewBox — из натуральных пикселей документа (tweb `doc.w`/`doc.h`), а не
-    // из бокса показа: точки контура заданы в координатах исходного канваса.
+  // tweb sticker.ts:222-225. `downloaded` — байты файла уже в кэше и кроссфейд
+  // не форсирован; `isAnimated` (tweb:189) у нас выводится из типа СКАЧАННОГО
+  // файла (см. `stickerContent.getStickerContentKind`) — ровно в тех двух
+  // условиях, где tweb его спрашивает, файл либо уже скачан, либо ответ не
+  // влияет на результат (`!downloaded` истинно само по себе).
+  const downloaded = hasStickerContent(mediaId) && !needFadeIn
+  const contentKind = getStickerContentKind(mediaId)
+  const isAnimated = contentKind === 'lottie' || contentKind === 'video'
+  const isThumbNeededForType = isAnimated
+  // tweb `lottieCachedThumb` — кадр, сохранённый прошлым показом; там он
+  // спрашивается только у Lottie/WebM, у нас это выполняется само:
+  // `saveStickerThumb*` зовут ровно эти две ветки, у статики кадра не бывает.
+  const lottieCachedThumb = getStickerThumb(mediaId)
+
+  // tweb sticker.ts:247-258 — гейт превью целиком (без терма `onlyThumb`:
+  // режима «только превью» у нас нет). `doc.thumbs?.length` у нас — это наличие
+  // хоть какого-то присланного превью: stripped-JPEG или векторного контура.
+  if (
+    (!!(thumb || pathThumb) || lottieCachedThumb) &&
+    (!downloaded || isThumbNeededForType) &&
+    withThumb !== false
+  ) {
+    // tweb:259 `let thumb = lottieCachedThumb || doc.thumbs[0]` — СОХРАНЁННЫЙ
+    // КАДР ПРИОРИТЕТНЕЕ присланного stripped-JPEG: он резкий и совпадает с тем,
+    // что сейчас появится, а stripped — мыло. Инверсия этих двух и была
+    // «морганием в мыло».
+    const thumbUrl = lottieCachedThumb?.url ?? (thumb ? `data:image/jpeg;base64,${thumb}` : undefined)
+
+    // tweb:268-273 — силуэт из собственного контура стикера ставится ПЕРВЫМ:
+    // он синхронный, а превью-картинка проигрывает гонку даже у тёплого показа
+    // (ей нужен decode). viewBox — из натуральных пикселей документа (tweb
+    // `doc.w`/`doc.h`), а не из бокса показа: точки контура заданы в
+    // координатах исходного канваса.
     if (pathThumb && appearance.canBuildSilhouette()) {
       const built = createSvgFromBase64(pathThumb, docWidth || 512, docHeight || 512)
       if (built) appearance.setSilhouette(built.svg)
     }
 
-    // Превью: stripped с бэка (tweb `doc.thumbs[0]`) либо кадр, сохранённый
-    // прошлым показом (tweb `apiManagerProxy.getStickerCachedThumb`).
-    const cached = getStickerThumb(mediaId)
-    const thumbSrc = thumb ? `data:image/jpeg;base64,${thumb}` : cached?.url
-    if (thumbSrc && appearance.canBuildThumb()) {
-      const image = new Image()
-      void renderImageFromUrl(image, thumbSrc, () => appearance.setThumb(image))
+    // tweb:275-276 — картинка апгрейдит силуэт, когда догрузится и декодируется.
+    if (thumbUrl && appearance.canBuildImage()) {
+      const thumbImage = new Image()
+      void renderImageFromUrl(thumbImage, thumbUrl, () => {
+        // tweb проверяет middleware в каждой отложенной ветке превью
+        // (:347, :358, :364) — здесь это тот же гвард на пришедший поздно колбэк.
+        if (!middleware()) return
+        appearance.upgradeToImage(thumbImage)
+      })
     }
   }
 
@@ -329,10 +366,12 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
     return loadImage(content.url)
   }
 
-  // tweb sticker.ts:735 — через очередь идёт только НЕ скачанное; уже
-  // скачанное грузится в обход неё.
+  // tweb sticker.ts:735 — `lazyLoadQueue && (!downloaded || isAnimated)`: мимо
+  // очереди идёт только уже скачанная СТАТИКА. Закэшированный tgs/webm всё
+  // равно ставится в очередь — его показ это не чтение готового URL, а декод
+  // (парс json, старт плеера/видео), и без гейта они стартуют все разом.
   const render =
-    lazyLoadQueue && !hasStickerContent(mediaId) ? lazyLoadQueue.push(load, isVisible) : load()
+    lazyLoadQueue && (!downloaded || isAnimated) ? lazyLoadQueue.push(load, isVisible) : load()
 
   return {
     render,

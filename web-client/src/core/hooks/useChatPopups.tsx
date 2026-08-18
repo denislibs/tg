@@ -15,6 +15,7 @@ import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, OpenPeer } from '../../data'
 import type { Message } from '../models'
 import type { ThreadInfo } from '../../components/Chat'
+import type { MessageSendingParams } from '../managers/messages/sendingParams'
 import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
@@ -70,6 +71,12 @@ export interface ChatPopupDeps {
   openPicker: (accept: string, asFile: boolean) => void
   sendGeo: (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => void
   sendContact: (userId: number, name: string) => void
+  /** Пакет параметров отправки (`useChatSend.getMessageSendingParams`, порт tweb
+   *  `Chat.getMessageSendingParams`) — опрос уходит своим REST-путём, но поля
+   *  отправки собирает не сам, а получает пакетом, как и все остальные пути. */
+  getMessageSendingParams: () => MessageSendingParams
+  /** Сброс плашки ответа после отправки (порт tweb `ChatInput.onMessageSent`). */
+  onMessageSent: () => void
   setPendingMedia: (v: { files: File[]; asFile: boolean } | null) => void
   slowmodeMarkSent: () => void
   jumpToSeq: (seq: number) => void
@@ -199,8 +206,10 @@ export function useChatPopups(d: ChatPopupDeps) {
       onClose={p.destroy}
       onCreate={(poll) => {
         p.destroy()
+        const sendingParams = d.getMessageSendingParams()
+        d.onMessageSent()
         void managers.messages
-          .sendPoll(numericChatId, { ...poll, clientMsgId: crypto.randomUUID() })
+          .sendPoll(numericChatId, { ...poll, clientMsgId: crypto.randomUUID(), ...sendingParams })
           .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
       }}
     />

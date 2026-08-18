@@ -31,14 +31,33 @@ export type StickerContent =
   | { kind: 'video'; url: string }
 
 const cache = new Map<number, Promise<StickerContent>>()
+// Синхронно доступный итог уже завершённой загрузки. В tweb ровно эти два факта
+// читаются из документа ДО загрузки — `cacheContext.downloaded` и
+// `doc.sticker`/`mime_type` (тип стикера); у нас тип известен только из
+// `Content-Type` ответа, то есть строго после скачивания. Обе точки, где tweb
+// их спрашивает (`wrapSticker.ts:222-224`), нужны ровно в состоянии
+// «файл уже скачан» — а там ответ у нас есть.
+const resolved = new Map<number, StickerContent['kind']>()
 
 /**
- * Файл стикера уже скачан (или скачивается) — аналог `cacheContext.downloaded`
- * в tweb (`wrapSticker.ts:222`). По нему `wrapSticker` решает, идти ли через
- * `lazyLoadQueue`: уже скачанное грузится в обход очереди (tweb:735).
+ * Файл стикера уже скачан — аналог `cacheContext.downloaded` в tweb
+ * (`wrapSticker.ts:222`). По нему `wrapSticker` решает, идти ли через
+ * `lazyLoadQueue` (tweb:735) и нужно ли строить превью (tweb:247-257).
+ * Идущая прямо сейчас загрузка скачанной НЕ считается — как и в tweb, где
+ * `downloaded` поднимается только по факту байтов в кэше.
  */
 export function hasStickerContent(mediaId: number): boolean {
-  return cache.has(mediaId)
+  return resolved.has(mediaId)
+}
+
+/**
+ * Тип уже скачанного стикера — наш аналог `stickerType` из `doc.sticker`
+ * (tweb `wrapSticker.ts:117-120`); `undefined`, пока файл не приехал.
+ * По нему считается `isAnimated` (tweb:189) — терм гейта очереди и
+ * `isThumbNeededForType`.
+ */
+export function getStickerContentKind(mediaId: number): StickerContent['kind'] | undefined {
+  return resolved.get(mediaId)
 }
 
 /**
@@ -74,7 +93,10 @@ export function loadStickerContent(
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
     }
     p = loadQueue ? loadQueue.push(fetchContent, isVisible) : fetchContent()
-    p.catch(() => cache.delete(mediaId))
+    p.then(
+      (content) => resolved.set(mediaId, content.kind),
+      () => cache.delete(mediaId),
+    )
     cache.set(mediaId, p)
   }
   return p
@@ -83,4 +105,5 @@ export function loadStickerContent(
 /** Только для тестов: сбросить кэш между кейсами. */
 export function resetStickerContentCache(): void {
   cache.clear()
+  resolved.clear()
 }

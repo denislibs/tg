@@ -6,6 +6,7 @@
 import { mapMessage, mapPoll, mapChecklist, mapGiveaway, deriveOut, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { MessagesCtx } from './ctx'
+import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
 
 export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: MessagesCtx) {
   // Та же граница маппинга, что в messagesManager: созданный опрос/чек-лист
@@ -27,11 +28,21 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
 
   return {
     // ── Опросы (Telegram Poll) ──
-    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message> {
+    // Пакет параметров отправки — как у всех остальных путей (порт tweb: опрос
+    // уходит `sendOther({...sendingParams, inputMedia: inputMediaPoll})`,
+    // appMessagesManager.ts:2413). `effect` пакета сюда не едет СОЗНАТЕЛЬНО:
+    // бэкенд снимает эффект с типа 'poll' по whitelist (sanitizeEffect,
+    // backend/internal/usecase/chat/sanitize.go:29-32) — как и Telegram, который
+    // эффекты на опросах не показывает.
+    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<Message> {
+      const wire = sendingParamsToWire(p)
       const r = await rest.post<RawMessage>(`/chats/${chatId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
+        reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
+        reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
+        silent: wire.silent, send_as_chat_id: wire.sendAsChatId,
       })
       return mapOne(r)
     },

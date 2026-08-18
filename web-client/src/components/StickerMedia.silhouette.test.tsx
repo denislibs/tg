@@ -107,7 +107,7 @@ describe('StickerMedia — силуэт из векторного контура
     expect(container.querySelector('div')).not.toBeNull()
   })
 
-  it('pathThumb + thumb: stripped-JPEG апгрейдит силуэт (тот же underlay, что и setThumb)', async () => {
+  it('pathThumb + thumb: stripped-JPEG апгрейдит силуэт (тот же underlay, что и upgradeToImage)', async () => {
     const { container } = render(
       <StickerMedia mediaId={203} width={72} height={72} pathThumb={REAL_PATH_THUMB_B64} thumb="/9j/" />,
     )
@@ -116,7 +116,7 @@ describe('StickerMedia — силуэт из векторного контура
     expect(container.querySelector('svg')).not.toBeNull()
 
     // decode() у data:-URI картинки в happy-dom резолвится микротасками —
-    // после них silhouette обязан уступить место thumb (appearance.setThumb
+    // после них silhouette обязан уступить место thumb (appearance.upgradeToImage
     // заменяет underlay через replaceWith, см. wrappers/stickerAppearance.ts).
     await waitFor(() => {
       const img = container.querySelector('img.media-sticker.thumbnail')

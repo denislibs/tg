@@ -92,7 +92,12 @@ describe('createWorkerCore(): отправка соединена с транс�
 
     await core.registry.messages.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
 
-    expect(sentFrames).toEqual([{ chatId: 1, text: 'hi', clientMsgId: 'c1' }])
+    expect(sentFrames).toEqual([{
+      chatId: 1, text: 'hi', clientMsgId: 'c1',
+      // Пакет параметров отправки всегда проставляет свои поля — см. sendingParams.ts.
+      threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
+    }])
   })
 
   // Что ломается: без стрелки `upload` байты никуда не уходят, и кадр медиа

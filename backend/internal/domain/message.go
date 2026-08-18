@@ -119,35 +119,17 @@ type Message struct {
 	ReplyToPeerID     *int64
 	ReplySnapshotName string
 	ReplySnapshotText string
-	// Media dimensions/mime, populated by the history read model (not stored on the
-	// message row) so the client can reserve the exact media box before the bytes
-	// load — no layout shift. Zero when there's no media or it's unprocessed.
-	MediaWidth    int
-	MediaHeight   int
-	MediaMime     string
-	MediaBlur     []byte // blur preview bytes (JSON base64 — LQIP placeholder)
-	MediaHasThumb bool
-	MediaDuration int
-	MediaSize     int64
-	MediaName     string
-	// MediaWaveform — 5-битно упакованные пики голосового (media.waveform,
-	// миграция 0086), посчитанные отправителем при записи. Едут ПРЯМО в
-	// сообщении — 1:1 telegram documentAttributeAudio.waveform, из которого tweb
-	// строит волну синхронно (audio.ts createWaveformBars), не запрашивая мету
-	// файла. nil у не-голосовых и у старых голосовых без пиков.
-	MediaWaveform []byte // JSON base64, как MediaBlur
-	// Теги аудиотрека (ID3 title/artist), вычитанные ffprobe при обработке. Пустые
-	// у файлов без тегов и у не-аудио: тогда клиент подписывает бабл размером файла
-	// (tweb audio.ts — подпись из performer, иначе formatBytes).
-	MediaTitle     string
-	MediaPerformer string
-	// MediaAnimated — медиа проигрывается как гифка (telegram
-	// documentAttributeAnimated, из которого tweb выводит doc.type === 'gif'):
-	// image/gif либо видео без аудиодорожки. Бабл гифки в tweb отличается от
-	// видео (video.ts:120-123, :164-171): класс media-gif-wrapper, бейдж «GIF»
-	// вместо таймкода, зацикленный автоплей без кнопки play. Наполняется
-	// read-моделью из media.animated (не колонка messages).
-	MediaAnimated bool
+	// Media — вложение сообщения в форме оригинала (MTProto):
+	// messageMediaPhoto/messageMediaDocument с лестницей превью и атрибутами
+	// (см. domain/mtmedia.go). Наполняется read-моделью истории (в строке
+	// messages лежит только media_id), поэтому клиент рисует бабл целиком из
+	// сообщения — точный бокс, stripped-плейсхолдер, контур стикера, тип
+	// документа — без отдельного запроса меты файла. nil, когда медиа нет.
+	//
+	// Плоского набора (media_w/media_h/media_mime/media_duration/…) здесь больше
+	// нет: тип документа выводится из атрибутов, как в appDocsManager, а не
+	// подделывается флагами витрины.
+	Media *MessageMedia
 	// MediaSpoiler — медиа скрыто спойлером (telegram messageMedia.pFlags.spoiler,
 	// tweb makeMessageMediaInput.ts:13,24). В отличие от MediaAnimated это не
 	// свойство файла, а свойство вложения В ЭТОМ сообщении — ставит отправитель,

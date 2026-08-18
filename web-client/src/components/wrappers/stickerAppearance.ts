@@ -3,10 +3,11 @@
  *
  * Контроллер слоёв показа стикера в ОДНОМ контейнере, СНИЗУ ВВЕРХ: SVG-силуэт
  * из векторного контура (мгновенный, синхронный — `setSilhouette`), затем
- * превью (stripped с бэка либо кадр, сохранённый прошлым показом —
- * `setThumb`), сверху — само медиа. Каждый следующий слой апгрейдит предыдущий
- * тем же способом (`underlay.replaceWith`), поэтому силуэт просто занимает
- * `underlay` первым и дальше живёт по общим правилам `setThumb`/`onMediaFirstFrame`.
+ * превью-картинка (кадр, сохранённый прошлым показом, либо stripped с бэка —
+ * `upgradeToImage`), сверху — само медиа. Каждый следующий слой апгрейдит
+ * предыдущий тем же способом (`underlay.replaceWith`), поэтому силуэт просто
+ * занимает `underlay` первым и дальше живёт по общим правилам
+ * `upgradeToImage`/`onMediaFirstFrame`.
  * Нижний слой снимается только когда верхний ДОКАЗАННО на экране
  * (`ensurePresented` у lottie-плеера), поэтому ячейка никогда не мигает
  * пустотой. Пересоздание контроллера на том же контейнере «усыновляет»
@@ -66,11 +67,13 @@ export default function createStickerAppearance({
     else if (MEDIA_TAGS.has(child.tagName)) previous.push(child)
   }
 
-  const canBuildThumb = () =>
+  // Живое медиа прошлого поколения не даёт вставить простую картинку (tweb:53-55);
+  // заменяет его только перевешивание «только превью» (`replacePreviousMedia`).
+  const canBuildImage = () =>
     !disposed && !mediaArrived && underlay?.tagName !== 'IMG' && (replacePreviousMedia || !previous.length)
 
   // Силуэт — САМЫЙ нижний слой из всех (tweb canBuildSilhouette): в отличие от
-  // canBuildThumb он не встаёт поверх уже занятого underlay (в т.ч. поверх
+  // canBuildImage он не встаёт поверх уже занятого underlay (в т.ч. поверх
   // усыновлённого силуэта прошлого поколения) — рисуется только в абсолютно
   // пустой контейнер, до которого ещё не добрался ни thumb, ни медиа.
   const canBuildSilhouette = () => !disposed && !mediaArrived && !underlay && !previous.length
@@ -80,8 +83,8 @@ export default function createStickerAppearance({
    * превью, пока даже stripped-JPEG ещё не декодировался. Синхронный слой:
    * в отличие от `setThumb` не ждёт `decode()`, потому что рисуется из уже
    * готового SVG-узла, а не из грузящейся картинки. Заняв `underlay`, он
-   * дальше апгрейдится тем же путём, что и любой превью-слой — `setThumb`
-   * заменит его на JPEG через `underlay.replaceWith(image)`.
+   * дальше апгрейдится тем же путём, что и любой превью-слой —
+   * `upgradeToImage` заменит его картинкой через `underlay.replaceWith(image)`.
    */
   const setSilhouette = (svg: SVGSVGElement) => {
     if (!canBuildSilhouette()) return
@@ -92,9 +95,9 @@ export default function createStickerAppearance({
     underlay = svg as unknown as HTMLElement
   }
 
-  /** Показать превью нижним слоем (stripped с бэка либо кэшированный кадр). */
-  const setThumb = (image: HTMLImageElement, onApplied?: () => void) => {
-    if (!canBuildThumb()) {
+  /** Апгрейд нижнего слоя до превью-картинки (кэшированный кадр либо stripped). */
+  const upgradeToImage = (image: HTMLImageElement, onApplied?: () => void) => {
+    if (!canBuildImage()) {
       onApplied?.()
       return
     }
@@ -104,7 +107,7 @@ export default function createStickerAppearance({
     const decoded = image.decode ? image.decode() : Promise.resolve()
     decoded.then(
       () => {
-        if (!canBuildThumb()) {
+        if (!canBuildImage()) {
           onApplied?.()
           return
         }
@@ -157,7 +160,7 @@ export default function createStickerAppearance({
     lower.forEach((el) => el.remove())
   }
 
-  return { canBuildThumb, setThumb, canBuildSilhouette, setSilhouette, onMediaFirstFrame }
+  return { canBuildSilhouette, canBuildImage, setSilhouette, upgradeToImage, onMediaFirstFrame }
 }
 
 // Смонтировано в debug-неймспейс (как lottieLoader/liteMode) — контроллер

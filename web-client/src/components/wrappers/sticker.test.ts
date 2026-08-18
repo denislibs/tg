@@ -59,12 +59,37 @@ vi.mock('@core/mediaUrl', () => ({
   primeMediaToken: () => Promise.resolve(),
 }))
 
+// Кадр, сохранённый прошлым показом (tweb `lottieCachedThumb`). Подменяется
+// только ЧТЕНИЕ кэша: запись идёт через `canvas.toBlob`, которого в happy-dom
+// нет, а тесту нужен именно факт «кадр с прошлого раза есть».
+const { cachedThumbs } = vi.hoisted(() => ({
+  cachedThumbs: new Map<number, { url: string; w: number; h: number }>(),
+}))
+vi.mock('@core/stickers/stickerThumbs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@core/stickers/stickerThumbs')>()
+  return { ...actual, getStickerThumb: (mediaId: number) => cachedThumbs.get(mediaId) }
+})
+
+// Настоящий renderImageFromUrl под шпионом: слой превью строится асинхронно и
+// к моменту любой проверки DOM успевает быть СНЯТ приехавшим медиа — поэтому
+// «какое превью строилось и строилось ли вообще» смотрим по вызовам, а не по
+// установившемуся дереву (иначе проверка зелена и без портируемых термов).
+vi.mock('@helpers/dom/renderImageFromUrl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@helpers/dom/renderImageFromUrl')>()
+  return { ...actual, default: vi.fn(actual.default) }
+})
+
 import animationIntersector from '@components/animationIntersector'
 import { createLazyLoadQueue } from '@core/lazyLoadQueue'
+import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
 import { getMiddleware } from '@helpers/middleware'
 import { useSettingsStore } from '@/settings'
 import wrapSticker from './sticker'
 import { resetStickerContentCache } from './stickerContent'
+
+const renderImageSpy = vi.mocked(renderImageFromUrl)
+/** URL'ы, отданные СЛОЮ ПРЕВЬЮ (медиа-ветки рендерят `blob:sticker`). */
+const thumbUrls = () => renderImageSpy.mock.calls.map((c) => c[1]).filter((url) => url !== 'blob:sticker')
 
 function stubFetch(contentType: string) {
   const fetchMock = vi.fn(async () => ({
@@ -87,7 +112,9 @@ const nextId = () => ++mediaId
 
 beforeEach(() => {
   loadAnimationWorker.mockClear()
+  renderImageSpy.mockClear()
   players.length = 0
+  cachedThumbs.clear()
   resetStickerContentCache()
   URL.createObjectURL = vi.fn(() => 'blob:sticker') as typeof URL.createObjectURL
   // happy-dom не реализует IntersectionObserver — заглушка для видео-ветки.
@@ -208,6 +235,27 @@ describe('wrapSticker: очередь и lite-mode', () => {
     expect(push).toHaveBeenCalledTimes(1)
   })
 
+  // tweb sticker.ts:735 — `lazyLoadQueue && (!downloaded || isAnimated)`. Мимо
+  // очереди идёт только скачанная СТАТИКА: у неё показ — это готовый URL, а у
+  // tgs/webm ещё парс и старт плеера, и без гейта они стартуют все разом.
+  it.each([
+    ['application/json', 'tgs'],
+    ['video/webm', 'webm'],
+  ])('закэшированный АНИМИРОВАННЫЙ стикер (%s) очередь не минует', async (contentType) => {
+    stubFetch(contentType)
+    const queue = createLazyLoadQueue()
+    const push = vi.spyOn(queue, 'push')
+    const id = nextId()
+
+    await wrapSticker({ mediaId: id, div: document.createElement('div'), width: 200, height: 200, lazyLoadQueue: queue })
+      .render
+    expect(push).toHaveBeenCalledTimes(1)
+
+    await wrapSticker({ mediaId: id, div: document.createElement('div'), width: 200, height: 200, lazyLoadQueue: queue })
+      .render
+    expect(push).toHaveBeenCalledTimes(2)
+  })
+
   it('lite-mode «без анимаций» снимает автоплей и зацикливание', async () => {
     const previous = useSettingsStore.getState().reduceMotion
     useSettingsStore.setState({ reduceMotion: true })
@@ -283,6 +331,82 @@ describe('wrapSticker: слои', () => {
     expect(div.contains(thumbImage)).toBe(false)
   })
 
+  it('порядок: силуэт первым, картинка снимает его, медиа — картинку (каждый по готовности)', async () => {
+    stubFetch('application/json')
+    const div = document.createElement('div')
+
+    const { render } = wrapSticker({
+      mediaId: nextId(),
+      div,
+      width: 200,
+      height: 200,
+      play: true,
+      thumb: '/9j/',
+      pathThumb: 'wKDBwA==',
+    })
+
+    // синхронно, ещё до всякой загрузки: силуэт уже виден, картинки нет
+    expect(div.querySelector('svg')).not.toBeNull()
+    expect(div.querySelector('img')).toBeNull()
+
+    await render
+    await flush()
+
+    // картинка догрузилась и ЗАМЕНИЛА силуэт (тот же underlay, не второй слой)
+    const thumbImage = div.querySelector('img.media-sticker.thumbnail')
+    expect(thumbImage).not.toBeNull()
+    expect(div.querySelector('svg')).toBeNull()
+
+    const player = players[0]
+    player.fireFirstFrame()
+    await flush()
+    // кадр плеера ещё не доказан на экране — картинка обязана остаться
+    expect(div.contains(thumbImage)).toBe(true)
+
+    player.releasePresented()
+    await flush()
+    expect(div.contains(thumbImage)).toBe(false)
+  })
+
+  // tweb:259 `let thumb = lottieCachedThumb || doc.thumbs[0]`. Сохранённый кадр
+  // резкий и совпадает с тем, что сейчас появится; stripped-JPEG — мыло.
+  // Инверсия этих двух и есть «моргание в мыло».
+  it('приоритет превью: сохранённый прошлым показом кадр перекрывает stripped-JPEG', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    )
+    const id = nextId()
+    cachedThumbs.set(id, { url: 'blob:saved-frame', w: 200, h: 200 })
+
+    wrapSticker({ mediaId: id, div: document.createElement('div'), width: 200, height: 200, thumb: '/9j/' })
+
+    expect(thumbUrls()).toEqual(['blob:saved-frame'])
+  })
+
+  // tweb:253-254 — терм `(!downloaded || isThumbNeededForType)`.
+  it('скачанная СТАТИКА превью уже не строит, скачанная анимация — строит', async () => {
+    stubFetch('image/webp')
+    const staticId = nextId()
+    await wrapSticker({ mediaId: staticId, div: document.createElement('div'), width: 72, height: 72, thumb: '/9j/' })
+      .render
+
+    renderImageSpy.mockClear()
+    wrapSticker({ mediaId: staticId, div: document.createElement('div'), width: 72, height: 72, thumb: '/9j/' })
+    await flush()
+    expect(thumbUrls()).toEqual([])
+
+    stubFetch('application/json')
+    const animatedId = nextId()
+    await wrapSticker({ mediaId: animatedId, div: document.createElement('div'), width: 200, height: 200, thumb: '/9j/' })
+      .render
+
+    renderImageSpy.mockClear()
+    wrapSticker({ mediaId: animatedId, div: document.createElement('div'), width: 200, height: 200, thumb: '/9j/' })
+    await flush()
+    expect(thumbUrls()).toEqual(['data:image/jpeg;base64,/9j/'])
+  })
+
   it('withThumb: false — превью не строится вовсе', async () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
     const div = document.createElement('div')
@@ -322,6 +446,54 @@ describe('wrapSticker: актуальность и уборка', () => {
     expect(div.querySelector(tag)).toBeNull()
     expect(div.children).toHaveLength(0)
     expect(animationIntersector.getAnimations(div)).toHaveLength(0)
+  })
+
+  it('родитель, погашенный ДО вызова: ни силуэт, ни превью в DOM не попадают', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    )
+    const div = document.createElement('div')
+    const helper = getMiddleware()
+    const parent = helper.get()
+    helper.clean() // поколение вызывающего мертво ещё ДО wrapSticker
+
+    const { render } = wrapSticker({
+      mediaId: nextId(),
+      div,
+      width: 72,
+      height: 72,
+      middleware: parent,
+      thumb: '/9j/',
+      pathThumb: 'wKDBwA==',
+    })
+
+    await expect(render).rejects.toMatchObject({ type: 'MIDDLEWARE' })
+    await flush()
+    expect(div.children).toHaveLength(0)
+  })
+
+  it('middleware протух до готовности превью — картинка в DOM не пишется', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    )
+    const div = document.createElement('div')
+    const helper = getMiddleware()
+
+    const { render } = wrapSticker({
+      mediaId: nextId(),
+      div,
+      width: 72,
+      height: 72,
+      middleware: helper.get(),
+      thumb: '/9j/',
+    })
+    render.catch(() => {}) // файл не приедет — поколение гасим сами
+    helper.clean() // превью ещё декодируется
+
+    await flush()
+    expect(div.children).toHaveLength(0)
   })
 
   it('destroy(): плеер уничтожен, регистрация снята, поздний кадр в DOM не пишет', async () => {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -429,95 +430,243 @@ func TestReactions_HTTP(t *testing.T) {
 	}
 }
 
-// Контракт медиа-меты в JSON сообщения: теги трека едут как media_title /
-// media_performer и отсутствуют у файла без тегов (клиент тогда подписывает бабл
-// размером файла — tweb audio.ts).
-func TestMessageJSON_AudioTags(t *testing.T) {
-	j := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "audio",
-		MediaDuration: 139, MediaSize: 3300000, MediaName: "track.mp3",
-		MediaTitle: "Track One", MediaPerformer: "denis1488",
-	})
-	if j["media_title"] != "Track One" {
-		t.Fatalf("media_title = %v", j["media_title"])
-	}
-	if j["media_performer"] != "denis1488" {
-		t.Fatalf("media_performer = %v", j["media_performer"])
-	}
-	if j["media_duration"] != 139 {
-		t.Fatalf("media_duration = %v", j["media_duration"])
-	}
-
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "audio", MediaSize: 3300000})
-	if _, ok := bare["media_title"]; ok {
-		t.Fatalf("media_title must be absent without tags: %v", bare["media_title"])
-	}
-	if _, ok := bare["media_performer"]; ok {
-		t.Fatalf("media_performer must be absent without tags: %v", bare["media_performer"])
-	}
+// msgWithMedia — сообщение с вложением, собранным ровно тем же путём, каким его
+// собирает read-модель истории (hydrateMedia → domain.BuildMessageMedia).
+func msgWithMedia(kind string, s domain.MediaSource) domain.Message {
+	s.Kind = kind
+	mid := int64(77)
+	s.MediaID = mid
+	return domain.Message{ID: 1, ChatID: 2, Type: kind, MediaID: &mid,
+		MediaSpoiler: s.Spoiler, Media: domain.BuildMessageMedia(s)}
 }
 
-// Пики волны голосового в витрине истории: media_waveform (наш
-// documentAttributeAudio.waveform). Клиент строит волну прямо из сообщения —
-// без него ему пришлось бы добирать мету медиа отдельным запросом. У медиа без
-// пиков ключа нет вовсе.
-func TestMessageJSON_VoiceWaveform(t *testing.T) {
-	peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
-	voice := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "voice",
-		MediaDuration: 7, MediaSize: 4200, MediaName: "voice.ogg", MediaWaveform: peaks,
-	})
-	got, ok := voice["media_waveform"].([]byte)
-	if !ok || string(got) != string(peaks) {
-		t.Fatalf("media_waveform = %v (ok=%v), want %v", voice["media_waveform"], ok, peaks)
+// mediaOf достаёт вложение из витрины истории — именно как объект модели
+// оригинала, а не как набор плоских ключей.
+func mediaOf(t *testing.T, m domain.Message) *domain.MessageMedia {
+	t.Helper()
+	j := messageJSON(m)
+	md, ok := j["media"].(*domain.MessageMedia)
+	if !ok {
+		t.Fatalf("media отсутствует или не MessageMedia: %#v", j["media"])
 	}
-
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "photo", MediaWidth: 100, MediaHeight: 100})
-	if _, ok := bare["media_waveform"]; ok {
-		t.Fatalf("media_waveform must be absent without peaks: %v", bare["media_waveform"])
-	}
+	return md
 }
 
-// Признак гифки в витрине истории: media_animated (telegram
-// documentAttributeAnimated → tweb doc.type === 'gif'). У обычного видео ключа
-// нет — клиент рисует таймкод и кнопку play вместо бейджа «GIF».
-func TestMessageJSON_MediaAnimated(t *testing.T) {
-	gif := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "video",
-		MediaWidth: 320, MediaHeight: 240, MediaMime: "video/mp4",
-		MediaDuration: 3, MediaSize: 400000, MediaName: "cat.mp4", MediaAnimated: true,
+// Контракт витрины истории: медиа едет ОДНИМ вложенным объектом в форме
+// оригинала (messageMediaPhoto/messageMediaDocument), а тип документа выводится
+// из атрибутов — плоских ключей media_* и подделанных флагов в витрине больше
+// нет. По одному случаю на каждый тип медиа.
+func TestMessageJSON_MediaShape(t *testing.T) {
+	t.Run("photo — лестница размеров, без mime и имени файла", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("photo", domain.MediaSource{
+			Width: 1600, Height: 1200, Mime: "image/jpeg", Size: 900000,
+			Blur: []byte{1, 2, 3}, HasThumb: true, FileName: "pic.jpg",
+		}))
+		if md.Underscore != domain.MessageMediaPhotoTag || md.Photo == nil || md.Document != nil {
+			t.Fatalf("photo → %#v", md)
+		}
+		if md.Photo.ID != 77 {
+			t.Fatalf("photo.id = %d, want 77", md.Photo.ID)
+		}
+		// i (stripped) → y (серверное превью, вписано в 1280) → w (оригинал).
+		var got []string
+		for _, sz := range md.Photo.Sizes {
+			switch v := sz.(type) {
+			case domain.PhotoSizeReal:
+				got = append(got, v.Underscore+"/"+v.Type)
+			case domain.PhotoStrippedSize:
+				got = append(got, v.Underscore+"/"+v.Type)
+			case domain.PhotoPathSize:
+				got = append(got, v.Underscore+"/"+v.Type)
+			}
+		}
+		want := []string{"photoStrippedSize/i", "photoSize/y", "photoSize/w"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("лестница = %v, want %v", got, want)
+		}
+		if v := md.Photo.Sizes[1].(domain.PhotoSizeReal); v.W != 1280 || v.H != 960 {
+			t.Fatalf("ступень 'y' = %dx%d, want 1280x960", v.W, v.H)
+		}
+		if v := md.Photo.Sizes[2].(domain.PhotoSizeReal); v.W != 1600 || v.H != 1200 || v.Size != 900000 {
+			t.Fatalf("ступень 'w' = %dx%d/%d", v.W, v.H, v.Size)
+		}
 	})
-	if gif["media_animated"] != true {
-		t.Fatalf("media_animated = %v, want true", gif["media_animated"])
-	}
 
-	video := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "video",
-		MediaWidth: 1280, MediaHeight: 720, MediaMime: "video/mp4", MediaDuration: 61,
+	t.Run("audio — теги трека в documentAttributeAudio, имя файла отдельным атрибутом", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("audio", domain.MediaSource{
+			Duration: 139, Size: 3300000, FileName: "track.mp3",
+			Title: "Track One", Performer: "denis1488", Mime: "audio/mpeg",
+		}))
+		if md.Underscore != domain.MessageMediaDocumentTag || md.Document == nil {
+			t.Fatalf("audio → %#v", md)
+		}
+		a, ok := md.AudioAttr()
+		if !ok || a.Title != "Track One" || a.Performer != "denis1488" || a.Duration != 139 {
+			t.Fatalf("documentAttributeAudio = %#v", a)
+		}
+		if a.PFlags["voice"] {
+			t.Fatalf("музыка не должна быть voice: %#v", a.PFlags)
+		}
+		if md.FileName() != "track.mp3" {
+			t.Fatalf("documentAttributeFilename = %q", md.FileName())
+		}
+		if md.Document.Size != 3300000 || md.Document.MimeType != "audio/mpeg" {
+			t.Fatalf("document = %#v", md.Document)
+		}
+		// Файл без тегов: атрибут есть (длительность нужна), тегов в нём нет —
+		// клиент подписывает бабл размером файла (tweb audio.ts).
+		bare := mediaOf(t, msgWithMedia("audio", domain.MediaSource{Duration: 10, Size: 3300000}))
+		if a, ok := bare.AudioAttr(); !ok || a.Title != "" || a.Performer != "" {
+			t.Fatalf("теги без тегов: %#v", a)
+		}
 	})
-	if _, ok := video["media_animated"]; ok {
-		t.Fatalf("media_animated must be absent for a plain video: %v", video["media_animated"])
-	}
+
+	t.Run("voice — pFlags.voice и волна в атрибуте, а не отдельным ключом", func(t *testing.T) {
+		peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
+		md := mediaOf(t, msgWithMedia("voice", domain.MediaSource{
+			Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks, Mime: "audio/ogg",
+		}))
+		a, ok := md.AudioAttr()
+		if !ok || !a.PFlags["voice"] || string(a.Waveform) != string(peaks) {
+			t.Fatalf("documentAttributeAudio = %#v", a)
+		}
+		// Не голосовое — волны нет вовсе, клиент считает её из файла.
+		photo := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 100, Height: 100}))
+		if photo.HasAttribute(domain.AttrAudio) {
+			t.Fatalf("у фото не должно быть аудио-атрибута")
+		}
+	})
+
+	t.Run("video — documentAttributeVideo с кадром и длительностью", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("video", domain.MediaSource{
+			Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6, HasThumb: true,
+		}))
+		a, ok := md.VideoAttr()
+		if !ok || a.W != 1280 || a.H != 720 || a.Duration != 61 {
+			t.Fatalf("documentAttributeVideo = %#v", a)
+		}
+		if a.PFlags["round_message"] {
+			t.Fatalf("обычное видео не кружок")
+		}
+		if md.HasAttribute(domain.AttrAnimated) {
+			t.Fatalf("обычное видео не гифка — атрибута animated быть не должно")
+		}
+		// thumbs документа — только превью, без ступени оригинала: сам файл
+		// адресуется id документа, а кадр описан атрибутом.
+		for _, sz := range md.Document.Thumbs {
+			if v, ok := sz.(domain.PhotoSizeReal); ok && v.Type == domain.SizeTypeFull {
+				t.Fatalf("в thumbs документа не должно быть ступени оригинала: %#v", v)
+			}
+		}
+	})
+
+	t.Run("gif — documentAttributeAnimated (из него оригинал выводит doc.type gif)", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("gif", domain.MediaSource{
+			Width: 320, Height: 240, Mime: "video/mp4", Duration: 3, Size: 400000,
+			FileName: "cat.mp4", Animated: true,
+		}))
+		if !md.HasAttribute(domain.AttrAnimated) {
+			t.Fatalf("гифка без documentAttributeAnimated: %#v", md.Document.Attributes)
+		}
+		if a, ok := md.VideoAttr(); !ok || a.Duration != 3 {
+			t.Fatalf("documentAttributeVideo = %#v", a)
+		}
+	})
+
+	t.Run("round — pFlags.round_message", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("round", domain.MediaSource{
+			Width: 384, Height: 384, Mime: "video/mp4", Duration: 9,
+		}))
+		if a, ok := md.VideoAttr(); !ok || !a.PFlags["round_message"] {
+			t.Fatalf("кружок = %#v", md.Document.Attributes)
+		}
+	})
+
+	t.Run("sticker — векторный контур доезжает до сообщения ступенью photoPathSize", func(t *testing.T) {
+		outline := []byte{'M', '0', '0'}
+		md := mediaOf(t, msgWithMedia("sticker", domain.MediaSource{
+			Width: 512, Height: 512, Mime: "image/webp", Size: 30000, PathThumb: outline,
+		}))
+		if !md.HasAttribute(domain.AttrSticker) {
+			t.Fatalf("стикер без documentAttributeSticker: %#v", md.Document.Attributes)
+		}
+		if string(md.PathThumb()) != string(outline) {
+			t.Fatalf("контур не доехал: thumbs = %#v", md.Document.Thumbs)
+		}
+		// У не-стикера контура нет.
+		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 10, Height: 10}))
+		if plain.PathThumb() != nil {
+			t.Fatalf("контур у обычного фото: %#v", plain.Photo.Sizes)
+		}
+	})
+
+	t.Run("file — imageSize только у картинки, имя файла всегда", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("document", domain.MediaSource{
+			Mime: "application/pdf", Size: 1024, FileName: "doc.pdf",
+		}))
+		if md.HasAttribute(domain.AttrImageSize) {
+			t.Fatalf("у pdf нет кадра — imageSize быть не должно")
+		}
+		if md.FileName() != "doc.pdf" {
+			t.Fatalf("documentAttributeFilename = %q", md.FileName())
+		}
+	})
+
+	t.Run("спойлер — в media.pFlags, не отдельным ключом витрины", func(t *testing.T) {
+		hidden := mediaOf(t, msgWithMedia("photo", domain.MediaSource{
+			Width: 1280, Height: 960, Mime: "image/jpeg", Spoiler: true,
+		}))
+		if !hidden.PFlags["spoiler"] {
+			t.Fatalf("spoiler = %#v", hidden.PFlags)
+		}
+		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 1280, Height: 960}))
+		if plain.PFlags["spoiler"] {
+			t.Fatalf("у обычного медиа заслонки быть не должно: %#v", plain.PFlags)
+		}
+	})
 }
 
-// Признак спойлера в витрине истории: media_spoiler (telegram
-// messageMedia.pFlags.spoiler → tweb wrapMediaSpoiler, bubbles.ts:8579).
-// У обычного медиа ключа нет — оно показывается сразу, без заслонки.
-func TestMessageJSON_MediaSpoiler(t *testing.T) {
-	hidden := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "photo",
-		MediaWidth: 1280, MediaHeight: 960, MediaMime: "image/jpeg",
-		MediaName: "secret.jpg", MediaSpoiler: true,
+// Шаг expand/contract: витрина отдаёт ОБЕ формы разом — новый объект `media`
+// и плоские ключи, ВЫВЕДЕННЫЕ ИЗ НЕГО (domain.LegacyFlatKeys). Второго
+// источника меты нет: плоские ключи не считаются заново из строки media, а
+// читаются из уже собранной модели — поэтому разъехаться они не могут, и
+// удаление их половины (когда фронт переедет на `media`) ничего не меняет в
+// самой модели. Тест держит именно эту связь, а не факт наличия ключей.
+func TestMessageJSON_FlatKeysDerivedFromModel(t *testing.T) {
+	msg := msgWithMedia("video", domain.MediaSource{
+		Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6,
+		FileName: "clip.mp4", Blur: []byte{1, 2, 3}, HasThumb: true, Spoiler: true,
 	})
-	if hidden["media_spoiler"] != true {
-		t.Fatalf("media_spoiler = %v, want true", hidden["media_spoiler"])
-	}
+	j := messageJSON(msg)
+	md := j["media"].(*domain.MessageMedia)
 
-	plain := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "photo",
-		MediaWidth: 1280, MediaHeight: 960, MediaMime: "image/jpeg",
-	})
-	if _, ok := plain["media_spoiler"]; ok {
-		t.Fatalf("media_spoiler must be absent without the flag: %v", plain["media_spoiler"])
+	w, h := md.Dimensions()
+	if j["media_w"] != w || j["media_h"] != h {
+		t.Fatalf("media_w/h = %v/%v, модель говорит %d/%d", j["media_w"], j["media_h"], w, h)
+	}
+	if j["media_mime"] != md.Document.MimeType {
+		t.Fatalf("media_mime = %v, модель говорит %q", j["media_mime"], md.Document.MimeType)
+	}
+	if j["media_name"] != md.FileName() {
+		t.Fatalf("media_name = %v, модель говорит %q", j["media_name"], md.FileName())
+	}
+	if string(j["media_blur"].([]byte)) != string(md.StrippedThumb()) {
+		t.Fatalf("media_blur разошёлся с stripped-ступенью модели")
+	}
+	if (j["media_spoiler"] == true) != md.PFlags["spoiler"] {
+		t.Fatalf("media_spoiler = %v, модель говорит %v", j["media_spoiler"], md.PFlags["spoiler"])
+	}
+	a, _ := md.VideoAttr()
+	if j["media_duration"] != int(a.Duration) {
+		t.Fatalf("media_duration = %v, модель говорит %v", j["media_duration"], a.Duration)
+	}
+	// Медиа нет — плоских ключей тоже нет ни одного.
+	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"})
+	for _, k := range []string{"media", "media_w", "media_h", "media_mime", "media_blur",
+		"media_has_thumb", "media_duration", "media_size", "media_name", "media_waveform",
+		"media_title", "media_performer", "media_animated", "media_spoiler"} {
+		if _, ok := bare[k]; ok {
+			t.Fatalf("ключ %q у сообщения без медиа: %v", k, bare[k])
+		}
 	}
 }

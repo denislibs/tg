@@ -28,7 +28,7 @@ describe('stickerAppearance', () => {
     const appearance = createStickerAppearance({ container, thumbKey: '42' })
 
     const image = makeThumb()
-    appearance.setThumb(image)
+    appearance.upgradeToImage(image)
     await Promise.resolve()
 
     expect(container.children).toHaveLength(1)
@@ -42,7 +42,7 @@ describe('stickerAppearance', () => {
     const appearance = createStickerAppearance({ container, thumbKey: '42' })
 
     const image = makeThumb()
-    appearance.setThumb(image)
+    appearance.upgradeToImage(image)
     await Promise.resolve()
 
     const canvas = document.createElement('canvas')
@@ -91,11 +91,11 @@ describe('stickerAppearance', () => {
     container.append(document.createElement('canvas'))
 
     const appearance = createStickerAppearance({ container, thumbKey: '44' })
-    expect(appearance.canBuildThumb()).toBe(false)
+    expect(appearance.canBuildImage()).toBe(false)
 
     const image = makeThumb()
     const onApplied = vi.fn()
-    appearance.setThumb(image, onApplied)
+    appearance.upgradeToImage(image, onApplied)
     await Promise.resolve()
 
     expect(container.contains(image)).toBe(false)
@@ -117,7 +117,7 @@ describe('stickerAppearance', () => {
     expect((svg as unknown as HTMLElement).dataset.stickerThumb).toBe('46')
   })
 
-  it('setThumb апгрейдит силуэт до превью (замена, а не второй слой)', async () => {
+  it('upgradeToImage апгрейдит силуэт до превью (замена, а не второй слой)', async () => {
     const container = document.createElement('div')
     const appearance = createStickerAppearance({ container, thumbKey: '47' })
 
@@ -126,7 +126,7 @@ describe('stickerAppearance', () => {
     expect(container.contains(svg as unknown as Node)).toBe(true)
 
     const image = makeThumb()
-    appearance.setThumb(image)
+    appearance.upgradeToImage(image)
     await Promise.resolve()
 
     expect(container.contains(svg as unknown as Node)).toBe(false)
@@ -158,7 +158,7 @@ describe('stickerAppearance', () => {
 
     expect(appearance.canBuildSilhouette()).toBe(false)
     appearance.setSilhouette(document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement)
-    appearance.setThumb(makeThumb())
+    appearance.upgradeToImage(makeThumb())
     await Promise.resolve()
     expect(container.children).toHaveLength(0)
   })

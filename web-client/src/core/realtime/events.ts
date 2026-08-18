@@ -144,22 +144,19 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
    * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
   reply_to_peer_id?: number | null; reply_snapshot_name?: string; reply_snapshot_text?: string;
   fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
-  // Медиа-мета live-кадра (те же ключи, что history read model) — файл/фото
-  // рисуется полноценно сразу, без ожидания перезагрузки истории.
+  /** Вложение live-кадра — ТОТ ЖЕ объект, что в витрине истории
+   * (`messageMediaPhoto`/`messageMediaDocument` со ступенями и атрибутами).
+   * Одна форма на обе витрины: без неё у ЖИВОГО сообщения не было бы ни волны
+   * голосового, ни бейджа гифки, ни заслонки спойлера до перезагрузки истории
+   * (тот же класс дефектов, что был у send_as), а последнее — ещё и утечка
+   * того, что отправитель просил скрыть. */
+  media?: import('../media/messageMedia').MessageMedia;
+  // ВРЕМЕННО: плоская проекция того же вложения — бэк выводит её ИЗ `media`
+  // (domain.LegacyFlatKeys). Уходит вместе с переездом потребителей на `media`.
   media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
-  /** пики волны голосового, base64 (наш documentAttributeAudio.waveform). Ключ
-   * есть и в витрине истории, и в кадре: без него у ЖИВОГО голосового не было бы
-   * волны до перезагрузки истории (тот же дефект, что был у send_as) */
   media_waveform?: string;
-  /** ID3-теги трека (tweb documentAttributeAudio.title/performer) — опциональны */
   media_title?: string; media_performer?: string;
-  /** медиа проигрывается как гифка (tweb documentAttributeAnimated → doc.type ===
-   * 'gif'); ключ приходит только когда true — см. Message.mediaAnimated */
   media_animated?: boolean;
-  /** медиа скрыто спойлером (tweb messageMedia.pFlags.spoiler); ключ приходит
-   * только когда true — см. Message.mediaSpoiler. Ключ есть и в витрине
-   * истории, и в кадре: без него у ЖИВОГО сообщения спойлера не было бы до
-   * перезагрузки истории (тот же дефект, что был у send_as) */
   media_spoiler?: boolean;
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
    * sender_id, который остаётся реальным. Бэк кладёт ключ в кадр
@@ -303,6 +300,18 @@ export interface PendingNewEvt {
   contact?: { userId: number; name: string; phone: string }
   secret?: boolean
   send_as?: { chatId: number; title: string; photoId?: number }
+  /** Ответ на сообщение — в бабле СРАЗУ, до подтверждения сервера (порт tweb
+   *  `generateOutgoingMessage → reply_to: generateReplyHeader(...)`,
+   *  appMessagesManager.ts:2926). Сам превью-снимок (`Message.replyTo`) собирает
+   *  владелец SSOT — `insertPending` резолвит оригинал по этому id в своей же
+   *  Map сообщений чата. */
+  reply_to_id?: number | null
+  /** Текст цитаты (reply quote) — в превью бабла вместо текста оригинала. */
+  reply_quote_text?: string
+  /** Кросс-чат ответ: готовый снимок превью (оригинала нет в этом чате, а
+   *  серверный `reply_snapshot_*` приедет только с эхом) — тот же снимок, что
+   *  рисует плашка ответа в композере. */
+  reply_snapshot?: { peerId: number; name: string; text: string }
   /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
    *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
    *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит

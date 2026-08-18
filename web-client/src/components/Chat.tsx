@@ -551,6 +551,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
     sendGeo, sendContact, sendSticker, sendGif,
+    getMessageSendingParams, onMessageSent,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, threadRootId, sendAsChatId, sendAsTitle, atBottomRef, userScrolledUpRef,
@@ -1179,6 +1180,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     setInfoOpen,
     applyMute, toggleMute, startSelectMode, setSelectionMode,
     doDeleteChat, doClearHistory, openPicker, sendGeo, sendContact, setPendingMedia,
+    getMessageSendingParams, onMessageSent,
     slowmodeMarkSent, jumpToSeq: jumpToSeqE, setScheduledCount,
     onOpenPeer, onCloseThread,
   })

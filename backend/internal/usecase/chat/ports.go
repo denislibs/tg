@@ -453,6 +453,14 @@ type MediaDims struct {
 	// 'gif'): бабл рисуется бейджем «GIF» и зацикленным автоплеем без кнопки
 	// play, а не таймкодом видео. См. domain.Media.Animated.
 	Animated bool
+	// PathThumb — векторный контур стикера (Telegram photoPathSize), которым
+	// клиент рисует SVG-силуэт мгновенно, пока летит сам файл. Лежит не в media,
+	// а в строке стикера (метаданные набора), поэтому приезжает джойном; в
+	// модели сообщения это просто ещё одна ступень thumbs. nil у не-стикеров.
+	PathThumb []byte
+	// StickerAlt — эмодзи стикера (documentAttributeSticker.alt), из той же
+	// строки стикера, что и контур. Пусто у не-стикеров.
+	StickerAlt string
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness

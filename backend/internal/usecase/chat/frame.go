@@ -80,54 +80,17 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.Effect != "" {
 		p["effect"] = m.Effect
 	}
-	// Медиа-мета live-кадра — те же ключи, что history read model (chat_handler):
-	// иначе получатель (и echo отправителя) рисует файл заглушкой «media-N» без
-	// имени/размера до перезагрузки истории.
-	if m.MediaWidth > 0 && m.MediaHeight > 0 {
-		p["media_w"] = m.MediaWidth
-		p["media_h"] = m.MediaHeight
-	}
-	if m.MediaMime != "" {
-		p["media_mime"] = m.MediaMime
-	}
-	if len(m.MediaBlur) > 0 {
-		p["media_blur"] = m.MediaBlur
-	}
-	if m.MediaHasThumb {
-		p["media_has_thumb"] = true
-	}
-	if m.MediaDuration > 0 {
-		p["media_duration"] = m.MediaDuration
-	}
-	if m.MediaSize > 0 {
-		p["media_size"] = m.MediaSize
-	}
-	if m.MediaName != "" {
-		p["media_name"] = m.MediaName
-	}
-	// Пики волны голосового — тот же ключ, что в history read model (chat_handler):
-	// без него у ЖИВОГО голосового волны не будет до перезагрузки истории (ровно
-	// тот дефект, что был у send_as).
-	if len(m.MediaWaveform) > 0 {
-		p["media_waveform"] = m.MediaWaveform
-	}
-	if m.MediaTitle != "" {
-		p["media_title"] = m.MediaTitle
-	}
-	if m.MediaPerformer != "" {
-		p["media_performer"] = m.MediaPerformer
-	}
-	// Гифка — тот же ключ, что в history read model (chat_handler): иначе живая
-	// гифка приезжает видео-баблом (таймкод + кнопка play) до перезагрузки истории.
-	if m.MediaAnimated {
-		p["media_animated"] = true
-	}
-	// Спойлер — тот же ключ, что в history read model (chat_handler): иначе живое
-	// медиа приезжает БЕЗ заслонки и сразу показывает содержимое до перезагрузки
-	// истории (ровно тот дефект, что был у send_as) — а это утечка того, что
+	// Вложение live-кадра — ТОТ ЖЕ объект, что отдаёт history read model
+	// (chat_handler: messageJSON). Одна форма на обе витрины: иначе получатель
+	// (и echo отправителя) рисует файл заглушкой «media-N» без имени/размера,
+	// гифку — видео-баблом, а спойлер вообще не появляется, пока историю не
+	// перезагрузят (ровно тот класс дефектов, что был у send_as). Спойлер здесь
+	// живёт внутри media.pFlags — его отсутствие означало бы утечку того, что
 	// отправитель просил скрыть.
-	if m.MediaSpoiler {
-		p["media_spoiler"] = true
+	if m.Media != nil {
+		p["media"] = m.Media
+		// ВРЕМЕННО: плоские ключи той же меты — см. domain.LegacyFlatKeys.
+		domain.LegacyFlatKeys(m.Media, p)
 	}
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}

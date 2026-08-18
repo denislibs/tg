@@ -198,9 +198,9 @@ const StickerMedia = memo(function StickerMedia({
     // Нижний слой: превью с бэка, иначе — кадр, сохранённый прошлым показом.
     const cached = getStickerThumb(mediaId)
     const thumbSrc = thumb ? `data:image/jpeg;base64,${thumb}` : cached?.url
-    if (thumbSrc && appearance.canBuildThumb()) {
+    if (thumbSrc && appearance.canBuildImage()) {
       const image = new Image()
-      void renderImageFromUrl(image, thumbSrc, () => appearance.setThumb(image))
+      void renderImageFromUrl(image, thumbSrc, () => appearance.upgradeToImage(image))
     }
 
     let player: LottiePlayer | null = null

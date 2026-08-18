@@ -378,7 +378,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42,
+      chatId: 1, text: 'hi', clientMsgId: 'c1', threadId: 7, type: 'contact', contactUserId: 42,
       optimistic: { senderId: 5, contactName: 'Маша', sendAs: { chatId: 9, title: 'Канал' } },
     })
 
@@ -390,7 +390,14 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(msg.contact).toEqual({ userId: 42, name: 'Маша', phone: '' })
     expect(msg.sendAs).toEqual({ chatId: 9, title: 'Канал' })
     // на провод уходят только проводные поля — служебный optimistic отрезан
-    expect(h.sends).toEqual([{ chatId: 1, text: 'hi', clientMsgId: 'c1', threadRootId: 7, type: 'contact', contactUserId: 42 }])
+    // Пакет параметров (порт tweb MessageSendingParams) проставляет свои поля
+    // ВСЕГДА — пусто = явный null/false, а не «поля нет»: так путь отправки не
+    // может тихо не передать поле (core/managers/messages/sendingParams.ts).
+    expect(h.sends).toEqual([{
+      chatId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
+      threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
+    }])
   })
 
   // Что ломается: не зовись транспорт внутри менеджера — сообщение просто не
@@ -451,7 +458,9 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     // ОДИН кадр, и он несёт media_id (двухфазной отправки awaitMedia больше нет)
     expect(h.sends).toEqual([{
       chatId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
-      groupedId: undefined, threadRootId: null, paidMediaPrice: null, mediaId: 909,
+      groupedId: undefined, paidMediaPrice: null, mediaId: 909, mediaSpoiler: undefined,
+      threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
     }])
   })
 
@@ -533,7 +542,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
 
     await p.sendFile({
       chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
-      isMedia: true, groupedId: 'g7', paidMediaPrice: 50, caption: 'подпись', threadRootId: null,
+      isMedia: true, groupedId: 'g7', paidMediaPrice: 50, caption: 'подпись', threadId: null,
     })
 
     expect((h.emitted[0][0] as { msg: Message }).msg.groupedId).toBe('g7')
@@ -551,7 +560,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
 
     await p.sendFile({
       chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
-      isMedia: true, spoiler: true, threadRootId: null,
+      isMedia: true, spoiler: true, threadId: null,
     })
 
     expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBe(true)
@@ -565,7 +574,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
 
     await p.sendFile({
       chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
-      isMedia: true, threadRootId: null,
+      isMedia: true, threadId: null,
     })
 
     expect((h.emitted[0][0] as { msg: Message }).msg.mediaSpoiler).toBeUndefined()
@@ -630,5 +639,118 @@ describe('двухфазной отправки медиа не существу
 
     expect(h.sends).toHaveLength(1)
     expect(h.sends[0].mediaId).toBe(77)
+  })
+})
+
+// Порт tweb `generateOutgoingMessage` (appMessagesManager.ts:2926): исходящее
+// сообщение получает `reply_to` ЕЩЁ ДО ухода на сервер. Что ломается без этого:
+// бабл появляется без цитаты и «прыгает», когда её через полсекунды принесёт
+// серверное эхо, — то есть ответ визуально теряется ровно в тот момент, когда
+// пользователь на него смотрит.
+describe('pending: оптимистичный бабл несёт ответ ДО подтверждения сервера', () => {
+  /** Оригинал, лежащий в SSOT воркера — из него и резолвится превью ответа. */
+  const original = (): Message => ({
+    id: 77, chatId: 1, seq: 10, senderId: 9, type: 'text', text: 'оригинал',
+    replyToId: null, mediaId: null, createdAt: '2026-01-01T00:00:00Z',
+  } as Message)
+
+  it('replyToId и превью оригинала стоят на бабле сразу', () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.msgsFor(1).set(10, original())
+    const p = newPendingMethods(h.ctx)
+
+    const ops = p.beforeMessageSending(evt({ reply_to_id: 77 }))
+
+    const msg = (ops[0] as { msg: Message }).msg
+    expect(msg.replyToId).toBe(77)
+    expect(msg.replyTo).toMatchObject({ msgId: 77, seq: 10, senderId: 9, text: 'оригинал', type: 'text' })
+  })
+
+  it('цитата рисуется в бабле вместо текста оригинала', () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.msgsFor(1).set(10, original())
+    const p = newPendingMethods(h.ctx)
+
+    const ops = p.beforeMessageSending(evt({ reply_to_id: 77, reply_quote_text: 'ригин' }))
+
+    expect((ops[0] as { msg: Message }).msg.replyTo?.quoteText).toBe('ригин')
+  })
+
+  it('кросс-чат ответ: превью из снимка (оригинала в этом чате нет)', () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    const ops = p.beforeMessageSending(evt({
+      reply_to_id: 77, reply_snapshot: { peerId: 99, name: 'Петя', text: 'оригинал' },
+    }))
+
+    const msg = (ops[0] as { msg: Message }).msg
+    expect(msg.replyToPeerId).toBe(99)
+    expect(msg.replySnapshotName).toBe('Петя')
+    expect(msg.replySnapshotText).toBe('оригинал')
+    // Резолв по SSOT для кросс-чат ответа не делается — оригинал в другом чате.
+    expect(msg.replyTo).toBeUndefined()
+  })
+
+  it('без ответа полей нет (idle-путь не выдумывает reply)', () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.msgsFor(1).set(10, original())
+    const p = newPendingMethods(h.ctx)
+
+    const msg = (p.beforeMessageSending(evt())[0] as { msg: Message }).msg
+    expect(msg.replyToId).toBeNull()
+    expect(msg.replyTo).toBeUndefined()
+  })
+
+  it('sendText: пакет параметров доезжает и до кадра, и до бабла', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.msgsFor(1).set(10, original())
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({
+      chatId: 1, text: 'ответ', clientMsgId: 'c1',
+      replyToMsgId: 77, replyToQuote: { text: 'ригин', offset: 1 }, threadId: null,
+      silent: true, effect: 'hearts', sendAsPeerId: 3,
+      optimistic: { senderId: 42 },
+    })
+
+    expect(h.sends[0]).toMatchObject({
+      replyToId: 77, replyQuoteText: 'ригин', replyQuoteOffset: 1,
+      silent: true, effect: 'hearts', sendAsChatId: 3,
+    })
+    expect((h.emitted[0][0] as { msg: Message }).msg.replyTo?.quoteText).toBe('ригин')
+  })
+
+  it('sendFile: тот же пакет — и в кадр, и в бабл', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    h.msgsFor(1).set(10, original())
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      chatId: 1, clientMsgId: 'c1', senderId: 42, file: new Blob(['x']), type: 'photo',
+      isMedia: true, replyToMsgId: 77, replyToQuote: { text: 'ригин', offset: 1 }, silent: true,
+    })
+
+    expect(h.sends[0]).toMatchObject({ replyToId: 77, replyQuoteText: 'ригин', silent: true })
+    expect((h.emitted[0][0] as { msg: Message }).msg.replyToId).toBe(77)
+  })
+
+  // Порт правила tweb `getInputReplyTo` (:2674): quote_text/quote_offset лежат
+  // ВНУТРИ inputReplyToMessage, поэтому без ответа их некуда положить; бэкенд
+  // сбрасывает их тем же правилом (message.go:167-169).
+  it('цитата без ответа на провод не уходит', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [10])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ chatId: 1, text: 'x', clientMsgId: 'c1', replyToQuote: { text: 'ригин', offset: 1 } })
+
+    expect(h.sends[0]).toMatchObject({ replyToId: null, replyQuoteText: null, replyQuoteOffset: null })
   })
 })

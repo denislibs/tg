@@ -26,6 +26,15 @@ type SendPollInput struct {
 	Quiz             bool
 	CorrectOption    *int
 	ClientMsgID      string
+	// Общий пакет параметров отправки (ответ/цитата/тред/тихо/от имени канала):
+	// опрос — такое же сообщение, как остальные, и уезжает тем же Send.
+	// Effect в пакет не входит: sanitizeEffect снимает эффект с типа "poll".
+	ReplyToID        *int64
+	ReplyQuoteText   *string
+	ReplyQuoteOffset *int
+	ThreadRootID     *int64
+	Silent           bool
+	SendAsChatID     *int64
 }
 
 // SendPoll валидирует и отправляет опрос: создаёт poll, затем сообщение через
@@ -78,6 +87,8 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "poll",
 		ClientMsgID: in.ClientMsgID, PollID: &p.ID,
+		ReplyToID: in.ReplyToID, ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
+		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
 	})
 	if err != nil {
 		return domain.Message{}, err

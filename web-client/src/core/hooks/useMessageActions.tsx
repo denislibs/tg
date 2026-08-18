@@ -565,8 +565,13 @@ export function useMessageActions({
     void managers.messages.retryPending({ clientMsgId: raw.clientId })
     void managers.messages.sendText({
       chatId: numericChatId, text: raw.text, entities: raw.entities,
-      clientMsgId: raw.clientId, replyToId: raw.replyToId, mediaId: raw.mediaId,
-      type: raw.type !== 'text' ? raw.type : undefined, threadRootId: raw.threadRootId,
+      clientMsgId: raw.clientId, mediaId: raw.mediaId,
+      type: raw.type !== 'text' ? raw.type : undefined,
+      // Пакет параметров отправки восстанавливается из САМОГО бабла — порт tweb
+      // `repayCallback` (appMessagesManager.ts:1484-1489: повтор идёт тем же
+      // `options`, что и первая попытка). Плашки композера здесь уже нет: ответ
+      // и тред — свойства неотправленного сообщения, не текущего инпута.
+      replyToMsgId: raw.replyToId, threadId: raw.threadRootId,
     })
   }
   const removeFailed = () => {

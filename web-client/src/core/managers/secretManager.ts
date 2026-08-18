@@ -8,10 +8,35 @@ import { saveKey, loadKey, savePending, loadPending, clearPending } from '../sec
 import { RT } from '../realtime/events'
 import type { PendingMedia, PendingNewEvt } from '../realtime/events'
 import type { SecretMedia } from '../models'
+import { sendingParamsToWire, type MessageSendingParams, type SendingParamsWireFields } from './messages/sendingParams'
+
+/**
+ * Какая часть пакета параметров отправки уезжает в секретный чат — и почему не
+ * весь пакет.
+ *
+ * ЕДЕТ: `reply_to_id`, `thread_root_id`, `silent`. Это МЕТАДАННЫЕ маршрутизации:
+ * id сообщения, id корня треда, флаг «без пуша». Сервер их и так знает (граф
+ * сообщений — его собственные первичные ключи, пуш шлёт он же), поэтому в
+ * открытом кадре они ничего нового о СОДЕРЖИМОМ не сообщают. Раньше не ехало
+ * ничего — только из-за узкого типа `conn.sendMessage` в SecretDeps и того, что
+ * `useChatSend` эти поля не передавал; это была проводка, не формат.
+ *
+ * НЕ ЕДЕТ: `reply_quote_text`/`reply_quote_offset` — это ТЕКСТ оригинального
+ * сообщения. Положить его в открытый кадр = отдать серверу кусок плейнтекста
+ * E2E-переписки, то есть сломать саму гарантию секретного чата. Правильное место
+ * цитаты — ВНУТРИ шифруемого payload (`encryptPayload({text, entities})`), рядом
+ * с текстом; это меняет формат E2E-payload и требует его версионирования на обе
+ * стороны (см. отчёт задачи). `sendAsPeerId`/`effect` в секретных чатах предмета
+ * не имеют вовсе: постинга от имени канала в них нет, а бэкенд снимает эффект с
+ * типа 'encrypted' по whitelist (sanitizeEffect).
+ */
+function secretWireFields(w: SendingParamsWireFields): { replyToId: number | null; threadRootId: number | null; silent: boolean } {
+  return { replyToId: w.replyToId, threadRootId: w.threadRootId, silent: w.silent }
+}
 
 export interface SecretDeps {
   rest: { get: <T>(url: string) => Promise<T>; post: <T>(url: string, body: unknown) => Promise<T> }
-  conn: { sendMessage: (args: { chatId: number; text: string; clientMsgId: string; type?: string; encBody?: string; mediaId?: number; ttlSeconds?: number | null }) => void }
+  conn: { sendMessage: (args: { chatId: number; text: string; clientMsgId: string; type?: string; encBody?: string; mediaId?: number; ttlSeconds?: number | null; replyToId?: number | null; threadRootId?: number | null; silent?: boolean }) => void }
   broadcast: (event: string, payload: unknown) => void
   /** Аплоад непрозрачного ciphertext-блоба (media.upload воркера) → media_id. */
   upload: (bytes: ArrayBuffer, mime: string, size: number, fileName?: string) => Promise<number>
@@ -144,18 +169,20 @@ export function createSecretManager(deps: SecretDeps) {
     // бабла и уходом кадра стоит ожидание (чтение ключа из IDB + шифрование), за
     // которое вперёд успевает уйти другое сообщение. См. докблок
     // `PendingNewEvt.sequential` (core/realtime/events.ts).
-    async sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string; optimistic?: SecretOptimistic }): Promise<{ ok: boolean }> {
+    async sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string; optimistic?: SecretOptimistic } & MessageSendingParams): Promise<{ ok: boolean }> {
+      const wire = sendingParamsToWire(args)
       if (args.optimistic) {
         deps.beforeSending({
           chat_id: args.chatId, client_msg_id: args.clientMsgId, sender_id: args.optimistic.senderId,
           text: args.text, type: args.optimistic.type, entities: args.entities as PendingNewEvt['entities'], secret: true,
+          thread_root_id: wire.threadRootId, reply_to_id: wire.replyToId,
         })
       }
       try {
         const stored = await loadKey(args.chatId)
         if (!stored) throw new Error('secret: chat key missing')
         const encBody = await encryptPayload(stored.key, { text: args.text, entities: args.entities ?? [] })
-        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, ttlSeconds: args.ttlSeconds ?? null })
+        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, ttlSeconds: args.ttlSeconds ?? null, ...secretWireFields(wire) })
       } catch (e) {
         if (args.optimistic) deps.failSending(args.clientMsgId)
         throw e
@@ -166,7 +193,8 @@ export function createSecretManager(deps: SecretDeps) {
     // Шифрует файл (свой AES-ключ на файл), грузит ciphertext как непрозрачный blob,
     // а key+iv+метаданные кладёт в зашифрованный payload сообщения (type:'encrypted').
     // media_id указывает на blob; расшифровка — на просмотре у получателя.
-    async sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string; text?: string; optimistic?: SecretOptimistic }): Promise<{ ok: boolean }> {
+    async sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string; text?: string; optimistic?: SecretOptimistic } & MessageSendingParams): Promise<{ ok: boolean }> {
+      const wire = sendingParamsToWire(args)
       // Бабл — до шифрования и аплоада (см. sendText); без optimistic его нет
       // вовсе (голос/документ приходят эхом).
       if (args.optimistic) {
@@ -181,6 +209,7 @@ export function createSecretManager(deps: SecretDeps) {
           chat_id: args.chatId, client_msg_id: args.clientMsgId, sender_id: args.optimistic.senderId,
           text: args.text ?? '', type: args.optimistic.type, media: args.optimistic.media, secret: true,
           local_url: visual ? URL.createObjectURL(new Blob([args.bytes], { type: args.mime })) : undefined,
+          thread_root_id: wire.threadRootId, reply_to_id: wire.replyToId,
         })
       }
       try {
@@ -189,7 +218,7 @@ export function createSecretManager(deps: SecretDeps) {
         const { cipher, keyB64, ivB64 } = await encryptMedia(new Uint8Array(args.bytes))
         const mediaId = await deps.upload(cipher, 'application/octet-stream', cipher.byteLength, args.name)
         const encBody = await encryptPayload(stored.key, { media: { mediaId, keyB64, ivB64, name: args.name, mime: args.mime, size: args.size, mediaType: args.mediaType } })
-        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, mediaId, ttlSeconds: args.ttlSeconds ?? null })
+        deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, mediaId, ttlSeconds: args.ttlSeconds ?? null, ...secretWireFields(wire) })
       } catch (e) {
         if (args.optimistic) deps.failSending(args.clientMsgId)
         throw e

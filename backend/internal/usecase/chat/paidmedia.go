@@ -62,14 +62,13 @@ func (i *Interactor) hydratePaidMedia(ctx context.Context, viewerID int64, msgs 
 // медиа (media_id и метаданные контента), оставляя плейсхолдер: размеры + blur.
 func stripLockedMedia(m *domain.Message) {
 	m.MediaID = nil
-	m.MediaMime = ""
-	m.MediaName = ""
-	m.MediaHasThumb = false
-	m.MediaDuration = 0
-	m.MediaTitle = ""
-	m.MediaPerformer = ""
-	m.MediaAnimated = false
-	m.MediaWaveform = nil
+	// От вложения остаётся только то, по чему нельзя получить байты: псевдо-фото
+	// без id с одной stripped-ступенью и размерами кадра (domain.LockedPlaceholder
+	// — та же форма, что оригинал собирает из messageExtendedMediaPreview).
+	// Ни mime, ни имени файла, ни длительности, ни волны, ни атрибутов документа
+	// в нём нет — вместе с ними уходит и всё, что можно было бы узнать о
+	// содержимом неоплаченного медиа.
+	m.Media = domain.LockedPlaceholder(m.Media)
 	// Спойлер снимаем не ради утечки (флаг ничего о контенте не сообщает), а
 	// ради UI: заблокированное платное медиа И ТАК скрыто — плейсхолдер с blur
 	// и кнопкой «разблокировать за N ⭐». Заслонка спойлера поверх него была бы
