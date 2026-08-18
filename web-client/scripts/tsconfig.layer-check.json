@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["../src/layer.d.ts", "../src/global.d.ts", "fixtures/**/*.ts"],
+  "references": []
+}

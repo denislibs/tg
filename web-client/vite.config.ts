@@ -39,6 +39,7 @@ export default defineConfig({
       '@shared': r('src/shared'),
       '@rpc': r('src/rpc'),
       '@types': r('src/types'),
+      '@layer': r('src/layer'),
       '@': r('src'),
     },
   },

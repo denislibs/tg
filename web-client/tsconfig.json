@@ -25,6 +25,7 @@
       "@shared/*": ["./src/shared/*"],
       "@rpc/*": ["./src/rpc/*"],
       "@types": ["./src/types.d.ts"],
+      "@layer": ["./src/layer.d.ts"],
       "@/*": ["./src/*"]
     },
     "strict": true,
