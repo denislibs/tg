@@ -195,17 +195,6 @@ const mediaSizesInstance = new MediaSizes()
 MOUNT_CLASS_TO.mediaSizes = mediaSizesInstance
 export default mediaSizesInstance
 
-/**
- * СТАРАЯ форма доступа к активному набору (`mediaSizes().regular`), пока на ней
- * стоят `wrappers/video.ts` и `wrappers/album.ts` — файлы соседней задачи.
- * Своего вывода брейкпоинта не держит: читает того же владельца, что и
- * `mediaSizes.active`. Уйдёт вместе с переводом этих двух вызовов на
- * `mediaSizes.active`, как в оригинале.
- */
-export function mediaSizes(): MediaTypeSizes {
-  return mediaSizesInstance.active
-}
-
 // tweb setAttachmentSize.ts:9-12.
 export const EXPAND_TEXT_WIDTH = 320
 export const MIN_IMAGE_WIDTH = 120

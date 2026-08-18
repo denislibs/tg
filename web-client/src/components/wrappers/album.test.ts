@@ -7,12 +7,18 @@
 //   • на каждой ячейке свои data-mid/data-peer-id — по ним лента находит
 //     сообщение под кликом/меню/выделением;
 //   • дерево и классы совпадают с живым DOM tweb
-//     (docs/tweb/dom/dumps/03-album-channel.json).
+//     (docs/tweb/dom/dumps/03-album-channel.json);
+//   • скрытое медиа накрывается ПОЭЛЕМЕНТНО (tweb album.ts:122-148), а размер
+//     крышки считается из процента ячейки и пиксельного бокса контейнера;
+//   • неоплаченное платное медиа — не пустая ячейка, а псевдо-фото из превью
+//     (`generatePhotoForExtendedMediaPreview` + `wrapPhoto({strippedSize})`).
 //
-// Мокаем только границу владельца URL (managers.media.downloadMediaURL) —
-// prepareAlbum, wrapPhoto, ensureMediaUrl и зеркало работают настоящие.
+// Мокаем только границу владельца URL (managers.media.downloadMediaURL) и
+// драйверы, которых нет в happy-dom (blur/WebGL точек) — prepareAlbum,
+// wrapPhoto, wrapMediaSpoiler, ensureMediaUrl и зеркало работают настоящие.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '@core/models'
+import { getMiddleware } from '@helpers/middleware'
 
 const { downloadMediaURL } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number, opts?: { thumb?: boolean }) => Promise<string>>(),
@@ -29,6 +35,46 @@ vi.mock('@helpers/blur', () => ({
     return { canvas, promise: Promise.resolve() }
   }),
 }))
+
+// Точки спойлера: за `dotRendererCore` начинается WebGL-драйвер, которого в
+// happy-dom нет (тот же стаб, что в `mediaSpoiler.test.ts`).
+class FakeCore {
+  public inited = false
+  public lastDrawTime = 0
+  constructor(public canvas: HTMLCanvasElement, public config: unknown) {}
+  resize() {}
+  init() { this.inited = true; return true }
+  draw() {}
+  destroy() { this.inited = false }
+}
+vi.mock('@lib/spoiler/dotRendererCore', () => ({
+  default: FakeCore,
+  buildDotRendererConfig: (_w: number, _h: number, dpr: number, config = {}) => ({ dpr, ...config }),
+  getDefaultParticlesCount: () => 1000,
+  drawClippingCircle: vi.fn(),
+}))
+vi.mock('@lib/spoiler/spoilerSupport', () => ({
+  TEXT_SPOILER_WIDTH: 240,
+  TEXT_SPOILER_HEIGHT: 120,
+  spoilerSimDpr: () => 1,
+  animationsEnabled: () => true,
+  isWorkerSimSupported: () => false,
+}))
+class IntersectionObserverStub {
+  constructor(_cb: (entries: IntersectionObserverEntry[]) => void) {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
+const noop = () => {}
+HTMLCanvasElement.prototype.getContext = function getContext(this: HTMLCanvasElement, id: string) {
+  return id === '2d' ? ({
+    clearRect: noop, drawImage: noop, save: noop, restore: noop, beginPath: noop,
+    arc: noop, fill: noop, fillRect: noop,
+    globalCompositeOperation: '', fillStyle: '', shadowBlur: 0, shadowColor: '',
+  } as unknown as CanvasRenderingContext2D) : null
+} as HTMLCanvasElement['getContext']
 
 let wrapAlbum: typeof import('./album').default
 
@@ -185,8 +231,9 @@ describe('wrapAlbum', () => {
     expect(mediaDiv.querySelector('button.btn-circle.video-play.position-center')).toBeTruthy()
     expect(mediaDiv.querySelector('.video-time-icon')).toBeNull()
     expect(mediaDiv.querySelector('video')).toBeNull()
-    // превью ячейки — stripped из самого сообщения (постера у медиа нет)
-    expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-poster')).toBeTruthy()
+    // превью ячейки — stripped из самого сообщения (постера у медиа нет):
+    // его рисует `wrapPhoto` веткой `strippedSize`, поэтому класс `media-photo`
+    expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')).toBeTruthy()
     // геометрия посчитана по ВСЕМ элементам, включая видео
     expect(parseFloat(videoItem.style.width)).toBeGreaterThan(0)
   })
@@ -216,5 +263,135 @@ describe('wrapAlbum', () => {
 
     expect(attachmentDiv.children[0].querySelector('.video-time')).toBeNull()
     expect(attachmentDiv.children[1].firstElementChild!.lastElementChild).toBe(badge)
+  })
+})
+
+// tweb album.ts:122-148 — крышка кладётся ПОЭЛЕМЕНТНО: у альбома одна ячейка
+// может быть скрыта, а соседняя нет (признак живёт у каждого сообщения).
+describe('wrapAlbum: скрытое медиа', () => {
+  const helpers: { destroy: () => void }[] = []
+  const mw = () => {
+    const helper = getMiddleware()
+    helpers.push(helper)
+    return helper.get()
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('devicePixelRatio', 1)
+  })
+
+  afterEach(() => {
+    helpers.splice(0).forEach((h) => h.destroy())
+    vi.unstubAllGlobals()
+  })
+
+  const covers = (attachmentDiv: HTMLElement) =>
+    [...attachmentDiv.children].map((cell) => cell.querySelector('.media-spoiler-container'))
+
+  it('признак сообщения накрывает ТОЛЬКО свою ячейку, поверх уже построенного медиа', async () => {
+    const attachmentDiv = attachment()
+    const messages = [msg(), msg({ mediaSpoiler: true })]
+
+    wrapAlbum({ messages, attachmentDiv, middleware: mw() })
+    await flush()
+
+    const [plain, hidden] = covers(attachmentDiv)
+    expect(plain).toBeNull()
+    expect(hidden).toBeTruthy()
+    // дерево оригинала: размытое превью + слой точек
+    expect(hidden!.querySelector('canvas.media-spoiler-thumbnail')).toBeTruthy()
+    expect(hidden!.querySelector('canvas.canvas-dots')).toBeTruthy()
+    // крышка легла В ЯЧЕЙКУ, а медиа под ней продолжает грузиться (крышка
+    // перекрывает его z-index'ом, а не отменой загрузки)
+    const mediaDiv = attachmentDiv.children[1].firstElementChild!
+    expect(hidden!.parentElement).toBe(mediaDiv)
+    expect(mediaDiv.querySelector('img.media-photo')).toBeTruthy()
+    expect(downloadMediaURL).toHaveBeenCalledWith(messages[1].mediaId, { thumb: false })
+  })
+
+  it('размер крышки — процент ячейки от пиксельного бокса контейнера', async () => {
+    const attachmentDiv = attachment()
+
+    wrapAlbum({ messages: [msg({ mediaSpoiler: true })], attachmentDiv, middleware: mw() })
+    await flush()
+
+    const cell = attachmentDiv.children[0] as HTMLElement
+    const containerWidth = parseInt(attachmentDiv.style.width)
+    const containerHeight = parseInt(attachmentDiv.style.height)
+    const expectedWidth = +cell.style.width.slice(0, -1) / 100 * containerWidth
+    const expectedHeight = +cell.style.height.slice(0, -1) / 100 * containerHeight
+
+    const dots = cell.querySelector('canvas.canvas-dots') as HTMLCanvasElement
+    expect(expectedWidth).toBeGreaterThan(0)
+    expect(dots.width).toBe(Math.floor(expectedWidth))
+    expect(dots.height).toBe(Math.floor(expectedHeight))
+  })
+
+  it('spoilered от вызывающего скрывает ВЕСЬ альбом (неоплаченное платное медиа)', async () => {
+    const attachmentDiv = attachment()
+
+    wrapAlbum({ messages: [msg(), msg()], attachmentDiv, middleware: mw(), spoilered: true })
+    await flush()
+
+    expect(covers(attachmentDiv).every(Boolean)).toBe(true)
+  })
+
+  it('протухшее поколение крышку не дописывает', async () => {
+    const attachmentDiv = attachment()
+    const helper = getMiddleware()
+
+    wrapAlbum({ messages: [msg({ mediaSpoiler: true })], attachmentDiv, middleware: helper.get() })
+    helper.destroy()
+    await flush()
+
+    expect(covers(attachmentDiv)).toEqual([null])
+  })
+})
+
+// tweb bubbles.ts:8929-8931 — у неоплаченного платного медиа `media_id` нет, и
+// ячейку рисует ПСЕВДО-ФОТО из превью, а не пустой прямоугольник.
+describe('wrapAlbum: неоплаченное платное медиа', () => {
+  const paid = (patch: Partial<Message> = {}) =>
+    msg({ mediaId: null, paidMedia: { price: 5, locked: true }, ...patch })
+
+  it('ячейка показывает превью сообщения как медиа и в сеть не ходит', async () => {
+    const attachmentDiv = attachment()
+
+    wrapAlbum({ messages: [paid(), paid()], attachmentDiv })
+    await flush()
+
+    const cells = [...attachmentDiv.children].map((cell) => cell.firstElementChild!)
+    for (const mediaDiv of cells) {
+      expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')).toBeTruthy()
+      // качать нечего: ни полного <img>, ни запроса к владельцу URL
+      expect(mediaDiv.querySelector('img.media-photo')).toBeNull()
+    }
+    expect(downloadMediaURL).not.toHaveBeenCalled()
+  })
+
+  it('видео без оплаты — тоже псевдо-фото (wrapVideo без media_id рисовать нечем)', async () => {
+    const attachmentDiv = attachment()
+
+    wrapAlbum({
+      messages: [paid({ type: 'video', mediaMime: 'video/mp4', mediaDuration: 12 })],
+      attachmentDiv,
+    })
+    await flush()
+
+    const mediaDiv = attachmentDiv.children[0].firstElementChild!
+    expect(mediaDiv.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')).toBeTruthy()
+    expect(mediaDiv.querySelector('video')).toBeNull()
+  })
+
+  it('превью не пришло вовсе — ячейка всё равно не пустая (заплатка оригинала)', async () => {
+    const attachmentDiv = attachment()
+
+    wrapAlbum({ messages: [paid({ mediaBlur: undefined })], attachmentDiv })
+    await flush()
+
+    const canvas = attachmentDiv.children[0].firstElementChild!
+      .querySelector('canvas.canvas-thumbnail.media-photo') as HTMLCanvasElement
+    expect(canvas).toBeTruthy()
+    expect(canvas.dataset.uri).toMatch(/^data:image\/jpeg;base64,\/9j\//)
   })
 })

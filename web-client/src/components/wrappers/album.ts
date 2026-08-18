@@ -25,23 +25,26 @@
  *    сообщений ещё нет. Наш попап отправки — React (`SendMediaPopup`) и в
  *    периметр порта ленты не входит; заводить второй вход без вызывающего =
  *    мёртвый код. Сам `prepareAlbum` опцию `noGroupedItem` поддерживает;
- *  • спойлеры (`spoilered`/`sensitive` → `wrapMediaSpoiler`) не портированы:
- *    `wrapMediaSpoiler`+`DotRenderer` в дереве отсутствуют, фичи «скрытое
- *    медиа» у нас нет ни в модели сообщения, ни в UI. Вместе с ними отпали
- *    `containerWidth`/`containerHeight` (они считались только для спойлера);
+ *  • ветка `sensitive` (18+) не портирована — вместе с самой подсистемой
+ *    «чувствительный контент» (модерация, аккаунт-настройка, проверка
+ *    возраста), см. шапку `components/wrappers/mediaSpoiler.ts`. Признак
+ *    `spoilered` и `messageMedia.pFlags.spoiler` портированы полностью:
+ *    у нас это параметр `spoilered` и поле `message.mediaSpoiler`;
  *  • `videoTimes` портирован (см. параметр ниже): готовые узлы таймкода от
  *    вызывающего кладутся в ячейку. Заполняет их в tweb бабл — для
  *    НЕПРОПЛАЧЕННОГО платного медиа, где ячейку рисует не `wrapVideo`, а
  *    псевдо-фото из превью; наш бабл — следующий этап порта;
- *  • `chat`/`managers`/`animationGroup` не портированы — в теле оригинала
- *    `chat`/`managers` уходят только в `wrapVideo`/`wrapPhoto` (у нас менеджеры
- *    берутся из точки входа), `animationGroup` — только в `wrapMediaSpoiler`.
+ *  • `chat`/`managers` не портированы — в теле оригинала они уходят только в
+ *    `wrapVideo`/`wrapPhoto` (у нас менеджеры берутся из точки входа).
  */
+import type { AnimationItemGroup } from '@components/animationIntersector'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
-import { mediaSizes } from '@core/dom/mediaSizes'
+import mediaSizes from '@core/dom/mediaSizes'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
+import generatePhotoForExtendedMediaPreview from '@core/media/generatePhotoForExtendedMediaPreview'
 import type { Message } from '@core/models'
 import prepareAlbum from '@components/prepareAlbum'
+import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo, { videoDocFromMessage } from '@components/wrappers/video'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
@@ -63,7 +66,7 @@ function isPhotoItem(message: Message): boolean {
 
 export default function wrapAlbum({
   messages, attachmentDiv, middleware, lazyLoadQueue, isVisible, loadPromises,
-  autoDownload, uploadPromises, videoTimes,
+  autoDownload, uploadPromises, videoTimes, spoilered, animationGroup,
 }: {
   messages: Message[]
   attachmentDiv: HTMLElement
@@ -74,6 +77,15 @@ export default function wrapAlbum({
   autoDownload?: ChatAutoDownload
   /** промисы отгрузки по индексу элемента (tweb `uploadingFileName[idx]`) */
   uploadPromises?: (CancellablePromise<unknown> | undefined)[]
+  /**
+   * Скрыть спойлером ВЕСЬ альбом, независимо от признака у сообщений (tweb
+   * `spoilered`). Живой предмет у оригинала один — неоплаченное платное медиа
+   * (`spoilered: !isAlreadyPaid`, bubbles.ts:8953): купленного никто не видел,
+   * поэтому крышка кладётся на каждую ячейку.
+   */
+  spoilered?: boolean
+  /** группа `animationIntersector` для точек спойлера (tweb `animationGroup`) */
+  animationGroup?: AnimationItemGroup
   /**
    * Готовые `.video-time` от вызывающего по индексу элемента (tweb `videoTimes`,
    * album.ts:32,150-153). Механизм нужен там, где ЯЧЕЙКА ВИДЕО НЕ РИСУЕТСЯ
@@ -94,55 +106,107 @@ export default function wrapAlbum({
   prepareAlbum({
     container: attachmentDiv,
     items: items.map((i) => ({ w: i.size.w, h: i.size.h })),
-    maxWidth: mediaSizes().album.width,
+    maxWidth: mediaSizes.active.album.width,
     minWidth: ALBUM_MIN_WIDTH,
     spacing: ALBUM_SPACING,
     forMedia: true,
   })
 
+  // tweb album.ts:63-65 — пиксельный бокс общего контейнера: ячейки размечены в
+  // процентах, а спойлеру нужен размер своей ячейки в пикселях.
+  const { width, height } = attachmentDiv.style
+  const containerWidth = parseInt(width)
+  const containerHeight = parseInt(height)
+
   items.forEach(({ message }, idx) => {
+    // tweb album.ts:71 (без ветки `sensitive`, см. шапку)
+    const hasSpoiler = spoilered || !!message.mediaSpoiler
+
     const div = attachmentDiv.children[idx] as HTMLElement
     div.dataset.mid = '' + message.id
     div.dataset.peerId = '' + message.chatId
     const mediaDiv = div.firstElementChild as HTMLElement
 
+    // Медиа ячейки — аналог `getMediaFromMessage` у оригинала: платное медиа до
+    // оплаты приезжает БЕЗ `media_id`, и tweb подставляет вместо него
+    // ПСЕВДО-ФОТО из превью (`generatePhotoForExtendedMediaPreview`,
+    // bubbles.ts:8929-8931). У такого фото единственный размер — stripped-байты,
+    // поэтому ячейка перестаёт быть пустой, а `wrapPhoto` показывает превью КАК
+    // медиа (`strippedSize`), ничего не скачивая.
+    const isPreview = message.mediaId == null
+    const media = isPreview ?
+      generatePhotoForExtendedMediaPreview(message) :
+      {
+        mediaId: message.mediaId as number,
+        width: message.mediaWidth,
+        height: message.mediaHeight,
+        strippedThumb: message.mediaBlur,
+      }
+
     // tweb album.ts:82-116 — ветка по типу медиа; у обеих ветвей один и тот же
     // нулевой бокс (размер ячейки уже задан гридом) и один и тот же промис,
     // который уходит в `loadPromises`.
-    const thumbPromise = message.mediaId == null ?
-      // Платное медиа до оплаты: сервер `media_id` не отдаёт вовсе, качать
-      // нечего. У tweb на этом месте псевдо-фото из превью
-      // (`generatePhotoForExtendedMediaPreview`) под `wrapMediaSpoiler`;
-      // и то, и другое требует правок вне периметра этой задачи (`wrapPhoto`
-      // должен уметь показывать stripped-байты КАК медиа, а `DotRenderer`/
-      // `wrapMediaSpoiler` в дереве ещё нет) — вынесено в доклад. Таймкод такой
-      // ячейки при этом уже работает: он приходит готовым узлом в `videoTimes`.
-      undefined :
-      !isPhotoItem(message) ?
-        // tweb album.ts:100-115 — не-фото ячейку рисует `wrapVideo` теми же
-        // аргументами. `noAutoplayAttribute: true` (и нулевой бокс, из которого
-        // враппер выводит `isGroupedItem`) — почему видео в альбоме не
-        // автоплеится: иначе крутились бы до десяти файлов разом.
-        wrapVideoItem(message, mediaDiv, idx) :
-        wrapPhoto({
-          mediaId: message.mediaId,
-          width: message.mediaWidth,
-          height: message.mediaHeight,
-          strippedThumb: message.mediaBlur,
-          thumb: !!message.mediaHasThumb,
-          container: mediaDiv,
-          boxWidth: 0,
-          boxHeight: 0,
-          lazyLoadQueue,
-          isVisible,
-          middleware,
-          loadPromises,
-          autoDownloadSize: autoDownload?.photo,
-          uploadPromise: uploadPromises?.[idx],
-        })
+    const thumbPromise = isPreview || isPhotoItem(message) ?
+      wrapPhoto({
+        mediaId: media.mediaId,
+        width: media.width,
+        height: media.height,
+        strippedThumb: media.strippedThumb,
+        thumb: !!message.mediaHasThumb,
+        strippedSize: isPreview,
+        container: mediaDiv,
+        boxWidth: 0,
+        boxHeight: 0,
+        lazyLoadQueue,
+        isVisible,
+        middleware,
+        loadPromises,
+        autoDownloadSize: autoDownload?.photo,
+        uploadPromise: uploadPromises?.[idx],
+      }) :
+      // tweb album.ts:100-115 — не-фото ячейку рисует `wrapVideo` теми же
+      // аргументами. `noAutoplayAttribute: true` (и нулевой бокс, из которого
+      // враппер выводит `isGroupedItem`) — почему видео в альбоме не
+      // автоплеится: иначе крутились бы до десяти файлов разом.
+      wrapVideoItem(message, mediaDiv, idx)
 
     if (thumbPromise) {
       loadPromises?.push(thumbPromise)
+    }
+
+    // tweb album.ts:122-148 — крышка кладётся ПОЭЛЕМЕНТНО и только после того,
+    // как ячейка построена: спойлеру нужен готовый размер ячейки, а самому
+    // медиа под ним ничего не мешает грузиться (кольцо прогресса остаётся под
+    // крышкой — `.media-spoiler-container` перекрывает его z-index'ом, а не
+    // отменой загрузки).
+    if (hasSpoiler && middleware) { // у нас `middleware` опционален, tweb зовёт его безусловно
+      const promise = (thumbPromise || Promise.resolve()).then(async() => {
+        if (!middleware()) {
+          return
+        }
+
+        const { width, height } = div.style
+        const itemWidth = +width.slice(0, -1) / 100 * containerWidth
+        const itemHeight = +height.slice(0, -1) / 100 * containerHeight
+        const container = await wrapMediaSpoiler({
+          strippedThumb: media.strippedThumb || '',
+          // tweb сюда группу не передаёт вовсе (`bubbles.ts` зовёт `wrapAlbum`
+          // без `animationGroup`) — у нас тип строгий, и «без группы» пишется
+          // пустой строкой `animationIntersector`.
+          animationGroup: animationGroup ?? '',
+          middleware,
+          width: itemWidth,
+          height: itemHeight,
+        })
+
+        if (!container || !middleware()) {
+          return
+        }
+
+        mediaDiv.append(container)
+      })
+
+      loadPromises?.push(promise)
     }
 
     // tweb album.ts:150-153 — готовый таймкод вызывающего кладётся в ячейку

@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import mediaSizes, {
-  DESKTOP, HANDHELDS, MediaSizes, ScreenSize, mediaSizes as activeSizes,
+  DESKTOP, HANDHELDS, MediaSizes, ScreenSize,
   setAttachmentSize, EXPAND_TEXT_WIDTH, MIN_IMAGE_WIDTH, MIN_SIDE_SIZE, MIN_VIDEO_SIDE_SIZE,
 } from './mediaSizes'
 
@@ -119,11 +119,6 @@ describe('mediaSizes', () => {
     }
   })
 
-  it('мост `mediaSizes()` отдаёт того же владельца, что и `.active`', () => {
-    refresh(500)
-    expect(activeSizes()).toBe(mediaSizes.active)
-    expect(activeSizes()).toBe(HANDHELDS)
-  })
 })
 
 describe('setAttachmentSize', () => {

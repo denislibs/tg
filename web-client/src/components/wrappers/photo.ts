@@ -179,7 +179,14 @@ export default async function wrapPhoto(options: WrapPhotoOptions): Promise<Wrap
 
   // Наш `cacheContext.downloaded`: попадание в зеркало URL. Геттер, а не
   // значение — tweb перечитывает кэш-контекст внутри `load()` (photo.ts:309).
-  const isDownloaded = () => cachedMediaUrl(mediaId, thumb) !== undefined
+  //
+  // `strippedSize` — тот же кэш-контекст, что у оригинала: tweb берёт его ПО
+  // ВЫБРАННОМУ размеру (`getCacheContext(photo, size.type)`), а у stripped-
+  // размера своего файла в кэше нет по построению — байты приезжают в самом
+  // сообщении, скачивать нечего. Отсюда `downloaded === false` всегда, и превью
+  // строится, даже когда полный файл уже на руках. Именно этим у оригинала
+  // держится постер видео: «скачано» относится к файлу, а не к первому кадру.
+  const isDownloaded = () => !strippedSize && cachedMediaUrl(mediaId, thumb) !== undefined
 
   if (boxWidth && boxHeight) { // !album
     // размер контейнера ставит сам `setAttachmentSize` (`boxSize`), как в

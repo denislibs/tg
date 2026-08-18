@@ -265,9 +265,13 @@ describe('wrapVideo: информационный слой и дерево', () 
 })
 
 describe('wrapVideo: постер', () => {
-  it('без серверного постера превью строится из media_blur и держится, даже когда байты уже в зеркале', async () => {
-    // «скачано» для видео — про файл, а не про первый кадр: без isVideo подложка
-    // здесь не появилась бы вовсе, и бабл открылся бы пустым прямоугольником
+  it('без серверного постера превью показывается КАК медиа и держится, даже когда байты уже в зеркале', async () => {
+    // Ветка `strippedSize` (tweb photo.ts:208): единственный подходящий размер
+    // документа — stripped из сообщения, поэтому постер рисует тот же
+    // `wrapPhoto` (класс `media-photo`, а не подложка `media-poster` кладки).
+    // «Скачано» при этом считается ПО ВЫБРАННОМУ размеру: у stripped своего
+    // файла нет, поэтому попадание полного файла в зеркало превью не снимает —
+    // иначе бабл открылся бы пустым прямоугольником.
     mediaCache.applyMediaUrl({ id: 7, thumb: false, url: 'blob:7' })
     mediaUrl.applyMediaToken(TOKEN('T1'))
     const container = box()
@@ -278,9 +282,10 @@ describe('wrapVideo: постер', () => {
     })
     await flush()
 
-    expect(container.querySelector('canvas.canvas-thumbnail.thumbnail.media-poster')).toBeTruthy()
-    // постера на сервере нет — за картинкой не ходим
+    expect(container.querySelector('canvas.canvas-thumbnail.thumbnail.media-photo')).toBeTruthy()
+    // постера на сервере нет — за картинкой не ходим, и mp4 в <img> не просим
     expect(downloadMediaURL).not.toHaveBeenCalled()
+    expect(container.querySelector('img.media-photo')).toBeNull()
   })
 
   it('серверный постер качается уменьшенной версией и живёт под видео', async () => {

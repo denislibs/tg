@@ -54,14 +54,14 @@
  *    анимированная обложка) — сущностей нет в модели: у медиа один id и два
  *    размера (`thumb: true|false`). Вместе с `altDoc` отпадает и ветка
  *    `<source>`-ов с `video.load()`;
- *  • постер: `wrapPhoto` зовётся, только когда у медиа ЕСТЬ серверный постер
- *    (`mediaHasThumb`) — это наш аналог «у документа есть подходящий
- *    `PhotoSize`». Без постера скачивать нечего (просить полный файл в `<img>`
- *    — это mp4 в картинке), и превью строится напрямую из `media_blur`
- *    (`getStrippedThumbIfNeeded({isVideo: true})`) — та же ветка оригинала, что
- *    работает без сообщения (video.ts:454-479). `isVideo` тут не декорация: у
- *    видео «скачано» относится к файлу, а не к первому кадру, и без него
- *    подложка снималась бы у уже виденного видео, оставляя пустой прямоугольник.
+ *  • постер: как и в оригинале, его целиком рисует `wrapPhoto` — одной веткой,
+ *    без развилки «есть серверный постер / нет». Развилка живёт ВНУТРИ
+ *    аргументов: tweb выбирает размер документа (`choosePhotoSize`), и если
+ *    единственный подходящий — stripped, `wrapPhoto` показывает его КАК медиа
+ *    (ранний выход photo.ts:208). У нас размеров два, поэтому тот же выбор
+ *    записан парой `thumb: doc.hasThumb` / `strippedSize: !doc.hasThumb`.
+ *    Ветка `getStrippedThumbIfNeeded` осталась ровно там же, где в оригинале, —
+ *    у медиа БЕЗ сообщения (`* gifs masonry`, video.ts:454-479).
  *
  * ── ЧТО ЕЩЁ НЕ ПЕРЕНЕСЕНО (каждое — заявка на отдельную задачу, не «нам не надо») ─
  *  • ВЕСЬ блок мини-плеера/наблюдателя звука (video.ts:728-949, `willObserveSound`,
@@ -386,32 +386,6 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
   video.classList.add('media-video')
   video.muted = true
 
-  // Превью из самого сообщения (tweb video.ts:454-479): единственный источник
-  // кадра, когда серверного постера нет. `isVideo` держит его на месте даже у
-  // уже скачанного медиа — см. шапку.
-  const mountStrippedPoster = () => {
-    const gotThumb = getMediaThumbIfNeeded({
-      strippedThumb: doc.strippedThumb,
-      downloaded: cachedMediaUrl(doc.id) !== undefined,
-      isVideo: true,
-      useBlur: useBlur ?? true,
-    })
-    if (!gotThumb) return
-
-    const thumbImage = gotThumb.image
-    thumbImage.classList.add('media-poster')
-    container?.append(thumbImage)
-    res.thumb = {
-      loadPromises: { thumb: gotThumb.loadPromise, full: Promise.resolve() },
-      images: { thumb: thumbImage, full: null },
-      preloader: null,
-      aspecter: null,
-    }
-
-    loadPromises?.push(gotThumb.loadPromise)
-    res.loadPromise = gotThumb.loadPromise
-  }
-
   if (doc.type === 'round') {
     wrapRound({ doc, message, container, video, spanTime, middleware, noAutoDownload, getPreloader: () => preloader })
   } else if (!noAutoplayAttribute && !uploadPromise) {
@@ -420,10 +394,17 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
   let photoRes: WrappedPhoto | undefined
   if (message || onlyPreview || withPreview) {
-    if (doc.hasThumb && container) {
+    if (container) { // наш `wrapPhoto` требует контейнер (см. его шапку)
       photoRes = await wrapPhoto({
         mediaId: doc.id,
-        thumb: true,
+        // Наш аналог `choosePhotoSize(doc, …)` из оригинала: у документа
+        // выбирается ЕДИНСТВЕННЫЙ подходящий размер. Есть серверный постер —
+        // это он (`thumb: true`); нет — им оказывается stripped из самого
+        // сообщения, и тогда `wrapPhoto` показывает его КАК медиа, ничего не
+        // скачивая (`strippedSize`, ранний выход photo.ts:208). Без этого
+        // враппер потянул бы в `<img>` полный mp4.
+        thumb: doc.hasThumb,
+        strippedSize: !doc.hasThumb,
         width: doc.width,
         height: doc.height,
         strippedThumb: doc.strippedThumb,
@@ -443,8 +424,6 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       })
 
       res.thumb = photoRes
-    } else if (!noPreview) {
-      mountStrippedPoster()
     }
 
     // tweb video.ts:434-446 — без автоплея видео не грузится вовсе: показан
@@ -461,7 +440,31 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       return res
     }
   } else if (!noPreview) { // * gifs masonry (комментарий tweb video.ts:454)
-    mountStrippedPoster()
+    // Медиа БЕЗ сообщения: сообщения нет — значит нет и вызывающего, который
+    // решил бы про размер, поэтому кадр строится прямо из stripped-превью.
+    // `isVideo` тут не декорация (tweb выводит его из `doc.type`): у видео
+    // «скачано» относится к файлу, а не к первому кадру, и без него подложка
+    // снималась бы у уже виденного медиа, оставляя пустой прямоугольник.
+    const gotThumb = getMediaThumbIfNeeded({
+      strippedThumb: doc.strippedThumb,
+      downloaded: cachedMediaUrl(doc.id) !== undefined,
+      isVideo: true,
+      useBlur: useBlur ?? true,
+    })
+    if (gotThumb) {
+      const thumbImage = gotThumb.image
+      thumbImage.classList.add('media-poster')
+      container?.append(thumbImage)
+      res.thumb = {
+        loadPromises: { thumb: gotThumb.loadPromise, full: Promise.resolve() },
+        images: { thumb: thumbImage, full: null },
+        preloader: null,
+        aspecter: null,
+      }
+
+      loadPromises?.push(gotThumb.loadPromise)
+      res.loadPromise = gotThumb.loadPromise
+    }
   }
 
   // ! do not append before load or will get `URL safety check` error
