@@ -47,6 +47,62 @@ describe.skipIf(!hasTweb)('байты нашего кодека читает н�
     expect(result.type).toBe('i')
     expect(Array.from(result.bytes as Uint8Array)).toEqual([1, 2, 3])
   })
+
+  it('messageEntityBold — простейший конструктор без необязательных полей', async () => {
+    const { TLDeserialization } = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('messageEntityBold')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('messageEntityBold')
+    expect(result.offset).toBe(5)
+    expect(result.length).toBe(11)
+  })
+
+  it('messageEntityTextUrl — строка с префиксом длины и выравниванием', async () => {
+    const { TLDeserialization } = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('messageEntityTextUrl')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('messageEntityTextUrl')
+    expect(result.url).toBe('https://example.org')
+  })
+
+  // Самая ценная пара во всей проверке: она проверяет не поле, а МЕХАНИЗМ.
+  //
+  // `collapsed:flags.0?true` на проводе не занимает ничего — он существует
+  // только как бит маски. Если бы мы писали его значением (например, `false`),
+  // длина записи выросла бы и чужой разбор поехал бы на следующем поле. То
+  // есть правило «выключено = отсутствие ключа» здесь не соглашение, а то, без
+  // чего байты просто не читаются.
+  it('messageEntityBlockquote — поднятый бит collapsed попадает в pFlags', async () => {
+    const { TLDeserialization } = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('messageEntityBlockquoteCollapsed')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('messageEntityBlockquote')
+    expect(result.pFlags?.collapsed).toBe(true)
+    expect(result.offset).toBe(2)
+    expect(result.length).toBe(30)
+    // Маска в объект не попадает — она живёт только на проводе.
+    expect(result.flags).toBeUndefined()
+  })
+
+  it('messageEntityBlockquote — нулевая маска: ключа collapsed нет вовсе', async () => {
+    const { TLDeserialization } = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('messageEntityBlockquotePlain')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('messageEntityBlockquote')
+    expect(result.pFlags?.collapsed).toBeUndefined()
+    // Ключа нет, а не `false`: именно так «выключено» выглядит после разбора.
+    expect('collapsed' in (result.pFlags ?? {})).toBe(false)
+    expect(result.offset).toBe(2)
+    expect(result.length).toBe(30)
+  })
 })
 
 // Пропуск обязан быть ЗАМЕТНЫМ: молча зелёный прогон без предмета проверки —

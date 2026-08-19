@@ -362,3 +362,79 @@ func goldenHex(t *testing.T, name string) string {
 	t.Fatalf("вектора %q нет в эталоне", name)
 	return ""
 }
+
+// Сущности — вторая переведённая подсистема, и здесь эталон ловит то, чего не
+// ловил на медиа: работу маски `flags` целиком. У `messageEntityBlockquote`
+// маска есть, и её значение обязано сойтись у нас и у чужого разбора.
+func TestGolden_Entities(t *testing.T) {
+	const (
+		idBold       int32 = -1117713463 // 0xbd610bc9
+		idTextURL    int32 = 1990644519  // 0x76a6d327
+		idBlockquote int32 = -238245204  // 0xf1ccaaac
+	)
+
+	t.Run("messageEntityBold — без необязательных полей", func(t *testing.T) {
+		w := NewWriter(0)
+		w.ConstructorID(idBold)
+		w.Int(5)  // offset
+		w.Int(11) // length
+
+		assertGolden(t, "messageEntityBold", w)
+	})
+
+	t.Run("messageEntityTextUrl — со строкой", func(t *testing.T) {
+		w := NewWriter(0)
+		w.ConstructorID(idTextURL)
+		w.Int(0)
+		w.Int(4)
+		w.String("https://example.org")
+
+		assertGolden(t, "messageEntityTextUrl", w)
+	})
+
+	// Свёрнутая цитата: единственный бит маски поднят. Это и есть проверка
+	// правила «выключено = отсутствие поля»: сам `collapsed` на проводе не
+	// занимает НИЧЕГО, он существует только как бит.
+	t.Run("messageEntityBlockquote — поднятый бит collapsed", func(t *testing.T) {
+		w := NewWriter(0)
+		w.ConstructorID(idBlockquote)
+		patch := w.ReserveInt()
+
+		var flags Flags
+		flags.SetIf(true, 0) // collapsed:flags.0?true
+
+		w.Int(2)  // offset
+		w.Int(30) // length
+		patch(flags.Value())
+
+		assertGolden(t, "messageEntityBlockquoteCollapsed", w)
+	})
+
+	// Та же цитата без бита: маска нулевая, длина записи ТА ЖЕ — флаг нигде не
+	// материализуется. Если бы мы писали `collapsed: false` полем, длина бы
+	// выросла, и чужой разбор поехал бы на следующем поле.
+	t.Run("messageEntityBlockquote — бит не поднят", func(t *testing.T) {
+		w := NewWriter(0)
+		w.ConstructorID(idBlockquote)
+		patch := w.ReserveInt()
+
+		var flags Flags
+		flags.SetIf(false, 0)
+
+		w.Int(2)
+		w.Int(30)
+		patch(flags.Value())
+
+		assertGolden(t, "messageEntityBlockquotePlain", w)
+	})
+}
+
+func assertGolden(t *testing.T, name string, w *Writer) {
+	t.Helper()
+
+	want := goldenHex(t, name)
+	got := hex.EncodeToString(w.Result())
+	if got != want {
+		t.Fatalf("байты %s разошлись с общим эталоном\n получили %s\n ожидали  %s", name, got, want)
+	}
+}

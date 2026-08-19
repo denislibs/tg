@@ -11,6 +11,30 @@
       "type": "PhotoSize",
       "hex": "2ebcb0e00169000003010203",
       "note": "photoStrippedSize#e0b0bc2e type:string bytes:bytes = PhotoSize; type='i', bytes=[1,2,3]"
+    },
+    {
+      "name": "messageEntityBold",
+      "type": "MessageEntity",
+      "hex": "c90b61bd050000000b000000",
+      "note": "messageEntityBold#bd610bc9 offset:int length:int; offset=5, length=11"
+    },
+    {
+      "name": "messageEntityTextUrl",
+      "type": "MessageEntity",
+      "hex": "27d3a67600000000040000001368747470733a2f2f6578616d706c652e6f7267",
+      "note": "messageEntityTextUrl#76a6d327 offset:int length:int url:string; url=https://example.org"
+    },
+    {
+      "name": "messageEntityBlockquoteCollapsed",
+      "type": "MessageEntity",
+      "hex": "acaaccf101000000020000001e000000",
+      "note": "messageEntityBlockquote#f1ccaaac flags:# collapsed:flags.0?true offset:int length:int; бит поднят, само поле на проводе не занимает ничего"
+    },
+    {
+      "name": "messageEntityBlockquotePlain",
+      "type": "MessageEntity",
+      "hex": "acaaccf100000000020000001e000000",
+      "note": "та же цитата с нулевой маской: длина записи ТА ЖЕ — «выключено» это отсутствие, а не значение"
     }
   ]
 }
