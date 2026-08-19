@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "Эталонные байты провода TL. Один источник на обе стороны:",
+    "  - backend/internal/pkg/tl/tl_test.go собирает значение своим кодеком и сверяет байты;",
+    "  - web-client/scripts/crosscheck разбирает те же байты НЕИЗМЕНЁННЫМ десериализатором tweb.",
+    "Разъехаться незаметно нельзя: эталон один, а проверяют его две независимые реализации."
+  ],
+  "vectors": [
+    {
+      "name": "photoStrippedSize",
+      "type": "PhotoSize",
+      "hex": "2ebcb0e00169000003010203",
+      "note": "photoStrippedSize#e0b0bc2e type:string bytes:bytes = PhotoSize; type='i', bytes=[1,2,3]"
+    }
+  ]
+}

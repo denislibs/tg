@@ -3,8 +3,11 @@ package tl
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -289,4 +292,73 @@ func TestFlags_WrittenBeforeOptionalFields(t *testing.T) {
 	if r.Remaining() != 0 {
 		t.Fatalf("после разбора осталось %d байт", r.Remaining())
 	}
+}
+
+// Эталон на настоящем конструкторе схемы, а не на отдельных примитивах.
+//
+// photoStrippedSize#e0b0bc2e type:string bytes:bytes = PhotoSize
+//
+// Ожидаемые байты лежат НЕ здесь, а в общем файле `schema/testdata/tl-golden.json`,
+// потому что их проверяют две независимые реализации: этот тест собирает
+// значение нашим кодеком, а `web-client/scripts/crosscheck` разбирает ту же
+// строку НЕИЗМЕНЁННЫМ десериализатором tweb. Если бы эталон был записан здесь
+// литералом, обе стороны могли бы разъехаться незаметно.
+func TestGolden_PhotoStrippedSize(t *testing.T) {
+	const idPhotoStrippedSize int32 = -525288402 // 0xe0b0bc2e
+
+	w := NewWriter(0)
+	w.ConstructorID(idPhotoStrippedSize)
+	w.String("i")            // ступень stripped-плейсхолдера
+	w.Bytes([]byte{1, 2, 3}) // сами байты превью
+
+	want := goldenHex(t, "photoStrippedSize")
+	got := hex.EncodeToString(w.Result())
+	if got != want {
+		t.Fatalf("байты конструктора разошлись с общим эталоном\n получили %s\n ожидали  %s", got, want)
+	}
+
+	// И тот же буфер обязан читаться обратно.
+	r := NewReader(w.Result())
+	if id, err := r.ConstructorID(); err != nil || id != idPhotoStrippedSize {
+		t.Fatalf("id = %#08x, err = %v", uint32(id), err)
+	}
+	if v, err := r.String(); err != nil || v != "i" {
+		t.Fatalf("type = %q, err = %v", v, err)
+	}
+	if v, err := r.Bytes(); err != nil || !bytes.Equal(v, []byte{1, 2, 3}) {
+		t.Fatalf("bytes = %v, err = %v", v, err)
+	}
+	if r.Remaining() != 0 {
+		t.Fatalf("после разбора осталось %d байт", r.Remaining())
+	}
+}
+
+// goldenHex достаёт эталонные байты вектора из общего файла.
+func goldenHex(t *testing.T, name string) string {
+	t.Helper()
+
+	// backend/internal/pkg/tl → корень репозитория.
+	path := filepath.Join("..", "..", "..", "..", "schema", "testdata", "tl-golden.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("эталон не читается (%s): %v", path, err)
+	}
+
+	var doc struct {
+		Vectors []struct {
+			Name string `json:"name"`
+			Hex  string `json:"hex"`
+		} `json:"vectors"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("эталон не разбирается: %v", err)
+	}
+
+	for _, v := range doc.Vectors {
+		if v.Name == name {
+			return v.Hex
+		}
+	}
+	t.Fatalf("вектора %q нет в эталоне", name)
+	return ""
 }
