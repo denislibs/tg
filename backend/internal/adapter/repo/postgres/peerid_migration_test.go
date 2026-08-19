@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
 
@@ -188,12 +189,17 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 	}
 
 	// ── Вложенные ссылки внутри кадра сообщения ─────────────────────────────
+	//
+	// Накат идёт до ПОСЛЕДНЕЙ версии, а не до 0102: следующая миграция (0103)
+	// переводит те же вложенные ссылки из числа в конструктор Peer. Проверяем
+	// поэтому результат цепочки — то, что реально лежит в журнале, — а не
+	// промежуточную форму, которой на диске не бывает.
 	var msg struct {
-		FwdFromPeerID *int64         `json:"fwd_from_peer_id"`
-		FwdFromChatID *int64         `json:"fwd_from_chat_id"`
-		ReplyToPeerID *int64         `json:"reply_to_peer_id"`
-		SendAs        map[string]any `json:"send_as"`
-		Contact       map[string]any `json:"contact"`
+		FwdFromChatID *int64          `json:"fwd_from_chat_id"`
+		FwdFrom       json.RawMessage `json:"fwd_from"`
+		ReplyToPeerID json.RawMessage `json:"reply_to_peer_id"`
+		SendAs        map[string]any  `json:"send_as"`
+		Contact       map[string]any  `json:"contact"`
 	}
 	if err := json.Unmarshal(userFrame(t, pool, userA, 1), &msg); err != nil {
 		t.Fatalf("разбор кадра сообщения: %v", err)
@@ -201,11 +207,11 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 	if msg.FwdFromChatID != nil {
 		t.Error("fwd_from_chat_id остался в кадре")
 	}
-	if msg.FwdFromPeerID == nil || *msg.FwdFromPeerID != -channelChat {
-		t.Errorf("fwd_from_peer_id = %v; want %d", msg.FwdFromPeerID, -channelChat)
+	if !peerRefIs(t, msg.FwdFrom, "saved_from_peer", -channelChat) {
+		t.Errorf("fwd_from.saved_from_peer = %s; want ключ канала %d", msg.FwdFrom, -channelChat)
 	}
-	if msg.ReplyToPeerID == nil || *msg.ReplyToPeerID != -groupChat {
-		t.Errorf("reply_to_peer_id = %v; want %d (значение было chats.id)", msg.ReplyToPeerID, -groupChat)
+	if !peerIs(t, msg.ReplyToPeerID, -groupChat) {
+		t.Errorf("reply_to_peer_id = %s; want ключ группы %d", msg.ReplyToPeerID, -groupChat)
 	}
 	if _, has := msg.SendAs["chat_id"]; has {
 		t.Error("send_as.chat_id остался в кадре")
@@ -343,4 +349,25 @@ func asFloat(t *testing.T, v any) float64 {
 		t.Fatalf("ждали число, получили %T (%v)", v, v)
 	}
 	return f
+}
+
+// peerIs — ссылка на пир (объединение Peer) указывает на знаковый ключ want.
+func peerIs(t *testing.T, raw json.RawMessage, want int64) bool {
+	t.Helper()
+	if len(raw) == 0 {
+		return false
+	}
+	p, err := domain.UnmarshalPeer(raw)
+	return err == nil && p != nil && p.PeerID() == domain.PeerID(want)
+}
+
+// peerRefIs — вложенная ссылка на пир внутри объекта (например
+// fwd_from.saved_from_peer).
+func peerRefIs(t *testing.T, obj json.RawMessage, field string, want int64) bool {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if json.Unmarshal(obj, &m) != nil {
+		return false
+	}
+	return peerIs(t, m[field], want)
 }

@@ -52,21 +52,40 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("card: %d %s", rec.Code, rec.Body.String())
 	}
+	// Карточка — messages.chatFull: полная форма вместе с краткой. Роль
+	// отдельным полем не едет: creator это pFlags.creator, admin — наличие
+	// admin_rights (решение №3 разбора).
 	var card struct {
-		Title       string `json:"title"`
-		MyRole      string `json:"my_role"`
-		MemberCount int    `json:"member_count"`
-		CreatorID   int64  `json:"creator_id"`
+		CreatorID int64 `json:"creator_id"`
+		ChatFull  struct {
+			Underscore string `json:"_"`
+			Chats      []struct {
+				Underscore        string          `json:"_"`
+				Title             string          `json:"title"`
+				ParticipantsCount int             `json:"participants_count"`
+				PFlags            map[string]bool `json:"pFlags"`
+				AdminRights       *struct {
+					Underscore string `json:"_"`
+				} `json:"admin_rights"`
+			} `json:"chats"`
+		} `json:"chat_full"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.Title != "Team" {
-		t.Fatalf("card title = %q; want Team", card.Title)
+	if card.ChatFull.Underscore != "messages.chatFull" || len(card.ChatFull.Chats) != 1 {
+		t.Fatalf("card = %s", rec.Body.String())
 	}
-	if card.MyRole != "creator" {
-		t.Fatalf("card my_role = %q; want creator", card.MyRole)
+	chat := card.ChatFull.Chats[0]
+	if chat.Underscore != "channel" || chat.Title != "Team" {
+		t.Fatalf("card chat = %+v (%s)", chat, rec.Body.String())
 	}
-	if card.MemberCount != 2 {
-		t.Fatalf("card member_count = %d; want 2", card.MemberCount)
+	if !chat.PFlags["megagroup"] {
+		t.Fatalf("группа не помечена megagroup: %+v", chat.PFlags)
+	}
+	if !chat.PFlags["creator"] || chat.AdminRights == nil {
+		t.Fatalf("создатель не выражен флагами: %+v", chat)
+	}
+	if chat.ParticipantsCount != 2 {
+		t.Fatalf("participants_count = %d; want 2", chat.ParticipantsCount)
 	}
 	if card.CreatorID != idA {
 		t.Fatalf("card creator_id = %d; want %d", card.CreatorID, idA)
@@ -82,7 +101,9 @@ func TestGroupFlow_HTTP(t *testing.T) {
 		Members []struct {
 			UserID int64  `json:"user_id"`
 			Role   string `json:"role"`
-			Online bool   `json:"online"`
+			Status struct {
+				Underscore string `json:"_"`
+			} `json:"status"`
 		} `json:"members"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &ml)
@@ -92,8 +113,10 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	roleByUser := map[int64]string{}
 	for _, m := range ml.Members {
 		roleByUser[m.UserID] = m.Role
-		if m.Online {
-			t.Fatalf("member %d online=true; want false (no presence wired)", m.UserID)
+		// Присутствие не подключено — о статусе НИЧЕГО не известно, и это
+		// userStatusEmpty, а не «офлайн с нулевым временем».
+		if m.Status.Underscore != "userStatusEmpty" {
+			t.Fatalf("member %d status = %q; want userStatusEmpty (no presence wired)", m.UserID, m.Status.Underscore)
 		}
 	}
 	if roleByUser[idA] != "creator" {

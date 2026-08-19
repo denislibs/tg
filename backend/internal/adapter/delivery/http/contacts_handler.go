@@ -17,24 +17,17 @@ func NewContactsHandler(uc *usecasecontacts.Interactor) *ContactsHandler {
 }
 
 // contactJSON is the wire shape for one address-book entry.
+// contactJSON — одна запись адресной книги: НАША часть (заметка, «показывать
+// мой номер», дата) плюс сам пир конструктором `user`. Раскладка та же, что у
+// contacts.contacts в схеме: строка контакта отдельно, тело пира отдельно.
 func contactJSON(c domain.Contact) map[string]any {
-	var username any
-	if c.Username != nil {
-		username = *c.Username
-	}
 	return map[string]any{
 		"user_id":          c.UserID,
-		"first_name":       c.FirstName,
-		"last_name":        c.LastName,
 		"note":             c.Note,
 		"share_phone":      c.SharePhone,
-		"username":         username,
-		"avatar_url":       c.AvatarURL,
-		"avatar_preview":   c.AvatarPreview,
-		"phone":            c.Phone,
-		"display_name":     c.DisplayName,
 		"has_custom_photo": c.HasCustomPhoto,
 		"created_at":       c.CreatedAt,
+		"user":             c.User,
 	}
 }
 

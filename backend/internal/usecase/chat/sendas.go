@@ -39,12 +39,14 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 		return nil, domain.ErrNotFound
 	}
 
-	// Личность по умолчанию — сам пользователь.
+	// Личность по умолчанию — сам пользователь. Вид личности выражен ТЕЛОМ
+	// пира (user против channel), а не строкой kind: раскладка sendAsPeer +
+	// векторов users/chats из channels.sendAsPeers.
 	uc := i.userCard(ctx, userID)
-	out := []domain.SendAsPeer{{PeerID: userID, Kind: "user", Title: uc.DisplayName}}
+	out := []domain.SendAsPeer{{Peer: domain.NewPeerUser(userID), User: &uc}}
 
 	// Дополнительные личности есть только в группах (супергруппах-обсуждениях).
-	if typ, e := i.chats.ChatType(ctx, chatID); e != nil || typ != "group" {
+	if typ, e := i.chats.ChatType(ctx, chatID); e != nil || typ != domain.ChatTypeGroup {
 		return out, e
 	}
 
@@ -66,11 +68,8 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 	}
 	for _, id := range extra {
 		b := briefs[id]
-		kind := "channel"
-		if id == chatID {
-			kind = "group"
-		}
-		out = append(out, domain.SendAsPeer{PeerID: id, Kind: kind, Title: b.Title, PhotoID: b.PhotoID})
+		ch := b.ToChannel()
+		out = append(out, domain.SendAsPeer{Peer: domain.NewPeerChannel(id), Chat: &ch})
 	}
 	return out, nil
 }
@@ -83,7 +82,8 @@ func (i *Interactor) canSendAs(ctx context.Context, userID, chatID, sendAsID int
 		return false, err
 	}
 	for _, p := range peers {
-		if p.PeerID == sendAsID {
+		id := domain.GetPeerID(p.Peer)
+		if id.ToChatID() == sendAsID || (id.IsUser() && id.ToUserID() == sendAsID) {
 			return true, nil
 		}
 	}

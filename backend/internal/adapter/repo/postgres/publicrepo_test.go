@@ -15,7 +15,7 @@ func TestPublicRepo_Resolve(t *testing.T) {
 
 	uid := seedUser(t, pool, "+7901")
 	if _, err := pool.Exec(ctx,
-		`UPDATE users SET username='pub_user', display_name='Паша', bio='обо мне', avatar_url='/media/42/content' WHERE id=$1`, uid); err != nil {
+		`UPDATE users SET username='pub_user', first_name='Паша', bio='обо мне', avatar_media_id=42 WHERE id=$1`, uid); err != nil {
 		t.Fatal(err)
 	}
 

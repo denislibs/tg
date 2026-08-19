@@ -43,7 +43,7 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	err := h.contacts.SetCustomPhoto(r.Context(), u.ID, userID, mediaContentURL(body.MediaID))
+	err := h.contacts.SetCustomPhoto(r.Context(), u.ID, userID, body.MediaID)
 	switch {
 	case errors.Is(err, usecasecontacts.ErrSelfContact):
 		writeError(w, http.StatusBadRequest, "cannot_set_self")
@@ -55,7 +55,7 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, "set contact photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": mediaContentURL(body.MediaID)})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "photo_id": body.MediaID})
 }
 
 // ClearCustomPhoto removes the owner's personal photo for a contact
@@ -99,7 +99,7 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	msg, err := h.chat.SuggestProfilePhoto(r.Context(), u.ID, userID, body.MediaID, mediaContentURL(body.MediaID))
+	msg, err := h.chat.SuggestProfilePhoto(r.Context(), u.ID, userID, body.MediaID)
 	if errors.Is(err, domain.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "invalid")
 		return

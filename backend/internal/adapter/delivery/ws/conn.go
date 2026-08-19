@@ -88,7 +88,7 @@ type Presence interface {
 // RPCDispatcher реплеит rpc-запрос канала (реализуется в пакете http через
 // RouterRPC). Несёт user+deviceID, чтобы ws не зависел от http.
 type RPCDispatcher interface {
-	Dispatch(ctx context.Context, user domain.User, deviceID int64, method, path string, body []byte) (int, []byte)
+	Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, method, path string, body []byte) (int, []byte)
 }
 
 const rpcMaxConcurrent = 16
@@ -134,7 +134,7 @@ type Conn struct {
 	hub       *Hub
 	svc       *usecasechat.Interactor
 	presence  Presence
-	user      domain.User
+	user      domain.UserRecord
 	userID    int64
 	deviceID  int64
 	send      chan outFrame
@@ -150,7 +150,7 @@ type Conn struct {
 	groupCallChat int64
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.User, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.UserRecord, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
 	return &Conn{
 		ws: ws, hub: hub, svc: svc, presence: presence,
 		user: user, userID: user.ID, deviceID: deviceID,

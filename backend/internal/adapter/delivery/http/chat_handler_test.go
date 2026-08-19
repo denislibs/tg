@@ -87,9 +87,11 @@ func TestChatFlow_HTTP(t *testing.T) {
 	var dialogs struct {
 		Chats []struct {
 			PeerID int64 `json:"peer_id"`
-			Peer   *struct {
-				ID          int64  `json:"id"`
-				DisplayName string `json:"display_name"`
+			// Собеседник приватного чата — конструктор `user` целиком.
+			Peer *struct {
+				Underscore string `json:"_"`
+				ID         int64  `json:"id"`
+				FirstName  string `json:"first_name"`
 			} `json:"peer"`
 		} `json:"chats"`
 	}
@@ -97,8 +99,8 @@ func TestChatFlow_HTTP(t *testing.T) {
 	if len(dialogs.Chats) != 1 || dialogs.Chats[0].Peer == nil {
 		t.Fatalf("expected one chat with a peer, got %s", rec.Body.String())
 	}
-	if dialogs.Chats[0].Peer.ID != idB {
-		t.Fatalf("peer id = %d; want %d", dialogs.Chats[0].Peer.ID, idB)
+	if dialogs.Chats[0].Peer.ID != idB || dialogs.Chats[0].Peer.Underscore != "user" {
+		t.Fatalf("peer = %+v; want user(%d)", dialogs.Chats[0].Peer, idB)
 	}
 }
 

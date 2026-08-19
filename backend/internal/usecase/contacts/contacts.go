@@ -37,17 +37,18 @@ func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
 // SetCustomPhotos подключает хранилище личных фото контактов (optional).
 func (i *Interactor) SetCustomPhotos(p CustomPhotoRepo) { i.photos = p }
 
-// SetCustomPhoto задаёт личное фото контакта: url подменяет настоящий аватар
-// contactUserID в глазах ownerID (список диалогов/контактов/шапка чата). Требует
-// подключённого CustomPhotoRepo.
-func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error {
+// SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
+// аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
+// На проводе это userProfilePhoto с pFlags.personal. Требует подключённого
+// CustomPhotoRepo.
+func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error {
 	if i.photos == nil {
 		return domain.ErrNotFound
 	}
 	if contactUserID == ownerID {
 		return ErrSelfContact
 	}
-	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, url)
+	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID)
 }
 
 // ClearCustomPhoto сбрасывает личное фото контакта — владелец снова видит его
@@ -186,7 +187,7 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 		}
 		for idx := range list {
 			if !vis[list[idx].UserID] {
-				list[idx].Phone = ""
+				list[idx].User.Phone = ""
 			}
 		}
 	}
@@ -197,8 +198,10 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 			return nil, err
 		}
 		for idx := range list {
-			if url, ok := custom[list[idx].UserID]; ok {
-				list[idx].AvatarURL = url
+			if mediaID, ok := custom[list[idx].UserID]; ok {
+				// pFlags.personal — фото задано ЗРИТЕЛЕМ (tweb personal_photo);
+				// сам контакт о нём не знает.
+				list[idx].User.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 				list[idx].HasCustomPhoto = true
 			}
 		}

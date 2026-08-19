@@ -76,6 +76,9 @@ func registerServer(p serverParams) {
 	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(p.Pool))
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
+	// Кадр user_update несёт конструктор `user`, а в нём photo: без правила
+	// profile_photo аватарка уехала бы мимо приватности.
+	p.AuthUC.SetPrivacy(privacyUC)
 
 	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
 	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
@@ -162,6 +165,8 @@ func registerServer(p serverParams) {
 	// Исходящий HTTP бот-движка (webhook-доставка + загрузка медиа по URL)
 	// SSRF-безопасным клиентом — реализация порта вне usecase.
 	p.ChatUC.SetBotHTTP(bothttp.New())
+	// Конвертер границы Bot API (чужой контракт) — из delivery, а не из usecase.
+	p.ChatUC.SetBotAPIView(httptransport.NewBotAPIView())
 
 	// Серверные превью ссылок: og-теги первой http/https-ссылки текстового
 	// сообщения, асинхронно после отправки (кадр web_page_update).
@@ -201,6 +206,9 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		presenceMgr.SetPrivacy(privacyUC)
+		// user.status полной карточки профиля (GET /users/{id}) — из того же
+		// источника присутствия, что и ручка /presence.
+		privacyUC.SetPresence(presenceMgr)
 		// Диспетчеру запланированных «отправить когда онлайн» нужен запрос presence.
 		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)

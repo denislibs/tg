@@ -67,7 +67,7 @@ func (i *Interactor) requireFactCheckRight(ctx context.Context, chatID, userID i
 	if err != nil {
 		return err
 	}
-	if typ != "channel" {
+	if typ != domain.ChatTypeChannel {
 		return domain.ErrForbidden
 	}
 	return i.requireRight(ctx, chatID, userID, domain.RightPostMessages)

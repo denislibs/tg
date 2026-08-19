@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,7 +75,7 @@ func (h *PasskeyHandler) takeSession(token string) *webauthn.SessionData {
 	return s.data
 }
 
-// waUser адаптирует domain.User к webauthn.User; ID — десятичная строка.
+// waUser адаптирует domain.UserRecord к webauthn.User; ID — десятичная строка.
 type waUser struct {
 	id          int64
 	name        string
@@ -104,7 +105,7 @@ func (h *PasskeyHandler) userCredentials(r *http.Request, userID int64) []webaut
 // BeginRegistration — POST /me/passkeys/begin → {session, options}.
 func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	name := user.DisplayName
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
 	if name == "" {
 		name = user.Phone
 	}
@@ -129,7 +130,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "session expired")
 		return
 	}
-	name := user.DisplayName
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
 	if name == "" {
 		name = user.Phone
 	}

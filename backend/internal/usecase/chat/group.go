@@ -34,11 +34,13 @@ func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r d
 // serviceText builds the JSON stored in a service message's text. The client
 // parses it and renders a localized pill (mirrors tweb's messageAction: the
 // action + peer names travel as data, not as baked-in prose).
-func serviceText(action string, actor domain.UserCard, target *domain.UserCard) string {
-	m := map[string]any{"action": action, "actor_id": actor.ID, "actor": actor.DisplayName}
-	if target != nil {
-		m["user_id"] = target.ID
-		m["user"] = target.DisplayName
+// Имён здесь нет: сервисное сообщение несёт ССЫЛКИ на пиров (actor_id,
+// user_id), а имя рисует клиент из своего кэша пиров — ровно как
+// messageActionChatAddUser в схеме несёт users:Vector<long>, а не строки.
+func serviceText(action string, actorID int64, targetID *int64) string {
+	m := map[string]any{"action": action, "actor_id": actorID}
+	if targetID != nil {
+		m["user_id"] = *targetID
 	}
 	b, _ := json.Marshal(m)
 	return string(b)
@@ -69,13 +71,13 @@ func (i *Interactor) postGroupServiceMedia(ctx context.Context, chatID, actorID,
 }
 
 // userCard looks up a user for service-message attribution (zero card on miss).
-func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserCard {
+func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserReal {
 	if i.groups == nil {
-		return domain.UserCard{ID: id}
+		return domain.NewUser(id, domain.UserFlags{})
 	}
 	us, err := i.groups.UsersByIDs(ctx, []int64{id})
 	if err != nil || len(us) == 0 {
-		return domain.UserCard{ID: id}
+		return domain.NewUser(id, domain.UserFlags{})
 	}
 	return us[0]
 }
@@ -85,7 +87,7 @@ func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserCard {
 func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, error) {
 	var chatID int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "group", title, about, username, isPublic, creatorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeGroup, title, about, username, isPublic, creatorID)
 		if e != nil {
 			return e
 		}
@@ -112,7 +114,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	if i.invites != nil {
 		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), "", nil, false, nil)
 	}
-	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", i.userCard(ctx, creatorID), nil))
+	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", creatorID, nil))
 	return chatID, nil
 }
 
@@ -145,8 +147,8 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
 		return err
 	}
-	target := i.userCard(ctx, userID)
-	i.postGroupService(ctx, chatID, actorID, serviceText("add_user", i.userCard(ctx, actorID), &target))
+	targetID := userID
+	i.postGroupService(ctx, chatID, actorID, serviceText("add_user", actorID, &targetID))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
 	return nil
@@ -166,10 +168,10 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		return err // not a member — nothing to remove, no service message
 	}
 	if actorID == userID {
-		i.postGroupService(ctx, chatID, actorID, serviceText("leave", i.userCard(ctx, actorID), nil))
+		i.postGroupService(ctx, chatID, actorID, serviceText("leave", actorID, nil))
 	} else {
-		target := i.userCard(ctx, userID)
-		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", i.userCard(ctx, actorID), &target))
+		targetID := userID
+		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", actorID, &targetID))
 	}
 	// chat_removed бывает только у группы/канала — приватный диалог не
 	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
@@ -242,7 +244,7 @@ func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title,
 	// Смена названия — сервисное сообщение (tweb messageActionChatEditTitle); его
 	// fan-out заодно обновляет диалог у всех участников live.
 	if old.Title != "" && old.Title != title {
-		i.postGroupService(ctx, chatID, actorID, serviceText("edit_title", i.userCard(ctx, actorID), nil))
+		i.postGroupService(ctx, chatID, actorID, serviceText("edit_title", actorID, nil))
 	}
 	i.publishChatUpdate(ctx, chatID) // title/about/username изменились
 	return nil
@@ -268,7 +270,7 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 	}
 	// Фото едет медиа-полем сервисного сообщения (tweb messageActionChatEditPhoto
 	// несёт photo) — клиент рисует кликабельную круглую миниатюру под пилюлей.
-	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
+	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, serviceText("edit_photo", actorID, nil))
 	i.publishChatUpdate(ctx, chatID) // фото чата изменилось
 	return nil
 }
@@ -301,11 +303,11 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
 }
 
-func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
+func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	return i.groups.Card(ctx, chatID, viewerID)
 }
 
-func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
+func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
 	return i.groups.UsersByIDs(ctx, ids)
 }
 
@@ -416,7 +418,7 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 	// Вступление по инвайт-ссылке — отдельное сервисное сообщение (tweb
 	// messageActionChatJoinedByLink / ActionInviteUser «… по ссылке-приглашению»),
 	// а не add_user: добавил не админ, пользователь вошёл сам. Actor — вступивший.
-	i.postGroupService(ctx, link.ChatID, userID, serviceText("joined_by_link", i.userCard(ctx, userID), nil))
+	i.postGroupService(ctx, link.ChatID, userID, serviceText("joined_by_link", userID, nil))
 	return false, nil
 }
 

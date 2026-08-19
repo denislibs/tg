@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 
@@ -59,27 +60,16 @@ func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
 	return d
 }
 
-// peerRef — ссылка на чат внутри снимка (пересылка, кросс-чат-ответ, send-as)
-// как знаковый ключ пира; nil остаётся nil. Снимок общий для всех получателей,
-// поэтому зрителя здесь нет: ссылка на группу/канал одинакова для всех.
-func peerRef(chatID *int64) any {
-	if chatID == nil {
-		return nil
-	}
-	return domain.ToPeerID(*chatID, true)
-}
-
 // Payload-строители НЕ кладут ключ чата: он зависит от получателя и
 // приклеивается на выходе (withPeer / peerPayloads в updates_log.go).
-func messageUpdatePayload(m domain.Message) map[string]any {
+func (i *Interactor) messageUpdatePayload(ctx context.Context, m domain.Message) map[string]any {
+	i.hydrateMessagePeers(ctx, &m)
 	p := map[string]any{
 		"msg_id": m.ID, "seq": m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
 		"entities": m.Entities,
 		"media_id": m.MediaID, "created_at": m.CreatedAt,
-		"reply_to_id":      m.ReplyToID,
-		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_peer_id": peerRef(m.FwdFromChatID),
-		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
+		"reply_to_id":  m.ReplyToID,
 		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
 		"grouped_id":     m.GroupedID,
 		"thread_root_id": m.ThreadRootID,
@@ -100,6 +90,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	}
 	if m.ReplyMarkup != nil {
 		p["reply_markup"] = m.ReplyMarkup
+	}
+	// Атрибуция пересылки одним конструктором: автор в from_id:Peer, а не
+	// парой плоских fwd_from_user_id/fwd_from_peer_id, где второй у
+	// приватного источника нёс внутренний ключ chats.
+	if m.FwdFrom != nil {
+		p["fwd_from"] = m.FwdFrom
 	}
 	if m.Effect != "" {
 		p["effect"] = m.Effect
@@ -137,7 +133,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
 	// (имя автора + текст/лейбл), т.к. получатель может не иметь к нему доступа.
 	if m.ReplyToPeerID != nil {
-		p["reply_to_peer_id"] = domain.ToPeerID(*m.ReplyToPeerID, true)
+		// Ссылка едет только когда источник — группа/канал: у приватного чата
+		// публичного ключа пира нет. Снимок превью при этом на месте, поэтому
+		// бабл рисуется и без ссылки.
+		if m.ReplyToPeer != nil {
+			p["reply_to_peer_id"] = m.ReplyToPeer
+		}
 		p["reply_snapshot_name"] = m.ReplySnapshotName
 		p["reply_snapshot_text"] = m.ReplySnapshotText
 	}
@@ -157,6 +158,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 
 // sendAsJSON — представление отображаемого автора send-as (peer_id + снимок
 // title/photo). Реальный sender_id сериализуется отдельным полем и не теряется.
+//
+// Снимок остался ПЛОСКИМ сознательно: в оригинале это message.from_id:Peer
+// плюс тело чата в векторе chats того же ответа, то есть переделка формы
+// СООБЩЕНИЯ, а не пира. Внутреннего ключа здесь при этом нет — peer_id
+// знаковый (шаг B), — так что долга по адресации не остаётся; форма
+// приводится к оригиналу вместе с подсистемой сообщений.
 func sendAsJSON(m domain.Message) map[string]any {
 	s := map[string]any{"peer_id": domain.ToPeerID(*m.SendAsChatID, true)}
 	if m.SendAsTitle != "" {

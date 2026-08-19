@@ -89,10 +89,7 @@ func TestChannelFlow_HTTP(t *testing.T) {
 
 	// B joins by username → 200, and the card's member_count grows.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
-	var before struct {
-		MemberCount int `json:"member_count"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &before)
+	before := decodeCard(t, rec)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/join", tokenB, map[string]any{"username": "gonews"})
 	if rec.Code != http.StatusOK {
@@ -103,12 +100,9 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("card after join: %d %s", rec.Code, rec.Body.String())
 	}
-	var after struct {
-		MemberCount int `json:"member_count"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &after)
-	if after.MemberCount != before.MemberCount+1 {
-		t.Fatalf("member_count = %d; want %d", after.MemberCount, before.MemberCount+1)
+	after := decodeCard(t, rec)
+	if after.participants() != before.participants()+1 {
+		t.Fatalf("participants_count = %d; want %d", after.participants(), before.participants()+1)
 	}
 
 	// B (a subscriber) cannot post → 403.
@@ -707,15 +701,17 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	}
 	var full struct {
 		Messages []struct {
-			ID           int64  `json:"id"`
-			Text         string `json:"text"`
-			FwdFromMsgID *int64 `json:"fwd_from_msg_id"`
+			ID      int64  `json:"id"`
+			Text    string `json:"text"`
+			FwdFrom *struct {
+				ChannelPost int64 `json:"channel_post"`
+			} `json:"fwd_from"`
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &full)
 	var mirrorID int64
 	for _, m := range full.Messages {
-		if m.FwdFromMsgID != nil && *m.FwdFromMsgID == post.ID {
+		if m.FwdFrom != nil && m.FwdFrom.ChannelPost == post.ID {
 			mirrorID = m.ID
 		}
 	}
@@ -805,14 +801,14 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 
 	// Card reflects the link and the now-linked group is no longer a candidate.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
-	var card struct {
-		DiscussionPeerID  int64 `json:"discussion_peer_id"`
-		Signatures        bool  `json:"signatures"`
-		SignatureProfiles bool  `json:"signature_profiles"`
+	// Связанная группа — channelFull.linked_chat_id: id канала-обсуждения, как
+	// в схеме (положительный), плюс pFlags.has_link у краткой формы.
+	card := decodeCard(t, rec)
+	if card.linkedChatID() != gid {
+		t.Fatalf("linked_chat_id = %d; want %d", card.linkedChatID(), gid)
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.DiscussionPeerID != gid {
-		t.Fatalf("card discussion_chat_id = %d; want %d", card.DiscussionPeerID, gid)
+	if !card.chatFlag("has_link") {
+		t.Fatalf("pFlags.has_link не выставлен: %s", rec.Body.String())
 	}
 
 	// DELETE discussion unlinks.
@@ -821,9 +817,9 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 		t.Fatalf("unlink: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.DiscussionPeerID != 0 {
-		t.Fatalf("discussion still linked after unlink: %d", card.DiscussionPeerID)
+	card = decodeCard(t, rec)
+	if card.linkedChatID() != 0 || card.chatFlag("has_link") {
+		t.Fatalf("discussion still linked after unlink: %d", card.linkedChatID())
 	}
 
 	// sign_messages toggles signatures on the card.
@@ -831,17 +827,18 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("sign_messages: %d %s", rec.Code, rec.Body.String())
 	}
+	// Подписи постов — флаги краткой формы канала, а не отдельные поля карточки.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if !card.Signatures || !card.SignatureProfiles {
-		t.Fatalf("card signatures = %+v; want both true", card)
+	card = decodeCard(t, rec)
+	if !card.chatFlag("signatures") || !card.chatFlag("signature_profiles") {
+		t.Fatalf("card signatures = %+v; want both true", card.ChatFull.Chats[0].PFlags)
 	}
 
 	// signatures=false forces profiles off.
 	_ = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/sign_messages", tokenA, map[string]any{"signatures": false, "profiles": true})
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.Signatures || card.SignatureProfiles {
-		t.Fatalf("card signatures should be off: %+v", card)
+	card = decodeCard(t, rec)
+	if card.chatFlag("signatures") || card.chatFlag("signature_profiles") {
+		t.Fatalf("card signatures should be off: %+v", card.ChatFull.Chats[0].PFlags)
 	}
 }

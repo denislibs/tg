@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -120,7 +121,7 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	// Телефон в ряду показывается по правилу phone_number заблокированного
 	// относительно блокировщика (блок направлен в другую сторону и его не гасит).
 	rows, err := q.Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,''),
+		`SELECT `+userRealCols("u.")+`, b.created_at,
 		        CASE WHEN `+privacyAllowsSQL("u.id", "$1", "pr")+` THEN u.phone ELSE '' END
 		   FROM user_blocks b
 		   JOIN users u ON u.id = b.blocked_id
@@ -134,11 +135,18 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	defer rows.Close()
 	out := make([]domain.BlockedUser, 0)
 	for rows.Next() {
-		var u domain.BlockedUser
-		if err := rows.Scan(&u.UserID, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Phone); err != nil {
+		var s userRealScan
+		var blockedAt time.Time
+		var phone string
+		if err := rows.Scan(append(s.dest(), &blockedAt, &phone)...); err != nil {
 			return nil, 0, err
 		}
-		out = append(out, u)
+		u := s.user(true)
+		u.Phone = phone
+		out = append(out, domain.BlockedUser{
+			Blocked: domain.NewPeerBlocked(domain.NewPeerUser(u.ID), blockedAt),
+			User:    u,
+		})
 	}
 	return out, total, rows.Err()
 }
@@ -201,38 +209,36 @@ func (r *PrivacyRepo) VisibleMap(ctx context.Context, viewerID int64, ownerIDs [
 	return out, rows.Err()
 }
 
-func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.User, error) {
-	var u domain.User
+func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.UserRecord, error) {
+	var u domain.UserRecord
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT id, phone, username, COALESCE(first_name,''), COALESCE(last_name,''),
-		        display_name, COALESCE(bio,''), birthday, COALESCE(avatar_url,''), avatar_preview, phone_visibility,
-		        is_premium, COALESCE(emoji_status,'')
+		`SELECT id, COALESCE(phone,''), username, COALESCE(first_name,''), COALESCE(last_name,''),
+		        COALESCE(bio,''), birthday, avatar_media_id, avatar_preview,
+		        is_premium, is_verified, is_bot, deleted_at IS NOT NULL, COALESCE(emoji_status,'')
 		   FROM users WHERE id=$1`, id).
 		Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
-			&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility,
-			&u.IsPremium, &u.EmojiStatus)
+			&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview,
+			&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	return u, err
 }
 
-func (r *PrivacyRepo) IsVerified(ctx context.Context, id int64) (bool, error) {
-	var v bool
+// TTLPeriod — период автоудаления переписки зрителя с этим пиром: сначала
+// auto_delete_period самого приватного чата, а пока чата нет — глобальный
+// дефолт ЗРИТЕЛЯ, которым такой чат заведётся (chatsrepo делает ровно это при
+// создании приватного чата). Отдельных запросов два только на бумаге: COALESCE
+// внутри одного.
+func (r *PrivacyRepo) TTLPeriod(ctx context.Context, viewerID, targetID int64) (int, error) {
+	var ttl int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT is_verified FROM users WHERE id=$1`, id).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, domain.ErrNotFound
-	}
-	return v, err
-}
-
-func (r *PrivacyRepo) IsBot(ctx context.Context, id int64) (bool, error) {
-	var v bool
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT is_bot FROM users WHERE id=$1`, id).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return v, err
+		`SELECT COALESCE(
+		          (SELECT c.auto_delete_period FROM chats c
+		             JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+		             JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+		            WHERE c.type = 'private' LIMIT 1),
+		          (SELECT auto_delete_period FROM users WHERE id = $1),
+		          0)`, viewerID, targetID).Scan(&ttl)
+	return ttl, err
 }

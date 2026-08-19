@@ -68,7 +68,8 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 		t.Fatal("IsBlocked = false after Block")
 	}
 	list, total, err := r.BlockedList(ctx, owner, 0, 50)
-	if err != nil || total != 1 || len(list) != 1 || list[0].UserID != stranger {
+	if err != nil || total != 1 || len(list) != 1 || list[0].User.ID != stranger ||
+		domain.GetPeerID(list[0].Blocked.PeerID) != domain.PeerID(stranger) {
 		t.Fatalf("BlockedList = %+v, %d, %v", list, total, err)
 	}
 	if found, _ := r.Unblock(ctx, owner, stranger); !found {

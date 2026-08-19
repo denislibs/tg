@@ -22,8 +22,8 @@ func sendAsTestSetup(t *testing.T) (*Interactor, *store, *fakeGroupRepo, int64, 
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса", FirstName: "Алиса"}
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб", FirstName: "Боб"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
 	gid, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
@@ -48,22 +48,24 @@ func TestGetSendAs_ChannelAdminSeesChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSendAs: %v", err)
 	}
-	has := func(id int64) *domain.SendAsPeer {
+	// Вид личности читается из ТЕЛА пира (user против channel), а не из
+	// строкового kind: строки kind больше нет.
+	has := func(peer domain.PeerID) *domain.SendAsPeer {
 		for k := range peers {
-			if peers[k].PeerID == id {
+			if domain.GetPeerID(peers[k].Peer) == peer {
 				return &peers[k]
 			}
 		}
 		return nil
 	}
-	if has(7) == nil || has(7).Kind != "user" {
+	if me := has(domain.PeerID(7)); me == nil || me.User == nil || me.Chat != nil {
 		t.Fatalf("personal peer missing: %+v", peers)
 	}
-	ch := has(chID)
-	if ch == nil || ch.Kind != "channel" || ch.Title != "News" {
+	ch := has(domain.ToPeerID(chID, true))
+	if ch == nil || ch.Chat == nil || !ch.Chat.Broadcast() || ch.Chat.Title != "News" {
 		t.Fatalf("channel peer missing/wrong: %+v", peers)
 	}
-	if has(gid) == nil || has(gid).Kind != "group" {
+	if g := has(domain.ToPeerID(gid, true)); g == nil || g.Chat == nil || !g.Chat.Megagroup() {
 		t.Fatalf("anonymous group peer missing: %+v", peers)
 	}
 
@@ -72,7 +74,7 @@ func TestGetSendAs_ChannelAdminSeesChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSendAs(8): %v", err)
 	}
-	if len(peers8) != 1 || peers8[0].PeerID != 8 {
+	if len(peers8) != 1 || domain.GetPeerID(peers8[0].Peer) != domain.PeerID(8) {
 		t.Fatalf("member send-as = %+v, want [personal]", peers8)
 	}
 }
@@ -96,7 +98,7 @@ func TestSend_SendAs_AdminOK_OutsiderForbidden(t *testing.T) {
 		t.Fatalf("send_as title not hydrated: %q", msg.SendAsTitle)
 	}
 	// Serialization carries send_as while preserving the real sender.
-	p := messageUpdatePayload(msg)
+	p := in.messageUpdatePayload(ctx, msg)
 	sa, ok := p["send_as"].(map[string]any)
 	if !ok {
 		t.Fatalf("payload send_as missing: %+v", p)

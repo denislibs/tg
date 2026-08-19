@@ -43,6 +43,7 @@ type Interactor struct {
 	botAPI       BotAPIRepo
 	botMedia     BotMediaStore
 	botHTTP      BotHTTP
+	botAPIView   BotAPIView
 	translator   Translator
 	secret       SecretRepo
 	stickers     StickerAccess
@@ -149,6 +150,11 @@ func (i *Interactor) SetBotMedia(m BotMediaStore) { i.botMedia = m }
 // URL) SSRF-безопасным клиентом. Без него webhook не доставляется, sendMedia по
 // URL → ErrNotFound (file_id-путь продолжает работать).
 func (i *Interactor) SetBotHTTP(b BotHTTP) { i.botHTTP = b }
+
+// SetBotAPIView подключает конвертер ГРАНИЦЫ Bot API (реализуется delivery).
+// Без него апдейты ботам не отправляются вовсе: собрать чужой контракт нечем,
+// а выдумывать его в usecase — ровно то, ради устранения чего порт и заведён.
+func (i *Interactor) SetBotAPIView(v BotAPIView) { i.botAPIView = v }
 
 // SetTranslator подключает провайдер перевода (optional; без него перевод → 503).
 func (i *Interactor) SetTranslator(t Translator) { i.translator = t }
@@ -316,13 +322,14 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 		}
 		for _, d := range dialogs {
 			if d.Peer != nil && !vis[d.Peer.ID] {
-				d.Peer.AvatarURL = ""
-				d.Peer.AvatarPreview = nil // превью выдало бы скрытый аватар
+				// «Фото нет» — это СОСТОЯНИЕ (userProfilePhotoEmpty), а не
+				// пустая строка url рядом с непогашенным превью.
+				d.Peer.Photo = domain.NewUserProfilePhotoEmpty()
 			}
 		}
 	}
 	// Личное фото контакта: подменяем аватар приватного пира тем, что владелец
-	// задал сам (приоритет над настоящим avatar_url; поверх privacy-фильтра).
+	// задал сам (приоритет над настоящей аватаркой; поверх privacy-фильтра).
 	if i.contactPics != nil {
 		custom, err := i.contactPics.CustomPhotoMap(ctx, userID, peerIDs)
 		if err != nil {
@@ -332,11 +339,11 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 			if d.Peer == nil {
 				continue
 			}
-			if url, ok := custom[d.Peer.ID]; ok {
-				d.Peer.AvatarURL = url
-				// Превью настоящего аватара под личным фото не показываем;
-				// у личного фото своего stripped-превью нет.
-				d.Peer.AvatarPreview = nil
+			if mediaID, ok := custom[d.Peer.ID]; ok {
+				// pFlags.personal — ровно этот случай: фото задано ЗРИТЕЛЕМ,
+				// сам контакт о нём не знает. Превью настоящего аватара под
+				// личным фото не показываем — своего stripped у него нет.
+				d.Peer.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 			}
 		}
 	}

@@ -13,11 +13,11 @@ import (
 // authStub implements the Authenticator interface for middleware tests.
 type authStub struct{ okToken string }
 
-func (a authStub) Authenticate(_ context.Context, token string) (domain.User, int64, error) {
+func (a authStub) Authenticate(_ context.Context, token string) (domain.UserRecord, int64, error) {
 	if token != a.okToken {
-		return domain.User{}, 0, errors.New("bad token")
+		return domain.UserRecord{}, 0, errors.New("bad token")
 	}
-	return domain.User{ID: 7}, 3, nil
+	return domain.UserRecord{ID: 7}, 3, nil
 }
 
 func TestAuthMiddlewareTrustsPresetUser(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAuthMiddlewareTrustsPresetUser(t *testing.T) {
 
 	// Preset user, NO Authorization header → middleware must skip re-auth.
 	req := httptest.NewRequest(http.MethodGet, "/me", nil).
-		WithContext(WithUser(context.Background(), domain.User{ID: 42}, 9))
+		WithContext(WithUser(context.Background(), domain.UserRecord{ID: 42}, 9))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || seen != 42 {

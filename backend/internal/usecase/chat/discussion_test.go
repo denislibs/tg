@@ -202,8 +202,8 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 	ctx := context.Background()
 	// карточки комментаторов нужны CommentCounts: он отдаёт их клиенту под стек
 	// аватаров в футере «N комментариев»
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
-	fg.users[9] = domain.UserCard{ID: 9, DisplayName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
+	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Алиса"}
 	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
 	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
 		t.Fatalf("EnableDiscussion: %v", err)

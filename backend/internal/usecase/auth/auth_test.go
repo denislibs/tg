@@ -11,60 +11,56 @@ import (
 
 // fakeUserRepo upserts users by phone, assigning sequential ids.
 type fakeUserRepo struct {
-	byPhone     map[string]domain.User
+	byPhone     map[string]domain.UserRecord
 	nextID      int64
 	photos      map[int64][]domain.ProfilePhoto // by userID, newest last
 	nextPhotoID int64
 }
 
 func newFakeUserRepo() *fakeUserRepo {
-	return &fakeUserRepo{byPhone: map[string]domain.User{}, nextID: 1, photos: map[int64][]domain.ProfilePhoto{}, nextPhotoID: 1}
+	return &fakeUserRepo{byPhone: map[string]domain.UserRecord{}, nextID: 1, photos: map[int64][]domain.ProfilePhoto{}, nextPhotoID: 1}
 }
 
-func (r *fakeUserRepo) ByPhone(_ context.Context, phone string) (domain.User, error) {
+func (r *fakeUserRepo) ByPhone(_ context.Context, phone string) (domain.UserRecord, error) {
 	if u, ok := r.byPhone[phone]; ok {
 		return u, nil
 	}
-	return domain.User{}, domain.ErrNotFound
+	return domain.UserRecord{}, domain.ErrNotFound
 }
 
-func (r *fakeUserRepo) CreateWithName(_ context.Context, phone, first, last string) (domain.User, error) {
+func (r *fakeUserRepo) CreateWithName(_ context.Context, phone, first, last string) (domain.UserRecord, error) {
 	if _, ok := r.byPhone[phone]; ok {
-		return domain.User{}, domain.ErrConflict
+		return domain.UserRecord{}, domain.ErrConflict
 	}
-	u := domain.User{
-		ID: r.nextID, Phone: phone, FirstName: first, LastName: last,
-		DisplayName: domain.BuildDisplayName(first, last),
-	}
+	u := domain.UserRecord{ID: r.nextID, Phone: phone, FirstName: first, LastName: last}
 	r.nextID++
 	r.byPhone[phone] = u
 	return u, nil
 }
 
-func (r *fakeUserRepo) find(id int64) (string, domain.User, bool) {
+func (r *fakeUserRepo) find(id int64) (string, domain.UserRecord, bool) {
 	for phone, u := range r.byPhone {
 		if u.ID == id {
 			return phone, u, true
 		}
 	}
-	return "", domain.User{}, false
+	return "", domain.UserRecord{}, false
 }
 
-func (r *fakeUserRepo) GetByID(_ context.Context, id int64) (domain.User, error) {
+func (r *fakeUserRepo) GetByID(_ context.Context, id int64) (domain.UserRecord, error) {
 	if _, u, ok := r.find(id); ok {
 		return u, nil
 	}
-	return domain.User{}, domain.ErrNotFound
+	return domain.UserRecord{}, domain.ErrNotFound
 }
 
-func (r *fakeUserRepo) UpdateProfile(_ context.Context, id int64, first, last, bio string, birthday *time.Time, pv string) (domain.User, error) {
+func (r *fakeUserRepo) UpdateProfile(_ context.Context, id int64, first, last, bio string, birthday *time.Time) (domain.UserRecord, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	u.FirstName, u.LastName, u.Bio = first, last, bio
-	u.DisplayName = domain.BuildDisplayName(first, last)
-	u.Birthday, u.PhoneVisibility = birthday, pv
+	u.Birthday = birthday
 	r.byPhone[phone] = u
 	return u, nil
 }
@@ -78,15 +74,15 @@ func (r *fakeUserRepo) UsernameAvailable(_ context.Context, username string, exc
 	return true, nil
 }
 
-func (r *fakeUserRepo) SetUsername(_ context.Context, id int64, username *string) (domain.User, error) {
+func (r *fakeUserRepo) SetUsername(_ context.Context, id int64, username *string) (domain.UserRecord, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	if username != nil {
 		for _, other := range r.byPhone {
 			if other.ID != id && other.Username != nil && *other.Username == *username {
-				return domain.User{}, domain.ErrConflict
+				return domain.UserRecord{}, domain.ErrConflict
 			}
 		}
 	}
@@ -100,13 +96,13 @@ func (r *fakeUserRepo) PhoneInUse(_ context.Context, phone string, excludeID int
 	return ok && u.ID != excludeID, nil
 }
 
-func (r *fakeUserRepo) UpdatePhone(_ context.Context, id int64, phone string) (domain.User, error) {
+func (r *fakeUserRepo) UpdatePhone(_ context.Context, id int64, phone string) (domain.UserRecord, error) {
 	if other, ok := r.byPhone[phone]; ok && other.ID != id {
-		return domain.User{}, domain.ErrConflict
+		return domain.UserRecord{}, domain.ErrConflict
 	}
 	oldPhone, u, ok := r.find(id)
 	if !ok {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	delete(r.byPhone, oldPhone)
 	u.Phone = phone
@@ -123,44 +119,45 @@ func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
 	u.Phone = ""
 	u.Username = nil
 	u.FirstName, u.LastName = "Deleted", "Account"
-	u.DisplayName = "Deleted Account"
-	u.Bio, u.AvatarURL, u.EmojiStatus = "", "", ""
+	u.Deleted = true
+	u.Bio, u.PhotoID, u.EmojiStatus = "", nil, ""
 	// Re-key under a unique sentinel so multiple deleted users can coexist
 	// (the real store keys on id; the fake keys on phone).
 	r.byPhone["deleted:"+strconv.FormatInt(id, 10)] = u
 	return nil
 }
 
-func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.User, error) {
+func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.UserRecord, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	u.EmojiStatus = emoji
 	r.byPhone[phone] = u
 	return u, nil
 }
 
-func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.User, error) {
+func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.UserRecord, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	u.IsPremium = premium
 	r.byPhone[phone] = u
 	return u, nil
 }
 
-func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string, preview []byte) (domain.ProfilePhoto, error) {
+func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID, mediaID int64, videoMediaID *int64, preview []byte) (domain.ProfilePhoto, error) {
 	phone, u, ok := r.find(userID)
 	if !ok {
 		return domain.ProfilePhoto{}, domain.ErrNotFound
 	}
-	p := domain.ProfilePhoto{ID: r.nextPhotoID, UserID: userID, URL: url, VideoURL: videoURL, CreatedAt: time.Now()}
+	p := domain.ProfilePhoto{ID: r.nextPhotoID, UserID: userID, MediaID: mediaID, VideoMediaID: videoMediaID, CreatedAt: time.Now()}
 	r.nextPhotoID++
 	r.photos[userID] = append(r.photos[userID], p)
-	u.AvatarURL = url
-	u.AvatarPreview = preview
+	id := mediaID
+	u.PhotoID = &id
+	u.PhotoPreview = preview
 	r.byPhone[phone] = u
 	return p, nil
 }
@@ -174,10 +171,10 @@ func (r *fakeUserRepo) ListProfilePhotos(_ context.Context, userID int64) ([]dom
 	return out, nil
 }
 
-func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int64) (string, error) {
+func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int64) (*int64, error) {
 	phone, u, ok := r.find(userID)
 	if !ok {
-		return "", domain.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	list := r.photos[userID]
 	var deleted *domain.ProfilePhoto
@@ -191,14 +188,15 @@ func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int
 		kept = append(kept, p)
 	}
 	r.photos[userID] = kept
-	if deleted != nil && u.AvatarURL == deleted.URL {
-		u.AvatarURL = ""
+	if deleted != nil && u.PhotoID != nil && *u.PhotoID == deleted.MediaID {
+		u.PhotoID = nil
 		if len(kept) > 0 {
-			u.AvatarURL = kept[len(kept)-1].URL
+			id := kept[len(kept)-1].MediaID
+			u.PhotoID = &id
 		}
 		r.byPhone[phone] = u
 	}
-	return u.AvatarURL, nil
+	return u.PhotoID, nil
 }
 
 // fakeDeviceRepo stores devices keyed by token hash and id.
@@ -222,13 +220,13 @@ func (r *fakeDeviceRepo) Create(_ context.Context, userID int64, name, platform,
 	return d, nil
 }
 
-func (r *fakeDeviceRepo) SessionByTokenHash(_ context.Context, tokenHash string) (domain.User, int64, error) {
+func (r *fakeDeviceRepo) SessionByTokenHash(_ context.Context, tokenHash string) (domain.UserRecord, int64, error) {
 	r.calls++
 	d, ok := r.byHash[tokenHash]
 	if !ok {
-		return domain.User{}, 0, domain.ErrNotFound
+		return domain.UserRecord{}, 0, domain.ErrNotFound
 	}
-	var u domain.User
+	var u domain.UserRecord
 	for _, usr := range r.users.byPhone {
 		if usr.ID == d.UserID {
 			u = usr
@@ -721,8 +719,8 @@ func TestDeleteAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID after delete: %v", err)
 	}
-	if u.Phone != "" || u.Username != nil || u.DisplayName != "Deleted Account" ||
-		u.FirstName != "Deleted" || u.LastName != "Account" || u.AvatarURL != "" {
+	if u.Phone != "" || u.Username != nil || !u.Deleted ||
+		u.FirstName != "Deleted" || u.LastName != "Account" || u.PhotoID != nil {
 		t.Fatalf("account not anonymized: %+v", u)
 	}
 

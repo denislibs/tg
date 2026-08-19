@@ -112,14 +112,39 @@ func allPeerConstructors() []any {
 
 		// ── UserFull ─────────────────────────────────────────────────────────
 		func() UserFull {
-			f := NewUserFull(42, true)
+			f := NewUserFull(42, UserFullFlags{Blocked: true, PhoneCallsAvailable: true, VideoCallsAvailable: true})
 			f.About = "био"
 			f.TTLPeriod = 86400
 			b := NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC))
 			f.Birthday = &b
 			return f
 		}(),
-		NewUserFull(43, false),
+		NewUserFull(43, UserFullFlags{}),
+
+		// ── Списочные ответы ─────────────────────────────────────────────────
+		NewUsersUserFull(NewUserFull(42, UserFullFlags{}), NewUser(42, UserFlags{})),
+		NewPeerBlocked(NewPeerUser(42), date),
+		NewContactsBlockedSlice(1, []PeerBlocked{NewPeerBlocked(NewPeerUser(42), date)},
+			[]UserReal{NewUser(42, UserFlags{})}),
+		// Пустая страница: обязательные векторы едут [] , а не null.
+		NewContactsBlockedSlice(0, nil, nil),
+		NewContactsFound([]Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), date, ChannelFlags{Megagroup: true})},
+			[]UserReal{NewUser(42, UserFlags{})}),
+		NewContactsFound(nil, nil),
+
+		// ── messageFwdHeader (долг шага B) ───────────────────────────────────
+		// Пост канала: автор — сам канал, есть и channel_post, и saved_from_*.
+		MessageFwdHeader{
+			Underscore:  MessageFwdHeaderTag,
+			FromID:      NewPeerChannel(9),
+			Date:        unixSeconds(date),
+			ChannelPost: 120, SavedFromPeer: NewPeerChannel(9), SavedFromMsgID: 120,
+		},
+		// Скрытая атрибуция: только имя, ссылки на аккаунт нет вовсе.
+		MessageFwdHeader{Underscore: MessageFwdHeaderTag, FromName: "Аноним", Date: unixSeconds(date)},
+		// Приватный источник: автор есть, saved_from_* нет — публичного ключа
+		// у той строки chats не существует.
+		MessageFwdHeader{Underscore: MessageFwdHeaderTag, FromID: NewPeerUser(42), Date: unixSeconds(date)},
 
 		// ── Birthday ─────────────────────────────────────────────────────────
 		NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC)),
@@ -203,6 +228,8 @@ func allPeerConstructors() []any {
 		// Пустая карточка: обязательные about/горизонты/unread едут нулями,
 		// фото нет (см. шов про photoEmpty в докблоке ChannelFull).
 		NewChannelFull(9, "", nil, false),
+		NewMessagesChatFull(NewChannelFull(8, "о группе", nil, false),
+			NewChannel(8, "группа", NewChatPhotoEmpty(), date, ChannelFlags{Megagroup: true})),
 	}
 }
 
@@ -247,11 +274,13 @@ func peerConstructorTags() []string {
 		UserProfilePhotoEmptyTag, UserProfilePhotoTag,
 		UserStatusEmptyTag, UserStatusOnlineTag, UserStatusOfflineTag,
 		UserStatusRecentlyTag, UserStatusLastWeekTag, UserStatusLastMonthTag,
-		UserFullTag, BirthdayTag,
+		UserFullTag, BirthdayTag, UsersUserFullTag,
+		PeerBlockedTag, ContactsBlockedSliceTag, ContactsFoundTag,
+		MessageFwdHeaderTag,
 		ChatEmptyTag, ChatTag, ChatForbiddenTag, ChannelTag, ChannelForbiddenTag,
 		ChatPhotoEmptyTag, ChatPhotoTag,
 		ChatAdminRightsTag, ChatBannedRightsTag,
-		ChatFullTag, ChannelFullTag,
+		ChatFullTag, ChannelFullTag, MessagesChatFullTag,
 		ChatReactionsNoneTag, ChatReactionsAllTag, ChatReactionsSomeTag,
 		ReactionEmojiTag,
 	}

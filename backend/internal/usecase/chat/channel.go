@@ -11,7 +11,7 @@ import (
 func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error) {
 	var chatID int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "channel", title, about, username, isPublic, creatorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeChannel, title, about, username, isPublic, creatorID)
 		if e != nil {
 			return e
 		}
@@ -146,7 +146,7 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 }
 
 // SearchChats returns public chats matching q.
-func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) {
+func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
@@ -154,7 +154,7 @@ func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]do
 }
 
 // SimilarChannels рекомендует публичные каналы, похожие на chatID по аудитории.
-func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error) {
+func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 30
 	}
@@ -162,7 +162,7 @@ func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64
 }
 
 // SearchUsers returns users matching q.
-func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error) {
+func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}

@@ -190,12 +190,12 @@ func (r *BotAPIRepo) SetInline(ctx context.Context, botID int64, enabled bool, p
 	return err
 }
 
-// SetAvatar задаёт аватар бота (users.avatar_url = /media/<id>/content).
+// SetAvatar задаёт аватар бота (users.avatar_media_id).
 // avatar_preview у ботов не заполняется (как у аватарок до генерации превью) —
 // клиент фолбэкает на градиент; заполнение — при надобности, отдельной задачей.
 func (r *BotAPIRepo) SetAvatar(ctx context.Context, botID, mediaID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE users SET avatar_url = '/media/' || $2 || '/content' WHERE id = $1`, botID, mediaID)
+		`UPDATE users SET avatar_media_id = $2 WHERE id = $1`, botID, mediaID)
 	return err
 }
 
@@ -373,9 +373,7 @@ func (r *BotAPIRepo) WizardClear(ctx context.Context, userID int64) error {
 	return err
 }
 
-func (r *BotAPIRepo) UserBrief(ctx context.Context, id int64) (string, string, error) {
-	var username, firstName string
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT COALESCE(username, ''), first_name FROM users WHERE id = $1`, id).Scan(&username, &firstName)
-	return username, firstName, err
+func (r *BotAPIRepo) UserBrief(ctx context.Context, id int64) (domain.UserReal, error) {
+	return scanUserReal(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+userRealCols("u.")+` FROM users u WHERE u.id = $1`, id))
 }

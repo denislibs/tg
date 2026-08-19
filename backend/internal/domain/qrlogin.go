@@ -12,9 +12,9 @@ const (
 // While Status is QRPending only Platform/CreatedAt are set; once a logged-in
 // device confirms, Status becomes QRConfirmed and SessionToken+User are filled.
 type QRLogin struct {
-	Status       string    `json:"status"`
-	Platform     string    `json:"platform"`
-	SessionToken string    `json:"session_token,omitempty"`
-	User         User      `json:"user"`
-	CreatedAt    time.Time `json:"created_at"`
+	Status       string     `json:"status"`
+	Platform     string     `json:"platform"`
+	SessionToken string     `json:"session_token,omitempty"`
+	User         UserRecord `json:"user"`
+	CreatedAt    time.Time  `json:"created_at"`
 }

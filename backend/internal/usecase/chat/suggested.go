@@ -247,7 +247,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		// публикация одобренного поста сама не проставляет ThreadRootID (см.
 		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
 		// безусловно, тем же путём, что Send/ForwardMessages.
-		spOut := withPeer(messageUpdatePayload(msg), domain.ToPeerID(sp.ChatID, true))
+		spOut := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
 		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		payload, e := json.Marshal(spOut)
 		if e != nil {
@@ -260,7 +260,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		base := withPeer(messageUpdatePayload(msg), domain.ToPeerID(sp.ChatID, true))
+		base := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
 		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
 	}
@@ -291,7 +291,7 @@ func (i *Interactor) channelMediaType(ctx context.Context, mediaID int64) string
 func (i *Interactor) suggestedPostInfo(ctx context.Context, sp domain.SuggestedPost) domain.SuggestedPostInfo {
 	info := domain.SuggestedPostInfo{
 		ID: sp.ID, PeerID: domain.ToPeerID(sp.ChatID, true), AuthorID: sp.AuthorID,
-		AuthorName: i.userCard(ctx, sp.AuthorID).DisplayName,
+		AuthorName: i.userCard(ctx, sp.AuthorID).Title(),
 		Text:       sp.Text, Entities: sp.Entities, MediaID: sp.MediaID,
 		Status: sp.Status, CreatedAt: sp.CreatedAt.UnixMilli(),
 	}

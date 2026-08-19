@@ -19,7 +19,7 @@ func (i *Interactor) EnableDiscussion(ctx context.Context, channelID, actorID in
 	}
 	var gid int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, actorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeGroup, "Discussion", "", "", false, actorID)
 		if e != nil {
 			return e
 		}
@@ -51,7 +51,7 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	if err != nil {
 		return 0, err
 	}
-	if card.Type != "group" {
+	if card.Type != domain.ChatTypeGroup {
 		return 0, domain.ErrForbidden
 	}
 	if card.MyRole != domain.RoleCreator && card.MyRole != domain.RoleAdmin {
@@ -84,7 +84,7 @@ func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID in
 
 // DiscussionCandidates lists the groups the actor may link as a discussion group
 // (non-forum 'group' chats they own/administer that aren't already linked).
-func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
 	return i.groups.DiscussionCandidates(ctx, actorID)
 }
 
@@ -244,9 +244,9 @@ const RecentRepliersLimit = 3
 // зеркало — деталь реализации треда. Посты без зеркала просто не набирают
 // комментариев (out[postID] остаётся нулевым значением карты). When discussions
 // aren't enabled it returns empty maps (no error).
-func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserCard, error) {
+func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserReal, error) {
 	out := map[int64]int{}
-	empty := map[int64][]domain.UserCard{}
+	empty := map[int64][]domain.UserReal{}
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
 		return out, empty, nil
@@ -287,11 +287,11 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 	if err != nil {
 		return out, empty, err
 	}
-	byID := make(map[int64]domain.UserCard, len(cards))
+	byID := make(map[int64]domain.UserReal, len(cards))
 	for _, c := range cards {
 		byID[c.ID] = c
 	}
-	res := make(map[int64][]domain.UserCard, len(recent))
+	res := make(map[int64][]domain.UserReal, len(recent))
 	for root, users := range recent {
 		postID := postByRoot[root]
 		for _, u := range users {
@@ -299,7 +299,7 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 			// отдаём голый id, а не молча теряем комментатора из стека.
 			c, ok := byID[u]
 			if !ok {
-				c = domain.UserCard{ID: u}
+				c = domain.NewUser(u, domain.UserFlags{})
 			}
 			res[postID] = append(res[postID], c)
 		}

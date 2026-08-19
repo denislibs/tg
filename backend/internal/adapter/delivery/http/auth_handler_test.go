@@ -25,6 +25,24 @@ func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 	return usecaseauth.New(r, r, r, r, r, "12345", func(string, ...any) {})
 }
 
+// signedInUser — форма пользователя в ответах входа и в /me: пара
+// конструкторов схемы (users.userFull), где краткая карточка `user` лежит в
+// векторе users. Третьей формы «плоский пользователь» на проводе больше нет.
+type signedInUser struct {
+	UserFull struct {
+		Users []struct {
+			ID int64 `json:"id"`
+		} `json:"users"`
+	} `json:"user_full"`
+}
+
+func (u signedInUser) id() int64 {
+	if len(u.UserFull.Users) == 0 {
+		return 0
+	}
+	return u.UserFull.Users[0].ID
+}
+
 // loginViaHTTP проходит по HTTP полный вход: request_code → sign_in, а для
 // незнакомого номера ещё и sign_up. Возвращает bearer-токен и id пользователя.
 func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
@@ -54,17 +72,23 @@ func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
 			t.Fatalf("sign_up: %d %s", rec.Code, rec.Body.String())
 		}
 	}
+	// Пользователь в ответе — пара конструкторов схемы (users.userFull);
+	// краткая карточка `user` лежит в векторе users.
 	var out struct {
 		Token string `json:"token"`
 		User  struct {
-			ID int64 `json:"id"`
+			UserFull struct {
+				Users []struct {
+					ID int64 `json:"id"`
+				} `json:"users"`
+			} `json:"user_full"`
 		} `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.Token == "" || out.User.ID == 0 {
+	if out.Token == "" || len(out.User.UserFull.Users) != 1 || out.User.UserFull.Users[0].ID == 0 {
 		t.Fatalf("вход не выдал сессию: %s", rec.Body.String())
 	}
-	return out.Token, out.User.ID
+	return out.Token, out.User.UserFull.Users[0].ID
 }
 
 // newChatUC builds the chat usecase from the postgres adapters for delivery tests.
@@ -129,14 +153,12 @@ func TestAuthFlow_HTTP(t *testing.T) {
 		t.Fatalf("sign_in status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 	var out struct {
-		Token          string `json:"token"`
-		SignUpRequired bool   `json:"signup_required"`
-		User           struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
+		Token          string       `json:"token"`
+		SignUpRequired bool         `json:"signup_required"`
+		User           signedInUser `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.SignUpRequired || out.Token == "" || out.Token == token || out.User.ID != userID {
+	if out.SignUpRequired || out.Token == "" || out.Token == token || out.User.id() != userID {
 		t.Fatalf("повторный вход = %s", rec.Body.String())
 	}
 }
@@ -317,14 +339,21 @@ func TestSignUp_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("sign_up: %d %s", rec.Code, rec.Body.String())
 	}
+	// Пользователь в ответе — та же пара конструкторов, что у /me и /users/{id}.
 	var out struct {
 		Token string `json:"token"`
 		User  struct {
-			DisplayName string `json:"display_name"`
+			UserFull struct {
+				Users []struct {
+					FirstName string `json:"first_name"`
+					LastName  string `json:"last_name"`
+				} `json:"users"`
+			} `json:"user_full"`
 		} `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.Token == "" || out.User.DisplayName != "Денис У" {
+	users := out.User.UserFull.Users
+	if out.Token == "" || len(users) != 1 || users[0].FirstName != "Денис" || users[0].LastName != "У" {
 		t.Fatalf("sign_up ответ = %s", rec.Body.String())
 	}
 	// Токен одноразовый — 401.
@@ -445,13 +474,11 @@ func TestSignImport_HTTP(t *testing.T) {
 		t.Fatalf("sign_import: %d %s", rec.Code, rec.Body.String())
 	}
 	var out struct {
-		Token string `json:"token"`
-		User  struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
+		Token string       `json:"token"`
+		User  signedInUser `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.Token == "" || out.User.ID != userID {
+	if out.Token == "" || out.User.id() != userID {
 		t.Fatalf("sign_import ответ = %s", rec.Body.String())
 	}
 	// Одноразовость и неизвестный токен — 401.
@@ -581,12 +608,10 @@ func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
 	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusOK {
 		t.Fatalf("сессия владельца пострадала: %d %s", rec.Code, rec.Body.String())
 	}
-	var me struct {
-		ID int64 `json:"id"`
-	}
+	var me signedInUser
 	_ = json.Unmarshal(authedReq(t, h, http.MethodGet, "/me", token, nil).Body.Bytes(), &me)
-	if me.ID != userID {
-		t.Fatalf("/me вернул %d, ожидался %d", me.ID, userID)
+	if me.id() != userID {
+		t.Fatalf("/me вернул %d, ожидался %d", me.id(), userID)
 	}
 }
 

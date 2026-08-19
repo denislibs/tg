@@ -170,7 +170,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			// форвард сам не проставляет ThreadRootID (см. комментарий выше), так что
 			// это no-op без лишнего запроса — единый чокпоинт применяем всё равно,
 			// а не полагаемся на память о том, что этот путь «якобы безопасен».
-			fwdOut := messageUpdatePayload(msg)
+			fwdOut := i.messageUpdatePayload(ctx, msg)
 			fwdOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
 			if e != nil {
@@ -207,7 +207,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	}
 	if i.publisher != nil {
 		for idx, msg := range created {
-			base := messageUpdatePayload(msg)
+			base := i.messageUpdatePayload(ctx, msg)
 			base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, base)
 			if e != nil {

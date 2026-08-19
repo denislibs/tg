@@ -13,19 +13,20 @@ import (
 // action + suggested photo url travel as data). The client renders the pill,
 // the photo preview (media_id) and the recipient-only "Set Photo" button.
 type suggestPhotoAction struct {
-	Action   string `json:"action"` // always "suggest_photo"
-	ActorID  int64  `json:"actor_id"`
-	Actor    string `json:"actor"`
-	PhotoURL string `json:"photo_url"`
-	Accepted bool   `json:"accepted,omitempty"`
+	Action  string `json:"action"` // always "suggest_photo"
+	ActorID int64  `json:"actor_id"`
+	// PhotoID — id медиа предложенной аватарки. Прежде здесь лежал
+	// content-путь строкой, из которого id пришлось бы выпарсивать обратно.
+	PhotoID  int64 `json:"photo_id"`
+	Accepted bool  `json:"accepted,omitempty"`
 }
 
 // SuggestProfilePhoto posts a service message into the private chat between
 // fromUserID and toUserID offering a new profile photo. The suggested photo
-// rides on the message's media_id (preview) and photoURL is kept in the action
-// JSON so the recipient can accept it later. Mirrors Telegram
+// rides on the message's media_id (preview) and the same media id is kept in
+// the action JSON so the recipient can accept it later. Mirrors Telegram
 // photos.uploadContactProfilePhoto with suggest=true.
-func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUserID, mediaID int64, photoURL string) (domain.Message, error) {
+func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUserID, mediaID int64) (domain.Message, error) {
 	if fromUserID == toUserID {
 		return domain.Message{}, domain.ErrInvalid
 	}
@@ -33,12 +34,10 @@ func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUser
 	if err != nil {
 		return domain.Message{}, err
 	}
-	actor := i.userCard(ctx, fromUserID)
 	payload, _ := json.Marshal(suggestPhotoAction{
-		Action:   "suggest_photo",
-		ActorID:  fromUserID,
-		Actor:    actor.DisplayName,
-		PhotoURL: photoURL,
+		Action:  "suggest_photo",
+		ActorID: fromUserID,
+		PhotoID: mediaID,
 	})
 	mid := mediaID
 	return i.Send(ctx, SendInput{
@@ -84,10 +83,10 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if !ok {
 		return domain.ErrForbidden
 	}
-	if act.PhotoURL == "" {
+	if act.PhotoID <= 0 {
 		return domain.ErrInvalid
 	}
-	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, act.PhotoURL, ""); err != nil {
+	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, act.PhotoID, nil); err != nil {
 		return err
 	}
 

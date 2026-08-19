@@ -150,10 +150,20 @@ func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 		assertLiveFramePts(t, pub, uid, "chat_update", pts)
 		assertInDifference(t, in, uid, "chat_update", pts)
 	}
-	// Snapshot is absolute: the frame carries the new title.
+	// Снимок абсолютный: кадр несёт messages.chatFull с новым заголовком
+	// внутри краткой формы чата — ту же пару конструкторов, что и ручка карточки.
 	d := lastFrameFor(t, pub, member)
-	if d["title"] != "Renamed" {
-		t.Fatalf("chat_update title = %v; want Renamed", d["title"])
+	cf, _ := d["chat_full"].(map[string]any)
+	if cf == nil || cf["_"] != "messages.chatFull" {
+		t.Fatalf("chat_update без messages.chatFull: %v", d)
+	}
+	chats, _ := cf["chats"].([]any)
+	if len(chats) != 1 {
+		t.Fatalf("chat_update chats = %v", cf["chats"])
+	}
+	chat, _ := chats[0].(map[string]any)
+	if chat["_"] != "channel" || chat["title"] != "Renamed" {
+		t.Fatalf("chat_update chat = %v; want channel «Renamed»", chat)
 	}
 }
 

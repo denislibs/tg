@@ -62,7 +62,7 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		// тут реальный сбой и обязана откатить публикацию.
 		return nil, err
 	}
-	if typ != "channel" {
+	if typ != domain.ChatTypeChannel {
 		return nil, nil
 	}
 	disc, err := i.groups.GetDiscussion(ctx, post.ChatID)
@@ -130,11 +130,11 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// участников группы не инвалидируется — подписчики канала узнают о
 	// комментируемом посте только перезагрузив историю руками.
 	// thread_root_id у зеркала не нуждается в переводе (в отличие от Send):
-	// зеркало САМО корень треда, messageUpdatePayload(mirror) уже несёт
+	// зеркало САМО корень треда, i.messageUpdatePayload(ctx, mirror) уже несёт
 	// thread_root_id=nil.
 	mentioned := mentionedUserIDs(mirror.Entities)
 	recipients, ptsByUser, unreadByUser, err := i.fanOutNewMessage(
-		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, messageUpdatePayload(mirror), nil, mentioned)
+		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), nil, mentioned)
 	if err != nil {
 		return nil, err
 	}

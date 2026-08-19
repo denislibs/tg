@@ -28,7 +28,7 @@ type fakeRepo struct {
 	markErr       error
 	author        int64
 	authorErr     error
-	viewers       []domain.UserCard
+	viewers       []domain.UserReal
 	viewersErr    error
 	stats         domain.StoryStats
 	statsErr      error
@@ -82,7 +82,7 @@ func (f *fakeRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) erro
 	f.marked = true
 	return f.markErr
 }
-func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCard, error) {
+func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserReal, error) {
 	return f.viewers, f.viewersErr
 }
 func (f *fakeRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
@@ -315,7 +315,7 @@ func TestViewers_NonAuthor_Forbidden(t *testing.T) {
 }
 
 func TestViewers_Author_ReturnsList(t *testing.T) {
-	repo := &fakeRepo{author: 1, viewers: []domain.UserCard{{ID: 2}}}
+	repo := &fakeRepo{author: 1, viewers: []domain.UserReal{{ID: 2}}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	got, err := svc.Viewers(context.Background(), 5, 1)
 	if err != nil {
@@ -566,11 +566,11 @@ func TestFeed_AttachesAllowIDsForOwnSelectedOnly(t *testing.T) {
 	// allow must NOT be attached (we don't reveal others' audiences).
 	repo := &fakeRepo{
 		feedGroups: []domain.StoryGroup{
-			{Author: domain.UserCard{ID: 1}, Stories: []domain.StoryItem{
+			{Author: domain.UserReal{ID: 1}, Stories: []domain.StoryItem{
 				{ID: 10, Privacy: "selected"},
 				{ID: 11, Privacy: "contacts"},
 			}},
-			{Author: domain.UserCard{ID: 2}, Stories: []domain.StoryItem{
+			{Author: domain.UserReal{ID: 2}, Stories: []domain.StoryItem{
 				{ID: 20, Privacy: "selected"},
 			}},
 		},

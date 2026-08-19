@@ -19,7 +19,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, phone string) int64 {
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO users (phone, display_name) VALUES ($1,$1) RETURNING id`, phone).Scan(&id)
+		`INSERT INTO users (phone, first_name, display_name) VALUES ($1,$1,$1) RETURNING id`, phone).Scan(&id)
 	if err != nil {
 		t.Fatalf("seedUser(%s): %v", phone, err)
 	}
@@ -112,8 +112,10 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	if dialogs[0].Peer.ID != b {
 		t.Fatalf("peer id = %d; want %d", dialogs[0].Peer.ID, b)
 	}
-	if dialogs[0].Peer.DisplayName != "+711" {
-		t.Fatalf("peer display_name = %q; want %q", dialogs[0].Peer.DisplayName, "+711")
+	// Имени на проводе больше нет — есть first_name/last_name конструктора
+	// `user`, из которых имя собирает клиент.
+	if dialogs[0].Peer.FirstName != "+711" {
+		t.Fatalf("peer first_name = %q; want %q", dialogs[0].Peer.FirstName, "+711")
 	}
 	// And symmetrically, B's dialog should carry A as the peer.
 	bDialogs, err := repo.ListDialogs(ctx, b)

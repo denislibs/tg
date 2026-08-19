@@ -181,7 +181,7 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 	if err != nil {
 		return paidCharge{}, err
 	}
-	if typ != "group" {
+	if typ != domain.ChatTypeGroup {
 		return paidCharge{}, nil
 	}
 	s, err := i.groups.Settings(ctx, in.ChatID)

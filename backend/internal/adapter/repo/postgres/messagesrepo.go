@@ -315,8 +315,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 // messageActionPhoneCall, как в Telegram).
 func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at,
-		        u.id, COALESCE(NULLIF(u.first_name,''), u.display_name), COALESCE(u.avatar_url,'')
+		`SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, `+userRealCols("u.")+`
 		   FROM messages m
 		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
@@ -333,9 +332,14 @@ func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit 
 		var e domain.CallLogEntry
 		var senderID int64
 		var created time.Time
-		if err := rows.Scan(&e.ID, &e.ChatID, &senderID, &e.Text, &created, &e.PeerID, &e.PeerName, &e.PeerAvatar); err != nil {
+		var peer userRealScan
+		dest := []any{&e.ID, &e.ChatID, &senderID, &e.Text, &created}
+		dest = append(dest, peer.dest()...)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
+		e.Peer = peer.user(true)
+		e.PeerID = peer.id
 		e.Out = senderID == userID
 		e.Date = created.Format(time.RFC3339)
 		out = append(out, e)
@@ -718,9 +722,11 @@ func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) (
 					WHEN COALESCE(m.fwd_from_user_id, $2) = $2 THEN 'self'
 					ELSE 'user'
 				END AS kind,
+				-- Ключ пира ЗНАКОВЫЙ: группа/канал уходит в отрицательные,
+				-- пользователь остаётся собой (решение №1 разбора).
 				CASE
 					WHEN m.fwd_from_chat_id IS NULL THEN 0
-					WHEN fc.type IN ('group','channel') THEN m.fwd_from_chat_id
+					WHEN fc.type IN ('group','channel') THEN -m.fwd_from_chat_id
 					WHEN COALESCE(m.fwd_from_user_id, $2) = $2 THEN 0
 					ELSE m.fwd_from_user_id
 				END AS peer_id
@@ -739,11 +745,11 @@ func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) (
 			CASE WHEN g.kind='chat' THEN c.title
 			     WHEN g.kind='user' THEN COALESCE(NULLIF(u.first_name,''), u.display_name)
 			     ELSE '' END,
-			CASE WHEN g.kind='chat' THEN COALESCE('/media/'||c.photo_media_id||'/content','')
-			     WHEN g.kind='user' THEN u.avatar_url
-			     ELSE '' END
+			CASE WHEN g.kind='chat' THEN c.photo_media_id
+			     WHEN g.kind='user' THEN u.avatar_media_id
+			     END
 		FROM grouped g
-		LEFT JOIN chats c ON g.kind='chat' AND c.id = g.peer_id
+		LEFT JOIN chats c ON g.kind='chat' AND c.id = -g.peer_id
 		LEFT JOIN users u ON g.kind='user' AND u.id = g.peer_id
 		ORDER BY g.created_at DESC`, chatID, userID)
 	if err != nil {
@@ -753,16 +759,13 @@ func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) (
 	out := []domain.SavedDialog{}
 	for rows.Next() {
 		var d domain.SavedDialog
-		var title, photo *string
+		var title *string
 		if err := rows.Scan(&d.Kind, &d.PeerID, &d.Last.ID, &d.Last.Type, &d.Last.Text,
-			&d.Last.MediaID, &d.Last.CreatedAt, &d.Count, &title, &photo); err != nil {
+			&d.Last.MediaID, &d.Last.CreatedAt, &d.Count, &title, &d.PhotoID); err != nil {
 			return nil, err
 		}
 		if title != nil {
 			d.Title = *title
-		}
-		if photo != nil {
-			d.PhotoURL = *photo
 		}
 		out = append(out, d)
 	}

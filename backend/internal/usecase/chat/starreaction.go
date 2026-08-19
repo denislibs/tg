@@ -155,7 +155,10 @@ func (i *Interactor) StarReactionOf(ctx context.Context, chatID, messageID, user
 func hideAnonymousSenders(top []domain.StarReactionSender) []domain.StarReactionSender {
 	for idx := range top {
 		if top[idx].Anonymous {
-			top[idx].User = domain.UserCard{}
+			// Личность стирается, но КОНСТРУКТОР остаётся валидным: голая
+			// структура уехала бы на провод без дискриминатора `_`, и
+			// разбирающая сторона не смогла бы понять, что это вообще такое.
+			top[idx].User = domain.NewUser(0, domain.UserFlags{})
 		}
 	}
 	return top

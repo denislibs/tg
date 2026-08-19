@@ -25,9 +25,9 @@ type ContactsRepo interface {
 // батч-выборка для наложения на список контактов. Опционален: без него личные
 // фото просто не поддерживаются.
 type CustomPhotoRepo interface {
-	SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error
+	SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error
 	ClearCustomPhoto(ctx context.Context, ownerID, contactUserID int64) error
-	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): батчем —

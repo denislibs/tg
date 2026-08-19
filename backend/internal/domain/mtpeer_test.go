@@ -62,7 +62,7 @@ func TestUser_Unmarshal(t *testing.T) {
 		"status":{"_":"userStatusOnline","expires":1700000060},
 		"emoji_status_emoticon":"🔥"}`)
 
-	u, err := UnmarshalMTUser(in)
+	u, err := UnmarshalUser(in)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -100,14 +100,14 @@ func TestUser_Unmarshal(t *testing.T) {
 				t.Errorf("%s → %#v, %v; ждали nil, nil", raw, s, err)
 			}
 		}
-		m, err := UnmarshalMTUser([]byte(`{"_":"userSomethingNew","id":1}`))
+		m, err := UnmarshalUser([]byte(`{"_":"userSomethingNew","id":1}`))
 		if err != nil || m != nil {
 			t.Errorf("чужой конструктор User → %#v, %v", m, err)
 		}
 	})
 
 	t.Run("userEmpty", func(t *testing.T) {
-		m, err := UnmarshalMTUser([]byte(`{"_":"userEmpty","id":13}`))
+		m, err := UnmarshalUser([]byte(`{"_":"userEmpty","id":13}`))
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -118,7 +118,7 @@ func TestUser_Unmarshal(t *testing.T) {
 }
 
 // Разбор чата: вид чата это конструктор плюс флаги, а не строка.
-func TestMTChat_Unmarshal(t *testing.T) {
+func TestChat_Unmarshal(t *testing.T) {
 	in := []byte(`{"_":"channel","pFlags":{"megagroup":true,"forum":true,"broadcast":false,"gigagroup":true},
 		"id":8,"title":"наша группа","username":"our_group",
 		"photo":{"_":"chatPhoto","photo_id":901},
@@ -126,7 +126,7 @@ func TestMTChat_Unmarshal(t *testing.T) {
 		"admin_rights":{"_":"chatAdminRights","pFlags":{"ban_users":true,"manage_ranks":true}},
 		"default_banned_rights":{"_":"chatBannedRights","pFlags":{"send_media":true},"until_date":0}}`)
 
-	c, err := UnmarshalMTChat(in)
+	c, err := UnmarshalChat(in)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestMTChat_Unmarshal(t *testing.T) {
 	}
 
 	t.Run("чужой конструктор", func(t *testing.T) {
-		m, err := UnmarshalMTChat([]byte(`{"_":"channelSomethingNew","id":1}`))
+		m, err := UnmarshalChat([]byte(`{"_":"channelSomethingNew","id":1}`))
 		if err != nil || m != nil {
 			t.Errorf("→ %#v, %v; ждали nil, nil", m, err)
 		}

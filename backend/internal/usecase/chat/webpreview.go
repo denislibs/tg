@@ -56,7 +56,7 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 	defer saferun.Recover("chat.attachWebPreview")
 	ctx, cancel := context.WithTimeout(context.Background(), previewTimeout)
 	defer cancel()
-	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == "secret" {
+	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == domain.ChatTypeSecret {
 		return
 	}
 	wp, err := i.preview.Preview(ctx, url)

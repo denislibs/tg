@@ -25,16 +25,21 @@ import (
 // (промах кэша выглядит как валидный ответ из БД, а вот СТАРЫЙ блоб, прочитанный
 // НОВЫМ кодом, отдаёт нули). Шаг B (адресация) форму domain.Dialog не менял,
 // поэтому bump'а префикса ключа он не требует — переводом занят HTTP-слой,
-// который считает peer_id из уже закэшированных Type/ChatID/Peer. Шаг C, где
-// витрины переезжают на MTUser/MTChat, форму МЕНЯЕТ: тогда обязателен либо bump
-// префикса ключа («dialogs2:»), либо FLUSHDB в релизе.
+// который считает peer_id из уже закэшированных Type/ChatID/Peer.
+//
+// Шаг C форму ИЗМЕНИЛ: DialogPeer с display_name/avatar_url стал конструктором
+// `user`, а PhotoURL/PhotoPreview — парой PhotoID/PhotoPreview. Поэтому
+// префикс ключа поднят до «dialogs2:» — старые блобы просто перестают
+// находиться и дочитываются из БД. Именно bump, а не FLUSHDB: сброс всей базы
+// задел бы presence, очереди и QR-записи, не имеющие к форме диалога никакого
+// отношения.
 type DialogsCache struct{ client *goredis.Client }
 
 func NewDialogsCache(client *goredis.Client) *DialogsCache { return &DialogsCache{client: client} }
 
 const dialogsTTL = 15 * time.Second
 
-func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs:%d", userID) }
+func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs2:%d", userID) }
 
 func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.Dialog, bool) {
 	b, err := s.client.Get(ctx, dialogsKey(userID)).Bytes()

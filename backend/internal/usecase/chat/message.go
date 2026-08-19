@@ -34,7 +34,7 @@ func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) s
 			}
 		}
 	}
-	return i.userCard(ctx, orig.SenderID).DisplayName
+	return i.userCard(ctx, orig.SenderID).Title()
 }
 
 // replySnapshotText builds the cross-chat reply preview text: the original text
@@ -231,10 +231,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrForbidden
 		}
 		c := i.userCard(ctx, *in.ContactUserID)
-		if c.DisplayName == "" && c.Phone == "" {
+		if c.Title() == "" && c.Phone == "" {
 			return domain.Message{}, domain.ErrNotFound // такого аккаунта нет
 		}
-		name, phone := c.DisplayName, c.Phone
+		name, phone := c.Title(), c.Phone
 		contactName, contactPhone = &name, &phone
 	} else {
 		in.ContactUserID = nil
@@ -441,13 +441,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// messagesJSON/messageJSONOut в chat_handler.go), иначе один и тот же
 		// комментарий уезжает наружу то с id поста, то с id зеркала.
 		extRoot = i.externalThreadRoot(ctx, msg)
-		outMsg := messageUpdatePayload(msg)
+		outMsg := i.messageUpdatePayload(ctx, msg)
 		outMsg["thread_root_id"] = extRoot
 		// Платное медиа: получателям (не автору) в персональный апдейт кладём
 		// заблокированный вариант — без ссылок на контент, только blur+цена.
 		var outLocked map[string]any
 		if msg.PaidMediaPrice != nil {
-			outLocked = messageUpdatePayload(lockedPaidCopy(msg))
+			outLocked = i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
 			outLocked["thread_root_id"] = extRoot
 		}
 		// Веер по участникам чата (pts-лог + unread + упоминания), батчами: 3
@@ -653,7 +653,7 @@ func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID
 	if err != nil {
 		return time.Time{}, err
 	}
-	if kind != "private" {
+	if kind != domain.ChatTypePrivate {
 		return time.Time{}, domain.ErrNotFound
 	}
 	msg, err := i.msgs.GetByID(ctx, msgID)
@@ -854,7 +854,7 @@ func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) 
 	if err != nil {
 		return err
 	}
-	if typ != "private" {
+	if typ != domain.ChatTypePrivate {
 		return nil
 	}
 	members, err := i.chats.MemberIDs(ctx, in.ChatID)

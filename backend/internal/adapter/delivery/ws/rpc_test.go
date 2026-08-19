@@ -19,14 +19,14 @@ import (
 
 type fakeRPC struct{ gotUser int64 }
 
-func (f *fakeRPC) Dispatch(_ context.Context, user domain.User, _ int64, method, path string, body []byte) (int, []byte) {
+func (f *fakeRPC) Dispatch(_ context.Context, user domain.UserRecord, _ int64, method, path string, body []byte) (int, []byte) {
 	f.gotUser = user.ID
 	return 200, []byte(`{"ok":true,"m":"` + method + `","p":"` + path + `"}`)
 }
 
 func TestConnDispatchesRPCReq(t *testing.T) {
 	rpc := &fakeRPC{}
-	c := newConn(nil, nil, nil, nil, domain.User{ID: 77}, 5, plainCodec{}, rpc, nil)
+	c := newConn(nil, nil, nil, nil, domain.UserRecord{ID: 77}, 5, plainCodec{}, rpc, nil)
 	// Читаем c.send напрямую (без реального сокета).
 	f := Frame{T: "rpc_req", D: json.RawMessage(`{"req_id":"r1","method":"GET","path":"/dialogs","body":null}`)}
 	c.dispatch(context.Background(), f)

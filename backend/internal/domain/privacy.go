@@ -94,38 +94,10 @@ func (r PrivacyRule) Allows(viewerID int64, viewerIsContact bool) bool {
 	}
 }
 
-// BlockedUser — строка чёрного списка (обогащена профилем для рендера ряда).
+// BlockedUser — одна строка чёрного списка вместе с телом пира: репозиторий
+// читает их одним запросом, а витрина раскладывает по векторам blocked/users
+// ответа contacts.blockedSlice.
 type BlockedUser struct {
-	UserID      int64
-	Username    string
-	DisplayName string
-	AvatarURL   string
-	Phone       string
-}
-
-// UserProfile — карточка чужого профиля после применения privacy: скрытые поля
-// пустые/nil. IsBlocked — заблокировал ли viewer этого пользователя (для кнопки
-// «Разблокировать»); CallsAvailable — пройдёт ли call_request (tweb
-// phone_calls_available); CanMessage — пройдёт ли отправка сообщения.
-type UserProfile struct {
-	ID          int64
-	Username    *string
-	FirstName   string
-	LastName    string
-	DisplayName string
-	Bio         string
-	Birthday    *string // "DD.MM" или "DD.MM.YYYY"; nil когда скрыт/не задан
-	AvatarURL   string
-	// AvatarPreview — stripped-превью аватарки; скрывается тем же правилом
-	// privacy (profile_photo), что и AvatarURL.
-	AvatarPreview  []byte
-	Verified       bool
-	Premium        bool   // Telegram Premium subscriber (gold star badge)
-	EmojiStatus    string // unicode emoji shown after the name ("" when unset)
-	IsBot          bool
-	IsBlocked      bool
-	CallsAvailable bool
-	CanMessage     bool
-	Phone          string // пустой, когда скрыт
-	LastSeenOK     bool   // false — viewer не видит время захода (показывать «недавно»)
+	Blocked PeerBlocked
+	User    UserReal
 }

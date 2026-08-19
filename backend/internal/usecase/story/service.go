@@ -359,7 +359,7 @@ func (s *Service) RemoveReaction(ctx context.Context, storyID, userID int64) err
 
 // Viewers returns who has seen a story; only the story's author may read it
 // (domain.ErrForbidden otherwise).
-func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) ([]domain.UserCard, error) {
+func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) ([]domain.UserReal, error) {
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
 		return nil, err

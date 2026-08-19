@@ -19,11 +19,10 @@ const pinPreviewMaxRunes = 100
 // (tweb messageForReply): id/seq цели для ссылки-перехода, тип сообщения и
 // «имя» медиа с подписью — так клиент собирает фразу целиком, не заглядывая в
 // само сообщение (его может не быть в загруженном окне истории).
-func pinServiceText(actor domain.UserCard, m domain.Message) string {
+func pinServiceText(actorID int64, m domain.Message) string {
 	a := map[string]any{
 		"action":   "pin_message",
-		"actor_id": actor.ID,
-		"actor":    actor.DisplayName,
+		"actor_id": actorID,
 		"msg_id":   m.ID,
 		"msg_seq":  m.Seq,
 		"msg_type": m.Type,
@@ -146,7 +145,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		// подмешиваем той же ручкой, что и read-модель истории. Best-effort:
 		// без меты превью просто беднее (лейбл по типу).
 		_ = i.hydrateMedia(ctx, pinned)
-		i.postGroupService(ctx, chatID, userID, pinServiceText(i.userCard(ctx, userID), pinned[0]))
+		i.postGroupService(ctx, chatID, userID, pinServiceText(userID, pinned[0]))
 	}
 	return nil
 }

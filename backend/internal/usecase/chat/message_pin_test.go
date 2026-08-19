@@ -20,7 +20,7 @@ func pinTestSetup(t *testing.T) (*Interactor, *store, int64) {
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Дн"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Дн"}
 	chatID, err := in.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
@@ -60,8 +60,12 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 		t.Fatalf("SetPin: %v", err)
 	}
 	a := lastAction(t, s, chatID)
-	if a["action"] != "pin_message" || a["actor"] != "Дн" {
+	// Имени актора в экшене больше нет — только ссылка на него.
+	if a["action"] != "pin_message" || int64(a["actor_id"].(float64)) != 7 {
 		t.Fatalf("экшен = %v", a)
+	}
+	if _, ok := a["actor"]; ok {
+		t.Fatalf("имя актора уехало на провод: %v", a)
 	}
 	if int64(a["msg_id"].(float64)) != msg.ID || int64(a["msg_seq"].(float64)) != msg.Seq {
 		t.Fatalf("цель экшена = %v; want id=%d seq=%d", a, msg.ID, msg.Seq)

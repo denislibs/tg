@@ -23,21 +23,22 @@ var _ usecasechat.SearchRepo = (*SearchRepo)(nil)
 
 func NewSearchRepo(pool *pgxpool.Pool) *SearchRepo { return &SearchRepo{pool: pool} }
 
-func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) {
+func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) {
 	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, type, title, COALESCE(username,''), about, member_count, is_public
-		   FROM chats
-		  WHERE is_public = true AND (username ILIKE $1 OR title ILIKE $2)
-		  ORDER BY member_count DESC LIMIT $3`, like, like, limit)
+		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count,
+		        c.photo_media_id, pm.blur_preview
+		   FROM chats c LEFT JOIN media pm ON pm.id = c.photo_media_id
+		  WHERE c.is_public = true AND (c.username ILIKE $1 OR c.title ILIKE $2)
+		  ORDER BY c.member_count DESC LIMIT $3`, like, like, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.ChatCard
+	var out []domain.ChatRecord
 	for rows.Next() {
-		var c domain.ChatCard
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.IsPublic); err != nil {
+		var c domain.ChatRecord
+		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -45,19 +46,19 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]do
 	return out, rows.Err()
 }
 
-func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error) {
+func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, COALESCE(username,''), display_name, COALESCE(avatar_url,'')
-		   FROM users WHERE username ILIKE $1 OR display_name ILIKE $2 LIMIT $3`, like, like, limit)
+		`SELECT `+userRealCols("u.")+`
+		   FROM users u WHERE u.username ILIKE $1 OR u.display_name ILIKE $2 LIMIT $3`, like, like, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.UserCard
+	var out []domain.UserReal
 	for rows.Next() {
-		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.AvatarURL); err != nil {
+		u, err := scanUserReal(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -70,30 +71,31 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]do
 // каналы, сгруппированные по каналу и упорядоченные по числу общих подписчиков
 // (индекс idx_chat_members_user покрывает выборку «другие подписки юзера»).
 // count(*) OVER() — общее число похожих каналов до применения LIMIT.
-func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error) {
+func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count, c.is_public,
-		        count(*) OVER() AS total
+		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count,
+		        c.photo_media_id, pm.blur_preview, count(*) OVER() AS total
 		   FROM chat_members m
 		   JOIN chats c ON c.id = m.chat_id
+		   LEFT JOIN media pm ON pm.id = c.photo_media_id
 		  WHERE m.user_id IN (SELECT user_id FROM chat_members WHERE chat_id = $1)
 		    AND m.chat_id <> $1
 		    AND c.type = 'channel'
 		    AND c.is_public = true
 		    AND NOT EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = c.id AND me.user_id = $2)
-		  GROUP BY c.id
+		  GROUP BY c.id, pm.blur_preview
 		  ORDER BY count(DISTINCT m.user_id) DESC, c.member_count DESC
 		  LIMIT $3`, chatID, viewerID, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var out []domain.ChatCard
+	var out []domain.ChatRecord
 	total := 0
 	for rows.Next() {
-		var c domain.ChatCard
+		var c domain.ChatRecord
 		var t int
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.IsPublic, &t); err != nil {
+		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview, &t); err != nil {
 			return nil, 0, err
 		}
 		total = t

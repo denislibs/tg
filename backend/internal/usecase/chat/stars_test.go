@@ -226,8 +226,8 @@ func TestPaidMessages_ChargeCreditAndOwnerFree(t *testing.T) {
 	in.SetStars(fs)
 	in.SetPublisher(&fakePublisher{})
 	ctx := context.Background()
-	fg.users[1] = domain.UserCard{ID: 1, DisplayName: "Owner", FirstName: "Owner"}
-	fg.users[2] = domain.UserCard{ID: 2, DisplayName: "Member", FirstName: "Member"}
+	fg.users[1] = domain.UserReal{ID: 1, FirstName: "Owner"}
+	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Member"}
 
 	// Владелец = 1, участник = 2.
 	cid, err := in.CreateGroup(ctx, 1, "Paid", "", "", false, []int64{2})

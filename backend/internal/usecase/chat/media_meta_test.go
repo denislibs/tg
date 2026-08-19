@@ -29,7 +29,7 @@ func sendWithMedia(t *testing.T, kind string, mediaID int64, dims MediaDims, in 
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	p := messageUpdatePayload(msg)
+	p := i.messageUpdatePayload(ctx, msg)
 	frameMedia, _ := p["media"].(*domain.MessageMedia)
 	if frameMedia != msg.Media {
 		t.Fatalf("live-кадр отдаёт не то же вложение, что сообщение: %#v vs %#v", frameMedia, msg.Media)
@@ -267,7 +267,7 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 			if w, h := tc.msg.Media.Dimensions(); w != tc.w || h != tc.h {
 				t.Fatalf("hydrated dims = %dx%d, want %dx%d", w, h, tc.w, tc.h)
 			}
-			p := messageUpdatePayload(tc.msg)
+			p := in.messageUpdatePayload(ctx, tc.msg)
 			md, _ := p["media"].(*domain.MessageMedia)
 			if md == nil {
 				t.Fatalf("в кадре нет вложения: %#v", p["media"])

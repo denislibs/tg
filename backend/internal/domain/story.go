@@ -90,7 +90,7 @@ type StoryItem struct {
 
 // StoryGroup bundles an author's active stories for the feed read model.
 type StoryGroup struct {
-	Author  UserCard
+	Author  UserReal
 	Stories []StoryItem
 }
 

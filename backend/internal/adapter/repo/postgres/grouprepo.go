@@ -344,9 +344,14 @@ func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
 	return err
 }
 
-func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
+// Card — строка чата ГЛАЗАМИ зрителя: всё, из чего собираются оба
+// конструктора схемы (краткий `channel` и полный `channelFull`). Геометрия
+// фото приезжает из media: channelFull.chat_photo это ПОЛНОЕ Photo с лестницей
+// размеров — экран информации открывает аватарку в медиавьювере.
+func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	q := querier(ctx, r.pool)
-	var c domain.ChatCard
+	var c domain.ChatRecord
+	c.ViewerID = viewerID
 	var rights *int
 	var role *string
 	var muted *bool
@@ -354,22 +359,32 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	var allowed []byte
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
-		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
+		        pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
+		        COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
 		        COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
-		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new, c.charge_stars,
+		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed,
+		        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
+		        COALESCE((SELECT p.msg_id FROM pinned_messages p WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
+		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
+		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
 		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
 		   FROM chats c
+		   LEFT JOIN media pm ON pm.id = c.photo_media_id
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
-		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
-		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
-		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew, &c.Settings.ChargeStars,
+		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
+		&c.PhotoPreview, &c.PhotoW, &c.PhotoH, &c.PhotoSize,
+		&c.CreatorID, &c.MemberCount, &c.CreatedAt, &c.IsForum,
+		&c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
+		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
+		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
+		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
 		&role, &rights, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ChatCard{}, domain.ErrNotFound
+		return domain.ChatRecord{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.ChatCard{}, err
+		return domain.ChatRecord{}, err
 	}
 	if role != nil {
 		c.MyRole = *role
@@ -473,7 +488,7 @@ func (r *GroupRepo) IsForum(ctx context.Context, chatID int64) (bool, error) {
 
 // DiscussionCandidates lists non-forum 'group' chats where actorID is
 // creator/admin and which aren't already some channel's discussion group.
-func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT c.id, c.title, COALESCE(c.username,''), c.member_count
 		   FROM chats c
@@ -485,9 +500,9 @@ func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.ChatCard, 0)
+	out := make([]domain.ChatRecord, 0)
 	for rows.Next() {
-		var c domain.ChatCard
+		var c domain.ChatRecord
 		c.Type = "group"
 		if err := rows.Scan(&c.ID, &c.Title, &c.Username, &c.MemberCount); err != nil {
 			return nil, err
@@ -527,14 +542,16 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 		return out, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, type, COALESCE(title,''), photo_media_id FROM chats WHERE id = ANY($1)`, ids)
+		`SELECT c.id, c.type, COALESCE(c.title,''), c.photo_media_id, m.blur_preview
+		   FROM chats c LEFT JOIN media m ON m.id = c.photo_media_id
+		  WHERE c.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var b domain.ChatBrief
-		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID); err != nil {
+		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID, &b.PhotoPreview); err != nil {
 			return nil, err
 		}
 		out[b.ID] = b
@@ -542,20 +559,20 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 	return out, rows.Err()
 }
 
-func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
+func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
 	if len(ids) == 0 {
-		return []domain.UserCard{}, nil
+		return []domain.UserReal{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, COALESCE(username,''), display_name, COALESCE(first_name,''), COALESCE(avatar_url,''), avatar_preview, phone FROM users WHERE id = ANY($1)`, ids)
+		`SELECT `+userRealCols("u.")+` FROM users u WHERE u.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.UserCard
+	var out []domain.UserReal
 	for rows.Next() {
-		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.FirstName, &u.AvatarURL, &u.AvatarPreview, &u.Phone); err != nil {
+		u, err := scanUserReal(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)

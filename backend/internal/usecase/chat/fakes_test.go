@@ -1522,7 +1522,7 @@ func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]doma
 	var out []domain.ReactionUser
 	for userID, emojis := range r.s.reactions[messageID] {
 		for e := range emojis {
-			out = append(out, domain.ReactionUser{User: domain.UserCard{ID: userID}, Emoji: e})
+			out = append(out, domain.ReactionUser{User: domain.UserReal{ID: userID}, Emoji: e})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

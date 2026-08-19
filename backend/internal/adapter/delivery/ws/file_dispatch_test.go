@@ -35,7 +35,7 @@ func drainSend(t *testing.T, c *Conn) outFrame {
 
 func TestDispatchFileReqChunk(t *testing.T) {
 	c := &Conn{
-		user:    domain.User{ID: 42},
+		user:    domain.UserRecord{ID: 42},
 		userID:  42,
 		send:    make(chan outFrame, 4),
 		file:    fakeFileDisp{data: []byte("hello"), total: 5},

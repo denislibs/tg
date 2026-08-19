@@ -51,15 +51,21 @@ func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(ids))
 	for _, id := range ids {
-		online, lastSeen := false, int64(0)
 		allowed := true
 		if h.privacy != nil {
 			allowed = visible[id] || id == user.ID
 		}
-		if h.presence != nil && allowed {
-			online, lastSeen = h.presence.Snapshot(r.Context(), id)
+		var status domain.UserStatus = domain.NewUserStatusEmpty()
+		switch {
+		case h.presence == nil:
+			// Присутствие не подключено: о статусе НИЧЕГО не известно —
+			// userStatusEmpty, а не «offline с нулевым временем».
+		case !allowed:
+			status = domain.NewUserStatusRecently(false)
+		default:
+			status = domain.PresenceStatus(h.presence.Status(r.Context(), id))
 		}
-		out = append(out, map[string]any{"user_id": id, "online": online, "last_seen": lastSeen})
+		out = append(out, map[string]any{"user_id": id, "status": status})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"presence": out})
 }

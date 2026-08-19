@@ -187,7 +187,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
-		        COALESCE('/media/' || c.photo_media_id || '/content', ''), pm.blur_preview,
+		        c.photo_media_id, pm.blur_preview,
 		        m.last_read_seq, m.unread_count, m.unread_mentions_count, m.unread_reactions,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
@@ -198,7 +198,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name, lm.enc_body,
-		        peer.id, peer.display_name, peer.avatar_url, peer.avatar_preview, peer.is_verified, peer.is_premium, peer.emoji_status, peer.is_bot,
+		        -- LEFT JOIN LATERAL: у не-приватного чата собеседника нет, и ВСЕ
+		        -- колонки пира приходят NULL — обязательные приводим здесь.
+		        peer.id, COALESCE(peer.first_name,''), COALESCE(peer.last_name,''),
+		        peer.username, peer.avatar_media_id, peer.avatar_preview,
+		        COALESCE(peer.is_bot,false), COALESCE(peer.is_verified,false),
+		        COALESCE(peer.is_premium,false), COALESCE(peer.emoji_status,''),
+		        COALESCE(peer.deleted,false),
 		        c.auto_delete_period, COALESCE(ct.theme_id, '')
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
@@ -214,7 +220,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url, u.avatar_preview, u.is_verified, u.is_premium, u.emoji_status, u.is_bot
+		   SELECT u.id, u.first_name, u.last_name, u.username, u.avatar_media_id, u.avatar_preview,
+		          u.is_bot, u.is_verified, u.is_premium, u.emoji_status, u.deleted_at IS NOT NULL AS deleted
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -244,16 +251,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var senderName *string
 		var encBody []byte
 		var peerID *int64
-		var peerName *string
-		var peerAvatar *string
-		var peerAvatarPreview []byte
-		var peerVerified *bool
-		var peerPremium *bool
-		var peerEmojiStatus *string
-		var peerIsBot *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.PhotoPreview, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
+		var peer userRealScan
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName, &encBody,
-			&peerID, &peerName, &peerAvatar, &peerAvatarPreview, &peerVerified, &peerPremium, &peerEmojiStatus, &peerIsBot, &d.AutoDeletePeriod, &d.ThemeID); err != nil {
+			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
+			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
+			&d.AutoDeletePeriod, &d.ThemeID); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -277,27 +280,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			d.LastEncBody = encBody
 		}
 		if peerID != nil {
-			p := domain.DialogPeer{ID: *peerID}
-			if peerName != nil {
-				p.DisplayName = *peerName
-			}
-			if peerAvatar != nil {
-				p.AvatarURL = *peerAvatar
-			}
-			p.AvatarPreview = peerAvatarPreview
-			if peerVerified != nil {
-				p.Verified = *peerVerified
-			}
-			if peerPremium != nil {
-				p.Premium = *peerPremium
-			}
-			if peerEmojiStatus != nil {
-				p.EmojiStatus = *peerEmojiStatus
-			}
-			if peerIsBot != nil {
-				p.IsBot = *peerIsBot
-			}
-			d.Peer = &p
+			peer.id = *peerID
+			u := peer.user(true)
+			d.Peer = &u
 		}
 		out = append(out, d)
 	}

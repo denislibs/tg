@@ -264,11 +264,9 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}); err != nil {
 		return err
 	}
-	actor := i.userCard(ctx, actorID)
-	target := i.userCard(ctx, targetID)
 	text, _ := json.Marshal(map[string]any{
-		"action": "restrict", "actor_id": actor.ID, "actor": actor.DisplayName,
-		"user_id": target.ID, "user": target.DisplayName, "denied_rights": int(deniedRights),
+		"action": "restrict", "actor_id": actorID,
+		"user_id": targetID, "denied_rights": int(deniedRights),
 	})
 	i.postGroupService(ctx, chatID, actorID, string(text))
 	return nil

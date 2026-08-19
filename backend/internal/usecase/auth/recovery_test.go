@@ -240,7 +240,7 @@ func TestResetAccount_SchedulesAndWaits(t *testing.T) {
 		t.Fatalf("retry_after = %d, ожидалось около %d (неделя)", retryAfter, want)
 	}
 	// Аккаунт цел: сессии, номер, облачный пароль на месте.
-	if u, err := users.GetByID(ctx, userID); err != nil || u.Phone != "+79990020010" || u.DisplayName == "Deleted Account" {
+	if u, err := users.GetByID(ctx, userID); err != nil || u.Phone != "+79990020010" || u.Deleted {
 		t.Fatalf("аккаунт пострадал при планировании: %+v, %v", u, err)
 	}
 	if sessions, _ := i.ListSessions(ctx, userID); len(sessions) == 0 {
@@ -299,7 +299,7 @@ func TestResetAccount_ExecutesAfterWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID после сброса: %v", err)
 	}
-	if u.Phone != "" || u.DisplayName != "Deleted Account" {
+	if u.Phone != "" || !u.Deleted {
 		t.Fatalf("аккаунт не анонимизирован: %+v", u)
 	}
 	if sessions, _ := i.ListSessions(ctx, userID); len(sessions) != 0 {
@@ -423,7 +423,7 @@ func TestResetAccount_RecoveryAvailable(t *testing.T) {
 		t.Fatalf("сброс запланирован вопреки отказу: %v", err)
 	}
 	u, err := users.GetByID(ctx, userID)
-	if err != nil || u.Phone != "+79990020011" || u.DisplayName == "Deleted Account" {
+	if err != nil || u.Phone != "+79990020011" || u.Deleted {
 		t.Fatalf("аккаунт пострадал при отказе: %+v, %v", u, err)
 	}
 	if st, err := i.PasswordState(ctx, userID); err != nil || !st.Enabled {

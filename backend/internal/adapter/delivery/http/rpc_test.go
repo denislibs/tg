@@ -21,7 +21,7 @@ func TestRouterRPCReplaysWithInjectedUser(t *testing.T) {
 	})
 	d := NewRouterRPC(r)
 
-	status, body := d.Dispatch(context.Background(), domain.User{ID: 55}, 1, http.MethodGet, "/me", nil)
+	status, body := d.Dispatch(context.Background(), domain.UserRecord{ID: 55}, 1, http.MethodGet, "/me", nil)
 	if status != http.StatusOK {
 		t.Fatalf("status=%d body=%s", status, body)
 	}
@@ -30,7 +30,7 @@ func TestRouterRPCReplaysWithInjectedUser(t *testing.T) {
 	}
 
 	// Несуществующий путь → 404.
-	if s, _ := d.Dispatch(context.Background(), domain.User{ID: 55}, 1, http.MethodGet, "/nope", nil); s != http.StatusNotFound {
+	if s, _ := d.Dispatch(context.Background(), domain.UserRecord{ID: 55}, 1, http.MethodGet, "/nope", nil); s != http.StatusNotFound {
 		t.Fatalf("want 404, got %d", s)
 	}
 }

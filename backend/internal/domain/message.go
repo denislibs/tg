@@ -85,6 +85,13 @@ type Message struct {
 	// FwdFromName — скрытая атрибуция пересылки (privacy forwards): вместо
 	// ссылки на аккаунт хранится только имя автора текстом (tweb fwd_from.from_name).
 	FwdFromName *string
+	// FwdFrom — атрибуция пересылки в форме оригинала (messageFwdHeader), то
+	// есть ровно то, что уходит на провод. ВЫЧИСЛЯЕМОЕ поле (как Media и
+	// ReplyTo): в строке messages лежат плоские fwd_from_*, а собрать из них
+	// from_id:Peer можно только зная ВИД чата-источника — иначе приватный
+	// источник отдал бы внутренний ключ chats. Наполняется
+	// Interactor.HydrateMessagePeers; nil — пересылки нет.
+	FwdFrom *MessageFwdHeader
 	// IsDiscussionMirror — это сообщение является зеркалом поста канала в его
 	// группе обсуждения (Telegram: пост дублируется в связанную группу, а
 	// комментарии отвечают на зеркало). Отличает зеркало от обычной пересылки:
@@ -106,6 +113,11 @@ type Message struct {
 	ReplyToPeerID     *int64
 	ReplySnapshotName string
 	ReplySnapshotText string
+	// ReplyToPeer — тот же исходный чат в форме ССЫЛКИ НА ПИР (schema
+	// messageReplyHeader.reply_to_peer_id:Peer). ВЫЧИСЛЯЕМОЕ поле по той же
+	// причине, что и FwdFrom: у приватного источника ключом пира служит
+	// собеседник, а не строка chats. Наполняется HydrateMessagePeers.
+	ReplyToPeer Peer
 	// Media — вложение сообщения в форме оригинала (MTProto):
 	// messageMediaPhoto/messageMediaDocument с лестницей превью и атрибутами
 	// (см. domain/mtmedia.go). Наполняется read-моделью истории (в строке

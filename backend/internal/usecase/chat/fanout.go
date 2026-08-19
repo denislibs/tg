@@ -127,7 +127,7 @@ func (i *Interactor) publishMessageDelivery(
 	if i.publisher == nil {
 		return
 	}
-	base := messageUpdatePayload(msg)
+	base := i.messageUpdatePayload(ctx, msg)
 	base["thread_root_id"] = extRoot
 	pp, err := i.newPeerPayloads(ctx, msg.ChatID, base)
 	if err != nil {
@@ -135,7 +135,7 @@ func (i *Interactor) publishMessageDelivery(
 	}
 	ppLocked := pp
 	if msg.PaidMediaPrice != nil {
-		baseLocked := messageUpdatePayload(lockedPaidCopy(msg))
+		baseLocked := i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
 		baseLocked["thread_root_id"] = extRoot
 		if ppLocked, err = i.newPeerPayloads(ctx, msg.ChatID, baseLocked); err != nil {
 			return

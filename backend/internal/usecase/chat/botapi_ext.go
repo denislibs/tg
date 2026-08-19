@@ -190,13 +190,14 @@ func (i *Interactor) BotGetChat(ctx context.Context, bot domain.BotAccount, chat
 		return nil, err
 	}
 	out := map[string]any{"id": chatID, "type": typ}
-	if typ == "private" {
+	if typ == domain.ChatTypePrivate {
 		peer := i.otherMember(ctx, chatID, bot.BotID)
 		if peer != 0 {
-			username, name, _ := i.botAPI.UserBrief(ctx, peer)
-			out["first_name"] = name
-			if username != "" {
-				out["username"] = username
+			if u, e := i.botAPI.UserBrief(ctx, peer); e == nil {
+				out["first_name"] = u.FirstName
+				if u.Username != "" {
+					out["username"] = u.Username
+				}
 			}
 		}
 		return out, nil
@@ -224,11 +225,7 @@ func (i *Interactor) BotGetChatMember(ctx context.Context, bot domain.BotAccount
 	if !ok {
 		return nil, domain.ErrForbidden
 	}
-	username, name, _ := i.botAPI.UserBrief(ctx, userID)
-	user := map[string]any{"id": userID, "is_bot": false, "first_name": name}
-	if username != "" {
-		user["username"] = username
-	}
+	user := i.userBrief(ctx, userID)
 	status := "left"
 	if i.groups != nil {
 		if m, e := i.groups.GetMember(ctx, chatID, userID); e == nil {
@@ -359,7 +356,7 @@ func (i *Interactor) BotWebAppData(ctx context.Context, viewerID, botID int64, d
 	i.dispatchBotUpdate(ctx, bot, map[string]any{
 		"message": map[string]any{
 			"from": i.userBrief(ctx, viewerID),
-			"chat": map[string]any{"id": chatID, "type": "private"},
+			"chat": i.botChat(ctx, chatID),
 			"date": time.Now().Unix(),
 			"web_app_data": map[string]any{
 				"data":        data,

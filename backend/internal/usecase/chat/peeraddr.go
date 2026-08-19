@@ -31,11 +31,6 @@ import (
 // Отсюда правило: любой выход наружу знает ЗРИТЕЛЯ. Ни одна функция ниже не
 // умеет отвечать «peerId этого чата» без viewerID.
 
-const (
-	chatTypePrivate = "private"
-	chatTypeSaved   = "saved"
-)
-
 // chatAddress — чем один внутренний чат представляется наружу.
 //
 // members != nil означает «адрес зависит от зрителя» (приватный чат и
@@ -107,7 +102,7 @@ func (i *Interactor) peerAddress(ctx context.Context, chatID int64) (chatAddress
 		return chatAddress{}, err
 	}
 	a := chatAddress{chatID: chatID}
-	if typ == chatTypePrivate || typ == chatTypeSaved {
+	if typ == domain.ChatTypePrivate || typ == domain.ChatTypeSaved {
 		members, err := i.chats.MemberIDs(ctx, chatID)
 		if err != nil {
 			return chatAddress{}, err
@@ -184,9 +179,9 @@ func (i *Interactor) DialogPeerID(d domain.Dialog, viewerID int64) domain.PeerID
 func dialogAddress(d domain.Dialog, viewerID int64) chatAddress {
 	a := chatAddress{chatID: d.ChatID}
 	switch {
-	case d.Type == chatTypeSaved:
+	case d.Type == domain.ChatTypeSaved:
 		a.members = []int64{viewerID}
-	case d.Type == chatTypePrivate && d.Peer != nil:
+	case d.Type == domain.ChatTypePrivate && d.Peer != nil:
 		a.members = []int64{viewerID, d.Peer.ID}
 	}
 	return a

@@ -19,7 +19,7 @@ func newReplyTestInteractor() (*Interactor, *store, *fakeGroupRepo) {
 func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 	in, s, fg := newReplyTestInteractor()
 	ctx := context.Background()
-	fg.users[2] = domain.UserCard{ID: 2, DisplayName: "Автор Оригинала"}
+	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Автор Оригинала"}
 
 	// Исходный чат: автор 2 + отправитель 1 (у отправителя есть доступ).
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
@@ -46,10 +46,12 @@ func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 		t.Fatalf("snapshot text = %q", msg.ReplySnapshotText)
 	}
 	// В payload превью едет отдельными полями.
-	p := messageUpdatePayload(msg)
-	// Кросс-чат-ответ адресует ИСХОДНЫЙ чат знаковым ключом пира (чат < 0).
-	if p["reply_to_peer_id"] != domain.ToPeerID(src, true) {
-		t.Fatalf("payload reply_to_peer_id = %v", p["reply_to_peer_id"])
+	p := in.messageUpdatePayload(ctx, msg)
+	// Источник — ПРИВАТНЫЙ чат: публичного ключа пира у него нет, поэтому
+	// ссылки в кадре быть не должно (иначе наружу уехал бы внутренний chats.id
+	// — ровно то, что шаг B из провода убрал). Снимок превью при этом на месте.
+	if _, ok := p["reply_to_peer_id"]; ok {
+		t.Fatalf("приватный источник отдал ссылку на пир: %v", p["reply_to_peer_id"])
 	}
 	if p["reply_snapshot_name"] != "Автор Оригинала" || p["reply_snapshot_text"] != "исходный текст" {
 		t.Fatalf("payload snapshot = %v / %v", p["reply_snapshot_name"], p["reply_snapshot_text"])
@@ -59,7 +61,7 @@ func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 func TestReplyCrossChat_MediaSnapshotLabel(t *testing.T) {
 	in, s, fg := newReplyTestInteractor()
 	ctx := context.Background()
-	fg.users[2] = domain.UserCard{ID: 2, DisplayName: "Автор"}
+	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Автор"}
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
 	mediaID := int64(50)
 	s.seedMedia(mediaID, 2)
@@ -81,7 +83,7 @@ func TestReplyCrossChat_MediaSnapshotLabel(t *testing.T) {
 func TestReplyCrossChat_NoAccessForbidden(t *testing.T) {
 	in, s, fg := newReplyTestInteractor()
 	ctx := context.Background()
-	fg.users[2] = domain.UserCard{ID: 2, DisplayName: "Автор"}
+	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Автор"}
 
 	// Исходный чат между 2 и 4 — отправитель 1 НЕ участник.
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 2, 4)

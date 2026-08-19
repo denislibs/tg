@@ -95,7 +95,7 @@ func (i *Interactor) requireChannel(ctx context.Context, chatID int64) error {
 	if err != nil {
 		return err
 	}
-	if typ != "channel" {
+	if typ != domain.ChatTypeChannel {
 		return domain.ErrNotFound
 	}
 	return nil

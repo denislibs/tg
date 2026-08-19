@@ -7,6 +7,8 @@ package privacy
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
@@ -26,12 +28,18 @@ type Repo interface {
 	// решает, видит ли viewer его аспект key (правило + контактность + блок).
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
 
-	GetUser(ctx context.Context, id int64) (domain.User, error)
-	IsVerified(ctx context.Context, id int64) (bool, error)
-	IsBot(ctx context.Context, id int64) (bool, error)
+	GetUser(ctx context.Context, id int64) (domain.UserRecord, error)
+	// TTLPeriod — период автоудаления переписки ЗРИТЕЛЯ с этим пиром в
+	// секундах (схемное userFull.ttl_period): auto_delete_period приватного
+	// чата, а пока чата нет — глобальный дефолт зрителя, которым такой чат
+	// заведётся. 0 — выключено.
+	TTLPeriod(ctx context.Context, viewerID, targetID int64) (int, error)
 }
 
-type Interactor struct{ repo Repo }
+type Interactor struct {
+	repo     Repo
+	presence PresenceSnapshot // optional: присутствие для user.status
+}
 
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
 
@@ -145,45 +153,102 @@ func (i *Interactor) Blocked(ctx context.Context, userID int64, offset, limit in
 	return i.repo.BlockedList(ctx, userID, offset, limit)
 }
 
-// Profile собирает карточку чужого профиля для viewer: скрытые privacy-поля
-// вычищены, добавлены вычисленные can_message/calls_available (tweb UserFull).
-func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (domain.UserProfile, error) {
+// Profile собирает профиль пира для viewer в форме ОРИГИНАЛА: пара
+// `userFull` + `user` внутри users.userFull. Скрытые правилами приватности
+// поля просто не кладутся — «нельзя показать» это ОТСУТСТВИЕ ключа, а не
+// пустая строка и не отдельный флаг видимости.
+//
+// Здесь исчезает третья форма пользователя. Было три витрины (краткая в
+// батче, полная чужая, своя в /me) с границей не по той линии: bio и день
+// рождения жили в «своей», а verified/premium — в «полной чужой». Стало две,
+// как в схеме: verified/premium/bot/emoji_status — краткая карточка,
+// bio/birthday/blocked/звонки/ttl — полная.
+//
+// Флаги `self`/`contact`/`mutual_contact` кладёт вызывающий: чтобы посчитать
+// их, нужны обе стороны адресной книги, а Profile отвечает за приватность.
+func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (ProfileResult, error) {
 	u, err := i.repo.GetUser(ctx, targetID)
 	if err != nil {
-		return domain.UserProfile{}, err
+		return ProfileResult{}, err
 	}
-	p := domain.UserProfile{
-		ID: u.ID, Username: u.Username,
-		FirstName: u.FirstName, LastName: u.LastName, DisplayName: u.DisplayName,
-		Premium: u.IsPremium, EmojiStatus: u.EmojiStatus,
-	}
-	p.Verified, _ = i.repo.IsVerified(ctx, targetID)
-	p.IsBot, _ = i.repo.IsBot(ctx, targetID)
-	p.IsBlocked, _ = i.repo.IsBlocked(ctx, viewerID, targetID)
-
 	check := func(key domain.PrivacyKey) bool {
 		ok, err := i.Check(ctx, targetID, viewerID, key)
 		return err == nil && ok
 	}
-	if check(domain.PrivacyProfilePhoto) {
-		p.AvatarURL = u.AvatarURL
-		p.AvatarPreview = u.AvatarPreview
-	}
+
+	blocked, _ := i.repo.IsBlocked(ctx, viewerID, targetID)
+	calls := check(domain.PrivacyCalls)
+	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
+		Blocked: blocked,
+		// Звонок у нас один — правило PrivacyCalls решает и голосовой, и
+		// видео: отдельного правила под видео нет, поэтому оба флага схемы
+		// выставляются вместе, а не выдумывается разница.
+		PhoneCallsAvailable: calls,
+		VideoCallsAvailable: calls,
+	})
+	full.TTLPeriod, _ = i.repo.TTLPeriod(ctx, viewerID, targetID)
 	if check(domain.PrivacyAbout) {
-		p.Bio = u.Bio
-	}
-	if check(domain.PrivacyPhoneNumber) {
-		p.Phone = u.Phone
+		full.About = u.Bio
 	}
 	if u.Birthday != nil && check(domain.PrivacyBirthday) {
-		s := u.Birthday.Format("02.01")
-		if u.Birthday.Year() != domain.BirthdayNoYear {
-			s = u.Birthday.Format("02.01.2006")
-		}
-		p.Birthday = &s
+		// Одна форма дня рождения на весь провод — конструктор birthday. Прежде
+		// он ехал объектом в /me и строкой "DD.MM.YYYY" в /users/{id}.
+		b := domain.NewBirthday(*u.Birthday)
+		full.Birthday = &b
 	}
-	p.LastSeenOK = check(domain.PrivacyLastSeen)
-	p.CallsAvailable = check(domain.PrivacyCalls)
-	p.CanMessage = check(domain.PrivacyMessages)
-	return p, nil
+
+	// Краткая форма того же пользователя. Телефон — по правилу приватности, а
+	// не по снятому с пира phone_visibility: механизм на этот вопрос один.
+	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID}, i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto))
+	if check(domain.PrivacyPhoneNumber) {
+		brief.Phone = u.Phone
+	}
+	return ProfileResult{
+		Full:       domain.NewUsersUserFull(full, brief),
+		CanMessage: check(domain.PrivacyMessages),
+	}, nil
+}
+
+// ProfileResult — ответ профиля: КОНСТРУКТОР схемы плюс наши поля РЯДОМ с ним,
+// а не внутри.
+//
+// CanMessage («пройдёт ли отправка сообщения этому пиру») предмет у нас имеет —
+// правило приватности PrivacyMessages, — но схемного поля под него нет вовсе:
+// в оригинале «нельзя писать» выражается другими механизмами
+// (contact_require_premium, settings:PeerSettings), которых у нас не
+// существует. Класть своё поле ВНУТРЬ userFull означало бы подделать чужой
+// конструктор; штатный механизм для клиентских параметров
+// (schema/schema_additional_params.json) требует перегенерации типов на
+// фронте, а фронт — шаг D. Поэтому поле живёт на уровне ответа, как muted и
+// creator_id у карточки чата.
+type ProfileResult struct {
+	Full       domain.UsersUserFull
+	CanMessage bool
+}
+
+// PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого
+// момента (дедлайн TTL ключа присутствия), плюс время последнего захода.
+// Реализуется presence-менеджером; optional — без него статус не производится.
+type PresenceSnapshot interface {
+	Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time)
+}
+
+// SetPresence подключает источник присутствия (usecase/presence).
+func (i *Interactor) SetPresence(p PresenceSnapshot) { i.presence = p }
+
+// status — UserStatus пира глазами зрителя. Правило last_seen не пускает —
+// точного времени НЕТ ВОВСЕ: это userStatusRecently, то есть сама приватность
+// выражена ВЫБОРОМ КОНСТРУКТОРА, а не отдельным флагом last_seen_visible
+// рядом с обнулённым временем.
+func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible bool) domain.UserStatus {
+	if u.Deleted {
+		return domain.NewUserStatusEmpty()
+	}
+	if !lastSeenVisible {
+		return domain.NewUserStatusRecently(false)
+	}
+	if i.presence == nil {
+		return domain.NewUserStatusEmpty()
+	}
+	return domain.PresenceStatus(i.presence.Status(ctx, u.ID))
 }

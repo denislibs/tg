@@ -125,7 +125,7 @@ func TestDNPChannelFileUpEndToEnd(t *testing.T) {
 	cs := dnpSuite()
 	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
 
-	// auth-userID канала (fakeAuth{token:"good"} → domain.User{ID: 42}) должен
+	// auth-userID канала (fakeAuth{token:"good"} → domain.UserRecord{ID: 42}) должен
 	// совпасть с OwnerID медиа, иначе StreamUploads вернёт ErrForbidden.
 	repo := &upFakeRepo{m: domain.Media{ID: 5, OwnerID: 42, ObjectKey: "k", Size: 6, Mime: "application/octet-stream"}}
 	storage := &upFakeStorage{}

@@ -178,12 +178,7 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		for _, s := range g.Stories {
 			stories = append(stories, storyJSON(s))
 		}
-		out = append(out, map[string]any{
-			"author": map[string]any{
-				"id": g.Author.ID, "display_name": g.Author.DisplayName, "avatar_url": g.Author.AvatarURL,
-			},
-			"stories": stories,
-		})
+		out = append(out, map[string]any{"author": g.Author, "stories": stories})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": out})
 }
@@ -212,11 +207,7 @@ func (h *StoryHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(viewers))
-	for _, v := range viewers {
-		out = append(out, map[string]any{"id": v.ID, "display_name": v.DisplayName, "avatar_url": v.AvatarURL})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"viewers": out, "count": len(out)})
+	writeJSON(w, http.StatusOK, map[string]any{"viewers": viewers, "count": len(viewers)})
 }
 
 // Stats serves GET /stories/{storyID}/stats — view statistics for the author's

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -175,7 +176,7 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			botErr(w, http.StatusBadRequest, "sendMessage failed: "+err.Error())
 			return
 		}
-		botOK(w, botMessageResult(msg, chatID, text))
+		botOK(w, h.botMessageResult(r.Context(), msg, chatID, text))
 	case "sendPhoto", "sendDocument", "sendVideo":
 		h.sendMedia(w, r, bot, p, method)
 	case "editMessageText":
@@ -192,7 +193,7 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			botErr(w, botErrCode(err), "editMessageText failed")
 			return
 		}
-		botOK(w, botMessageResult(msg, chatID, text))
+		botOK(w, h.botMessageResult(r.Context(), msg, chatID, text))
 	case "editMessageReplyMarkup":
 		chatID, msgID := p.int("chat_id"), p.int("message_id")
 		if chatID == 0 || msgID == 0 {
@@ -204,7 +205,7 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			botErr(w, botErrCode(err), "editMessageReplyMarkup failed")
 			return
 		}
-		botOK(w, botMessageResult(msg, chatID, msg.Text))
+		botOK(w, h.botMessageResult(r.Context(), msg, chatID, msg.Text))
 	case "deleteMessage":
 		chatID, msgID := p.int("chat_id"), p.int("message_id")
 		if err := h.svc.BotDeleteMessage(r.Context(), bot, chatID, msgID); err != nil {
@@ -278,7 +279,7 @@ func (h *BotAPIHandler) sendMedia(w http.ResponseWriter, r *http.Request, bot do
 		botErr(w, botErrCode(err), method+" failed: "+err.Error())
 		return
 	}
-	res := botMessageResult(msg, chatID, msg.Text)
+	res := h.botMessageResult(r.Context(), msg, chatID, msg.Text)
 	if msg.MediaID != nil {
 		res[field] = map[string]any{"file_id": *msg.MediaID}
 	}
@@ -319,10 +320,13 @@ func (h *BotAPIHandler) File(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", info.ModTime, rc)
 }
 
-func botMessageResult(msg domain.Message, chatID int64, text string) map[string]any {
+// botMessageResult — ответ метода, отправившего сообщение. Вид чата берётся из
+// самого чата: раньше он был прибит к "private" независимо от настоящего типа,
+// и бот, пишущий в группу, получал в ответ свою же группу как приватный чат.
+func (h *BotAPIHandler) botMessageResult(ctx context.Context, msg domain.Message, chatID int64, text string) map[string]any {
 	res := map[string]any{
 		"message_id": msg.ID,
-		"chat":       map[string]any{"id": chatID, "type": "private"},
+		"chat":       botAPIView{}.Chat(chatID, h.svc.BotChatType(ctx, chatID), ""),
 		"text":       text,
 	}
 	// Разметка наружу — в плоской форме Bot API (см. botAPIEntities): ответ

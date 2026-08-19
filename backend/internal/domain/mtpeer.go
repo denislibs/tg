@@ -2,11 +2,12 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
 // Пиры и пользователи в форме оригинала — конструкторы схемы TL (MTProto), а не
-// плоские карточки `domain.User` / `domain.UserCard` / `domain.DialogPeer`.
+// плоские карточки (ушедшие `domain.User` / `UserCard` / `DialogPeer`).
 //
 // Фаза 0 перехода на TL (docs/readiness/tl-program.md): имена конструкторов и
 // полей берутся из схемы БУКВАЛЬНО (schema/schema.json), сериализация пока
@@ -37,14 +38,14 @@ import (
 //     flags-параметры — только когда есть;
 //   - у каждого конструктора СВОЯ структура, а не общий тип с omitempty.
 //
-// ── Про имена MTUser/MTChat ─────────────────────────────────────────────────
-// Объединения схемы называются User и Chat, но эти два имени в пакете пока
-// заняты уходящей моделью (`domain.User`, `domain.Chat`). Префикс MT —
-// строительные леса ровно до шага C программы, который снимает старые
-// структуры; тогда MTUser → User, MTChat → Chat одной механической заменой.
-// Имена конструкторов при этом уже окончательные: UserReal/ChatReal — тот же
-// приём, что у PhotoSizeReal и KeyboardButtonReal (конструктор, названный как
-// собственное объединение).
+// ── Про имена ───────────────────────────────────────────────────────────────
+// Объединения схемы называются User и Chat, и на шаге A эти имена были заняты
+// уходящей моделью — потому конструкторы носили временный префикс MT. Шаг C
+// старые структуры снял (строка таблицы теперь UserRecord/ChatRecord, и она
+// сознательно НЕ объект провода), поэтому леса убраны: User и Chat здесь —
+// объединения схемы. Имена конструкторов UserReal/ChatReal окончательные —
+// тот же приём, что у PhotoSizeReal и KeyboardButtonReal (конструктор,
+// названный как собственное объединение).
 //
 // ── Чего в модели НЕТ и почему ──────────────────────────────────────────────
 // Реквизиты MTProto-транспорта — предмета в нашей схеме доступа не имеют:
@@ -123,7 +124,7 @@ func (p PeerID) ToChatID() int64 {
 
 // Peer — объединение схемы: peerUser | peerChat | peerChannel. Это ССЫЛКА на
 // пир внутри других объектов (from_id, saved_peer_id, default_send_as), а не
-// сам пир: тело пользователя это MTUser, тело чата — MTChat.
+// сам пир: тело пользователя это User, тело чата — Chat.
 type Peer interface {
 	isPeer()
 	// Tag — дискриминатор `_` (predicate схемы).
@@ -228,9 +229,9 @@ func UnmarshalPeer(raw []byte) (Peer, error) {
 
 // ── User: userEmpty | user ──────────────────────────────────────────────────
 
-// MTUser — объединение схемы User: userEmpty | user. Про префикс MT см. шапку.
-type MTUser interface {
-	isMTUser()
+// User — объединение схемы: userEmpty | user.
+type User interface {
+	isUser()
 	// Tag — дискриминатор `_` (predicate схемы).
 	Tag() string
 	// PeerID — знаковый ключ (у пользователя совпадает с id).
@@ -253,7 +254,7 @@ type UserEmpty struct {
 	ID         int64  `json:"id"`
 }
 
-func (UserEmpty) isMTUser()        {}
+func (UserEmpty) isUser()          {}
 func (u UserEmpty) Tag() string    { return u.Underscore }
 func (u UserEmpty) PeerID() PeerID { return PeerID(u.ID) }
 
@@ -333,7 +334,7 @@ type UserReal struct {
 	EmojiStatus string `json:"emoji_status_emoticon,omitempty"`
 }
 
-func (UserReal) isMTUser()        {}
+func (UserReal) isUser()          {}
 func (u UserReal) Tag() string    { return u.Underscore }
 func (u UserReal) PeerID() PeerID { return PeerID(u.ID) }
 
@@ -345,6 +346,25 @@ func (u UserReal) Deleted() bool       { return u.PFlags["deleted"] }
 func (u UserReal) Bot() bool           { return u.PFlags["bot"] }
 func (u UserReal) Verified() bool      { return u.PFlags["verified"] }
 func (u UserReal) Premium() bool       { return u.PFlags["premium"] }
+
+// Title — «Имя Фамилия» одной строкой. НА ПРОВОД НЕ ИДЁТ: имя пира собирает
+// клиент из first_name/last_name (порт tweb PeerTitle), и денормализованного
+// display_name на проводе больше нет. Метод нужен там, где имя ЗАМОРАЖИВАЕТСЯ
+// в снимок и пира на принимающей стороне может не быть вовсе: скрытая
+// атрибуция пересылки (messageFwdHeader.from_name), снимок кросс-чат-ответа,
+// текст push-уведомления.
+func (u UserReal) Title() string {
+	return strings.TrimSpace(strings.TrimSpace(u.FirstName) + " " + strings.TrimSpace(u.LastName))
+}
+
+// ShortName — имя для компактных контекстов (префикс превью в списке чатов,
+// подпись «печатает»): первое имя, если задано, иначе полное.
+func (u UserReal) ShortName() string {
+	if u.FirstName != "" {
+		return u.FirstName
+	}
+	return u.Title()
+}
 
 // NewUser собирает краткую форму. Обязателен только id: всё остальное —
 // flags-параметры, и пустое значение означает ОТСУТСТВИЕ ключа.
@@ -387,8 +407,8 @@ func (u *UserReal) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UnmarshalMTUser разбирает объединение User по дискриминатору `_`.
-func UnmarshalMTUser(raw []byte) (MTUser, error) {
+// UnmarshalUser разбирает объединение User по дискриминатору `_`.
+func UnmarshalUser(raw []byte) (User, error) {
 	tag, ok, err := peekTag(raw)
 	if err != nil || !ok {
 		return nil, err
@@ -654,6 +674,30 @@ func (s *UserStatusLastMonth) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// PresenceStatus собирает статус из снимка присутствия: онлайн ли пир, до
+// какого момента (дедлайн TTL ключа присутствия) и когда заходил в последний
+// раз. ЕДИНСТВЕННОЕ место перевода — витрины и кадры зовут его, а не собирают
+// конструктор сами.
+//
+// Здесь и чинится дефект 1 разбора. Прежний `online: true` срока годности не
+// имел, и потерянный кадр присутствия оставлял человека онлайн НАВСЕГДА.
+// userStatusOnline несёт expires, и клиент сам деградирует online → offline по
+// таймеру (tweb appUsersManager.ts:880-889), даже не получив ни одного кадра.
+//
+// Пустой expires у онлайна был бы худшим из миров: ключ есть, срок нулевой —
+// клиент счёл бы пира просроченным немедленно. Поэтому онлайн без известного
+// дедлайна отдаётся как userStatusOffline с последним заходом: «точно был», а
+// не «точно есть».
+func PresenceStatus(online bool, expires, lastSeen time.Time) UserStatus {
+	if online && !expires.IsZero() {
+		return NewUserStatusOnline(expires)
+	}
+	if lastSeen.IsZero() {
+		return NewUserStatusEmpty()
+	}
+	return NewUserStatusOffline(lastSeen)
+}
+
 // UnmarshalUserStatus разбирает объединение UserStatus.
 func UnmarshalUserStatus(raw []byte) (UserStatus, error) {
 	tag, ok, err := peekTag(raw)
@@ -739,22 +783,48 @@ type UserFull struct {
 	ID         int64           `json:"id"`
 	// About — flags.1?string: наш users.bio.
 	About string `json:"about,omitempty"`
-	// TTLPeriod — flags.14?int: период автоудаления сообщений переписки в
-	// секундах (users.auto_delete_period); 0 — выключено.
+	// TTLPeriod — flags.14?int: период автоудаления сообщений переписки с этим
+	// пиром в секундах; 0 — выключено.
 	TTLPeriod int `json:"ttl_period,omitempty"`
 	// Birthday — flags2.5?Birthday (users.birthday). Видимость решает правило
 	// PrivacyBirthday: не пускает — витрина просто не кладёт ключ.
 	Birthday *Birthday `json:"birthday,omitempty"`
 }
 
+// UserFullFlags — булевы флаги userFull в форме, удобной для вызова.
+// Перечислены ровно те, у которых есть предмет:
+//
+//	Blocked            — пир в чёрном списке зрителя (user_blocks)
+//	PhoneCallsAvailable — зрителю можно звонить этому пиру (правило PrivacyCalls)
+//	VideoCallsAvailable — то же для видеозвонка: у нас это одно правило
+//
+// Остальные булевы флаги схемы (phone_calls_private, can_pin_message,
+// has_scheduled, voice_messages_forbidden, translations_disabled, stories_*,
+// contact_require_premium, read_dates_private, sponsored_enabled, …) предмета
+// у нас не имеют — ни колонки, ни механики за ними нет.
+type UserFullFlags struct {
+	Blocked             bool
+	PhoneCallsAvailable bool
+	VideoCallsAvailable bool
+}
+
+// userFullFlagNames — что keepPFlags пропускает в модель на разборе.
+var userFullFlagNames = []string{"blocked", "phone_calls_available", "video_calls_available"}
+
 // Blocked — пользователь в чёрном списке зрителя (user_blocks).
 func (f UserFull) Blocked() bool { return f.PFlags["blocked"] }
 
+// PhoneCallsAvailable/VideoCallsAvailable — пройдёт ли звонок (PrivacyCalls).
+func (f UserFull) PhoneCallsAvailable() bool { return f.PFlags["phone_calls_available"] }
+func (f UserFull) VideoCallsAvailable() bool { return f.PFlags["video_calls_available"] }
+
 // NewUserFull собирает полную форму. Обязателен только id.
-func NewUserFull(id int64, blocked bool) UserFull {
-	f := UserFull{Underscore: UserFullTag, ID: id}
-	setPFlag(&f.PFlags, "blocked", blocked)
-	return f
+func NewUserFull(id int64, f UserFullFlags) UserFull {
+	out := UserFull{Underscore: UserFullTag, ID: id}
+	setPFlag(&out.PFlags, "blocked", f.Blocked)
+	setPFlag(&out.PFlags, "phone_calls_available", f.PhoneCallsAvailable)
+	setPFlag(&out.PFlags, "video_calls_available", f.VideoCallsAvailable)
+	return out
 }
 
 func (f *UserFull) UnmarshalJSON(b []byte) error {
@@ -764,8 +834,126 @@ func (f *UserFull) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*f = UserFull(v)
-	f.PFlags = keepPFlags(v.PFlags, "blocked")
+	f.PFlags = keepPFlags(v.PFlags, userFullFlagNames...)
 	return nil
+}
+
+// ── users.userFull ──────────────────────────────────────────────────────────
+
+// UsersUserFullTag — дискриминатор `_` конструктора users.userFull.
+const UsersUserFullTag = "users.userFull"
+
+// users.userFull#3b6d152e full_user:UserFull chats:Vector<Chat>
+// users:Vector<User> = users.UserFull;
+//
+// ОТВЕТ на запрос профиля целиком: полная форма ВМЕСТЕ с краткой. Именно он
+// сводит наши три витрины пользователя к паре оригинала — краткий `user` едет
+// не отдельной ручкой, а тем же ответом, и вопрос «где живёт verified, а где
+// bio» перестаёт быть нашим: он решён схемой.
+//
+// Chats обязателен по схеме и едет пустым вектором: общих чатов мы не считаем
+// (см. common_chats_count в списке «нет предмета»).
+type UsersUserFull struct {
+	Underscore string     `json:"_"`
+	FullUser   UserFull   `json:"full_user"`
+	Chats      []Chat     `json:"chats"`
+	Users      []UserReal `json:"users"`
+}
+
+// NewUsersUserFull собирает ответ из пары. Краткая форма — того же пользователя.
+func NewUsersUserFull(full UserFull, user UserReal) UsersUserFull {
+	return UsersUserFull{
+		Underscore: UsersUserFullTag,
+		FullUser:   full,
+		Chats:      []Chat{},
+		Users:      []UserReal{user},
+	}
+}
+
+// ── Чёрный список ───────────────────────────────────────────────────────────
+
+// Дискриминаторы `_` списочных ответов подсистемы.
+const (
+	PeerBlockedTag          = "peerBlocked"
+	ContactsBlockedSliceTag = "contacts.blockedSlice"
+	ContactsFoundTag        = "contacts.found"
+)
+
+// peerBlocked#e8fd8014 peer_id:Peer date:int = PeerBlocked;
+//
+// СТРОКА чёрного списка — ссылка на пир и когда заблокирован, а не снимок
+// профиля. Профиль едет отдельным вектором users того же ответа: иначе внутри
+// строки блокировки жила бы вторая форма того же `user`.
+type PeerBlocked struct {
+	Underscore string `json:"_"`
+	PeerID     Peer   `json:"peer_id"`
+	Date       int    `json:"date"`
+}
+
+func NewPeerBlocked(peer Peer, date time.Time) PeerBlocked {
+	return PeerBlocked{Underscore: PeerBlockedTag, PeerID: peer, Date: unixSeconds(date)}
+}
+
+// contacts.blockedSlice#e1664194 count:int blocked:Vector<PeerBlocked>
+// chats:Vector<Chat> users:Vector<User> = contacts.Blocked;
+//
+// Ответ СТРАНИЦЫ чёрного списка: count — размер полного набора, blocked —
+// строки страницы, users — тела пиров.
+type ContactsBlockedSlice struct {
+	Underscore string        `json:"_"`
+	Count      int           `json:"count"`
+	Blocked    []PeerBlocked `json:"blocked"`
+	Chats      []Chat        `json:"chats"`
+	Users      []UserReal    `json:"users"`
+}
+
+func NewContactsBlockedSlice(count int, blocked []PeerBlocked, users []UserReal) ContactsBlockedSlice {
+	if blocked == nil {
+		blocked = []PeerBlocked{}
+	}
+	if users == nil {
+		users = []UserReal{}
+	}
+	return ContactsBlockedSlice{
+		Underscore: ContactsBlockedSliceTag,
+		Count:      count, Blocked: blocked, Chats: []Chat{}, Users: users,
+	}
+}
+
+// ── Поиск пиров ─────────────────────────────────────────────────────────────
+
+// contacts.found#b3134d9d my_results:Vector<Peer> results:Vector<Peer>
+// chats:Vector<Chat> users:Vector<User> = contacts.Found;
+//
+// Результаты поиска: СПИСОК ССЫЛОК на пиры плюс их тела. my_results — попадания
+// среди своих (контакты/свои чаты); у нас такого разделения выдачи нет, поэтому
+// вектор едет пустым, а не заполняется наугад.
+type ContactsFound struct {
+	Underscore string     `json:"_"`
+	MyResults  []Peer     `json:"my_results"`
+	Results    []Peer     `json:"results"`
+	Chats      []Chat     `json:"chats"`
+	Users      []UserReal `json:"users"`
+}
+
+func NewContactsFound(chats []Chat, users []UserReal) ContactsFound {
+	results := make([]Peer, 0, len(chats)+len(users))
+	for _, c := range chats {
+		results = append(results, NewPeer(c.PeerID()))
+	}
+	for _, u := range users {
+		results = append(results, NewPeerUser(u.ID))
+	}
+	if chats == nil {
+		chats = []Chat{}
+	}
+	if users == nil {
+		users = []UserReal{}
+	}
+	return ContactsFound{
+		Underscore: ContactsFoundTag,
+		MyResults:  []Peer{}, Results: results, Chats: chats, Users: users,
+	}
 }
 
 // ── Общие мелочи разбора ────────────────────────────────────────────────────

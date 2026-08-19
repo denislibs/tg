@@ -90,7 +90,7 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   UNION ALL
 		   -- avatars are visible to any authenticated user (the media id is some
 		   -- user's current avatar)
-		   SELECT 1 FROM users WHERE avatar_url = '/media/' || $1 || '/content'
+		   SELECT 1 FROM users WHERE avatar_media_id = $1
 		   UNION ALL
 		   -- chat photos are visible to that chat's members
 		   SELECT 1 FROM chats c

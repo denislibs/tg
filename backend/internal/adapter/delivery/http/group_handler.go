@@ -15,13 +15,15 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-// PresenceQuery reports whether a user is currently online. It's an optional
-// seam: when nil, the members endpoint reports everyone as offline and lets the
-// client overlay its own presence store.
+// PresenceQuery — присутствие пользователя. Опциональный шов: без него статус
+// не производится вовсе (userStatusEmpty — «неизвестно»), и клиент накладывает
+// собственный кэш присутствия.
+//
+// Status отдаёт ТРИ величины, а не две: третья — expires, дедлайн, после
+// которого клиент обязан считать пира офлайн сам. Без него потерянный кадр
+// оставлял человека онлайн навсегда.
 type PresenceQuery interface {
-	IsOnline(ctx context.Context, userID int64) (bool, error)
-	// Snapshot returns the user's online state and last-seen (ms; 0 when online).
-	Snapshot(ctx context.Context, userID int64) (online bool, lastSeen int64)
+	Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time)
 }
 
 type GroupHandler struct {
@@ -299,18 +301,17 @@ func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
+	// Ограничения едут конструктором chatBannedRights, а не сырым битмаском:
+	// срок (until_date) — обязательный параметр САМОГО конструктора, 0 значит
+	// «бессрочно». Перевод — MemberRestriction.ToChatBannedRights, и он
+	// единственный, кто знает про полярность (DeniedRights это уже запреты).
 	out := make([]map[string]any, 0, len(list))
 	for _, res := range list {
-		row := map[string]any{
+		out = append(out, map[string]any{
 			"user_id":       res.UserID,
-			"denied_rights": int(res.DeniedRights),
+			"banned_rights": res.ToChatBannedRights(),
 			"restricted_by": res.RestrictedBy,
-			"until_date":    nil,
-		}
-		if res.UntilDate != nil {
-			row["until_date"] = res.UntilDate.UTC().Format(time.RFC3339)
-		}
-		out = append(out, row)
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"restrictions": out})
 }
@@ -578,16 +579,23 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
+	// ОДИН ответ на карточку чата — messages.chatFull: полная карточка вместе
+	// с краткой формой самого чата. Ровно тот же объект уходит кадром
+	// chat_update (usecase/chat/chat_update.go): прежде эта ручка и кадр
+	// отдавали одну ChatCard в двух разных формах.
+	//
+	// Чего в конструкторах нет и почему: `my_role` исчезает (creator это
+	// pFlags.creator, admin — наличие admin_rights, решение №3), `is_public`
+	// выражено наличием username, `default_permissions` — инвертированными
+	// default_banned_rights, `history_for_new` — pFlags.hidden_prehistory с
+	// обратным знаком.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
-		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
-		"default_permissions": int(c.Settings.DefaultPerms), "slowmode_seconds": c.Settings.SlowmodeSeconds,
-		"reactions_mode": c.Settings.ReactionsMode, "reactions_allowed": c.Settings.ReactionsAllowed,
-		"history_for_new": c.Settings.HistoryForNew,
-		"charge_stars":    c.Settings.ChargeStars,
-		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
-		"discussion_peer_id": discussionPeer(c.DiscussionChatID),
-		"signatures":         c.Signatures, "signature_profiles": c.SignatureProfiles,
+		"peer_id":   domain.ToPeerID(c.ID, true),
+		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
+		// Наше, вне схемы: заглушен ли чат зрителем (per-user настройка
+		// уведомлений — своя подсистема) и кто создал (пока есть потребители).
+		"muted":      c.Muted,
+		"creator_id": c.CreatorID,
 	})
 }
 
@@ -645,11 +653,18 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(members))
 	for _, m := range members {
-		online := false
-		if h.presence != nil && (h.privacy == nil || seen[m.UserID] || m.UserID == viewer.ID) {
-			online, _ = h.presence.IsOnline(r.Context(), m.UserID)
+		// Скрытое правилом last_seen присутствие — это ДРУГОЙ конструктор
+		// (userStatusRecently), а не online:false: приватность выражена самим
+		// статусом, как в оригинале.
+		var status domain.UserStatus = domain.NewUserStatusEmpty()
+		switch {
+		case h.presence == nil:
+		case h.privacy != nil && !seen[m.UserID] && m.UserID != viewer.ID:
+			status = domain.NewUserStatusRecently(false)
+		default:
+			status = domain.PresenceStatus(h.presence.Status(r.Context(), m.UserID))
 		}
-		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "online": online})
+		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "status": status})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"members": out})
 }
@@ -671,22 +686,12 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Аватар скрывается по правилу profile_photo владельца.
-	viewer, _ := UserFromContext(r.Context())
-	photoOK := map[int64]bool{}
-	if h.privacy != nil && len(ids) > 0 {
-		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
-			photoOK = v
-		}
-	}
-	out := make([]map[string]any, 0, len(cards))
-	for _, c := range cards {
-		avatar, preview := c.AvatarURL, c.AvatarPreview
-		if h.privacy != nil && !photoOK[c.ID] && c.ID != viewer.ID {
-			avatar, preview = "", nil // превью гасится вместе со скрытым аватаром
-		}
-		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": avatar, "avatar_preview": preview})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+	//
+	// Краткая карточка — конструктор `user` целиком. Прежде витрина собирала
+	// свою пятёрку полей и теряла на этом `verified` (дефект 5 разбора): поле
+	// в базе было, в выдачу не попадало.
+	gatePhotos(r, h.privacy, cards)
+	writeJSON(w, http.StatusOK, map[string]any{"users": cards})
 }
 
 // isoOrNil renders a nullable timestamp as an ISO-8601 string, or nil in JSON

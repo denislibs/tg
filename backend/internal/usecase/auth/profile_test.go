@@ -29,18 +29,12 @@ func TestUpdateProfile(t *testing.T) {
 	if u.FirstName != "Denis" || u.LastName != "M" {
 		t.Fatalf("names not trimmed/stored: %+v", u)
 	}
-	if u.DisplayName != "Denis M" {
-		t.Fatalf("display name = %q, want %q", u.DisplayName, "Denis M")
-	}
-	if u.PhoneVisibility != domain.PhoneVisibilityContacts {
-		t.Fatalf("default phone visibility = %q", u.PhoneVisibility)
+	if u.Bio != "hi" || u.Birthday == nil || !u.Birthday.Equal(bday) {
+		t.Fatalf("bio/birthday not stored: %+v", u)
 	}
 
 	if _, err := i.UpdateProfile(ctx, id, ProfileInput{FirstName: "   "}); err == nil {
 		t.Fatal("expected error for blank first name")
-	}
-	if _, err := i.UpdateProfile(ctx, id, ProfileInput{FirstName: "A", PhoneVisibility: "bogus"}); err == nil {
-		t.Fatal("expected error for invalid phone visibility")
 	}
 }
 
@@ -68,26 +62,26 @@ func TestSetAvatarStrippedPreview(t *testing.T) {
 	pv := &fakePreviewer{preview: stripped}
 	i.SetAvatarPreviewer(pv)
 
-	u, err := i.SetAvatar(ctx, id, "/media/42/content")
+	u, err := i.SetAvatar(ctx, id, 42)
 	if err != nil {
 		t.Fatalf("SetAvatar: %v", err)
 	}
 	if pv.gotID != 42 {
 		t.Fatalf("previewer got media id %d, want 42", pv.gotID)
 	}
-	if !bytes.Equal(u.AvatarPreview, stripped) {
-		t.Fatalf("AvatarPreview = %v, want %v", u.AvatarPreview, stripped)
+	if !bytes.Equal(u.PhotoPreview, stripped) {
+		t.Fatalf("PhotoPreview = %v, want %v", u.PhotoPreview, stripped)
 	}
 
 	// Без превьюера аватарка ставится, превью пустое (старое поведение не ломается).
 	i2, _, _, _ := newInteractor()
 	id2 := seedUser(t, i2, "+79990000032")
-	u2, err := i2.SetAvatar(ctx, id2, "/media/43/content")
+	u2, err := i2.SetAvatar(ctx, id2, 43)
 	if err != nil {
 		t.Fatalf("SetAvatar without previewer: %v", err)
 	}
-	if u2.AvatarURL != "/media/43/content" || u2.AvatarPreview != nil {
-		t.Fatalf("without previewer: url=%q preview=%v", u2.AvatarURL, u2.AvatarPreview)
+	if u2.PhotoID == nil || *u2.PhotoID != 43 || u2.PhotoPreview != nil {
+		t.Fatalf("without previewer: photo=%v preview=%v", u2.PhotoID, u2.PhotoPreview)
 	}
 }
 

@@ -168,7 +168,7 @@ func TestDialogPeerID_MatchesResolver(t *testing.T) {
 		name   string
 		dialog domain.Dialog
 	}{
-		{"приватный", domain.Dialog{ChatID: privateID, Type: "private", Peer: &domain.DialogPeer{ID: b}}},
+		{"приватный", domain.Dialog{ChatID: privateID, Type: "private", Peer: &domain.UserReal{ID: b}}},
 		{"избранное", domain.Dialog{ChatID: savedID, Type: "saved"}},
 		{"группа", domain.Dialog{ChatID: groupID, Type: "group"}},
 	}

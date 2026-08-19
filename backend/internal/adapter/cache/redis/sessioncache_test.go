@@ -28,7 +28,7 @@ func TestSessionCache_RoundTrip(t *testing.T) {
 		t.Fatalf("miss = %v, %v; want nil,nil", got, err)
 	}
 
-	want := domain.Session{User: domain.User{ID: 7, Phone: "+700", DisplayName: "Bob"}, DeviceID: 3}
+	want := domain.Session{User: domain.UserRecord{ID: 7, Phone: "+700", FirstName: "Bob"}, DeviceID: 3}
 	if err := cache.SetSession(ctx, "h1", want, time.Minute); err != nil {
 		t.Fatalf("set: %v", err)
 	}

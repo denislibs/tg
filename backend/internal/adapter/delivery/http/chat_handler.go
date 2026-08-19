@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -237,7 +236,7 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(list))
 	for _, d := range list {
 		out = append(out, map[string]any{
-			"kind": d.Kind, "peer_id": d.PeerID, "title": d.Title, "photo_url": d.PhotoURL,
+			"kind": d.Kind, "peer_id": d.PeerID, "title": d.Title, "photo_id": d.PhotoID,
 			"count": d.Count,
 			"last_message": map[string]any{
 				"type": d.Last.Type, "text": d.Last.Text,
@@ -258,8 +257,7 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 func dialogRow(d domain.Dialog, peer domain.PeerID) map[string]any {
 	row := map[string]any{
 		"peer_id": peer, "type": d.Type,
-		"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
-		"photo_preview": d.PhotoPreview,
+		"title": d.Title, "photo": d.ChatPhoto(), "username": d.Username,
 		"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
 		"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
 		"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
@@ -280,12 +278,10 @@ func dialogRow(d domain.Dialog, peer domain.PeerID) map[string]any {
 		row["last_message"] = lastMsg
 	}
 	if d.Peer != nil {
-		row["peer"] = map[string]any{
-			"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
-			"avatar_preview": d.Peer.AvatarPreview,
-			"verified":       d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
-			"is_bot": d.Peer.IsBot,
-		}
+		// Собеседник приватного чата — конструктор `user` целиком: имя,
+		// аватарка и флаги (verified/premium/bot) живут ВНУТРИ него, а не
+		// рассыпаны плоскими ключами рядом.
+		row["peer"] = *d.Peer
 	}
 	return row
 }
@@ -1808,13 +1804,7 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(users))
 	for _, ru := range users {
-		out = append(out, map[string]any{
-			"user_id":    ru.User.ID,
-			"name":       ru.User.DisplayName,
-			"username":   ru.User.Username,
-			"avatar_url": ru.User.AvatarURL,
-			"emoji":      ru.Emoji,
-		})
+		out = append(out, map[string]any{"user": ru.User, "emoji": ru.Emoji})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
@@ -1842,15 +1832,24 @@ func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load send-as")
 		return
 	}
-	out := make([]map[string]any, 0, len(peers))
+	// Раскладка channels.sendAsPeers: ССЫЛКИ на пиры отдельно, их тела —
+	// векторами users/chats. Вид личности («это канал, а это я сам») читается
+	// из конструктора тела, а не из строкового kind рядом.
+	refs := make([]map[string]any, 0, len(peers))
+	users := make([]domain.UserReal, 0, len(peers))
+	chats := make([]domain.Chat, 0, len(peers))
 	for _, p := range peers {
-		e := map[string]any{"peer_id": p.PeerID, "kind": p.Kind, "title": p.Title}
-		if p.PhotoID != nil {
-			e["avatar_url"] = fmt.Sprintf("/media/%d/content", *p.PhotoID)
+		refs = append(refs, map[string]any{"_": "sendAsPeer", "peer": p.Peer})
+		if p.User != nil {
+			users = append(users, *p.User)
 		}
-		out = append(out, e)
+		if p.Chat != nil {
+			chats = append(chats, *p.Chat)
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peers": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"_": "channels.sendAsPeers", "peers": refs, "chats": chats, "users": users,
+	})
 }
 
 func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
@@ -1975,12 +1974,7 @@ func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
 	out := make([]map[string]any, 0, len(top))
 	for _, s := range top {
 		out = append(out, map[string]any{
-			"user_id":    s.User.ID,
-			"name":       s.User.DisplayName,
-			"username":   s.User.Username,
-			"avatar_url": s.User.AvatarURL,
-			"stars":      s.Stars,
-			"anonymous":  s.Anonymous,
+			"user": s.User, "stars": s.Stars, "anonymous": s.Anonymous,
 		})
 	}
 	return out
@@ -1999,6 +1993,10 @@ func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domai
 	if err != nil {
 		ext = msgs
 	}
+	// Ссылки на пиры внутри сообщения (fwd_from.from_id, reply_to_peer_id)
+	// вычисляются здесь же: собрать их из плоских колонок можно только зная
+	// вид чата-источника — см. usecase/chat/messagepeers.go.
+	ext = svc.HydrateMessagePeers(ctx, ext)
 	// Ключ пира зависит от ЗРИТЕЛЯ (у приватного диалога стороны видят разный),
 	// поэтому резолвится здесь, по одному разу на чат: список истории почти
 	// всегда из одного чата, кэш слоя разрешения гасит остальное.
@@ -2028,10 +2026,13 @@ func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
 		"created_at": m.CreatedAt, "deleted": m.Deleted,
-		"edited_at":        m.EditedAt,
-		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_peer_id": peerRef(m.FwdFromChatID),
-		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
-		"views": m.Views, "forwards": m.Forwards, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
+		"edited_at": m.EditedAt,
+		"views":     m.Views, "forwards": m.Forwards, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
+	}
+	// Атрибуция пересылки — один конструктор messageFwdHeader вместо пяти
+	// плоских полей; автор в from_id:Peer.
+	if m.FwdFrom != nil {
+		j["fwd_from"] = m.FwdFrom
 	}
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities
@@ -2154,7 +2155,12 @@ func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
 	// (имя автора + текст/лейбл) — те же ключи, что frame.go: messageUpdatePayload.
 	// Оригинал в reply_to не подтягивается (чужой чат), клиент рисует из снимка.
 	if m.ReplyToPeerID != nil {
-		j["reply_to_peer_id"] = domain.ToPeerID(*m.ReplyToPeerID, true)
+		// Ссылка едет только когда источник — группа/канал: у приватного чата
+		// публичного ключа пира нет (шаг B убрал внутренний id из провода).
+		// Снимок превью при этом на месте, и бабл рисуется без ссылки.
+		if m.ReplyToPeer != nil {
+			j["reply_to_peer_id"] = m.ReplyToPeer
+		}
 		j["reply_snapshot_name"] = m.ReplySnapshotName
 		j["reply_snapshot_text"] = m.ReplySnapshotText
 	}
@@ -2279,16 +2285,6 @@ func draftJSON(d domain.Draft, peer domain.PeerID) map[string]any {
 		"peer_id": peer, "text": d.Text, "entities": d.Entities,
 		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
 	}
-}
-
-// peerRef — ссылка на чат внутри снимка (пересылка) как знаковый ключ пира;
-// nil остаётся nil. Пара к usecase/chat/frame.go: peerRef — форма кадра и
-// форма витрины истории обязаны совпадать (см. messageUpdatePayload).
-func peerRef(chatID *int64) any {
-	if chatID == nil {
-		return nil
-	}
-	return domain.ToPeerID(*chatID, true)
 }
 
 // sendAsChatID — знаковый ключ «личности отправителя» во внутренний chatID.

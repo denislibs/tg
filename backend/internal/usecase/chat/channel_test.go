@@ -67,15 +67,15 @@ func newFakeSearchRepo() *fakeSearchRepo {
 	return &fakeSearchRepo{usernames: map[string]int64{}}
 }
 
-func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, _ int) ([]domain.ChatCard, error) {
+func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, _ int) ([]domain.ChatRecord, error) {
 	return nil, nil
 }
 
-func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]domain.UserCard, error) {
+func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]domain.UserReal, error) {
 	return nil, nil
 }
 
-func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatCard, int, error) {
+func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatRecord, int, error) {
 	return nil, 0, nil
 }
 

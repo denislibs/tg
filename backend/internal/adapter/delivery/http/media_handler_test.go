@@ -106,11 +106,11 @@ func (f fakeAccess) CanAccessMedia(_ context.Context, _, _ int64) (bool, error) 
 // fakeAuth authenticates token "good" to a fixed user, else errors (mirrors WS).
 type fakeAuth struct{ userID int64 }
 
-func (f fakeAuth) Authenticate(_ context.Context, token string) (domain.User, int64, error) {
+func (f fakeAuth) Authenticate(_ context.Context, token string) (domain.UserRecord, int64, error) {
 	if token != "good" {
-		return domain.User{}, 0, errors.New("invalid token")
+		return domain.UserRecord{}, 0, errors.New("invalid token")
 	}
-	return domain.User{ID: f.userID}, 1, nil
+	return domain.UserRecord{ID: f.userID}, 1, nil
 }
 
 func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
@@ -267,7 +267,7 @@ func TestPutContent_NonOwner(t *testing.T) {
 
 	// Inject a non-owner (id 99) into the context as the Bearer middleware would.
 	req := httptest.NewRequest(http.MethodPut, "/media/1/content", bytes.NewReader([]byte("xyz")))
-	req = req.WithContext(context.WithValue(req.Context(), userKey, domain.User{ID: 99}))
+	req = req.WithContext(context.WithValue(req.Context(), userKey, domain.UserRecord{ID: 99}))
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {

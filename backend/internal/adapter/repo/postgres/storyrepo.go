@@ -96,7 +96,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		`SELECT s.id, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 		        s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id,
 		        s.created_at, s.expires_at,
-		        u.id, u.display_name, COALESCE(u.avatar_url,''),
+		        `+userRealCols("u.")+`,
 		        (sv.viewer_id IS NOT NULL) AS viewed,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
 		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction
@@ -131,18 +131,19 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	for rows.Next() {
 		var (
 			item                domain.StoryItem
-			author              domain.UserCard
+			au                  userRealScan
 			discard             int64 // s.author_id (== u.id via JOIN)
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
-		if err := rows.Scan(&item.ID, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
-			&areasRaw, &fwdAuthor, &fwdStory,
-			&item.CreatedAt, &item.ExpiresAt,
-			&author.ID, &author.DisplayName, &author.AvatarURL, &item.Viewed,
-			&item.ReactionsCount, &item.MyReaction); err != nil {
+		dest := []any{&item.ID, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
+			&areasRaw, &fwdAuthor, &fwdStory, &item.CreatedAt, &item.ExpiresAt}
+		dest = append(dest, au.dest()...)
+		dest = append(dest, &item.Viewed, &item.ReactionsCount, &item.MyReaction)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
+		author := au.user(true)
 		areas, err := unmarshalMediaAreas(areasRaw)
 		if err != nil {
 			return nil, err
@@ -216,9 +217,9 @@ func (r *StoryRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) err
 	return err
 }
 
-func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCard, error) {
+func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserReal, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,'')
+		`SELECT `+userRealCols("u.")+`
 		   FROM story_views sv
 		   JOIN users u ON u.id = sv.viewer_id
 		  WHERE sv.story_id = $1
@@ -227,10 +228,10 @@ func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCa
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.UserCard, 0)
+	out := make([]domain.UserReal, 0)
 	for rows.Next() {
-		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.AvatarURL); err != nil {
+		u, err := scanUserReal(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)

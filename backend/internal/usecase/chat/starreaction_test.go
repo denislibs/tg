@@ -61,7 +61,7 @@ func (f *fakeStarReactions) TopSenders(_ context.Context, messageID int64, limit
 	var out []domain.StarReactionSender
 	for uid, s := range f.stars[messageID] {
 		out = append(out, domain.StarReactionSender{
-			User: domain.UserCard{ID: uid}, Stars: s, Anonymous: f.anon[messageID][uid],
+			User: domain.UserReal{ID: uid}, Stars: s, Anonymous: f.anon[messageID][uid],
 		})
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Stars > out[b].Stars })

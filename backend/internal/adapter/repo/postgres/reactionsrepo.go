@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -43,15 +42,14 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 		return map[int64][]domain.ReactionCount{}, nil
 	}
 	q := querier(ctx, r.pool)
-	// Последние 3 реагировавших (свежие первыми) на каждую реакцию — мини-карточки
-	// {id,name,avatar} для аватаров в чипе (tweb count<4). Аггрегируем в jsonb-массив
-	// с ORDER BY created_at DESC и режем [1:3], затем разбираем в Go.
+	// Последние 3 реагировавших (свежие первыми) на каждую реакцию — ССЫЛКИ на
+	// пиров для аватаров в чипе (tweb count<4). Имя и фото клиент берёт из
+	// своего кэша: снимок карточки прямо в jsonb был бы третьей формой того же
+	// пользователя. Режем [1:3] после ORDER BY created_at DESC.
 	rows, err := q.Query(ctx,
 		`SELECT re.message_id, re.emoji, count(*), bool_or(re.user_id=$2),
-		        to_jsonb((array_agg(
-		            jsonb_build_object('id', u.id, 'name', u.display_name, 'avatar', COALESCE(u.avatar_url,''))
-		            ORDER BY re.created_at DESC))[1:3])
-		 FROM reactions re JOIN users u ON u.id = re.user_id
+		        (array_agg(re.user_id ORDER BY re.created_at DESC))[1:3]
+		 FROM reactions re
 		 WHERE re.message_id = ANY($1)
 		 GROUP BY re.message_id, re.emoji ORDER BY count(*) DESC, re.emoji ASC`,
 		messageIDs, viewerID)
@@ -63,14 +61,12 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 	for rows.Next() {
 		var msgID int64
 		var rc domain.ReactionCount
-		var recentJSON []byte
-		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine, &recentJSON); err != nil {
+		var recent []int64
+		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine, &recent); err != nil {
 			return nil, err
 		}
-		if len(recentJSON) > 0 {
-			if err := json.Unmarshal(recentJSON, &rc.Recent); err != nil {
-				return nil, err
-			}
+		for _, id := range recent {
+			rc.Recent = append(rc.Recent, domain.NewPeerUser(id))
 		}
 		out[msgID] = append(out[msgID], rc)
 	}
@@ -82,7 +78,7 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 func (r *ReactionsRepo) ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,''), re.emoji
+		`SELECT `+userRealCols("u.")+`, re.emoji
 		   FROM reactions re
 		   JOIN users u ON u.id = re.user_id
 		  WHERE re.message_id = $1
@@ -95,9 +91,11 @@ func (r *ReactionsRepo) ReactionUsers(ctx context.Context, messageID int64) ([]d
 	out := make([]domain.ReactionUser, 0)
 	for rows.Next() {
 		var ru domain.ReactionUser
-		if err := rows.Scan(&ru.User.ID, &ru.User.Username, &ru.User.DisplayName, &ru.User.AvatarURL, &ru.Emoji); err != nil {
+		var u userRealScan
+		if err := rows.Scan(append(u.dest(), &ru.Emoji)...); err != nil {
 			return nil, err
 		}
+		ru.User = u.user(true)
 		out = append(out, ru)
 	}
 	return out, rows.Err()

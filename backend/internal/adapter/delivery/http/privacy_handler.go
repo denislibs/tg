@@ -82,14 +82,16 @@ func (h *PrivacyHandler) Blocked(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	out := make([]map[string]any, 0, len(users))
+	// Раскладка contacts.blockedSlice: СТРОКИ блокировки (кто и когда) отдельно,
+	// тела пиров — вектором users. Снимок профиля внутри строки блокировки был
+	// бы второй формой того же `user`.
+	blocked := make([]domain.PeerBlocked, 0, len(users))
+	peers := make([]domain.UserReal, 0, len(users))
 	for _, u := range users {
-		out = append(out, map[string]any{
-			"user_id": u.UserID, "username": u.Username, "display_name": u.DisplayName,
-			"avatar_url": u.AvatarURL, "phone": u.Phone,
-		})
+		blocked = append(blocked, u.Blocked)
+		peers = append(peers, u.User)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": out, "total": total})
+	writeJSON(w, http.StatusOK, domain.NewContactsBlockedSlice(total, blocked, peers))
 }
 
 // Block — POST /me/blocked {user_id}.
@@ -150,18 +152,5 @@ func (h *PrivacyHandler) Profile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	var username any
-	if p.Username != nil {
-		username = *p.Username
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": p.ID, "username": username,
-		"first_name": p.FirstName, "last_name": p.LastName, "display_name": p.DisplayName,
-		"bio": p.Bio, "birthday": p.Birthday, "avatar_url": p.AvatarURL,
-		"avatar_preview": p.AvatarPreview, "phone": p.Phone,
-		"verified": p.Verified, "premium": p.Premium, "emoji_status": p.EmojiStatus,
-		"is_bot": p.IsBot, "is_blocked": p.IsBlocked,
-		"calls_available": p.CallsAvailable, "can_message": p.CanMessage,
-		"last_seen_visible": p.LastSeenOK,
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"user_full": p.Full, "can_message": p.CanMessage})
 }

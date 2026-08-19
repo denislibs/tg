@@ -19,14 +19,14 @@ type TxManager interface {
 // dialog list can show them in place of the peer's real avatar (Telegram
 // personal_photo). Implemented by the contacts repo. Optional.
 type ContactPhotoLookup interface {
-	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
 // ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
 // to the current avatar (implemented by the auth usecase). Used when a user
 // accepts a suggested profile photo. Optional.
 type ProfilePhotoAdder interface {
-	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+	AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error)
 }
 
 type ChatRepo interface {
@@ -106,10 +106,10 @@ type GroupRepo interface {
 	SetArchived(ctx context.Context, chatID, userID int64, archived bool) error
 	// SetForum включает темы у группы (chats.is_forum).
 	SetForum(ctx context.Context, chatID int64, enabled bool) error
-	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
+	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
-	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
+	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
@@ -122,7 +122,7 @@ type GroupRepo interface {
 	// DiscussionCandidates lists groups (type 'group', non-forum, not already a
 	// discussion group of any channel) where actorID is creator/admin — the
 	// pick-list for linking an existing discussion group.
-	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error)
+	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error)
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
@@ -370,15 +370,15 @@ type ChannelRepo interface {
 }
 
 type SearchRepo interface {
-	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) // public only
-	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error)
+	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
+	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные
 	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам
 	// канал и каналы, где зритель viewerID уже состоит. Второе значение — общее
 	// число найденных похожих каналов (для «+N» под Premium), может превышать len.
-	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error)
+	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error)
 }
 
 type ReactionRepo interface {
@@ -796,8 +796,27 @@ type BotAPIRepo interface {
 	WizardGet(ctx context.Context, userID int64) (domain.BotWizard, error)
 	WizardSet(ctx context.Context, w domain.BotWizard) error
 	WizardClear(ctx context.Context, userID int64) error
-	// UserBrief — username/имя пользователя для поля from в апдейтах.
-	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+	// UserBrief — краткая карточка пользователя (конструктор `user`) для поля
+	// from в апдейтах. Перевод в чужую форму Bot API делает BotAPIView.
+	UserBrief(ctx context.Context, id int64) (domain.UserReal, error)
+}
+
+// BotAPIView — конвертер ГРАНИЦЫ Bot API: наша модель → форма чужой
+// документации Telegram Bot API ({id, is_bot, first_name, username},
+// {id, type}). Реализуется delivery, как parseEntities/botAPIEntities и
+// parseReplyMarkup/botAPIReplyMarkup у сущностей и разметки.
+//
+// Порт нужен именно как ПОРТ, а не как функция в usecase: Bot API это фасад
+// над нашей моделью и чужой контракт, а usecase про чужие контракты знать не
+// должен — направление зависимостей идёт внутрь. До шага C конвертер жил в
+// usecase (botapi.go), и заодно хардкодил chat.type = "private" независимо от
+// настоящего вида чата.
+type BotAPIView interface {
+	// User — поле from апдейта.
+	User(u domain.UserReal) map[string]any
+	// Chat — поле chat апдейта: chatType это наш chats.type
+	// ('private' | 'group' | 'channel'), он же вид чата Bot API.
+	Chat(chatID int64, chatType, title string) map[string]any
 }
 
 // Translator переводит текст на целевой язык (source определяется провайдером

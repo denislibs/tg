@@ -30,9 +30,15 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())
 	}
+	// Запись адресной книги: НАША часть плоско, сам пир — конструктором `user`
+	// с именем, под которым его сохранил владелец.
 	var added map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &added)
-	if added["first_name"] != "Maya" || added["note"] != "friend" || added["share_phone"] != true {
+	user, _ := added["user"].(map[string]any)
+	if user == nil || user["_"] != "user" || user["first_name"] != "Maya" || user["last_name"] != "K" {
+		t.Fatalf("unexpected added contact: %v", added)
+	}
+	if added["note"] != "friend" || added["share_phone"] != true {
 		t.Fatalf("unexpected added contact: %v", added)
 	}
 	if int64(added["user_id"].(float64)) != idB {
@@ -61,7 +67,11 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 	}
 	rec = reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)
 	_ = json.Unmarshal(rec.Body.Bytes(), &list)
-	if len(list.Contacts) != 1 || list.Contacts[0]["first_name"] != "Maya2" {
+	// Имя карточки — сохранённое ВЛАДЕЛЬЦЕМ, и живёт оно внутри `user`.
+	if len(list.Contacts) != 1 {
+		t.Fatalf("after upsert = %v, want one edited contact", list.Contacts)
+	}
+	if u, _ := list.Contacts[0]["user"].(map[string]any); u == nil || u["first_name"] != "Maya2" {
 		t.Fatalf("after upsert = %v, want one edited contact", list.Contacts)
 	}
 

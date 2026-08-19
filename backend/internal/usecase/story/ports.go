@@ -15,7 +15,7 @@ type StoryRepo interface {
 	Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error)
 	ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error)
 	MarkViewed(ctx context.Context, storyID, viewerID int64) error
-	Viewers(ctx context.Context, storyID int64) ([]domain.UserCard, error)
+	Viewers(ctx context.Context, storyID int64) ([]domain.UserReal, error)
 	// Stats — статистика истории (просмотры + динамика по дням из story_views).
 	Stats(ctx context.Context, storyID int64) (domain.StoryStats, error)
 	GetAuthor(ctx context.Context, storyID int64) (int64, error) // domain.ErrNotFound

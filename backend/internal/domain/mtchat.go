@@ -6,7 +6,7 @@ import (
 )
 
 // Чаты и каналы в форме оригинала — конструкторы схемы TL (MTProto), а не
-// строковый `Chat.Type` и не карточка `domain.ChatCard`.
+// строковый `Chat.Type` и не карточка `domain.ChatRecord`.
 //
 // Продолжение mtpeer.go: правила фазы 0, объяснение префикса MT и общий список
 // «чего в модели нет» — в шапке того файла. Разбор подсистемы —
@@ -43,9 +43,9 @@ import (
 
 // ── Chat: chatEmpty | chat | chatForbidden | channel | channelForbidden ─────
 
-// MTChat — объединение схемы Chat. Про префикс MT см. шапку mtpeer.go.
-type MTChat interface {
-	isMTChat()
+// Chat — объединение схемы: chatEmpty | chat | chatForbidden | channel | channelForbidden.
+type Chat interface {
+	isChat()
 	// Tag — дискриминатор `_` (predicate схемы).
 	Tag() string
 	// PeerID — знаковый ключ (у чата всегда отрицательный).
@@ -72,7 +72,7 @@ type ChatEmpty struct {
 	ID         int64  `json:"id"`
 }
 
-func (ChatEmpty) isMTChat()        {}
+func (ChatEmpty) isChat()          {}
 func (c ChatEmpty) Tag() string    { return c.Underscore }
 func (c ChatEmpty) PeerID() PeerID { return ToPeerID(c.ID, true) }
 
@@ -110,7 +110,7 @@ type ChatReal struct {
 	DefaultBanned     *ChatBannedRights `json:"default_banned_rights,omitempty"`
 }
 
-func (ChatReal) isMTChat()        {}
+func (ChatReal) isChat()          {}
 func (c ChatReal) Tag() string    { return c.Underscore }
 func (c ChatReal) PeerID() PeerID { return ToPeerID(c.ID, true) }
 
@@ -149,7 +149,7 @@ type ChatForbidden struct {
 	Title      string `json:"title"`
 }
 
-func (ChatForbidden) isMTChat()        {}
+func (ChatForbidden) isChat()          {}
 func (c ChatForbidden) Tag() string    { return c.Underscore }
 func (c ChatForbidden) PeerID() PeerID { return ToPeerID(c.ID, true) }
 
@@ -227,7 +227,7 @@ type Channel struct {
 	SendPaidMessagesStars int64 `json:"send_paid_messages_stars,omitempty"`
 }
 
-func (Channel) isMTChat()        {}
+func (Channel) isChat()          {}
 func (c Channel) Tag() string    { return c.Underscore }
 func (c Channel) PeerID() PeerID { return ToPeerID(c.ID, true) }
 
@@ -302,7 +302,7 @@ type ChannelForbidden struct {
 	UntilDate  int             `json:"until_date,omitempty"`
 }
 
-func (ChannelForbidden) isMTChat()         {}
+func (ChannelForbidden) isChat()           {}
 func (c ChannelForbidden) Tag() string     { return c.Underscore }
 func (c ChannelForbidden) PeerID() PeerID  { return ToPeerID(c.ID, true) }
 func (c ChannelForbidden) Broadcast() bool { return c.PFlags["broadcast"] }
@@ -328,9 +328,9 @@ func (c *ChannelForbidden) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UnmarshalMTChat разбирает объединение Chat по дискриминатору `_`.
+// UnmarshalChat разбирает объединение Chat по дискриминатору `_`.
 // Неизвестный конструктор — nil, nil.
-func UnmarshalMTChat(raw []byte) (MTChat, error) {
+func UnmarshalChat(raw []byte) (Chat, error) {
 	tag, ok, err := peekTag(raw)
 	if err != nil || !ok {
 		return nil, err
@@ -906,4 +906,36 @@ func (f *ChannelFull) UnmarshalJSON(b []byte) error {
 	}
 	f.AvailableReactions = reactions
 	return nil
+}
+
+// ── messages.chatFull ───────────────────────────────────────────────────────
+
+// MessagesChatFullTag — дискриминатор `_` конструктора messages.chatFull.
+const MessagesChatFullTag = "messages.chatFull"
+
+// messages.chatFull#e5d7d19c full_chat:ChatFull chats:Vector<Chat>
+// users:Vector<User> = messages.ChatFull;
+//
+// ОТВЕТ экрана информации о чате: полная карточка ВМЕСТЕ с краткой формой
+// самого чата. Прежде `GET /chats/{id}/card` и кадр chat_update отдавали одну и
+// ту же ChatCard в двух разных формах — плоско с id против вложенно; здесь обе
+// стороны собирают один и тот же ответ.
+//
+// Users обязателен по схеме и едет пустым вектором: карточек ботов чата
+// (bot_info) мы не производим, а участники — своя ручка со страницами.
+type MessagesChatFull struct {
+	Underscore string      `json:"_"`
+	FullChat   ChannelFull `json:"full_chat"`
+	Chats      []Chat      `json:"chats"`
+	Users      []UserReal  `json:"users"`
+}
+
+// NewMessagesChatFull собирает ответ из пары конструкторов одного чата.
+func NewMessagesChatFull(full ChannelFull, chat Chat) MessagesChatFull {
+	return MessagesChatFull{
+		Underscore: MessagesChatFullTag,
+		FullChat:   full,
+		Chats:      []Chat{chat},
+		Users:      []UserReal{},
+	}
 }

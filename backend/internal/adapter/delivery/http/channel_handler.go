@@ -328,15 +328,9 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		out[strconv.FormatInt(id, 10)] = n
 	}
 	// Авторы последних комментариев — под стек аватаров в футере поста.
-	rec := make(map[string][]map[string]any, len(recent))
+	rec := make(map[string][]domain.UserReal, len(recent))
 	for id, users := range recent {
-		cards := make([]map[string]any, 0, len(users))
-		for _, u := range users {
-			cards = append(cards, map[string]any{
-				"id": u.ID, "display_name": u.DisplayName, "avatar_url": u.AvatarURL,
-			})
-		}
-		rec[strconv.FormatInt(id, 10)] = cards
+		rec[strconv.FormatInt(id, 10)] = users
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"counts": out, "recent_repliers": rec})
 }
@@ -424,46 +418,16 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	co := make([]map[string]any, 0, len(chats))
-	for _, c := range chats {
-		co = append(co, map[string]any{
-			"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "count": count})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chats": channelsOf(chats), "count": count,
+	})
 }
 
 func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	chats, _ := h.uc.SearchChats(r.Context(), q, 20)
 	users, _ := h.uc.SearchUsers(r.Context(), q, 20)
-	co := make([]map[string]any, 0, len(chats))
-	for _, c := range chats {
-		co = append(co, map[string]any{
-			"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
-		})
-	}
 	// Аватар в выдаче поиска — по правилу profile_photo владельца.
-	viewer, _ := UserFromContext(r.Context())
-	photoOK := map[int64]bool{}
-	if h.privacy != nil && len(users) > 0 {
-		ids := make([]int64, 0, len(users))
-		for _, u := range users {
-			ids = append(ids, u.ID)
-		}
-		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
-			photoOK = v
-		}
-	}
-	uo := make([]map[string]any, 0, len(users))
-	for _, u := range users {
-		avatar := u.AvatarURL
-		if h.privacy != nil && !photoOK[u.ID] && u.ID != viewer.ID {
-			avatar = ""
-		}
-		uo = append(uo, map[string]any{
-			"id": u.ID, "username": u.Username, "display_name": u.DisplayName, "avatar_url": avatar,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "users": uo})
+	gatePhotos(r, h.privacy, users)
+	writeJSON(w, http.StatusOK, domain.NewContactsFound(channelsOf(chats), users))
 }

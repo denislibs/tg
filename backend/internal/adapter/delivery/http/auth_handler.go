@@ -512,11 +512,9 @@ func (h *AuthHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"status": rec.Status}
 	if rec.Status == domain.QRConfirmed {
 		resp["session_token"] = rec.SessionToken
-		resp["user"] = map[string]any{
-			"id":           rec.User.ID,
-			"phone":        rec.User.Phone,
-			"display_name": rec.User.DisplayName,
-		}
+		// Подтверждённый QR отдаёт того же пользователя тем же конструктором,
+		// что и остальные витрины: своей формы у этого ответа больше нет.
+		resp["user"] = rec.User.ToUser(domain.UserFlags{Self: true}, nil, true)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

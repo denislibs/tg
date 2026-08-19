@@ -104,7 +104,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		if e != nil {
 			return e
 		}
-		if typ != "private" {
+		if typ != domain.ChatTypePrivate {
 			if err := i.requireRight(ctx, chatID, userID, domain.RightDeleteMessages); err != nil {
 				return domain.ErrForbidden
 			}

@@ -37,6 +37,19 @@ func (s *PresenceStore) SetOffline(ctx context.Context, userID int64, lastSeen i
 	return nil
 }
 
+// OnlineExpires — момент, когда ключ присутствия истечёт: ровно то, что схема
+// зовёт userStatusOnline.expires. Информация была у нас всегда (TTL ключа), но
+// наружу не выпускалась — из-за чего потерянный кадр оставлял человека онлайн
+// навсегда. Нулевое время — ключа нет либо он бессрочный (у presence такого не
+// бывает: TTL ставится и SetNX, и Expire).
+func (s *PresenceStore) OnlineExpires(ctx context.Context, userID int64) (time.Time, error) {
+	ttl, err := s.rdb.PTTL(ctx, presKey(userID)).Result()
+	if err != nil || ttl <= 0 {
+		return time.Time{}, err
+	}
+	return time.Now().Add(ttl), nil
+}
+
 // IsOnline reports whether the presence key exists.
 func (s *PresenceStore) IsOnline(ctx context.Context, userID int64) (bool, error) {
 	n, err := s.rdb.Exists(ctx, presKey(userID)).Result()

@@ -45,7 +45,7 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err != nil {
 		return err
 	}
-	if typ == "group" || typ == "channel" {
+	if typ == domain.ChatTypeGroup || typ == domain.ChatTypeChannel {
 		if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 			return err
 		}
@@ -53,9 +53,8 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err := i.chats.SetAutoDelete(ctx, chatID, seconds); err != nil {
 		return err
 	}
-	actor := i.userCard(ctx, actorID)
 	text, _ := json.Marshal(map[string]any{
-		"action": "set_ttl", "actor_id": actor.ID, "actor": actor.DisplayName, "ttl": seconds,
+		"action": "set_ttl", "actor_id": actorID, "ttl": seconds,
 	})
 	i.postGroupService(ctx, chatID, actorID, string(text))
 	return nil

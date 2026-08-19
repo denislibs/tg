@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,41 +17,34 @@ type ProfileHandler struct{ uc *usecaseauth.Interactor }
 
 func NewProfileHandler(uc *usecaseauth.Interactor) *ProfileHandler { return &ProfileHandler{uc: uc} }
 
-// userJSON is the canonical wire shape for a full user (own profile). It is
-// shared by GET /me, the profile-edit endpoints and the sign-in response.
-func userJSON(u domain.User) map[string]any {
-	var username any
-	if u.Username != nil {
-		username = *u.Username
+// userJSON — собственный профиль на проводе: ТА ЖЕ пара конструкторов, что и у
+// чужого (users.userFull{full_user, users}), а не третья форма. Третья форма и
+// была тем, из-за чего bio с днём рождения жили в «своей» витрине, а
+// verified/premium — в «полной чужой»: границу проводили мы, а не схема.
+//
+// Правила приватности здесь не спрашиваются вовсе — зритель и владелец один и
+// тот же человек, и Check для такой пары всегда пропускает. Форма ответа при
+// этом совпадает с чужим профилем (privacy.Profile) буква в букву: клиенту
+// нечего разбирать двумя путями.
+func userJSON(u domain.UserRecord) map[string]any {
+	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
+		PhoneCallsAvailable: true,
+		VideoCallsAvailable: true,
+	})
+	full.About = u.Bio
+	// ttl_period своей карточки — глобальный период автоудаления
+	// (messages.setDefaultHistoryTTL): им заводятся новые чаты.
+	full.TTLPeriod = u.AutoDeletePeriod
+	if u.Birthday != nil {
+		b := domain.NewBirthday(*u.Birthday)
+		full.Birthday = &b
 	}
-	return map[string]any{
-		"id":               u.ID,
-		"phone":            u.Phone,
-		"username":         username, // null when unset
-		"first_name":       u.FirstName,
-		"last_name":        u.LastName,
-		"display_name":     u.DisplayName,
-		"bio":              u.Bio,
-		"birthday":         birthdayJSON(u.Birthday),
-		"avatar_url":       u.AvatarURL,
-		"avatar_preview":   u.AvatarPreview, // []byte → base64-строка в JSON; null у старых аватарок
-		"phone_visibility": u.PhoneVisibility,
-		"premium":          u.IsPremium,
-		"emoji_status":     u.EmojiStatus,
-	}
-}
-
-// birthdayJSON renders a birthday as {day, month, year?} (year omitted when the
-// no-year sentinel is stored), or null.
-func birthdayJSON(b *time.Time) any {
-	if b == nil {
-		return nil
-	}
-	out := map[string]any{"day": b.Day(), "month": int(b.Month())}
-	if b.Year() != domain.BirthdayNoYear {
-		out["year"] = b.Year()
-	}
-	return out
+	brief := u.ToUser(domain.UserFlags{Self: true}, nil, true)
+	brief.Phone = u.Phone
+	// can_message — наше поле РЯДОМ с конструктором, а не внутри: схемного
+	// места у него нет (см. privacy.ProfileResult). Себе написать можно всегда
+	// — это «Избранное».
+	return map[string]any{"user_full": domain.NewUsersUserFull(full, brief), "can_message": true}
 }
 
 type birthdayBody struct {
@@ -106,11 +98,10 @@ func (h *ProfileHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProfileBody struct {
-	FirstName       *string         `json:"first_name"`
-	LastName        *string         `json:"last_name"`
-	Bio             *string         `json:"bio"`
-	Birthday        json.RawMessage `json:"birthday"`
-	PhoneVisibility *string         `json:"phone_visibility"`
+	FirstName *string         `json:"first_name"`
+	LastName  *string         `json:"last_name"`
+	Bio       *string         `json:"bio"`
+	Birthday  json.RawMessage `json:"birthday"`
 }
 
 // Update applies a partial edit to the current user's profile (PATCH /me): only
@@ -132,11 +123,10 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := usecaseauth.ProfileInput{
-		FirstName:       cur.FirstName,
-		LastName:        cur.LastName,
-		Bio:             cur.Bio,
-		Birthday:        cur.Birthday,
-		PhoneVisibility: cur.PhoneVisibility,
+		FirstName: cur.FirstName,
+		LastName:  cur.LastName,
+		Bio:       cur.Bio,
+		Birthday:  cur.Birthday,
 	}
 	if body.FirstName != nil {
 		in.FirstName = *body.FirstName
@@ -146,9 +136,6 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Bio != nil {
 		in.Bio = *body.Bio
-	}
-	if body.PhoneVisibility != nil {
-		in.PhoneVisibility = *body.PhoneVisibility
 	}
 	if body.Birthday != nil { // key present (object or explicit null)
 		bday, err := parseBirthday(body.Birthday)
@@ -239,15 +226,9 @@ type avatarBody struct {
 	MediaID int64 `json:"media_id"`
 }
 
-// mediaContentURL is the canonical stored path for an uploaded media object. The
-// media GET endpoint enforces access when the bytes are actually served.
-func mediaContentURL(mediaID int64) string {
-	return fmt.Sprintf("/media/%d/content", mediaID)
-}
-
 // SetAvatar points the user's avatar at an uploaded media object (PUT /me/avatar).
-// It also appends the photo to the gallery (the usecase keeps avatar_url and the
-// gallery consistent), so old clients on this route stay in sync with the gallery.
+// It also appends the photo to the gallery (the usecase keeps the denormalized
+// avatar and the gallery consistent), so old clients on this route stay in sync.
 func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
@@ -259,7 +240,7 @@ func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	user, err := h.uc.SetAvatar(r.Context(), u.ID, mediaContentURL(body.MediaID))
+	user, err := h.uc.SetAvatar(r.Context(), u.ID, body.MediaID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "set avatar failed")
 		return
@@ -395,17 +376,19 @@ func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
 }
 
-// profilePhotoJSON is the wire shape for one gallery photo.
+// profilePhotoJSON is the wire shape for one gallery photo. Фото адресуется id
+// медиа — тем же числом, которого ждёт клиентский downloadMediaURL; строку
+// «/media/N/content» больше никто не строит и не разбирает обратно.
 func profilePhotoJSON(p domain.ProfilePhoto) map[string]any {
 	var video any
-	if p.VideoURL != "" {
-		video = p.VideoURL
+	if p.VideoMediaID != nil {
+		video = *p.VideoMediaID
 	}
 	return map[string]any{
-		"id":         p.ID,
-		"url":        p.URL,
-		"video_url":  video, // null when absent
-		"created_at": p.CreatedAt.Format(time.RFC3339),
+		"id":             p.ID,
+		"media_id":       p.MediaID,
+		"video_media_id": video, // null when absent
+		"created_at":     p.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -427,11 +410,11 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	var videoURL string
+	var videoMediaID *int64
 	if body.VideoMediaID > 0 {
-		videoURL = mediaContentURL(body.VideoMediaID)
+		videoMediaID = &body.VideoMediaID
 	}
-	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, mediaContentURL(body.MediaID), videoURL)
+	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, body.MediaID, videoMediaID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "add photo failed")
 		return

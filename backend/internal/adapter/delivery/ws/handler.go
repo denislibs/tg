@@ -13,7 +13,7 @@ import (
 
 // Authenticator resolves a token to the authenticated user + device.
 type Authenticator interface {
-	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
+	Authenticate(ctx context.Context, token string) (domain.UserRecord, int64, error)
 }
 
 // Handler upgrades HTTP to WebSocket, authenticates via the ?token= query
