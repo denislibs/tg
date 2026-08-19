@@ -263,16 +263,20 @@ export function createWorkerCore() {
     // проинициализирован).
     decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
   })
-  // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
-  // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
-  // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
-  const groups = newGroupsManager({ rest, dialogs })
-  const channels = newChannelsManager({ rest, beforeSending })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
   // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
   // переигрывают (`core/peerCache.ts` — зеркало). broadcast объявлен ниже — стрелка
   // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
+  //
+  // Объявлен ДО `groups`: карточка чата (`groups.card`) — единственный источник
+  // конструктора `channel` на клиенте, и она отдаёт его владельцу пиров
+  // (`saveApiPeers`) прежде, чем ответить вызывающему.
   const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
+  // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
+  // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
+  // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
+  const groups = newGroupsManager({ rest, dialogs, peers })
+  const channels = newChannelsManager({ rest, beforeSending, peers })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
@@ -397,7 +401,16 @@ export function createWorkerCore() {
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
     if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.user.id ?? null)
-    else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
+    else if (t === 'chat_update') {
+      // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
+      // приехавшие ВМЕСТЕ с апдейтом, сохраняются ПЕРВЫМИ — до того, как
+      // апдейт применят. Кадр `chat_update` несёт `messages.chatFull`, то есть
+      // абсолютный снимок карточки; строке диалога из него нужны четыре поля,
+      // а весь остальной чат (права, `pFlags`, `default_banned_rights`) живёт
+      // в зеркале пиров и попадает туда только отсюда.
+      peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
+      dialogs.applyChatMeta(d as ChatUpdateEvt)
+    }
     else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).peer_id)
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все

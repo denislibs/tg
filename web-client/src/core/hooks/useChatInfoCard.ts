@@ -1,70 +1,83 @@
 // src/core/hooks/useChatInfoCard.ts
-// View-model hook for a real group/channel's header card (extracted from
-// Chat): fetches type + member count + my rights, and for groups the
-// member snapshot (seeding their presence into the store as the single source of
-// truth). Derives the post/type permissions, discussion wiring, and the live online
-// count. Behaviour is unchanged.
+// View-model шапки настоящей группы/канала (вынесено из Chat): грузит ПОЛНУЮ
+// карточку чата, для групп — снимок участников (засевая их присутствие в стор,
+// единственный источник), и выводит права на запись, обсуждения и живой счётчик
+// онлайна.
+//
+// ── Что изменилось со шагом D2.5 ────────────────────────────────────────────
+// Вопросы «какой это чат» и «что мне можно» больше не задаются плоской карточке
+// (`type`/`my_role`/`my_rights`/`default_permissions` с провода исчезли): вид
+// чата — выбор конструктора (`core/peers/predicates.ts`), права — `pFlags` и
+// `admin_rights`/`default_banned_rights` (`core/peers/rights.ts`).
+//
+// Кэша краткой карточки здесь БОЛЬШЕ НЕТ. Конструктор `channel` живёт в зеркале
+// пиров (`core/peerCache.ts`, наполняет его `peers.saveApiPeers` из той же
+// ручки), читается синхронно на первом же рендере и обновляется кадром
+// `chat_update` сам. Свой второй кэш того же факта был бы вторым зеркалом
+// realtime-данных. Кэшируется только ПОЛНАЯ форма — ровно как в оригинале
+// (`appProfileManager.chatsFull` рядом с `appChatsManager.chats`).
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
+import { usePeers } from './usePeers'
 import { NULL_PEER_ID } from '../peers/peerId'
 import { useChatsStore } from '../../stores/chatsStore'
-import type { ChatMember, GroupCard } from '../managers/groupsManager'
-import { isUserStatusOnline } from '../peers/peer'
+import type { ChatMember, ChatCard } from '../managers/groupsManager'
+import type { ChannelFull, Chat } from '../peers/peer'
+import { getLinkedChatPeerId, isUserStatusOnline } from '../peers/peer'
+import { cachedChat } from '../peerCache'
+import { isMegagroup } from '../peers/predicates'
+import { hasRights } from '../peers/rights'
 
-interface Card {
-  type: string
-  memberCount: number
-  myRole: string
-  myRights: number
-  /** ЗНАКОВЫЙ ключ группы обсуждения (`-id`), `0` — обсуждения нет.
-   *  Сравнивать с нулём, а не «> 0»: у группы ключ ОТРИЦАТЕЛЬНЫЙ. */
-  discussionPeerId: PeerId
-  slowmodeSeconds: number
-  chargeStars: number
-  defaultPermissions: number
+/** Полная карточка + поля уровня ответа (всё, чего нет в конструкторе `channel`). */
+interface FullCard {
+  fullChat: ChannelFull
+  muted: boolean
+  creatorId: number
 }
 
-// Биты дефолтных прав группы (domain.MemberPerms): 1 — писать, 2 — медиа.
-const PERM_SEND_MESSAGES = 1
-const PERM_SEND_MEDIA = 2
-
-// Карточки уже открывавшихся чатов. Повторный вход отдаёт права СИНХРОННО, на
-// первом же рендере: без этого футер канала успевал показать плашку «нельзя
-// писать» (карточки нет → прав нет) и вернуть строку ввода, когда карточка
-// приезжала, — то самое дёрганье композера при переходе в канал из сайдбара.
-// Сеть при этом ходит как раньше (memberCount/права меняются), но её ответ уже
-// ничего не двигает — он совпадает с показанным.
-const cardCache = new Map<PeerId, Card>()
+// Полные карточки уже открывавшихся чатов. Повторный вход отдаёт их СИНХРОННО,
+// на первом же рендере: без этого футер канала успевал показать плашку «нельзя
+// писать» и вернуть строку ввода, когда карточка приезжала, — то самое дёрганье
+// композера при переходе в канал из сайдбара. Сеть при этом ходит как раньше,
+// но её ответ уже ничего не двигает.
+//
+// Порт `appProfileManager.chatsFull` (там же и TTL — `PEER_FULL_TTL`, который у
+// нас пока не заведён: инвалидация приходит кадром `chat_update`).
+const fullCache = new Map<PeerId, FullCard>()
 
 /**
  * Сброс кэша при смене аккаунта — зовёт `resetAccountStateInMemory`
- * (useAuthGate, обработчик rt:logging_out): права прошлого аккаунта в этих
- * карточках чужие, а cache-first-показ выше отдал бы их следующему.
+ * (useAuthGate, обработчик rt:logging_out): карточки прошлого аккаунта чужие, а
+ * cache-first-показ выше отдал бы их следующему.
  */
 export function resetChatCardCache(): void {
-  cardCache.clear()
+  fullCache.clear()
 }
 
 interface InfoManagers {
   groups: {
-    card(peerId: PeerId): Promise<GroupCard>
+    card(peerId: PeerId): Promise<ChatCard | null>
     members(peerId: PeerId): Promise<ChatMember[]>
   }
 }
 
 export interface ChatInfoCard {
-  card: Card | null
+  /** полная форма (`channelFull`) + `muted`/`creatorId`; null — ещё не загружена */
+  full: FullCard | null
+  /** краткая форма из зеркала пиров: вид чата и права зрителя. Единственный
+   *  источник ответов «канал/супергруппа» и «что мне можно». */
+  chat: Chat | undefined
   /**
    * Известны ли права на запись. Для канала до приезда карточки это третье
    * состояние — «неизвестно», а не «нельзя»: вывести из него плашку значит
    * показать её всем, включая владельца канала (см. `canType` ниже).
    */
   permissionsKnown: boolean
-  /** Channels: only posters (creator / POST_MESSAGES) may type; groups & private always can. */
+  /** Канал: писать могут только постящие (creator / post_messages); группы и личка — всегда. */
   canType: boolean
-  /** Групповые дефолт-права: может ли участник вообще писать (иначе — плашка вместо композера). */
+  /** Может ли зритель вообще писать (иначе — плашка вместо композера). */
   canSendText: boolean
-  /** Групповые дефолт-права: может ли участник отправлять медиа/голосовые/вложения. */
+  /** Может ли зритель отправлять медиа/голосовые/вложения. */
   canSendMedia: boolean
   discussionPeerId: PeerId
   discussionsEnabled: boolean
@@ -79,32 +92,35 @@ export function useChatInfoCard(args: {
 }): ChatInfoCard {
   const { isRealChat, isChannel, numericChatId } = args
   const managers: InfoManagers = useManagers()
-  // Загруженная карточка хранится ВМЕСТЕ с чатом, которому принадлежит. Сброс
-  // эффектом (`setCard(null)`) для этого не годится: на первом рендере после
-  // смены чата состояние ещё от прошлого — футер успевал вывести права чужого
-  // чата, и первая же раскладка _center уходила в плашку.
-  const [loaded, setLoaded] = useState<{ peerId: PeerId; card: Card } | null>(null)
+  // Загруженная полная карточка хранится ВМЕСТЕ с чатом, которому принадлежит.
+  // Сброс эффектом (`setFull(null)`) для этого не годится: на первом рендере
+  // после смены чата состояние ещё от прошлого.
+  const [loaded, setLoaded] = useState<{ peerId: PeerId; full: FullCard } | null>(null)
   const memberIds = useRef<Set<number>>(new Set())
   // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);
   // we seed members' presence on load and derive the count below — no local listener.
   const setPresence = useChatsStore((s) => s.setPresence)
 
-  // Карточка текущего чата: свежезагруженная, иначе снимок прошлого входа, иначе
-  // неизвестна. Проверка ключа — то самое отсечение чужого состояния.
-  const card = loaded?.peerId === numericChatId ? loaded.card : cardCache.get(numericChatId) ?? null
+  // Краткая форма — из зеркала пиров. `usePeers` объявляет пробел зеркалу и
+  // подписывает хук на его движение: карточка, приехавшая ответом `card()` или
+  // кадром `chat_update`, пере-рендерит шапку сама.
+  usePeers(isRealChat ? [numericChatId] : [])
+  const chat = isRealChat ? cachedChat(numericChatId) : undefined
 
-  // Fetch the card (type + memberCount) and, for groups, the member snapshot (seeds
-  // memberIds + initial online state). Reset on chat change so no stale count leaks.
+  const full = loaded?.peerId === numericChatId ? loaded.full : fullCache.get(numericChatId) ?? null
+
+  // Fetch the card (заодно кладёт конструктор `channel` в зеркало пиров) и, для
+  // групп, снимок участников (сеет memberIds + начальный онлайн).
   useEffect(() => {
     memberIds.current = new Set()
     if (!isRealChat) return
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
-      if (!alive) return
-      const next: Card = { type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionPeerId: c.discussionPeerId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions }
-      cardCache.set(numericChatId, next)
-      setLoaded({ peerId: numericChatId, card: next })
-      if (c.type === 'group') {
+      if (!alive || !c) return
+      const next: FullCard = { fullChat: c.fullChat, muted: c.muted, creatorId: c.creatorId }
+      fullCache.set(numericChatId, next)
+      setLoaded({ peerId: numericChatId, full: next })
+      if (isMegagroup(c.chat)) {
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return
           memberIds.current = new Set(mem.map((m) => m.userId))
@@ -120,24 +136,33 @@ export function useChatInfoCard(args: {
     return () => { alive = false }
   }, [isRealChat, numericChatId, managers, setPresence])
 
-  const discussionPeerId = card?.discussionPeerId ?? NULL_PEER_ID
+  // `linked_chat_id` конструктора — СЫРОЙ положительный id чата; знаковый ключ
+  // из него делает `getLinkedChatPeerId`, единственное место с этим переходом.
+  const discussionPeerId = getLinkedChatPeerId(full?.fullChat)
   // `!== NULL_PEER_ID`, а не «> 0»: ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ, и
-  // прежнее сравнение после перехода на знаковый ключ выключило бы обсуждения
-  // у всех каналов разом, ничего не покрасив.
+  // сравнение с нулём по знаку выключило бы обсуждения у всех каналов разом.
   const discussionsEnabled = isRealChat && isChannel && discussionPeerId !== NULL_PEER_ID
-  const canPostChannel = card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) === 1
+  // Вещательный канал: писать может тот, у кого есть `post_messages` (создателю
+  // `hasRights` отвечает «да» на всё сразу — порт, `pFlags.creator`).
+  const canPostChannel = hasRights(chat, 'post_messages')
   const canType = !isChannel || canPostChannel
   // Карточка не грузится вовсе (не «настоящий» чат — тред/черновик) — там прав
-  // и не будет, поведение прежнее; ждать надо только канал с карточкой в полёте.
-  const permissionsKnown = !isChannel || !isRealChat || card !== null
+  // и не будет, поведение прежнее; ждать надо только канал с картой в полёте.
+  //
+  // Признак «карточка приехала» — ПОЛНАЯ форма, а не наличие краткой в зеркале:
+  // обе приходят одним ответом (`saveApiPeers` объявляет краткую до того, как
+  // ответ дойдёт до вызывающего), но чистятся они разными руками — свой кэш
+  // гасит `resetChatCardCache`, зеркало гасит проектор. Один признак вместо
+  // двух не даёт состояния «полная есть, краткой нет», в котором `hasRights`
+  // молча ответил бы «нельзя» и вернул бы ту самую плашку.
+  const permissionsKnown = !isChannel || !isRealChat || full !== null
 
-  // Групповые дефолт-права (admin/creator — без ограничений). До загрузки карточки
-  // считаем, что можно (оптимистично), чтобы композер не мигал заблокированным.
-  const isAdmin = card?.myRole === 'creator' || card?.myRole === 'admin'
-  const perms = card?.defaultPermissions ?? 31
-  const isGroup = card?.type === 'group'
-  const canSendText = isChannel ? canPostChannel : !isGroup || isAdmin || (perms & PERM_SEND_MESSAGES) !== 0
-  const canSendMedia = isChannel ? canPostChannel : !isGroup || isAdmin || (perms & PERM_SEND_MEDIA) !== 0
+  // Права обычного участника — `default_banned_rights` (⚠ ЗАПРЕТЫ, не
+  // разрешения). До приезда карточки чата — оптимистично «можно», чтобы композер
+  // не мигал заблокированным (`hasRights` без карточки отвечает «нельзя»,
+  // поэтому третье состояние выражено здесь явно).
+  const canSendText = isChannel ? canPostChannel : full === null || hasRights(chat, 'send_messages')
+  const canSendMedia = isChannel ? canPostChannel : full === null || hasRights(chat, 'send_media')
 
   // Count members currently online. Re-renders only when the number changes
   // (presence frames for non-members don't touch it).
@@ -151,5 +176,5 @@ export function useChatInfoCard(args: {
     return n
   })
 
-  return { card, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount }
+  return { full, chat, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount }
 }

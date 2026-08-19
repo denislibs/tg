@@ -36,6 +36,9 @@ import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
+import { hasRights } from '../core/peers/rights'
+import { isBroadcast, isMegagroup } from '../core/peers/predicates'
+import { NULL_PEER_ID } from '../core/peers/peerId'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
 import { useSendAs } from '../core/hooks/useSendAs'
@@ -298,7 +301,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
-  const { card, permissionsKnown, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount } =
+  // `chatPeer` — краткий конструктор `channel` из зеркала пиров: вид чата и
+  // права зрителя. `full` — полная карточка (`channelFull`) с about/slowmode/
+  // обсуждением. Поля `type`/`my_role`/`my_rights` исчезли с провода вместе с
+  // плоской витриной — их вопросы задаются предикатами и `hasRights`.
+  const { full: chatFull, chat: chatPeer, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount } =
     useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
@@ -345,7 +352,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (!thread || thread.kind !== 'topic' || !isRealChat) return
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
-      if (alive) setCanManageTopic(c.myRole === 'creator' || (c.myRights & 64) !== 0)
+      if (alive) setCanManageTopic(hasRights(c?.chat, 'change_info'))
     }).catch(() => {})
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -621,9 +628,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const msgActions = useMessageActions({
     chat, numericChatId, isRealChat,
     // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
-    canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
+    canViewPostStats: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
     // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
-    canEditFactCheck: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
+    canEditFactCheck: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
     win: winV, msgs, meId, pins, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
@@ -717,7 +724,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
   // колонке (tweb: setPeer(discussion group, threadId=postId)).
   const openDiscussionThread = useEvent((postId: number) => {
-    if (discussionChatId > 0) onOpenThread?.({ chatId: discussionChatId, rootMsgId: postId, title: t('Comments'), subtitle: chat.name })
+    // Ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ — сравнивать с `NULL_PEER_ID`, а не «> 0».
+    if (discussionPeerId !== NULL_PEER_ID) onOpenThread?.({ chatId: discussionPeerId, rootMsgId: postId, title: t('Comments'), subtitle: chat.name })
   })
 
   // Stable handler identities for the memoized feed: the feed closes over
@@ -910,10 +918,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // subscriber) count from the card + live online count. Private and draft chats
   // keep the existing chat.status text (returned as null here).
   const realSubtitle: string | null = (() => {
-    if (!isRealChat || !card) return null
-    if (card.type === 'channel') return `${card.memberCount} подписчиков`
-    if (card.type === 'group')
-      return `${card.memberCount} участников${onlineCount > 0 ? `, ${onlineCount} онлайн` : ''}`
+    if (!isRealChat || !chatPeer) return null
+    // Вид чата — предикат по конструктору, а не строка `type`.
+    const members = chatPeer._ === 'channel' ? chatPeer.participants_count ?? 0 : 0
+    if (isBroadcast(chatPeer)) return `${members} подписчиков`
+    if (isMegagroup(chatPeer))
+      return `${members} участников${onlineCount > 0 ? `, ${onlineCount} онлайн` : ''}`
     return null
   })()
 
@@ -1010,18 +1020,17 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
   // группа/канал — создатель или админ с RightPinMessages (1<<5).
   const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
-    card?.myRole === 'creator' || ((card?.myRights ?? 0) & 32) !== 0
-  // Создавать розыгрыш может владелец канала или админ с RightPostMessages (1<<0).
-  const canCreateGiveaway = isChannel && isRealChat &&
-    (card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) !== 0)
+    hasRights(chatPeer, 'pin_messages')
+  // Создавать розыгрыш может владелец канала или админ с post_messages.
+  const canCreateGiveaway = isChannel && isRealChat && hasRights(chatPeer, 'post_messages')
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
-  const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
-  const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
+  const slowmodeExempt = !isGroup || hasRights(chatPeer, 'just_admin')
+  const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(chatFull?.fullChat.slowmode_seconds ?? 0, slowmodeExempt)
   // Платные сообщения (Telegram paid messages): плашка в композере только для
   // не-админа платной группы (владелец/админ пишут бесплатно).
-  const composerChargeStars = isGroup && card && card.myRole !== 'creator' && card.myRole !== 'admin' ? (card.chargeStars ?? 0) : 0
+  const composerChargeStars = isGroup && chatPeer && !hasRights(chatPeer, 'just_admin') ? (chatFull?.fullChat.send_paid_messages_stars ?? 0) : 0
   const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean, effect?: import('../core/effects/emojiEffects').EmojiEffectKind | null) => { send(text, entities, ttlSeconds, silent ?? false, effect ?? null); slowmodeMarkSent() })
   // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
   // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.

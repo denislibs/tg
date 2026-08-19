@@ -6,8 +6,18 @@ import type { GroupEdit } from '../../../core/hooks/useGroupEdit'
 import { EMOJIS } from './shared'
 
 export function ReactionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
-  const [mode, setMode] = useState<'all' | 'some' | 'none'>(g.card?.reactionsMode ?? 'all')
-  const [allowed, setAllowed] = useState<string[]>(g.card?.reactionsAllowed ?? [])
+  // Политика реакций — ОБЪЕДИНЕНИЕ `ChatReactions`, а не пара «строка + список»:
+  // режим это ВЫБОР КОНСТРУКТОРА (`chatReactionsAll`/`Some`/`None`), и tweb
+  // (`chatReactions`) читает его ровно тем же ветвлением по `_`. Обратное
+  // направление (пара → конструктор) делает бэкенд — ручка `PUT /reactions`
+  // осталась прежней.
+  const reactions = g.card?.fullChat.available_reactions
+  const [mode, setMode] = useState<'all' | 'some' | 'none'>(
+    reactions?._ === 'chatReactionsNone' ? 'none' : reactions?._ === 'chatReactionsSome' ? 'some' : 'all',
+  )
+  const [allowed, setAllowed] = useState<string[]>(
+    reactions?._ === 'chatReactionsSome' ? reactions.reactions.map((r) => r.emoticon) : [],
+  )
 
   const apply = (m: 'all' | 'some' | 'none', list: string[]) => {
     setMode(m)

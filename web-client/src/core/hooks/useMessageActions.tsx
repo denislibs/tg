@@ -455,10 +455,11 @@ export function useMessageActions({
     // откат обратной дельтой. Раньше это делал worker fake-broadcast.
     const action: 'add' | 'remove' = mine ? 'remove' : 'add'
     const store = useMessagesStore.getState()
-    // Своя карточка — чтобы чип сразу показал аватар (tweb кладёт свой peer в
-    // recent_reactions мгновенно), а не мигнул числом до серверного эха.
+    // Свой КЛЮЧ — чтобы чип сразу показал аватар (tweb кладёт свой peer в
+    // recent_reactions мгновенно), а не мигнул числом до серверного эха. Имя и
+    // фото чип берёт из зеркала пиров сам, снимок карточки ему не нужен.
     const me = useChatsStore.getState().me
-    const meCard = me ? { id: me.user.id, name: getUserTitle(me.user) } : undefined
+    const meCard = me ? me.user.id : undefined
 
     if (action === 'add') {
       // Эффект вокруг чипа + select-анимация иконки (tweb reaction.ts

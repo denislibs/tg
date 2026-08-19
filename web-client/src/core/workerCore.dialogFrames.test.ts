@@ -129,6 +129,36 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { title: 'Новое имя', username: undefined, photo: { _: 'chatPhotoEmpty' }, isForum: undefined } }])
   })
 
+  // Пин пробела D2.5 №1 на втором его пути. Кадр `chat_update` несёт
+  // АБСОЛЮТНЫЙ снимок карточки, из которого строке диалога нужны четыре поля;
+  // весь остальной чат (`pFlags`, права, `default_banned_rights`) живёт в
+  // зеркале пиров и попадает туда ТОЛЬКО через `peers.saveApiPeers` в
+  // `dispatch` (порт `apiUpdatesManager.processUpdateMessage:239-240`).
+  // Удаление той строки красит этот кейс: `rt:peer_op` не уйдёт вовсе.
+  it('chat_update → peers.saveApiPeers → rt:peer_op с конструктором чата', async () => {
+    await saveDialogs([dialog(1, '2026-08-01T00:00:00Z')])
+    const core = createWorkerCore()
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    const tab = new SuperMessagePort(epTab)
+    const peerOps: { op: string; peers: unknown[] }[] = []
+    tab.on('rt:peer_op', (p) => peerOps.push(...(p as { ops: { op: string; peers: unknown[] }[] }).ops))
+    await tab.invoke('manager', { name: 'dialogs', method: 'fillMirror', args: [] })
+
+    const chat = { _: 'channel', id: 1, title: 'Новое имя', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }
+    capturedConnDeps!.onFrame('chat_update', {
+      peer_id: 1,
+      chat_full: {
+        _: 'messages.chatFull',
+        full_chat: { _: 'channelFull', id: 1, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
+        chats: [chat],
+        users: [],
+      },
+    })
+
+    expect(peerOps).toEqual([{ op: 'upsert', peers: [chat] }])
+  })
+
   it('chat_removed (без pts) → dialogs.applyRemoved → rt:dialog_op remove', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 

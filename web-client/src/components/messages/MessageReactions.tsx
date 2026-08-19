@@ -105,7 +105,7 @@ function StarReactionChip({ total, mine, onClick }: { total: number; mine: numbe
 // Тап — тоггл своей реакции; long-press / правый клик — попап «кто отреагировал».
 export function ReactionChip({ msgId, r, live, canRenderAvatars, isLast, onToggle, onShow }: {
   msgId: number
-  r: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }
+  r: { emoji: string; count: number; mine: boolean; recent?: PeerId[] }
   live: boolean
   /** список реагировавших доступен и реакций мало — можно показать аватары */
   canRenderAvatars: boolean
@@ -162,7 +162,7 @@ export function ReactionChip({ msgId, r, live, canRenderAvatars, isLast, onToggl
         )}
       </div>
       {showAvatars ? (
-        <StackedAvatars peers={r.recent!} size={24} />
+        <StackedAvatars peerIds={r.recent!} size={24} />
       ) : (
         <span className={classNames('reaction-counter', s.reactionCount)}>{r.count}</span>
       )}

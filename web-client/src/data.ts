@@ -45,9 +45,11 @@ export interface ConvMsg {
   pinned?: boolean
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
-  // чипы реакций под сообщением; recent — карточки последних реагировавших
-  // (бэк отдаёт их только когда список доступен — tweb reactions.can_see_list)
-  reactions?: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }[]
+  // чипы реакций под сообщением; recent — КЛЮЧИ последних реагировавших
+  // (бэк отдаёт их только когда список доступен — tweb reactions.can_see_list).
+  // Имя и фото чип берёт из зеркала пиров: на проводе едет вектор `Peer`, а не
+  // мини-карточка (см. `core/models.ts::ReactionCount`).
+  reactions?: { emoji: string; count: number; mine: boolean; recent?: PeerId[] }[]
   starReaction?: { total: number; mine: number } // платная ⭐-реакция (сумма звёзд + вклад зрителя)
   geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')

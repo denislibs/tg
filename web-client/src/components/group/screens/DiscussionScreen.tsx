@@ -10,10 +10,13 @@ import type { GroupEdit, DiscussionGroup } from '../../../core/hooks/useGroupEdi
 import type { DiscussionCandidate } from '../../../core/managers/channelsManager'
 import { gradientFor } from '../../../core/dialogToChat'
 import { initials } from './shared'
+import { getLinkedChatPeerId } from '../../../core/peers/peer'
 
 export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const linkedId = g.card?.discussionChatId ?? 0
+  // Ключ обсуждения: `linked_chat_id` конструктора — СЫРОЙ положительный id,
+  // знаковый вид делает одна функция (`getLinkedChatPeerId`).
+  const linkedId = getLinkedChatPeerId(g.card?.fullChat)
   const [linked, setLinked] = useState<DiscussionGroup | null>(null)
   const [candidates, setCandidates] = useState<DiscussionCandidate[]>([])
   const [confirming, setConfirming] = useState<DiscussionCandidate | null>(null)
@@ -52,7 +55,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               {/* Привязанная группа — вендорная строка чата (`chatlist-chat`,
                   дамп 15-right-11), а не своя карточка. */}
               <Row
-                icon={<Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />}
+                icon={<Avatar size="md" background={gradientFor(linked.peerId)} text={initials(linked.title)} />}
                 label={linked.title}
                 sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
                 translate={false}

@@ -14,15 +14,16 @@ export function reactionDelta(
   emoji: string,
   action: 'add' | 'remove',
   mine: boolean,
-  /** карточка зрителя — своя реакция сразу попадает в recent (tweb добавляет
-   * свой peer в recent_reactions оптимистично), иначе чип успевает мигнуть
-   * числом и лишь потом, с серверным эхом, сменится на аватары */
-  me?: { id: number; name: string; avatarUrl?: string },
+  /** КЛЮЧ зрителя — своя реакция сразу попадает в recent (tweb добавляет свой
+   * peer в recent_reactions оптимистично), иначе чип успевает мигнуть числом и
+   * лишь потом, с серверным эхом, сменится на аватары. Ключ, а не карточка:
+   * имя и фото чип берёт из зеркала пиров сам. */
+  me?: PeerId,
 ): ReactionCount[] | undefined | null {
   const cur = list ? [...list] : []
   const i = cur.findIndex((r) => r.emoji === emoji)
   if (action === 'add') {
-    const recent = mine && me ? [me] : undefined
+    const recent = mine && me !== undefined ? [me] : undefined
     if (i < 0) cur.push({ emoji, count: 1, mine, recent })
     else {
       if (mine && cur[i].mine) return null // эхо своей уже применённой реакции
@@ -40,7 +41,7 @@ export function reactionDelta(
       ...cur[i],
       count: cur[i].count - 1,
       mine: cur[i].mine && !mine,
-      recent: mine && me ? cur[i].recent?.filter((p) => p.id !== me.id) : cur[i].recent,
+      recent: mine && me !== undefined ? cur[i].recent?.filter((id) => id !== me) : cur[i].recent,
     }
     if (next.count <= 0) cur.splice(i, 1)
     else cur[i] = next
@@ -49,11 +50,8 @@ export function reactionDelta(
 }
 
 // Свежие реагировавшие идут первыми (tweb recent_reactions), дублей нет.
-function withMe(
-  recent: ReactionCount['recent'],
-  me?: { id: number; name: string; avatarUrl?: string },
-): ReactionCount['recent'] {
-  if (!me) return recent
-  const rest = (recent ?? []).filter((p) => p.id !== me.id)
+function withMe(recent: ReactionCount['recent'], me?: PeerId): ReactionCount['recent'] {
+  if (me === undefined) return recent
+  const rest = (recent ?? []).filter((id) => id !== me)
   return [me, ...rest].slice(0, 3)
 }

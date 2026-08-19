@@ -1116,7 +1116,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     //
     // В строку диалога ложатся только те поля, которые в ней есть; остальное
     // (about, права, настройки) живёт в самой карточке чата и туда же уезжает
-    // через `peers.saveApiPeers` — карточка чата это обычный пир.
+    // через `peers.saveApiPeers` — карточка чата это обычный пир. Зовёт его
+    // НЕ этот метод, а `workerCore.ts::dispatch` строкой выше (порт
+    // `apiUpdatesManager.processUpdateMessage`: пиры апдейта сохраняются до
+    // применения самого апдейта), поэтому владелец диалогов о пирах не знает.
     applyChatMeta(e: ChatUpdateEvt): void {
       const cur = findDialog(e.peer_id)
       if (!cur) return // чата нет в списке — приедет со следующей загрузкой

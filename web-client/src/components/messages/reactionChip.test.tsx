@@ -14,8 +14,8 @@ vi.mock('./ReactionIcon', () => ({
   ),
 }))
 vi.mock('./StackedAvatars', () => ({
-  default: ({ peers }: { peers: { id: number }[] }) => (
-    <div data-testid="stacked">{peers.length}</div>
+  default: ({ peerIds }: { peerIds: number[] }) => (
+    <div data-testid="stacked">{peerIds.length}</div>
   ),
 }))
 // ReactionAroundEffect (НЕ мокнут ниже — играет по-настоящему) сам тянет каталог
@@ -38,7 +38,8 @@ const noop = () => {}
 const chipProps = { msgId: 1, live: false, isLast: true, onToggle: noop, onShow: noop }
 
 describe('ReactionChip — аватары vs счётчик', () => {
-  const recent = [{ id: 2, name: 'B' }, { id: 3, name: 'C' }]
+  // `recent` — ключи пиров, а не карточки (см. `core/models.ts::ReactionCount`).
+  const recent = [2, 3]
 
   it('аватары показываются, когда это разрешено и реакций мало', () => {
     render(<ReactionChip r={{ emoji: '👍', count: 2, mine: false, recent }} canRenderAvatars {...chipProps} />)

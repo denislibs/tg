@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { newPeersManager, type PeerOp } from './peersManager'
 import type { RestClient } from '../net/restClient'
-import type { UserReal } from '../peers/peer'
+import type { Chat, UserReal } from '../peers/peer'
 
 const user = (id: number, over: Partial<UserReal> = {}): UserReal => ({
   _: 'user', id, first_name: `U${id}`, username: `u${id}`,
@@ -215,20 +215,49 @@ describe('PeersManager — границы объявления', () => {
     expect(ops[0].peers).toHaveLength(2)
   })
 
-  // Карточки приезжают попутно с ЛЮБЫМ ответом (список диалогов, карточка чата,
-  // поиск) — порт `saveApiUsers`/`saveApiChats`. Правило объявления при этом то
-  // же самое: впервые заведённая карточка зеркалу не адресована, замена —
-  // адресована.
-  it('saveApiPeers: новая карточка молчит, замена объявляется', async () => {
+  // Карточки приезжают попутно с ЛЮБЫМ ответом (карточка чата, кадр
+  // `chat_update`, авторы комментариев) — порт `appPeersManager.saveApiPeers
+  // (object: {chats?, users?})`. Здесь объявляется ВСЁ записанное, включая
+  // впервые заведённую карточку: `saveApiChat`/`saveApiUser` оригинала зеркалят
+  // в обеих ветках, и для чата иначе нельзя — батчевой ручки за карточками
+  // чатов нет вовсе (см. докблок `saveApiPeers`).
+  it('saveApiPeers объявляет и НОВУЮ карточку — иначе чат в зеркало не попадёт никогда', async () => {
     const { rest } = fakeRest([])
     const ops: PeerOp[] = []
     const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
 
-    mgr.saveApiPeers([user(2)])
-    expect(ops).toEqual([])
+    const fresh = user(2)
+    mgr.saveApiPeers({ users: [fresh] })
+    expect(ops).toEqual([{ op: 'upsert', peers: [fresh] }])
 
     const renamed = user(2, { first_name: 'Другое' })
-    mgr.saveApiPeers([renamed])
-    expect(ops).toEqual([{ op: 'upsert', peers: [renamed] }])
+    mgr.saveApiPeers({ users: [renamed] })
+    expect(ops).toEqual([{ op: 'upsert', peers: [fresh] }, { op: 'upsert', peers: [renamed] }])
+  })
+
+  // Идемпотентность: повторный кадр `chat_update` с ТЕМ ЖЕ снимком не должен
+  // будить подписчиков зеркала.
+  it('saveApiPeers: тот же снимок второй раз — ни одной операции', async () => {
+    const { rest } = fakeRest([])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+
+    mgr.saveApiPeers({ users: [user(2)] })
+    ops.length = 0
+    mgr.saveApiPeers({ users: [user(2)] })
+    expect(ops).toEqual([])
+  })
+
+  // Оба вектора одного ответа (`messages.chatFull` / `users.userFull`) едут
+  // ВМЕСТЕ — и уходят одним кадром, а не двумя.
+  it('saveApiPeers: chats + users одного ответа — один кадр', async () => {
+    const { rest } = fakeRest([])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+
+    const chat: Chat = { _: 'channel', id: 5, title: 'C', photo: { _: 'chatPhotoEmpty' }, date: 0 }
+    mgr.saveApiPeers({ chats: [chat], users: [user(2)] })
+    expect(ops).toHaveLength(1)
+    expect(ops[0].peers).toEqual([chat, user(2)])
   })
 })

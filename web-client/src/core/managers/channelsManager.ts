@@ -3,6 +3,7 @@ import type { PendingNewEvt } from '../realtime/events'
 import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 import type { Chat, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
+import type { PeersManager } from './peersManager'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
 // желаемое время публикации в unix-секундах (0/undefined — как можно скорее).
@@ -35,11 +36,16 @@ export interface DiscussionCandidate { peerId: PeerId; title: string; username: 
 // настоящим — вторым источником имени и аватарки.
 export type CommentReplier = UserReal
 
-export function newChannelsManager({ rest, beforeSending }: {
+export function newChannelsManager({ rest, beforeSending, peers }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
   /** Временный бабл поста — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
   beforeSending: (p: PendingNewEvt) => void
+  /** Владелец карточек пиров: авторы последних комментариев приезжают попутно
+   *  с ответом и обязаны попасть в зеркало — иначе стек аватаров рисует их
+   *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
+   *  оригинала «каждый ответ прогоняется через saveApiPeers». */
+  peers: Pick<PeersManager, 'saveApiPeers'>
 }) {
   return {
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
@@ -112,6 +118,9 @@ export function newChannelsManager({ rest, beforeSending }: {
         `/channels/${channelId}/comment_counts`, { ids: postIds.join(',') })
       const counts: Record<number, number> = {}
       for (const k in r.counts) counts[+k] = r.counts[k]
+      // Пиры ответа — владельцу (порт `saveApiPeers`): футер рисует их по
+      // КЛЮЧУ, а имя и фото берёт из зеркала.
+      for (const k in r.recent_repliers ?? {}) peers.saveApiPeers({ users: r.recent_repliers![k] })
       const recent: Record<number, CommentReplier[]> = {}
       // Маппера нет: карточки кладутся вербатим — форма провода и форма модели
       // совпали.

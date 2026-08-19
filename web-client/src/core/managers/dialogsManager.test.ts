@@ -420,7 +420,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
     })
     await dialogs.fillMirror()
     ops.length = 0
-    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { throw new Error('offline') }) } as never, dialogs })
+    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { throw new Error('offline') }) } as never, dialogs, peers: { saveApiPeers: vi.fn() } })
 
     await expect(groups.setMute(1, true)).rejects.toThrow()
 
@@ -443,7 +443,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
     // сдвинула бы патч ДО resolvePost и первый expect ниже покраснел бы).
     let resolvePost!: () => void
     const posted = new Promise<void>((res) => { resolvePost = res })
-    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { await posted }) } as never, dialogs })
+    const groups = newGroupsManager({ rest: { post: vi.fn(async () => { await posted }) } as never, dialogs, peers: { saveApiPeers: vi.fn() } })
 
     const call = groups.setMute(1, true)
     expect(ops).toEqual([]) // ответ сети ещё не пришёл — кэш и зеркало не тронуты

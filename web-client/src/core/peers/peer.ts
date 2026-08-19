@@ -33,6 +33,7 @@
 //    докблок `peer.schema.test.ts`.
 
 import type { MyPhoto } from '../media/messageMedia'
+import { NULL_PEER_ID, toPeerId } from './peerId'
 
 // ── UserProfilePhoto / ChatPhoto ────────────────────────────────────────────
 
@@ -416,6 +417,20 @@ export interface ChannelFull {
 }
 
 export type ChatFull = ChatFullReal | ChannelFull
+
+/**
+ * Знаковый ключ чата обсуждения канала; `NULL_PEER_ID` — обсуждения нет.
+ *
+ * ВНИМАНИЕ на знак, та же граница, что у `peerKey` ниже: `linked_chat_id:long`
+ * в схеме — СЫРОЙ ПОЛОЖИТЕЛЬНЫЙ id чата (как `channel.id`), знаковый вид носят
+ * только поля с именем `peer_id`. Прежняя витрина отдавала здесь уже готовый
+ * ключ (`discussion_peer_id`), поэтому перевод — новый и единственный: сравнить
+ * сырой id с `NULL_PEER_ID` через «> 0» показалось бы верным и выключило бы
+ * обсуждения ровно наоборот.
+ */
+export function getLinkedChatPeerId(full: ChannelFull | undefined): PeerId {
+  return full?.linked_chat_id ? toPeerId(full.linked_chat_id, true) : NULL_PEER_ID
+}
 
 /**
  * messages.chatFull#e5d7d19c full_chat:ChatFull chats:Vector<Chat>

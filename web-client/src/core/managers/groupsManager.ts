@@ -1,27 +1,76 @@
 // src/core/managers/groupsManager.ts
 import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
-import type { UserStatus } from '../peers/peer'
+import type { PeersManager } from './peersManager'
+import type { Channel, ChannelFull, MessagesChatFull, UserStatus } from '../peers/peer'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
 
-export interface GroupCard {
-  id: number; type: string; title: string; username: string; about: string
-  memberCount: number; isPublic: boolean; myRole: string; myRights: number; muted: boolean
-  discussionPeerId: number
-  /** битовая маска возможностей обычных участников (см. PERMS в useGroupEdit) */
-  defaultPermissions: number
-  slowmodeSeconds: number
-  reactionsMode: 'all' | 'some' | 'none'
-  reactionsAllowed: string[]
-  historyForNew: boolean
-  /** плата за сообщение в звёздах (Telegram paid messages); 0 — выключено */
-  chargeStars: number
-  /** канал: подписывать посты именем автора (Telegram signatures) */
-  signatures: boolean
-  /** канал: показывать профиль автора под подписью (Telegram signature_profiles) */
-  signatureProfiles: boolean
+/**
+ * Карточка чата — ПАРА конструкторов, как у профиля пользователя
+ * (`authManager.PeerProfile` = `user` + `userFull`). Прежняя плоская `GroupCard`
+ * из 18 полей исчезла вместе с витриной, которая её отдавала: после шага C
+ * ручка `GET /chats/{peerID}/card` возвращает `messages.chatFull` — тот же
+ * объект, что едет кадром `chat_update`.
+ *
+ * Чего здесь БОЛЬШЕ НЕТ и где оно теперь:
+ *  • `type` — не поле, а ВЫБОР КОНСТРУКТОРА плюс `pFlags.broadcast`/`megagroup`
+ *    (`core/peers/predicates.ts`);
+ *  • `my_role`/`my_rights` — `chat.pFlags.creator` и НАЛИЧИЕ `chat.admin_rights`
+ *    (`core/peers/rights.ts`, решение №3 разбора);
+ *  • `is_public` — наличие `chat.username` (`isPublic`);
+ *  • `default_permissions` («что можно») — `chat.default_banned_rights`
+ *    («что НЕЛЬЗЯ», ⚠ обратный знак);
+ *  • `history_for_new` — `fullChat.pFlags.hidden_prehistory` с ИНВЕРСИЕЙ;
+ *  • `reactions_mode`/`reactions_allowed` — объединение
+ *    `fullChat.available_reactions: ChatReactions`;
+ *  • `discussion_peer_id` — `fullChat.linked_chat_id`, причём там СЫРОЙ
+ *    положительный id чата (как в схеме), а не знаковый ключ; перевод знака
+ *    живёт в одной функции — `getLinkedChatPeerId` (`core/peers/peer.ts`).
+ */
+export interface ChatCard {
+  /** знаковый ключ чата (`-id`) — поле уровня ответа, вне конструкторов */
+  peerId: PeerId
+  /** краткая форма (`chat_full.chats[0]`): вид чата и права зрителя. Та же
+   *  карточка уезжает в зеркало пиров — см. `card()`. */
+  chat: Channel
+  /** полная форма: экран информации о чате */
+  fullChat: ChannelFull
+  /** наше, вне схемы: заглушен ли чат зрителем */
+  muted: boolean
+  /** наше, вне схемы: кто создал чат */
+  creatorId: number
+}
+
+/** Проводная форма ответа карточки: конструктор + поля рядом с ним (та же
+ *  форма, что `RawPeerProfile` у профиля пользователя). */
+interface RawChatCard {
+  peer_id: PeerId
+  chat_full: MessagesChatFull
+  muted?: boolean
+  creator_id?: number
+}
+
+/**
+ * Разбор ответа карточки. Маппера полей нет и быть не может — форма провода и
+ * форма модели совпали; раскладываем только ответ на пару конструкторов
+ * (`full_chat` + первый элемент `chats`) и свои поля рядом, как `mapPeerProfile`.
+ *
+ * `chats[0]` не оказался `channel` — карточки нет: базовый `chat` бэкенд не
+ * производит вовсе (решение №2), а `chatEmpty`/`*Forbidden` в этой ручке не
+ * бывают (на них она отвечает ошибкой доступа).
+ */
+export function mapChatCard(r: RawChatCard): ChatCard | null {
+  const chat = r.chat_full?.chats?.[0]
+  if (!chat || chat._ !== 'channel') return null
+  return {
+    peerId: r.peer_id,
+    chat,
+    fullChat: r.chat_full.full_chat,
+    muted: !!r.muted,
+    creatorId: r.creator_id ?? 0,
+  }
 }
 
 // Пригласительная ссылка (Telegram exportedChatInvite). Единый JSON для
@@ -103,12 +152,19 @@ const mapTopic = (r: RawTopic): TopicRow => ({
   lastOut: r.last_out ?? false, lastMsgSeq: r.last_seq ?? 0,
 })
 
-export function newGroupsManager({ rest, dialogs }: {
+export function newGroupsManager({ rest, dialogs, peers }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
   // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
   // invokeApi(...).then(saveUpdate)).
   dialogs: Pick<DialogsManager, 'applyMute' | 'applyPinned' | 'applyArchived' | 'applyRemoved'>
+  // Владелец карточек пиров: ответ карточки чата несёт векторы `chats`/`users`,
+  // и они обязаны доехать до зеркала — порт `appProfileManager.getChannelFull`
+  // → `saveFullPeerResult` → `appPeersManager.saveApiPeers(result)`
+  // (`appProfileManager.ts:224-227`). Без этого вызова конструктор `channel` не
+  // попадает в зеркало главного потока вовсе, и предикаты вида чата вместе с
+  // правами отвечают «нет» на всё.
+  peers: Pick<PeersManager, 'saveApiPeers'>
 }) {
   return {
     async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
@@ -178,28 +234,16 @@ export function newGroupsManager({ rest, dialogs }: {
       await rest.post(`/chats/${peerId}/archive`, { archived })
       dialogs.applyArchived(peerId, archived)
     },
-    async card(peerId: number): Promise<GroupCard> {
-      const c = await rest.get<{
-        id: number; type: string; title: string; username: string; about: string
-        member_count: number; is_public: boolean; my_role: string; my_rights: number; muted: boolean
-        discussion_peer_id?: number
-        default_permissions?: number; slowmode_seconds?: number
-        reactions_mode?: 'all' | 'some' | 'none'; reactions_allowed?: string[] | null; history_for_new?: boolean
-        charge_stars?: number; signatures?: boolean; signature_profiles?: boolean
-      }>(`/chats/${peerId}/card`)
-      return {
-        id: c.id, type: c.type, title: c.title, username: c.username, about: c.about,
-        memberCount: c.member_count, isPublic: c.is_public, myRole: c.my_role, myRights: c.my_rights,
-        muted: c.muted, discussionPeerId: c.discussion_peer_id ?? 0,
-        defaultPermissions: c.default_permissions ?? 31,
-        slowmodeSeconds: c.slowmode_seconds ?? 0,
-        reactionsMode: c.reactions_mode ?? 'all',
-        reactionsAllowed: c.reactions_allowed ?? [],
-        historyForNew: c.history_for_new ?? true,
-        chargeStars: c.charge_stars ?? 0,
-        signatures: c.signatures ?? false,
-        signatureProfiles: c.signature_profiles ?? false,
-      }
+    /**
+     * Карточка чата. Порт `appProfileManager.getChannelFull` →
+     * `saveFullPeerResult` (`:224-227`): пиры ответа сохраняются ПЕРВЫМИ и лишь
+     * потом отдаётся полная форма. Именно этот вызов и делает живыми предикаты
+     * вида чата и права по ключу пира на главном потоке.
+     */
+    async card(peerId: PeerId): Promise<ChatCard | null> {
+      const r = await rest.get<RawChatCard>(`/chats/${peerId}/card`)
+      peers.saveApiPeers(r.chat_full)
+      return mapChatCard(r)
     },
     async editInfo(peerId: number, args: { title: string; about?: string; username?: string }): Promise<void> {
       await rest.patch(`/chats/${peerId}`, { title: args.title, about: args.about ?? '', username: args.username ?? '' })

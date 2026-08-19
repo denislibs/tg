@@ -142,11 +142,17 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // синхронно, ДО ответа сети — без сброса на логауте следующий аккаунт увидел
   // бы права предыдущего (например, композер вместо плашки в чужом канале).
   it('логаут стирает кэш карточек чатов — следующий вход стартует с «права неизвестны»', async () => {
+    // Карточка — ПАРА конструкторов (`channel` + `channelFull`), как её отдаёт
+    // владелец после шага D2.5.
     const cardOf = vi.fn().mockResolvedValue({
-      type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionPeerId: 0,
-      slowmodeSeconds: 0, chargeStars: 0, defaultPermissions: 31,
+      peerId: -909,
+      chat: { _: 'channel', id: 909, title: 'C', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true, creator: true } },
+      fullChat: { _: 'channelFull', id: 909, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
+      muted: false, creatorId: 0,
     })
-    const managers = { ...testManagers(), groups: { card: cardOf, members: async () => [] } } as unknown as Managers
+    // `usePeers` внутри useChatInfoCard объявляет зеркалу пробел за ключом чата —
+    // владелец должен быть на месте (в проде это RPC воркера).
+    const managers = { ...testManagers(), groups: { card: cardOf, members: async () => [] }, peers: { fillMirror: async () => {} } } as unknown as Managers
     const info = () => useChatInfoCard({ isRealChat: true, isChannel: true, numericChatId: 909 })
 
     const first = renderHook(() => ({ gate: useAuthGate(), info: info() }), { wrapper: withManagers(managers) })
@@ -157,7 +163,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     first.unmount()
 
     const second = renderHook(() => info(), { wrapper: withManagers(managers) })
-    expect(second.result.current.card).toBeNull()
+    expect(second.result.current.full).toBeNull()
     expect(second.result.current.permissionsKnown).toBe(false)
   })
 

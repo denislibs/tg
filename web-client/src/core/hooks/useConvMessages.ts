@@ -102,8 +102,9 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
     // `|| undefined`, а не голая строка: у ЧАТА фолбэк `getPeerTitle` — пустая
     // строка (в оригинале там нет «Deleted Account»), а пустая строка не
     // нулевая и затёрла бы фолбэки ниже по стеку («Скрытое имя» у пересылки,
-    // «Сообщение» у превью ответа). Карточки чатов в зеркало пиров сейчас
-    // вообще не попадают — см. отчёт D2, `saveApiPeers` без вызывающего.
+    // «Сообщение» у превью ответа). Карточка чата в зеркало теперь попадает —
+    // `peers.saveApiPeers` из карточки чата и кадра `chat_update` (шаг D2.5), —
+    // но фолбэк всё равно нужен: до её приезда имени нет.
     const title = (peerId: PeerId): string | undefined =>
       getPeerTitle({ peerId, peer: peers.get(peerId) }) || undefined
     const next = win.msgs.map((m) => {

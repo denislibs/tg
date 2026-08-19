@@ -33,17 +33,23 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * Владелец карточек пиров. Второго вывода нет: витрина (`core/peerCache.ts`) —
  * зеркало, её единственный писатель — проектор по `onPeerOps`.
  *
- * Публикация ровно двумя поводами, и оба про зеркало:
+ * Публикация тремя поводами, и все три про зеркало:
  *  1. **Значение изменилось** — карточка, которая уже лежала в кэше, заменена
- *     другой (перечитывание, кадр `user_update`, новый снимок чата из
- *     `chat_update`). Только такая и может разъехаться с зеркалом.
+ *     другой (перечитывание, кадр `user_update`). Только такая и может
+ *     разъехаться с зеркалом.
  *  2. **Зеркало объявило пробел** (`fillMirror`) — владелец отвечает операцией.
+ *  3. **Пир приехал попутно с ответом** (`saveApiPeers`) — публикуется всё
+ *     записанное, включая ещё не виданную карточку. Порт `saveApiChat`/
+ *     `saveApiUser`, которые зеркалят и в ветке «карточки не было»; без этого
+ *     конструктор `channel` в зеркало не попадал бы вовсе — за карточками чатов
+ *     ходить нечем (см. `resolve`). Подробности — в докблоке `saveApiPeers`.
  *
- * Чего НЕ публикуем: карточку, которой в кэше ещё не было. Зеркало —
- * подмножество кэша (в него попадает только пришедшее отсюда, а из кэша ничего
- * не выселяется), значит новую карточку зеркало держать не может и разъехаться
- * на ней не с чем. Именно это делает дешёвыми «объёмные» чтения, которые рисуют
- * по возвращённому массиву и в зеркало не смотрят.
+ * Чего НЕ публикуют ЧТЕНИЯ (`getPeers`/`getUsers`): карточку, которой в кэше
+ * ещё не было. Зеркало — подмножество кэша (в него попадает только пришедшее
+ * отсюда, а из кэша ничего не выселяется), значит новую карточку зеркало
+ * держать не может и разъехаться на ней не с чем. Именно это делает дешёвыми
+ * «объёмные» чтения, которые рисуют по возвращённому массиву и в зеркало не
+ * смотрят.
  *
  * ── Два вида пира, одно хранилище ───────────────────────────────────────────
  * В оригинале карточки живут в двух менеджерах (`appUsersManager` /
@@ -77,26 +83,55 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
    * это единственная причина, по которой имена и аватарки вообще есть у
    * объектов, за которыми никто отдельно не ходил.
    */
-  function save(peers: readonly (User | Chat)[]): (User | Chat)[] {
-    const changed: (User | Chat)[] = []
+  function save(peers: readonly (User | Chat)[]): { written: (User | Chat)[]; replaced: (User | Chat)[] } {
+    const written: (User | Chat)[] = []
+    const replaced: (User | Chat)[] = []
     const persist: UserReal[] = []
     for (const peer of peers) {
       const key = peerKey(peer)
       const prev = cache.get(key)
       if (prev && same(prev, peer)) continue
       cache.set(key, peer)
-      if (prev) changed.push(peer)
+      written.push(peer)
+      if (prev) replaced.push(peer)
       if (peer._ === 'user') persist.push(peer)
     }
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
-    return changed
+    return { written, replaced }
   }
 
-  /** Приёмник карточек из ответа, объявляющий замены. Единственная точка, где
-   *  «карточка приехала попутно» превращается в кадр для зеркала. */
-  function saveApiPeers(peers: readonly (User | Chat)[] | undefined | null): void {
-    if (!peers?.length) return
-    publish(save(peers))
+  /**
+   * Приёмник пиров ЛЮБОГО ответа, несущего векторы `chats`/`users`. Форма
+   * аргумента — 1:1 с оригиналом (`appPeersManager.saveApiPeers(object:
+   * {chats?, users?})`, `appPeersManager.ts:33-36`): на проводе эти два вектора
+   * едут ВМЕСТЕ внутри `messages.chatFull` / `users.userFull`, поэтому и
+   * принимаются вместе, а не двумя вызовами.
+   *
+   * ⚠ ЗДЕСЬ ПУБЛИКУЕТСЯ ВСЁ ЗАПИСАННОЕ, включая карточку, которой в кэше ещё не
+   * было, — в отличие от `getPeers`, который объявляет только замены. Это не
+   * послабление правила владельца, а форма оригинала: `saveApiChat`/
+   * `saveApiUser` зеркалят В ОБЕИХ ветках — и когда карточки не было
+   * (`oldChat === undefined` → `mirrorChat(chat)`, `appChatsManager.ts:174-177`;
+   * `appUsersManager.ts:619-621`), и после замены (`:198-199` / `:649-650`).
+   *
+   * Для ЧАТА иначе и нельзя. Батчевой ручки за карточками чатов нет (см.
+   * `resolve` ниже — ключи чатов он обслуживает только из кэша), поэтому
+   * правило «новую карточку не объявляем» означало бы, что конструктор
+   * `channel` не попадает в зеркало НИКОГДА, кроме случайного совпадения, когда
+   * пробел объявили уже после похода за карточкой. Ровно это и держало
+   * предикаты по ключу (`isChannelPeer` и соседи в `core/peerCache.ts`) вечно
+   * ложными.
+   *
+   * Кто зовёт: карточка чата (`groupsManager.card` — порт
+   * `appProfileManager.saveFullPeerResult`, `:224-227`) и кадр `chat_update`
+   * (`workerCore.ts::dispatch` — порт `apiUpdatesManager.processUpdateMessage`,
+   * `:239-240`, где пиры апдейта сохраняются ДО его применения).
+   */
+  function saveApiPeers(object: { chats?: readonly Chat[]; users?: readonly UserReal[] } | undefined | null): void {
+    if (!object) return
+    const peers: (User | Chat)[] = [...(object.chats ?? []), ...(object.users ?? [])]
+    if (!peers.length) return
+    publish(save(peers).written)
   }
 
   /**
@@ -115,7 +150,7 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     if (missing.length) {
       try {
         const r = await rest.get<{ users: UserReal[] }>('/users', { ids: missing.join(',') })
-        changed = save(r.users ?? [])
+        changed = save(r.users ?? []).replaced
       } catch (e) {
         // Сеть недоступна — поднимаем персистнутых юзеров в память, чтобы имена
         // и аватарки резолвились офлайн. Не глотаем HTTP-ошибки (401/500 и т.п.).
@@ -182,7 +217,7 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
    */
   function applyUserUpdate(user: UserReal): void {
     if (!user || !cache.has(peerKey(user))) return
-    publish(save([user]))
+    publish(save([user]).replaced)
   }
 
   return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate }

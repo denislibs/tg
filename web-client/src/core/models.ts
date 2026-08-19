@@ -218,7 +218,11 @@ export interface RawMessage {
   views?: number
   forwards?: number
   media_unread?: boolean
-  reactions?: { emoji: string; count: number; mine?: boolean; recent?: { id: number; name: string; avatar?: string }[] }[] | null
+  /** `recent` — вектор `Peer` (ссылок на пиров), а не мини-карточек: имя и фото
+   *  клиент берёт из своего кэша пиров, как у `recent_reactions:Vector<
+   *  MessagePeerReaction>` в схеме. Прежние `{id, name, avatar}` были ТРЕТЬЕЙ
+   *  формой пользователя на проводе, вклеенной в jsonb прямо в SQL. */
+  reactions?: { emoji: string; count: number; mine?: boolean; recent?: Peer[] }[] | null
   geo?: RawGeo | null
   contact?: { user_id: number; name?: string; phone?: string } | null
   gift_id?: number | null
@@ -296,9 +300,12 @@ export interface ReactionCount {
   emoji: string
   count: number
   mine: boolean
-  /** до 3 последних реагировавших (свежие первыми) с мини-карточкой — клиент
-   *  показывает их аватары вместо числа при count<4 (tweb reaction.ts renderAvatars). */
-  recent?: { id: number; name: string; avatarUrl?: string }[]
+  /** до 3 последних реагировавших (свежие первыми) — ЗНАКОВЫЕ КЛЮЧИ пиров, а не
+   *  мини-карточки: чип рисует их аватары вместо числа при count<4 (порт tweb
+   *  `reaction.ts:1083` — `recentReactions.map((r) => getPeerId(r.peer_id))`),
+   *  а имя и фото берёт из зеркала пиров. Автором реакции может быть и канал,
+   *  поэтому ключ, а не id пользователя. */
+  recent?: PeerId[]
 }
 
 // E2E-медиа секретного чата. Файл шифруется своим AES-ключом; ciphertext лежит на
@@ -821,7 +828,7 @@ export function mapMessage(r: RawMessage): Message {
           emoji: x.emoji,
           count: x.count,
           mine: !!x.mine,
-          recent: x.recent?.map((p) => ({ id: p.id, name: p.name, avatarUrl: p.avatar || undefined })),
+          recent: x.recent?.map(getPeerId),
         }))
       : undefined,
     geo: r.geo ? mapGeo(r.geo) : undefined,

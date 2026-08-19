@@ -29,6 +29,7 @@ import { fmtWhen, mediaLabel } from '../core/dialogToChat'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import s from './TopicsPanel.module.scss'
+import { hasRights } from '../core/peers/rights'
 
 // tweb TOPIC_COLORS (constants.ts)
 export const TOPIC_COLORS = ['#6FB9F0', '#FFD67E', '#CB86DB', '#8EEE98', '#FF93B2', '#FB6F5F']
@@ -59,8 +60,6 @@ export function TopicIcon({ color, emoji, title, size = 26 }: { color: number; e
     </div>
   )
 }
-
-const CHANGE_INFO = 64
 
 /** Высота строки темы — `itemSize: 64` из tweb `forumTab/groupForumTab.ts:28`. */
 const TOPIC_ITEM_HEIGHT = 64
@@ -192,7 +191,9 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
     reload()
     const middleware = middlewareHelper.get()
     void managers.groups.card(chatId).then((c) => {
-      if (middleware()) setCanManage(c.myRole === 'creator' || (c.myRights & CHANGE_INFO) !== 0)
+      // Право — у конструктора `channel` (`pFlags.creator` / `admin_rights`),
+      // а не у поля `my_role` и битмаска, которых на проводе больше нет.
+      if (middleware()) setCanManage(hasRights(c?.chat, 'change_info'))
     }).catch(() => { if (middleware()) setCanManage(false) })
     // Смена chatId/unmount гасит висящий reload() из меню и ответы эффекта.
     return () => middlewareHelper.clean()

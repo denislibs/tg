@@ -35,6 +35,7 @@ import { getPeerTitle, type PeerTitleOptions } from './peers/getPeerTitle'
 import { peerKey, type Chat, type User } from './peers/peer'
 import type { PeerOp } from './managers/peersManager'
 import { isAnyGroup, isBroadcast, isChannel, isForum, isInChat, isMegagroup } from './peers/predicates'
+import { hasRights, type ChatRights } from './peers/rights'
 
 const peerMirror = new Map<PeerId, User | Chat>()
 
@@ -100,6 +101,13 @@ export const isForumPeer = (peerId: PeerId): boolean => isForum(cachedChat(peerI
 export const isBroadcastPeer = (peerId: PeerId): boolean => isBroadcast(cachedChat(peerId))
 export const isAnyGroupPeer = (peerId: PeerId): boolean => isAnyGroup(peerId, cachedChat(peerId))
 export const isInChatPeer = (peerId: PeerId): boolean => isInChat(cachedChat(peerId))
+
+/** Порт `appChatsManager.hasRights(id, action)` — тот же вопрос по ключу пира.
+ *  Карточки чата ещё нет — «нельзя»: ровно так же отвечает оригинал
+ *  (`if(!chat) return false`), и это третье состояние отличает тот, кто ждёт
+ *  карточку (см. `permissionsKnown` в `useChatInfoCard`). */
+export const hasRightsPeer = (peerId: PeerId, action: ChatRights): boolean =>
+  hasRights(cachedChat(peerId), action)
 
 /** Применить операции, посчитанные владельцем. Единственный вызывающий —
  *  проектор (`APPLY[RT.peerOp]`). Не изменившая ничего пачка подписчиков не
