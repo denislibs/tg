@@ -103,6 +103,34 @@ describe.skipIf(!hasTweb)('байты нашего кодека читает н�
     expect(result.offset).toBe(2)
     expect(result.length).toBe(30)
   })
+
+  // Вложенные векторы. Чужой разбор здесь ценен вдвойне: он не просто читает
+  // поля, а рекурсивно спускается по `Vector<KeyboardButtonRow>` →
+  // `Vector<KeyboardButton>` и на каждом уровне сам решает, какой конструктор
+  // перед ним. Если бы мы сбились на выравнивании строки внутри кнопки,
+  // поехал бы разбор СЛЕДУЮЩЕЙ кнопки, а не текущей — то есть ошибка вылезла бы
+  // далеко от места, где сделана.
+  it('replyInlineMarkup — ряды и кнопки восстанавливаются целиком', async () => {
+    const { TLDeserialization } = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('replyInlineMarkup')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('replyInlineMarkup')
+    expect(result.rows).toHaveLength(1)
+
+    const row = result.rows[0]
+    expect(row._).toBe('keyboardButtonRow')
+    expect(row.buttons).toHaveLength(2)
+
+    // Разные конструкторы в одном векторе — каждый опознан по своему id.
+    expect(row.buttons[0]._).toBe('keyboardButton')
+    expect(row.buttons[0].text).toBe('ok')
+
+    expect(row.buttons[1]._).toBe('keyboardButtonUrl')
+    expect(row.buttons[1].text).toBe('go')
+    expect(row.buttons[1].url).toBe('https://a.io')
+  })
 })
 
 // Пропуск обязан быть ЗАМЕТНЫМ: молча зелёный прогон без предмета проверки —

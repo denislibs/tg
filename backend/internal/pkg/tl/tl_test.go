@@ -438,3 +438,59 @@ func assertGolden(t *testing.T, name string, w *Writer) {
 		t.Fatalf("байты %s разошлись с общим эталоном\n получили %s\n ожидали  %s", name, got, want)
 	}
 }
+
+// Вложенные векторы — то, чего не было ни у медиа, ни у сущностей.
+//
+// `replyInlineMarkup{rows: Vector<KeyboardButtonRow>}`, а внутри каждого ряда
+// `Vector<KeyboardButton>`. Здесь легко ошибиться дважды: забыть id конструктора
+// вектора (он пишется ПЕРЕД счётчиком) и сбиться на выравнивании строк внутри
+// элементов, из-за чего поедет разбор следующего элемента, а не текущего.
+func TestGolden_NestedVectors(t *testing.T) {
+	const (
+		idReplyInlineMarkup int32 = 1218642516 // 0x48a30254
+		idKeyboardButtonRow int32 = 2002815875 // 0x77608b83
+		idKeyboardButton    int32 = 2098662655 // 0x7d170cff
+		idKeyboardButtonURL int32 = -670292500 // 0xd80c25ec
+	)
+
+	w := NewWriter(0)
+	w.ConstructorID(idReplyInlineMarkup)
+	w.VectorHeader(1) // rows
+
+	w.ConstructorID(idKeyboardButtonRow)
+	w.VectorHeader(2) // buttons
+
+	// keyboardButton: маска пустая — необязательных полей нет вовсе.
+	w.ConstructorID(idKeyboardButton)
+	patchPlain := w.ReserveInt()
+	w.String("ok")
+	patchPlain(Flags(0).Value())
+
+	w.ConstructorID(idKeyboardButtonURL)
+	patchURL := w.ReserveInt()
+	w.String("go")
+	w.String("https://a.io")
+	patchURL(Flags(0).Value())
+
+	assertGolden(t, "replyInlineMarkup", w)
+
+	// Обратный разбор — по той же структуре, включая счётчики обоих уровней.
+	r := NewReader(w.Result())
+	if id, err := r.ConstructorID(); err != nil || id != idReplyInlineMarkup {
+		t.Fatalf("markup id = %#08x, err = %v", uint32(id), err)
+	}
+	rows, err := r.VectorHeader()
+	if err != nil || rows != 1 {
+		t.Fatalf("рядов = %d, err = %v", rows, err)
+	}
+	if id, err := r.ConstructorID(); err != nil || id != idKeyboardButtonRow {
+		t.Fatalf("row id = %#08x, err = %v", uint32(id), err)
+	}
+	buttons, err := r.VectorHeader()
+	if err != nil || buttons != 2 {
+		t.Fatalf("кнопок = %d, err = %v", buttons, err)
+	}
+	if r.Remaining() == 0 {
+		t.Fatal("тело кнопок не дописано")
+	}
+}

@@ -35,6 +35,12 @@
       "type": "MessageEntity",
       "hex": "acaaccf100000000020000001e000000",
       "note": "та же цитата с нулевой маской: длина записи ТА ЖЕ — «выключено» это отсутствие, а не значение"
+    },
+    {
+      "name": "replyInlineMarkup",
+      "type": "ReplyMarkup",
+      "hex": "5402a34815c4b51c01000000838b607715c4b51c02000000ff0c177d00000000026f6b00ec250cd80000000002676f000c68747470733a2f2f612e696f000000",
+      "note": "replyInlineMarkup#48a30254 rows:Vector<KeyboardButtonRow>; один ряд из двух кнопок — keyboardButton{text=ok} и keyboardButtonUrl{text=go,url=https://a.io}. Вложенные векторы: Vector<KeyboardButtonRow> внутри которого Vector<KeyboardButton>."
     }
   ]
 }
