@@ -330,6 +330,9 @@ func botMessageResult(msg domain.Message, chatID int64, text string) map[string]
 	if ents := botAPIEntities(msg.Entities); len(ents) > 0 {
 		res["entities"] = ents
 	}
+	if rm := botAPIReplyMarkup(msg.ReplyMarkup); rm != nil {
+		res["reply_markup"] = rm
+	}
 	return res
 }
 
@@ -346,56 +349,180 @@ func botErrCode(err error) int {
 	}
 }
 
+// ── граница Bot API: разметка клавиатур ─────────────────────────────────────
+//
+// Публичный Bot API описывает клавиатуру своей ПЛОСКОЙ записью
+// (inline_keyboard / keyboard / resize_keyboard / one_time_keyboard /
+// callback_data / web_app) — это чужой контракт из документации Telegram, и
+// менять его нельзя: ответ должны читать те же клиентские библиотеки, что и у
+// настоящего Telegram. Ровно так устроен и оригинал: Bot API — фасад над
+// MTProto. Поэтому здесь стоит конвертер в обе стороны, а модель внутри —
+// объединение конструкторов схемы (domain/mtreplymarkup.go).
+//
+// То же решение уже принято для сущностей: parseEntities/botAPIEntities.
+
+// botAPIKeyboardRow — ряд Bot API: массив кнопок. Тип общий для inline- и
+// reply-клавиатуры, потому что таков контракт: у Telegram это InlineKeyboardButton
+// и KeyboardButton с пересекающимся набором ключей.
+type botAPIKeyboardRow []struct {
+	Text         string                `json:"text"`
+	CallbackData string                `json:"callback_data"`
+	URL          string                `json:"url"`
+	WebApp       *struct{ URL string } `json:"web_app"`
+}
+
 // parseReplyMarkup: Telegram InlineKeyboardMarkup / ReplyKeyboardMarkup /
-// ReplyKeyboardRemove → domain.ReplyMarkup.
-func parseReplyMarkup(raw json.RawMessage) *domain.ReplyMarkup {
+// ReplyKeyboardRemove / ForceReply → объединение domain.ReplyMarkup.
+func parseReplyMarkup(raw json.RawMessage) domain.ReplyMarkup {
 	if len(raw) == 0 {
 		return nil
 	}
 	var m struct {
-		InlineKeyboard [][]struct {
-			Text         string                `json:"text"`
-			CallbackData string                `json:"callback_data"`
-			URL          string                `json:"url"`
-			WebApp       *struct{ URL string } `json:"web_app"`
-		} `json:"inline_keyboard"`
-		Keyboard [][]json.RawMessage `json:"keyboard"`
-		Resize   bool                `json:"resize_keyboard"`
-		OneTime  bool                `json:"one_time_keyboard"`
-		Remove   bool                `json:"remove_keyboard"`
+		InlineKeyboard []botAPIKeyboardRow `json:"inline_keyboard"`
+		// Ячейка reply-клавиатуры — объект KeyboardButton либо (легаси Bot API)
+		// голая строка, поэтому RawMessage: разбор ниже принимает обе формы.
+		Keyboard    [][]json.RawMessage `json:"keyboard"`
+		Resize      bool                `json:"resize_keyboard"`
+		OneTime     bool                `json:"one_time_keyboard"`
+		Persistent  bool                `json:"is_persistent"`
+		Selective   bool                `json:"selective"`
+		Placeholder string              `json:"input_field_placeholder"`
+		Remove      bool                `json:"remove_keyboard"`
+		ForceReply  bool                `json:"force_reply"`
 	}
 	if json.Unmarshal(raw, &m) != nil {
 		return nil
 	}
-	out := &domain.ReplyMarkup{Resize: m.Resize, OneTime: m.OneTime}
-	if m.Remove {
-		out.Keyboard = [][]string{} // пустая клавиатура = скрыть
+	switch {
+	case m.Remove:
+		return domain.NewReplyKeyboardHide(m.Selective)
+	case m.ForceReply:
+		return domain.NewReplyKeyboardForceReply(m.OneTime, m.Selective, m.Placeholder)
+	case len(m.InlineKeyboard) > 0:
+		rows := make([]domain.KeyboardButtonRow, 0, len(m.InlineKeyboard))
+		for _, row := range m.InlineKeyboard {
+			buttons := make([]domain.KeyboardButton, 0, len(row))
+			for _, b := range row {
+				// «Ровно один из» прежнего InlineButton стало выбором
+				// конструктора: web_app важнее url (Telegram открывает mini-app),
+				// а callback_data — последний, потому что кнопка без url и
+				// web_app в Bot API всегда callback.
+				switch {
+				case b.WebApp != nil:
+					buttons = append(buttons, domain.NewKeyboardButtonWebView(b.Text, b.WebApp.URL))
+				case b.URL != "":
+					buttons = append(buttons, domain.NewKeyboardButtonURL(b.Text, b.URL))
+				default:
+					// callback_data в Bot API — строка 1..64 байта; в схеме
+					// data:bytes, поэтому байты её UTF-8 представления.
+					buttons = append(buttons, domain.NewKeyboardButtonCallback(b.Text, []byte(b.CallbackData)))
+				}
+			}
+			rows = append(rows, domain.NewKeyboardButtonRow(buttons...))
+		}
+		return domain.NewReplyInlineMarkup(rows)
+	case m.Keyboard != nil:
+		rows := make([]domain.KeyboardButtonRow, 0, len(m.Keyboard))
+		for _, row := range m.Keyboard {
+			buttons := make([]domain.KeyboardButton, 0, len(row))
+			for _, cell := range row {
+				buttons = append(buttons, domain.NewKeyboardButton(botAPIKeyboardCellText(cell)))
+			}
+			rows = append(rows, domain.NewKeyboardButtonRow(buttons...))
+		}
+		return domain.NewReplyKeyboardMarkup(rows, domain.ReplyKeyboardFlags{
+			Resize: m.Resize, SingleUse: m.OneTime, Selective: m.Selective, Persistent: m.Persistent,
+		}, m.Placeholder)
+	}
+	return nil
+}
+
+// botAPIKeyboardCellText достаёт текст ячейки reply-клавиатуры: объект
+// KeyboardButton {"text":…} либо голая строка (легаси-форма Bot API).
+func botAPIKeyboardCellText(cell json.RawMessage) string {
+	var s string
+	if json.Unmarshal(cell, &s) == nil {
+		return s
+	}
+	var kb struct {
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(cell, &kb)
+	return kb.Text
+}
+
+// botAPIReplyMarkup — обратная сторона конвертера: объединение схемы → плоская
+// запись Bot API. nil, если клавиатуры нет.
+func botAPIReplyMarkup(markup domain.ReplyMarkup) map[string]any {
+	switch m := markup.(type) {
+	case domain.ReplyInlineMarkup:
+		return map[string]any{"inline_keyboard": botAPIInlineRows(m.Rows)}
+	case domain.ReplyKeyboardMarkup:
+		out := map[string]any{"keyboard": botAPIKeyboardRows(m.Rows)}
+		// Флаги Bot API — обычные булевы ключи, но «выключено» у него тоже
+		// значит отсутствие: не кладём false, чтобы ответ совпадал с телеграмным.
+		putIfTrue(out, "resize_keyboard", m.Resize())
+		putIfTrue(out, "one_time_keyboard", m.SingleUse())
+		putIfTrue(out, "is_persistent", m.Persistent())
+		putIfTrue(out, "selective", m.Selective())
+		if m.Placeholder != nil {
+			out["input_field_placeholder"] = *m.Placeholder
+		}
+		return out
+	case domain.ReplyKeyboardHide:
+		out := map[string]any{"remove_keyboard": true}
+		putIfTrue(out, "selective", m.Selective())
+		return out
+	case domain.ReplyKeyboardForceReply:
+		out := map[string]any{"force_reply": true}
+		putIfTrue(out, "one_time_keyboard", m.SingleUse())
+		putIfTrue(out, "selective", m.Selective())
+		if m.Placeholder != nil {
+			out["input_field_placeholder"] = *m.Placeholder
+		}
 		return out
 	}
-	for _, row := range m.InlineKeyboard {
-		r := make([]domain.InlineButton, 0, len(row))
-		for _, b := range row {
-			btn := domain.InlineButton{Text: b.Text, Callback: b.CallbackData, URL: b.URL}
-			if b.WebApp != nil {
-				btn.WebApp = b.WebApp.URL
-			}
-			r = append(r, btn)
-		}
-		out.Inline = append(out.Inline, r)
+	return nil
+}
+
+func putIfTrue(m map[string]any, key string, v bool) {
+	if v {
+		m[key] = true
 	}
-	for _, row := range m.Keyboard {
-		r := make([]string, 0, len(row))
-		for _, cell := range row {
-			var s string
-			if json.Unmarshal(cell, &s) == nil {
-				r = append(r, s)
-				continue
+}
+
+// botAPIInlineRows — ряды inline-клавиатуры в форме Bot API. Кнопка, чей
+// конструктор в этой клавиатуре не встречается (keyboardButton), пропускается:
+// плоской записи для неё в контракте Bot API нет.
+func botAPIInlineRows(rows []domain.KeyboardButtonRow) [][]map[string]any {
+	out := make([][]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		cells := make([]map[string]any, 0, len(row.Buttons))
+		for _, b := range row.Buttons {
+			switch btn := b.(type) {
+			case domain.KeyboardButtonCallback:
+				cells = append(cells, map[string]any{"text": btn.Text, "callback_data": string(btn.Data)})
+			case domain.KeyboardButtonURL:
+				cells = append(cells, map[string]any{"text": btn.Text, "url": btn.URL})
+			case domain.KeyboardButtonWebView:
+				cells = append(cells, map[string]any{"text": btn.Text, "web_app": map[string]any{"url": btn.URL}})
 			}
-			var kb struct{ Text string }
-			_ = json.Unmarshal(cell, &kb)
-			r = append(r, kb.Text)
 		}
-		out.Keyboard = append(out.Keyboard, r)
+		out = append(out, cells)
+	}
+	return out
+}
+
+// botAPIKeyboardRows — ряды reply-клавиатуры в форме Bot API (объекты
+// KeyboardButton, а не легаси-строки: так их отдаёт Telegram).
+func botAPIKeyboardRows(rows []domain.KeyboardButtonRow) [][]map[string]any {
+	out := make([][]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		cells := make([]map[string]any, 0, len(row.Buttons))
+		for _, b := range row.Buttons {
+			cells = append(cells, map[string]any{"text": b.Caption()})
+		}
+		out = append(out, cells)
 	}
 	return out
 }

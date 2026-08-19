@@ -67,6 +67,13 @@ func (h *ChatHandler) BotMenuButton(w http.ResponseWriter, r *http.Request) {
 
 // BotCallback — POST /bots/{botID}/callback {chat_id, data}: нажатие
 // callback-кнопки; возвращает всплывающий ответ (toast/alert).
+//
+// data — полезная нагрузка нажатой кнопки, то есть keyboardButtonCallback.data.
+// В схеме этот параметр — `bytes`, и на JSON-проводе байты едут base64-строкой
+// (см. domain/mtreplymarkup.go), поэтому клиент возвращает сюда значение
+// кнопки БЕЗ преобразований, а разбирает его сервер. Одна форма `bytes` на всём
+// пути — иначе base64 пришлось бы разворачивать в витрине, и на фазе бинарного
+// кодека это место пришлось бы переделывать.
 func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 	botID, ok := pathInt(w, r, "botID")
 	if !ok {
@@ -75,13 +82,13 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		ChatID    int64  `json:"chat_id"`
 		MessageID int64  `json:"message_id"`
-		Data      string `json:"data"`
+		Data      []byte `json:"data"` // bytes схемы → base64 на JSON-проводе
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.ChatID <= 0 {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	ans, err := h.svc.BotCallback(r.Context(), b.ChatID, h.meID(r), botID, b.MessageID, b.Data)
+	ans, err := h.svc.BotCallback(r.Context(), b.ChatID, h.meID(r), botID, b.MessageID, string(b.Data))
 	if errors.Is(err, domain.ErrForbidden) {
 		writeError(w, http.StatusForbidden, "not a member")
 		return

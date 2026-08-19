@@ -1,6 +1,6 @@
 // src/core/models.ts
 import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
-import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
+import type { ReplyMarkup } from './markup/replyMarkup'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 import type { NewMessageEvt } from './realtime/events'
 import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
@@ -212,7 +212,9 @@ export interface RawMessage {
   contact?: { user_id: number; name?: string; phone?: string } | null
   gift_id?: number | null
   gift?: RawGiftInfo | null
-  reply_markup?: { inline?: { text: string; callback?: string; url?: string; webapp?: string }[][]; keyboard?: string[][]; resize?: boolean; one_time?: boolean } | null
+  /** Клавиатура в форме оригинала (TL): объединение конструкторов ReplyMarkup
+   * с дискриминатором `_`; `null` — клавиатуры нет. */
+  reply_markup?: ReplyMarkup | null
   enc_body?: string | null
   ttl_seconds?: number | null
   destruct_at?: string | null
@@ -794,7 +796,7 @@ export function mapMessage(r: RawMessage): Message {
       ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
       : undefined,
     gift: r.gift ? mapGiftInfo(r.gift) : undefined,
-    replyMarkup: r.reply_markup ? mapReplyMarkup(r.reply_markup) : undefined,
+    replyMarkup: r.reply_markup ?? undefined,
     encBody: r.enc_body ?? undefined,
     ttlSeconds: r.ttl_seconds ?? undefined,
     destructAt: r.destruct_at ?? undefined,

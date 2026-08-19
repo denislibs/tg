@@ -242,7 +242,7 @@ func (i *Interactor) BotGetUpdates(ctx context.Context, bot domain.BotAccount, o
 }
 
 // BotSendMessage — бот шлёт сообщение в чат (должен быть его участником).
-func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup domain.ReplyMarkup) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, bot.BotID)
 	if err != nil {
 		return domain.Message{}, err

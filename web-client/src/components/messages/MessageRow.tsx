@@ -27,6 +27,7 @@ import { useSetTransition } from '../../core/hooks/useSetTransition'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import { getDocumentFromMessage } from '../../core/media/messageMedia'
+import { getInlineMarkupRows } from '../../core/markup/replyMarkup'
 import s from './MessageRow.module.scss'
 
 // Stable handler bundle the feed/rows close over (identities are `useEvent`
@@ -186,6 +187,11 @@ function MessageRow({
     animatedSticker,
   })
 
+  // Инлайн-клавиатура — только у `replyInlineMarkup` и только если в ней есть
+  // кнопки: тот же предикат, что даёт классу `with-reply-markup` (tweb
+  // bubbles.ts:7732-7745).
+  const inlineMarkupRows = getInlineMarkupRows(m.replyMarkup)
+
   // Выделение — через SetTransition, как в tweb (selection.ts:497-502:
   // `SetTransition({element, className: 'is-selected', forwards: isSelected,
   // duration: 200})`). Класс не просто снимается: на выходе к нему добавляется
@@ -294,8 +300,8 @@ function MessageRow({
         {/* Инлайн-клавиатура бота — СИБЛИНГ бабла внутри обёртки (tweb
             .reply-markup рядом с .bubble-content): кнопки лежат под баблом, а не
             внутри цветной подложки. */}
-        {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
-          <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
+        {inlineMarkupRows && m.chatId != null && m.senderId != null && (
+          <InlineKeyboard rows={inlineMarkupRows} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
         )}
       </div>
     </div>

@@ -18,7 +18,6 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { mapReplyMarkup } from '../../core/managers/botsManager'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
@@ -148,7 +147,7 @@ const APPLY: Projector = {
   // вместе с этими строками — второго применения не было бы, будь они живы).
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
-  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },
+  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ?? null) },
   [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },

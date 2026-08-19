@@ -265,7 +265,7 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
     geo: { lat: 1.5, lng: 2.5, title: 'Point', address: 'Addr', live_period: 900 },
     contact: { user_id: 77, name: 'Bob', phone: '+1' },
     gift: { id: 1, gift: { id: 2, emoji: '🎁', title: 'Gift', price_stars: 100, convert_stars: 50, total: null, remains: null, sold_out: false }, from_id: 9, anonymous: false, hidden: false, converted: false, convert_stars: 50 },
-    reply_markup: { inline: [[{ text: 'Click', callback: 'cb' }]] },
+    reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Click', data: 'Y2I=' }] }] },
     media: {
       _: 'messageMediaPhoto',
       photo: {
@@ -354,19 +354,19 @@ describe('MessagesManager.cacheLive — send_as живого кадра', () => 
 
 // Баг (см. BRIEF.md): cacheEdit патчил только text/entities/editedAt и молча
 // игнорировал reply_markup из кадра edit_message, хотя витрина применяет его
-// (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ? mapReplyMarkup(...) : null)).
+// (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ?? null)).
 // Значит живая правка клавиатуры бота выглядела правильно (витрина её ловила
 // из сырого кадра мимо SSOT), а SSOT воркера оставался со старой клавиатурой —
 // расхождение всплывало только при переоткрытии чата/второй вкладке, поднимающей
-// окно из кэша воркера. Правило то же, что у витрины: поле есть → маппить
-// mapReplyMarkup, поля нет → клавиатура снята (бэк шлёт reply_markup абсолютным
+// окно из кэша воркера. Правило то же, что у витрины: поле есть → положить
+// значение кадра, поля нет → клавиатура снята (бэк шлёт reply_markup абсолютным
 // значением, backend/internal/usecase/chat/frame.go:243).
 describe('MessagesManager.cacheEdit — reply_markup', () => {
   function pageWithMarkup(): { messages: RawMessage[]; count: number } {
     const messages = [3, 2, 1].map((seq) => ({
       id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
-      reply_markup: seq === 2 ? { inline: [[{ text: 'Old', callback: 'old' }]] } : undefined,
+      reply_markup: seq === 2 ? { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] } : undefined,
     }) as RawMessage)
     return { messages, count: messages.length }
   }
@@ -375,25 +375,21 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
     const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
+    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
     mgr.cacheEdit({
       chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
-      // one_time — поле, которого нет в фикстурах старой клавиатуры (только
-      // inline). Без него toEqual не отличил бы смаппленный ReplyMarkup от
-      // сырого RawMarkup: обе стороны несли бы один и тот же {inline}, а
-      // отсутствующие oneTime/one_time читаются toEqual как равные undefined.
-      reply_markup: { inline: [[{ text: 'New', callback: 'new' }]], one_time: true },
+      reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] },
     })
     const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const edited = r.messages.find((m) => m.id === 2)
-    expect(edited?.replyMarkup).toEqual({ inline: [[{ text: 'New', callback: 'new' }]], oneTime: true })
+    expect(edited?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] })
   })
 
   it('clears replyMarkup in the SSOT when the edit carries no reply_markup (removed)', async () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
     const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
+    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
     mgr.cacheEdit({ chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z' })
     const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const edited = r.messages.find((m) => m.id === 2)

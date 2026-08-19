@@ -163,7 +163,49 @@ type}], type}`. У tweb это `lib/mtproto/schema.ts`, из него генер
 (`botapi_handler.go`, `parseEntities`/`botAPIEntities`), а наружу продолжает
 уходить плоская форма.
 
-*Дальше по программе:* разметка сообщения (`ReplyMarkup`).
+*Разметка клавиатур (`ReplyMarkup`) — на бэкенде переведена.* Наша
+`domain.ReplyMarkup{Inline [][]InlineButton, Keyboard [][]string, Resize,
+OneTime}` держала ДВЕ разные клавиатуры в одном объекте и различала их по тому,
+какое поле непустое, а «убрать клавиатуру» было третьим состоянием того же поля
+— пустым срезом, который `omitempty` выкидывал из вывода целиком. В оригинале
+это четыре РАЗНЫХ конструктора одного объединения (`replyInlineMarkup` /
+`replyKeyboardMarkup` / `replyKeyboardHide` / `replyKeyboardForceReply`) с
+вложенными `keyboardButtonRow`, а кнопки — тоже объединение (`keyboardButton` /
+`keyboardButtonCallback` / `keyboardButtonUrl` / `keyboardButtonWebView`), где
+«ровно один из callback/url/webapp» выражен выбором конструктора, а не
+комментарием. Наш `OneTime` оказался `single_use` схемы, `Resize` — `resize`,
+оба живут в `pFlags`. Модель — `backend/internal/domain/mtreplymarkup.go`,
+сверка со схемой — `mtreplymarkup_schema_test.go` (тот же `schemaChecker`,
+обходит вложенность markup → rows → buttons), строки переписаны миграцией
+`0101_reply_markup_tl.sql` (`messages.reply_markup` + замороженные кадры
+`updates.payload` и `channel_updates.payload`), конвертация проверена на живом
+Postgres (`replymarkup_migration_test.go`). Bot API, как и у сущностей, остался
+плоским — конвертер в обе стороны (`parseReplyMarkup`/`botAPIReplyMarkup`).
+
+Отдельно про `keyboardButtonCallback.data`: в схеме это **`bytes`**, а не
+строка, и на JSON-проводе фазы 0 байты едут base64 — ровно как
+`photoStrippedSize.bytes` у медиа. Одна форма `bytes` держится на всём пути,
+включая `POST /bots/{botID}/callback`: клиент возвращает `data` нажатой кнопки
+БЕЗ преобразований, разбирает его сервер.
+
+*Разметка клавиатур (`ReplyMarkup`) — на клиенте переведена.* Болезнь та же:
+`{inline?: InlineButton[][], keyboard?: string[][], resize?, oneTime?}` — наша
+выдумка, где вид кнопки подделывался НАЛИЧИЕМ поля (`b.url ? … : b.callback ?
+…`), «скрыть клавиатуру» выражалось пустым массивом (который `omitempty` с
+бэкенда просто выкидывал — `/hide` не работал вовсе), а кнопка reply-клавиатуры
+была голой строкой. Стало — объединение конструкторов схемы
+(`web-client/src/core/markup/replyMarkup.ts`), ветвление по `_` как в оригинале
+(`wrapKeyboardButton`, `ReplyKeyboard.checkAvailability`, `mergeReplyKeyboard`),
+сверка со схемой механическая — `replyMarkup.schema.test.ts` (зеркало
+`messageMedia.schema.test.ts`). Маппер `mapReplyMarkup` исчез: форма провода и
+форма модели совпали, разбирать больше нечего.
+
+Тип из `@layer` напрямую и здесь не годится — по той же причине, что у медиа:
+`keyboardButtonCallback.data` в схеме `bytes`, то есть `Uint8Array`, а на нашем
+проводе фазы 0 байты едут base64-строкой. Переход к `@layer` для разметки
+становится естественным на фазе 2, вместе с кодеком.
+
+*Дальше по программе:* пиры и чаты.
 
 **2. Кодек TL на Go + генерация структур; WS на TL под флагом.**
 Основная новая работа. Всё остальное в программе — портирование.

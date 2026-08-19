@@ -587,7 +587,7 @@ func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string,
 
 // UpdateReplyMarkup replaces a message's inline/reply keyboard (edited_at=now());
 // returns the updated row. Used by the Bot API editMessageReplyMarkup.
-func (r *MessagesRepo) UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (r *MessagesRepo) UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
 		`UPDATE messages SET reply_markup=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
@@ -1070,7 +1070,7 @@ func entitiesParam(es domain.MessageEntities) any {
 }
 
 // replyMarkupParam кодирует клавиатуру в jsonb-строку (nil → NULL).
-func replyMarkupParam(rm *domain.ReplyMarkup) any {
+func replyMarkupParam(rm domain.ReplyMarkup) any {
 	if rm == nil {
 		return nil
 	}
@@ -1128,9 +1128,10 @@ func scanMessage(s scanner) (domain.Message, error) {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)
 	}
 	if err == nil && len(markupRaw) > 0 && string(markupRaw) != "null" {
-		var rm domain.ReplyMarkup
-		if json.Unmarshal(markupRaw, &rm) == nil {
-			m.ReplyMarkup = &rm
+		// Объединение по дискриминатору `_`: неизвестный конструктор — nil,
+		// сообщение приезжает без клавиатуры, а не роняет чтение истории.
+		if rm, e := domain.UnmarshalReplyMarkup(markupRaw); e == nil {
+			m.ReplyMarkup = rm
 		}
 	}
 	if err == nil && len(geoMetaRaw) > 0 && string(geoMetaRaw) != "null" {

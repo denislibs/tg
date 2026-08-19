@@ -158,8 +158,11 @@ type Message struct {
 	// его развёрнутое представление, наполняется read-моделью истории.
 	GiftID *int64
 	Gift   *GiftInfo
-	// ReplyMarkup — клавиатура сообщения (inline/reply), обычно у сообщений бота.
-	ReplyMarkup *ReplyMarkup
+	// ReplyMarkup — клавиатура сообщения, обычно у сообщений бота: объединение
+	// конструкторов схемы (replyInlineMarkup | replyKeyboardMarkup |
+	// replyKeyboardHide | replyKeyboardForceReply), см. mtreplymarkup.go.
+	// nil — клавиатуры нет.
+	ReplyMarkup ReplyMarkup
 	// E2E-шифртекст сообщения типа 'encrypted' (iv||ciphertext). Text/Entities
 	// у таких сообщений пустые — сервер хранит блоб непрозрачно.
 	EncBody []byte

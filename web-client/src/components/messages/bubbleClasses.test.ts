@@ -88,7 +88,7 @@ describe('bubbleClasses', () => {
   // фазы `backwards` на снятии выделения.
   it('ответ, клавиатура, подсветка, граница непрочитанных', () => {
     const cls = bubbleClasses(
-      msg({ reply: { name: 'Алиса', text: 'что' } as ConvMsg['reply'], replyMarkup: { inline: [[{ text: 'ok' }]] } as ConvMsg['replyMarkup'] }),
+      msg({ reply: { name: 'Алиса', text: 'что' } as ConvMsg['reply'], replyMarkup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'ok', data: 'b2s=' }] }] } }),
       ctx({ isHighlighted: true, isFirstUnread: true }),
     )
     expect(cls).toEqual(expect.arrayContaining(['is-reply', 'with-reply-markup', 'is-highlighted', 'is-first-unread']))

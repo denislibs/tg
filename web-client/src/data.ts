@@ -79,7 +79,7 @@ export interface ConvMsg {
   checklist?: import('./core/models').Checklist // чек-лист (type 'checklist')
   giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
-  replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
+  replyMarkup?: import('./core/markup/replyMarkup').ReplyMarkup // клавиатура сообщения бота (TL-объединение ReplyMarkup)
   // карточка превью ссылки под текстовым сообщением (сервер собирает её из
   // og-тегов; картинка — наше медиа, см. WebPageData)
   webPage?: import('./core/models').WebPageData

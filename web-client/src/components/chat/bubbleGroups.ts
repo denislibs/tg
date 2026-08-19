@@ -53,6 +53,7 @@ import forEachReverse from '@helpers/array/forEachReverse'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
 import { startOfDayMs } from '@core/format/dayLabel'
 import type { Message } from '@core/models'
+import { getInlineMarkupRows } from '@core/markup/replyMarkup'
 
 /** Порт tweb `bubbles.ts:306`. Позиция первой группы внутри контейнера дня:
  *  перед группами лежат дата-бабл, его `is-fake`-дубль и sentinel, который
@@ -199,7 +200,7 @@ function partition<T>(array: T[], predicate: (value: T) => boolean): [T[], T[]] 
 /** Порт tweb `canHaveReplyMarkup` (bubbleGroups.ts:51): у аватара серии свой
  *  отступ, когда под последним баблом висит инлайн-клавиатура. */
 function canHaveReplyMarkup(message: Message): boolean {
-  return !!message.replyMarkup?.inline?.some((row) => row.length)
+  return !!getInlineMarkupRows(message.replyMarkup)
 }
 
 /** Порт tweb `BubbleGroup`. */

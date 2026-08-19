@@ -946,7 +946,7 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entiti
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	now := time.Now()

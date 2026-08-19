@@ -14,6 +14,7 @@
 //   альбом      → bubble is-album is-grouped photo
 //   опрос       → bubble poll-message
 import { getDocumentFromMessage, type MyDocument } from '../../core/media/messageMedia'
+import { getInlineMarkupRows } from '../../core/markup/replyMarkup'
 import type { ConvMsg } from '../../data'
 
 export interface BubbleCtx {
@@ -142,7 +143,9 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
   // Пост канала: рядом с баблом висит круглая кнопка «переслать», под неё
   // резервируется место (tweb bubbles.ts:7673-7681).
   if (ctx.isChannel) cls.push('channel-post', 'with-beside-button')
-  if (m.replyMarkup?.inline) cls.push('with-reply-markup')
+  // tweb вешает класс, только если инлайн-клавиатура реально дала кнопки
+  // (bubbles.ts:7743 — `containerDiv.childElementCount`).
+  if (getInlineMarkupRows(m.replyMarkup)) cls.push('with-reply-markup')
 
   if (ctx.isFirstUnread) cls.push('is-first-unread')
   if (ctx.isHighlighted) cls.push('is-highlighted')

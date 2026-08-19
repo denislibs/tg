@@ -1,8 +1,9 @@
-// Inline-клавиатура под сообщением бота (Telegram replyInlineMarkup). Кнопки:
-// callback (шлётся боту → toast/alert), url (открыть ссылку), webapp (mini-app —
-// открываем в новой вкладке). Самодостаточный: chatId/botId из сообщения.
+// Inline-клавиатура под сообщением бота (Telegram replyInlineMarkup).
+// Ветвление по конструктору кнопки — порт `getKeyboardButtonHandler`
+// (tweb `components/wrappers/keyboardButton.ts:64-300`): что делает кнопка,
+// решает её `_`, а не наличие того или иного поля.
 import { useState } from 'react'
-import type { InlineButton } from '../../core/managers/botsManager'
+import type { KeyboardButton, KeyboardButtonRow } from '../../core/markup/replyMarkup'
 import { useManagers } from '../../core/hooks/useManagers'
 import rootScope from '@lib/rootScope'
 import ConfirmDialog from '../settings/ConfirmDialog'
@@ -11,24 +12,37 @@ import { openWebApp } from '../../core/webapp'
 import { useT } from '../../i18n'
 import s from './InlineKeyboard.module.scss'
 
-export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: InlineButton[][]; chatId: number; botId: number; msgId?: number }) {
+export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: KeyboardButtonRow[]; chatId: number; botId: number; msgId?: number }) {
   const t = useT()
   const managers = useManagers()
   const [alert, setAlert] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const onClick = async (b: InlineButton) => {
-    if (b.url) { window.open(b.url, '_blank', 'noopener'); return }
-    if (b.webapp) { openWebApp({ url: b.webapp, botName: b.text, botId }); return }
-    if (b.callback == null || busy) return
-    setBusy(true)
-    try {
-      const ans = await managers.bots.callback(botId, chatId, b.callback, msgId)
-      if (ans.text) {
-        if (ans.alert) setAlert(ans.text)
-        else rootScope.dispatchEvent('ui:toast', ans.text)
+  const onClick = async (button: KeyboardButton) => {
+    switch (button._) {
+      case 'keyboardButtonUrl':
+        window.open(button.url, '_blank', 'noopener')
+        return
+      case 'keyboardButtonWebView':
+        openWebApp({ url: button.url, botName: button.text, botId })
+        return
+      case 'keyboardButtonCallback': {
+        if (busy) return
+        setBusy(true)
+        try {
+          const ans = await managers.bots.callback(botId, chatId, button.data, msgId)
+          if (ans.text) {
+            if (ans.alert) setAlert(ans.text)
+            else rootScope.dispatchEvent('ui:toast', ans.text)
+          }
+        } finally { setBusy(false) }
+        return
       }
-    } finally { setBusy(false) }
+      // tweb `default`: обработчик появляется только у кнопки БЕЗ сообщения
+      // (reply-клавиатура — шлёт свой текст). Под баблом сообщение есть, значит
+      // нажатие ничего не делает.
+      default:
+    }
   }
 
   return (
@@ -39,19 +53,19 @@ export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: I
         const lastRow = ri === rows.length - 1
         return (
           <div key={ri} className={s.row}>
-            {row.map((b, bi) => (
+            {row.buttons.map((button, bi) => (
               <button
                 key={bi}
                 type="button"
                 className={classNames(
                   s.btn,
                   lastRow && bi === 0 ? s.first : '',
-                  lastRow && bi === row.length - 1 ? s.last : '',
+                  lastRow && bi === row.buttons.length - 1 ? s.last : '',
                 )}
-                onClick={() => void onClick(b)}
+                onClick={() => void onClick(button)}
               >
-                {b.text}
-                {b.url && <span className={s.ext}>↗</span>}
+                {button.text}
+                {button._ === 'keyboardButtonUrl' && <span className={s.ext}>↗</span>}
               </button>
             ))}
           </div>

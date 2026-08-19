@@ -3,18 +3,6 @@ import type { RestClient } from '../net/restClient'
 // Боты (демо-бот @demobot). Реальных ботов нет — есть один демо-бот, который
 // авто-отвечает на сервере; клиент рендерит его клавиатуры и шлёт callback.
 
-export interface InlineButton {
-  text: string
-  callback?: string
-  url?: string
-  webapp?: string
-}
-export interface ReplyMarkup {
-  inline?: InlineButton[][]
-  keyboard?: string[][]
-  resize?: boolean
-  oneTime?: boolean
-}
 export interface BotCommand {
   command: string
   description: string
@@ -40,16 +28,6 @@ interface RawInlineResult {
   message_text: string
 }
 
-interface RawMarkup {
-  inline?: InlineButton[][]
-  keyboard?: string[][]
-  resize?: boolean
-  one_time?: boolean
-}
-export const mapReplyMarkup = (r: RawMarkup): ReplyMarkup => ({
-  inline: r.inline, keyboard: r.keyboard, resize: r.resize, oneTime: r.one_time,
-})
-
 export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
   return {
     async commands(botId: number): Promise<BotCommand[]> {
@@ -57,6 +35,14 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
       return r.commands ?? []
     },
     // Нажатие callback-кнопки: возвращает всплывающий ответ (toast/alert).
+    //
+    // `data` — поле `keyboardButtonCallback.data` кнопки БЕЗ преобразований, как
+    // в оригинале (`callbackButtonClick` кладёт `button.data` прямо в запрос,
+    // tweb `appInlineBotsManager.ts:225-232`). В схеме этот параметр — `bytes`,
+    // на JSON-проводе фазы 0 байты едут base64-строкой, и ручка принимает ровно
+    // ту же `bytes` (`bot_handler.go::BotCallback`): одна форма байтов на всём
+    // пути, разворачивает их сервер. Развернуть здесь значило бы завести на
+    // витрине вторую форму того же значения и переделывать это место на фазе 2.
     async callback(botId: number, chatId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
       return rest.post<CallbackAnswer>(`/bots/${botId}/callback`, { chat_id: chatId, message_id: messageId ?? 0, data })
     },

@@ -3,7 +3,7 @@ import { create } from 'zustand'
 // Mini-apps (Telegram Web Apps). Кнопка webapp у бота открывает iframe в модалке
 // с JS-мостом window.Telegram.WebApp. Мост — обмен postMessage строками
 // JSON {eventType, eventData} в обе стороны (1:1 с tweb telegramWebView.ts).
-// Реального MTProto нет — URL берётся прямой (из reply_markup.webapp).
+// Реального MTProto нет — URL берётся прямой (из keyboardButtonWebView.url).
 
 export interface WebAppState {
   open: boolean

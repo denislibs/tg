@@ -31,6 +31,7 @@ import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import rootScope from '@lib/rootScope'
 import { markMediaPlayed } from '../core/mediaRead'
+import { findReplyKeyboardRows } from '../core/markup/replyMarkup'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useSetTransition } from '../core/hooks/useSetTransition'
@@ -947,14 +948,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
     }).catch(() => {})
     return () => { alive = false }
   }, [chat.type, chat.peerId, managers])
-  // reply-клавиатура: последнее сообщение бота с непустым keyboard (пустой = скрыть).
-  const replyKeyboard = useMemo(() => {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const k = msgs[i].replyMarkup?.keyboard
-      if (k) return k.length > 0 ? k : null
-    }
-    return null
-  }, [msgs])
+  // reply-клавиатура над композером — ряды последней подходящей разметки окна
+  // (порт mergeReplyKeyboard + checkAvailability, core/markup/replyMarkup.ts).
+  const replyKeyboard = useMemo(() => findReplyKeyboardRows(msgs), [msgs])
   // Бот без истории → кнопка «Начать» вместо композера (шлёт /start).
   const botStart = isBotChat && isRealChat && msgs.length === 0
   // Пустой приватный чат (не бот, не группа) → плейсхолдер-приветствие (tweb).
@@ -1485,9 +1481,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
               <div className={s.replyKeyboard}>
                 {replyKeyboard.map((row, ri) => (
                   <div key={ri} className={s.replyKeyboardRow}>
-                    {row.map((label, bi) => (
-                      <button key={bi} type="button" className={s.replyKeyboardBtn} onClick={() => onComposerSend(label)}>
-                        {label}
+                    {/* Кнопка reply-клавиатуры шлёт свой текст сообщением —
+                        ветка `default` в tweb getKeyboardButtonHandler
+                        (keyboardButton.ts:290-296: sendText({text: button.text})). */}
+                    {row.buttons.map((button, bi) => (
+                      <button key={bi} type="button" className={s.replyKeyboardBtn} onClick={() => onComposerSend(button.text)}>
+                        {button.text}
                       </button>
                     ))}
                   </div>

@@ -234,7 +234,7 @@ type MessageRepo interface {
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
-	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
+	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
@@ -550,7 +550,7 @@ type SendInput struct {
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.
-	ReplyMarkup *domain.ReplyMarkup
+	ReplyMarkup domain.ReplyMarkup
 	// E2E-шифртекст (type 'encrypted'): iv||ciphertext. Text/Entities пустые.
 	EncBody []byte
 	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.

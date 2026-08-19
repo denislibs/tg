@@ -415,7 +415,7 @@ describe('прилипающий аватар серии', () => {
   it('avatar-for-reply-markup висит по ПОСЛЕДНЕМУ баблу серии', () => {
     feed([
       msg({ createdAt: at('12:00:00') }),
-      msg({ createdAt: at('12:00:10'), replyMarkup: { inline: [[{ text: 'ok', callback: 'ok' }]] } }),
+      msg({ createdAt: at('12:00:10'), replyMarkup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'ok', data: 'b2s=' }] }] } }),
     ])
     const group = groups.lastGroup
     void group.createAvatar(group.firstItem.message)

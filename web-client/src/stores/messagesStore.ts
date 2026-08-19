@@ -11,7 +11,7 @@
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCheck, ReactionCount } from '../core/models'
-import type { ReplyMarkup } from '../core/managers/botsManager'
+import type { ReplyMarkup } from '../core/markup/replyMarkup'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 import { winKey } from '../core/history/messagesMirror'

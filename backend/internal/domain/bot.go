@@ -25,24 +25,8 @@ func (s BotCommandScope) Norm() string {
 	return s.Type
 }
 
-// InlineButton — кнопка inline-клавиатуры (под сообщением). Ровно один из
-// Callback/URL/WebApp задан. Callback шлётся боту, URL открывает ссылку,
-// WebApp открывает mini-app.
-type InlineButton struct {
-	Text     string `json:"text"`
-	Callback string `json:"callback,omitempty"`
-	URL      string `json:"url,omitempty"`
-	WebApp   string `json:"webapp,omitempty"`
-}
-
-// ReplyMarkup — клавиатура сообщения (Telegram reply_markup). Inline — кнопки
-// под баблом; Keyboard — reply-кнопки над композером (строки текстов).
-type ReplyMarkup struct {
-	Inline   [][]InlineButton `json:"inline,omitempty"`
-	Keyboard [][]string       `json:"keyboard,omitempty"`
-	Resize   bool             `json:"resize,omitempty"`   // подгонять высоту reply-клавиатуры
-	OneTime  bool             `json:"one_time,omitempty"` // скрыть после нажатия
-}
+// Клавиатура сообщения (ReplyMarkup / KeyboardButton) живёт в mtreplymarkup.go —
+// это объединение конструкторов схемы TL, а не собственная плоская запись.
 
 // BotCallbackAnswer — ответ бота на нажатие callback-кнопки (Telegram
 // messages.getBotCallbackAnswer): всплывающий toast или alert-попап.

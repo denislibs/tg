@@ -13,7 +13,6 @@ export interface CalendarDay {
   has_thumb: boolean
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, deriveOut, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import { mapReplyMarkup } from './botsManager'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
@@ -626,10 +625,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
 
     // Live-правка от любого участника → единый объект в SSOT.
     // Stage 1B.3 (Task 3): НЕ переведено на операции — но уже не из-за пробела в
-    // cacheEdit (тот чинили отдельно: reply_markup теперь мапится сюда же тем же
-    // правилом, что и витрина — mapReplyMarkup при наличии поля, снятие клавиатуры
-    // при его отсутствии, backend/internal/usecase/chat/frame.go:243 шлёт поле
-    // абсолютным значением). Других обогащений у edit_message нет, так что
+    // cacheEdit (тот чинили отдельно: reply_markup теперь кладётся сюда же тем же
+    // правилом, что и на витрине — значение кадра при наличии поля, снятие
+    // клавиатуры при его отсутствии, backend/internal/usecase/chat/frame.go:243
+    // шлёт поле абсолютным значением). Других обогащений у edit_message нет, так что
     // структурных препятствий к переводу на patch не осталось — перевод остаётся
     // отдельной задачей (вне объёма этой), а не решением проблемы с данными.
     cacheEdit(evt: EditMessageEvt): void {
@@ -639,7 +638,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
           text: evt.text,
           entities: evt.entities ?? undefined,
           editedAt: evt.edited_at,
-          replyMarkup: evt.reply_markup ? mapReplyMarkup(evt.reply_markup) : undefined,
+          replyMarkup: evt.reply_markup ?? undefined,
         }))
     },
 

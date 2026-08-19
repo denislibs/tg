@@ -16,7 +16,7 @@ import (
 
 var botUsernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{3,30}[A-Za-z0-9]$`)
 
-func (i *Interactor) bfSend(ctx context.Context, chatID int64, text string, markup *domain.ReplyMarkup) {
+func (i *Interactor) bfSend(ctx context.Context, chatID int64, text string, markup domain.ReplyMarkup) {
 	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: domain.BotFatherID, Type: "text", Text: text, ReplyMarkup: markup})
 }
 
