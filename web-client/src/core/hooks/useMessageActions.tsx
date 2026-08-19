@@ -34,13 +34,15 @@ import type { Chat, ConvMsg } from '../../data'
 import { useManagers } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 import type { ReplyState, EditState } from './useChatSend'
+import { getUserTitle } from '../peers/getPeerTitle'
+import { getPeerPhotoId } from '../peers/peer'
 
 // closing — меню играет exit-анимацию ui-kit Menu; из стейта убирается только
 // по onExitComplete (destroyMsgMenu), иначе размонтирование срезало бы анимацию.
 type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
 type DelState = { ids: number[]; canRevoke: boolean }
 type ViewersState = { x: number; y: number; names: string[] }
-type ReactedRow = { name: string; avatarUrl: string; emoji: string }
+type ReactedRow = { name: string; photoId?: number; emoji: string }
 type ReactedState = { x: number; y: number; rows: ReactedRow[] }
 // Read-date исходящего сообщения (приватный чат, tweb getOutboxReadDate):
 // лениво подгружается при открытии меню. null — строку не показываем.
@@ -163,7 +165,7 @@ export function useMessageActions({
 
   const startReply = () => {
     const m = msgMenu && msgs[msgMenu.idx]
-    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent, { meId: meId ?? undefined, peerId: chat.peerId }) : null
+    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent, { meId: meId ?? undefined, peerId: Number(chat.id) }) : null
     if (rs) {
       setReply({ ...rs, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
@@ -177,7 +179,7 @@ export function useMessageActions({
   const startReplyAnother = () => {
     const m = msgMenu && msgs[msgMenu.idx]
     const raw = menuRawMsg()
-    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent, { meId: meId ?? undefined, peerId: chat.peerId }) : null
+    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent, { meId: meId ?? undefined, peerId: Number(chat.id) }) : null
     if (rs && raw?.id != null) {
       setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(m!.type), color: rs.color })
     }
@@ -185,14 +187,14 @@ export function useMessageActions({
   }
   // Выбран целевой чат: кладём pending-reply в стор и переключаемся туда —
   // Chat на маунте поставит reply-плашку с исходным чатом + снимком.
-  const pickReplyAnotherChat = (targetChatId: number) => {
+  const pickReplyAnotherChat = (targetPeerId: PeerId) => {
     const r = replyAnother
     setReplyAnother(null)
     if (!r || !isRealChat) return
     useSearchStore.getState().setPendingReply({
-      targetChatId, sourceChatId: numericChatId, msgId: r.msgId, name: r.name, text: r.text, color: r.color,
+      targetPeerId, sourcePeerId: numericChatId, msgId: r.msgId, name: r.name, text: r.text, color: r.color,
     })
-    onChatCreated?.(targetChatId)
+    onChatCreated?.(targetPeerId)
   }
 
   const startEdit = () => {
@@ -256,7 +258,7 @@ export function useMessageActions({
     const link = buildMessageLink({
       origin: location.origin,
       pathname: location.pathname,
-      chatId: numericChatId,
+      peerId: numericChatId,
       username: chat.username,
       seq: raw.seq,
     })
@@ -300,7 +302,7 @@ export function useMessageActions({
   const openReport = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.id != null && isRealChat) useReportStore.getState().open({ chatId: numericChatId, msgId: raw.id })
+    if (raw?.id != null && isRealChat) useReportStore.getState().open({ peerId: numericChatId, msgId: raw.id })
   }
 
   const openForward = () => {
@@ -350,14 +352,14 @@ export function useMessageActions({
     forwardPreviewRef.current = null
     if (!ids?.length || !isRealChat || !chatIds.length) return
     if (chatIds.length === 1) {
-      const targetChatId = chatIds[0]
+      const targetPeerId = chatIds[0]
       const preview = previewSnap ?? buildForwardPreview(ids)
       useSearchStore.getState().setPendingForward({
-        targetChatId, sourceChatId: source, msgIds: ids,
+        targetPeerId, sourcePeerId: source, msgIds: ids,
         count: preview.count, text: preview.text, hasCaption: preview.hasCaption,
       })
       clearSelection()
-      onChatCreated?.(targetChatId)
+      onChatCreated?.(targetPeerId)
       return
     }
     let lastOk: number | null = null
@@ -428,8 +430,10 @@ export function useMessageActions({
     if (raw?.id == null || !isRealChat) return
     const ids = await managers.messages.viewers(numericChatId, raw.id)
     const users = ids.length ? await managers.peers.getUsers(ids) : []
-    const byId = new Map(users.map((u) => [u.id, u.displayName]))
-    const names = ids.map((id) => byId.get(id) ?? `ID ${id}`)
+    const byId = new Map(users.map((u) => [u.id, u]))
+    // Имя собирает клиент; фолбэк оригинала («Удалённый аккаунт») внутри
+    // `getUserTitle`, поэтому `ID N` больше не нужен.
+    const names = ids.map((id) => getUserTitle(byId.get(id)))
     setViewers({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), names })
   }
 
@@ -454,7 +458,7 @@ export function useMessageActions({
     // Своя карточка — чтобы чип сразу показал аватар (tweb кладёт свой peer в
     // recent_reactions мгновенно), а не мигнул числом до серверного эха.
     const me = useChatsStore.getState().me
-    const meCard = me ? { id: me.id, name: me.displayName, avatarUrl: me.avatarUrl || undefined } : undefined
+    const meCard = me ? { id: me.user.id, name: getUserTitle(me.user) } : undefined
 
     if (action === 'add') {
       // Эффект вокруг чипа + select-анимация иконки (tweb reaction.ts
@@ -466,7 +470,8 @@ export function useMessageActions({
       // Снимаем свои прежние реакции, которые не помещаются в лимит вместе с новой.
       // Порядок постановки (tweb chosen_order) сервер нам не отдаёт, поэтому
       // старшинство берём по позиции в агрегате.
-      const limit = me?.premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
+      // Premium — ФЛАГ конструктора (`user.pFlags.premium`), а не поле витрины.
+      const limit = me?.user.pFlags?.premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
       const others = (raw.reactions ?? []).filter((r) => r.mine && r.emoji !== emoji)
       for (const stale of others.slice(0, Math.max(0, others.length - limit + 1))) {
         store.applyReactionOptimistic(numericChatId, msgId, stale.emoji, 'remove', meCard)
@@ -495,7 +500,8 @@ export function useMessageActions({
     const raw = win.msgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return
     const users = await managers.messages.reactionUsers(numericChatId, msgId)
-    const rows = users.map((u) => ({ name: u.name, avatarUrl: u.avatarUrl, emoji: u.emoji }))
+    // Имя и аватарка живут в КАРТОЧКЕ (`u.user`), а не плоскими полями рядом.
+    const rows = users.map((u) => ({ name: getUserTitle(u.user), photoId: getPeerPhotoId(u.user.photo) || undefined, emoji: u.emoji }))
     setReacted({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), rows })
   })
 
@@ -564,7 +570,7 @@ export function useMessageActions({
     // в pending-реестре воркера — beforeMessageSending завёл бы рядом второй.
     void managers.messages.retryPending({ clientMsgId: raw.clientId })
     void managers.messages.sendText({
-      chatId: numericChatId, text: raw.text, entities: raw.entities,
+      peerId: numericChatId, text: raw.text, entities: raw.entities,
       clientMsgId: raw.clientId, mediaId: raw.mediaId,
       type: raw.type !== 'text' ? raw.type : undefined,
       // Пакет параметров отправки восстанавливается из САМОГО бабла — порт tweb

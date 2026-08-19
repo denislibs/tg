@@ -20,7 +20,7 @@ import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Avatar from '../../shared/ui/Avatar'
-import { useAvatarSrc } from '../../components/useAvatarSrc'
+import { useMediaUrl } from './useMediaUrl'
 import TgIcon from '../../components/TgIcon'
 import { TopicIcon as _TopicIcon } from '../../components/TopicsPanel'
 import ConfirmDialog from '../../components/settings/ConfirmDialog'
@@ -40,6 +40,7 @@ import SuggestPostPopup from '../../components/SuggestPostPopup'
 import SuggestedPostsView from '../../components/SuggestedPostsView'
 import CreatePollPopup from '../../components/CreatePollPopup'
 import CreateChecklistPopup from '../../components/CreateChecklistPopup'
+import { getUserTitle } from '../peers/getPeerTitle'
 
 // TopicIcon импортируется на случай будущего использования в тред-меню (аватар темы).
 void _TopicIcon
@@ -89,13 +90,16 @@ export function useChatPopups(d: ChatPopupDeps) {
   const t = useT()
   const managers = useManagers()
   const meId = useChatsStore((s) => s.meId)
-  const meName = useChatsStore((s) => s.me?.displayName)
+  // Имя собирает клиент: `display_name` с провода убран.
+  const meName = useChatsStore((s) => (s.me ? getUserTitle(s.me.user) : undefined))
   const allDialogs = useChatsStore((s) => s.dialogs)
   const { chat, numericChatId, isRealChat, isChannel } = d
 
   const openGift = () => {
-    if (chat.type !== 'private' || chat.peerId == null) return
-    const toUserId = chat.peerId
+    // Ключ приватного диалога И ЕСТЬ id собеседника — второго поля рядом с `id`
+    // больше нет.
+    if (chat.type !== 'private') return
+    const toUserId = Number(chat.id)
     openPopup((p) => (
       <SendGiftPopup open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} toUserId={toUserId} toName={chat.name} />
     ))
@@ -106,7 +110,9 @@ export function useChatPopups(d: ChatPopupDeps) {
   ))
 
   // Аватар чата для хедера MutePopup (tweb PopupMute → PopupPeer peerId → avatarNew 32)
-  const chatAvatarSrc = useAvatarSrc(chat.avatarUrl)
+  // id медиа аватарки приезжает ГОТОВЫМ (`photo.photo_id`) — регулярка
+  // `/media/(\d+)/content` по нашей же строке ушла вместе с самой строкой.
+  const chatAvatarSrc = useMediaUrl(chat.photoId ?? null)
   const openMute = () => openPopup((p) => (
     <MutePopup
       open={p.open}
@@ -260,11 +266,11 @@ export function useChatPopups(d: ChatPopupDeps) {
       onToggleMute={isRealChat ? d.toggleMute : undefined}
       onAddMember={d.canAddMember ? () => d.setInfoOpen(true) : undefined}
       onSelectMessages={d.startSelectMode}
-      onAddContact={chat.type === 'private' && chat.peerId != null ? openAddContact : undefined}
+      onAddContact={chat.type === 'private' ? openAddContact : undefined}
       onDeleteChat={isRealChat ? openConfirmDelete : undefined}
       onClearHistory={isRealChat && chat.type !== 'channel' ? openConfirmClear : undefined}
       onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? openThemePicker : undefined}
-      onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? openGift : undefined}
+      onSendGift={chat.type === 'private' && Number(chat.id) !== meId ? openGift : undefined}
       onBoost={isChannel && isRealChat ? openBoost : undefined}
       onCreateGiveaway={d.canCreateGiveaway ? openGiveaway : undefined}
       onStartStream={isChannel && isRealChat && d.owned ? openStream : undefined}

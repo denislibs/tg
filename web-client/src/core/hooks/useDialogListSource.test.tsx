@@ -21,8 +21,8 @@ import type { Folder } from '../managers/foldersManager'
 import type { Dialog } from '../models'
 import type { DialogsPage } from '../managers/dialogsManager'
 
-const dialog = (chatId: number, over: Partial<Dialog> = {}): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: PeerId, over: Partial<Dialog> = {}): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false, ...over,
 } as Dialog)
 
@@ -196,7 +196,7 @@ describe('useDialogListSource: items — производная от зерка�
 
     const { result } = renderSource(managers, ALL_FOLDER_ID)
 
-    expect(result.current.items.map((i) => i.id)).toEqual(useChatsStore.getState().dialogs.map((d) => d.chatId))
+    expect(result.current.items.map((i) => i.id)).toEqual(useChatsStore.getState().dialogs.map((d) => d.peerId))
     expect(result.current.items.map((i) => i.id)).toEqual([2, 3, 1])
   })
 
@@ -251,7 +251,7 @@ describe('useDialogListSource: ссылки в items', () => {
     expect(before.map((i) => i.id)).toEqual([1])
 
     act(() => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 7 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 2, fields: { unread: 7 } }])
     })
 
     expect(result.current.items).toBe(before)
@@ -269,7 +269,7 @@ describe('useDialogListSource: ссылки в items', () => {
     const before = result.current.items
 
     act(() => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 5 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 2, fields: { unread: 5 } }])
     })
     const after = result.current.items
 

@@ -6,14 +6,19 @@
 // count. Behaviour is unchanged.
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
+import { NULL_PEER_ID } from '../peers/peerId'
 import { useChatsStore } from '../../stores/chatsStore'
+import type { ChatMember, GroupCard } from '../managers/groupsManager'
+import { isUserStatusOnline } from '../peers/peer'
 
 interface Card {
   type: string
   memberCount: number
   myRole: string
   myRights: number
-  discussionChatId: number
+  /** ЗНАКОВЫЙ ключ группы обсуждения (`-id`), `0` — обсуждения нет.
+   *  Сравнивать с нулём, а не «> 0»: у группы ключ ОТРИЦАТЕЛЬНЫЙ. */
+  discussionPeerId: PeerId
   slowmodeSeconds: number
   chargeStars: number
   defaultPermissions: number
@@ -29,7 +34,7 @@ const PERM_SEND_MEDIA = 2
 // приезжала, — то самое дёрганье композера при переходе в канал из сайдбара.
 // Сеть при этом ходит как раньше (memberCount/права меняются), но её ответ уже
 // ничего не двигает — он совпадает с показанным.
-const cardCache = new Map<number, Card>()
+const cardCache = new Map<PeerId, Card>()
 
 /**
  * Сброс кэша при смене аккаунта — зовёт `resetAccountStateInMemory`
@@ -42,8 +47,8 @@ export function resetChatCardCache(): void {
 
 interface InfoManagers {
   groups: {
-    card(chatId: number): Promise<Card>
-    members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
+    card(peerId: PeerId): Promise<GroupCard>
+    members(peerId: PeerId): Promise<ChatMember[]>
   }
 }
 
@@ -61,7 +66,7 @@ export interface ChatInfoCard {
   canSendText: boolean
   /** Групповые дефолт-права: может ли участник отправлять медиа/голосовые/вложения. */
   canSendMedia: boolean
-  discussionChatId: number
+  discussionPeerId: PeerId
   discussionsEnabled: boolean
   /** Live count of online group members (derived from chatsStore.presence). */
   onlineCount: number
@@ -78,15 +83,15 @@ export function useChatInfoCard(args: {
   // эффектом (`setCard(null)`) для этого не годится: на первом рендере после
   // смены чата состояние ещё от прошлого — футер успевал вывести права чужого
   // чата, и первая же раскладка _center уходила в плашку.
-  const [loaded, setLoaded] = useState<{ chatId: number; card: Card } | null>(null)
+  const [loaded, setLoaded] = useState<{ peerId: PeerId; card: Card } | null>(null)
   const memberIds = useRef<Set<number>>(new Set())
   // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);
   // we seed members' presence on load and derive the count below — no local listener.
   const setPresence = useChatsStore((s) => s.setPresence)
 
   // Карточка текущего чата: свежезагруженная, иначе снимок прошлого входа, иначе
-  // неизвестна. Проверка chatId — то самое отсечение чужого состояния.
-  const card = loaded?.chatId === numericChatId ? loaded.card : cardCache.get(numericChatId) ?? null
+  // неизвестна. Проверка ключа — то самое отсечение чужого состояния.
+  const card = loaded?.peerId === numericChatId ? loaded.card : cardCache.get(numericChatId) ?? null
 
   // Fetch the card (type + memberCount) and, for groups, the member snapshot (seeds
   // memberIds + initial online state). Reset on chat change so no stale count leaks.
@@ -96,25 +101,30 @@ export function useChatInfoCard(args: {
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive) return
-      const next: Card = { type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions }
+      const next: Card = { type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionPeerId: c.discussionPeerId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions }
       cardCache.set(numericChatId, next)
-      setLoaded({ chatId: numericChatId, card: next })
+      setLoaded({ peerId: numericChatId, card: next })
       if (c.type === 'group') {
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return
           memberIds.current = new Set(mem.map((m) => m.userId))
-          // Seed members' presence into the store (single source of truth); preserve
-          // any existing lastSeen so a private-chat peer's "last seen" text isn't lost.
-          const cur = useChatsStore.getState().presence
-          for (const m of mem) setPresence({ user_id: m.userId, online: m.online, last_seen: cur[m.userId]?.lastSeen ?? 0 })
+          // Сид присутствия участников в стор (единственный источник). Статус —
+          // ЦЕЛЫЙ конструктор `UserStatus`, а не пара «онлайн + время»: склеивать
+          // его с уже лежащим («сохранить прежний lastSeen») теперь не нужно и
+          // нечем — вариант приходит целиком. Статуса нет в ответе (правило
+          // приватности не пустило) — не трогаем лежащее вовсе.
+          for (const m of mem) if (m.status) setPresence({ user_id: m.userId, status: m.status })
         })
       }
     })
     return () => { alive = false }
   }, [isRealChat, numericChatId, managers, setPresence])
 
-  const discussionChatId = card?.discussionChatId ?? 0
-  const discussionsEnabled = isRealChat && isChannel && discussionChatId > 0
+  const discussionPeerId = card?.discussionPeerId ?? NULL_PEER_ID
+  // `!== NULL_PEER_ID`, а не «> 0»: ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ, и
+  // прежнее сравнение после перехода на знаковый ключ выключило бы обсуждения
+  // у всех каналов разом, ничего не покрасив.
+  const discussionsEnabled = isRealChat && isChannel && discussionPeerId !== NULL_PEER_ID
   const canPostChannel = card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) === 1
   const canType = !isChannel || canPostChannel
   // Карточка не грузится вовсе (не «настоящий» чат — тред/черновик) — там прав
@@ -133,9 +143,13 @@ export function useChatInfoCard(args: {
   // (presence frames for non-members don't touch it).
   const onlineCount = useChatsStore((s) => {
     let n = 0
-    for (const id of memberIds.current) if (s.presence[id]?.online) n++
+    // «Онлайн» — это `userStatusOnline`, У КОТОРОГО ЕЩЁ НЕ ИСТЁК `expires`
+    // (порт `appUsersManager.isUserOnline`). Прежний булев `online` срока
+    // годности не имел, и потерянный кадр держал человека в счётчике вечно.
+    const now = Math.floor(Date.now() / 1000)
+    for (const id of memberIds.current) if (isUserStatusOnline(s.presence[id], now)) n++
     return n
   })
 
-  return { card, permissionsKnown, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount }
+  return { card, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount }
 }

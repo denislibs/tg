@@ -39,6 +39,9 @@ import type { Managers } from '../../client/bootstrap'
 vi.mock('../../stores/chatsStore', () => ({
   loadChats: vi.fn(async () => {}),
   loadPresence: vi.fn(async () => {}),
+  // Деградация присутствия по `expires` — свой интервал; здесь заглушка, а её
+  // собственный пин живёт в stores/chatsStore.test.ts.
+  startPresenceDegradation: vi.fn(() => () => {}),
 }))
 vi.mock('../../stores/storiesStore', () => ({ loadStories: vi.fn(async () => {}) }))
 vi.mock('../../stores/notifyStore', () => ({ loadNotifySettings: vi.fn(async () => {}) }))

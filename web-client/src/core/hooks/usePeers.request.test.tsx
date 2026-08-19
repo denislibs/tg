@@ -30,9 +30,9 @@ describe('usePeers — запрос недостающих карточек', ()
   beforeEach(() => { resetPeerMirror() })
 
   it('спрашивает у воркера ровно те id, которых нет в сторе', async () => {
-    applyPeerOps([{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '', avatarPreview: '' }] }])
-    const asked: number[][] = []
-    const managers = { peers: { fillMirror: async (ids: number[]) => { asked.push(ids) } } }
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 2, username: 'bob', first_name: 'Боб' }] }])
+    const asked: PeerId[][] = []
+    const managers = { peers: { fillMirror: async (ids: PeerId[]) => { asked.push(ids) } } }
 
     renderHook(() => usePeers([2, 3]), { wrapper: wrapper(managers) })
     await act(async () => {})

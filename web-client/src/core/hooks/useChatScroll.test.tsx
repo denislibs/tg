@@ -39,7 +39,7 @@ async function flushScrollThrottle() {
 
 function msg(seq: number): Message {
   return {
-    id: seq, chatId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
+    id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
   }
 }

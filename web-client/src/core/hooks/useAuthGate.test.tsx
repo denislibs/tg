@@ -28,18 +28,21 @@ import { ManagersProvider } from './useManagers'
 import type { Managers } from '../../client/bootstrap'
 import rootScope from '@lib/rootScope'
 import { RT } from '../realtime/events'
-import type { User } from '../managers/authManager'
+import type { PeerProfile } from '../managers/authManager'
 import { useAppStateStore, setAppState } from '../../stores/appState'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { saveChatPosition, getChatPosition, clearChatPositions } from '../chat/chatPositions'
 import { bootPrefetch, setBootData } from '../../client/bootData'
 
-const ME: User = {
-  id: 1, phone: '+7', username: null, firstName: 'Д', lastName: '', displayName: 'Д',
-  bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '',
+// Своя личность — та же ПАРА конструкторов, что у любого профиля (`user` +
+// `userFull`): третьей формы «свой пользователь» больше нет ни на одной стороне.
+const ME: PeerProfile = {
+  user: { _: 'user', id: 1, first_name: 'Д', phone: '+7' },
+  fullUser: { _: 'userFull', id: 1 },
+  canMessage: true,
 }
-const OTHER: User = { ...ME, id: 2, displayName: 'Другой' }
+const OTHER: PeerProfile = { ...ME, user: { ...ME.user, id: 2, first_name: 'Другой' } }
 
 // auth.me() зависает нарочно: эффект useAuthGate дёргает его при монтировании
 // (confirm()), а этот файл управляет authed вручную через login()/rt:me — не
@@ -83,7 +86,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
 
     act(() => { result.current.login() })
     act(() => { rootScope.dispatchEventSingle(RT.me, ME) })                          // boot-подтверждение
-    act(() => { rootScope.dispatchEventSingle(RT.me, { ...ME, avatarUrl: '/n.jpg' }) }) // поле профиля
+    act(() => { rootScope.dispatchEventSingle(RT.me, { ...ME, user: { ...ME.user, photo: { _: 'userProfilePhoto', photo_id: 7 } } }) }) // поле профиля
     act(() => { rootScope.dispatchEventSingle(RT.me, OTHER) })                        // чужая личность
     act(() => { rootScope.dispatchEventSingle(RT.me, null) })                         // «данных нет»
 
@@ -110,7 +113,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   it('migrateTo: null (настоящий логаут) — authed=false, общие сбросы, БЕЗ reload', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     setAppState('folders', [folder])
-    useChatsStore.setState({ dialogs: [{ chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
+    useChatsStore.setState({ dialogs: [{ peerId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
     useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' })
     saveChatPosition(1, undefined, { top: 777 })
     const clearAll = vi.fn().mockResolvedValue(undefined)
@@ -140,7 +143,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // бы права предыдущего (например, композер вместо плашки в чужом канале).
   it('логаут стирает кэш карточек чатов — следующий вход стартует с «права неизвестны»', async () => {
     const cardOf = vi.fn().mockResolvedValue({
-      type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionChatId: 0,
+      type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionPeerId: 0,
       slowmodeSeconds: 0, chargeStars: 0, defaultPermissions: 31,
     })
     const managers = { ...testManagers(), groups: { card: cardOf, members: async () => [] } } as unknown as Managers
@@ -167,7 +170,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() })
-    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: OTHER.id }) })
+    act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: OTHER.user.id }) })
 
     expect(reload).toHaveBeenCalledTimes(1)
     expect(result.current.authed).toBe(true) // не сброшен — сессия жива, просто другая
@@ -208,7 +211,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
     expect(result.current.authed).toBe(false)
 
-    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.user.id }) })
 
     expect(result.current.authed).toBe(true)
     expect(reload).not.toHaveBeenCalled() // boot был без токена — как у вошедшей вкладки
@@ -223,7 +226,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() }) // вкладка в Shell
-    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+    act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.user.id }) })
 
     expect(reload).toHaveBeenCalledTimes(1)
   })
@@ -266,7 +269,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
       expect(bootPrefetch()).toBeNull()
 
       // там же вошли под другим аккаунтом — Shell поднимется БЕЗ перезагрузки
-      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.id }) })
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.user.id }) })
       expect(result.current.authed).toBe(true)
       expect(bootPrefetch()).toBeNull() // useAppBootstrap пойдёт в сеть, а не в префетч A
     })
@@ -279,7 +282,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
       renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
       act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: null }) })
-      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.id }) })
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.user.id }) })
 
       expect(bootPrefetch()).toBeNull()
     })
@@ -293,7 +296,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
       const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
       expect(result.current.authed).toBe(false) // boot без токена
 
-      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.id }) })
+      act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: ME.user.id }) })
 
       expect(result.current.authed).toBe(true)
       expect(bootPrefetch()).toBeNull()

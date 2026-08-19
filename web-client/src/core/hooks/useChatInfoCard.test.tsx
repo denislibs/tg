@@ -22,7 +22,7 @@ function wrapper(managers: unknown) {
 
 function card(over: Partial<{ type: string; myRole: string; myRights: number }> = {}) {
   return {
-    type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionChatId: 0,
+    type: 'channel', memberCount: 1, myRole: 'creator', myRights: 0, discussionPeerId: 0,
     slowmodeSeconds: 0, chargeStars: 0, defaultPermissions: 31, ...over,
   }
 }

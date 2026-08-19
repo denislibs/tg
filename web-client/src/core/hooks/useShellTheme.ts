@@ -34,7 +34,7 @@ export function useShellTheme(): ShellTheme {
     ? openThread.peerId
     : (selectedId && /^\d+$/.test(selectedId) ? Number(selectedId) : null)
   const activeDialogThemeId = useChatsStore((st) =>
-    activeChatNumId == null ? undefined : st.dialogs.find((d) => d.chatId === activeChatNumId)?.themeId)
+    activeChatNumId == null ? undefined : st.dialogs.find((d) => d.peerId === activeChatNumId)?.themeId)
   const shellThemeChoice = useSettingsStore((st) => st.themeChoice)
   const shellThemeMode = PRESET_MODE[resolvePreset(shellThemeChoice)]
   const shellThemeVariant = chatThemeVariant(activeDialogThemeId, shellThemeMode)

@@ -9,6 +9,7 @@ import { useManagers } from './useManagers'
 import { useChatsStore, loadPresence } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
+import { isAnyChat } from '../peers/peerId'
 
 export function useNavigationActions() {
   const managers = useManagers()
@@ -27,11 +28,11 @@ export function useNavigationActions() {
   // Поэтому сначала — тем же путём, что и обычный выбор чата из списка —
   // ставим корень форума (`selectChat` заодно выставляет `selectedId`), и лишь
   // затем кладём тему поверх (`setInnerPeer`).
-  const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
-    const subtitle = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)?.title
-    useNavigationStore.getState().selectChat(String(chatId))
+  const openTopicThread = useCallback((peerId: PeerId, topic: TopicRow) => {
+    const subtitle = useChatsStore.getState().dialogs.find((d) => d.peerId === peerId)?.title
+    useNavigationStore.getState().selectChat(String(peerId))
     useChatStackStore.getState().setInnerPeer({
-      peerId: chatId,
+      peerId,
       threadId: topic.rootMsgId,
       type: 'chat',
       thread: {
@@ -46,11 +47,16 @@ export function useNavigationActions() {
   // становится реальным чатом лишь после первого сообщения.
   const openPeer = useCallback((peer: OpenPeer) => {
     const nav = useNavigationStore.getState()
-    if (peer.chatId != null) { nav.selectChat(String(peer.chatId)); return }
     const { meId, dialogs } = useChatsStore.getState()
     if (meId != null && peer.id === meId) return // skip self for now
-    const existing = dialogs.find((d) => d.type === 'private' && d.peer?.id === peer.id)
-    if (existing) { nav.selectChat(String(existing.chatId)); return }
+    // Ключ пира И ЕСТЬ ключ диалога: у приватного это id собеседника, у
+    // группы/канала `-id`. Прежняя пара `id` + `chatId` описывала одно число
+    // двумя, и ветка «диалог уже известен» была отдельной. Черновик бывает
+    // только у ЧЕЛОВЕКА — группы/канала без диалога открыть нечем.
+    if (isAnyChat(peer.id) || dialogs.some((d) => d.peerId === peer.id)) {
+      nav.selectChat(String(peer.id))
+      return
+    }
     // selectChat кладёт корневой инстанс в chatStackStore (иначе ChatsContainer
     // ничего не отрендерит — с переездом App.tsx на стек он больше НЕ читает
     // draftPeer/selectedId напрямую), но сам обнуляет draftPeer в своём set() —
@@ -61,23 +67,23 @@ export function useNavigationActions() {
   }, [managers])
 
   // Первое сообщение в черновике создало реальный чат: обновить список и открыть.
-  const onChatCreated = useCallback((chatId: number) => {
+  const onChatCreated = useCallback((peerId: PeerId) => {
     // selectChat сам обнуляет draftPeer и переключает chatStackStore на новый
     // peerId реального чата — иначе после первого сообщения колонка осталась бы
     // показывать инстанс черновика (draft-запись стека).
-    useNavigationStore.getState().selectChat(String(chatId))
+    useNavigationStore.getState().selectChat(String(peerId))
     // `.catch` (Minor #3 финального ревью): fire-and-forget вызов, а refresh()
     // пробрасывает HttpError — без него 401/5xx даёт unhandled rejection.
     void managers.dialogs.refresh().catch(() => {})
   }, [managers])
 
   // Клик по «похожему каналу»: вступаем по @username и открываем.
-  const openPublicChannel = useCallback(async (chatId: number, username: string) => {
+  const openPublicChannel = useCallback(async (peerId: PeerId, username: string) => {
     if (username) {
       try { await managers.channels.join(username) } catch { /* уже вступил / приватный — просто откроем */ }
     }
     await managers.dialogs.refresh()
-    useNavigationStore.getState().selectChat(String(chatId))
+    useNavigationStore.getState().selectChat(String(peerId))
   }, [managers])
 
   return { openTopicThread, openPeer, onChatCreated, openPublicChannel }

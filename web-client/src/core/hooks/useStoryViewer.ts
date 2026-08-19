@@ -11,12 +11,13 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import rootScope from '@lib/rootScope'
 import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
+import type { UserReal } from '../peers/peer'
+import { getUserTitle } from '../peers/getPeerTitle'
 
-interface Viewer {
-  id: number
-  displayName: string
-  avatarUrl: string
-}
+/** Посмотревший историю — КОНСТРУКТОР `user` целиком (имя собирает клиент,
+ *  аватарка это `photo.photo_id`), а не плоская тройка рядом с настоящей
+ *  карточкой. */
+type Viewer = UserReal
 
 interface UseStoryViewerArgs {
   groupIndex: number
@@ -161,7 +162,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     let alive = true
     setFwdAuthorName(null)
     void managers.peers.getUsers([fwd.authorId]).then((users) => {
-      if (alive) setFwdAuthorName(users[0]?.displayName ?? null)
+      if (alive) setFwdAuthorName(users[0] ? getUserTitle(users[0]) : null)
     }).catch(() => {})
     return () => { alive = false }
   }, [story?.fwdFrom, managers])
@@ -197,9 +198,9 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   const sendReply = async (text: string) => {
     const t = text.trim()
     if (!group || !t) return
-    const chatId = await managers.chats.createPrivate(group.author.id)
-    const clientMsgId = `story-${chatId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    await managers.messages.sendText({ chatId, text: t, clientMsgId })
+    const peerId = await managers.chats.createPrivate(group.author.id)
+    const clientMsgId = `story-${peerId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+    await managers.messages.sendText({ peerId, text: t, clientMsgId })
     rootScope.dispatchEvent('ui:toast', 'Сообщение отправлено')
   }
 

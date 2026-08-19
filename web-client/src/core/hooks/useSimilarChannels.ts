@@ -2,32 +2,34 @@
 //
 // Похожие каналы для открытого канала (tweb chat/similarChannels + appChatsManager
 // .getChannelRecommendations): один фетч на открытие канала, результат кэшируется в
-// памяти по chatId. Скрытие блока крестиком запоминается в localStorage (аналог
+// памяти по ключу пира. Скрытие блока крестиком запоминается в localStorage (аналог
 // tweb hiddenSimilarChannels в app-state) — по одному ключу на канал.
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import type { SearchResult } from '../managers/channelsManager'
+import type { Chat } from '../peers/peer'
 
-export type SimilarChannel = SearchResult['chats'][number]
+/** Похожий канал — КОНСТРУКТОР `Chat` схемы (имя собирает клиент, аватарка это
+ *  `photo.photo_id`), а не плоский снимок витрины. */
+export type SimilarChannel = Chat
 
-const cache = new Map<number, { chats: SimilarChannel[]; count: number }>()
+const cache = new Map<PeerId, { chats: SimilarChannel[]; count: number }>()
 
-function hiddenKey(chatId: number): string {
-  return `similar-hidden:${chatId}`
+function hiddenKey(peerId: PeerId): string {
+  return `similar-hidden:${peerId}`
 }
 
-export function isSimilarHidden(chatId: number): boolean {
+export function isSimilarHidden(peerId: PeerId): boolean {
   try {
-    return localStorage.getItem(hiddenKey(chatId)) === '1'
+    return localStorage.getItem(hiddenKey(peerId)) === '1'
   } catch {
     return false
   }
 }
 
-export function setSimilarHidden(chatId: number, hidden: boolean): void {
+export function setSimilarHidden(peerId: PeerId, hidden: boolean): void {
   try {
-    if (hidden) localStorage.setItem(hiddenKey(chatId), '1')
-    else localStorage.removeItem(hiddenKey(chatId))
+    if (hidden) localStorage.setItem(hiddenKey(peerId), '1')
+    else localStorage.removeItem(hiddenKey(peerId))
   } catch {
     /* приватный режим/квота — скрытие просто не запоминается */
   }

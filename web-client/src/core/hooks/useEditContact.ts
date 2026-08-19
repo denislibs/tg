@@ -36,8 +36,11 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
     void managers.contacts.list().then((list) => {
       const c = list.find((x) => x.userId === peerId)
       if (!alive || !c) return
-      setFirst(c.firstName || seedFirst)
-      setLast(c.lastName)
+      // Имя контакта живёт в самой КАРТОЧКЕ пользователя (`user.first_name`/
+      // `last_name`), а не плоскими полями рядом с ней: плоская пара была
+      // вторым источником того же факта.
+      setFirst((c.user._ === 'user' ? c.user.first_name : '') || seedFirst)
+      setLast((c.user._ === 'user' ? c.user.last_name : '') ?? '')
       setNote(c.note)
       setHasPersonal(c.hasCustomPhoto)
     }).catch(() => {})

@@ -40,7 +40,7 @@ afterEach(cleanup)
 
 function msg(seq: number): Message {
   return {
-    id: seq, chatId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
+    id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
   }
 }
@@ -65,8 +65,8 @@ function Harness({ win }: { win: MessageWindow }) {
   return <div ref={scrollRef} />
 }
 
-function mount(win: MessageWindow, markRead: (args: { chatId: number, upToSeq: number }) => void, isActive: boolean) {
-  const managers = { realtime: { markRead: async (args: { chatId: number, upToSeq: number }) => { markRead(args) } } }
+function mount(win: MessageWindow, markRead: (args: { peerId: PeerId, upToSeq: number }) => void, isActive: boolean) {
+  const managers = { realtime: { markRead: async (args: { peerId: PeerId, upToSeq: number }) => { markRead(args) } } }
   return render(
     <ManagersProvider managers={managers as never}>
       <ChatInstanceProvider value={{ desc: desc('a'), isActive }}>
@@ -86,7 +86,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1)], { reachedBottom: false })
       mount(win, markRead, false)
 
-      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { chat_id: 1, seq: 42 } as unknown as NewMessageEvt) })
+      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { peer_id: 1, seq: 42 } as unknown as NewMessageEvt) })
 
       expect(markRead).not.toHaveBeenCalled()
     })
@@ -96,9 +96,9 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1)], { reachedBottom: false })
       mount(win, markRead, true)
 
-      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { chat_id: 1, seq: 42 } as unknown as NewMessageEvt) })
+      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { peer_id: 1, seq: 42 } as unknown as NewMessageEvt) })
 
-      expect(markRead).toHaveBeenCalledWith({ chatId: 1, upToSeq: 42 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 42 })
     })
   })
 
@@ -118,7 +118,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1), msg(2)], { reachedBottom: true })
       mount(win, markRead, true)
 
-      expect(markRead).toHaveBeenCalledWith({ chatId: 1, upToSeq: 2 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 2 })
     })
   })
 
@@ -142,7 +142,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
 
       act(() => { window.dispatchEvent(new Event('focus')) })
 
-      expect(markRead).toHaveBeenCalledWith({ chatId: 1, upToSeq: 1 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 1 })
     })
   })
 })

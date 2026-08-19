@@ -16,7 +16,8 @@ import { useSearchStore } from '@stores/searchStore'
 
 /** Хэш без ведущего `#`: цель навигации + (опционально) якорь сообщения. */
 export interface ParsedHash {
-  /** `@username` — публичный чат; строка цифр — числовой id чата */
+  /** `@username` — публичный чат; иначе ЗНАКОВЫЙ ключ пира строкой
+   *  (`-1234567` у группы/канала, `1234567` у человека). */
   target: string
   /** seq сообщения, если ссылка указывает на конкретное сообщение */
   seq?: number
@@ -48,7 +49,11 @@ export function parseNavHash(rawHash: string): ParsedHash | undefined {
     return target.length > 1 ? { target, seq } : undefined
   }
 
-  const m = target.match(/^(\d+)(?:_(\d+))?$/)
+  // Ключ пира ЗНАКОВЫЙ: у группы/канала он отрицательный (`core/peers/peerId.ts`,
+  // тот же класс символов, что у `isPeerId`). Без минуса в шаблоне хэш `#-42`
+  // не разбирался бы вовсе — то есть ссылка на любую группу молча открывала бы
+  // список чатов. Корень треда — `msgId`, он положительный всегда.
+  const m = target.match(/^(-?\d+)(?:_(\d+))?$/)
   if (!m) return undefined
   return { target: m[1], seq, threadRoot: m[2] ? Number(m[2]) : undefined }
 }
@@ -67,7 +72,7 @@ export function buildMessageLink({
 }: {
   origin: string
   pathname: string
-  peerId: string | number
+  peerId: PeerId | string
   username?: string | null
   seq: number
 }): string {
@@ -79,6 +84,6 @@ export function buildMessageLink({
  * Поставить прыжок к сообщению, который потребит лента чата при открытии
  * (`Chat.tsx` читает `pendingJump` ровно так же для перехода из поиска).
  */
-export function requestMessageJump(peerId: number, seq: number): void {
+export function requestMessageJump(peerId: PeerId, seq: number): void {
   useSearchStore.getState().setPendingJump(peerId, seq)
 }

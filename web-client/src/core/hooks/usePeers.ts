@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useManagers } from './useManagers'
-import type { Peer } from '../managers/peersManager'
+import type { Chat, User } from '../peers/peer'
 import { cachedPeer, peerMirrorVersion, subscribePeerMirror } from '../peerCache'
 
 // Stable cache key for a set of ids: sorted, deduped, comma-joined.
 // Used as the effect dependency so reorderings/duplicates don't refetch.
-export function peersKey(ids: number[]): string {
+export function peersKey(ids: PeerId[]): string {
   return Array.from(new Set(ids))
     .sort((a, b) => a - b)
     .join(',')
@@ -36,7 +36,7 @@ export function peersKey(ids: number[]): string {
 // зеркало, маскируя забытое объявление. Теперь не маскирует: пир, прочитанный
 // из зеркала по id, который не проходил через объявление пробела, будет молча
 // пустым. Либо бери его этим хуком, либо объяви пробел сам.
-export function usePeers(ids: number[]): Map<number, Peer> {
+export function usePeers(ids: PeerId[]): Map<PeerId, User | Chat> {
   const managers = useManagers()
   const key = peersKey(ids)
   const version = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
@@ -50,7 +50,7 @@ export function usePeers(ids: number[]): Map<number, Peer> {
 
   // Subset map for the requested ids (recomputed when the mirror or ids change).
   return useMemo(() => {
-    const m = new Map<number, Peer>()
+    const m = new Map<PeerId, User | Chat>()
     for (const id of ids) {
       const p = cachedPeer(id)
       if (p) m.set(id, p)

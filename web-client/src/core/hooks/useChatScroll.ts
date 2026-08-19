@@ -66,7 +66,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   // its value on remount and double-counted on a replay). The FAB is hidden unless
   // scrolled up (showScrollDown), so a transient count at the bottom is never seen.
   const unreadBelow = useChatsStore((s) => {
-    const d = s.dialogs.find((x) => x.chatId === numericChatId)
+    const d = s.dialogs.find((x) => x.peerId === numericChatId)
     if (!d) return 0
     return Math.max(0, (d.lastMessage?.seq ?? 0) - d.lastReadSeq)
   })
@@ -228,7 +228,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
       if (hasLayout && atRealBottom && document.hasFocus() && isActive) {
-        void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
     lastScrollTopRef.current = st
@@ -623,9 +623,9 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
     const onNewMessage = (m: NewMessageEvt) => {
-      if (m.chat_id !== numericChatId) return
+      if (m.peer_id !== numericChatId) return
       if (atBottomRef.current && document.hasFocus()) {
-        void managers.realtime.markRead({ chatId: numericChatId, upToSeq: m.seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: m.seq })
       }
     }
     rootScope.addEventListener(RT.newMessage, onNewMessage)
@@ -645,7 +645,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
     if (!isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
     if (!atBottomRef.current || !document.hasFocus()) return
     const maxSeq = win.msgs[win.msgs.length - 1].seq
-    void managers.realtime.markRead({ chatId: numericChatId, upToSeq: maxSeq })
+    void managers.realtime.markRead({ peerId: numericChatId, upToSeq: maxSeq })
   }, [isRealChat, isActive, win.reachedBottom, win.msgs, numericChatId, managers])
 
   // Mark read when the window regains focus while we're at the bottom of this chat.
@@ -658,7 +658,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       if (!el || win.msgs.length === 0) return
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
         // markRead advances lastReadSeq → derived unread-below badge → 0.
-        void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
     window.addEventListener('focus', onFocus)

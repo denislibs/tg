@@ -21,17 +21,17 @@ export function useChatList(): Chat[] {
     const cache = chatCacheRef.current
     const seen = new Set<number>()
     const next = dialogs.map((d) => {
-      let chat = dialogToChat(d, meId, draftsByChat[d.chatId])
+      let chat = dialogToChat(d, meId, draftsByChat[d.peerId])
       // Глобально выключенный тип чатов показывается как muted (tweb
       // isPeerLocalMuted с respectType): иконка + серый badge у всех таких чатов.
       // Само правило — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
       // пин stores/noDuplicateMuteRule.test.ts); здесь только его применение.
       if (!chat.muted && isDialogMuted(d, notifySettings)) chat = { ...chat, muted: true }
-      seen.add(d.chatId)
+      seen.add(d.peerId)
       const json = JSON.stringify(chat)
-      const hit = cache.get(d.chatId)
+      const hit = cache.get(d.peerId)
       if (hit && hit.json === json) return hit.chat // value-identical → reuse ref
-      cache.set(d.chatId, { json, chat })
+      cache.set(d.peerId, { json, chat })
       return chat
     })
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k)

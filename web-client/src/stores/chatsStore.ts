@@ -205,6 +205,47 @@ export async function loadChats(
   useChatsStore.getState().setMe(me) // meId выводится из me внутри setMe
 }
 
+/**
+ * Погасить ИСТЁКШИЕ онлайны — порт `appUsersManager.updateUsersStatuses` +
+ * `updateUserStatus` (`appUsersManager.ts:872-889`).
+ *
+ * `userStatusOnline` несёт `expires` — ДЕДЛАЙН, после которого статус
+ * недействителен. Кадр `rt:presence` с переходом в offline может не доехать
+ * (вкладка спала, сокет рвался, difference пропустил эфемерный апдейт), и без
+ * этого перевода человек висел бы онлайн ВЕЧНО — ровно тот дефект, ради
+ * которого `expires` и появился на проводе (шаг C).
+ *
+ * Переводим в `userStatusOffline{was_online: expires}` — как в оригинале: «был
+ * в сети» ровно в момент, до которого онлайн был подтверждён, а не «сейчас».
+ */
+export function degradeExpiredPresence(now = Math.floor(Date.now() / 1000)): void {
+  const cur = useChatsStore.getState().presence
+  let next: Record<number, UserStatus> | undefined
+  for (const key in cur) {
+    const st = cur[key]
+    if (st._ !== 'userStatusOnline' || st.expires > now) continue
+    next ??= { ...cur }
+    next[key] = { _: 'userStatusOffline', was_online: st.expires }
+  }
+  if (next) useChatsStore.setState({ presence: next })
+}
+
+/** Период проверки — 60 с, дословно `setInterval(this.updateUsersStatuses,
+ *  60000)` (`appUsersManager.ts:68`). */
+export const PRESENCE_DEGRADE_INTERVAL_MS = 60_000
+
+/**
+ * Запустить проверку. В оригинале интервал заводит сам менеджер пользователей
+ * в `after()`; у нас карточка пира и её статус разъехались по двум владельцам
+ * (пиры — воркерный `peersManager`, присутствие — этот стор на главном
+ * потоке), поэтому интервал живёт там же, где данные, а его жизненный цикл —
+ * у `useAppBootstrap`. Возвращает функцию остановки.
+ */
+export function startPresenceDegradation(): () => void {
+  const id = setInterval(() => degradeExpiredPresence(), PRESENCE_DEGRADE_INTERVAL_MS)
+  return () => clearInterval(id)
+}
+
 // Seed online / last-seen for a set of users (or all private-dialog peers when
 // no ids are given). Live updates then arrive via rt:presence.
 export async function loadPresence(
@@ -218,4 +259,8 @@ export async function loadPresence(
   if (!targets.length) return
   const list = await managers.presence.get(targets)
   for (const p of list) st.setPresence(p)
+  // Сверка дедлайнов сразу после сида — аналог `state_synchronized` оригинала
+  // (`appUsersManager.ts:70`): ответ мог ехать дольше, чем жил онлайн, и без
+  // этой строки истёкший статус висел бы до первого тика интервала.
+  degradeExpiredPresence()
 }

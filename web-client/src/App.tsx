@@ -119,11 +119,13 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     draftPeer && selectedId === `draft:${draftPeer.id}`
       ? {
           id: `draft:${draftPeer.id}`,
-          name: draftPeer.displayName,
+          name: draftPeer.title,
           avatar: gradientFor(draftPeer.id),
-          avatarText: draftPeer.displayName.charAt(0).toUpperCase() || '?',
-          avatarUrl: draftPeer.avatarUrl,
-          peerId: draftPeer.id,
+          avatarText: draftPeer.title.charAt(0).toUpperCase() || '?',
+          // id медиа аватарки приходит готовым (`photo.photo_id`) — прежний
+          // `avatarUrl` был строкой `/media/N/content`, собранной из этого же
+          // числа.
+          photoId: draftPeer.photoId,
           date: '',
           preview: '',
           type: 'private',
@@ -146,7 +148,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // та же логика, что раньше жила в `threadChat`/`selected`, теперь по `desc`.
   const resolveChat = (desc: ChatInstanceDesc): ChatEntity =>
     chatList.find((c) => c.id === String(desc.peerId)) ??
-    (draftChat && draftChat.peerId === desc.peerId ? draftChat : null) ?? {
+    // Ключ черновика — `draft:<peerId>`: сравниваем с ключом самого пира, а не
+    // с отдельным полем рядом (его больше нет — это было одно число дважды).
+    (draftChat && draftPeer && draftPeer.id === desc.peerId ? draftChat : null) ?? {
       id: String(desc.peerId),
       name: desc.thread?.title ?? '',
       avatar: gradientFor(desc.peerId),

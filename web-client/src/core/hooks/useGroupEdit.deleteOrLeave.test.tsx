@@ -28,7 +28,7 @@ function fakeManagers(overrides: { removeMember?: () => Promise<void>; applyRemo
     groups: {
       card: async () => ({
         id: CHAT_ID, type: 'group', title: 't', username: '', about: '',
-        memberCount: 2, isPublic: false, myRole: 'member', myRights: 0, discussionChatId: 0,
+        memberCount: 2, isPublic: false, myRole: 'member', myRights: 0, discussionPeerId: 0,
         defaultPermissions: 31, slowmodeSeconds: 0, reactionsMode: 'all', reactionsAllowed: [],
         historyForNew: true, chargeStars: 0, signatures: false, signatureProfiles: false, muted: false,
       }),
@@ -37,7 +37,9 @@ function fakeManagers(overrides: { removeMember?: () => Promise<void>; applyRemo
       deleteGroup: vi.fn(async () => { throw new Error('deleteGroup не должен зваться в self-leave ветке') }),
     },
     peers: { getUsers: async () => [] },
-    auth: { me: async () => ({ id: 7, phone: '+1', username: null, firstName: '', lastName: '', displayName: 'Me', bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '' }) },
+    // Своя личность — ПАРА конструкторов (`user` + `userFull`), та же, что у
+    // любого профиля: третьей формы «свой пользователь» больше нет.
+    auth: { me: async () => ({ user: { _: 'user', id: 7, phone: '+1', first_name: 'Me' }, fullUser: { _: 'userFull', id: 7 }, canMessage: true }) },
     dialogs: { applyRemoved: overrides.applyRemoved ?? vi.fn(async () => {}), refresh: vi.fn(async () => {}) },
   }
 }

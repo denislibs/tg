@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
-import type { SearchResult } from '../managers/channelsManager'
+import type { ContactsFound } from '../managers/channelsManager'
 
 // Поиск в сайдбаре: строка запроса + режим поиска, REST-поиск публичных каналов и
 // вступление по @username. Ctrl/Cmd+K (core/hotkeys → событие 'tg-focus-search')
@@ -23,7 +23,7 @@ export function useSidebarSearch(initialQuery?: string) {
     return () => window.removeEventListener('tg-focus-search', onFocusSearch)
   }, [])
 
-  const searchReal = (q: string): Promise<SearchResult> => managers.channels.search(q)
+  const searchReal = (q: string): Promise<ContactsFound> => managers.channels.search(q)
   const onJoin = async (username: string) => {
     await managers.channels.join(username)
     await managers.dialogs.refresh()

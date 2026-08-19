@@ -48,6 +48,21 @@ describe('parseNavHash', () => {
     expect(parseNavHash('#42/7')).toEqual({ target: '42', seq: 7, threadRoot: undefined })
   })
 
+  // Ключ группы/канала ОТРИЦАТЕЛЬНЫЙ (`core/peers/peerId.ts`). Без минуса в
+  // шаблоне ссылка на любую группу без юзернейма молча открывала бы список
+  // чатов — и ни один прежний тест этого не показывал.
+  it('знаковый ключ чата разбирается вместе с якорем и тредом', () => {
+    expect(parseNavHash('#-42')).toEqual({ target: '-42', seq: undefined, threadRoot: undefined })
+    expect(parseNavHash('#-42/7')).toEqual({ target: '-42', seq: 7, threadRoot: undefined })
+    expect(parseNavHash('#-42_777')).toEqual({ target: '-42', seq: undefined, threadRoot: 777 })
+  })
+
+  it('собранная ссылка на группу разбирается обратно (round-trip)', () => {
+    const link = buildMessageLink({ origin: 'https://msgr.local', pathname: '/', peerId: -42, seq: 7 })
+    expect(link).toBe('https://msgr.local/#-42/7')
+    expect(parseNavHash(link.slice(link.indexOf('#')))).toEqual({ target: '-42', seq: 7, threadRoot: undefined })
+  })
+
   it('мусор не разбирается — навигация не трогается', () => {
     expect(parseNavHash('')).toBeUndefined()
     expect(parseNavHash('#')).toBeUndefined()

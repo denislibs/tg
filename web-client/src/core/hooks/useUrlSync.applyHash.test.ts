@@ -19,23 +19,23 @@ beforeEach(() => {
 })
 
 describe('applyHash', () => {
-  it('#<chatId>/<seq> — открывает чат и ставит прыжок к сообщению', async () => {
+  it('#<peerId>/<seq> — открывает чат и ставит прыжок к сообщению', async () => {
     await applyHash('#42/7', managers)
 
     expect(useNavigationStore.getState().selectedId).toBe('42')
-    expect(useSearchStore.getState().pendingJump).toEqual({ chatId: 42, seq: 7 })
+    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: 42, seq: 7 })
   })
 
   it('#@username/<seq> — то же для канала из диалогов', async () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 42, username: 'durov' }] as never })
+    useChatsStore.setState({ dialogs: [{ peerId: -42, username: 'durov' }] as never })
 
     await applyHash('#@durov/9', managers)
 
-    expect(useNavigationStore.getState().selectedId).toBe('42')
-    expect(useSearchStore.getState().pendingJump).toEqual({ chatId: 42, seq: 9 })
+    expect(useNavigationStore.getState().selectedId).toBe('-42')
+    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: -42, seq: 9 })
   })
 
-  it('#<chatId> без якоря — чат открывается, прыжка нет', async () => {
+  it('#<peerId> без якоря — чат открывается, прыжка нет', async () => {
     await applyHash('#42', managers)
 
     expect(useNavigationStore.getState().selectedId).toBe('42')

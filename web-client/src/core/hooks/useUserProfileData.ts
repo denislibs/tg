@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import type { SavedDialog } from '../managers/chatsManager'
-import type { UserProfile } from '../managers/privacyManager'
+import type { PeerProfile } from '../managers/authManager'
 import type { GiftInfo } from '../managers/starsManager'
 
 // Read-хуки данных панели профиля (UserInfoPanel). Все — эфемерные серверные
@@ -21,9 +21,9 @@ export function useSavedDialogs(isSaved: boolean): SavedDialog[] | null {
 
 // Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
 // телефон/bio/день рождения приходят пустыми, если скрыты правилами.
-export function useUserProfile(peerId: number | null | undefined, isSaved: boolean): UserProfile | null {
+export function useUserProfile(peerId: PeerId | null | undefined, isSaved: boolean): PeerProfile | null {
   const managers = useManagers()
-  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profile, setProfile] = useState<PeerProfile | null>(null)
   useEffect(() => {
     if (isSaved || peerId == null) return
     let alive = true
@@ -81,17 +81,19 @@ export function useProfilePhotos(args: {
     let alive = true
     void managers.profile.listPhotos(peerId).then(async (list) => {
       const items = await Promise.all(list.map(async (p): Promise<HeaderPhoto> => {
-        const m = p.url.match(/\/media\/(\d+)\/content/)
+        // id медиа приезжает ГОТОВЫМ. Регулярка `/media/(\d+)/content` по нашей
+        // же строке ушла вместе с самой строкой: сервер больше не собирает путь,
+        // из которого этот же номер приходилось выпарсивать обратно.
+        //
         // Still-фото профиля — картинка: воркерным конвейером (Task 7), URL
         // оседает в кэш-контексте воркера — повторное разворачивание шапки без сети.
-        const src = m ? await managers.media.downloadMediaURL(Number(m[1])) : p.url
+        const src = await managers.media.downloadMediaURL(p.mediaId)
         // Видео-аватар (tweb photo_video) — видео, не картинка: остаётся на
         // токен-URL до перевода видео-путей (вьювер/стадия E). Список чатов/
         // сжатая шапка остаются на still — playback только в развёрнутой
         // шапке-пейджере и просмотрщике.
-        if (p.videoUrl) {
-          const vm = p.videoUrl.match(/\/media\/(\d+)\/content/)
-          const videoSrc = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl
+        if (p.videoMediaId) {
+          const videoSrc = await managers.media.contentUrl(p.videoMediaId)
           return { src, isVideo: true, videoSrc }
         }
         return { src, isVideo: false }

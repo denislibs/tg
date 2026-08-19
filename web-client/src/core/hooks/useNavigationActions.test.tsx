@@ -49,7 +49,7 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    act(() => { result.current.openPeer({ id: 42, displayName: 'Новый контакт' }) })
+    act(() => { result.current.openPeer({ id: 42, title: 'Новый контакт' }) })
 
     expect(useNavigationStore.getState().selectedId).toBe('draft:42')
     expect(useNavigationStore.getState().draftPeer?.id).toBe(42)
@@ -60,7 +60,7 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    act(() => { result.current.openPeer({ id: 42, displayName: 'Новый контакт' }) })
+    act(() => { result.current.openPeer({ id: 42, title: 'Новый контакт' }) })
     act(() => { result.current.onChatCreated(777) })
 
     expect(useNavigationStore.getState().selectedId).toBe('777')
@@ -72,15 +72,15 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    await act(async () => { await result.current.openPublicChannel(555, 'somechannel') })
+    await act(async () => { await result.current.openPublicChannel(-555, 'somechannel') })
 
-    expect(useNavigationStore.getState().selectedId).toBe('555')
-    expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([555])
+    expect(useNavigationStore.getState().selectedId).toBe('-555')
+    expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([-555])
   })
 })
 
 const topic: TopicRow = {
-  id: 9, chatId: 100, rootMsgId: 55, title: 'Тема', iconColor: 1, iconEmoji: '',
+  id: 9, peerId: -100, rootMsgId: 55, title: 'Тема', iconColor: 1, iconEmoji: '',
   closed: false, hidden: false, pinned: false, pos: 0, isGeneral: false, createdBy: 1,
   msgCount: 0, lastText: '', lastType: '', lastSenderName: '',
   unread: 0, unreadMentions: 0, muted: false, lastOut: false, lastMsgSeq: 0,
@@ -97,12 +97,12 @@ describe('useNavigationActions.openTopicThread — форум-топик «с ч
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    act(() => { result.current.openTopicThread(100, topic) })
+    act(() => { result.current.openTopicThread(-100, topic) })
 
-    expect(useNavigationStore.getState().selectedId).toBe('100')
+    expect(useNavigationStore.getState().selectedId).toBe('-100')
     expect(useChatStackStore.getState().stack).toMatchObject([
-      { peerId: 100, threadId: undefined, type: 'chat' },
-      { peerId: 100, threadId: 55, type: 'chat' },
+      { peerId: -100, threadId: undefined, type: 'chat' },
+      { peerId: -100, threadId: 55, type: 'chat' },
     ])
   })
 
@@ -110,10 +110,10 @@ describe('useNavigationActions.openTopicThread — форум-топик «с ч
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    act(() => { result.current.openTopicThread(100, topic) })
+    act(() => { result.current.openTopicThread(-100, topic) })
 
     expect(selectOpenThreadDesc(useChatStackStore.getState())).toMatchObject({
-      peerId: 100,
+      peerId: -100,
       thread: expect.objectContaining({ rootMsgId: 55, kind: 'topic' }),
     })
   })
@@ -122,10 +122,10 @@ describe('useNavigationActions.openTopicThread — форум-топик «с ч
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
 
-    act(() => { result.current.openTopicThread(100, topic) })
+    act(() => { result.current.openTopicThread(-100, topic) })
     act(() => { useChatStackStore.getState().closeTop() })
 
-    expect(useChatStackStore.getState().stack).toMatchObject([{ peerId: 100, type: 'chat', threadId: undefined }])
+    expect(useChatStackStore.getState().stack).toMatchObject([{ peerId: -100, type: 'chat', threadId: undefined }])
     expect(selectOpenThreadDesc(useChatStackStore.getState())).toBeUndefined()
   })
 })

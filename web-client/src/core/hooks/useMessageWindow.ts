@@ -2,7 +2,7 @@
 //
 // Thin selector/actions wrapper over messagesStore: the per-chat window lives in
 // the store (single source of truth, normalized, survives unmount), this hook
-// just binds it to a chatId and preserves the original MessageWindow interface.
+// just binds it to a peerId and preserves the original MessageWindow interface.
 //
 // State + actions are pulled through useMessagesStore selectors only (no
 // getState()). The paging callbacks read the latest committed window through a
@@ -40,9 +40,9 @@ export interface MessageWindow {
   applyDelete: (msgId: number, forMe: boolean) => void
 }
 
-export function useMessageWindow(chatId: number, limit = 40, threadRootId?: number): MessageWindow {
+export function useMessageWindow(peerId: PeerId, limit = 40, threadRootId?: number): MessageWindow {
   // Окно треда (форум-топик/комментарии) живёт под своим ключом (tweb threadId).
-  const key = winKey(chatId, threadRootId)
+  const key = winKey(peerId, threadRootId)
   const win = useMessagesStore((s) => s.byKey[key]) ?? EMPTY_WINDOW
   const managers = useManagers()
 
@@ -75,12 +75,12 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
     beginLoad(key)
     let cancelled = false;
     (async () => {
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
+      const r = await managers.messages.getHistory({ peerId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
       if (cancelled || reqChat.current !== key) return
       setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
     })()
     return () => { cancelled = true }
-  }, [chatId, key, threadRootId, managers, limit, beginLoad, setWindow])
+  }, [peerId, key, threadRootId, managers, limit, beginLoad, setWindow])
 
   const loadOlder = useCallback(async () => {
     const w = winRef.current
@@ -90,14 +90,14 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
     loadingOlderRef.current = true
     setLoadingOlder(key, true)
     try {
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: oldest.seq, addOffset: 1, limit, threadRoot: threadRootId })
+      const r = await managers.messages.getHistory({ peerId, offsetSeq: oldest.seq, addOffset: 1, limit, threadRoot: threadRootId })
       if (reqChat.current !== key) return
       prepend(key, r.messages, r.reachedTop)
     } finally {
       loadingOlderRef.current = false
       setLoadingOlder(key, false)
     }
-  }, [chatId, key, threadRootId, managers, limit, setLoadingOlder, prepend])
+  }, [peerId, key, threadRootId, managers, limit, setLoadingOlder, prepend])
 
   const loadNewer = useCallback(async () => {
     const w = winRef.current
@@ -112,41 +112,41 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
       // direction in the descending slice and report a false hit (the already-loaded
       // window), so newer pages never fetched after a jump-to-message. The backend
       // only checks the sign (<=0 ⇒ newer), so the network result is unchanged.
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: newest.seq, addOffset: -limit, limit, threadRoot: threadRootId })
+      const r = await managers.messages.getHistory({ peerId, offsetSeq: newest.seq, addOffset: -limit, limit, threadRoot: threadRootId })
       if (reqChat.current !== key) return
       append(key, r.messages, r.reachedBottom)
     } finally {
       loadingNewerRef.current = false
       setLoadingNewer(key, false)
     }
-  }, [chatId, key, threadRootId, managers, limit, setLoadingNewer, append])
+  }, [peerId, key, threadRootId, managers, limit, setLoadingNewer, append])
 
   const appendLocal = useCallback((m: Message) => appendLocalAction(key, m), [key, appendLocalAction])
 
-  const applyIncoming = useCallback((m: Message) => applyIncomingAction(chatId, m), [chatId, applyIncomingAction])
+  const applyIncoming = useCallback((m: Message) => applyIncomingAction(peerId, m), [peerId, applyIncomingAction])
 
   const applyEdit = useCallback(
     (msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) =>
-      applyEditAction(chatId, msgId, text, editedAt, entities),
-    [chatId, applyEditAction],
+      applyEditAction(peerId, msgId, text, editedAt, entities),
+    [peerId, applyEditAction],
   )
 
-  const applyDelete = useCallback((msgId: number, _forMe: boolean) => applyDeleteAction(chatId, msgId), [chatId, applyDeleteAction])
+  const applyDelete = useCallback((msgId: number, _forMe: boolean) => applyDeleteAction(peerId, msgId), [peerId, applyDeleteAction])
 
   const jumpTo = useCallback(async (centerSeq: number) => {
     if (!managers.messages.getAround) return
-    const r = await managers.messages.getAround(chatId, centerSeq, limit, threadRootId)
+    const r = await managers.messages.getAround(peerId, centerSeq, limit, threadRootId)
     if (reqChat.current !== key) return
     setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, key, threadRootId, managers, limit, setWindow])
+  }, [peerId, key, threadRootId, managers, limit, setWindow])
 
   // Escape hatch after a jump: re-fetch the newest page and replace the window
   // with it (mirrors tweb's setMessageId() with no target — go to dialog.top).
   const reloadNewest = useCallback(async () => {
-    const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
+    const r = await managers.messages.getHistory({ peerId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
     if (reqChat.current !== key) return
     setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, key, threadRootId, managers, limit, setWindow])
+  }, [peerId, key, threadRootId, managers, limit, setWindow])
 
   return {
     msgs: win.msgs,

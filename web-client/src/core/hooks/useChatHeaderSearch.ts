@@ -18,6 +18,13 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useSearchStore } from '../../stores/searchStore'
 import type { SavedTag } from '../managers/messagesManager'
 import type { Chat } from '../../data'
+import { getPeerTitle } from '../peers/getPeerTitle'
+import { getPeerPhotoId, type Chat as PeerChat, type User } from '../peers/peer'
+import { getChatPhoto } from '../peers/predicates'
+
+/** Фото пира: у пользователя `user.photo`, у чата — `chat.photo`. */
+const peerPhoto = (peer: User | PeerChat | undefined) =>
+  peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)
 
 // tweb topbarSearch.tsx:656-657
 const MIN_HEIGHT = 43
@@ -79,7 +86,10 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
   const canFilterSender = chat.type === 'group'
 
   // ── теги-реакции «Избранного» (tweb :974 — грузятся только в самочате) ──
-  const isSaved = chat.type === 'saved' || (chat.peerId != null && chat.peerId === meId)
+  // Ключ пира И ЕСТЬ `Chat.id` строкой: у приватного диалога это id собеседника,
+  // поэтому «самочат» — совпадение ключа с моим id. Отдельного поля `peerId`
+  // рядом с `id` больше нет — это было одно число, записанное дважды.
+  const isSaved = chat.type === 'saved' || Number(chat.id) === meId
   const [savedTags, setSavedTags] = useState<SavedTag[] | undefined>(undefined)
   useEffect(() => {
     if (!isSaved) { setSavedTags(undefined); return }
@@ -225,9 +235,11 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
     isHashtag, lookingHashtag, shouldShowFromPlaceholder,
     // фильтры
     filteringSender, filterPeerId, filterPeerName: filterPeerId != null
-      ? (filterPeerId === meId ? 'Saved Messages' : filterPeer.get(filterPeerId)?.displayName ?? String(filterPeerId))
+      ? (filterPeerId === meId ? 'Saved Messages' : getPeerTitle({ peerId: filterPeerId, peer: filterPeer.get(filterPeerId) }))
       : undefined,
-    filterPeerAvatarUrl: filterPeerId != null ? filterPeer.get(filterPeerId)?.avatarUrl : undefined,
+    // id медиа аватарки вместо строки `/media/N/content`: номер приезжает
+    // готовым (`photo.photo_id`), выпарсивать его регуляркой больше не из чего.
+    filterPeerPhotoId: filterPeerId != null ? getPeerPhotoId(peerPhoto(filterPeer.get(filterPeerId))) || undefined : undefined,
     canFilterSender, startFilteringSender, setFilterPeerId,
     reaction, toggleReaction, savedTags,
     // состояние панели

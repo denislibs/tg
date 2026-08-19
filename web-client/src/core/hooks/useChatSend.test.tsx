@@ -204,7 +204,7 @@ describe('useChatSend: цитата', () => {
 
   it('кросс-чат ответ: peer в пакете, снимок превью — в оптимистичном бабле', () => {
     const { managers, result } = setup()
-    openReply(result, { chatId: 99, snapshotName: 'Петя', snapshotText: 'оригинал' })
+    openReply(result, { sourcePeerId: 99, snapshotName: 'Петя', snapshotText: 'оригинал' })
     act(() => { result.current.sendContact(42, 'Маша') })
     const args = managers.messages.sendText.mock.calls[0][0]
     expect(args).toMatchObject({ replyToPeerId: 99 })

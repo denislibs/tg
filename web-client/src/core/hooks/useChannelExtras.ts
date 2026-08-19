@@ -35,8 +35,8 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
   // окно рендерит его из стора — отдельного applyIncoming здесь больше нет.
   useEffect(() => {
     if (!isRealChat || !isChannel) return
-    void managers.realtime.subscribeChannel({ chatId: numericChatId })
-    return () => { void managers.realtime.unsubscribeChannel({ chatId: numericChatId }) }
+    void managers.realtime.subscribeChannel({ peerId: numericChatId })
+    return () => { void managers.realtime.unsubscribeChannel({ peerId: numericChatId }) }
   }, [isRealChat, isChannel, numericChatId, managers])
 
   // Channel discussions: fetch comment counts for the loaded post ids (debounced on

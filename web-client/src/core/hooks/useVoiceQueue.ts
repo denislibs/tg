@@ -9,7 +9,8 @@ import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../mediaRead'
 import { friendlyMsgTime } from '../format/friendlyTime'
 import { peersKey } from './usePeers'
-import type { Peer } from '../managers/peersManager'
+import type { Chat, User } from '../peers/peer'
+import { getPeerTitle } from '../peers/getPeerTitle'
 import type { MessageWindow } from './useMessageWindow'
 
 interface UseVoiceQueueArgs {
@@ -17,7 +18,7 @@ interface UseVoiceQueueArgs {
   isRealChat: boolean
   meId: number | null
   meName?: string
-  peers: Map<number, Peer>
+  peers: Map<PeerId, User | Chat>
   chatName: string
   numericChatId: number
   lang: string
@@ -44,7 +45,7 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
         .filter((m) => isVoiceMsg(m) || isRoundMsg(m))
         .map((m) => ({
           mediaId: m.mediaId as number,
-          title: m.senderId === meId ? meName || 'Вы' : peers.get(m.senderId)?.displayName || chatName,
+          title: m.senderId === meId ? meName || 'Вы' : getPeerTitle({ peerId: m.senderId, peer: peers.get(m.senderId) }) || chatName,
           subtitle: friendlyMsgTime(m.createdAt, lang),
           chatId: numericChatId,
           msgId: m.id,

@@ -34,7 +34,7 @@ const chat: Chat = { id: '1', name: 'Test', avatar: '', date: '', preview: '', t
 
 function rawMsg(over: Partial<Message> = {}): Message {
   return {
-    id: 5, chatId: 1, seq: 5, senderId: 2, type: 'text', text: 'hi',
+    id: 5, peerId: 1, seq: 5, senderId: 2, type: 'text', text: 'hi',
     replyToId: null, mediaId: null, createdAt: '', threadRootId: null,
     reactions: [],
     ...over,

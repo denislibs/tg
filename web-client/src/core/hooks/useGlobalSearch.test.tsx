@@ -13,7 +13,7 @@ import type { Message } from '../models'
 
 function msg(id: number, text: string): Message {
   return {
-    id, chatId: 1, seq: id, senderId: 1, type: 'text', text,
+    id, peerId: 1, seq: id, senderId: 1, type: 'text', text,
     replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
   }
 }

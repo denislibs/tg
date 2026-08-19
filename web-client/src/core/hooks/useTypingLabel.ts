@@ -2,6 +2,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { usePeers } from './usePeers'
 import { useLang } from '../../i18n'
 import type { TypingAction } from '../realtime/events'
+import { getPeerTitle } from '../peers/getPeerTitle'
 
 const TTL = 6000
 
@@ -69,7 +70,9 @@ export function useTypingLabel(chatId: number, isGroup: boolean): TypingLabel {
     return { active: true, label: verb[0], kind }
   }
 
-  const names = entries.map((e) => peers.get(e.userId)?.displayName || '…')
+  // Имя собирает клиент; карточки ещё нет — фолбэк оригинала внутри
+  // `getPeerTitle` («Удалённый аккаунт»), а не пустая строка молча.
+  const names = entries.map((e) => getPeerTitle({ peerId: e.userId, peer: peers.get(e.userId), onlyFirstName: true }))
   if (names.length === 1) return { active: true, label: `${names[0]} ${verb[0]}`, kind }
   if (names.length === 2) return { active: true, label: `${names[0]} ${phrases.and} ${names[1]} ${verb[1]}`, kind }
   return { active: true, label: `${names[0]} ${phrases.more} ${names.length - 1} ${verb[1]}`, kind }

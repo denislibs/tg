@@ -49,16 +49,19 @@ const MAX_MESSAGE_LEN = 4096
 
 // quote — ответ с цитатой выделенного фрагмента (Telegram reply quote): текст
 // куска оригинала + его offset (UTF-16) в плоском тексте отвечаемого сообщения.
-// chatId — кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала;
-// != текущего → уходит полем reply_to_peer_id. snapshotName/snapshotText — готовый
-// снимок превью оригинала (его нет в текущем сторе), рисуется в плашке ответа.
-export type ReplyState = { msgId?: number; name: string; text: string; color: string; peerId?: number; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string } | null
+// sourcePeerId — кросс-чат ответ (tweb ReplyToAnotherChat): ключ ИСХОДНОГО чата
+// оригинала; != текущего → уходит полем reply_to_peer_id. Прежнее имя `chatId`
+// стояло рядом с `peerId` (автор оригинала, якорь `data-peer-id` плашки), и оба
+// теперь ключи пиров — различает их не тип, а РОЛЬ, поэтому имена ролевые.
+// snapshotName/snapshotText — готовый снимок превью оригинала (его нет в текущем
+// сторе), рисуется в плашке ответа.
+export type ReplyState = { msgId?: number; name: string; text: string; color: string; peerId?: PeerId; quote?: { text: string; offset: number }; sourcePeerId?: PeerId; snapshotName?: string; snapshotText?: string } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
 // Пересылка через плашку композера (tweb initMessagesForward): исходный чат +
 // id сообщений ждут финализации по «Отправить». dropAuthor/dropCaption — опции
 // из меню плашки (скрыть отправителя / убрать подпись). text/count/hasCaption —
 // для превью + заголовка плашки.
-export type ForwardState = { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean } | null
+export type ForwardState = { sourcePeerId: PeerId; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean } | null
 
 interface UseChatSendArgs {
   chat: Chat
@@ -75,14 +78,14 @@ interface UseChatSendArgs {
   threadRootId?: number
   /** send-as (Telegram send_as): id канала/группы, от имени которых слать; null —
    * от себя. Прокидывается в send_message выбранной «личностью отправителя». */
-  sendAsChatId?: number | null
+  sendAsPeerId?: PeerId | null
   /** Заголовок выбранной send-as личности — чтобы оптимистичный бабл сразу
    * отрисовался от её имени (иначе показывался бы «от себя» до reconcile). */
   sendAsTitle?: string
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
-  onChatCreated?: (chatId: number) => void
+  onChatCreated?: (peerId: PeerId) => void
 }
 
 export function useChatSend({
@@ -95,7 +98,7 @@ export function useChatSend({
   secretLocked = false,
   meId,
   threadRootId,
-  sendAsChatId = null,
+  sendAsPeerId = null,
   sendAsTitle,
   atBottomRef,
   userScrolledUpRef,
@@ -124,18 +127,18 @@ export function useChatSend({
     threadId: threadRootId ?? null,
     replyToMsgId: reply?.msgId ?? null,
     replyToQuote: reply?.quote ?? null,
-    // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
-    // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
-    replyToPeerId: reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null,
-    sendAsPeerId: sendAsChatId,
+    // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.sourcePeerId — исходный
+    // чат оригинала; отличается от текущего → уходит полем reply_to_peer_id.
+    replyToPeerId: reply?.sourcePeerId != null && reply.sourcePeerId !== numericChatId ? reply.sourcePeerId : null,
+    sendAsPeerId,
     ...over,
   })
 
   /** Снимок превью оригинала для ОПТИМИСТИЧНОГО бабла кросс-чат ответа: его нет
    *  в SSOT текущего чата, а серверный `reply_snapshot_*` приедет только с эхом. */
   const replySnapshotForBubble = () =>
-    reply?.msgId != null && reply.chatId != null && reply.chatId !== numericChatId
-      ? { peerId: reply.chatId, name: reply.snapshotName ?? reply.name, text: reply.snapshotText ?? reply.text }
+    reply?.msgId != null && reply.sourcePeerId != null && reply.sourcePeerId !== numericChatId
+      ? { peerId: reply.sourcePeerId, name: reply.snapshotName ?? reply.name, text: reply.snapshotText ?? reply.text }
       : undefined
 
   /**
@@ -155,7 +158,7 @@ export function useChatSend({
 
   // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
   // do with a finished clip: upload + send (creating the private chat first on a draft).
-  const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ chatId: numericChatId, action: 'voice' }) }
+  const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ peerId: numericChatId, action: 'voice' }) }
   const rec = useVoiceRecorder({
     onStart: pingVoiceTyping,
     onSecond: pingVoiceTyping,
@@ -182,7 +185,7 @@ export function useChatSend({
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         try {
           // Без optimistic — бабла у secret-голоса нет и не было (см. выше).
-          await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId, ...sendingParams })
+          await managers.secret.sendMedia({ peerId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId, ...sendingParams })
         } catch { /* ключ чата отсутствует / оффлайн — бабл не появится */ }
         if (draftPeerId != null) onChatCreated?.(cid)
         return
@@ -195,7 +198,7 @@ export function useChatSend({
       // пики в E2E-payload это отдельная работа. В черновике окна ещё нет, бабл
       // просто не родится (targetKeys пуст) — сообщение подтянется при открытии.
       await managers.messages.sendFile({
-        chatId: cid, clientMsgId, senderId: meId ?? -1, file: blob, type, mime,
+        peerId: cid, clientMsgId, senderId: meId ?? -1, file: blob, type, mime,
         duration: secs, waveform: type === 'voice' ? (waveform ?? undefined) : undefined,
         ...sendingParams, replySnapshot,
       })
@@ -222,11 +225,11 @@ export function useChatSend({
       // расшифрованным echo new_message с тем же clientMsgId. Из пакета сюда едут
       // только метаданные маршрутизации (ответ/тред/тихо) — почему не цитата,
       // разобрано в `secretManager.secretWireFields`.
-      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds, ...sendingParams, optimistic: { senderId: meId ?? -1, type: 'text' } })
+      void managers.secret.sendText({ peerId: numericChatId, text, entities, clientMsgId, ttlSeconds, ...sendingParams, optimistic: { senderId: meId ?? -1, type: 'text' } })
       return
     }
-    const sendAs = sendAsChatId != null ? { chatId: sendAsChatId, title: sendAsTitle ?? '' } : undefined
-    void managers.messages.sendText({ chatId: numericChatId, text, entities, clientMsgId, ...sendingParams, optimistic: { senderId: meId ?? -1, sendAs, replySnapshot: replySnapshotForBubble() } })
+    const sendAs = sendAsPeerId != null ? { peerId: sendAsPeerId, title: sendAsTitle ?? '' } : undefined
+    void managers.messages.sendText({ peerId: numericChatId, text, entities, clientMsgId, ...sendingParams, optimistic: { senderId: meId ?? -1, sendAs, replySnapshot: replySnapshotForBubble() } })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -247,7 +250,7 @@ export function useChatSend({
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
-    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, ...sendingParams, optimistic: { senderId: meId ?? -1, replySnapshot } })
+    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'geo', geo, ...sendingParams, optimistic: { senderId: meId ?? -1, replySnapshot } })
   }
 
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
@@ -265,7 +268,7 @@ export function useChatSend({
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      void managers.messages.sendText({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot } : undefined })
+      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
@@ -291,7 +294,7 @@ export function useChatSend({
         let cid = numericChatId
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         void managers.messages.sendText({
-          chatId: cid, text: '', clientMsgId, mediaId, type: 'video', ...sendingParams,
+          peerId: cid, text: '', clientMsgId, mediaId, type: 'video', ...sendingParams,
           // animated — это САМ предмет вкладки GIF (tweb sendFile({isAnimated}) для
           // гифки): без него бабл «отправляется…» описан обычным видео и рисуется
           // видео-баблом с плашкой play, а не автоплей-циклом.
@@ -315,7 +318,7 @@ export function useChatSend({
       // media_id возвращается сюда только ради автосохранения отправленного
       // Tenor-гифа в /gifs/saved (Telegram: «отправил → появился в сохранённых»).
       const { mediaId } = await managers.messages.sendFile({
-        chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file: blob, type: 'video',
+        peerId: numericChatId, clientMsgId, senderId: meId ?? -1, file: blob, type: 'video',
         mime: 'video/mp4', fileName: 'tenor.mp4', width: g.width, height: g.height,
         // tweb `sendFile({isAnimated: true})` для гифки — см. sendGif выше.
         isMedia: true, isAnimated: true, ...sendingParams, replySnapshot,
@@ -332,7 +335,7 @@ export function useChatSend({
     const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
-    void managers.messages.sendText({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name, replySnapshot } })
+    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name, replySnapshot } })
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -403,7 +406,7 @@ export function useChatSend({
       const bytes = await file.arrayBuffer()
       try {
         await managers.secret.sendMedia({
-          chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId,
+          peerId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId,
           ...sendingParams,
           ...(isVisual ? { text: caption, optimistic: { senderId: meId ?? -1, type, media: { width, height, mime, size: file.size, name: file.name } } } : {}),
         })
@@ -420,7 +423,7 @@ export function useChatSend({
     // (width/height/duration) — ровно как поля SendFileArgs в оригинале.
     // Большие файлы идут чанковым/резюмируемым путём внутри mediaManager.
     await managers.messages.sendFile({
-      chatId: numericChatId, clientMsgId, senderId: meId ?? -1, file, type, mime,
+      peerId: numericChatId, clientMsgId, senderId: meId ?? -1, file, type, mime,
       fileName: file.name, caption, width, height, duration,
       ...sendingParams, replySnapshot, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
       // Спойлер имеет смысл только у визуального медиа: «как файл» прятать нечего
@@ -473,14 +476,14 @@ export function useChatSend({
       atBottomRef.current = true; userScrolledUpRef.current = false
       void (async () => {
         try {
-          await managers.messages.forwardMessages(numericChatId, fwd.sourceChatId, fwd.msgIds, { dropAuthor: fwd.dropAuthor, dropCaption: fwd.dropCaption })
+          await managers.messages.forwardMessages(numericChatId, fwd.sourcePeerId, fwd.msgIds, { dropAuthor: fwd.dropAuthor, dropCaption: fwd.dropCaption })
         } catch (err) {
           console.error('forward failed', err)
           return
         }
         if (text) {
           for (const p of splitRich(text, entities ?? [], MAX_MESSAGE_LEN)) {
-            void managers.messages.sendText({ chatId: numericChatId, text: p.text, entities: p.entities.length ? p.entities : undefined, clientMsgId: mkClientMsgId(), ...sendingParams })
+            void managers.messages.sendText({ peerId: numericChatId, text: p.text, entities: p.entities.length ? p.entities : undefined, clientMsgId: mkClientMsgId(), ...sendingParams })
           }
         }
       })()
@@ -505,7 +508,7 @@ export function useChatSend({
       void (async () => {
         const id = await managers.chats.createPrivate(draftPeerId)
         for (let k = 0; k < parts.length; k++) {
-          await managers.messages.sendText({ chatId: id, text: parts[k].text, entities: entOf(parts[k]), clientMsgId: mkClientMsgId(k), ...sendingParams })
+          await managers.messages.sendText({ peerId: id, text: parts[k].text, entities: entOf(parts[k]), clientMsgId: mkClientMsgId(k), ...sendingParams })
         }
         onChatCreated?.(id)
       })()
@@ -550,7 +553,7 @@ export function useChatSend({
     const now = performance.now()
     if (now - lastTypingRef.current > 3000) {
       lastTypingRef.current = now
-      void managers.realtime.sendTyping({ chatId: numericChatId })
+      void managers.realtime.sendTyping({ peerId: numericChatId })
     }
   })
 

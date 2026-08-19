@@ -9,7 +9,7 @@ import type { Message } from '../models'
 import type { HistoryArgs, HistoryResult } from '../managers/messagesManager'
 
 function msg(seq: number): Message {
-  return { id: seq, chatId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
+  return { id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null }
 }
 
@@ -70,7 +70,7 @@ describe('useMessageWindow', () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    const temp: Message = { id: -1, chatId: 1, seq: 1, senderId: 7, type: 'text', text: 'hi', replyToId: null, mediaId: 42, createdAt: 'now', threadRootId: null, clientId: 'c1' }
+    const temp: Message = { id: -1, peerId: 1, seq: 1, senderId: 7, type: 'text', text: 'hi', replyToId: null, mediaId: 42, createdAt: 'now', threadRootId: null, clientId: 'c1' }
     act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: temp }]) })
     expect(result.current.msgs[result.current.msgs.length - 1]?.text).toBe('hi')
     expect(result.current.msgs[result.current.msgs.length - 1]?.mediaId).toBe(42)
@@ -83,7 +83,7 @@ describe('useMessageWindow', () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    const m = { id: 9, chatId: 1, seq: 3, senderId: 5, type: 'text', text: 'yo', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null }
+    const m = { id: 9, peerId: 1, seq: 3, senderId: 5, type: 'text', text: 'yo', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null }
     act(() => { result.current.applyIncoming(m) })
     act(() => { result.current.applyIncoming(m) })
     expect(result.current.msgs.filter((x) => x.id === 9)).toHaveLength(1)
@@ -96,13 +96,13 @@ describe('useMessageWindow', () => {
     // Send → optimistic entry carries a stable clientId at tentative seq 1 (the
     // worker-side owner builds it; here we put the same shape in directly).
     act(() => {
-      useMessagesStore.getState().appendLocal('1', { id: -1, chatId: 1, seq: 1, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' })
+      useMessagesStore.getState().appendLocal('1', { id: -1, peerId: 1, seq: 1, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' })
     })
     // Wave 3: the realtime echo carries the real server id/seq AND the client_msg_id
     // (mapped to clientId). Matched by clientId, it replaces the optimistic bubble
     // (no duplicate even if the server seq differs) and preserves clientId so the
     // React key stays stable (no remount mid-appear).
-    const echo: Message = { id: 500, chatId: 1, seq: 9, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' }
+    const echo: Message = { id: 500, peerId: 1, seq: 9, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' }
     act(() => { result.current.applyIncoming(echo) })
     const merged = result.current.msgs.filter((x) => x.clientId === 'c-stable')
     expect(merged).toHaveLength(1)

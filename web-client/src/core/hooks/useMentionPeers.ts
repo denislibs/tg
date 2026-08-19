@@ -4,25 +4,27 @@ import { useEffect, useMemo, useState } from 'react'
 import { useManagers } from './useManagers'
 import { usePeers } from './usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
-import type { Peer } from '../managers/peersManager'
+import type { UserReal } from '../peers/peer'
 
-export function useMentionPeers(chatId: number | null, enabled: boolean): Peer[] {
+export function useMentionPeers(peerId: PeerId | null, enabled: boolean): UserReal[] {
   const managers = useManagers()
   const meId = useChatsStore((s) => s.meId)
   const [ids, setIds] = useState<number[]>([])
   useEffect(() => {
     setIds([])
-    if (!enabled || chatId == null) return
+    if (!enabled || peerId == null) return
     let alive = true
     void managers.groups
-      .members(chatId)
+      .members(peerId)
       .then((ms) => { if (alive) setIds(ms.map((m) => m.userId)) })
       .catch(() => undefined)
     return () => { alive = false }
-  }, [chatId, enabled, managers])
+  }, [peerId, enabled, managers])
   const peersMap = usePeers(ids)
   return useMemo(
-    () => ids.filter((id) => id !== meId).map((id) => peersMap.get(id)).filter((p): p is Peer => !!p),
+    // Упомянуть можно только ЧЕЛОВЕКА — сужение по конструктору, а не по
+    // приведению типа: в зеркале по ключу лежат и чаты.
+    () => ids.filter((id) => id !== meId).map((id) => peersMap.get(id)).filter((p): p is UserReal => p?._ === 'user'),
     [ids, peersMap, meId],
   )
 }
