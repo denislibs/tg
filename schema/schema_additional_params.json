@@ -599,6 +599,10 @@
       {
         "name": "sortName",
         "type": "string"
+      },
+      {
+        "name": "emoji_status_emoticon",
+        "type": "string"
       }
     ]
   },

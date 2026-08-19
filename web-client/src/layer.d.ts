@@ -607,7 +607,8 @@ export namespace User {
     bot_active_users?: number,
     bot_verification_icon?: string | number,
     send_paid_messages_stars?: string | number,
-    sortName?: string
+    sortName?: string,
+    emoji_status_emoticon?: string
   };
 }
 
