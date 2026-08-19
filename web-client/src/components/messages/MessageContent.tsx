@@ -267,7 +267,7 @@ export default function MessageContent({
   const bigEmoji = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
   // Block-level content (code block / quote) takes the full bubble width, so the
   // time drops onto its own line below it (right-aligned).
-  const hasBlock = m.entities?.some((e) => e.type === 'pre' || e.type === 'blockquote') ?? false
+  const hasBlock = m.entities?.some((e) => e._ === 'messageEntityPre' || e._ === 'messageEntityBlockquote') ?? false
 
   // Время сообщения — единый tweb-компонент (см. bubbleParts/Time.tsx); режим
   // задаёт способ размещения внутри конкретного бабла.

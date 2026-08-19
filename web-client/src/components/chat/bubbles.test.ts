@@ -377,9 +377,9 @@ describe('ChatBubbles — текст сообщения проходит чер�
     bubbles = new ChatBubbles(chatContext(), managersWith([msg({
       id: 1, seq: 1, text,
       entities: [
-        { type: 'bold', offset: 0, length: 6 },
-        { type: 'text_link', offset: 7, length: 6, url: 'https://example.com/page' },
-        { type: 'spoiler', offset: 14, length: 6 },
+        { _: 'messageEntityBold', offset: 0, length: 6 },
+        { _: 'messageEntityTextUrl', offset: 7, length: 6, url: 'https://example.com/page' },
+        { _: 'messageEntitySpoiler', offset: 14, length: 6 },
       ],
     })]))
     await bubbles.loadFirstHistory()
@@ -400,7 +400,7 @@ describe('ChatBubbles — текст сообщения проходит чер�
 
     rootScope.dispatchEventSingle('message_edit', {
       storageKey: String(CHAT), peerId: CHAT, mid: 1,
-      message: msg({ id: 1, seq: 1, text: 'стало жирным', entities: [{ type: 'bold', offset: 6, length: 6 }] }),
+      message: msg({ id: 1, seq: 1, text: 'стало жирным', entities: [{ _: 'messageEntityBold', offset: 6, length: 6 }] }),
     })
 
     expect(contentOf(bubbles, 1).querySelector('strong')!.textContent).toBe('жирным')
@@ -592,7 +592,7 @@ describe('ChatBubbles — делегированный слушатель кли
     const navigation = nav()
     bubbles = withNav(navigation, [msg({
       id: 1, seq: 1, text: 'канал',
-      entities: [{ type: 'text_link', offset: 0, length: 5, url: 'https://t.me/durov' }],
+      entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })])
     await bubbles.loadFirstHistory()
 
@@ -611,8 +611,8 @@ describe('ChatBubbles — делегированный слушатель кли
     bubbles = withNav(navigation, [msg({
       id: 1, seq: 1, text: 'жирная ссылка',
       entities: [
-        { type: 'text_link', offset: 0, length: 13, url: 'https://t.me/durov' },
-        { type: 'bold', offset: 0, length: 6 },
+        { _: 'messageEntityTextUrl', offset: 0, length: 13, url: 'https://t.me/durov' },
+        { _: 'messageEntityBold', offset: 0, length: 6 },
       ],
     })])
     await bubbles.loadFirstHistory()
@@ -626,7 +626,7 @@ describe('ChatBubbles — делегированный слушатель кли
     const navigation = nav()
     bubbles = withNav(navigation, [msg({
       id: 1, seq: 1, text: 'Иван',
-      entities: [{ type: 'text_mention', offset: 0, length: 4, user_id: 77 }],
+      entities: [{ _: 'messageEntityMentionName', offset: 0, length: 4, user_id: 77 }],
     })])
     await bubbles.loadFirstHistory()
 
@@ -685,7 +685,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('без адресата навигации клик ничего не ломает и не гасится', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg({
       id: 1, seq: 1, text: 'канал',
-      entities: [{ type: 'text_link', offset: 0, length: 5, url: 'https://t.me/durov' }],
+      entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })]))
     await bubbles.loadFirstHistory()
 
@@ -697,7 +697,7 @@ describe('ChatBubbles — делегированный слушатель кли
     const navigation = nav()
     const b = withNav(navigation, [msg({
       id: 1, seq: 1, text: 'канал',
-      entities: [{ type: 'text_link', offset: 0, length: 5, url: 'https://t.me/durov' }],
+      entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })])
     await b.loadFirstHistory()
     const anchor = b.chatInner.querySelector<HTMLElement>('[data-anchor-action]')!

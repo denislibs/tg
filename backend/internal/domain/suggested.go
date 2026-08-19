@@ -11,7 +11,7 @@ type SuggestedPost struct {
 	ChatID    int64
 	AuthorID  int64
 	Text      string
-	Entities  []MessageEntity
+	Entities  MessageEntities
 	MediaID   *int64
 	PublishAt *time.Time // желаемое/назначенное время публикации (nil — как можно скорее)
 	Status    string     // "pending" | "approved" | "rejected"
@@ -28,7 +28,7 @@ type SuggestedPostInfo struct {
 	AuthorID   int64           `json:"author_id"`
 	AuthorName string          `json:"author_name,omitempty"`
 	Text       string          `json:"text"`
-	Entities   []MessageEntity `json:"entities,omitempty"`
+	Entities   MessageEntities `json:"entities,omitempty"`
 	MediaID    *int64          `json:"media_id,omitempty"`
 	PublishAt  int64           `json:"publish_at,omitempty"`
 	Status     string          `json:"status"`

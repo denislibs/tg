@@ -23,7 +23,7 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 
 // PostToChannel inserts a channel message and delivers it O(1): bump channel_pts,
 // append a channel_update, then PUBLISH once to channel:{id}. No per-subscriber fan-out.
-func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities []domain.MessageEntity, clientMsgID string) (domain.Message, error) {
+func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error) {
 	if err := i.requireRight(ctx, channelID, actorID, domain.RightPostMessages); err != nil {
 		return domain.Message{}, err
 	}

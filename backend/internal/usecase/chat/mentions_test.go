@@ -18,7 +18,7 @@ func TestSend_TextMentionBumpsUnreadMentions(t *testing.T) {
 
 	_, err := in.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: a, Text: "hi @b",
-		Entities: []domain.MessageEntity{{Type: "text_mention", Offset: 3, Length: 2, UserID: b}},
+		Entities: domain.MessageEntities{domain.NewMessageEntityMentionName(3, 2, b)},
 	})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
@@ -42,7 +42,7 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	ent := []domain.MessageEntity{{Type: "text_mention", Offset: 0, Length: 1, UserID: b}}
+	ent := domain.MessageEntities{domain.NewMessageEntityMentionName(0, 1, b)}
 	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@", Entities: ent})
 	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@", Entities: ent})
 

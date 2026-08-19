@@ -32,12 +32,13 @@ var (
 
 var urlRe = regexp.MustCompile(`https?://\S+`)
 
-// firstURL — первая http/https-ссылка сообщения: сначала entities text_link
+// firstURL — первая http/https-ссылка сообщения: сначала messageEntityTextUrl
 // (несут явный URL), затем голая ссылка в тексте. Пусто — ссылок нет.
-func firstURL(text string, entities []domain.MessageEntity) string {
+func firstURL(text string, entities domain.MessageEntities) string {
 	for _, e := range entities {
-		if e.Type == "text_link" && (strings.HasPrefix(e.URL, "http://") || strings.HasPrefix(e.URL, "https://")) {
-			return e.URL
+		v, ok := e.(domain.MessageEntityTextURL)
+		if ok && (strings.HasPrefix(v.URL, "http://") || strings.HasPrefix(v.URL, "https://")) {
+			return v.URL
 		}
 	}
 	// Хвостовую пунктуацию («смотри https://a.b/c.») ссылкой не считаем.

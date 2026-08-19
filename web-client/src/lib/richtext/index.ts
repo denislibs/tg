@@ -10,13 +10,12 @@ export { default as wrapRichText, MAX_ENTITIES, type WrapRichTextOptions } from 
 export { default as parseEntities, wrapMessageEntities } from './parseEntities'
 export {
   mergeEntities, sortEntities, findConflictingEntity, isEntityIntersecting, fixEmoji,
-  type WrapEntity, type WrapEntityType, type ServiceEntityType,
 } from './entities'
 export { emojiOnlyCount, encodeEmoji, isSafeEmojiUnicode, EMOJI_CDN_BASE } from './emoji'
 export { ANCHOR_ACTION_ATTRIBUTE, safeWrapUrl, wrapUrl, type AnchorAction } from './url'
 export { MAX_HIGHLIGHT_LENGTH, getCodeLanguage } from './highlightCode'
 
-import type { MessageEntity } from '@core/models'
+import type { MessageEntity } from '@layer'
 import wrapRichText, { type WrapRichTextOptions } from './wrapRichText'
 import { wrapMessageEntities } from './parseEntities'
 

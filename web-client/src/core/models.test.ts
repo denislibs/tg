@@ -116,10 +116,10 @@ describe('mapMessage', () => {
     const raw: RawMessage = {
       id: 15, chat_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'post',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-      factcheck: { text: 'clarification', entities: [{ type: 'bold', offset: 0, length: 4 }], country: 'DE' },
+      factcheck: { text: 'clarification', entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }], country: 'DE' },
     }
     expect(mapMessage(raw).factCheck).toEqual({
-      text: 'clarification', entities: [{ type: 'bold', offset: 0, length: 4 }], country: 'DE',
+      text: 'clarification', entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }], country: 'DE',
     })
     const base = { ...raw, factcheck: null }
     expect(mapMessage(base).factCheck).toBeUndefined()
@@ -193,12 +193,12 @@ describe('mapDraft', () => {
   it('maps entities and reply_to_id (draft_update frame / GET /drafts)', () => {
     const d = mapDraft({
       chat_id: 3, text: '**жирный**',
-      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
       reply_to_id: 42, updated_at: '2026-07-21T10:00:00Z',
     })
     expect(d).toEqual({
       chatId: 3, text: '**жирный**',
-      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
       replyToId: 42, updatedAt: '2026-07-21T10:00:00Z',
     })
   })

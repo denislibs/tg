@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { EntityType, MessageEntity } from '../core/models'
+import type { MessageEntity } from '@layer'
+import type { PositionedEntity } from '@lib/richtext/wrapRichText'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 import StickerMedia from './StickerMedia'
@@ -152,11 +153,11 @@ function Spoiler({ children }: { children: ReactNode }) {
   )
 }
 
-interface Seg { text: string; types: Set<EntityType>; url?: string; documentId?: number }
+interface Seg { text: string; types: Set<MessageEntity['_']>; url?: string; documentId?: number }
 
 // Split text into non-overlapping segments at every entity boundary, recording
 // which entity types (and link url / custom-emoji document) cover each segment.
-function toSegments(text: string, entities: MessageEntity[]): Seg[] {
+function toSegments(text: string, entities: PositionedEntity[]): Seg[] {
   const bounds = new Set<number>([0, text.length])
   for (const e of entities) {
     bounds.add(Math.max(0, e.offset))
@@ -168,14 +169,14 @@ function toSegments(text: string, entities: MessageEntity[]): Seg[] {
     const s = cuts[i]
     const en = cuts[i + 1]
     if (en <= s) continue
-    const types = new Set<EntityType>()
+    const types = new Set<MessageEntity['_']>()
     let url: string | undefined
     let documentId: number | undefined
     for (const e of entities) {
       if (e.offset <= s && e.offset + e.length >= en) {
-        types.add(e.type)
-        if (e.type === 'text_link') url = e.url
-        if (e.type === 'custom_emoji') documentId = e.document_id
+        types.add(e._)
+        if (e._ === 'messageEntityTextUrl') url = e.url
+        if (e._ === 'messageEntityCustomEmoji') documentId = Number(e.document_id)
       }
     }
     segs.push({ text: text.slice(s, en), types, url, documentId })
@@ -192,13 +193,13 @@ function toSegments(text: string, entities: MessageEntity[]): Seg[] {
  * (`docs/tweb/dom/dumps/20-channel-01-post-formatted.json`), а вес шрифта
  * не брался из темы (--font-weight-bold).
  */
-function wrapFormatting(types: Set<EntityType>, content: ReactNode): ReactNode {
+function wrapFormatting(types: Set<MessageEntity['_']>, content: ReactNode): ReactNode {
   let out = content
   // порядок вложения — как в tweb: сущности применяются по мере обхода списка
-  if (types.has('strikethrough')) out = <del>{out}</del>
-  if (types.has('underline')) out = <u>{out}</u>
-  if (types.has('italic')) out = <em>{out}</em>
-  if (types.has('bold')) out = <strong>{out}</strong>
+  if (types.has('messageEntityStrike')) out = <del>{out}</del>
+  if (types.has('messageEntityUnderline')) out = <u>{out}</u>
+  if (types.has('messageEntityItalic')) out = <em>{out}</em>
+  if (types.has('messageEntityBold')) out = <strong>{out}</strong>
   return out
 }
 
@@ -224,12 +225,12 @@ export default function RichText({
   // Cap entities before the (≈O(n²)) segmenting below so a crafted message with
   // thousands of spans can't freeze the renderer. Backend caps too; this protects
   // the client regardless of source.
-  const ents = entities.length > 500 ? entities.slice(0, 500) : entities
+  const ents = (entities.length > 500 ? entities.slice(0, 500) : entities) as PositionedEntity[]
   // Оверлей частиц — ОДИН на весь текст (в tweb он тоже один на `.message`,
   // bubbles.ts:9780 addMessageSpoilerOverlay); идёт последним, чтобы его канва
   // легла поверх слов.
-  const overlay = ents.some((e) => e.type === 'spoiler') ? <MessageSpoilerOverlay /> : null
-  const pres = ents.filter((e) => e.type === 'pre').sort((a, b) => a.offset - b.offset)
+  const overlay = ents.some((e) => e._ === 'messageEntitySpoiler') ? <MessageSpoilerOverlay /> : null
+  const pres = ents.filter((e) => e._ === 'messageEntityPre').sort((a, b) => a.offset - b.offset)
   if (pres.length > 0) {
     const parts: ReactNode[] = []
     let cursor = 0
@@ -237,7 +238,7 @@ export default function RichText({
       if (end <= start) return
       // re-base the non-pre entities onto this slice
       const sub = ents
-        .filter((e) => e.type !== 'pre' && e.offset < end && e.offset + e.length > start)
+        .filter((e) => e._ !== 'messageEntityPre' && e.offset < end && e.offset + e.length > start)
         .map((e) => {
           const s = Math.max(e.offset, start)
           const en = Math.min(e.offset + e.length, end)
@@ -258,29 +259,29 @@ export default function RichText({
 
 // Inline (non-block) entity rendering: segment the text at entity boundaries and
 // wrap each run with the styles of the entities covering it.
-function renderInline(text: string, entities: MessageEntity[], linkColor: string): ReactNode {
+function renderInline(text: string, entities: PositionedEntity[], linkColor: string): ReactNode {
   if (entities.length === 0) return plainRun(text, linkColor, 's')
   const segs = toSegments(text, entities)
   return (
     <>
       {segs.map((seg, i) => {
         const key = `e${i}`
-        const isCode = seg.types.has('code') || seg.types.has('pre')
-        const href = seg.types.has('text_link') ? safeUrl(seg.url) : undefined
+        const isCode = seg.types.has('messageEntityCode') || seg.types.has('messageEntityPre')
+        const href = seg.types.has('messageEntityTextUrl') ? safeUrl(seg.url) : undefined
         const isLink = !!href
-        const isQuote = seg.types.has('blockquote')
+        const isQuote = seg.types.has('messageEntityBlockquote')
 
         // inline custom emoji (tweb messageEntityCustomEmoji): render the sticker
         // document in place of the fallback glyph (seg.text). document_id может
         // отсутствовать после санитайза — тогда остаётся обычный глиф.
-        if (seg.types.has('custom_emoji') && seg.documentId != null) {
+        if (seg.types.has('messageEntityCustomEmoji') && seg.documentId != null) {
           return <CustomEmoji key={key} documentId={seg.documentId} fallback={seg.text} />
         }
 
         // custom mention юзера без username (tweb messageEntityMentionName):
         // акцентный текст, как @mention-автолинк
         // tweb messageEntityMentionName → `a.follow[data-follow]` (wrapRichText.ts:643-650)
-        if (seg.types.has('text_mention')) {
+        if (seg.types.has('messageEntityMentionName')) {
           return (
             <span key={key} className="follow" style={{ color: linkColor }}>
               {wrapFormatting(seg.types, seg.text)}
@@ -310,7 +311,7 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
           // tweb messageEntityCode → `code.code-code` (wrapRichText.ts:268-290)
           content = <code className={classNames('code-code', s.code)}>{content}</code>
         }
-        if (seg.types.has('spoiler')) content = <Spoiler>{content}</Spoiler>
+        if (seg.types.has('messageEntitySpoiler')) content = <Spoiler>{content}</Spoiler>
 
         const wrapped = wrapFormatting(seg.types, content)
 

@@ -11,7 +11,7 @@ import { compileString } from 'sass'
 import type { MessageEntity } from '@core/models'
 import { wrapMessageText } from './index'
 
-const SPOILER: MessageEntity[] = [{ type: 'spoiler', offset: 0, length: 6 }]
+const SPOILER: MessageEntity[] = [{ _: 'messageEntitySpoiler', offset: 0, length: 6 }]
 
 beforeAll(() => {
   // тот самый эталонный партиал — тест падает, если разметка перестанет ему соответствовать
@@ -79,8 +79,8 @@ describe('spoiler hides its text until revealed', () => {
 
   it('форматирование внутри спойлера остаётся вложенным в .spoiler-text', () => {
     const container = renderInContainer('secret rest', [
-      { type: 'spoiler', offset: 0, length: 6 },
-      { type: 'bold', offset: 0, length: 6 },
+      { _: 'messageEntitySpoiler', offset: 0, length: 6 },
+      { _: 'messageEntityBold', offset: 0, length: 6 },
     ])
 
     expect(container.querySelectorAll('.spoiler').length).toBe(1)

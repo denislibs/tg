@@ -116,8 +116,12 @@ func isRequiredParam(t string) bool { return !strings.Contains(t, "?") && !isFla
 type schemaChecker struct {
 	constructors map[string]schemaConstructor
 	additional   map[string]map[string]bool
-	unexpected   []string
-	omitted      []string
+	// omittedOK — обязательные параметры схемы, которых мы сознательно не
+	// производим (см. omittedWithoutSubject у медиа). Поле, а не глобальная
+	// карта: у каждой подсистемы свой список.
+	omittedOK  map[string][]string
+	unexpected []string
+	omitted    []string
 }
 
 func (c *schemaChecker) walk(value any, path string) {
@@ -191,7 +195,7 @@ func (c *schemaChecker) walkObject(obj map[string]any, path string) {
 		if _, present := obj[p.Name]; present {
 			continue
 		}
-		if contains(omittedWithoutSubject[predicate], p.Name) {
+		if contains(c.omittedOK[predicate], p.Name) {
 			continue
 		}
 		c.omitted = append(c.omitted,
@@ -222,7 +226,7 @@ func checkAgainstSchema(t *testing.T, media *MessageMedia) (unexpected, omitted 
 		t.Fatalf("вложение не разбирается обратно: %v", err)
 	}
 
-	c := &schemaChecker{constructors: loadSchemaConstructors(t), additional: loadAdditionalParams(t)}
+	c := &schemaChecker{constructors: loadSchemaConstructors(t), additional: loadAdditionalParams(t), omittedOK: omittedWithoutSubject}
 	c.walk(decoded, "media")
 
 	sort.Strings(c.unexpected)

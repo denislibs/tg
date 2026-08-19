@@ -22,7 +22,7 @@ const allElements = (host: HTMLElement) => [...host.querySelectorAll('*')]
 describe('#5 схемы ссылок — allow-list, а не «запрещён только javascript:» как в tweb', () => {
   it('javascript: не становится href анкера', () => {
     const host = render('click me', [
-      { type: 'text_link', offset: 0, length: 8, url: 'javascript:alert(document.cookie)' },
+      { _: 'messageEntityTextUrl', offset: 0, length: 8, url: 'javascript:alert(document.cookie)' },
     ])
 
     expect([...host.querySelectorAll('a')].some((el) => /javascript:/i.test(el.getAttribute('href') || ''))).toBe(false)
@@ -37,7 +37,7 @@ describe('#5 схемы ссылок — allow-list, а не «запрещён 
       'vbscript:msgbox(1)',
       'JAVASCRIPT:alert(1)',
     ]) {
-      const host = render('x', [{ type: 'text_link', offset: 0, length: 1, url }])
+      const host = render('x', [{ _: 'messageEntityTextUrl', offset: 0, length: 1, url }])
 
       expect(host.querySelector('a')).toBeNull()
       // фолбэк — тот же, что у React-версии (RichText.tsx:80-83): текст в span с классом ссылки
@@ -46,7 +46,7 @@ describe('#5 схемы ссылок — allow-list, а не «запрещён 
   })
 
   it('схема проверяется ДО дописывания https:// (иначе javascript: «отмылся» бы в https://javascript:…)', () => {
-    const host = render('x', [{ type: 'text_link', offset: 0, length: 1, url: 'javascript:alert(1)' }])
+    const host = render('x', [{ _: 'messageEntityTextUrl', offset: 0, length: 1, url: 'javascript:alert(1)' }])
 
     expect(host.querySelector('a')).toBeNull()
     expect(host.innerHTML).not.toContain('javascript')
@@ -54,7 +54,7 @@ describe('#5 схемы ссылок — allow-list, а не «запрещён 
 
   it('обычная https-ссылка кликабельна', () => {
     const host = render('site', [
-      { type: 'text_link', offset: 0, length: 4, url: 'https://example.com' },
+      { _: 'messageEntityTextUrl', offset: 0, length: 4, url: 'https://example.com' },
     ])
 
     expect(host.querySelector('a')?.getAttribute('href')).toBe('https://example.com')
@@ -64,7 +64,7 @@ describe('#5 схемы ссылок — allow-list, а не «запрещён 
 describe('#1 подсветка кода — токенами, а не innerHTML', () => {
   it('разметка внутри блока кода остаётся текстом (без подсветки)', () => {
     const host = render('<img src=x onerror=alert(1)>', [
-      { type: 'pre', offset: 0, length: 28, language: 'txt' },
+      { _: 'messageEntityPre', offset: 0, length: 28, language: 'txt' },
     ])
 
     const code = host.querySelector('code.code-code')!
@@ -75,7 +75,7 @@ describe('#1 подсветка кода — токенами, а не innerHTML
   it('и после того, как доедет prism: подсветка кладёт только span.token', async () => {
     const code = '<img src=x onerror="alert(1)">'
     const loadPromises: Promise<unknown>[] = []
-    const host = render(code, [{ type: 'pre', offset: 0, length: code.length, language: 'html' }], { loadPromises })
+    const host = render(code, [{ _: 'messageEntityPre', offset: 0, length: code.length, language: 'html' }], { loadPromises })
 
     expect(loadPromises.length).toBe(1)
     await Promise.all(loadPromises)
@@ -92,7 +92,7 @@ describe('#1 подсветка кода — токенами, а не innerHTML
   it('устаревший middleware отменяет запись в DOM', async () => {
     const code = 'const a = 1'
     const loadPromises: Promise<unknown>[] = []
-    const host = render(code, [{ type: 'pre', offset: 0, length: code.length, language: 'js' }], {
+    const host = render(code, [{ _: 'messageEntityPre', offset: 0, length: code.length, language: 'js' }], {
       loadPromises,
       middleware: () => false,
     })
@@ -107,7 +107,7 @@ describe('#1 подсветка кода — токенами, а не innerHTML
 describe('#2 спойлер — без createElementFromMarkup (bluff-спойлер не портирован)', () => {
   it('текст спойлера кладётся textContent, разметка внутри не парсится', () => {
     const text = '<b>bold</b>'
-    const host = render(text, [{ type: 'spoiler', offset: 0, length: text.length }])
+    const host = render(text, [{ _: 'messageEntitySpoiler', offset: 0, length: text.length }])
 
     const spoilerText = host.querySelector('.spoiler > .spoiler-text')!
     expect(spoilerText.textContent).toBe(text)
@@ -183,7 +183,7 @@ describe('img.src эмодзи — только численные кодпои�
   it('подделанный unicode в сущности не доходит до src — остаётся span.emoji-native', () => {
     const host = document.createElement('div')
     host.append(wrapRichText('😀', {
-      entities: [{ type: 'emoji', offset: 0, length: 2, unicode: '../../../evil' }],
+      entities: [{ _: 'messageEntityEmoji', offset: 0, length: 2, unicode: '../../../evil' }],
     }))
 
     expect(host.querySelector('img')).toBeNull()

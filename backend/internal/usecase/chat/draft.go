@@ -14,7 +14,7 @@ import (
 // вкладки/устройства держали один и тот же черновик (updateDraftMessage).
 
 // SaveDraft сохраняет (или удаляет — при пустом тексте без reply) черновик.
-func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text string, entities []domain.MessageEntity, replyToID *int64) (*domain.Draft, error) {
+func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text string, entities domain.MessageEntities, replyToID *int64) (*domain.Draft, error) {
 	if i.drafts == nil {
 		return nil, domain.ErrNotFound
 	}

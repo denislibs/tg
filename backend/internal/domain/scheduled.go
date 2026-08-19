@@ -10,7 +10,7 @@ type ScheduledMessage struct {
 	SenderID  int64
 	Type      string
 	Text      string
-	Entities  []MessageEntity
+	Entities  MessageEntities
 	ReplyToID *int64
 	MediaID   *int64
 	SendAt    time.Time

@@ -21,7 +21,7 @@ import (
 // SuggestPost кладёт предложенный пост в очередь канала (status=pending) и
 // уведомляет админов. Предлагать может участник канала БЕЗ права постинга — у
 // кого право есть, тот постит напрямую.
-func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, text string, entities []domain.MessageEntity, mediaID *int64, publishAt *time.Time) (domain.SuggestedPostInfo, error) {
+func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, text string, entities domain.MessageEntities, mediaID *int64, publishAt *time.Time) (domain.SuggestedPostInfo, error) {
 	if i.suggested == nil {
 		return domain.SuggestedPostInfo{}, domain.ErrNotFound
 	}

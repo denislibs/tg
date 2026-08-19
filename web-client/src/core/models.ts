@@ -4,28 +4,25 @@ import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 import type { NewMessageEvt } from './realtime/events'
 import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
+import type { MessageEntity } from '@layer'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved' | 'secret'
 
-// A rich-text formatting span over a message's text (Telegram MessageEntity model).
-// `offset`/`length` are UTF-16 code units (plain JS string indices), so the same
-// numbers slice the text identically here and on the backend. `url` is set only
-// for 'text_link'. The set mirrors what the composer can produce.
-export type EntityType =
-  | 'bold' | 'italic' | 'underline' | 'strikethrough'
-  | 'code' | 'pre' | 'spoiler' | 'blockquote' | 'text_link' | 'text_mention' | 'custom_emoji'
-export interface MessageEntity {
-  type: EntityType
-  offset: number
-  length: number
-  url?: string
-  language?: string
-  /** target user for 'text_mention' (упоминание юзера без username) */
-  user_id?: number
-  /** sticker-document (media id) that replaces the spanned fallback glyph for
-   * 'custom_emoji' (Telegram messageEntityCustomEmoji.document_id) */
-  document_id?: number
-}
+// Форматирующая разметка текста сообщения — тип ИЗ СХЕМЫ (`@layer`, генерируется
+// из `schema/schema.json`), объединение по дискриминатору `_`:
+// `{_: 'messageEntityBold', offset, length}`, `{_: 'messageEntityPre', …, language}`,
+// `{_: 'messageEntityBlockquote', …, pFlags: {collapsed?: true}}`. Рукописного
+// `{type: 'bold', …}` больше нет — ветвление везде через `switch (entity._)`,
+// как в оригинале (tweb `lib/richTextProcessor/*`).
+//
+// `offset`/`length` — UTF-16 code units (обычные индексы JS-строки), поэтому одни
+// и те же числа режут текст одинаково у нас и на бэкенде.
+//
+// Ре-экспорт, а не своё объявление: у сущностей нет ни `bytes`, ни реквизитов
+// транспорта (`access_hash`/`file_reference`/`dc_id`), из-за которых у медиа
+// пришлось оставить рукописные типы, — то есть тип из схемы годится напрямую
+// (`docs/readiness/tl-program.md`, фаза 1).
+export type { MessageEntity }
 
 // GeoData — гео-точка сообщения. venue: title/address; live location: livePeriod
 // (сек, present → трансляция), heading, liveStopped, editedAt (время последнего

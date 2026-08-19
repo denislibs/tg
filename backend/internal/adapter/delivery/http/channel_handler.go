@@ -64,7 +64,7 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		Text        string                 `json:"text"`
-		Entities    []domain.MessageEntity `json:"entities"`
+		Entities    domain.MessageEntities `json:"entities"`
 		ClientMsgID string                 `json:"client_msg_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
@@ -87,7 +87,7 @@ func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		Text      string                 `json:"text"`
-		Entities  []domain.MessageEntity `json:"entities"`
+		Entities  domain.MessageEntities `json:"entities"`
 		MediaID   *int64                 `json:"media_id"`
 		PublishAt int64                  `json:"publish_at"` // unix-секунды, 0 — как можно скорее
 	}

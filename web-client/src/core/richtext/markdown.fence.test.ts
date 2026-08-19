@@ -14,7 +14,7 @@ describe('parseMarkdown — язык fenced-блока', () => {
     const { text, entities } = parseMarkdown('```json\n{"a":1}\n```')
     expect(text).toBe('{"a":1}')
     expect(entities).toEqual([
-      { type: 'pre', offset: 0, length: 7, language: 'json' },
+      { _: 'messageEntityPre', offset: 0, length: 7, language: 'json' },
     ])
   })
 
@@ -22,7 +22,7 @@ describe('parseMarkdown — язык fenced-блока', () => {
     const { text, entities } = parseMarkdown('```{"a":1}\n```')
     expect(text).toBe('{"a":1}')
     expect(entities).toEqual([
-      { type: 'pre', offset: 0, length: 7, language: undefined },
+      { _: 'messageEntityPre', offset: 0, length: 7, language: '' },
     ])
   })
 
@@ -35,7 +35,7 @@ describe('parseMarkdown — язык fenced-блока', () => {
     const { text, entities } = parseMarkdown('```\nplain\n```')
     expect(text).toBe('plain')
     expect(entities).toEqual([
-      { type: 'pre', offset: 0, length: 5, language: undefined },
+      { _: 'messageEntityPre', offset: 0, length: 5, language: '' },
     ])
   })
 })

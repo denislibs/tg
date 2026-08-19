@@ -25,11 +25,11 @@ describe('custom_emoji', () => {
     // "hi " = 3 code units; "😎" = 2 (суррогатная пара)
     expect(text).toBe('hi 😎 bye')
     expect(entities).toHaveLength(1)
-    expect(entities[0]).toMatchObject({ type: 'custom_emoji', offset: 3, length: 2, document_id: 5 })
+    expect(entities[0]).toMatchObject({ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 5 })
   })
 
   it('entitiesToFragment: entity → <span.md-custom-emoji> (round-trip)', () => {
-    const ents: MessageEntity[] = [{ type: 'custom_emoji', offset: 3, length: 2, document_id: 5 }]
+    const ents: MessageEntity[] = [{ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 5 }]
     const frag = entitiesToFragment('hi 😎 bye', ents)
     const div = document.createElement('div')
     div.appendChild(frag)
@@ -41,7 +41,7 @@ describe('custom_emoji', () => {
     // и обратно — те же text/entities
     const back = serialize(div)
     expect(back.text).toBe('hi 😎 bye')
-    expect(back.entities[0]).toMatchObject({ type: 'custom_emoji', offset: 3, length: 2, document_id: 5 })
+    expect(back.entities[0]).toMatchObject({ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 5 })
   })
 
   it('two identical adjacent custom emoji stay TWO separate entities', () => {
@@ -51,15 +51,15 @@ describe('custom_emoji', () => {
     const { text, entities } = serialize(root)
     expect(text).toBe('😎😎')
     expect(entities).toHaveLength(2)
-    expect(entities[0]).toMatchObject({ type: 'custom_emoji', offset: 0, length: 2, document_id: 5 })
-    expect(entities[1]).toMatchObject({ type: 'custom_emoji', offset: 2, length: 2, document_id: 5 })
+    expect(entities[0]).toMatchObject({ _: 'messageEntityCustomEmoji', offset: 0, length: 2, document_id: 5 })
+    expect(entities[1]).toMatchObject({ _: 'messageEntityCustomEmoji', offset: 2, length: 2, document_id: 5 })
   })
 
   it('parseMarkdown preserves custom_emoji document_id (no marker syntax)', () => {
-    const existing: MessageEntity[] = [{ type: 'custom_emoji', offset: 3, length: 2, document_id: 5 }]
+    const existing: MessageEntity[] = [{ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 5 }]
     const { text, entities } = parseMarkdown('hi 😎 bye', existing)
     expect(text).toBe('hi 😎 bye')
-    const ce = entities.find((e) => e.type === 'custom_emoji')
-    expect(ce).toMatchObject({ type: 'custom_emoji', offset: 3, length: 2, document_id: 5 })
+    const ce = entities.find((e) => e._ === 'messageEntityCustomEmoji')
+    expect(ce).toMatchObject({ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 5 })
   })
 })

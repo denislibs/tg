@@ -18,7 +18,8 @@
  */
 import emojiRegExp from './emojiRegex'
 import TLD from './tld'
-import { fixEmoji, mergeEntities, type WrapEntity } from './entities'
+import { fixEmoji, mergeEntities } from './entities'
+import type { MessageEntity } from '@layer'
 import { encodeEmoji } from './emoji'
 
 export const ALPHA_CHARS_REG_EXP = 'a-z' +
@@ -103,7 +104,7 @@ export function checkBrackets(url: string) {
 export default function parseEntities(text: string) {
   let match: RegExpMatchArray | null
   let raw = text
-  const entities: WrapEntity[] = []
+  const entities: MessageEntity[] = []
   let matchIndex: number
   let rawOffset = 0
   FULL_REG_EXP.lastIndex = 0
@@ -112,14 +113,14 @@ export default function parseEntities(text: string) {
 
     if (match[3]) { // mentions
       entities.push({
-        type: 'mention',
+        _: 'messageEntityMention',
         offset: matchIndex + match[1].length,
         length: match[2].length + match[3].length,
       })
     } else if (match[4]) {
       if (EMAIL_REG_EXP.test(match[4])) { // email
         entities.push({
-          type: 'email',
+          _: 'messageEntityEmail',
           offset: matchIndex,
           length: match[4].length,
         })
@@ -146,7 +147,7 @@ export default function parseEntities(text: string) {
 
         if (url) {
           entities.push({
-            type: 'url',
+            _: 'messageEntityUrl',
             offset: matchIndex,
             length: match[4].length,
           })
@@ -154,7 +155,7 @@ export default function parseEntities(text: string) {
       }
     } else if (match[7]) { // New line
       entities.push({
-        type: 'linebreak',
+        _: 'messageEntityLinebreak',
         offset: matchIndex,
         length: 1,
       })
@@ -164,14 +165,14 @@ export default function parseEntities(text: string) {
       // поэтому unified считаем численно из кодпоинтов (emoji.ts) — этого хватает
       // и для класса `.emoji`, и для имени файла картинки (см. wrapRichText).
       entities.push({
-        type: 'emoji',
+        _: 'messageEntityEmoji',
         offset: matchIndex,
         length: match[8].length,
         unicode: encodeEmoji(match[8]),
       })
     } else if (match[11]) { // Hashtag
       entities.push({
-        type: 'hashtag',
+        _: 'messageEntityHashtag',
         offset: matchIndex + (match[10] ? match[10].length : 0),
         length: match[11].length,
       })
@@ -192,7 +193,7 @@ export default function parseEntities(text: string) {
  * рендера, а у нас сущности лежат в сторе и общие с другими потребителями
  * (React-ветки, поиск, превью), так что мутировать их нельзя.
  */
-export function wrapMessageEntities(message: string, entities: WrapEntity[] = []) {
+export function wrapMessageEntities(message: string, entities: MessageEntity[] = []) {
   const copied = entities.map((entity) => ({ ...entity }))
   message = fixEmoji(message, copied)
 

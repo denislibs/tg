@@ -40,7 +40,7 @@ describe('ChannelsManager.post', () => {
     const post = vi.fn(async () => raw(6))
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
-    const entities = [{ type: 'bold' as const, offset: 0, length: 6 }]
+    const entities = [{ _: 'messageEntityBold' as const, offset: 0, length: 6 }]
 
     await mgr.post(7, 'Голова: Мария', 'c1', entities)
 
@@ -57,7 +57,7 @@ describe('ChannelsManager.post', () => {
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const pendings: unknown[] = []
     const mgr = newChannelsManager({ rest, beforeSending: (p) => { order.push('pending'); pendings.push(p) } })
-    const entities = [{ type: 'bold' as const, offset: 0, length: 2 }]
+    const entities = [{ _: 'messageEntityBold' as const, offset: 0, length: 2 }]
 
     await mgr.post(7, 'пост', 'c9', entities, { senderId: 3, threadRootId: null })
 

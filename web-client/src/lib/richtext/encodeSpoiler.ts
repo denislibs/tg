@@ -1,10 +1,10 @@
 // Порт tweb `lib/richTextProcessor/encodeSpoiler.ts` — 1:1.
 // Заменяет участок сущности-спойлера брайлевой «кашей» ТОЙ ЖЕ длины и отдаёт
 // новый текст целиком плюс сам подменённый кусок.
-import type { WrapEntity } from './entities'
+import type { MessageEntity } from '@layer'
 import spoiler from './spoiler'
 
-export default function encodeSpoiler(text: string, entity: WrapEntity) {
+export default function encodeSpoiler(text: string, entity: MessageEntity.messageEntitySpoiler) {
   const before = text.slice(0, entity.offset)
   const spoilerBefore = text.slice(entity.offset, entity.offset + entity.length)
   const spoilerAfter = spoiler(spoilerBefore)

@@ -928,7 +928,7 @@ func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, er
 	return out, nil
 }
 
-func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
+func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	now := time.Now()

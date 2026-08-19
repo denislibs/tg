@@ -18,7 +18,7 @@ const maxFactCheckRunes = 1024
 // (Telegram messages.editFactCheck) и рассылает членам апдейт factcheck_update,
 // чтобы блок обновился в бабле у всех вживую. Право — автор/админ канала
 // (RightPostMessages); только каналы (в группах/приватных — запрещено).
-func (i *Interactor) SetFactCheck(ctx context.Context, chatID, msgID, userID int64, text string, entities []domain.MessageEntity, country string) (domain.Message, error) {
+func (i *Interactor) SetFactCheck(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities, country string) (domain.Message, error) {
 	if err := i.requireFactCheckRight(ctx, chatID, userID); err != nil {
 		return domain.Message{}, err
 	}

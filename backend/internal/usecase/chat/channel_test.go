@@ -355,7 +355,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	i, _, _, fpub := newChannelTestInteractor(t)
 	ctx := context.Background()
 	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
-	ents := []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 6)}
 
 	msg, err := i.PostToChannel(ctx, id, 7, "Голова: Мария", ents, "e1")
 	if err != nil {
@@ -364,7 +364,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 
 	// 1. дошли до Insert и вернулись в сохранённом сообщении (иначе история —
 	// та, что читается из БД, — приедет без разметки)
-	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+	if len(msg.Entities) != 1 || msg.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("Entities сохранённого сообщения = %+v, want один bold", msg.Entities)
 	}
 
@@ -374,7 +374,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 		t.Fatal("в живом кадре нет entities — форматирование поста теряется")
 	}
 	got, _ := json.Marshal(raw)
-	if !strings.Contains(string(got), `"bold"`) {
+	if !strings.Contains(string(got), `"messageEntityBold"`) {
 		t.Fatalf("entities кадра = %s, want bold", got)
 	}
 
@@ -401,9 +401,9 @@ func TestPostToChannel_SanitizesEntities(t *testing.T) {
 	// text_link с javascript:-схемой — ровно то, что sanitizeEntities выбрасывает
 	// (sanitize.go:75, safeLinkURL). Рядом валидный bold: он обязан уцелеть,
 	// иначе тест прошёл бы и при «выкинули всё подряд».
-	bad := []domain.MessageEntity{
-		{Type: "text_link", Offset: 0, Length: 5, URL: "javascript:alert(1)"},
-		{Type: "bold", Offset: 0, Length: 5},
+	bad := domain.MessageEntities{
+		domain.NewMessageEntityTextURL(0, 5, "javascript:alert(1)"),
+		domain.NewMessageEntityBold(0, 5),
 	}
 
 	msg, err := i.PostToChannel(ctx, id, 7, "hello", bad, "")
@@ -411,7 +411,7 @@ func TestPostToChannel_SanitizesEntities(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+	if len(msg.Entities) != 1 || msg.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("Entities = %+v, want только bold (javascript:-ссылка должна быть выброшена)", msg.Entities)
 	}
 }

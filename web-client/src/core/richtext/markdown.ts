@@ -10,18 +10,49 @@
 //      link via manual range wrap-or-unwrap).
 //   3. entitiesToHtml() — rebuild markup HTML from { text, entities } so editing
 //      an existing message re-loads it formatted.
-import type { EntityType, MessageEntity } from '../models'
+import type { MessageEntity } from '@layer'
 import { safeUrl } from '../safeUrl'
+
+/**
+ * Конструкторы сущностей, которыми оперирует композер: их ставит тулбар/горячие
+ * клавиши, их же находит `serialize()` в разметке contenteditable.
+ *
+ * Приём с `Extract<MessageEntity['_'], …>` — из оригинала: tweb ровно так
+ * ограничивает набор в `MarkdownTag['entityName']`
+ * (`helpers/dom/getRichElementValue.ts:16-22`).
+ */
+export type ComposerEntityType = Extract<MessageEntity['_'],
+  'messageEntityBold' | 'messageEntityItalic' | 'messageEntityUnderline' | 'messageEntityStrike' |
+  'messageEntityCode' | 'messageEntityPre' | 'messageEntitySpoiler' | 'messageEntityBlockquote' |
+  'messageEntityTextUrl' | 'messageEntityMentionName' | 'messageEntityCustomEmoji'>
 
 // CSS classes the composer markup uses (see styles/index.scss). Kept here so serialize()
 // and apply() agree on what a span of each type looks like.
-const CLS: Record<string, EntityType> = {
-  'md-code': 'code',
-  'md-spoiler': 'spoiler',
-  'md-quote': 'blockquote',
+const CLS: Record<string, ComposerEntityType> = {
+  'md-code': 'messageEntityCode',
+  'md-spoiler': 'messageEntitySpoiler',
+  'md-quote': 'messageEntityBlockquote',
 }
 
-interface Active { type: EntityType; url?: string; language?: string; user_id?: number; document_id?: number; ce?: number }
+interface Active { _: ComposerEntityType; url?: string; language?: string; user_id?: number; document_id?: number; ce?: number }
+
+/**
+ * Собрать сущность нужного конструктора. Ветвление по `_`, как в оригинале
+ * (tweb `parseMarkdown.ts:80-156`): у каждого конструктора свои обязательные
+ * поля — `language` у pre, `url` у textUrl, `user_id`/`document_id` у
+ * mentionName/customEmoji, `pFlags` у blockquote (`collapsed` — ключ ЕСТЬ только
+ * когда включён).
+ */
+function buildEntity(a: Active, offset: number, length: number): MessageEntity {
+  switch (a._) {
+    case 'messageEntityPre': return { _: a._, offset, length, language: a.language ?? '' }
+    case 'messageEntityTextUrl': return { _: a._, offset, length, url: a.url ?? '' }
+    case 'messageEntityMentionName': return { _: a._, offset, length, user_id: a.user_id ?? 0 }
+    case 'messageEntityCustomEmoji': return { _: a._, offset, length, document_id: a.document_id ?? 0 }
+    case 'messageEntityBlockquote': return { _: a._, offset, length, pFlags: {} }
+    default: return { _: a._, offset, length }
+  }
+}
 
 // Unique nonce per custom-emoji element so two identical adjacent custom emoji
 // (same document_id) never coalesce into one entity — each stays its own span.
@@ -37,31 +68,31 @@ function detect(el: HTMLElement): Active[] {
   const st = el.style
   const fw = st.fontWeight
   const td = `${st.textDecorationLine || st.textDecoration || ''}`
-  if (tag === 'B' || tag === 'STRONG' || fw === 'bold' || (parseInt(fw, 10) >= 600)) out.push({ type: 'bold' })
-  if (tag === 'I' || tag === 'EM' || st.fontStyle === 'italic') out.push({ type: 'italic' })
-  if (tag === 'U' || tag === 'INS' || td.includes('underline')) out.push({ type: 'underline' })
-  if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || td.includes('line-through')) out.push({ type: 'strikethrough' })
+  if (tag === 'B' || tag === 'STRONG' || fw === 'bold' || (parseInt(fw, 10) >= 600)) out.push({ _: 'messageEntityBold' })
+  if (tag === 'I' || tag === 'EM' || st.fontStyle === 'italic') out.push({ _: 'messageEntityItalic' })
+  if (tag === 'U' || tag === 'INS' || td.includes('underline')) out.push({ _: 'messageEntityUnderline' })
+  if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || td.includes('line-through')) out.push({ _: 'messageEntityStrike' })
   if (el.classList.contains('md-pre') || tag === 'PRE') {
-    out.push({ type: 'pre', language: el.dataset.language || el.getAttribute('data-language') || undefined })
+    out.push({ _: 'messageEntityPre', language: el.dataset.language || el.getAttribute('data-language') || undefined })
   } else if (tag === 'CODE' || st.fontFamily.includes('monospace')) {
-    out.push({ type: 'code' })
+    out.push({ _: 'messageEntityCode' })
   }
-  if (tag === 'BLOCKQUOTE') out.push({ type: 'blockquote' })
+  if (tag === 'BLOCKQUOTE') out.push({ _: 'messageEntityBlockquote' })
   if (el.classList.contains('md-custom-emoji') && el.dataset.docId) {
     // inline custom emoji (tweb messageEntityCustomEmoji): the element's text is the
     // fallback glyph; data-doc-id carries the sticker-document (media) id. A fresh
     // nonce keeps each element a distinct entity even when repeated back-to-back.
-    out.push({ type: 'custom_emoji', document_id: Number(el.dataset.docId) || undefined, ce: ++ceSeq })
+    out.push({ _: 'messageEntityCustomEmoji', document_id: Number(el.dataset.docId) || 0, ce: ++ceSeq })
   }
   if (tag === 'A' && el.dataset.mentionId) {
     // custom mention юзера без username (tweb A.follow / messageEntityMentionName)
-    out.push({ type: 'text_mention', user_id: Number(el.dataset.mentionId) || undefined })
+    out.push({ _: 'messageEntityMentionName', user_id: Number(el.dataset.mentionId) || 0 })
   } else if (tag === 'A') {
-    out.push({ type: 'text_link', url: (el as HTMLAnchorElement).getAttribute('href') || undefined })
+    out.push({ _: 'messageEntityTextUrl', url: (el as HTMLAnchorElement).getAttribute('href') || undefined })
   }
   for (const cls of el.classList) {
     const t = CLS[cls]
-    if (t && !out.some((a) => a.type === t)) out.push({ type: t })
+    if (t && !out.some((a) => a._ === t)) out.push({ _: t })
   }
   return out
 }
@@ -95,11 +126,11 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
 
   // Coalesce contiguous same-type (same url) runs into entities.
   const entities: MessageEntity[] = []
-  const open = new Map<string, { type: EntityType; url?: string; language?: string; user_id?: number; document_id?: number; start: number }>()
-  const keyOf = (a: Active) => `${a.type}|${a.url ?? ''}|${a.language ?? ''}|${a.user_id ?? ''}|${a.document_id ?? ''}|${a.ce ?? ''}`
+  const open = new Map<string, { active: Active; start: number }>()
+  const keyOf = (a: Active) => `${a._}|${a.url ?? ''}|${a.language ?? ''}|${a.user_id ?? ''}|${a.document_id ?? ''}|${a.ce ?? ''}`
   const close = (k: string, end: number) => {
     const s = open.get(k)
-    if (s && end > s.start) entities.push({ type: s.type, offset: s.start, length: end - s.start, url: s.url, language: s.language, user_id: s.user_id, document_id: s.document_id })
+    if (s && end > s.start) entities.push(buildEntity(s.active, s.start, end - s.start))
     open.delete(k)
   }
   let text = ''
@@ -107,7 +138,7 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
   for (const run of runs) {
     const keys = new Set(run.active.map(keyOf))
     for (const k of [...open.keys()]) if (!keys.has(k)) close(k, offset)
-    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { type: a.type, url: a.url, language: a.language, user_id: a.user_id, document_id: a.document_id, start: offset }) }
+    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { active: a, start: offset }) }
     text += run.text
     offset += run.text.length
   }
@@ -124,22 +155,22 @@ function trimRich(text: string, entities: MessageEntity[]): { text: string; enti
   const len = trimmed.length
   const adj: MessageEntity[] = []
   for (const e of entities) {
-    const start = Math.max(0, e.offset - lead)
-    const end = Math.min(len, e.offset + e.length - lead)
+    const start = Math.max(0, (e.offset ?? 0) - lead)
+    const end = Math.min(len, (e.offset ?? 0) + (e.length ?? 0) - lead)
     if (end > start) adj.push({ ...e, offset: start, length: end - start })
   }
   // sort by offset so the renderer/backend see a stable order
-  adj.sort((a, b) => a.offset - b.offset || b.length - a.length)
+  adj.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0) || (b.length ?? 0) - (a.length ?? 0))
   return { text: trimmed, entities: adj }
 }
 
 // --- applying formatting to the live selection ------------------------------
 
-const NATIVE: Partial<Record<EntityType, string>> = {
-  bold: 'bold',
-  italic: 'italic',
-  underline: 'underline',
-  strikethrough: 'strikeThrough',
+const NATIVE: Partial<Record<ComposerEntityType, string>> = {
+  messageEntityBold: 'bold',
+  messageEntityItalic: 'italic',
+  messageEntityUnderline: 'underline',
+  messageEntityStrike: 'strikeThrough',
 }
 
 /** Find the nearest ancestor element matching `pred`, bounded by the editable root. */
@@ -160,12 +191,12 @@ function selectionRoot(root: HTMLElement): Range | null {
   return r
 }
 
-const matcherFor = (type: EntityType) => (el: HTMLElement): boolean => {
+const matcherFor = (type: ComposerEntityType) => (el: HTMLElement): boolean => {
   switch (type) {
-    case 'code': return el.tagName === 'CODE' || el.classList.contains('md-code')
-    case 'spoiler': return el.classList.contains('md-spoiler')
-    case 'blockquote': return el.tagName === 'BLOCKQUOTE' || el.classList.contains('md-quote')
-    case 'text_link': return el.tagName === 'A'
+    case 'messageEntityCode': return el.tagName === 'CODE' || el.classList.contains('md-code')
+    case 'messageEntitySpoiler': return el.classList.contains('md-spoiler')
+    case 'messageEntityBlockquote': return el.tagName === 'BLOCKQUOTE' || el.classList.contains('md-quote')
+    case 'messageEntityTextUrl': return el.tagName === 'A'
     default: return false
   }
 }
@@ -216,7 +247,7 @@ function wrapRange(range: Range, build: () => HTMLElement) {
  * code/spoiler/quote/link we wrap-or-unwrap a class span / anchor ourselves.
  * `url` is required for text_link. Returns focus to the editable.
  */
-export function apply(root: HTMLElement, type: EntityType, url?: string) {
+export function apply(root: HTMLElement, type: ComposerEntityType, url?: string) {
   root.focus()
   const native = NATIVE[type]
   if (native) {
@@ -233,35 +264,38 @@ export function apply(root: HTMLElement, type: EntityType, url?: string) {
     ancestor(range.endContainer, root, matcherFor(type))
   const wrapperEl = ancestor(range.commonAncestorContainer, root, matcherFor(type))
   if (existing && wrapperEl) {
-    if (type === 'text_link' && url) { (wrapperEl as HTMLAnchorElement).href = safeUrl(url) || ''; return }
+    if (type === 'messageEntityTextUrl' && url) { (wrapperEl as HTMLAnchorElement).href = safeUrl(url) || ''; return }
     unwrap(wrapperEl)
     return
   }
 
   wrapRange(range, () => {
-    if (type === 'text_link') {
+    if (type === 'messageEntityTextUrl') {
       const a = document.createElement('a')
       a.href = safeUrl(url) || ''
       a.className = 'md-link'
       return a
     }
     const span = document.createElement('span')
-    if (type === 'code') span.className = 'md-code'
-    else if (type === 'spoiler') span.className = 'md-spoiler'
-    else if (type === 'blockquote') span.className = 'md-quote'
+    if (type === 'messageEntityCode') span.className = 'md-code'
+    else if (type === 'messageEntitySpoiler') span.className = 'md-spoiler'
+    else if (type === 'messageEntityBlockquote') span.className = 'md-quote'
     return span
   })
 }
 
 /** Which formats are active at the current selection (drives the toolbar highlight). */
-export function activeTypes(root: HTMLElement): Set<EntityType> {
-  const out = new Set<EntityType>()
+export function activeTypes(root: HTMLElement): Set<ComposerEntityType> {
+  const out = new Set<ComposerEntityType>()
   for (const [t, cmd] of Object.entries(NATIVE)) {
-    try { if (document.queryCommandState(cmd!)) out.add(t as EntityType) } catch { /* noop */ }
+    try { if (document.queryCommandState(cmd!)) out.add(t as ComposerEntityType) } catch { /* noop */ }
   }
   const range = selectionRoot(root)
   if (range) {
-    for (const t of ['code', 'spoiler', 'blockquote', 'text_link'] as EntityType[]) {
+    const types: ComposerEntityType[] = [
+      'messageEntityCode', 'messageEntitySpoiler', 'messageEntityBlockquote', 'messageEntityTextUrl',
+    ]
+    for (const t of types) {
       if (ancestor(range.commonAncestorContainer, root, matcherFor(t))) out.add(t)
     }
   }
@@ -270,14 +304,14 @@ export function activeTypes(root: HTMLElement): Set<EntityType> {
 
 // --- entities → DOM (for editing an existing formatted message) -------------
 
-interface Seg { text: string; types: EntityType[]; url?: string; language?: string; userId?: number; documentId?: number }
+interface Seg { text: string; types: MessageEntity['_'][]; url?: string; language?: string; userId?: number; documentId?: number }
 
 // Split text into non-overlapping segments at every entity boundary.
 function segmentize(text: string, entities: MessageEntity[]): Seg[] {
   const bounds = new Set<number>([0, text.length])
   for (const e of entities) {
-    bounds.add(Math.max(0, e.offset))
-    bounds.add(Math.min(text.length, e.offset + e.length))
+    bounds.add(Math.max(0, e.offset ?? 0))
+    bounds.add(Math.min(text.length, (e.offset ?? 0) + (e.length ?? 0)))
   }
   const cuts = [...bounds].filter((b) => b >= 0 && b <= text.length).sort((a, b) => a - b)
   const segs: Seg[] = []
@@ -285,18 +319,20 @@ function segmentize(text: string, entities: MessageEntity[]): Seg[] {
     const s = cuts[i]
     const en = cuts[i + 1]
     if (en <= s) continue
-    const types: EntityType[] = []
+    const types: MessageEntity['_'][] = []
     let url: string | undefined
     let language: string | undefined
     let userId: number | undefined
     let documentId: number | undefined
     for (const e of entities) {
-      if (e.offset <= s && e.offset + e.length >= en) {
-        types.push(e.type)
-        if (e.type === 'text_link') url = e.url
-        if (e.type === 'pre') language = e.language
-        if (e.type === 'text_mention') userId = e.user_id
-        if (e.type === 'custom_emoji') documentId = e.document_id
+      if ((e.offset ?? 0) <= s && (e.offset ?? 0) + (e.length ?? 0) >= en) {
+        types.push(e._)
+        switch (e._) {
+          case 'messageEntityTextUrl': url = e.url; break
+          case 'messageEntityPre': language = e.language; break
+          case 'messageEntityMentionName': userId = Number(e.user_id); break
+          case 'messageEntityCustomEmoji': documentId = Number(e.document_id); break
+        }
       }
     }
     segs.push({ text: text.slice(s, en), types, url, language, userId, documentId })
@@ -304,9 +340,9 @@ function segmentize(text: string, entities: MessageEntity[]): Seg[] {
   return segs
 }
 
-function elementFor(type: EntityType, url?: string, language?: string, userId?: number, documentId?: number): HTMLElement {
+function elementFor(type: MessageEntity['_'], url?: string, language?: string, userId?: number, documentId?: number): HTMLElement {
   switch (type) {
-    case 'custom_emoji': {
+    case 'messageEntityCustomEmoji': {
       // Atomic inline unit (tweb custom-emoji placeholder): contenteditable=false so
       // the glyph can't be edited apart from its document; serialize() reads it back
       // via class + data-doc-id. The glyph itself is appended as the element's text.
@@ -316,20 +352,20 @@ function elementFor(type: EntityType, url?: string, language?: string, userId?: 
       if (documentId != null) span.dataset.docId = String(documentId)
       return span
     }
-    case 'text_mention': {
+    case 'messageEntityMentionName': {
       const a = document.createElement('a')
       a.className = 'md-mention'
       if (userId != null) a.dataset.mentionId = String(userId)
       return a
     }
-    case 'bold': return document.createElement('b')
-    case 'italic': return document.createElement('i')
-    case 'underline': return document.createElement('u')
-    case 'strikethrough': return document.createElement('s')
-    case 'spoiler': { const s = document.createElement('span'); s.className = 'md-spoiler'; return s }
-    case 'blockquote': { const s = document.createElement('span'); s.className = 'md-quote'; return s }
-    case 'pre': { const s = document.createElement('span'); s.className = 'md-pre'; if (language) s.dataset.language = language; return s }
-    case 'text_link': { const a = document.createElement('a'); a.className = 'md-link'; a.setAttribute('href', safeUrl(url) || ''); return a }
+    case 'messageEntityBold': return document.createElement('b')
+    case 'messageEntityItalic': return document.createElement('i')
+    case 'messageEntityUnderline': return document.createElement('u')
+    case 'messageEntityStrike': return document.createElement('s')
+    case 'messageEntitySpoiler': { const s = document.createElement('span'); s.className = 'md-spoiler'; return s }
+    case 'messageEntityBlockquote': { const s = document.createElement('span'); s.className = 'md-quote'; return s }
+    case 'messageEntityPre': { const s = document.createElement('span'); s.className = 'md-pre'; if (language) s.dataset.language = language; return s }
+    case 'messageEntityTextUrl': { const a = document.createElement('a'); a.className = 'md-link'; a.setAttribute('href', safeUrl(url) || ''); return a }
     default: { const s = document.createElement('span'); s.className = 'md-code'; return s } // code
   }
 }
@@ -376,7 +412,17 @@ export function entitiesToFragment(text: string, entities?: MessageEntity[]): Do
 
 // --- parse remaining markdown markers in plain text (tweb parseMarkdown) -------
 
-const INLINE_DELIMS: Record<string, EntityType> = { '**': 'bold', '__': 'italic', '~~': 'strikethrough', '||': 'spoiler' }
+// Парные маркеры → конструктор сущности. Значения — подмножество таблицы
+// оригинала `MARKDOWN_ENTITIES` (tweb `lib/richTextProcessor/index.ts:75-83`,
+// у нас `@lib/richtext/entities`): одиночный '`' разбирается ниже отдельной
+// веткой, '``'/'_-_' этот однопроходный разбор не понимает вовсе.
+const INLINE_DELIMS: Record<string, Extract<ComposerEntityType,
+  'messageEntityBold' | 'messageEntityItalic' | 'messageEntityStrike' | 'messageEntitySpoiler'>> = {
+  '**': 'messageEntityBold',
+  '__': 'messageEntityItalic',
+  '~~': 'messageEntityStrike',
+  '||': 'messageEntitySpoiler',
+}
 
 /**
  * One-pass markdown parse of plain text → { text, entities }, stripping the marker
@@ -427,7 +473,9 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
         const offset = text.length
         keep(i + 3 + language.length + startNL, code)
         drop(close - endNL, endNL + 3) // trailing \n + closing ```
-        entities.push({ type: 'pre', offset, length: code.length, language: language || undefined })
+        // `language` в схеме обязателен: «языка нет» — это пустая строка, как и
+        // в оригинале (tweb parseMarkdown.ts:80-85 кладёт `language: language`).
+        entities.push({ _: 'messageEntityPre', offset, length: code.length, language })
         i = close + 3
         continue
       }
@@ -444,7 +492,7 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
           const offset = text.length
           keep(i + 2, inner)
           drop(close, 2)
-          entities.push({ type: dType, offset, length: inner.length })
+          entities.push({ _: dType, offset, length: inner.length })
           i = close + 2
           continue
         }
@@ -460,7 +508,7 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
           const offset = text.length
           keep(i + 1, inner)
           drop(close, 1)
-          entities.push({ type: 'code', offset, length: inner.length })
+          entities.push({ _: 'messageEntityCode', offset, length: inner.length })
           i = close + 1
           continue
         }
@@ -475,7 +523,7 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
         const offset = text.length
         keep(i + 1, linkText)
         drop(i + 1 + linkText.length, m[0].length - 1 - linkText.length)
-        entities.push({ type: 'text_link', offset, length: linkText.length, url: m[2] })
+        entities.push({ _: 'messageEntityTextUrl', offset, length: linkText.length, url: m[2] })
         i += m[0].length
         continue
       }
@@ -488,11 +536,11 @@ export function parseMarkdown(input: string, existing: MessageEntity[] = []): { 
 
   // remap toolbar/shortcut entities through the index map and merge
   for (const e of existing) {
-    const o = map[Math.min(e.offset, n)]
-    const end = map[Math.min(e.offset + e.length, n)]
+    const o = map[Math.min(e.offset ?? 0, n)]
+    const end = map[Math.min((e.offset ?? 0) + (e.length ?? 0), n)]
     if (end > o) entities.push({ ...e, offset: o, length: end - o })
   }
-  entities.sort((a, b) => a.offset - b.offset)
+  entities.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0))
   return { text, entities }
 }
 
@@ -520,10 +568,10 @@ export function splitRich(text: string, entities: MessageEntity[], max: number):
       if (cut > 0) end = i + cut
     }
     const chunkEntities = entities
-      .filter((e) => e.offset < end && e.offset + e.length > i)
+      .filter((e) => (e.offset ?? 0) < end && (e.offset ?? 0) + (e.length ?? 0) > i)
       .map((e) => {
-        const s = Math.max(e.offset, i)
-        const en = Math.min(e.offset + e.length, end)
+        const s = Math.max(e.offset ?? 0, i)
+        const en = Math.min((e.offset ?? 0) + (e.length ?? 0), end)
         return { ...e, offset: s - i, length: en - s }
       })
     parts.push({ text: text.slice(i, end), entities: chunkEntities })

@@ -94,7 +94,7 @@ describe('secretManager', () => {
     mgr.stashRequest(1, initiatorPub)
     await mgr.accept(1)
 
-    const payload = { text: 'секрет 🔒', entities: [{ type: 'bold', offset: 0, length: 6 }] }
+    const payload = { text: 'секрет 🔒', entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }] }
     const res = await mgr.sendText({ chatId: 1, text: payload.text, entities: payload.entities, clientMsgId: 'cm1', ttlSeconds: 30 })
     expect(res.ok).toBe(true)
     expect(sends).toHaveLength(1)

@@ -29,7 +29,7 @@ import type { InlineResult } from '../core/managers/botsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { SendAsPeer } from '../core/managers/chatsManager'
 import MarkupTooltip from './MarkupTooltip'
-import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/richtext/markdown'
+import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown, type ComposerEntityType } from '../core/richtext/markdown'
 import SendAsButton from './composer/SendAsButton'
 import RoundRecordPreview from './composer/RoundRecordPreview'
 import ReplyWrapper from './composer/ReplyWrapper'
@@ -47,7 +47,7 @@ import { useComposerClipboard } from './composer/useComposerClipboard'
 import { useComposerHotkeys } from './composer/useComposerHotkeys'
 import { useSetTransition } from '../core/hooks/useSetTransition'
 import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
-import type { EntityType, MessageEntity } from '../core/models'
+import type { MessageEntity } from '@layer'
 import { type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { useT } from '../i18n'
 import rootScope from '@lib/rootScope'
@@ -347,7 +347,7 @@ function Composer({
     if (ed) { ed.focus(); placeCaretEnd(ed) }
   }
 
-  const applyFmt = (type: EntityType, url?: string) => {
+  const applyFmt = (type: ComposerEntityType, url?: string) => {
     const root = editorRef.current
     if (!root) return
     applyMarkup(root, type, url)
@@ -370,7 +370,7 @@ function Composer({
   }
   // Вставка кастом-эмодзи из пикера (tweb onEmojiSelected с docId): атомарный
   // contenteditable=false span с fallback-глифом + data-doc-id. serialize()
-  // на отправке превратит его в entity custom_emoji с document_id (media id).
+  // на отправке превратит его в messageEntityCustomEmoji с document_id (media id).
   const insertCustomEmoji = (documentId: number, emoji: string) => {
     const root = editorRef.current
     if (!root) return

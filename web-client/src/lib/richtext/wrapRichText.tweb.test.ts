@@ -12,7 +12,7 @@
 // жива и не трогается) + добавлено главное, чего та схема не умела: пересекающиеся
 // сущности дают ОДИН элемент с вложением, а не два одинаковых.
 import { describe, it, expect } from 'vitest'
-import type { MessageEntity } from '@core/models'
+import type { MessageEntity } from '@layer'
 import { wrapMessageText, wrapRichText, MAX_ENTITIES } from './index'
 
 const render = (text: string, entities?: MessageEntity[]) => {
@@ -24,10 +24,10 @@ const render = (text: string, entities?: MessageEntity[]) => {
 describe('wrapRichText — семантические теги форматирования', () => {
   it('bold → <strong>, italic → <em>, underline → <u>, strike → <del>', () => {
     const host = render('bius', [
-      { type: 'bold', offset: 0, length: 1 },
-      { type: 'italic', offset: 1, length: 1 },
-      { type: 'underline', offset: 2, length: 1 },
-      { type: 'strikethrough', offset: 3, length: 1 },
+      { _: 'messageEntityBold', offset: 0, length: 1 },
+      { _: 'messageEntityItalic', offset: 1, length: 1 },
+      { _: 'messageEntityUnderline', offset: 2, length: 1 },
+      { _: 'messageEntityStrike', offset: 3, length: 1 },
     ])
 
     expect(host.querySelector('strong')?.textContent).toBe('b')
@@ -37,7 +37,7 @@ describe('wrapRichText — семантические теги форматир�
   })
 
   it('инлайновый code → code.monospace-text (в tweb code-code только внутри pre)', () => {
-    const host = render('a code b', [{ type: 'code', offset: 2, length: 4 }])
+    const host = render('a code b', [{ _: 'messageEntityCode', offset: 2, length: 4 }])
 
     const code = host.querySelector('code')
     expect(code?.className).toBe('monospace-text')
@@ -46,8 +46,8 @@ describe('wrapRichText — семантические теги форматир�
 
   it('text_link — a.anchor-url, вложенный bold остаётся <strong> ВНУТРИ ссылки', () => {
     const host = render('СТАТЬЯ', [
-      { type: 'text_link', offset: 0, length: 6, url: 'https://example.com/a' },
-      { type: 'bold', offset: 0, length: 6 },
+      { _: 'messageEntityTextUrl', offset: 0, length: 6, url: 'https://example.com/a' },
+      { _: 'messageEntityBold', offset: 0, length: 6 },
     ])
 
     const a = host.querySelector('a.anchor-url')
@@ -62,8 +62,8 @@ describe('wrapRichText — однопроходная схема с рекурс
     // ссылка 0..10 и жирный 5..15 пересекаются: плоская нарезка по всем границам
     // (components/RichText.tsx:159-184) дала бы ДВЕ <a class="anchor-url">
     const host = render('0123456789abcdefghij', [
-      { type: 'text_link', offset: 0, length: 10, url: 'https://example.com/a' },
-      { type: 'bold', offset: 5, length: 10 },
+      { _: 'messageEntityTextUrl', offset: 0, length: 10, url: 'https://example.com/a' },
+      { _: 'messageEntityBold', offset: 5, length: 10 },
     ])
 
     const anchors = host.querySelectorAll('a.anchor-url')
@@ -84,7 +84,7 @@ describe('wrapRichText — однопроходная схема с рекурс
   })
 
   it('дыры между сущностями доливаются текстом, и fragment.normalize() их склеивает', () => {
-    const host = render('a bold b', [{ type: 'bold', offset: 2, length: 4 }])
+    const host = render('a bold b', [{ _: 'messageEntityBold', offset: 2, length: 4 }])
 
     expect(host.textContent).toBe('a bold b')
     // текст до, <strong>, текст после — ровно три узла, без обёрток
@@ -96,9 +96,9 @@ describe('wrapRichText — однопроходная схема с рекурс
 
   it('три уровня вложенности сохраняются как вложенные элементы', () => {
     const host = render('текст', [
-      { type: 'text_link', offset: 0, length: 5, url: 'https://example.com' },
-      { type: 'bold', offset: 0, length: 5 },
-      { type: 'italic', offset: 0, length: 5 },
+      { _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://example.com' },
+      { _: 'messageEntityBold', offset: 0, length: 5 },
+      { _: 'messageEntityItalic', offset: 0, length: 5 },
     ])
 
     expect(host.querySelector('a.anchor-url > strong > em')?.textContent).toBe('текст')
@@ -148,7 +148,7 @@ describe('wrapRichText — автолинковка plain-текста (parseEnt
 describe('wrapRichText — блочные сущности', () => {
   it('pre → pre.quote-like.code > .code-header + .code-content > code.code-code', () => {
     const host = render('до\nconst a = 1\nпосле', [
-      { type: 'pre', offset: 3, length: 11, language: 'js' },
+      { _: 'messageEntityPre', offset: 3, length: 11, language: 'js' },
     ])
 
     const container = host.querySelector('pre.quote-like.quote-like-border.code')
@@ -162,7 +162,7 @@ describe('wrapRichText — блочные сущности', () => {
   })
 
   it('blockquote → blockquote.quote.quote-block.quote-like… c dir="auto", завёрнутый в <div>', () => {
-    const host = render('a\nquote\nb', [{ type: 'blockquote', offset: 2, length: 5 }])
+    const host = render('a\nquote\nb', [{ _: 'messageEntityBlockquote', pFlags: {}, offset: 2, length: 5 }])
 
     const quote = host.querySelector('blockquote')
     expect(quote?.className).toBe('quote quote-block quote-like quote-like-border quote-like-icon')
@@ -174,7 +174,7 @@ describe('wrapRichText — блочные сущности', () => {
 
 describe('wrapRichText — кастомные эмодзи', () => {
   it('custom_emoji → плейсхолдер <custom-emoji-element> c data-doc-id и fallback-глифом', () => {
-    const host = render('hi 😎', [{ type: 'custom_emoji', offset: 3, length: 2, document_id: 42 }])
+    const host = render('hi 😎', [{ _: 'messageEntityCustomEmoji', offset: 3, length: 2, document_id: 42 }])
 
     const el = host.querySelector('custom-emoji-element')
     expect(el?.classList.contains('custom-emoji')).toBe(true)
@@ -188,7 +188,7 @@ describe('wrapRichText — кап на число сущностей', () => {
   it('обрабатываются только первые MAX_ENTITIES сущностей', () => {
     const text = 'x'.repeat(MAX_ENTITIES + 50)
     const entities: MessageEntity[] = Array.from({ length: MAX_ENTITIES + 50 }, (_, i) => ({
-      type: 'bold' as const, offset: i, length: 1,
+      _: 'messageEntityBold' as const, offset: i, length: 1,
     }))
 
     const host = document.createElement('div')
@@ -197,5 +197,50 @@ describe('wrapRichText — кап на число сущностей', () => {
     expect(host.querySelectorAll('strong').length).toBe(MAX_ENTITIES)
     // текст при этом не теряется
     expect(host.textContent).toBe(text)
+  })
+})
+
+// Таблица «конструктор схемы → элемент DOM». Держит ГЛАВНОЕ, что может молча
+// разъехаться при переводе сущностей на TL: ветвление идёт по дискриминатору `_`
+// (`switch (entity._)`, tweb wrapRichText.ts:190), и каждый конструктор обязан
+// попадать ровно в свою ветку. Опечатка в имени конструктора ловится тайпчеком
+// (`case` не сравним с объединением), а вот перепутанные местами ветки — только
+// здесь. Строки таблицы перечислены в порядке веток оригинала.
+describe('wrapRichText — ветвление по дискриминатору `_`', () => {
+  const CASES: { name: string; text: string; entity: MessageEntity; selector: string }[] = [
+    { name: 'messageEntityBold', text: 'x', entity: { _: 'messageEntityBold', offset: 0, length: 1 }, selector: 'strong' },
+    { name: 'messageEntityItalic', text: 'x', entity: { _: 'messageEntityItalic', offset: 0, length: 1 }, selector: 'em' },
+    { name: 'messageEntityStrike', text: 'x', entity: { _: 'messageEntityStrike', offset: 0, length: 1 }, selector: 'del' },
+    { name: 'messageEntityUnderline', text: 'x', entity: { _: 'messageEntityUnderline', offset: 0, length: 1 }, selector: 'u' },
+    { name: 'messageEntityCode', text: 'x', entity: { _: 'messageEntityCode', offset: 0, length: 1 }, selector: 'code.monospace-text' },
+    { name: 'messageEntityPre', text: 'x', entity: { _: 'messageEntityPre', offset: 0, length: 1, language: '' }, selector: 'pre.code > .code-content > code.code-code' },
+    { name: 'messageEntityCustomEmoji', text: '😎', entity: { _: 'messageEntityCustomEmoji', offset: 0, length: 2, document_id: 7 }, selector: 'custom-emoji-element.custom-emoji' },
+    { name: 'messageEntityUrl', text: 'https://example.com', entity: { _: 'messageEntityUrl', offset: 0, length: 19 }, selector: 'a.anchor-url' },
+    { name: 'messageEntityTextUrl', text: 'x', entity: { _: 'messageEntityTextUrl', offset: 0, length: 1, url: 'https://example.com' }, selector: 'a.anchor-url' },
+    { name: 'messageEntityEmail', text: 'user@example.com', entity: { _: 'messageEntityEmail', offset: 0, length: 16 }, selector: 'a[href="mailto:user@example.com"]' },
+    { name: 'messageEntityHashtag', text: '#abc', entity: { _: 'messageEntityHashtag', offset: 0, length: 4 }, selector: 'a.anchor-hashtag' },
+    { name: 'messageEntityMentionName', text: 'Иван', entity: { _: 'messageEntityMentionName', offset: 0, length: 4, user_id: 77 }, selector: 'a.follow[data-follow="77"]' },
+    { name: 'messageEntityMention', text: '@durov', entity: { _: 'messageEntityMention', offset: 0, length: 6 }, selector: 'a.mention' },
+    { name: 'messageEntitySpoiler', text: 'секрет', entity: { _: 'messageEntitySpoiler', offset: 0, length: 6 }, selector: 'span.spoiler > span.spoiler-text' },
+    { name: 'messageEntityBlockquote', text: 'цитата', entity: { _: 'messageEntityBlockquote', pFlags: {}, offset: 0, length: 6 }, selector: 'blockquote.quote.quote-block' },
+  ]
+
+  for (const { name, text, entity, selector } of CASES) {
+    it(`${name} → ${selector}`, () => {
+      const host = document.createElement('div')
+      host.append(wrapRichText(text, { entities: [entity] }))
+
+      expect(host.querySelector(selector), name).not.toBeNull()
+    })
+  }
+
+  // Служебная сущность перевода строки собственного элемента не порождает
+  // (tweb :523-545: ветка только «съедает» текст рядом с блочной сущностью).
+  it('messageEntityLinebreak элемента не создаёт, текст остаётся текстом', () => {
+    const host = document.createElement('div')
+    host.append(wrapRichText('a\nb', { entities: [{ _: 'messageEntityLinebreak', offset: 1, length: 1 }] }))
+
+    expect(host.querySelectorAll('*').length).toBe(0)
+    expect(host.textContent).toBe('a\nb')
   })
 })

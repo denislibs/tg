@@ -27,21 +27,20 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEv
 import { createPortal } from 'react-dom'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
-import { activeTypes } from '../core/richtext/markdown'
-import type { EntityType } from '../core/models'
+import { activeTypes, type ComposerEntityType } from '../core/richtext/markdown'
 import type { IconName } from '../core/tgico-icons'
 
 // Порядок и иконки — tweb markupTooltip.ts:66-76. Пункт `date` (календарь)
 // пропущен: сущности «дата» нет ни в нашей модели, ни на бэке.
 // У цитаты в tweb две иконки: неактивная `quote_outline`, активная `quote`.
-const TOOLS: { type: EntityType; icon: IconName; activeIcon?: IconName; title: string }[] = [
-  { type: 'bold', icon: 'bold', title: 'Жирный' },
-  { type: 'italic', icon: 'italic', title: 'Курсив' },
-  { type: 'underline', icon: 'underline', title: 'Подчёркнутый' },
-  { type: 'strikethrough', icon: 'strikethrough', title: 'Зачёркнутый' },
-  { type: 'code', icon: 'monospace', title: 'Моноширинный' },
-  { type: 'spoiler', icon: 'spoiler', title: 'Спойлер' },
-  { type: 'blockquote', icon: 'quote_outline', activeIcon: 'quote', title: 'Цитата' },
+const TOOLS: { type: ComposerEntityType; icon: IconName; activeIcon?: IconName; title: string }[] = [
+  { type: 'messageEntityBold', icon: 'bold', title: 'Жирный' },
+  { type: 'messageEntityItalic', icon: 'italic', title: 'Курсив' },
+  { type: 'messageEntityUnderline', icon: 'underline', title: 'Подчёркнутый' },
+  { type: 'messageEntityStrike', icon: 'strikethrough', title: 'Зачёркнутый' },
+  { type: 'messageEntityCode', icon: 'monospace', title: 'Моноширинный' },
+  { type: 'messageEntitySpoiler', icon: 'spoiler', title: 'Спойлер' },
+  { type: 'messageEntityBlockquote', icon: 'quote_outline', activeIcon: 'quote', title: 'Цитата' },
 ]
 
 // tweb проверяет ссылку через richTextProcessor/matchUrl — подсистемы у нас нет,
@@ -64,7 +63,7 @@ export default function MarkupTooltip({
   onApply,
 }: {
   editorRef: RefObject<HTMLDivElement | null>
-  onApply: (type: EntityType, url?: string) => void
+  onApply: (type: ComposerEntityType, url?: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const toolsRegularRef = useRef<HTMLDivElement>(null)
@@ -83,7 +82,7 @@ export default function MarkupTooltip({
   const [isLink, setIsLink] = useState(false)
   const [linkVal, setLinkVal] = useState('')
   const [linkError, setLinkError] = useState(false)
-  const [active, setActive] = useState<Set<EntityType>>(new Set())
+  const [active, setActive] = useState<Set<ComposerEntityType>>(new Set())
   const [pos, setPos] = useState<{ x: number; y: number; maxWidth: number }>({ x: 0, y: 0, maxWidth: 0 })
 
   // Зеркала для обработчиков документа (они живут вне цикла рендера).
@@ -267,7 +266,7 @@ export default function MarkupTooltip({
 
   // tweb вешает форматирование на mousedown с cancelEvent: клик не должен сбивать
   // выделение в поле, иначе применять будет не к чему.
-  const applyType = (type: EntityType) => (e: MouseEvent) => {
+  const applyType = (type: ComposerEntityType) => (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     onApply(type)
@@ -280,7 +279,7 @@ export default function MarkupTooltip({
     setIsLink(true)
     saveRange()
     // tweb подставляет href уже существующей ссылки, если кнопка активна.
-    const anchor = active.has('text_link')
+    const anchor = active.has('messageEntityTextUrl')
       ? document.getSelection()?.anchorNode?.parentElement?.closest('a')
       : null
     setLinkVal(anchor?.getAttribute('href') ?? '')
@@ -307,7 +306,7 @@ export default function MarkupTooltip({
     resetSelection()
     const raw = linkVal.trim()
     // tweb matchUrlProtocol: свой протокол сохраняем, иначе дописываем https://
-    if (raw) onApply('text_link', /^[a-z][a-z\d+\-.]*:/i.test(raw) ? raw : `https://${raw}`)
+    if (raw) onApply('messageEntityTextUrl', /^[a-z][a-z\d+\-.]*:/i.test(raw) ? raw : `https://${raw}`)
     setTimeout(hide, 0)
   }
 
@@ -348,7 +347,7 @@ export default function MarkupTooltip({
           <button
             type="button"
             title="Ссылка"
-            className={classNames('btn-icon', active.has('text_link') ? 'active' : '')}
+            className={classNames('btn-icon', active.has('messageEntityTextUrl') ? 'active' : '')}
             onMouseDown={showLinkEditor}
           >
             <TgIcon name="link" size="inherit" />

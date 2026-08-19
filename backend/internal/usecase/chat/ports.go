@@ -233,7 +233,7 @@ type MessageRepo interface {
 	// SavedDialogs groups the saved-messages chat by forward origin
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
-	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
+	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
@@ -523,7 +523,7 @@ type PushNotifier interface {
 type SendInput struct {
 	ChatID, SenderID int64
 	Type, Text       string
-	Entities         []domain.MessageEntity
+	Entities         domain.MessageEntities
 	ReplyToID        *int64
 	// Ответ с цитатой фрагмента (Telegram reply quote): выделенный кусок текста
 	// оригинала + его offset (UTF-16). Применяется только при ReplyToID != nil.

@@ -256,7 +256,7 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
   // sender_name/reply_quote_*, funnel/UI-only поля, не отображаемые в Message).
   const fullEvt: NewMessageEvt = {
     chat_id: 3, msg_id: 42, seq: 7, sender_id: 9, type: 'photo', text: 'caption',
-    entities: [{ type: 'bold', offset: 0, length: 3 }],
+    entities: [{ _: 'messageEntityBold', offset: 0, length: 3 }],
     media_id: 555, created_at: '2026-08-10T13:00:00Z',
     thread_root_id: 100,
     reply_to_id: 41, reply_to_peer_id: 2, reply_snapshot_name: 'Алиса', reply_snapshot_text: 'оригинал',

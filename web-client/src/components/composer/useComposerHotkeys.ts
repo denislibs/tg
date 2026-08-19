@@ -11,7 +11,7 @@
 import { useCallback, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from 'react'
 import type { Peer } from '../../core/managers/peersManager'
 import type { InlineResult } from '../../core/managers/botsManager'
-import type { EntityType } from '../../core/models'
+import type { ComposerEntityType } from '../../core/richtext/markdown'
 import { SHORTCUTS } from './helpers'
 
 /** Общая форма состояния хелпера: список + активная позиция (у эмодзи/меншенов есть ещё wordLen). */
@@ -32,7 +32,7 @@ interface Args<E extends SugBase<string>, M extends SugBase<Peer>, I extends Sug
   onReplyPrev?: () => void
   onEditLast?: () => void
   submit: () => void
-  applyFmt: (type: EntityType, url?: string) => void
+  applyFmt: (type: ComposerEntityType, url?: string) => void
   /** подпись для window.prompt (Ctrl/Cmd+K) */
   urlPromptLabel: string
 }
@@ -117,7 +117,7 @@ export function useComposerHotkeys<E extends SugBase<string>, M extends SugBase<
         const root = editorRef.current
         if (sel && sel.rangeCount && !sel.isCollapsed && root && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
           const url = window.prompt(urlPromptLabel)?.trim()
-          if (url) applyFmt('text_link', /^https?:\/\//i.test(url) ? url : `https://${url}`)
+          if (url) applyFmt('messageEntityTextUrl', /^https?:\/\//i.test(url) ? url : `https://${url}`)
         }
         return
       }

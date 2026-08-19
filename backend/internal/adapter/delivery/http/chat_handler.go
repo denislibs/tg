@@ -338,7 +338,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 type sendBody struct {
 	Type      string                 `json:"type"`
 	Text      string                 `json:"text"`
-	Entities  []domain.MessageEntity `json:"entities"`
+	Entities  domain.MessageEntities `json:"entities"`
 	ReplyToID *int64                 `json:"reply_to_id"`
 	// ответ с цитатой фрагмента (Telegram reply quote): текст + offset (UTF-16)
 	ReplyQuoteText   *string `json:"reply_quote_text"`
@@ -574,7 +574,7 @@ func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
 
 type editBody struct {
 	Text     string                 `json:"text"`
-	Entities []domain.MessageEntity `json:"entities"`
+	Entities domain.MessageEntities `json:"entities"`
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -613,7 +613,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 
 type factCheckBody struct {
 	Text     string                 `json:"text"`
-	Entities []domain.MessageEntity `json:"entities"`
+	Entities domain.MessageEntities `json:"entities"`
 	Country  string                 `json:"country"`
 }
 
@@ -1230,7 +1230,7 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Type       string                 `json:"type"`
 		Text       string                 `json:"text"`
-		Entities   []domain.MessageEntity `json:"entities"`
+		Entities   domain.MessageEntities `json:"entities"`
 		ReplyTo    *int64                 `json:"reply_to_id"`
 		MediaID    *int64                 `json:"media_id"`
 		SendAt     int64                  `json:"send_at"`     // unix-секунды (игнор при when_online)
@@ -2282,7 +2282,7 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		Text      string                 `json:"text"`
-		Entities  []domain.MessageEntity `json:"entities"`
+		Entities  domain.MessageEntities `json:"entities"`
 		ReplyToID *int64                 `json:"reply_to_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {

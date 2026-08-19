@@ -168,16 +168,16 @@ func TestDrafts_EntitiesAndReply(t *testing.T) {
 	foreign, _ := in.Send(ctx, SendInput{ChatID: otherChat, SenderID: a, Text: "foreign", ClientMsgID: "t2"})
 
 	// Entities: опасный text_link и отрицательный offset выкидываются, валидное — остаётся.
-	ents := []domain.MessageEntity{
-		{Type: "bold", Offset: 0, Length: 4},
-		{Type: "text_link", Offset: 0, Length: 4, URL: "javascript:alert(1)"},
-		{Type: "italic", Offset: -1, Length: 2},
+	ents := domain.MessageEntities{
+		domain.NewMessageEntityBold(0, 4),
+		domain.NewMessageEntityTextURL(0, 4, "javascript:alert(1)"),
+		domain.NewMessageEntityItalic(-1, 2),
 	}
 	d, err := in.SaveDraft(ctx, a, chatID, "жирный", ents, &msg.ID)
 	if err != nil || d == nil {
 		t.Fatalf("SaveDraft: %v %+v", err, d)
 	}
-	if len(d.Entities) != 1 || d.Entities[0].Type != "bold" {
+	if len(d.Entities) != 1 || d.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("entities must be sanitized: %+v", d.Entities)
 	}
 	if d.ReplyToID == nil || *d.ReplyToID != msg.ID {

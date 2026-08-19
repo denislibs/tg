@@ -87,15 +87,17 @@ func mediaLabel(typ string) string {
 // "text_mention" entities (Telegram's mention-of-a-user-without-username, which
 // carries the user id inline). Plain "@username" mentions aren't resolved here —
 // they don't carry a user id — so they don't feed the unread-mentions counter.
-func mentionedUserIDs(entities []domain.MessageEntity) map[int64]bool {
+func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
-		if e.Type == "text_mention" && e.UserID != 0 {
-			if out == nil {
-				out = map[int64]bool{}
-			}
-			out[e.UserID] = true
+		v, ok := e.(domain.MessageEntityMentionName)
+		if !ok || v.UserID == 0 {
+			continue
 		}
+		if out == nil {
+			out = map[int64]bool{}
+		}
+		out[v.UserID] = true
 	}
 	return out
 }

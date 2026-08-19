@@ -31,7 +31,7 @@ func TestSuggestedPostsRepo_Lifecycle(t *testing.T) {
 	// Create pending with entities.
 	sp, err := r.Create(ctx, domain.SuggestedPost{
 		ChatID: chatID, AuthorID: author, Text: "hello",
-		Entities: []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 5}},
+		Entities: domain.MessageEntities{domain.NewMessageEntityBold(0, 5)},
 		Status:   "pending",
 	})
 	if err != nil {
@@ -42,7 +42,7 @@ func TestSuggestedPostsRepo_Lifecycle(t *testing.T) {
 	}
 
 	got, err := r.ByID(ctx, sp.ID)
-	if err != nil || got.Text != "hello" || got.Entities[0].Type != "bold" {
+	if err != nil || got.Text != "hello" || got.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("byID = %+v, %v", got, err)
 	}
 

@@ -204,8 +204,8 @@ describe('messageToViewerItem: автор', () => {
   })
 
   it('подпись — текст сообщения + entities', () => {
-    const item = messageToViewerItem(msg({ type: 'photo', mediaId: 1, media: photoMedia(1), text: 'подпись', entities: [{ type: 'bold', offset: 0, length: 7 }] }), ctx)
+    const item = messageToViewerItem(msg({ type: 'photo', mediaId: 1, media: photoMedia(1), text: 'подпись', entities: [{ _: 'messageEntityBold', offset: 0, length: 7 }] }), ctx)
     expect(item.caption).toBe('подпись')
-    expect(item.captionEntities).toEqual([{ type: 'bold', offset: 0, length: 7 }])
+    expect(item.captionEntities).toEqual([{ _: 'messageEntityBold', offset: 0, length: 7 }])
   })
 })

@@ -8,7 +8,7 @@ import "time"
 type Draft struct {
 	ChatID    int64
 	Text      string
-	Entities  []MessageEntity
+	Entities  MessageEntities
 	ReplyToID *int64
 	UpdatedAt time.Time
 }

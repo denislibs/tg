@@ -29,7 +29,7 @@ type sendMessageData struct {
 	ChatID    int64                  `json:"chat_id"`
 	Type      string                 `json:"type"`
 	Text      string                 `json:"text"`
-	Entities  []domain.MessageEntity `json:"entities"`
+	Entities  domain.MessageEntities `json:"entities"`
 	ReplyToID *int64                 `json:"reply_to_id"`
 	// Ответ с цитатой фрагмента (Telegram reply quote): текст выделенного куска
 	// оригинала + его offset (UTF-16). Применяются только вместе с reply_to_id.

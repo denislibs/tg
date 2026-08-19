@@ -54,7 +54,7 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	}
 
 	// creator sets it → stored with sanitized country (upper-cased ISO2)
-	ents := []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 4}}
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 4)}
 	msg, err := in.SetFactCheck(ctx, chatID, post.ID, creator, "fact", ents, "de")
 	if err != nil {
 		t.Fatalf("creator set: %v", err)

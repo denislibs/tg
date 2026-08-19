@@ -15,6 +15,15 @@ import (
 // It registers cleanup with t. Skips the test if Docker is unavailable.
 func NewTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
+	pool, _ := NewTestDBWithURL(t)
+	return pool
+}
+
+// NewTestDBWithURL — то же самое, но отдаёт ещё и строку подключения. Нужна
+// тестам самих МИГРАЦИЙ: чтобы проверить конвертацию данных, надо откатиться на
+// версию назад (MigrateDownTo), записать строки в старой форме и накатить снова.
+func NewTestDBWithURL(t *testing.T) (*pgxpool.Pool, string) {
+	t.Helper()
 	ctx := context.Background()
 
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
@@ -42,5 +51,5 @@ func NewTestDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	return pool
+	return pool, url
 }

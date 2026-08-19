@@ -578,7 +578,7 @@ func (r *MessagesRepo) ClearMediaUnread(ctx context.Context, msgID int64) (bool,
 
 // UpdateText replaces a message's text and stamps edited_at=now(); returns the
 // updated row.
-func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
+func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
 		`UPDATE messages SET text=$2, entities=$3, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
@@ -1058,7 +1058,7 @@ func effectParam(effect string) any {
 	return effect
 }
 
-func entitiesParam(es []domain.MessageEntity) any {
+func entitiesParam(es domain.MessageEntities) any {
 	if len(es) == 0 {
 		return nil
 	}

@@ -1,72 +1,71 @@
 // Модель сущностей и работа со списком — порт tweb
 // `lib/richTextProcessor/{sortEntities,isEntityIntersecting,findConflictingEntity,mergeEntities,fixEmoji}.ts`
-// + наборы типов из `lib/richTextProcessor/index.ts` (SINGLE_ENTITIES / PASS_*).
+// + наборы конструкторов из `lib/richTextProcessor/index.ts`
+// (MARKDOWN_ENTITIES / SINGLE_ENTITIES / PASS_*).
 //
-// Отличие от tweb ровно одно — модель сущности. В tweb это TL-объект и ветвление
-// идёт по строке конструктора (`entity._ === 'messageEntityBold'`); у нас
-// `MessageEntity.type` (`@core/models`). Служебные сущности (их порождает
-// parseEntities: emoji/linebreak/url/hashtag/mention/email) на бэк не ходят и в
-// `EntityType` не входят — поэтому расширяем модель здесь, локально для рендера.
-import type { EntityType } from '@core/models'
+// Сущность — TL-объект из схемы (`@layer`), ветвление по конструктору `entity._`,
+// как в оригинале. Служебные сущности разбора (emoji/linebreak/url/hashtag/
+// mention/email) — те же конструкторы схемы, отдельной модели под них больше нет.
+//
+// Единственное расхождение тел с tweb — `?? 0` / дефолты при чтении offset/length:
+// у клиентских конструкторов (`messageEntityEmoji`/`Linebreak`/`Caret`/…) схема
+// объявляет оба поля необязательными, а у tweb `strictNullChecks: false`
+// (tweb/tsconfig.json:34), поэтому арифметика компилируется у него как есть.
+// У нас strict — читаем со значением по умолчанию, значения при этом те же.
+import type { MessageEntity } from '@layer'
 
-/** Сущности, которых нет в сообщении на проводе — их находит parseEntities по тексту. */
-export type ServiceEntityType = 'emoji' | 'linebreak' | 'url' | 'hashtag' | 'mention' | 'email'
-export type WrapEntityType = EntityType | ServiceEntityType
-
-/** Сущность на входе рендера: серверная (`MessageEntity`) либо служебная. */
-export interface WrapEntity {
-  type: WrapEntityType
-  offset: number
-  length: number
-  /** 'text_link' */
-  url?: string
-  /** 'pre' */
-  language?: string
-  /** 'text_mention' */
-  user_id?: number
-  /** 'custom_emoji' */
-  document_id?: number
-  /** 'emoji' — кодпоинты глифа через '-', считаются ЧИСЛЕННО (см. emoji.ts) */
-  unicode?: string
+/** Порт tweb `index.ts:75-83` — разметка → конструктор сущности. */
+export const MARKDOWN_ENTITIES: { [markdown: string]: MessageEntity['_'] } = {
+  '`': 'messageEntityCode',
+  '``': 'messageEntityPre',
+  '**': 'messageEntityBold',
+  '__': 'messageEntityItalic',
+  '~~': 'messageEntityStrike',
+  '_-_': 'messageEntityUnderline',
+  '||': 'messageEntitySpoiler',
 }
 
-// tweb MARKDOWN_ENTITIES (index.ts:75-83) — типы, которые умеет ставить разметка.
-const MARKDOWN_ENTITY_TYPES: WrapEntityType[] = [
-  'code', 'pre', 'bold', 'italic', 'strikethrough', 'underline', 'spoiler',
-]
-
-// tweb SINGLE_ENTITIES (index.ts:87): pre, code, formattedDate.
-// `messageEntityFormattedDate` не портирован (solid-js-ветка), поэтому его тут нет.
-export const SINGLE_ENTITIES = new Set<WrapEntityType>(['pre', 'code'])
-
-// tweb PASS_SINGLE_CONFLICTING_ENTITIES (index.ts:97) — КОПИЯ базового набора
-// ДО того, как в PASS_CONFLICTING_ENTITIES дольются markdown-типы (index.ts:102-104):
-// emoji, linebreak, caret. Каретки (черновик поля ввода) у нас нет.
-export const PASS_SINGLE_CONFLICTING_ENTITIES = new Set<WrapEntityType>(['emoji', 'linebreak'])
-export const PASS_CONFLICTING_ENTITIES = new Set<WrapEntityType>([
-  ...PASS_SINGLE_CONFLICTING_ENTITIES,
-  ...MARKDOWN_ENTITY_TYPES,
+// Порт tweb `index.ts:87-104` — включая порядок: PASS_SINGLE_CONFLICTING_ENTITIES
+// это КОПИЯ базового набора, снятая ДО того, как в PASS_CONFLICTING_ENTITIES
+// дольются markdown-конструкторы.
+export const SINGLE_ENTITIES: Set<MessageEntity['_']> = new Set([
+  'messageEntityPre',
+  'messageEntityCode',
+  'messageEntityFormattedDate',
 ])
-// tweb PASS_SINGLE_CONFLICTING_ENTITIES_WITH_QUOTE (index.ts:98): code, formattedDate.
-export const PASS_SINGLE_CONFLICTING_ENTITIES_WITH_QUOTE = new Set<WrapEntityType>(['code'])
+export const PASS_CONFLICTING_ENTITIES: Set<MessageEntity['_']> = new Set([
+  'messageEntityEmoji',
+  'messageEntityLinebreak',
+  'messageEntityCaret',
+])
+export const PASS_SINGLE_CONFLICTING_ENTITIES = new Set(PASS_CONFLICTING_ENTITIES)
+export const PASS_SINGLE_CONFLICTING_ENTITIES_WITH_QUOTE = new Set<MessageEntity['_']>([
+  'messageEntityCode',
+  'messageEntityFormattedDate',
+])
+for (const i in MARKDOWN_ENTITIES) {
+  PASS_CONFLICTING_ENTITIES.add(MARKDOWN_ENTITIES[i])
+}
 
 /** Порт tweb `sortEntities.ts` — по offset, при равном offset длинная раньше короткой. */
-export function sortEntities(entities: WrapEntity[]) {
+export function sortEntities(entities: MessageEntity[]) {
   entities.sort((a, b) => {
-    return (a.offset - b.offset) || (b.length - a.length)
+    return ((a.offset ?? 0) - (b.offset ?? 0)) || ((b.length ?? 0) - (a.length ?? 0))
   })
 }
 
 /** Порт tweb `isEntityIntersecting.ts`. */
-export function isEntityIntersecting(entity1: WrapEntity, entity2: WrapEntity) {
-  return entity1.offset < entity2.offset + entity2.length && entity1.offset + entity1.length > entity2.offset
+export function isEntityIntersecting(entity1: MessageEntity, entity2: MessageEntity) {
+  const { offset: offset1 = 0, length: length1 = 0 } = entity1
+  const { offset: offset2 = 0, length: length2 = 0 } = entity2
+  return offset1 < offset2 + length2 && offset1 + length1 > offset2
 }
 
 /** Порт tweb `findConflictingEntity.ts` 1:1. */
 export function findConflictingEntity(
-  currentEntities: WrapEntity[],
-  newEntity: WrapEntity,
-  isInsertingSingleEntity = SINGLE_ENTITIES.has(newEntity.type),
+  currentEntities: MessageEntity[],
+  newEntity: MessageEntity,
+  isInsertingSingleEntity = SINGLE_ENTITIES.has(newEntity._),
 ) {
   if (isInsertingSingleEntity) {
     return currentEntities.find((currentEntity) => {
@@ -74,35 +73,36 @@ export function findConflictingEntity(
     })
   }
 
-  let singleStart = -1, singleEnd = -1, singleType: WrapEntityType | undefined
+  const { offset: newOffset = 0, length: newLength = 0 } = newEntity
+  let singleStart = -1, singleEnd = -1, singleType: MessageEntity['_'] | undefined
   return currentEntities.find((currentEntity) => {
-    const { offset, length } = currentEntity
-    if (SINGLE_ENTITIES.has(currentEntity.type)) {
+    const { offset = 0, length = 0 } = currentEntity
+    if (SINGLE_ENTITIES.has(currentEntity._)) {
       singleStart = offset
       singleEnd = singleStart + length
-      singleType = currentEntity.type
+      singleType = currentEntity._
     }
 
-    // `singleType !== undefined &&` — только чтобы Set<WrapEntityType>.has не получил
-    // undefined под strict; в tweb такой проверки нет, поведение то же.
-    const isQuoteException = newEntity.type === 'blockquote' &&
+    // `singleType !== undefined &&` — только чтобы Set<MessageEntity['_']>.has не
+    // получил undefined под strict; в tweb такой проверки нет, поведение то же.
+    const isQuoteException = newEntity._ === 'messageEntityBlockquote' &&
       singleType !== undefined && PASS_SINGLE_CONFLICTING_ENTITIES_WITH_QUOTE.has(singleType)
 
     if (singleStart !== -1) {
       if (
-        newEntity.offset >= singleStart &&
-        newEntity.offset < singleEnd &&
-        !PASS_SINGLE_CONFLICTING_ENTITIES.has(newEntity.type) &&
+        newOffset >= singleStart &&
+        newOffset < singleEnd &&
+        !PASS_SINGLE_CONFLICTING_ENTITIES.has(newEntity._) &&
         !isQuoteException
       ) {
         return true
       }
     }
 
-    const isConflictingTypes = newEntity.type === currentEntity.type ||
+    const isConflictingTypes = newEntity._ === currentEntity._ ||
       (
-        !PASS_CONFLICTING_ENTITIES.has(newEntity.type) &&
-        !PASS_CONFLICTING_ENTITIES.has(currentEntity.type) &&
+        !PASS_CONFLICTING_ENTITIES.has(newEntity._) &&
+        !PASS_CONFLICTING_ENTITIES.has(currentEntity._) &&
         !isQuoteException
       )
 
@@ -110,15 +110,15 @@ export function findConflictingEntity(
       return false
     }
 
-    const isConflictingOffset = newEntity.offset >= offset &&
-      (newEntity.length + newEntity.offset) <= (length + offset)
+    const isConflictingOffset = newOffset >= offset &&
+      (newLength + newOffset) <= (length + offset)
 
     return isConflictingOffset
   })
 }
 
 /** Порт tweb `mergeEntities.ts` 1:1. */
-export function mergeEntities(currentEntities: WrapEntity[], newEntities: WrapEntity[]) {
+export function mergeEntities(currentEntities: MessageEntity[], newEntities: MessageEntity[]) {
   currentEntities = currentEntities.slice()
   const filtered = newEntities.filter((e) => {
     return !findConflictingEntity(currentEntities, e)
@@ -131,11 +131,12 @@ export function mergeEntities(currentEntities: WrapEntity[], newEntities: WrapEn
   // * have to fix even if emoji supported since it's being wrapped in span
   for (let i = 0; i < currentEntities.length; ++i) {
     let entity = currentEntities[i]
-    if (entity.type === 'emoji') {
+    if (entity._ === 'messageEntityEmoji') {
       const nextEntity = currentEntities[i + 1]
-      if (nextEntity && nextEntity.offset < (entity.offset + entity.length)) {
+      const offset = entity.offset ?? 0
+      if (nextEntity && (nextEntity.offset ?? 0) < (offset + (entity.length ?? 0))) {
         entity = currentEntities[i] = { ...entity }
-        entity.length = nextEntity.offset - entity.offset
+        entity.length = (nextEntity.offset ?? 0) - offset
       }
     }
   }
@@ -150,18 +151,19 @@ export function mergeEntities(currentEntities: WrapEntity[], newEntities: WrapEn
  * стора и общие с React-ветками, поэтому вызывающий (wrapMessageEntities) отдаёт
  * сюда КОПИИ — см. комментарий там.
  */
-export function fixEmoji(text: string, entities?: WrapEntity[]) {
+export function fixEmoji(text: string, entities?: MessageEntity[]) {
   text = text.replace(/[\u2640\u2642\u2764](?!\ufe0f)/g, (match: string, offset: number) => {
     if (entities) {
       const length = match.length
 
       offset += length
       entities.forEach((entity) => {
-        const end = entity.offset + entity.length
+        const { offset: entityOffset = 0, length: entityLength = 0 } = entity
+        const end = entityOffset + entityLength
         if (end === offset) { // current entity
-          entity.length += length
+          entity.length = entityLength + length
         } else if (end > offset) {
-          entity.offset += length
+          entity.offset = entityOffset + length
         }
       })
     }

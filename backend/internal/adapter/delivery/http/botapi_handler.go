@@ -320,11 +320,17 @@ func (h *BotAPIHandler) File(w http.ResponseWriter, r *http.Request) {
 }
 
 func botMessageResult(msg domain.Message, chatID int64, text string) map[string]any {
-	return map[string]any{
+	res := map[string]any{
 		"message_id": msg.ID,
 		"chat":       map[string]any{"id": chatID, "type": "private"},
 		"text":       text,
 	}
+	// Разметка наружу — в плоской форме Bot API (см. botAPIEntities): ответ
+	// метода должен читаться теми же клиентскими библиотеками, что и у Telegram.
+	if ents := botAPIEntities(msg.Entities); len(ents) > 0 {
+		res["entities"] = ents
+	}
+	return res
 }
 
 func botErrCode(err error) int {
@@ -465,31 +471,136 @@ func parseCommandScope(raw json.RawMessage) string {
 	return s.Type
 }
 
-// parseEntities: Telegram MessageEntity[] → domain.MessageEntity[] (типы совпадают).
-func parseEntities(raw json.RawMessage) []domain.MessageEntity {
+// ── Разметка на границе Bot API ─────────────────────────────────────────────
+//
+// Bot API — ФАСАД над нашей моделью, а не она сама. Публичный Bot API Telegram
+// описывает разметку ПЛОСКОЙ записью
+// {type:"bold", offset, length, url, language, user:{id}, custom_emoji_id} —
+// это внешний контракт, зафиксированный чужой документацией, и совпадать с
+// нашей внутренней моделью (объединение конструкторов схемы TL,
+// domain/mtentity.go) он не обязан. Ровно так устроен и настоящий Telegram:
+// Bot API — фасад над MTProto, и граница между ними — то самое место, где
+// стоит конвертер.
+//
+// Поэтому здесь честный перевод в обе стороны, а наружу продолжает уходить
+// плоская форма. Переводить публичный Bot API на конструкторы схемы нельзя:
+// это сломало бы контракт у всех сторонних ботов.
+
+// botAPIEntity — MessageEntity публичного Bot API (плоская запись).
+type botAPIEntity struct {
+	Type   string `json:"type"`
+	Offset int    `json:"offset"`
+	Length int    `json:"length"`
+	URL    string `json:"url,omitempty"`
+	// Language — подсказка языка у "pre". В нашей модели параметр
+	// messageEntityPre.language обязателен и едет всегда (в т.ч. пустой), здесь
+	// же его просто нет, когда подсказки не было, — это и есть разница контрактов.
+	Language string      `json:"language,omitempty"`
+	User     *botAPIUser `json:"user,omitempty"`
+	// CustomEmojiID — в Bot API это СТРОКА (id документа), а не число.
+	CustomEmojiID string `json:"custom_emoji_id,omitempty"`
+}
+
+type botAPIUser struct {
+	ID int64 `json:"id"`
+}
+
+// parseEntities: MessageEntity[] Bot API → разметка в нашей модели.
+//
+// Типы Bot API, которых нет в нашем объединении (mention/hashtag/url/email/…),
+// отбрасываются: это подсветка, которую клиент выводит из САМОГО текста, а не
+// хранимая разметка (см. шапку domain/mtentity.go).
+func parseEntities(raw json.RawMessage) domain.MessageEntities {
 	if len(raw) == 0 {
 		return nil
 	}
-	var arr []struct {
-		Type     string `json:"type"`
-		Offset   int    `json:"offset"`
-		Length   int    `json:"length"`
-		URL      string `json:"url"`
-		Language string `json:"language"`
-		User     *struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
-	}
+	var arr []botAPIEntity
 	if json.Unmarshal(raw, &arr) != nil {
 		return nil
 	}
-	out := make([]domain.MessageEntity, 0, len(arr))
+	out := make(domain.MessageEntities, 0, len(arr))
 	for _, e := range arr {
-		ent := domain.MessageEntity{Type: e.Type, Offset: e.Offset, Length: e.Length, URL: e.URL, Lang: e.Language}
-		if e.User != nil {
-			ent.UserID = e.User.ID
+		var ent domain.MessageEntity
+		switch e.Type {
+		case "bold":
+			ent = domain.NewMessageEntityBold(e.Offset, e.Length)
+		case "italic":
+			ent = domain.NewMessageEntityItalic(e.Offset, e.Length)
+		case "underline":
+			ent = domain.NewMessageEntityUnderline(e.Offset, e.Length)
+		case "strikethrough":
+			ent = domain.NewMessageEntityStrike(e.Offset, e.Length)
+		case "code":
+			ent = domain.NewMessageEntityCode(e.Offset, e.Length)
+		case "pre":
+			ent = domain.NewMessageEntityPre(e.Offset, e.Length, e.Language)
+		case "spoiler":
+			ent = domain.NewMessageEntitySpoiler(e.Offset, e.Length)
+		case "blockquote":
+			ent = domain.NewMessageEntityBlockquote(e.Offset, e.Length, false)
+		case "expandable_blockquote":
+			// Свёрнутая цитата: в Bot API это отдельный ТИП, в схеме — бит
+			// messageEntityBlockquote.collapsed.
+			ent = domain.NewMessageEntityBlockquote(e.Offset, e.Length, true)
+		case "text_link":
+			ent = domain.NewMessageEntityTextURL(e.Offset, e.Length, e.URL)
+		case "text_mention":
+			var userID int64
+			if e.User != nil {
+				userID = e.User.ID
+			}
+			ent = domain.NewMessageEntityMentionName(e.Offset, e.Length, userID)
+		case "custom_emoji":
+			docID, _ := strconv.ParseInt(e.CustomEmojiID, 10, 64)
+			ent = domain.NewMessageEntityCustomEmoji(e.Offset, e.Length, docID)
+		default:
+			continue
 		}
 		out = append(out, ent)
+	}
+	return out
+}
+
+// botAPIEntities: разметка нашей модели → MessageEntity[] Bot API. Обратная
+// сторона того же конвертера — наружу уходит плоская форма.
+func botAPIEntities(es domain.MessageEntities) []botAPIEntity {
+	if len(es) == 0 {
+		return nil
+	}
+	out := make([]botAPIEntity, 0, len(es))
+	for _, e := range es {
+		offset, length := e.Span()
+		be := botAPIEntity{Offset: offset, Length: length}
+		switch v := e.(type) {
+		case domain.MessageEntityBold:
+			be.Type = "bold"
+		case domain.MessageEntityItalic:
+			be.Type = "italic"
+		case domain.MessageEntityUnderline:
+			be.Type = "underline"
+		case domain.MessageEntityStrike:
+			be.Type = "strikethrough"
+		case domain.MessageEntityCode:
+			be.Type = "code"
+		case domain.MessageEntityPre:
+			be.Type, be.Language = "pre", v.Language
+		case domain.MessageEntitySpoiler:
+			be.Type = "spoiler"
+		case domain.MessageEntityBlockquote:
+			be.Type = "blockquote"
+			if v.Collapsed() {
+				be.Type = "expandable_blockquote"
+			}
+		case domain.MessageEntityTextURL:
+			be.Type, be.URL = "text_link", v.URL
+		case domain.MessageEntityMentionName:
+			be.Type, be.User = "text_mention", &botAPIUser{ID: v.UserID}
+		case domain.MessageEntityCustomEmoji:
+			be.Type, be.CustomEmojiID = "custom_emoji", strconv.FormatInt(v.DocumentID, 10)
+		default:
+			continue
+		}
+		out = append(out, be)
 	}
 	return out
 }

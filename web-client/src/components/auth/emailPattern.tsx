@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 
 import wrapRichText from '@lib/richtext/wrapRichText'
-import type { WrapEntity } from '@lib/richtext/entities'
+import type { MessageEntity } from '@layer'
 
 /**
  * `d****@e******.com` → фрагмент с блеф-спойлерами. Как в tweb: строка без «*»
@@ -19,7 +19,7 @@ import type { WrapEntity } from '@lib/richtext/entities'
 export function wrapEmailPattern(pattern: string): string | DocumentFragment {
   if (pattern.includes(' ') || !pattern.includes('*')) return pattern
 
-  const entities: WrapEntity[] = []
+  const entities: MessageEntity[] = []
   for (let i = 0; i < pattern.length; ) {
     const idx = pattern.indexOf('*', i)
     if (idx === -1) break
@@ -27,7 +27,7 @@ export function wrapEmailPattern(pattern: string): string | DocumentFragment {
     while (pattern[endIdx] === '*') endIdx++
 
     entities.push({
-      type: 'spoiler',
+      _: 'messageEntitySpoiler',
       offset: idx,
       length: endIdx - idx,
     })

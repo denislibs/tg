@@ -34,14 +34,14 @@ func (f *fakePreviewer) calls() []string {
 func TestFirstURL(t *testing.T) {
 	cases := []struct {
 		name, text, want string
-		entities         []domain.MessageEntity
+		entities         domain.MessageEntities
 	}{
 		{name: "bare url", text: "смотри https://example.com/a?b=1, круто", want: "https://example.com/a?b=1"},
 		{name: "no url", text: "просто текст", want: ""},
 		{name: "text_link wins", text: "тут", want: "https://linked.example/x",
-			entities: []domain.MessageEntity{{Type: "text_link", Offset: 0, Length: 3, URL: "https://linked.example/x"}}},
+			entities: domain.MessageEntities{domain.NewMessageEntityTextURL(0, 3, "https://linked.example/x")}},
 		{name: "non-http text_link ignored", text: "и голая http://plain.example/y",
-			entities: []domain.MessageEntity{{Type: "text_link", Offset: 0, Length: 1, URL: "javascript:alert(1)"}},
+			entities: domain.MessageEntities{domain.NewMessageEntityTextURL(0, 1, "javascript:alert(1)")},
 			want:     "http://plain.example/y"},
 	}
 	for _, c := range cases {

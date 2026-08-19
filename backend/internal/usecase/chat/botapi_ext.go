@@ -21,7 +21,7 @@ const maxBotMedia = 20 << 20 // 20 MiB на файл, загружаемый б�
 // ── редактирование/удаление сообщений ──
 
 // BotEditMessageText меняет текст (и, если задано, клавиатуру) сообщения бота.
-func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
+func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text string, entities domain.MessageEntities, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
@@ -33,7 +33,7 @@ func (i *Interactor) BotEditReplyMarkup(ctx context.Context, bot domain.BotAccou
 	return i.botEditMessage(ctx, bot, chatID, msgID, nil, nil, markup, true)
 }
 
-func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text *string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
+func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text *string, entities domain.MessageEntities, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
 	cur, err := i.msgs.GetByID(ctx, msgID)
 	if err != nil {
 		return domain.Message{}, err
@@ -113,7 +113,7 @@ func (i *Interactor) BotDeleteMessage(ctx context.Context, bot domain.BotAccount
 
 // BotSendMedia отправляет фото/видео/документ. fileRef — URL (скачиваем и кладём
 // в хранилище от имени бота) или числовой file_id (переиспользуем медиа бота).
-func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, chatID int64, msgType, fileRef, caption string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, fileName string) (domain.Message, error) {
+func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, chatID int64, msgType, fileRef, caption string, entities domain.MessageEntities, markup *domain.ReplyMarkup, fileName string) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, bot.BotID)
 	if err != nil {
 		return domain.Message{}, err

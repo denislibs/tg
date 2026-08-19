@@ -2,20 +2,7 @@ package domain
 
 import "time"
 
-// MessageEntity is a rich-text formatting span over the message Text (Telegram
-// MessageEntity model). Offset/Length are in UTF-16 code units (matching JS
-// string indices on the client), so the same numbers slice the text identically
-// on both ends. The backend stores/returns these opaquely (jsonb) — only the
-// client interprets the units. URL is set only for "text_link" spans.
-type MessageEntity struct {
-	Type   string `json:"type"`                  // bold|italic|underline|strikethrough|code|pre|spoiler|blockquote|text_link|text_mention|custom_emoji
-	Offset int    `json:"offset"`                // start, in UTF-16 code units
-	Length int    `json:"length"`                // span length, in UTF-16 code units
-	URL    string `json:"url,omitempty"`         // target for text_link
-	Lang   string `json:"language,omitempty"`    // language hint for pre code blocks
-	UserID int64  `json:"user_id,omitempty"`     // target for text_mention (упоминание юзера без username)
-	DocID  int64  `json:"document_id,omitempty"` // sticker document (media id) for custom_emoji (Telegram messageEntityCustomEmoji.document_id)
-}
+// Разметка сообщения — объединение конструкторов схемы TL, см. mtentity.go.
 
 // FactCheck — «проверка фактов» на сообщении (Telegram factCheck): пояснение
 // админа/модератора (в нашем клоне — автора/админа канала) к посту. Хранится на
@@ -23,7 +10,7 @@ type MessageEntity struct {
 // страны ISO-3166 alpha-2 (опционально), Entities — форматирование текста.
 type FactCheck struct {
 	Text     string          `json:"text"`
-	Entities []MessageEntity `json:"entities,omitempty"`
+	Entities MessageEntities `json:"entities,omitempty"`
 	Country  string          `json:"country,omitempty"`
 }
 
@@ -67,7 +54,7 @@ type Message struct {
 	SenderID     int64
 	Type         string
 	Text         string
-	Entities     []MessageEntity // rich-text formatting spans over Text (nil when plain)
+	Entities     MessageEntities // rich-text formatting spans over Text (nil when plain)
 	ReplyToID    *int64
 	MediaID      *int64
 	ClientMsgID  *string
@@ -227,7 +214,7 @@ type ReplyPreview struct {
 	Seq      int64
 	SenderID int64
 	Text     string
-	Entities []MessageEntity // formatting of the quoted snippet (nil when truncated/plain)
+	Entities MessageEntities // formatting of the quoted snippet (nil when truncated/plain)
 	Type     string
 	MediaID  *int64 // the replied message's media, for a thumbnail in the quote box
 	// QuoteText — выделенный при ответе фрагмент оригинала (reply quote). Пусто —

@@ -12,7 +12,7 @@ import (
 // EditMessage replaces the text of the caller's own message, stamps edited_at,
 // and fans out an "edit_message" update to every member (so all see the new text
 // and the "edited" marker). Text-only; author-only.
-func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
+func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return domain.Message{}, err

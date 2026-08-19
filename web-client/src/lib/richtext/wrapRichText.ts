@@ -13,13 +13,22 @@
 //   • `wrappingDraft` целиком (черновик поля ввода: markup-шрифты, каретка, BOM-филлеры,
 //     `insertCustomFillers`) — поле ввода живёт своей веткой (`core/richtext/markdown.ts`);
 //   • `messageEntityFormattedDate` (solid-js), `messageEntityDiff*`, `messageEntityTimestamp`,
-//     `messageEntityBotCommand`, `messageEntityAnchor`, `sub`/`sup`, `messageEntityHighlight`,
-//     `messageEntityPhone`, `messageEntityCaret` — таких сущностей у нас нет;
+//     `messageEntityBotCommand`, `messageEntityAnchor`, `messageEntitySubscript`/`Superscript`,
+//     `messageEntityHighlight`, `messageEntityPhone`, `messageEntityCaret` — конструкторы в
+//     схеме есть, но у нас нет ни того, кто их порождает, ни того, кто их показывает;
 //   (bluff-спойлер портирован; ЕДИНСТВЕННОЕ отличие — буквы строятся узлами,
 //    а не `createElementFromMarkup`, см. комментарий в ветке `spoiler`);
 //   • общий рендерер кастом-эмодзи (`CustomEmojiRendererElement`) — портов
 //     `lib/customEmoji/{element,renderer}` у нас нет, здесь только узел-плейсхолдер;
-//   • `pFlags.collapsed` у цитаты и `w`/`h` у кастом-эмодзи — этих полей нет в нашей модели;
+//     вместе с ним не портированы `w`/`h` (tweb :415-419): размер задаётся классом
+//     `custom-emoji-custom-sized` и переменными `--width`/`--height`, а этих правил
+//     в наших стилях нет — размер плейсхолдеру ставить нечем;
+//   • сворачиваемая цитата `pFlags.collapsed` (tweb :793-796 `makeQuoteCollapsable`) —
+//     поле в модели есть, но за ним стоит цепочка из `components/resizeObserver.ts`
+//     и клика `onQuoteClick` в `bubbles.ts:3306-3312`; ни того, ни другого у нас нет,
+//     а без клика раскрыть свёрнутую цитату нечем. Отдельная задача;
+//   • `options.doubleLinebreak` (tweb :530-534) — чтение флага, который в самом tweb
+//     нигде не выставляется (единственное присваивание закомментировано, :897);
 //   • electron-ветка (`javascript:electronHelpers…`), `window.wrapRichText`, `encodeEntities`.
 //
 // БЕЗОПАСНОСТЬ (жёсткое правило `web-client/CLAUDE.md`): DOM строится только
@@ -35,7 +44,7 @@ import DotRenderer from '@components/dotRenderer'
 import { safeUrl } from '@core/safeUrl'
 import encodeSpoiler from './encodeSpoiler'
 import parseEntities, { SITE_HASHTAGS } from './parseEntities'
-import type { WrapEntity, WrapEntityType } from './entities'
+import type { MessageEntity } from '@layer'
 import { EMOJI_CDN_BASE, isSafeEmojiUnicode } from './emoji'
 import { getCodeLanguage, highlightCodeInto } from './highlightCode'
 import Icon from '@components/icon'
@@ -46,12 +55,22 @@ import {
   wrapTelegramUrlToAnchor,
 } from './url'
 
+/**
+ * Сущность в момент рендера. В схеме `offset`/`length` необязательны у клиентских
+ * конструкторов (`messageEntityEmoji`, `messageEntityLinebreak`, … — они приходят из
+ * `schema_additional_params.json`), и tweb читает их без проверок: у него
+ * `strictNullChecks: false`. У нас strict, а рендеру сущность без позиции не нужна —
+ * `parseEntities`/сервер её не порождают. Поэтому позиция здесь сужена до
+ * обязательной ОДИН раз, а не разнесена по десятку `!` внутри тела функции.
+ */
+export type PositionedEntity = MessageEntity & { offset: number, length: number }
+
 export type WrapRichTextOptions = Partial<{
-  entities: WrapEntity[]
+  entities: MessageEntity[]
   contextSite: string
   noLinks: boolean
   noTextFormat: boolean
-  passEntities: Partial<Record<WrapEntityType, boolean>>
+  passEntities: Partial<Record<MessageEntity['_'], boolean>>
   /** актуальность для асинхронной подсветки кода (`@helpers/middleware`) */
   middleware: () => boolean
   /** сюда складываются промисы отложенной работы (подсветка кода) — как в tweb */
@@ -62,7 +81,7 @@ export type WrapRichTextOptions = Partial<{
     i: number
     usedLength: number
     text: string
-    lastEntity?: WrapEntity
+    lastEntity?: PositionedEntity
   }
   voodoo: boolean
   ignoreNextIndex: number
@@ -116,7 +135,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
     text,
   }
 
-  let entities = options.entities ??= parseEntities(nasty.text)
+  // приведение — про необязательную позицию в схеме, см. `PositionedEntity` выше
+  let entities = (options.entities ??= parseEntities(nasty.text)) as PositionedEntity[]
   if (isTopLevel && entities.length > MAX_ENTITIES) {
     entities = options.entities = entities.slice(0, MAX_ENTITIES)
   }
@@ -143,7 +163,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       nasty.lastEntity = entity
     }
 
-    let nextEntity: WrapEntity | undefined = entities[nasty.i + 1]
+    let nextEntity: PositionedEntity | undefined = entities[nasty.i + 1]
 
     const startOffset = entity.offset
     const endOffset = startOffset + entity.length
@@ -167,8 +187,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       property: 'alt' | undefined,
       usedText = false,
       processingBlockElement = false
-    switch (entity.type) {
-      case 'bold': {
+    switch (entity._) {
+      case 'messageEntityBold': {
         if (!options.noTextFormat) {
           element = document.createElement('strong')
         }
@@ -176,7 +196,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'italic': {
+      case 'messageEntityItalic': {
         if (!options.noTextFormat) {
           element = document.createElement('em')
         }
@@ -184,14 +204,14 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'strikethrough': {
+      case 'messageEntityStrike': {
         // 1:1 tweb (:239-251): `del` ставится и при noTextFormat
         element = document.createElement('del')
 
         break
       }
 
-      case 'underline': {
+      case 'messageEntityUnderline': {
         if (!options.noTextFormat) {
           element = document.createElement('u')
         }
@@ -199,9 +219,10 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'pre':
-      case 'code': {
-        if (entity.type === 'pre' && !options.noTextFormat) {
+      case 'messageEntityPre':
+      case 'messageEntityCode': {
+        const entityLanguage = (entity as MessageEntity.messageEntityPre).language
+        if (entity._ === 'messageEntityPre' && !options.noTextFormat) {
           const container = document.createElement('pre')
           const content = document.createElement('div')
           content.classList.add('code-content')
@@ -213,7 +234,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
 
           container.classList.add('quote-like', 'quote-like-border', 'code')
 
-          const language = getCodeLanguage(entity.language)
+          const language = getCodeLanguage(entityLanguage)
 
           const header = document.createElement('div')
           header.classList.add('code-header')
@@ -232,8 +253,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           // Текст кладём всегда; подсветка (если она вообще будет) заменит содержимое,
           // когда доедет ленивый чанк prism. tweb делает так же (:309-311).
           code.textContent = fullEntityText
-          if (entity.language) {
-            const promise = highlightCodeInto(code, fullEntityText, entity.language, options.middleware)
+          if (entityLanguage) {
+            const promise = highlightCodeInto(code, fullEntityText, entityLanguage, options.middleware)
             if (promise) {
               options.loadPromises?.push(promise)
             }
@@ -255,8 +276,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'custom_emoji': {
-        while (nextEntity?.type === 'emoji' && nextEntity.offset < endOffset) {
+      case 'messageEntityCustomEmoji': {
+        while (nextEntity?._ === 'messageEntityEmoji' && nextEntity.offset < endOffset) {
           ++nasty.i
           nasty.lastEntity = nextEntity
           nasty.usedLength += nextEntity.length
@@ -275,9 +296,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         // узла — иначе эмодзи просто пропадает из сообщения.
         const customEmoji = document.createElement('custom-emoji-element')
         customEmoji.classList.add('custom-emoji')
-        if (entity.document_id !== undefined) {
-          customEmoji.dataset.docId = '' + entity.document_id
-        }
+        customEmoji.dataset.docId = '' + entity.document_id
         customEmoji.dataset.stickerEmoji = fullEntityText
         customEmoji.textContent = fullEntityText
         usedText = true
@@ -286,7 +305,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'emoji': {
+      case 'messageEntityEmoji': {
         // tweb (:466-477) ещё сверяет версию эмодзи по таблицам `EmojiVersions` /
         // `EMOJI_VERSIONS_SUPPORTED` (~100 КБ данных) — их не портируем, остаётся
         // сам флаг платформы.
@@ -306,7 +325,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'linebreak': {
+      case 'messageEntityLinebreak': {
         // перевод строки внутри/вокруг блочной сущности уже «съеден» ею
         if (options.ignoreNextIndex === nasty.i) {
           usedText = true
@@ -315,10 +334,10 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'url':
-      case 'text_link': {
-        if (!(options.noLinks && !passEntities[entity.type])) {
-          const rawUrl = entity.url || fullEntityText
+      case 'messageEntityUrl':
+      case 'messageEntityTextUrl': {
+        if (!(options.noLinks && !passEntities[entity._])) {
+          const rawUrl = (entity as MessageEntity.messageEntityTextUrl).url || fullEntityText
           const wrapped = safeWrapUrl(rawUrl)
 
           if (!wrapped) {
@@ -332,8 +351,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           }
 
           let masked = false
-          if (entity.type === 'text_link') {
-            if (nextEntity?.type === 'url' &&
+          if (entity._ === 'messageEntityTextUrl') {
+            if (nextEntity?._ === 'messageEntityUrl' &&
               nextEntity.length === entity.length &&
               nextEntity.offset === entity.offset) {
               nasty.lastEntity = nextEntity
@@ -366,9 +385,9 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'email': {
+      case 'messageEntityEmail': {
         // условие 1:1 tweb (:618) — да, у email оно отличается от остальных
-        if (!options.noLinks && !passEntities[entity.type]) {
+        if (!options.noLinks && !passEntities[entity._]) {
           // tweb: `encodeEntities('mailto:' + text)` — HTML-энкодер на DOM-свойстве
           // не защищает и ломает адрес; у нас обычная конкатенация + allow-list.
           const href = safeUrl('mailto:' + fullEntityText)
@@ -383,7 +402,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'hashtag': {
+      case 'messageEntityHashtag': {
         const contextUrl = !options.noLinks && SITE_HASHTAGS[contextSite]
         if (contextUrl) {
           const hashtag = fullEntityText.slice(1)
@@ -405,8 +424,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'text_mention': {
-        if (!(options.noLinks && !passEntities[entity.type])) {
+      case 'messageEntityMentionName': {
+        if (!(options.noLinks && !passEntities[entity._])) {
           const anchor = document.createElement('a')
           // tweb `buildURLHash('' + user_id)` = '#' + encodeURIComponent(id)
           anchor.href = '#' + encodeURIComponent('' + entity.user_id)
@@ -418,7 +437,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'mention': {
+      case 'messageEntityMention': {
         if (!options.noLinks) {
           const username = fullEntityText.slice(1)
           const anchor = wrapTelegramUrlToAnchor('t.me/' + username)
@@ -431,7 +450,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'spoiler': {
+      case 'messageEntitySpoiler': {
         if (options.noTextFormat) {
           // Блеф-спойлер (tweb :670-694): текст под спойлером ПОДМЕНЯЕТСЯ брайлевой
           // «кашей» той же длины, каждая «буква» — свой инлайн-блок с заливкой
@@ -442,7 +461,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           if (endPartOffset !== endOffset) {
             nasty.usedLength += endOffset - endPartOffset
           }
-          let n: WrapEntity | undefined
+          let n: PositionedEntity | undefined
           for (; (n = entities[nasty.i + 1]), n && n.offset < endOffset; ) {
             ++nasty.i
             nasty.lastEntity = n
@@ -487,15 +506,16 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         break
       }
 
-      case 'blockquote': {
+      case 'messageEntityBlockquote': {
         if (options.noTextFormat) {
           break
         }
 
         const quote = document.createElement('blockquote')
         quote.classList.add('quote', 'quote-block')
-        // сворачиваемая цитата (`pFlags.collapsed` + observeResize) не портирована —
-        // флага нет в нашей модели сущности
+        // здесь у tweb (:793-796) ветка `entity.pFlags?.collapsed` →
+        // `makeQuoteCollapsable`; не портирована вместе со своей цепочкой —
+        // см. «ЧТО НЕ ПОРТИРОВАНО» в шапке файла
         quote.classList.add('quote-like', 'quote-like-border', 'quote-like-icon')
         quote.setAttribute('dir', 'auto') // tweb setDirection()
         element = quote
@@ -509,7 +529,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       let foundNextLinebreakIndex = -1
       for (let i = nasty.i; i < length; ++i) {
         const n = entities[i]
-        if (n.type === 'linebreak' && n.offset >= endOffset) {
+        if (n._ === 'messageEntityLinebreak' && n.offset >= endOffset) {
           foundNextLinebreakIndex = i
           break
         }
@@ -535,7 +555,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
               break
             }
 
-            if (n.type === 'linebreak') {
+            if (n._ === 'messageEntityLinebreak') {
               lastInnerLinebreakIndex = i
             }
           }

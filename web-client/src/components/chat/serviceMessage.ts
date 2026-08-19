@@ -60,7 +60,7 @@ function setDirection(element: Element) {
  * появится второй — переезжает туда рядом с `wrapMessageText`.
  */
 function wrapEmojiText(text: string): DocumentFragment {
-  return wrapRichText(text, { entities: parseEntities(text).filter((entity) => entity.type === 'emoji') })
+  return wrapRichText(text, { entities: parseEntities(text).filter((entity) => entity._ === 'messageEntityEmoji') })
 }
 
 /** Имя пира — порт tweb `PeerTitle` (`components/peerTitle.ts:66-95`, класс

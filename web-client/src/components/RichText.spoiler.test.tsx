@@ -24,7 +24,7 @@ vi.mock('@environment/userAgent', async (importOriginal) => ({
 const { default: RichText } = await import('./RichText')
 import type { MessageEntity } from '../core/models'
 
-const SPOILER: MessageEntity[] = [{ type: 'spoiler', offset: 0, length: 6 }]
+const SPOILER: MessageEntity[] = [{ _: 'messageEntitySpoiler', offset: 0, length: 6 }]
 
 beforeAll(() => {
   // тот самый эталонный партиал — тест падает, если разметка перестанет ему соответствовать

@@ -14,11 +14,11 @@ describe('text_mention', () => {
     root.appendChild(document.createTextNode(' привет'))
     const { text, entities } = serialize(root)
     expect(text).toBe('Денис привет')
-    expect(entities).toEqual([{ type: 'text_mention', offset: 0, length: 5, url: undefined, language: undefined, user_id: 42 }])
+    expect(entities).toEqual([{ _: 'messageEntityMentionName', offset: 0, length: 5, user_id: 42 }])
   })
 
   it('entitiesToFragment: entity → <a data-mention-id> (round-trip)', () => {
-    const frag = entitiesToFragment('Денис привет', [{ type: 'text_mention', offset: 0, length: 5, user_id: 42 }])
+    const frag = entitiesToFragment('Денис привет', [{ _: 'messageEntityMentionName', offset: 0, length: 5, user_id: 42 }])
     const div = document.createElement('div')
     div.appendChild(frag)
     const a = div.querySelector('a.md-mention') as HTMLAnchorElement
@@ -27,6 +27,6 @@ describe('text_mention', () => {
     expect(a.textContent).toBe('Денис')
     // и обратно
     const { entities } = serialize(div)
-    expect(entities[0]).toMatchObject({ type: 'text_mention', offset: 0, length: 5, user_id: 42 })
+    expect(entities[0]).toMatchObject({ _: 'messageEntityMentionName', offset: 0, length: 5, user_id: 42 })
   })
 })
