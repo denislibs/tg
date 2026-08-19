@@ -3,6 +3,8 @@ package ws_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -185,13 +187,31 @@ func TestWS_RevokeClosesSocket(t *testing.T) {
 	defer connA.Close()
 	time.Sleep(150 * time.Millisecond)
 
-	// Revoke A's session → A's socket must close (next read errors).
+	// Revoke A's session → A's socket must close.
 	if _, err := env.authUC.RevokeSession(env.ctx, env.userA, env.deviceA); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
+
+	// Два требования сразу, и второе легко потерять.
+	//
+	// Первое: читать ДО ошибки, а не ровно один раз. В сокете уже лежит кадр
+	// `hello`, отправленный при подключении, и одиночный ReadMessage упирался
+	// именно в него — тест падал, хотя отзыв работал.
+	//
+	// Второе: РАЗЛИЧАТЬ закрытие и таймаут. Оба дают err != nil, поэтому выход
+	// из цикла по любой ошибке делает тест пустым: при сломанном отзыве он
+	// дождётся дедлайна и позеленеет. Проверено мутацией — так и было.
 	_ = connA.SetReadDeadline(time.Now().Add(2 * time.Second))
-	if _, _, err := connA.ReadMessage(); err == nil {
-		t.Fatal("expected socket to be closed after revoke")
+	for {
+		_, _, err := connA.ReadMessage()
+		if err == nil {
+			continue // это очередной кадр, ждём дальше
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			t.Fatal("сокет не закрылся после отзыва сессии: чтение упёрлось в таймаут")
+		}
+		break // не таймаут — значит сокет закрыт, отзыв сработал
 	}
 }
 
