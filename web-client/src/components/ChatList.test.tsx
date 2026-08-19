@@ -100,8 +100,8 @@ import ChatList, { type ChatListProps } from './ChatList'
 const HOST_HEIGHT = 720
 const ITEM = 72
 
-const dialog = (chatId: number, over: Partial<Dialog> = {}): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: PeerId, over: Partial<Dialog> = {}): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false, ...over,
 } as Dialog)
 

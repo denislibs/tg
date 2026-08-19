@@ -17,7 +17,7 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
   const t = useT()
   const managers = useManagers()
   // опрос рендерится только в открытом чате — его id и есть чат опроса
-  const chatId = useChatsStore((st) => st.activeChatId) ?? 0
+  const peerId = useChatsStore((st) => st.activePeerId) ?? 0
   const [pending, setPending] = useState<number[]>([]) // выбор в мультивыборе до «Голосовать»
   const [busy, setBusy] = useState(false)
 
@@ -37,8 +37,8 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
     // Ответ несёт МОЙ выбор (myVotes), которого нет в общем WS poll_update →
     // ставим результат в стор здесь (не merge); WS затем реконсилит агрегат.
     void managers.messages
-      .votePoll(chatId, poll.id, options)
-      .then((p) => useMessagesStore.getState().setPoll(chatId, p))
+      .votePoll(peerId, poll.id, options)
+      .then((p) => useMessagesStore.getState().setPoll(peerId, p))
       .finally(() => setBusy(false))
     setPending([])
   }

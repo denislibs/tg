@@ -349,7 +349,7 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
           {importers.map((im) => (
             <Row
               key={im.userId}
-              icon={<UserAvatar id={im.userId} name={im.name} avatarUrl={im.avatarUrl} />}
+              icon={<UserAvatar id={im.userId} name={im.name} photoId={im.photoId} />}
               label={im.name}
               sublabel={new Date(im.joinedAt).toLocaleDateString()}
               translate={false}

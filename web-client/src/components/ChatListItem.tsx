@@ -6,7 +6,7 @@ import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import { useAvatarSrc } from './useAvatarSrc'
+import { isUserStatusOnline } from '../core/peers/peer'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -52,14 +52,14 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   const onClick = () => onSelect(chat.id)
   const t = useT()
   const managers = useManagers()
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
   // Секретный чат: статус handshake для pending-превью «Приглашение…» / «Ожидание…»
   // в списке (не-секретные чаты в стор не подписываются — селектор вернёт undefined).
   const secretStatus = useSecretChatStore((st) =>
     chat.type === 'secret' ? st.byChat[Number(chat.id)]?.status : undefined,
   )
-  const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
+  const presence = useChatsStore((s) => s.presence[Number(chat.id)])
   const fmtTime = useTimeFormatter()
   const { onPointerDown, ripple } = useRipple()
 
@@ -71,9 +71,9 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   // применяет владелец (dialogsManager) ПОСЛЕ успешного REST-ответа
   // (groupsManager.ts), витрина здесь только шлёт запрос.
   const applyMute = (muted: boolean, seconds?: number | null) => {
-    const chatId = Number(chat.id)
+    const peerId = Number(chat.id)
     const until = muted && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
-    void managers.groups.setMute(chatId, muted, until).catch(() => {})
+    void managers.groups.setMute(peerId, muted, until).catch(() => {})
   }
 
   // Anchor a corner of the menu AT the click point and grow toward free space
@@ -97,8 +97,8 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   // (бэк вернёт 400) отдаём тостом, локально ничего откатывать не нужно, т.к.
   // ничего не менялось до ответа.
   const applyPin = (pinned: boolean) => {
-    const chatId = Number(chat.id)
-    void managers.groups.setPin(chatId, pinned).catch((e: unknown) => {
+    const peerId = Number(chat.id)
+    void managers.groups.setPin(peerId, pinned).catch((e: unknown) => {
       if (String(e).includes('pin limit')) {
         rootScope.dispatchEvent('ui:toast', t("Sorry, you can't pin any more chats to the top."))
       }
@@ -106,8 +106,8 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   }
   // Archive/Unarchive (tweb editPeerFolders folder_id 0↔1) — сеть сначала (Task 4).
   const applyArchive = (archived: boolean) => {
-    const chatId = Number(chat.id)
-    void managers.groups.setArchive(chatId, archived).catch(() => {})
+    const peerId = Number(chat.id)
+    void managers.groups.setArchive(peerId, archived).catch(() => {})
   }
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
@@ -163,7 +163,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
           collapsed ? s.rowCollapsed : '',
         )}
         href={`#${chat.id}`}
-        data-peer-id={chat.peerId}
+        data-peer-id={chat.id}
         onClick={(e) => { e.preventDefault(); onClick() }}
         onPointerDown={onPointerDown}
         onContextMenu={openMenu}
@@ -262,7 +262,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
           size="dialog"
           // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
           // правый угол занимает бейдж непрочитанного (как в Telegram).
-          online={collapsed ? false : chat.online || presence?.online}
+          online={collapsed ? false : chat.online || isUserStatusOnline(presence, Math.floor(Date.now() / 1000))}
           className={classNames('dialog-avatar', 'row-media', 'row-media-bigger')}
         />
 

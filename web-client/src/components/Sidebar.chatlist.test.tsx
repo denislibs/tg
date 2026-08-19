@@ -49,8 +49,8 @@ function fakeManagers() {
   return { managers, getDialogs }
 }
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: PeerId): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
 } as Dialog)
 

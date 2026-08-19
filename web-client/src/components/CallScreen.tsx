@@ -11,7 +11,7 @@ import Avatar from '../shared/ui/Avatar'
 import { useCallStore } from '../stores/callStore'
 import { useSettingsStore } from '../settings'
 import { accept, decline, hangup, toggleMute, toggleCamera, toggleScreenShare } from '../core/calls/callEngine'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import s from './CallScreen.module.scss'
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -25,7 +25,7 @@ export default function CallScreen() {
   if (live) lastRef.current = live
   const call = lastRef.current!
   const speakerId = useSettingsStore((st) => st.speakerId)
-  const avatarSrc = useAvatarSrc(call.peer.avatarUrl)
+  const avatarSrc = useMediaUrl(call.peer.photoId ?? null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteAudioRef = useRef<HTMLAudioElement>(null)

@@ -44,7 +44,7 @@ beforeEach(() => {
   useChatsStore.setState({ meId: 1 })
   useStoriesStore.setState({
     groups: [{
-      author: { id: 2, displayName: 'Алиса', avatarUrl: '' },
+      author: { _: 'user', id: 2, first_name: 'Алиса' },
       stories: [{ id: 10, viewed: false }] as never,
     }],
   })

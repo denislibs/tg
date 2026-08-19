@@ -239,14 +239,14 @@ function ChatFeed({
           key={k}
           className="bubble service is-group-first is-group-last"
           data-mid={m.id}
-          data-peer-id={m.chatId}
+          data-peer-id={m.peerId}
           data-timestamp={Number.isFinite(ts) ? ts : undefined}
         >
           <div className="bubble-content-wrapper">
             <div className="bubble-content">
               <div className="service-msg">
                 <span className="i18n">
-                  {segs.map((sg, si) => serviceSeg(sg, si, m.chatId, feedFns))}
+                  {segs.map((sg, si) => serviceSeg(sg, si, m.peerId, feedFns))}
                 </span>
               </div>
               {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
@@ -338,7 +338,7 @@ function ChatFeed({
 // из элементов, не из строки): имя — `span.peer-title` с data-peer-id (клик →
 // профиль, bubbles.ts:3360-3395), ссылка на сообщение — `i[data-saved-from]`
 // (клик → переход к нему, там же). Остальное — обычный текст.
-function serviceSeg(sg: ServiceSeg, key: number, chatId: number | undefined, feedFns: FeedFns) {
+function serviceSeg(sg: ServiceSeg, key: number, peerId: number | undefined, feedFns: FeedFns) {
   if (sg.kind === 'peer') {
     const peerId = sg.peerId
     return (
@@ -357,7 +357,7 @@ function serviceSeg(sg: ServiceSeg, key: number, chatId: number | undefined, fee
     return (
       <i
         key={key}
-        data-saved-from={sg.msgId != null ? `${chatId ?? 0}_${sg.msgId}` : undefined}
+        data-saved-from={sg.msgId != null ? `${peerId ?? 0}_${sg.msgId}` : undefined}
         onClick={seq != null ? () => feedFns.jumpToSeq(seq) : undefined}
       >
         {sg.text}

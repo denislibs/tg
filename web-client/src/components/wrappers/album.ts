@@ -133,7 +133,7 @@ export default function wrapAlbum({
 
     const div = attachmentDiv.children[idx] as HTMLElement
     div.dataset.mid = '' + message.id
-    div.dataset.peerId = '' + message.chatId
+    div.dataset.peerId = '' + message.peerId
     const mediaDiv = div.firstElementChild as HTMLElement
 
     // tweb album.ts:81-116 — ветка по САМОМУ вложению; у обеих ветвей один и
@@ -218,7 +218,7 @@ export default function wrapAlbum({
       container: mediaDiv,
       message: {
         mid: message.id,
-        peerId: message.chatId,
+        peerId: message.peerId,
         mediaUnread: message.mediaUnread,
         // tweb `pFlags.is_outgoing` — у нас оптимистичный id до ack (core/messageToConvMsg.ts:98)
         isOutgoing: message.id < 0,

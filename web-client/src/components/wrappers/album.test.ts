@@ -141,7 +141,7 @@ function msg(patch: Partial<Message> = {}, makeMedia: (id: number) => MessageMed
   const mediaId = 1000 + seq
   return {
     id: 100 + seq,
-    chatId: -42,
+    peerId: -42,
     seq,
     senderId: 1,
     type: 'photo',
@@ -209,7 +209,7 @@ describe('wrapAlbum', () => {
       expect(media.style.width).toBe('')
       expect(media.querySelector('img.media-photo')).toBeTruthy()
       expect(item.dataset.mid).toBe('' + messages[idx].id)
-      expect(item.dataset.peerId).toBe('' + messages[idx].chatId)
+      expect(item.dataset.peerId).toBe('' + messages[idx].peerId)
     }
   })
 

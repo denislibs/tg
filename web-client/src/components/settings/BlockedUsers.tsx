@@ -9,21 +9,28 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import { SettingsScreen, Section, Row, EntryRow } from './kit'
 import PrivacyUserPicker from './PrivacyUserPicker'
-import type { BlockedUser } from '../../core/managers/privacyManager'
+import { getPeerId } from '../../core/peers/peerId'
+import { getPeerPhotoId, type UserReal } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 
 export default function BlockedUsers({ onBack }: { onBack: () => void }) {
   const t = useT()
   const managers = useManagers()
   const setBlockedTotal = usePrivacyStore((s) => s.setBlockedTotal)
-  const [list, setList] = useState<BlockedUser[]>([])
+  // Ответ — конструктор `contacts.blockedSlice`: вектор `peerBlocked{peer_id}`
+  // отдельно, КАРТОЧКИ отдельно (в `users`). Плоского снимка пользователя рядом
+  // с настоящим больше нет, поэтому строку собираем связкой ключ → карточка,
+  // как это делает оригинал со всеми ответами вида `…{chats, users}`.
+  const [list, setList] = useState<UserReal[]>([])
   const [loaded, setLoaded] = useState(false)
   const [picking, setPicking] = useState(false)
 
   const reload = useCallback(async () => {
     try {
       const res = await managers.privacy.blocked(0, 100)
-      setList(res.users)
-      setBlockedTotal(res.total)
+      const byId = new Map(res.users.map((u) => [u.id, u]))
+      setList(res.blocked.map((b) => byId.get(getPeerId(b.peer_id))).filter((u): u is UserReal => !!u))
+      setBlockedTotal(res.count)
     } catch {
       /* оффлайн — оставляем как есть */
     }
@@ -41,7 +48,7 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
   }
 
   const unblock = async (userId: number) => {
-    setList((l) => l.filter((x) => x.userId !== userId)) // оптимистично
+    setList((l) => l.filter((x) => x.id !== userId)) // оптимистично
     await managers.privacy.unblock(userId).catch(() => {})
     void reload()
   }
@@ -68,11 +75,11 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
         <Section>
           {list.map((b) => (
             <EntryRow
-              key={b.userId}
-              left={<UserAvatar id={b.userId} name={b.displayName || b.username} avatarUrl={b.avatarUrl || undefined} />}
-              title={b.displayName || b.username}
+              key={b.id}
+              left={<UserAvatar id={b.id} name={getUserTitle(b)} photoId={getPeerPhotoId(b.photo) || undefined} />}
+              title={getUserTitle(b)}
               sub={b.username ? `@${b.username}` : b.phone || undefined}
-              onRemove={() => void unblock(b.userId)}
+              onRemove={() => void unblock(b.id)}
             />
           ))}
         </Section>

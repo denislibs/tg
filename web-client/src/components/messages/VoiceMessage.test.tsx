@@ -42,7 +42,7 @@ describe('VoiceMessage: волна из пиков сообщения', () => {
   it('пики есть — волна нарисована сразу, запроса меты медиа нет', () => {
     const waveform = peaksB64(Array.from({ length: 100 }, (_, i) => (i * 7) % 32))
     const { container } = render(withManagers(
-      <VoiceMessage mediaId={101} msgId={5} chatId={1} waveform={waveform} duration={10} out onPlay={() => {}} />,
+      <VoiceMessage mediaId={101} msgId={5} peerId={1} waveform={waveform} duration={10} out onPlay={() => {}} />,
     ))
 
     const svg = container.querySelector('.audio-waveform-background > svg.audio-waveform-bars')
@@ -58,7 +58,7 @@ describe('VoiceMessage: волна из пиков сообщения', () => {
 
   it('пиков нет — волны нет вовсе и файл ради неё не качается (tweb 1:1)', () => {
     const { container } = render(withManagers(
-      <VoiceMessage mediaId={102} msgId={6} chatId={1} duration={10} out onPlay={() => {}} />,
+      <VoiceMessage mediaId={102} msgId={6} peerId={1} duration={10} out onPlay={() => {}} />,
     ))
 
     expect(container.querySelector('.audio-waveform')).toBeNull()

@@ -46,7 +46,7 @@ const voiceMedia: MessageMedia = {
 }
 
 const voice = {
-  id: 5, chatId: 1, senderId: 2, type: 'voice', text: '', at: '', time: '10:00',
+  id: 5, peerId: 1, senderId: 2, type: 'voice', text: '', at: '', time: '10:00',
   mediaId: 55, media: voiceMedia,
 } as unknown as ConvMsg
 

@@ -29,7 +29,7 @@ function formatCountdown(ms: number, t: (k: string) => string): string {
 export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
   const t = useT()
   const managers = useManagers()
-  const chatId = useChatsStore((st) => st.activeChatId) ?? 0
+  const peerId = useChatsStore((st) => st.activePeerId) ?? 0
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => Date.now())
 
@@ -53,8 +53,8 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
     // Ответ несёт МОЁ participating/iWon, которого нет в общем WS giveaway_update →
     // ставим результат в стор здесь (не merge); WS затем реконсилит агрегат.
     void managers.messages
-      .participateGiveaway(chatId, giveaway.id)
-      .then((g) => useMessagesStore.getState().setGiveaway(chatId, g))
+      .participateGiveaway(peerId, giveaway.id)
+      .then((g) => useMessagesStore.getState().setGiveaway(peerId, g))
       .finally(() => setBusy(false))
   }
 

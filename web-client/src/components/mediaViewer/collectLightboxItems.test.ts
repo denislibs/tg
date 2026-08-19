@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Message } from '@core/models'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
 import { collectLightboxItems, messageToViewerItem, type LightboxCtx } from './collectLightboxItems'
+import type { Chat, User } from '@core/peers/peer'
 
 const { getSecretMediaUrl, peekSecretMediaUrl } = vi.hoisted(() => ({
   getSecretMediaUrl: vi.fn(async () => 'blob:decrypted'),
@@ -35,7 +36,7 @@ const videoMedia = (id: number, duration: number, animated = false): MessageMedi
 
 const msg = (over: Partial<Message>): Message => ({
   id: 1,
-  chatId: 5,
+  peerId: -5,
   seq: 1,
   senderId: 10,
   type: 'photo',
@@ -50,7 +51,11 @@ const msg = (over: Partial<Message>): Message => ({
 const ctx: LightboxCtx = {
   meId: 42,
   meName: 'Я Сам',
-  peers: new Map([[10, { displayName: 'Алиса', avatarPreview: 'AVPREV' }]]),
+  // Карточка пира — КОНСТРУКТОР схемы: имя собирает клиент из first/last_name,
+  // превью аватарки лежит в `photo.stripped_thumb`.
+  peers: new Map<PeerId, User | Chat>([
+    [10, { _: 'user', id: 10, first_name: 'Алиса', photo: { _: 'userProfilePhoto', photo_id: 7, stripped_thumb: 'AVPREV' } }],
+  ]),
   chatName: 'Чат',
   lang: 'ru',
 }

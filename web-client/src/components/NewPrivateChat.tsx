@@ -3,15 +3,15 @@ import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 import s from './NewPrivateChat.module.scss'
 
-// Строка контакта: резолвит реальное фото через useAvatarSrc (иначе <img> ловит
-// 401 и аватар «пропадает»), фолбэк — градиент+инициал.
+// Строка контакта: id медиа фото → objectURL воркерного конвейера (иначе
+// <img> ловит 401 и аватар «пропадает»), фолбэк — градиент+инициал.
 function ContactRow({ c, onPick }: { c: Chat; onPick: () => void }) {
-  const src = useAvatarSrc(c.avatarUrl)
+  const src = useMediaUrl(c.photoId ?? null)
   return (
     <div className={s.row} onClick={onPick}>
       <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} preview={c.avatarPreview} size="lg" />

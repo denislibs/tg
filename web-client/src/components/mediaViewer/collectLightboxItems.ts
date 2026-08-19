@@ -9,23 +9,33 @@ import { friendlyMsgTime } from '@core/format/friendlyTime'
 import { getMediaDimensions, getMediaFromMessage, getStrippedThumb } from '@core/media/messageMedia'
 import { getSecretMediaUrl, peekSecretMediaUrl } from '@core/secret/mediaCache'
 import type { Message } from '@core/models'
+import type { Chat, User } from '@core/peers/peer'
+import { getPeerPhoto, getPeerPhotoStrippedThumb } from '@core/peers/peer'
+import { getPeerTitle } from '@core/peers/getPeerTitle'
 import type { ViewerItem } from './appMediaViewer'
 
 // Контекст резолва автора (модель бывшего useLightbox: имя/дата — готовые
-// строки, воркерных RPC здесь нет). peers — карта карточек с displayName и
-// stripped-превью аватарки; chatName — фолбэк имени (приват/канал).
+// строки, воркерных RPC здесь нет). peers — карта КАРТОЧЕК ПИРА (конструкторы
+// схемы, как в зеркале `core/peerCache.ts`): имя из них собирает клиент
+// (`getPeerTitle`), превью аватарки лежит в `photo.stripped_thumb`. Плоской
+// пары {displayName, avatarPreview} больше нет — это был снимок карточки рядом
+// с настоящей. chatName — фолбэк имени (приват/канал).
 export type LightboxCtx = {
   meId: number | null
   meName?: string
-  peers?: Map<number, { displayName: string; avatarPreview?: string }>
+  peers?: Map<PeerId, User | Chat>
   chatName?: string
   lang: string
 }
 
+const senderPeer = (m: Message, ctx: LightboxCtx) => ctx.peers?.get(m.senderId)
+
 const senderName = (m: Message, ctx: LightboxCtx): string =>
   m.senderId === ctx.meId
     ? (ctx.meName || 'Вы')
-    : (ctx.peers?.get(m.senderId)?.displayName || ctx.chatName || '')
+    : (ctx.peers?.has(m.senderId)
+        ? getPeerTitle({ peerId: m.senderId, peer: senderPeer(m, ctx) })
+        : ctx.chatName || '')
 
 /** Один Message → ViewerItem (модель вьювера). Используется и сбором окна ниже,
  * и маппингом ответа REST `/chats/{id}/media` (loadMoreMedia), и shared media. */
@@ -69,7 +79,9 @@ export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLE
       peerId: m.senderId,
       name: senderName(m, ctx),
       date: friendlyMsgTime(m.createdAt, ctx.lang),
-      avatarPreview: m.senderId === ctx.meId ? undefined : (ctx.peers?.get(m.senderId)?.avatarPreview || undefined),
+      avatarPreview: m.senderId === ctx.meId
+        ? undefined
+        : getPeerPhotoStrippedThumb(getPeerPhoto(senderPeer(m, ctx))) || undefined,
     },
     // подпись к медиа — текст самого сообщения (tweb `.media-viewer-caption`)
     caption: m.text || undefined,

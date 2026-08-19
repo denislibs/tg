@@ -31,7 +31,10 @@ import type { GiftInfo } from '../../core/managers/starsManager'
 import type { Message } from '../../core/models'
 import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
-import type { Peer } from '../../core/managers/peersManager'
+import type { Chat as PeerChat, User } from '../../core/peers/peer'
+import { isUserStatusOnline } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { userStatusLabel } from '../../core/presence'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import DeferredSortedVirtualList, {
@@ -244,12 +247,15 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const clicked = msgs?.[rawIndex]
     const index = clicked ? list.indexOf(clicked) : -1
     if (index < 0) return
+    // Своё имя собирает клиент из краткого конструктора `user` — `display_name`
+    // с провода убран.
+    const me = useChatsStore.getState().me
     const ctx = {
       meId,
-      meName: useChatsStore.getState().me?.displayName,
+      meName: me ? getUserTitle(me.user) : undefined,
       peers: new Map(
         list.map((m) => [m.senderId, cachedPeer(m.senderId)] as const)
-          .filter((p): p is [number, Peer] => !!p[1]),
+          .filter((p): p is [PeerId, User | PeerChat] => !!p[1]),
       ),
       lang,
     }
@@ -351,10 +357,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                       key={mem.userId}
                       className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger rp"
                       data-peer-id={mem.userId}
-                      onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
+                      onClick={() => onOpenPeer?.({ id: mem.userId, title: mem.title, username: mem.username, photoId: mem.photoId })}
                     >
                       <div className="row-row row-title-row dialog-title">
-                        <div className="row-title">{mem.displayName}</div>
+                        <div className="row-title">{mem.title}</div>
                         {/* роль — правым слотом заголовка (tweb row-title-right-secondary) */}
                         <div
                           className="row-title row-title-right row-title-right-secondary"
@@ -364,13 +370,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                         </div>
                       </div>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle">{mem.online ? t('online') : t('last seen recently')}</div>
+                        <div className="row-subtitle">{userStatusLabel(mem.status, lang)}</div>
                       </div>
                       <UserAvatar
                         id={mem.userId}
-                        name={mem.displayName}
-                        avatarUrl={mem.avatarUrl}
-                        online={mem.online}
+                        name={mem.title}
+                        photoId={mem.photoId}
+                        online={isUserStatusOnline(mem.status, Date.now() / 1000)}
                         className="dialog-avatar row-media row-media-abitbigger"
                       />
                     </a>
@@ -727,8 +733,9 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
       data-peer-id={dialog.peerId}
       onClick={() => {
         if (isSelf) return
-        if (dialog.kind === 'user') onOpenPeer({ id: dialog.peerId, displayName: dialog.title, avatarUrl: dialog.photoUrl })
-        else onOpenPeer({ id: 0, displayName: dialog.title, chatId: dialog.peerId })
+        // Ключ ЗНАКОВЫЙ и уже посчитан на проводе — различать «человек это или
+        // чат» вторым полем рядом больше не нужно: знак и есть ответ.
+        onOpenPeer({ id: dialog.peerId, title: dialog.title, photoId: dialog.photoId })
       }}
     >
       <div className="row-row row-title-row dialog-title">
@@ -741,7 +748,7 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
       {isSelf ? (
         <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />
       ) : (
-        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} className="dialog-avatar row-media row-media-abitbigger" />
+        <UserAvatar id={dialog.peerId} name={title} photoId={dialog.photoId} className="dialog-avatar row-media row-media-abitbigger" />
       )}
     </div>
   )

@@ -6,6 +6,7 @@ import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import classNames from '../shared/lib/classNames'
 import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
@@ -265,7 +266,7 @@ export default function AddStorySheet({
                     key={c.id}
                     role="checkbox"
                     aria-checked={checked}
-                    aria-label={c.displayName}
+                    aria-label={getUserTitle(c)}
                     tabIndex={0}
                     onClick={() => toggleContact(c.id)}
                     onKeyDown={(e) => {
@@ -278,11 +279,11 @@ export default function AddStorySheet({
                   >
                     <Avatar
                       background={gradientFor(c.id)}
-                      text={c.displayName.charAt(0).toUpperCase()}
+                      text={getUserTitle(c).charAt(0).toUpperCase()}
                       size="sm"
                     />
                     <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>
-                      {c.displayName}
+                      {getUserTitle(c)}
                     </Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}

@@ -70,7 +70,7 @@ import type { TopicRow as Topic } from '../core/managers/groupsManager'
 
 const HOST_HEIGHT = 720
 const ITEM = 64
-const CHAT_ID = 42
+const CHAT_ID = -42 // ключ чата ЗНАКОВЫЙ: у группы он отрицательный
 /** Тем заведомо больше окна. */
 const TOPICS = 200
 
@@ -79,7 +79,7 @@ const whenOf = (i: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, 0) + i * 1000)
 
 const topic = (i: number, over: Partial<Topic> = {}): Topic => ({
   id: i,
-  chatId: CHAT_ID,
+  peerId: CHAT_ID,
   rootMsgId: 1000 + i,
   title: 'topic-' + i,
   iconColor: 0,

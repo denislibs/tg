@@ -8,6 +8,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { useStoriesStore } from '../stores/storiesStore'
 import { gradientFor } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
@@ -158,14 +159,14 @@ export default function EditStorySheet({
                     key={c.id}
                     role="checkbox"
                     aria-checked={checked}
-                    aria-label={c.displayName}
+                    aria-label={getUserTitle(c)}
                     tabIndex={0}
                     onClick={() => toggleContact(c.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleContact(c.id) } }}
                     className={s.contactRow}
                   >
-                    <Avatar background={gradientFor(c.id)} text={c.displayName.charAt(0).toUpperCase()} size="sm" />
-                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>{c.displayName}</Text>
+                    <Avatar background={gradientFor(c.id)} text={getUserTitle(c).charAt(0).toUpperCase()} size="sm" />
+                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>{getUserTitle(c)}</Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}
                     </div>

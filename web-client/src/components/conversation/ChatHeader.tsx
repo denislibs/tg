@@ -165,7 +165,7 @@ function ChatHeader({
                   меню «⋮») — _chatTopbar.scss .chat-utils > .btn-icon: display none.
                   Сервисному аккаунту «Telegram» звонить нельзя вовсе. Ботам звонить
                   нельзя — у бот-аккаунтов нет звонков (Telegram). */}
-              {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
+              {chat.type === 'private' && Number(chat.id) !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
                 <>
                   <IconButton onClick={() => startCall(false)} color="var(--secondary-text-color)" className={s.desktopOnly}>
                     <TgIcon name="phone" />

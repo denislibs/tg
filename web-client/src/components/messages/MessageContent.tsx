@@ -366,7 +366,7 @@ export default function MessageContent({
               out={out}
               mediaId={m.mediaId}
               msgId={m.id}
-              chatId={m.chatId}
+              peerId={m.peerId}
               waveform={audioAttribute(doc)?.waveform}
               duration={doc?.duration}
               transcription={m.transcription}

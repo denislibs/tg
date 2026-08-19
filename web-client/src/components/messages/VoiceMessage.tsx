@@ -23,7 +23,7 @@ function fmt(sec: number): string {
 export default function VoiceMessage({
   mediaId,
   msgId,
-  chatId,
+  peerId,
   waveform,
   duration: recordedDuration,
   transcription,
@@ -37,7 +37,7 @@ export default function VoiceMessage({
   /** id сообщения (для транскрибации) — undefined у оптимистичного */
   msgId?: number
   /** id чата (для транскрибации) */
-  chatId?: number
+  peerId?: number
   /** пики волны, base64 (наш documentAttributeAudio.waveform) — приезжают в самом
    * сообщении, поэтому волна рисуется синхронно, как в tweb wrapVoiceMessage */
   waveform?: string
@@ -54,7 +54,7 @@ export default function VoiceMessage({
   mediaUnread?: boolean
   onPlay: () => void
 }) {
-  const tr = useTranscription(chatId, msgId, transcription)
+  const tr = useTranscription(peerId, msgId, transcription)
   // ФОЛБЭК, помеченный явно: пересчёт волны из аудиофайла остаётся ТОЛЬКО
   // секретному голосу (E2E) — сервер видит там шифртекст и пиков не знает.
   // Обычное голосовое сюда не ходит (в tweb такого механизма нет вовсе).

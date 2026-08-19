@@ -12,7 +12,7 @@ import type { Message } from '../../core/models'
 
 function msg(over: Partial<Message>): Message {
   return {
-    id: 1, chatId: 7, seq: 1, senderId: 2, type: 'text', text: '',
+    id: 1, peerId: 7, seq: 1, senderId: 2, type: 'text', text: '',
     replyToId: null, mediaId: null, createdAt: new Date().toISOString(), threadRootId: null,
     ...over,
   }

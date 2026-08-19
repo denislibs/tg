@@ -482,11 +482,11 @@ export default class BubbleGroups {
 
   /** Порт tweb bubbleGroups.ts:668. Ключ автора серии. Send-as (сообщение от
    *  имени канала/группы) в tweb приезжает готовым `message.fromId` — у нас
-   *  `senderId` остаётся реальным, а личность лежит в `sendAs`, поэтому
-   *  различаем их сами: отрицательное значение — чат-личность, ровно как
-   *  кодирует peerId сам tweb. */
-  public getMessageFromId(message: Message): number {
-    return message.sendAs ? -message.sendAs.chatId : message.senderId
+   *  `senderId` остаётся реальным, а личность лежит в `sendAs`. Ключ личности
+   *  ЗНАКОВЫЙ уже на проводе (`send_as.peer_id`), поэтому кодировать чат
+   *  минусом здесь больше нечем — и не нужно. */
+  public getMessageFromId(message: Message): PeerId {
+    return message.sendAs ? message.sendAs.peerId : message.senderId
   }
 
   /** Порт tweb bubbleGroups.ts:573 — единственное место, где живут правила
@@ -498,7 +498,7 @@ export default class BubbleGroups {
       !item1.single &&
       !item2.single &&
       !!item1.message.out === !!item2.message.out &&
-      item1.message.chatId === item2.message.chatId
+      item1.message.peerId === item2.message.peerId
   }
 
   /** Порт tweb bubbleGroups.ts:600. */

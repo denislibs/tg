@@ -12,7 +12,7 @@ import s from './Transcription.module.scss'
 
 // useTranscription — состояние расшифровки одного сообщения: развёрнут ли блок,
 // идёт ли загрузка, готовый текст (из кэша сообщения или полученный по клику).
-export function useTranscription(chatId: number | undefined, msgId: number | undefined, transcription: string | undefined) {
+export function useTranscription(peerId: number | undefined, msgId: number | undefined, transcription: string | undefined) {
   const managers = useManagers()
   const [expanded, setExpanded] = useState(false)
   const [pending, setPending] = useState(false)
@@ -20,7 +20,7 @@ export function useTranscription(chatId: number | undefined, msgId: number | und
   // Кэш сообщения (после reload/патча) приоритетнее локально полученного.
   const text = transcription ?? fetched ?? null
   // Доступно только для реального (не оптимистичного) сообщения.
-  const available = chatId != null && msgId != null && msgId > 0
+  const available = peerId != null && msgId != null && msgId > 0
 
   const toggle = useCallback(() => {
     if (!available || pending) return
@@ -30,14 +30,14 @@ export function useTranscription(chatId: number | undefined, msgId: number | und
     }
     setPending(true)
     managers.messages
-      .transcribe(chatId!, msgId!)
+      .transcribe(peerId!, msgId!)
       .then((r) => {
         setFetched(r.text)
         setExpanded(true)
       })
       .catch(() => {})
       .finally(() => setPending(false))
-  }, [available, pending, text, managers, chatId, msgId])
+  }, [available, pending, text, managers, peerId, msgId])
 
   return { available, expanded, pending, text, toggle }
 }

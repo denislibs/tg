@@ -18,7 +18,9 @@ import { useT, useLang, LANGS } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import rootScope from '@lib/rootScope'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useSettings } from '../settings'
 import { resolvePreset, PRESET_MODE } from '../theme'
 import s from './SettingsView.module.scss'
@@ -70,10 +72,14 @@ export default function SettingsView({
   const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
-  const name = me?.displayName || formatPhone(me?.phone) || ''
-  const avatarText = (me?.displayName || me?.phone || '?').trim().charAt(0).toUpperCase()
-  const avatarBg = me ? gradientFor(me.id) : 'linear-gradient(135deg,#ff8a5b,#ff6a3d)'
-  const avatarSrc = useAvatarSrc(me?.avatarUrl)
+  // Своя карточка — пара конструкторов: краткая `user` (имя, телефон, premium,
+  // фото) и полная `fullUser` (bio, день рождения). Имя собирает клиент.
+  const user = me?.user
+  const name = user ? getUserTitle(user) : ''
+  const avatarText = (name || '?').trim().charAt(0).toUpperCase()
+  const avatarBg = user ? gradientFor(user.id) : 'linear-gradient(135deg,#ff8a5b,#ff6a3d)'
+  const avatarSrc = useMediaUrl(getPeerPhotoId(user?.photo) || null)
+  const avatarPreview = getPeerPhotoStrippedThumb(user?.photo) || undefined
 
   return (
     <div className={s.screen}>
@@ -100,12 +106,12 @@ export default function SettingsView({
       <div className={s.body}>
         {/* Avatar + name */}
         <div className={s.profile}>
-          <Avatar background={avatarBg} src={avatarSrc} preview={me?.avatarPreview} text={avatarText} size={130} />
+          <Avatar background={avatarBg} src={avatarSrc} preview={avatarPreview} text={avatarText} size={130} />
           <div className={s.profileName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Text size={21} weight={600} color="var(--primary-text-color)">
               {name}
             </Text>
-            {me?.premium && <PremiumBadge size={20} />}
+            {user?.pFlags?.premium && <PremiumBadge size={20} />}
           </div>
           <Text size={14} color="var(--secondary-text-color)">{t('online')}</Text>
         </div>
@@ -119,18 +125,18 @@ export default function SettingsView({
               поэтому шеврона тут тоже нет, строка никуда не ведёт. */}
           <Row
             icon={<TgIcon name="phone" size={24} />}
-            label={formatPhone(me?.phone) || '—'}
+            label={formatPhone(user?.phone) || '—'}
             sublabel={t('Phone')}
             translate={false}
-            onClick={me?.phone ? () => {
-              void navigator.clipboard?.writeText(formatPhone(me.phone).replace(/\s/g, '')).catch(() => {})
+            onClick={user?.phone ? () => {
+              void navigator.clipboard?.writeText(formatPhone(user.phone).replace(/\s/g, '')).catch(() => {})
               rootScope.dispatchEvent('ui:toast', t('Phone copied to clipboard'))
             } : undefined}
           />
-          {me?.username && (
+          {user?.username && (
             <Row
               icon={<TgIcon name="mention" size={24} />}
-              label={me.username}
+              label={user.username}
               sublabel={t('Username')}
               translate={false}
               onClick={() => setEditProfile(true)}
@@ -173,13 +179,13 @@ export default function SettingsView({
           <Row
             icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
             label="Telegram Premium"
-            sublabel={me?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
-            onClick={() => (me?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
+            sublabel={user?.pFlags?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
+            onClick={() => (user?.pFlags?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
           <Row
             icon={
-              me?.emojiStatus
-                ? <span style={{ fontSize: 22, lineHeight: 1 }}>{me.emojiStatus}</span>
+              user?.emoji_status_emoticon
+                ? <span style={{ fontSize: 22, lineHeight: 1 }}>{user.emoji_status_emoticon}</span>
                 : <TgIcon name="smile" size={24} color="var(--secondary-text-color)" />
             }
             label="Set Emoji Status"
@@ -213,8 +219,8 @@ export default function SettingsView({
       <QrModal
         open={qrOpen}
         onClose={() => setQrOpen(false)}
-        url={me?.username ? `${location.origin}/@${me.username}` : location.origin}
-        label={me?.username ? `@${me.username}` : name}
+        url={user?.username ? `${location.origin}/@${user.username}` : location.origin}
+        label={user?.username ? `@${user.username}` : name}
         avatar={{ src: avatarSrc, background: avatarBg, text: avatarText }}
       />
     </div>

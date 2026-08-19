@@ -15,8 +15,9 @@ import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
 import { useManagers } from '@core/hooks/useManagers'
 
-export default function VanillaFeed({ chatId, threadRootId, isLikeGroup, isBroadcast }: {
-  chatId: number
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast }: {
+  /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
+  peerId: PeerId
   threadRootId?: number
   /** Порт tweb `chat.isLikeGroup` — гейт показа имени автора в бабле. Считает
    *  его хост: в tweb это `Chat` (`appPeersManager.isLikeGroup`), у нас тип
@@ -47,16 +48,16 @@ export default function VanillaFeed({ chatId, threadRootId, isLikeGroup, isBroad
     // `navigation` (адресат кликов по ссылкам/именам, см. `BubblesNavigation`)
     // сюда сознательно НЕ передаётся: открыть пир умеет
     // `useNavigationActions().openPeer`, но ему нужна карточка пира
-    // (`OpenPeer.displayName`), которой у ленты нет, а разбора внутренних
+    // (`OpenPeer.title`), которой у ленты нет, а разбора внутренних
     // t.me-ссылок (tweb `internalLinkProcessor`) в приложении пока нет вовсе.
     // Без адресата поведение ровно то же, что у React-ленты сегодня: ссылка
     // открывается новой вкладкой (`target="_blank"`), клик по имени ничего не
     // делает. Придёт навигация — пробрасывается одним полем здесь.
     const bubbles = new ChatBubbles(
       {
-        peerId: chatId,
+        peerId,
         threadId: threadRootId,
-        messagesStorageKey: winKey(chatId, threadRootId),
+        messagesStorageKey: winKey(peerId, threadRootId),
         isLikeGroup,
         isBroadcast,
         container: chatColumn,
@@ -77,7 +78,7 @@ export default function VanillaFeed({ chatId, threadRootId, isLikeGroup, isBroad
       bubbles.destroy()
       chatColumn.classList.remove('is-go-down-visible')
     }
-  }, [chatId, threadRootId, isLikeGroup, isBroadcast, managers])
+  }, [peerId, threadRootId, isLikeGroup, isBroadcast, managers])
 
   return <div ref={hostRef} style={{ display: 'contents' }} />
 }

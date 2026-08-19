@@ -8,7 +8,9 @@ import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { getPeerPhotoId } from '../core/peers/peer'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useCallsLog } from '../core/hooks/useCallsLog'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { gradientFor } from '../core/dialogToChat'
@@ -24,26 +26,30 @@ const hhmm = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (chatId: number) => void }) {
+function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (peerId: PeerId) => void }) {
   const t = useT()
-  const src = useAvatarSrc(call.peerAvatar || undefined)
+  // Имя собирает клиент, аватарка — `peer.photo.photo_id`: плоского снимка
+  // `peerName`/`peerAvatar` рядом с настоящим конструктором больше нет.
+  const photoId = getPeerPhotoId(call.peer.photo)
+  const name = getUserTitle(call.peer)
+  const src = useMediaUrl(photoId || null)
   const log = parseCallLog(call.text)
   // Пропущенный входящий (не мы инициировали, не состоялся) — красным.
   const missed = !call.out && log.reason !== 'ok'
   const startCall = (video: boolean) => (e: React.MouseEvent) => {
     e.stopPropagation()
     startOutgoing(
-      { id: call.peerId, name: call.peerName, avatar: gradientFor(call.peerId), avatarText: call.peerName.charAt(0).toUpperCase(), avatarUrl: call.peerAvatar || undefined },
+      { id: call.peerId, name, avatar: gradientFor(call.peerId), avatarText: name.charAt(0).toUpperCase(), photoId },
       video,
-      call.chatId,
+      call.peerId,
     )
   }
   return (
-    <div className={s.row} onClick={() => onOpen(call.chatId)}>
-      <Avatar background={gradientFor(call.peerId)} text={call.peerName.charAt(0).toUpperCase()} src={src} size={46} />
+    <div className={s.row} onClick={() => onOpen(call.peerId)}>
+      <Avatar background={gradientFor(call.peerId)} text={name.charAt(0).toUpperCase()} src={src} size={46} />
       <div className={s.rowText}>
         <Text noWrap size={16} color={missed ? '#ff595a' : 'var(--primary-text-color)'}>
-          {call.peerName}
+          {name}
         </Text>
         <div className={s.sub}>
           {/* стрелка направления: исходящий — зелёная вверх-вправо, входящий/пропущенный — красная */}
@@ -65,7 +71,7 @@ function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (chatId: number
   )
 }
 
-export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; onOpenChat: (chatId: number) => void }) {
+export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; onOpenChat: (peerId: PeerId) => void }) {
   const t = useT()
   const [lang] = useLang()
   useNavLayer(true, onBack) // Back закрывает экран «Звонки»

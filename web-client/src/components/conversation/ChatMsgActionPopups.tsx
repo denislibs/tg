@@ -10,7 +10,8 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { dialogToChat } from '../../core/dialogToChat'
 import Avatar from '../../shared/ui/Avatar'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 import type { useMessageActions } from '../../core/hooks/useMessageActions'
 import MessageContextMenu from './MessageContextMenu'
 import FactCheckEditor from './FactCheckEditor'
@@ -35,9 +36,9 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
   // Для delete-конфирма (tweb PopupDeleteMessages → PopupPeer peerId): тип чата и
   // first name собеседника подписывают чекбокс «Also delete for <имя>» /
   // «Delete for all members», а аватар чата (32) встаёт слева от заголовка.
-  const dialog = allDialogs.find((d) => d.chatId === numericChatId)
+  const dialog = allDialogs.find((d) => d.peerId === numericChatId)
   const dialogChat = dialog ? dialogToChat(dialog, meId) : undefined
-  const dialogAvatarSrc = useAvatarSrc(dialogChat?.avatarUrl)
+  const dialogAvatarSrc = useMediaUrl(dialogChat?.photoId ?? null)
 
   return (
     <>
@@ -70,7 +71,7 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
 
       {/* Платная ⭐-реакция: попап выбора количества звёзд (tweb PopupStarReaction) */}
       {m.starReact && isRealChat && (
-        <StarReactionPopup open chatId={numericChatId} msgId={m.starReact.msgId} onClose={m.closeStarReaction} />
+        <StarReactionPopup open peerId={numericChatId} msgId={m.starReact.msgId} onClose={m.closeStarReaction} />
       )}
 
       {/* Forward target picker */}
@@ -89,7 +90,7 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
           canRevoke={m.delIds.canRevoke}
           count={m.delIds.ids.length}
           chatType={dialog?.type}
-          peerFirstName={dialog?.peer?.displayName?.split(' ')[0]}
+          peerFirstName={dialog?.peer ? getUserTitle(dialog.peer, { onlyFirstName: true }) : undefined}
           avatar={dialogChat ? (
             <Avatar background={dialogChat.avatar} text={dialogChat.avatarText} emoji={dialogChat.avatarEmoji} src={dialogAvatarSrc} size={32} />
           ) : undefined}

@@ -40,6 +40,7 @@
 //    вида «t.me/x» в ссылку. Эмодзи в именах отрисуются системным шрифтом.
 import type { Middleware } from '@helpers/middleware'
 import { cachedPeer, subscribePeerMirror } from '@core/peerCache'
+import { getPeerTitle } from '@core/peers/getPeerTitle'
 
 /** Срез менеджеров, который нужен узлу имени: объявить пробел зеркала. */
 export interface PeerTitleManagers {
@@ -47,8 +48,8 @@ export interface PeerTitleManagers {
 }
 
 export interface PeerTitleOptions {
-  /** id пира; имя берётся из зеркала карточек */
-  peerId?: number
+  /** знаковый ключ пира; имя берётся из зеркала карточек */
+  peerId?: PeerId
   /** готовое имя строкой — когда карточки пира нет и быть не может (send-as) */
   fromName?: string
   middleware: Middleware
@@ -121,6 +122,8 @@ export default class PeerTitle {
       return
     }
 
-    this.element.textContent = peer.displayName
+    // Имя собирает клиент — `display_name` с провода убран (порт
+    // `wrappers/getPeerTitle.ts`, у нас `core/peers/getPeerTitle.ts`).
+    this.element.textContent = getPeerTitle({ peerId, peer })
   }
 }

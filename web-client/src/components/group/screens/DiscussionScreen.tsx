@@ -71,8 +71,8 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
           <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
             <Row
-              key={c.id}
-              icon={<Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />}
+              key={c.peerId}
+              icon={<Avatar size="md" background={gradientFor(c.peerId)} text={initials(c.title)} />}
               label={c.title}
               sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
               translate={false}
@@ -88,7 +88,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
           text={`${t('Do you want to set')} «${confirming.title}» ${t('as the discussion board for this channel?')}`}
           action={t('Link Group')}
           zIndex={90}
-          onConfirm={() => void g.linkDiscussion(confirming.id)}
+          onConfirm={() => void g.linkDiscussion(confirming.peerId)}
           onClose={() => setConfirming(null)}
         />
       )}

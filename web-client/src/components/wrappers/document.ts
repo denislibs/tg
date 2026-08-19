@@ -97,7 +97,7 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
       mediaId: doc.id,
       title: audioAttribute?.title ?? doc.file_name ?? '',
       subtitle: audioAttribute?.performer ?? '',
-      chatId: message.peerId,
+      peerId: message.peerId,
       msgId: message.mid,
       type,
     }

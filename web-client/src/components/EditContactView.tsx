@@ -16,7 +16,7 @@ import Avatar from '../shared/ui/Avatar'
 import { Section, Row } from './settings/kit'
 import AvatarCropper from './settings/AvatarCropper'
 import BirthdayModal from './settings/BirthdayModal'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { useEditContact } from '../core/hooks/useEditContact'
 import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import type { Chat } from '../data'
@@ -36,7 +36,8 @@ export default function EditContactView({
   onClose: () => void
 }) {
   const narrow = useMediaQuery('(max-width:900px)')
-  const peerId = chat.peerId ?? null
+  // Ключ собеседника — сам `chat.id` (знаковый).
+  const peerId = Number(chat.id)
 
   const seed = splitName(chat.name)
   const {
@@ -48,7 +49,7 @@ export default function EditContactView({
   const [cropFile, setCropFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
   const displayFirst = first.trim() || chat.name
 
   // Уведомления = per-chat mute (как в UserInfoPanel: checked = !muted).

@@ -26,7 +26,9 @@ import TgIcon from '../TgIcon'
 import classNames from '../../shared/lib/classNames'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import Emoji from '../emoji/Emoji'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
+import { getPeerPhoto, getPeerPhotoId, type Chat as PeerChat, type User } from '../../core/peers/peer'
+import { getPeerTitle } from '../../core/peers/getPeerTitle'
 import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
 import { gradientFor, mediaLabel } from '../../core/dialogToChat'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
@@ -82,11 +84,11 @@ function middleOverflow(str: string, maxLength: number): string {
 // `a.row…chatlist-chat.chatlist-chat-abitbigger` с `.c-ripple` первым ребёнком.
 // `active` — строка, к которой прыгнули (topbarSearch.tsx:870); `menu-open` —
 // подсветка навигации по списку (attachListNavigation activeClassName).
-function MessageRow({ chatId, senderId, name, avatarUrl, preview, time, query, active, navigated, onPick }: {
+function MessageRow({ chatId, senderId, name, photoId, preview, time, query, active, navigated, onPick }: {
   chatId: string
   senderId: number
   name: string
-  avatarUrl?: string
+  photoId?: number
   preview: string
   time: string
   query: string
@@ -96,9 +98,9 @@ function MessageRow({ chatId, senderId, name, avatarUrl, preview, time, query, a
 }) {
   const { onPointerDown, ripple } = useRipple()
   // tweb отдаёт в строку только peerId, а фото достаёт avatarNew из стора пиров;
-  // у нас тем же стором служит usePeers → Peer.avatarUrl, а токенизированный URL
-  // медиа-эндпоинта делает useAvatarSrc (как в ChatListItem).
-  const avatarSrc = useAvatarSrc(avatarUrl)
+  // у нас тем же стором служит usePeers → `photo.photo_id`, а objectURL медиа
+  // приезжает из воркерного конвейера (useMediaUrl, как в ChatListItem).
+  const avatarSrc = useMediaUrl(photoId || null)
   return (
     <a
       className={classNames(
@@ -144,16 +146,21 @@ function MessageRow({ chatId, senderId, name, avatarUrl, preview, time, query, a
 
 // Строка выбора отправителя — tweb `new Row({title, clickable: true})` +
 // `createMedia('40')` + класс `topbar-search-left-sender` (topbarSearch.tsx:194-210).
-function SenderRow({ peerId, name, username, avatarUrl, navigated, onPick }: {
-  peerId: number
+// Публичное имя есть у `user` и у `channel`; у остальных конструкторов его в
+// схеме нет вовсе.
+const senderUsername = (peer: User | PeerChat | undefined): string | undefined =>
+  peer && (peer._ === 'user' || peer._ === 'channel') ? peer.username : undefined
+
+function SenderRow({ peerId, name, username, photoId, navigated, onPick }: {
+  peerId: PeerId
   name: string
   username?: string
-  avatarUrl?: string
+  photoId?: number
   navigated: boolean
   onPick: () => void
 }) {
   const { onPointerDown, ripple } = useRipple()
-  const avatarSrc = useAvatarSrc(avatarUrl)
+  const avatarSrc = useMediaUrl(photoId || null)
   return (
     <div
       className={classNames(
@@ -227,7 +234,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
   const everLoaded = everLoadedRef.current
 
   // фото выбранного отправителя для чипа (tweb avatarNew в renderEntity)
-  const filterPeerAvatar = useAvatarSrc(s.filterPeerAvatarUrl)
+  const filterPeerAvatar = useMediaUrl(s.filterPeerPhotoId ?? null)
 
   const hashWidth = useMemo(() => getTextWidth('#'), [])
   const fromText = `${t('From:')} `
@@ -481,9 +488,9 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                       <SenderRow
                         key={peerId}
                         peerId={peerId}
-                        name={peerId === s.meId ? t('Saved Messages') : s.senderPeers.get(peerId)?.displayName || String(peerId)}
-                        username={s.senderPeers.get(peerId)?.username}
-                        avatarUrl={s.senderPeers.get(peerId)?.avatarUrl}
+                        name={peerId === s.meId ? t('Saved Messages') : getPeerTitle({ peerId, peer: s.senderPeers.get(peerId) })}
+                        username={senderUsername(s.senderPeers.get(peerId))}
+                        photoId={getPeerPhotoId(getPeerPhoto(s.senderPeers.get(peerId)))}
                         navigated={i === navIdx}
                         onPick={() => s.pickTarget(i)}
                       />
@@ -493,8 +500,8 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                         key={m.id}
                         chatId={chat.id}
                         senderId={m.senderId}
-                        name={s.resultPeers.get(m.senderId)?.displayName || s.chatName}
-                        avatarUrl={s.resultPeers.get(m.senderId)?.avatarUrl}
+                        name={getPeerTitle({ peerId: m.senderId, peer: s.resultPeers.get(m.senderId) }) || s.chatName}
+                        photoId={getPeerPhotoId(getPeerPhoto(s.resultPeers.get(m.senderId)))}
                         preview={m.text?.trim() ? m.text : mediaLabel(m.type)}
                         time={friendlyMsgTime(m.createdAt, lang)}
                         query={s.value}

@@ -36,7 +36,7 @@ describe('Chat.tsx — монтирование императивной лен�
 
   it('лента получает чат и тред — иначе она открыла бы чужое окно', () => {
     const jsx = CHAT_TSX.match(/<VanillaFeed[^/>]*\/>/)?.[0] ?? ''
-    expect(jsx).toContain('chatId={numericChatId}')
+    expect(jsx).toContain('peerId={numericChatId}')
     expect(jsx).toContain('threadRootId={threadRootId}')
   })
 

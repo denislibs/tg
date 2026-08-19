@@ -69,7 +69,7 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
                   }}
                   className={s.contactRow}
                 >
-                  <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} size="sm" />
+                  <UserAvatar id={c.id} name={c.name} photoId={c.photoId} size="sm" />
                   <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>
                     {c.name}
                   </Text>

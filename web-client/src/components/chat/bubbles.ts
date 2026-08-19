@@ -451,8 +451,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `iPostedAsSomeoneElse` (tweb :9325 — `message.fromId !== rootScope.myId`)
    * держит send-as: пост от имени канала/группы подписывается именем ДАЖЕ у
    * своего сообщения. Наш `fromId` считает `bubbleGroups.getMessageFromId` —
-   * тот же ключ автора, по которому бьются серии (send-as кодируется
-   * отрицательным id чата, как peerId в самом tweb).
+   * тот же ключ автора, по которому бьются серии (у send-as это знаковый ключ
+   * личности прямо с провода, как `fromId` в самом tweb).
    *
    * ПЕРВОЕ СООБЩЕНИЕ СЕРИИ здесь НЕ проверяется — и это тоже 1:1 с tweb: узел
    * имени рисуется у КАЖДОГО бабла серии, а прячет его у всех, кроме первого,
@@ -1076,7 +1076,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const offsetSeq = mid ? (this.getMessage(mid)?.seq ?? 0) : 0
 
     return this.managers.messages.getHistory({
-      chatId: this.chat.peerId,
+      peerId: this.chat.peerId,
       threadRoot: this.chat.threadId,
       offsetSeq,
       addOffset: backLimit ? -backLimit : (offsetSeq ? 1 : 0),

@@ -35,7 +35,7 @@ function msg(over: Partial<Message> = {}): Message {
   const seq = over.seq ?? ++nextSeq
   return {
     id: over.id ?? seq,
-    chatId: CHAT,
+    peerId: CHAT,
     senderId: 2,
     type: 'text',
     text: `m${seq}`,

@@ -19,7 +19,7 @@ import { useGroupEdit, PERMS } from '../../core/hooks/useGroupEdit'
 import { allowedMemberPerms, hasRights } from '../../core/peers/rights'
 import { getLinkedChatPeerId } from '../../core/peers/peer'
 import { isPublic as chatIsPublic } from '../../core/peers/predicates'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { gradientFor } from '../../core/dialogToChat'
 import type { Chat } from '../../data'
 import { EMOJIS } from './screens/shared'
@@ -71,7 +71,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   // Фото: file input → кроппер → savePhoto
   const fileRef = useRef<HTMLInputElement>(null)
   const [cropFile, setCropFile] = useState<File | null>(null)
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
 
   const save = async () => {
     if (!dirty || !title.trim() || saving) return

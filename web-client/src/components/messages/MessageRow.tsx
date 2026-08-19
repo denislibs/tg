@@ -300,8 +300,8 @@ function MessageRow({
         {/* Инлайн-клавиатура бота — СИБЛИНГ бабла внутри обёртки (tweb
             .reply-markup рядом с .bubble-content): кнопки лежат под баблом, а не
             внутри цветной подложки. */}
-        {inlineMarkupRows && m.chatId != null && m.senderId != null && (
-          <InlineKeyboard rows={inlineMarkupRows} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
+        {inlineMarkupRows && m.peerId != null && m.senderId != null && (
+          <InlineKeyboard rows={inlineMarkupRows} peerId={m.peerId} botId={m.senderId} msgId={m.id} />
         )}
       </div>
     </div>

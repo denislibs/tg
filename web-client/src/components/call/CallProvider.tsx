@@ -17,18 +17,21 @@ const CallContext = createContext<CallContextValue | null>(null)
 // callEngine. Не требует контекста — зовётся и из провайдера (хедер), и из
 // портального HeaderMenu (⋮-меню живёт вне CallProvider).
 export function startCallForChat(chat: Chat, video: boolean): void {
-  if (chat.peerId == null) return
   const numericChatId = Number(chat.id)
+  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  if (!isRealChat) return
   startOutgoing(
     {
-      id: chat.peerId,
+      // Ключ приватного диалога И ЕСТЬ id собеседника — прежняя пара
+      // `id` + `peerId` описывала одно число дважды.
+      id: numericChatId,
       name: chat.name,
       avatar: chat.avatar,
       avatarText: chat.avatarText,
-      avatarUrl: chat.avatarUrl,
+      photoId: chat.photoId,
     },
     video,
-    Number.isFinite(numericChatId) && String(numericChatId) === chat.id ? numericChatId : null,
+    numericChatId,
   )
 }
 

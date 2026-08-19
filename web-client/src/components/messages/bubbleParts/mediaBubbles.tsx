@@ -81,7 +81,7 @@ export function RoundVideoRealBubble({ m, time, onPlayed, onSoundPlay }: {
       void v.play()
     }
   }
-  const tr = useTranscription(m.chatId, m.id, m.transcription)
+  const tr = useTranscription(m.peerId, m.id, m.transcription)
   const fmt = (secs: number) => `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`
   const badge = sound && left != null ? fmt(left) : fmt(Math.round(dur))
   const noSound = !sound || paused

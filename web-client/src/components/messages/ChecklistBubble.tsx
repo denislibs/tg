@@ -12,6 +12,8 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { usePeers } from '../../core/hooks/usePeers'
+import { getPeerTitle } from '../../core/peers/getPeerTitle'
+import { getPeerPhoto, getPeerPhotoId } from '../../core/peers/peer'
 import type { Checklist } from '../../core/models'
 import { useT } from '../../i18n'
 import s from './ChecklistBubble.module.scss'
@@ -20,7 +22,7 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
   const t = useT()
   const managers = useManagers()
   // чек-лист рендерится только в открытом чате — его id и есть чат сообщения
-  const chatId = useChatsStore((st) => st.activeChatId) ?? 0
+  const peerId = useChatsStore((st) => st.activePeerId) ?? 0
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
@@ -41,8 +43,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
     if (!canMark || busy) return
     setBusy(true)
     void managers.messages
-      .toggleChecklistItem(chatId, checklist.id, itemId)
-      .then((c) => useMessagesStore.getState().applyChecklistUpdate(chatId, c))
+      .toggleChecklistItem(peerId, checklist.id, itemId)
+      .then((c) => useMessagesStore.getState().applyChecklistUpdate(peerId, c))
       .finally(() => setBusy(false))
   }
 
@@ -51,8 +53,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
     if (!text || busy) return
     setBusy(true)
     void managers.messages
-      .addChecklistItems(chatId, checklist.id, [text])
-      .then((c) => useMessagesStore.getState().applyChecklistUpdate(chatId, c))
+      .addChecklistItems(peerId, checklist.id, [text])
+      .then((c) => useMessagesStore.getState().applyChecklistUpdate(peerId, c))
       .finally(() => {
         setBusy(false)
         setDraft('')
@@ -90,8 +92,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
                 </Text>
                 {checklist.othersCanMark && marked && by != null && (
                   <span className={s.markedBy}>
-                    <UserAvatar id={by} name={peer?.displayName ?? ''} avatarUrl={peer?.avatarUrl} size={16} />
-                    <Text size={12} color="var(--message-time-color)">{peer?.displayName ?? `#${by}`}</Text>
+                    <UserAvatar id={by} name={getPeerTitle({ peerId: by, peer })} photoId={getPeerPhotoId(getPeerPhoto(peer))} size={16} />
+                    <Text size={12} color="var(--message-time-color)">{getPeerTitle({ peerId: by, peer })}</Text>
                   </span>
                 )}
               </div>

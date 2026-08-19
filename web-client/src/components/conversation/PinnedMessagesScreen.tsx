@@ -14,7 +14,8 @@ import ConfirmDialog from '../settings/ConfirmDialog'
 import { useManagers } from '../../core/hooks/useManagers'
 import { replyMediaLabel } from '../../core/messageToConvMsg'
 import type { Message } from '../../core/models'
-import type { Peer } from '../../core/managers/peersManager'
+import { getPeerPhotoId, type UserReal } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useT } from '../../i18n'
 import s from './PinnedMessagesScreen.module.scss'
 
@@ -46,7 +47,7 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
 }) {
   const t = useT()
   const managers = useManagers()
-  const [peers, setPeers] = useState<Map<number, Peer>>(new Map())
+  const [peers, setPeers] = useState<Map<number, UserReal>>(new Map())
   const [confirmAll, setConfirmAll] = useState(false)
 
   // Имена/аватары отправителей: пины могут быть вне окна истории, резолвим сами.
@@ -86,10 +87,10 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
           {pins.map((m) => {
             const mine = meId != null && m.senderId === meId
             const peer = peers.get(m.senderId)
-            const name = mine ? (meName || t('You')) : (peer?.displayName || `ID ${m.senderId}`)
+            const name = mine ? (meName || t('You')) : getUserTitle(peer)
             return (
               <div key={m.id} className={s.row} onClick={() => onJump(m.seq)}>
-                <UserAvatar id={m.senderId} name={name} avatarUrl={peer?.avatarUrl} size="sm" />
+                <UserAvatar id={m.senderId} name={name} photoId={getPeerPhotoId(peer?.photo)} size="sm" />
                 <div className={s.rowBody}>
                   <div className={s.rowTop}>
                     <Text noWrap size={14} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>

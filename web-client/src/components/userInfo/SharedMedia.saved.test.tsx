@@ -81,9 +81,11 @@ const managers = new Proxy({}, {
   get: () => new Proxy({}, { get: () => async () => undefined }),
 }) as unknown as Managers
 
+// Ключ ЗНАКОВЫЙ: у источника-человека он положительный, у источника-чата
+// отрицательный — это и есть единственный признак вида, второго поля рядом нет.
 const dialog = (i: number): SavedDialog => ({
   kind: i % 2 ? 'chat' : 'user',
-  peerId: i + 1,
+  peerId: i % 2 ? -(i + 1) : i + 1,
   title: 'saved-' + i,
   count: 1,
   last: { type: 'text', text: 'msg-' + i, at: '2026-08-13T10:00:00Z' },
@@ -241,15 +243,15 @@ describe('SharedMedia — «Избранное» на виртуальном я�
     expect(screen.getByText('Nothing here yet.')).toBeTruthy()
   })
 
-  it('клик по строке отдаёт панели того же пира (user → id, chat → chatId)', () => {
+  it('клик по строке отдаёт панели того же пира — одним знаковым ключом', () => {
     const onOpenPeer = vi.fn()
     renderSaved({ onOpenPeer })
 
     fireEvent.click(rows()[0]) // kind: 'user'
     fireEvent.click(rows()[1]) // kind: 'chat'
 
-    expect(onOpenPeer).toHaveBeenNthCalledWith(1, { id: 1, displayName: 'saved-0', avatarUrl: undefined })
-    expect(onOpenPeer).toHaveBeenNthCalledWith(2, { id: 0, displayName: 'saved-1', chatId: 2 })
+    expect(onOpenPeer).toHaveBeenNthCalledWith(1, { id: 1, title: 'saved-0', photoId: undefined })
+    expect(onOpenPeer).toHaveBeenNthCalledWith(2, { id: -2, title: 'saved-1', photoId: undefined })
   })
 
   it('строка «Избранного» (self) не открывает пира', () => {

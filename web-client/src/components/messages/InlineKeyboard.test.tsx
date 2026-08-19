@@ -39,7 +39,7 @@ function renderWithFake() {
   const managers = { bots: { callback } } as unknown as Managers
   render(
     <ManagersProvider managers={managers}>
-      <InlineKeyboard rows={ROWS} chatId={7} botId={42} msgId={100} />
+      <InlineKeyboard rows={ROWS} peerId={7} botId={42} msgId={100} />
     </ManagersProvider>,
   )
   return { callback }

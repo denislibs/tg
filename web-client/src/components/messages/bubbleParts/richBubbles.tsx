@@ -246,7 +246,7 @@ export function GeoBubble({ m, out, radius, time }: {
   const startMs = m.createdAt ? Date.parse(m.createdAt) : Date.now()
   const expiry = startMs + (geo.livePeriod ?? 0) * 1000
   const expired = isLive && (geo.liveStopped || now >= expiry)
-  const activeShare = useLiveShareStore((st) => (m.chatId != null ? st.active[m.chatId] : undefined))
+  const activeShare = useLiveShareStore((st) => (m.peerId != null ? st.active[m.peerId] : undefined))
   const sharingByMe = out && isLive && !expired && activeShare?.msgId === m.id
   const remainMin = Math.max(0, Math.round((expiry - now) / 60000))
   const updatedAgoMin = geo.editedAt ? Math.max(0, Math.floor((now - Date.parse(geo.editedAt)) / 60000)) : 0
@@ -306,7 +306,7 @@ export function GeoBubble({ m, out, radius, time }: {
                 {sharingByMe && (
                   <span
                     className={s.geoStop}
-                    onClick={(e) => { e.preventDefault(); if (m.chatId != null) stopLiveShare(managers, m.chatId) }}
+                    onClick={(e) => { e.preventDefault(); if (m.peerId != null) stopLiveShare(managers, m.peerId) }}
                   >
                     Остановить
                   </span>

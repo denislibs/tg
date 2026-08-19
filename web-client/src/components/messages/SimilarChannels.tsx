@@ -9,6 +9,8 @@ import TgIcon from '../TgIcon'
 import PremiumModal from '../PremiumModal'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useSimilarChannels, isSimilarHidden, setSimilarHidden, type SimilarChannel } from '../../core/hooks/useSimilarChannels'
+import { getPeerPhoto, getPeerPhotoId, peerKey } from '../../core/peers/peer'
+import { getChatTitleText } from '../../core/peers/getPeerTitle'
 import { useT } from '../../i18n'
 import s from './SimilarChannels.module.scss'
 
@@ -24,15 +26,24 @@ function fmtCompact(n: number): string {
   return str + (unit === 1000 ? 'K' : 'M')
 }
 
+// Число подписчиков и публичное имя есть только у конструктора `channel` —
+// у `channelForbidden` этих полей в схеме нет вовсе. Прежние плоские
+// `memberCount`/`username` витрины отвечали на оба вопроса безусловно.
+const participantsCount = (chat: SimilarChannel): number =>
+  (chat._ === 'channel' ? chat.participants_count : undefined) ?? 0
+const channelUsername = (chat: SimilarChannel): string =>
+  (chat._ === 'channel' ? chat.username : undefined) ?? ''
+
 function SimilarPeer({ chat, onClick }: { chat: SimilarChannel; onClick: () => void }) {
+  const title = getChatTitleText(chat)
   return (
     <div className={s.channel} onClick={onClick}>
-      <UserAvatar id={chat.id} name={chat.title} size={60} />
+      <UserAvatar id={peerKey(chat)} name={title} photoId={getPeerPhotoId(getPeerPhoto(chat))} size={60} />
       <span className={s.badge}>
         <TgIcon name="newprivate_filled" size={8.5} />
-        {fmtCompact(chat.memberCount || 1)}
+        {fmtCompact(participantsCount(chat) || 1)}
       </span>
-      <span className={s.name}>{chat.title}</span>
+      <span className={s.name}>{title}</span>
     </div>
   )
 }
@@ -43,7 +54,7 @@ function MorePeer({ chat, more, premium, onClick }: { chat: SimilarChannel; more
     <div className={`${s.channel} ${s.isLast}`} onClick={onClick}>
       <div className={s.avatarStack}>
         <div className={s.stackFirst}>
-          <UserAvatar id={chat.id} name={chat.title} size={60} />
+          <UserAvatar id={peerKey(chat)} name={getChatTitleText(chat)} photoId={getPeerPhotoId(getPeerPhoto(chat))} size={60} />
         </div>
         <div className={s.stackMiddle} />
         <div className={s.stackLast} />
@@ -57,16 +68,16 @@ function MorePeer({ chat, more, premium, onClick }: { chat: SimilarChannel; more
   )
 }
 
-export default function SimilarChannels({ chatId, onOpen }: { chatId: number; onOpen: (chatId: number, username: string) => void }) {
+export default function SimilarChannels({ peerId, onOpen }: { peerId: number; onOpen: (peerId: number, username: string) => void }) {
   const t = useT()
-  const premium = useChatsStore((st) => !!st.me?.premium)
-  const { chats, count } = useSimilarChannels({ isRealChat: true, isChannel: true, numericChatId: chatId })
-  const [hidden, setHidden] = useState(() => isSimilarHidden(chatId))
+  const premium = useChatsStore((st) => !!st.me?.user.pFlags?.premium)
+  const { chats, count } = useSimilarChannels({ isRealChat: true, isChannel: true, numericChatId: peerId })
+  const [hidden, setHidden] = useState(() => isSimilarHidden(peerId))
   const [premiumOpen, setPremiumOpen] = useState(false)
 
   if (hidden || chats.length === 0) return null
 
-  const close = () => { setHidden(true); setSimilarHidden(chatId, true) }
+  const close = () => { setHidden(true); setSimilarHidden(peerId, true) }
 
   // Не-премиум: показываем DEFAULT_LIMIT плиток, последняя — «+N» с замком.
   // Премиум: все вернувшиеся каналы инлайн.
@@ -89,14 +100,14 @@ export default function SimilarChannels({ chatId, onOpen }: { chatId: number; on
         <div className={s.listMargin} />
         <div className={s.list}>
           {normal.map((c) => (
-            <SimilarPeer key={c.id} chat={c} onClick={() => onOpen(c.id, c.username)} />
+            <SimilarPeer key={peerKey(c)} chat={c} onClick={() => onOpen(peerKey(c), channelUsername(c))} />
           ))}
           {moreChat && (
             <MorePeer
               chat={moreChat}
               more={count - DEFAULT_LIMIT}
               premium={premium}
-              onClick={() => (premium ? onOpen(moreChat.id, moreChat.username) : setPremiumOpen(true))}
+              onClick={() => (premium ? onOpen(peerKey(moreChat), channelUsername(moreChat)) : setPremiumOpen(true))}
             />
           )}
         </div>

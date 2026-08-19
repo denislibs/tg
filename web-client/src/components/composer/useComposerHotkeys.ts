@@ -9,7 +9,7 @@
 //   3. Enter — отправка, Shift+Enter — перевод строки;
 //   4. Ctrl/Cmd+B/I/U/S/M/P — форматирование, Ctrl/Cmd+K — ссылка.
 import { useCallback, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from 'react'
-import type { Peer } from '../../core/managers/peersManager'
+import type { UserReal } from '../../core/peers/peer'
 import type { InlineResult } from '../../core/managers/botsManager'
 import type { ComposerEntityType } from '../../core/richtext/markdown'
 import { SHORTCUTS } from './helpers'
@@ -17,7 +17,7 @@ import { SHORTCUTS } from './helpers'
 /** Общая форма состояния хелпера: список + активная позиция (у эмодзи/меншенов есть ещё wordLen). */
 interface SugBase<T> { list: T[]; idx: number }
 
-interface Args<E extends SugBase<string>, M extends SugBase<Peer>, I extends SugBase<InlineResult>> {
+interface Args<E extends SugBase<string>, M extends SugBase<UserReal>, I extends SugBase<InlineResult>> {
   editorRef: RefObject<HTMLDivElement | null>
   emptyDraft: boolean
   inlineSug: I | null
@@ -25,7 +25,7 @@ interface Args<E extends SugBase<string>, M extends SugBase<Peer>, I extends Sug
   pickInline: (r: InlineResult) => void
   mentionSug: M | null
   setMentionSug: Dispatch<SetStateAction<M | null>>
-  pickMention: (p: Peer) => void
+  pickMention: (p: UserReal) => void
   emojiSug: E | null
   setEmojiSug: Dispatch<SetStateAction<E | null>>
   pickEmojiSuggestion: (e: string) => void
@@ -37,7 +37,7 @@ interface Args<E extends SugBase<string>, M extends SugBase<Peer>, I extends Sug
   urlPromptLabel: string
 }
 
-export function useComposerHotkeys<E extends SugBase<string>, M extends SugBase<Peer>, I extends SugBase<InlineResult>>({
+export function useComposerHotkeys<E extends SugBase<string>, M extends SugBase<UserReal>, I extends SugBase<InlineResult>>({
   editorRef, emptyDraft,
   inlineSug, setInlineSug, pickInline,
   mentionSug, setMentionSug, pickMention,

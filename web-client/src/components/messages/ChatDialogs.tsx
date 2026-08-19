@@ -13,10 +13,13 @@ import Popup from '../../shared/ui/Popup'
 import PeerSelector from '../../shared/ui/PeerSelector'
 import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { peerColor } from '../peerColor'
-import { useAvatarSrc } from '../useAvatarSrc'
+import UserAvatar from '../UserAvatar'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { dialogToChat } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
 import { lastSeenLabel } from '../../core/presence'
+import { isUserStatusOnline, userStatusWasOnline, type UserStatus } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
@@ -77,19 +80,22 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
-function shareSub(chat: Chat, presence: Record<number, { online: boolean; lastSeen: number }>, lang: string, t: (s: string) => string): string {
+function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (s: string) => string): string {
   if (chat.type === 'saved') return t('forward here to save')
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')
   if (chat.isBot) return t('bot')
-  const p = chat.peerId != null ? presence[chat.peerId] : undefined
-  if (p?.online) return t('online')
-  return lastSeenLabel(p?.lastSeen ?? 0, lang)
+  // Присутствие — конструктор `UserStatus`: «онлайн» это `userStatusOnline` с
+  // непросроченным `expires` (порт `appUsersManager.isUserOnline`), а момент
+  // «был(а) в сети» лежит в самом конструкторе.
+  const p = presence[Number(chat.id)]
+  if (isUserStatusOnline(p, Math.floor(Date.now() / 1000))) return t('online')
+  return lastSeenLabel(userStatusWasOnline(p) * 1000, lang)
 }
 
 // Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
 function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolean; onToggle: () => void }) {
-  const src = useAvatarSrc(chat.avatarUrl)
+  const src = useMediaUrl(chat.photoId ?? null)
   return (
     <div className={s.recent} onClick={onToggle}>
       <div className={classNames(s.recentAvatar, selected ? s.recentAvatarSel : '')}>
@@ -108,7 +114,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   dialogs: Dialog[]
   // Один чат → tweb-флоу: открыть чат и показать плашку форварда в композере
   // (опции show/hide sender/caption живут в меню плашки). Несколько → отправить сразу.
-  onPick: (chatIds: number[]) => void
+  onPick: (peerIds: number[]) => void
   onClose: () => void
 }) {
   const t = useT()
@@ -125,9 +131,9 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const confirmed = useRef<number[] | null>(null)
 
-  const toggle = (chatId: number) => setSelected((prev) => {
+  const toggle = (peerId: number) => setSelected((prev) => {
     const next = new Set(prev)
-    if (next.has(chatId)) next.delete(chatId); else next.add(chatId)
+    if (next.has(peerId)) next.delete(peerId); else next.add(peerId)
     return next
   })
   const confirm = () => {
@@ -152,7 +158,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     () => list.map((c) => ({
       id: Number(c.id),
       name: c.name,
-      avatarUrl: c.avatarUrl,
+      photoId: c.photoId,
       subtitle: shareSub(c, presence, lang, t),
     })),
     [list, presence, lang, t],
@@ -237,7 +243,7 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   const query = q.trim().toLowerCase()
   const rows = dialogs
     .filter((d) => d.type === 'private' && d.peer)
-    .map((d) => ({ userId: d.peer!.id, name: d.peer!.displayName || `#${d.peer!.id}` }))
+    .map((d) => ({ userId: d.peer!.id, name: getUserTitle(d.peer) }))
     .filter((r) => !query || r.name.toLowerCase().includes(query))
   return (
     <Popup
@@ -276,21 +282,21 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
 export function ChatPicker({ dialogs, title, onPick, onClose }: {
   dialogs: Dialog[]
   title: string
-  onPick: (chatId: number) => void
+  onPick: (peerId: number) => void
   onClose: () => void
 }) {
   const t = useT()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(true)
   const picked = useRef<number | null>(null)
-  const pick = (chatId: number) => { picked.current = chatId; setOpen(false) }
+  const pick = (peerId: number) => { picked.current = peerId; setOpen(false) }
   const query = q.trim().toLowerCase()
   const rows = dialogs
     // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
     .filter((d) => d.type !== 'secret')
     .map((d) => ({
-      chatId: d.chatId,
-      title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,
+      peerId: d.peerId,
+      title: d.title || (d.peer ? getUserTitle(d.peer) : '') || `Чат ${d.peerId}`,
       sub: d.type === 'channel' ? t('Channel') : d.type === 'group' ? t('Group') : t('Private Chat'),
     }))
     .filter((r) => !query || r.title.toLowerCase().includes(query))
@@ -314,7 +320,7 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
       </div>
       <div className={s.pickerList}>
         {rows.map((r) => (
-          <div key={r.chatId} className={s.listRow} onClick={() => pick(r.chatId)}>
+          <div key={r.peerId} className={s.listRow} onClick={() => pick(r.peerId)}>
             <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
               <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.title}</Text>
@@ -360,7 +366,7 @@ export function ViewersPopup({ x, y, names, onClose }: {
 export function ReactedUsersPopup({ x, y, rows, onClose }: {
   x: number
   y: number
-  rows: { name: string; avatarUrl: string; emoji: string }[]
+  rows: { name: string; photoId?: number; emoji: string }[]
   onClose: () => void
 }) {
   const t = useT()
@@ -376,7 +382,7 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
         </Text>
         {rows.map((r, i) => (
           <div key={i} className={s.viewersRow}>
-            <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} src={r.avatarUrl || undefined} size={28} />
+            <UserAvatar name={r.name} photoId={r.photoId} size={28} />
             <Text noWrap size={14.5} color="var(--primary-text-color)" style={{ flex: 1 }}>{r.name}</Text>
             <span style={{ fontSize: 18 }}>{r.emoji}</span>
           </div>

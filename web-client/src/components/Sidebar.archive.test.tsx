@@ -126,8 +126,8 @@ function pendingArchiveManagers(archiveCount = ARCHIVED) {
   return { managers: managersWith(getDialogs), release: () => release?.() }
 }
 
-const dialog = (chatId: number, archived: boolean): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: PeerId, archived: boolean): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived,
 } as Dialog)
 
@@ -350,7 +350,7 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     // `useDialogListSource` (`itemCacheRef`/`prevItemsRef`) — у каждой строки
     // окна сменится ссылка `item`, и все 14 перерисуются.
     await act(async () => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 1, fields: { unread: 1 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 1, fields: { unread: 1 } }])
     })
 
     expect(archiveRowRenders()).toBe(14)

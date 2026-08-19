@@ -9,7 +9,7 @@ import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useChatStickyDates } from '@core/hooks/useChatStickyDates'
 import { useImperativeIsland } from '@core/hooks/useImperativeIsland'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { applyChatTheme, clearChatTheme } from '../core/theme/themeController'
@@ -39,6 +39,8 @@ import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { hasRights } from '../core/peers/rights'
 import { isBroadcast, isMegagroup } from '../core/peers/predicates'
 import { NULL_PEER_ID } from '../core/peers/peerId'
+import { getPeerPhoto, getPeerPhotoId, isUserStatusOnline, userStatusWasOnline } from '../core/peers/peer'
+import { getPeerTitle, getUserTitle } from '../core/peers/getPeerTitle'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
 import { useSendAs } from '../core/hooks/useSendAs'
@@ -71,6 +73,8 @@ import { useGroupCallStore } from '../stores/groupCallStore'
 import { useLivestreamStore } from '../stores/livestreamStore'
 
 const EMPTY_IDS: number[] = []
+/** `now` для предикатов присутствия — unix-СЕКУНДЫ (порт `appUsersManager.isUserOnline`). */
+const nowSeconds = () => Math.floor(Date.now() / 1000)
 import ChatHeader from './conversation/ChatHeader'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
@@ -171,7 +175,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
       thread: { rootMsgId: args.rootMsgId, title: args.title, subtitle: args.subtitle, kind: 'comments' },
     })
   }, [])
-  const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
+  // Ключ открытого чата — знаковый `PeerId` (tweb `chat.peerId`). Отдельного
+  // «id собеседника» рядом больше НЕТ: у приватного диалога ключ и есть id
+  // собеседника, прежняя пара описывала одно число дважды.
+  const numericChatId = Number(chat.id)
+  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  // Аватарка — одно поле: id медиа приезжает готовым (`photo.photo_id`).
+  const headerAvatarSrc = useMediaUrl(chat.photoId ?? null)
   const [lang] = useLang()
 
   // Контейнер колонки чата — applyChatTheme (Task 1/2) переопределяет --primary-color
@@ -192,10 +202,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Активный фильтр по тегу-реакции «Избранного».
   const [savedTagFilter, setSavedTagFilter] = useState<string | null>(null)
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
-  const autoDownload = useChatAutoDownload(chat.type, chat.peerId)
+  const autoDownload = useChatAutoDownload(chat.type, numericChatId)
 
-  const numericChatId = Number(chat.id)
-  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
   // Сброс фильтра тегов «Избранного» при смене чата.
   useEffect(() => { setSavedTagFilter(null) }, [numericChatId])
   // Сколько тегов реально есть — от этого зависит, показывать ли стек плейтов.
@@ -209,7 +217,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // this.container, а не на сайдбары): деривация — та же формула tweb, что и
   // для глобальных пресетов (core/theme/themeController.ts:deriveChatThemeVars),
   // применяется инлайном на .root через applyChatTheme/clearChatTheme ниже.
-  const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.themeId)
+  const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.peerId === numericChatId)?.themeId)
   const activeThemeId = dialogThemeId ?? chat.themeId
   const themeChoice = useSettingsStore((st) => st.themeChoice)
   const preset = resolvePreset(themeChoice)
@@ -227,14 +235,17 @@ export default function Chat({ chat, onBack, thread }: Props) {
   }, [preset, themeVariant])
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
+  // `data-peer-id` инпута (tweb input.ts): у черновика реального диалога ещё
+  // нет, но ключ будущего разговора уже известен — это id собеседника.
+  const inputPeerId = isRealChat ? numericChatId : draftPeerId ?? undefined
   const meId = useChatsStore((s) => s.meId)
   const me = useChatsStore((s) => s.me)
 
   const typingLabel = useTypingLabel(numericChatId, isGroup)
-  const peerPresence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
+  const peerPresence = useChatsStore((s) => s.presence[numericChatId])
   // toggle re-renders the menu; fall back to the chat prop.
   const dialogMuted = useChatsStore((s) =>
-    isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.muted : undefined,
+    isRealChat ? s.dialogs.find((d) => d.peerId === numericChatId)?.muted : undefined,
   )
   const muted = dialogMuted ?? !!chat.muted
   const managers = useManagers()
@@ -280,10 +291,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // generateThreadServiceStartMessage — messageActionDiscussionStarted).
   const winV = useMemo(() => {
     if (!thread) return win
-    const idx = win.msgs.findIndex((m) => m.seq === 0 && m.chatId !== numericChatId)
+    const idx = win.msgs.findIndex((m) => m.seq === 0 && m.peerId !== numericChatId)
     if (idx < 0) return win
     const svc = {
-      id: -900, chatId: numericChatId, seq: 0.5, senderId: 0, type: 'service',
+      id: -900, peerId: numericChatId, seq: 0.5, senderId: 0, type: 'service',
       text: t('Discussion started'), replyToId: null, mediaId: null,
       createdAt: win.msgs[idx].createdAt, threadRootId: null, clientId: 'discussion-start',
     } as (typeof win.msgs)[number]
@@ -323,18 +334,20 @@ export default function Chat({ chat, onBack, thread }: Props) {
     return [fm, fw] as const
   }, [msgs, winV.msgs, savedTagFilter])
   // Open a private chat with a group message's sender (avatar/name click).
-  const openSender = (senderId: number, fallbackName: string) => {
+  const openSender = (senderId: PeerId, fallbackName: string) => {
     const p = peers.get(senderId)
     onOpenPeer?.({
       id: senderId,
-      displayName: p?.displayName || fallbackName,
-      username: p?.username,
-      avatarUrl: p?.avatarUrl,
+      // Имя собирает клиент (`display_name` с провода убран); фолбэк остаётся
+      // прежним — им подписан бабл, у которого карточки может ещё не быть.
+      title: getPeerTitle({ peerId: senderId, peer: p }) || fallbackName,
+      username: p && (p._ === 'user' || p._ === 'channel') ? p.username : undefined,
+      photoId: getPeerPhotoId(getPeerPhoto(p)),
     })
   }
   // Voice/audio play queue for the global player + the player plate offset.
   const { playVoice, attachRound } = useVoiceQueue({
-    win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
+    win, isRealChat, meId, meName: getUserTitle(me?.user), peers, chatName: chat.name, numericChatId, lang,
   })
   // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
   // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
@@ -378,7 +391,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   }, [numericChatId, isRealChat])
   // Идущий видеочат этого чата (для баннера Join): снимок при открытии + live
   const groupCallActive = useGroupCallStore((st) => st.activeByChat[numericChatId] ?? EMPTY_IDS)
-  const myGroupCallChat = useGroupCallStore((st) => st.chatId)
+  const myGroupCallChat = useGroupCallStore((st) => st.peerId)
   useEffect(() => {
     if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
     const scope = middlewareHelper.get().create()
@@ -392,7 +405,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Идущая RTMP-трансляция этого чата (плашка LIVE): снимок при открытии + live
   const livestreamActive = useLivestreamStore((st) => st.activeByChat[numericChatId] ?? false)
-  const myWatchingChat = useLivestreamStore((st) => st.watchingChatId)
+  const myWatchingChat = useLivestreamStore((st) => st.watchingPeerId)
   useEffect(() => {
     if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
     const scope = middlewareHelper.get().create()
@@ -417,8 +430,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // send_at 0, флаг when_online (бэк ждёт presence).
   const canSendWhenOnline =
     isRealChat && !thread && chat.type === 'private' &&
-    chat.peerId != null && chat.peerId !== meId &&
-    peerPresence != null && !peerPresence.online && peerPresence.lastSeen > 0
+    numericChatId !== meId &&
+    peerPresence != null && !isUserStatusOnline(peerPresence, nowSeconds()) && userStatusWasOnline(peerPresence) > 0
   const onComposerSendWhenOnline = useEvent((text: string, entities: MessageEntity[] | undefined) => {
     void managers.messages
       .scheduleMessage(numericChatId, { text, entities, sendAt: 0, whenOnline: true })
@@ -437,7 +450,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // прочтение плашку не двигают. Компонент ремаунтится на смену чата (key).
   const openReadRef = useRef<{ lastReadSeq: number; unread: number } | null>(null)
   if (openReadRef.current === null) {
-    const d = useChatsStore.getState().dialogs.find((x) => x.chatId === numericChatId)
+    const d = useChatsStore.getState().dialogs.find((x) => x.peerId === numericChatId)
     openReadRef.current = { lastReadSeq: d?.lastReadSeq ?? 0, unread: d?.unread ?? 0 }
   }
   const unreadDividerRef = useRef<number | null>(null)
@@ -547,8 +560,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Send-as (Telegram send_as): «личности отправителя» доступны в реальных группах
   // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
   const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId)
-  const sendAsChatId = sendAs.currentId !== 0 && sendAs.currentId !== meId ? sendAs.currentId : null
-  const sendAsTitle = sendAsChatId != null ? sendAs.peers.find((p) => p.peerId === sendAsChatId)?.title : undefined
+  const sendAsPeerId = sendAs.currentId !== NULL_PEER_ID && sendAs.currentId !== meId ? sendAs.currentId : null
+  const sendAsTitle = sendAsPeerId != null ? sendAs.peers.find((p) => p.peerId === sendAsPeerId)?.title : undefined
 
   const {
     reply, setReply, editing, setEditing,
@@ -562,7 +575,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     getMessageSendingParams, onMessageSent,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, threadRootId, sendAsChatId, sendAsTitle, atBottomRef, userScrolledUpRef,
+    meId, win, threadRootId, sendAsPeerId, sendAsTitle, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -578,21 +591,21 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return
     replyRestoredRef.current = true
     if (reply) return
-    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor, { meId: meId ?? undefined, peerId: chat.peerId })
+    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
     if (rs) setReply(rs)
-  }, [draftReplyToId, msgs, reply, chat.name, chat.peerId, meId, accentColor, setReply])
+  }, [draftReplyToId, msgs, reply, chat.name, numericChatId, meId, accentColor, setReply])
 
   // Кросс-чат ответ (tweb ReplyToAnotherChat): целевой чат открыт → ставим
   // reply-плашку из pending-reply (исходный чат + снимок оригинала) и чистим стор.
   const pendingReply = useSearchStore((s) => s.pendingReply)
   useEffect(() => {
-    if (!pendingReply || pendingReply.targetChatId !== numericChatId) return
+    if (!pendingReply || pendingReply.targetPeerId !== numericChatId) return
     setReply({
       msgId: pendingReply.msgId,
       name: pendingReply.name,
       text: pendingReply.text,
       color: pendingReply.color,
-      chatId: pendingReply.sourceChatId,
+      sourcePeerId: pendingReply.sourcePeerId,
       snapshotName: pendingReply.name,
       snapshotText: pendingReply.text,
     })
@@ -604,9 +617,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Reply/edit взаимоисключимы с форвардом — сбрасываем их.
   const pendingForward = useSearchStore((s) => s.pendingForward)
   useEffect(() => {
-    if (!pendingForward || pendingForward.targetChatId !== numericChatId) return
+    if (!pendingForward || pendingForward.targetPeerId !== numericChatId) return
     setForward({
-      sourceChatId: pendingForward.sourceChatId,
+      sourcePeerId: pendingForward.sourcePeerId,
       msgIds: pendingForward.msgIds,
       count: pendingForward.count,
       text: pendingForward.text,
@@ -768,7 +781,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
   const pendingJump = useSearchStore((s) => s.pendingJump)
   useEffect(() => {
-    if (pendingJump && pendingJump.chatId === numericChatId) {
+    if (pendingJump && pendingJump.peerId === numericChatId) {
       useSearchStore.getState().clearPendingJump()
       jumpToSeqE(pendingJump.seq)
     }
@@ -783,7 +796,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // showForwardPopup зовут this.close() по действию), отмена — снимает колбэк
   // (проводка — обёртка msgActions у <ChatMsgActionPopups> ниже).
   const viewerActionCloseRef = useRef<(() => void) | null>(null)
-  const lightboxCtx = () => ({ meId, meName: me?.displayName, peers, chatName: chat.name, lang })
+  const lightboxCtx = () => ({ meId, meName: getUserTitle(me?.user), peers, chatName: chat.name, lang })
   // Миниатюра сообщения в отрендеренных баблах (tweb собирает targets из
   // баблов селектором '.attachment', bubbles.ts:3744-3800; у нас строки ленты
   // адресуются data-mid, у секретных медиа контейнер без .attachment — img).
@@ -847,9 +860,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const roundPlayingE = useEvent(attachRound)
   // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)
   const recallE = useEvent((video: boolean) => {
-    if (chat.type !== 'private' || chat.peerId == null) return
+    if (chat.type !== 'private' || !isRealChat) return
     startOutgoing(
-      { id: chat.peerId, name: chat.name, avatar: chat.avatar, avatarText: chat.avatarText, avatarUrl: chat.avatarUrl },
+      { id: numericChatId, name: chat.name, avatar: chat.avatar, avatarText: chat.avatarText, photoId: chat.photoId },
       video,
       isRealChat ? numericChatId : null,
     )
@@ -934,30 +947,30 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const headerTypingKind = typingLabel.kind
   const presenceLabel =
     chat.type === 'private' && peerPresence
-      ? peerPresence.online
+      ? isUserStatusOnline(peerPresence, nowSeconds())
         ? t('online')
-        : lastSeenLabel(peerPresence.lastSeen, lang)
+        : lastSeenLabel(userStatusWasOnline(peerPresence) * 1000, lang)
       : null
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
-  const headerOnline = !!peerPresence?.online || chat.status === 'online'
+  const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
 
   // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню) — по профилю.
   const [isBotChat, setIsBotChat] = useState(false)
   const [botMenu, setBotMenu] = useState<{ text: string; url: string } | null>(null)
   useEffect(() => {
-    if (chat.type !== 'private' || chat.peerId == null) { setIsBotChat(false); setBotMenu(null); return }
+    if (chat.type !== 'private' || !isRealChat) { setIsBotChat(false); setBotMenu(null); return }
     let alive = true
-    const peerId = chat.peerId
+    const peerId = numericChatId
     setBotMenu(null)
     void managers.privacy.profile(peerId).then((p) => {
       if (!alive) return
-      setIsBotChat(!!p.isBot)
-      if (p.isBot) {
+      setIsBotChat(!!p.user.pFlags?.bot)
+      if (p.user.pFlags?.bot) {
         void managers.bots.menuButton(peerId).then((mb) => { if (alive && mb.text && mb.url) setBotMenu(mb) }).catch(() => {})
       }
     }).catch(() => {})
     return () => { alive = false }
-  }, [chat.type, chat.peerId, managers])
+  }, [chat.type, isRealChat, numericChatId, managers])
   // reply-клавиатура над композером — ряды последней подходящей разметки окна
   // (порт mergeReplyKeyboard + checkAvailability, core/markup/replyMarkup.ts).
   const replyKeyboard = useMemo(() => findReplyKeyboardRows(msgs), [msgs])
@@ -1041,7 +1054,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (botId === undefined) {
       try {
         const res = await managers.channels.search(uname)
-        const u = res.users.find((x) => x.username.toLowerCase() === uname)
+        const u = res.users.find((x) => x.username?.toLowerCase() === uname)
         botId = u ? u.id : null
       } catch { botId = null }
       inlineBotCache.current.set(uname, botId)
@@ -1092,7 +1105,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     setForward((f) => (f ? { ...f, ...opt } : f)))
   const onComposerForwardAnother = useEvent(() => {
     if (!forward) return
-    openForwardFrom(forward.sourceChatId, forward.msgIds, { count: forward.count, text: forward.text, hasCaption: forward.hasCaption })
+    openForwardFrom(forward.sourcePeerId, forward.msgIds, { count: forward.count, text: forward.text, hasCaption: forward.hasCaption })
     setForward(null)
   })
   const onComposerOpenAttach = useEvent((r: DOMRect) => pop.openAttach({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
@@ -1119,7 +1132,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (m.deleted || m.type === 'date' || m.type === 'service') continue
-      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor, { meId: meId ?? undefined, peerId: chat.peerId })
+      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
       if (rs) { setReply(rs); setEditing(null); return }
     }
   })
@@ -1300,7 +1313,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <ChatHeader
           chat={chat}
           avatarSrc={headerAvatarSrc}
-          peerOnline={peerPresence?.online}
+          peerOnline={isUserStatusOnline(peerPresence, nowSeconds())}
           typingActive={headerTypingActive}
           typingText={headerTypingText}
           typingKind={headerTypingKind}
@@ -1337,7 +1350,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             развилку — `Chat.vanillaFeed.test.ts` (Chat.tsx нельзя отрендерить в
             тесте, см. «Тесты» в web-client/CLAUDE.md). */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed chatId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} />
         ) : (
         <div
           ref={bubblesRef}
@@ -1383,7 +1396,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
             {/* Похожие каналы под лентой канала (tweb chat/similarChannels). */}
             {!feedLoading && isChannel && isRealChat && !thread && (
-              <SimilarChannels chatId={numericChatId} onOpen={onOpenChannel} />
+              <SimilarChannels peerId={numericChatId} onOpen={onOpenChannel} />
             )}
           </div>
           <div className="bubbles-padding bubbles-padding-bottom" style={{ height: `${padBottomPx}px` }} />
@@ -1410,7 +1423,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {/* Composer: owns the draft text locally so typing re-renders only it. */}
             <Composer
               key={chat.id}
-              peerId={chat.peerId}
+              peerId={inputPeerId}
               reply={reply}
               editing={editing}
               forward={forward}
@@ -1454,7 +1467,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {scrollDownFab}
 
             <ChatInputControl
-              peerId={chat.peerId}
+              peerId={inputPeerId}
               muted={muted}
               onBotStart={onBotStartClick}
               onToggleMute={onControlMuteClick}
@@ -1541,7 +1554,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             onOpenPeer={onOpenPeer}
             canAddMembers={canAddMember}
             onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
-            onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? pop.openGift : undefined}
+            onSendGift={chat.type === 'private' && isRealChat && numericChatId !== meId ? pop.openGift : undefined}
           />
         )}
       </Suspense>
@@ -1589,8 +1602,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
             viewerActionCloseRef.current?.()
             viewerActionCloseRef.current = null
           },
-          doForward: async (chatIds) => {
-            await msgActions.doForward(chatIds)
+          doForward: async (peerIds) => {
+            await msgActions.doForward(peerIds)
             viewerActionCloseRef.current?.()
             viewerActionCloseRef.current = null
           },

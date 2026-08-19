@@ -5,7 +5,7 @@ import Button from '../../shared/ui/Button'
 import Input from '../../shared/ui/Input'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
-import type { Birthday } from '../../core/managers/authManager'
+import type { Birthday } from '../../core/peers/peer'
 import { useT, useLang } from '../../i18n'
 import { usePopupTransition } from './kit'
 import s from './BirthdayModal.module.scss'
@@ -78,7 +78,7 @@ export default function BirthdayModal({
           {t('In settings you can choose who will see your birthday.')}
         </Text>
 
-        <Button fullWidth uppercase disabled={!valid} onClick={() => onSave({ day: d, month: m, year: y })} className={s.save}>
+        <Button fullWidth uppercase disabled={!valid} onClick={() => onSave({ _: 'birthday', day: d, month: m, year: y })} className={s.save}>
           {t('Save')}
         </Button>
       </div>

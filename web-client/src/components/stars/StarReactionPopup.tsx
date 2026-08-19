@@ -11,7 +11,9 @@ import Text from '../../shared/ui/Text'
 import Avatar from '../../shared/ui/Avatar'
 import StarIcon from './StarIcon'
 import StarsPopup from './StarsPopup'
-import { peerColor } from '../peerColor'
+import UserAvatar from '../UserAvatar'
+import { getPeerPhotoId } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
@@ -24,10 +26,10 @@ const MAX_STARS = 2500
 const DEFAULT_STARS = 50
 
 export default function StarReactionPopup({
-  open, chatId, msgId, onClose,
+  open, peerId, msgId, onClose,
 }: {
   open: boolean
-  chatId: number
+  peerId: number
   msgId: number
   onClose: () => void
 }) {
@@ -45,21 +47,21 @@ export default function StarReactionPopup({
   useEffect(() => {
     if (!open) return
     let alive = true
-    void managers.messages.getStarReaction(chatId, msgId)
+    void managers.messages.getStarReaction(peerId, msgId)
       .then((info) => { if (alive) setTop(info.top) })
       .catch(() => {})
     return () => { alive = false }
-  }, [open, chatId, msgId, managers])
+  }, [open, peerId, msgId, managers])
 
   const send = async () => {
     if (busy || count < 1) return
     if (balance < count) { setTopupOpen(true); return }
     setBusy(true)
     try {
-      const res = await managers.messages.sendStarReaction(chatId, msgId, count, !showName)
+      const res = await managers.messages.sendStarReaction(peerId, msgId, count, !showName)
       // Воркер пишет свой SSOT; агрегат сообщения (total + мой вклад) ставим в
       // main-стор здесь; WS star_reaction затем реконсилит. Баланс — в State.
-      useMessagesStore.getState().applyStarReaction(chatId, msgId, res.total, res.mine)
+      useMessagesStore.getState().applyStarReaction(peerId, msgId, res.total, res.mine)
       setStarsBalance(res.balance)
       onClose()
     } catch {
@@ -113,14 +115,14 @@ export default function StarReactionPopup({
                     <div className={s.senderAvatar}>
                       {snd.anonymous
                         ? <Avatar background="var(--secondary-text-color)" text="?" size={56} />
-                        : <Avatar background={peerColor(snd.name)} text={snd.name[0] ?? '?'} src={snd.avatarUrl || undefined} size={56} />}
+                        : <UserAvatar id={snd.user.id} name={getUserTitle(snd.user)} photoId={getPeerPhotoId(snd.user.photo)} size={56} />}
                       <span className={s.senderAmount}>
                         <StarIcon size={12} />
                         {snd.stars}
                       </span>
                     </div>
                     <Text noWrap size={12.5} color="var(--primary-text-color)" className={s.senderName}>
-                      {snd.anonymous ? t('Anonymous') : snd.name}
+                      {snd.anonymous ? t('Anonymous') : getUserTitle(snd.user)}
                     </Text>
                   </div>
                 ))}

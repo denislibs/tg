@@ -24,6 +24,9 @@ import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
 import type { StoryTargetGetter } from './StoriesRow'
 import type { StoryGroup } from '../core/managers/storiesManager'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import s from './StoryViewer.module.scss'
 
 // Статистика своей истории (графики) — оверлей по кнопке, не первый кадр → лениво.
@@ -377,8 +380,8 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           ) : (
             vm.viewers.map((v) => (
               <div key={v.id} className={s.viewerRow}>
-                <Avatar background={gradientFor(v.id)} text={v.displayName.charAt(0)} size={36} />
-                <Text noWrap color="#fff" size={15}>{v.displayName}</Text>
+                <Avatar background={gradientFor(v.id)} text={getUserTitle(v).charAt(0)} size={36} />
+                <Text noWrap color="#fff" size={15}>{getUserTitle(v)}</Text>
               </div>
             ))
           )}
@@ -619,10 +622,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         обёртка (аватар рисует React-компонент). */}
     {hasFly && (
       <div ref={flyRef} className={s.flyAvatar}>
-        <Avatar
+        <StoryAuthorAvatar
           background={gradientFor(vm.group.author.id)}
-          src={vm.group.author.avatarUrl || undefined}
-          text={vm.group.author.displayName.charAt(0)}
+          author={vm.group.author}
           size={32}
         />
       </div>
@@ -785,16 +787,15 @@ function StoryPeer(props: StoryPeerProps) {
           </div>
           <div className={classNames(s.ViewerStoryHeader, 'night')}>
             <div className={s.ViewerStoryHeaderLeft}>
-              <Avatar
+              <StoryAuthorAvatar
                 className={s.ViewerStoryHeaderAvatar}
                 background={bg}
-                src={group.author.avatarUrl || undefined}
-                text={group.author.displayName.charAt(0)}
+                author={group.author}
                 size={32}
               />
               <div className={s.ViewerStoryHeaderInfo}>
                 <div className={s.ViewerStoryHeaderRow}>
-                  <span className={classNames('peer-title', s.ViewerStoryHeaderName)}>{group.author.displayName}</span>
+                  <span className={classNames('peer-title', s.ViewerStoryHeaderName)}>{getUserTitle(group.author)}</span>
                   <span className={s.ViewerStoryHeaderSecondary}>{`${JOINER}${storyIndex + 1}/${group.stories.length}`}</span>
                 </div>
                 <div className={classNames(s.ViewerStoryHeaderSecondary, s.ViewerStoryHeaderTime)}>
@@ -810,18 +811,38 @@ function StoryPeer(props: StoryPeerProps) {
         {/* Заставка соседа — в isFull её нет (tweb viewer.tsx:2729-2734) */}
         {!isFull && (
           <div className={s.ViewerStoryInfo}>
-            <Avatar
+            <StoryAuthorAvatar
               className={s.ViewerStoryInfoAvatar}
               background={bg}
-              src={group.author.avatarUrl || undefined}
-              text={group.author.displayName.charAt(0)}
+              author={group.author}
               size={162}
             />
-            <span className={classNames('peer-title', s.ViewerStoryInfoName)}>{group.author.displayName}</span>
+            <span className={classNames('peer-title', s.ViewerStoryInfoName)}>{getUserTitle(group.author)}</span>
           </div>
         )}
       </div>
       {footer}
     </div>
+  )
+}
+
+/** Аватарка автора истории: id медиа (`user.photo.photo_id`) → objectURL
+ *  воркерного конвейера, имя собирает клиент. Отдельный компонент, потому что
+ *  `useMediaUrl` — хук, а мест показа автора в просмотрщике три. */
+function StoryAuthorAvatar({ author, background, size, className }: {
+  author: UserReal
+  background: string
+  size: number
+  className?: string
+}) {
+  const src = useMediaUrl(getPeerPhotoId(author.photo) || null)
+  return (
+    <Avatar
+      className={className}
+      background={background}
+      src={src || undefined}
+      text={getUserTitle(author).charAt(0)}
+      size={size}
+    />
   )
 }

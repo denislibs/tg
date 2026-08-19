@@ -27,7 +27,7 @@ const BUBBLE_H = 100
  *  этих тестах их совпадение убирает лишний шум из ожиданий. */
 function msg(seq: number, over: Partial<Message> = {}): Message {
   return {
-    id: seq, seq, chatId: CHAT, senderId: 2, type: 'text', text: `m${seq}`,
+    id: seq, seq, peerId: CHAT, senderId: 2, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
     ...over,
   }

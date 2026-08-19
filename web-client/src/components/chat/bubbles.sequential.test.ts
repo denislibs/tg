@@ -107,7 +107,7 @@ afterEach(() => {
 /** Отправить текст владельцем и дождаться, пока лента нарисует бабл. */
 async function sendAndRender(pending: ReturnType<typeof owner>['pending'], clientMsgId: string, text: string) {
   await pending.sendText({
-    chatId: CHAT, text, clientMsgId, type: 'text', entities: null,
+    peerId: CHAT, text, clientMsgId, type: 'text', entities: null,
     threadId: null, groupedId: undefined, paidMediaPrice: null,
     optimistic: { senderId: ME },
   })
@@ -143,7 +143,7 @@ describe('sequential: признак доезжает от владельца б
 
     try {
       await pending.sendFile({
-        chatId: CHAT, clientMsgId: 'c2', senderId: ME,
+        peerId: CHAT, clientMsgId: 'c2', senderId: ME,
         file: new Blob(['x'], { type: 'image/png' }), type: 'photo', mime: 'image/png',
       })
       await settle()
@@ -192,7 +192,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     await bubbles.loadFirstHistory()
 
     await pending.sendFile({
-      chatId: CHAT, clientMsgId: 'c2', senderId: ME,
+      peerId: CHAT, clientMsgId: 'c2', senderId: ME,
       file: new Blob(['x'], { type: 'image/png' }), type: 'photo', mime: 'image/png',
     })
     await settle()
@@ -222,7 +222,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     rootScope.dispatchEventSingle('history_append', {
       storageKey: KEY,
       message: {
-        id: 800, chatId: CHAT, seq: temp.seq + 1, senderId: 7, type: 'text', text: 'чужое',
+        id: 800, peerId: CHAT, seq: temp.seq + 1, senderId: 7, type: 'text', text: 'чужое',
         replyToId: null, mediaId: null, createdAt: temp.createdAt, threadRootId: null,
       },
     })

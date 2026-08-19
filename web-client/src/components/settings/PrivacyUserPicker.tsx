@@ -13,6 +13,8 @@ import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
+import { getPeerPhotoId, peerKey } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 
 export default function PrivacyUserPicker({
   title,
@@ -39,7 +41,7 @@ export default function PrivacyUserPicker({
   const [selected, setSelected] = useState<number[]>(initial)
 
   // Глобальный поиск людей по имени/username — как в AddMembersScreen.
-  const [found, setFound] = useState<{ id: number; name: string; avatarUrl?: string }[]>([])
+  const [found, setFound] = useState<{ id: PeerId; name: string; photoId?: number }[]>([])
   useEffect(() => {
     const query = q.trim()
     if (query.length < 2) {
@@ -49,7 +51,7 @@ export default function PrivacyUserPicker({
     let alive = true
     const tm = setTimeout(() => {
       void managers.channels.search(query).then((r) => {
-        if (alive) setFound(r.users.map((u) => ({ id: u.id, name: u.displayName || u.username, avatarUrl: u.avatarUrl || undefined })))
+        if (alive) setFound(r.users.map((u) => ({ id: peerKey(u), name: getUserTitle(u), photoId: getPeerPhotoId(u.photo) || undefined })))
       }).catch(() => {})
     }, 250)
     return () => {
@@ -65,7 +67,7 @@ export default function PrivacyUserPicker({
     const base = candidates.filter((c) => !query || c.name.toLowerCase().includes(query))
     const seen = new Set(base.map((c) => c.id))
     return [...base, ...found.filter((u) => !seen.has(u.id))]
-      .map((c) => ({ id: c.id, name: c.name, avatarUrl: c.avatarUrl }))
+      .map((c) => ({ id: c.id, name: c.name, photoId: c.photoId }))
   }, [candidates, q, found])
 
   const changed = useMemo(() => {

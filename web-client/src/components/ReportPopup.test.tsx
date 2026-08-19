@@ -30,7 +30,7 @@ describe('ReportPopup', () => {
 
   it('вызывает managers.report с выбранной причиной и id сообщения', async () => {
     const { report } = renderWithFake()
-    useReportStore.getState().open({ chatId: 55, msgId: 900 })
+    useReportStore.getState().open({ peerId: -55, msgId: 900 })
 
     // выбираем «Pornography» → reason 'porn'
     fireEvent.click(await screen.findByText('Pornography'))
@@ -40,7 +40,7 @@ describe('ReportPopup', () => {
 
     await waitFor(() => expect(report).toHaveBeenCalledTimes(1))
     expect(report).toHaveBeenCalledWith({
-      chatId: 55,
+      peerId: -55,
       msgId: 900,
       reason: 'porn',
       comment: undefined,
@@ -51,14 +51,14 @@ describe('ReportPopup', () => {
 
   it('жалоба на чат целиком — msgId не задан, по умолчанию spam', async () => {
     const { report } = renderWithFake()
-    useReportStore.getState().open({ chatId: 77 })
+    useReportStore.getState().open({ peerId: -77 })
 
     const reportEls = await screen.findAllByText('Report')
     fireEvent.click(reportEls[reportEls.length - 1])
 
     await waitFor(() => expect(report).toHaveBeenCalledTimes(1))
     expect(report).toHaveBeenCalledWith({
-      chatId: 77,
+      peerId: -77,
       msgId: undefined,
       reason: 'spam',
       comment: undefined,

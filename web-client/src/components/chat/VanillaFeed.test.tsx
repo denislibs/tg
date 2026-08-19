@@ -22,7 +22,7 @@ const CHAT = 50
 
 function msg(over: Partial<Message> & { id: number; seq: number }): Message {
   return {
-    chatId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
+    peerId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
     ...over,
   }
@@ -40,7 +40,7 @@ function managersWith(messages: Message[]) {
 /** Колонка чата (`.chat`) вокруг хоста — как в проде (`Chat.tsx`). Без неё
  *  эффект `VanillaFeed` не найдёт узел, которому лента вешает
  *  `is-go-down-visible` (порт tweb `chat.container`), и не поднимется. */
-function mount(messages: Message[], props: { chatId: number; threadRootId?: number } = { chatId: CHAT }) {
+function mount(messages: Message[], props: { peerId: PeerId; threadRootId?: number } = { peerId: CHAT }) {
   const { managers, getHistory } = managersWith(messages)
   const view = render(
     <ManagersProvider managers={managers}>
@@ -88,9 +88,9 @@ describe('VanillaFeed — проводка императивной ленты �
   })
 
   it('ключ окна берётся из winKey — на треде лента открывает окно ТРЕДА', async () => {
-    const { container, getHistory } = mount([], { chatId: CHAT, threadRootId: 60 })
+    const { container, getHistory } = mount([], { peerId: CHAT, threadRootId: 60 })
 
-    expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ chatId: CHAT, threadRoot: 60 }))
+    expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ peerId: CHAT, threadRoot: 60 }))
     // Ждём доезда первой страницы: новое сообщение лента рисует, только когда
     // низ окна сведён с концом истории (tweb `_renderNewMessage`, :4538).
     await vi.waitFor(() => {

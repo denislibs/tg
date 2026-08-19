@@ -68,9 +68,11 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
 
   // Блокировка собеседника живёт в ⋮-меню чата, как в tweb (topbar.ts:
   // icon lock 'BlockUser' / lockoff 'Unblock'); в профиле её нет.
-  const peerId = chat.peerId
-  const canBlock = chat.type === 'private' && peerId != null && peerId !== SERVICE_USER_ID
-  const { blocked, toggleBlock, setChatTtl } = useHeaderMenuActions({ peerId, canBlock, chatId: numericChatId, close })
+  // Ключ пира — сам `chat.id` (знаковый): у приватного диалога он и есть id
+  // собеседника, отдельного поля рядом больше нет.
+  const peerId = numericChatId
+  const canBlock = chat.type === 'private' && peerId !== SERVICE_USER_ID
+  const { blocked, toggleBlock, setChatTtl } = useHeaderMenuActions({ peerId, canBlock, close })
 
   // «Очистить историю» у себя (tweb PeerInfo.Action.ClearHistory): приватные чаты
   // и группы, где ты участник. Глиф broom в наш tgico-набор не портирован — берём
@@ -96,7 +98,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     label: 'Report',
     danger: true,
     onClick: () => {
-      if (Number.isFinite(numericChatId)) useReportStore.getState().open({ chatId: numericChatId })
+      if (Number.isFinite(numericChatId)) useReportStore.getState().open({ peerId: numericChatId })
       close()
     },
   }
@@ -105,7 +107,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   if (chat.type === 'private') {
     // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
     // добавить в контакты — этих пунктов в меню нет (как в Telegram).
-    const isService = chat.peerId === SERVICE_USER_ID
+    const isService = peerId === SERVICE_USER_ID
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       ...searchItems,

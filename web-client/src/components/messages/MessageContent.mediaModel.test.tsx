@@ -55,7 +55,7 @@ const docMedia = (mime: string, attributes: DocumentAttribute[], thumbs?: PhotoS
 
 const show = (m: Partial<ConvMsg>): ReactElement => (
   <MessageContent
-    m={{ id: 1, chatId: 1, type: 'text', text: '', time: '10:00', ...m } as ConvMsg}
+    m={{ id: 1, peerId: 1, type: 'text', text: '', time: '10:00', ...m } as ConvMsg}
     out={false}
     firstInGroup
     lastInGroup

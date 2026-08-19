@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import type { Peer } from '@core/managers/peersManager'
+import type { UserReal } from '@core/peers/peer'
 import type { Message } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, {
@@ -44,7 +44,7 @@ const chatContext = (peerId = CHAT): ChatContext => ({
 
 function msg(over: Partial<Message> & { id: number; seq: number }): Message {
   return {
-    chatId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
+    peerId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
     ...over,
   }
@@ -94,8 +94,8 @@ beforeEach(() => {
 
 /** Карточка пира в форме владельца (`peersManager`). Кладём её в зеркало через
  *  ту же операцию, которой её объявляет воркер, — руками в зеркало не пишем. */
-const peerCard = (id: number, displayName: string): Peer =>
-  ({ id, username: `u${id}`, displayName, avatarUrl: '', avatarPreview: '' })
+const peerCard = (id: number, firstName: string): UserReal =>
+  ({ _: 'user', id, username: `u${id}`, first_name: firstName })
 
 /** Отрисованные баблы СООБЩЕНИЙ в порядке DOM. `.service` исключены: дата-бабл
  *  секции дня (и его `is-fake`-дубль) — тоже `.bubble`, но сообщения за ними не
@@ -210,7 +210,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
     const managers = managersWith([])
     bubbles = new ChatBubbles({ ...chatContext(), threadId: 60, messagesStorageKey: `${CHAT}:60` }, managers)
     await bubbles.loadFirstHistory()
-    expect(managers.getHistory).toHaveBeenCalledWith(expect.objectContaining({ chatId: CHAT, threadRoot: 60 }))
+    expect(managers.getHistory).toHaveBeenCalledWith(expect.objectContaining({ peerId: CHAT, threadRoot: 60 }))
   })
 
   it('протухший ответ (лента убита, пока летел запрос) не пишет ни в зеркало, ни в DOM', async () => {
@@ -869,9 +869,9 @@ describe('ChatBubbles — имя автора', () => {
   // send-as (порт `iPostedAsSomeoneElse`, tweb :9325): пост от имени
   // канала/группы подписывается ДАЖЕ будучи своим. Карточки у чат-личности
   // нет — заголовок приезжает в самом сообщении (`fromName` в tweb).
-  it('send-as в группе: имя из sendAs.title, data-peer-id — отрицательный id чата', async () => {
+  it('send-as в группе: имя из sendAs.title, data-peer-id — знаковый ключ личности', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: 999, sendAs: { chatId: 7, title: 'Канал' } }),
+      msg({ id: 1, seq: 1, senderId: 999, sendAs: { peerId: -7, title: 'Канал' } }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -883,7 +883,7 @@ describe('ChatBubbles — имя автора', () => {
   it('чужое имя цветное, а имя своего сообщения — нет (colored-name по !out)', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
       msg({ id: 1, seq: 1, senderId: AUTHOR }),
-      msg({ id: 2, seq: 2, senderId: 999, out: true, sendAs: { chatId: 7, title: 'Канал' } }),
+      msg({ id: 2, seq: 2, senderId: 999, out: true, sendAs: { peerId: -7, title: 'Канал' } }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -923,13 +923,13 @@ describe('ChatBubbles — имя автора', () => {
     expect(title.textContent).toBe('Пётр')
   })
 
-  it('переименование пира (операция patch) перерисовывает уже нарисованное имя', async () => {
+  it('переименование пира (операция upsert) перерисовывает уже нарисованное имя', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
     await bubbles.loadFirstHistory()
     const title = nameOf(bubbles, 1)!.firstElementChild!
     expect(title.textContent).toBe('Пётр')
 
-    applyPeerOps([{ op: 'patch', id: AUTHOR, fields: { displayName: 'Пётр I' } }])
+    applyPeerOps([{ op: 'upsert', peers: [peerCard(AUTHOR, 'Пётр I')] }])
 
     expect(title.textContent).toBe('Пётр I')
   })
@@ -941,7 +941,7 @@ describe('ChatBubbles — имя автора', () => {
     const title = b.chatInner.querySelector('.name > .peer-title')!
 
     b.destroy()
-    applyPeerOps([{ op: 'patch', id: AUTHOR, fields: { displayName: 'Пётр I' } }])
+    applyPeerOps([{ op: 'upsert', peers: [peerCard(AUTHOR, 'Пётр I')] }])
 
     expect(title.textContent).toBe('Пётр')
   })

@@ -80,6 +80,27 @@ export function getPeerPhotoId(photo: UserProfilePhoto | ChatPhoto | undefined):
   return photo && photo._ !== 'userProfilePhotoEmpty' && photo._ !== 'chatPhotoEmpty' ? photo.photo_id : 0
 }
 
+/**
+ * Фото ЛЮБОГО пира — порт `utils/peers/getPeerPhoto.ts` целиком: один вход на
+ * `User | Chat`, ветвление по конструктору. Нужен там, где карточка приехала
+ * из зеркала объединением (автор бабла, строка выдачи поиска, отметивший пункт
+ * чек-листа) и разбирать её вручную на каждом месте значило бы повторять этот
+ * же `switch`.
+ *
+ * Отсева `isPeerRestricted` здесь нет — предмета нет: полей
+ * `restriction_reason`/`pFlags.scam`/`fake` наша модель не объявляет вовсе
+ * (`peer.ts:161`).
+ */
+export function getPeerPhoto(peer: User | Chat | undefined): UserProfilePhoto | ChatPhoto | undefined {
+  if (!peer) return undefined
+  switch (peer._) {
+    case 'user': return peer.photo
+    case 'chat':
+    case 'channel': return peer.photo
+    default: return undefined
+  }
+}
+
 /** stripped-подложка аватарки (base64 JPEG) или `''`. */
 export function getPeerPhotoStrippedThumb(photo: UserProfilePhoto | ChatPhoto | undefined): string {
   return photo && photo._ !== 'userProfilePhotoEmpty' && photo._ !== 'chatPhotoEmpty'

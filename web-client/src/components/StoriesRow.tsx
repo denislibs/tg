@@ -27,6 +27,7 @@ import Avatar from '../shared/ui/Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import useCollapsable, { STATE_UNFOLDED, type CollapsableOptions } from '../core/hooks/useCollapsable'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import s from './StoriesRow.module.scss'
@@ -86,7 +87,7 @@ export function buildStoryItems(groups: StoryGroup[], meId: number | null): Stor
       key: `self-${g.author.id}`,
       name: 'Моя история',
       bg: gradientFor(g.author.id),
-      text: (g.author.displayName.charAt(0) || '+').toUpperCase(),
+      text: (getUserTitle(g.author).charAt(0) || '+').toUpperCase(),
       hasUnseen: hasUnseen(g),
       isMe: true,
       groupIndex: selfIndex,
@@ -107,9 +108,9 @@ export function buildStoryItems(groups: StoryGroup[], meId: number | null): Stor
     if (i === selfIndex) return
     items.push({
       key: `g-${g.author.id}`,
-      name: g.author.displayName,
+      name: getUserTitle(g.author),
       bg: gradientFor(g.author.id),
-      text: (g.author.displayName.charAt(0) || '?').toUpperCase(),
+      text: (getUserTitle(g.author).charAt(0) || '?').toUpperCase(),
       hasUnseen: hasUnseen(g),
       isMe: false,
       groupIndex: i,

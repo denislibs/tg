@@ -130,7 +130,7 @@ describe('ReactionChip — эффект вокруг + select-анимация �
 
 describe('MessageReactions — порог считается по сумме реакций сообщения', () => {
   const rowProps = { msgId: 1, rowLive: false, canSeeList: true, onToggle: noop, onShow: noop, onStar: noop }
-  const recent = [{ id: 2, name: 'B' }]
+  const recent: PeerId[] = [2]
 
   it('суммарно меньше порога → аватары', () => {
     render(<MessageReactions reactions={[{ emoji: '👍', count: 2, mine: false, recent }]} {...rowProps} />)

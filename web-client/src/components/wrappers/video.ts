@@ -773,7 +773,7 @@ function wrapRound({
         mediaId: doc.id,
         title: '',
         subtitle: '',
-        chatId: message?.peerId,
+        peerId: message?.peerId,
         msgId: message?.mid,
         type: 'round',
       },
