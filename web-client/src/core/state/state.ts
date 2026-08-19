@@ -15,7 +15,7 @@ export interface AppState {
   folders: Folder[]
   /** облачные черновики по чатам (tweb `drafts`) */
   drafts: Draft[]
-  /** свёрнутые пользователем пин-плашки: chatId → msgId (tweb `hiddenPinnedMessages`) */
+  /** свёрнутые пользователем пин-плашки: peerId → msgId (tweb `hiddenPinnedMessages`) */
   hiddenPinnedMessages: Record<number, number>
   /**
    * недавние в глобальном поиске (tweb `recentSearch`). У tweb там числовые
@@ -23,7 +23,7 @@ export interface AppState {
    * храним строки: разница модели, не поведения.
    */
   recentSearch: string[]
-  /** порядок закреплённых по папкам: folderId → chatId[] (tweb `pinnedOrders`) */
+  /** порядок закреплённых по папкам: folderId → peerId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**
    * баланс звёзд; null — ни разу не загружался. Отличие от списков: у баланса `0`

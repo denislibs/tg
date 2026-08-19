@@ -42,8 +42,8 @@ interface ChatSearch {
 // Кросс-чат ответ (tweb ReplyToAnotherChat): выбран целевой чат → ждём его
 // открытия, Chat ставит reply-плашку с исходным чатом + снимком.
 export interface PendingReply {
-  targetChatId: number
-  sourceChatId: number
+  targetPeerId: number
+  sourcePeerId: number
   msgId: number
   name: string
   text: string
@@ -54,8 +54,8 @@ export interface PendingReply {
 // открытия, Chat ставит плашку форварда в композере (превью +
 // меню show/hide sender/caption). Финализация — по нажатию «Отправить».
 export interface PendingForward {
-  targetChatId: number
-  sourceChatId: number
+  targetPeerId: number
+  sourcePeerId: number
   msgIds: number[]
   /** число пересылаемых сообщений — для заголовка «Переслать N сообщений». */
   count: number
@@ -68,7 +68,7 @@ export interface PendingForward {
 interface SearchState {
   byChat: Record<number, ChatSearch>
   /** результат сайдбар-поиска ждёт открытия чата → Chat прыгает к seq */
-  pendingJump: { chatId: number; seq: number } | null
+  pendingJump: { peerId: number; seq: number } | null
   /** «Ответить в другом чате» ждёт открытия целевого чата → ставится reply-плашка */
   pendingReply: PendingReply | null
   /** пересылка в один чат ждёт открытия целевого чата → ставится плашка форварда */
@@ -79,11 +79,11 @@ interface SearchState {
    * параметрами (хэштег, «искать выделенное», «от этого пира», тег-реакция) —
    * см. backlogs/frontend/topbar-search-tweb-divergences.md.
    */
-  initSearch: (chatId: number, options?: InitSearchOptions) => void
+  initSearch: (peerId: number, options?: InitSearchOptions) => void
   /** Закрыть поиск (tweb `searchSignal(undefined)`, chat.ts:792). */
-  closeSearch: (chatId: number) => void
-  setReactionsShown: (chatId: number, shown: boolean) => void
-  setPendingJump: (chatId: number, seq: number) => void
+  closeSearch: (peerId: number) => void
+  setReactionsShown: (peerId: number, shown: boolean) => void
+  setPendingJump: (peerId: number, seq: number) => void
   clearPendingJump: () => void
   setPendingReply: (r: PendingReply) => void
   clearPendingReply: () => void
@@ -99,13 +99,13 @@ export const useSearchStore = create<SearchState>((set) => ({
   pendingJump: null,
   pendingReply: null,
   pendingForward: null,
-  initSearch: (chatId, options = {}) =>
+  initSearch: (peerId, options = {}) =>
     set((s) => {
-      const prev = s.byChat[chatId] ?? EMPTY
+      const prev = s.byChat[peerId] ?? EMPTY
       return {
         byChat: {
           ...s.byChat,
-          [chatId]: {
+          [peerId]: {
             ...prev,
             open: true,
             // tweb chat.ts:822-825 — сигналы выставляются из `searchSignal()`
@@ -123,11 +123,11 @@ export const useSearchStore = create<SearchState>((set) => ({
   // Затравку тут НЕ трогаем: панель ещё доигрывает 200мс-анимацию ухода и читает
   // её (tweb снимает узел только по окончании, chat.ts:773). Обнулит её следующий
   // `initSearch` — как `searchSignal(undefined)` → `setQuery(s?.query)` в tweb.
-  closeSearch: (chatId) =>
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open: false, reactionsShown: false } } })),
-  setReactionsShown: (chatId, reactionsShown) =>
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), reactionsShown } } })),
-  setPendingJump: (chatId, seq) => set({ pendingJump: { chatId, seq } }),
+  closeSearch: (peerId) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...(s.byChat[peerId] ?? EMPTY), open: false, reactionsShown: false } } })),
+  setReactionsShown: (peerId, reactionsShown) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...(s.byChat[peerId] ?? EMPTY), reactionsShown } } })),
+  setPendingJump: (peerId, seq) => set({ pendingJump: { peerId, seq } }),
   clearPendingJump: () => set({ pendingJump: null }),
   setPendingReply: (r) => set({ pendingReply: r }),
   clearPendingReply: () => set({ pendingReply: null }),

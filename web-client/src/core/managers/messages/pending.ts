@@ -85,7 +85,7 @@ export interface SendOptimistic {
   /** имя контакта для бабла — проводной contactUserId имени не несёт */
   contactName?: string
   /** send-as: бабл сразу от имени выбранной личности, а не «от себя» */
-  sendAs?: { chatId: number; title: string }
+  sendAs?: { peerId: number; title: string }
   /** секретный чат: бабл с плейнтекстом, помеченный secret */
   secret?: boolean
   /** кросс-чат ответ: снимок превью оригинала (его нет в SSOT этого чата) */
@@ -111,7 +111,7 @@ export interface SendTextArgs extends SendWireArgs, MessageSendingParams {
  *  `entities`, `groupId`, `isMedia`; `objectURL` у нас нет СОЗНАТЕЛЬНО
  *  (см. sendFile: blob-URL минтит воркер, а не вкладка). */
 export interface SendFileArgs extends MessageSendingParams {
-  chatId: number
+  peerId: number
   clientMsgId: string
   senderId: number
   file: Blob
@@ -145,7 +145,7 @@ export interface SendFileArgs extends MessageSendingParams {
 
 /** Регистрация неотправленного сообщения — аналог tweb PendingMessageDetails. */
 interface PendingDetails {
-  chatId: number
+  peerId: number
   threadRootId?: number | null
   /** позиция в окне (у нас порядок задаёт seq, в tweb — временный mid) */
   tempSeq: number
@@ -165,9 +165,9 @@ interface PendingDetails {
  *  здесь нужна сама структура окна — как в tweb, где beforeMessageSending трогает
  *  и `messagesStorage`, и `historyStorage.history`. */
 export interface PendingCtx {
-  hkey: (chatId: number, threadRoot?: number | null) => string
+  hkey: (peerId: number, threadRoot?: number | null) => string
   slices: Map<string, SlicedArray<number>>
-  msgsFor: (chatId: number) => Map<number, Message>
+  msgsFor: (peerId: number) => Map<number, Message>
   /** id текущего пользователя — временный бабл получает `out` тем же предикатом
    *  (`deriveOut`), что и настоящие сообщения на границе маппинга. Геттер, а не
    *  значение: `me` у воркера разрешается лениво. */
@@ -186,7 +186,7 @@ export interface PendingCtx {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping: (chatId: number, action: TypingAction) => void
+  sendTyping: (peerId: number, action: TypingAction) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). `done` — аплоад
    *  закончился (успехом, ошибкой или отменой): кольцо на бабле снимается. */
   uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => void
@@ -307,15 +307,15 @@ export function newPendingMethods(ctx: PendingCtx) {
 
   /** Окна чата, готовые принять вставку: срез должен держать НИЗ истории, иначе
    *  позиция нового сообщения неизвестна (тот же гейт, что в cacheLive). */
-  const targetKeys = (chatId: number, threadRootId?: number | null): string[] => {
-    const keys = threadRootId ? [hkey(chatId), hkey(chatId, threadRootId)] : [hkey(chatId)]
+  const targetKeys = (peerId: number, threadRootId?: number | null): string[] => {
+    const keys = threadRootId ? [hkey(peerId), hkey(peerId, threadRootId)] : [hkey(peerId)]
     return keys.filter((k) => slices.get(k)?.first.isEnd(SliceEnd.Bottom))
   }
 
   /** Следующий свободный seq внизу окна. Порядок бабла и только: реконсиляция
    *  матчит по clientId, а не по этому seq (см. dedupKey в messageOps). */
-  const tentativeSeq = (chatId: number, keys: string[]): number => {
-    const c = msgsFor(chatId)
+  const tentativeSeq = (peerId: number, keys: string[]): number => {
+    const c = msgsFor(peerId)
     let max = 0
     for (const key of keys) {
       const sa = slices.get(key)
@@ -328,7 +328,7 @@ export function newPendingMethods(ctx: PendingCtx) {
 
   /** Снять временный бабл из SSOT и срезов. Возвращает, был ли он там. */
   const dropTemp = (d: PendingDetails): boolean => {
-    const c = msgsFor(d.chatId)
+    const c = msgsFor(d.peerId)
     const existed = c.delete(d.tempSeq)
     for (const key of d.keys) slices.get(key)?.delete(d.tempSeq)
     return existed
@@ -336,7 +336,7 @@ export function newPendingMethods(ctx: PendingCtx) {
 
   /** Точечно поправить временный бабл в SSOT. */
   const patchTemp = (d: PendingDetails, upd: (m: Message) => Message): Message | undefined => {
-    const c = msgsFor(d.chatId)
+    const c = msgsFor(d.peerId)
     const cur = c.get(d.tempSeq)
     if (!cur) return undefined
     const next = upd(cur)
@@ -356,7 +356,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
     dropTemp(d)
-    const c = msgsFor(d.chatId)
+    const c = msgsFor(d.peerId)
     c.set(final.seq, final)
     for (const key of d.keys) {
       const sa = slices.get(key)
@@ -391,8 +391,8 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  когда её принесёт эхо. Оригинал ищем в SSOT воркера — той же единой Map
    *  сообщений чата, из которой живёт окно (у главного потока для входящих ту же
    *  работу делает `storeProjection`, но у СВОЕЙ отправки владелец бабла — здесь). */
-  const resolveReplyTo = (chatId: number, replyToId: number, quoteText?: string): Message['replyTo'] => {
-    for (const m of msgsFor(chatId).values()) {
+  const resolveReplyTo = (peerId: number, replyToId: number, quoteText?: string): Message['replyTo'] => {
+    for (const m of msgsFor(peerId).values()) {
       if (m.id !== replyToId) continue
       return {
         msgId: m.id, seq: m.seq, senderId: m.senderId, text: m.text,
@@ -404,16 +404,16 @@ export function newPendingMethods(ctx: PendingCtx) {
   }
 
   const insertPending = (e: PendingNewEvt): MessageOp[] => {
-    const keys = targetKeys(e.chat_id, e.thread_root_id)
+    const keys = targetKeys(e.peer_id, e.thread_root_id)
     if (!keys.length) return []
-    const seq = tentativeSeq(e.chat_id, keys)
+    const seq = tentativeSeq(e.peer_id, keys)
     const replyToId = e.reply_to_id ?? null
     const msg: Message = {
       // Отрицательный id помечает неотправленное (dedupKey ключует такое по
       // clientId — иначе чужое входящее с тем же tentative seq вытеснило бы
       // бабл из окна без ack и без ошибки).
       id: -seq,
-      chatId: e.chat_id,
+      peerId: e.peer_id,
       seq,
       senderId: e.sender_id,
       type: e.type ?? 'text',
@@ -426,7 +426,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       replyToPeerId: e.reply_snapshot?.peerId,
       replySnapshotName: e.reply_snapshot?.name,
       replySnapshotText: e.reply_snapshot?.text,
-      replyTo: replyToId != null && !e.reply_snapshot ? resolveReplyTo(e.chat_id, replyToId, e.reply_quote_text) : undefined,
+      replyTo: replyToId != null && !e.reply_snapshot ? resolveReplyTo(e.peer_id, replyToId, e.reply_quote_text) : undefined,
       mediaId: e.media_id ?? null,
       createdAt: new Date().toISOString(),
       threadRootId: e.thread_root_id ?? null,
@@ -462,9 +462,9 @@ export function newPendingMethods(ctx: PendingCtx) {
       // рисуется входящим — как и его серверное эхо.
       out: deriveOut({ senderId: e.sender_id, sendAs: e.send_as }, ctx.getMeId()),
     }
-    const d: PendingDetails = { chatId: e.chat_id, threadRootId: e.thread_root_id, tempSeq: seq, keys, sequential: e.sequential }
+    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempSeq: seq, keys, sequential: e.sequential }
     pendingByClientId.set(e.client_msg_id, d)
-    msgsFor(e.chat_id).set(seq, msg)
+    msgsFor(e.peer_id).set(seq, msg)
     for (const key of keys) {
       const sa = slices.get(key)
       if (sa && !sa.findSlice(seq)) sa.unshift(seq)
@@ -516,7 +516,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
-    const cur = msgsFor(d.chatId).get(d.tempSeq)
+    const cur = msgsFor(d.peerId).get(d.tempSeq)
     if (!dropTemp(d) || !cur) return []
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
   }
@@ -531,8 +531,8 @@ export function newPendingMethods(ctx: PendingCtx) {
     const action = o.uploadAction
     let ping: ReturnType<typeof setInterval> | null = null
     if (action) {
-      ctx.sendTyping(o.chatId, action)
-      ping = setInterval(() => ctx.sendTyping(o.chatId, action), UPLOAD_TYPING_MS)
+      ctx.sendTyping(o.peerId, action)
+      ping = setInterval(() => ctx.sendTyping(o.peerId, action), UPLOAD_TYPING_MS)
     }
     try {
       const mediaId = await ctx.upload({
@@ -571,7 +571,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       const send = () => ctx.send(args)
       if (!optimistic) { send(); return { ok: true } }
       beforeMessageSending({
-        chat_id: args.chatId,
+        peer_id: args.peerId,
         thread_root_id: params.threadId ?? null,
         client_msg_id: args.clientMsgId,
         sender_id: optimistic.senderId,
@@ -617,7 +617,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
       const { params } = splitSendingParams(o)
       const wire: WireSendArgs = {
-        chatId: o.chatId,
+        peerId: o.peerId,
         text: o.caption ?? '',
         entities: o.entities ?? null,
         clientMsgId: o.clientMsgId,
@@ -629,7 +629,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       }
       let sent: Promise<number | null> = Promise.resolve(null)
       beforeMessageSending({
-        chat_id: o.chatId,
+        peer_id: o.peerId,
         thread_root_id: params.threadId ?? null,
         client_msg_id: o.clientMsgId,
         reply_to_id: params.replyToMsgId ?? null,
@@ -694,7 +694,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     ackPendingMessage(ack: AckEvt): MessageOp[] {
       const d = pendingByClientId.get(ack.client_msg_id)
       if (!d) return []
-      const cur = msgsFor(d.chatId).get(d.tempSeq)
+      const cur = msgsFor(d.peerId).get(d.tempSeq)
       if (!cur) return []
       return finalizePendingMessage(ack.client_msg_id, {
         ...cur,

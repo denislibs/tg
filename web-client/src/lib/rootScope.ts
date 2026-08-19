@@ -24,7 +24,7 @@ import type { FolderUpdateEvt } from '@stores/foldersStore'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { PeerOp } from '@core/managers/peersManager'
 import type { DialogOp } from '@core/dialogs/dialogOps'
-import type { User } from '@core/managers/authManager'
+import type { PeerProfile } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
 
@@ -62,13 +62,13 @@ export type BroadcastEvents = {
   // Stage «владение диалогами» (этап 1) — публикует dialogsManager воркера. Без
   // EventMeta по той же причине, что и rt:peer_op: не funnel курсора.
   [RT.dialogOp]: [{ ops: DialogOp[] }]
-  [RT.dialogPin]: [{ chat_id: number; pinned: boolean }, EventMeta?]
-  [RT.dialogArchive]: [{ chat_id: number; archived: boolean }, EventMeta?]
-  [RT.dialogMute]: [{ chat_id: number; muted: boolean }, EventMeta?]
-  [RT.pollUpdate]: [{ chat_id: number; poll: RawPoll }, EventMeta?]
-  [RT.checklistUpdate]: [{ chat_id: number; checklist: RawChecklist }, EventMeta?]
-  [RT.boostUpdate]: [{ chat_id: number; status: RawBoostStatus }, EventMeta?]
-  [RT.giveawayUpdate]: [{ chat_id: number; giveaway: RawGiveaway }, EventMeta?]
+  [RT.dialogPin]: [{ peer_id: PeerId; pinned: boolean }, EventMeta?]
+  [RT.dialogArchive]: [{ peer_id: PeerId; archived: boolean }, EventMeta?]
+  [RT.dialogMute]: [{ peer_id: PeerId; muted: boolean }, EventMeta?]
+  [RT.pollUpdate]: [{ peer_id: PeerId; poll: RawPoll }, EventMeta?]
+  [RT.checklistUpdate]: [{ peer_id: PeerId; checklist: RawChecklist }, EventMeta?]
+  [RT.boostUpdate]: [{ peer_id: PeerId; status: RawBoostStatus }, EventMeta?]
+  [RT.giveawayUpdate]: [{ peer_id: PeerId; giveaway: RawGiveaway }, EventMeta?]
   [RT.balanceUpdate]: [{ balance: number }, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
@@ -85,9 +85,9 @@ export type BroadcastEvents = {
   [RT.livestream]: [LivestreamFrame]
   [RT.botCallbackAnswer]: [BotCallbackAnswerEvt]
   [RT.geoLiveUpdate]: [GeoLiveUpdateEvt]
-  [RT.secretRequest]: [{ chat_id: number; initiator_id: number; responder_id: number }]
-  [RT.secretAccept]: [{ chat_id: number; state?: string; fingerprint?: string[] }]
-  [RT.secretReject]: [{ chat_id: number }]
+  [RT.secretRequest]: [{ peer_id: PeerId; initiator_id: number; responder_id: number }]
+  [RT.secretAccept]: [{ peer_id: PeerId; state?: string; fingerprint?: string[] }]
+  [RT.secretReject]: [{ peer_id: PeerId }]
   [RT.storyNew]: [StoryNewEvt]
   [RT.storyDeleted]: [StoryDeletedEvt]
   [RT.storyReaction]: [StoryReactionEvt]
@@ -115,7 +115,7 @@ export type BroadcastEvents = {
   [RT.stateSynchronized]: [null]
   // Stage 1C.2 (Task 1): `me` — воркер единственный владелец (workerCore.ts::
   // setMe), payload — полный снимок пользователя (null — разлогинен).
-  [RT.me]: [User | null]
+  [RT.me]: [PeerProfile | null]
   // Stage 1C.2 (Task 1, раунд 4): намерение перехода сессии (порт tweb
   // `logging_out`, см. докблок в core/realtime/events.ts). `migrateTo` — id
   // аккаунта, на который переехала сессия; null — активного не осталось.
@@ -144,7 +144,7 @@ export type BroadcastEvents = {
   // императивная лента (порт chat/bubbles.ts:765, 882, 1104, 1860, 1903).
   //
   // `storageKey` у tweb — ключ MessagesStorage (`${peerId}_history`); у нас —
-  // ключ окна (winKey: "chatId" | "chatId:threadRoot"), то же назначение:
+  // ключ окна (winKey: "peerId" | "peerId:threadRoot"), то же назначение:
   // подписчик сверяет его со своим окном и чужие пропускает.
   // `tempId` — id временного (оптимистичного) сообщения, которое заменил
   // серверный ответ (tweb pendingData.tempId); `history_update` в tweb значит

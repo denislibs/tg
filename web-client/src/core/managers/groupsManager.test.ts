@@ -45,8 +45,8 @@ function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn
 }
 
 describe('GroupsManager', () => {
-  it('createGroup POSTs /groups with snake_case body and returns chat_id', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { chat_id: 42 } })
+  it('createGroup POSTs /groups with snake_case body and returns peer_id', async () => {
+    const { rest, posts } = fakeRest({ postReturn: { peer_id: 42 } })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs() })
     const id = await mgr.createGroup({ title: 'My Group', about: 'hi', username: 'mg', isPublic: true })
     expect(id).toBe(42)
@@ -56,7 +56,7 @@ describe('GroupsManager', () => {
   })
 
   it('createGroup defaults about/username/is_public', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { chat_id: 7 } })
+    const { rest, posts } = fakeRest({ postReturn: { peer_id: 7 } })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs() })
     await mgr.createGroup({ title: 'Solo' })
     expect(posts[0].body).toEqual({ title: 'Solo', about: '', username: '', is_public: false, member_ids: [] })
@@ -91,7 +91,7 @@ describe('GroupsManager', () => {
       getReturn: {
         id: 5, type: 'group', title: 'T', username: 'u', about: 'a',
         member_count: 12, is_public: true, my_role: 'admin', my_rights: 7, muted: false,
-        discussion_chat_id: 88,
+        discussion_peer_id: 88,
       },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs() })
@@ -100,13 +100,13 @@ describe('GroupsManager', () => {
     expect(card).toEqual({
       id: 5, type: 'group', title: 'T', username: 'u', about: 'a',
       memberCount: 12, isPublic: true, myRole: 'admin', myRights: 7, muted: false,
-      discussionChatId: 88,
+      discussionPeerId: 88,
       defaultPermissions: 31, slowmodeSeconds: 0, reactionsMode: 'all', reactionsAllowed: [], historyForNew: true, chargeStars: 0,
       signatures: false, signatureProfiles: false,
     })
   })
 
-  it('card defaults discussionChatId to 0 when absent', async () => {
+  it('card defaults discussionPeerId to 0 when absent', async () => {
     const { rest } = fakeRest({
       getReturn: {
         id: 5, type: 'channel', title: 'T', username: 'u', about: 'a',
@@ -115,7 +115,7 @@ describe('GroupsManager', () => {
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs() })
     const card = await mgr.card(5)
-    expect(card.discussionChatId).toBe(0)
+    expect(card.discussionPeerId).toBe(0)
   })
 
   it('promoteAdmin POSTs /chats/{id}/admins with user_id + rights bitmask', async () => {
@@ -260,7 +260,7 @@ describe('GroupsManager', () => {
     const { rest, gets } = fakeRest({
       getReturn: {
         topics: [{
-          id: 1, chat_id: 5, root_msg_id: 10, title: 'T', icon_color: 2,
+          id: 1, peer_id: 5, root_msg_id: 10, title: 'T', icon_color: 2,
           closed: false, created_by: 7, msg_count: 4,
           unread: 3, unread_mentions: 1, muted: true, last_out: true, last_seq: 42,
         }],
@@ -270,13 +270,13 @@ describe('GroupsManager', () => {
     const topics = await mgr.listTopics(5)
     expect(gets[0]).toBe('/chats/5/topics')
     expect(topics[0]).toMatchObject({
-      id: 1, chatId: 5, rootMsgId: 10, unread: 3, unreadMentions: 1, muted: true, lastOut: true, lastMsgSeq: 42,
+      id: 1, peerId: 5, rootMsgId: 10, unread: 3, unreadMentions: 1, muted: true, lastOut: true, lastMsgSeq: 42,
     })
   })
 
   it('listTopics defaults new fields to 0/false when absent', async () => {
     const { rest } = fakeRest({
-      getReturn: { topics: [{ id: 1, chat_id: 5, root_msg_id: 0, title: 'G', icon_color: 0, closed: false, created_by: 7, msg_count: 0 }] },
+      getReturn: { topics: [{ id: 1, peer_id: 5, root_msg_id: 0, title: 'G', icon_color: 0, closed: false, created_by: 7, msg_count: 0 }] },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs() })
     const topics = await mgr.listTopics(5)

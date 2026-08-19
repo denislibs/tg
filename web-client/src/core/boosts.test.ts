@@ -36,7 +36,7 @@ describe('mapBoostStatus', () => {
 describe('mapGiveaway', () => {
   it('маппит приз/победителей/участие', () => {
     const g = mapGiveaway({
-      id: 7, chat_id: 5, prize_kind: 'premium', months: 3, stars: 0,
+      id: 7, peer_id: 5, prize_kind: 'premium', months: 3, stars: 0,
       winners_count: 10, until_date: 123, status: 'active',
       participants: 4, participating: true, winner_ids: null, i_won: false,
     })

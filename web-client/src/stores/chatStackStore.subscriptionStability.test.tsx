@@ -2,7 +2,7 @@
 //
 // Регрессия со стенда (:38080): открытие темы форума роняло приложение в белый
 // экран, React error #185 «Maximum update depth exceeded». Причина —
-// `selectOpenThread` строит НОВЫЙ объект `{chatId, thread}` на каждый вызов;
+// `selectOpenThread` строит НОВЫЙ объект `{peerId, thread}` на каждый вызов;
 // Zustand v5 (`useStore` поверх `useSyncExternalStore`) сравнивает снимок
 // подписки по ССЫЛКЕ, поэтому `useChatStackStore(selectOpenThread)` при глубине
 // стека > 1 (т.е. как раз когда открыт тред) на каждом рендере видит «новый»

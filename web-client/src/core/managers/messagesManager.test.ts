@@ -11,7 +11,7 @@ import { getDocumentFromMessage, type MessageMedia } from '../media/messageMedia
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
   const messages = seqs.map((seq) => ({
-    id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
+    id: seq, peer_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
     reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
   }))
   return { messages, count: messages.length }
@@ -34,7 +34,7 @@ describe('MessagesManager.getHistory', () => {
   it('fetches the newest window and returns ascending messages', async () => {
     const { rest } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
     expect(r.messages.map((m) => m.seq)).toEqual([3, 4, 5]) // ascending for UI
     expect(r.count).toBe(3)
   })
@@ -42,8 +42,8 @@ describe('MessagesManager.getHistory', () => {
   it('serves the second identical request from cache (no extra REST call)', async () => {
     const { rest, calls } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
     expect(calls()).toBe(1)
   })
 
@@ -53,8 +53,8 @@ describe('MessagesManager.getHistory', () => {
       '1:1:40': rawPage([1]), // older inclusive of 1 → just [1] (< limit)
     })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const older = await mgr.getHistory({ chatId: 1, offsetSeq: 1, addOffset: 1, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const older = await mgr.getHistory({ peerId: 1, offsetSeq: 1, addOffset: 1, limit: 40 })
     expect(older.reachedTop).toBe(true)
   })
 
@@ -64,10 +64,10 @@ describe('MessagesManager.getHistory', () => {
   it('does not report reachedTop on re-open when only the newest page is cached', async () => {
     const { rest } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    const first = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    const first = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
     expect(first.reachedTop).toBe(false)
     // simulate re-open: identical initial request, now served from cache
-    const reopen = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    const reopen = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
     expect(reopen.reachedBottom).toBe(true)
     expect(reopen.reachedTop).toBe(false)
   })
@@ -76,12 +76,12 @@ describe('MessagesManager.getHistory', () => {
 describe('MessagesManager.sendMessage', () => {
   it('POSTs and returns the created message, caching it', async () => {
     const created: RawMessage = {
-      id: 10, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
+      id: 10, peer_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T11:00:00Z',
     }
     const rest = { post: async () => created, get: async () => ({ messages: [], count: 0 }) } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    const m = await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1' })
+    const m = await mgr.sendMessage({ peerId: 1, text: 'hey', clientMsgId: 'c1' })
     expect(m.seq).toBe(6)
     expect(m.text).toBe('hey')
   })
@@ -89,12 +89,12 @@ describe('MessagesManager.sendMessage', () => {
   it('forwards reply_to_peer_id for a cross-chat reply', async () => {
     let body: Record<string, unknown> = {}
     const created: RawMessage = {
-      id: 10, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
+      id: 10, peer_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
       reply_to_id: 5, media_id: null, created_at: '2026-06-24T11:00:00Z',
     }
     const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return created } } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1', replyToId: 5, replyToPeerId: 99 })
+    await mgr.sendMessage({ peerId: 1, text: 'hey', clientMsgId: 'c1', replyToId: 5, replyToPeerId: 99 })
     expect(body.reply_to_id).toBe(5)
     expect(body.reply_to_peer_id).toBe(99)
   })
@@ -102,7 +102,7 @@ describe('MessagesManager.sendMessage', () => {
 
 describe('MessagesManager scheduled', () => {
   const rawScheduled = (over: Record<string, unknown> = {}) => ({
-    id: 1, chat_id: 1, sender_id: 1, type: 'text', text: 'later',
+    id: 1, peer_id: 1, sender_id: 1, type: 'text', text: 'later',
     send_at: '2026-07-20T10:00:00Z', created_at: '2026-07-19T10:00:00Z', ...over,
   })
 
@@ -142,17 +142,18 @@ describe('MessagesManager.cacheLive', () => {
   it('preserves cross-chat reply snapshot in the cache entry', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'ответ',
+      peer_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'ответ',
       media_id: null, created_at: '2026-06-24T10:00:00Z',
-      reply_to_id: 999, reply_to_peer_id: 77,
+      reply_to_id: 999, reply_to_peer_id: { _: 'peerChannel', channel_id: 77 },
       reply_snapshot_name: 'Алиса', reply_snapshot_text: 'из другого чата',
     } as NewMessageEvt)
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const live = r.messages.find((m) => m.id === 4)
     expect(live).toBeTruthy()
-    expect(live?.replyToPeerId).toBe(77)
+    // Ключ выводится из КОНСТРУКТОРА `peerChannel` — у чата он отрицательный.
+    expect(live?.replyToPeerId).toBe(-77)
     expect(live?.replySnapshotName).toBe('Алиса')
     expect(live?.replySnapshotText).toBe('из другого чата')
   })
@@ -166,13 +167,13 @@ describe('MessagesManager.cacheLive', () => {
   it('preserves client_msg_id (clientId) of a live message for cache reopen', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
+      peer_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
       media_id: null, created_at: '2026-06-24T10:00:00Z',
       client_msg_id: 'c-live-1',
     } as NewMessageEvt)
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const live = r.messages.find((m) => m.id === 4)
     expect(live).toBeTruthy()
     expect(live?.clientId).toBe('c-live-1')
@@ -180,13 +181,13 @@ describe('MessagesManager.cacheLive', () => {
 
   // Task 3 (Stage 1B.2): cacheLive должен возвращать MessageOp[] — операции для
   // проектора на главном потоке. Обычное сообщение → одна операция insert с
-  // ключом основного окна (тот же формат, что hkey/winKey — просто String(chatId)).
+  // ключом основного окна (тот же формат, что hkey/winKey — просто String(peerId)).
   it('returns one insert op keyed to the main window for an ordinary message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
+      peer_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
       media_id: null, created_at: '2026-06-24T10:00:00Z',
     } as NewMessageEvt)
     expect(ops).toHaveLength(1)
@@ -199,7 +200,7 @@ describe('MessagesManager.cacheLive', () => {
   it('returns two insert ops (main + thread window) when both slices are loaded', async () => {
     // thread window — свой ключ истории (thread_root=100), тоже полная «нижняя»
     // страница (offsetSeq=0 → всегда держит низ).
-    const threadPage = { messages: [{ id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply', thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' } as RawMessage], count: 1 }
+    const threadPage = { messages: [{ id: 2, peer_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply', thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' } as RawMessage], count: 1 }
     const rest = {
       get: async (_path: string, q?: Record<string, string | number>) => {
         if (q?.thread_root === 100) return threadPage
@@ -208,10 +209,10 @@ describe('MessagesManager.cacheLive', () => {
       post: async () => ({}),
     } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
     const ops = mgr.cacheLive({
-      chat_id: 1, msg_id: 5, seq: 5, sender_id: 1, type: 'text', text: 'thread hi',
+      peer_id: 1, msg_id: 5, seq: 5, sender_id: 1, type: 'text', text: 'thread hi',
       media_id: null, created_at: '2026-06-24T10:00:00Z', thread_root_id: 100,
     } as NewMessageEvt)
     expect(ops).toHaveLength(2)
@@ -229,9 +230,9 @@ describe('MessagesManager.cacheLive', () => {
   it('produces no op for a window that did not hold the bottom of history', async () => {
     const { rest } = countingRest({ '10:1:3': rawPage([9, 8, 7]) }) // paging older, full (non-short) page
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 2, offsetSeq: 10, addOffset: 1, limit: 3 })
+    await mgr.getHistory({ peerId: 2, offsetSeq: 10, addOffset: 1, limit: 3 })
     const ops = mgr.cacheLive({
-      chat_id: 2, msg_id: 99, seq: 99, sender_id: 1, type: 'text', text: 'x',
+      peer_id: 2, msg_id: 99, seq: 99, sender_id: 1, type: 'text', text: 'x',
       media_id: null, created_at: '2026-06-24T10:00:00Z',
     } as NewMessageEvt)
     expect(ops).toEqual([])
@@ -255,12 +256,12 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
   // резолвит main-thread — replyTo, и не относящихся к модели Message — pts/unread/
   // sender_name/reply_quote_*, funnel/UI-only поля, не отображаемые в Message).
   const fullEvt: NewMessageEvt = {
-    chat_id: 3, msg_id: 42, seq: 7, sender_id: 9, type: 'photo', text: 'caption',
+    peer_id: 3, msg_id: 42, seq: 7, sender_id: 9, type: 'photo', text: 'caption',
     entities: [{ _: 'messageEntityBold', offset: 0, length: 3 }],
     media_id: 555, created_at: '2026-08-10T13:00:00Z',
     thread_root_id: 100,
-    reply_to_id: 41, reply_to_peer_id: 2, reply_snapshot_name: 'Алиса', reply_snapshot_text: 'оригинал',
-    fwd_from_user_id: 11, fwd_from_chat_id: 12, fwd_from_msg_id: 13, fwd_date: '2026-08-09T10:00:00Z',
+    reply_to_id: 41, reply_to_peer_id: { _: 'peerChannel', channel_id: 2 }, reply_snapshot_name: 'Алиса', reply_snapshot_text: 'оригинал',
+    fwd_from: { _: 'messageFwdHeader', from_id: { _: 'peerUser', user_id: 11 }, date: 1754733600, channel_post: 13 },
     media_unread: true, grouped_id: 'g-1',
     geo: { lat: 1.5, lng: 2.5, title: 'Point', address: 'Addr', live_period: 900 },
     contact: { user_id: 77, name: 'Bob', phone: '+1' },
@@ -286,7 +287,7 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
   it('cacheLive(fullEvt).msg равен fromNewMessageEvt(fullEvt) без исключений', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => fullEvt.sender_id })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
+    await mgr.getHistory({ peerId: 3, offsetSeq: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
     const ops = mgr.cacheLive(fullEvt)
     const main = ops.find((o) => o.key === '3')
     expect(main?.op).toBe('insert')
@@ -302,8 +303,8 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
   it('тред-ключ той же операции тоже несёт полный (не урезанный) msg', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => fullEvt.sender_id })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    await mgr.getHistory({ peerId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 3, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
     const ops = mgr.cacheLive(fullEvt)
     const thread = ops.find((o) => o.key === '3:100')
     expect(thread?.op).toBe('insert')
@@ -322,28 +323,28 @@ describe('MessagesManager.cacheLive — паритет полей с fromNewMess
 // поле, отсутствующем в ОБОИХ, остаётся зелёным.
 describe('MessagesManager.cacheLive — send_as живого кадра', () => {
   const sendAsEvt: NewMessageEvt = {
-    chat_id: 3, msg_id: 43, seq: 8, sender_id: 9, type: 'text', text: 'пост от канала',
+    peer_id: 3, msg_id: 43, seq: 8, sender_id: 9, type: 'text', text: 'пост от канала',
     media_id: null, created_at: '2026-08-10T13:05:00Z',
-    send_as: { chat_id: 77, title: 'Мой канал', photo_id: 5 },
+    send_as: { peer_id: 77, title: 'Мой канал', photo_id: 5 },
   }
 
   it('sendAs доезжает до вставляемого сообщения, и оно считается ВХОДЯЩИМ у автора', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     // getMeId — реальный отправитель кадра: без send-as это было бы исходящее.
     const mgr = newMessagesManager({ rest, getMeId: () => sendAsEvt.sender_id })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cacheLive(sendAsEvt)
     const main = ops.find((o) => o.key === '3')
     expect(main?.op).toBe('insert')
     const msg = main && main.op === 'insert' ? main.msg : null
-    expect(msg?.sendAs).toEqual({ chatId: 77, title: 'Мой канал', photoId: 5 })
+    expect(msg?.sendAs).toEqual({ peerId: 77, title: 'Мой канал', photoId: 5 })
     expect(msg?.out).toBe(false)
   })
 
   it('тот же кадр без send_as — обычное исходящее', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => sendAsEvt.sender_id })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cacheLive({ ...sendAsEvt, send_as: undefined })
     const main = ops.find((o) => o.key === '3')
     const msg = main && main.op === 'insert' ? main.msg : null
@@ -364,7 +365,7 @@ describe('MessagesManager.cacheLive — send_as живого кадра', () => 
 describe('MessagesManager.cacheEdit — reply_markup', () => {
   function pageWithMarkup(): { messages: RawMessage[]; count: number } {
     const messages = [3, 2, 1].map((seq) => ({
-      id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
+      id: seq, peer_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
       reply_markup: seq === 2 ? { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] } : undefined,
     }) as RawMessage)
@@ -374,13 +375,13 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
   it('maps reply_markup into the SSOT when the edit carries a new keyboard', async () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
-    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const before = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
     mgr.cacheEdit({
-      chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
+      peer_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
       reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] },
     })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const edited = r.messages.find((m) => m.id === 2)
     expect(edited?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] })
   })
@@ -388,10 +389,10 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
   it('clears replyMarkup in the SSOT when the edit carries no reply_markup (removed)', async () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
-    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const before = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
-    mgr.cacheEdit({ chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z' })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    mgr.cacheEdit({ peer_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z' })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const edited = r.messages.find((m) => m.id === 2)
     expect(edited?.replyMarkup).toBeUndefined()
   })
@@ -411,7 +412,7 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
 function restWithThreadOverlap(): RestClient {
   const threadPage = {
     messages: [{
-      id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply',
+      id: 2, peer_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply',
       thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
     } as RawMessage],
     count: 1,
@@ -429,8 +430,8 @@ describe('MessagesManager.cacheWebPage', () => {
   it('returns a patch op carrying the mapped web page for an existing message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { url: 'https://x', site_name: 'X', title: 'Title' } }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: WebPageUpdateEvt = { peer_id: 1, msg_id: 2, seq: 2, web_page: { url: 'https://x', site_name: 'X', title: 'Title' } }
     const ops = mgr.cacheWebPage(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { webPage: mapWebPage(evt.web_page) } }])
   })
@@ -438,8 +439,8 @@ describe('MessagesManager.cacheWebPage', () => {
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheWebPage({ chat_id: 1, msg_id: 999, seq: 999, web_page: { title: 'Title' } })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheWebPage({ peer_id: 1, msg_id: 999, seq: 999, web_page: { title: 'Title' } })
     expect(ops).toEqual([])
   })
 
@@ -449,9 +450,9 @@ describe('MessagesManager.cacheWebPage', () => {
   // одного, и окно треда осталось бы со старыми данными.
   it('returns one patch op per window when the message is visible in both the main and thread windows', async () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { title: 'Title' } }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const evt: WebPageUpdateEvt = { peer_id: 1, msg_id: 2, seq: 2, web_page: { title: 'Title' } }
     const ops = mgr.cacheWebPage(evt)
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
@@ -466,8 +467,8 @@ describe('MessagesManager.cacheFactCheck', () => {
   it('returns a patch op carrying the mapped fact-check for an existing message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: FactCheckUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, factcheck: { text: 'проверено', country: 'RU' } }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: FactCheckUpdateEvt = { peer_id: 1, msg_id: 2, seq: 2, factcheck: { text: 'проверено', country: 'RU' } }
     const ops = mgr.cacheFactCheck(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: mapFactCheck(evt.factcheck!) } }])
   })
@@ -477,16 +478,16 @@ describe('MessagesManager.cacheFactCheck', () => {
   it('returns fields.factCheck: undefined when the fact-check is removed', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 2, seq: 2, factcheck: null })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ peer_id: 1, msg_id: 2, seq: 2, factcheck: null })
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: undefined } }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 999, seq: 999, factcheck: null })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ peer_id: 1, msg_id: 999, seq: 999, factcheck: null })
     expect(ops).toEqual([])
   })
 })
@@ -495,7 +496,7 @@ describe('MessagesManager.cacheMediaRead', () => {
   function voicePage(unread: boolean) {
     return {
       messages: [{
-        id: 7, chat_id: 1, seq: 7, sender_id: 1, type: 'voice', text: '',
+        id: 7, peer_id: 1, seq: 7, sender_id: 1, type: 'voice', text: '',
         reply_to_id: null, media_id: 5, created_at: '2026-06-24T10:00:00Z', media_unread: unread,
       } as RawMessage],
       count: 1,
@@ -505,8 +506,8 @@ describe('MessagesManager.cacheMediaRead', () => {
   it('returns a patch op clearing mediaUnread for an unread voice message', async () => {
     const { rest } = countingRest({ '0:0:40': voicePage(true) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: MediaReadEvt = { chat_id: 1, msg_id: 7 }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: MediaReadEvt = { peer_id: 1, msg_id: 7 }
     const ops = mgr.cacheMediaRead(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }])
   })
@@ -517,16 +518,16 @@ describe('MessagesManager.cacheMediaRead', () => {
   it('produces no op when the message is already read (idempotent replay)', async () => {
     const { rest } = countingRest({ '0:0:40': voicePage(false) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 7 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ peer_id: 1, msg_id: 7 })
     expect(ops).toEqual([])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 999 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ peer_id: 1, msg_id: 999 })
     expect(ops).toEqual([])
   })
 })
@@ -535,7 +536,7 @@ describe('MessagesManager.cachePaidUnlock', () => {
   it('returns a patch op carrying the media fields + paidMedia (not a whole-message replace)', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     // Кадр разблокировки несёт ВЛОЖЕНИЕ целиком: у заблокированного сервер
     // отдавал псевдо-фото из одной stripped-ступени (LockedPlaceholder), здесь
     // приезжает настоящая лестница.
@@ -551,7 +552,7 @@ describe('MessagesManager.cachePaidUnlock', () => {
       },
     }
     const evt = {
-      chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
+      peer_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
       media_id: 55, created_at: '2026-06-24T10:00:00Z', media,
       paid_media: { price: 10, locked: false },
     } as unknown as NewMessageEvt
@@ -574,9 +575,9 @@ describe('MessagesManager.cachePaidUnlock', () => {
   it('переносит вложение целиком, с выведенным типом документа', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cachePaidUnlock({
-      chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'video', text: '',
+      peer_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'video', text: '',
       media_id: 55, created_at: '2026-06-24T10:00:00Z',
       media: {
         _: 'messageMediaDocument',
@@ -602,8 +603,8 @@ describe('MessagesManager.cachePaidUnlock', () => {
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePaidUnlock({ chat_id: 1, msg_id: 999, seq: 999, sender_id: 1, type: 'photo', text: '', media_id: null, created_at: '2026-06-24T10:00:00Z' } as NewMessageEvt)
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePaidUnlock({ peer_id: 1, msg_id: 999, seq: 999, sender_id: 1, type: 'photo', text: '', media_id: null, created_at: '2026-06-24T10:00:00Z' } as NewMessageEvt)
     expect(ops).toEqual([])
   })
 })
@@ -612,8 +613,8 @@ describe('MessagesManager.cacheDelete', () => {
   it('returns a remove op for the window holding the deleted message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: DeleteMessageEvt = { chat_id: 1, msg_id: 2, seq: 2, for_me: false }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt: DeleteMessageEvt = { peer_id: 1, msg_id: 2, seq: 2, for_me: false }
     const ops = mgr.cacheDelete(evt)
     expect(ops).toEqual([{ op: 'remove', key: '1', msgId: 2 }])
   })
@@ -621,8 +622,8 @@ describe('MessagesManager.cacheDelete', () => {
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 999, seq: 999, for_me: false })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheDelete({ peer_id: 1, msg_id: 999, seq: 999, for_me: false })
     expect(ops).toEqual([])
   })
 
@@ -631,9 +632,9 @@ describe('MessagesManager.cacheDelete', () => {
   // основное окно, ни окно треда (регресс, который эта проверка ловит).
   it('returns one remove op per window when the message is visible in both the main and thread windows', async () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 2, seq: 2, for_me: false })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    const ops = mgr.cacheDelete({ peer_id: 1, msg_id: 2, seq: 2, for_me: false })
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
     for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
@@ -654,8 +655,8 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
     const rest = { ...overlap, del: async () => ({ ok: true }) } as unknown as RestClient
     const broadcast = vi.fn()
     const mgr = newMessagesManager({ rest, broadcast })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
 
     await mgr.deleteMessage(1, 2, false)
 
@@ -672,7 +673,7 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
     const rest = { ...(base as unknown as { get: RestClient['get']; post: RestClient['post'] }), del: async () => ({ ok: true }) } as unknown as RestClient
     const broadcast = vi.fn()
     const mgr = newMessagesManager({ rest, broadcast })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
 
     await mgr.deleteMessage(1, 999, false)
 
@@ -696,7 +697,7 @@ const rawPoll = (overrides?: Partial<RawPoll>): RawPoll => ({
 function pollPage(msgId: number, poll: RawPoll) {
   return {
     messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'poll', text: '',
+      id: msgId, peer_id: 1, seq: msgId, sender_id: 1, type: 'poll', text: '',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', poll,
     } as RawMessage],
     count: 1,
@@ -708,8 +709,8 @@ describe('MessagesManager.cachePoll', () => {
     // SSOT уже держит МОЙ выбор (voted вариант 0) — live-кадр его не несёт.
     const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ my_votes: [0] })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, poll: rawPoll({ counts: [1, 1], total_voters: 2, my_votes: [] }) }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { peer_id: 1, poll: rawPoll({ counts: [1, 1], total_voters: 2, my_votes: [] }) }
     const ops = mgr.cachePoll(evt)
     // Операция несёт ровно mapPoll(evt.poll) — миллионном myVotes СВОЕГО события
     // (пустой, как обычно шлёт сервер в общем broadcast), а НЕ [0] из SSOT.
@@ -720,8 +721,8 @@ describe('MessagesManager.cachePoll', () => {
   it('produces no op when no message in the SSOT carries this poll id', async () => {
     const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ id: 5 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePoll({ chat_id: 1, poll: rawPoll({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePoll({ peer_id: 1, poll: rawPoll({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
@@ -735,7 +736,7 @@ const rawChecklist = (overrides?: Partial<RawChecklist>): RawChecklist => ({
 function checklistPage(msgId: number, checklist: RawChecklist) {
   return {
     messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'checklist', text: '',
+      id: msgId, peer_id: 1, seq: msgId, sender_id: 1, type: 'checklist', text: '',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', checklist,
     } as RawMessage],
     count: 1,
@@ -746,8 +747,8 @@ describe('MessagesManager.cacheChecklist', () => {
   it('returns a patch op carrying the mapped checklist (no local field — full replace is correct here)', async () => {
     const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist()) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, checklist: rawChecklist({ items: [{ id: 1, text: 'i1', marked_by: [1] }] }) }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { peer_id: 1, checklist: rawChecklist({ items: [{ id: 1, text: 'i1', marked_by: [1] }] }) }
     const ops = mgr.cacheChecklist(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 3, fields: { checklist: mapChecklist(evt.checklist) } }])
   })
@@ -755,14 +756,14 @@ describe('MessagesManager.cacheChecklist', () => {
   it('produces no op when no message in the SSOT carries this checklist id', async () => {
     const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist({ id: 8 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheChecklist({ chat_id: 1, checklist: rawChecklist({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheChecklist({ peer_id: 1, checklist: rawChecklist({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
 
 const rawGiveaway = (overrides?: Partial<RawGiveaway>): RawGiveaway => ({
-  id: 9, chat_id: 1, prize_kind: 'premium', months: 3, stars: 0, winners_count: 1,
+  id: 9, peer_id: 1, prize_kind: 'premium', months: 3, stars: 0, winners_count: 1,
   until_date: 0, status: 'active', participants: 4, participating: false, i_won: false,
   ...overrides,
 })
@@ -770,7 +771,7 @@ const rawGiveaway = (overrides?: Partial<RawGiveaway>): RawGiveaway => ({
 function giveawayPage(msgId: number, giveaway: RawGiveaway) {
   return {
     messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'giveaway', text: '',
+      id: msgId, peer_id: 1, seq: msgId, sender_id: 1, type: 'giveaway', text: '',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', giveaway,
     } as RawMessage],
     count: 1,
@@ -782,8 +783,8 @@ describe('MessagesManager.cacheGiveaway', () => {
     // SSOT уже держит МОЁ участие — live-кадр его не несёт (обычный broadcast без персонализации).
     const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ participating: true, i_won: false })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, giveaway: rawGiveaway({ participants: 5, participating: false, i_won: false }) }
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const evt = { peer_id: 1, giveaway: rawGiveaway({ participants: 5, participating: false, i_won: false }) }
     const ops = mgr.cacheGiveaway(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 4, fields: { giveaway: mapGiveaway(evt.giveaway) } }])
     expect(ops[0].op === 'patch' && ops[0].fields.giveaway?.participating).toBe(false)
@@ -792,8 +793,8 @@ describe('MessagesManager.cacheGiveaway', () => {
   it('produces no op when no message in the SSOT carries this giveaway id', async () => {
     const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ id: 9 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheGiveaway({ chat_id: 1, giveaway: rawGiveaway({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheGiveaway({ peer_id: 1, giveaway: rawGiveaway({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
@@ -807,8 +808,8 @@ describe('MessagesManager.cacheGiveaway', () => {
 describe('MessagesManager: `out` ставит владелец на границе маппинга', () => {
   const mixedPage = (): { messages: RawMessage[]; count: number } => ({
     messages: [
-      { id: 2, chat_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
-      { id: 1, chat_id: 1, seq: 1, sender_id: 2, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
+      { id: 2, peer_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
+      { id: 1, peer_id: 1, seq: 1, sender_id: 2, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' },
     ],
     count: 2,
   })
@@ -816,24 +817,24 @@ describe('MessagesManager: `out` ставит владелец на границ
   it('страница истории: моё → out=true, чужое → out=false', async () => {
     const { rest } = countingRest({ '0:0:40': mixedPage() })
     const mgr = newMessagesManager({ rest, getMeId: () => 7 })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     expect(r.messages.map((m) => [m.seq, m.out])).toEqual([[1, false], [2, true]])
   })
 
   it('send-as: пост от имени канала — входящий, хотя отправитель я', async () => {
     const page = mixedPage()
-    page.messages[0].send_as = { chat_id: 9, title: 'Канал' }
+    page.messages[0].send_as = { peer_id: 9, title: 'Канал' }
     const { rest } = countingRest({ '0:0:40': page })
     const mgr = newMessagesManager({ rest, getMeId: () => 7 })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     expect(r.messages.find((m) => m.seq === 2)?.out).toBe(false)
   })
 
   it('повторная выдача из кэша (без сети) несёт тот же out', async () => {
     const { rest, calls } = countingRest({ '0:0:40': mixedPage() })
     const mgr = newMessagesManager({ rest, getMeId: () => 7 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const cached = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const cached = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
     expect(cached.cached).toBe(true)
     expect(calls()).toBe(1)
     expect(cached.messages.map((m) => m.out)).toEqual([false, true])
@@ -870,7 +871,7 @@ describe('MessagesManager: `out` ставит владелец на границ
     const mgr = newMessagesManager({ rest, getMeId: () => meId, meReady: () => ready })
 
     setTimeout(() => { meId = 7; release() }, 0)
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const r = await mgr.getHistory({ peerId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
 
     expect(r.messages.map((m) => m.out)).toEqual([false, true])
   })

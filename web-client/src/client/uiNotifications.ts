@@ -9,11 +9,12 @@ import { useNotifyStore, notifyTypeForChat, isDialogMuted } from '../stores/noti
 import { useChatsStore } from '../stores/chatsStore'
 import { useI18nStore } from '../i18n'
 import { mediaLabel } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import { playIncoming } from '../core/audio/sounds'
 import { incNotificationsCount } from './appBadge'
 
 export interface IncomingMsg {
-  chat_id: number
+  peer_id: number
   sender_id: number
   type?: string
   text: string
@@ -22,7 +23,7 @@ export interface IncomingMsg {
 export function notifyIncomingMessage(evt: IncomingMsg): void {
   const s = useChatsStore.getState()
   if (evt.sender_id === s.meId) return
-  const dialog = s.dialogs.find((d) => d.chatId === evt.chat_id)
+  const dialog = s.dialogs.find((d) => d.peerId === evt.peer_id)
   const notifySettings = useNotifyStore.getState().settings
   // Правило «заглушён» — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
   // пин stores/noDuplicateMuteRule.test.ts). `preview` ниже — другая настройка,
@@ -31,7 +32,7 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   const typeSettings = notifySettings[notifyTypeForChat(dialog?.type)]
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране).
-  if (s.activeChatId === evt.chat_id && !document.hidden) return
+  if (s.activePeerId === evt.peer_id && !document.hidden) return
 
   // Счётчик для мигающего заголовка вкладки — до проверок звука/разрешения, как в
   // tweb (notify() инкрементит до `settings.desktop`/Notification.permission).
@@ -45,7 +46,8 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
 
   const t = useI18nStore.getState().t
-  const chatTitle = dialog?.peer?.displayName || dialog?.title || 'Telegram'
+  // Имя собирает клиент — `display_name` с провода убран.
+  const chatTitle = (dialog?.peer ? getUserTitle(dialog.peer) : dialog?.title) || 'Telegram'
   const body = typeSettings.preview ? evt.text || t(mediaLabel(evt.type) || 'New notification') : t('New notification')
   void show(chatTitle, body, evt)
 }
@@ -55,14 +57,15 @@ async function show(chatTitle: string, body: string, evt: IncomingMsg): Promise<
     if (!('serviceWorker' in navigator)) return
     // tweb в группах пишет отправителя в заголовок: «Sender @ Chat»
     let title = chatTitle
-    const dialog = useChatsStore.getState().dialogs.find((d) => d.chatId === evt.chat_id)
+    const dialog = useChatsStore.getState().dialogs.find((d) => d.peerId === evt.peer_id)
     if (dialog?.type === 'group') {
       const { managers } = startClient()
       const [u] = await managers.peers.getUsers([evt.sender_id]).catch(() => [])
-      if (u?.displayName) title = `${u.displayName} @ ${chatTitle}`
+      const senderTitle = u ? getUserTitle(u) : ''
+      if (senderTitle) title = `${senderTitle} @ ${chatTitle}`
     }
     const reg = await navigator.serviceWorker.ready
-    await reg.showNotification(title, { body, tag: `chat-${evt.chat_id}`, data: { chatId: evt.chat_id } })
+    await reg.showNotification(title, { body, tag: `chat-${evt.peer_id}`, data: { peerId: evt.peer_id } })
   } catch {
     /* нет SW / показ запрещён — молча пропускаем */
   }

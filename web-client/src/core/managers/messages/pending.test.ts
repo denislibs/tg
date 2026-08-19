@@ -28,17 +28,17 @@ import type { UploadArgs } from '../mediaManager'
 function makeCtx() {
   const slices = new Map<string, SlicedArray<number>>()
   const msgsByChat = new Map<number, Map<number, Message>>()
-  const hkey = (chatId: number, threadRoot?: number | null) =>
-    threadRoot ? `${chatId}:${threadRoot}` : String(chatId)
-  const msgsFor = (chatId: number) => {
-    let c = msgsByChat.get(chatId)
-    if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
+  const hkey = (peerId: number, threadRoot?: number | null) =>
+    threadRoot ? `${peerId}:${threadRoot}` : String(peerId)
+  const msgsFor = (peerId: number) => {
+    let c = msgsByChat.get(peerId)
+    if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
     return c
   }
   const emitted: MessageOp[][] = []
   const sends: WireSendArgs[] = []
   const uploads: UploadArgs[] = []
-  const typings: { chatId: number; action: string }[] = []
+  const typings: { peerId: number; action: string }[] = []
   const progress: { id: string; loaded: number; total: number; done?: boolean }[] = []
   const cancelled: string[] = []
   const order: string[] = []
@@ -56,7 +56,7 @@ function makeCtx() {
       send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
       upload: (a: UploadArgs) => h.upload(a),
       cancelUpload: (id: string) => { cancelled.push(id) },
-      sendTyping: (chatId: number, action: string) => { typings.push({ chatId, action }) },
+      sendTyping: (peerId: number, action: string) => { typings.push({ peerId, action }) },
       uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => { progress.push({ id, loaded, total, done }) },
     },
   }
@@ -73,7 +73,7 @@ function openWindow(slices: Map<string, SlicedArray<number>>, key: string, seqs:
 }
 
 const evt = (over: Partial<PendingNewEvt> = {}): PendingNewEvt => ({
-  chat_id: 1, client_msg_id: 'c-1', sender_id: 42, text: 'привет', type: 'text', ...over,
+  peer_id: 1, client_msg_id: 'c-1', sender_id: 42, text: 'привет', type: 'text', ...over,
 })
 
 describe('pending: появление бабла', () => {
@@ -385,8 +385,8 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      chatId: 1, text: 'hi', clientMsgId: 'c1', threadId: 7, type: 'contact', contactUserId: 42,
-      optimistic: { senderId: 5, contactName: 'Маша', sendAs: { chatId: 9, title: 'Канал' } },
+      peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: 7, type: 'contact', contactUserId: 42,
+      optimistic: { senderId: 5, contactName: 'Маша', sendAs: { peerId: 9, title: 'Канал' } },
     })
 
     // порядок обязателен: сперва бабл на экран, потом сеть
@@ -395,15 +395,15 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(msg.clientId).toBe('c1')
     expect(msg.senderId).toBe(5)
     expect(msg.contact).toEqual({ userId: 42, name: 'Маша', phone: '' })
-    expect(msg.sendAs).toEqual({ chatId: 9, title: 'Канал' })
+    expect(msg.sendAs).toEqual({ peerId: 9, title: 'Канал' })
     // на провод уходят только проводные поля — служебный optimistic отрезан
     // Пакет параметров (порт tweb MessageSendingParams) проставляет свои поля
     // ВСЕГДА — пусто = явный null/false, а не «поля нет»: так путь отправки не
     // может тихо не передать поле (core/managers/messages/sendingParams.ts).
     expect(h.sends).toEqual([{
-      chatId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
+      peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
     }])
   })
 
@@ -414,7 +414,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    await p.sendText({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
 
     expect(h.emitted).toEqual([])
     expect(h.sends).toHaveLength(1)
@@ -427,7 +427,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const h = makeCtx()
     const p = newPendingMethods(h.ctx)
 
-    await p.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1', optimistic: { senderId: 5 } })
+    await p.sendText({ peerId: 1, text: 'hi', clientMsgId: 'c1', optimistic: { senderId: 5 } })
 
     expect(h.emitted).toEqual([])
     expect(h.sends).toHaveLength(1)
@@ -443,7 +443,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     const r = await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
       fileName: 'photo.jpg', caption: 'подпись', width: 640, height: 480, isMedia: true,
       uploadAction: 'upload_photo',
     })
@@ -471,10 +471,10 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     expect(getMediaFromMessage({ media: patch.fields.media })!.id).toBe(909)
     // ОДИН кадр, и он несёт media_id (двухфазной отправки awaitMedia больше нет)
     expect(h.sends).toEqual([{
-      chatId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
+      peerId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
       groupedId: undefined, paidMediaPrice: null, mediaId: 909, mediaSpoiler: undefined,
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
     }])
   })
 
@@ -485,7 +485,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('pdf', 'application/pdf'), type: 'document', fileName: 'оферта.pdf' })
+    await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file('pdf', 'application/pdf'), type: 'document', fileName: 'оферта.pdf' })
 
     const bubble = (h.emitted[0][0] as { msg: Message }).msg
     expect(bubble.localUrl).toBeUndefined()
@@ -502,9 +502,9 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true, uploadAction: 'upload_photo' })
+    await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true, uploadAction: 'upload_photo' })
 
-    expect(h.typings[0]).toEqual({ chatId: 1, action: 'upload_photo' })
+    expect(h.typings[0]).toEqual({ peerId: 1, action: 'upload_photo' })
     expect(h.progress[0]).toEqual({ id: 'c1', loaded: 0, total: 1, done: undefined })
     expect(h.progress[h.progress.length - 1]).toEqual({ id: 'c1', loaded: 0, total: 0, done: true })
   })
@@ -517,7 +517,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     h.upload.mockRejectedValueOnce(new Error('boom'))
     const p = newPendingMethods(h.ctx)
 
-    const r = await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+    const r = await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
 
     expect(r).toEqual({ mediaId: null })
     expect(h.sends).toEqual([])
@@ -535,7 +535,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     h.upload.mockImplementationOnce(() => new Promise<number>((_, rej) => { rejectUpload = rej }))
     const p = newPendingMethods(h.ctx)
 
-    const sending = p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+    const sending = p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
     await p.cancelPending({ clientMsgId: 'c1' })
 
     expect(h.cancelled).toEqual(['c1']) // аплоад оборван владельцем
@@ -556,7 +556,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
       isMedia: true, groupedId: 'g7', paidMediaPrice: 50, caption: 'подпись', threadId: null,
     })
 
@@ -574,7 +574,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
       isMedia: true, spoiler: true, threadId: null,
     })
 
@@ -591,7 +591,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
       isMedia: true, threadId: null,
     })
 
@@ -613,7 +613,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const peaks = new Uint8Array([0x1f, 0x00, 0x2a, 0xff, 0x07])
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('ogg', 'audio/ogg'),
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file('ogg', 'audio/ogg'),
       type: 'voice', duration: 7, waveform: peaks,
     })
 
@@ -640,7 +640,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
       fileName: 'tenor.mp4', width: 320, height: 240, isMedia: true, isAnimated: true,
     })
 
@@ -656,7 +656,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file('mp4', 'video/mp4'), type: 'video',
       fileName: 'tenor.mp4', width: 320, height: 240, duration: 4, isMedia: true,
     })
 
@@ -675,7 +675,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 5, file: file('webm', 'video/webm'), type: 'roundVideo', duration: 5,
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file('webm', 'video/webm'), type: 'roundVideo', duration: 5,
     })
 
     const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: Message }).msg)!
@@ -693,7 +693,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
+    await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true })
 
     const bubble = (h.emitted[0][0] as { msg: Message }).msg
     expect(bubble.media?._).toBe('messageMediaPhoto')
@@ -716,7 +716,7 @@ describe('sendText с готовым media_id: вложение под НАСТ�
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      chatId: 1, text: '', clientMsgId: 'c1', mediaId: 777, type: 'video',
+      peerId: 1, text: '', clientMsgId: 'c1', mediaId: 777, type: 'video',
       optimistic: {
         senderId: 5,
         media: { width: 320, height: 240, mime: 'video/mp4', size: 100, name: 'g.mp4', animated: true },
@@ -737,7 +737,7 @@ describe('двухфазной отправки медиа не существу
     h.upload.mockImplementationOnce(() => new Promise<number>((res) => { finishUpload = res }))
     const p = newPendingMethods(h.ctx)
 
-    const sending = p.sendFile({ chatId: 1, clientMsgId: 'c1', senderId: 5, file: new Blob(['x']), type: 'photo', isMedia: true })
+    const sending = p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: new Blob(['x']), type: 'photo', isMedia: true })
     await Promise.resolve()
     // бабл уже на экране, кадр ещё нет — но придерживает его сам sendFile, а не
     // карта awaitingMedia, ждущая второго RPC с вкладки
@@ -760,7 +760,7 @@ describe('двухфазной отправки медиа не существу
 describe('pending: оптимистичный бабл несёт ответ ДО подтверждения сервера', () => {
   /** Оригинал, лежащий в SSOT воркера — из него и резолвится превью ответа. */
   const original = (): Message => ({
-    id: 77, chatId: 1, seq: 10, senderId: 9, type: 'text', text: 'оригинал',
+    id: 77, peerId: 1, seq: 10, senderId: 9, type: 'text', text: 'оригинал',
     replyToId: null, mediaId: null, createdAt: '2026-01-01T00:00:00Z',
   } as Message)
 
@@ -823,7 +823,7 @@ describe('pending: оптимистичный бабл несёт ответ Д�
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      chatId: 1, text: 'ответ', clientMsgId: 'c1',
+      peerId: 1, text: 'ответ', clientMsgId: 'c1',
       replyToMsgId: 77, replyToQuote: { text: 'ригин', offset: 1 }, threadId: null,
       silent: true, effect: 'hearts', sendAsPeerId: 3,
       optimistic: { senderId: 42 },
@@ -831,7 +831,7 @@ describe('pending: оптимистичный бабл несёт ответ Д�
 
     expect(h.sends[0]).toMatchObject({
       replyToId: 77, replyQuoteText: 'ригин', replyQuoteOffset: 1,
-      silent: true, effect: 'hearts', sendAsChatId: 3,
+      silent: true, effect: 'hearts', sendAsPeerId: 3,
     })
     expect((h.emitted[0][0] as { msg: Message }).msg.replyTo?.quoteText).toBe('ригин')
   })
@@ -843,7 +843,7 @@ describe('pending: оптимистичный бабл несёт ответ Д�
     const p = newPendingMethods(h.ctx)
 
     await p.sendFile({
-      chatId: 1, clientMsgId: 'c1', senderId: 42, file: new Blob(['x']), type: 'photo',
+      peerId: 1, clientMsgId: 'c1', senderId: 42, file: new Blob(['x']), type: 'photo',
       isMedia: true, replyToMsgId: 77, replyToQuote: { text: 'ригин', offset: 1 }, silent: true,
     })
 
@@ -859,7 +859,7 @@ describe('pending: оптимистичный бабл несёт ответ Д�
     openWindow(h.slices, '1', [10])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendText({ chatId: 1, text: 'x', clientMsgId: 'c1', replyToQuote: { text: 'ригин', offset: 1 } })
+    await p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c1', replyToQuote: { text: 'ригин', offset: 1 } })
 
     expect(h.sends[0]).toMatchObject({ replyToId: null, replyQuoteText: null, replyQuoteOffset: null })
   })

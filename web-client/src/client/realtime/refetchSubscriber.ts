@@ -46,7 +46,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // Pin/unpin: перечитать пины чата (usePinnedBar читает из стора).
   rootScope.addEventListener(RT.pinMessage, (raw) => {
     const e = raw as PinMessageEvt
-    void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
+    void managers.messages.listPins(e.peer_id).then((p) => usePinsStore.getState().setPins(e.peer_id, p))
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
   // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число
@@ -64,7 +64,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
   // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === evt.peer_id)) {
       scheduleChatsReload(managers)
     }
   })

@@ -31,22 +31,22 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectS
   })
 }
 
-export function saveKey(chatId: number, v: StoredKey): Promise<void> {
-  return tx(KEYS, 'readwrite', (s) => s.put(v, chatId)).then(() => undefined)
+export function saveKey(peerId: number, v: StoredKey): Promise<void> {
+  return tx(KEYS, 'readwrite', (s) => s.put(v, peerId)).then(() => undefined)
 }
-export async function loadKey(chatId: number): Promise<StoredKey | null> {
-  return (await tx<StoredKey | undefined>(KEYS, 'readonly', (s) => s.get(chatId))) ?? null
+export async function loadKey(peerId: number): Promise<StoredKey | null> {
+  return (await tx<StoredKey | undefined>(KEYS, 'readonly', (s) => s.get(peerId))) ?? null
 }
-export function deleteKey(chatId: number): Promise<void> {
-  return tx(KEYS, 'readwrite', (s) => s.delete(chatId)).then(() => undefined)
+export function deleteKey(peerId: number): Promise<void> {
+  return tx(KEYS, 'readwrite', (s) => s.delete(peerId)).then(() => undefined)
 }
 
-export function savePending(chatId: number, priv: CryptoKey): Promise<void> {
-  return tx(PENDING, 'readwrite', (s) => s.put(priv, chatId)).then(() => undefined)
+export function savePending(peerId: number, priv: CryptoKey): Promise<void> {
+  return tx(PENDING, 'readwrite', (s) => s.put(priv, peerId)).then(() => undefined)
 }
-export async function loadPending(chatId: number): Promise<CryptoKey | null> {
-  return (await tx<CryptoKey | undefined>(PENDING, 'readonly', (s) => s.get(chatId))) ?? null
+export async function loadPending(peerId: number): Promise<CryptoKey | null> {
+  return (await tx<CryptoKey | undefined>(PENDING, 'readonly', (s) => s.get(peerId))) ?? null
 }
-export function clearPending(chatId: number): Promise<void> {
-  return tx(PENDING, 'readwrite', (s) => s.delete(chatId)).then(() => undefined)
+export function clearPending(peerId: number): Promise<void> {
+  return tx(PENDING, 'readwrite', (s) => s.delete(peerId)).then(() => undefined)
 }

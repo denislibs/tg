@@ -1,5 +1,6 @@
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapUser, type Birthday, type PhoneVisibility, type RawUser, type User } from './authManager'
+import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
+import type { Birthday } from '../peers/peer'
 
 // A partial profile edit. `undefined` leaves a field unchanged; for birthday,
 // `null` explicitly clears it.
@@ -8,7 +9,10 @@ export interface ProfileUpdate {
   lastName?: string
   bio?: string
   birthday?: Birthday | null
-  phoneVisibility?: PhoneVisibility
+  // `phoneVisibility` отсюда убран: видимость номера — ПРАВИЛО ПРИВАТНОСТИ
+  // (`privacyManager`, ключ `phone_number`), а не поле профиля. Прежде это были
+  // два независимых механизма на один вопрос, и они не синхронизировались;
+  // колонка на бэкенде удалена миграцией (решение №5 разбора).
 }
 
 export interface ProfileDeps {
@@ -17,31 +21,30 @@ export interface ProfileDeps {
    * успешную мутацию профиля, воркер публикует свежего пользователя всем
    * вкладкам (rt:me). Опционально: юнит-тесты менеджера конструируют его без
    * воркера (см. profileManager.test.ts). */
-  onMeChanged?: (u: User) => void
+  onMeChanged?: (u: PeerProfile) => void
   /** Текущий кэш `me` воркера. Нужен addPhoto: сервер возвращает только фото
    * (id/url), не всего пользователя, — broadcast обязан нести полный снимок,
    * поэтому merge делаем здесь тем же способом, что раньше делала витрина
    * (`{ ...me, avatarUrl: photo.url }`, см. EditProfile.tsx). */
-  getMe?: () => User | null
+  getMe?: () => PeerProfile | null
 }
 
 // SetUsernameResult is a discriminated outcome so the 409/400 cases survive the
 // SharedWorker RPC boundary (where HttpError identity would be lost).
 export type SetUsernameResult =
-  | { user: User }
+  | { user: PeerProfile }
   | { taken: true }
   | { invalid: true }
 
 export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
   return {
-    async update(u: ProfileUpdate): Promise<User> {
+    async update(u: ProfileUpdate): Promise<PeerProfile> {
       const body: Record<string, unknown> = {}
       if (u.firstName !== undefined) body.first_name = u.firstName
       if (u.lastName !== undefined) body.last_name = u.lastName
       if (u.bio !== undefined) body.bio = u.bio
-      if (u.phoneVisibility !== undefined) body.phone_visibility = u.phoneVisibility
       if (u.birthday !== undefined) body.birthday = u.birthday // object or null
-      const mapped = mapUser(await rest.patch<RawUser>('/me', body))
+      const mapped = mapPeerProfile(await rest.patch<RawPeerProfile>('/me', body))
       onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return mapped
     },
@@ -52,8 +55,7 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
 
     async setUsername(username: string): Promise<SetUsernameResult> {
       try {
-        const u = await rest.put<RawUser>('/me/username', { username })
-        const mapped = mapUser(u)
+        const mapped = mapPeerProfile(await rest.put<RawPeerProfile>('/me/username', { username }))
         onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
         return { user: mapped }
       } catch (e) {
@@ -64,8 +66,8 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
     },
 
     // setEmojiStatus sets (or clears with '') the current user's emoji status.
-    async setEmojiStatus(emoji: string): Promise<User> {
-      const mapped = mapUser(await rest.put<RawUser>('/me/emoji_status', { emoji }))
+    async setEmojiStatus(emoji: string): Promise<PeerProfile> {
+      const mapped = mapPeerProfile(await rest.put<RawPeerProfile>('/me/emoji_status', { emoji }))
       onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return mapped
     },
@@ -76,13 +78,16 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
       const body: Record<string, unknown> = { media_id: mediaId }
       if (videoMediaId) body.video_media_id = videoMediaId
       const photo = mapProfilePhoto(await rest.post<RawProfilePhoto>('/me/photos', body))
-      // Сервер возвращает только фото (id/url), не всего пользователя — merge
-      // поверх кэша воркера тем же способом, что раньше делала витрина
-      // (`{ ...me, avatarUrl: photo.url }`, EditProfile.tsx). Без getMe() (или
+      // Сервер возвращает только фото (id медиа), не всего пользователя —
+      // merge поверх кэша воркера. Пишем в `user.photo` КОНСТРУКТОР, а не URL:
+      // прежняя строка `/media/N/content` была тем самым вторым видом одного
+      // числа, из которого его потом выпарсивали регуляркой. Без getMe() (или
       // до первого auth.me() на старте) кэш ещё пуст — молча пропускаем,
-      // ближайший rt:me с сервера/следующего действия догонит.
+      // ближайший rt:me догонит.
       const cur = getMe?.()
-      if (cur) onMeChanged?.({ ...cur, avatarUrl: photo.url }) // rt:me всем вкладкам (Stage 1C.2, Task 1)
+      if (cur) {
+        onMeChanged?.({ ...cur, user: { ...cur.user, photo: { _: 'userProfilePhoto', photo_id: photo.mediaId } } })
+      }
       return photo
     },
 
@@ -101,20 +106,22 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
 // A single profile-photo gallery entry (Telegram getUserPhotos).
 export interface ProfilePhoto {
   id: number
-  url: string
-  videoUrl?: string
+  /** id медиа снимка — тот же номер, что в `user.photo.photo_id`. Прежний
+   *  `url` был строкой, собранной из этого же числа. */
+  mediaId: number
+  videoMediaId?: number
   createdAt: string
 }
 
 interface RawProfilePhoto {
   id: number
-  url: string
-  video_url: string | null
+  media_id: number
+  video_media_id: number | null
   created_at: string
 }
 
 function mapProfilePhoto(p: RawProfilePhoto): ProfilePhoto {
-  return { id: p.id, url: p.url, videoUrl: p.video_url ?? undefined, createdAt: p.created_at }
+  return { id: p.id, mediaId: p.media_id, videoMediaId: p.video_media_id ?? undefined, createdAt: p.created_at }
 }
 
 export type ProfileManager = ReturnType<typeof newProfileManager>

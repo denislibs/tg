@@ -4,7 +4,7 @@ import { generateKeyPair, exportPublicKey, deriveSecret } from './crypto'
 import { saveKey, loadKey, deleteKey } from './keyStore'
 
 describe('secret keyStore', () => {
-  it('сохраняет и читает CryptoKey + fingerprint по chatId', async () => {
+  it('сохраняет и читает CryptoKey + fingerprint по peerId', async () => {
     const a = await generateKeyPair(); const b = await generateKeyPair()
     const s = await deriveSecret(a.privateKey, await exportPublicKey(b.publicKey))
     await saveKey(42, { key: s.key, fingerprint: s.fingerprint })

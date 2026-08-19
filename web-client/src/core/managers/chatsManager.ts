@@ -1,6 +1,8 @@
 // src/core/managers/chatsManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { clearPersistedChat } from '../store/persist'
+import type { Chat, UserReal } from '../peers/peer'
+import type { Peer } from '../peers/peerId'
 
 export interface ChatsDeps { rest: RestClient }
 
@@ -22,28 +24,28 @@ export function newChatsManager({ rest }: ChatsDeps) {
     // Resolve (creating if needed) the private chat with a user; returns its id.
     // Idempotent server-side — repeated calls return the same chat.
     async createPrivate(userId: number): Promise<number> {
-      const r = await rest.post<{ chat_id: number }>('/chats', { user_id: userId })
-      return r.chat_id
+      const r = await rest.post<{ peer_id: number }>('/chats', { user_id: userId })
+      return r.peer_id
     },
 
     // Resolve (creating on first access) the "Saved Messages" self-chat; returns its id.
     async saved(): Promise<number> {
-      const r = await rest.post<{ chat_id: number }>('/saved', {})
-      return r.chat_id
+      const r = await rest.post<{ peer_id: number }>('/saved', {})
+      return r.peer_id
     },
 
     // «Очистить историю» у себя (Telegram deleteHistory just_clear): сообщения
     // скрываются только для меня, у остальных участников остаются.
-    async clearHistory(chatId: number): Promise<void> {
-      await rest.post(`/chats/${chatId}/clear`, {})
-      void clearPersistedChat(chatId) // офлайн-история чата тоже очищается
+    async clearHistory(peerId: number): Promise<void> {
+      await rest.post(`/chats/${peerId}/clear`, {})
+      void clearPersistedChat(peerId) // офлайн-история чата тоже очищается
     },
 
     // Когда получатель прочитал исходящее сообщение в приватном чате
     // (tweb getOutboxReadDate). Ленивая подгрузка при открытии меню.
-    async getReadDate(chatId: number, msgId: number): Promise<ReadDateResult> {
+    async getReadDate(peerId: number, msgId: number): Promise<ReadDateResult> {
       try {
-        const r = await rest.get<{ read_at: string }>(`/chats/${chatId}/messages/${msgId}/read_date`)
+        const r = await rest.get<{ read_at: string }>(`/chats/${peerId}/messages/${msgId}/read_date`)
         return { readAt: r.read_at }
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) return { restricted: true }
@@ -54,17 +56,14 @@ export function newChatsManager({ rest }: ChatsDeps) {
     // Доступные «личности отправителя» (Telegram channels.getSendAs): сам
     // пользователь + привязанный канал (если юзер его админ) + сама супергруппа
     // (анонимный админ). Для приватных/каналов — только сам пользователь.
-    async getSendAs(chatId: number): Promise<SendAsPeer[]> {
+    async getSendAs(peerId: PeerId): Promise<ChannelsSendAsPeers> {
+      const empty: ChannelsSendAsPeers = { _: 'channels.sendAsPeers', peers: [], chats: [], users: [] }
       try {
-        const r = await rest.get<{ peers?: RawSendAsPeer[] }>(`/chats/${chatId}/send_as`)
-        return (r.peers ?? []).map((p) => ({
-          peerId: p.peer_id,
-          kind: p.kind,
-          title: p.title,
-          avatarUrl: p.avatar_url || undefined,
-        }))
+        // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы в корне.
+        const r = await rest.get<ChannelsSendAsPeers>(`/chats/${peerId}/send_as`)
+        return { ...empty, ...r }
       } catch {
-        return []
+        return empty
       }
     },
 
@@ -76,7 +75,7 @@ export function newChatsManager({ rest }: ChatsDeps) {
         kind: d.kind,
         peerId: d.peer_id,
         title: d.title,
-        photoUrl: d.photo_url || undefined,
+        photoId: d.photo_id || undefined,
         count: d.count,
         last: {
           type: d.last_message.type,
@@ -91,35 +90,40 @@ export function newChatsManager({ rest }: ChatsDeps) {
 
 interface RawSavedDialog {
   kind: 'self' | 'user' | 'chat'
-  peer_id: number
+  peer_id: PeerId
   title: string
-  photo_url: string
+  /** id медиа фото источника; 0 — фото нет (прежний `photo_url` был строкой,
+   *  собранной из этого же числа) */
+  photo_id: number
   count: number
   last_message: { type: string; text: string; media_id: number; at: string }
 }
 
-interface RawSendAsPeer {
-  peer_id: number
-  kind: 'user' | 'channel' | 'group'
-  title: string
-  avatar_url?: string
-}
-
-// One "send-as" identity offered in the composer (personal account / channel /
-// anonymous group). avatarUrl is a "/media/{id}/content" path (or absent).
-export interface SendAsPeer {
-  peerId: number
-  kind: 'user' | 'channel' | 'group'
-  title: string
-  avatarUrl?: string
+/**
+ * «Личности отправителя» в композере — раскладка `channels.sendAsPeers`
+ * оригинала: ССЫЛКИ на пиры отдельно (`peers`), их тела — векторами
+ * `users`/`chats`. Вид личности («это канал, а это я сам») читается из
+ * КОНСТРУКТОРА тела, а не из строкового `kind` рядом; имя собирает клиент,
+ * аватарка — `photo.photo_id`.
+ *
+ * `channels.sendAsPeers#f496b0c6 peers:Vector<SendAsPeer> chats:Vector<Chat>
+ *  users:Vector<User> = channels.SendAsPeers;`
+ */
+export interface SendAsPeer { _: 'sendAsPeer'; peer: Peer }
+export interface ChannelsSendAsPeers {
+  _: 'channels.sendAsPeers'
+  peers: SendAsPeer[]
+  chats: Chat[]
+  users: UserReal[]
 }
 
 // One grouped row of Saved Messages (source peer + its newest saved message).
 export interface SavedDialog {
   kind: 'self' | 'user' | 'chat'
-  peerId: number
+  peerId: PeerId
   title: string
-  photoUrl?: string
+  /** id медиа фото источника; undefined — фото нет */
+  photoId?: number
   count: number
   last: { type: string; text: string; mediaId?: number; at: string }
 }

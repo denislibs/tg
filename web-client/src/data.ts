@@ -8,7 +8,7 @@ export type MsgStatus = 'sending' | 'sent' | 'read' | 'error'
 
 export interface ConvMsg {
   id?: number // stable backend message id (real chats) — used as the React key
-  chatId?: number // backend chat id — for bot-callback (inline keyboard)
+  peerId?: number // backend chat id — for bot-callback (inline keyboard)
   clientId?: string // optimistic client id; a stable key that survives the ack
   type:
     | 'date'
@@ -106,27 +106,39 @@ export interface CallLog {
   duration?: number // секунды; есть только у состоявшегося (ok)
 }
 
-// A minimal peer identity used to open a private chat from a click (member row,
-// group sender, search result) before any dialog exists.
+// Минимальная личность пира, по клику на которую открывают диалог (строка
+// участника, автор в группе, результат поиска) — ещё до того, как диалог
+// существует. `id` здесь ЗНАКОВЫЙ ключ: открыть можно и человека, и
+// группу/канал-источник, а различает их знак, а не второе поле рядом (прежняя
+// пара `id` + `chatId` описывала это двумя числами).
 export interface OpenPeer {
-  id: number
-  displayName: string
+  id: PeerId
+  /** имя собирает клиент (`core/peers/getPeerTitle.ts`) — `display_name` с
+   *  провода убран; здесь лежит уже собранное. */
+  title: string
   username?: string | null
-  avatarUrl?: string
-  /** открыть существующий чат по id (группа/канал-источник в «Избранном») */
-  chatId?: number
+  /** id медиа аватарки; 0/undefined — фото нет */
+  photoId?: number
 }
 
 export interface Chat {
+  /** знаковый ключ пира строкой (`String(peerId)`). Отдельного поля
+   *  «собеседник приватного чата» рядом БОЛЬШЕ НЕТ: у приватного диалога ключ
+   *  и есть id собеседника, прежняя пара `id` + `peerId` описывала одно и то
+   *  же двумя числами. Число — `Number(chat.id)`. */
   id: string
   name: string
   avatar: string
   avatarText?: string
   avatarEmoji?: string
-  avatarUrl?: string // resolved/stored peer avatar (real chats)
-  /** stripped-превью аватарки/фото чата (base64 JPEG) — слой до загрузки полной */
+  /** id медиа аватарки — `user.photo.photo_id` / `chat.photo.photo_id`.
+   *  Прежний `avatarUrl` был строкой `/media/N/content`, из которой этот же
+   *  номер приходилось выпарсивать обратно регуляркой (`useAvatarSrc.ts:10-16`);
+   *  теперь он приезжает готовым — ровно тем, чего ждёт `downloadMediaURL`.
+   *  0/undefined — фото нет. */
+  photoId?: number
+  /** stripped-превью аватарки/фото чата (base64 JPEG, `photo.stripped_thumb`) */
   avatarPreview?: string
-  peerId?: number // private-chat peer's user id (for presence/last-seen)
   isBot?: boolean // peer — бот: скрыть звонок, не давать секрет/группу/контакт
   date: string
   preview: string

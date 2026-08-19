@@ -14,8 +14,8 @@ import { saveDialogs, saveStateKey } from './store/persist'
 import { STATE_VERSION } from './state/state'
 import type { Dialog } from './models'
 
-const dialog = (chatId: number, at: string, pinned = false): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at: string, pinned = false): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
@@ -84,16 +84,16 @@ describe('createWorkerCore(): диалоги — воркер публикует
   // РЕАЛЬНЫЙ офлайн-кэш (saveDialogs) и pinnedOrders (saveStateKey) — тем же
   // приёмом, что peersManager.persist.test.ts проверяет офлайн-фолбэк, — и
   // проверяем, что fillMirror принёс ИМЕННО посеянные диалоги в правильном
-  // порядке (закреплённый chatId=3 выше остальных несмотря на самую старую дату).
+  // порядке (закреплённый peerId=3 выше остальных несмотря на самую старую дату).
   it('fillMirror приносит диалоги/pinnedOrders РЕАЛЬНО из персиста (не заглушку)', async () => {
-    // Один незакреплённый (chatId=1) — ловит подмену loadCache на пустышку: без
+    // Один незакреплённый (peerId=1) — ловит подмену loadCache на пустышку: без
     // персистнутого диалога он не появится в items вовсе. Три закреплённых с
     // РАЗЛИЧНЫМИ датами (4/5/6) в pinnedOrders=[6,5,4] — ловит ИМЕННО подмену
     // loadState: у закреплённых index зависит только от позиции в pinnedOrders
     // (dialogIndex.ts:pinnedDate), а не от даты. Если pinnedOrders потерялись
     // (мутация `loadState: async () => ({pinnedOrders:{}, drafts:[]})`), у всех
     // трёх chatIndex ИДЕНТИЧЕН (order.indexOf возвращает -1 для каждого) — стабильная
-    // сортировка развалит их к порядку из IDB (по возрастанию chatId: 4,5,6),
+    // сортировка развалит их к порядку из IDB (по возрастанию peerId: 4,5,6),
     // что отличимо от ожидаемого [6,5,4].
     await saveDialogs([
       dialog(1, '2026-08-01T00:00:00Z'),
@@ -122,6 +122,6 @@ describe('createWorkerCore(): диалоги — воркер публикует
     const dialogOp = frames.find((f) => f.event === 'rt:dialog_op')
     expect(dialogOp).toBeDefined()
     const items = (dialogOp!.payload as { ops: { op: string; items: { dialog: Dialog }[] }[] }).ops[0]!.items
-    expect(items.map((i) => i.dialog.chatId)).toEqual([6, 5, 4, 1])
+    expect(items.map((i) => i.dialog.peerId)).toEqual([6, 5, 4, 1])
   })
 })

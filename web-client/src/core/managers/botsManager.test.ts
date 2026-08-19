@@ -21,13 +21,13 @@ describe('BotsManager.callback', () => {
     // (usecase/chat/bot.go: switch data { case "alert": … }) уже после разбора.
     await newBotsManager({ rest }).callback(42, 7, 'YWxlcnQ=', 100)
 
-    expect(post).toHaveBeenCalledWith('/bots/42/callback', { chat_id: 7, message_id: 100, data: 'YWxlcnQ=' })
+    expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, message_id: 100, data: 'YWxlcnQ=' })
   })
 
   it('message_id необязателен — уходит 0, как ждёт ручка', async () => {
     const { rest, post } = fakeRest()
     await newBotsManager({ rest }).callback(1, 2, 'Y2I=')
 
-    expect(post).toHaveBeenCalledWith('/bots/1/callback', { chat_id: 2, message_id: 0, data: 'Y2I=' })
+    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, message_id: 0, data: 'Y2I=' })
   })
 })

@@ -13,7 +13,7 @@ export interface GroupCallParticipant {
 
 interface GroupCallState {
   /** чат активного звонка, в котором сидим мы (null — не в звонке) */
-  chatId: number | null
+  peerId: number | null
   connecting: boolean
   micOn: boolean
   camOn: boolean
@@ -23,18 +23,18 @@ interface GroupCallState {
   /** участники идущих звонков по всем чатам (для баннера Join) */
   activeByChat: Record<number, number[]>
 
-  setJoined: (chatId: number) => void
+  setJoined: (peerId: number) => void
   setConnecting: (v: boolean) => void
   setMedia: (micOn: boolean, camOn: boolean) => void
   upsertParticipant: (p: GroupCallParticipant) => void
   removeParticipant: (userId: number) => void
   bumpStreams: () => void
-  setActive: (chatId: number, userIds: number[]) => void
+  setActive: (peerId: number, userIds: number[]) => void
   reset: () => void
 }
 
 export const useGroupCallStore = create<GroupCallState>((set) => ({
-  chatId: null,
+  peerId: null,
   connecting: false,
   micOn: true,
   camOn: false,
@@ -42,7 +42,7 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
   streamsVersion: 0,
   activeByChat: {},
 
-  setJoined: (chatId) => set({ chatId, connecting: false }),
+  setJoined: (peerId) => set({ peerId, connecting: false }),
   setConnecting: (v) => set({ connecting: v }),
   setMedia: (micOn, camOn) => set({ micOn, camOn }),
   upsertParticipant: (p) =>
@@ -54,7 +54,7 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
       return { participants: next }
     }),
   bumpStreams: () => set((s) => ({ streamsVersion: s.streamsVersion + 1 })),
-  setActive: (chatId, userIds) =>
-    set((s) => ({ activeByChat: { ...s.activeByChat, [chatId]: userIds } })),
-  reset: () => set({ chatId: null, connecting: false, micOn: true, camOn: false, participants: {}, streamsVersion: 0 }),
+  setActive: (peerId, userIds) =>
+    set((s) => ({ activeByChat: { ...s.activeByChat, [peerId]: userIds } })),
+  reset: () => set({ peerId: null, connecting: false, micOn: true, camOn: false, participants: {}, streamsVersion: 0 }),
 }))

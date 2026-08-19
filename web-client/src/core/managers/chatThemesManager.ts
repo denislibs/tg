@@ -10,10 +10,10 @@ export function newChatThemesManager({ rest, dialogs }: {
   dialogs: Pick<DialogsManager, 'applyTheme'>
 }) {
   return {
-    async setChatTheme(chatId: number, themeId: string): Promise<void> {
-      await rest.put(`/chats/${chatId}/theme`, { theme_id: themeId })
+    async setChatTheme(peerId: number, themeId: string): Promise<void> {
+      await rest.put(`/chats/${peerId}/theme`, { theme_id: themeId })
       // Оптимистики нет (Task 4, порт tweb): применяем ПОСЛЕ ответа сети.
-      dialogs.applyTheme(chatId, themeId)
+      dialogs.applyTheme(peerId, themeId)
     },
   }
 }

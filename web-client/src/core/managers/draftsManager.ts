@@ -11,15 +11,15 @@ export function newDraftsManager({ rest }: { rest: RestClient }) {
       return (r.drafts ?? []).map(mapDraft)
     },
 
-    async save(chatId: number, text: string, replyToId?: number | null, entities?: MessageEntity[]): Promise<Draft | null> {
-      const r = await rest.put<{ draft: RawDraft | null }>(`/chats/${chatId}/draft`, {
+    async save(peerId: number, text: string, replyToId?: number | null, entities?: MessageEntity[]): Promise<Draft | null> {
+      const r = await rest.put<{ draft: RawDraft | null }>(`/chats/${peerId}/draft`, {
         text, entities: entities ?? null, reply_to_id: replyToId ?? null,
       })
       return r.draft ? mapDraft(r.draft) : null
     },
 
-    async delete(chatId: number): Promise<void> {
-      await rest.del(`/chats/${chatId}/draft`)
+    async delete(peerId: number): Promise<void> {
+      await rest.del(`/chats/${peerId}/draft`)
     },
 
     async clearAll(): Promise<void> {

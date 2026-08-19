@@ -1,77 +1,87 @@
 import { HttpError, type RestClient } from '../net/restClient'
+import type { UserFull, UserReal, UsersUserFull } from '../peers/peer'
+import { getPeerPhotoId } from '../peers/peer'
+import { getUserTitle } from '../peers/getPeerTitle'
 import { listAccounts, upsertAccount, removeAccount, tokenOf, toPublic, type PublicAccount } from '../auth/accounts'
 import { loadMe } from '../store/persist'
 
-export interface Birthday { day: number; month: number; year?: number }
-
-export type PhoneVisibility = 'nobody' | 'contacts' | 'everybody'
-
-export interface User {
-  id: number
-  phone: string
-  username: string | null
-  firstName: string
-  lastName: string
-  displayName: string
-  bio: string
-  birthday: Birthday | null
-  avatarUrl: string
-  /** stripped-превью аватарки (base64 JPEG, `avatar_preview`; '' у старых аватарок) */
-  avatarPreview: string
-  phoneVisibility: PhoneVisibility
-  /** Telegram Premium subscriber → gold star badge next to the name */
-  premium: boolean
-  /** unicode emoji shown after the name ('' when unset) */
-  emojiStatus: string
+// ── Профиль пира: пара конструкторов схемы вместо трёх наших витрин ─────────
+//
+// Было три разные формы пользователя, и граница между ними шла не по схемной
+// линии: краткая (`GET /users?ids=`, 5 полей), полная чужая (`GET /users/{id}`,
+// 18 полей) и своя (`GET /me`, 13 полей) — причём `bio`/`birthday` попали в
+// «свою», а `verified`/`premium`/`emoji_status` в «полную чужую», хотя в схеме
+// они в кратком `user`.
+//
+// Стало две, как в оригинале: `user` + `userFull`. `/me` и `/users/{id}`
+// отдают ОДИН И ТОТ ЖЕ конструктор `users.userFull{full_user, chats, users}`,
+// то есть ПАРУ, а не третью форму, и вопрос «где живёт verified, а где bio»
+// перестал быть нашим — он решён схемой.
+//
+// `can_message` едет РЯДОМ с конструктором, а не внутри: схемного места у него
+// нет (в оригинале «нельзя писать» выражают `contact_require_premium` и
+// `settings:PeerSettings`, которых у нас не существует), а подделывать чужой
+// конструктор нельзя. Ровно так же устроены `muted`/`creator_id` у карточки
+// чата.
+//
+// Того, чего здесь БОЛЬШЕ НЕТ:
+//  • `displayName` — имя собирает клиент из `first_name`/`last_name`
+//    (`core/peers/getPeerTitle.ts`), с провода оно убрано целиком;
+//  • `avatarUrl`/`avatarPreview` — одно поле `user.photo: UserProfilePhoto` с
+//    готовым `photo_id`; регулярка `/media/(\d+)/content` по нашей же строке
+//    исчезла вместе с ними;
+//  • `phoneVisibility` — это ПРАВИЛО ПРИВАТНОСТИ (`stores/privacyStore.ts`,
+//    ключ `phone_number`), а не поле пира: два независимых механизма на один
+//    вопрос стали одним (решение №5, колонка на бэкенде удалена);
+//  • `premium` — `user.pFlags.premium`, `emojiStatus` —
+//    `user.emoji_status_emoticon` (клиентский параметр схемы).
+export interface PeerProfile {
+  /** Краткая форма — та же, что едет в любом списке и с каждым сообщением. */
+  user: UserReal
+  /** Полная форма — то, что запрашивают один раз при открытии профиля. */
+  fullUser: UserFull
+  /** Поле уровня ответа: писать этому пиру можно (правило `messages`). */
+  canMessage: boolean
 }
 
-// The backend wire shape (snake_case). username/birthday are null when unset.
-export interface RawUser {
-  id: number
-  phone: string
-  username: string | null
-  first_name?: string
-  last_name?: string
-  display_name: string
-  bio?: string
-  birthday?: Birthday | null
-  avatar_url?: string
-  avatar_preview?: string | null
-  phone_visibility?: string
-  premium?: boolean
-  emoji_status?: string
+/** Профиль из ОДНОГО краткого конструктора: полной формы в ответе нет
+ *  (подтверждённый QR). `userFull` заводится пустым — не «нет профиля», а «нет
+ *  полной формы»: id известен, остальное подтянет первый `/me`. */
+export function briefProfile(user: UserReal): PeerProfile {
+  return { user, fullUser: { _: 'userFull', id: user.id }, canMessage: true }
 }
 
-// mapUser normalizes the backend wire shape into the camelCase client model.
-export function mapUser(r: RawUser): User {
+/** Проводная форма ответа профиля: конструктор + поля рядом с ним. */
+export interface RawPeerProfile {
+  user_full: UsersUserFull
+  can_message?: boolean
+}
+
+/**
+ * Разбор ответа профиля. Маппера полей здесь нет и быть не может: форма провода
+ * и форма модели совпали, разбирать нечего — раскладываем только ответ на пару
+ * конструкторов (`full_user` + первый элемент `users`) и своё поле рядом.
+ */
+export function mapPeerProfile(r: RawPeerProfile): PeerProfile {
+  const full = r.user_full
   return {
-    id: r.id,
-    phone: r.phone,
-    username: r.username ?? null,
-    firstName: r.first_name ?? '',
-    lastName: r.last_name ?? '',
-    displayName: r.display_name ?? '',
-    bio: r.bio ?? '',
-    birthday: r.birthday ?? null,
-    avatarUrl: r.avatar_url ?? '',
-    avatarPreview: r.avatar_preview ?? '',
-    phoneVisibility: (r.phone_visibility as PhoneVisibility) || 'contacts',
-    premium: !!r.premium,
-    emojiStatus: r.emoji_status ?? '',
+    user: full.users?.[0] ?? { _: 'user', id: full.full_user.id },
+    fullUser: full.full_user,
+    canMessage: !!r.can_message,
   }
 }
 
 // Итог первого шага входа: сессия, запрос облачного пароля либо шаг регистрации
 // (номер подтверждён, аккаунта под ним нет — Telegram auth.authorizationSignUpRequired).
 export type SignInOutcome =
-  | { user: User; passwordNeeded?: undefined; signUpRequired?: undefined }
+  | { user: PeerProfile; passwordNeeded?: undefined; signUpRequired?: undefined }
   | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined; signUpRequired?: undefined }
   | { signUpRequired: true; signUpToken: string; user?: undefined; passwordNeeded?: undefined }
 
 // Регистрация: сессия либо код ошибки сервера. Дискриминированный результат, а не
 // исключение, — HttpError не переживает границу worker-RPC (как SetUsernameResult).
 export type SignUpResult =
-  | { user: User }
+  | { user: PeerProfile }
   | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
 
 // «Забыли пароль»: маска привязанной почты. Паузу повторной отправки держит
@@ -84,7 +94,7 @@ export type RecoveryRequestResult =
 // Подтверждение кода с почты: сессия либо причина отказа. `recovery_expired` —
 // код протух ЛИБО исчерпаны 5 попыток (сервер не различает их намеренно).
 export type RecoveryConfirmResult =
-  | { user: User }
+  | { user: PeerProfile }
   | { error: 'invalid_code' | 'recovery_expired' | 'unavailable' | 'failed' }
 
 // Импорт сессии по одноразовому веб-токену (#?tgWebAuthToken=…).
@@ -137,7 +147,7 @@ export interface AuthDeps {
   /** Stage 1C.2 (Task 1): `me` — воркер единственный владелец, зовём после
    * логаута с null (workerCore.ts публикует его вкладкам как rt:me).
    * Опционально: юнит-тесты менеджера конструируют его без воркера. */
-  onMeChanged?: (u: User | null) => void
+  onMeChanged?: (u: PeerProfile | null) => void
   /** Stage 1C.2 (Task 1, раунд 4): НАМЕРЕНИЕ перехода активной сессии — порт
    * tweb `logging_out` (`apiManager.ts:335` → `apiManagerProxy.ts:508`).
    * Владелец активного токена здесь один — этот менеджер, и только он знает,
@@ -157,7 +167,7 @@ export interface AuthDeps {
 // Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
 interface SignInWire {
   token?: string
-  user?: RawUser
+  user?: RawPeerProfile
   password_needed?: boolean
   password_token?: string
   hint?: string
@@ -171,14 +181,16 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   // signImport/passkeyLoginFinish/qrStatus(confirmed) — все семь путей входа
   // заводят сессию через неё (вызовов persist() шесть: signIn и signImport
   // делят общий toOutcome).
-  const persist = async (token: string, u: User) => {
+  const persist = async (token: string, u: PeerProfile) => {
     await store.set(token)
     await upsertAccount({
       token,
-      id: u.id,
-      name: u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.phone,
-      avatarUrl: u.avatarUrl,
-      phone: u.phone,
+      id: u.user.id,
+      // Имя собирает клиент — `display_name` с провода убран. Фолбэк тот же,
+      // что у оригинала: пусто → username → номер.
+      name: getUserTitle(u.user) || u.user.username || u.user.phone || '',
+      photoId: getPeerPhotoId(u.user.photo),
+      phone: u.user.phone ?? '',
     })
     // Фикс ревью п.2 (Stage 1C.2, Task 1): без этой строки воркер узнавал о
     // новом пользователе ТОЛЬКО на старте (tokens.ready → auth.me, один раз за
@@ -198,7 +210,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // этом перезаписал бы rt:me выше — чужой личностью). Порядок важен:
     // сначала значение (`rt:me`), потом намерение — вкладка, поднимающая
     // Shell по этому кадру, застаёт `me` уже применённым проектором.
-    onLoggedIn?.({ userId: u.id })
+    onLoggedIn?.({ userId: u.user.id })
   }
   // Общий REST-фетч текущего /me — используется публичным me() (прогрев/
   // loadChats) И внутренними переходами активного токена (switchAccount/
@@ -231,11 +243,11 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   //     worker-RPC (superMessagePort реджектит ожидающий промис) — до раунда 3
   //     в этих ветках падать было нечему, и .catch там никто не ставил
   //     (Important 2 раунда 4).
-  const fetchMe = async (rederive = false): Promise<User | null> => {
+  const fetchMe = async (rederive = false): Promise<PeerProfile | null> => {
     await store.ready()
     if (!store.get()) return null
     try {
-      const u = mapUser(await rest.get<RawUser>('/me'))
+      const u = mapPeerProfile(await rest.get<RawPeerProfile>('/me'))
       onMeChanged?.(u)
       return u
     } catch (e) {
@@ -273,7 +285,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     if (res.signup_required && res.signup_token) {
       return { signUpRequired: true, signUpToken: res.signup_token }
     }
-    const u = mapUser(res.user!)
+    const u = mapPeerProfile(res.user!)
     await persist(res.token!, u)
     return { user: u }
   }
@@ -310,7 +322,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         const res = await rest.post<SignInWire>('/auth/sign_up', {
           signup_token: signUpToken, first_name: firstName, last_name: lastName, device, platform,
         })
-        const u = mapUser(res.user!)
+        const u = mapPeerProfile(res.user!)
         await persist(res.token!, u)
         return { user: u }
       } catch (e) {
@@ -364,7 +376,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         const res = await rest.post<SignInWire>('/auth/password/recover/confirm', {
           password_token: passwordToken, code, device, platform,
         })
-        const u = mapUser(res.user!)
+        const u = mapPeerProfile(res.user!)
         await persist(res.token!, u)
         return { user: u }
       } catch (e) {
@@ -392,11 +404,11 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       }
     },
 
-    async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: User }> {
-      const res = await rest.post<{ token: string; user: RawUser }>('/auth/check_password', {
+    async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: PeerProfile }> {
+      const res = await rest.post<{ token: string; user: RawPeerProfile }>('/auth/check_password', {
         password_token: passwordToken, password, device, platform,
       })
-      const u = mapUser(res.user)
+      const u = mapPeerProfile(res.user)
       await persist(res.token, u)
       return { user: u }
     },
@@ -438,12 +450,12 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
       return rest.post('/auth/passkey/begin', {})
     },
-    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: User }> {
-      const res = await rest.post<{ token: string; user: RawUser }>(
+    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: PeerProfile }> {
+      const res = await rest.post<{ token: string; user: RawPeerProfile }>(
         `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
         assertion,
       )
-      const u = mapUser(res.user)
+      const u = mapPeerProfile(res.user)
       await persist(res.token, u)
       return { user: u }
     },
@@ -453,12 +465,15 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       return { token: r.token, url: r.url, expiresAt: r.expires_at }
     },
 
-    async qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: User }> {
-      const r = await rest.get<{ status: 'pending' | 'confirmed' | 'expired'; session_token?: string; user?: RawUser }>(`/auth/qr/${token}`)
+    async qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: PeerProfile }> {
+      // Подтверждённый QR отдаёт голый конструктор `user`, а не пару
+      // `users.userFull`: полной формы у этого ответа нет и никогда не было —
+      // bio/birthday подтянет первый же `/me`.
+      const r = await rest.get<{ status: 'pending' | 'confirmed' | 'expired'; session_token?: string; user?: UserReal }>(`/auth/qr/${token}`)
       if (r.status === 'confirmed' && r.session_token && r.user) {
-        await persist(r.session_token, mapUser(r.user))
+        await persist(r.session_token, briefProfile(r.user))
       }
-      return { status: r.status, user: r.user ? mapUser(r.user) : undefined }
+      return { status: r.status, user: r.user ? briefProfile(r.user) : undefined }
     },
 
     async qrConfirm(token: string): Promise<void> {
@@ -468,7 +483,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // Публичный /me — используется прогревом/loadChats. Тело — fetchMe() (см.
     // выше): любой успешный вызов заодно освежает кэш воркера и рассылает
     // rt:me (фикс п.6), не только явные RPC-мутации/вход.
-    async me(): Promise<User | null> {
+    async me(): Promise<PeerProfile | null> {
       return fetchMe()
     },
 

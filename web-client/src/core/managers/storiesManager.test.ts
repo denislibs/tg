@@ -31,18 +31,21 @@ function fakeRest(getResult: unknown, postResult: unknown = {}) {
 }
 
 // Полный набор дефолтных полей истории после mapStory (для сравнения объектов).
+const ME = { _: 'user' as const, id: 7, first_name: 'Me', photo: { _: 'userProfilePhoto' as const, photo_id: 1 } }
+const BOB = { _: 'user' as const, id: 2, first_name: 'Bob', photo: { _: 'userProfilePhoto' as const, photo_id: 2 } }
+
 const dflt = { reactionsCount: 0, myReaction: null, reactions: [], privacy: 'contacts', pinned: false, edited: false, expiresAt: '', mediaAreas: [] }
 
 describe('StoriesManager', () => {
-  it('feed maps groups snake->camel (own group first)', async () => {
+  it('feed отдаёт группы с конструктором `user` в авторе (маппера имени нет)', async () => {
     const { rest, calls } = fakeRest({
       groups: [
         {
-          author: { id: 7, display_name: 'Me', avatar_url: 'me.png' },
+          author: ME,
           stories: [{ id: 1, media_id: 11, caption: 'hi', created_at: 't0', viewed: false }],
         },
         {
-          author: { id: 2, display_name: 'Bob', avatar_url: 'bob.png' },
+          author: BOB,
           stories: [{ id: 2, media_id: 22, caption: '', created_at: 't1', viewed: true }],
         },
       ],
@@ -52,11 +55,11 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories' })
     expect(groups).toEqual([
       {
-        author: { id: 7, displayName: 'Me', avatarUrl: 'me.png' },
+        author: ME,
         stories: [{ id: 1, mediaId: 11, caption: 'hi', createdAt: 't0', viewed: false, ...dflt }],
       },
       {
-        author: { id: 2, displayName: 'Bob', avatarUrl: 'bob.png' },
+        author: BOB,
         stories: [{ id: 2, mediaId: 22, caption: '', createdAt: 't1', viewed: true, ...dflt }],
       },
     ])
@@ -138,15 +141,12 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({ method: 'POST', path: '/stories/42/view', body: {} })
   })
 
-  it('viewers maps snake->camel', async () => {
-    const { rest, calls } = fakeRest({
-      viewers: [{ id: 2, display_name: 'Bob', avatar_url: 'bob.png' }],
-      count: 1,
-    })
+  it('viewers кладёт карточки вербатим (конструкторы `user`)', async () => {
+    const { rest, calls } = fakeRest({ viewers: [BOB], count: 1 })
     const mgr = newStoriesManager({ rest })
     const viewers = await mgr.viewers(42)
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/viewers' })
-    expect(viewers).toEqual([{ id: 2, displayName: 'Bob', avatarUrl: 'bob.png' }])
+    expect(viewers).toEqual([BOB])
   })
 
   it('del DELETEs /stories/:id', async () => {
@@ -270,6 +270,6 @@ describe('StoriesManager', () => {
     const mgr = newStoriesManager({ rest })
     const n = await mgr.share(7, [10, 11])
     expect(n).toBe(2)
-    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/share', body: { chat_ids: [10, 11] } })
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/share', body: { peer_ids: [10, 11] } })
   })
 })

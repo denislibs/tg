@@ -1,4 +1,4 @@
-// secretChatStore.ts — состояние E2E-handshake секретного чата по chatId
+// secretChatStore.ts — состояние E2E-handshake секретного чата по peerId
 // (нормализовано). Ключи чата живут в IndexedDB (core/secret/keyStore), здесь —
 // только наблюдаемый статус и emoji-fingerprint для UI.
 import { create } from 'zustand'
@@ -12,14 +12,14 @@ interface SecretEntry {
 
 interface SecretChatState {
   byChat: Record<number, SecretEntry>
-  setStatus: (chatId: number, status: SecretStatus) => void
-  setFingerprint: (chatId: number, fingerprint: string[]) => void
+  setStatus: (peerId: number, status: SecretStatus) => void
+  setFingerprint: (peerId: number, fingerprint: string[]) => void
 }
 
 export const useSecretChatStore = create<SecretChatState>((set) => ({
   byChat: {},
-  setStatus: (chatId, status) =>
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...s.byChat[chatId], status } } })),
-  setFingerprint: (chatId, fingerprint) =>
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...s.byChat[chatId], fingerprint } } })),
+  setStatus: (peerId, status) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...s.byChat[peerId], status } } })),
+  setFingerprint: (peerId, fingerprint) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...s.byChat[peerId], fingerprint } } })),
 }))

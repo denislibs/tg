@@ -24,12 +24,12 @@ import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { saveMe } from './store/persist'
-import type { User } from './managers/authManager'
+import type { PeerProfile } from './managers/authManager'
 
-const ME: User = {
-  id: 7, phone: '+79990000007', username: 'me', firstName: 'Я', lastName: '',
-  displayName: 'Я', bio: '', birthday: null, avatarUrl: '', avatarPreview: '',
-  phoneVisibility: 'contacts', premium: false, emojiStatus: '',
+const ME: PeerProfile = {
+  user: { _: 'user', pFlags: { self: true }, id: 7, phone: '+79990000007', username: 'me', first_name: 'Я', photo: { _: 'userProfilePhotoEmpty' } },
+  fullUser: { _: 'userFull', id: 7 },
+  canMessage: true,
 }
 
 // Страница истории: одно моё сообщение, одно чужое. `/me` в этом стенде НЕ
@@ -37,8 +37,8 @@ const ME: User = {
 // сеть) — ровно тот случай, ради которого нужна гидрация с диска.
 const historyPage = {
   messages: [
-    { id: 2, chat_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
-    { id: 1, chat_id: 1, seq: 1, sender_id: 3, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
+    { id: 2, peer_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
+    { id: 1, peer_id: 1, seq: 1, sender_id: 3, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
   ],
   count: 2,
 }
@@ -62,7 +62,7 @@ describe('createWorkerCore(): личность гидрируется с дис�
     core.start()
     // Вкладка просит историю НЕ дожидаясь ничего — так и происходит на холодном
     // старте (boot вкладки шлёт RPC, как только поднялся порт).
-    const r = await core.registry.messages.getHistory({ chatId: 1 })
+    const r = await core.registry.messages.getHistory({ peerId: 1 })
 
     expect(r.messages.map((m) => [m.seq, m.out])).toEqual([[1, false], [2, true]])
   })
@@ -79,7 +79,7 @@ describe('createWorkerCore(): личность гидрируется с дис�
     // Ключевое здесь — что промис вообще резолвится: гейт снимается в любом
     // исходе гидрации, включая «на диске ничего нет». Подвисший навсегда гейт
     // заморозил бы ленту, что хуже неверного `out`.
-    const r = await core.registry.messages.getHistory({ chatId: 1 })
+    const r = await core.registry.messages.getHistory({ peerId: 1 })
 
     expect(r.messages.map((m) => m.out)).toEqual([false, false])
   })

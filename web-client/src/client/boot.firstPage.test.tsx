@@ -75,10 +75,10 @@ const FOLDER: Folder = {
 
 /** Порядок в ответе — по времени последнего сообщения (его же считает
  *  `dialogIndex`), поэтому позиция в массиве и есть позиция в глобальном
- *  порядке: chat_id 1 — самый свежий, TOTAL — самый старый. */
-const rawDialog = (chatId: number, archived: boolean): RawDialog => ({
-  chat_id: chatId, type: 'private', last_read_seq: 0, unread: 0, title: 't' + chatId, archived,
-  last_message: { seq: 1, text: 'x', sender_id: 1, at: new Date(Date.UTC(2026, 7, 1) - chatId * 60_000).toISOString() },
+ *  порядке: peer_id 1 — самый свежий, TOTAL — самый старый. */
+const rawDialog = (peerId: number, archived: boolean): RawDialog => ({
+  peer_id: peerId, type: 'private', last_read_seq: 0, unread: 0, title: 't' + peerId, archived,
+  last_message: { seq: 1, text: 'x', sender_id: 1, at: new Date(Date.UTC(2026, 7, 1) - peerId * 60_000).toISOString() },
 })
 
 const SERVER: RawDialog[] = Array.from({ length: TOTAL }, (_, i) => rawDialog(i + 1, i + 1 === ARCHIVED_ID))
@@ -86,7 +86,7 @@ const SERVER: RawDialog[] = Array.from({ length: TOTAL }, (_, i) => rawDialog(i 
 /**
  * Фейк `/chats` в поведении бэкенда (`dialogpage.go` + `chatsrepo.go`): выборку
  * задаёт `folder_id` (`0` — всё, кроме архива; `1` — только архив; параметра нет
- * — весь набор), а `limit`/`offset_chat_id` режут ЕЁ ЖЕ, поэтому `count` и
+ * — весь набор), а `limit`/`offset_peer_id` режут ЕЁ ЖЕ, поэтому `count` и
  * `is_end` тоже относятся к запрошенной выборке.
  */
 function fakeRest() {
@@ -96,8 +96,8 @@ function fakeRest() {
     const wire = params?.folder_id
     const set = wire === undefined ? SERVER : SERVER.filter((r) => r.archived === (wire === 1))
     const limit = Number(params?.limit ?? set.length)
-    const offsetChatId = Number(params?.offset_chat_id ?? 0)
-    const start = offsetChatId ? set.findIndex((r) => r.chat_id === offsetChatId) + 1 : 0
+    const offsetPeerId = Number(params?.offset_peer_id ?? 0)
+    const start = offsetPeerId ? set.findIndex((r) => r.peer_id === offsetPeerId) + 1 : 0
     const chats = set.slice(start, start + limit)
     return { chats, count: set.length, is_end: start + chats.length >= set.length }
   }
@@ -193,8 +193,8 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
   // первую страницу, все тесты ниже станут зелёными при любом поведении boot.
   it('фикстура: архивный чат и чат папки лежат ЗА первой страницей глобального порядка', () => {
     expect(SERVER.slice(0, FIRST_PAGE).some((r) => r.archived)).toBe(false)
-    expect(SERVER.findIndex((r) => r.chat_id === ARCHIVED_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
-    expect(SERVER.findIndex((r) => r.chat_id === FOLDER_CHAT_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
+    expect(SERVER.findIndex((r) => r.peer_id === ARCHIVED_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
+    expect(SERVER.findIndex((r) => r.peer_id === FOLDER_CHAT_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
   })
 
   it('зеркало получает первую страницу, а не весь список', async () => {
@@ -252,8 +252,8 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     // `realFolderId`: у пользовательской папки серверного набора нет, её
     // страницы вычерпывают глобальный). Первичный `refresh()` уходит без
     // курсора, страница строки «Архив» — со своим `folder_id`.
-    const folderPages = requests.filter((q) => q?.folder_id === undefined && q?.offset_chat_id !== undefined)
-    const cursors = folderPages.map((q) => Number(q!.offset_chat_id))
+    const folderPages = requests.filter((q) => q?.folder_id === undefined && q?.offset_peer_id !== undefined)
+    const cursors = folderPages.map((q) => Number(q!.offset_peer_id))
 
     expect(cursors.length).toBeGreaterThan(0)
     // Продолжили ровно за окном первичного `refresh()`, а не с начала набора.

@@ -36,11 +36,11 @@ function worker(keys: string[]) {
     slices.set(key, sa)
   }
   return newPendingMethods({
-    hkey: (chatId, threadRoot) => (threadRoot ? `${chatId}:${threadRoot}` : String(chatId)),
+    hkey: (peerId, threadRoot) => (threadRoot ? `${peerId}:${threadRoot}` : String(peerId)),
     slices,
-    msgsFor: (chatId) => {
-      let c = msgsByChat.get(chatId)
-      if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
+    msgsFor: (peerId) => {
+      let c = msgsByChat.get(peerId)
+      if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
       return c
     },
     // `out` бабла (порт tweb pFlags.out) выводит владелец — здесь это тот же
@@ -64,7 +64,7 @@ function emit(ops: ReturnType<ReturnType<typeof worker>['beforeMessageSending']>
 }
 
 const evt = (over: Partial<PendingNewEvt> = {}): PendingNewEvt => ({
-  chat_id: CHAT, client_msg_id: 'c1', sender_id: SENDER, text: 'hi', ...over,
+  peer_id: CHAT, client_msg_id: 'c1', sender_id: SENDER, text: 'hi', ...over,
 })
 
 describe('storeProjection — жизненный цикл неотправленного бабла приезжает операциями', () => {

@@ -8,7 +8,7 @@ import type { Dialog } from '../models'
 const at = (iso: string): Dialog['lastMessage'] => ({ seq: 1, text: 'x', senderId: 1, at: iso })
 
 const dlg = (over: Partial<Dialog>): Dialog => ({
-  chatId: 1,
+  peerId: 1,
   type: 'private',
   lastReadSeq: 0,
   peerReadSeq: 0,
@@ -22,24 +22,24 @@ const dlg = (over: Partial<Dialog>): Dialog => ({
 
 describe('dialogIndex', () => {
   it('свежее сообщение — больший индекс (выше в списке)', () => {
-    const older = dialogIndex(dlg({ chatId: 1, lastMessage: at('2026-08-09T10:00:00Z') }), [])
-    const newer = dialogIndex(dlg({ chatId: 2, lastMessage: at('2026-08-09T11:00:00Z') }), [])
+    const older = dialogIndex(dlg({ peerId: 1, lastMessage: at('2026-08-09T10:00:00Z') }), [])
+    const newer = dialogIndex(dlg({ peerId: 2, lastMessage: at('2026-08-09T11:00:00Z') }), [])
 
     expect(newer).toBeGreaterThan(older)
   })
 
   it('закреплённый всегда выше любого незакреплённого', () => {
-    const pinnedOld = dialogIndex(dlg({ chatId: 1, pinned: true, lastMessage: at('2020-01-01T00:00:00Z') }), [1])
-    const freshUnpinned = dialogIndex(dlg({ chatId: 2, lastMessage: at('2026-08-09T23:59:00Z') }), [])
+    const pinnedOld = dialogIndex(dlg({ peerId: 1, pinned: true, lastMessage: at('2020-01-01T00:00:00Z') }), [1])
+    const freshUnpinned = dialogIndex(dlg({ peerId: 2, lastMessage: at('2026-08-09T23:59:00Z') }), [])
 
     expect(pinnedOld).toBeGreaterThan(freshUnpinned)
   })
 
   it('порядок закреплённых — по позиции в pinnedOrder', () => {
     const order = [5, 6, 7]
-    const first = dialogIndex(dlg({ chatId: 5, pinned: true }), order)
-    const second = dialogIndex(dlg({ chatId: 6, pinned: true }), order)
-    const third = dialogIndex(dlg({ chatId: 7, pinned: true }), order)
+    const first = dialogIndex(dlg({ peerId: 5, pinned: true }), order)
+    const second = dialogIndex(dlg({ peerId: 6, pinned: true }), order)
+    const third = dialogIndex(dlg({ peerId: 7, pinned: true }), order)
 
     expect(first).toBeGreaterThan(second)
     expect(second).toBeGreaterThan(third)
@@ -47,8 +47,8 @@ describe('dialogIndex', () => {
 
   it('закреплённый, которого нет в pinnedOrder, встаёт первым среди закреплённых', () => {
     const order = [5, 6]
-    const known = dialogIndex(dlg({ chatId: 5, pinned: true }), order)
-    const unknown = dialogIndex(dlg({ chatId: 9, pinned: true }), order)
+    const known = dialogIndex(dlg({ peerId: 5, pinned: true }), order)
+    const unknown = dialogIndex(dlg({ peerId: 9, pinned: true }), order)
 
     expect(unknown).toBeGreaterThan(known)
   })
@@ -75,14 +75,14 @@ describe('dialogIndex', () => {
   })
 
   it('детерминированность: те же данные — тот же индекс', () => {
-    const d = dlg({ chatId: 3, lastMessage: at('2026-08-09T10:00:00Z') })
+    const d = dlg({ peerId: 3, lastMessage: at('2026-08-09T10:00:00Z') })
 
     expect(dialogIndex(d, [])).toBe(dialogIndex(d, []))
   })
 
-  it('ничья по дате разводится chatId — одинаково при любом порядке обработки', () => {
-    const a = dialogIndex(dlg({ chatId: 10, lastMessage: at('2026-08-09T10:00:00Z') }), [])
-    const b = dialogIndex(dlg({ chatId: 11, lastMessage: at('2026-08-09T10:00:00Z') }), [])
+  it('ничья по дате разводится peerId — одинаково при любом порядке обработки', () => {
+    const a = dialogIndex(dlg({ peerId: 10, lastMessage: at('2026-08-09T10:00:00Z') }), [])
+    const b = dialogIndex(dlg({ peerId: 11, lastMessage: at('2026-08-09T10:00:00Z') }), [])
 
     expect(a).not.toBe(b)
     expect(b).toBeGreaterThan(a)
@@ -93,9 +93,9 @@ describe('dialogIndex', () => {
   })
 
   it('битая дата не ломает индекс', () => {
-    const broken = dialogIndex(dlg({ chatId: 4, lastMessage: at('не-дата') }), [])
+    const broken = dialogIndex(dlg({ peerId: 4, lastMessage: at('не-дата') }), [])
 
     expect(Number.isFinite(broken)).toBe(true)
-    expect(broken).toBe(dialogIndex(dlg({ chatId: 4, lastMessage: undefined }), []))
+    expect(broken).toBe(dialogIndex(dlg({ peerId: 4, lastMessage: undefined }), []))
   })
 })

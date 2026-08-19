@@ -8,7 +8,7 @@
 // бессмысленно: предмет задачи — что владелец и витрина НЕ расходятся.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { RT } from '../../core/realtime/events'
+import { RT, type ChatUpdateEvt } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import { newDialogsManager } from '../../core/managers/dialogsManager'
 import type { Dialog } from '../../core/models'
@@ -16,8 +16,8 @@ import type { Managers } from '../bootstrap'
 
 import { registerStoreProjection } from './storeProjection'
 
-const dialog = (chatId: number, at = '2026-08-01T00:00:00Z'): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at = '2026-08-01T00:00:00Z'): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
@@ -35,6 +35,20 @@ function stand(cache: Dialog[]) {
   return { mgr }
 }
 
+// Кадр `chat_update` несёт `messages.chatFull` — тот же объект, что отдаёт
+// `GET /chats/{peerID}/card`.
+function chatUpdate(peerId: number, title = '', username?: string): ChatUpdateEvt {
+  return {
+    peer_id: peerId,
+    chat_full: {
+      _: 'messages.chatFull',
+      full_chat: { _: 'channelFull', id: Math.abs(peerId), about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
+      chats: [{ _: 'channel', id: Math.abs(peerId), title, username, photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }],
+      users: [],
+    },
+  }
+}
+
 describe('storeProjection — диалоги: воркер владеет, витрина зеркалит', () => {
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
@@ -47,8 +61,8 @@ describe('storeProjection — диалоги: воркер владеет, ви�
 
     await mgr.fillMirror()
 
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId))
-      .toEqual(mgr.getSnapshot().map((i) => i.dialog.chatId))
+    expect(useChatsStore.getState().dialogs.map((d) => d.peerId))
+      .toEqual(mgr.getSnapshot().map((i) => i.dialog.peerId))
   })
 
   it('reindex меняет порядок, не трогая значения', () => {
@@ -56,9 +70,9 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     st.applyDialogOps([{ op: 'reset', items: [
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 },
     ] }])
-    st.applyDialogOps([{ op: 'reindex', items: [{ chatId: 1, index: 30 }] }])
+    st.applyDialogOps([{ op: 'reindex', items: [{ peerId: 1, index: 30 }] }])
 
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1, 2])
+    expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1, 2])
   })
 
   // upsert: новый диалог появляется, существующий обновляется полями операции.
@@ -72,8 +86,8 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     ] }])
 
     const s = useChatsStore.getState()
-    expect(s.dialogs.map((d) => d.chatId)).toEqual([2, 1])
-    expect(s.dialogs.find((d) => d.chatId === 1)?.title).toBe('обновлён')
+    expect(s.dialogs.map((d) => d.peerId)).toEqual([2, 1])
+    expect(s.dialogs.find((d) => d.peerId === 1)?.title).toBe('обновлён')
   })
 
   // patch: точечное изменение полей без замены объекта целиком; index двигает строку.
@@ -83,11 +97,11 @@ describe('storeProjection — диалоги: воркер владеет, ви�
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 },
     ] }])
 
-    st.applyDialogOps([{ op: 'patch', chatId: 1, fields: { muted: true }, index: 30 }])
+    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { muted: true }, index: 30 }])
 
     const s = useChatsStore.getState()
-    expect(s.dialogs.find((d) => d.chatId === 1)?.muted).toBe(true)
-    expect(s.dialogs.map((d) => d.chatId)).toEqual([1, 2]) // index 30 > 20 — 1 теперь выше
+    expect(s.dialogs.find((d) => d.peerId === 1)?.muted).toBe(true)
+    expect(s.dialogs.map((d) => d.peerId)).toEqual([1, 2]) // index 30 > 20 — 1 теперь выше
   })
 
   // Ревью Task 2 (Important): patch БЕЗ index — mute/read/метаданные, которые
@@ -96,9 +110,9 @@ describe('storeProjection — диалоги: воркер владеет, ви�
   // правка не имеет права переиндексировать диалог. Ловит регрессию вида
   // `op.index ?? 0` — валидный TS, тайпчек не поймает, но обнулил бы позицию.
   //
-  // ТРИ диалога, а не два: у chatId 1 и chatId 3 индекс 10 и 5 соответственно —
-  // оба МЕНЬШЕ индекса chatId 2 (20). Если бы patch без index обнулял индекс
-  // (0 < 5), diaлог 1 обогнал бы... нет — упал бы НИЖЕ chatId 3 (0 < 5), меняя
+  // ТРИ диалога, а не два: у peerId 1 и peerId 3 индекс 10 и 5 соответственно —
+  // оба МЕНЬШЕ индекса peerId 2 (20). Если бы patch без index обнулял индекс
+  // (0 < 5), diaлог 1 обогнал бы... нет — упал бы НИЖЕ peerId 3 (0 < 5), меняя
   // порядок с [2,1,3] на [2,3,1]. С двумя диалогами (10 vs 20) обнуление 10→0
   // не поменяло бы относительный порядок — регрессия была бы не видна.
   it('patch без index меняет поля, но НЕ трогает позицию диалога', () => {
@@ -107,12 +121,12 @@ describe('storeProjection — диалоги: воркер владеет, ви�
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 }, { dialog: dialog(3), index: 5 },
     ] }])
 
-    st.applyDialogOps([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { muted: true } }])
 
     const s = useChatsStore.getState()
-    expect(s.dialogs.find((d) => d.chatId === 1)?.muted).toBe(true)
-    // index у chatId 1 остался 10 (между 20 и 5) — порядок не изменился.
-    expect(s.dialogs.map((d) => d.chatId)).toEqual([2, 1, 3])
+    expect(s.dialogs.find((d) => d.peerId === 1)?.muted).toBe(true)
+    // index у peerId 1 остался 10 (между 20 и 5) — порядок не изменился.
+    expect(s.dialogs.map((d) => d.peerId)).toEqual([2, 1, 3])
   })
 
   // Fix (ревью Task 3, Important): владелец публиковал `patch` безусловно —
@@ -128,15 +142,15 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     const { mgr } = stand([dialog(1, '2026-08-01T00:00:00Z')])
     await mgr.fillMirror()
 
-    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' })
+    mgr.applyChatMeta(chatUpdate(1, 'Новое имя'))
     const dialogsBefore = useChatsStore.getState().dialogs
-    const dialogBefore = dialogsBefore.find((d) => d.chatId === 1)
+    const dialogBefore = dialogsBefore.find((d) => d.peerId === 1)
 
-    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' }) // тот же снимок повторно
+    mgr.applyChatMeta(chatUpdate(1, 'Новое имя')) // тот же снимок повторно
 
     const s = useChatsStore.getState()
     expect(s.dialogs).toBe(dialogsBefore) // массив НЕ пересоздан
-    expect(s.dialogs.find((d) => d.chatId === 1)).toBe(dialogBefore) // диалог сохранил ССЫЛКУ
+    expect(s.dialogs.find((d) => d.peerId === 1)).toBe(dialogBefore) // диалог сохранил ССЫЛКУ
   })
 
   // remove: диалог выпадает из зеркала.
@@ -146,8 +160,8 @@ describe('storeProjection — диалоги: воркер владеет, ви�
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 },
     ] }])
 
-    st.applyDialogOps([{ op: 'remove', chatId: 2 }])
+    st.applyDialogOps([{ op: 'remove', peerId: 2 }])
 
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])
+    expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
   })
 })

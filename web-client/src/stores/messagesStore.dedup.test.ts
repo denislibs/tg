@@ -11,7 +11,7 @@ const CHAT = 11
 
 function msg(seq: number, id: number, text = `m${seq}`): Message {
   return {
-    id, chatId: CHAT, seq, senderId: 1, type: 'text', text,
+    id, peerId: CHAT, seq, senderId: 1, type: 'text', text,
     replyToId: null, mediaId: null, createdAt: '2026-08-10T10:00:00Z', threadRootId: null,
   }
 }

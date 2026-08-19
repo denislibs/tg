@@ -1,5 +1,6 @@
 // src/core/managers/storiesManager.ts
 import type { RestClient } from '../net/restClient'
+import type { UserReal } from '../peers/peer'
 
 // Агрегат одной реакции истории (эмодзи + счётчик + поставил ли её текущий юзер).
 export interface StoryReaction { emoji: string; count: number; mine: boolean }
@@ -55,7 +56,11 @@ export interface StoryItem {
 
 // Текущее окно stealth-режима (tweb getStealthMode). null — режим не активен/нет кулдауна.
 export interface StealthState { activeUntil: string | null; cooldownUntil: string | null }
-export interface StoryGroup { author: { id: number; displayName: string; avatarUrl: string }; stories: StoryItem[] }
+// Автор группы историй — КОНСТРУКТОР `user` целиком: имя собирает клиент
+// (`core/peers/getPeerTitle.ts`), аватарка это `photo.photo_id`. Прежняя тройка
+// {id, displayName, avatarUrl} была плоским снимком пользователя рядом с
+// настоящим — вторым источником тех же данных.
+export interface StoryGroup { author: UserReal; stories: StoryItem[] }
 
 // Период жизни истории в секундах (tweb story period). Дефолт — 24ч.
 export type StoryPeriod = 21600 | 43200 | 86400 | 172800
@@ -114,11 +119,8 @@ export function mapStory(s: RawStory): StoryItem {
 export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'put' | 'patch' | 'del'> }) {
   return {
     async feed(): Promise<StoryGroup[]> {
-      const r = await rest.get<{ groups: { author: { id: number; display_name: string; avatar_url: string }; stories: RawStory[] }[] }>('/stories')
-      return (r.groups ?? []).map((g) => ({
-        author: { id: g.author.id, displayName: g.author.display_name, avatarUrl: g.author.avatar_url },
-        stories: g.stories.map(mapStory),
-      }))
+      const r = await rest.get<{ groups: { author: UserReal; stories: RawStory[] }[] }>('/stories')
+      return (r.groups ?? []).map((g) => ({ author: g.author, stories: g.stories.map(mapStory) }))
     },
     async post(args: { mediaId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number; mediaAreas?: MediaArea[] }): Promise<number> {
       const r = await rest.post<{ id: number }>('/stories', {
@@ -146,8 +148,8 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     },
     // Поделиться историей в чаты (4d, tweb share): в каждый чат уходит медиа-
     // сообщение с атрибуцией. Возвращает число успешно отправленных.
-    async share(id: number, chatIds: number[]): Promise<number> {
-      const r = await rest.post<{ sent: number }>(`/stories/${id}/share`, { chat_ids: chatIds })
+    async share(id: number, peerIds: number[]): Promise<number> {
+      const r = await rest.post<{ sent: number }>(`/stories/${id}/share`, { peer_ids: peerIds })
       return r.sent ?? 0
     },
     async view(id: number): Promise<void> { await rest.post(`/stories/${id}/view`, {}) },
@@ -194,9 +196,10 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     // Реакция на историю (4b): POST ставит/меняет, DELETE снимает.
     async setReaction(id: number, reaction: string): Promise<void> { await rest.post(`/stories/${id}/reaction`, { reaction }) },
     async removeReaction(id: number): Promise<void> { await rest.del(`/stories/${id}/reaction`) },
-    async viewers(id: number): Promise<{ id: number; displayName: string; avatarUrl: string }[]> {
-      const r = await rest.get<{ viewers: { id: number; display_name: string; avatar_url: string }[] }>(`/stories/${id}/viewers`)
-      return (r.viewers ?? []).map((v) => ({ id: v.id, displayName: v.display_name, avatarUrl: v.avatar_url }))
+    async viewers(id: number): Promise<UserReal[]> {
+      // Маппера нет: карточки приходят конструкторами и кладутся вербатим.
+      const r = await rest.get<{ viewers: UserReal[] }>(`/stories/${id}/viewers`)
+      return r.viewers ?? []
     },
     async stats(id: number): Promise<StoryStats> {
       const r = await rest.get<{ views: number; views_by_day: StoryStatPoint[]; reactions_total?: number; reactions?: { emoji: string; count: number }[] }>(`/stories/${id}/stats`)

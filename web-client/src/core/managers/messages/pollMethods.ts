@@ -19,10 +19,10 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
   // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
   // Возвращает id патченного сообщения (для построения операций у cacheChecklist) —
   // undefined, если чек-лист ни на одном сообщении SSOT не найден.
-  const applyChecklistToCache = (chatId: number, raw: RawChecklist): number | undefined => {
+  const applyChecklistToCache = (peerId: number, raw: RawChecklist): number | undefined => {
     const checklist = mapChecklist(raw)
     let msgId: number | undefined
-    patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
+    patchMsg(peerId, (m) => m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
     return msgId
   }
 
@@ -34,15 +34,15 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // бэкенд снимает эффект с типа 'poll' по whitelist (sanitizeEffect,
     // backend/internal/usecase/chat/sanitize.go:29-32) — как и Telegram, который
     // эффекты на опросах не показывает.
-    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<Message> {
+    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<Message> {
       const wire = sendingParamsToWire(p)
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/polls`, {
+      const r = await rest.post<RawMessage>(`/chats/${peerId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
         reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
         reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
-        silent: wire.silent, send_as_chat_id: wire.sendAsChatId,
+        silent: wire.silent, send_as_peer_id: wire.sendAsPeerId,
       })
       return mapOne(r)
     },
@@ -50,10 +50,10 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // которого нет в общем WS-событии poll_update. Ставим опрос ПОЛНОСТЬЮ в SSOT
     // воркера; main-стор обновляет вызыватель результатом (setPoll, не merge), иначе
     // WS-merge потерял бы myVotes. WS poll_update затем реконсилит агрегат.
-    async votePoll(chatId: number, pollId: number, options: number[]): Promise<Poll> {
+    async votePoll(peerId: number, pollId: number, options: number[]): Promise<Poll> {
       const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
       const poll = mapPoll(r.poll)
-      patchMsg(chatId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
+      patchMsg(peerId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
       return poll
     },
     async closePoll(pollId: number): Promise<void> {
@@ -61,8 +61,8 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     },
 
     // ── Чек-листы (Telegram todo list) ──
-    async sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/checklists`, {
+    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${peerId}/checklists`, {
         title: c.title, items: c.items,
         others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
         client_msg_id: c.clientMsgId ?? '',
@@ -71,25 +71,25 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     },
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
     // отметку) → пушим в SSOT; main-стор обновляет вызыватель (storeProjection чист).
-    async toggleChecklistItem(chatId: number, checklistId: number, itemId: number): Promise<Checklist> {
+    async toggleChecklistItem(peerId: number, checklistId: number, itemId: number): Promise<Checklist> {
       const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      applyChecklistToCache(chatId, r.checklist)
+      applyChecklistToCache(peerId, r.checklist)
       return mapChecklist(r.checklist)
     },
     // Добавить пункты; ответ авторитетен → пуш в SSOT.
-    async addChecklistItems(chatId: number, checklistId: number, items: string[]): Promise<Checklist> {
+    async addChecklistItems(peerId: number, checklistId: number, items: string[]): Promise<Checklist> {
       const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
-      applyChecklistToCache(chatId, r.checklist)
+      applyChecklistToCache(peerId, r.checklist)
       return mapChecklist(r.checklist)
     },
 
     // Участвовать в розыгрыше. Ответ несёт МОЁ participating/iWon, которого нет в
     // общем WS giveaway_update → ставим розыгрыш ПОЛНОСТЬЮ в SSOT воркера; main-стор
     // обновляет вызыватель результатом (setGiveaway, не merge). WS реконсилит агрегат.
-    async participateGiveaway(chatId: number, giveawayId: number): Promise<Giveaway> {
+    async participateGiveaway(peerId: number, giveawayId: number): Promise<Giveaway> {
       const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
       const giveaway = mapGiveaway(r.giveaway)
-      patchMsg(chatId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
+      patchMsg(peerId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
       return giveaway
     },
 
@@ -102,28 +102,28 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // (см. patch() в core/realtime/messageOps.ts и карту обогащений §3.1): если бы
     // операция несла myVotes из SSOT воркера, в многовкладочном сценарии она
     // навязала бы окну чужую (воркерную) копию локального выбора.
-    cachePoll(evt: { chat_id: number; poll: RawPoll }): MessageOp[] {
+    cachePoll(evt: { peer_id: number; poll: RawPoll }): MessageOp[] {
       const poll = mapPoll(evt.poll)
       let msgId: number | undefined
-      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: m.poll!.myVotes } } })
+      patchMsg(evt.peer_id, (m) => m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: m.poll!.myVotes } } })
       if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { poll } }))
+      return opWindowsFor(evt.peer_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { poll } }))
     },
     // Чек-лист: отметки глобальны — локального выбора нет, полная замена агрегата.
-    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): MessageOp[] {
+    cacheChecklist(evt: { peer_id: number; checklist: RawChecklist }): MessageOp[] {
       const checklist = mapChecklist(evt.checklist)
-      const msgId = applyChecklistToCache(evt.chat_id, evt.checklist)
+      const msgId = applyChecklistToCache(evt.peer_id, evt.checklist)
       if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { checklist } }))
+      return opWindowsFor(evt.peer_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { checklist } }))
     },
     // Розыгрыш: своё участие (participating/iWon) — локальное, симметрично опросу
     // (см. комментарий у cachePoll выше и карту обогащений §3.2).
-    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): MessageOp[] {
+    cacheGiveaway(evt: { peer_id: number; giveaway: RawGiveaway }): MessageOp[] {
       const giveaway = mapGiveaway(evt.giveaway)
       let msgId: number | undefined
-      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } } })
+      patchMsg(evt.peer_id, (m) => m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } } })
       if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { giveaway } }))
+      return opWindowsFor(evt.peer_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { giveaway } }))
     },
   }
 }

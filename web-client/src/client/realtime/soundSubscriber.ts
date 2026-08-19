@@ -25,6 +25,6 @@ export function registerSoundSubscriber(): void {
     const effect = mapEffect(evt.effect)
     if (!effect) return
     const cs = useChatsStore.getState()
-    if (evt.sender_id !== cs.meId && cs.activeChatId === evt.chat_id) playEmojiEffect(effect)
+    if (evt.sender_id !== cs.meId && cs.activePeerId === evt.peer_id) playEmojiEffect(effect)
   })
 }

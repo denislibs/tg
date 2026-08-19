@@ -7,7 +7,7 @@ import type { RestClient } from '../../net/restClient'
 import type { Message } from '../../models'
 
 /** Точечно обновить одно сообщение чата в SSOT + персист (см. messagesManager.patchMsg). */
-export type PatchMsg = (chatId: number, match: (m: Message) => boolean, upd: (m: Message) => Message | null) => void
+export type PatchMsg = (peerId: number, match: (m: Message) => boolean, upd: (m: Message) => Message | null) => void
 
 export interface MessagesCtx {
   rest: RestClient
@@ -16,5 +16,5 @@ export interface MessagesCtx {
   getMeId?: () => number | null
   /** Ключи ВСЕХ окон чата, где сообщение сейчас видно (см. messagesManager.opWindowsFor) —
    * нужно под-модулям, которые сами порождают операции patch/remove (Stage 1B.3, Task 4). */
-  opWindowsFor: (chatId: number, msgId: number) => string[]
+  opWindowsFor: (peerId: number, msgId: number) => string[]
 }

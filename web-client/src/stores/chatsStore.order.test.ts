@@ -21,10 +21,10 @@ import { useChatsStore } from './chatsStore'
 import type { Dialog } from '../core/models'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 
-const dlg = (chatId: number, at: string, over: Partial<Dialog> = {}): Dialog => ({
-  chatId,
+const dlg = (peerId: number, at: string, over: Partial<Dialog> = {}): Dialog => ({
+  peerId,
   type: 'private',
-  title: 't' + chatId,
+  title: 't' + peerId,
   lastReadSeq: 0,
   peerReadSeq: 0,
   unread: 0,
@@ -72,7 +72,7 @@ describe('chatsStore (зеркало): совпавший reset не перес�
       { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
     ]))
     const before = useChatsStore.getState().dialogs
-    expect(before.map((d) => d.chatId)).toEqual([2, 1])
+    expect(before.map((d) => d.peerId)).toEqual([2, 1])
 
     apply(reset([
       { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
@@ -92,7 +92,7 @@ describe('chatsStore (зеркало): совпавший reset не перес�
     ]))
 
     expect(useChatsStore.getState().dialogs).not.toBe(before)
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([2, 1])
+    expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
   })
 
   it('изменился только индекс (reindex) — ссылка на список новая, ссылки на диалоги прежние', () => {
@@ -101,13 +101,13 @@ describe('chatsStore (зеркало): совпавший reset не перес�
       { dialog: dlg(2, '2026-08-09T12:00:00Z'), index: 20 },
     ]))
     const before = useChatsStore.getState().dialogs
-    const dialog1 = before.find((d) => d.chatId === 1)!
+    const dialog1 = before.find((d) => d.peerId === 1)!
 
-    apply({ op: 'reindex', items: [{ chatId: 1, index: 30 }, { chatId: 2, index: 20 }] })
+    apply({ op: 'reindex', items: [{ peerId: 1, index: 30 }, { peerId: 2, index: 20 }] })
 
     const after = useChatsStore.getState().dialogs
     expect(after).not.toBe(before)
-    expect(after.map((d) => d.chatId)).toEqual([1, 2])
-    expect(after.find((d) => d.chatId === 1)).toBe(dialog1) // сами записи не пересозданы
+    expect(after.map((d) => d.peerId)).toEqual([1, 2])
+    expect(after.find((d) => d.peerId === 1)).toBe(dialog1) // сами записи не пересозданы
   })
 })

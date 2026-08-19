@@ -3,11 +3,11 @@ import { describe, it, expect } from 'vitest'
 import { dialogToChat, GRADIENTS } from './dialogToChat'
 import type { Dialog } from './models'
 
-const base: Dialog = { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }
+const base: Dialog = { peerId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }
 
 describe('dialogToChat', () => {
-  it('uses peer display name + initial for private chats', () => {
-    const c = dialogToChat({ ...base, peer: { id: 2, displayName: 'Bob', avatarUrl: '' } })
+  it('собирает имя приватного чата из конструктора user (display_name с провода убран)', () => {
+    const c = dialogToChat({ ...base, peer: { _: 'user', id: 2, first_name: 'Bob' } })
     expect(c.id).toBe('1')
     expect(c.name).toBe('Bob')
     expect(c.avatarText).toBe('B')
@@ -15,21 +15,21 @@ describe('dialogToChat', () => {
   })
 
   it('falls back to "Chat N" for groups without a title', () => {
-    const c = dialogToChat({ ...base, chatId: 9, type: 'group' })
+    const c = dialogToChat({ ...base, peerId: 9, type: 'group' })
     expect(c.name).toBe('Chat 9')
     expect(c.avatarText).toBe('C')
   })
 
   it('uses the group title when present', () => {
-    const c = dialogToChat({ ...base, chatId: 9, type: 'group', title: 'My Group' })
+    const c = dialogToChat({ ...base, peerId: 9, type: 'group', title: 'My Group' })
     expect(c.name).toBe('My Group')
     expect(c.avatarText).toBe('M')
   })
 
-  it('prefers a private peer display name over title', () => {
+  it('prefers a private peer name over title', () => {
     const c = dialogToChat({
       ...base,
-      peer: { id: 2, displayName: 'Bob', avatarUrl: '' },
+      peer: { _: 'user', id: 2, first_name: 'Bob' },
       title: 'Ignored',
     })
     expect(c.name).toBe('Bob')
@@ -58,8 +58,8 @@ describe('dialogToChat', () => {
   })
 
   it('picks a stable gradient from the chat id', () => {
-    const a = dialogToChat({ ...base, chatId: 5 })
-    const b = dialogToChat({ ...base, chatId: 5 })
+    const a = dialogToChat({ ...base, peerId: 5 })
+    const b = dialogToChat({ ...base, peerId: 5 })
     expect(a.avatar).toBe(b.avatar)
     expect(GRADIENTS).toContain(a.avatar)
   })

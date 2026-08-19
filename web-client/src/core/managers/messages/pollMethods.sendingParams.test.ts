@@ -13,7 +13,7 @@ import { newPollMethods } from './pollMethods'
 
 function ctx() {
   const post = vi.fn(async (_url: string, _body: Record<string, unknown>) => ({
-    id: 1, chat_id: 1, seq: 1, sender_id: 5, type: 'poll', text: '',
+    id: 1, peer_id: 1, seq: 1, sender_id: 5, type: 'poll', text: '',
     reply_to_id: null, media_id: null, created_at: '2026-01-01T00:00:00Z',
   }))
   return {
@@ -37,7 +37,7 @@ describe('sendPoll: пакет параметров разворачиваетс
 
     expect(h.post.mock.calls[0][1]).toMatchObject({
       reply_to_id: 77, reply_quote_text: 'риг', reply_quote_offset: 1,
-      thread_root_id: 3, silent: true, send_as_chat_id: 9,
+      thread_root_id: 3, silent: true, send_as_peer_id: 9,
     })
   })
 
@@ -49,7 +49,7 @@ describe('sendPoll: пакет параметров разворачиваетс
 
     expect(h.post.mock.calls[0][1]).toMatchObject({
       reply_to_id: null, reply_quote_text: null, thread_root_id: null,
-      silent: false, send_as_chat_id: null,
+      silent: false, send_as_peer_id: null,
     })
   })
 })

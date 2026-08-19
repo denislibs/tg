@@ -13,7 +13,7 @@ import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
 import type { Draft } from '../core/models'
 
-const draft: Draft = { chatId: 3, text: 'привет', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }
+const draft: Draft = { peerId: 3, text: 'привет', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }
 
 beforeEach(() => {
   useAppStateStore.setState({ ...STATE_INIT }, true)

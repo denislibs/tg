@@ -2,6 +2,8 @@
 import type { Chat } from '../data'
 import type { Dialog, Draft } from './models'
 import { serviceMsgText } from './serviceMsg'
+import { getPeerPhotoId, getPeerPhotoStrippedThumb } from './peers/peer'
+import { SAVED_MESSAGES_TITLE, getUserTitle } from './peers/getPeerTitle'
 
 // Палитра аватаров 1:1 с tweb (base.scss @include avatar-color): вертикальный
 // градиент top→bottom, 7 цветов, индекс = abs(id) % 7 (getPeerColorIndexById).
@@ -70,9 +72,12 @@ export function mediaLabel(type?: string): string {
 export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Chat {
   const isSaved = d.type === 'saved'
   const isService = d.peer?.id === SERVICE_USER_ID
+  // Имя собирает клиент: `display_name` с провода убран. У приватного —
+  // из конструктора `user` (с фолбэками «Удалённый аккаунт»/username), у
+  // группы/канала — `title` строки диалога.
   const name = isSaved
-    ? 'Избранное'
-    : d.peer?.displayName?.trim() || d.title?.trim() || `Chat ${d.chatId}`
+    ? SAVED_MESSAGES_TITLE
+    : (d.peer ? getUserTitle(d.peer) : d.title?.trim()) || `Chat ${d.peerId}`
   const lm = d.lastMessage
   // Sidebar tick: only when the LAST message is mine and it's not a broadcast
   // channel. ✓✓ once the peer's read horizon (peerReadSeq) reaches its seq.
@@ -98,7 +103,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
   // красный «Черновик: » + текст; тики/стрелка пересылки не показываются).
   const hasDraft = !!draft?.text.trim()
   return {
-    id: String(d.chatId),
+    id: String(d.peerId),
     name,
     // Saved Messages: blue gradient + bookmark icon. Telegram service account:
     // blue gradient + the Telegram-plane logo. Otherwise the peer's photo or a
@@ -107,18 +112,19 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
       ? 'linear-gradient(#69BFFA,#3D9DE0)' // tweb Saved Messages blue
       : isService
         ? SERVICE_GRADIENT
-        : gradientFor(d.chatId),
+        : gradientFor(d.peerId),
     avatarText: name.charAt(0).toUpperCase() || '?',
     avatarEmoji: isSaved ? 'saved' : isService ? 'tg-logo' : undefined,
-    avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
-    // Превью — тем же правилом, что и сам URL: приватный чат несёт
-    // peer.avatarPreview, группа/канал — photoPreview (media.blur_preview).
-    avatarPreview: isSaved || isService ? undefined : d.peer?.avatarPreview || d.photoPreview || undefined,
-    peerId: d.peer?.id,
-    isBot: d.peer?.isBot || undefined,
-    verified: d.peer?.verified || undefined,
-    premium: d.peer?.premium || undefined,
-    emojiStatus: d.peer?.emojiStatus || undefined,
+    // Одно поле вместо пяти: у приватного аватарка живёт внутри `peer.photo`,
+    // у группы/канала — в `photo` строки диалога, и оба несут готовый
+    // `photo_id`. Регулярки по собственной строке `/media/N/content` больше нет.
+    photoId: isSaved || isService ? undefined : getPeerPhotoId(d.peer?.photo ?? d.photo) || undefined,
+    // Превью — тем же правилом, что и сам id: `stripped_thumb` того же `photo`.
+    avatarPreview: isSaved || isService ? undefined : getPeerPhotoStrippedThumb(d.peer?.photo ?? d.photo) || undefined,
+    isBot: d.peer?.pFlags?.bot || undefined,
+    verified: d.peer?.pFlags?.verified || undefined,
+    premium: d.peer?.pFlags?.premium || undefined,
+    emojiStatus: d.peer?.emoji_status_emoticon || undefined,
     date: hasDraft && (!lm?.at || draft!.updatedAt > lm.at) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm?.at),
     preview,
     draftPreview: hasDraft ? draft!.text : undefined,

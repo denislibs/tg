@@ -5,9 +5,9 @@
 // survives a Chat unmount. `useMessageWindow` is a thin selector/
 // actions wrapper over this store and keeps the same shape.
 //
-// Окна ключуются чатом ИЛИ тредом чата (tweb: history по threadId): "chatId" —
-// основное окно, "chatId:root" — окно форум-топика/комментариев. Live-события
-// с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
+// Окна ключуются чатом ИЛИ тредом чата (tweb: history по threadId): "peerId" —
+// основное окно, "peerId:root" — окно форум-топика/комментариев. Live-события
+// с peer_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCheck, ReactionCount } from '../core/models'
@@ -88,42 +88,42 @@ interface MessagesState {
   append: (key: string, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (key: string, m: Message) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
-  applyIncoming: (chatId: number, m: Message) => void
+  applyIncoming: (peerId: number, m: Message) => void
   /** Stage 1B.2 (Task 4): переигрывает операции воркера (rt:message_op) поверх
    * окон — единственный писатель окна для входящих сообщений (заменяет прямой
    * вызов applyIncoming из RT.newMessage). Окно, не загруженное на этой вкладке
    * (`!byKey[op.key]`), пропускается — та же гарантия, что и у applyIncoming
    * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
   applyOps: (ops: MessageOp[]) => void
-  applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
-  applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
+  applyEdit: (peerId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
+  applyGeoLive: (peerId: number, msgId: number, geo: GeoData) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
-  applyFactCheck: (chatId: number, msgId: number, factCheck: FactCheck | undefined) => void
-  applyDelete: (chatId: number, msgId: number) => void
+  applyFactCheck: (peerId: number, msgId: number, factCheck: FactCheck | undefined) => void
+  applyDelete: (peerId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
-  patchViews: (chatId: number, views: Map<number, number>) => void
+  patchViews: (peerId: number, views: Map<number, number>) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). Live-
    * агрегат (poll_update) больше сюда не идёт — окно правит операция patch
    * (Stage 1B.3, Task 4: cachePoll → RT.messageOp → applyOps), myVotes
    * сохраняется слиянием патча (core/realtime/messageOps.ts). */
-  setPoll: (chatId: number, poll: Poll) => void
+  setPoll: (peerId: number, poll: Poll) => void
   /** Обновление чек-листа (ответ на toggle/add): отметки глобальны (видно, кто
    * отметил) — локального состояния нет, полная замена. Live-агрегат
    * (checklist_update) идёт через операцию patch (см. setPoll выше). */
-  applyChecklistUpdate: (chatId: number, checklist: Checklist) => void
+  applyChecklistUpdate: (peerId: number, checklist: Checklist) => void
   /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon).
    * Live-агрегат (giveaway_update) — операцией patch, см. setPoll выше. */
-  setGiveaway: (chatId: number, giveaway: Giveaway) => void
+  setGiveaway: (peerId: number, giveaway: Giveaway) => void
   /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction c counts / catch-up): ставим counts
    * verbatim. `mine` деривим — сохраняем для не затронутых emoji; для emoji своего
    * действия ставим (add) / снимаем (remove). myEmoji/myAction заданы только когда
    * реагировал я (user_id===meId), иначе null → mine целиком сохраняется. Идемпотентно
    * на реплей (тот же агрегат → no-op). */
-  applyReaction: (chatId: number, msgId: number, counts: { emoji: string; count: number }[], myEmoji: string | null, myAction: 'add' | 'remove' | null) => void
+  applyReaction: (peerId: number, msgId: number, counts: { emoji: string; count: number }[], myEmoji: string | null, myAction: 'add' | 'remove' | null) => void
   /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
    * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
   applyReactionOptimistic: (
-    chatId: number,
+    peerId: number,
     msgId: number,
     emoji: string,
     action: 'add' | 'remove',
@@ -132,7 +132,7 @@ interface MessagesState {
   ) => void
   /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
    * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
-  applyStarReaction: (chatId: number, msgId: number, total: number, mine?: number) => void
+  applyStarReaction: (peerId: number, msgId: number, total: number, mine?: number) => void
 }
 
 // Update a single window immutably.
@@ -145,14 +145,14 @@ function patch(
   return { byKey: { ...state.byKey, [key]: { ...cur, ...fn(cur) } } }
 }
 
-// Live-события несут только chat_id — применяем ко всем загруженным окнам
+// Live-события несут только peer_id — применяем ко всем загруженным окнам
 // этого чата (основное + треды). fn возвращает новый msgs или null (без изменений).
 function patchChat(
   state: MessagesState,
-  chatId: number,
+  peerId: number,
   fn: (w: ChatWindow) => Message[] | null,
 ): Pick<MessagesState, 'byKey'> | Record<string, never> {
-  const prefix = String(chatId)
+  const prefix = String(peerId)
   let next: Record<string, ChatWindow> | null = null
   for (const key of Object.keys(state.byKey)) {
     if (key !== prefix && !key.startsWith(`${prefix}:`)) continue
@@ -194,11 +194,11 @@ export const useMessagesStore = create<MessagesState>((set) => ({
   appendLocal: (key, m) =>
     set((s) => patch(s, key, (w) => ({ msgs: dedupAsc([...w.msgs, m]) }))),
 
-  applyIncoming: (chatId, m) =>
+  applyIncoming: (peerId, m) =>
     set((s) => {
       // Apply to the main chat window AND (for a thread message) that thread's
       // window — each only if loaded (else refetched on open).
-      const keys = m.threadRootId ? [winKey(chatId), winKey(chatId, m.threadRootId)] : [winKey(chatId)]
+      const keys = m.threadRootId ? [winKey(peerId), winKey(peerId, m.threadRootId)] : [winKey(peerId)]
       let out: Pick<MessagesState, 'byKey'> | Record<string, never> = {}
       let cur = s
       for (const key of keys) {
@@ -238,33 +238,33 @@ export const useMessagesStore = create<MessagesState>((set) => ({
       return out
     }),
 
-  setPoll: (chatId, poll) =>
+  setPoll: (peerId, poll) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.poll?.id === poll.id)
           ? w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m))
           : null,
       )),
 
-  applyChecklistUpdate: (chatId, checklist) =>
+  applyChecklistUpdate: (peerId, checklist) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.checklist?.id === checklist.id)
           ? w.msgs.map((m) => (m.checklist?.id === checklist.id ? { ...m, checklist } : m))
           : null,
       )),
 
-  setGiveaway: (chatId, giveaway) =>
+  setGiveaway: (peerId, giveaway) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.giveaway?.id === giveaway.id)
           ? w.msgs.map((m) => (m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
           : null,
       )),
 
-  applyEdit: (chatId, msgId, text, editedAt, entities, replyMarkup) =>
+  applyEdit: (peerId, msgId, text, editedAt, entities, replyMarkup) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) =>
               m.id === msgId
@@ -274,31 +274,31 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyGeoLive: (chatId, msgId, geo) =>
+  applyGeoLive: (peerId, msgId, geo) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) => (m.id === msgId ? { ...m, geo } : m))
           : null,
       )),
 
-  applyFactCheck: (chatId, msgId, factCheck) =>
+  applyFactCheck: (peerId, msgId, factCheck) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) => (m.id === msgId ? { ...m, factCheck } : m))
           : null,
       )),
 
-  applyDelete: (chatId, msgId) =>
+  applyDelete: (peerId, msgId) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.id === msgId) ? w.msgs.filter((m) => m.id !== msgId) : null,
       )),
 
-  patchViews: (chatId, views) =>
+  patchViews: (peerId, views) =>
     set((s) =>
-      patchChat(s, chatId, (w) =>
+      patchChat(s, peerId, (w) =>
         // Only rebuild rows whose count actually changed, so unaffected bubbles keep
         // their reference (memoized rows don't re-render).
         w.msgs.some((m) => views.has(m.id) && views.get(m.id) !== m.views)
@@ -306,9 +306,9 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyReaction: (chatId, msgId, counts, myEmoji, myAction) =>
+  applyReaction: (peerId, msgId, counts, myEmoji, myAction) =>
     set((s) =>
-      patchChat(s, chatId, (w) => {
+      patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
@@ -321,9 +321,9 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         return changed ? msgs : null
       })),
 
-  applyReactionOptimistic: (chatId, msgId, emoji, action, me) =>
+  applyReactionOptimistic: (peerId, msgId, emoji, action, me) =>
     set((s) =>
-      patchChat(s, chatId, (w) => {
+      patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
@@ -336,9 +336,9 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         return changed ? msgs : null
       })),
 
-  applyStarReaction: (chatId, msgId, total, mine) =>
+  applyStarReaction: (peerId, msgId, total, mine) =>
     set((s) =>
-      patchChat(s, chatId, (w) => {
+      patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         return w.msgs.map((m) => {
           if (m.id !== msgId) return m

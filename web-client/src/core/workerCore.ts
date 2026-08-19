@@ -10,7 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
-import { newAuthManager, type User } from './managers/authManager'
+import { newAuthManager, type PeerProfile } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
@@ -73,9 +73,9 @@ export function createWorkerCore() {
   const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
   // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
   // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
-  // «мои» реакций) — теперь кэшируем полного User и рассылаем его вкладкам
+  // «мои» реакций) — теперь кэшируем профиль целиком и рассылаем его вкладкам
   // (rt:me) через setMe при каждом изменении, а не только держим id при себе.
-  let me: User | null = null
+  let me: PeerProfile | null = null
   // Гейт «личность известна» (Message.out — порт tweb pFlags.out). `out`
   // выводится сравнением senderId с id текущего пользователя, а тот появляется у
   // воркера асинхронно: раньше — только с ответом /me. Страница истории,
@@ -107,7 +107,7 @@ export function createWorkerCore() {
   // дебаунс не нужен») — `me` меняется по явным действиям пользователя
   // (профиль/премиум/вход/выход), не потоком. Passcode-гейт — тот же, что и
   // раньше: внутри `saveMe` (core/store/persist.ts), новый путь его не обходит.
-  function setMe(u: User | null): void {
+  function setMe(u: PeerProfile | null): void {
     me = u
     markMeReady() // личность разрешена — гейт `out` снимаем (идемпотентно)
     void saveMe(u)
@@ -166,8 +166,8 @@ export function createWorkerCore() {
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
   const messages = newMessagesManager({
     rest,
-    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
-    getMeId: () => me?.id ?? null,
+    decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
+    getMeId: () => me?.user.id ?? null,
     // Гейт вывода `out` (см. объявление meReady выше).
     meReady: () => meReady,
     broadcast: (event, payload) => broadcast(event, payload),
@@ -180,7 +180,7 @@ export function createWorkerCore() {
     send: (a) => conn.sendMessage(a),
     upload: (a) => media.upload(a),
     cancelUpload: (id) => { void media.cancelUpload(id) },
-    sendTyping: (chatId, action) => conn.sendTyping(chatId, action),
+    sendTyping: (peerId, action) => conn.sendTyping(peerId, action),
     uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
@@ -245,7 +245,7 @@ export function createWorkerCore() {
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
     // значение: `me` разрешается лениво асинхронным /me).
-    getMeId: () => me?.id ?? null,
+    getMeId: () => me?.user.id ?? null,
     // Task 4 (действия без оптимистики): applyPinned пишет pinnedOrders на диск и
     // рассылает зеркало ключа — тот же путь, что persistManager.stateKey ниже
     // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
@@ -261,7 +261,7 @@ export function createWorkerCore() {
     // ленивая forward-ссылка, что у `messages` выше (decryptSecret реально
     // зовётся только на fillMirror()/refresh(), к тому моменту `secret` уже
     // проинициализирован).
-    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
+    decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
@@ -287,7 +287,7 @@ export function createWorkerCore() {
   const stars = newStarsManager({ rest })
   // getMeId — по той же причине, что у messages выше: созданный розыгрыш вкладка
   // кладёт прямо в окно, минуя SSOT воркера, поэтому `out` на нём ставит владелец.
-  const boosts = newBoostsManager({ rest, getMeId: () => me?.id ?? null })
+  const boosts = newBoostsManager({ rest, getMeId: () => me?.user.id ?? null })
   const report = newReportManager({ rest })
   const stats = newStatsManager({ rest })
   const bots = newBotsManager({ rest })
@@ -396,9 +396,9 @@ export function createWorkerCore() {
     // влияющие на список диалогов, применяет dialogsManager — публикует свой
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
-    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.id ?? null)
+    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.user.id ?? null)
     else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
-    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).chat_id)
+    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).peer_id)
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз
@@ -406,18 +406,18 @@ export function createWorkerCore() {
     // сравнивает через equal() и не публикует no-op). Раньше эти 4 кадра
     // разбирала витрина напрямую (storeProjection.ts, setDialogMuted и т.п.) —
     // тот путь убран вместе с мутаторами chatsStore, второго применения нет.
-    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).chat_id, (d as DialogMuteEvt).muted)
-    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).chat_id, (d as DialogPinEvt).pinned)
-    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).chat_id, (d as DialogArchiveEvt).archived)
-    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).chat_id, (d as ChatThemeUpdateEvt).theme_id)
+    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).peer_id, (d as DialogMuteEvt).muted)
+    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).peer_id, (d as DialogPinEvt).pinned)
+    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).peer_id, (d as DialogArchiveEvt).archived)
+    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).peer_id, (d as ChatThemeUpdateEvt).theme_id)
     else if (t === 'reaction') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
       // реакций диалога (перенесено из storeProjection.ts вместе с телом
       // bumpUnreadReactions — окно сообщений эта ветка не трогает, applyReaction
       // остаётся на main, см. CLAUDE.md «реакции в окне сообщений»).
       const r = d as ReactionEvt
-      if (r.action === 'add' && r.author_id === me?.id && r.user_id !== me?.id) {
-        dialogs.bumpUnreadReactions(r.chat_id, r.unread_reactions)
+      if (r.action === 'add' && r.author_id === me?.user.id && r.user_id !== me?.user.id) {
+        dialogs.bumpUnreadReactions(r.peer_id, r.unread_reactions)
       }
     }
     broadcast(h.rt, d, meta)
@@ -446,9 +446,9 @@ export function createWorkerCore() {
   // difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
   const channelFunnel = newChannelFunnel({
     dispatch,
-    getDifference: (chatId, sincePts) => rest.get<ChannelDiff>(`/channels/${chatId}/difference`, { pts: sincePts }),
-    loadPts: (chatId) => idbGet<number>(`chpts:${chatId}`).then((v) => (typeof v === 'number' ? v : null)),
-    savePts: (chatId, pts) => { void idbSet(`chpts:${chatId}`, pts) },
+    getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts }),
+    loadPts: (peerId) => idbGet<number>(`chpts:${peerId}`).then((v) => (typeof v === 'number' ? v : null)),
+    savePts: (peerId, pts) => { void idbSet(`chpts:${peerId}`, pts) },
   })
 
   const sync = newSyncEngine({
@@ -507,13 +507,13 @@ export function createWorkerCore() {
         return
       }
       // Канальный кадр (пост или метаданные канала: chat_update/boost_update) несёт
-      // channel_pts + chat_id → per-channel funnel (свой курсор, difference-catch-up).
+      // channel_pts + peer_id → per-channel funnel (свой курсор, difference-catch-up).
       // Раньше new_message-ветки: посты канала приходят как new_message, но с
       // channel_pts и без E2E (каналы — публичный broadcast, enc_body не бывает).
       {
-        const cf = payload as { channel_pts?: number; chat_id?: number }
-        if (typeof cf?.channel_pts === 'number' && typeof cf?.chat_id === 'number') {
-          channelFunnel.applyLive(cf.chat_id, type, cf.channel_pts, payload)
+        const cf = payload as { channel_pts?: number; peer_id?: number }
+        if (typeof cf?.channel_pts === 'number' && typeof cf?.peer_id === 'number') {
+          channelFunnel.applyLive(cf.peer_id, type, cf.channel_pts, payload)
           return
         }
       }
@@ -533,9 +533,9 @@ export function createWorkerCore() {
       }
       // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
       if (type === 'new_message') {
-        const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown; pts?: number }
-        if (p.enc_body && p.chat_id) {
-          void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
+        const p = payload as { peer_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown; pts?: number }
+        if (p.enc_body && p.peer_id) {
+          void secret.decryptMessage(p.peer_id, p.enc_body).then((dec) => {
             if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
             funnel.applyUpdate('new_message', p.pts, payload, true)
           })
@@ -548,13 +548,13 @@ export function createWorkerCore() {
       if (APPLY[type as LoggedWsType]) { funnel.applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
       // Секретный handshake: криптообработка в воркере до/вместо трансляции.
       if (type === 'secret_chat_request') {
-        const p = payload as { chat_id?: number; initiator_pub?: string }
-        if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
+        const p = payload as { peer_id?: number; initiator_pub?: string }
+        if (p.peer_id && p.initiator_pub) secret.stashRequest(p.peer_id, p.initiator_pub)
         broadcast(RT.secretRequest, payload); return
       }
       if (type === 'secret_chat_accept') {
-        const p = payload as { chat_id?: number; responder_pub?: string }
-        if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
+        const p = payload as { peer_id?: number; responder_pub?: string }
+        if (p.peer_id && p.responder_pub) void secret.complete(p.peer_id, p.responder_pub)
         return
       }
       // Кадры-«обёртки» по префиксу (звонки/трансляции) → один RT с {t,d}.

@@ -43,7 +43,7 @@ describe('ConnectionManager', () => {
     const ws = fakeWs()
     const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
     cm.start(); ws.fireOpen()
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     expect(ws.frames.find(f => f.t === 'send_message')).toBeTruthy()
     expect(cm.outboxSize()).toBe(1)
     ws.recv('message_ack', { client_msg_id: 'c1', msg_id: 9, seq: 5, created_at: 'now' })
@@ -57,14 +57,14 @@ describe('ConnectionManager', () => {
     cm.subscribeChannel(5)
     const f = ws.frames.find(f => f.t === 'subscribe_channel')
     expect(f).toBeTruthy()
-    expect(f?.d).toEqual({ chat_id: 5 })
+    expect(f?.d).toEqual({ peer_id: 5 })
   })
 
   it('resends the outbox after a reconnect', () => {
     const ws = fakeWs()
     const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
     cm.start(); ws.fireOpen()
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     ws.frames.length = 0
     ws.fireClose()
     vi.advanceTimersByTime(1000) // backoff elapses → reconnect
@@ -76,7 +76,7 @@ describe('ConnectionManager', () => {
     const ws = fakeWs()
     const saved: unknown[][] = []
     const store = {
-      load: () => Promise.resolve([{ chatId: 2, text: 'restored', clientMsgId: 'old1' }]),
+      load: () => Promise.resolve([{ peerId: 2, text: 'restored', clientMsgId: 'old1' }]),
       save: (list: unknown[]) => { saved.push(list) },
     }
     const cm = newConnectionManager({
@@ -91,7 +91,7 @@ describe('ConnectionManager', () => {
     expect(ws.frames.filter(f => f.t === 'send_message').length).toBe(1)
     expect(cm.outboxSize()).toBe(1)
     // a fresh send persists the whole outbox (restored + new)
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     expect(saved[saved.length - 1]).toHaveLength(2)
     // acks shrink the persisted outbox
     ws.recv('message_ack', { client_msg_id: 'old1' })
@@ -181,7 +181,7 @@ describe('ConnectionManager.markRead — дедуп по upToSeq', () => {
     cm.markRead(1, 5)
 
     expect(ws.frames.filter(f => f.t === 'read')).toHaveLength(1)
-    expect(ws.frames.find(f => f.t === 'read')?.d).toEqual({ chat_id: 1, up_to_seq: 5 })
+    expect(ws.frames.find(f => f.t === 'read')?.d).toEqual({ peer_id: 1, up_to_seq: 5 })
   })
 
   it('markRead с бо́льшим upToSeq для того же чата — второй кадр', () => {
@@ -194,7 +194,7 @@ describe('ConnectionManager.markRead — дедуп по upToSeq', () => {
 
     const reads = ws.frames.filter(f => f.t === 'read')
     expect(reads).toHaveLength(2)
-    expect(reads.map(f => f.d)).toEqual([{ chat_id: 1, up_to_seq: 5 }, { chat_id: 1, up_to_seq: 7 }])
+    expect(reads.map(f => f.d)).toEqual([{ peer_id: 1, up_to_seq: 5 }, { peer_id: 1, up_to_seq: 7 }])
   })
 
   it('меньший или равный upToSeq после большего — не шлётся (дедуп не только на точное совпадение)', () => {
@@ -219,7 +219,7 @@ describe('ConnectionManager.markRead — дедуп по upToSeq', () => {
 
     const reads = ws.frames.filter(f => f.t === 'read')
     expect(reads).toHaveLength(2)
-    expect(reads.map(f => f.d)).toEqual([{ chat_id: 1, up_to_seq: 5 }, { chat_id: 2, up_to_seq: 5 }])
+    expect(reads.map(f => f.d)).toEqual([{ peer_id: 1, up_to_seq: 5 }, { peer_id: 2, up_to_seq: 5 }])
   })
 
   it('реконнект сбрасывает дедуп — тот же upToSeq после разрыва шлётся заново (кадр read не подтверждается outbox-ом)', () => {

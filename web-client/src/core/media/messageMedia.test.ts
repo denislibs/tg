@@ -169,7 +169,7 @@ describe('вложение сообщения', () => {
 // документа выведен. Без этого шага каждый потребитель выводил бы его сам.
 describe('mapMessage — нормализация вложения', () => {
   const raw = (media: MessageMedia): RawMessage => ({
-    id: 1, chat_id: 2, seq: 3, sender_id: 4, type: 'video', text: '',
+    id: 1, peer_id: 2, seq: 3, sender_id: 4, type: 'video', text: '',
     reply_to_id: null, media_id: 42, created_at: '2026-08-19T00:00:00Z', media,
   })
 
@@ -189,7 +189,7 @@ describe('mapMessage — нормализация вложения', () => {
 
   it('вложения нет — media остаётся undefined', () => {
     const m = mapMessage({
-      id: 1, chat_id: 2, seq: 3, sender_id: 4, type: 'text', text: 'hi',
+      id: 1, peer_id: 2, seq: 3, sender_id: 4, type: 'text', text: 'hi',
       reply_to_id: null, media_id: null, created_at: '2026-08-19T00:00:00Z',
     })
     expect(m.media).toBeUndefined()

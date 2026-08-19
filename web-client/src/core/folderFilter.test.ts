@@ -24,18 +24,18 @@ const chat = (over: Partial<Chat>): Chat => ({
 // разъедутся.
 describe('matchesFolder: один ответ для Chat и Dialog', () => {
   const cases: { name: string; item: FolderMatchable; f: Folder; want: boolean }[] = [
-    { name: 'exclude бьёт include', item: { chatId: 5, type: 'group' }, f: folder({ excludeChats: [5], includeChats: [5], groups: true }), want: false },
-    { name: 'include без флагов типов', item: { chatId: 5, type: 'group' }, f: folder({ includeChats: [5] }), want: true },
-    { name: 'без флагов типов — не попадает', item: { chatId: 5, type: 'group' }, f: folder({}), want: false },
-    { name: 'группы', item: { chatId: 5, type: 'group' }, f: folder({ groups: true }), want: true },
-    { name: 'группа при flag groups=false (несмотря на contacts=true) — не попадает', item: { chatId: 5, type: 'group' }, f: folder({ groups: false, contacts: true }), want: false },
-    { name: 'каналы', item: { chatId: 5, type: 'channel' }, f: folder({ broadcasts: true }), want: true },
-    { name: 'канал при flag broadcasts=false (несмотря на contacts=true) — не попадает', item: { chatId: 5, type: 'channel' }, f: folder({ broadcasts: false, contacts: true }), want: false },
-    { name: 'контакт', item: { chatId: 5, type: 'private', peerId: 7 }, f: folder({ contacts: true }), want: true },
-    { name: 'contacts=true, но peerId не в contactIds — не попадает', item: { chatId: 5, type: 'private', peerId: 9 }, f: folder({ contacts: true }), want: false },
-    { name: 'не-контакт', item: { chatId: 5, type: 'private', peerId: 9 }, f: folder({ nonContacts: true }), want: true },
-    { name: 'excludeRead отсекает прочитанные', item: { chatId: 5, type: 'group', unread: 0 }, f: folder({ groups: true, excludeRead: true }), want: false },
-    { name: 'excludeMuted отсекает заглушённые', item: { chatId: 5, type: 'group', muted: true }, f: folder({ groups: true, excludeMuted: true }), want: false },
+    { name: 'exclude бьёт include', item: { peerId: 5, type: 'group' }, f: folder({ excludeChats: [5], includeChats: [5], groups: true }), want: false },
+    { name: 'include без флагов типов', item: { peerId: 5, type: 'group' }, f: folder({ includeChats: [5] }), want: true },
+    { name: 'без флагов типов — не попадает', item: { peerId: 5, type: 'group' }, f: folder({}), want: false },
+    { name: 'группы', item: { peerId: 5, type: 'group' }, f: folder({ groups: true }), want: true },
+    { name: 'группа при flag groups=false (несмотря на contacts=true) — не попадает', item: { peerId: 5, type: 'group' }, f: folder({ groups: false, contacts: true }), want: false },
+    { name: 'каналы', item: { peerId: 5, type: 'channel' }, f: folder({ broadcasts: true }), want: true },
+    { name: 'канал при flag broadcasts=false (несмотря на contacts=true) — не попадает', item: { peerId: 5, type: 'channel' }, f: folder({ broadcasts: false, contacts: true }), want: false },
+    { name: 'контакт', item: { peerId: 7, type: 'private' }, f: folder({ contacts: true }), want: true },
+    { name: 'contacts=true, но ключ не в contactIds — не попадает', item: { peerId: 9, type: 'private' }, f: folder({ contacts: true }), want: false },
+    { name: 'не-контакт', item: { peerId: 9, type: 'private' }, f: folder({ nonContacts: true }), want: true },
+    { name: 'excludeRead отсекает прочитанные', item: { peerId: 5, type: 'group', unread: 0 }, f: folder({ groups: true, excludeRead: true }), want: false },
+    { name: 'excludeMuted отсекает заглушённые', item: { peerId: 5, type: 'group', muted: true }, f: folder({ groups: true, excludeMuted: true }), want: false },
   ]
   const contacts = new Set([7])
   for (const c of cases) {
@@ -71,30 +71,33 @@ describe('chatMatchesFolder: адаптер Chat, draft-чаты отсекаю�
 // если адаптер перестанет маппить `peer?.id`.
 describe('dialogMatchesFolder: адаптер Dialog, контактность из peer.id', () => {
   const dialog = (over: Partial<Dialog>): Dialog => ({
-    chatId: 5, type: 'private', title: 't', unread: 0, unreadMentions: 0, unreadReactions: 0,
+    peerId: 5, type: 'private', title: 't', unread: 0, unreadMentions: 0, unreadReactions: 0,
     lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
     ...over,
   } as Dialog)
   const contacts = new Set([7])
 
-  it('приватный чат с peer.id из контактов попадает в папку «Контакты»', () => {
-    const d = dialog({ peer: { id: 7, displayName: 'c', avatarUrl: '' } })
+  // Ключ приватного диалога И ЕСТЬ id собеседника — второго поля рядом больше
+  // нет, и прежняя ловушка «забыли передать peer.id, ветка контактности молча
+  // выключилась» исчезла вместе с ним.
+  it('приватный чат с ключом из контактов попадает в папку «Контакты»', () => {
+    const d = dialog({ peerId: 7 })
     expect(dialogMatchesFolder(d, folder({ contacts: true }), contacts)).toBe(true)
   })
 
   it('он же НЕ попадает в папку «Не контакты»', () => {
-    const d = dialog({ peer: { id: 7, displayName: 'c', avatarUrl: '' } })
+    const d = dialog({ peerId: 7 })
     expect(dialogMatchesFolder(d, folder({ nonContacts: true }), contacts)).toBe(false)
   })
 
-  it('чужой (peer.id вне контактов) — наоборот', () => {
-    const d = dialog({ peer: { id: 9, displayName: 's', avatarUrl: '' } })
+  it('чужой (ключ вне контактов) — наоборот', () => {
+    const d = dialog({ peerId: 9 })
     expect(dialogMatchesFolder(d, folder({ nonContacts: true }), contacts)).toBe(true)
     expect(dialogMatchesFolder(d, folder({ contacts: true }), contacts)).toBe(false)
   })
 
   it('остальные поля (тип, unread, muted, include/exclude) проксируются как есть', () => {
-    const g = dialog({ chatId: 5, type: 'group', unread: 0, muted: true })
+    const g = dialog({ peerId: 5, type: 'group', unread: 0, muted: true })
     expect(dialogMatchesFolder(g, folder({ groups: true }), contacts)).toBe(true)
     expect(dialogMatchesFolder(g, folder({ groups: true, excludeMuted: true }), contacts)).toBe(false)
     expect(dialogMatchesFolder(g, folder({ groups: true, excludeRead: true }), contacts)).toBe(false)
@@ -112,7 +115,7 @@ describe('folderCounts', () => {
     const chats = [
       chat({ id: '1', type: 'group' }),
       chat({ id: '2', type: 'channel' }),
-      chat({ id: '3', type: 'private', peerId: 7 }),
+      chat({ id: '7', type: 'private' }),
       chat({ id: 'draft-x', type: 'group' }), // draft — не считается
     ]
     expect(folderCounts(chats, f, contacts)).toEqual({ chats: 1, channels: 1, groups: 1 })

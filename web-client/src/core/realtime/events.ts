@@ -1,5 +1,7 @@
 // src/core/realtime/events.ts
-import type { GeoData, MessageEntity, RawGeo } from '../models'
+import type { GeoData, MessageEntity, MessageFwdHeader, RawGeo } from '../models'
+import type { Peer } from '../peers/peerId'
+import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -139,11 +141,13 @@ export const RT = {
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
-export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; reply_quote_text?: string; reply_quote_offset?: number | null;
+export interface NewMessageEvt { peer_id: PeerId; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; reply_quote_text?: string; reply_quote_offset?: number | null;
   /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
    * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
-  reply_to_peer_id?: number | null; reply_snapshot_name?: string; reply_snapshot_text?: string;
-  fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
+  reply_to_peer_id?: Peer | null; reply_snapshot_name?: string; reply_snapshot_text?: string;
+  /** атрибуция пересылки — конструктор `messageFwdHeader` (пяти плоских
+   *  `fwd_from_*` на проводе больше нет, см. `core/models.ts`) */
+  fwd_from?: MessageFwdHeader | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
   /** Вложение live-кадра — ТОТ ЖЕ объект, что в витрине истории
    * (`messageMediaPhoto`/`messageMediaDocument` со ступенями и атрибутами).
    * Одна форма на обе витрины: без неё у ЖИВОГО сообщения не было бы ни волны
@@ -159,7 +163,7 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
    * сообщения не было ни имени автора, ни правила `out` (send-as рисуется
    * ВХОДЯЩИМ даже когда отправитель — я, см. models.deriveOut) — расхождение
    * держалось до перезагрузки истории. */
-  send_as?: { chat_id: number; title?: string; photo_id?: number } | null;
+  send_as?: { peer_id: PeerId; title?: string; photo_id?: number } | null;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
   secret_media?: import('../models').SecretMedia;
   /** вид эффекта сообщения (наш аналог Telegram message effects) */
@@ -175,21 +179,21 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   /** авторитетный счётчик непрочитанных диалога (только получателям): стор берёт
    * его verbatim вместо локального +1. Отсутствует у старого бэка → fallback. */
   unread?: number }
-export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
+export interface EditMessageEvt { peer_id: PeerId; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
-export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
+export interface GeoLiveUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; geo: RawGeo }
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
-export interface WebPageUpdateEvt { chat_id: number; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
+export interface WebPageUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
-export interface FactCheckUpdateEvt { chat_id: number; msg_id: number; seq: number; factcheck: import('../models').RawFactCheck | null }
+export interface FactCheckUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; factcheck: import('../models').RawFactCheck | null }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
 // маппит snake_case-кадр в этот camelCase-вид; воркер бродкастит сырой payload.
 export interface SecretHandshakeEvt {
-  chatId: number
+  peerId: PeerId
   initiatorId: number
   responderId: number
   initiatorPub?: string // base64 (в request)
@@ -198,29 +202,35 @@ export interface SecretHandshakeEvt {
 }
 // Новая/решённая предложка поста (suggested_post_update): админам — новые/решённые,
 // автору — статус его предложки. post — сырая read-модель backend.
-export interface SuggestedPostEvt { chat_id: number; post: import('../models').RawSuggestedPost }
-// Юзер сменил всегда-публичные поля (имя/username). avatar_changed — сигнал, что
-// аватар изменился: url в кадре не несём (он приватен per-viewer у /users), клиент
-// до-фетчит карточку, и сервер применит PrivacyProfilePhoto.
-export interface UserUpdateEvt { id: number; username: string; display_name: string; avatar_changed: boolean }
-export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
-export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
-export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number;
+export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').RawSuggestedPost }
+// Карточка пользователя изменилась. Кадр несёт КОНСТРУКТОР `user` целиком —
+// АБСОЛЮТНЫЙ снимок, который получатель кладёт в кэш пиров ровно так же, как
+// объект из любого списка. Прежний кадр вместо этого сообщал `display_name`
+// (имени на проводе больше нет — его собирает клиент) и флажок
+// `avatar_changed`, по которому карточку надо было перезапрашивать отдельной
+// ручкой; на упавшем до-фетче витрина оставалась со старым аватаром.
+//
+// Аватарка гасится ПОКАЖДОМУ получателю: `photo` живёт внутри `user`, и
+// правило `profile_photo` применяется на бэкенде при сборке кадра.
+export interface UserUpdateEvt { user: UserReal; pts?: number }
+export interface DeleteMessageEvt { peer_id: PeerId; msg_id: number; seq: number; for_me: boolean }
+export interface PinMessageEvt { peer_id: PeerId; msg_id: number; pinned: boolean }
+export interface ReadEvt { peer_id: PeerId; user_id: number; up_to_seq: number;
   /** авторитетный счётчик непрочитанных диалога после этого read (Wave 3): стор
    * берёт его verbatim вместо локального =0. Отсутствует у старого бэка → fallback. */
   unread?: number; pts?: number }
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
-export interface MediaReadEvt { chat_id: number; msg_id: number }
+export interface MediaReadEvt { peer_id: PeerId; msg_id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
-export interface ChatRemovedEvt { chat_id: number; removed: true }
+export interface ChatRemovedEvt { peer_id: PeerId; removed: true }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
-export interface ChatThemeUpdateEvt { chat_id: number; theme_id: string }
+export interface ChatThemeUpdateEvt { peer_id: PeerId; theme_id: string }
 // Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
 // dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/applyMute).
-export interface DialogPinEvt { chat_id: number; pinned: boolean }
-export interface DialogArchiveEvt { chat_id: number; archived: boolean }
-export interface DialogMuteEvt { chat_id: number; muted: boolean; muted_until?: number }
+export interface DialogPinEvt { peer_id: PeerId; pinned: boolean }
+export interface DialogArchiveEvt { peer_id: PeerId; archived: boolean }
+export interface DialogMuteEvt { peer_id: PeerId; muted: boolean; muted_until?: number }
 // АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
 // участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
 // функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:
@@ -229,28 +239,43 @@ export interface DialogMuteEvt { chat_id: number; muted: boolean; muted_until?: 
 // (core/models.ts:88-118); остальные (`about`, `is_public`, `settings`,
 // `signatures`, …) живут в карточке чата, которую грузит useChatInfoCard.
 export interface ChatUpdateEvt {
-  chat_id: number
-  title?: string
-  username?: string
-  /** id медиа фото чата; `null` — фото снято (chat_update.go:19-22) */
-  photo_media_id?: number | null
+  peer_id: PeerId
+  /** ТОТ ЖЕ объект, что отдаёт `GET /chats/{peerID}/card` — `messages.chatFull`
+   *  с краткой формой чата внутри (`chats[0]`). Прежде одна карточка ехала
+   *  двумя разными формами: плоско с `id` у ручки и вложенно в кадре, из-за
+   *  чего кадр приходилось разбирать своим кодом. */
+  chat_full: MessagesChatFull
+  pts?: number
 }
 // Черновик изменён на другом устройстве/вкладке (draft null — удалён).
-export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
+export interface DraftUpdateEvt { peer_id: PeerId; draft: import('../models').RawDraft | null }
 // upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)
 export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
-export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
-export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
+export interface TypingEvt { peer_id: PeerId; user_id: number; action?: TypingAction }
+/**
+ * Присутствие — объединение `UserStatus` схемы, а не пара `{online, last_seen}`.
+ *
+ * Это не перестановка полей: у `userStatusOnline` есть `expires` (дедлайн), и
+ * клиент гасит статус ПО ТАЙМЕРУ сам (порт `appUsersManager.ts:880-889`,
+ * предикат `isUserStatusOnline`). У прежнего `online: true` срока годности не
+ * было — потерянный кадр оставлял человека онлайн НАВСЕГДА. Источник
+ * (TTL ключа `presence:{id}`) существовал всегда, просто не выпускался на провод.
+ *
+ * Скрытое правилом приватности «был в сети» выражает САМ КОНСТРУКТОР
+ * (`userStatusRecently`), а не флаг `last_seen_visible` рядом с обнулённым
+ * временем.
+ */
+export interface PresenceEvt { user_id: number; status: UserStatus }
 // Реакция (Wave 3, АБСОЛЮТНАЯ): counts — полный агрегат сообщения (набор
 // {emoji,count}); `mine` не приходит с сервера и деривится клиентом (см.
 // applyReaction). emoji/action/user_id описывают конкретное действие → нужны только
 // чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
 // клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
 // наличию counts. pts — для funnel-дедупа/гейта.
-export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
+export interface ReactionEvt { peer_id: PeerId; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
 // Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
 // отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
-export interface StarReactionEvt { chat_id: number; msg_id: number; sender_id: number; total: number; mine: number }
+export interface StarReactionEvt { peer_id: PeerId; msg_id: number; sender_id: number; total: number; mine: number }
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
 export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
 export interface StoryDeletedEvt { story_id: number; author_id: number }
@@ -290,7 +315,7 @@ export interface PendingMedia { width?: number; height?: number; mime?: string; 
    * до эха сервера (tweb applyMediaSpoiler в попапе отправки уже накрыл превью) */
   spoiler?: boolean }
 export interface PendingNewEvt {
-  chat_id: number
+  peer_id: PeerId
   thread_root_id?: number | null
   client_msg_id: string
   sender_id: number
@@ -305,7 +330,7 @@ export interface PendingNewEvt {
   geo?: GeoData
   contact?: { userId: number; name: string; phone: string }
   secret?: boolean
-  send_as?: { chatId: number; title: string; photoId?: number }
+  send_as?: { peerId: PeerId; title: string; photoId?: number }
   /** Ответ на сообщение — в бабле СРАЗУ, до подтверждения сервера (порт tweb
    *  `generateOutgoingMessage → reply_to: generateReplyHeader(...)`,
    *  appMessagesManager.ts:2926). Сам превью-снимок (`Message.replyTo`) собирает
@@ -317,7 +342,7 @@ export interface PendingNewEvt {
   /** Кросс-чат ответ: готовый снимок превью (оригинала нет в этом чате, а
    *  серверный `reply_snapshot_*` приедет только с эхом) — тот же снимок, что
    *  рисует плашка ответа в композере. */
-  reply_snapshot?: { peerId: number; name: string; text: string }
+  reply_snapshot?: { peerId: PeerId; name: string; text: string }
   /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
    *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
    *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит

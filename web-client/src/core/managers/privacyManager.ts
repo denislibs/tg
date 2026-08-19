@@ -1,4 +1,7 @@
 import type { RestClient } from '../net/restClient'
+import type { Chat, UserReal } from '../peers/peer'
+import type { Peer } from '../peers/peerId'
+import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 
 // Конфиденциальность (tweb Privacy and Security): правила «кто видит/может»
 // по ключам + чёрный список + чужой профиль с применёнными правилами.
@@ -25,35 +28,22 @@ export interface PrivacyRule {
   denyUserIds: number[]
 }
 
-export interface BlockedUser {
-  userId: number
-  username: string
-  displayName: string
-  avatarUrl: string
-  phone: string
-}
-
-// Чужой профиль после применения privacy на бэке: скрытые поля пустые/null.
-export interface UserProfile {
-  id: number
-  username: string | null
-  firstName: string
-  lastName: string
-  displayName: string
-  bio: string
-  birthday: string | null
-  avatarUrl: string
-  /** stripped-превью аватарки (гасится privacy вместе с avatarUrl; '' у старых) */
-  avatarPreview: string
-  phone: string
-  verified: boolean
-  premium: boolean
-  emojiStatus: string
-  isBot: boolean
-  isBlocked: boolean
-  callsAvailable: boolean
-  canMessage: boolean
-  lastSeenVisible: boolean
+/**
+ * Чёрный список — конструктор `contacts.blockedSlice` схемы В КОРНЕ ответа:
+ * `blocked` это вектор `peerBlocked{peer_id: Peer, date}`, а сами карточки
+ * лежат в `users`. Плоской четвёрки {userId, displayName, avatarUrl, phone}
+ * больше нет — она была снимком пользователя рядом с настоящим.
+ *
+ * `contacts.blockedSlice#e1664194 count:int blocked:Vector<PeerBlocked>
+ *  chats:Vector<Chat> users:Vector<User> = contacts.Blocked;`
+ */
+export interface PeerBlocked { _: 'peerBlocked'; peer_id: Peer; date: number }
+export interface ContactsBlockedSlice {
+  _: 'contacts.blockedSlice'
+  count: number
+  blocked: PeerBlocked[]
+  chats: Chat[]
+  users: UserReal[]
 }
 
 interface RuleWire {
@@ -84,20 +74,16 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
       })
       return fromWire(res)
     },
-    async blocked(offset = 0, limit = 50): Promise<{ users: BlockedUser[]; total: number }> {
-      const res = await rest.get<{
-        users: { user_id: number; username: string; display_name: string; avatar_url: string; phone: string }[]
-        total: number
-      }>(`/me/blocked?offset=${offset}&limit=${limit}`)
+    async blocked(offset = 0, limit = 50): Promise<ContactsBlockedSlice> {
+      // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы приходит в корне.
+      const res = await rest.get<ContactsBlockedSlice>(`/me/blocked?offset=${offset}&limit=${limit}`)
       return {
-        total: res.total,
-        users: (res.users ?? []).map((u) => ({
-          userId: u.user_id,
-          username: u.username,
-          displayName: u.display_name,
-          avatarUrl: u.avatar_url,
-          phone: u.phone,
-        })),
+        ...res,
+        _: 'contacts.blockedSlice',
+        count: res.count ?? 0,
+        blocked: res.blocked ?? [],
+        chats: res.chats ?? [],
+        users: res.users ?? [],
       }
     },
     async block(userId: number): Promise<void> {
@@ -113,50 +99,22 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
     async setAutoDelete(period: number): Promise<void> {
       await rest.put('/me/auto_delete', { period })
     },
-    async setChatAutoDelete(chatId: number, period: number): Promise<void> {
-      await rest.put(`/chats/${chatId}/auto_delete`, { period })
+    async setChatAutoDelete(peerId: number, period: number): Promise<void> {
+      await rest.put(`/chats/${peerId}/auto_delete`, { period })
     },
-    async profile(userId: number): Promise<UserProfile> {
-      const res = await rest.get<{
-        id: number
-        username: string | null
-        first_name: string
-        last_name: string
-        display_name: string
-        bio: string
-        birthday: string | null
-        avatar_url: string
-        avatar_preview?: string | null
-        phone: string
-        verified: boolean
-        premium?: boolean
-        emoji_status?: string
-        is_bot?: boolean
-        is_blocked: boolean
-        calls_available: boolean
-        can_message: boolean
-        last_seen_visible: boolean
-      }>(`/users/${userId}`)
-      return {
-        id: res.id,
-        username: res.username,
-        firstName: res.first_name,
-        lastName: res.last_name,
-        displayName: res.display_name,
-        bio: res.bio,
-        birthday: res.birthday,
-        avatarUrl: res.avatar_url,
-        avatarPreview: res.avatar_preview ?? '',
-        phone: res.phone,
-        verified: res.verified,
-        premium: !!res.premium,
-        emojiStatus: res.emoji_status ?? '',
-        isBot: !!res.is_bot,
-        isBlocked: res.is_blocked,
-        callsAvailable: res.calls_available,
-        canMessage: res.can_message,
-        lastSeenVisible: res.last_seen_visible,
-      }
+    /**
+     * Чужой профиль — ТОТ ЖЕ конструктор `users.userFull`, что отдаёт `/me`:
+     * трёх разных витрин пользователя больше нет. Правила приватности при этом
+     * не исчезли — они выражены САМИМИ конструкторами и отсутствием ключей:
+     * скрытая аватарка это `userProfilePhotoEmpty`, скрытое «был в сети» —
+     * `userStatusRecently`, скрытые `about`/`birthday`/`phone` — отсутствие
+     * ключа. Прежние `last_seen_visible` рядом с обнулённым временем и
+     * `is_blocked`/`calls_available` плоскими полями стали `pFlags` у
+     * `userFull`; `can_message` остался полем УРОВНЯ ОТВЕТА — схемного места
+     * у него нет.
+     */
+    async profile(userId: number): Promise<PeerProfile> {
+      return mapPeerProfile(await rest.get<RawPeerProfile>(`/users/${userId}`))
     },
   }
 }

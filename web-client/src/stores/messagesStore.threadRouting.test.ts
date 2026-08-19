@@ -13,7 +13,7 @@ const ME = 1
 
 function threadMsg(seq: number, id: number, clientId?: string): Message {
   return {
-    id, chatId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
+    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-10T11:00:00Z',
     threadRootId: ROOT, clientId,
   }
@@ -21,7 +21,7 @@ function threadMsg(seq: number, id: number, clientId?: string): Message {
 
 function mainMsg(seq: number, id: number): Message {
   return {
-    id, chatId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
+    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-10T11:00:00Z',
     threadRootId: null,
   }

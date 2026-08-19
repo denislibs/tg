@@ -13,7 +13,7 @@ const OTHER = 2
 
 function msg(seq: number, id: number, extra?: Partial<Message>): Message {
   return {
-    id, chatId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
+    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-10T12:00:00Z', threadRootId: null,
     ...extra,
   }
@@ -174,7 +174,7 @@ describe('applyOp', () => {
 
   it('patch агрегата розыгрыша → participants обновился, participating/iWon окна сохранены', () => {
     const giveaway = {
-      id: 9, chatId: CHAT, prizeKind: 'premium' as const, months: 3, stars: 0,
+      id: 9, peerId: CHAT, prizeKind: 'premium' as const, months: 3, stars: 0,
       winnersCount: 1, untilDate: 0, status: 'active' as const, participants: 4,
       participating: true, winnerIds: [], iWon: false,
     }

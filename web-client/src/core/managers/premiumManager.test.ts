@@ -2,12 +2,16 @@ import { describe, it, expect, vi } from 'vitest'
 import { newPremiumManager } from './premiumManager'
 import type { RestClient } from '../net/restClient'
 
+// Проводная форма профиля после шага C: пара конструкторов + `can_message`
+// рядом. Премиум — `pFlags.premium` внутри краткого `user`, а не поле витрины.
 const RAW_USER = {
-  id: 1,
-  phone: '+79990000001',
-  username: 'denis_m',
-  display_name: 'Denis M',
-  premium: true,
+  user_full: {
+    _: 'users.userFull' as const,
+    full_user: { _: 'userFull' as const, id: 1 },
+    chats: [],
+    users: [{ _: 'user' as const, pFlags: { self: true as const, premium: true as const }, id: 1, phone: '+79990000001', username: 'denis_m' }],
+  },
+  can_message: true,
 }
 
 const RAW_SUB = {
@@ -27,7 +31,7 @@ describe('PremiumManager.checkout', () => {
 
     const { user, subscription } = await mgr.checkout('1m', CARD)
     expect(post).toHaveBeenCalledWith('/me/premium/checkout', { plan: '1m', card: CARD })
-    expect(user.premium).toBe(true)
+    expect(user.user.pFlags?.premium).toBe(true)
     expect(subscription.priceCents).toBe(499)
   })
 
@@ -48,6 +52,6 @@ describe('PremiumManager.checkout', () => {
   it('onMeChanged опционален — без него checkout() не падает', async () => {
     const post = vi.fn(async () => ({ user: RAW_USER, subscription: RAW_SUB }))
     const mgr = newPremiumManager({ rest: { post } as unknown as RestClient })
-    await expect(mgr.checkout('1m', CARD)).resolves.toMatchObject({ user: { premium: true } })
+    await expect(mgr.checkout('1m', CARD)).resolves.toMatchObject({ user: { user: { pFlags: { premium: true } } } })
   })
 })

@@ -22,7 +22,7 @@ function bubbles(key: string) {
 
 function msg(over: Partial<Message> & { id: number; seq: number }): Message {
   return {
-    chatId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
+    peerId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-10T12:00:00Z', threadRootId: null,
     ...over,
   }
@@ -102,7 +102,7 @@ describe('storeProjection — RT.messageOp переигрывается пове
     useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
     const spy = vi.spyOn(useMessagesStore.getState(), 'applyIncoming')
     const evt: NewMessageEvt = {
-      chat_id: CHAT, msg_id: 999, seq: 9, sender_id: OTHER, type: 'text', text: 'hello',
+      peer_id: CHAT, msg_id: 999, seq: 9, sender_id: OTHER, type: 'text', text: 'hello',
       media_id: null, created_at: '2026-08-10T12:00:10Z',
     }
     // В реальности RT.messageOp летит первым (см. workerCore.ts:routeNewMessage) —
@@ -125,7 +125,7 @@ describe('storeProjection — RT.messageOp переигрывается пове
       ops: [{ op: 'insert', key: winKey(CHAT), msg: msg({ id: 2, seq: 2, replyToId: 1 }) }],
     })
     const evt: NewMessageEvt = {
-      chat_id: CHAT, msg_id: 2, seq: 2, sender_id: OTHER, type: 'text', text: 'reply',
+      peer_id: CHAT, msg_id: 2, seq: 2, sender_id: OTHER, type: 'text', text: 'reply',
       media_id: null, created_at: '2026-08-10T12:00:10Z', reply_to_id: 1,
     }
     rootScope.dispatchEventSingle(RT.newMessage, evt)

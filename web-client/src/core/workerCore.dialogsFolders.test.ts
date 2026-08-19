@@ -22,10 +22,10 @@ import { STATE_VERSION } from './state/state'
 import type { Dialog } from './models'
 import type { Folder } from './managers/foldersManager'
 
-const dialog = (chatId: number, over: Partial<Dialog> = {}): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, over: Partial<Dialog> = {}): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at: '2026-08-0' + chatId + 'T00:00:00Z' },
+  lastMessage: { seq: 1, text: 'x', senderId: 1, at: '2026-08-0' + peerId + 'T00:00:00Z' },
   ...over,
 } as Dialog)
 
@@ -36,7 +36,10 @@ const contactsFolder: Folder = {
   excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
-const peer = (id: number) => ({ peer: { id, displayName: 'p' + id, avatarUrl: '' } })
+// Ключ приватного диалога И ЕСТЬ id собеседника — поэтому `dialog(7, peer(7))`,
+// а не «диалог 1 с собеседником 7»: прежняя пара двух разных чисел на один
+// разговор исчезла вместе с внутренним chatID на проводе.
+const peer = (id: number): Partial<Dialog> => ({ peer: { _: 'user', id, first_name: 'p' + id } })
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
@@ -49,7 +52,7 @@ describe('createWorkerCore(): определения папок доезжают
   it('холодный старт: папки читаются с диска вместе с pinnedOrders/drafts', async () => {
     await saveStateKey('version', STATE_VERSION)
     await saveStateKey('folders', [contactsFolder])
-    await saveDialogs([dialog(1, peer(7)), dialog(2, peer(9))])
+    await saveDialogs([dialog(7, peer(7)), dialog(9, peer(9))])
     const core = createWorkerCore()
     core.registry.dialogs.setContactIds([7])
 
@@ -57,7 +60,7 @@ describe('createWorkerCore(): определения папок доезжают
 
     // Без чтения ключа `folders` с диска папка воркеру неизвестна и страница
     // была бы пустой (см. «неизвестная папка → пустая страница»).
-    expect(page.dialogs.map((d) => d.chatId)).toEqual([1])
+    expect(page.dialogs.map((d) => d.peerId)).toEqual([7])
   })
 
   // Папка с ДРУГИМ id (8): соединение с IndexedDB кэшируется на модуль
@@ -65,7 +68,7 @@ describe('createWorkerCore(): определения папок доезжают
   // «этой папки на диске не было» проверяем новым id, а не чистотой стора.
   it('изменение папок (persist.stateKey) доезжает тем же каналом, что pinnedOrders/drafts', async () => {
     await saveStateKey('version', STATE_VERSION)
-    await saveDialogs([dialog(1, peer(7)), dialog(2, peer(9))])
+    await saveDialogs([dialog(7, peer(7)), dialog(9, peer(9))])
     const core = createWorkerCore()
     core.registry.dialogs.setContactIds([7])
     expect((await core.registry.dialogs.getDialogs({ filterId: 8, limit: 10 })).dialogs).toEqual([])
@@ -73,6 +76,6 @@ describe('createWorkerCore(): определения папок доезжают
     await core.registry.persist.stateKey('folders', [{ ...contactsFolder, id: 8 }])
 
     const page = await core.registry.dialogs.getDialogs({ filterId: 8, limit: 10 })
-    expect(page.dialogs.map((d) => d.chatId)).toEqual([1])
+    expect(page.dialogs.map((d) => d.peerId)).toEqual([7])
   })
 })

@@ -77,7 +77,7 @@ describe('ConnectionManager outbox pins', () => {
       onReady: () => {}, onState: () => {}, onFrame: () => {},
       outboxStore: store as never,
     })
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     // что ломается: если send_message перестанет отправляться синхронно при
     // открытом сокете — этот expect на кадр упадёт первым.
     expect(ws.frames.find((f) => f.t === 'send_message')).toBeTruthy()
@@ -96,7 +96,7 @@ describe('ConnectionManager outbox pins', () => {
       onReady: () => {}, onState: () => {}, onFrame: () => {},
       outboxStore: store as never,
     })
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     // что ломается: если sendMessage начнёт слать кадр без проверки isOpen —
     // сообщение уйдёт в закрытый сокет и потеряется молча.
     expect(ws.frames.find((f) => f.t === 'send_message')).toBeUndefined()
@@ -114,7 +114,7 @@ describe('ConnectionManager outbox pins', () => {
       outboxStore: store as never,
     })
     cm.start(); ws.fireOpen()
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     expect(cm.outboxSize()).toBe(1)
     ws.recv('message_ack', { client_msg_id: 'c1', msg_id: 9, seq: 5, created_at: 'now' })
     // что ломается: если ack перестанет чистить outbox — сообщение переотправится
@@ -132,7 +132,7 @@ describe('ConnectionManager outbox pins', () => {
       outboxStore: store as never,
     })
     cm.start(); ws.fireOpen()
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     expect(cm.outboxSize()).toBe(1)
     ws.recv('message_error', { client_msg_id: 'c1', reason: 'too_long' })
     // что ломается: если message_error перестанет удалять запись — отвергнутое
@@ -152,7 +152,7 @@ describe('ConnectionManager outbox pins', () => {
       onReady: () => {}, onState: () => {}, onFrame: () => {},
     })
     cm.start(); ws.fireOpen()
-    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
     ws.frames.length = 0
     ws.fireClose()
     vi.advanceTimersByTime(1000) // backoff elapses → reconnect
@@ -168,8 +168,8 @@ describe('ConnectionManager outbox pins', () => {
     // load() отдаёт «протухшую» версию c1 (другой текст) плюс отдельную old2 —
     // как если бы прошлая сессия не успела получить ack на обе.
     const store = fakeStore([
-      { chatId: 1, text: 'stale-from-idb', clientMsgId: 'c1' },
-      { chatId: 2, text: 'restored2', clientMsgId: 'old2' },
+      { peerId: 1, text: 'stale-from-idb', clientMsgId: 'c1' },
+      { peerId: 2, text: 'restored2', clientMsgId: 'old2' },
     ])
     const cm = newConnectionManager({
       ws: ws.client as never, getToken: () => 'tok',
@@ -178,7 +178,7 @@ describe('ConnectionManager outbox pins', () => {
     })
     // Сессия успевает положить свежую c1 синхронно, ДО того как отработает
     // микротаска восстановления (load() ещё не зарезолвился).
-    cm.sendMessage({ chatId: 1, text: 'fresh-this-session', clientMsgId: 'c1' })
+    cm.sendMessage({ peerId: 1, text: 'fresh-this-session', clientMsgId: 'c1' })
     await flushRestore()
     ws.frames.length = 0
     cm.start(); ws.fireOpen() // резолвит resend по уже восстановленному outbox

@@ -1,4 +1,5 @@
 import type { RestClient } from '../net/restClient'
+import type { UserReal } from '../peers/peer'
 
 // ICE-конфиг для WebRTC-звонков: STUN + TURN с эфемерными кредами
 // (бэк подписывает их HMAC'ом от секрета coturn — GET /calls/ice).
@@ -16,27 +17,28 @@ export interface IceConfig {
 // {video, reason, duration}, парсится тем же parseCallLog, что и чат-бабл.
 export interface CallLogEntry {
   id: number
-  chatId: number
-  peerId: number
-  peerName: string
-  peerAvatar: string
+  /** ключ разговора = id собеседника (приватный диалог): прежняя пара
+   *  `chatId` + `peerId` описывала одно и то же двумя числами. */
+  peerId: PeerId
+  /** собеседник — конструктор `user` целиком; имя собирает клиент
+   *  (`core/peers/getPeerTitle.ts`), аватарка это `peer.photo.photo_id`.
+   *  Прежние `peerName`/`peerAvatar` были плоским снимком пользователя рядом
+   *  с настоящим — вторым источником тех же данных. */
+  peer: UserReal
   out: boolean
   text: string
   date: string
 }
 interface RawCallLog {
   id: number
-  chat_id: number
-  peer_id: number
-  peer_name: string
-  peer_avatar?: string
+  peer_id: PeerId
+  peer: UserReal
   out: boolean
   text: string
   date: string
 }
 const mapCall = (c: RawCallLog): CallLogEntry => ({
-  id: c.id, chatId: c.chat_id, peerId: c.peer_id,
-  peerName: c.peer_name, peerAvatar: c.peer_avatar ?? '',
+  id: c.id, peerId: c.peer_id, peer: c.peer,
   out: c.out, text: c.text, date: c.date,
 })
 

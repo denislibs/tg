@@ -19,8 +19,8 @@ import { saveDialogs } from './store/persist'
 import type { Dialog } from './models'
 import type { DialogOp } from './dialogs/dialogOps'
 
-const dialog = (chatId: number, at: string): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at: string): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
@@ -44,7 +44,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
 })
 
-/** Поднимает воркер с диалогом chatId=1 уже в кэше dialogsManager (через fillMirror). */
+/** Поднимает воркер с диалогом peerId=1 уже в кэше dialogsManager (через fillMirror). */
 async function bootWithSeededDialog(): Promise<{ tab: SuperMessagePort; dialogOps: DialogOp[] }> {
   await saveDialogs([dialog(1, '2026-08-01T00:00:00Z')])
   const core = createWorkerCore()
@@ -64,7 +64,7 @@ describe('createWorkerCore(): действия без оптимистики —
 
     await tab.invoke('manager', { name: 'groups', method: 'setMute', args: [1, true] })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { muted: true } }])
   })
 
   it('chatThemes.setChatTheme(1, "sunset") по RPC → rt:dialog_op patch', async () => {
@@ -72,6 +72,6 @@ describe('createWorkerCore(): действия без оптимистики —
 
     await tab.invoke('manager', { name: 'chatThemes', method: 'setChatTheme', args: [1, 'sunset'] })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { themeId: 'sunset' } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { themeId: 'sunset' } }])
   })
 })

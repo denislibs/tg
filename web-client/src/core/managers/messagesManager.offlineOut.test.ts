@@ -25,7 +25,7 @@ import type { RestClient } from '../net/restClient'
 const offlineRest = { async get<R>(): Promise<R> { throw new TypeError('Failed to fetch') } } as unknown as RestClient
 
 const stored = (over: Partial<Message> & { id: number; seq: number }): Message => ({
-  chatId: 1, senderId: 2, type: 'text', text: 'm', replyToId: null, mediaId: null,
+  peerId: 1, senderId: 2, type: 'text', text: 'm', replyToId: null, mediaId: null,
   createdAt: '2026-06-24T10:00:00Z', threadRootId: null, ...over,
 })
 
@@ -37,7 +37,7 @@ describe('getHistory (офлайн): `out` пересчитывается, а н
     await saveMessages(1, [stored({ id: 1, seq: 1, senderId: 7, out: false })])
 
     const mgr = newMessagesManager({ rest: offlineRest, getMeId: () => 7 })
-    const r = await mgr.getHistory({ chatId: 1 })
+    const r = await mgr.getHistory({ peerId: 1 })
 
     expect(r.cached).toBe(true)
     expect(r.messages[0].out).toBe(true)
@@ -47,16 +47,16 @@ describe('getHistory (офлайн): `out` пересчитывается, а н
     await saveMessages(1, [stored({ id: 1, seq: 1, senderId: 2, out: true })])
 
     const mgr = newMessagesManager({ rest: offlineRest, getMeId: () => 7 })
-    const r = await mgr.getHistory({ chatId: 1 })
+    const r = await mgr.getHistory({ peerId: 1 })
 
     expect(r.messages[0].out).toBe(false)
   })
 
   it('send-as с диска остаётся входящим (правило то же, что у сетевой границы)', async () => {
-    await saveMessages(1, [stored({ id: 1, seq: 1, senderId: 7, sendAs: { chatId: 9, title: 'Канал' }, out: true })])
+    await saveMessages(1, [stored({ id: 1, seq: 1, senderId: 7, sendAs: { peerId: 9, title: 'Канал' }, out: true })])
 
     const mgr = newMessagesManager({ rest: offlineRest, getMeId: () => 7 })
-    const r = await mgr.getHistory({ chatId: 1 })
+    const r = await mgr.getHistory({ peerId: 1 })
 
     expect(r.messages[0].out).toBe(false)
   })

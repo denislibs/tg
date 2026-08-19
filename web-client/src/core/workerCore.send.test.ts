@@ -15,7 +15,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import type { CMDeps, SendArgs } from './realtime/connectionManager'
 
 const sentFrames: SendArgs[] = []
-const typings: { chatId: number; action: string }[] = []
+const typings: { peerId: number; action: string }[] = []
 vi.mock('./realtime/connectionManager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./realtime/connectionManager')>()
   return {
@@ -23,7 +23,7 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
     newConnectionManager: (deps: CMDeps) => ({
       ...actual.newConnectionManager(deps),
       sendMessage: (m: SendArgs) => { sentFrames.push(m) },
-      sendTyping: (chatId: number, action: string) => { typings.push({ chatId, action }) },
+      sendTyping: (peerId: number, action: string) => { typings.push({ peerId, action }) },
     }),
   }
 })
@@ -90,13 +90,13 @@ describe('createWorkerCore(): отправка соединена с транс�
   it('messages.sendText → кадр в conn.sendMessage', async () => {
     const { core } = boot()
 
-    await core.registry.messages.sendText({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    await core.registry.messages.sendText({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
 
     expect(sentFrames).toEqual([{
-      chatId: 1, text: 'hi', clientMsgId: 'c1',
+      peerId: 1, text: 'hi', clientMsgId: 'c1',
       // Пакет параметров отправки всегда проставляет свои поля — см. sendingParams.ts.
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsChatId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
     }])
   })
 
@@ -106,7 +106,7 @@ describe('createWorkerCore(): отправка соединена с транс�
     const { core } = boot()
 
     const r = await core.registry.messages.sendFile({
-      chatId: 1, clientMsgId: 'c2', senderId: 5, file: new Blob(['x'], { type: 'image/jpeg' }),
+      peerId: 1, clientMsgId: 'c2', senderId: 5, file: new Blob(['x'], { type: 'image/jpeg' }),
       type: 'photo', fileName: 'p.jpg', width: 10, height: 20, isMedia: true, uploadAction: 'upload_photo',
     })
 
@@ -114,7 +114,7 @@ describe('createWorkerCore(): отправка соединена с транс�
     expect(uploaded).toHaveLength(1)
     expect(uploaded[0]).toMatchObject({ mime: 'image/jpeg', fileName: 'p.jpg', progressId: 'c2' })
     expect(sentFrames).toHaveLength(1)
-    expect(sentFrames[0]).toMatchObject({ chatId: 1, clientMsgId: 'c2', type: 'photo', mediaId: 909 })
+    expect(sentFrames[0]).toMatchObject({ peerId: 1, clientMsgId: 'c2', type: 'photo', mediaId: 909 })
   })
 
   // Что ломается: без стрелки `sendTyping` собеседник не видит «отправляет
@@ -123,10 +123,10 @@ describe('createWorkerCore(): отправка соединена с транс�
     const { core } = boot()
 
     await core.registry.messages.sendFile({
-      chatId: 7, clientMsgId: 'c3', senderId: 5, file: new Blob(['x']), type: 'document', uploadAction: 'upload_file',
+      peerId: 7, clientMsgId: 'c3', senderId: 5, file: new Blob(['x']), type: 'document', uploadAction: 'upload_file',
     })
 
-    expect(typings[0]).toEqual({ chatId: 7, action: 'upload_file' })
+    expect(typings[0]).toEqual({ peerId: 7, action: 'upload_file' })
   })
 
   // Что ломается: без стрелки `uploadProgress` кольцо загрузки на бабле не
@@ -135,7 +135,7 @@ describe('createWorkerCore(): отправка соединена с транс�
     const { core, progress } = boot()
 
     await core.registry.messages.sendFile({
-      chatId: 1, clientMsgId: 'c4', senderId: 5, file: new Blob(['x']), type: 'photo', isMedia: true,
+      peerId: 1, clientMsgId: 'c4', senderId: 5, file: new Blob(['x']), type: 'photo', isMedia: true,
     })
 
     expect(progress[0]).toMatchObject({ id: 'c4', total: 1 })

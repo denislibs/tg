@@ -56,8 +56,8 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-const dialog = (chatId: number, at: string): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at: string): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
@@ -69,7 +69,7 @@ beforeEach(() => {
   capturedConnDeps = null
 })
 
-/** Поднимает воркер с диалогом chatId=1 уже в кэше dialogsManager (через fillMirror). */
+/** Поднимает воркер с диалогом peerId=1 уже в кэше dialogsManager (через fillMirror). */
 async function bootWithSeededDialog(): Promise<{ dialogOps: DialogOp[] }> {
   await saveDialogs([dialog(1, '2026-08-01T00:00:00Z')])
   const core = createWorkerCore()
@@ -89,13 +89,13 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     const { dialogOps } = await bootWithSeededDialog()
 
     capturedConnDeps!.onFrame('new_message', {
-      chat_id: 1, msg_id: 9, seq: 2, sender_id: 9, type: 'text', text: 'привет',
+      peer_id: 1, msg_id: 9, seq: 2, sender_id: 9, type: 'text', text: 'привет',
       media_id: null, created_at: '2026-08-01T00:00:01Z',
     })
 
     expect(dialogOps).toHaveLength(1)
     const op = dialogOps[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.chatId).toBe(1)
+    expect(op.peerId).toBe(1)
     expect(op.fields.lastMessage?.text).toBe('привет')
   })
 
@@ -106,25 +106,35 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
   it('read (без pts) → dialogs.applyRead → rt:dialog_op patch', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('read', { chat_id: 1, user_id: 7, up_to_seq: 1 })
+    capturedConnDeps!.onFrame('read', { peer_id: 1, user_id: 7, up_to_seq: 1 })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { peerReadSeq: 1 } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { peerReadSeq: 1 } }])
   })
 
   it('chat_update (без pts) → dialogs.applyChatMeta → rt:dialog_op patch, index не участвует', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('chat_update', { chat_id: 1, title: 'Новое имя' })
+    // Кадр несёт `messages.chatFull` — ТОТ ЖЕ объект, что отдаёт ручка
+    // карточки чата; своей формы у кадра больше нет.
+    capturedConnDeps!.onFrame('chat_update', {
+      peer_id: 1,
+      chat_full: {
+        _: 'messages.chatFull',
+        full_chat: { _: 'channelFull', id: 1, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
+        chats: [{ _: 'channel', id: 1, title: 'Новое имя', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }],
+        users: [],
+      },
+    })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { title: 'Новое имя' } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { title: 'Новое имя', username: undefined, photo: { _: 'chatPhotoEmpty' }, isForum: undefined } }])
   })
 
   it('chat_removed (без pts) → dialogs.applyRemoved → rt:dialog_op remove', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('chat_removed', { chat_id: 1, removed: true })
+    capturedConnDeps!.onFrame('chat_removed', { peer_id: 1, removed: true })
 
-    expect(dialogOps).toEqual([{ op: 'remove', chatId: 1 }])
+    expect(dialogOps).toEqual([{ op: 'remove', peerId: 1 }])
   })
 
   // author_id/user_id в payload сверяются с me?.id — в этом стенде core.start() не
@@ -134,10 +144,10 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     const { dialogOps } = await bootWithSeededDialog()
 
     capturedConnDeps!.onFrame('reaction', {
-      chat_id: 1, msg_id: 5, user_id: 9, emoji: '👍', action: 'add', unread_reactions: 3,
+      peer_id: 1, msg_id: 5, user_id: 9, emoji: '👍', action: 'add', unread_reactions: 3,
     })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { unreadReactions: 3 } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unreadReactions: 3 } }])
   })
 
   it('reaction от меня самого — bumpUnreadReactions НЕ зовётся (isMine)', async () => {
@@ -145,7 +155,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
 
     // user_id не задан → тоже undefined === me?.id, т.е. «это моя реакция» — гасим бампинг.
     capturedConnDeps!.onFrame('reaction', {
-      chat_id: 1, msg_id: 5, action: 'add', emoji: '👍', unread_reactions: 3,
+      peer_id: 1, msg_id: 5, action: 'add', emoji: '👍', unread_reactions: 3,
     })
 
     expect(dialogOps).toEqual([])
@@ -164,36 +174,36 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
   it('dialog_mute (без pts) → dialogs.applyMute → ровно один rt:dialog_op patch', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('dialog_mute', { chat_id: 1, muted: true })
+    capturedConnDeps!.onFrame('dialog_mute', { peer_id: 1, muted: true })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { muted: true } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { muted: true } }])
   })
 
   it('dialog_archive (без pts) → dialogs.applyArchived → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('dialog_archive', { chat_id: 1, archived: true })
+    capturedConnDeps!.onFrame('dialog_archive', { peer_id: 1, archived: true })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { archived: true, pinned: false } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { archived: true, pinned: false } }])
   })
 
   it('chat_theme_update (без pts) → dialogs.applyTheme → ровно один rt:dialog_op patch', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('chat_theme_update', { chat_id: 1, theme_id: 'sunset' })
+    capturedConnDeps!.onFrame('chat_theme_update', { peer_id: 1, theme_id: 'sunset' })
 
-    expect(dialogOps).toEqual([{ op: 'patch', chatId: 1, fields: { themeId: 'sunset' } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { themeId: 'sunset' } }])
   })
 
   it('dialog_pin (без pts) → dialogs.applyPinned → ровно один патч + reindex, не двойное применение', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('dialog_pin', { chat_id: 1, pinned: true })
+    capturedConnDeps!.onFrame('dialog_pin', { peer_id: 1, pinned: true })
 
     // patch (поле pinned) + reindex (порядок закреплённых) — обе от ОДНОГО
     // вызова applyPinned, не два независимых применения одного и того же факта.
     expect(dialogOps).toHaveLength(2)
-    expect(dialogOps[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { pinned: true } })
+    expect(dialogOps[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { pinned: true } })
     expect(dialogOps[1]).toMatchObject({ op: 'reindex' })
   })
 })

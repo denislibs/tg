@@ -11,7 +11,7 @@ beforeEach(() => { indexedDB = new IDBFactory() })
 
 interface RestCall { url: string; body: unknown }
 // Настраиваемый ответ GET /secret_chats/{id} для sync-тестов.
-type Handshake = { chat_id: number; initiator_id: number; responder_id: number; state: string; initiator_pub?: string; responder_pub?: string }
+type Handshake = { peer_id: number; initiator_id: number; responder_id: number; state: string; initiator_pub?: string; responder_pub?: string }
 
 function makeDeps() {
   const restCalls: RestCall[] = []
@@ -36,7 +36,7 @@ function makeDeps() {
       },
       post: async <T>(url: string, body: unknown): Promise<T> => {
         restCalls.push({ url, body })
-        if (url === '/secret_chats') return { chat_id: 1, state: 'requested' } as unknown as T
+        if (url === '/secret_chats') return { peer_id: 1, state: 'requested' } as unknown as T
         return {} as T
       },
     },
@@ -53,8 +53,8 @@ describe('secretManager', () => {
   it('start: генерит пару, постит pub на /secret_chats, сохраняет pending', async () => {
     const { deps, restCalls } = makeDeps()
     const mgr = createSecretManager(deps)
-    const { chatId } = await mgr.start(2)
-    expect(chatId).toBe(1)
+    const { peerId } = await mgr.start(2)
+    expect(peerId).toBe(1)
     expect(restCalls).toHaveLength(1)
     expect(restCalls[0].url).toBe('/secret_chats')
     const body = restCalls[0].body as { peer_id: number; pub: string }
@@ -95,7 +95,7 @@ describe('secretManager', () => {
     await mgr.accept(1)
 
     const payload = { text: 'секрет 🔒', entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }] }
-    const res = await mgr.sendText({ chatId: 1, text: payload.text, entities: payload.entities, clientMsgId: 'cm1', ttlSeconds: 30 })
+    const res = await mgr.sendText({ peerId: 1, text: payload.text, entities: payload.entities, clientMsgId: 'cm1', ttlSeconds: 30 })
     expect(res.ok).toBe(true)
     expect(sends).toHaveLength(1)
     expect(sends[0].type).toBe('encrypted')
@@ -118,7 +118,7 @@ describe('secretManager', () => {
     await mgr.accept(1)
 
     const bytes = new TextEncoder().encode('файл-байты').buffer
-    const res = await mgr.sendMedia({ chatId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm2', ttlSeconds: null })
+    const res = await mgr.sendMedia({ peerId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm2', ttlSeconds: null })
     expect(res.ok).toBe(true)
     // ciphertext ушёл как непрозрачный blob (не image/jpeg), а не plaintext
     expect(uploads).toHaveLength(1)
@@ -151,10 +151,10 @@ describe('secretManager', () => {
     mgr.stashRequest(1, b64FromBytes(await exportPublicKey(initiatorKp.publicKey)))
     await mgr.accept(1)
 
-    await mgr.sendText({ chatId: 1, text: 'секрет 🔒', clientMsgId: 'cm3', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })
+    await mgr.sendText({ peerId: 1, text: 'секрет 🔒', clientMsgId: 'cm3', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })
 
     expect(pendings).toEqual([{
-      chat_id: 1, client_msg_id: 'cm3', sender_id: 5, text: 'секрет 🔒', type: 'text', entities: undefined, secret: true,
+      peer_id: 1, client_msg_id: 'cm3', sender_id: 5, text: 'секрет 🔒', type: 'text', entities: undefined, secret: true,
       thread_root_id: null, reply_to_id: null,
     }])
   })
@@ -170,15 +170,15 @@ describe('secretManager', () => {
     await mgr.accept(1)
     const bytes = new TextEncoder().encode('файл-байты').buffer
 
-    await mgr.sendMedia({ chatId: 1, bytes, name: 'voice', mime: 'audio/ogg', size: 10, mediaType: 'voice', clientMsgId: 'cm4', ttlSeconds: null })
+    await mgr.sendMedia({ peerId: 1, bytes, name: 'voice', mime: 'audio/ogg', size: 10, mediaType: 'voice', clientMsgId: 'cm4', ttlSeconds: null })
     expect(pendings).toEqual([])
 
     await mgr.sendMedia({
-      chatId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm5', ttlSeconds: null,
+      peerId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm5', ttlSeconds: null,
       text: 'подпись', optimistic: { senderId: 5, type: 'photo', media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' } },
     })
     expect(pendings[0]).toMatchObject({
-      chat_id: 1, client_msg_id: 'cm5', sender_id: 5, text: 'подпись', type: 'photo',
+      peer_id: 1, client_msg_id: 'cm5', sender_id: 5, text: 'подпись', type: 'photo',
       media: { width: 2, height: 3, mime: 'image/jpeg', size: 10, name: 'pic.jpg' }, secret: true,
     })
     // Локальное превью минтит ВОРКЕР — из плейнтекста, который у него и так на
@@ -193,17 +193,17 @@ describe('secretManager', () => {
     const { deps, failed } = makeDeps()
     const mgr = createSecretManager(deps)
 
-    await expect(mgr.sendText({ chatId: 99, text: 'x', clientMsgId: 'cm6', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })).rejects.toThrow(/key missing/)
+    await expect(mgr.sendText({ peerId: 99, text: 'x', clientMsgId: 'cm6', ttlSeconds: null, optimistic: { senderId: 5, type: 'text' } })).rejects.toThrow(/key missing/)
     expect(failed).toEqual(['cm6'])
 
-    await expect(mgr.sendText({ chatId: 99, text: 'x', clientMsgId: 'cm7', ttlSeconds: null })).rejects.toThrow(/key missing/)
+    await expect(mgr.sendText({ peerId: 99, text: 'x', clientMsgId: 'cm7', ttlSeconds: null })).rejects.toThrow(/key missing/)
     expect(failed).toEqual(['cm6'])
   })
 
   it('sendText без ключа чата бросает ошибку', async () => {
     const { deps } = makeDeps()
     const mgr = createSecretManager(deps)
-    await expect(mgr.sendText({ chatId: 99, text: 'x', clientMsgId: 'c', ttlSeconds: null })).rejects.toThrow(/key missing/)
+    await expect(mgr.sendText({ peerId: 99, text: 'x', clientMsgId: 'c', ttlSeconds: null })).rejects.toThrow(/key missing/)
   })
 
   it('decryptMessage без ключа → null; на битом blob → null', async () => {
@@ -231,8 +231,8 @@ describe('secretManager', () => {
     expect(await loadPending(1)).toBeNull()
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretAccept)
-    const p = events[0].payload as { chat_id: number; state: string; fingerprint: string[] }
-    expect(p.chat_id).toBe(1)
+    const p = events[0].payload as { peer_id: number; state: string; fingerprint: string[] }
+    expect(p.peer_id).toBe(1)
     expect(p.state).toBe('established')
     expect(p.fingerprint).toHaveLength(12)
   })
@@ -242,7 +242,7 @@ describe('secretManager', () => {
     const mgr = createSecretManager(deps)
     const initiatorKp = await generateKeyPair()
     const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
-    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: initiatorPub }
+    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: initiatorPub }
     await mgr.sync(1, 3) // meId = responder
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretRequest)
@@ -254,7 +254,7 @@ describe('secretManager', () => {
   it('sync (initiator, requested): бродкастит secretRequest (bridge смапит в awaiting), pub не трогает', async () => {
     const { deps, events, getState } = makeDeps()
     const mgr = createSecretManager(deps)
-    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: 'x' }
+    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: 'x' }
     await mgr.sync(1, 2) // meId = initiator
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretRequest)
@@ -269,7 +269,7 @@ describe('secretManager', () => {
     await mgr.start(3) // savePending(1) — инициатор
     const responderKp = await generateKeyPair()
     const responderPub = b64FromBytes(await exportPublicKey(responderKp.publicKey))
-    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: responderPub }
+    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: responderPub }
     await mgr.sync(1, 2)
     expect(await loadPending(1)).toBeNull() // ключ доведён, pending очищен
     const accept = events.find((e) => e.event === RT.secretAccept)!
@@ -287,7 +287,7 @@ describe('secretManager', () => {
     const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
     mgr.stashRequest(1, initiatorPub)
     await mgr.accept(1)
-    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: 'z' }
+    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: 'z' }
     await mgr.sync(1, 3) // meId = responder (ключ есть)
     const accept = events.find((e) => e.event === RT.secretAccept)!
     expect(accept).toBeDefined()
@@ -297,7 +297,7 @@ describe('secretManager', () => {
   it('sync (rejected): бродкастит secretReject', async () => {
     const { deps, events, getState } = makeDeps()
     const mgr = createSecretManager(deps)
-    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'rejected' }
+    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'rejected' }
     await mgr.sync(1, 3)
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretReject)

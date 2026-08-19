@@ -2,9 +2,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useChatsStore, loadChats } from './chatsStore'
 
+const ME = {
+  user: { _: 'user' as const, pFlags: { self: true as const }, id: 7, phone: '+1', first_name: 'Me' },
+  fullUser: { _: 'userFull' as const, id: 7 },
+  canMessage: true,
+}
+
 function fakeManagers(over: Partial<{ me: unknown }> = {}) {
   return {
-    auth: { me: async () => over.me ?? { id: 7, phone: '+1', display_name: 'Me' } },
+    auth: { me: async () => over.me ?? ME },
   }
 }
 
@@ -24,6 +30,6 @@ describe('chatsStore', () => {
     await loadChats(fakeManagers() as never)
     const s = useChatsStore.getState()
     expect(s.meId).toBe(7)
-    expect(s.me).toEqual({ id: 7, phone: '+1', display_name: 'Me' })
+    expect(s.me).toEqual(ME)
   })
 })

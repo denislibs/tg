@@ -27,18 +27,18 @@ export function newBoostsManager({ rest, getMeId }: {
   getMeId?: () => number | null
 }) {
   return {
-    async status(chatId: number): Promise<BoostStatus> {
-      const r = await rest.get<RawBoostStatus>(`/channels/${chatId}/boosts`)
+    async status(peerId: number): Promise<BoostStatus> {
+      const r = await rest.get<RawBoostStatus>(`/channels/${peerId}/boosts`)
       return mapBoostStatus(r)
     },
     // Бустит канал (расходует слот premium): возвращает обновлённый статус.
-    async boost(chatId: number): Promise<BoostStatus> {
-      const r = await rest.post<RawBoostStatus>(`/channels/${chatId}/boost`, {})
+    async boost(peerId: number): Promise<BoostStatus> {
+      const r = await rest.post<RawBoostStatus>(`/channels/${peerId}/boost`, {})
       return mapBoostStatus(r)
     },
     // Создаёт розыгрыш; возвращает сообщение-баббл розыгрыша.
-    async createGiveaway(chatId: number, a: CreateGiveawayArgs): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${chatId}/giveaways`, {
+    async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/channels/${peerId}/giveaways`, {
         prize_kind: a.prizeKind,
         months: a.months ?? 0,
         stars: a.stars ?? 0,

@@ -8,10 +8,10 @@ import type { Message } from '../core/models'
 
 interface PinsState {
   byChat: Record<number, Message[]>
-  setPins: (chatId: number, pins: Message[]) => void
+  setPins: (peerId: number, pins: Message[]) => void
 }
 
 export const usePinsStore = create<PinsState>((set) => ({
   byChat: {},
-  setPins: (chatId, pins) => set((s) => ({ byChat: { ...s.byChat, [chatId]: pins } })),
+  setPins: (peerId, pins) => set((s) => ({ byChat: { ...s.byChat, [peerId]: pins } })),
 }))

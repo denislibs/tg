@@ -13,18 +13,18 @@ import {
 } from './persist'
 import type { Dialog, Message, Draft } from '../models'
 import type { Folder } from '../managers/foldersManager'
-import type { User } from '../managers/authManager'
+import type { PeerProfile } from '../managers/authManager'
 
 // passcode-лок (locked()) мемоизирован на 3с внутри модуля, поэтому его переключение
 // здесь не тестируем (флаки по времени); проверяем только логику стора при откл. коде.
 
-const dialog = (chatId: number, type: Dialog['type'] = 'private', last?: Partial<NonNullable<Dialog['lastMessage']>>): Dialog => ({
-  chatId, type, lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
+const dialog = (peerId: number, type: Dialog['type'] = 'private', last?: Partial<NonNullable<Dialog['lastMessage']>>): Dialog => ({
+  peerId, type, lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
   lastMessage: last ? { seq: 1, text: '', senderId: 1, at: '2026-01-01T00:00:00Z', ...last } : undefined,
 })
 
-const msg = (chatId: number, seq: number, over: Partial<Message> = {}): Message => ({
-  id: seq, chatId, seq, senderId: 1, type: 'text', text: `m${seq}`,
+const msg = (peerId: number, seq: number, over: Partial<Message> = {}): Message => ({
+  id: seq, peerId, seq, senderId: 1, type: 'text', text: `m${seq}`,
   replyToId: null, mediaId: null, createdAt: '2026-01-01T00:00:00Z', threadRootId: null, ...over,
 })
 
@@ -39,32 +39,32 @@ describe('persist (normalized offline store)', () => {
   it('round-trips dialogs and me', async () => {
     await persistScope('tok')
     await saveDialogs([dialog(1), dialog(2)])
-    await saveMe({ id: 7, displayName: 'Me' } as User)
-    expect((await loadDialogs()).map((d) => d.chatId).sort((a, b) => a - b)).toEqual([1, 2])
-    expect((await loadMe())?.id).toBe(7)
+    await saveMe({ user: { _: 'user', id: 7, first_name: 'Me' }, fullUser: { _: 'userFull', id: 7 }, canMessage: true } as PeerProfile)
+    expect((await loadDialogs()).map((d) => d.peerId).sort((a, b) => a - b)).toEqual([1, 2])
+    expect((await loadMe())?.user.id).toBe(7)
   })
 
   it('round-trips folders and drafts', async () => {
     const folder: Folder = { id: 1, title: 'Work', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [5], excludeChats: [] }
-    const draft: Draft = { chatId: 9, text: 'wip', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }
+    const draft: Draft = { peerId: 9, text: 'wip', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }
     await saveFolders([folder])
     await saveDrafts([draft])
     expect((await loadFolders()).map((f) => f.title)).toEqual(['Work'])
-    expect((await loadDrafts()).map((d) => d.chatId)).toEqual([9])
+    expect((await loadDrafts()).map((d) => d.peerId)).toEqual([9])
   })
 
   it('clears folders + drafts on account switch', async () => {
     await persistScope('A')
     await saveFolders([{ id: 1, title: 'X', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }])
-    await saveDrafts([{ chatId: 1, text: 't', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }])
+    await saveDrafts([{ peerId: 1, text: 't', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }])
     await persistScope('B') // смена аккаунта
     expect(await loadFolders()).toEqual([])
     expect(await loadDrafts()).toEqual([])
   })
 
   it('round-trips users (merge by id)', async () => {
-    await saveUsers([{ id: 1, username: 'a', displayName: 'A', avatarUrl: '' }])
-    await saveUsers([{ id: 2, username: 'b', displayName: 'B', avatarUrl: '' }])
+    await saveUsers([{ _: 'user', id: 1, username: 'a', first_name: 'A' }])
+    await saveUsers([{ _: 'user', id: 2, username: 'b', first_name: 'B' }])
     expect((await loadUsers()).map((u) => u.id).sort((a, b) => a - b)).toEqual([1, 2])
   })
 
@@ -109,7 +109,7 @@ describe('persist (normalized offline store)', () => {
     await saveDialogs([dialog(5)])
     expect(await persistGetToken()).toBeNull()
     await persistScope('newtok') // первая привязка после входа — не стирать
-    expect((await loadDialogs()).map((d) => d.chatId)).toEqual([5])
+    expect((await loadDialogs()).map((d) => d.peerId)).toEqual([5])
     expect(await persistGetToken()).toBe('newtok')
   })
 
@@ -153,7 +153,7 @@ describe('persist (normalized offline store)', () => {
 
   it('read-after-write across stores + program order within a batch (clear then puts)', async () => {
     await persistScope('tok')
-    const pu = saveUsers([{ id: 1, username: 'a', displayName: 'A', avatarUrl: '' }])
+    const pu = saveUsers([{ _: 'user', id: 1, username: 'a', first_name: 'A' }])
     expect((await loadUsers()).map((u) => u.id)).toEqual([1]) // видно до явного await pu
     await pu
 
@@ -161,7 +161,7 @@ describe('persist (normalized offline store)', () => {
     // одной транзакции в порядке постановки — clear идёт первым, puts после него
     // выживают. Это тот же механизм, что и «delete после put того же ключа побеждает».
     await saveDialogs([dialog(1), dialog(2)])
-    expect((await loadDialogs()).map((d) => d.chatId).sort((a, b) => a - b)).toEqual([1, 2])
+    expect((await loadDialogs()).map((d) => d.peerId).sort((a, b) => a - b)).toEqual([1, 2])
   })
 
   // ── Схема/миграции ────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ describe('persist (normalized offline store)', () => {
       expect(upgraded).toBe(false) // апгрейда нет — данные не тронуты
       expect([...db.objectStoreNames].sort()).toEqual(['dialogs', 'messages', 'meta', 'state', 'users'])
       const rows = await new Promise<unknown[]>((resolve, reject) => {
-        const r = db.transaction('messages', 'readonly').objectStore('messages').index('byChat').getAll(IDBKeyRange.only(4))
+        const r = db.transaction('messages', 'readonly').objectStore('messages').index('byPeer').getAll(IDBKeyRange.only(4))
         r.onsuccess = () => resolve(r.result as unknown[])
         r.onerror = () => reject(r.error)
       })

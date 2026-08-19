@@ -133,7 +133,7 @@ describe('пакет параметров отправки: ни один пут
     const { sendingParamsToWire } = await import('./managers/messages/sendingParams')
     expect(Object.keys(sendingParamsToWire({})).sort()).toEqual([
       'effect', 'replyQuoteOffset', 'replyQuoteText', 'replyToId', 'replyToPeerId',
-      'sendAsChatId', 'silent', 'threadRootId',
+      'sendAsPeerId', 'silent', 'threadRootId',
     ])
   })
 })

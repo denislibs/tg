@@ -30,7 +30,7 @@ describe('realtime.markMediaRead', () => {
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
-    await rt.markMediaRead({ chatId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: 7 })
 
     expect(broadcast).toHaveBeenCalledWith(RT.messageOp, { ops })
   })
@@ -48,7 +48,7 @@ describe('realtime.markMediaRead', () => {
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
-    await rt.markMediaRead({ chatId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: 7 })
 
     expect(broadcast).not.toHaveBeenCalledWith(RT.messageOp, expect.anything())
   })

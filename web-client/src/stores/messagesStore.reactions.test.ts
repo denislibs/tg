@@ -8,7 +8,7 @@ const CHAT = 7
 
 function msg(id: number): Message {
   return {
-    id, chatId: CHAT, seq: id, senderId: 1, type: 'text', text: 'hi',
+    id, peerId: CHAT, seq: id, senderId: 1, type: 'text', text: 'hi',
     replyToId: null, mediaId: null, createdAt: '2026-07-19T10:00:00Z', threadRootId: null,
   }
 }

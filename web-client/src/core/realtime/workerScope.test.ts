@@ -82,12 +82,12 @@ describe('newWorkerScope', () => {
     const portB = makeFakePort()
     ports.push(portA, portB)
 
-    ws.broadcast(RT.dialogPin, { chat_id: 1, pinned: true }, { pts: 9, catchUp: true })
-    expect(portA.emit).toHaveBeenCalledWith(RT.dialogPin, { chat_id: 1, pinned: true }, { pts: 9, catchUp: true })
-    expect(portB.emit).toHaveBeenCalledWith(RT.dialogPin, { chat_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    ws.broadcast(RT.dialogPin, { peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    expect(portA.emit).toHaveBeenCalledWith(RT.dialogPin, { peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    expect(portB.emit).toHaveBeenCalledWith(RT.dialogPin, { peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
 
-    ws.receiveFrom(portA, RT.dialogPin, { chat_id: 2, pinned: false }, { pts: 11 } as EventMeta)
-    expect(portB.emit).toHaveBeenCalledWith(RT.dialogPin, { chat_id: 2, pinned: false }, { pts: 11 })
+    ws.receiveFrom(portA, RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 } as EventMeta)
+    expect(portB.emit).toHaveBeenCalledWith(RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 })
   })
 
   it('локальный воркерный подписчик, который сам зовёт scope.dispatchEvent, не порождает бесконечного кольца', () => {

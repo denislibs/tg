@@ -16,9 +16,9 @@ export function newTranslationMethods({ rest, patchMsg }: MessagesCtx) {
     // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
     // на бэке нет — возвращается детерминированный стаб и кэшируется в SSOT, чтобы
     // блок остался развёрнутым при перерисовке.
-    async transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
-      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${chatId}/messages/${msgId}/transcribe`, {})
-      patchMsg(chatId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
+    async transcribe(peerId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
+      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${peerId}/messages/${msgId}/transcribe`, {})
+      patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
       return r
     },
   }

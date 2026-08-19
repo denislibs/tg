@@ -10,21 +10,21 @@ import { useAppStateKey, useAppStateStore, setAppState } from './appState'
 /** Реактивное чтение черновиков по чатам — единственный способ получить их в UI. */
 export function useDrafts(): Record<number, Draft> {
   const drafts = useAppStateKey('drafts')
-  return useMemo(() => Object.fromEntries(drafts.map((d) => [d.chatId, d])), [drafts])
+  return useMemo(() => Object.fromEntries(drafts.map((d) => [d.peerId, d])), [drafts])
 }
 
 /** Чтение вне React (storeProjection/хуки композера). */
-export function draftFor(chatId: number): Draft | undefined {
-  return useAppStateStore.getState().drafts.find((d) => d.chatId === chatId)
+export function draftFor(peerId: number): Draft | undefined {
+  return useAppStateStore.getState().drafts.find((d) => d.peerId === peerId)
 }
 
 export function setDraft(d: Draft): void {
-  const rest = useAppStateStore.getState().drafts.filter((x) => x.chatId !== d.chatId)
+  const rest = useAppStateStore.getState().drafts.filter((x) => x.peerId !== d.peerId)
   setAppState('drafts', [...rest, d])
 }
 
-export function removeDraft(chatId: number): void {
-  setAppState('drafts', useAppStateStore.getState().drafts.filter((d) => d.chatId !== chatId))
+export function removeDraft(peerId: number): void {
+  setAppState('drafts', useAppStateStore.getState().drafts.filter((d) => d.peerId !== peerId))
 }
 
 export function setAllDrafts(list: Draft[]): void {

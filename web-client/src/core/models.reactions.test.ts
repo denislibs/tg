@@ -5,7 +5,7 @@ import { mapMessage, type RawMessage } from './models'
 // (клиент) для аватаров реагировавших.
 describe('mapMessage — реакции с recent (карточки реагировавших)', () => {
   const base = {
-    id: 1, chat_id: 2, seq: 1, sender_id: 3, type: 'text', text: 'hi', created_at: 0,
+    id: 1, peer_id: 2, seq: 1, sender_id: 3, type: 'text', text: 'hi', created_at: 0,
   }
 
   it('пробрасывает recent-карточки (avatar → avatarUrl, пустой → undefined)', () => {

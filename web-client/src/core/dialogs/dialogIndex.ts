@@ -9,7 +9,7 @@
 // Отличие от tweb: там младшие 16 бит — инкрементный счётчик экземпляра
 // (разрешитель ничьей при равных датах). Счётчик зависит от порядка вызовов, то
 // есть НЕ детерминирован между кэшем и сетью — ровно то, чего мы избегаем.
-// Берём вместо него chatId: так же разводит ничьи, но одинаково при любом порядке.
+// Берём вместо него peerId: так же разводит ничьи, но одинаково при любом порядке.
 //
 // Модуль чистый: никаких обращений к сторам, всё приходит аргументами.
 import type { Dialog, Draft } from '../models'
@@ -38,13 +38,13 @@ export function dialogIndex(
   draft?: Pick<Draft, 'updatedAt'>,
 ): number {
   const date = dialog.pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog, draft)
-  // Младшие 16 бит — разрешитель ничьей (tweb: ++dialogsNum, у нас chatId).
-  return date * 0x10000 + (dialog.pinned ? 0 : dialog.chatId & 0xffff)
+  // Младшие 16 бит — разрешитель ничьей (tweb: ++dialogsNum, у нас peerId).
+  return date * 0x10000 + (dialog.pinned ? 0 : dialog.peerId & 0xffff)
 }
 
 /** tweb `generateDialogPinnedDate` (dialogs.ts:928-943). */
 function pinnedDate(dialog: Dialog, order: readonly number[]): number {
-  const idx = order.indexOf(dialog.chatId)
+  const idx = order.indexOf(dialog.peerId)
   // Не нашли в сохранённом порядке — считаем самым верхним (tweb: order.unshift).
   const pinnedIndex = idx === -1 ? 0 : idx
   const len = idx === -1 ? order.length + 1 : order.length

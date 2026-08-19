@@ -12,16 +12,39 @@ import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Draft } from '../models'
 
-const dialog = (chatId: number, at: string, pinned = false): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at: string, pinned = false): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
 
-const draft = (chatId: number, updatedAt: string): Draft => ({ chatId, text: 'чер', replyToId: null, updatedAt })
-const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)
+const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
+const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)
 
 const restStub = (chats: unknown[]) => ({ get: vi.fn(async () => ({ chats })) })
+
+// Кадр `chat_update` несёт `messages.chatFull` — ТОТ ЖЕ объект, что отдаёт
+// `GET /chats/{peerID}/card`. Прежде та же карточка ехала двумя разными
+// формами (плоско с `id` у ручки и вложенно в кадре).
+function chatUpdate(peerId: number, chat: Partial<{ title: string; username: string; photo_id: number | null; forum: boolean }>): ChatUpdateEvt {
+  return {
+    peer_id: peerId,
+    chat_full: {
+      _: 'messages.chatFull',
+      full_chat: { _: 'channelFull', id: Math.abs(peerId), about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
+      chats: [{
+        _: 'channel',
+        id: Math.abs(peerId),
+        title: chat.title ?? '',
+        username: chat.username,
+        photo: chat.photo_id ? { _: 'chatPhoto', photo_id: chat.photo_id } : { _: 'chatPhotoEmpty' },
+        date: 0,
+        pFlags: chat.forum ? { megagroup: true, forum: true } : { megagroup: true },
+      }],
+      users: [],
+    },
+  }
+}
 
 describe('dialogsManager: владелец порядка', () => {
   it('fillMirror отдаёт reset, отсортированный по индексу (свежие выше)', async () => {
@@ -36,7 +59,7 @@ describe('dialogsManager: владелец порядка', () => {
     const op = await mgr.fillMirror()
 
     expect(op.op).toBe('reset')
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([2, 1])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([2, 1])
     // Пробел зеркала объявлен → владелец обязан ответить и веером тоже.
     expect(ops).toHaveLength(1)
   })
@@ -50,7 +73,7 @@ describe('dialogsManager: владелец порядка', () => {
     })
 
     const op = await mgr.fillMirror()
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([1, 2])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([1, 2])
   })
 
   // Ревью (Important #1): `hydrated = true` ставился СИНХРОННО, до await
@@ -91,7 +114,7 @@ describe('dialogsManager: владелец порядка', () => {
 
     await expect(mgr.fillMirror()).rejects.toThrow('IDB недоступен')
     const op = await mgr.fillMirror()
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([1])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([1])
   })
 })
 
@@ -111,12 +134,12 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ chat_id: 1, seq: 7, text: 'привет', sender_id: 9,
+    mgr.applyNewMessage({ peer_id: 1, seq: 7, text: 'привет', sender_id: 9,
       created_at: '2026-08-03T00:00:00Z', type: 'text' } as NewMessageEvt)
 
     expect(ops).toHaveLength(1)
     const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.chatId).toBe(1)
+    expect(op.peerId).toBe(1)
     expect(op.fields.lastMessage?.text).toBe('привет')
     expect(op.index).toBeGreaterThan(mgr.getSnapshot()[1].index) // диалог 1 теперь выше
   })
@@ -132,24 +155,24 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     // dialog(1) стартует с unread:0 — сперва накопим непрочитанное живым
     // сообщением, иначе применение read было бы тривиальным no-op'ом.
-    mgr.applyNewMessage({ chat_id: 1, seq: 2, text: 'hi', sender_id: 9,
+    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'hi', sender_id: 9,
       created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
-    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.index
+    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index
     ops.length = 0
 
-    mgr.applyRead({ chat_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
 
     expect(ops).toHaveLength(1)
     const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.chatId).toBe(1)
+    expect(op.peerId).toBe(1)
     expect(op.fields.unread).toBe(0)
     expect(op.index).toBeUndefined() // метаданные прочтения не двигают dialogIndex
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.index).toBe(indexBefore)
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index).toBe(indexBefore)
 
     // Идемпотентность: повторное эхо того же прочтения не публикует новую операцию
     // (иначе на зеркале бесконечно перезапускался бы mark-read-эффект).
     ops.length = 0
-    mgr.applyRead({ chat_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
     expect(ops).toHaveLength(0)
   })
 
@@ -162,23 +185,24 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.index
+    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index
     ops.length = 0
 
-    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя', photo_media_id: 42 } as ChatUpdateEvt)
+    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя', photo_id: 42 }))
 
     expect(ops).toHaveLength(1)
     const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.chatId).toBe(1)
+    expect(op.peerId).toBe(1)
     expect(op.fields.title).toBe('Новое имя')
-    expect(op.fields.photoUrl).toBe('/media/42/content')
+    expect(op.fields.photo).toEqual({ _: 'chatPhoto', photo_id: 42 })
     expect(op.index).toBeUndefined()
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.index).toBe(indexBefore)
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index).toBe(indexBefore)
 
-    // photo_media_id: null — фото снято (абсолютный снимок), photoUrl сбрасывается.
+    // Фото снято — снимок абсолютный, и «нет фото» это отдельный КОНСТРУКТОР
+    // (`chatPhotoEmpty`), а не null рядом с числом.
     ops.length = 0
-    mgr.applyChatMeta({ chat_id: 1, photo_media_id: null } as ChatUpdateEvt)
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.photoUrl).toBeUndefined()
+    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя', photo_id: null }))
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.photo).toEqual({ _: 'chatPhotoEmpty' })
   })
 
   // Fix (ревью Task 3, Important): `patchDialog` публиковал `patch` безусловно —
@@ -198,14 +222,14 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     })
     await mgr.fillMirror()
 
-    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' } as ChatUpdateEvt)
-    const dialogAfterFirst = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog
+    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя' }))
+    const dialogAfterFirst = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog
     ops.length = 0
 
-    mgr.applyChatMeta({ chat_id: 1, title: 'Новое имя' } as ChatUpdateEvt) // тот же снимок повторно
+    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя' })) // тот же снимок повторно
 
     expect(ops).toHaveLength(0) // patch не опубликован
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog).toBe(dialogAfterFirst) // ссылка сохранена
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog).toBe(dialogAfterFirst) // ссылка сохранена
   })
 
   it('bumpUnreadReactions: verbatim из кадра, fallback +1 без поля', async () => {
@@ -246,8 +270,8 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(ops).toHaveLength(0)
 
     mgr.applyRemoved(1)
-    expect(ops).toEqual([{ op: 'remove', chatId: 1 }])
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)).toBeUndefined()
+    expect(ops).toEqual([{ op: 'remove', peerId: 1 }])
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)).toBeUndefined()
   })
 
   it('кадр в неизвестный чат — тихий no-op (без операции), как и раньше', async () => {
@@ -261,9 +285,9 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ chat_id: 99, seq: 1, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
-    mgr.applyRead({ chat_id: 99, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
-    mgr.applyChatMeta({ chat_id: 99, title: 'x' } as ChatUpdateEvt)
+    mgr.applyNewMessage({ peer_id: 99, seq: 1, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
+    mgr.applyRead({ peer_id: 99, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
+    mgr.applyChatMeta(chatUpdate(99, { title: 'x' }))
     mgr.bumpUnreadReactions(99)
 
     expect(ops).toHaveLength(0)
@@ -283,7 +307,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ chat_id: 1, seq: 2, text: 'hi', sender_id: 7, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'hi', sender_id: 7, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(0)
   })
@@ -301,11 +325,11 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     // server-authoritative unread=5 выигрывает у локального +1
-    mgr.applyNewMessage({ chat_id: 1, seq: 2, text: 'a', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
+    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'a', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(5)
 
     ops.length = 0
-    mgr.applyNewMessage({ chat_id: 1, seq: 3, text: 'b', sender_id: 9, created_at: '2026-08-01T00:00:02Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ peer_id: 1, seq: 3, text: 'b', sender_id: 9, created_at: '2026-08-01T00:00:02Z', type: 'text' } as NewMessageEvt)
     // поля unread в кадре нет — fallback: текущий unread(5) + 1
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(6)
   })
@@ -323,16 +347,16 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: { 0: [1, 2] }, drafts: [] }),
     })
     await mgr.fillMirror()
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     ops.length = 0
 
-    mgr.applyNewMessage({ chat_id: 2, seq: 4, text: 'yo', sender_id: 5, created_at: '2026-08-09T23:00:00Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ peer_id: 2, seq: 4, text: 'yo', sender_id: 5, created_at: '2026-08-09T23:00:00Z', type: 'text' } as NewMessageEvt)
 
     // закреплённые держатся своим порядком (pinnedOrders), а не датой
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     expect(ops).toHaveLength(1)
     const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.chatId).toBe(2)
+    expect(op.peerId).toBe(2)
     expect(op.index).toBeUndefined() // индекс внутри блока закреплённых не сдвинулся
   })
 
@@ -345,20 +369,20 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    mgr.applyNewMessage({ chat_id: 1, seq: 2, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
+    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
     ops.length = 0
 
-    mgr.applyRead({ chat_id: 1, user_id: 7, up_to_seq: 2 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2 } as ReadEvt, 7)
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(0)
 
     ops.length = 0
-    mgr.applyRead({ chat_id: 1, user_id: 5, up_to_seq: 9 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 9 } as ReadEvt, 7)
     const opPeer = ops[0] as Extract<DialogOp, { op: 'patch' }>
     expect(opPeer.fields.peerReadSeq).toBe(9)
     expect(opPeer.fields.unread).toBeUndefined() // чужое прочтение мой unread не трогает
 
     ops.length = 0
-    mgr.applyRead({ chat_id: 1, user_id: 5, up_to_seq: 4 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 4 } as ReadEvt, 7)
     expect(ops).toHaveLength(0)
   })
 
@@ -374,7 +398,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     mgr.bumpUnreadReactions(1, 2)
     ops.length = 0
 
-    mgr.applyRead({ chat_id: 1, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
+    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(0)
   })
@@ -401,7 +425,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
     await expect(groups.setMute(1, true)).rejects.toThrow()
 
     expect(ops).toEqual([])
-    expect(dialogs.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(false)
+    expect(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(false)
   })
 
   it('setMute: успех — patch опубликован ПОСЛЕ ответа сервера', async () => {
@@ -427,8 +451,8 @@ describe('dialogsManager × groupsManager: действия без оптими�
     await call
 
     expect(ops).toHaveLength(1)
-    expect(ops[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { muted: true } })
-    expect(dialogs.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(true)
+    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { muted: true } })
+    expect(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(true)
   })
 })
 
@@ -459,8 +483,8 @@ describe('dialogsManager: действия без оптимистики — п�
 
     mgr.applyMute(1, true)
 
-    expect(ops).toEqual([{ op: 'patch', chatId: 1, fields: { muted: true } }])
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.muted).toBe(true)
+    expect(ops).toEqual([{ op: 'patch', peerId: 1, fields: { muted: true } }])
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(true)
   })
 
   it('applyArchived архивирует и сбрасывает пин (как на бэке)', async () => {
@@ -475,8 +499,8 @@ describe('dialogsManager: действия без оптимистики — п�
     // блока индекса в обычный (по дате активности), поэтому index в патче
     // ТОЖЕ участвует (moved=true внутри patchDialog) — сверяем fields отдельно.
     expect(ops).toHaveLength(1)
-    expect(ops[0]).toMatchObject({ op: 'patch', chatId: 1, fields: { archived: true, pinned: false } })
-    const d = mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog
+    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { archived: true, pinned: false } })
+    const d = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog
     expect(d.archived).toBe(true)
     expect(d.pinned).toBe(false)
   })
@@ -505,15 +529,15 @@ describe('dialogsManager: действия без оптимистики — п�
 
     mgr.applyPinned(1, true)
 
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 3, 2])
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.pinned).toBe(true)
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 3, 2])
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.pinned).toBe(true)
     expect(saved[saved.length - 1]).toEqual({ 0: [1] })
     expect(mirrored[mirrored.length - 1]).toEqual({ key: 'pinnedOrders', value: { 0: [1] } })
-    expect(ops.some((o) => o.op === 'patch' && o.chatId === 1 && o.fields.pinned === true)).toBe(true)
+    expect(ops.some((o) => o.op === 'patch' && o.peerId === 1 && o.fields.pinned === true)).toBe(true)
 
     ops.length = 0
     mgr.applyPinned(2, true) // второй пин встаёт ПЕРВЫМ (unshift)
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2, 1, 3])
     expect(saved[saved.length - 1]).toEqual({ 0: [2, 1] })
   })
 
@@ -523,12 +547,12 @@ describe('dialogsManager: действия без оптимистики — п�
       { 0: [1] },
     )
     await mgr.fillMirror()
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2])
 
     mgr.applyPinned(1, false)
 
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1])
-    expect(mgr.getSnapshot().find((i) => i.dialog.chatId === 1)!.dialog.pinned).toBe(false)
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2, 1])
+    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.pinned).toBe(false)
     expect(saved[saved.length - 1]).toEqual({ 0: [] })
   })
 
@@ -560,14 +584,14 @@ describe('dialogsManager: действия без оптимистики — п�
 
     mgr.applyPinned(1, true) // свой apply (после успешного REST, groupsManager.setPin)
     mgr.applyPinned(2, true) // apply другого чата — встаёт первым (unshift)
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2, 1, 3])
     ops.length = 0
     saved.length = 0
     mirrored.length = 0
 
     mgr.applyPinned(1, true) // запоздавшее собственное WS-эхо ПЕРВОГО действия (dialog_pin)
 
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2, 1, 3]) // порядок не меняется
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2, 1, 3]) // порядок не меняется
     expect(ops).toEqual([]) // ни patch, ни reindex не публикуются
     expect(saved).toEqual([]) // pinnedOrders не пишется на диск повторно
     expect(mirrored).toEqual([]) // и не зеркалится повторно
@@ -635,7 +659,7 @@ describe('dialogsManager: персист списка переезжает к в
 
     expect(save).toHaveBeenCalledTimes(1)
     const written = save.mock.calls[0][0]
-    expect(written.find((d) => d.chatId === 1)?.muted).toBe(true)
+    expect(written.find((d) => d.peerId === 1)?.muted).toBe(true)
     vi.useRealTimers()
   })
 
@@ -672,14 +696,14 @@ describe('dialogsManager: персист списка переезжает к в
 // превью секретных чатов — порт main-thread `chatsStore.decryptSecretPreviews`
 // (снесённого этой же задачей), но без RPC — secretManager в этом же воркере.
 describe('dialogsManager: расшифровка превью секретных чатов (Task 6)', () => {
-  const secretDialog = (chatId: number, at: string, encBody: string, text = ''): Dialog => ({
-    chatId, type: 'secret', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+  const secretDialog = (peerId: number, at: string, encBody: string, text = ''): Dialog => ({
+    peerId, type: 'secret', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
     lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
     lastMessage: { seq: 1, text, senderId: 1, at, encBody },
   } as Dialog)
 
   it('fillMirror (гидратация с диска) расшифровывает превью секретного диалога', async () => {
-    const decryptSecret = vi.fn(async (chatId: number) => ({ text: `plain-${chatId}`, media: undefined }))
+    const decryptSecret = vi.fn(async (peerId: number) => ({ text: `plain-${peerId}`, media: undefined }))
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: () => {},
@@ -696,10 +720,10 @@ describe('dialogsManager: расшифровка превью секретных
 
   it('refresh (сетевой догон) расшифровывает превью секретного диалога из ответа /chats', async () => {
     const raw = {
-      chat_id: 2, type: 'secret', title: 't2', last_read_seq: 0, unread: 0,
+      peer_id: 2, type: 'secret', title: 't2', last_read_seq: 0, unread: 0,
       last_message: { seq: 1, text: '', sender_id: 1, at: '2026-08-02T00:00:00Z', enc_body: 'ciphertext2' },
     }
-    const decryptSecret = vi.fn(async (chatId: number) => ({ text: `plain-${chatId}`, media: undefined }))
+    const decryptSecret = vi.fn(async (peerId: number) => ({ text: `plain-${peerId}`, media: undefined }))
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
       rest: restStub([raw]) as never,
@@ -770,7 +794,7 @@ describe('dialogsManager: сброс кэша владельца при лога
     })
 
     await mgr.fillMirror()
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1])
 
     mgr.resetForLogout()
     expect(mgr.getSnapshot()).toEqual([])
@@ -780,8 +804,8 @@ describe('dialogsManager: сброс кэша владельца при лога
     stateGen = 2
     const op = await mgr.fillMirror()
 
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([2])
-    expect((op as { items: { dialog: Dialog; index: number }[] }).items[0]!.dialog.chatId).toBe(2)
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2])
+    expect((op as { items: { dialog: Dialog; index: number }[] }).items[0]!.dialog.peerId).toBe(2)
   })
 
   it('resetForLogout() без немедленного fillMirror — patch/mute на пустой кэш тихо no-op (кэш честно пуст, не подвешен)', () => {
@@ -856,9 +880,9 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
   it('порядок закреплённых переживает повторное применение списка (кэш → сеть, закреплённые пришли в другом порядке ответа)', async () => {
     const mgr = newDialogsManager({
       rest: restStub([
-        { chat_id: 2, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T11:00:00Z' } },
-        { chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T10:00:00Z' } },
-        { chat_id: 3, type: 'private', last_read_seq: 0, unread: 0, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T12:00:00Z' } },
+        { peer_id: 2, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T11:00:00Z' } },
+        { peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T10:00:00Z' } },
+        { peer_id: 3, type: 'private', last_read_seq: 0, unread: 0, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T12:00:00Z' } },
       ]) as never,
       onDialogOps: () => {},
       loadCache: async () => [
@@ -876,7 +900,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
     await mgr.refresh()
 
     // pinnedOrders уже засеян кэшем [1,2] — ответ сети его не переигрывает.
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
   })
 
   // Порядок закреплённых сервер отдаёт только позицией в ответе /chats (ORDER
@@ -919,18 +943,18 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     ops.length = 0
 
     // Входящее сообщение в СРЕДНИЙ закреплённый — контентный patch, не трогает
     // `pinned`. Без консистентного pinnedOrder (см. докблок syncPinnedOrder)
-    // recompute дал бы chatId=2 БОЛЬШИЙ индекс, чем ещё не пересчитанные
+    // recompute дал бы peerId=2 БОЛЬШИЙ индекс, чем ещё не пересчитанные
     // соседи (те остались бы на старом «общем для всех неотслеженных»
     // значении), и он ошибочно прыгнул бы наверх пин-блока: [1,2,3] → [2,1,3].
-    mgr.applyNewMessage({ chat_id: 2, seq: 2, sender_id: 9, type: 'text', text: 'hi',
+    mgr.applyNewMessage({ peer_id: 2, seq: 2, sender_id: 9, type: 'text', text: 'hi',
       created_at: '2026-08-09T15:00:00Z' } as NewMessageEvt)
 
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2, 3])
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
   })
 })
 
@@ -944,8 +968,8 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
 // `reindex` и сам холодный старт переписывали весь S_DIALOGS. Половину зеркала
 // держит stores/chatsStore.order.test.ts.
 describe('dialogsManager: совпавший ответ не даёт ни операции, ни записи на диск (Important #4)', () => {
-  const raw = (chatId: number, at: string): RawDialog => ({
-    chat_id: chatId, type: 'private', title: 't' + chatId, unread: 0, last_read_seq: 0,
+  const raw = (peerId: number, at: string): RawDialog => ({
+    peer_id: peerId, type: 'private', title: 't' + peerId, unread: 0, last_read_seq: 0,
     last_message: { seq: 1, text: 'x', sender_id: 1, at },
   } as unknown as RawDialog)
 
@@ -1039,7 +1063,7 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
 
     expect(ops).toHaveLength(1)
     expect(ops[0].op).toBe('reindex')
-    expect(mgr.getSnapshot().map((i) => i.dialog.chatId)).toEqual([1, 2]) // черновик поднял диалог
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2]) // черновик поднял диалог
     await vi.advanceTimersByTimeAsync(5000)
     expect(save).not.toHaveBeenCalled()
     vi.useRealTimers()
@@ -1072,7 +1096,7 @@ describe('dialogsManager: поколение сессии гасит ответ�
     const inflight = mgr.refresh()
     await tick() // запрос ушёл под ПРОШЛЫМ токеном
     mgr.resetForLogout() // сессия сменилась, пока ответ летел
-    resolveGet({ chats: [{ chat_id: 5, type: 'private', title: 't5', unread: 0, last_read_seq: 0 }] })
+    resolveGet({ chats: [{ peer_id: 5, type: 'private', title: 't5', unread: 0, last_read_seq: 0 }] })
 
     await expect(inflight).resolves.toBeNull()
     expect(ops).toEqual([]) // чужой список не разошёлся по вкладкам

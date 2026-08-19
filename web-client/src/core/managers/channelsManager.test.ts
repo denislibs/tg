@@ -6,14 +6,14 @@ import type { RawMessage } from '../models'
 
 function raw(seq: number): RawMessage {
   return {
-    id: seq, chat_id: 7, seq, sender_id: 1, type: 'text', text: `m${seq}`,
+    id: seq, peer_id: 7, seq, sender_id: 1, type: 'text', text: `m${seq}`,
     reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
   }
 }
 
 describe('ChannelsManager.createChannel', () => {
   it('POSTs /channels and returns the new chat id', async () => {
-    const post = vi.fn(async () => ({ chat_id: 42 }))
+    const post = vi.fn(async () => ({ peer_id: 42 }))
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
     const id = await mgr.createChannel({ title: 'News', isPublic: true })
@@ -29,7 +29,7 @@ describe('ChannelsManager.post', () => {
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
     const m = await mgr.post(7, 'hey', 'c1')
     expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1' })
-    expect(m.chatId).toBe(7)
+    expect(m.peerId).toBe(7)
     expect(m.seq).toBe(6)
     expect(m.text).toBe('m6')
   })
@@ -63,7 +63,7 @@ describe('ChannelsManager.post', () => {
 
     expect(order).toEqual(['pending', 'post'])
     expect(pendings).toEqual([{
-      chat_id: 7, thread_root_id: null, client_msg_id: 'c9', sender_id: 3, text: 'пост', type: 'text', entities,
+      peer_id: 7, thread_root_id: null, client_msg_id: 'c9', sender_id: 3, text: 'пост', type: 'text', entities,
       // Порт опции tweb `beforeMessageSending({sequential})`: между баблом и
       // уходом запроса ничего не ждём, поэтому позиция бабла внизу окна
       // переживёт финализацию — лента на этом признаке срезает перекладку.
@@ -84,8 +84,8 @@ describe('ChannelsManager.post', () => {
 })
 
 describe('ChannelsManager.enableDiscussion', () => {
-  it('POSTs /channels/{id}/discussion and returns discussion_chat_id', async () => {
-    const post = vi.fn(async () => ({ discussion_chat_id: 555 }))
+  it('POSTs /channels/{id}/discussion and returns discussion_peer_id', async () => {
+    const post = vi.fn(async () => ({ discussion_peer_id: 555 }))
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
     const id = await mgr.enableDiscussion(7)
@@ -137,17 +137,16 @@ describe('ChannelsManager.commentCounts', () => {
     expect(r.counts).toEqual({ 5: 2, 6: 0 })
   })
 
-  it('маппит recent_repliers в карточки для стека аватаров', async () => {
-    const get = vi.fn(async () => ({
-      counts: { '5': 2 },
-      recent_repliers: { '5': [{ id: 8, display_name: 'Боб', avatar_url: '' }, { id: 9, display_name: 'Алиса', avatar_url: 'u' }] },
-    }))
+  // Комментаторы приезжают КОНСТРУКТОРАМИ `user` и кладутся вербатим: имя
+  // собирает клиент, аватарка это `photo.photo_id` — плоского снимка
+  // пользователя рядом с настоящим больше нет.
+  it('карточки комментаторов для стека аватаров кладутся вербатим', async () => {
+    const bob = { _: 'user', id: 8, first_name: 'Боб', photo: { _: 'userProfilePhotoEmpty' } }
+    const alice = { _: 'user', id: 9, first_name: 'Алиса', photo: { _: 'userProfilePhoto', photo_id: 3 } }
+    const get = vi.fn(async () => ({ counts: { '5': 2 }, recent_repliers: { '5': [bob, alice] } }))
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const r = await newChannelsManager({ rest, beforeSending: () => {} }).commentCounts(7, [5])
-    expect(r.recent[5]).toEqual([
-      { id: 8, name: 'Боб', avatarUrl: undefined },
-      { id: 9, name: 'Алиса', avatarUrl: 'u' },
-    ])
+    expect(r.recent[5]).toEqual([bob, alice])
   })
 
   it('без recent_repliers в ответе стек пустой', async () => {
@@ -169,7 +168,7 @@ describe('ChannelsManager.commentCounts', () => {
 
 describe('ChannelsManager suggested posts', () => {
   function rawSp(id: number, status = 'pending') {
-    return { id, chat_id: 7, author_id: 8, author_name: 'Bob', text: `p${id}`, status, created_at: 1000 }
+    return { id, peer_id: 7, author_id: 8, author_name: 'Bob', text: `p${id}`, status, created_at: 1000 }
   }
 
   it('suggestPost POSTs text/media/publish_at and maps the result', async () => {
@@ -179,7 +178,7 @@ describe('ChannelsManager suggested posts', () => {
     const p = await mgr.suggestPost(7, { text: 'hi', publishAt: 1234 })
     expect(post).toHaveBeenCalledWith('/channels/7/suggested_posts', { text: 'hi', entities: undefined, media_id: null, publish_at: 1234 })
     expect(p.id).toBe(3)
-    expect(p.chatId).toBe(7)
+    expect(p.peerId).toBe(7)
     expect(p.authorName).toBe('Bob')
     expect(p.status).toBe('pending')
   })
@@ -233,20 +232,27 @@ describe('ChannelsManager.search', () => {
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
     const r = await mgr.search('   ')
-    expect(r).toEqual({ chats: [], users: [] })
+    expect(r).toEqual({ _: 'contacts.found', my_results: [], results: [], chats: [], users: [] })
     expect(get).not.toHaveBeenCalled()
   })
 
-  it('GETs /search and maps snake_case to camelCase', async () => {
-    const get = vi.fn(async () => ({
-      chats: [{ id: 1, type: 'channel', title: 'News', username: 'news', member_count: 99 }],
-      users: [{ id: 2, username: 'bob', display_name: 'Bob', avatar_url: 'u/2' }],
-    }))
+  // Ответ поиска — конструктор `contacts.found` В КОРНЕ: ссылки на пиры в
+  // `results`, тела — в `chats`/`users`. Маппера нет: ответ и есть модель.
+  it('GET /search отдаёт contacts.found без перекладки полей', async () => {
+    const channel = { _: 'channel', id: 1, title: 'News', username: 'news', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true } }
+    const bob = { _: 'user', id: 2, username: 'bob', first_name: 'Bob', photo: { _: 'userProfilePhotoEmpty' } }
+    const found = {
+      _: 'contacts.found',
+      my_results: [],
+      results: [{ _: 'peerChannel', channel_id: 1 }, { _: 'peerUser', user_id: 2 }],
+      chats: [channel],
+      users: [bob],
+    }
+    const get = vi.fn(async () => found)
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {} })
     const r = await mgr.search('news')
     expect(get).toHaveBeenCalledWith('/search', { q: 'news' })
-    expect(r.chats[0]).toEqual({ id: 1, type: 'channel', title: 'News', username: 'news', memberCount: 99 })
-    expect(r.users[0]).toEqual({ id: 2, username: 'bob', displayName: 'Bob', avatarUrl: 'u/2' })
+    expect(r).toEqual(found)
   })
 })

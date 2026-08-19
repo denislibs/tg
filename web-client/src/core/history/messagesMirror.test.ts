@@ -16,7 +16,7 @@ const OTHER = 2
 
 function msg(over: Partial<Message> & { id: number; seq: number }): Message {
   return {
-    chatId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
+    peerId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
     ...over,
   }
@@ -114,7 +114,7 @@ describe('messagesMirror — содержимое окна', () => {
 })
 
 describe('messagesMirror — синхронные чтения', () => {
-  it('сообщение по (chatId, seq) читается синхронно сразу после применения операции', () => {
+  it('сообщение по (peerId, seq) читается синхронно сразу после применения операции', () => {
     applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7, seq: 7, text: 'привет' }) }])
     expect(mirrorMessage(CHAT, 7)?.text).toBe('привет')
     expect(mirrorMessage(CHAT, 8)).toBeUndefined()

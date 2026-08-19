@@ -6,16 +6,18 @@ import type { NewMessageEvt } from './realtime/events'
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
     const raw: RawDialog = {
-      chat_id: 1, type: 'private', last_read_seq: 4, peer_read_seq: 3, unread: 2, muted: false,
-      peer: { id: 2, display_name: 'Bob', avatar_url: '' },
+      peer_id: 1, type: 'private', last_read_seq: 4, peer_read_seq: 3, unread: 2, muted: false,
+      peer: { _: 'user', id: 2, first_name: 'Bob' },
       last_message: { seq: 4, text: 'hi', sender_id: 2, at: '2026-06-24T10:00:00Z' },
     }
     const d = mapDialog(raw)
     expect(d).toEqual({
-      chatId: 1, type: 'private', lastReadSeq: 4, peerReadSeq: 3, unread: 2, muted: false, pinned: false, archived: false,
+      peerId: 1, type: 'private', lastReadSeq: 4, peerReadSeq: 3, unread: 2, muted: false, pinned: false, archived: false,
       notifyPreview: true, notifySound: 'default',
-      autoDeletePeriod: 0, title: undefined, username: undefined, photoUrl: undefined,
-      peer: { id: 2, displayName: 'Bob', avatarUrl: '', verified: undefined, premium: undefined, emojiStatus: undefined },
+      autoDeletePeriod: 0, title: undefined, username: undefined, photo: undefined,
+      // Маппера у пира нет: конструктор `user` кладётся ВЕРБАТИМ — форма
+      // провода и форма модели совпали.
+      peer: { _: 'user', id: 2, first_name: 'Bob' },
       lastMessage: {
         seq: 4, text: 'hi', senderId: 2, at: '2026-06-24T10:00:00Z',
         mediaId: undefined, mediaType: undefined, forwarded: undefined, senderName: undefined,
@@ -24,37 +26,39 @@ describe('mapDialog', () => {
   })
 
   it('handles missing peer / last_message / muted', () => {
-    const d = mapDialog({ chat_id: 7, type: 'group', last_read_seq: 0, unread: 0 })
+    const d = mapDialog({ peer_id: 7, type: 'group', last_read_seq: 0, unread: 0 })
     expect(d.peer).toBeUndefined()
     expect(d.lastMessage).toBeUndefined()
     expect(d.muted).toBe(false)
   })
 
   it('maps unread_reactions → unreadReactions (undefined when 0/absent)', () => {
-    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 3 }).unreadReactions).toBe(3)
-    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 0 }).unreadReactions).toBeUndefined()
-    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0 }).unreadReactions).toBeUndefined()
+    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 3 }).unreadReactions).toBe(3)
+    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 0 }).unreadReactions).toBeUndefined()
+    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0 }).unreadReactions).toBeUndefined()
   })
 })
 
 describe('mapMessage', () => {
   it('maps a raw message and computes seq/ids', () => {
     const raw: RawMessage = {
-      id: 10, chat_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'hello',
+      id: 10, peer_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'hello',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
     }
     expect(mapMessage(raw)).toEqual({
-      id: 10, chatId: 1, seq: 5, senderId: 1, type: 'text', text: 'hello',
+      id: 10, peerId: 1, seq: 5, senderId: 1, type: 'text', text: 'hello',
       replyToId: null, mediaId: null, createdAt: '2026-06-24T10:01:00Z', threadRootId: null,
       groupedId: null, editedAt: null, deleted: false,
-      fwdFromUserId: null, fwdFromChatId: null, fwdFromMsgId: null, fwdDate: null,
+      // Пяти плоских `fwd_from_*` больше нет — атрибуция пересылки это
+      // конструктор `messageFwdHeader`, и его отсутствие означает «не переслано».
+      fwdFrom: undefined,
       replyTo: null,
     })
   })
 
   it('maps thread_root_id to threadRootId', () => {
     const raw: RawMessage = {
-      id: 11, chat_id: 99, seq: 1, sender_id: 1, type: 'text', text: 'c',
+      id: 11, peer_id: 99, seq: 1, sender_id: 1, type: 'text', text: 'c',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', thread_root_id: 5,
     }
     expect(mapMessage(raw).threadRootId).toBe(5)
@@ -62,7 +66,7 @@ describe('mapMessage', () => {
 
   it('defaults threadRootId to null when thread_root_id absent', () => {
     const raw: RawMessage = {
-      id: 12, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'x',
+      id: 12, peer_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'x',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
     }
     expect(mapMessage(raw).threadRootId).toBeNull()
@@ -70,7 +74,7 @@ describe('mapMessage', () => {
 
   it('maps a valid effect and drops unknown/empty effects', () => {
     const mk = (effect: string | null | undefined): RawMessage => ({
-      id: 20, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'party',
+      id: 20, peer_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'party',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', effect,
     })
     expect(mapMessage(mk('confetti')).effect).toBe('confetti')
@@ -84,7 +88,7 @@ describe('mapMessage', () => {
 
   it('maps web_page (server link preview) to webPage', () => {
     const raw: RawMessage = {
-      id: 13, chat_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
+      id: 13, peer_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
       web_page: {
         url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание',
@@ -99,7 +103,7 @@ describe('mapMessage', () => {
 
   it('drops empty web_page fields and defaults webPage to undefined', () => {
     const base = {
-      id: 14, chat_id: 1, seq: 4, sender_id: 1, type: 'text', text: 'x',
+      id: 14, peer_id: 1, seq: 4, sender_id: 1, type: 'text', text: 'x',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
     }
     expect(mapMessage({ ...base }).webPage).toBeUndefined()
@@ -114,7 +118,7 @@ describe('mapMessage', () => {
 
   it('maps factcheck (fact check block) to factCheck', () => {
     const raw: RawMessage = {
-      id: 15, chat_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'post',
+      id: 15, peer_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'post',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
       factcheck: { text: 'clarification', entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }], country: 'DE' },
     }
@@ -132,7 +136,7 @@ describe('mapMessage', () => {
   // вывода у КАЖДОГО медиа-бабла не будет ни типа, ни бокса.
   it('нормализует вложение: тип и геометрия выводятся из атрибутов', () => {
     const raw: RawMessage = {
-      id: 30, chat_id: 1, seq: 7, sender_id: 1, type: 'video', text: '',
+      id: 30, peer_id: 1, seq: 7, sender_id: 1, type: 'video', text: '',
       reply_to_id: null, media_id: 42, created_at: '2026-06-24T10:01:00Z',
       media: {
         _: 'messageMediaDocument',
@@ -164,7 +168,7 @@ describe('mapMessage', () => {
   // это приходилось держать соглашением, теперь это семантика самого `pFlags`.
   it('признак скрытого медиа живёт в pFlags и односторонний', () => {
     const raw: RawMessage = {
-      id: 31, chat_id: 1, seq: 8, sender_id: 1, type: 'photo', text: '',
+      id: 31, peer_id: 1, seq: 8, sender_id: 1, type: 'photo', text: '',
       reply_to_id: null, media_id: 43, created_at: '2026-06-24T10:02:00Z',
       media: {
         _: 'messageMediaPhoto',
@@ -180,11 +184,11 @@ describe('mapMessage', () => {
 
   it('маппит send_as (отображаемый автор канала/группы)', () => {
     const raw: RawMessage = {
-      id: 31, chat_id: 1, seq: 8, sender_id: 7, type: 'text', text: 'post',
+      id: 31, peer_id: 1, seq: 8, sender_id: 7, type: 'text', text: 'post',
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-      send_as: { chat_id: 9, title: 'Канал', photo_id: 5 },
+      send_as: { peer_id: 9, title: 'Канал', photo_id: 5 },
     }
-    expect(mapMessage(raw).sendAs).toEqual({ chatId: 9, title: 'Канал', photoId: 5 })
+    expect(mapMessage(raw).sendAs).toEqual({ peerId: 9, title: 'Канал', photoId: 5 })
     expect(mapMessage({ ...raw, send_as: null }).sendAs).toBeUndefined()
   })
 })
@@ -192,28 +196,28 @@ describe('mapMessage', () => {
 describe('mapDraft', () => {
   it('maps entities and reply_to_id (draft_update frame / GET /drafts)', () => {
     const d = mapDraft({
-      chat_id: 3, text: '**жирный**',
+      peer_id: 3, text: '**жирный**',
       entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
       reply_to_id: 42, updated_at: '2026-07-21T10:00:00Z',
     })
     expect(d).toEqual({
-      chatId: 3, text: '**жирный**',
+      peerId: 3, text: '**жирный**',
       entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
       replyToId: 42, updatedAt: '2026-07-21T10:00:00Z',
     })
   })
 
   it('defaults absent/null entities and reply_to_id', () => {
-    const d = mapDraft({ chat_id: 3, text: 'x', entities: null, reply_to_id: null, updated_at: 't' })
+    const d = mapDraft({ peer_id: 3, text: 'x', entities: null, reply_to_id: null, updated_at: 't' })
     expect(d.entities).toBeUndefined()
     expect(d.replyToId).toBeNull()
-    const d2 = mapDraft({ chat_id: 3, text: 'x', updated_at: 't' })
+    const d2 = mapDraft({ peer_id: 3, text: 'x', updated_at: 't' })
     expect(d2.entities).toBeUndefined()
     expect(d2.replyToId).toBeNull()
   })
 
   it('drops an empty entities array', () => {
-    expect(mapDraft({ chat_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
+    expect(mapDraft({ peer_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
   })
 })
 
@@ -264,7 +268,7 @@ describe('deriveOut — исходящее/входящее', () => {
   })
 
   it('send-as: пост от имени канала/группы рисуется ВХОДЯЩИМ, хотя отправитель — я', () => {
-    expect(deriveOut({ senderId: 7, sendAs: { chatId: 9, title: 'Канал' } }, 7)).toBe(false)
+    expect(deriveOut({ senderId: 7, sendAs: { peerId: 9, title: 'Канал' } }, 7)).toBe(false)
   })
 })
 
@@ -273,7 +277,7 @@ describe('deriveOut — исходящее/входящее', () => {
 // отсутствует у сообщения до перезагрузки истории — и только у неё.
 describe('fromNewMessageEvt — проводной кадр в модель', () => {
   const base: NewMessageEvt = {
-    chat_id: 1, msg_id: 10, seq: 5, sender_id: 7, type: 'text', text: 'hi',
+    peer_id: 1, msg_id: 10, seq: 5, sender_id: 7, type: 'text', text: 'hi',
     media_id: null, created_at: '2026-06-24T10:01:00Z',
   }
 
@@ -282,8 +286,8 @@ describe('fromNewMessageEvt — проводной кадр в модель', ()
   // (бабл рисуется от имени канала/группы), ни правила `out` — send-as рисуется
   // ВХОДЯЩИМ даже когда отправитель я. Расхождение держалось до перезагрузки.
   it('переносит send_as живого кадра', () => {
-    const m = fromNewMessageEvt({ ...base, send_as: { chat_id: 9, title: 'Канал', photo_id: 5 } })
-    expect(m.sendAs).toEqual({ chatId: 9, title: 'Канал', photoId: 5 })
+    const m = fromNewMessageEvt({ ...base, send_as: { peer_id: 9, title: 'Канал', photo_id: 5 } })
+    expect(m.sendAs).toEqual({ peerId: 9, title: 'Канал', photoId: 5 })
   })
 
   it('без send_as в кадре — sendAs undefined (обычная отправка)', () => {
@@ -292,7 +296,7 @@ describe('fromNewMessageEvt — проводной кадр в модель', ()
 
   it('send-as живого кадра делает сообщение ВХОДЯЩИМ у самого отправителя', () => {
     const meId = 7
-    const asChannel = fromNewMessageEvt({ ...base, send_as: { chat_id: 9, title: 'Канал' } })
+    const asChannel = fromNewMessageEvt({ ...base, send_as: { peer_id: 9, title: 'Канал' } })
     const asMyself = fromNewMessageEvt(base)
     expect(deriveOut(asChannel, meId)).toBe(false)
     expect(deriveOut(asMyself, meId)).toBe(true)

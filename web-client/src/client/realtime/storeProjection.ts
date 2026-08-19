@@ -51,7 +51,7 @@ const APPLY: Projector = {
   // читает его синхронно на рендере бабла). В tweb `myId` пишет сам rootScope из
   // подписки на `user_auth` — у нас это был бы второй писатель факта `me` мимо
   // проектора; расхождение сознательное, разбор — в докблоке поля (lib/rootScope.ts).
-  [RT.me]: (u) => { useChatsStore.getState().setMe(u); rootScope.myId = u?.id ?? 0 },
+  [RT.me]: (u) => { useChatsStore.getState().setMe(u); rootScope.myId = u?.user.id ?? 0 },
   // Stage 1C.2 (Task 3): медиа-токен — воркер единственный владелец
   // (mediaManager::fetchToken публикует при получении и при каждом плановом
   // обновлении). core/mediaUrl.ts — зеркало: applyMediaToken кладёт снимок и
@@ -136,8 +136,8 @@ const APPLY: Projector = {
   // remove), применённая ДО этого сырого кадра в workerCore.ts::dispatch —
   // строка [RT.chatRemoved] здесь была вторым, main-side выводом того же факта.
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
-  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
-  [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
+  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.peer_id, mapBoostStatus(e.status)) },
+  [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.peer_id, mapSuggestedPost(e.post)) },
   // Task 4 (действия без оптимистики): тема оформления / пин / архив / mute
   // диалога (с другого устройства/вкладки) теперь тоже применяет владелец
   // (workerCore.ts::dispatch → dialogs.applyTheme/applyPinned/applyArchived/
@@ -147,8 +147,8 @@ const APPLY: Projector = {
   // вместе с этими строками — второго применения не было бы, будь они живы).
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
-  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ?? null) },
-  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
+  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ?? null) },
+  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, e.msg_id, mapGeo(e.geo)) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
@@ -176,10 +176,10 @@ export function registerStoreProjection(managers: Managers): void {
     // Точечно накладываем его поверх уже вставленного сообщения (по id), не
     // трогая остальные поля (localUrl/clientId/secret — их корректно перенесла
     // операция вставки).
-    const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
+    const rt = evt.reply_to_id != null ? ms.byKey[String(evt.peer_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     if (rt) {
       const replyTo = { msgId: rt.id, seq: rt.seq, senderId: rt.senderId, text: rt.text, type: rt.type, quoteText: evt.reply_quote_text || undefined }
-      const keys = evt.thread_root_id != null ? [winKey(evt.chat_id), winKey(evt.chat_id, evt.thread_root_id)] : [winKey(evt.chat_id)]
+      const keys = evt.thread_root_id != null ? [winKey(evt.peer_id), winKey(evt.peer_id, evt.thread_root_id)] : [winKey(evt.peer_id)]
       const ops = keys
         .map((key): MessageOp | null => {
           const cur = ms.byKey[key]?.msgs.find((x) => x.id === evt.msg_id)
@@ -192,7 +192,7 @@ export function registerStoreProjection(managers: Managers): void {
     // сообщение / сервисное «создал группу») → подтянуть список диалогов.
     // Сервисное сообщение в известный чат — признак смены метаданных группы
     // (фото/название) → тоже рефетч (дебаунс внутри).
-    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id) || evt.type === 'service') {
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === evt.peer_id) || evt.type === 'service') {
       scheduleChatsReload(managers)
     }
     // Task 3: превью/unread диалога в списке теперь применяет владелец
@@ -201,7 +201,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    store.clearTyping(evt.chat_id, evt.sender_id)
+    store.clearTyping(evt.peer_id, evt.sender_id)
     // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
     // звук, нотификация) — отдельные подписчики rootScope напрямую, без
     // дублирующего тоста.
@@ -214,21 +214,21 @@ export function registerStoreProjection(managers: Managers): void {
   rootScope.addEventListener(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
     if (e.draft) setDraft(mapDraft(e.draft))
-    else removeDraft(e.chat_id)
+    else removeDraft(e.peer_id)
   })
   rootScope.addEventListener(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   rootScope.addEventListener(RT.typing, (raw) => {
     const t = raw as TypingEvt
     const action = t.action ?? 'typing'
-    store.setTyping(t.chat_id, t.user_id, action, Date.now())
-    const key = `${t.chat_id}:${t.user_id}`
+    store.setTyping(t.peer_id, t.user_id, action, Date.now())
+    const key = `${t.peer_id}:${t.user_id}`
     const prev = typingTimers.get(key)
     if (prev) clearTimeout(prev)
     typingTimers.set(
       key,
       setTimeout(() => {
         typingTimers.delete(key)
-        store.clearTyping(t.chat_id, t.user_id)
+        store.clearTyping(t.peer_id, t.user_id)
       }, TYPING_TTL),
     )
   })
@@ -241,7 +241,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Серверное эхо реакции несёт АБСОЛЮТНЫЙ агрегат (counts) → ставим verbatim.
     // Оптимистику клика теперь двигает хук (applyReactionOptimistic), не воркер-эхо.
     if (e.counts) {
-      useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
+      useMessagesStore.getState().applyReaction(e.peer_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
     }
     // Task 3: бейдж непрочитанных реакций диалога (Telegram unread_reactions_count)
     // теперь бампит владелец (workerCore.ts::dispatch → dialogs.bumpUnreadReactions →
@@ -253,7 +253,7 @@ export function registerStoreProjection(managers: Managers): void {
   rootScope.addEventListener(RT.starReaction, (raw) => {
     const e = raw as StarReactionEvt
     const meId = useChatsStore.getState().meId
-    useMessagesStore.getState().applyStarReaction(e.chat_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
+    useMessagesStore.getState().applyStarReaction(e.peer_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
   })
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его
@@ -277,31 +277,31 @@ export function registerStoreProjection(managers: Managers): void {
   })
   // Секретный чат: handshake-события из воркера → secretChatStore.
   rootScope.addEventListener(RT.secretRequest, (raw) => {
-    const r = raw as { chat_id: number; initiator_id: number; responder_id: number }
+    const r = raw as { peer_id: PeerId; initiator_id: number; responder_id: number }
     const meId = useChatsStore.getState().meId
     // Роль решает статус: получатель видит входящий запрос ('requested' → бар с
     // «Принять/Отклонить»), инициатор ждёт ('awaiting'). Живьём сервер шлёт кадр
     // только получателю; при reload оба состояния восстанавливает secret.sync().
     if (meId === r.responder_id) {
-      useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
+      useSecretChatStore.getState().setStatus(r.peer_id, 'requested')
       // Живьём чат ещё не в списке диалогов у получателя — подтянуть /chats, чтобы
       // строка-заявка появилась сверху (дебаунс внутри). Статус 'requested' даёт
       // pending-превью «Приглашение в секретный чат» в ChatListItem.
-      if (!useChatsStore.getState().dialogs.some((d) => d.chatId === r.chat_id)) {
+      if (!useChatsStore.getState().dialogs.some((d) => d.peerId === r.peer_id)) {
         scheduleChatsReload(managers)
       }
     } else if (meId === r.initiator_id) {
-      useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
+      useSecretChatStore.getState().setStatus(r.peer_id, 'awaiting')
     }
   })
   rootScope.addEventListener(RT.secretAccept, (raw) => {
-    const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }
-    useSecretChatStore.getState().setStatus(r.chat_id, 'established')
-    if (r.fingerprint) useSecretChatStore.getState().setFingerprint(r.chat_id, r.fingerprint)
+    const r = raw as { peer_id: PeerId; state?: string; fingerprint?: string[] }
+    useSecretChatStore.getState().setStatus(r.peer_id, 'established')
+    if (r.fingerprint) useSecretChatStore.getState().setFingerprint(r.peer_id, r.fingerprint)
   })
   rootScope.addEventListener(RT.secretReject, (raw) => {
-    const r = raw as { chat_id: number }
-    useSecretChatStore.getState().setStatus(r.chat_id, 'rejected')
+    const r = raw as { peer_id: PeerId }
+    useSecretChatStore.getState().setStatus(r.peer_id, 'rejected')
   })
   // Истории (Stories realtime) → storiesStore. Новая история известного автора
   // добавляется в его группу; для нового автора (группы ещё нет) — полный рефетч

@@ -28,7 +28,7 @@ beforeEach(() => {
 describe('resetAppState', () => {
   it('стирает конфиг прошлого аккаунта из памяти', () => {
     setAppState('folders', [folder])
-    setAppState('drafts', [{ chatId: 1, text: 'чужой черновик', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }])
+    setAppState('drafts', [{ peerId: 1, text: 'чужой черновик', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }])
     setAppState('starsBalance', 500)
     setAppState('recentSearch', ['1', '2', '3'])
 
@@ -75,7 +75,7 @@ describe('после сброса cache-first снова запрашивает 
   })
 
   it('черновики', async () => {
-    setAppState('drafts', [{ chatId: 1, text: 'x', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }])
+    setAppState('drafts', [{ peerId: 1, text: 'x', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }])
     resetAppState()
     const list = vi.fn().mockResolvedValue([])
 

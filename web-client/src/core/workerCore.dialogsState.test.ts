@@ -24,13 +24,13 @@ import { saveDialogs, saveStateKey } from './store/persist'
 import { STATE_VERSION } from './state/state'
 import type { Dialog, Draft } from './models'
 
-const dialog = (chatId: number, at: string): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number, at: string): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
   lastMessage: { seq: 1, text: 'x', senderId: 1, at },
 } as Dialog)
 
-const draft = (chatId: number, updatedAt: string): Draft => ({ chatId, text: 'чер', replyToId: null, updatedAt })
+const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
 
 // Черновик свежее последнего сообщения поднимает диалог наверх — наблюдаемое
 // следствие того, что ключ `drafts` вообще прочитан владельцем.
@@ -53,7 +53,7 @@ describe('createWorkerCore(): владелец диалогов читает Sta
     const core = createWorkerCore()
     const op = await core.registry.dialogs.fillMirror()
 
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([1, 2])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([1, 2])
   })
 
   it('версия схемы чужая — владелец идёт на дефолтах, как и main, а не сортирует по старым ключам', async () => {
@@ -63,6 +63,6 @@ describe('createWorkerCore(): владелец диалогов читает Sta
     const op = await core.registry.dialogs.fillMirror()
 
     // Черновик прошлой схемы проигнорирован — порядок чисто по дате активности.
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([2, 1])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([2, 1])
   })
 })

@@ -57,7 +57,7 @@ afterEach(() => {
 // Минимальная заглушка полезной нагрузки — типизированный payload насосу не
 // важен, он его не разбирает, только перекладывает (см. notificationSubscriber.test.ts
 // для того же приёма).
-const evt = (chat_id: number, seq: number) => ({ chat_id, seq } as unknown as NewMessageEvt)
+const evt = (peer_id: number, seq: number) => ({ peer_id, seq } as unknown as NewMessageEvt)
 
 describe('realtimeBridge.startRealtime — насос smp → rootScope', () => {
   // Удаление строки 30 (`smp.on(ev, …)`) не красит тесты подписчиков (они бьют

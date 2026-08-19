@@ -27,7 +27,7 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
     post: async (path: string, body: unknown) => {
       calls.push([path, body])
       if (path === '/auth/request_code') return { ok: true }
-      if (path === '/auth/sign_in') return { token: 'TOK', user: { id: 1, phone: '+700', display_name: '+700' } }
+      if (path === '/auth/sign_in') return { token: 'TOK', user: profileWire(1, '+700') }
       if (path === '/auth/logout') return { ok: true }
       if (path === '/auth/qr/new') return { token: 'tok123', url: 'http://h/qr/tok123', expires_at: '2026-06-24T00:01:00Z' }
       if (path === '/auth/qr/confirm') return { ok: true }
@@ -36,11 +36,13 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
     get: async (path: string) => {
       if (path === '/me') {
         if (!token) throw Object.assign(new Error('missing token'), { status: 401 })
-        return { id: 1, phone: '+700', display_name: '+700' }
+        return profileWire(1, '+700')
       }
       if (path === '/auth/qr/tok123') {
         return qrConfirmed
-          ? { status: 'confirmed', session_token: 'sess999', user: { id: 7, phone: '+7', display_name: '+7' } }
+          // Подтверждённый QR отдаёт ГОЛЫЙ конструктор `user`, а не пару
+          // `users.userFull`: полной формы у этого ответа нет.
+          ? { status: 'confirmed', session_token: 'sess999', user: { _: 'user', id: 7, phone: '+7' } }
           : { status: 'pending' }
       }
       throw new Error('unexpected ' + path)
@@ -49,15 +51,31 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
   return { d: { rest, store } as unknown as AuthDeps, calls, token: () => token }
 }
 
+// Проводная форма профиля после шага C: пара конструкторов `users.userFull`
+// плюс наше поле `can_message` РЯДОМ с конструктором (схемного места у него
+// нет). Трёх разных витрин пользователя больше нет — `/me`, `/users/{id}` и
+// шаги входа отдают один и тот же объект.
+function profileWire(id: number, phone: string) {
+  return {
+    user_full: {
+      _: 'users.userFull',
+      full_user: { _: 'userFull', id },
+      chats: [],
+      users: [{ _: 'user', pFlags: { self: true }, id, phone }],
+    },
+    can_message: true,
+  }
+}
+
 describe('AuthManager', () => {
   it('signIn stores the token and me() then returns the user', async () => {
     const { d, token } = deps()
     const auth = newAuthManager(d)
     await auth.requestCode('+7 700')
     const r = await auth.signIn('+7 700', '12345', 'web', 'browser')
-    expect(r.user?.id).toBe(1)
+    expect(r.user?.user.id).toBe(1)
     expect(token()).toBe('TOK')
-    await expect(auth.me()).resolves.toMatchObject({ id: 1 })
+    await expect(auth.me()).resolves.toMatchObject({ user: { id: 1 } })
   })
 
   it('me() returns null when unauthenticated (401)', async () => {
@@ -121,8 +139,8 @@ describe('AuthManager', () => {
   // сессия B жива. Теперь — fetchMe() под НОВЫМ токеном, тот же результат,
   // что видит и сама эта вкладка после reload.
   it('logout() с остающимся аккаунтом зовёт onMeChanged свежим пользователем НОВОГО токена, не null', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onMeChanged = vi.fn()
     const { d, token } = deps({ token: 'TOK_A' })
     const auth = newAuthManager({ ...d, onMeChanged })
@@ -140,8 +158,8 @@ describe('AuthManager', () => {
   // профиля, которая смерджила бы и разослала бы её всем вкладкам вместо
   // личности того, на кого реально переключились.
   it('switchAccount() перевыводит `me` под новым токеном', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onMeChanged = vi.fn()
     const { d, token } = deps({ token: 'TOK_A' })
     const auth = newAuthManager({ ...d, onMeChanged })
@@ -165,8 +183,8 @@ describe('AuthManager', () => {
   // deleteAccount(): тот же инвариант — с остающимся аккаунтом это тоже смена
   // активного токена, не логаут.
   it('deleteAccount() с остающимся аккаунтом зовёт onMeChanged свежим пользователем НОВОГО токена', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onMeChanged = vi.fn()
     const { d, token } = deps({ token: 'TOK_A' })
     const auth = newAuthManager({ ...d, onMeChanged })
@@ -224,13 +242,13 @@ describe('AuthManager', () => {
     const auth = newAuthManager({ ...d, onMeChanged })
     await auth.qrStatus('tok123')
     expect(onMeChanged).toHaveBeenCalledTimes(1)
-    expect(onMeChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }))
+    expect(onMeChanged).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 7 }) }))
   })
 
   it('onMeChanged опционален — signIn() без него не падает', async () => {
     const { d } = deps()
     const auth = newAuthManager(d)
-    await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { id: 1 } })
+    await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { user: { id: 1 } } })
   })
 
   it('qrNew returns the token + url + expiresAt', async () => {
@@ -247,7 +265,7 @@ describe('AuthManager', () => {
     const auth = newAuthManager(d)
     const r = await auth.qrStatus('tok123')
     expect(r.status).toBe('confirmed')
-    expect(r.user?.id).toBe(7)
+    expect(r.user?.user.id).toBe(7)
     expect(token()).toBe('sess999')
   })
 
@@ -320,8 +338,8 @@ describe('AuthManager', () => {
 // намерение точно — он его и объявляет.
 describe('AuthManager: rt:logging_out — намерение перехода активной сессии', () => {
   it('switchAccount() объявляет переезд на выбранный аккаунт (migrateTo = его id)', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onLoggingOut = vi.fn()
     const { d } = deps({ token: 'TOK_A' })
     const auth = newAuthManager({ ...d, onLoggingOut })
@@ -344,8 +362,8 @@ describe('AuthManager: rt:logging_out — намерение перехода а
   // приходит не-null пользователь, но в одном случае это переезд (нужен
   // подъём под новым токеном), а в другом — логаут (нужен экран входа).
   it('logout() с остающимся аккаунтом — переезд (migrateTo = id оставшегося), не логаут', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onLoggingOut = vi.fn()
     const { d } = deps({ token: 'TOK_A' })
     const auth = newAuthManager({ ...d, onLoggingOut })
@@ -366,8 +384,8 @@ describe('AuthManager: rt:logging_out — намерение перехода а
   })
 
   it('deleteAccount() с остающимся аккаунтом — переезд; без остающихся — логаут', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const migrated = vi.fn()
     const { d } = deps({ token: 'TOK_A' })
     await newAuthManager({ ...d, onLoggingOut: migrated }).deleteAccount()
@@ -403,7 +421,7 @@ describe('AuthManager: rt:logging_out — намерение перехода а
     const r = await auth.signIn('+7 700', '12345', 'web', 'browser')
 
     expect(onLoggedIn).toHaveBeenCalledTimes(1)
-    expect(onLoggedIn).toHaveBeenCalledWith({ userId: r.user!.id })
+    expect(onLoggedIn).toHaveBeenCalledWith({ userId: r.user!.user.id })
   })
 
   // Второй путь через ту же persist() — доказывает, что кадр висит на общей
@@ -425,12 +443,12 @@ describe('AuthManager: rt:logging_out — намерение перехода а
   it('onLoggedIn опционален — вход без него не падает', async () => {
     const { d } = deps()
     await expect(newAuthManager(d).signIn('+7 700', '12345', 'web', 'browser'))
-      .resolves.toMatchObject({ user: { id: 1 } })
+      .resolves.toMatchObject({ user: { user: { id: 1 } } })
   })
 
   it('onLoggingOut опционален — переход без него не падает', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const { d } = deps({ token: 'TOK_A' })
     await expect(newAuthManager(d).switchAccount(2)).resolves.toBe(true)
   })
@@ -476,8 +494,8 @@ describe('AuthManager: /me отвечает ошибкой', () => {
   // ставили — вкладка молча оставалась под интерфейсом СТАРОГО аккаунта, хотя
   // активный токен уже новый.
   it('5xx при смене токена: switchAccount не реджектится и обнуляет `me` (чужой личности в кэше быть не должно)', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onMeChanged = vi.fn()
     const { d, token } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
     const auth = newAuthManager({ ...d, onMeChanged })
@@ -493,14 +511,14 @@ describe('AuthManager: /me отвечает ошибкой', () => {
   // ветки реджектили бы ответ RPC на 5xx и подставляли бы в кэш профиль с
   // диска (= личность СТАРОГО аккаунта).
   it('logout()/deleteAccount() с остающимся аккаунтом: 5xx на /me не реджектит и обнуляет `me`', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onLogout = vi.fn()
     const { d } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
     await expect(newAuthManager({ ...d, onMeChanged: onLogout }).logout()).resolves.toEqual({ switched: true })
     expect(onLogout).toHaveBeenCalledWith(null)
 
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
     const onDelete = vi.fn()
     const { d: d2 } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
     await expect(newAuthManager({ ...d2, onMeChanged: onDelete }).deleteAccount()).resolves.toEqual({ switched: true })
@@ -510,8 +528,8 @@ describe('AuthManager: /me отвечает ошибкой', () => {
   // Тот же путь при сетевом сбое: публичный me() отдал бы кэш с диска, но при
   // СМЕНЕ токена на диске лежит профиль старого аккаунта (Minor 6 раунда 4).
   it('сетевой сбой при смене токена: switchAccount не реджектится, кэш с диска НЕ подставляется', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', avatarUrl: '', phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', avatarUrl: '', phone: '+701' })
+    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
+    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onMeChanged = vi.fn()
     const { d } = failingDeps(new TypeError('Failed to fetch'), 'TOK_A')
     const auth = newAuthManager({ ...d, onMeChanged })

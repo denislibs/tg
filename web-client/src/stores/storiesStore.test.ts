@@ -10,7 +10,7 @@ const mkStory = (over: Partial<StoryItem> = {}): StoryItem => ({
 })
 
 const groups: StoryGroup[] = [
-  { author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory()] },
+  { author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory()] },
 ]
 
 function fakeManagers(over: Partial<{ groups: StoryGroup[] }> = {}) {
@@ -26,7 +26,7 @@ describe('storiesStore', () => {
     await loadStories(fakeManagers() as never)
     const s = useStoriesStore.getState()
     expect(s.groups).toHaveLength(1)
-    expect(s.groups[0].author.displayName).toBe('Me')
+    expect(s.groups[0].author.first_name).toBe('Me')
     expect(s.loaded).toBe(true)
   })
 
@@ -38,7 +38,7 @@ describe('storiesStore', () => {
   })
 
   it('addStory appends to the author group, skipping duplicates and unknown authors', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 1 })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 2, first_name: 'Bob' }, stories: [mkStory({ id: 1 })] }])
     useStoriesStore.getState().addStory(2, mkStory({ id: 2 }))
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1, 2])
     // duplicate id → no-op
@@ -50,7 +50,7 @@ describe('storiesStore', () => {
   })
 
   it('removeStory drops the story and empties out the group', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 2, first_name: 'Bob' }, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })] }])
     useStoriesStore.getState().removeStory(2, 1)
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([2])
     useStoriesStore.getState().removeStory(2, 2)
@@ -58,7 +58,7 @@ describe('storiesStore', () => {
   })
 
   it('applyStoryReaction sets count; myReaction only when provided', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 5, myReaction: '❤', reactionsCount: 1 })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 2, first_name: 'Bob' }, stories: [mkStory({ id: 5, myReaction: '❤', reactionsCount: 1 })] }])
     // event about another user → count updates, myReaction untouched
     useStoriesStore.getState().applyStoryReaction(5, 4)
     expect(useStoriesStore.getState().groups[0].stories[0]).toMatchObject({ reactionsCount: 4, myReaction: '❤' })
@@ -68,7 +68,7 @@ describe('storiesStore', () => {
   })
 
   it('setMyReaction adds/switches/removes optimistically with count + breakdown', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 5, reactionsCount: 1, reactions: [{ emoji: '🔥', count: 1, mine: false }] })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 2, first_name: 'Bob' }, stories: [mkStory({ id: 5, reactionsCount: 1, reactions: [{ emoji: '🔥', count: 1, mine: false }] })] }])
     // add ❤
     useStoriesStore.getState().setMyReaction(5, '❤')
     let st = useStoriesStore.getState().groups[0].stories[0]
@@ -91,7 +91,7 @@ describe('storiesStore', () => {
   })
 
   it('setStoryPinned toggles the pinned flag of the matching story', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, pinned: false })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory({ id: 5, pinned: false })] }])
     useStoriesStore.getState().setStoryPinned(5, true)
     expect(useStoriesStore.getState().groups[0].stories[0].pinned).toBe(true)
     useStoriesStore.getState().setStoryPinned(5, false)
@@ -99,7 +99,7 @@ describe('storiesStore', () => {
   })
 
   it('applyStoryEdit patches caption/privacy and marks edited (unset fields kept)', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, caption: 'old', privacy: 'contacts', edited: false })] }])
+    useStoriesStore.getState().setGroups([{ author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory({ id: 5, caption: 'old', privacy: 'contacts', edited: false })] }])
     // change both
     useStoriesStore.getState().applyStoryEdit(5, { caption: 'new', privacy: 'close' })
     let st = useStoriesStore.getState().groups[0].stories[0]

@@ -33,8 +33,8 @@ import { createWorkerCore } from './workerCore'
 import { saveDialogs, loadDialogs, loadMe } from './store/persist'
 import type { Dialog } from './models'
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
 } as Dialog)
 
@@ -132,7 +132,7 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).endsWith('/auth/sign_in')) {
         return new Response(JSON.stringify({
-          token: 'TOK', user: { id: 42, phone: '+7', display_name: 'Д' },
+          token: 'TOK', user: { user_full: { _: 'users.userFull', full_user: { _: 'userFull', id: 42 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 42, phone: '+7' }] }, can_message: true },
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))
@@ -141,6 +141,6 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     const core = createWorkerCore()
     await core.registry.auth.signIn('+7', '12345', 'web', 'browser')
 
-    expect((await loadMe())?.id).toBe(42)
+    expect((await loadMe())?.user.id).toBe(42)
   })
 })

@@ -12,16 +12,15 @@ import type { Dialog } from './models'
 import type { Folder } from './managers/foldersManager'
 
 export type FolderMatchable = {
-  chatId: number
+  peerId: PeerId
   type: string
   unread?: number | null
   muted?: boolean
-  peerId?: number | null
 }
 
 export function matchesFolder(item: FolderMatchable, folder: Folder, contactIds: ReadonlySet<number>): boolean {
-  if (folder.excludeChats.includes(item.chatId)) return false
-  if (folder.includeChats.includes(item.chatId)) return true
+  if (folder.excludeChats.includes(item.peerId)) return false
+  if (folder.includeChats.includes(item.peerId)) return true
 
   const hasTypeFlags = folder.contacts || folder.nonContacts || folder.groups || folder.broadcasts
   if (!hasTypeFlags) return false
@@ -31,8 +30,13 @@ export function matchesFolder(item: FolderMatchable, folder: Folder, contactIds:
 
   if (item.type === 'group') return folder.groups
   if (item.type === 'channel') return folder.broadcasts
-  // private/saved: по контактности (saved — собственный peer, не контакт)
-  const isContact = item.peerId != null && contactIds.has(item.peerId)
+  // private/saved: по контактности. Отдельного поля «собеседник» здесь больше
+  // НЕТ и быть не может: ключ приватного диалога И ЕСТЬ id собеседника
+  // (`core/peers/peerId.ts`) — прежняя пара `chatId` + `peerId` описывала одно
+  // и то же двумя числами, и ветка контактности молча ломалась, когда второе
+  // забывали передать. «Избранное» — собственный ключ зрителя, в контактах его
+  // нет, и ветка отрабатывает сама.
+  const isContact = contactIds.has(item.peerId)
   if (folder.nonContacts && !isContact) return true
   if (folder.contacts && isContact) return true
   return false
@@ -40,28 +44,23 @@ export function matchesFolder(item: FolderMatchable, folder: Folder, contactIds:
 
 // Адаптер Chat → FolderMatchable (main-поток). Chat.id бывает нечисловым
 // (draft-чаты) — эта проверка была первой строкой matchesFolder, теперь
-// живёт только здесь: у Dialog.chatId (воркер) тип уже number, отбрасывать
+// живёт только здесь: у Dialog.peerId (воркер) тип уже number, отбрасывать
 // нечего, а общая функция про это ничего не знает.
 export function chatMatchesFolder(chat: Chat, folder: Folder, contactIds: ReadonlySet<number>): boolean {
-  const chatId = Number(chat.id)
-  if (!Number.isFinite(chatId)) return false // draft-чаты в папки не попадают
-  return matchesFolder({ chatId, type: chat.type, unread: chat.unread, muted: chat.muted, peerId: chat.peerId }, folder, contactIds)
+  const peerId = Number(chat.id)
+  if (!Number.isFinite(peerId)) return false // draft-чаты в папки не попадают
+  return matchesFolder({ peerId, type: chat.type, unread: chat.unread, muted: chat.muted }, folder, contactIds)
 }
 
 // Адаптер Dialog → FolderMatchable (воркер, dialogsManager.getDialogs).
 //
-// ЗВАТЬ `matchesFolder(dialog, …)` НАПРЯМУЮ НЕЛЬЗЯ: у `Dialog` нет плоского
-// `peerId` — собеседник приватного чата лежит в `peer.id` (models.ts), — а поле
-// `FolderMatchable.peerId` опционально, поэтому такой вызов пройдёт тайпчек
-// МОЛЧА и ветка контактности всегда даст `isContact === false`: приватные чаты
-// разъедутся по папкам «Контакты»/«Не контакты» между воркером и main. Маппинг
-// тот же, что уже делает витрина — `core/dialogToChat.ts:117` (`peerId: d.peer?.id`).
+// Прежде здесь стояло предупреждение «звать matchesFolder(dialog, …) напрямую
+// нельзя»: у `Dialog` не было плоского `peerId`, собеседник лежал в `peer.id`,
+// и забытое поле молча выключало ветку контактности — приватные чаты
+// разъезжались по папкам «Контакты»/«Не контакты» между воркером и main.
+// Ловушки больше нет: ключ диалога и id собеседника — ОДНО число.
 export function dialogMatchesFolder(dialog: Dialog, folder: Folder, contactIds: ReadonlySet<number>): boolean {
-  return matchesFolder(
-    { chatId: dialog.chatId, type: dialog.type, unread: dialog.unread, muted: dialog.muted, peerId: dialog.peer?.id },
-    folder,
-    contactIds,
-  )
+  return matchesFolder(dialog, folder, contactIds)
 }
 
 // Счётчики для подзаголовка строки папки (tweb chatFolders.tsx:60-88):

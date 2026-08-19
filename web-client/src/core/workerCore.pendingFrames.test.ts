@@ -28,7 +28,7 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
   }
 })
 
-const ACK_OPS: MessageOp[] = [{ op: 'insert', key: '1', msg: { id: 500, chatId: 1, seq: 20, senderId: 5, type: 'text', text: 'hi', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-1' } }]
+const ACK_OPS: MessageOp[] = [{ op: 'insert', key: '1', msg: { id: 500, peerId: 1, seq: 20, senderId: 5, type: 'text', text: 'hi', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-1' } }]
 const FAIL_OPS: MessageOp[] = [{ op: 'patch', key: '1', msgId: -11, fields: { failed: true } }]
 const ackPendingMessage = vi.fn(() => ACK_OPS)
 const failPendingMessage = vi.fn(() => FAIL_OPS)

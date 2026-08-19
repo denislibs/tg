@@ -46,7 +46,7 @@ describe('applyStateMirror', () => {
   })
 
   it('соседние ключи не трогаются', () => {
-    setAppState('drafts', [{ chatId: 1, text: 'мой', replyToId: null, updatedAt: '2026-08-10T00:00:00Z' }])
+    setAppState('drafts', [{ peerId: 1, text: 'мой', replyToId: null, updatedAt: '2026-08-10T00:00:00Z' }])
     const drafts = useAppStateStore.getState().drafts
 
     applyStateMirror('folders', [folder])

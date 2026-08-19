@@ -34,10 +34,10 @@ import rootScope from '@lib/rootScope'
  *  его zustand-копии, и потребитель у него теперь не один (императивная лента
  *  зеркала и React-лента стора). `stores/messagesStore` реэкспортирует его
  *  отсюда — лента не имеет права зависеть от стора (см. этап 7). */
-export const winKey = (chatId: number, threadRootId?: number | null): string =>
-  threadRootId ? `${chatId}:${threadRootId}` : String(chatId)
+export const winKey = (peerId: number, threadRootId?: number | null): string =>
+  threadRootId ? `${peerId}:${threadRootId}` : String(peerId)
 
-// key (winKey: "chatId" | "chatId:threadRoot") → сообщения окна, по возрастанию
+// key (winKey: "peerId" | "peerId:threadRoot") → сообщения окна, по возрастанию
 // seq — тот же порядок и та же дедупликация, что у окна в сторе.
 const windows = new Map<string, Message[]>()
 
@@ -60,11 +60,11 @@ export function mirrorWindow(key: string): readonly Message[] | undefined {
 /** Синхронное чтение сообщения — аналог tweb `getMessageByPeer(peerId, mid)`:
  *  сначала основное окно чата, затем его окна тредов (сообщение треда попадает
  *  и туда, и туда, но открыто может быть только окно треда). */
-export function mirrorMessage(chatId: number, seq: number): Message | undefined {
-  const main = windows.get(String(chatId))
+export function mirrorMessage(peerId: number, seq: number): Message | undefined {
+  const main = windows.get(String(peerId))
   const found = main?.find((m) => m.seq === seq)
   if (found) return found
-  const prefix = `${chatId}:`
+  const prefix = `${peerId}:`
   for (const [key, msgs] of windows) {
     if (!key.startsWith(prefix)) continue
     const m = msgs.find((x) => x.seq === seq)

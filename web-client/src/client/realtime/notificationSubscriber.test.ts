@@ -14,7 +14,7 @@ vi.mock('../uiNotifications', () => ({
 
 import { registerNotificationSubscriber } from './notificationSubscriber'
 
-const evt = { chat_id: 5, sender_id: 2, type: 'text', text: 'привет' } as unknown as NewMessageEvt
+const evt = { peer_id: 5, sender_id: 2, type: 'text', text: 'привет' } as unknown as NewMessageEvt
 
 describe('notificationSubscriber — RT.newMessage учитывает meta.catchUp', () => {
   beforeAll(() => registerNotificationSubscriber())

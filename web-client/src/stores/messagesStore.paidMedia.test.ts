@@ -8,8 +8,8 @@ import { describe, it, expect } from 'vitest'
 import { mapMessage, type RawMessage } from '../core/models'
 import { getMediaFromMessage, getStrippedThumb } from '../core/media/messageMedia'
 
-const base = (id: number, chatId = 5): RawMessage => ({
-  id, chat_id: chatId, seq: id, sender_id: 1, type: 'photo', text: '',
+const base = (id: number, peerId = 5): RawMessage => ({
+  id, peer_id: peerId, seq: id, sender_id: 1, type: 'photo', text: '',
   reply_to_id: null, media_id: null, created_at: '2026-07-01T00:00:00Z',
 })
 

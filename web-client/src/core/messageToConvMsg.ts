@@ -1,6 +1,7 @@
 import type { CallLog, ConvMsg } from '../data'
 import type { Message } from './models'
 import { serviceMsgText } from './serviceMsg'
+import { AUTHOR_HIDDEN_TITLE } from './peers/getPeerTitle'
 
 // Format an ISO timestamp as local 24h "HH:MM"; returns '' on an invalid date.
 // The renderer's formatTime renders this as-is in 24h mode and converts to AM/PM
@@ -81,7 +82,7 @@ export function messageToConvMsg(
   }
   return {
     id: m.id,
-    chatId: m.chatId,
+    peerId: m.peerId,
     clientId: m.clientId,
     type: convType,
     out,
@@ -129,7 +130,10 @@ export function messageToConvMsg(
     forwards: m.forwards,
     mediaUnread: m.mediaUnread || undefined,
     deleted: m.deleted ?? false,
-    forwardFrom: m.fwdFromUserId != null ? { name: opts?.forwardFromName ?? 'Неизвестно' } : undefined,
+    // Пересылка: признак — САМ конструктор `messageFwdHeader`, а не «одно из
+    // пяти плоских полей не null». Скрытая атрибуция едет в `from_name` —
+    // ровно тот случай, ради которого в оригинале есть фолбэк имени.
+    forwardFrom: m.fwdFrom ? { name: opts?.forwardFromName ?? m.fwdFrom.from_name ?? AUTHOR_HIDDEN_TITLE } : undefined,
     // Секретное сообщение: флаг + таймер самоуничтожения (destructAt ставит сервер
     // после прочтения получателем; ttlSeconds — «взведённый» TTL до этого).
     secret: m.secret || undefined,

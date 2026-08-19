@@ -18,7 +18,7 @@ import { useLockStore } from '../stores/lockStore'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
-import type { User } from '../core/managers/authManager'
+import type { PeerProfile } from '../core/managers/authManager'
 
 const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
 
@@ -101,7 +101,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // #1 — критические запросы стартуют до рендера: к моменту mount ответ уже летит.
   // me переиспользуется в useAuthGate (через bootData) — без второго round-trip
   // me(). Под локом — пустышка (см. bootData.locked): RPC не летят вовсе.
-  const me: Promise<User | null> = locked ? Promise.resolve(null) : managers.auth.me()
+  const me: Promise<PeerProfile | null> = locked ? Promise.resolve(null) : managers.auth.me()
 
   // #2 — offline-first State + словарь языка + наличие токена: всё до первого
   // кадра, чтобы сразу показать последний известный UI без мигания и решить

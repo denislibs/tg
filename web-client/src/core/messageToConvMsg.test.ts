@@ -4,7 +4,7 @@ import { messageToConvMsg } from './messageToConvMsg'
 import type { Message } from './models'
 
 const base: Message = {
-  id: 1, chatId: 1, seq: 1, senderId: 2, type: 'text', text: 'hi',
+  id: 1, peerId: 1, seq: 1, senderId: 2, type: 'text', text: 'hi',
   replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
 }
 
@@ -170,7 +170,7 @@ describe('messageToConvMsg — actions', () => {
   })
 
   it('maps forward attribution with the resolved name', () => {
-    const c = messageToConvMsg({ ...base, fwdFromUserId: 42 }, 7, { forwardFromName: 'Игорь' })
+    const c = messageToConvMsg({ ...base, fwdFrom: { _: 'messageFwdHeader', from_id: { _: 'peerUser', user_id: 42 }, date: 0 } }, 7, { forwardFromName: 'Игорь' })
     expect(c.forwardFrom).toEqual({ name: 'Игорь' })
   })
 

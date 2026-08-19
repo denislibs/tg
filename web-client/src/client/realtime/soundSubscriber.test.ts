@@ -17,14 +17,14 @@ import { registerSoundSubscriber } from './soundSubscriber'
 
 // Открытый чат 5, эффект от чужого отправителя (2 !== meId 1) — оба условия
 // обработчика выполнены, дальше решает только meta.catchUp.
-const evt = { chat_id: 5, sender_id: 2, effect: 'hearts' } as unknown as NewMessageEvt
+const evt = { peer_id: 5, sender_id: 2, effect: 'hearts' } as unknown as NewMessageEvt
 
 describe('soundSubscriber — RT.newMessage учитывает meta.catchUp', () => {
   beforeAll(() => registerSoundSubscriber())
 
   beforeEach(() => {
     playEmojiEffect.mockClear()
-    useChatsStore.setState({ meId: 1, activeChatId: 5 })
+    useChatsStore.setState({ meId: 1, activePeerId: 5 })
   })
 
   it('живой кадр (catchUp: false) — эффект играет', () => {

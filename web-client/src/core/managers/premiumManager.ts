@@ -1,5 +1,5 @@
 import type { RestClient } from '../net/restClient'
-import { mapUser, type RawUser, type User } from './authManager'
+import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 import type { CardInput } from '../premium/card'
 import type { PremiumPlanId } from '../premium/plans'
 
@@ -35,7 +35,7 @@ export interface PremiumDeps {
   /** Stage 1C.2 (Task 1): `me` — воркер единственный владелец; зовём после
    * успешной покупки, воркер публикует свежего пользователя всем вкладкам
    * (rt:me). Опционально: юнит-тесты менеджера конструируют его без воркера. */
-  onMeChanged?: (u: User) => void
+  onMeChanged?: (u: PeerProfile) => void
 }
 
 export function newPremiumManager({ rest, onMeChanged }: PremiumDeps) {
@@ -43,12 +43,12 @@ export function newPremiumManager({ rest, onMeChanged }: PremiumDeps) {
     // checkout runs the mock card payment for a plan. The server ignores the card
     // data (any well-formed card is a success) and returns the fresh user +
     // subscription. Card details are validated on the client before calling.
-    async checkout(plan: PremiumPlanId, card: CardInput): Promise<{ user: User; subscription: PremiumSubscription }> {
-      const res = await rest.post<{ user: RawUser; subscription: RawSubscription }>('/me/premium/checkout', {
+    async checkout(plan: PremiumPlanId, card: CardInput): Promise<{ user: PeerProfile; subscription: PremiumSubscription }> {
+      const res = await rest.post<{ user: RawPeerProfile; subscription: RawSubscription }>('/me/premium/checkout', {
         plan,
         card: { number: card.number, expiry: card.expiry, cvc: card.cvc },
       })
-      const user = mapUser(res.user)
+      const user = mapPeerProfile(res.user)
       onMeChanged?.(user) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return { user, subscription: mapSubscription(res.subscription) }
     },

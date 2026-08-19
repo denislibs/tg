@@ -43,8 +43,8 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
     // ту же `bytes` (`bot_handler.go::BotCallback`): одна форма байтов на всём
     // пути, разворачивает их сервер. Развернуть здесь значило бы завести на
     // витрине вторую форму того же значения и переделывать это место на фазе 2.
-    async callback(botId: number, chatId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
-      return rest.post<CallbackAnswer>(`/bots/${botId}/callback`, { chat_id: chatId, message_id: messageId ?? 0, data })
+    async callback(botId: number, peerId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
+      return rest.post<CallbackAnswer>(`/bots/${botId}/callback`, { peer_id: peerId, message_id: messageId ?? 0, data })
     },
     // Кнопка-меню mini-app бота (пусто — не задана).
     async menuButton(botId: number): Promise<{ text: string; url: string }> {
@@ -61,8 +61,8 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
       }
     },
     // Deep link t.me/<bot>?start=<payload>: открыть чат и послать /start.
-    async start(botId: number, payload: string): Promise<{ chat_id: number }> {
-      return rest.post<{ chat_id: number }>(`/bots/${botId}/start`, { payload })
+    async start(botId: number, payload: string): Promise<{ peer_id: number }> {
+      return rest.post<{ peer_id: number }>(`/bots/${botId}/start`, { payload })
     },
     // sendData из mini-app → боту-владельцу (web_app_data).
     async sendWebAppData(botId: number, data: string, buttonText: string): Promise<void> {

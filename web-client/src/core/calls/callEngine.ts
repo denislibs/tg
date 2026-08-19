@@ -14,6 +14,8 @@
 // track.enabled + renegotiation (без fallback-потоков silence/black).
 //
 // Не React-модуль: пишет состояние в callStore, UI зовёт его функции.
+import { getUserTitle } from '../peers/getPeerTitle'
+import { getPeerPhotoId } from '../peers/peer'
 import { useCallStore, type CallPeer, type CallEndReason } from '../../stores/callStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../settings'
@@ -137,7 +139,7 @@ function cleanupRtc() {
 // пишет ЗВОНЯЩИЙ — у него бабл «Исходящий звонок», у собеседника «Входящий».
 function logCallMessage(reason: CallEndReason) {
   const call = store().call
-  if (!call || !call.outgoing || call.chatId == null) return
+  if (!call || !call.outgoing || call.peerId == null) return
   const duration = call.connectedAt ? Math.round((Date.now() - call.connectedAt) / 1000) : undefined
   const mapped: 'ok' | 'missed' | 'busy' | 'cancelled' =
     duration != null ? 'ok'
@@ -150,7 +152,7 @@ function logCallMessage(reason: CallEndReason) {
   // Оптимистичный бабл лога звонка заводит владелец окна (единственная точка
   // отправки — messages.sendText); без известного meId бабл не рисуем — он
   // отрисовался бы как чужой.
-  void managers().messages.sendText({ chatId: call.chatId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
+  void managers().messages.sendText({ peerId: call.peerId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
 }
 
 // Завершение с показом финального статуса; экран закрывается через паузу.
@@ -312,11 +314,11 @@ async function handleSignal(d: Record<string, unknown>) {
 
 // ── публичное API (UI) ──
 
-export function startOutgoing(peer: CallPeer, video: boolean, chatId: number | null = null) {
+export function startOutgoing(peer: CallPeer, video: boolean, peerId: number | null = null) {
   if (store().call) return // уже в звонке
   const callId = crypto.randomUUID()
   useCallStore.getState().set({
-    callId, peer, chatId, outgoing: true, video, phase: 'outgoing',
+    callId, peer, peerId, outgoing: true, video, phase: 'outgoing',
     muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
     connectedAt: null, localStream: null, remoteStream: null,
   })
@@ -510,7 +512,7 @@ export function handleFrame(evt: CallFrameEvt) {
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
-      chatId: null, outgoing: false, video, phase: 'incoming',
+      peerId: null, outgoing: false, video, phase: 'incoming',
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })
@@ -518,11 +520,12 @@ export function handleFrame(evt: CallFrameEvt) {
       const u = users[0]
       const cur = store().call
       if (u && cur && cur.callId === callId) {
+        const name = getUserTitle(u)
         store().patch({
           peer: {
-            id: from, name: u.displayName,
-            avatar: cur.peer.avatar, avatarText: u.displayName.charAt(0).toUpperCase(),
-            avatarUrl: u.avatarUrl || undefined,
+            id: from, name,
+            avatar: cur.peer.avatar, avatarText: name.charAt(0).toUpperCase(),
+            photoId: getPeerPhotoId(u.photo) || undefined,
           },
         })
       }

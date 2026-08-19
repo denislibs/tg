@@ -19,7 +19,7 @@ export type DialogOp =
    */
   | { op: 'upsert'; items: DialogItem[] }
   /** точечное изменение полей; index — если оно сдвинуло диалог */
-  | { op: 'patch'; chatId: number; fields: Partial<Dialog>; index?: number }
+  | { op: 'patch'; peerId: number; fields: Partial<Dialog>; index?: number }
   /** сменился pinnedOrders/черновик — значения те же, порядок другой */
-  | { op: 'reindex'; items: { chatId: number; index: number }[] }
-  | { op: 'remove'; chatId: number }
+  | { op: 'reindex'; items: { peerId: number; index: number }[] }
+  | { op: 'remove'; peerId: number }

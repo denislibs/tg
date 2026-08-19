@@ -1,12 +1,13 @@
 // src/stores/chatsStore.ts
 import { create } from 'zustand'
 import type { Dialog } from '../core/models'
-import type { User } from '../core/managers/authManager'
+import type { PeerProfile } from '../core/managers/authManager'
 import type { PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
 import type { DialogOp } from '../core/dialogs/dialogOps'
+import type { UserStatus } from '../core/peers/peer'
 
-// Per-chat typing state: chatId -> userId -> {action, at}. `at` is the event
+// Per-chat typing state: peerId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
 // cleared on a timer / when the user sends a message.
 export interface TypingEntry { action: TypingAction; at: number }
@@ -19,11 +20,16 @@ interface ChatsState {
    * reset и смена аккаунта чистили его естественно тем же set(), что и dialogs.
    * Читает только sortDialogsByIndex. */
   dialogIndexById: Record<number, number>
-  me: User | null
+  me: PeerProfile | null
   meId: number | null
   loaded: boolean
-  activeChatId: number | null
-  presence: Record<number, { online: boolean; lastSeen: number }>
+  activePeerId: number | null
+  /** присутствие по id пользователя — КОНСТРУКТОР `UserStatus` (объединение
+   *  схемы), а не пара `{online, lastSeen}`. «Онлайн» выводится предикатом
+   *  `isUserStatusOnline(status, now)` (порт `appUsersManager.isUserOnline`):
+   *  у `userStatusOnline` есть `expires`, и статус гаснет сам — потерянный
+   *  кадр больше не оставляет человека онлайн навсегда. */
+  presence: Record<number, UserStatus>
   typing: Record<number, ChatTyping>
   /**
    * Task 2 (перенос владения диалогами): ЕДИНСТВЕННЫЙ вход и ЕДИНСТВЕННЫЙ
@@ -42,7 +48,7 @@ interface ChatsState {
    * (workerCore.ts::setMe → rt:me, Stage 1C.2 Task 1); канонический вызывающий —
    * storeProjection (APPLY[RT.me]). Прямые вызовы из витрины — allow-listed
    * исключения (оптимистика/гидратация), см. stores/noDuplicateMe.test.ts. */
-  setMe: (u: User | null) => void
+  setMe: (u: PeerProfile | null) => void
   setActiveChat: (id: number | null) => void
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta/applyNewMessage/
   // applyRead/bumpUnreadReactions отсюда убраны — их тела переехали во владельца
@@ -55,8 +61,8 @@ interface ChatsState {
   // успешного REST-ответа; вызывавшая их витрина (ChatListItem/Chat/
   // useMuteToggle/useAppHotkeys/ChatThemesPicker) больше их не трогает.
   setPresence: (p: PresenceEvt) => void
-  setTyping: (chatId: number, userId: number, action: TypingAction, at: number) => void
-  clearTyping: (chatId: number, userId: number) => void
+  setTyping: (peerId: number, userId: number, action: TypingAction, at: number) => void
+  clearTyping: (peerId: number, userId: number) => void
 }
 
 /**
@@ -70,7 +76,7 @@ interface ChatsState {
  * воркером и main.
  */
 function sortDialogsByIndex(dialogs: Dialog[], indexById: Record<number, number>): Dialog[] {
-  return [...dialogs].sort((a, b) => (indexById[b.chatId] ?? 0) - (indexById[a.chatId] ?? 0))
+  return [...dialogs].sort((a, b) => (indexById[b.peerId] ?? 0) - (indexById[a.peerId] ?? 0))
 }
 
 /**
@@ -98,7 +104,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
   me: null,
   meId: null,
   loaded: false,
-  activeChatId: null,
+  activePeerId: null,
   presence: {},
   typing: {},
   applyDialogOps: (ops) =>
@@ -108,28 +114,28 @@ export const useChatsStore = create<ChatsState>((set) => ({
       for (const op of ops) {
         if (op.op === 'reset') {
           indexById = {}
-          for (const it of op.items) indexById[it.dialog.chatId] = it.index
-          list = reconcileById(list, op.items.map((i) => i.dialog), (d) => d.chatId).list
+          for (const it of op.items) indexById[it.dialog.peerId] = it.index
+          list = reconcileById(list, op.items.map((i) => i.dialog), (d) => d.peerId).list
         } else if (op.op === 'upsert') {
           indexById = { ...indexById }
-          for (const it of op.items) indexById[it.dialog.chatId] = it.index
-          const byId = new Map(op.items.map((i) => [i.dialog.chatId, i.dialog]))
-          const merged = list.map((d) => byId.get(d.chatId) ?? d)
+          for (const it of op.items) indexById[it.dialog.peerId] = it.index
+          const byId = new Map(op.items.map((i) => [i.dialog.peerId, i.dialog]))
+          const merged = list.map((d) => byId.get(d.peerId) ?? d)
           for (const it of op.items) {
-            if (!list.some((d) => d.chatId === it.dialog.chatId)) merged.push(it.dialog)
+            if (!list.some((d) => d.peerId === it.dialog.peerId)) merged.push(it.dialog)
           }
-          list = reconcileById(list, merged, (d) => d.chatId).list
+          list = reconcileById(list, merged, (d) => d.peerId).list
         } else if (op.op === 'patch') {
-          if (op.index !== undefined) indexById = { ...indexById, [op.chatId]: op.index }
-          list = list.map((d) => (d.chatId === op.chatId ? { ...d, ...op.fields } : d))
+          if (op.index !== undefined) indexById = { ...indexById, [op.peerId]: op.index }
+          list = list.map((d) => (d.peerId === op.peerId ? { ...d, ...op.fields } : d))
         } else if (op.op === 'reindex') {
           indexById = { ...indexById }
-          for (const it of op.items) indexById[it.chatId] = it.index
+          for (const it of op.items) indexById[it.peerId] = it.index
         } else {
           const nextIndex = { ...indexById }
-          delete nextIndex[op.chatId]
+          delete nextIndex[op.peerId]
           indexById = nextIndex
-          list = list.filter((d) => d.chatId !== op.chatId)
+          list = list.filter((d) => d.peerId !== op.peerId)
         }
       }
       let dialogs = sortDialogsByIndex(list, indexById)
@@ -139,25 +145,25 @@ export const useChatsStore = create<ChatsState>((set) => ({
       }
       return { dialogs, dialogIndexById: indexById, loaded: true }
     }),
-  setMe: (me) => set({ me, meId: me?.id ?? null }),
-  setActiveChat: (activeChatId) => set({ activeChatId }),
+  setMe: (me) => set({ me, meId: me?.user.id ?? null }),
+  setActiveChat: (activePeerId) => set({ activePeerId }),
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta ушли
   // отсюда — их тела переехали в core/managers/dialogsManager.ts
   // (applyRemoved/applyChatMeta), вызываются из workerCore.ts::dispatch по тем
   // же кадрам (chat_removed/chat_update) и публикуют rt:dialog_op вместо
   // прямой записи в этот стор.
-  setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: { online: p.online, lastSeen: p.last_seen } } })),
-  setTyping: (chatId, userId, action, at) =>
+  setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: p.status } })),
+  setTyping: (peerId, userId, action, at) =>
     set((s) => ({
-      typing: { ...s.typing, [chatId]: { ...s.typing[chatId], [userId]: { action, at } } },
+      typing: { ...s.typing, [peerId]: { ...s.typing[peerId], [userId]: { action, at } } },
     })),
-  clearTyping: (chatId, userId) =>
+  clearTyping: (peerId, userId) =>
     set((s) => {
-      const chat = s.typing[chatId]
+      const chat = s.typing[peerId]
       if (!chat || !(userId in chat)) return {}
       const next = { ...chat }
       delete next[userId]
-      return { typing: { ...s.typing, [chatId]: next } }
+      return { typing: { ...s.typing, [peerId]: next } }
     }),
   // Task 3: applyNewMessage/applyRead/bumpUnreadReactions отсюда убраны — их
   // тела переехали в dialogsManager (см. докблок setPresence выше). Typing
@@ -167,7 +173,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
 }))
 
 interface LoadDeps {
-  auth: { me(): Promise<User | null> }
+  auth: { me(): Promise<PeerProfile | null> }
 }
 
 // Fetch the current user and populate the store. Task 6 (перенос владения
@@ -180,7 +186,7 @@ interface LoadDeps {
 // монтирования React.
 export async function loadChats(
   managers: LoadDeps,
-  prefetch?: { me: Promise<User | null> },
+  prefetch?: { me: Promise<PeerProfile | null> },
 ): Promise<void> {
   const me = await (prefetch?.me ?? managers.auth.me())
   // ИСКЛЮЧЕНИЕ из «пишет только проектор» (Stage 1C.2, Task 1 — см. докблок
@@ -206,8 +212,9 @@ export async function loadPresence(
   ids?: number[],
 ): Promise<void> {
   const st = useChatsStore.getState()
-  const targets =
-    ids ?? st.dialogs.filter((d) => d.type === 'private' && d.peer).map((d) => d.peer!.id)
+  // Ключ приватного диалога И ЕСТЬ id собеседника — брать его из `peer.id`
+  // (как раньше) больше незачем: это одно и то же число.
+  const targets = ids ?? st.dialogs.filter((d) => d.type === 'private').map((d) => d.peerId)
   if (!targets.length) return
   const list = await managers.presence.get(targets)
   for (const p of list) st.setPresence(p)

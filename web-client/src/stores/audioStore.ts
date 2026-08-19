@@ -6,7 +6,7 @@ export interface AudioTrack {
   mediaId: number
   title: string
   subtitle: string
-  chatId?: number
+  peerId?: number
   msgId?: number
   /** Вид медиа (tweb doc.type): голосовое, кружок или музыка. Голос и кружок —
    * одна очередь и одна скорость (tweb PlaybackMediaType 'voice'), музыка — своя

@@ -26,7 +26,7 @@ export const getLocalStream = () => localStream
 export interface GroupCallFrame {
   t: string
   d: {
-    chat_id: number
+    peer_id: number
     user_id?: number
     action?: 'joined' | 'left'
     participants?: number[]
@@ -59,11 +59,11 @@ async function newPc(userId: number): Promise<RTCPeerConnection> {
 }
 
 function signal(toUserId: number, data: Record<string, unknown>) {
-  const chatId = store().chatId
-  if (chatId == null) return
+  const peerId = store().peerId
+  if (peerId == null) return
   void managers().realtime.sendCallFrame({
     type: 'group_call_signal',
-    data: { ...data, chat_id: chatId, to_user_id: toUserId },
+    data: { ...data, peer_id: peerId, to_user_id: toUserId },
   })
 }
 
@@ -83,8 +83,8 @@ function broadcastMediaState() {
 }
 
 /** Войти в видеочат группы (создаёт его, если ещё не идёт). */
-export async function joinGroupCall(chatId: number, withVideo = false) {
-  if (store().chatId != null) return // уже в звонке
+export async function joinGroupCall(peerId: number, withVideo = false) {
+  if (store().peerId != null) return // уже в звонке
   store().setConnecting(true)
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
@@ -92,10 +92,10 @@ export async function joinGroupCall(chatId: number, withVideo = false) {
     store().reset()
     return
   }
-  const existing = await managers().messages.groupCallParticipants(chatId).catch(() => [] as number[])
-  store().setJoined(chatId)
+  const existing = await managers().messages.groupCallParticipants(peerId).catch(() => [] as number[])
+  store().setJoined(peerId)
   store().setMedia(true, withVideo)
-  void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { chat_id: chatId } })
+  void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
   // новичок предлагает соединение каждому сидящему
   const meId = useChatsStore.getState().meId
   for (const userId of existing) {
@@ -110,9 +110,9 @@ export async function joinGroupCall(chatId: number, withVideo = false) {
 
 /** Выйти из видеочата. */
 export function leaveGroupCall() {
-  const chatId = store().chatId
-  if (chatId == null) return
-  void managers().realtime.sendCallFrame({ type: 'group_call_leave', data: { chat_id: chatId } })
+  const peerId = store().peerId
+  if (peerId == null) return
+  void managers().realtime.sendCallFrame({ type: 'group_call_leave', data: { peer_id: peerId } })
   for (const userId of [...pcs.keys()]) closePeer(userId)
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
@@ -159,14 +159,14 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   const { t, d } = evt
   if (t === 'group_call_update') {
     // список идущих звонков — для баннера Join у всех членов чата
-    store().setActive(d.chat_id, d.participants ?? [])
-    if (store().chatId === d.chat_id && d.action === 'left' && d.user_id != null) {
+    store().setActive(d.peer_id, d.participants ?? [])
+    if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }
     return
   }
   if (t !== 'group_call_signal' || d.from_user_id == null) return
-  if (store().chatId !== d.chat_id) return
+  if (store().peerId !== d.peer_id) return
   void (async () => {
     const from = d.from_user_id!
     let pc = pcs.get(from)

@@ -45,15 +45,15 @@ describe('rootScope', () => {
   it('второй аргумент (meta) доезжает до подписчика логируемого события', () => {
     const cb = vi.fn()
     rootScope.addEventListener(RT.dialogPin, cb)
-    rootScope.dispatchEventSingle(RT.dialogPin, { chat_id: 1, pinned: true }, { pts: 9, catchUp: true })
-    expect(cb).toHaveBeenCalledWith({ chat_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    rootScope.dispatchEventSingle(RT.dialogPin, { peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    expect(cb).toHaveBeenCalledWith({ peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
     rootScope.removeEventListener(RT.dialogPin, cb)
   })
 
   it('dispatchEvent прокидывает meta в порт вторым payload-соседом', () => {
     const sent: unknown[][] = []
     rootScope.setPort({ emit: (e, p, m) => sent.push([e, p, m]) })
-    rootScope.dispatchEvent(RT.dialogPin, { chat_id: 2, pinned: false }, { pts: 11 })
-    expect(sent).toEqual([[RT.dialogPin, { chat_id: 2, pinned: false }, { pts: 11 }]])
+    rootScope.dispatchEvent(RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 })
+    expect(sent).toEqual([[RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 }]])
   })
 })

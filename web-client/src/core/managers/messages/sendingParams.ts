@@ -32,8 +32,8 @@
 //     Messages), `invertMedia` (медиа под текстом), `confirmedPaymentResult`
 //     (звёздная оплата отправки), `suggestedPost` — соответствующих полей нет ни
 //     в проводном кадре, ни в бэкенде.
-//   • `peerId` — в оригинале часть пакета, у нас chatId явный аргумент каждого
-//     метода отправки (`SendArgs.chatId`), дублировать его пакетом незачем.
+//   • `peerId` — в оригинале часть пакета, у нас peerId явный аргумент каждого
+//     метода отправки (`SendArgs.peerId`), дублировать его пакетом незачем.
 //
 // `replyToPeerId` предмет ИМЕЕТ (кросс-чат ответ, `Message.replyToPeerId`), но
 // с оговоркой: бэкенд присланному значению НЕ ДОВЕРЯЕТ и выводит его сам,
@@ -72,7 +72,7 @@ export const SENDING_PARAM_KEYS = [
  *  него. `Required` — потому что пакет их ВСЕГДА проставляет (пусто = явный
  *  null/false, а не «поля нет»); в самом `WireSendArgs` они опциональны. */
 export type SendingParamsWireFields =
-  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsChatId'>>
+  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsPeerId'>>
 
 /**
  * Пакет → проводные поля кадра `send_message`. Порт tweb `getInputReplyTo`
@@ -91,7 +91,7 @@ export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireF
     threadRootId: p.threadId ?? null,
     silent: p.silent ?? false,
     effect: p.effect ?? null,
-    sendAsChatId: p.sendAsPeerId ?? null,
+    sendAsPeerId: p.sendAsPeerId ?? null,
   }
 }
 

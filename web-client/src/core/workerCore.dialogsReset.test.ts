@@ -23,8 +23,8 @@ import { createWorkerCore } from './workerCore'
 import { saveDialogs, loadDialogs } from './store/persist'
 import type { Dialog } from './models'
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: number): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
 } as Dialog)
 
@@ -36,7 +36,7 @@ beforeEach(() => {
     if (u.endsWith('/auth/sign_in')) {
       return new Response(JSON.stringify({
         token: 'session-b',
-        user: { id: 5, phone: '+79990000005', username: null, display_name: 'B' },
+        user: { user_full: { _: 'users.userFull', full_user: { _: 'userFull', id: 5 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' }] }, can_message: true },
       }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u)
@@ -71,8 +71,8 @@ describe('createWorkerCore(): dialogs.resetForLogout() проводка (Task 6)
     await saveDialogs([dialog(2)])
     const op = await core.registry.dialogs.fillMirror()
 
-    expect(core.registry.dialogs.getSnapshot().map((i: { dialog: Dialog }) => i.dialog.chatId)).toEqual([2])
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([2])
+    expect(core.registry.dialogs.getSnapshot().map((i: { dialog: Dialog }) => i.dialog.peerId)).toEqual([2])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([2])
   })
 
   it('вход под новым аккаунтом (rt:logged_in) тоже опустошает кэш владельца', async () => {

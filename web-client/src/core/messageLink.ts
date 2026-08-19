@@ -5,12 +5,12 @@
 // origin и продолжает существующую схему хэша (`useUrlSync`):
 //
 //   #@channelname      → чат по юзернейму        (уже было)
-//   #<chatId>          → чат по числовому id     (уже было)
+//   #<peerId>          → чат по числовому id     (уже было)
 //   #@channelname/123  → чат + прыжок к сообщению (добавлено здесь)
-//   #<chatId>/123      → то же для чата без юзернейма
+//   #<peerId>/123      → то же для чата без юзернейма
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
-// `id`: именно им оперирует прыжок (`setPendingJump(chatId, seq)`), и он же
+// `id`: именно им оперирует прыжок (`setPendingJump(peerId, seq)`), и он же
 // аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
 import { useSearchStore } from '@stores/searchStore'
 
@@ -20,7 +20,7 @@ export interface ParsedHash {
   target: string
   /** seq сообщения, если ссылка указывает на конкретное сообщение */
   seq?: number
-  /** корень треда (`<chatId>_<rootMsgId>`) — как было до якоря сообщения */
+  /** корень треда (`<peerId>_<rootMsgId>`) — как было до якоря сообщения */
   threadRoot?: number
 }
 
@@ -61,17 +61,17 @@ export function parseNavHash(rawHash: string): ParsedHash | undefined {
 export function buildMessageLink({
   origin,
   pathname,
-  chatId,
+  peerId,
   username,
   seq,
 }: {
   origin: string
   pathname: string
-  chatId: string | number
+  peerId: string | number
   username?: string | null
   seq: number
 }): string {
-  const target = username ? `@${username}` : String(chatId)
+  const target = username ? `@${username}` : String(peerId)
   return `${origin}${pathname}#${target}/${seq}`
 }
 
@@ -79,6 +79,6 @@ export function buildMessageLink({
  * Поставить прыжок к сообщению, который потребит лента чата при открытии
  * (`Chat.tsx` читает `pendingJump` ровно так же для перехода из поиска).
  */
-export function requestMessageJump(chatId: number, seq: number): void {
-  useSearchStore.getState().setPendingJump(chatId, seq)
+export function requestMessageJump(peerId: number, seq: number): void {
+  useSearchStore.getState().setPendingJump(peerId, seq)
 }

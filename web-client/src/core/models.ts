@@ -5,6 +5,8 @@ import type { EmojiEffectKind } from './effects/emojiEffects'
 import type { NewMessageEvt } from './realtime/events'
 import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
+import type { ChatPhoto, UserReal } from './peers/peer'
+import { getPeerId, type Peer } from './peers/peerId'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved' | 'secret'
 
@@ -63,7 +65,10 @@ export function mapGeo(g: RawGeo): GeoData {
 export interface RawDialog {
   auto_delete_period?: number
   theme_id?: string
-  chat_id: number
+  /** знаковый ключ диалога ГЛАЗАМИ ЗРИТЕЛЯ: у приватного это id собеседника
+   *  (у двух сторон одного разговора он РАЗНЫЙ), у группы/канала `-chatID`.
+   *  Клиент его не вычисляет — считает бэкенд (`chatAddress.forViewer`). */
+  peer_id: PeerId
   type: ChatKind
   last_read_seq: number
   peer_read_seq?: number
@@ -78,14 +83,18 @@ export interface RawDialog {
   notify_sound?: string
   title?: string
   username?: string
-  photo_url?: string
-  photo_preview?: string | null
-  peer?: { id: number; display_name: string; avatar_url: string; avatar_preview?: string | null; verified?: boolean; premium?: boolean; emoji_status?: string; is_bot?: boolean }
+  /** фото группы/канала — объединение `ChatPhoto` (`chatPhotoEmpty`|`chatPhoto`).
+   *  Прежние `photo_url` + `photo_preview` схлопнулись сюда. */
+  photo?: ChatPhoto
+  /** собеседник приватного чата — КОНСТРУКТОР `user` целиком: имя, аватарка и
+   *  флаги живут внутри него, а не рассыпаны плоскими ключами рядом. */
+  peer?: UserReal
   last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string; enc_body?: string }
 }
 
 export interface Dialog {
-  chatId: number
+  /** знаковый ключ диалога глазами зрителя (см. RawDialog.peer_id). */
+  peerId: PeerId
   type: ChatKind
   lastReadSeq: number
   /** the OTHER side's read horizon (read_outbox) — outgoing seq <= this ⇒ ✓✓ */
@@ -110,11 +119,11 @@ export interface Dialog {
   themeId?: string
   title?: string
   username?: string
-  /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
-  photoUrl?: string
-  /** stripped-превью фото группы/канала (base64 JPEG media.blur_preview джойном) */
-  photoPreview?: string
-  peer?: { id: number; displayName: string; avatarUrl: string; avatarPreview?: string; verified?: boolean; premium?: boolean; emojiStatus?: string; isBot?: boolean }
+  /** фото группы/канала — `ChatPhoto` с готовым `photo_id` (у private аватарка
+   *  живёт внутри `peer.photo`) */
+  photo?: ChatPhoto
+  /** собеседник приватного чата — конструктор `user` */
+  peer?: UserReal
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string; encBody?: string }
 }
 
@@ -171,7 +180,8 @@ export function mapWebPage(w: RawWebPage): WebPageData {
 
 export interface RawMessage {
   id: number
-  chat_id: number
+  /** знаковый ключ чата сообщения глазами зрителя */
+  peer_id: PeerId
   seq: number
   sender_id: number
   type: string
@@ -184,14 +194,15 @@ export interface RawMessage {
   grouped_id?: string | null
   edited_at?: string | null
   deleted?: boolean
-  fwd_from_user_id?: number | null
-  fwd_from_chat_id?: number | null
-  fwd_from_msg_id?: number | null
-  fwd_date?: string | null
+  /** атрибуция пересылки — конструктор `messageFwdHeader`. Пяти плоских
+   *  `fwd_from_*` больше нет: у автора оригинала в схеме `from_id:Peer`, и для
+   *  приватного источника это `peerUser` — ссылки на приватный ЧАТ там нет
+   *  вовсе, потому что и сущности такой нет. */
+  fwd_from?: MessageFwdHeader | null
   reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
   /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
    * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
-  reply_to_peer_id?: number | null
+  reply_to_peer_id?: Peer | null
   reply_snapshot_name?: string
   reply_snapshot_text?: string
   poll_id?: number | null
@@ -233,7 +244,30 @@ export interface RawMessage {
   transcription?: string | null
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
    * sender_id, который остаётся реальным. Отсутствует — обычная отправка. */
-  send_as?: { chat_id: number; title?: string; photo_id?: number } | null
+  send_as?: { peer_id: PeerId; title?: string; photo_id?: number } | null
+}
+
+/**
+ * messageFwdHeader#4e4df4bb flags:# … from_id:flags.0?Peer
+ * from_name:flags.5?string date:int channel_post:flags.2?int
+ * saved_from_peer:flags.4?Peer saved_from_msg_id:flags.4?int = MessageFwdHeader;
+ *
+ * `from_id` — АВТОР оригинала (`peerUser` у пересылки от человека,
+ * `peerChannel` у поста канала); `from_name` — скрытая атрибуция (правило
+ * приватности `forwards`), и тогда `from_id` отсутствует.
+ *
+ * `saved_from_peer`/`saved_from_msg_id` («перейти к оригиналу») заполняются
+ * ТОЛЬКО когда источник — группа или канал: у приватного источника публичного
+ * ключа не существует. Автор при этом не теряется — он в `from_id`.
+ */
+export interface MessageFwdHeader {
+  _: 'messageFwdHeader'
+  from_id?: Peer
+  from_name?: string
+  date: number
+  channel_post?: number
+  saved_from_peer?: Peer
+  saved_from_msg_id?: number
 }
 
 // «Проверка фактов» (Telegram factCheck): пояснение автора/админа канала к посту.
@@ -284,7 +318,8 @@ export interface SecretMedia {
 
 export interface Message {
   id: number
-  chatId: number
+  /** знаковый ключ чата сообщения глазами зрителя */
+  peerId: PeerId
   seq: number
   senderId: number
   type: string
@@ -309,17 +344,16 @@ export interface Message {
   failed?: boolean
   editedAt?: string | null
   deleted?: boolean
-  // Forward attribution (set when the message was forwarded from elsewhere).
-  fwdFromUserId?: number | null
-  fwdFromChatId?: number | null
-  fwdFromMsgId?: number | null
-  fwdDate?: string | null
+  /** Атрибуция пересылки — конструктор `messageFwdHeader` целиком (см.
+   *  RawMessage.fwd_from). Ветвление по `from_id._`, как в оригинале; вывод
+   *  ключа пира — `getPeerId(fwdFrom.from_id)`. */
+  fwdFrom?: MessageFwdHeader
   /** Lightweight preview of the replied-to message (history read model). */
   replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number; quoteText?: string } | null
   /** кросс-чат ответ (tweb ReplyToAnotherChat): id исходного чата оригинала +
    * готовый снимок превью (имя автора + текст/медиа-лейбл). Оригинала нет в
    * текущем сторе, поэтому превью рисуется из снимка, а не поиском по replyToId. */
-  replyToPeerId?: number | null
+  replyToPeerId?: PeerId
   replySnapshotName?: string
   replySnapshotText?: string
   /** Вложение сообщения в форме оригинала (MTProto) —
@@ -385,7 +419,7 @@ export interface Message {
   starReaction?: { total: number; mine: number }
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) — бабл
    * рисуется от его имени; senderId остаётся реальным. undefined — обычная. */
-  sendAs?: { chatId: number; title: string; photoId?: number }
+  sendAs?: { peerId: PeerId; title: string; photoId?: number }
   /** Исходящее ли сообщение — порт tweb `message.pFlags.out`: свойство САМОГО
    * сообщения, а не вывод витрины (императивная лента читает его синхронно,
    * `bubbles.ts`). Ставит владелец на границе маппинга (`messagesManager`,
@@ -502,7 +536,8 @@ export function mapChecklist(r: RawChecklist): Checklist {
 // Розыгрыш (backend GiveawayInfo): приз + победители + участие зрителя.
 export interface RawGiveaway {
   id: number
-  chat_id: number
+  /** знаковый ключ канала розыгрыша (розыгрыши только в каналах) */
+  peer_id: PeerId
   prize_kind: 'premium' | 'stars'
   months: number
   stars: number
@@ -517,7 +552,7 @@ export interface RawGiveaway {
 
 export interface Giveaway {
   id: number
-  chatId: number
+  peerId: PeerId
   prizeKind: 'premium' | 'stars'
   months: number
   stars: number
@@ -533,7 +568,7 @@ export interface Giveaway {
 export function mapGiveaway(r: RawGiveaway): Giveaway {
   return {
     id: r.id,
-    chatId: r.chat_id,
+    peerId: r.peer_id,
     prizeKind: r.prize_kind,
     months: r.months ?? 0,
     stars: r.stars ?? 0,
@@ -591,7 +626,7 @@ export function boostProgress(s: Pick<BoostStatus, 'boostsCount' | 'currentLevel
 // Запланированное сообщение (backend scheduled_messages): очередь до send_at.
 export interface RawScheduled {
   id: number
-  chat_id: number
+  peer_id: PeerId
   sender_id: number
   type: string
   text: string
@@ -607,7 +642,7 @@ export interface RawScheduled {
 
 export interface Scheduled {
   id: number
-  chatId: number
+  peerId: PeerId
   type: string
   text: string
   entities?: MessageEntity[]
@@ -617,7 +652,7 @@ export interface Scheduled {
 }
 
 export function mapScheduled(r: RawScheduled): Scheduled {
-  return { id: r.id, chatId: r.chat_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at, whenOnline: !!r.when_online }
+  return { id: r.id, peerId: r.peer_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at, whenOnline: !!r.when_online }
 }
 
 // Предложенный в канал пост (backend suggested_posts): статус pending|approved|
@@ -626,7 +661,8 @@ export type SuggestedPostStatus = 'pending' | 'approved' | 'rejected'
 
 export interface RawSuggestedPost {
   id: number
-  chat_id: number
+  /** знаковый ключ канала предложки (предложка только в каналах) */
+  peer_id: PeerId
   author_id: number
   author_name?: string
   text: string
@@ -641,7 +677,7 @@ export interface RawSuggestedPost {
 
 export interface SuggestedPost {
   id: number
-  chatId: number
+  peerId: PeerId
   authorId: number
   authorName?: string
   text: string
@@ -657,7 +693,7 @@ export interface SuggestedPost {
 export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
   return {
     id: r.id,
-    chatId: r.chat_id,
+    peerId: r.peer_id,
     authorId: r.author_id,
     authorName: r.author_name || undefined,
     text: r.text,
@@ -673,7 +709,7 @@ export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
 
 // Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
 export interface RawDraft {
-  chat_id: number
+  peer_id: PeerId
   text: string
   entities?: MessageEntity[] | null
   reply_to_id?: number | null
@@ -681,7 +717,7 @@ export interface RawDraft {
 }
 
 export interface Draft {
-  chatId: number
+  peerId: PeerId
   text: string
   entities?: MessageEntity[]
   replyToId: number | null
@@ -690,7 +726,7 @@ export interface Draft {
 
 export function mapDraft(r: RawDraft): Draft {
   return {
-    chatId: r.chat_id,
+    peerId: r.peer_id,
     text: r.text,
     entities: r.entities?.length ? r.entities : undefined,
     replyToId: r.reply_to_id ?? null,
@@ -700,7 +736,7 @@ export function mapDraft(r: RawDraft): Draft {
 
 export function mapDialog(r: RawDialog): Dialog {
   return {
-    chatId: r.chat_id,
+    peerId: r.peer_id,
     type: r.type,
     lastReadSeq: r.last_read_seq,
     peerReadSeq: r.peer_read_seq ?? 0,
@@ -717,11 +753,10 @@ export function mapDialog(r: RawDialog): Dialog {
     themeId: r.theme_id || undefined,
     title: r.title,
     username: r.username,
-    photoUrl: r.photo_url || undefined,
-    photoPreview: r.photo_preview || undefined,
-    peer: r.peer
-      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, avatarPreview: r.peer.avatar_preview || undefined, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status, isBot: r.peer.is_bot }
-      : undefined,
+    photo: r.photo,
+    // Маппера у пира больше нет: форма провода и форма модели совпали —
+    // это конструктор `user`, а не плоская выборка полей.
+    peer: r.peer,
     lastMessage: r.last_message
       ? {
           seq: r.last_message.seq,
@@ -748,7 +783,7 @@ export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
 export function mapMessage(r: RawMessage): Message {
   return {
     id: r.id,
-    chatId: r.chat_id,
+    peerId: r.peer_id,
     seq: r.seq,
     senderId: r.sender_id,
     type: r.type,
@@ -764,14 +799,12 @@ export function mapMessage(r: RawMessage): Message {
     giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
     editedAt: r.edited_at ?? null,
     deleted: r.deleted ?? false,
-    fwdFromUserId: r.fwd_from_user_id ?? null,
-    fwdFromChatId: r.fwd_from_chat_id ?? null,
-    fwdFromMsgId: r.fwd_from_msg_id ?? null,
-    fwdDate: r.fwd_date ?? null,
+    fwdFrom: r.fwd_from ?? undefined,
     replyTo: r.reply_to
       ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined, quoteText: r.reply_to.quote_text || undefined }
       : null,
-    replyToPeerId: r.reply_to_peer_id ?? undefined,
+    // Ключ выводится из конструктора один раз здесь — дальше по коду он число.
+    replyToPeerId: r.reply_to_peer_id ? getPeerId(r.reply_to_peer_id) : undefined,
     replySnapshotName: r.reply_snapshot_name || undefined,
     replySnapshotText: r.reply_snapshot_text || undefined,
     // Вложение нормализуется здесь один раз: `saveMessageMedia` выводит
@@ -806,7 +839,7 @@ export function mapMessage(r: RawMessage): Message {
     effect: mapEffect(r.effect),
     paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
     starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,
-    sendAs: r.send_as ? { chatId: r.send_as.chat_id, title: r.send_as.title ?? '', photoId: r.send_as.photo_id } : undefined,
+    sendAs: r.send_as ? { peerId: r.send_as.peer_id, title: r.send_as.title ?? '', photoId: r.send_as.photo_id } : undefined,
   }
 }
 
@@ -816,11 +849,10 @@ export function mapMessage(r: RawMessage): Message {
 // из мест. `replyTo` резолвится вызывающим из уже загруженного окна (в кадре его нет).
 export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply_to'] = null): Message {
   const msg = mapMessage({
-    id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type,
+    id: evt.msg_id, peer_id: evt.peer_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type,
     text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null,
     media_id: evt.media_id, created_at: evt.created_at,
-    fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null,
-    fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null,
+    fwd_from: evt.fwd_from ?? null,
     reply_to: replyTo, reply_to_peer_id: evt.reply_to_peer_id ?? null,
     reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text,
     media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null,

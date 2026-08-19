@@ -3,7 +3,7 @@ import { useMessagesStore } from './messagesStore'
 import { mapMessage, type RawMessage } from '../core/models'
 
 const raw = (id: number, views = 0): RawMessage => ({
-  id, chat_id: 5, seq: id, sender_id: 1, type: 'text', text: `m${id}`,
+  id, peer_id: 5, seq: id, sender_id: 1, type: 'text', text: `m${id}`,
   reply_to_id: null, media_id: null, created_at: '2026-07-01T00:00:00Z', views,
 })
 

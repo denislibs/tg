@@ -20,7 +20,7 @@ const OTHER = 2
 
 function msg(over: Partial<Message> & { id: number; seq: number }): Message {
   return {
-    chatId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
+    peerId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
     replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
     ...over,
   }
@@ -114,7 +114,7 @@ describe('storeProjection — RT.messageOp едет и в зеркало гла�
   // случайно «выровняют» гейтом, зеркало перестанет знать про чаты, которые
   // лента ещё не открыла, — и этап 2 получит пустое окно на переключении чата.
   it('окно, не открытое React-лентой: стор его игнорирует, зеркало — заводит', () => {
-    rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(999), msg: msg({ id: 7, seq: 7, chatId: 999 }) }] })
+    rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(999), msg: msg({ id: 7, seq: 7, peerId: 999 }) }] })
     expect(useMessagesStore.getState().byKey[winKey(999)]).toBeUndefined()
     expect((mirrorWindow(winKey(999)) ?? []).map((m) => m.id)).toEqual([7])
   })

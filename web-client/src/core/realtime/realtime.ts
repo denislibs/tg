@@ -35,7 +35,7 @@ export interface RealtimeDeps {
   // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
   // выбрасывал результат.
   messages: {
-    cacheMediaRead(p: { chat_id: number; msg_id: number }): MessageOp[]
+    cacheMediaRead(p: { peer_id: number; msg_id: number }): MessageOp[]
   }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
@@ -84,23 +84,23 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // другой — сверяющий не должен читать ЭТО как расхождение с оригиналом
     // (в отличие от `syncing` выше, которое расхождение и есть).
     async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
-    async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
-    async markMediaRead(args: { chatId: number; msgId: number }) {
+    async markRead(args: { peerId: number; upToSeq: number }) { conn.markRead(args.peerId, args.upToSeq); return { ok: true } },
+    async markMediaRead(args: { peerId: number; msgId: number }) {
       // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
       // (окно теперь правит ТОЛЬКО applyOps(RT.messageOp) — сырой rt:media_read
       // проектор больше не слушает), затем шлём read_media серверу (у отправителя
       // точка гаснет по его серверному media_read-кадру).
-      const ops = messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
+      const ops = messages.cacheMediaRead({ peer_id: args.peerId, msg_id: args.msgId })
       if (ops.length) broadcast(RT.messageOp, { ops })
-      broadcast(RT.mediaRead, { chat_id: args.chatId, msg_id: args.msgId })
-      conn.markMediaRead(args.chatId, args.msgId)
+      broadcast(RT.mediaRead, { peer_id: args.peerId, msg_id: args.msgId })
+      conn.markMediaRead(args.peerId, args.msgId)
       return { ok: true }
     },
-    async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
+    async sendTyping(args: { peerId: number; action?: TypingAction }) { conn.sendTyping(args.peerId, args.action ?? 'typing'); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
     // кадры) + open (сид курсора из IDB и добор пропущенного через difference).
-    async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); void channelFunnel.open(args.chatId); return { ok: true } },
-    async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); channelFunnel.close(args.chatId); return { ok: true } },
+    async subscribeChannel(args: { peerId: number }) { conn.subscribeChannel(args.peerId); void channelFunnel.open(args.peerId); return { ok: true } },
+    async unsubscribeChannel(args: { peerId: number }) { conn.unsubscribeChannel(args.peerId); channelFunnel.close(args.peerId); return { ok: true } },
   }
 }
