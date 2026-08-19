@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Worker consumes the push queue, enriches each job, sends to a recipient's
@@ -83,9 +85,16 @@ func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
 	if !job.Preview {
 		text = ""
 	}
-	return map[string]any{
-		"chat_id": job.ChatID, "msg_id": job.MsgID, "seq": job.Seq,
+	p := map[string]any{
+		"msg_id": job.MsgID, "seq": job.Seq,
 		"sender": map[string]any{"name": senderName},
 		"text":   text, "badge": badge,
 	}
+	// Ключ пира кладём, только когда он есть: у задания, застрявшего в очереди с
+	// прошлой версии, поля нет, и "peer_id": 0 отправил бы клиента в НЕ ТОТ чат.
+	// Отсутствие ключа он трактует как «уведомление без адреса», что безопасно.
+	if job.PeerID != domain.NullPeerID {
+		p["peer_id"] = job.PeerID
+	}
+	return p
 }

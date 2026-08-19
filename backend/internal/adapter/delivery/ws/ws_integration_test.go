@@ -30,6 +30,9 @@ type wsEnv struct {
 	userA   int64
 	deviceA int64
 	chatID  int64
+	// peerB — адрес приватного диалога ГЛАЗАМИ A: это id собеседника B.
+	peerB   int64
+	userB   int64
 	ctx     context.Context
 	authUC  *usecaseauth.Interactor
 	chatSvc *usecasechat.Interactor
@@ -104,6 +107,7 @@ func newWSEnv(t *testing.T) *wsEnv {
 		url:    "ws" + strings.TrimPrefix(srv.URL, "http"),
 		tokenA: ra.Token, tokenB: rb.Token,
 		userA: ra.User.ID, deviceA: deviceA, chatID: chatID,
+		peerB: rb.User.ID, userB: rb.User.ID,
 		ctx: ctx, authUC: authUC, chatSvc: chatSvc,
 		srv: srv, hub: hub, mr: mr, rdb: rdb,
 	}
@@ -152,7 +156,7 @@ func TestWS_LiveDelivery(t *testing.T) {
 	time.Sleep(150 * time.Millisecond) // let both register + subscribe
 
 	// A sends a message.
-	sendFrame(t, connA, "send_message", map[string]any{"chat_id": env.chatID, "text": "hi", "client_msg_id": "c1"})
+	sendFrame(t, connA, "send_message", map[string]any{"peer_id": env.peerB, "text": "hi", "client_msg_id": "c1"})
 
 	// A receives an ack; B receives a new_message.
 	if got := readUntil(t, connA, "message_ack"); got == nil {

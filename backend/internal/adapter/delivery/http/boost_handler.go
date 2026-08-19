@@ -15,7 +15,7 @@ import (
 
 // ChannelBoosts — GET /channels/{chatID}/boosts: состояние бустов канала.
 func (h *ChatHandler) ChannelBoosts(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -28,7 +28,7 @@ func (h *ChatHandler) ChannelBoosts(w http.ResponseWriter, r *http.Request) {
 
 // BoostChannel — POST /channels/{chatID}/boost: буст канала (только premium).
 func (h *ChatHandler) BoostChannel(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -55,7 +55,7 @@ func (h *ChatHandler) boostErr(w http.ResponseWriter, err error) bool {
 
 // CreateGiveaway — POST /channels/{chatID}/giveaways: создать розыгрыш (админ).
 func (h *ChatHandler) CreateGiveaway(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}

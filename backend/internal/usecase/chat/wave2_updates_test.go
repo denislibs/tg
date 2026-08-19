@@ -254,7 +254,7 @@ func TestLogAndPublish_NoUpdateLogNoOp(t *testing.T) {
 	fg := newFakeGroupRepo()
 	// updates=nil, publisher=nil (as newGroupTestInteractor does).
 	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
-	if err := in.logAndPublish(context.Background(), []int64{1, 2}, "draft_update", map[string]any{"x": 1}); err != nil {
+	if err := in.logAndPublish(context.Background(), 0, []int64{1, 2}, "draft_update", map[string]any{"x": 1}); err != nil {
 		t.Fatalf("logAndPublish with nil update log: %v", err)
 	}
 }

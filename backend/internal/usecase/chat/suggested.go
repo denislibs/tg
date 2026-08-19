@@ -247,7 +247,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		// публикация одобренного поста сама не проставляет ThreadRootID (см.
 		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
 		// безусловно, тем же путём, что Send/ForwardMessages.
-		spOut := messageUpdatePayload(msg)
+		spOut := withPeer(messageUpdatePayload(msg), domain.ToPeerID(sp.ChatID, true))
 		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		payload, e := json.Marshal(spOut)
 		if e != nil {
@@ -260,7 +260,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		base := messageUpdatePayload(msg)
+		base := withPeer(messageUpdatePayload(msg), domain.ToPeerID(sp.ChatID, true))
 		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
 	}
@@ -290,7 +290,7 @@ func (i *Interactor) channelMediaType(ctx context.Context, mediaID int64) string
 // suggestedPostInfo — read-модель предложенного поста (с именем автора).
 func (i *Interactor) suggestedPostInfo(ctx context.Context, sp domain.SuggestedPost) domain.SuggestedPostInfo {
 	info := domain.SuggestedPostInfo{
-		ID: sp.ID, ChatID: sp.ChatID, AuthorID: sp.AuthorID,
+		ID: sp.ID, PeerID: domain.ToPeerID(sp.ChatID, true), AuthorID: sp.AuthorID,
 		AuthorName: i.userCard(ctx, sp.AuthorID).DisplayName,
 		Text:       sp.Text, Entities: sp.Entities, MediaID: sp.MediaID,
 		Status: sp.Status, CreatedAt: sp.CreatedAt.UnixMilli(),
@@ -334,10 +334,7 @@ func (i *Interactor) publishSuggestedToAdmins(ctx context.Context, chatID int64,
 	if err != nil {
 		return
 	}
-	f := frame("suggested_post_update", map[string]any{"chat_id": chatID, "post": info})
-	for _, uid := range admins {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
+	i.publishPeerFrame(ctx, chatID, admins, 0, "suggested_post_update", map[string]any{"post": info})
 }
 
 // publishSuggestedToAuthor рассылает автору статус его предложки.
@@ -345,6 +342,5 @@ func (i *Interactor) publishSuggestedToAuthor(ctx context.Context, authorID int6
 	if i.publisher == nil {
 		return
 	}
-	f := frame("suggested_post_update", map[string]any{"chat_id": info.ChatID, "post": info})
-	_ = i.publisher.PublishToUser(ctx, authorID, f)
+	i.publishPeerFrame(ctx, info.PeerID.ToChatID(), []int64{authorID}, 0, "suggested_post_update", map[string]any{"post": info})
 }

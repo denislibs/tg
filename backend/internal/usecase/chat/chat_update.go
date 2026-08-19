@@ -17,7 +17,6 @@ func chatUpdatePayload(c domain.ChatCard) map[string]any {
 		photo = *c.PhotoMediaID
 	}
 	p := map[string]any{
-		"chat_id":        c.ID,
 		"type":           c.Type,
 		"title":          c.Title,
 		"about":          c.About,
@@ -67,5 +66,5 @@ func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, members, "chat_update", payload)
+	_ = i.logAndPublish(ctx, chatID, members, "chat_update", payload)
 }

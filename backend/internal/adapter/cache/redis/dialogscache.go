@@ -18,6 +18,16 @@ import (
 // privacy); the hot ones (new message, read) invalidate precisely. Realtime WS
 // events reconcile the client's view, so a few seconds of snapshot staleness is
 // acceptable.
+//
+// ⚠ Ловушка развёртывания. Значение здесь — JSON доменной структуры БЕЗ
+// json-тегов: ключи в кэше это ИМЕНА ПОЛЕЙ Go. Любое переименование/удаление
+// поля молча ломает формат на живом деплое, и ни один тест этого не покажет
+// (промах кэша выглядит как валидный ответ из БД, а вот СТАРЫЙ блоб, прочитанный
+// НОВЫМ кодом, отдаёт нули). Шаг B (адресация) форму domain.Dialog не менял,
+// поэтому bump'а префикса ключа он не требует — переводом занят HTTP-слой,
+// который считает peer_id из уже закэшированных Type/ChatID/Peer. Шаг C, где
+// витрины переезжают на MTUser/MTChat, форму МЕНЯЕТ: тогда обязателен либо bump
+// префикса ключа («dialogs2:»), либо FLUSHDB в релизе.
 type DialogsCache struct{ client *goredis.Client }
 
 func NewDialogsCache(client *goredis.Client) *DialogsCache { return &DialogsCache{client: client} }

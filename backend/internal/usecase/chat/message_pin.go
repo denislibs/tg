@@ -94,6 +94,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	}
 
 	var members []int64
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if pin {
@@ -109,12 +110,16 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(map[string]any{"chat_id": chatID, "msg_id": msgID, "pinned": pin})
+		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"msg_id": msgID, "pinned": pin})
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "pin_message", payload)
 			if e != nil {
 				return e
@@ -127,9 +132,8 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		return err
 	}
 	if i.publisher != nil {
-		base := map[string]any{"chat_id": chatID, "msg_id": msgID, "pinned": pin}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("pin_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("pin_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	// Закрепление оставляет след в ленте (tweb messageActionPinMessage). У

@@ -47,7 +47,8 @@ func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 	}
 	// В payload превью едет отдельными полями.
 	p := messageUpdatePayload(msg)
-	if p["reply_to_peer_id"] != src {
+	// Кросс-чат-ответ адресует ИСХОДНЫЙ чат знаковым ключом пира (чат < 0).
+	if p["reply_to_peer_id"] != domain.ToPeerID(src, true) {
 		t.Fatalf("payload reply_to_peer_id = %v", p["reply_to_peer_id"])
 	}
 	if p["reply_snapshot_name"] != "Автор Оригинала" || p["reply_snapshot_text"] != "исходный текст" {

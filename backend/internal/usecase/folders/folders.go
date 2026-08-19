@@ -71,12 +71,22 @@ type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 }
 
+// Peers — слой разрешения peerId ↔ внутренний chatID (реализуется
+// usecase/chat, см. peeraddr.go). Списки include/exclude папки едут наружу
+// ключами пиров: id строки в chats приватного диалога наружу не выходит.
+// Optional — без него списки уезжают пустыми, а не с внутренними id.
+type Peers interface {
+	PeerToChatID(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error)
+	ChatIDToPeer(ctx context.Context, viewerID, chatID int64) (domain.PeerID, error)
+}
+
 type Interactor struct {
 	repo    Repo
 	chats   Chats
 	tx      TxManager
 	pub     EventPublisher // optional
 	updates UpdateLog      // optional
+	peers   Peers          // optional
 }
 
 func New(repo Repo, chats Chats, tx TxManager) *Interactor {
@@ -89,15 +99,49 @@ func (i *Interactor) SetPublisher(p EventPublisher) { i.pub = p }
 // SetUpdateLog attaches the per-user update log (optional).
 func (i *Interactor) SetUpdateLog(u UpdateLog) { i.updates = u }
 
+// SetPeers подключает слой разрешения peerId ↔ chatID (optional).
+func (i *Interactor) SetPeers(p Peers) { i.peers = p }
+
+// PeersToChatIDs — входящий список ключей пиров во внутренние chatID глазами
+// владельца папки. Нерешаемые ключи (диалога ещё нет) отбрасываются: правило
+// папки на несуществующий чат бессмысленно.
+func (i *Interactor) PeersToChatIDs(ctx context.Context, ownerID int64, peers []domain.PeerID) []int64 {
+	if i.peers == nil || len(peers) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(peers))
+	for _, p := range peers {
+		if id, err := i.peers.PeerToChatID(ctx, ownerID, p); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ChatIDsToPeers — обратное направление для витрин и кадров.
+func (i *Interactor) ChatIDsToPeers(ctx context.Context, ownerID int64, ids []int64) []domain.PeerID {
+	out := make([]domain.PeerID, 0, len(ids))
+	if i.peers == nil {
+		return out
+	}
+	for _, id := range ids {
+		if p, err := i.peers.ChatIDToPeer(ctx, ownerID, id); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // folderJSON — абсолютный снимок папки для folder_update (клиент заменяет
 // определение целиком, порядок доставки апдейтов не важен — идемпотентно).
-func folderJSON(f domain.Folder) map[string]any {
+func (i *Interactor) folderJSON(ctx context.Context, ownerID int64, f domain.Folder) map[string]any {
 	return map[string]any{
 		"id": f.ID, "title": f.Title, "pos": f.Pos,
 		"contacts": f.Contacts, "non_contacts": f.NonContacts,
 		"groups": f.Groups, "broadcasts": f.Broadcasts, "bots": f.Bots,
 		"exclude_muted": f.ExcludeMuted, "exclude_read": f.ExcludeRead,
-		"include_chats": f.IncludeChats, "exclude_chats": f.ExcludeChats,
+		"include_peers": i.ChatIDsToPeers(ctx, ownerID, f.IncludeChats),
+		"exclude_peers": i.ChatIDsToPeers(ctx, ownerID, f.ExcludeChats),
 	}
 }
 
@@ -151,7 +195,7 @@ func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.Folder)
 	if err != nil {
 		return domain.Folder{}, err
 	}
-	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(created)})
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, created)})
 	return created, nil
 }
 
@@ -163,7 +207,7 @@ func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.Folder)
 	if err != nil {
 		return domain.Folder{}, err
 	}
-	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(updated)})
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, updated)})
 	return updated, nil
 }
 
@@ -291,7 +335,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	}
 	// Новая папка появилась на устройствах вступившего — шлём folder_update.
 	if haveFolder {
-		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": folderJSON(created)})
+		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": i.folderJSON(ctx, userID, created)})
 	}
 	return nil
 }

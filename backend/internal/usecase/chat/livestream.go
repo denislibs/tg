@@ -211,11 +211,8 @@ func (i *Interactor) publishLivestreamUpdate(ctx context.Context, chatID int64, 
 	if err != nil {
 		return
 	}
-	f := frame("livestream_update", map[string]any{
-		"chat_id": chatID, "action": action,
+	i.publishPeerFrame(ctx, chatID, members, 0, "livestream_update", map[string]any{
+		"action": action,
 		"active": action == "started", "viewers": i.viewerCount(ctx, chatID),
 	})
-	for _, uid := range members {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
 }

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"unicode/utf8"
 
@@ -37,6 +36,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 
 	var msg domain.Message
 	var members []int64
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
@@ -50,12 +50,16 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, chatID, editUpdatePayload(msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
 			if e != nil {
 				return e
@@ -68,9 +72,8 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return msg, nil
@@ -110,6 +113,10 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 
 	var members []int64
 	ptsByUser := map[int64]int64{}
+	pp, err := i.newPeerPayloads(ctx, chatID, deleteUpdatePayload(msgID, cur.Seq, !revoke))
+	if err != nil {
+		return err
+	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
 		if revoke {
@@ -122,11 +129,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			}
 			slices.Sort(mem)
 			members = mem
-			payload, e := json.Marshal(deleteUpdatePayload(chatID, msgID, cur.Seq, false))
-			if e != nil {
-				return e
-			}
 			for _, uid := range members {
+				payload, e := pp.payload(uid)
+				if e != nil {
+					return e
+				}
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
 				if e != nil {
 					return e
@@ -140,7 +147,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			return e
 		}
 		members = []int64{userID}
-		payload, e := json.Marshal(deleteUpdatePayload(chatID, msgID, cur.Seq, true))
+		payload, e := pp.payload(userID)
 		if e != nil {
 			return e
 		}
@@ -155,9 +162,8 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return err
 	}
 	if i.publisher != nil {
-		base := deleteUpdatePayload(chatID, msgID, cur.Seq, !revoke)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("delete_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return nil

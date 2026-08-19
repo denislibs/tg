@@ -53,12 +53,12 @@ func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(id, true)})
 }
 
 func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -74,14 +74,14 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": msg.ID, "chat_id": msg.ChatID, "seq": msg.Seq, "created_at": msg.CreatedAt,
+		"id": msg.ID, "peer_id": domain.ToPeerID(msg.ChatID, true), "seq": msg.Seq, "created_at": msg.CreatedAt,
 	})
 }
 
 // Suggest — участник предлагает пост в канал (текст/медиа + опц. время публикации).
 func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -103,7 +103,7 @@ func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 // ListSuggested — предложенные посты канала (админу все pending, автору свои).
 func (h *ChannelHandler) ListSuggested(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -160,7 +160,7 @@ func unixToTime(sec int64) *time.Time {
 
 func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -169,37 +169,37 @@ func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+	writeJSON(w, http.StatusOK, map[string]any{"discussion_peer_id": discussionPeer(disc)})
 }
 
 // LinkDiscussion links an existing group as the channel's discussion group
-// (PUT /channels/{chatID}/discussion, body {group_id}).
+// (PUT /channels/{chatID}/discussion, body {group_peer_id}).
 func (h *ChannelHandler) LinkDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
 	var b struct {
-		GroupID int64 `json:"group_id"`
+		GroupPeerID domain.PeerID `json:"group_peer_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.GroupID == 0 {
-		writeError(w, http.StatusBadRequest, "group_id required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || !b.GroupPeerID.IsAnyChat() {
+		writeError(w, http.StatusBadRequest, "group_peer_id required")
 		return
 	}
-	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupID, user.ID)
+	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupPeerID.ToChatID(), user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+	writeJSON(w, http.StatusOK, map[string]any{"discussion_peer_id": discussionPeer(disc)})
 }
 
 // UnlinkDiscussion detaches the channel's discussion group
 // (DELETE /channels/{chatID}/discussion).
 func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -214,7 +214,7 @@ func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request
 // (GET /channels/{chatID}/discussion_candidates).
 func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if _, ok := pathInt(w, r, "chatID"); !ok {
+	if _, ok := peerChatID(w, r, h.uc); !ok {
 		return
 	}
 	cands, err := h.uc.DiscussionCandidates(r.Context(), user.ID)
@@ -224,7 +224,7 @@ func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Req
 	}
 	out := make([]map[string]any, 0, len(cands))
 	for _, c := range cands {
-		out = append(out, map[string]any{"id": c.ID, "title": c.Title, "username": c.Username, "member_count": c.MemberCount})
+		out = append(out, map[string]any{"peer_id": domain.ToPeerID(c.ID, true), "title": c.Title, "username": c.Username, "member_count": c.MemberCount})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": out})
 }
@@ -233,7 +233,7 @@ func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Req
 // (PUT /channels/{chatID}/sign_messages, body {signatures, profiles}).
 func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -254,7 +254,7 @@ func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -281,7 +281,7 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -301,7 +301,7 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -342,7 +342,7 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
-	if _, ok := pathInt(w, r, "chatID"); !ok {
+	if _, ok := peerChatID(w, r, h.uc); !ok {
 		return
 	}
 	ids := make([]int64, 0)
@@ -372,7 +372,7 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -415,7 +415,7 @@ func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
 // совпадает с выдачей поиска; count — общее число похожих (для «+N» под Premium).
 func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 	viewer, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -427,7 +427,7 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 	co := make([]map[string]any, 0, len(chats))
 	for _, c := range chats {
 		co = append(co, map[string]any{
-			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
+			"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "count": count})
@@ -440,7 +440,7 @@ func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 	co := make([]map[string]any, 0, len(chats))
 	for _, c := range chats {
 		co = append(co, map[string]any{
-			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
+			"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
 		})
 	}
 	// Аватар в выдаче поиска — по правилу profile_photo владельца.

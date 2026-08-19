@@ -13,12 +13,14 @@ import (
 // StoryHandler serves the stories endpoints (post / feed / view / viewers /
 // delete). It delegates all logic to the story service; privacy and
 // author-gating live there.
+// peers — слой разрешения peerId ↔ chatID: «поделиться историей» адресует пиров.
 type StoryHandler struct {
-	svc *storyusecase.Service
+	svc   *storyusecase.Service
+	peers PeerResolver
 }
 
-func NewStoryHandler(svc *storyusecase.Service) *StoryHandler {
-	return &StoryHandler{svc: svc}
+func NewStoryHandler(svc *storyusecase.Service, peers PeerResolver) *StoryHandler {
+	return &StoryHandler{svc: svc, peers: peers}
 }
 
 func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
@@ -133,7 +135,7 @@ func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 }
 
 // Share serves POST /stories/{storyID}/share — post the story into the given
-// chats as a regular media message with an attribution caption. Body: {chat_ids}.
+// chats as a regular media message with an attribution caption. Body: {peer_ids}.
 func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	storyID, ok := pathInt(w, r, "storyID")
@@ -141,13 +143,21 @@ func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		ChatIDs []int64 `json:"chat_ids"`
+		PeerIDs []domain.PeerID `json:"peer_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.ChatIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "chat_ids required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.PeerIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "peer_ids required")
 		return
 	}
-	sent, err := h.svc.Share(r.Context(), storyID, user.ID, b.ChatIDs)
+	chatIDs := make([]int64, 0, len(b.PeerIDs))
+	for _, p := range b.PeerIDs {
+		id, ok := resolveBodyPeer(w, r, h.peers, p, true)
+		if !ok {
+			return
+		}
+		chatIDs = append(chatIDs, id)
+	}
+	sent, err := h.svc.Share(r.Context(), storyID, user.ID, chatIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return

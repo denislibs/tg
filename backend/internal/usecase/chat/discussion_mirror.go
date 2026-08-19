@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -134,12 +133,8 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// зеркало САМО корень треда, messageUpdatePayload(mirror) уже несёт
 	// thread_root_id=nil.
 	mentioned := mentionedUserIDs(mirror.Entities)
-	payload, err := json.Marshal(messageUpdatePayload(mirror))
-	if err != nil {
-		return nil, err
-	}
 	recipients, ptsByUser, unreadByUser, err := i.fanOutNewMessage(
-		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, payload, nil, mentioned)
+		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, messageUpdatePayload(mirror), nil, mentioned)
 	if err != nil {
 		return nil, err
 	}

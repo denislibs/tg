@@ -98,6 +98,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	updated, _ := json.Marshal(act)
 	var members []int64
 	ptsByUser := map[int64]int64{}
+	var pp *peerPayloads
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		msg, e := i.msgs.UpdateText(ctx, msgID, string(updated), nil)
 		if e != nil {
@@ -109,12 +110,16 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 		}
 		slices.Sort(mem)
 		members = mem
-		p, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, m.ChatID, editUpdatePayload(msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			p, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", p)
 			if e != nil {
 				return e
@@ -129,9 +134,11 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if i.publisher != nil {
 		fresh, e := i.msgs.GetByID(ctx, msgID)
 		if e == nil {
-			base := editUpdatePayload(fresh)
-			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			fp, e := i.newPeerPayloads(ctx, m.ChatID, editUpdatePayload(fresh))
+			if e == nil {
+				for _, uid := range members {
+					_ = i.publisher.PublishToUser(ctx, uid, fp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+				}
 			}
 		}
 	}

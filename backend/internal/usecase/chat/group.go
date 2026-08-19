@@ -171,7 +171,9 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		target := i.userCard(ctx, userID)
 		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", i.userCard(ctx, actorID), &target))
 	}
-	payload := map[string]any{"chat_id": chatID, "removed": true}
+	// chat_removed бывает только у группы/канала — приватный диалог не
+	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
+	payload := map[string]any{"peer_id": domain.ToPeerID(chatID, true), "removed": true}
 	var pts int64
 	var havePts bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -284,12 +286,12 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	if err := i.groups.SetMuted(ctx, chatID, userID, forever, until); err != nil {
 		return err
 	}
-	payload := map[string]any{"chat_id": chatID, "muted": muted}
+	payload := map[string]any{"muted": muted}
 	if until != nil {
 		payload["muted_until"] = until.Unix()
 	}
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublish(ctx, []int64{userID}, "dialog_mute", payload)
+	_ = i.logAndPublish(ctx, chatID, []int64{userID}, "dialog_mute", payload)
 	return nil
 }
 

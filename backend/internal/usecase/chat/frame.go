@@ -40,21 +40,45 @@ func framePts(t string, base map[string]any, pts int64) []byte {
 
 // frameChannelPts encodes {t, d} with the channel's pts injected into d as
 // channel_pts (a per-channel dense cursor, distinct from the per-user pts). The
-// client routes any frame carrying channel_pts + chat_id through its per-channel
+// client routes any frame carrying channel_pts + peer_id through its per-channel
 // funnel and gates it against the channel cursor — the same envelope the typed
 // GET /channels/{id}/difference replays for catch-up.
 func frameChannelPts(t string, base map[string]any, pts int64) []byte {
 	return frameFields(t, base, map[string]any{"channel_pts": pts})
 }
 
+// withPeer — копия базового payload с ключом пира ПОЛУЧАТЕЛЯ. base общий для
+// всех получателей (он же маршалится в журнал) и никогда не мутируется: у
+// приватного диалога peer_id у двух сторон РАЗНЫЙ, см. peeraddr.go.
+func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
+	d := make(map[string]any, len(base)+1)
+	for k, v := range base {
+		d[k] = v
+	}
+	d["peer_id"] = peer
+	return d
+}
+
+// peerRef — ссылка на чат внутри снимка (пересылка, кросс-чат-ответ, send-as)
+// как знаковый ключ пира; nil остаётся nil. Снимок общий для всех получателей,
+// поэтому зрителя здесь нет: ссылка на группу/канал одинакова для всех.
+func peerRef(chatID *int64) any {
+	if chatID == nil {
+		return nil
+	}
+	return domain.ToPeerID(*chatID, true)
+}
+
+// Payload-строители НЕ кладут ключ чата: он зависит от получателя и
+// приклеивается на выходе (withPeer / peerPayloads в updates_log.go).
 func messageUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
-		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
+		"msg_id": m.ID, "seq": m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
 		"entities": m.Entities,
 		"media_id": m.MediaID, "created_at": m.CreatedAt,
 		"reply_to_id":      m.ReplyToID,
-		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
+		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_peer_id": peerRef(m.FwdFromChatID),
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
 		"grouped_id":     m.GroupedID,
@@ -113,7 +137,7 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
 	// (имя автора + текст/лейбл), т.к. получатель может не иметь к нему доступа.
 	if m.ReplyToPeerID != nil {
-		p["reply_to_peer_id"] = *m.ReplyToPeerID
+		p["reply_to_peer_id"] = domain.ToPeerID(*m.ReplyToPeerID, true)
 		p["reply_snapshot_name"] = m.ReplySnapshotName
 		p["reply_snapshot_text"] = m.ReplySnapshotText
 	}
@@ -131,10 +155,10 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	return p
 }
 
-// sendAsJSON — представление отображаемого автора send-as (chat_id + снимок
+// sendAsJSON — представление отображаемого автора send-as (peer_id + снимок
 // title/photo). Реальный sender_id сериализуется отдельным полем и не теряется.
 func sendAsJSON(m domain.Message) map[string]any {
-	s := map[string]any{"chat_id": *m.SendAsChatID}
+	s := map[string]any{"peer_id": domain.ToPeerID(*m.SendAsChatID, true)}
 	if m.SendAsTitle != "" {
 		s["title"] = m.SendAsTitle
 	}
@@ -171,7 +195,7 @@ func geoJSON(m domain.Message) map[string]any {
 // трансляции): клиент правит гео открытого бабла без перезагрузки истории.
 func geoLiveUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
-		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "geo": geoJSON(m),
+		"msg_id": m.ID, "seq": m.Seq, "geo": geoJSON(m),
 	}
 }
 
@@ -206,7 +230,7 @@ func factCheckJSON(fc *domain.FactCheck) map[string]any {
 // блок проверки фактов в уже отрисованном бабле. factcheck==null — проверка снята.
 func factCheckUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
-		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
+		"msg_id": m.ID, "seq": m.Seq,
 		"factcheck": factCheckJSON(m.FactCheck),
 	}
 }
@@ -215,7 +239,7 @@ func factCheckUpdatePayload(m domain.Message) map[string]any {
 // rides along so a bot editing a message's keyboard updates the bubble live.
 func editUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
-		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
+		"msg_id": m.ID, "seq": m.Seq,
 		"text": m.Text, "entities": m.Entities, "edited_at": m.EditedAt,
 	}
 	p["reply_markup"] = m.ReplyMarkup // may be null → keyboard removed
@@ -224,9 +248,9 @@ func editUpdatePayload(m domain.Message) map[string]any {
 
 // deleteUpdatePayload is the body of a "delete_message" update/frame. `forMe`
 // flags a per-user "delete for me" (only that user's own tabs receive it).
-func deleteUpdatePayload(chatID, msgID, seq int64, forMe bool) map[string]any {
+func deleteUpdatePayload(msgID, seq int64, forMe bool) map[string]any {
 	return map[string]any{
-		"chat_id": chatID, "msg_id": msgID, "seq": seq, "for_me": forMe,
+		"msg_id": msgID, "seq": seq, "for_me": forMe,
 	}
 }
 
@@ -236,12 +260,12 @@ func deleteUpdatePayload(chatID, msgID, seq int64, forMe bool) map[string]any {
 // посчитанное в той же транзакции после Add/Remove. Абсолютный агрегат делает
 // повтор из /sync идемпотентным по построению. counts viewer-agnostic (без mine):
 // один и тот же payload уходит всем получателям и в лог.
-func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
+func reactionPayload(messageID, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
 	if counts == nil {
 		counts = []domain.ReactionCount{}
 	}
 	return map[string]any{
-		"chat_id": chatID, "msg_id": messageID, "user_id": userID,
+		"msg_id": messageID, "user_id": userID,
 		"author_id": authorID, "emoji": emoji, "action": action,
 		"counts": counts,
 	}
@@ -251,9 +275,9 @@ func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action st
 // сообщения (total) плюс отправитель этой порции (sender_id) с его суммарным
 // вкладом (mine). Получатели правят агрегат бабла; тот, чей id == sender_id,
 // обновляет ещё и свой личный вклад (mine).
-func starReactionPayload(chatID, messageID, senderID, total, mine int64) map[string]any {
+func starReactionPayload(messageID, senderID, total, mine int64) map[string]any {
 	return map[string]any{
-		"chat_id": chatID, "msg_id": messageID, "sender_id": senderID,
+		"msg_id": messageID, "sender_id": senderID,
 		"total": total, "mine": mine,
 	}
 }

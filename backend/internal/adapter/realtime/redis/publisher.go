@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -36,7 +37,14 @@ func (p *RedisPublisher) PublishToUsers(ctx context.Context, userIDs []int64, fr
 }
 
 // ChannelTopic is the Redis pub/sub topic for a channel's posts.
-func ChannelTopic(channelID int64) string { return fmt.Sprintf("channel:%d", channelID) }
+//
+// Ключ — ЗНАКОВЫЙ идентификатор пира (-channelID), а не id строки chats: одно
+// пространство адресов на провод, журналы и Redis (usecase/chat/peeraddr.go).
+// Формат ключа изменился в шаге B — старый и новый инстанс на живом деплое
+// пишут в РАЗНЫЕ топики, см. отчёт.
+func ChannelTopic(channelID int64) string {
+	return fmt.Sprintf("channel:%d", domain.ToPeerID(channelID, true))
+}
 
 // PublishToChannel publishes a frame once to a channel's topic. Subscribers are
 // fanned out per-replica by the WS Hub, so a channel post is O(1) regardless of

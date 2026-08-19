@@ -223,5 +223,5 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 // вкладки). Абсолютное значение баланса + плотный pts-курсор делают catch-up через
 // /sync идемпотентным. Recipient — сам пользователь (свои устройства).
 func (i *Interactor) publishBalance(ctx context.Context, userID, balance int64) {
-	_ = i.logAndPublish(ctx, []int64{userID}, "balance_update", map[string]any{"balance": balance})
+	_ = i.logAndPublish(ctx, 0, []int64{userID}, "balance_update", map[string]any{"balance": balance})
 }

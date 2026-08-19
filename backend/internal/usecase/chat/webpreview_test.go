@@ -101,31 +101,68 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if stored.WebPage == nil || stored.WebPage.Title != "Заголовок" {
 		t.Fatalf("web_page not stored: %+v", stored.WebPage)
 	}
-	// Кадр несёт chat_id/msg_id/seq/web_page.
-	pub.mu.Lock()
-	var wpFrame []byte
-	for _, f := range pub.frames {
-		if strings.Contains(string(f.frame), `"web_page_update"`) {
-			wpFrame = f.frame
-			break
-		}
-	}
-	pub.mu.Unlock()
-	var env struct {
+	// Кадр несёт peer_id/msg_id/seq/web_page. И peer_id у СТОРОН РАЗНЫЙ: для a
+	// это id b, для b — id a. Внутренний chatID не появляется ни в одном из них.
+	frameFor := func(userID int64) struct {
 		T string `json:"t"`
 		D struct {
-			ChatID  int64                 `json:"chat_id"`
+			PeerID  domain.PeerID         `json:"peer_id"`
 			MsgID   int64                 `json:"msg_id"`
 			Seq     int64                 `json:"seq"`
 			WebPage domain.WebPagePreview `json:"web_page"`
 		} `json:"d"`
+	} {
+		pub.mu.Lock()
+		var raw []byte
+		for _, f := range pub.frames {
+			if f.userID == userID && strings.Contains(string(f.frame), `"web_page_update"`) {
+				raw = f.frame
+				break
+			}
+		}
+		pub.mu.Unlock()
+		var env struct {
+			T string `json:"t"`
+			D struct {
+				PeerID  domain.PeerID         `json:"peer_id"`
+				MsgID   int64                 `json:"msg_id"`
+				Seq     int64                 `json:"seq"`
+				WebPage domain.WebPagePreview `json:"web_page"`
+			} `json:"d"`
+		}
+		if err := json.Unmarshal(raw, &env); err != nil {
+			t.Fatalf("frame json for %d: %v", userID, err)
+		}
+		return env
 	}
-	if err := json.Unmarshal(wpFrame, &env); err != nil {
-		t.Fatalf("frame json: %v", err)
+	envA, envB := frameFor(a), frameFor(b)
+	if envA.D.PeerID != domain.PeerID(b) {
+		t.Fatalf("peer_id для a = %d; want %d (собеседник)", envA.D.PeerID, b)
 	}
-	if env.D.ChatID != chatID || env.D.MsgID != msg.ID || env.D.Seq != msg.Seq || env.D.WebPage.SiteName != "Example" {
-		t.Fatalf("frame payload = %+v", env.D)
+	if envB.D.PeerID != domain.PeerID(a) {
+		t.Fatalf("peer_id для b = %d; want %d (собеседник)", envB.D.PeerID, a)
 	}
+	if envA.D.MsgID != msg.ID || envA.D.Seq != msg.Seq || envA.D.WebPage.SiteName != "Example" {
+		t.Fatalf("frame payload = %+v", envA.D)
+	}
+	if strings.Contains(string(mustFrame(t, pub, a, "web_page_update")), `"chat_id"`) {
+		t.Fatal("в кадре остался chat_id")
+	}
+	_ = chatID
+}
+
+// mustFrame — сырой кадр типа t для получателя userID.
+func mustFrame(t *testing.T, pub *fakePublisher, userID int64, typ string) []byte {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for _, f := range pub.frames {
+		if f.userID == userID && strings.Contains(string(f.frame), `"`+typ+`"`) {
+			return f.frame
+		}
+	}
+	t.Fatalf("кадр %s для %d не найден", typ, userID)
+	return nil
 }
 
 // Сообщение без ссылки превьюер не дёргает.

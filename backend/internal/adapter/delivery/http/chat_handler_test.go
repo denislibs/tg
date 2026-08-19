@@ -55,19 +55,19 @@ func TestChatFlow_HTTP(t *testing.T) {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 
 	// A sends a message.
-	path := "/chats/" + itoa(created.ChatID) + "/messages"
+	path := "/chats/" + itoa(created.PeerID) + "/messages"
 	rec = authedReq(t, h, http.MethodPost, path, tokenA, map[string]any{"text": "hello", "client_msg_id": "c1"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// History shows it.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created.ChatID)+"/history?limit=10", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created.PeerID)+"/history?limit=10", tokenA, nil)
 	var hist struct {
 		Count    int `json:"count"`
 		Messages []struct {
@@ -86,7 +86,7 @@ func TestChatFlow_HTTP(t *testing.T) {
 	}
 	var dialogs struct {
 		Chats []struct {
-			ChatID int64 `json:"chat_id"`
+			PeerID int64 `json:"peer_id"`
 			Peer   *struct {
 				ID          int64  `json:"id"`
 				DisplayName string `json:"display_name"`
@@ -124,12 +124,12 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 		t.Fatalf("create private chat: %d %s", rec.Code, rec.Body.String())
 	}
 	var xy struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &xy)
 
 	const secretText = "совершенно секретный текст X и Y"
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy.ChatID)+"/messages", tokenX, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy.PeerID)+"/messages", tokenX, map[string]any{
 		"text": secretText, "client_msg_id": "s1",
 	})
 	if rec.Code != http.StatusOK {
@@ -148,12 +148,12 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
 	var g struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &g)
 
 	// B запрашивает историю G с thread_root, указывающим на ЧУЖОЕ (X↔Y) сообщение.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(g.ChatID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(g.PeerID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history: %d %s", rec.Code, rec.Body.String())
 	}
@@ -175,7 +175,7 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 // {chats, count, is_end}; падает тестом, если код ответа не 200.
 func getChats(t *testing.T, h http.Handler, token, query string) struct {
 	Chats []struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	} `json:"chats"`
 	Count int  `json:"count"`
 	IsEnd bool `json:"is_end"`
@@ -187,7 +187,7 @@ func getChats(t *testing.T, h http.Handler, token, query string) struct {
 	}
 	var out struct {
 		Chats []struct {
-			ChatID int64 `json:"chat_id"`
+			PeerID int64 `json:"peer_id"`
 		} `json:"chats"`
 		Count int  `json:"count"`
 		IsEnd bool `json:"is_end"`
@@ -226,7 +226,7 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 	// 2) проход курсором по одному
 	var walked []int64
 	var cursor int64
-	// Ограничитель итераций: без него регрессия курсора (напр. offset_chat_id
+	// Ограничитель итераций: без него регрессия курсора (напр. offset_peer_id
 	// игнорируется) не роняет тест, а вешает его — в CI это таймаут всего
 	// прогона вместо внятной ошибки.
 	maxIter := full.Count + 2
@@ -234,7 +234,7 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 		if iter >= maxIter {
 			t.Fatalf("курсор не сходится за %d шагов, собрано: %v", maxIter, walked)
 		}
-		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_chat_id=%d", cursor))
+		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_peer_id=%d", cursor))
 		if p.Count != 3 {
 			t.Fatalf("count на странице=%d", p.Count)
 		}
@@ -242,7 +242,7 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 			t.Fatalf("limit=1 нарушен: %d", len(p.Chats))
 		}
 		for _, c := range p.Chats {
-			walked = append(walked, c.ChatID)
+			walked = append(walked, c.PeerID)
 		}
 		if p.IsEnd {
 			break
@@ -255,7 +255,7 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 		t.Fatalf("прошли %v, полная выдача %v", walked, full.Chats)
 	}
 	for i := range walked {
-		if walked[i] != full.Chats[i].ChatID {
+		if walked[i] != full.Chats[i].PeerID {
 			t.Fatalf("порядок разошёлся: %v vs %v", walked, full.Chats)
 		}
 	}
@@ -294,10 +294,10 @@ func TestListDialogsFolderID(t *testing.T) {
 			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 		}
 		var created struct {
-			ChatID int64 `json:"chat_id"`
+			PeerID int64 `json:"peer_id"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &created)
-		chatIDs = append(chatIDs, created.ChatID)
+		chatIDs = append(chatIDs, created.PeerID)
 	}
 
 	// Архивируем третий чат — фикстура: 2 обычных + 1 архивный.
@@ -355,10 +355,10 @@ func TestSync_HTTP(t *testing.T) {
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.ChatID)+"/messages", tokenA, map[string]any{"text": "hi"})
+	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/messages", tokenA, map[string]any{"text": "hi"})
 
 	// B syncs from pts=0 and sees one new_message.
 	rec = authedReq(t, h, http.MethodGet, "/sync?pts=0", tokenB, nil)
@@ -387,10 +387,10 @@ func TestReactions_HTTP(t *testing.T) {
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenA, map[string]any{"text": "hi"})
 	var msg struct {
@@ -444,7 +444,7 @@ func msgWithMedia(kind string, s domain.MediaSource) domain.Message {
 // оригинала, а не как набор плоских ключей.
 func mediaOf(t *testing.T, m domain.Message) *domain.MessageMedia {
 	t.Helper()
-	j := messageJSON(m)
+	j := messageJSON(m, domain.ToPeerID(m.ChatID, true))
 	md, ok := j["media"].(*domain.MessageMedia)
 	if !ok {
 		t.Fatalf("media отсутствует или не MessageMedia: %#v", j["media"])
@@ -636,7 +636,7 @@ func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 		Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6,
 		FileName: "clip.mp4", Blur: []byte{1, 2, 3}, HasThumb: true, Spoiler: true,
 	})
-	j := messageJSON(msg)
+	j := messageJSON(msg, domain.ToPeerID(msg.ChatID, true))
 
 	if _, ok := j["media"]; !ok {
 		t.Fatal("вложение в витрине отсутствует")
@@ -650,7 +650,7 @@ func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 	}
 
 	// Медиа нет — нет и самого ключа `media`.
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"})
+	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"}, domain.ToPeerID(2, true))
 	if _, ok := bare["media"]; ok {
 		t.Fatalf("ключ media у сообщения без медиа: %v", bare["media"])
 	}

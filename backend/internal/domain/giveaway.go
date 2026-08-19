@@ -21,8 +21,9 @@ type Giveaway struct {
 // GiveawayInfo — представление розыгрыша для конкретного зрителя (read-модель):
 // уходит клиенту как msg.Giveaway. UntilDate — unix-миллисекунды.
 type GiveawayInfo struct {
-	ID            int64   `json:"id"`
-	ChatID        int64   `json:"chat_id"`
+	ID int64 `json:"id"`
+	// PeerID — знаковый ключ канала розыгрыша (розыгрыши только в каналах).
+	PeerID        PeerID  `json:"peer_id"`
 	PrizeKind     string  `json:"prize_kind"`
 	Months        int     `json:"months"`
 	Stars         int64   `json:"stars"`

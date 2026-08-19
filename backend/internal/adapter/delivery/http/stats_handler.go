@@ -8,10 +8,16 @@ import (
 )
 
 // StatsHandler — статистика каналов/супергрупп (аналог tweb stats.getBroadcastStats).
-type StatsHandler struct{ uc *usecasestats.Interactor }
+// peers — слой разрешения peerId ↔ chatID: в URL едет знаковый ключ пира.
+type StatsHandler struct {
+	uc    *usecasestats.Interactor
+	peers PeerResolver
+}
 
 // NewStatsHandler создаёт хендлер статистики.
-func NewStatsHandler(uc *usecasestats.Interactor) *StatsHandler { return &StatsHandler{uc: uc} }
+func NewStatsHandler(uc *usecasestats.Interactor, peers PeerResolver) *StatsHandler {
+	return &StatsHandler{uc: uc, peers: peers}
+}
 
 const statDayFmt = "2006-01-02"
 
@@ -19,7 +25,7 @@ const statDayFmt = "2006-01-02"
 // канала (иначе 403). Возвращает обзор + временные ряды + топ-посты.
 func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.peers)
 	if !ok {
 		return
 	}
@@ -65,7 +71,7 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 // создателя/админа (иначе 403); нет поста — 404.
 func (h *StatsHandler) PostStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.peers)
 	if !ok {
 		return
 	}

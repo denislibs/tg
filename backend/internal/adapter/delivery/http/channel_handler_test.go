@@ -19,13 +19,13 @@ func TestChannelFlow_HTTP(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.ChatID == 0 {
+	if created.PeerID == 0 {
 		t.Fatalf("expected chat_id, got %s", rec.Body.String())
 	}
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// Creator posts → 200 + seq.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -36,14 +36,14 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	}
 	var post struct {
 		Seq    int64 `json:"seq"`
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &post)
 	if post.Seq == 0 {
 		t.Fatalf("expected non-zero seq, got %s", rec.Body.String())
 	}
-	if post.ChatID != created.ChatID {
-		t.Fatalf("post chat_id = %d; want %d", post.ChatID, created.ChatID)
+	if post.PeerID != created.PeerID {
+		t.Fatalf("post chat_id = %d; want %d", post.PeerID, created.PeerID)
 	}
 
 	// A second post so difference has more than one entry.
@@ -131,10 +131,10 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// A posts → capture the post message id.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -158,11 +158,11 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	if disc.DiscussionChatID == 0 {
-		t.Fatalf("expected discussion_chat_id, got %s", rec.Body.String())
+	if disc.DiscussionPeerID == 0 {
+		t.Fatalf("expected discussion_peer_id, got %s", rec.Body.String())
 	}
 
 	// B posts a comment on the post → 200.
@@ -227,10 +227,10 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
 		"text": "discuss this too", "client_msg_id": "p1",
@@ -249,10 +249,10 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionChatID)
+	discCid := itoa(disc.DiscussionPeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
 		"text": "nice", "client_msg_id": "k1",
@@ -335,10 +335,10 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	const postText = "уникальный текст поста для проверки дубликата в треде"
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -358,10 +358,10 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionChatID)
+	discCid := itoa(disc.DiscussionPeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
 		"text": "первый комментарий", "client_msg_id": "k1",
@@ -412,10 +412,10 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
 		"text": "discuss via generic send", "client_msg_id": "p1",
@@ -434,10 +434,10 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionChatID)
+	discCid := itoa(disc.DiscussionPeerID)
 
 	// Сперва штатный /comments — заводит зеркало поста и оставляет "эталонный"
 	// комментарий, с которым сравниваем thread_root_id ниже.
@@ -519,10 +519,10 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// Два поста ДО EnableDiscussion — зеркал ещё не существует ни у одного.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -555,10 +555,10 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionChatID)
+	discCid := itoa(disc.DiscussionPeerID)
 
 	// generic-send к ОБОИМ домиграционным постам — зеркала дозаводятся лениво.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
@@ -660,10 +660,10 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	const postText = "пост со скрываемым зеркалом"
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -682,10 +682,10 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var disc struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionChatID)
+	discCid := itoa(disc.DiscussionPeerID)
 
 	// B комментирует — заводит зеркало и авто-вступает в группу обсуждения.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(post.ID)+"/comments", tokenB, map[string]any{
@@ -756,18 +756,18 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	// A creates a channel.
 	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{"title": "Ch"})
 	var ch struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &ch)
-	cid := itoa(ch.ChatID)
+	cid := itoa(ch.PeerID)
 
 	// A creates a plain group (discussion candidate).
 	rec = authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Talk"})
 	var grp struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &grp)
-	gid := grp.ChatID
+	gid := grp.PeerID
 
 	// discussion_candidates lists the group.
 	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/discussion_candidates", tokenA, nil)
@@ -776,13 +776,13 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	}
 	var cands struct {
 		Chats []struct {
-			ID int64 `json:"id"`
+			PeerID int64 `json:"peer_id"`
 		} `json:"chats"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &cands)
 	found := false
 	for _, c := range cands.Chats {
-		if c.ID == gid {
+		if c.PeerID == gid {
 			found = true
 		}
 	}
@@ -791,28 +791,28 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	}
 
 	// PUT discussion links it.
-	rec = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/discussion", tokenA, map[string]any{"group_id": gid})
+	rec = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/discussion", tokenA, map[string]any{"group_peer_id": gid})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("link discussion: %d %s", rec.Code, rec.Body.String())
 	}
 	var linked struct {
-		DiscussionChatID int64 `json:"discussion_chat_id"`
+		DiscussionPeerID int64 `json:"discussion_peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &linked)
-	if linked.DiscussionChatID != gid {
-		t.Fatalf("linked discussion = %d; want %d", linked.DiscussionChatID, gid)
+	if linked.DiscussionPeerID != gid {
+		t.Fatalf("linked discussion = %d; want %d", linked.DiscussionPeerID, gid)
 	}
 
 	// Card reflects the link and the now-linked group is no longer a candidate.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
 	var card struct {
-		DiscussionChatID  int64 `json:"discussion_chat_id"`
+		DiscussionPeerID  int64 `json:"discussion_peer_id"`
 		Signatures        bool  `json:"signatures"`
 		SignatureProfiles bool  `json:"signature_profiles"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.DiscussionChatID != gid {
-		t.Fatalf("card discussion_chat_id = %d; want %d", card.DiscussionChatID, gid)
+	if card.DiscussionPeerID != gid {
+		t.Fatalf("card discussion_chat_id = %d; want %d", card.DiscussionPeerID, gid)
 	}
 
 	// DELETE discussion unlinks.
@@ -822,8 +822,8 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
 	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.DiscussionChatID != 0 {
-		t.Fatalf("discussion still linked after unlink: %d", card.DiscussionChatID)
+	if card.DiscussionPeerID != 0 {
+		t.Fatalf("discussion still linked after unlink: %d", card.DiscussionPeerID)
 	}
 
 	// sign_messages toggles signatures on the card.

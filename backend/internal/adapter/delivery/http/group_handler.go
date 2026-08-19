@@ -65,12 +65,12 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(id, true)})
 }
 
 func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -90,7 +90,7 @@ func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 // /chats/{chatID}/photo). Access to the bytes is enforced by the media GET.
 func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -132,7 +132,7 @@ var usernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
 // SetType switches private/public (PUT /chats/{chatID}/type).
 func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -162,7 +162,7 @@ func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 // SetPermissions stores default member permissions + slowmode (PUT /chats/{chatID}/permissions).
 func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -184,7 +184,7 @@ func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
 // SetReactions stores the reaction policy (PUT /chats/{chatID}/reactions).
 func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -210,7 +210,7 @@ func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
 // SetHistory toggles chat history visibility for new members (PUT /chats/{chatID}/history).
 func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -231,7 +231,7 @@ func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 // ListBans returns the removed-users list (GET /chats/{chatID}/bans).
 func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -250,7 +250,7 @@ func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 // Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
 func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -271,7 +271,7 @@ func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 // Unban removes a user from the removed-users list (DELETE /chats/{chatID}/bans/{userID}).
 func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -290,7 +290,7 @@ func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 // (GET /chats/{chatID}/restrictions).
 func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -318,7 +318,7 @@ func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) 
 // Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
 func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -342,7 +342,7 @@ func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
 // (DELETE /chats/{chatID}/restrictions/{userID}).
 func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -362,7 +362,7 @@ func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 // (revoked:true); this permanently removes the row (Telegram deleteExportedChatInvite).
 func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -382,7 +382,7 @@ func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 // (DELETE /chats/{chatID}/revoked_invite_links; Telegram deleteRevokedExportedChatInvites).
 func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -396,7 +396,7 @@ func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) 
 // DeleteGroup deletes the group for everyone (DELETE /chats/{chatID}; creator only).
 func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -409,7 +409,7 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -430,7 +430,7 @@ func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -447,7 +447,7 @@ func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -469,7 +469,7 @@ func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -498,7 +498,7 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 // применяются, отсутствующие не меняются.
 func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -524,7 +524,7 @@ func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
 // SetPin — POST /chats/{chatID}/pin {pinned}: закрепить/открепить диалог.
 func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -549,7 +549,7 @@ func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 // SetArchive — POST /chats/{chatID}/archive {archived}: в архив / из архива.
 func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -569,7 +569,7 @@ func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -579,14 +579,14 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
+		"peer_id": domain.ToPeerID(c.ID, true), "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
 		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
 		"default_permissions": int(c.Settings.DefaultPerms), "slowmode_seconds": c.Settings.SlowmodeSeconds,
 		"reactions_mode": c.Settings.ReactionsMode, "reactions_allowed": c.Settings.ReactionsAllowed,
 		"history_for_new": c.Settings.HistoryForNew,
 		"charge_stars":    c.Settings.ChargeStars,
 		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
-		"discussion_chat_id": c.DiscussionChatID,
+		"discussion_peer_id": discussionPeer(c.DiscussionChatID),
 		"signatures":         c.Signatures, "signature_profiles": c.SignatureProfiles,
 	})
 }
@@ -594,7 +594,7 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 // SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).
 func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -614,7 +614,7 @@ func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -709,7 +709,7 @@ func inviteLinkJSON(l domain.InviteLink) map[string]any {
 
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -736,7 +736,7 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -758,7 +758,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 // (0 → no expiry).
 func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -818,7 +818,7 @@ func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
 // (GET /chats/{chatID}/invite_links/{token}/importers).
 func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -856,7 +856,7 @@ func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -874,7 +874,7 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -891,7 +891,7 @@ func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request
 
 func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}

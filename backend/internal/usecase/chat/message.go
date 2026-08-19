@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -444,20 +443,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		extRoot = i.externalThreadRoot(ctx, msg)
 		outMsg := messageUpdatePayload(msg)
 		outMsg["thread_root_id"] = extRoot
-		payload, e := json.Marshal(outMsg)
-		if e != nil {
-			return e
-		}
 		// Платное медиа: получателям (не автору) в персональный апдейт кладём
 		// заблокированный вариант — без ссылок на контент, только blur+цена.
-		var payloadLocked []byte
+		var outLocked map[string]any
 		if msg.PaidMediaPrice != nil {
-			lockedOut := messageUpdatePayload(lockedPaidCopy(msg))
-			lockedOut["thread_root_id"] = extRoot
-			payloadLocked, e = json.Marshal(lockedOut)
-			if e != nil {
-				return e
-			}
+			outLocked = messageUpdatePayload(lockedPaidCopy(msg))
+			outLocked["thread_root_id"] = extRoot
 		}
 		// Веер по участникам чата (pts-лог + unread + упоминания), батчами: 3
 		// запроса вместо 3×M. Раньше на каждого участника шли AppendUpdate (2
@@ -465,7 +456,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс). Общий с
 		// доставкой зеркала поста канала — см. fanOutNewMessage.
 		recipients, ptsByUser, unreadByUser, e = i.fanOutNewMessage(
-			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, payload, payloadLocked, mentioned)
+			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, outMsg, outLocked, mentioned)
 		return e
 	})
 	if err != nil {
@@ -485,7 +476,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+					peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text, peer)
 				}
 			}
 		}
@@ -551,6 +543,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	var effective int64
 	var advanced bool
 	var unread int
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		cur, e := i.chats.CurrentReadSeq(ctx, chatID, userID)
@@ -601,15 +594,18 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		// Один и тот же base для лога и live-кадра: authoritative unread — это unread
 		// самого читателя (единое значение); клиент применяет его, только если
 		// user_id == me (у остальных участников это read-receipt по up_to_seq).
-		base := map[string]any{
-			"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread,
-		}
-		payload, e := json.Marshal(base)
+		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{
+			"user_id": userID, "up_to_seq": effective, "unread": unread,
+		})
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
 			if e != nil {
 				return e
@@ -628,9 +624,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
 	if i.publisher != nil && advanced {
-		base := map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("read", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	// Channel posts track a per-viewer view count: register this reader's view of
@@ -805,6 +800,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	}
 	var members []int64
 	var cleared bool
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
@@ -818,12 +814,16 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		}
 		slices.Sort(m)
 		members = m
-		payload, e := json.Marshal(map[string]any{"chat_id": chatID, "msg_id": msgID})
+		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"msg_id": msgID})
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "media_read", payload)
 			if e != nil {
 				return e
@@ -836,9 +836,8 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		return err
 	}
 	if cleared && i.publisher != nil {
-		base := map[string]any{"chat_id": chatID, "msg_id": msgID}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("media_read", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return nil
@@ -936,11 +935,6 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action st
 	if err != nil {
 		return err
 	}
-	f := frame("typing", map[string]any{"chat_id": chatID, "user_id": userID, "action": action})
-	for _, uid := range members {
-		if uid != userID {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
-		}
-	}
+	i.publishPeerFrame(ctx, chatID, members, userID, "typing", map[string]any{"user_id": userID, "action": action})
 	return nil
 }

@@ -33,10 +33,10 @@ func TestPostStats_HTTP(t *testing.T) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "post"})
 	if rec.Code != http.StatusOK {

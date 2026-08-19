@@ -56,6 +56,8 @@ type Interactor struct {
 	profilePics  ProfilePhotoAdder
 	presence     PresenceQuery
 	botHub       *botPendingHub
+	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
+	peerAddrs *peerAddrCache
 }
 
 // New constructs the chat interactor from its ports.
@@ -73,6 +75,7 @@ func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, rea
 		channels:    channels,
 		search:      search,
 		botHub:      newBotHub(), // init заранее — иначе гонка на ленивой инициализации
+		peerAddrs:   newPeerAddrCache(),
 	}
 }
 

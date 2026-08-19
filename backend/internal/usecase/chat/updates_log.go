@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // logAndPublish records `typ`(base) in every recipient's per-user update log —
@@ -13,17 +15,22 @@ import (
 // append is its own short transaction, so a /sync catch-up replays exactly what
 // the live path delivered and the client's cursor stays dense.
 //
-// base is the shared payload marshalled once for the log; it is never mutated —
-// framePts injects each recipient's pts into a COPY (frameFields). Recipients are
-// used as given (the caller dedups); own-device events pass a single id.
+// base is the shared payload; it is never mutated — the recipient's peer_id and
+// pts are injected into a COPY (withPeer / frameFields). Recipients are used as
+// given (the caller dedups); own-device events pass a single id.
+//
+// chatID — внутренний чат события (0 у кадров без чата: баланс, папки). Наружу
+// он не выходит: каждому получателю уезжает ЕГО peer_id, а у приватного диалога
+// он у двух сторон разный (см. peeraddr.go), поэтому payload журнала маршалится
+// по одному на каждый различный ключ, а не один на всех.
 //
 // No-op without an update log (some unit-test setups wire updates=nil, mirroring
 // postGroupService); publishing is skipped without a publisher.
-func (i *Interactor) logAndPublish(ctx context.Context, recipients []int64, typ string, base map[string]any) error {
+func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients []int64, typ string, base map[string]any) error {
 	if i.updates == nil || len(recipients) == 0 {
 		return nil
 	}
-	payload, err := json.Marshal(base)
+	pp, err := i.newPeerPayloads(ctx, chatID, base)
 	if err != nil {
 		return err
 	}
@@ -31,6 +38,10 @@ func (i *Interactor) logAndPublish(ctx context.Context, recipients []int64, typ 
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
 		for _, uid := range recipients {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, typ, payload)
 			if e != nil {
 				return e
@@ -44,10 +55,118 @@ func (i *Interactor) logAndPublish(ctx context.Context, recipients []int64, typ 
 	}
 	if i.publisher != nil {
 		for _, uid := range recipients {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts(typ, base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame(typ, uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return nil
+}
+
+// peerPayloads — общий payload кадра, развёрнутый по КЛЮЧАМ ПИРА получателей.
+//
+// Это рабочее место асимметрии приватного диалога: в группе и канале ключ один
+// на всех (значит один marshal, как было), в приватном чате их ровно два — по
+// одному на сторону. Разворачивать по получателям, а не по ключам, было бы
+// расточительно: в канале с тысячей подписчиков payload один и тот же.
+type peerPayloads struct {
+	addr   chatAddress
+	base   map[string]any
+	byPeer map[domain.PeerID]json.RawMessage
+}
+
+// newPeerPayloads готовит развёртку. chatID == 0 — кадр без чата (баланс звёзд,
+// папки): ключа пира у него нет, payload один на всех.
+func (i *Interactor) newPeerPayloads(ctx context.Context, chatID int64, base map[string]any) (*peerPayloads, error) {
+	pp := &peerPayloads{base: base, byPeer: map[domain.PeerID]json.RawMessage{}}
+	if chatID == 0 {
+		return pp, nil
+	}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	pp.addr = addr
+	return pp, nil
+}
+
+// peer — ключ пира ГЛАЗАМИ получателя (NullPeerID у кадров без чата).
+func (p *peerPayloads) peer(viewerID int64) domain.PeerID {
+	if p.addr.chatID == 0 {
+		return domain.NullPeerID
+	}
+	return p.addr.forViewer(viewerID)
+}
+
+// payload — журнальное тело кадра для получателя; мемоизировано по ключу пира.
+func (p *peerPayloads) payload(viewerID int64) (json.RawMessage, error) {
+	peer := p.peer(viewerID)
+	if raw, ok := p.byPeer[peer]; ok {
+		return raw, nil
+	}
+	d := p.base
+	if peer != domain.NullPeerID {
+		d = withPeer(p.base, peer)
+	}
+	raw, err := json.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	p.byPeer[peer] = raw
+	return raw, nil
+}
+
+// frame — живой кадр получателю: тело журнала плюс его пер-юзерные поля (pts,
+// unread). Форма кадра и записи журнала совпадают по построению.
+func (p *peerPayloads) frame(t string, viewerID int64, extra map[string]any) []byte {
+	if peer := p.peer(viewerID); peer != domain.NullPeerID {
+		return frameFields(t, withPeer(p.base, peer), extra)
+	}
+	return frameFields(t, p.base, extra)
+}
+
+// appendByPeer пишет кадр в персональные журналы получателей БАТЧАМИ по ключу
+// пира: у группы и канала ключ один на всех, значит батч один — ровно как было
+// до перехода на peerId; у приватного диалога батчей два, по одному на сторону.
+// pts складывается в общий ptsByUser.
+func (i *Interactor) appendByPeer(ctx context.Context, pp *peerPayloads, users []int64, date int64, ptsByUser map[int64]int64) error {
+	byPeer := make(map[domain.PeerID][]int64, 2)
+	for _, uid := range users {
+		p := pp.peer(uid)
+		byPeer[p] = append(byPeer[p], uid)
+	}
+	for _, group := range byPeer {
+		payload, err := pp.payload(group[0])
+		if err != nil {
+			return err
+		}
+		m, err := i.updates.AppendUpdateBulk(ctx, group, 1, date, "new_message", payload)
+		if err != nil {
+			return err
+		}
+		for u, p := range m {
+			ptsByUser[u] = p
+		}
+	}
+	return nil
+}
+
+// publishPeerFrame рассылает ЭФЕМЕРНЫЙ кадр (без журнала: печатает, звонки,
+// рукопожатие секретного чата) участникам чата — каждому с ЕГО ключом пира.
+// exclude пропускается (0 — никого). Молча ничего не делает без publisher или
+// когда адрес чата не читается: эфемерный кадр не стоит ошибки запроса.
+func (i *Interactor) publishPeerFrame(ctx context.Context, chatID int64, recipients []int64, exclude int64, t string, base map[string]any) {
+	if i.publisher == nil || len(recipients) == 0 {
+		return
+	}
+	pp, err := i.newPeerPayloads(ctx, chatID, base)
+	if err != nil {
+		return
+	}
+	for _, uid := range recipients {
+		if uid == exclude {
+			continue
+		}
+		_ = i.publisher.PublishToUser(ctx, uid, pp.frame(t, uid, nil))
+	}
 }
 
 // logAndPublishChannel is the O(1) channel-broadcast counterpart of logAndPublish
@@ -57,11 +176,15 @@ func (i *Interactor) logAndPublish(ctx context.Context, recipients []int64, typ 
 // to channel:{id}. Subscribers receive it live; the rest catch up on open via the
 // typed GET /channels/{id}/difference. base is an absolute snapshot, so replay is
 // idempotent. No-op without a channel log; publish skipped without a publisher.
+//
+// Ключ пира здесь один на всех подписчиков (-channelID) — асимметрии, как у
+// приватного диалога, у канала нет, поэтому payload по-прежнему маршалится один.
 func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, typ string, base map[string]any) error {
 	if i.channels == nil {
 		return nil
 	}
-	payload, err := json.Marshal(base)
+	d := withPeer(base, domain.ToPeerID(channelID, true))
+	payload, err := json.Marshal(d)
 	if err != nil {
 		return err
 	}
@@ -75,7 +198,7 @@ func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, 
 		return err
 	}
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts(typ, base, pts))
+		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts(typ, d, pts))
 	}
 	return nil
 }

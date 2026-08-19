@@ -25,8 +25,10 @@ func helloFrame(st domain.UserState) []byte {
 	return b
 }
 
+// Входящие кадры адресуют ПИРА знаковым ключом (пользователь ≥ 0, чат < 0);
+// внутренний chatID достаёт слой разрешения (usecase/chat/peeraddr.go).
 type sendMessageData struct {
-	ChatID    int64                  `json:"chat_id"`
+	PeerID    domain.PeerID          `json:"peer_id"`
 	Type      string                 `json:"type"`
 	Text      string                 `json:"text"`
 	Entities  domain.MessageEntities `json:"entities"`
@@ -60,21 +62,38 @@ type sendMessageData struct {
 	// MediaSpoiler — скрыть медиа спойлером (Telegram messageMedia.pFlags.spoiler);
 	// работает только вместе с media_id.
 	MediaSpoiler bool `json:"media_spoiler"`
-	// SendAsChatID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
-	SendAsChatID *int64 `json:"send_as_chat_id"`
+	// SendAsPeerID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
+	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
 }
 
 type readData struct {
-	ChatID  int64 `json:"chat_id"`
-	UpToSeq int64 `json:"up_to_seq"`
+	PeerID  domain.PeerID `json:"peer_id"`
+	UpToSeq int64         `json:"up_to_seq"`
 }
 
 type readMediaData struct {
-	ChatID int64 `json:"chat_id"`
-	MsgID  int64 `json:"msg_id"`
+	PeerID domain.PeerID `json:"peer_id"`
+	MsgID  int64         `json:"msg_id"`
 }
 
 type typingData struct {
-	ChatID int64  `json:"chat_id"`
-	Action string `json:"action"` // "typing" | "voice" | "video" (default typing)
+	PeerID domain.PeerID `json:"peer_id"`
+	Action string        `json:"action"` // "typing" | "voice" | "video" (default typing)
+}
+
+// sendAsChatID — знаковый ключ «личности отправителя» во внутренний chatID.
+// send-as бывает только каналом/супергруппой, поэтому это чистая арифметика:
+// пользователь в этом поле смысла не имеет и трактуется как «от себя».
+func sendAsChatID(peer *domain.PeerID) *int64 {
+	if peer == nil || !peer.IsAnyChat() {
+		return nil
+	}
+	id := peer.ToChatID()
+	return &id
+}
+
+// peerData — кадры, у которых в теле только адрес пира (подписка на канал,
+// вход/выход из группового звонка).
+type peerData struct {
+	PeerID domain.PeerID `json:"peer_id"`
 }

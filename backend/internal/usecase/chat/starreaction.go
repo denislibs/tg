@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -48,6 +47,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		authorCredit bool
 	)
 	ptsByUser := map[int64]int64{}
+	var pp *peerPayloads
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
 		if e == domain.ErrForbidden {
@@ -83,13 +83,16 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 			return e
 		}
 		members = m
-		p := starReactionPayload(chatID, messageID, userID, agg.Total, mine)
-		payload, e := json.Marshal(p)
+		pp, e = i.newPeerPayloads(ctx, chatID, starReactionPayload(messageID, userID, agg.Total, mine))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "star_reaction", payload)
 			if e != nil {
 				return e
@@ -103,9 +106,8 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	}
 
 	if i.publisher != nil {
-		base := starReactionPayload(chatID, messageID, userID, agg.Total, agg.Mine)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("star_reaction", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("star_reaction", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	i.publishBalance(ctx, userID, senderBal)

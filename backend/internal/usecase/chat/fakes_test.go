@@ -108,6 +108,20 @@ func (s *store) seedDiscussion(channelID, groupID int64) {
 	s.discussionChat[channelID] = groupID
 }
 
+// seedChat заводит чат заданного типа с участниками (эквивалент строки в chats
+// + строк в chat_members).
+func (s *store) seedChat(chatID int64, typ string, members ...int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chatType[chatID] = typ
+	s.chatSeq[chatID] = 0
+	m := map[int64]*member{}
+	for _, uid := range members {
+		m[uid] = &member{}
+	}
+	s.members[chatID] = m
+}
+
 func (s *store) seedMedia(mediaID, ownerID int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1613,7 +1627,7 @@ type fakeNotifier struct {
 	recipients []int64
 }
 
-func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _, _ int64, _ string) {
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _, _ int64, _ string, _ domain.PeerID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.recipients = append(n.recipients, recipientID)

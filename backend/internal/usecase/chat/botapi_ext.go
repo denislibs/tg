@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"path"
 	"slices"
 	"strconv"
@@ -46,6 +45,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	}
 	msg := cur
 	var members []int64
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if text != nil {
@@ -68,12 +68,16 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, chatID, editUpdatePayload(msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
 			if e != nil {
 				return e
@@ -86,9 +90,8 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return msg, nil

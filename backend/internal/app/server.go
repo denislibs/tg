@@ -302,7 +302,7 @@ func registerServer(p serverParams) {
 	// (tweb рисует футер лишь при webPage.cached_page), а проба греет кэш.
 	p.ChatUC.SetIVProber(ivUC)
 
-	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
+	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
@@ -314,6 +314,8 @@ func registerServer(p serverParams) {
 	// pts-курсор для /sync), а при живом Redis — ещё и шлём кадр на устройства
 	// владельца.
 	foldersUC.SetUpdateLog(pgadapter.NewUpdatesRepo(p.Pool))
+	// Слой разрешения peerId ↔ chatID: правила папок едут ключами пиров.
+	foldersUC.SetPeers(p.ChatUC)
 	if realtimePublisher != nil {
 		foldersUC.SetPublisher(realtimePublisher)
 	}

@@ -171,6 +171,6 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	// платное медиа может быть и на комментарии, чокпоинт применяем безусловно.
 	unlockOut := messageUpdatePayload(msg)
 	unlockOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
-	_ = i.logAndPublish(ctx, []int64{userID}, "paid_media_unlock", unlockOut)
+	_ = i.logAndPublish(ctx, msg.ChatID, []int64{userID}, "paid_media_unlock", unlockOut)
 	return msg, bal, nil
 }

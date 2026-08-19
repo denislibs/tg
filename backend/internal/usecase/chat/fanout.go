@@ -20,19 +20,34 @@ import (
 // транзакции не открывает и не может: голый pgxpool.Begin завёл бы вторую,
 // никак не связанную с первой (наш TxManager вложенность не поддерживает).
 //
-// payloadLocked — nil, если у сообщения нет платного медиа (обычный случай,
+// outLocked — nil, если у сообщения нет платного медиа (обычный случай,
 // всегда nil для зеркала — оно платное медиа не копирует); иначе
 // получателям (не автору) в pts-лог уходит заблокированный вариант, как в
 // Send.
+//
+// Payload'ы приходят СТРУКТУРАМИ, а не байтами: ключ пира у приватного
+// диалога разный у двух сторон, поэтому маршалить приходится не один раз на
+// сообщение, а один раз на каждый различный ключ (peerPayloads).
 func (i *Interactor) fanOutNewMessage(
 	ctx context.Context, chatID, senderID, msgID, msgSeq int64,
-	payload, payloadLocked []byte, mentioned map[int64]bool,
+	out, outLocked map[string]any, mentioned map[int64]bool,
 ) (recipients []int64, ptsByUser, unreadByUser map[int64]int64, err error) {
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	slices.Sort(members)
+	pp, err := i.newPeerPayloads(ctx, chatID, out)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var ppLocked *peerPayloads
+	if outLocked != nil {
+		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	ptsByUser = map[int64]int64{}
 	unreadByUser = map[int64]int64{}
 	others := make([]int64, 0, len(members))
@@ -50,32 +65,20 @@ func (i *Interactor) fanOutNewMessage(
 	// (len-гарды сохраняют семантику «пустой список — ни одного вызова
 	// репозитория»; часть тест-стабов не задаёт updates).
 	switch {
-	case payloadLocked != nil:
+	case ppLocked != nil:
 		if senderIn {
-			m1, e := i.updates.AppendUpdateBulk(ctx, []int64{senderID}, 1, date, "new_message", payload)
-			if e != nil {
+			if e := i.appendByPeer(ctx, pp, []int64{senderID}, date, ptsByUser); e != nil {
 				return nil, nil, nil, e
-			}
-			for u, p := range m1 {
-				ptsByUser[u] = p
 			}
 		}
 		if len(others) > 0 {
-			m2, e := i.updates.AppendUpdateBulk(ctx, others, 1, date, "new_message", payloadLocked)
-			if e != nil {
+			if e := i.appendByPeer(ctx, ppLocked, others, date, ptsByUser); e != nil {
 				return nil, nil, nil, e
-			}
-			for u, p := range m2 {
-				ptsByUser[u] = p
 			}
 		}
 	case len(members) > 0:
-		pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "new_message", payload)
-		if e != nil {
+		if e := i.appendByPeer(ctx, pp, members, date, ptsByUser); e != nil {
 			return nil, nil, nil, e
-		}
-		for u, p := range pm {
-			ptsByUser[u] = p
 		}
 	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
@@ -126,10 +129,17 @@ func (i *Interactor) publishMessageDelivery(
 	}
 	base := messageUpdatePayload(msg)
 	base["thread_root_id"] = extRoot
-	var baseLocked map[string]any
+	pp, err := i.newPeerPayloads(ctx, msg.ChatID, base)
+	if err != nil {
+		return
+	}
+	ppLocked := pp
 	if msg.PaidMediaPrice != nil {
-		baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
+		baseLocked := messageUpdatePayload(lockedPaidCopy(msg))
 		baseLocked["thread_root_id"] = extRoot
+		if ppLocked, err = i.newPeerPayloads(ctx, msg.ChatID, baseLocked); err != nil {
+			return
+		}
 	}
 	// Realtime-кадры всем получателям — одним pipeline'ом (было бы M
 	// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
@@ -137,16 +147,16 @@ func (i *Interactor) publishMessageDelivery(
 	uids := make([]int64, 0, len(recipients))
 	frames := make([][]byte, 0, len(recipients))
 	for _, uid := range recipients {
-		b := base
-		if baseLocked != nil && uid != senderID {
-			b = baseLocked
+		b := pp
+		if uid != senderID {
+			b = ppLocked
 		}
 		extra := map[string]any{"pts": ptsByUser[uid]}
 		if uid != senderID {
 			extra["unread"] = unreadByUser[uid]
 		}
 		uids = append(uids, uid)
-		frames = append(frames, frameFields("new_message", b, extra))
+		frames = append(frames, b.frame("new_message", uid, extra))
 	}
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
 }

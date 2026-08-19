@@ -13,6 +13,9 @@ type PresenceStore struct{ rdb *goredis.Client }
 
 func NewPresenceStore(rdb *goredis.Client) *PresenceStore { return &PresenceStore{rdb: rdb} }
 
+// presKey/lastSeenKey ключуются id ПОЛЬЗОВАТЕЛЯ, а у пользователя peerId
+// совпадает с id (isUser: peerId >= 0) — переход на знаковый ключ их не меняет
+// ни по имени, ни по значению.
 func presKey(userID int64) string     { return "presence:" + strconv.FormatInt(userID, 10) }
 func lastSeenKey(userID int64) string { return "lastseen:" + strconv.FormatInt(userID, 10) }
 

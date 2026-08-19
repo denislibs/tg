@@ -85,8 +85,8 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 		}
 		// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает
 		// и через /sync (плотный pts-курсор), а не только живым кадром.
-		_ = i.logAndPublish(wctx, recipients, "web_page_update", map[string]any{
-			"chat_id": msg.ChatID, "msg_id": msg.ID, "seq": msg.Seq, "web_page": wp,
+		_ = i.logAndPublish(wctx, msg.ChatID, recipients, "web_page_update", map[string]any{
+			"msg_id": msg.ID, "seq": msg.Seq, "web_page": wp,
 		})
 	})
 }

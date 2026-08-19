@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"time"
 
@@ -173,13 +172,17 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			// а не полагаемся на память о том, что этот путь «якобы безопасен».
 			fwdOut := messageUpdatePayload(msg)
 			fwdOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
-			payload, e := json.Marshal(fwdOut)
+			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
 			if e != nil {
 				return e
 			}
 			ptsByUser := make(map[int64]int64, len(members))
 			unreadByUser := make(map[int64]int64, len(members))
 			for _, uid := range members {
+				payload, e := pp.payload(uid)
+				if e != nil {
+					return e
+				}
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", payload)
 				if e != nil {
 					return e
@@ -206,14 +209,19 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		for idx, msg := range created {
 			base := messageUpdatePayload(msg)
 			base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+			pp, e := i.newPeerPayloads(ctx, in.ToChatID, base)
+			if e != nil {
+				break
+			}
 			for _, uid := range members {
 				extra := map[string]any{"pts": ptsMaps[idx][uid]}
 				if uid != in.SenderID {
 					extra["unread"] = unreadMaps[idx][uid]
 				}
-				_ = i.publisher.PublishToUser(ctx, uid, frameFields("new_message", base, extra))
+				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("new_message", uid, extra))
 				if i.notifier != nil && uid != in.SenderID {
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+					notifyPeer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text, notifyPeer)
 				}
 			}
 		}

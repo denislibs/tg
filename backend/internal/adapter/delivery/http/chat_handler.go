@@ -35,12 +35,13 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "user_id is required")
 		return
 	}
-	id, err := h.svc.CreatePrivateChat(r.Context(), h.meID(r), body.UserID)
-	if err != nil {
+	if _, err := h.svc.CreatePrivateChat(r.Context(), h.meID(r), body.UserID); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create chat")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	// Наружу — ключ пира, а не id строки в chats: для приватного диалога это id
+	// СОБЕСЕДНИКА (см. usecase/chat/peeraddr.go).
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.PeerID(body.UserID)})
 }
 
 type secretCreateBody struct {
@@ -63,7 +64,7 @@ func (h *ChatHandler) CreateSecretChat(w http.ResponseWriter, r *http.Request) {
 	if h.writeSecretErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(sc.ChatID, true), "state": sc.State})
 }
 
 type secretAcceptBody struct {
@@ -71,7 +72,7 @@ type secretAcceptBody struct {
 }
 
 func (h *ChatHandler) AcceptSecretChat(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -89,11 +90,11 @@ func (h *ChatHandler) AcceptSecretChat(w http.ResponseWriter, r *http.Request) {
 	if h.writeSecretErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(sc.ChatID, true), "state": sc.State})
 }
 
 func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -107,7 +108,7 @@ func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
 // GetSecretChat отдаёт состояние handshake участнику (state + публичные ключи),
 // чтобы UI восстановил рукопожатие после перезагрузки (accept/complete).
 func (h *ChatHandler) GetSecretChat(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -116,7 +117,7 @@ func (h *ChatHandler) GetSecretChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{
-		"chat_id":      sc.ChatID,
+		"peer_id":      domain.ToPeerID(sc.ChatID, true),
 		"initiator_id": sc.InitiatorID,
 		"responder_id": sc.ResponderID,
 		"state":        sc.State,
@@ -189,7 +190,7 @@ type geoLiveBody struct {
 // UpdateGeoLive — POST /chats/{chatID}/messages/{msgID}/geo_live: автор обновляет
 // координаты своей live-локации (watchPosition) или останавливает трансляцию.
 func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -219,12 +220,11 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
 func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
-	id, err := h.svc.GetOrCreateSaved(r.Context(), h.meID(r))
-	if err != nil {
+	if _, err := h.svc.GetOrCreateSaved(r.Context(), h.meID(r)); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not open saved messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.PeerID(h.meID(r))})
 }
 
 // SavedDialogs returns the grouped «Чаты»-tab rows of the caller's Saved Messages.
@@ -255,9 +255,9 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // dialogRow — представление одного диалога в HTTP-контракте /chats.
-func dialogRow(d domain.Dialog) map[string]any {
+func dialogRow(d domain.Dialog, peer domain.PeerID) map[string]any {
 	row := map[string]any{
-		"chat_id": d.ChatID, "type": d.Type,
+		"peer_id": peer, "type": d.Type,
 		"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 		"photo_preview": d.PhotoPreview,
 		"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
@@ -306,9 +306,9 @@ func dialogFolder(r *http.Request) domain.DialogFolder {
 	}
 }
 
-// ListDialogs — GET /chats?limit=&offset_chat_id=&folder_id=: без параметров
+// ListDialogs — GET /chats?limit=&offset_peer_id=&folder_id=: без параметров
 // отдаёт весь список (обратная совместимость), с ними — страницу по курсору
-// chat_id внутри реальной папки.
+// peer_id внутри реальной папки.
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 0)
 	if limit < 0 {
@@ -316,9 +316,16 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		// тихая деградация к «весь список» безопаснее.
 		limit = 0
 	}
+	// Курсор приезжает ключом пира; внутрь домена он идёт chatID — неизвестный
+	// (диалог уехал в архив/удалён между страницами) означает «с начала», ровно
+	// как трактует неизвестный id сам домен.
+	var offsetChatID int64
+	if cur := queryPeer(r, "offset_peer_id", domain.NullPeerID); cur != domain.NullPeerID {
+		offsetChatID, _ = h.svc.PeerToChatID(r.Context(), h.meID(r), cur)
+	}
 	page := domain.DialogPage{
 		Limit:        int(limit),
-		OffsetChatID: queryInt(r, "offset_chat_id", 0),
+		OffsetChatID: offsetChatID,
 		Folder:       dialogFolder(r),
 	}
 	res, err := h.svc.ListDialogsPage(r.Context(), h.meID(r), page)
@@ -328,7 +335,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(res.Dialogs))
 	for _, d := range res.Dialogs {
-		out = append(out, dialogRow(d))
+		out = append(out, dialogRow(d, h.svc.DialogPeerID(d, h.meID(r))))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chats": out, "count": res.Count, "is_end": res.IsEnd,
@@ -363,11 +370,11 @@ type sendBody struct {
 	// только вместе с media_id.
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
-	SendAsChatID *int64 `json:"send_as_chat_id"`
+	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -404,7 +411,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
-		SendAsChatID:   body.SendAsChatID,
+		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -434,7 +441,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -482,7 +489,7 @@ type readBody struct {
 }
 
 func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -508,7 +515,7 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 // 403 YOUR_PRIVACY_RESTRICTED — read-time скрыт (взаимность); 404 — read-date
 // недоступна (не приватный/не исходящее/ещё не прочитано) → клиент прячет строку.
 func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -536,7 +543,7 @@ func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
 // (POST /chats/{chatID}/reactions/read; Telegram readReactions) without moving
 // the read horizon.
 func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -556,7 +563,7 @@ func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
 // /chats/{chatID}/clear; Telegram «Очистить историю» — у себя): messages stay
 // for everyone else, only this user's window is emptied.
 func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -578,7 +585,7 @@ type editBody struct {
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -620,7 +627,7 @@ type factCheckBody struct {
 // SetFactCheck — POST /chats/{chatID}/messages/{msgID}/factcheck: прикрепить/
 // изменить «проверку фактов» (право — автор/админ канала).
 func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -659,7 +666,7 @@ func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
 
 // RemoveFactCheck — DELETE /chats/{chatID}/messages/{msgID}/factcheck.
 func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -688,7 +695,7 @@ func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
 // нет — сервер отдаёт детерминированный демо-стаб и кэширует его. pending всегда
 // false (расшифровка синхронна).
 func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -717,7 +724,7 @@ func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -743,24 +750,28 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 type forwardBody struct {
-	FromChatID  int64   `json:"from_chat_id"`
-	MsgIDs      []int64 `json:"msg_ids"`
-	DropAuthor  bool    `json:"drop_author"`
-	DropCaption bool    `json:"drop_caption"`
+	FromPeerID  domain.PeerID `json:"from_peer_id"`
+	MsgIDs      []int64       `json:"msg_ids"`
+	DropAuthor  bool          `json:"drop_author"`
+	DropCaption bool          `json:"drop_caption"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
-	toChatID, ok := pathInt(w, r, "chatID")
+	toChatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
 	var body forwardBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FromChatID == 0 || len(body.MsgIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "from_chat_id and msg_ids are required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FromPeerID == domain.NullPeerID || len(body.MsgIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "from_peer_id and msg_ids are required")
+		return
+	}
+	fromChatID, ok := resolveBodyPeer(w, r, h.svc, body.FromPeerID, false)
+	if !ok {
 		return
 	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
-		FromChatID: body.FromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
+		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
@@ -779,7 +790,7 @@ func (h *ChatHandler) Pin(w http.ResponseWriter, r *http.Request)   { h.setPin(w
 func (h *ChatHandler) Unpin(w http.ResponseWriter, r *http.Request) { h.setPin(w, r, false) }
 
 func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -800,7 +811,7 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 }
 
 func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -818,7 +829,7 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -845,7 +856,7 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 // returns the seq/msg_id of the caller's earliest unread mention past after_seq
 // (404 when there's none). Powers the floating mention button in the open chat.
 func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -865,7 +876,7 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 // MediaHistory serves the profile's shared-media tabs:
 // GET /chats/{chatID}/media?filter=media|files|links|music|voice
 func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -886,7 +897,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -915,7 +926,7 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 // MessageByDate — GET /chats/{chatID}/message_by_date?date=<unix>: seq
 // ближайшего сообщения на/после даты (jump-to-date, tweb datePicker/onDatePick).
 func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -936,7 +947,7 @@ func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
 // на каждый день месяца, которому принадлежит month (пикер даты рисует их
 // миниатюрами в ячейках дней — tweb getSearchResultsCalendar).
 func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -999,7 +1010,7 @@ func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
 
 // SendPoll — POST /chats/{chatID}/polls: отправить опрос (сообщение типа 'poll').
 func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1012,12 +1023,12 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		CorrectOption *int     `json:"correct_option"`
 		ClientMsgID   string   `json:"client_msg_id"`
 		// Общий пакет параметров отправки — те же имена полей, что у sendBody.
-		ReplyToID        *int64  `json:"reply_to_id"`
-		ReplyQuoteText   *string `json:"reply_quote_text"`
-		ReplyQuoteOffset *int    `json:"reply_quote_offset"`
-		ThreadRootID     *int64  `json:"thread_root_id"`
-		Silent           bool    `json:"silent"`
-		SendAsChatID     *int64  `json:"send_as_chat_id"`
+		ReplyToID        *int64         `json:"reply_to_id"`
+		ReplyQuoteText   *string        `json:"reply_quote_text"`
+		ReplyQuoteOffset *int           `json:"reply_quote_offset"`
+		ThreadRootID     *int64         `json:"thread_root_id"`
+		Silent           bool           `json:"silent"`
+		SendAsPeerID     *domain.PeerID `json:"send_as_peer_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1039,7 +1050,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
 		ClientMsgID: b.ClientMsgID,
 		ReplyToID:   b.ReplyToID, ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
-		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: b.SendAsChatID,
+		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid poll")
@@ -1110,7 +1121,7 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 // SendChecklist — POST /chats/{chatID}/checklists: отправить чек-лист
 // (сообщение типа 'checklist').
 func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1208,9 +1219,9 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 }
 
 // scheduledJSON — представление запланированного сообщения.
-func scheduledJSON(m domain.ScheduledMessage) map[string]any {
+func scheduledJSON(m domain.ScheduledMessage, peer domain.PeerID) map[string]any {
 	j := map[string]any{
-		"id": m.ID, "chat_id": m.ChatID, "sender_id": m.SenderID,
+		"id": m.ID, "peer_id": peer, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "send_at": m.SendAt, "created_at": m.CreatedAt,
 		"when_online": m.WhenOnline,
@@ -1223,7 +1234,7 @@ func scheduledJSON(m domain.ScheduledMessage) map[string]any {
 
 // ScheduleMessage — POST /chats/{chatID}/scheduled: запланировать отправку.
 func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1260,7 +1271,7 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not schedule")
 		return
 	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m))
+	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
 }
 
 // UpdateScheduled — PATCH /chats/{chatID}/scheduled/{schedID} {send_at}:
@@ -1286,12 +1297,12 @@ func (h *ChatHandler) UpdateScheduled(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m))
+	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
 }
 
 // ListScheduled — GET /chats/{chatID}/scheduled: свои запланированные.
 func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1306,7 +1317,7 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, m := range list {
-		out = append(out, scheduledJSON(m))
+		out = append(out, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"scheduled": out})
 }
@@ -1353,7 +1364,7 @@ func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
 
 // SetForum — POST /chats/{chatID}/forum {enabled}: включить темы (CHANGE_INFO).
 func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1373,7 +1384,8 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 
 func topicJSON(row domain.TopicRow) map[string]any {
 	return map[string]any{
-		"id": row.Topic.ID, "chat_id": row.Topic.ChatID, "root_msg_id": row.Topic.RootMsgID,
+		// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
+		"id": row.Topic.ID, "peer_id": domain.ToPeerID(row.Topic.ChatID, true), "root_msg_id": row.Topic.RootMsgID,
 		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "icon_emoji": row.Topic.IconEmoji,
 		"closed": row.Topic.Closed, "hidden": row.Topic.Hidden, "pinned": row.Topic.Pinned,
 		"pos": row.Topic.Pos, "is_general": row.Topic.IsGeneral,
@@ -1388,7 +1400,7 @@ func topicJSON(row domain.TopicRow) map[string]any {
 
 // CreateTopic — POST /chats/{chatID}/topics {title, icon_color}.
 func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1415,7 +1427,7 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 
 // ListTopics — GET /chats/{chatID}/topics.
 func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1521,7 +1533,7 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 // Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
 // В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
 func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1547,7 +1559,7 @@ func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 // Включает/выключает уведомления темы для пользователя.
 // В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
 func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1571,7 +1583,7 @@ func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 
 // ThreadMessages — GET /chats/{chatID}/threads/{rootID}: сообщения треда.
 func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1592,7 +1604,7 @@ func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 
 // GroupCallParticipants — GET /chats/{chatID}/group_call: кто сейчас в видеочате.
 func (h *ChatHandler) GroupCallParticipants(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1630,7 +1642,7 @@ func livestreamJSON(st usecasechat.LivestreamState) map[string]any {
 // StartLivestream — POST /chats/{chatID}/livestream/start: админ запускает эфир,
 // в ответе — креды для OBS (rtmp_url + stream_key).
 func (h *ChatHandler) StartLivestream(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1644,7 +1656,7 @@ func (h *ChatHandler) StartLivestream(w http.ResponseWriter, r *http.Request) {
 
 // StopLivestream — POST /chats/{chatID}/livestream/stop: админ завершает эфир.
 func (h *ChatHandler) StopLivestream(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1658,7 +1670,7 @@ func (h *ChatHandler) StopLivestream(w http.ResponseWriter, r *http.Request) {
 // LivestreamStatus — GET /chats/{chatID}/livestream: статус эфира для участника
 // (активна ли, число зрителей; креды — только админу).
 func (h *ChatHandler) LivestreamStatus(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1673,7 +1685,7 @@ func (h *ChatHandler) LivestreamStatus(w http.ResponseWriter, r *http.Request) {
 // RevokeStreamKey — POST /chats/{chatID}/livestream/revoke_key: админ
 // перевыпускает stream key (в ответе — новые креды).
 func (h *ChatHandler) RevokeStreamKey(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1700,7 +1712,7 @@ type reactionBody struct {
 }
 
 func (h *ChatHandler) AddReaction(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1717,7 +1729,7 @@ func (h *ChatHandler) AddReaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1751,7 +1763,7 @@ func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgI
 }
 
 func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1777,7 +1789,7 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 // ReactionUsers — GET /chats/{chatID}/messages/{msgID}/reactions/users: кто
 // отреагировал и каким эмодзи (для попапа who-reacted).
 func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1813,7 +1825,7 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 // (Telegram channels.getSendAs). Всегда содержит самого пользователя; для групп —
 // плюс привязанный канал (если юзер его админ) и саму группу (анонимный админ).
 func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1891,7 +1903,7 @@ func (h *ChatHandler) SetSavedTagName(w http.ResponseWriter, r *http.Request) {
 // начисляет автору, накопительно фиксирует вклад; отдаёт новый агрегат,
 // топ-отправителей и новый баланс.
 func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1934,7 +1946,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 // GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
 // звёзд сообщения (total + мой вклад) и топ-отправители.
 func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1987,9 +1999,19 @@ func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domai
 	if err != nil {
 		ext = msgs
 	}
+	// Ключ пира зависит от ЗРИТЕЛЯ (у приватного диалога стороны видят разный),
+	// поэтому резолвится здесь, по одному разу на чат: список истории почти
+	// всегда из одного чата, кэш слоя разрешения гасит остальное.
+	me, _ := UserFromContext(ctx)
+	peers := make(map[int64]domain.PeerID, 1)
 	out := make([]map[string]any, 0, len(ext))
 	for _, m := range ext {
-		out = append(out, messageJSON(m))
+		peer, ok := peers[m.ChatID]
+		if !ok {
+			peer, _ = svc.ChatIDToPeer(ctx, me.ID, m.ChatID)
+			peers[m.ChatID] = peer
+		}
+		out = append(out, messageJSON(m, peer))
 	}
 	return out
 }
@@ -2000,14 +2022,14 @@ func messageJSONOut(ctx context.Context, svc *usecasechat.Interactor, m domain.M
 	return messagesJSON(ctx, svc, []domain.Message{m})[0]
 }
 
-func messageJSON(m domain.Message) map[string]any {
+func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
 	j := map[string]any{
-		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
+		"id": m.ID, "peer_id": peer, "seq": m.Seq, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
 		"created_at": m.CreatedAt, "deleted": m.Deleted,
 		"edited_at":        m.EditedAt,
-		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
+		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_peer_id": peerRef(m.FwdFromChatID),
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"views": m.Views, "forwards": m.Forwards, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
 	}
@@ -2103,7 +2125,7 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	// Send-as: отображаемый автор (канал/группа); sender_id остаётся реальным.
 	if m.SendAsChatID != nil {
-		sa := map[string]any{"chat_id": *m.SendAsChatID}
+		sa := map[string]any{"peer_id": domain.ToPeerID(*m.SendAsChatID, true)}
 		if m.SendAsTitle != "" {
 			sa["title"] = m.SendAsTitle
 		}
@@ -2132,7 +2154,7 @@ func messageJSON(m domain.Message) map[string]any {
 	// (имя автора + текст/лейбл) — те же ключи, что frame.go: messageUpdatePayload.
 	// Оригинал в reply_to не подтягивается (чужой чат), клиент рисует из снимка.
 	if m.ReplyToPeerID != nil {
-		j["reply_to_peer_id"] = *m.ReplyToPeerID
+		j["reply_to_peer_id"] = domain.ToPeerID(*m.ReplyToPeerID, true)
 		j["reply_snapshot_name"] = m.ReplySnapshotName
 		j["reply_snapshot_text"] = m.ReplySnapshotText
 	}
@@ -2196,7 +2218,7 @@ func (h *ChatHandler) SetMyAutoDelete(w http.ResponseWriter, r *http.Request) {
 
 // SetChatAutoDelete — PUT /chats/{chatID}/auto_delete {period}.
 func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -2228,7 +2250,7 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 // messages.setChatTheme): смена рассылается обоим участникам фреймом
 // chat_theme_update.
 func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -2251,12 +2273,33 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"theme_id": b.ThemeID})
 }
 
-// draftJSON — wire-представление черновика.
-func draftJSON(d domain.Draft) map[string]any {
+// draftJSON — wire-представление черновика; ключ пира ГЛАЗАМИ владельца.
+func draftJSON(d domain.Draft, peer domain.PeerID) map[string]any {
 	return map[string]any{
-		"chat_id": d.ChatID, "text": d.Text, "entities": d.Entities,
+		"peer_id": peer, "text": d.Text, "entities": d.Entities,
 		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
 	}
+}
+
+// peerRef — ссылка на чат внутри снимка (пересылка) как знаковый ключ пира;
+// nil остаётся nil. Пара к usecase/chat/frame.go: peerRef — форма кадра и
+// форма витрины истории обязаны совпадать (см. messageUpdatePayload).
+func peerRef(chatID *int64) any {
+	if chatID == nil {
+		return nil
+	}
+	return domain.ToPeerID(*chatID, true)
+}
+
+// sendAsChatID — знаковый ключ «личности отправителя» во внутренний chatID.
+// send-as бывает только каналом/супергруппой, поэтому это чистая арифметика:
+// пользователь в этом поле смысла не имеет и трактуется как «от себя».
+func sendAsChatID(peer *domain.PeerID) *int64 {
+	if peer == nil || !peer.IsAnyChat() {
+		return nil
+	}
+	id := peer.ToChatID()
+	return &id
 }
 
 // MyDrafts — GET /drafts: все облачные черновики пользователя.
@@ -2268,7 +2311,7 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(drafts))
 	for _, d := range drafts {
-		out = append(out, draftJSON(d))
+		out = append(out, draftJSON(d, peerOf(r, h.svc, d.ChatID)))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"drafts": out})
 }
@@ -2276,7 +2319,7 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 // SaveDraft — PUT /chats/{chatID}/draft {text, entities, reply_to_id}.
 // Пустой текст без reply_to_id удаляет черновик (Telegram draftMessageEmpty).
 func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -2306,12 +2349,12 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"draft": nil})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"draft": draftJSON(*d)})
+	writeJSON(w, http.StatusOK, map[string]any{"draft": draftJSON(*d, peerOf(r, h.svc, d.ChatID))})
 }
 
 // DeleteDraft — DELETE /chats/{chatID}/draft.
 func (h *ChatHandler) DeleteDraft(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}

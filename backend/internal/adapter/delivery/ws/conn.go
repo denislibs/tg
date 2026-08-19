@@ -331,7 +331,15 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
 		// Ошибка (нет зеркала и дозавести нечего) — понятный NACK, а не запись
 		// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
-		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, d.ChatID, d.ThreadRootID)
+		// Адрес пира → внутренний chatID; приватного диалога может ещё не быть —
+		// первое сообщение собеседнику его и заводит (как в оригинале, где
+		// «создать чат» отдельной операцией не существует).
+		chatID, perr := c.svc.PeerToChatIDOrCreate(ctx, c.userID, d.PeerID)
+		if perr != nil {
+			nack("not_found")
+			return
+		}
+		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, chatID, d.ThreadRootID)
 		if errors.Is(terr, domain.ErrNotFound) {
 			nack("not_found")
 			return
@@ -341,7 +349,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
-			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
+			ChatID: chatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
@@ -352,7 +360,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			Silent: d.Silent, Effect: d.Effect,
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
-			SendAsChatID:   d.SendAsChatID,
+			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
@@ -381,32 +389,34 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.MarkRead(ctx, d.ChatID, c.userID, d.UpToSeq)
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			_ = c.svc.MarkRead(ctx, chatID, c.userID, d.UpToSeq)
+		}
 	case "read_media":
 		var d readMediaData
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.ReadMedia(ctx, d.ChatID, c.userID, d.MsgID)
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			_ = c.svc.ReadMedia(ctx, chatID, c.userID, d.MsgID)
+		}
 	case "typing":
 		var d typingData
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.Typing(ctx, d.ChatID, c.userID, d.Action)
-	case "subscribe_channel":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			_ = c.svc.Typing(ctx, chatID, c.userID, d.Action)
 		}
-		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
-			c.hub.SubscribeChannel(ctx, d.ChatID, c)
+	case "subscribe_channel":
+		var d peerData
+		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
+			c.hub.SubscribeChannel(ctx, d.PeerID, c)
 		}
 	case "unsubscribe_channel":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
-			c.hub.UnsubscribeChannel(ctx, d.ChatID, c)
+		var d peerData
+		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
+			c.hub.UnsubscribeChannel(ctx, d.PeerID, c)
 		}
 	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
 	// re-addressed to every device of to_user_id with from_user_id stamped in.
@@ -421,24 +431,28 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 	// Групповой звонок: join/leave меняют список участников (+фан-аут
 	// group_call_update членам чата), signal — адресное реле SDP/ICE.
 	case "group_call_join":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+		var d peerData
+		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		if _, err := c.svc.JoinGroupCall(ctx, d.ChatID, c.userID); err == nil {
-			c.groupCallChat = d.ChatID
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID)
+		if err != nil {
+			return
+		}
+		if _, err := c.svc.JoinGroupCall(ctx, chatID, c.userID); err == nil {
+			c.groupCallChat = chatID
 		}
 	case "group_call_leave":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+		var d peerData
+		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.LeaveGroupCall(ctx, d.ChatID, c.userID)
-		if c.groupCallChat == d.ChatID {
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID)
+		if err != nil {
+			return
+		}
+		_ = c.svc.LeaveGroupCall(ctx, chatID, c.userID)
+		if c.groupCallChat == chatID {
 			c.groupCallChat = 0
 		}
 	case "group_call_signal":
@@ -447,9 +461,16 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		to, _ := d["to_user_id"].(float64)
-		chatID, _ := d["chat_id"].(float64)
+		peerRaw, _ := d["peer_id"].(float64)
 		delete(d, "to_user_id")
-		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, int64(chatID), int64(to), d)
+		// peer_id в реле пересобирается для ПОЛУЧАТЕЛЯ (см. RelayGroupCallSignal):
+		// у приватного звонка ключ у сторон разный.
+		delete(d, "peer_id")
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, domain.PeerID(int64(peerRaw)))
+		if err != nil {
+			return
+		}
+		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, chatID, int64(to), d)
 	case "rpc_req":
 		if c.rpc == nil {
 			return // plain-conn: RPC не обслуживает

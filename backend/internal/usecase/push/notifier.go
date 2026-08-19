@@ -1,6 +1,10 @@
 package push
 
-import "context"
+import (
+	"context"
+
+	"github.com/messenger-denis/backend/internal/domain"
+)
 
 // Notifier implements chat.PushNotifier: it enqueues a push only for offline,
 // non-muted recipients (the WS layer already delivers to online ones).
@@ -15,7 +19,7 @@ func NewNotifier(online OnlineChecker, notify NotifyChecker, queue Queue) *Notif
 }
 
 // NotifyNewMessage gates on presence + notify settings, then enqueues a push job.
-func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string) {
+func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string, peer domain.PeerID) {
 	// Online (has an active socket)? The WS layer already delivered it live.
 	if online, _ := n.online.IsOnline(ctx, recipientID); online {
 		return
@@ -26,7 +30,7 @@ func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, ms
 		return
 	}
 	_ = n.queue.Enqueue(ctx, Job{
-		RecipientID: recipientID, ChatID: chatID, MsgID: msgID,
+		RecipientID: recipientID, ChatID: chatID, PeerID: peer, MsgID: msgID,
 		Seq: seq, SenderID: senderID, Text: text, Preview: preview,
 	})
 }

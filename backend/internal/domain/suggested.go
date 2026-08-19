@@ -23,8 +23,9 @@ type SuggestedPost struct {
 // SuggestedPostInfo — представление предложенного поста для клиента (read-модель).
 // PublishAt/CreatedAt/DecidedAt — unix-миллисекунды (0 — нет значения).
 type SuggestedPostInfo struct {
-	ID         int64           `json:"id"`
-	ChatID     int64           `json:"chat_id"`
+	ID int64 `json:"id"`
+	// PeerID — знаковый ключ канала предложки (предложка только в каналах).
+	PeerID     PeerID          `json:"peer_id"`
 	AuthorID   int64           `json:"author_id"`
 	AuthorName string          `json:"author_name,omitempty"`
 	Text       string          `json:"text"`

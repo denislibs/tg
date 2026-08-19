@@ -180,7 +180,7 @@ func (i *Interactor) giveawayInfoFor(ctx context.Context, giveawayID, viewerID i
 		return domain.GiveawayInfo{}, err
 	}
 	info := domain.GiveawayInfo{
-		ID: g.ID, ChatID: g.ChatID, PrizeKind: g.PrizeKind,
+		ID: g.ID, PeerID: domain.ToPeerID(g.ChatID, true), PrizeKind: g.PrizeKind,
 		Months: g.Months, Stars: g.Stars, WinnersCount: g.WinnersCount,
 		UntilDate: g.UntilDate.UnixMilli(), Status: g.Status,
 		Participants: cnt, WinnerIDs: g.WinnerIDs,
@@ -227,5 +227,5 @@ func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveaway
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, members, "giveaway_update", map[string]any{"chat_id": chatID, "giveaway": info})
+	_ = i.logAndPublish(ctx, chatID, members, "giveaway_update", map[string]any{"giveaway": info})
 }

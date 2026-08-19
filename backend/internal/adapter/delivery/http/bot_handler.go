@@ -80,15 +80,19 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		ChatID    int64  `json:"chat_id"`
-		MessageID int64  `json:"message_id"`
-		Data      []byte `json:"data"` // bytes схемы → base64 на JSON-проводе
+		PeerID    domain.PeerID `json:"peer_id"`
+		MessageID int64         `json:"message_id"`
+		Data      []byte        `json:"data"` // bytes схемы → base64 на JSON-проводе
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.ChatID <= 0 {
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.PeerID == domain.NullPeerID {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	ans, err := h.svc.BotCallback(r.Context(), b.ChatID, h.meID(r), botID, b.MessageID, string(b.Data))
+	chatID, ok := resolveBodyPeer(w, r, h.svc, b.PeerID, false)
+	if !ok {
+		return
+	}
+	ans, err := h.svc.BotCallback(r.Context(), chatID, h.meID(r), botID, b.MessageID, string(b.Data))
 	if errors.Is(err, domain.ErrForbidden) {
 		writeError(w, http.StatusForbidden, "not a member")
 		return
@@ -124,7 +128,7 @@ func (h *ChatHandler) BotStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "start failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": chatID})
+	writeJSON(w, http.StatusOK, map[string]any{"peer_id": peerOf(r, h.svc, chatID)})
 }
 
 // BotWebAppData — POST /bots/{botID}/webapp_data {data, button_text}: sendData

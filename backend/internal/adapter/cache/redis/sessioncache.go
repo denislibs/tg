@@ -15,6 +15,12 @@ import (
 
 // SessionCache stores auth sessions in Redis under "session:{tokenHash}". It
 // implements the auth usecase's SessionCache port.
+//
+// ⚠ Та же ловушка развёртывания, что у DialogsCache: значение — JSON
+// domain.Session БЕЗ json-тегов, ключи кэша это имена полей Go. Ключ
+// («session:{hash}») адресации пиров не касается и шагом B не менялся; форму
+// domain.Session шаг B тоже не трогал. Смена формы в шаге C потребует bump'а
+// префикса ключа или FLUSHDB в релизе.
 type SessionCache struct{ rdb *goredis.Client }
 
 var _ usecaseauth.SessionCache = (*SessionCache)(nil)

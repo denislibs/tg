@@ -28,7 +28,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 		pgadapter.NewTxManager(pool),
 	)
 	storySvc.SetMessageSender(chatUC)
-	storyH := NewStoryHandler(storySvc)
+	storyH := NewStoryHandler(storySvc, chatUC)
 	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
@@ -402,7 +402,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
 	var chat struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &chat)
 
@@ -508,7 +508,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// A shares the story into the A↔B chat: sent count 1, a media message lands.
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(posted.ID)+"/share", tokenA, map[string]any{
-		"chat_ids": []int64{chat.ChatID},
+		"peer_ids": []int64{chat.PeerID},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("share: %d %s", rec.Code, rec.Body.String())
@@ -520,7 +520,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	if shareResp.Sent != 1 {
 		t.Fatalf("share sent = %d; want 1", shareResp.Sent)
 	}
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat.ChatID)+"/history?limit=10", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat.PeerID)+"/history?limit=10", tokenA, nil)
 	var hist struct {
 		Messages []struct {
 			MediaID *int64 `json:"media_id"`
@@ -540,7 +540,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// C cannot share a story it cannot see.
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(posted.ID)+"/share", tokenC, map[string]any{
-		"chat_ids": []int64{chat.ChatID},
+		"peer_ids": []int64{chat.PeerID},
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C share: want 403, got %d %s", rec.Code, rec.Body.String())

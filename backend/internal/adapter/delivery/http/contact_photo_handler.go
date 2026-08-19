@@ -108,7 +108,7 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "suggest photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "chat_id": msg.ChatID, "msg_id": msg.ID})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "peer_id": peerOf(r, h.chat, msg.ChatID), "msg_id": msg.ID})
 }
 
 // AcceptSuggestion accepts a suggested profile photo

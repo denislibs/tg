@@ -515,7 +515,9 @@ type ChannelPublisher interface {
 }
 
 type PushNotifier interface {
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string)
+	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
+	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string, peer domain.PeerID)
 }
 
 // --- DTOs ---

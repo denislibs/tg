@@ -18,13 +18,13 @@ func TestGroupFlow_HTTP(t *testing.T) {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.ChatID == 0 {
+	if created.PeerID == 0 {
 		t.Fatalf("expected chat_id, got %s", rec.Body.String())
 	}
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// A adds B as a member.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/members", tokenA, map[string]int64{"user_id": idB})
@@ -138,10 +138,10 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// A creates an invite link that requires approval.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"requires_approval": true})
@@ -233,10 +233,10 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 	// A creates a group.
 	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// Create an invite link with a title + usage limit.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Team link", "usage_limit": 10})
@@ -301,10 +301,10 @@ func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 
 	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
 	var created struct {
-		ChatID int64 `json:"chat_id"`
+		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	cid := itoa(created.PeerID)
 
 	// Create an extra link (the group is born with a primary one).
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra"})

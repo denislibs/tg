@@ -101,7 +101,7 @@ func TestSend_SendAs_AdminOK_OutsiderForbidden(t *testing.T) {
 	if !ok {
 		t.Fatalf("payload send_as missing: %+v", p)
 	}
-	if sa["chat_id"] != chID || sa["title"] != "News" {
+	if sa["peer_id"] != domain.ToPeerID(chID, true) || sa["title"] != "News" {
 		t.Fatalf("payload send_as = %+v", sa)
 	}
 	if p["sender_id"] != int64(7) {

@@ -111,5 +111,5 @@ func (i *Interactor) publishBoostUpdate(ctx context.Context, chatID int64) {
 	}
 	// Бусты — всегда канал: один channel-broadcast вместо fan-out счётчика в лог
 	// каждого подписчика. Абсолютный статус + channel_pts делают catch-up идемпотентным.
-	_ = i.logAndPublishChannel(ctx, chatID, "boost_update", map[string]any{"chat_id": chatID, "status": st})
+	_ = i.logAndPublishChannel(ctx, chatID, "boost_update", map[string]any{"status": st})
 }

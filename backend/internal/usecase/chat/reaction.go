@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"unicode/utf8"
 
@@ -57,6 +56,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	// top of this shared base at publish time.
 	var members []int64
 	var p map[string]any
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{} // per-recipient pts на каждый live-кадр реакции
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		unreadReactions := int64(-1)
@@ -85,7 +85,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		if e != nil {
 			return e
 		}
-		p = reactionPayload(chatID, messageID, userID, msg.SenderID, emoji, action, byMsg[messageID])
+		p = reactionPayload(messageID, userID, msg.SenderID, emoji, action, byMsg[messageID])
 		// unread_reactions адресован автору сообщения (клиент применяет, только если
 		// author_id == me); для остальных получателей поле безвредно.
 		if unreadReactions >= 0 {
@@ -96,12 +96,16 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			return e
 		}
 		members = m
-		payload, e := json.Marshal(p)
+		pp, e = i.newPeerPayloads(ctx, chatID, p)
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
 			if e != nil {
 				return e
@@ -117,7 +121,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		// Кадр с per-recipient pts (клиент двигает по нему курсор); payload несёт
 		// абсолютные counts, так что catch-up-реплей идемпотентен by construction.
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", p, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("reaction", uid, map[string]any{"pts": ptsByUser[uid]}))
 		}
 	}
 	return nil

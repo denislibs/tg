@@ -73,7 +73,11 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	for _, msg := range expired {
 		var members []int64
 		ptsByUser := map[int64]int64{}
-		err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		pp, err := i.newPeerPayloads(ctx, msg.ChatID, deleteUpdatePayload(msg.ID, msg.Seq, false))
+		if err != nil {
+			return purged, err
+		}
+		err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 			if e := i.msgs.SoftDelete(ctx, msg.ID); e != nil {
 				return e
 			}
@@ -83,12 +87,12 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			}
 			slices.Sort(m)
 			members = m
-			payload, e := json.Marshal(deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false))
-			if e != nil {
-				return e
-			}
 			date := nowMillis()
 			for _, uid := range members {
+				payload, e := pp.payload(uid)
+				if e != nil {
+					return e
+				}
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
 				if e != nil {
 					return e
@@ -102,9 +106,8 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		}
 		purged++
 		if i.publisher != nil {
-			base := deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false)
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
+				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("delete_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 			}
 		}
 	}

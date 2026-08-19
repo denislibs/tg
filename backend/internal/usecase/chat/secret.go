@@ -35,7 +35,7 @@ func (i *Interactor) CreateSecretChat(ctx context.Context, userID, peerID int64,
 	// Push оффлайн-получателю: заявка на секретный чат — сообщений в чате ещё нет,
 	// поэтому msgID/seq = 0, тело — служебный текст (гейтинг online/notify внутри).
 	if i.notifier != nil {
-		i.notifier.NotifyNewMessage(ctx, sc.ResponderID, sc.ChatID, 0, 0, sc.InitiatorID, "🔒 Приглашение в секретный чат")
+		i.notifier.NotifyNewMessage(ctx, sc.ResponderID, sc.ChatID, 0, 0, sc.InitiatorID, "🔒 Приглашение в секретный чат", domain.ToPeerID(sc.ChatID, true))
 	}
 	return sc, nil
 }
@@ -105,8 +105,11 @@ func (i *Interactor) publishSecretFrame(ctx context.Context, sc domain.SecretCha
 	if i.publisher == nil {
 		return
 	}
+	// Секретный чат адресуется СВОИМ id (в схеме это отдельное объединение
+	// EncryptedChat с собственным id, а не вариант Chat) — ключ один на обе
+	// стороны, как у группы.
 	payload := map[string]any{
-		"chat_id":      sc.ChatID,
+		"peer_id":      domain.ToPeerID(sc.ChatID, true),
 		"initiator_id": sc.InitiatorID,
 		"responder_id": sc.ResponderID,
 		"state":        sc.State,
