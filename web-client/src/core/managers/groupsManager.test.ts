@@ -6,6 +6,7 @@ import { getLinkedChatPeerId } from '../peers/peer'
 import { NULL_PEER_ID } from '../peers/peerId'
 import { newPeersManager } from './peersManager'
 import { applyPeerOps, cachedChat, hasRightsPeer, isBroadcastPeer, isChannelPeer, isMegagroupPeer, resetPeerMirror } from '../peerCache'
+import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 
 type PostCall = { path: string; body: unknown }
 
@@ -16,7 +17,7 @@ type PostCall = { path: string; body: unknown }
 // типизировался; для проверки самого факта вызова (см. блок «действия без
 // оптимистики» ниже) читаем conкретный мок.
 const fakeDialogs = () => ({
-  applyMute: vi.fn(),
+  applyNotifySettings: vi.fn(),
   applyPinned: vi.fn(),
   applyArchived: vi.fn(),
   applyRemoved: vi.fn(),
@@ -109,11 +110,25 @@ describe('GroupsManager', () => {
     expect(posts[0].body).toEqual({ muted: true, until: null })
   })
 
-  it('setMute передаёт until для временного mute', async () => {
+  it('setMute передаёт until для временного mute и применяет ТОТ ЖЕ срок локально', async () => {
     const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    const dialogs = fakeDialogs()
+    const mgr = newGroupsManager({ rest, dialogs, peers: fakePeers() })
     await mgr.setMute(9, true, 1700000000)
     expect(posts[0].body).toEqual({ muted: true, until: 1700000000 })
+    // Локальное применение несёт КОНСТРУКТОР со сроком — тот же, что построит
+    // бэкенд. Прежняя пара «булево + until» срок теряла на границе.
+    expect(dialogs.applyNotifySettings).toHaveBeenCalledWith(9, { _: 'peerNotifySettings', mute_until: 1700000000 })
+  })
+
+  it('«навсегда» — далёкий срок, «снять» — отсутствие переопределения', async () => {
+    const { rest } = fakeRest({})
+    const dialogs = fakeDialogs()
+    const mgr = newGroupsManager({ rest, dialogs, peers: fakePeers() })
+    await mgr.setMute(9, true)
+    expect(dialogs.applyNotifySettings).toHaveBeenCalledWith(9, { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER })
+    await mgr.setMute(9, false)
+    expect(dialogs.applyNotifySettings).toHaveBeenLastCalledWith(9, { _: 'peerNotifySettings' })
   })
 
   it('addMember POSTs /chats/{id}/members with user_id', async () => {
@@ -133,7 +148,9 @@ describe('GroupsManager', () => {
       peerId: -5,
       chat: cardResponse().chat_full.chats[0],
       fullChat: cardResponse().chat_full.full_chat,
-      muted: false,
+      // Плоского `muted` в карточке БОЛЬШЕ НЕТ ни на проводе, ни в модели:
+      // заглушённость это `channelFull.notify_settings`, параметр самой схемы,
+      // и мьют в нём выражен сроком (решение Р4). Читателей у поля не было.
       creatorId: 7,
     })
   })

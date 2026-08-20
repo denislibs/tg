@@ -18,6 +18,7 @@ import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackS
 import { setBaseHandler } from '../navigation/navigationStack'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import { getPeerPhotoId, peerKey } from '../peers/peer'
+import { cachedChat } from '../peerCache'
 import { getUserTitle } from '../peers/getPeerTitle'
 import type { Managers } from '../../client/bootstrap'
 
@@ -34,8 +35,10 @@ function hashForState(): string {
   }
   // Публичный чат/канал/группа с username → #@username (шарибельно, как tweb);
   // иначе числовой id (private-чаты username в диалоге не несут).
-  const dlg = useChatsStore.getState().dialogs.find((d) => String(d.peerId) === id)
-  return dlg?.username ? `@${dlg.username}` : id
+  // Публичное имя живёт в КАРТОЧКЕ чата (`channel.username`), а не в строке
+  // диалога: тело чата едет вектором `chats` контейнера `/chats`.
+  const chat = cachedChat(Number(id))
+  return chat && chat._ === 'channel' && chat.username ? `@${chat.username}` : id
 }
 
 // Применить хэш к навигации. Публичный @username, которого нет в диалогах,
@@ -56,8 +59,11 @@ export async function applyHash(rawHash: string, managers: Managers): Promise<vo
 
   if (parsed.target.startsWith('@')) {
     const username = parsed.target.slice(1).toLowerCase()
-    const dlg = useChatsStore.getState().dialogs.find((d) => d.username?.toLowerCase() === username)
-    if (dlg) { openAt(dlg.peerId); return }
+    const known = useChatsStore.getState().dialogs.find((d) => {
+      const chat = cachedChat(d.peerId)
+      return chat?._ === 'channel' && chat.username?.toLowerCase() === username
+    })
+    if (known) { openAt(known.peerId); return }
     try {
       const res = await managers.channels.search(username)
       // Публичное имя есть только у `channel` (у базового `chat` его в схеме

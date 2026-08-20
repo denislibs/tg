@@ -13,12 +13,9 @@ import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { saveDialogs, saveStateKey } from './store/persist'
 import { STATE_VERSION } from './state/state'
 import type { Dialog } from './models'
+import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
-const dialog = (peerId: number, at: string, pinned = false): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at },
-} as Dialog)
+const dialog = (peerId: number, at: string, pinned = false): Dialog => makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
 
 // vi.stubGlobal (не прямое присваивание indexedDB=...) — та же замена, что и в
 // workerCore.test.ts, но без нового eslint(no-global-assign)-финда: линт-ворота

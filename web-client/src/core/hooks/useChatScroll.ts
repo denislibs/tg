@@ -68,7 +68,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   const unreadBelow = useChatsStore((s) => {
     const d = s.dialogs.find((x) => x.peerId === numericChatId)
     if (!d) return 0
-    return Math.max(0, (d.lastMessage?.seq ?? 0) - d.lastReadSeq)
+    return Math.max(0, (d.lastMessage?.seq ?? 0) - d.read_inbox_max_id)
   })
   // Briefly highlighted message (jump-to target), by seq.
   const [highlightSeq, setHighlightSeq] = useState<number | null>(null)

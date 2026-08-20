@@ -4,6 +4,10 @@
 import { create } from 'zustand'
 import type { NotifySettings, NotifyChatType, NotifyTypeSettings } from '../core/managers/notifyManager'
 import type { Dialog } from '../core/models'
+import type { Chat } from '../core/peers/peer'
+import { isBroadcast } from '../core/peers/predicates'
+import { isUser } from '../core/peers/peerId'
+import { isPeerMuted } from '../core/dialogs/notifySettings'
 
 const DEFAULTS: NotifySettings = {
   private: { muted: false, preview: true },
@@ -27,11 +31,18 @@ export const useNotifyStore = create<NotifyState>((set) => ({
     set((st) => ({ settings: { ...st.settings, [t]: { ...st.settings[t], ...patch } } })),
 }))
 
-// Тип чата → ключ настроек ('saved' считаем private, как на бэке).
-export function notifyTypeForChat(chatType: string | undefined): NotifyChatType {
-  if (chatType === 'group') return 'groups'
-  if (chatType === 'channel') return 'channels'
-  return 'private'
+/**
+ * Вид пира → ключ ГЛОБАЛЬНЫХ настроек ('saved' и секретный считаются private,
+ * как на бэке).
+ *
+ * Спрашивает конструктор, а не строку: вид чата с провода снят (решение Р8
+ * разбора диалогов), и «канал это или группа» отвечает тот же предикат, что и
+ * везде. Карточки чата ещё нет — вопрос решается фолбэком предиката, то есть
+ * «группа»: это мягче, чем ошибочно применить настройку каналов.
+ */
+export function notifyTypeForChat(peerId: PeerId | undefined, chat: Chat | undefined): NotifyChatType {
+  if (peerId === undefined || isUser(peerId)) return 'private'
+  return isBroadcast(chat) ? 'channels' : 'groups'
 }
 
 /**
@@ -52,9 +63,19 @@ export function notifyTypeForChat(chatType: string | undefined): NotifyChatType 
  *
  * `dialog` опционален: уведомление приходит и по чату, которого ещё нет в
  * зеркале (`client/uiNotifications.ts`) — тогда решают только настройки типа.
+ * `chat` — карточка пира из зеркала (`core/peerCache.ts`); нужна ровно за тем,
+ * чтобы отличить канал от группы, потому что строки `type` у диалога больше нет.
  */
-export function isDialogMuted(dialog: Pick<Dialog, 'muted' | 'type'> | undefined, settings: NotifySettings): boolean {
-  return !!dialog?.muted || settings[notifyTypeForChat(dialog?.type)].muted
+export function isDialogMuted(
+  dialog: Pick<Dialog, 'peerId' | 'notify_settings'> | undefined,
+  chat: Chat | undefined,
+  settings: NotifySettings,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  // Свой мьют диалога — теперь СРОК, а не признак: `isPeerMuted` порт
+  // `appNotificationsManager.isMuted` (`:255`). Ниже — то же, что и было:
+  // глобально выключенный ТИП чатов.
+  return isPeerMuted(dialog?.notify_settings, now) || settings[notifyTypeForChat(dialog?.peerId, chat)].muted
 }
 
 export async function loadNotifySettings(managers: { notify: { settings(): Promise<NotifySettings> } }): Promise<void> {

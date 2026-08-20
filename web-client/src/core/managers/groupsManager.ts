@@ -3,6 +3,7 @@ import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
 import type { Channel, ChannelFull, MessagesChatFull, UserStatus } from '../peers/peer'
+import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
@@ -37,8 +38,6 @@ export interface ChatCard {
   chat: Channel
   /** полная форма: экран информации о чате */
   fullChat: ChannelFull
-  /** наше, вне схемы: заглушен ли чат зрителем */
-  muted: boolean
   /** наше, вне схемы: кто создал чат */
   creatorId: number
 }
@@ -48,7 +47,6 @@ export interface ChatCard {
 interface RawChatCard {
   peer_id: PeerId
   chat_full: MessagesChatFull
-  muted?: boolean
   creator_id?: number
 }
 
@@ -68,7 +66,6 @@ export function mapChatCard(r: RawChatCard): ChatCard | null {
     peerId: r.peer_id,
     chat,
     fullChat: r.chat_full.full_chat,
-    muted: !!r.muted,
     creatorId: r.creator_id ?? 0,
   }
 }
@@ -157,7 +154,7 @@ export function newGroupsManager({ rest, dialogs, peers }: {
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
   // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
   // invokeApi(...).then(saveUpdate)).
-  dialogs: Pick<DialogsManager, 'applyMute' | 'applyPinned' | 'applyArchived' | 'applyRemoved'>
+  dialogs: Pick<DialogsManager, 'applyNotifySettings' | 'applyPinned' | 'applyArchived' | 'applyRemoved'>
   // Владелец карточек пиров: ответ карточки чата несёт векторы `chats`/`users`,
   // и они обязаны доехать до зеркала — порт `appProfileManager.getChannelFull`
   // → `saveFullPeerResult` → `appPeersManager.saveApiPeers(result)`
@@ -186,8 +183,16 @@ export function newGroupsManager({ rest, dialogs, peers }: {
       await rest.post(`/chats/${peerId}/mute`, { muted, until: until ?? null })
       // Оптимистики нет (Task 4, порт tweb toggleDialogPin): применяем ПОСЛЕ
       // ответа сети. Кросс-таб/другие устройства получат то же самое кадром
-      // dialog_mute (workerCore.ts::dispatch → dialogs.applyMute).
-      dialogs.applyMute(peerId, muted)
+      // dialog_mute (workerCore.ts::dispatch → dialogs.applyNotifySettings).
+      //
+      // Собираем ТОТ ЖЕ конструктор, что построит бэкенд (usecase/chat/group.go
+      // ::SetMute): «навсегда» — не отдельный флаг, а далёкий срок; «снять» —
+      // отсутствие переопределения. Второго способа сказать то же самое (пары
+      // `muted` + `until`) больше нет ни на одной стороне.
+      dialogs.applyNotifySettings(peerId, {
+        _: 'peerNotifySettings',
+        ...(muted ? { mute_until: until ?? MUTE_UNTIL_FOREVER } : {}),
+      })
     },
     // ── Форум-топики ──
     async setForum(peerId: number, enabled: boolean): Promise<void> {

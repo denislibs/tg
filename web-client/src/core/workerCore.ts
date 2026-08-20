@@ -48,7 +48,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
@@ -256,12 +256,22 @@ export function createWorkerCore() {
     // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
     // dialogsManager (scheduleSave), не здесь.
     saveCache: (list) => saveDialogs(list),
-    // Task 6 (диалоговая половина `loadChats` переезжает к владельцу):
-    // дешифровка превью секретных чатов. `secret` объявлен ниже — та же
-    // ленивая forward-ссылка, что у `messages` выше (decryptSecret реально
-    // зовётся только на fillMirror()/refresh(), к тому моменту `secret` уже
-    // проинициализирован).
-    decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
+    // Шаг C диалогов: `/chats` стал КОНТЕЙНЕРОМ, и его векторы втекают в уже
+    // существующих владельцев — карточки в `peers`, сообщения в `messages`.
+    // Своих копий владелец диалогов не заводит: последнее сообщение он
+    // РАЗРЕШАЕТ по `top_message` из чужого хранилища (решение Р11), а превью
+    // секретного расшифровывает тот же `messages` тем же кодом, что и историю.
+    // `peers` объявлен НИЖЕ — та же ленивая forward-ссылка, что у `messages`
+    // выше: первый вызов случается уже после сборки всех менеджеров.
+    peers: {
+      saveApiPeers: (o) => peers.saveApiPeers(o),
+      cachedPeer: (id) => peers.cachedPeer(id),
+      hydrateFromDisk: () => peers.hydrateFromDisk(),
+    },
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
   })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
   // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
@@ -282,9 +292,9 @@ export function createWorkerCore() {
   const contacts = newContactsManager({ rest })
   const privacy = newPrivacyManager({ rest })
   const drafts = newDraftsManager({ rest })
-  // Task 4: тема оформления чата — тоже сеть-сначала, applyTheme зовётся после
-  // успешного /theme (см. chatThemesManager.ts).
-  const chatThemes = newChatThemesManager({ rest, dialogs })
+  // Тема оформления чата: только REST. Её место в схеме — полная карточка
+  // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
+  const chatThemes = newChatThemesManager({ rest })
   const sessions = newSessionsManager({ rest })
   const calls = newCallsManager({ rest })
   const livestream = newLivestreamManager({ rest })
@@ -408,21 +418,27 @@ export function createWorkerCore() {
       // абсолютный снимок карточки; строке диалога из него нужны четыре поля,
       // а весь остальной чат (права, `pFlags`, `default_banned_rights`) живёт
       // в зеркале пиров и попадает туда только отсюда.
+      // Строке диалога из этого снимка больше НЕ НУЖНО ничего: имя, username,
+      // аватарка и `forum` живут в самой карточке чата (решение Р1 — они едут
+      // векторами `chats`/`users`), а не дублируются полями диалога. Прежний
+      // `dialogs.applyChatMeta` перекладывал четыре поля из карточки в строку —
+      // ровно то второе зеркало одного факта, которого этот шаг и лишает.
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
-      dialogs.applyChatMeta(d as ChatUpdateEvt)
     }
     else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).peer_id)
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз
-    // (patchDialog внутри applyMute/applyPinned/applyArchived/applyTheme
+    // (patchDialog внутри applyNotifySettings/applyPinned/applyArchived
     // сравнивает через equal() и не публикует no-op). Раньше эти 4 кадра
     // разбирала витрина напрямую (storeProjection.ts, setDialogMuted и т.п.) —
     // тот путь убран вместе с мутаторами chatsStore, второго применения нет.
-    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).peer_id, (d as DialogMuteEvt).muted)
+    // Кадр несёт КОНСТРУКТОР настроек целиком — срок мьюта больше не
+    // выбрасывается на границе (это и был последний участок цепочки, из-за
+    // которого «заглушить на час» работало как «навсегда»).
+    else if (t === 'dialog_mute') dialogs.applyNotifySettings((d as DialogMuteEvt).peer_id, (d as DialogMuteEvt).notify_settings)
     else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).peer_id, (d as DialogPinEvt).pinned)
     else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).peer_id, (d as DialogArchiveEvt).archived)
-    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).peer_id, (d as ChatThemeUpdateEvt).theme_id)
     else if (t === 'reaction') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
       // реакций диалога (перенесено из storeProjection.ts вместе с телом

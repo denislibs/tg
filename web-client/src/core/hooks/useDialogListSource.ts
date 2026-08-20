@@ -23,7 +23,8 @@ import { guessLoadCount } from '../dialogs/loadCount'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { dialogMatchesFolder } from '../folderFilter'
 import type { Folder } from '../managers/foldersManager'
-import type { Dialog } from '../models'
+import { isDialogArchived, type Dialog } from '../models'
+import { cachedChat } from '../peerCache'
 import type { Chat } from '../../data'
 
 /**
@@ -120,9 +121,12 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    */
   const matchesThisFolder = useCallback((d: Dialog): boolean => {
     if (!folderKnown) return false
-    if (filterId === ARCHIVE_FOLDER_ID ? !d.archived : !!d.archived) return false
+    if (filterId === ARCHIVE_FOLDER_ID ? !isDialogArchived(d) : isDialogArchived(d)) return false
     if (!folder) return true
-    return dialogMatchesFolder({ ...d, muted: isDialogMuted(d, notifySettings) }, folder, contactIds)
+    // Карточка пира нужна дважды: правилу типов чатов (группа/канал) и правилу
+    // «заглушён» (настройки типа поверх собственного срока диалога).
+    const chat = cachedChat(d.peerId)
+    return dialogMatchesFolder(d, chat, folder, contactIds, isDialogMuted(d, chat, notifySettings))
   }, [folderKnown, folder, filterId, contactIds, notifySettings])
 
   /**
@@ -253,7 +257,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
   const noArchiveRef = useRef(false)
   const ensureArchiveHydrated = useEvent((forFilterId: number): void => {
     if (forFilterId !== ALL_FOLDER_ID || noArchiveRef.current) return
-    if (useChatsStore.getState().dialogs.some((d) => d.archived)) return
+    if (useChatsStore.getState().dialogs.some(isDialogArchived)) return
     void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT })
       .then((r) => { if (!r.dialogs.length && r.isEnd) noArchiveRef.current = true })
       .catch(() => {})

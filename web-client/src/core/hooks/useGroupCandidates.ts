@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { SERVICE_USER_ID } from '../dialogToChat'
+import { cachedUser } from '../peerCache'
+import { isUser } from '../peers/peerId'
 import { getPeerPhotoId } from '../peers/peer'
 import { getUserTitle } from '../peers/getPeerTitle'
 
@@ -41,8 +43,13 @@ export function useGroupCandidates(): GroupCandidate[] {
     for (const d of dialogs) {
       // Ботов нельзя добавить в группу как участника (Telegram) — исключаем.
       // «Бот» — флаг конструктора (`pFlags.bot`), а не поле витрины рядом.
-      if (d.type === 'private' && d.peer && d.peer.id !== SERVICE_USER_ID && !d.peer.pFlags?.bot) {
-        map.set(d.peerId, { id: d.peerId, name: getUserTitle(d.peer), photoId: getPeerPhotoId(d.peer.photo) || undefined })
+      // «Приватный» — это ключ ПОЛЬЗОВАТЕЛЯ (`core/peers/peerId.ts`), а не
+      // снятая с провода строка `type`; сам собеседник живёт в зеркале пиров,
+      // а не внутри строки диалога.
+      if (!isUser(d.peerId) || d.peerId === SERVICE_USER_ID) continue
+      const user = cachedUser(d.peerId)
+      if (user && user._ === 'user' && !user.pFlags?.bot) {
+        map.set(d.peerId, { id: d.peerId, name: getUserTitle(user), photoId: getPeerPhotoId(user.photo) || undefined })
       }
     }
     for (const c of contacts) if (!map.has(c.id)) map.set(c.id, c)

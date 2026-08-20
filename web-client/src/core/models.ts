@@ -5,10 +5,8 @@ import type { EmojiEffectKind } from './effects/emojiEffects'
 import type { NewMessageEvt } from './realtime/events'
 import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
-import type { ChatPhoto, UserReal } from './peers/peer'
 import { getPeerId, type Peer } from './peers/peerId'
-
-export type ChatKind = 'private' | 'group' | 'channel' | 'saved' | 'secret'
+import type { PeerNotifySettings } from './dialogs/notifySettings'
 
 // Форматирующая разметка текста сообщения — тип ИЗ СХЕМЫ (`@layer`, генерируется
 // из `schema/schema.json`), объединение по дискриминатору `_`:
@@ -62,69 +60,89 @@ export function mapGeo(g: RawGeo): GeoData {
   }
 }
 
+/**
+ * dialog#fc89f7f3 flags:# pinned:flags.2?true … peer:Peer top_message:int
+ * read_inbox_max_id:int read_outbox_max_id:int unread_count:int
+ * unread_mentions_count:int unread_reactions_count:int …
+ * notify_settings:PeerNotifySettings folder_id:flags.4?int ttl_period:flags.5?int
+ * = Dialog;
+ *
+ * СТРОКА списка чатов в форме оригинала: состояние чтения и место в списке — и
+ * ничего больше. Зеркало `backend/internal/domain/mtdialog.go`.
+ *
+ * ── Что отсюда исчезло и куда уехало ────────────────────────────────────────
+ * Прежний `RawDialog` слил ТРИ объекта схемы в одну плоскую строку. В схеме
+ * `/chats` это КОНТЕЙНЕР `messages.dialogs{dialogs, messages, chats, users}`:
+ *  • `title`/`username`/`photo`/`is_forum` — поля `Chat`, едут в `chats`;
+ *  • `peer: UserReal` (собеседник) — едет в `users`;
+ *  • `last_message{…}` — выжимка на девять полей вместе с серверным
+ *    `sender_name`; теперь последнее сообщение адресуется ЧИСЛОМ `top_message`
+ *    (это seq), а сам объект едет в `messages` контейнера;
+ *  • `type: ChatKind` — вид чата подделывался строкой; выражают конструктор
+ *    `peer` и флаги `Chat` (`core/peers/predicates.ts`, решение Р8);
+ *  • `muted: boolean` — признак БЕЗ СРОКА ГОДНОСТИ, из-за чего «заглушить на
+ *    час» работало как «навсегда»; теперь `notify_settings.mute_until`;
+ *  • `theme_id` — в схеме её место `chatFull`/`userFull.theme_emoticon`,
+ *    в диалоге поля нет вовсе (решение Р7).
+ */
 export interface RawDialog {
-  auto_delete_period?: number
-  theme_id?: string
-  /** знаковый ключ диалога ГЛАЗАМИ ЗРИТЕЛЯ: у приватного это id собеседника
-   *  (у двух сторон одного разговора он РАЗНЫЙ), у группы/канала `-chatID`.
-   *  Клиент его не вычисляет — считает бэкенд (`chatAddress.forViewer`). */
-  peer_id: PeerId
-  type: ChatKind
-  last_read_seq: number
-  peer_read_seq?: number
-  unread: number
-  unread_mentions_count?: number
-  unread_reactions?: number
-  muted?: boolean
-  pinned?: boolean
-  archived?: boolean
-  is_forum?: boolean
-  notify_preview?: boolean
-  notify_sound?: string
-  title?: string
-  username?: string
-  /** фото группы/канала — объединение `ChatPhoto` (`chatPhotoEmpty`|`chatPhoto`).
-   *  Прежние `photo_url` + `photo_preview` схлопнулись сюда. */
-  photo?: ChatPhoto
-  /** собеседник приватного чата — КОНСТРУКТОР `user` целиком: имя, аватарка и
-   *  флаги живут внутри него, а не рассыпаны плоскими ключами рядом. */
-  peer?: UserReal
-  last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string; enc_body?: string }
+  _: 'dialog'
+  pFlags?: Partial<{ pinned: true }>
+  /** ссылка на пир — конструктор (`peerUser`/`peerChannel`), а не число */
+  peer: Peer
+  /** seq ПОСЛЕДНЕГО сообщения чата; объект едет вектором `messages` контейнера */
+  top_message: number
+  /** горизонт чтения ЗРИТЕЛЯ (прежний `last_read_seq`) */
+  read_inbox_max_id: number
+  /** горизонт ДРУГОЙ стороны: исходящее с seq ≤ этого — ✓✓ */
+  read_outbox_max_id: number
+  unread_count: number
+  unread_mentions_count: number
+  unread_reactions_count: number
+  notify_settings: PeerNotifySettings
+  /** 0 — «все чаты», 1 — архив; ключа нет — папка не указана (решение Р5) */
+  folder_id?: 0 | 1
+  /** период автоудаления сообщений чата, сек (прежний `auto_delete_period`) */
+  ttl_period?: number
+  /** НАШ параметр вне схемы (решение Р9): секретный чат — отдельная подсистема
+   *  вне периметра порта, но живых гейтов по этому признаку больше десятка. */
+  secret?: boolean
 }
 
-export interface Dialog {
-  /** знаковый ключ диалога глазами зрителя (см. RawDialog.peer_id). */
+/**
+ * Модель = форма провода плюс два КЛИЕНТСКИХ параметра, ровно как у оригинала
+ * (`schema/schema_additional_params.json`, предикат `dialog`):
+ *
+ *  • `peerId` — знаковый ключ, выведенный из `peer` (`getPeerId`);
+ *  • `lastMessage` — РАЗРЕШЁННЫЙ `top_message`.
+ *
+ * Разрешает ссылку ВОРКЕР (решение Р11): объекты сообщений живут в его SSOT
+ * (`messagesManager`), а главный поток держит зеркало только ОТКРЫТЫХ окон и
+ * сообщение закрытого чата взять ему неоткуда. Наверх едет целый `Message` —
+ * из-за этого в превью списка чатов наконец есть сущности, реплай, альбом и
+ * автор-ПИР вместо серверной строки `sender_name`.
+ *
+ * Маппера полей у диалога больше нет: форма провода и форма модели совпали
+ * (тот же исход, что у `peer` на шаге D пиров и у `mapReplyMarkup`), а два
+ * клиентских параметра проставляет тот, кто их и вычисляет, —
+ * `dialogsManager.toDialog`.
+ */
+export interface Dialog extends RawDialog {
+  /** знаковый ключ диалога ГЛАЗАМИ ЗРИТЕЛЯ: у приватного это id собеседника
+   *  (у двух сторон одного разговора он РАЗНЫЙ), у группы/канала `-chatID`. */
   peerId: PeerId
-  type: ChatKind
-  lastReadSeq: number
-  /** the OTHER side's read horizon (read_outbox) — outgoing seq <= this ⇒ ✓✓ */
-  peerReadSeq: number
-  unread: number
-  /** непрочитанные упоминания зрителя (Telegram unread_mentions_count) — бейдж «@» */
-  unreadMentions?: number
-  /** непрочитанные реакции на сообщения зрителя (Telegram unread_reactions_count) — бейдж-сердце */
-  unreadReactions?: number
-  muted: boolean
-  /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
-  pinned: boolean
-  archived: boolean
-  /** в группе включены темы — клиент рендерит список топиков */
-  isForum?: boolean
-  /** per-chat уведомления: показывать превью текста / звук ('default'|'none') */
-  notifyPreview?: boolean
-  notifySound?: string
-  // период автоудаления сообщений чата в секундах (0/undefined — выключено)
-  autoDeletePeriod?: number
-  // id темы оформления чата (пресет chatThemes.ts); ''/undefined — тема не задана
-  themeId?: string
-  title?: string
-  username?: string
-  /** фото группы/канала — `ChatPhoto` с готовым `photo_id` (у private аватарка
-   *  живёт внутри `peer.photo`) */
-  photo?: ChatPhoto
-  /** собеседник приватного чата — конструктор `user` */
-  peer?: UserReal
-  lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string; encBody?: string }
+  lastMessage?: Message
+}
+
+/** Папка диалога НА ПРОВОДЕ — порт tweb `FOLDER_ID_ARCHIVE`
+ *  (`appManagers/constants.ts:38`). Наш клиентский `ARCHIVE_FOLDER_ID` (-1,
+ *  `core/folderIds.ts`) с ней не совпадает сознательно — см. докблок там. */
+export const WIRE_FOLDER_ARCHIVE = 1
+
+/** Диалог убран в «Архив». Прежде это было булево поле строки; в схеме архив —
+ *  РЕАЛЬНАЯ папка, и вопрос задаётся её номером. */
+export function isDialogArchived(dialog: Pick<Dialog, 'folder_id'>): boolean {
+  return dialog.folder_id === WIRE_FOLDER_ARCHIVE
 }
 
 // Серверное превью ссылки (Telegram webPage): снимок og-тегов первой ссылки
@@ -738,45 +756,6 @@ export function mapDraft(r: RawDraft): Draft {
     entities: r.entities?.length ? r.entities : undefined,
     replyToId: r.reply_to_id ?? null,
     updatedAt: r.updated_at,
-  }
-}
-
-export function mapDialog(r: RawDialog): Dialog {
-  return {
-    peerId: r.peer_id,
-    type: r.type,
-    lastReadSeq: r.last_read_seq,
-    peerReadSeq: r.peer_read_seq ?? 0,
-    unread: r.unread,
-    unreadMentions: r.unread_mentions_count || undefined,
-    unreadReactions: r.unread_reactions || undefined,
-    muted: !!r.muted,
-    pinned: !!r.pinned,
-    archived: !!r.archived,
-    isForum: r.is_forum || undefined,
-    notifyPreview: r.notify_preview ?? true,
-    notifySound: r.notify_sound ?? 'default',
-    autoDeletePeriod: r.auto_delete_period ?? 0,
-    themeId: r.theme_id || undefined,
-    title: r.title,
-    username: r.username,
-    photo: r.photo,
-    // Маппера у пира больше нет: форма провода и форма модели совпали —
-    // это конструктор `user`, а не плоская выборка полей.
-    peer: r.peer,
-    lastMessage: r.last_message
-      ? {
-          seq: r.last_message.seq,
-          text: r.last_message.text,
-          senderId: r.last_message.sender_id,
-          at: r.last_message.at,
-          mediaId: r.last_message.media_id && r.last_message.media_id > 0 ? r.last_message.media_id : undefined,
-          mediaType: r.last_message.type || undefined,
-          forwarded: r.last_message.forwarded || undefined,
-          senderName: r.last_message.sender_name || undefined,
-          encBody: r.last_message.enc_body || undefined,
-        }
-      : undefined,
   }
 }
 

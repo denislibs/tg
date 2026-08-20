@@ -46,8 +46,9 @@ import { useNavigationStore } from '../stores/navigationStore'
 import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
 import type { Managers } from './bootstrap'
-import type { RawDialog } from '../core/models'
+import { mapMessage, type Message, type RawDialog, type RawMessage } from '../core/models'
 import type { Folder } from '../core/managers/foldersManager'
+import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
 
@@ -76,12 +77,21 @@ const FOLDER: Folder = {
 /** Порядок в ответе — по времени последнего сообщения (его же считает
  *  `dialogIndex`), поэтому позиция в массиве и есть позиция в глобальном
  *  порядке: peer_id 1 — самый свежий, TOTAL — самый старый. */
-const rawDialog = (peerId: number, archived: boolean): RawDialog => ({
-  peer_id: peerId, type: 'private', last_read_seq: 0, unread: 0, title: 't' + peerId, archived,
-  last_message: { seq: 1, text: 'x', sender_id: 1, at: new Date(Date.UTC(2026, 7, 1) - peerId * 60_000).toISOString() },
+const rawMessage = (peerId: number): RawMessage => ({
+  id: 1, peer_id: peerId, seq: 1, sender_id: 1, type: 'text', text: 'x',
+  reply_to_id: null, media_id: null, thread_root_id: null,
+  created_at: new Date(Date.UTC(2026, 7, 1) - peerId * 60_000).toISOString(),
 })
 
+/** Строка на проводе — конструктор `dialog` минус два клиентских параметра. */
+const rawDialog = (peerId: number, archived: boolean): RawDialog => {
+  const { peerId: _peerId, lastMessage: _lastMessage, ...wire } = makeDialog({ peerId, archived, topMessage: 1 })
+  return wire
+}
+
 const SERVER: RawDialog[] = Array.from({ length: TOTAL }, (_, i) => rawDialog(i + 1, i + 1 === ARCHIVED_ID))
+const peerIdOf = (d: RawDialog): number => (d.peer._ === 'peerUser' ? d.peer.user_id : -1)
+const isArchivedRaw = (d: RawDialog): boolean => d.folder_id === 1
 
 /**
  * Фейк `/chats` в поведении бэкенда (`dialogpage.go` + `chatsrepo.go`): выборку
@@ -94,14 +104,41 @@ function fakeRest() {
   const get = async (_path: string, params?: Record<string, string | number>) => {
     requests.push(params)
     const wire = params?.folder_id
-    const set = wire === undefined ? SERVER : SERVER.filter((r) => r.archived === (wire === 1))
+    const set = wire === undefined ? SERVER : SERVER.filter((r) => isArchivedRaw(r) === (wire === 1))
     const limit = Number(params?.limit ?? set.length)
     const offsetPeerId = Number(params?.offset_peer_id ?? 0)
-    const start = offsetPeerId ? set.findIndex((r) => r.peer_id === offsetPeerId) + 1 : 0
-    const chats = set.slice(start, start + limit)
-    return { chats, count: set.length, is_end: start + chats.length >= set.length }
+    const start = offsetPeerId ? set.findIndex((r) => peerIdOf(r) === offsetPeerId) + 1 : 0
+    const dialogs = set.slice(start, start + limit)
+    // Контейнер схемы: «это всё» выражает ОТСУТСТВИЕ count (`messages.dialogs`),
+    // кусок — его наличие (`messages.dialogsSlice`). Булева `is_end` на проводе
+    // больше нет.
+    const whole = start === 0 && start + dialogs.length >= set.length
+    return {
+      _: whole ? 'messages.dialogs' : 'messages.dialogsSlice',
+      ...(whole ? {} : { count: set.length }),
+      dialogs,
+      messages: dialogs.map((d) => rawMessage(peerIdOf(d))),
+      chats: [], users: [],
+    }
   }
   return { requests, rest: { get } as unknown as Parameters<typeof newDialogsManager>[0]['rest'] }
+}
+
+/** SSOT сообщений воркера в объёме, нужном разрешению `top_message`. */
+function fakeMessagesOwner() {
+  const byPeer = new Map<number, Map<number, Message>>()
+  return {
+    async saveApiMessages(list?: RawMessage[]): Promise<Message[]> {
+      const out = (list ?? []).map(mapMessage)
+      for (const m of out) {
+        let c = byPeer.get(m.peerId)
+        if (!c) { c = new Map(); byPeer.set(m.peerId, c) }
+        c.set(m.seq, m)
+      }
+      return out
+    },
+    getMessageByPeer: (peerId: number, seq: number) => (seq ? byPeer.get(peerId)?.get(seq) : undefined),
+  }
 }
 
 /**
@@ -117,6 +154,10 @@ async function coldStart() {
     onDialogOps: (ops) => rootScope.dispatchEventSingle(RT.dialogOp, { ops }),
     loadCache: async () => [], // первый вход: офлайн-кэша прошлой сессии нет
     loadState: async () => ({ pinnedOrders: {}, drafts: [], folders: [FOLDER] }),
+    // Владелец сообщений: вектор `messages` контейнера втекает сюда, отсюда же
+    // разрешается `top_message` (решение Р11). Без него у строки списка не
+    // будет ни превью, ни ДАТЫ — а по дате считается и порядок, и курсор.
+    messages: fakeMessagesOwner(),
   })
   const managers = { dialogs } as unknown as Managers
   const op = await fillDialogsMirror(managers, false)
@@ -192,9 +233,9 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
   // Страховка от вырождения фикстуры: если архивный чат или чат папки уедут в
   // первую страницу, все тесты ниже станут зелёными при любом поведении boot.
   it('фикстура: архивный чат и чат папки лежат ЗА первой страницей глобального порядка', () => {
-    expect(SERVER.slice(0, FIRST_PAGE).some((r) => r.archived)).toBe(false)
-    expect(SERVER.findIndex((r) => r.peer_id === ARCHIVED_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
-    expect(SERVER.findIndex((r) => r.peer_id === FOLDER_CHAT_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
+    expect(SERVER.slice(0, FIRST_PAGE).some(isArchivedRaw)).toBe(false)
+    expect(SERVER.findIndex((r) => peerIdOf(r) === ARCHIVED_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
+    expect(SERVER.findIndex((r) => peerIdOf(r) === FOLDER_CHAT_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
   })
 
   it('зеркало получает первую страницу, а не весь список', async () => {

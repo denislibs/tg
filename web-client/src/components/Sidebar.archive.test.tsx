@@ -77,6 +77,7 @@ import { useSettingsStore } from '../settings'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
+import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
 const ITEM = 72
@@ -126,10 +127,7 @@ function pendingArchiveManagers(archiveCount = ARCHIVED) {
   return { managers: managersWith(getDialogs), release: () => release?.() }
 }
 
-const dialog = (peerId: PeerId, archived: boolean): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived,
-} as Dialog)
+const dialog = (peerId: PeerId, archived: boolean): Dialog => makeDialog({ peerId, archived })
 
 /** Кладём диалоги в зеркало ТЕМ ЖЕ путём, что проектор — операцией владельца. */
 function seedMirror(items: { dialog: Dialog; index: number }[]) {
@@ -350,7 +348,7 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     // `useDialogListSource` (`itemCacheRef`/`prevItemsRef`) — у каждой строки
     // окна сменится ссылка `item`, и все 14 перерисуются.
     await act(async () => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 1, fields: { unread: 1 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 1, fields: { unread_count: 1 } }])
     })
 
     expect(archiveRowRenders()).toBe(14)

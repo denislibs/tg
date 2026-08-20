@@ -22,11 +22,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { saveDialogs, loadDialogs } from './store/persist'
 import type { Dialog } from './models'
+import { makeDialog } from './dialogs/testDialog'
 
-const dialog = (peerId: number): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())

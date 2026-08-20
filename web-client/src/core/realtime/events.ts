@@ -2,6 +2,7 @@
 import type { GeoData, MessageEntity, MessageFwdHeader, RawGeo } from '../models'
 import type { Peer } from '../peers/peerId'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
+import type { PeerNotifySettings } from '../dialogs/notifySettings'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -227,10 +228,18 @@ export interface ChatRemovedEvt { peer_id: PeerId; removed: true }
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
 export interface ChatThemeUpdateEvt { peer_id: PeerId; theme_id: string }
 // Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
-// dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/applyMute).
+// dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/
+// applyNotifySettings).
 export interface DialogPinEvt { peer_id: PeerId; pinned: boolean }
 export interface DialogArchiveEvt { peer_id: PeerId; archived: boolean }
-export interface DialogMuteEvt { peer_id: PeerId; muted: boolean; muted_until?: number }
+/**
+ * Мьют чата сменился. Кадр несёт КОНСТРУКТОР настроек ЦЕЛИКОМ, а не пару
+ * `{muted, muted_until}`: мьют это СРОК (`notify_settings.mute_until`), и
+ * прежняя булева форма его теряла — «заглушить на час» доезжало как
+ * «навсегда». Бэкенд читает настройки обратно из базы, поэтому в кадре едут и
+ * превью со звуком, которых мьют не менял (usecase/chat/group.go::SetMute).
+ */
+export interface DialogMuteEvt { peer_id: PeerId; notify_settings: PeerNotifySettings }
 // АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
 // участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
 // функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:

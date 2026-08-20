@@ -51,7 +51,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
   // GET /chats (peer_read_seq) on load and advanced by applyRead on live rt:read,
   // so ticks are correct immediately on open and after switching chats.
   const peerReadSeq = useChatsStore((s) =>
-    isRealChat ? s.dialogs.find((d) => d.peerId === numericChatId)?.peerReadSeq ?? 0 : 0,
+    isRealChat ? s.dialogs.find((d) => d.peerId === numericChatId)?.read_outbox_max_id ?? 0 : 0,
   )
 
   // Закреплённые сообщения чата уже лежат в сторе (usePinnedBar грузит listPins,

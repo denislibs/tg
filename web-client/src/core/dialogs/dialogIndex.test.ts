@@ -4,21 +4,17 @@
 import { describe, expect, it } from 'vitest'
 import { dialogIndex } from './dialogIndex'
 import type { Dialog } from '../models'
+import { makeDialog, makeLastMessage } from './testDialog'
 
-const at = (iso: string): Dialog['lastMessage'] => ({ seq: 1, text: 'x', senderId: 1, at: iso })
+const at = (iso: string): Dialog['lastMessage'] =>
+  makeLastMessage({ peerId: 1, seq: 1, senderId: 1, text: 'x', createdAt: iso })
 
-const dlg = (over: Partial<Dialog>): Dialog => ({
-  peerId: 1,
-  type: 'private',
-  lastReadSeq: 0,
-  peerReadSeq: 0,
-  unread: 0,
-  muted: false,
-  pinned: false,
-  archived: false,
-  lastMessage: at('2026-08-09T10:00:00Z'),
-  ...over,
-})
+const dlg = (over: { peerId?: PeerId; pinned?: boolean; lastMessage?: Dialog['lastMessage'] }): Dialog =>
+  makeDialog({
+    peerId: over.peerId ?? 1,
+    pinned: over.pinned,
+    lastMessage: 'lastMessage' in over ? over.lastMessage : at('2026-08-09T10:00:00Z'),
+  })
 
 describe('dialogIndex', () => {
   it('свежее сообщение — больший индекс (выше в списке)', () => {

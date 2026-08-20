@@ -1,6 +1,6 @@
 // src/core/managers/peersManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
-import { saveUsers as persistUsers, loadUsers } from '../store/persist'
+import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
 import { peerKey, type Chat, type User, type UserReal } from '../peers/peer'
 import { isUser, toUserId } from '../peers/peerId'
 
@@ -87,6 +87,11 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     const written: (User | Chat)[] = []
     const replaced: (User | Chat)[] = []
     const persist: UserReal[] = []
+    // Карточки чатов персистятся ТОЖЕ (шаг C диалогов): имя и аватарка группы
+    // уехали из строки диалога в вектор `chats` контейнера `/chats`, и без
+    // офлайн-копии холодный старт БЕЗ СЕТИ показал бы группы без имён — то, что
+    // раньше давал сам персист диалогов.
+    const persistChatCards: Chat[] = []
     for (const peer of peers) {
       const key = peerKey(peer)
       const prev = cache.get(key)
@@ -95,8 +100,10 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
       written.push(peer)
       if (prev) replaced.push(peer)
       if (peer._ === 'user') persist.push(peer)
+      else if (peer._ !== 'userEmpty') persistChatCards.push(peer)
     }
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
+    if (persistChatCards.length) void persistChats(persistChatCards)
     return { written, replaced }
   }
 
@@ -220,6 +227,32 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     publish(save([user]).replaced)
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate }
+  /**
+   * Синхронное чтение кэша ВНУТРИ воркера — порт `appPeersManager.getPeer`
+   * (`:87-91`). Нужно владельцу диалогов: вид чата больше не приезжает строкой
+   * (решение Р8), и правило папок «группы/каналы» задаёт вопрос конструктору
+   * `Chat`, а не полю `type`. Своей копии карточек владелец диалогов не держит —
+   * это и был бы второй источник того же факта.
+   */
+  function cachedPeer(peerId: PeerId): User | Chat | undefined {
+    return cache.get(peerId)
+  }
+
+  /**
+   * Поднять персистнутые карточки в память — офлайн-старт. Зовёт владелец
+   * диалогов перед тем, как отдать наверх кэш с диска: без карточек список
+   * покажет группы без имён, а правило папок посчитает их «любыми группами» по
+   * фолбэку.
+   *
+   * Ничего не публикует: зеркало главного потока наполняет объявленный пробел
+   * (`fillMirror`), а не побочный эффект чтения диска — правило владельца.
+   */
+  async function hydrateFromDisk(): Promise<void> {
+    if (cache.size) return
+    const [users, chats] = await Promise.all([loadUsers(), loadChats()])
+    for (const p of [...users, ...chats]) if (!cache.has(peerKey(p))) cache.set(peerKey(p), p)
+  }
+
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>

@@ -8,19 +8,21 @@
 // бессмысленно: предмет задачи — что владелец и витрина НЕ расходятся.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { RT, type ChatUpdateEvt } from '../../core/realtime/events'
+import { cachedPeerTheme, resetChatFullMirror, saveChatFull } from '../../core/chatFullCache'
+import { RT } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import { newDialogsManager } from '../../core/managers/dialogsManager'
 import type { Dialog } from '../../core/models'
 import type { Managers } from '../bootstrap'
 
 import { registerStoreProjection } from './storeProjection'
+import { makeDialog, makeLastMessage } from '../../core/dialogs/testDialog'
+import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../../core/dialogs/notifySettings'
 
-const dialog = (peerId: number, at = '2026-08-01T00:00:00Z'): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at },
-} as Dialog)
+/** «Навсегда» — не флаг, а далёкий срок (порт MUTE_UNTIL). */
+const MUTED: PeerNotifySettings = { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER }
+
+const dialog = (peerId: number, at = '2026-08-01T00:00:00Z'): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
 
 /** onDialogOps — та же проводка, что в проде задаёт workerCore
  *  (broadcast(RT.dialogOp, {ops})); здесь вместо веера портов сразу локальный
@@ -33,20 +35,6 @@ function stand(cache: Dialog[]) {
     loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
   })
   return { mgr }
-}
-
-// Кадр `chat_update` несёт `messages.chatFull` — тот же объект, что отдаёт
-// `GET /chats/{peerID}/card`.
-function chatUpdate(peerId: number, title = '', username?: string): ChatUpdateEvt {
-  return {
-    peer_id: peerId,
-    chat_full: {
-      _: 'messages.chatFull',
-      full_chat: { _: 'channelFull', id: Math.abs(peerId), about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
-      chats: [{ _: 'channel', id: Math.abs(peerId), title, username, photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }],
-      users: [],
-    },
-  }
 }
 
 describe('storeProjection — диалоги: воркер владеет, витрина зеркалит', () => {
@@ -81,13 +69,13 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     st.applyDialogOps([{ op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }])
 
     st.applyDialogOps([{ op: 'upsert', items: [
-      { dialog: { ...dialog(1), title: 'обновлён' }, index: 10 },
+      { dialog: { ...dialog(1), unread_count: 7 }, index: 10 },
       { dialog: dialog(2), index: 20 },
     ] }])
 
     const s = useChatsStore.getState()
     expect(s.dialogs.map((d) => d.peerId)).toEqual([2, 1])
-    expect(s.dialogs.find((d) => d.peerId === 1)?.title).toBe('обновлён')
+    expect(s.dialogs.find((d) => d.peerId === 1)?.unread_count).toBe(7)
   })
 
   // patch: точечное изменение полей без замены объекта целиком; index двигает строку.
@@ -97,10 +85,10 @@ describe('storeProjection — диалоги: воркер владеет, ви�
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 },
     ] }])
 
-    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { muted: true }, index: 30 }])
+    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { notify_settings: MUTED }, index: 30 }])
 
     const s = useChatsStore.getState()
-    expect(s.dialogs.find((d) => d.peerId === 1)?.muted).toBe(true)
+    expect(s.dialogs.find((d) => d.peerId === 1)?.notify_settings).toEqual(MUTED)
     expect(s.dialogs.map((d) => d.peerId)).toEqual([1, 2]) // index 30 > 20 — 1 теперь выше
   })
 
@@ -121,32 +109,28 @@ describe('storeProjection — диалоги: воркер владеет, ви�
       { dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 }, { dialog: dialog(3), index: 5 },
     ] }])
 
-    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { muted: true } }])
+    st.applyDialogOps([{ op: 'patch', peerId: 1, fields: { notify_settings: MUTED } }])
 
     const s = useChatsStore.getState()
-    expect(s.dialogs.find((d) => d.peerId === 1)?.muted).toBe(true)
+    expect(s.dialogs.find((d) => d.peerId === 1)?.notify_settings).toEqual(MUTED)
     // index у peerId 1 остался 10 (между 20 и 5) — порядок не изменился.
     expect(s.dialogs.map((d) => d.peerId)).toEqual([2, 1, 3])
   })
 
   // Fix (ревью Task 3, Important): владелец публиковал `patch` безусловно —
-  // повторный ИДЕНТИЧНЫЙ chat_update (backend publishChatUpdate зовётся из 13
-  // мест и прилетает КАЖДОМУ участнику чата) пересоздавал и массив
-  // `dialogs`, и объект диалога в зеркале при нулевом изменении данных
-  // (лишний ре-рендер мемоизированного ChatListItem). Портировано по смыслу из
-  // удалённых chatsStore.chatMeta.test.ts («снимок совпал — массив НЕ
-  // пересоздаётся» / «диалог сохраняет ССЫЛКУ») — фикс теперь в источнике
-  // (dialogsManager.patchDialog: patch не публикуется при структурном
-  // совпадении), проверяем СКВОЗНОЙ путь владелец→зеркало.
-  it('повторный идентичный chat_update не пересоздаёт ни массив dialogs, ни объект диалога', async () => {
+  // повторный ИДЕНТИЧНЫЙ кадр (бэкенд шлёт эхо на ВСЕ соединения пользователя,
+  // включая инициировавшее) пересоздавал и массив `dialogs`, и объект диалога в
+  // зеркале при нулевом изменении данных (лишний ре-рендер мемоизированного
+  // ChatListItem). Проверяем СКВОЗНОЙ путь владелец→зеркало.
+  it('повторный идентичный кадр не пересоздаёт ни массив dialogs, ни объект диалога', async () => {
     const { mgr } = stand([dialog(1, '2026-08-01T00:00:00Z')])
     await mgr.fillMirror()
 
-    mgr.applyChatMeta(chatUpdate(1, 'Новое имя'))
+    mgr.applyNotifySettings(1, MUTED)
     const dialogsBefore = useChatsStore.getState().dialogs
     const dialogBefore = dialogsBefore.find((d) => d.peerId === 1)
 
-    mgr.applyChatMeta(chatUpdate(1, 'Новое имя')) // тот же снимок повторно
+    mgr.applyNotifySettings(1, MUTED) // то же самое повторно
 
     const s = useChatsStore.getState()
     expect(s.dialogs).toBe(dialogsBefore) // массив НЕ пересоздан
@@ -163,5 +147,22 @@ describe('storeProjection — диалоги: воркер владеет, ви�
     st.applyDialogOps([{ op: 'remove', peerId: 2 }])
 
     expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
+  })
+})
+
+// Тема оформления — ИСКЛЮЧЕНИЕ из «диалогами владеет воркер» и оно от решения
+// Р7: её место в схеме не строка `dialog`, а полная карточка
+// (`chatFull`/`userFull.theme_emoticon`). Владельца-в-воркере у карточек нет,
+// поэтому кадр `chat_theme_update` применяет ЗДЕСЬ проектор — поверх
+// единственного зеркала карточек. Мутация «убрать строку [RT.chatThemeUpdate]
+// из APPLY» красит этот кейс: тема открытого чата перестала бы меняться вовсе.
+describe('storeProjection — тема чата живёт в карточке, а не в строке диалога', () => {
+  it('chat_theme_update патчит зеркало полных карточек', () => {
+    resetChatFullMirror()
+    saveChatFull(-9, { _: 'channelFull', id: 9, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null })
+
+    rootScope.dispatchEventSingle(RT.chatThemeUpdate, { peer_id: -9, theme_id: 'sunset' })
+
+    expect(cachedPeerTheme(-9)).toBe('sunset')
   })
 })

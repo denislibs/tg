@@ -9,6 +9,7 @@ import { useNotifyStore, notifyTypeForChat, isDialogMuted } from '../stores/noti
 import { useChatsStore } from '../stores/chatsStore'
 import { useI18nStore } from '../i18n'
 import { mediaLabel } from '../core/dialogToChat'
+import { cachedChat, isAnyGroupPeer, peerTitle } from '../core/peerCache'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { playIncoming } from '../core/audio/sounds'
 import { incNotificationsCount } from './appBadge'
@@ -28,8 +29,9 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   // Правило «заглушён» — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
   // пин stores/noDuplicateMuteRule.test.ts). `preview` ниже — другая настройка,
   // её по-прежнему берём по типу чата напрямую.
-  if (isDialogMuted(dialog, notifySettings)) return
-  const typeSettings = notifySettings[notifyTypeForChat(dialog?.type)]
+  const chat = cachedChat(evt.peer_id)
+  if (isDialogMuted(dialog, chat, notifySettings)) return
+  const typeSettings = notifySettings[notifyTypeForChat(evt.peer_id, chat)]
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране).
   if (s.activePeerId === evt.peer_id && !document.hidden) return
@@ -46,8 +48,10 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
 
   const t = useI18nStore.getState().t
-  // Имя собирает клиент — `display_name` с провода убран.
-  const chatTitle = (dialog?.peer ? getUserTitle(dialog.peer) : dialog?.title) || 'Telegram'
+  // Имя собирает клиент по карточке пира — ни `display_name`, ни `title` строки
+  // диалога на проводе больше нет (шаг C диалогов: тело чата едет вектором
+  // `chats` контейнера и живёт в зеркале пиров).
+  const chatTitle = peerTitle(evt.peer_id) || 'Telegram'
   const body = typeSettings.preview ? evt.text || t(mediaLabel(evt.type) || 'New notification') : t('New notification')
   void show(chatTitle, body, evt)
 }
@@ -55,10 +59,11 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
 async function show(chatTitle: string, body: string, evt: IncomingMsg): Promise<void> {
   try {
     if (!('serviceWorker' in navigator)) return
-    // tweb в группах пишет отправителя в заголовок: «Sender @ Chat»
+    // tweb в группах пишет отправителя в заголовок: «Sender @ Chat».
+    // «Любая группа» — предикат над конструктором чата (решение Р8), а не
+    // снятая с провода строка `type`.
     let title = chatTitle
-    const dialog = useChatsStore.getState().dialogs.find((d) => d.peerId === evt.peer_id)
-    if (dialog?.type === 'group') {
+    if (isAnyGroupPeer(evt.peer_id)) {
       const { managers } = startClient()
       const [u] = await managers.peers.getUsers([evt.sender_id]).catch(() => [])
       const senderTitle = u ? getUserTitle(u) : ''

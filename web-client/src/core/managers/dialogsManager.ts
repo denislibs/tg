@@ -8,18 +8,24 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { mapDialog, type Dialog, type Draft, type RawDialog } from '../models'
+import { fromNewMessageEvt, isDialogArchived, type Dialog, type Draft, type RawDialog, type RawMessage } from '../models'
+import { getPeerId } from '../peers/peerId'
+import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
+import type { Chat, UserReal } from '../peers/peer'
 import { dialogIndex } from '../dialogs/dialogIndex'
 import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
-import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
+import type { NewMessageEvt, ReadEvt } from '../realtime/events'
 import { equal } from '../store/reconcile'
 import { dialogMatchesFolder } from '../folderFilter'
 // Наше закрепление пер-юзерное и на весь список сразу — запись одна (см.
 // chatsStore), поэтому `pinnedOrders` ключуется тем же ALL_FOLDER_ID.
 // Обе константы — общий дом core/folderIds.ts (их читает и main, и воркер).
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
+import { WIRE_FOLDER_ARCHIVE } from '../models'
 import type { Folder } from './foldersManager'
+import type { PeersManager } from './peersManager'
+import type { MessagesManager } from './messagesManager'
 
 /** Размер страницы по умолчанию — как в tweb (`limit = 20`, dialogs.ts:1614). */
 const DEFAULT_LIMIT = 20
@@ -28,8 +34,25 @@ const DEFAULT_LIMIT = 20
  * его считает потребитель-виртуализатор, этап 3). */
 export type DialogsPage = { dialogs: Dialog[]; count: number; isEnd: boolean }
 
-/** Ответ `GET /chats` в форме Task 3 (`chat_handler.go::ListDialogs`). */
-type ChatsResponse = { chats?: RawDialog[]; count?: number; is_end?: boolean }
+/**
+ * Ответ `GET /chats` — КОНТЕЙНЕР схемы (решение Р1): `messages.dialogs`, когда
+ * список отдан целиком, и `messages.dialogsSlice{count, …}`, когда отдан кусок.
+ *
+ * Булева `is_end` на проводе больше НЕТ, и это не потеря поля, а способ сказать
+ * «это всё»: конец списка выражает ОТСУТСТВИЕ `count`, ровно как читает
+ * оригинал (`appMessagesManager.ts:3614,3629` — `isEnd = !count || …`).
+ *
+ * Один тип на оба конструктора с необязательным `count`: и tweb читает их так
+ * же — `const count = (result as …dialogsSlice).count`.
+ */
+type MessagesDialogs = {
+  _?: 'messages.dialogs' | 'messages.dialogsSlice'
+  count?: number
+  dialogs?: RawDialog[]
+  messages?: RawMessage[]
+  chats?: Chat[]
+  users?: UserReal[]
+}
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
@@ -72,16 +95,31 @@ export interface DialogsDeps {
    */
   saveCache?: (dialogs: Dialog[]) => Promise<void>
   /**
-   * Task 6 (диалоговая половина `loadChats` переезжает к владельцу): дешифровка
-   * превью секретных чатов на холодном старте/сетевом догоне (порт
-   * `chatsStore.decryptSecretPreviews`, main). Текст секретного сообщения
-   * приходит с сервера как `enc_body`, plaintext знает только WebCrypto-ключ
-   * секретного чата — тот живёт в `secretManager` (workerCore.ts), в ТОМ ЖЕ
-   * воркере, поэтому RPC (как было с main) больше не нужен. Опционален по тому
-   * же приёму, что `getMeId`/`savePinnedOrders` выше: тесты, которых секретные
-   * чаты не касаются, его не задают.
+   * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
+   * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
+   * `saveApiPeers` (порт `appPeersManager.saveApiPeers`, шаг D пиров). Своей
+   * копии карточек владелец диалогов не заводит: имя, аватарка и вид чата
+   * теперь живут в одном месте на весь клиент.
+   *
+   * `cachedPeer` нужен правилу папок: вид чата больше не приезжает строкой
+   * (решение Р8), «группа это или канал» отвечают предикаты над конструктором.
+   * `hydrateFromDisk` поднимает офлайн-копию карточек перед тем, как отдать
+   * наверх дисковый кэш диалогов.
    */
-  decryptSecret?: (peerId: number, encBody: string) => Promise<{ text: string; media?: { mediaType: string } } | null>
+  peers?: Pick<PeersManager, 'saveApiPeers' | 'cachedPeer' | 'hydrateFromDisk'>
+  /**
+   * Владелец сообщений. Вектор `messages` контейнера втекает в ЕГО хранилище
+   * (`msgsByChat` — SSOT воркера), а ссылка `dialog.top_message` разрешается
+   * оттуда же (решение Р11): главный поток держит зеркало только ОТКРЫТЫХ окон
+   * и сообщение закрытого чата взять ему неоткуда, а достраивать рядом второе
+   * хранилище объектов нельзя — открытый чат оказался бы в двух копиях.
+   *
+   * Он же расшифровывает секретные превью: `saveApiMessages` прогоняет вектор
+   * через тот же `decryptPage`, что и страницу истории (ключи живут в этом же
+   * воркере). Прежний `decryptSecret` владельца диалогов был второй копией того
+   * же правила и снят.
+   */
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
 }
 
 /** Тот же интервал, что был у main-thread-дебаунса `dialogsPersist.ts` (800мс)
@@ -90,7 +128,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, decryptSecret }: DialogsDeps) {
+export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, peers, messages }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -235,8 +273,95 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *    диалогов (`items.map(i => i.dialog)`), они те же.
    */
   const announce = (ops: DialogOp[]) => { onDialogOps?.(ops) }
-  /** Изменились ЗНАЧЕНИЯ кэша: разослать и запланировать запись на диск. */
-  const publish = (ops: DialogOp[]) => { announce(ops); scheduleSave() }
+  /** Изменились ЗНАЧЕНИЯ кэша: разослать, запланировать запись на диск и
+   *  пересчитать расписание мьюта (среди изменившихся мог появиться срок). */
+  const publish = (ops: DialogOp[]) => { announce(ops); scheduleSave(); scheduleMuteCheck() }
+
+  // ── Мьют это СРОК, и гасит его клиент (решение Р4) ─────────────────────────
+  //
+  // Порт tweb `appNotificationsManager.checkMuteUntil` (`:162-218`): по
+  // наступлении `mute_until` переопределение СНИМАЕТСЯ и объявляется апдейтом,
+  // а следующая проверка ставится на БЛИЖАЙШИЙ оставшийся срок, но не дальше
+  // получаса (`Math.min(1800e3, …)`).
+  //
+  // Без него «заглушить на час» осталось бы неотличимо от «навсегда» на
+  // экране: иконка мьюта не погасла бы в назначенный час сама, а пересчёт
+  // случался бы только при следующей полной загрузке списка. Тот же класс
+  // дефекта и то же лечение, что у истёкшего `userStatusOnline`
+  // (`stores/chatsStore.ts::degradeExpiredPresence`), — только у присутствия
+  // владелец на главном потоке, а у мьюта здесь, вместе с диалогами.
+  //
+  // Отступление от оригинала, названное вслух: tweb перезаводит таймер
+  // БЕЗУСЛОВНО (тик раз в полчаса даже когда замьюченных нет вовсе). Мы
+  // вооружаем его, только если срок реально есть, — расписание пересчитывается
+  // на каждом изменении значений кэша (`publish`) и на первом же его
+  // наполнении (`setAll`), поэтому пропустить появившийся срок нечем.
+  const MUTE_CHECK_MAX_MS = 1800e3
+  let muteTimer: ReturnType<typeof setTimeout> | null = null
+  // Гвард повторного входа: снятие истёкшего мьюта идёт обычным `patchDialog`,
+  // а тот публикует операцию — то есть заходит в `publish` → `scheduleMuteCheck`
+  // из середины прохода. Без гварда один проход по списку с двумя истёкшими
+  // сроками вложился бы сам в себя.
+  let checkingMute = false
+
+  function checkMuteUntil(): void {
+    muteTimer = null
+    if (checkingMute) return
+    checkingMute = true
+    try { runMuteCheck(Math.floor(Date.now() / 1000)) } finally { checkingMute = false }
+    // Расписание перевзвели уже ПОСЛЕ снятия истёкших — иначе вложенные
+    // публикации оставили бы таймер на только что снятом сроке.
+    scheduleMuteCheck()
+  }
+
+  function runMuteCheck(now: number): void {
+    // Копия списка: patchDialog пересобирает `items` на месте.
+    for (const { dialog } of [...items]) {
+      const until = dialog.notify_settings?.mute_until
+      if (!until || until > now) continue
+      // Срок вышел — переопределения БОЛЬШЕ НЕТ. Ключ снимаем, а не обнуляем:
+      // «выключено» у нас это отсутствие ключа (правило фазы 0). tweb пишет
+      // `mute_until = 0` по своей причине — у него пер-типовые настройки
+      // склеиваются с пер-чатными в `getPeerLocalSettings`, и удалённая запись
+      // была бы перетёрта настройкой типа.
+      const { mute_until: _gone, ...rest } = dialog.notify_settings
+      patchDialog(dialog.peerId, { notify_settings: rest })
+    }
+  }
+
+  /**
+   * БЛИЖАЙШИЙ срок мьюта — порт `closestMuteUntil` (`:169`). `MUTE_UNTIL_FOREVER`
+   * значит «ждать нечего»: и когда замьюченных нет вовсе, и когда все замьючены
+   * навсегда, — во втором случае срок формально есть, но не наступит никогда.
+   */
+  function closestMuteUntil(now: number): number {
+    let closest = MUTE_UNTIL_FOREVER
+    for (const { dialog } of items) {
+      const until = dialog.notify_settings?.mute_until
+      if (until && until > now && until < closest) closest = until
+    }
+    return closest
+  }
+
+  function armMuteTimer(closest: number, now: number): void {
+    if (muteTimer) { clearTimeout(muteTimer); muteTimer = null }
+    if (closest >= MUTE_UNTIL_FOREVER) return // ждать нечего
+    muteTimer = setTimeout(checkMuteUntil, Math.min(MUTE_CHECK_MAX_MS, Math.max(0, closest - now) * 1000))
+  }
+
+  /** Пересчитать ближайший срок и перевзвести таймер. Дешёвая операция —
+   *  один проход по кэшу, без публикаций. */
+  function scheduleMuteCheck(): void {
+    if (checkingMute) return
+    const now = Math.floor(Date.now() / 1000)
+    // Уже истёкший срок в кэше (пришёл с диска после долгого простоя) —
+    // снимаем прямо сейчас, а не через таймер.
+    if (items.some((i) => { const u = i.dialog.notify_settings?.mute_until; return !!u && u <= now })) {
+      checkMuteUntil()
+      return
+    }
+    armMuteTimer(closestMuteUntil(now), now)
+  }
   const draftFor = (peerId: number) => drafts.find((d) => d.peerId === peerId)
 
   /** Порядок — производная от данных (tweb generateDialogIndex, dialogs.ts:605-608). */
@@ -281,7 +406,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * точечный patch, не только повторный полный список».
    */
   function syncPinnedOrder(sorted: readonly DialogItem[]): boolean {
-    const next = sorted.filter((i) => i.dialog.pinned).map((i) => i.dialog.peerId)
+    const next = sorted.filter((i) => i.dialog.pFlags?.pinned).map((i) => i.dialog.peerId)
     if (next.length === pinnedOrder.length && next.every((id, i) => id === pinnedOrder[i])) return false
     pinnedOrder = next
     pinnedOrders = { ...pinnedOrders, [ALL_FOLDER_ID]: next }
@@ -314,7 +439,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * даже когда сервер вернул ровно то же самое.
    *
    * Прежний `items` при совпадении сохраняется ПО ССЫЛКЕ (вместе со ссылками на
-   * сами диалоги) — свежие объекты `mapDialog` выбрасываем: кэш владельца ведёт
+   * сами диалоги) — свежие объекты `toDialog` выбрасываем: кэш владельца ведёт
    * себя так же, как зеркало под `reconcileById`.
    */
   const setAll = (dialogs: Dialog[]): DialogOp | null => {
@@ -323,6 +448,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     // Пересортировать НАДО ЖЕ засеянным pinnedOrder — см. докблок syncPinnedOrder.
     if (syncPinnedOrder(items)) items = sort(dialogs)
     if (sameItems(prev, items)) { items = prev; return null }
+    scheduleMuteCheck()
     return { op: 'reset', items }
   }
 
@@ -340,7 +466,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * Fix (ревью Task 3, Important): смерженный результат структурно совпал с
    * текущим значением (напр. бэкенд повторно шлёт идентичный `chat_update` —
    * `publishChatUpdate` зовётся из 13 мест бэка и прилетает КАЖДОМУ участнику
-   * чата) — `patch` не публикуем вовсе. Раньше (main, chatsStore.applyChatMeta)
+   * чата) — `patch` не публикуем вовсе. Раньше (main, chatsStore.applyDialogs)
    * это давало бесплатно `reconcileEntity`/`reconcileById` (совпавший ответ
    * возвращает ИСХОДНЫЙ объект/массив); patch-путь владельца эту сверку не
    * делал и создавал новую ссылку на диалог/патчил зеркало (`chatsStore.ts`,
@@ -348,11 +474,26 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * изменении данных — лишний ре-рендер мемоизированного `ChatListItem`.
    * `equal()` — тот же структурный компаратор, что и в `reconcileEntity`.
    */
+  /**
+   * Слить поля в строку списка. `undefined` в `fields` — это «СНЯТЬ ключ», а не
+   * «положить ключ со значением undefined»: у конструктора схемы «выключено»
+   * выражается ОТСУТСТВИЕМ ключа (правило фазы 0), и оставленный ключ ломал бы
+   * структурное сравнение — снятие уже снятого архива публиковалось бы как
+   * изменение, а совпавший ответ сети переставал бы совпадать с кэшем.
+   */
+  function merge(prev: Dialog, fields: Partial<Dialog>): Dialog {
+    const next: Dialog = { ...prev, ...fields }
+    for (const key of Object.keys(fields) as (keyof Dialog)[]) {
+      if (next[key] === undefined) delete next[key]
+    }
+    return next
+  }
+
   function patchDialog(peerId: number, fields: Partial<Dialog>): void {
     const idx = items.findIndex((i) => i.dialog.peerId === peerId)
     if (idx === -1) return
     const prev = items[idx].dialog
-    const dialog: Dialog = { ...prev, ...fields }
+    const dialog = merge(prev, fields)
     if (equal(prev, dialog)) return
     const index = dialogIndex(dialog, pinnedOrder, draftFor(peerId))
     const moved = index !== items[idx].index
@@ -361,22 +502,34 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     publish([{ op: 'patch', peerId, fields, ...(moved ? { index } : {}) }])
   }
 
-  // Расшифровать превью секретных чатов «на месте» (мутирует lastMessage
-  // входящих диалогов) — порт `chatsStore.decryptSecretPreviews` (main, до
-  // Task 6), но без RPC: секретный ключ знает `secretManager`, живущий в этом
-  // же воркере. Диалог без encBody, с уже готовым text или не secret-типа —
-  // no-op; упавшая дешифровка (ключ ещё не пришёл/битый) глотается, превью
-  // остаётся generic-лейблом — как и раньше.
-  async function decryptSecretPreviews(dialogs: Dialog[]): Promise<void> {
-    if (!decryptSecret) return
-    await Promise.all(dialogs.map(async (d) => {
-      const lm = d.lastMessage
-      if (d.type !== 'secret' || !lm?.encBody || lm.text) return
-      const dec = await decryptSecret(d.peerId, lm.encBody).catch(() => null)
-      if (!dec) return
-      lm.text = dec.text
-      if (!dec.text && dec.media) lm.mediaType = dec.media.mediaType
-    }))
+  /**
+   * Разобрать КОНТЕЙНЕР `/chats` (решение Р1) и вернуть строки списка уже с
+   * разрешённым последним сообщением.
+   *
+   * Порядок обязателен и он же — порядок оригинала (`saveApiResult`, порт
+   * `apiUpdatesManager.processUpdateMessage:239-240`): сначала в хранилища
+   * втекают ПИРЫ и СООБЩЕНИЯ, и только потом разрешаются ссылки на них. Иначе
+   * `getMessageByPeer(peerId, top_message)` не нашёл бы ничего, а имя автора
+   * превью собирать было бы не из кого.
+   *
+   * `messages`/`peers` опциональны по тому же приёму, что `getMeId` и соседи:
+   * тесты, которых контейнер не касается, их не задают. Тогда `lastMessage`
+   * просто не разрешается — строка списка остаётся без превью, а не падает.
+   */
+  async function applyContainer(r: MessagesDialogs): Promise<Dialog[]> {
+    peers?.saveApiPeers({ chats: r.chats, users: r.users })
+    await messages?.saveApiMessages(r.messages)
+    return (r.dialogs ?? []).map(toDialog)
+  }
+
+  /**
+   * Строка провода → строка модели: два КЛИЕНТСКИХ параметра поверх конструктора
+   * (`schema/schema_additional_params.json`, предикат `dialog`). Маппера полей
+   * здесь нет и быть не может — форма провода и форма модели совпали.
+   */
+  function toDialog(raw: RawDialog): Dialog {
+    const peerId = getPeerId(raw.peer)
+    return { ...raw, peerId, lastMessage: messages?.getMessageByPeer(peerId, raw.top_message) }
   }
 
   async function doHydrate(): Promise<void> {
@@ -392,12 +545,33 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     drafts = state.drafts
     folders = state.folders ?? []
     if (!items.length) {
-      const cached = await loadCache()
-      await decryptSecretPreviews(cached)
+      // Карточки пиров с диска поднимаются ВМЕСТЕ с диалогами: имя и аватарка
+      // группы уехали из строки диалога в вектор `chats` контейнера, и без них
+      // офлайн-старт показал бы список без имён (см. `peers.hydrateFromDisk`).
+      const [cached] = await Promise.all([loadCache(), peers?.hydrateFromDisk()])
       if (gen !== sessionGen) return
       setAll(cached)
     }
     hydrated = true
+    // Мьют — СРОК; ближайший из них надо погасить самому (порт checkMuteUntil).
+    scheduleMuteCheck()
+  }
+
+  /**
+   * Правило папки для строки списка. Вид чата больше не приезжает строкой
+   * (решение Р8): «любая группа» и «вещательный канал» — предикаты над
+   * конструктором `Chat` из кэша пиров (`core/peers/predicates.ts`), ровно как
+   * их задаёт `appPeersManager.isAnyGroup`/`isBroadcast`. Карточки чата ещё нет
+   * — предикаты отвечают тем же фолбэком, что и у оригинала: чат, про который
+   * ничего не известно, вещательным не считается.
+   */
+  const matchesThisFolder = (dialog: Dialog, folder: Folder): boolean =>
+    dialogMatchesFolder(dialog, cachedChatOf(dialog.peerId), folder, contactIds)
+
+  /** Карточка ЧАТА по ключу пира; у приватного диалога её нет по построению. */
+  const cachedChatOf = (peerId: PeerId): Chat | undefined => {
+    const peer = peers?.cachedPeer(peerId)
+    return peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
   }
 
   /**
@@ -416,14 +590,14 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *    поэтому ведём себя как с неизвестной папкой.
    */
   function forFilter(filterId: number): DialogItem[] | null {
-    if (filterId === ALL_FOLDER_ID) return items.filter((i) => !i.dialog.archived)
-    if (filterId === ARCHIVE_FOLDER_ID) return items.filter((i) => i.dialog.archived)
+    if (filterId === ALL_FOLDER_ID) return items.filter((i) => !isDialogArchived(i.dialog))
+    if (filterId === ARCHIVE_FOLDER_ID) return items.filter((i) => isDialogArchived(i.dialog))
     const folder = folders.find((f) => f.id === filterId)
     if (!folder) return null
     if (!contactsKnown && (folder.contacts || folder.nonContacts)) return null
     // Архив в пользовательские папки не попадает — как в tweb, где архивные
     // диалоги лежат в ДРУГОЙ реальной папке и в выборку фильтра не входят.
-    return items.filter((i) => !i.dialog.archived && dialogMatchesFolder(i.dialog, folder, contactIds))
+    return items.filter((i) => !isDialogArchived(i.dialog) && matchesThisFolder(i.dialog, folder))
   }
 
   /**
@@ -521,7 +695,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * ключом. `0` — сообщений нет (пустой чат либо очищенная история).
    */
   const msgTime = (d: Dialog): number => {
-    const ms = Date.parse(d.lastMessage?.at ?? '')
+    const ms = Date.parse(d.lastMessage?.createdAt ?? '')
     return Number.isNaN(ms) ? 0 : ms
   }
 
@@ -538,7 +712,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * числе древним или отсутствующим) последним сообщением, а очищенные чаты
    * `NULLS LAST` уводит в самый хвост.
    */
-  const inFlow = (d: Dialog): boolean => !d.pinned && msgTime(d) > 0
+  const inFlow = (d: Dialog): boolean => !d.pFlags?.pinned && msgTime(d) > 0
   const flowOf = (page: readonly Dialog[]): Dialog[] => page.filter(inFlow)
 
   /**
@@ -597,28 +771,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const query: Record<string, string | number> = { limit, offset_peer_id: offsetPeerId }
     if (wire !== undefined) query.folder_id = wire
     try {
-      const r = await rest.get<ChatsResponse>('/chats', query)
-      const dialogs = (r.chats ?? []).map(mapDialog)
-      await decryptSecretPreviews(dialogs)
+      const r = await rest.get<MessagesDialogs>('/chats', query)
+      const dialogs = await applyContainer(r)
       // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
       if (gen !== sessionGen) return null
       if (typeof r.count === 'number') serverCount[scope] = r.count
       advanceCursor(scope, dialogs)
-      const isEnd = !!r.is_end
       const added = mergePage(dialogs)
-      // Полной выборка считается, когда конец ДОСТИГНУТ и мы держим её
-      // ЦЕЛИКОМ: либо страница шла без курсора (значит покрыла выборку от
-      // начала), либо кэш выборки дорос до серверного `count`. Порт tweb: там
-      // `dialogsLoaded` поднимает любая дошедшая до конца страница
-      // (appMessagesManager.ts:3639), потому что страницы идут строго сверху;
-      // у нас курсор — `peerId`, и при исчезнувшем опорном чате бэкенд отдаёт
-      // с начала (`dialogpage.go`), поэтому одного `is_end` мало — сверяем с
-      // размером выборки, как это же делает tweb в `dialogsLength >= count`.
-      // `scopeList` здесь пересчитывается сознательно: страница только что
-      // влилась в кэш (`mergePage` выше), и удерживаемое окно уже ДРУГОЕ, не то,
-      // из которого брался курсор. Короткое замыкание бережёт лишний проход по
-      // кэшу: без `is_end` и без курсора размер выборки не нужен вовсе.
-      if (isEnd && (!offsetPeerId || scopeList(filterId).length >= (serverCount[scope] ?? Infinity))) setLoaded(scope)
+      // Конец выборки — ПОРТ ФОРМУЛЫ ОРИГИНАЛА (appMessagesManager.ts:3629):
+      //   isEnd = !count || dialogsLength >= count || !items.length
+      // Отсутствие `count` и есть «это всё»: его нет только у конструктора
+      // `messages.dialogs`, а его бэкенд собирает ровно тогда, когда страница
+      // совпала с набором от начала до конца (`dialogpage.go` — `Whole`).
+      // Прежняя проверка «`is_end` И покрыли ли мы выборку от начала» здесь
+      // больше не нужна: её вторую половину теперь выражает сам выбор
+      // конструктора. `dialogsLength` — удерживаемое окно ВЫБОРКИ, пересчитанное
+      // ПОСЛЕ слияния страницы (`mergePage` выше уже отработал).
+      const isEnd = !r.count || scopeList(filterId).length >= r.count || !dialogs.length
+      if (isEnd) setLoaded(scope)
       return { isEnd, added }
     } catch (e) {
       if (e instanceof HttpError) throw e
@@ -739,9 +909,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     await hydrate()
     const limit = Math.max(items.length, DIALOG_LOAD_COUNT)
     try {
-      const r = await rest.get<ChatsResponse>('/chats', { limit })
-      const dialogs = (r.chats ?? []).map(mapDialog)
-      await decryptSecretPreviews(dialogs)
+      const r = await rest.get<MessagesDialogs>('/chats', { limit })
+      const dialogs = await applyContainer(r)
       // Ответ отправлен под ПРОШЛЫМ токеном (Minor #4) — не применяем.
       if (gen !== sessionGen) return null
       if (typeof r.count === 'number') serverCount.global = r.count
@@ -750,10 +919,12 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // без этого следующая страница папки пошла бы от хвоста кэша, куда
       // страница архива уже положила самый старый архивный диалог.
       advanceCursor('global', dialogs)
-      // Запрос идёт БЕЗ курсора, поэтому `is_end` означает «окно накрыло набор
-      // от начала», то есть кэш держит его целиком.
-      if (r.is_end) setLoaded('global')
-      const op = setAll(mergeWindow(dialogs, !!r.is_end))
+      // Запрос идёт БЕЗ курсора, поэтому отсутствие `count` (конструктор
+      // `messages.dialogs`) означает «окно накрыло набор от начала», то есть
+      // кэш держит его целиком.
+      const isEnd = !r.count
+      if (isEnd) setLoaded('global')
+      const op = setAll(mergeWindow(dialogs, isEnd))
       // Ответ совпал с памятью — ни операции, ни записи на диск (Important #4).
       if (op) publish([op])
       return op
@@ -914,7 +1085,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      */
     getReadMaxSeqIfUnread(peerId: number): number {
       const d = findDialog(peerId)
-      return d && d.unread > 0 ? d.lastReadSeq : 0
+      return d && d.unread_count > 0 ? d.read_inbox_max_id : 0
     },
 
     /**
@@ -1024,6 +1195,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       serverCursor.global = serverCursor.all = serverCursor.archive = null
       hydrated = false
       hydrating = null
+      // Сроки мьюта — тоже про ПРОШЛЫЙ аккаунт: таймер, доживший до нового,
+      // снял бы переопределение у чата, которого больше нет в кэше.
+      armMuteTimer(MUTE_UNTIL_FOREVER, 0)
     },
 
     /**
@@ -1071,19 +1245,15 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
       const incoming = e.sender_id !== meId
-      const nextUnread = incoming ? (e.unread ?? cur.unread + 1) : cur.unread
+      const nextUnread = incoming ? (e.unread ?? cur.unread_count + 1) : cur.unread_count
+      // Превью строится из ЦЕЛОГО сообщения — тем же единственным маппером
+      // живого кадра, что и вставка в окно (`messages.cacheLive` зовёт его же).
+      // Прежняя девятиполевая выжимка (`senderName` от сервера, `mediaType`
+      // строкой) исчезла вместе с выжимкой на проводе.
       patchDialog(e.peer_id, {
-        lastMessage: {
-          seq: e.seq,
-          text: e.text,
-          senderId: e.sender_id,
-          at: e.created_at,
-          mediaId: e.media_id ?? undefined,
-          mediaType: e.type || undefined,
-          senderName: e.sender_name || undefined,
-          forwarded: !!e.fwd_from || undefined,
-        },
-        unread: nextUnread,
+        top_message: e.seq,
+        lastMessage: fromNewMessageEvt(e),
+        unread_count: nextUnread,
       })
     },
 
@@ -1094,46 +1264,23 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       if (e.user_id === meId) {
         // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
         const unread = e.unread ?? 0
-        const lastReadSeq = Math.max(cur.lastReadSeq, e.up_to_seq)
+        const readInbox = Math.max(cur.read_inbox_max_id, e.up_to_seq)
         // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
         // unread уже 0) НЕ публикует операцию — иначе на зеркале перезапустится
         // mark-read-эффект (деп win.msgs) и получится бесконечный цикл ре-рендера.
-        if (unread === cur.unread && cur.unreadMentions === 0 && cur.unreadReactions === 0 && lastReadSeq === cur.lastReadSeq) return
-        patchDialog(e.peer_id, { unread, unreadMentions: 0, unreadReactions: 0, lastReadSeq })
+        if (unread === cur.unread_count && cur.unread_mentions_count === 0 && cur.unread_reactions_count === 0 && readInbox === cur.read_inbox_max_id) return
+        patchDialog(e.peer_id, {
+          unread_count: unread,
+          unread_mentions_count: 0,
+          unread_reactions_count: 0,
+          read_inbox_max_id: readInbox,
+        })
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
-        const peerReadSeq = Math.max(cur.peerReadSeq, e.up_to_seq)
-        if (peerReadSeq === cur.peerReadSeq) return // no advance → no-op (без операции)
-        patchDialog(e.peer_id, { peerReadSeq })
+        const readOutbox = Math.max(cur.read_outbox_max_id, e.up_to_seq)
+        if (readOutbox === cur.read_outbox_max_id) return // no advance → no-op (без операции)
+        patchDialog(e.peer_id, { read_outbox_max_id: readOutbox })
       }
-    },
-
-    // Бэкенд шлёт в `chat_update` АБСОЛЮТНЫЙ снимок карточки чата — ТОТ ЖЕ
-    // объект `messages.chatFull`, что отдаёт `GET /chats/{peerID}/card`.
-    // Прежде та же карточка ехала двумя разными формами (плоско с `id` у ручки
-    // и вложенно в кадре), из-за чего кадр приходилось разбирать своим кодом —
-    // и он знал ровно три поля из снимка.
-    //
-    // В строку диалога ложатся только те поля, которые в ней есть; остальное
-    // (about, права, настройки) живёт в самой карточке чата и туда же уезжает
-    // через `peers.saveApiPeers` — карточка чата это обычный пир. Зовёт его
-    // НЕ этот метод, а `workerCore.ts::dispatch` строкой выше (порт
-    // `apiUpdatesManager.processUpdateMessage`: пиры апдейта сохраняются до
-    // применения самого апдейта), поэтому владелец диалогов о пирах не знает.
-    applyChatMeta(e: ChatUpdateEvt): void {
-      const cur = findDialog(e.peer_id)
-      if (!cur) return // чата нет в списке — приедет со следующей загрузкой
-      const chat = e.chat_full?.chats?.[0]
-      if (!chat || (chat._ !== 'chat' && chat._ !== 'channel')) return
-      patchDialog(e.peer_id, {
-        title: chat.title,
-        username: chat._ === 'channel' ? chat.username : undefined,
-        // Одно поле вместо пары «id медиа + собранный из него путь»: снимок
-        // несёт `ChatPhoto` с готовым `photo_id`, а URL с медиа-токеном в
-        // долгоживущую модель класть нельзя (токен живёт ~15 минут).
-        photo: chat.photo,
-        isForum: (chat._ === 'channel' && chat.pFlags?.forum) || undefined,
-      })
     },
 
     // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
@@ -1143,8 +1290,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       if (!cur) return
       // Авторитетный счётчик из кадра (reaction.unread_reactions) — verbatim, как
       // unread у new_message/read; локальный +1 — fallback, если поля нет.
-      const value = typeof count === 'number' ? count : (cur.unreadReactions ?? 0) + 1
-      patchDialog(peerId, { unreadReactions: value })
+      const value = typeof count === 'number' ? count : cur.unread_reactions_count + 1
+      patchDialog(peerId, { unread_reactions_count: value })
     },
 
     // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.
@@ -1161,19 +1308,27 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     // методы ПОСЛЕ успешного REST-ответа; при ошибке они не зовутся вовсе — см.
     // dialogsManager.test.ts «RPC упал — ни одной операции».
 
-    /** Пер-чатовый mute (messages.setMute) — то же поле, что и realtime-эхо dialog_mute. */
-    applyMute(peerId: number, muted: boolean): void {
-      patchDialog(peerId, { muted })
+    /**
+     * Пер-чатовые настройки уведомлений — то же, что несёт realtime-кадр
+     * `dialog_mute` (бэкенд читает их из базы и кладёт в кадр ЦЕЛИКОМ).
+     *
+     * Принимает КОНСТРУКТОР, а не булево, и это не переименование аргумента:
+     * мьют выражен СРОКОМ, и «заглушить на час» отличается от «навсегда» только
+     * им. Прежняя сигнатура `(peerId, muted: boolean)` срок теряла — ровно на
+     * ней и ломалась вся уже построенная цепочка.
+     */
+    applyNotifySettings(peerId: number, settings: PeerNotifySettings): void {
+      patchDialog(peerId, { notify_settings: settings })
+      // Новый срок может оказаться ближайшим — пересчитываем расписание.
+      scheduleMuteCheck()
     },
 
     /** В архив / из архива — пин сбрасывается (как на бэке, group_settings.go). */
     applyArchived(peerId: number, archived: boolean): void {
-      patchDialog(peerId, { archived, pinned: false })
-    },
-
-    /** Тема оформления чата (messages.setChatTheme) — пустая строка сбрасывает к дефолту. */
-    applyTheme(peerId: number, themeId: string): void {
-      patchDialog(peerId, { themeId: themeId || undefined })
+      patchDialog(peerId, {
+        folder_id: archived ? WIRE_FOLDER_ARCHIVE : undefined,
+        pFlags: undefined,
+      })
     },
 
     /**
@@ -1214,16 +1369,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const idx = items.findIndex((i) => i.dialog.peerId === peerId)
       if (idx === -1) return
       const cur = items[idx].dialog
-      if (cur.pinned === pinned) return // факт уже применён — не переставляем и не пишем повторно
+      if (!!cur.pFlags?.pinned === pinned) return // факт уже применён — не переставляем и не пишем повторно
       const others = pinnedOrder.filter((id) => id !== peerId)
       pinnedOrder = pinned ? [peerId, ...others] : others
       pinnedOrders = { ...pinnedOrders, [ALL_FOLDER_ID]: pinnedOrder }
       void savePinnedOrders?.(pinnedOrders)
       mirrorStateKey?.('pinnedOrders', pinnedOrders)
-      const dialog: Dialog = { ...cur, pinned }
+      // «Выключено» у булева флага схемы — ОТСУТСТВИЕ ключа, не `false`.
+      const pFlags = pinned ? ({ pinned: true } as const) : undefined
+      const dialog = merge(cur, { pFlags })
       items = sort(items.map((i) => (i.dialog.peerId === peerId ? dialog : i.dialog)))
       publish([
-        { op: 'patch', peerId, fields: { pinned } },
+        { op: 'patch', peerId, fields: { pFlags } },
         { op: 'reindex', items: items.map((i) => ({ peerId: i.dialog.peerId, index: i.index })) },
       ])
     },

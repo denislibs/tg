@@ -5,6 +5,7 @@
 import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
+import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
@@ -84,7 +85,7 @@ const APPLY: Projector = {
   // (core/audio/mediaPlaybackController) — её элементы держат URL'ы прошлой
   // сессии (токен-стрим, blob расшифрованного секретного голоса) и продолжают
   // играть после логаута, если их не снять.
-  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror(); resetPlayback() },
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror(); resetChatFullMirror(); resetPlayback() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).
@@ -138,13 +139,19 @@ const APPLY: Projector = {
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
   [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.peer_id, mapBoostStatus(e.status)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.peer_id, mapSuggestedPost(e.post)) },
-  // Task 4 (действия без оптимистики): тема оформления / пин / архив / mute
-  // диалога (с другого устройства/вкладки) теперь тоже применяет владелец
-  // (workerCore.ts::dispatch → dialogs.applyTheme/applyPinned/applyArchived/
-  // applyMute → rt:dialog_op) — строки [RT.chatThemeUpdate]/[RT.dialogPin]/
-  // [RT.dialogArchive]/[RT.dialogMute] здесь были вторым, main-side выводом
-  // того же факта через мутаторы chatsStore (setDialogTheme и т.п., удалены
-  // вместе с этими строками — второго применения не было бы, будь они живы).
+  // Task 4 (действия без оптимистики): пин / архив / mute диалога (с другого
+  // устройства/вкладки) применяет владелец (workerCore.ts::dispatch →
+  // dialogs.applyPinned/applyArchived/applyNotifySettings → rt:dialog_op) —
+  // строки [RT.dialogPin]/[RT.dialogArchive]/[RT.dialogMute] здесь были вторым,
+  // main-side выводом того же факта через мутаторы chatsStore (удалены вместе
+  // с этими строками).
+  //
+  // Тема оформления — ИСКЛЮЧЕНИЕ, и оно от решения Р7: её место в схеме не
+  // строка диалога, а полная карточка (`chatFull`/`userFull.theme_emoticon`),
+  // владельца-в-воркере у карточек нет, а единственное её зеркало —
+  // `core/chatFullCache.ts` здесь, на главном потоке. Патчим ту же карточку, а
+  // не заводим рядом второе хранилище тем.
+  [RT.chatThemeUpdate]: (e) => { applyChatTheme(e.peer_id, e.theme_id) },
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
   [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ?? null) },

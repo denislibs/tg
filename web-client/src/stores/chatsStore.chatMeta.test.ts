@@ -5,32 +5,27 @@ import rootScope from '@lib/rootScope'
 import { RT, type ChatUpdateEvt } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
+import { makeDialog, makeLastMessage } from '../core/dialogs/testDialog'
 
-// Форма Dialog — из core/models.ts:88-118 (как её строит mapDialog): поля
-// title/username/photo присутствуют всегда; photo — объединение `ChatPhoto`
-// с готовым `photo_id`, а не путь «/media/{id}/content» и не URL с токеном.
-const dlg = (peerId: number, title: string, extra: Partial<Dialog> = {}): Dialog => ({
-  peerId,
-  type: 'group',
-  lastReadSeq: 0,
-  peerReadSeq: 0,
-  unread: 0,
-  muted: false,
-  pinned: false,
-  archived: false,
-  title,
-  username: '',
-  photo: undefined,
-  // Даты у чатов РАЗНЫЕ и убывают с peerId, чтобы порядок фикстуры [1, 2] совпадал
-  // с каноническим (dialogIndex): при одинаковых датах ничью разводит peerId, и
-  // канонический порядок был бы [2, 1] — тесты про сохранение ссылок проверяли бы
-  // тогда не то (список пересортировался бы на первом же applyChatMeta).
-  lastMessage: { seq: 1, text: 'привет', senderId: 5, at: peerId === 1 ? '2026-08-09T11:00:00Z' : '2026-08-09T10:00:00Z' },
+// Форма Dialog — конструктор `dialog` схемы: ни title, ни username, ни photo в
+// строке диалога больше нет (они едут вектором `chats` контейнера `/chats`).
+const dlg = (peerId: number, extra: Partial<Dialog> = {}): Dialog => ({
+  ...makeDialog({
+    peerId,
+    // Даты у чатов РАЗНЫЕ и убывают с peerId, чтобы порядок фикстуры [1, 2] совпадал
+    // с каноническим (dialogIndex): при одинаковых датах ничью разводит peerId, и
+    // канонический порядок был бы [2, 1] — тесты про сохранение ссылок проверяли бы
+    // тогда не то (список пересортировался бы на первом же обновлении).
+    lastMessage: makeLastMessage({
+      peerId, seq: 1, senderId: 5, text: 'привет',
+      createdAt: peerId === 1 ? '2026-08-09T11:00:00Z' : '2026-08-09T10:00:00Z',
+    }),
+  }),
   ...extra,
 })
 
 beforeEach(() => {
-  useChatsStore.setState({ dialogs: [dlg(1, 'Альфа'), dlg(2, 'Бета')], loaded: true })
+  useChatsStore.setState({ dialogs: [dlg(1), dlg(2)], loaded: true })
 })
 
 // Task 3 (перенос владения диалогами): applyChatMeta отсюда убран — тело

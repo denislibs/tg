@@ -24,18 +24,19 @@
 // Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БД origin).
 import { idbGet } from './idbKv'
 import type { Dialog, Message, Draft } from '../models'
-import type { UserReal } from '../peers/peer'
+import type { Chat, UserReal } from '../peers/peer'
 import type { PeerProfile } from '../managers/authManager'
 import type { Folder } from '../managers/foldersManager'
 import type { AppState } from '../state/state'
 
 const DB = 'msgr-store'
 /** Текущая версия схемы. Экспортируется для тестов, чтобы они не прибивались к литералу. */
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 const VERSION = DB_VERSION
 const S_META = 'meta'
 const S_DIALOGS = 'dialogs'
 const S_USERS = 'users'
+const S_CHATS = 'chats'
 const S_MESSAGES = 'messages'
 const S_STATE = 'state'
 
@@ -44,6 +45,17 @@ const S_STATE = 'state'
 // avatarUrl, avatarPreview}` формы не имела: `display_name` с провода убран
 // (имя собирает клиент), а пять полей аватарки схлопнулись в `photo`.
 export type PersistUser = UserReal
+
+// Карточка ЧАТА в офлайн-сторе — конструктор `channel` схемы. Отдельный стор, а
+// не общий с пользователями: ключ там `id`, а сырые id чата и человека живут в
+// РАЗНЫХ пространствах и совпадают сплошь и рядом (`channel.id === user.id`
+// вполне обычное дело) — одна Map склеила бы две разные карточки.
+//
+// Появился вместе с контейнером `/chats` (шаг C диалогов): до него имя и
+// аватарка группы ехали в КАЖДОЙ строке диалога и персистились вместе с ней;
+// теперь тело чата едет вектором `chats` контейнера, и без этого стора холодный
+// ОФЛАЙН-старт показал бы группы без имён.
+export type PersistChat = Chat
 
 interface StoredMessage extends Message { pk: string }
 
@@ -113,6 +125,13 @@ const MIGRATIONS: Record<number, Migration> = {
     db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
     db.createObjectStore(S_USERS, { keyPath: 'id' })
     db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
+  },
+  // v4 — офлайн-стор КАРТОЧЕК ЧАТОВ (шаг C диалогов). Только расширение: новый
+  // стор рядом с существующими, ничего не переливается и не стирается. Причина
+  // — контейнер `/chats`: тело группы/канала уехало из строки диалога в вектор
+  // `chats`, и персистить его теперь надо там же, где карточки людей.
+  4: (db) => {
+    if (!db.objectStoreNames.contains(S_CHATS)) db.createObjectStore(S_CHATS, { keyPath: 'id' })
   },
 }
 
@@ -268,6 +287,7 @@ export async function persistClearAll(): Promise<void> {
     await Promise.all([
       enqueue(S_DIALOGS, { kind: 'clear' }),
       enqueue(S_USERS, { kind: 'clear' }),
+      enqueue(S_CHATS, { kind: 'clear' }),
       enqueue(S_MESSAGES, { kind: 'clear' }),
       enqueue(S_META, { kind: 'clear' }),
       enqueue(S_STATE, { kind: 'clear' }),
@@ -278,9 +298,11 @@ export async function persistClearAll(): Promise<void> {
 // ── Диалоги + me (пишет владелец факта в воркере — dialogsManager/setMe, Task 5) ──
 
 // Секретные чаты: не персистим расшифрованный текст/шифр-блоб превью (E2E).
+// Признак секретного — НАШ параметр `secret` самого конструктора `dialog`
+// (решение Р9), а не прежняя строка `type === 'secret'`.
 function sanitizeDialog(d: Dialog): Dialog {
-  if (d.type !== 'secret' || !d.lastMessage) return d
-  return { ...d, lastMessage: { ...d.lastMessage, text: '', encBody: undefined } }
+  if (!d.secret || !d.lastMessage) return d
+  return { ...d, lastMessage: { ...d.lastMessage, text: '', entities: undefined, encBody: undefined } }
 }
 
 export async function saveDialogs(dialogs: Dialog[]): Promise<void> {
@@ -351,6 +373,18 @@ export async function saveUsers(users: PersistUser[]): Promise<void> {
 export async function loadUsers(): Promise<PersistUser[]> {
   if (await locked()) return []
   try { return (await read<PersistUser[]>(S_USERS, (s) => s.getAll())) ?? [] } catch { return [] }
+}
+
+// ── Чаты (пишет тот же peersManager воркера) ───────────────────────────────────
+
+export async function saveChats(chats: PersistChat[]): Promise<void> {
+  if (!chats.length || (await locked())) return
+  try { await enqueue(S_CHATS, ...chats.map((c): Op => ({ kind: 'put', value: c }))) } catch { /* idb недоступен */ }
+}
+
+export async function loadChats(): Promise<PersistChat[]> {
+  if (await locked()) return []
+  try { return (await read<PersistChat[]>(S_CHATS, (s) => s.getAll())) ?? [] } catch { return [] }
 }
 
 // ── Сообщения (пишет messagesManager воркера) ──────────────────────────────────

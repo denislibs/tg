@@ -7,12 +7,15 @@ import { useNavigationStore } from '@stores/navigationStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { useSearchStore } from '@stores/searchStore'
 import type { Managers } from '../../client/bootstrap'
+import { applyPeerOps, resetPeerMirror } from '../peerCache'
+import { makeDialog } from '../dialogs/testDialog'
 
 // Числовые ветки хэша менеджеров не касаются; ветка @username ходит в
 // директорию только когда чата нет в диалогах — в этих кейсах он есть.
 const managers = {} as Managers
 
 beforeEach(() => {
+  resetPeerMirror()
   useNavigationStore.getState().selectChat(null)
   useSearchStore.getState().clearPendingJump()
   useChatsStore.setState({ dialogs: [] })
@@ -27,7 +30,13 @@ describe('applyHash', () => {
   })
 
   it('#@username/<seq> — то же для канала из диалогов', async () => {
-    useChatsStore.setState({ dialogs: [{ peerId: -42, username: 'durov' }] as never })
+    // Публичное имя живёт в КАРТОЧКЕ чата (`channel.username`), а не в строке
+    // диалога: тело чата едет вектором `chats` контейнера `/chats`.
+    applyPeerOps([{ op: 'upsert', peers: [{
+      _: 'channel', id: 42, title: 'Дуров', username: 'durov',
+      photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true },
+    }] }])
+    useChatsStore.setState({ dialogs: [makeDialog({ peerId: -42 })] })
 
     await applyHash('#@durov/9', managers)
 

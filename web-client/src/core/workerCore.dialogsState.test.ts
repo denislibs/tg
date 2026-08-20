@@ -23,12 +23,9 @@ import { createWorkerCore } from './workerCore'
 import { saveDialogs, saveStateKey } from './store/persist'
 import { STATE_VERSION } from './state/state'
 import type { Dialog, Draft } from './models'
+import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
-const dialog = (peerId: number, at: string): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at },
-} as Dialog)
+const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
 
 const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
 

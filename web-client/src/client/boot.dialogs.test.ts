@@ -20,11 +20,9 @@ import { useChatsStore } from '../stores/chatsStore'
 import type { Dialog } from '../core/models'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { Managers } from './bootstrap'
+import { makeDialog } from '../core/dialogs/testDialog'
 
-const dialog = (peerId: number): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
 /**
  * `netOp` — то, чем отвечает сетевой догон (`refresh()`); `op` тесты передают

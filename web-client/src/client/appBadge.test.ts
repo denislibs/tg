@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { countUnmutedUnreadPeers, notificationsCountTitle } from './appBadge'
+import { makeDialog } from '../core/dialogs/testDialog'
 
-const d = (unread: number, muted = false, archived = false) => ({ unread, muted, archived })
+// Строка списка в форме конструктора: «замьючен» это СРОК, «в архиве» — номер
+// папки. Обе величины теперь ВЫЧИСЛЯЮТСЯ, а не читаются полем.
+const d = (unread: number, muted = false, archived = false) =>
+  makeDialog({ peerId: 1, unread, archived, muteUntil: muted ? true : undefined })
 
 describe('countUnmutedUnreadPeers', () => {
   it('считает ЧАТЫ с непрочитанным, а не сумму сообщений (tweb unreadUnmutedPeerIds.size)', () => {
@@ -18,6 +22,13 @@ describe('countUnmutedUnreadPeers', () => {
 
   it('пустой список → 0', () => {
     expect(countUnmutedUnreadPeers([])).toBe(0)
+  })
+
+  it('мьют с ИСТЁКШИМ сроком в бейдж идёт — иначе «на час» работает как «навсегда»', () => {
+    const now = 1_700_000_000
+    const expired = makeDialog({ peerId: 1, unread: 2, muteUntil: now - 1 })
+    const live = makeDialog({ peerId: 2, unread: 2, muteUntil: now + 3600 })
+    expect(countUnmutedUnreadPeers([expired, live], now)).toBe(1)
   })
 })
 

@@ -34,6 +34,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { saveChatPosition, getChatPosition, clearChatPositions } from '../chat/chatPositions'
 import { bootPrefetch, setBootData } from '../../client/bootData'
+import { makeDialog } from '../dialogs/testDialog'
 
 // Своя личность — та же ПАРА конструкторов, что у любого профиля (`user` +
 // `userFull`): третьей формы «свой пользователь» больше нет ни на одной стороне.
@@ -113,7 +114,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   it('migrateTo: null (настоящий логаут) — authed=false, общие сбросы, БЕЗ reload', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     setAppState('folders', [folder])
-    useChatsStore.setState({ dialogs: [{ peerId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }] })
+    useChatsStore.setState({ dialogs: [makeDialog({ peerId: 1 })] })
     useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' })
     saveChatPosition(1, undefined, { top: 777 })
     const clearAll = vi.fn().mockResolvedValue(undefined)

@@ -22,6 +22,7 @@ import { useAppStateStore } from '../stores/appState'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
+import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
 const DIALOGS = 500
@@ -49,10 +50,7 @@ function fakeManagers() {
   return { managers, getDialogs }
 }
 
-const dialog = (peerId: PeerId): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: PeerId): Dialog => makeDialog({ peerId })
 
 const scrollers = () => [...document.querySelectorAll<HTMLElement>('.folders-scrollable')]
 const activeScroller = () => document.querySelector<HTMLElement>('.folders-scrollable.active')!

@@ -9,6 +9,9 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useStoriesStore } from '../stores/storiesStore'
 import { gradientFor } from '../core/dialogToChat'
 import { getUserTitle } from '../core/peers/getPeerTitle'
+import { cachedUser } from '../core/peerCache'
+import { isUser } from '../core/peers/peerId'
+import type { UserReal } from '../core/peers/peer'
 import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
@@ -42,7 +45,12 @@ export default function EditStorySheet({
   const managers = useManagers()
   const dialogs = useChatsStore((st) => st.dialogs)
   const applyStoryEdit = useStoriesStore((st) => st.applyStoryEdit)
-  const contacts = dialogs.filter((d) => d.type === 'private' && d.peer).map((d) => d.peer!)
+  // Собеседники живут в зеркале пиров (вектор `users` контейнера `/chats`), а не
+  // внутри строки диалога; «приватный» — это ключ пользователя.
+  const contacts = dialogs
+    .filter((d) => isUser(d.peerId))
+    .map((d) => cachedUser(d.peerId))
+    .filter((u): u is UserReal => !!u && u._ === 'user')
 
   const [caption, setCaption] = useState(story.caption)
   const [privacy, setPrivacy] = useState<StoryPrivacy>(story.privacy)

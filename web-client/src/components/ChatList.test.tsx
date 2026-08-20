@@ -121,7 +121,10 @@ function seedDialogs(count: number) {
 function fakeManagers(response: DialogsPage | ((o: { filterId: number }) => DialogsPage)) {
   const getDialogs = vi.fn(async (o: { filterId: number }) =>
     typeof response === 'function' ? response(o) : response)
-  return { managers: { dialogs: { getDialogs } } as never, getDialogs }
+  // `peers.fillMirror` — объявление пробела зеркала пиров: строка списка берёт
+  // из него имя и аватарку (они уехали из диалога в карточку). Здесь пробел
+  // объявлять нечем, важно лишь не уронить хук.
+  return { managers: { dialogs: { getDialogs }, peers: { fillMirror: vi.fn(async () => {}) } } as never, getDialogs }
 }
 
 /**

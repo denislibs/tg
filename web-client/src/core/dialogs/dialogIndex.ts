@@ -17,7 +17,7 @@ import type { Dialog, Draft } from '../models'
 /** tweb `generateDialogPinnedDateByIndex` (dialogs.ts:924-926): заведомо больше любой реальной даты. */
 export const PINNED_BASE = 0x7fff0000
 
-/** ISO-строка (`lastMessage.at`, `Draft.updatedAt`) → unix-секунды; 0 при отсутствии/битой дате. */
+/** ISO-строка (`lastMessage.createdAt`, `Draft.updatedAt`) → unix-секунды; 0 при отсутствии/битой дате. */
 const secs = (iso: string | undefined): number => {
   if (!iso) return 0
   const ms = Date.parse(iso)
@@ -37,9 +37,10 @@ export function dialogIndex(
   pinnedOrder: readonly number[],
   draft?: Pick<Draft, 'updatedAt'>,
 ): number {
-  const date = dialog.pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog, draft)
+  const pinned = !!dialog.pFlags?.pinned
+  const date = pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog, draft)
   // Младшие 16 бит — разрешитель ничьей (tweb: ++dialogsNum, у нас peerId).
-  return date * 0x10000 + (dialog.pinned ? 0 : dialog.peerId & 0xffff)
+  return date * 0x10000 + (pinned ? 0 : dialog.peerId & 0xffff)
 }
 
 /** tweb `generateDialogPinnedDate` (dialogs.ts:928-943). */
@@ -54,7 +55,7 @@ function pinnedDate(dialog: Dialog, order: readonly number[]): number {
 
 /** tweb `generateIndexForDialog` (dialogs.ts:869-922): дата последней активности. */
 function activityDate(dialog: Dialog, draft?: Pick<Draft, 'updatedAt'>): number {
-  const top = secs(dialog.lastMessage?.at)
+  const top = secs(dialog.lastMessage?.createdAt)
   // Черновик свежее последнего сообщения поднимает диалог (dialogs.ts:904-910).
   const draftDate = secs(draft?.updatedAt)
   // Осознанное отступление от tweb: там пустой диалог получает `topDate ||= tsNow()`

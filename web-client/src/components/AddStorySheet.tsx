@@ -7,6 +7,9 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import { getUserTitle } from '../core/peers/getPeerTitle'
+import { cachedUser } from '../core/peerCache'
+import { isUser } from '../core/peers/peerId'
+import type { UserReal } from '../core/peers/peer'
 import classNames from '../shared/lib/classNames'
 import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
@@ -55,9 +58,12 @@ export default function AddStorySheet({
   const dialogs = useChatsStore((s) => s.dialogs)
   const managers = useManagers()
   // private peers only — the contact pool for the "Выбранные" audience
+  // Собеседники живут в зеркале пиров (вектор `users` контейнера `/chats`), а не
+  // внутри строки диалога; «приватный» — это ключ пользователя.
   const contacts = dialogs
-    .filter((d) => d.type === 'private' && d.peer)
-    .map((d) => d.peer!)
+    .filter((d) => isUser(d.peerId))
+    .map((d) => cachedUser(d.peerId))
+    .filter((u): u is UserReal => !!u && u._ === 'user')
 
   const [caption, setCaption] = useState('')
   const [privacy, setPrivacy] = useState<StoryPrivacy>('contacts')

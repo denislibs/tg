@@ -4,7 +4,9 @@
 // переписывается ради самой нормы; при следующем содержательном касании файла —
 // приводить затронутую проводку в соответствие (тест либо пометка с причиной у
 // неё), а не расширять непокрытую площадь дальше.
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { cachedPeerTheme, chatFullMirrorVersion, saveChatFull, subscribeChatFullMirror } from '@core/chatFullCache'
+import { isPeerMuted } from '@core/dialogs/notifySettings'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useChatStickyDates } from '@core/hooks/useChatStickyDates'
@@ -217,8 +219,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // this.container, а не на сайдбары): деривация — та же формула tweb, что и
   // для глобальных пресетов (core/theme/themeController.ts:deriveChatThemeVars),
   // применяется инлайном на .root через applyChatTheme/clearChatTheme ниже.
-  const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.peerId === numericChatId)?.themeId)
-  const activeThemeId = dialogThemeId ?? chat.themeId
+  // Тема живёт в ПОЛНОЙ КАРТОЧКЕ пира (`theme_emoticon`) — её место в схеме
+  // (решение Р7); в строке диалога поля нет вовсе. Зеркало карточек
+  // (`core/chatFullCache.ts`) наполняют загрузчики карточки чата и профиля, а
+  // кадр `chat_theme_update` патчит его через проектор — подписка ниже и делает
+  // перекраску реактивной.
+  useSyncExternalStore(subscribeChatFullMirror, chatFullMirrorVersion)
+  const activeThemeId = cachedPeerTheme(numericChatId)
   const themeChoice = useSettingsStore((st) => st.themeChoice)
   const preset = resolvePreset(themeChoice)
   const themeMode = PRESET_MODE[preset]
@@ -244,10 +251,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const typingLabel = useTypingLabel(numericChatId, isGroup)
   const peerPresence = useChatsStore((s) => s.presence[numericChatId])
   // toggle re-renders the menu; fall back to the chat prop.
-  const dialogMuted = useChatsStore((s) =>
-    isRealChat ? s.dialogs.find((d) => d.peerId === numericChatId)?.muted : undefined,
+  // Мьют — СРОК (`notify_settings.mute_until`), а не признак: считаем его тем
+  // же единственным предикатом, что и список чатов.
+  const dialogNotify = useChatsStore((s) =>
+    isRealChat ? s.dialogs.find((d) => d.peerId === numericChatId)?.notify_settings : undefined,
   )
-  const muted = dialogMuted ?? !!chat.muted
+  const muted = dialogNotify ? isPeerMuted(dialogNotify, Math.floor(Date.now() / 1000)) : !!chat.muted
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
 
@@ -451,7 +460,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const openReadRef = useRef<{ lastReadSeq: number; unread: number } | null>(null)
   if (openReadRef.current === null) {
     const d = useChatsStore.getState().dialogs.find((x) => x.peerId === numericChatId)
-    openReadRef.current = { lastReadSeq: d?.lastReadSeq ?? 0, unread: d?.unread ?? 0 }
+    openReadRef.current = { lastReadSeq: d?.read_inbox_max_id ?? 0, unread: d?.unread_count ?? 0 }
   }
   const unreadDividerRef = useRef<number | null>(null)
   if (unreadDividerRef.current === null && isRealChat && !thread && meId != null && openReadRef.current.unread > 0) {
@@ -964,6 +973,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
     setBotMenu(null)
     void managers.privacy.profile(peerId).then((p) => {
       if (!alive) return
+      // Полная карточка собеседника — в общее зеркало: тема оформления
+      // приватного чата живёт в `userFull.theme_emoticon` (решение Р7), и это
+      // единственный загрузчик этой карточки для ОТКРЫТОГО чата.
+      saveChatFull(peerId, p.fullUser)
       setIsBotChat(!!p.user.pFlags?.bot)
       if (p.user.pFlags?.bot) {
         void managers.bots.menuButton(peerId).then((mb) => { if (alive && mb.text && mb.url) setBotMenu(mb) }).catch(() => {})

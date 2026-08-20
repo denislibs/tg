@@ -1,43 +1,7 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { deriveOut, fromNewMessageEvt, mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
+import { deriveOut, fromNewMessageEvt, mapChecklist, mapDraft, mapMessage, type RawChecklist, type RawMessage } from './models'
 import type { NewMessageEvt } from './realtime/events'
-
-describe('mapDialog', () => {
-  it('maps a private dialog with peer + last_message', () => {
-    const raw: RawDialog = {
-      peer_id: 1, type: 'private', last_read_seq: 4, peer_read_seq: 3, unread: 2, muted: false,
-      peer: { _: 'user', id: 2, first_name: 'Bob' },
-      last_message: { seq: 4, text: 'hi', sender_id: 2, at: '2026-06-24T10:00:00Z' },
-    }
-    const d = mapDialog(raw)
-    expect(d).toEqual({
-      peerId: 1, type: 'private', lastReadSeq: 4, peerReadSeq: 3, unread: 2, muted: false, pinned: false, archived: false,
-      notifyPreview: true, notifySound: 'default',
-      autoDeletePeriod: 0, title: undefined, username: undefined, photo: undefined,
-      // Маппера у пира нет: конструктор `user` кладётся ВЕРБАТИМ — форма
-      // провода и форма модели совпали.
-      peer: { _: 'user', id: 2, first_name: 'Bob' },
-      lastMessage: {
-        seq: 4, text: 'hi', senderId: 2, at: '2026-06-24T10:00:00Z',
-        mediaId: undefined, mediaType: undefined, forwarded: undefined, senderName: undefined,
-      },
-    })
-  })
-
-  it('handles missing peer / last_message / muted', () => {
-    const d = mapDialog({ peer_id: 7, type: 'group', last_read_seq: 0, unread: 0 })
-    expect(d.peer).toBeUndefined()
-    expect(d.lastMessage).toBeUndefined()
-    expect(d.muted).toBe(false)
-  })
-
-  it('maps unread_reactions → unreadReactions (undefined when 0/absent)', () => {
-    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 3 }).unreadReactions).toBe(3)
-    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 0 }).unreadReactions).toBeUndefined()
-    expect(mapDialog({ peer_id: 1, type: 'private', last_read_seq: 0, unread: 0 }).unreadReactions).toBeUndefined()
-  })
-})
 
 describe('mapMessage', () => {
   it('maps a raw message and computes seq/ids', () => {

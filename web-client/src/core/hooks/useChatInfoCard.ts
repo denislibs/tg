@@ -25,13 +25,17 @@ import type { ChatMember, ChatCard } from '../managers/groupsManager'
 import type { ChannelFull, Chat } from '../peers/peer'
 import { getLinkedChatPeerId, isUserStatusOnline } from '../peers/peer'
 import { cachedChat } from '../peerCache'
+import { saveChatFull } from '../chatFullCache'
 import { isMegagroup } from '../peers/predicates'
 import { hasRights } from '../peers/rights'
 
-/** Полная карточка + поля уровня ответа (всё, чего нет в конструкторе `channel`). */
+/** Полная карточка + поля уровня ответа (всё, чего нет в конструкторе `channel`).
+ *  Прежнее плоское `muted` отсюда ушло: заглушённость это
+ *  `channelFull.notify_settings`, параметр САМОЙ схемы, и мьют в нём выражен
+ *  сроком (решение Р4). Читателей у поля не было ни одного — оно только
+ *  хранилось. */
 interface FullCard {
   fullChat: ChannelFull
-  muted: boolean
   creatorId: number
 }
 
@@ -43,6 +47,13 @@ interface FullCard {
 //
 // Порт `appProfileManager.chatsFull` (там же и TTL — `PEER_FULL_TTL`, который у
 // нас пока не заведён: инвалидация приходит кадром `chat_update`).
+//
+// Сам конструктор `channelFull` при этом уезжает ЕЩЁ и в `core/chatFullCache.ts`
+// — общее зеркало полных карточек. Не второе хранилище того же факта, а его
+// единственный дом: здесь рядом лежит `creatorId`, поле уровня ОТВЕТА, которого
+// в конструкторе нет. Тема оформления (`theme_emoticon`) читается только из
+// зеркала: у неё есть второй, вне-экранный читатель (обои шелла), и кадр
+// `chat_theme_update` патчит именно его.
 const fullCache = new Map<PeerId, FullCard>()
 
 /**
@@ -62,7 +73,7 @@ interface InfoManagers {
 }
 
 export interface ChatInfoCard {
-  /** полная форма (`channelFull`) + `muted`/`creatorId`; null — ещё не загружена */
+  /** полная форма (`channelFull`) + `creatorId`; null — ещё не загружена */
   full: FullCard | null
   /** краткая форма из зеркала пиров: вид чата и права зрителя. Единственный
    *  источник ответов «канал/супергруппа» и «что мне можно». */
@@ -117,8 +128,11 @@ export function useChatInfoCard(args: {
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive || !c) return
-      const next: FullCard = { fullChat: c.fullChat, muted: c.muted, creatorId: c.creatorId }
+      const next: FullCard = { fullChat: c.fullChat, creatorId: c.creatorId }
       fullCache.set(numericChatId, next)
+      // Полная карточка — в общее зеркало: её тема нужна и вне этого экрана
+      // (колонка чата и обои шелла), а второго загрузчика карточки чата нет.
+      saveChatFull(numericChatId, c.fullChat)
       setLoaded({ peerId: numericChatId, full: next })
       if (isMegagroup(c.chat)) {
         void managers.groups.members(numericChatId).then((mem) => {

@@ -257,6 +257,47 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // настоящие, как `messagesStorage` + `historyStorage.history` в оригинале.
     // Поэтому у него свой ctx, а не общий MessagesCtx.
     ...pending,
+
+    /**
+     * Положить в SSOT сообщения, приехавшие ПОПУТНО с чужим ответом, — вектор
+     * `messages` контейнера `messages.dialogs` (`GET /chats`). Порт
+     * `appMessagesManager.saveMessages`: в оригинале КАЖДЫЙ ответ прогоняется
+     * через сохранение сообщений, и только поэтому ссылка `dialog.top_message`
+     * вообще разрешается.
+     *
+     * Окон (`slices`) НЕ трогает — это разные вещи и в оригинале тоже:
+     * `messagesStorage` хранит объекты, `historyStorage.history` — списки id
+     * открытого окна. Сообщение закрытого чата обязано лежать в хранилище, но
+     * не создавать окна.
+     *
+     * Секретные расшифровываются тем же `decryptPage`, что и страница истории:
+     * ключ живёт в этом же воркере, второй копии правила не заводим.
+     */
+    async saveApiMessages(list: RawMessage[] | undefined): Promise<Message[]> {
+      const mapped = await decryptPage(await mapPage(list))
+      const byPeer = new Map<number, Message[]>()
+      for (const m of mapped) {
+        const arr = byPeer.get(m.peerId)
+        if (arr) arr.push(m)
+        else byPeer.set(m.peerId, [m])
+      }
+      for (const [peerId, msgs] of byPeer) put(String(peerId), msgs)
+      return mapped
+    },
+
+    /**
+     * Порт `appMessagesManager.getMessageByPeer` (`:3588`) — сообщение чата по
+     * его номеру. У оригинала номер это `mid`, у нас `seq`: `msgsByChat`
+     * ключуется именно им, и `dialog.top_message` едет с бэкенда тем же seq
+     * (`dialogscontainer.go` — `byID[d.TopMessageID].Seq`).
+     *
+     * Синхронный: разрешение ссылки `top_message` идёт по УЖЕ положенному в
+     * SSOT (см. `saveApiMessages` выше), а не ходит в сеть.
+     */
+    getMessageByPeer(peerId: number, seq: number): Message | undefined {
+      return seq ? msgsByChat.get(peerId)?.get(seq) : undefined
+    },
+
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
       const { peerId, offsetSeq = 0, addOffset = 0, limit = 40, threadRoot } = args
       const key = hkey(peerId, threadRoot)

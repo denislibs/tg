@@ -9,6 +9,8 @@
 // `folder.unreadUnmutedPeerIds.size` (tweb :194-199) — число ЧАТОВ с непрочитанным
 // (не сумму сообщений), по папке «Все» (архив в неё не входит).
 import { useChatsStore } from '../stores/chatsStore'
+import { isDialogArchived, type Dialog } from '../core/models'
+import { isPeerMuted } from '../core/dialogs/notifySettings'
 import { useI18nStore, type Lang } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
 import IS_TOUCH_SUPPORTED from '../environment/touchSupport'
@@ -39,10 +41,22 @@ export function notificationsCountTitle(count: number, lang: Lang, t: (s: string
   return t(key).replace('%d', String(count))
 }
 
-/** Число ЧАТОВ с непрочитанным среди незамьюченных неархивных (tweb unreadUnmutedPeerIds.size). */
-export function countUnmutedUnreadPeers(dialogs: { unread?: number; muted?: boolean; archived?: boolean }[]): number {
+/**
+ * Число ЧАТОВ с непрочитанным среди незамьюченных неархивных (tweb
+ * `unreadUnmutedPeerIds.size`).
+ *
+ * «Замьючен» и «в архиве» больше не приезжают полями строки: первый выражен
+ * СРОКОМ (`notify_settings.mute_until`), второй — номером папки. Оба вопроса
+ * задаются здесь теми же функциями, что и везде.
+ */
+export function countUnmutedUnreadPeers(
+  dialogs: Pick<Dialog, 'unread_count' | 'notify_settings' | 'folder_id'>[],
+  now = Math.floor(Date.now() / 1000),
+): number {
   let n = 0
-  for (const d of dialogs) if (d.unread && !d.muted && !d.archived) n += 1
+  for (const d of dialogs) {
+    if (d.unread_count && !isPeerMuted(d.notify_settings, now) && !isDialogArchived(d)) n += 1
+  }
   return n
 }
 

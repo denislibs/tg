@@ -6,6 +6,7 @@ import type { PresenceEvt, TypingAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { UserStatus } from '../core/peers/peer'
+import { isUser } from '../core/peers/peerId'
 
 // Per-chat typing state: peerId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
@@ -253,9 +254,10 @@ export async function loadPresence(
   ids?: number[],
 ): Promise<void> {
   const st = useChatsStore.getState()
-  // Ключ приватного диалога И ЕСТЬ id собеседника — брать его из `peer.id`
-  // (как раньше) больше незачем: это одно и то же число.
-  const targets = ids ?? st.dialogs.filter((d) => d.type === 'private').map((d) => d.peerId)
+  // Ключ приватного диалога И ЕСТЬ id собеседника, а «приватный» — это ключ
+  // ПОЛЬЗОВАТЕЛЯ: строки `type` у диалога больше нет, вопрос задаётся знаку
+  // ключа (`core/peers/peerId.ts`).
+  const targets = ids ?? st.dialogs.filter((d) => isUser(d.peerId)).map((d) => d.peerId)
   if (!targets.length) return
   const list = await managers.presence.get(targets)
   for (const p of list) st.setPresence(p)

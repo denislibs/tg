@@ -15,16 +15,17 @@ import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { peerColor } from '../peerColor'
 import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
-import { dialogToChat } from '../../core/dialogToChat'
+import { dialogChatType, dialogToChat } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
 import { lastSeenLabel } from '../../core/presence'
 import { isUserStatusOnline, userStatusWasOnline, type UserStatus } from '../../core/peers/peer'
-import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useChatsStore } from '../../stores/chatsStore'
+import { cachedChat, peerTitle } from '../../core/peerCache'
+import { isUser } from '../../core/peers/peerId'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import FolderTabs from '../FolderTabs'
-import type { Chat } from '../../data'
+import type { Chat, ChatType } from '../../data'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
 
@@ -39,7 +40,7 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
   /** число удаляемых сообщений (bulk-выбор) */
   count?: number
   /** тип чата — в личке чекбокс подписывается именем собеседника */
-  chatType?: Dialog['type']
+  chatType?: ChatType
   /** first name собеседника личного чата (tweb wrapPeerTitle onlyFirstName) */
   peerFirstName?: string
   /** аватар 32px слева от заголовка (tweb PopupPeer peerId → avatarNew 32) */
@@ -142,7 +143,9 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
 
   // Секретные чаты — не цель пересылки (E2E). Маппим в Chat для аватаров/имён.
   const chats = useMemo<Chat[]>(
-    () => dialogs.filter((d) => d.type !== 'secret').map((d) => dialogToChat(d, meId)),
+    // Секретный чат — НАШ параметр строки диалога (решение Р9), а не строка
+    // `type`: подсистема вне периметра порта, но гейт живой.
+    () => dialogs.filter((d) => !d.secret).map((d) => dialogToChat(d, meId)),
     [dialogs, meId],
   )
   const query = q.trim().toLowerCase()
@@ -241,10 +244,12 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   const picked = useRef<{ userId: number; name: string } | null>(null)
   const pick = (userId: number, name: string) => { picked.current = { userId, name }; setOpen(false) }
   const query = q.trim().toLowerCase()
+  // Собеседник живёт в зеркале пиров (вектор `users` контейнера `/chats`), а
+  // не внутри строки диалога; «приватный» — это ключ пользователя.
   const rows = dialogs
-    .filter((d) => d.type === 'private' && d.peer)
-    .map((d) => ({ userId: d.peer!.id, name: getUserTitle(d.peer) }))
-    .filter((r) => !query || r.name.toLowerCase().includes(query))
+    .filter((d) => isUser(d.peerId))
+    .map((d) => ({ userId: d.peerId, name: peerTitle(d.peerId) }))
+    .filter((r) => !!r.name && (!query || r.name.toLowerCase().includes(query)))
   return (
     <Popup
       open={open}
@@ -286,6 +291,7 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
   onClose: () => void
 }) {
   const t = useT()
+  const meId = useChatsStore((st) => st.meId)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(true)
   const picked = useRef<number | null>(null)
@@ -293,12 +299,17 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
   const query = q.trim().toLowerCase()
   const rows = dialogs
     // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
-    .filter((d) => d.type !== 'secret')
-    .map((d) => ({
-      peerId: d.peerId,
-      title: d.title || (d.peer ? getUserTitle(d.peer) : '') || `Чат ${d.peerId}`,
-      sub: d.type === 'channel' ? t('Channel') : d.type === 'group' ? t('Group') : t('Private Chat'),
-    }))
+    .filter((d) => !d.secret)
+    .map((d) => {
+      // Вид чата ВЫВОДИТСЯ из конструктора пира и флагов — той же функцией, что
+      // и в списке чатов (решение Р8: место вывода одно).
+      const type = dialogChatType(d, cachedChat(d.peerId), meId)
+      return {
+        peerId: d.peerId,
+        title: peerTitle(d.peerId) || `Чат ${d.peerId}`,
+        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('Private Chat'),
+      }
+    })
     .filter((r) => !query || r.title.toLowerCase().includes(query))
   return (
     <Popup

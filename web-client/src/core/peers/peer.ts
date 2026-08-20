@@ -33,6 +33,7 @@
 //    докблок `peer.schema.test.ts`.
 
 import type { MyPhoto } from '../media/messageMedia'
+import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import { NULL_PEER_ID, toPeerId } from './peerId'
 
 // ── UserProfilePhoto / ChatPhoto ────────────────────────────────────────────
@@ -232,6 +233,14 @@ export interface UserFull {
   /** период автоудаления переписки с этим пиром, сек; отсутствует — выключено */
   ttl_period?: number
   birthday?: Birthday
+  /** тема оформления переписки — наш пресет `chatThemes.ts` по id (решение Р7).
+   *  В схеме `userFull.theme` это объект `ChatTheme` (обои и палитра С СЕРВЕРА);
+   *  у нас тема — пресет НА КЛИЕНТЕ, и с сервера едет только его id, поэтому
+   *  кладём `theme_emoticon: string`, как у групп. Прежде поле жило плоским
+   *  `theme_id` СТРОКИ ДИАЛОГА — места, которого у него в схеме нет вовсе. */
+  theme_emoticon?: string
+  /** пер-чатное переопределение уведомлений; мьют в нём выражен СРОКОМ */
+  notify_settings?: PeerNotifySettings
 }
 
 /**
@@ -435,6 +444,12 @@ export interface ChannelFull {
   ttl_period?: number
   available_reactions?: ChatReactions
   send_paid_messages_stars?: number
+  /** тема оформления чата — `chatFull`/`channelFull.theme_emoticon` схемы
+   *  (решение Р7): в строке диалога места у неё нет. */
+  theme_emoticon?: string
+  /** пер-чатное переопределение уведомлений; мьют в нём выражен СРОКОМ, а не
+   *  булевым «заглушено» рядом с конструктором (решение Р4). */
+  notify_settings?: PeerNotifySettings
 }
 
 export type ChatFull = ChatFullReal | ChannelFull

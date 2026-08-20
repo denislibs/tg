@@ -6,43 +6,85 @@
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { newGroupsManager } from './groupsManager'
-import { mapDialog, type RawDialog } from '../models'
-import type { Dialog } from '../models'
-import type { NewMessageEvt, ReadEvt, ChatUpdateEvt } from '../realtime/events'
+import { isDialogArchived, mapMessage, type Dialog, type Message, type RawDialog, type RawMessage } from '../models'
+import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
+import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
+import type { NewMessageEvt, ReadEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Draft } from '../models'
 
-const dialog = (peerId: number, at: string, pinned = false): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at },
-} as Dialog)
+const dialog = (peerId: number, at: string, pinned = false): Dialog =>
+  makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
 
 const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
 const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)
 
-const restStub = (chats: unknown[]) => ({ get: vi.fn(async () => ({ chats })) })
+const isMuted = (d: Dialog): boolean => isPeerMuted(d.notify_settings, Math.floor(Date.now() / 1000))
+const isPinned = (d: Dialog): boolean => !!d.pFlags?.pinned
 
-// Кадр `chat_update` несёт `messages.chatFull` — ТОТ ЖЕ объект, что отдаёт
-// `GET /chats/{peerID}/card`. Прежде та же карточка ехала двумя разными
-// формами (плоско с `id` у ручки и вложенно в кадре).
-function chatUpdate(peerId: number, chat: Partial<{ title: string; username: string; photo_id: number | null; forum: boolean }>): ChatUpdateEvt {
+/**
+ * Ответ `/chats` — КОНТЕЙНЕР (`messages.dialogs` / `messages.dialogsSlice`).
+ * `count` не передан — «список отдан целиком», то есть конец набора; это и
+ * есть способ сказать «это всё» вместо снятого `is_end`.
+ */
+const container = (dialogs: unknown[] = [], count?: number, over: Record<string, unknown> = {}) => ({
+  _: count === undefined ? 'messages.dialogs' : 'messages.dialogsSlice',
+  ...(count === undefined ? {} : { count }),
+  dialogs, messages: [], chats: [], users: [], ...over,
+})
+const restStub = (dialogs: unknown[] = [], count?: number) => ({ get: vi.fn(async () => container(dialogs, count)) })
+
+/** «Навсегда» — не отдельный флаг, а далёкий срок; «снять» — отсутствие
+ *  переопределения (пустой конструктор). Второго способа сказать то же самое на
+ *  проводе больше нет. */
+const MUTED = { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER } as const
+const UNMUTED = { _: 'peerNotifySettings' } as const
+
+/** Строка диалога НА ПРОВОДЕ — модель минус два клиентских параметра. */
+const rawDialog = (peerId: number, seq: number): RawDialog => {
+  const { peerId: _peerId, lastMessage: _lastMessage, ...wire } = makeDialog({ peerId, topMessage: seq })
+  return wire
+}
+
+/** Закреплённая строка на проводе: «включено» у булева флага схемы — ключ в
+ *  pFlags, а не поле `pinned: true` рядом. */
+const pinnedRaw = (peerId: number): RawDialog => ({ ...rawDialog(peerId, 1), pFlags: { pinned: true } })
+
+/** Сообщение на проводе — вектор `messages` контейнера. */
+const rawMessage = (peerId: number, seq: number, text = 'x', senderId = 1, at = '2026-08-01T00:00:00Z'): RawMessage => ({
+  id: seq, peer_id: peerId, seq, sender_id: senderId, type: 'text', text,
+  reply_to_id: null, media_id: null, created_at: at, thread_root_id: null,
+})
+
+/** Владелец карточек: контейнер обязан отдать ему свои векторы целиком. */
+function fakePeers() {
   return {
-    peer_id: peerId,
-    chat_full: {
-      _: 'messages.chatFull',
-      full_chat: { _: 'channelFull', id: Math.abs(peerId), about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
-      chats: [{
-        _: 'channel',
-        id: Math.abs(peerId),
-        title: chat.title ?? '',
-        username: chat.username,
-        photo: chat.photo_id ? { _: 'chatPhoto', photo_id: chat.photo_id } : { _: 'chatPhotoEmpty' },
-        date: 0,
-        pFlags: chat.forum ? { megagroup: true, forum: true } : { megagroup: true },
-      }],
-      users: [],
+    saved: [] as unknown[],
+    saveApiPeers(o: { chats?: readonly unknown[]; users?: readonly unknown[] } | undefined | null) {
+      if (o && ((o.chats?.length ?? 0) || (o.users?.length ?? 0))) this.saved.push(o)
     },
+    cachedPeer: () => undefined,
+    hydrateFromDisk: async () => {},
+  }
+}
+
+/** Владелец сообщений: SSOT воркера, куда втекает вектор `messages` и откуда
+ *  разрешается `top_message` (решение Р11). */
+function fakeMessages() {
+  const byPeer = new Map<number, Map<number, Message>>()
+  return {
+    saved: [] as Message[],
+    async saveApiMessages(list?: RawMessage[]): Promise<Message[]> {
+      const out = (list ?? []).map(mapMessage)
+      for (const m of out) {
+        let c = byPeer.get(m.peerId)
+        if (!c) { c = new Map(); byPeer.set(m.peerId, c) }
+        c.set(m.seq, m)
+        this.saved.push(m)
+      }
+      return out
+    },
+    getMessageByPeer: (peerId: number, seq: number) => (seq ? byPeer.get(peerId)?.get(seq) : undefined),
   }
 }
 
@@ -119,119 +161,16 @@ describe('dialogsManager: владелец порядка', () => {
 })
 
 // Task 3 (realtime-кадры применяет владелец): тела applyNewMessage/applyRead/
-// applyChatMeta/bumpUnreadReactions переехали из chatsStore сюда как есть — меняется
-// только выход (publish patch/remove вместо set({dialogs})). Зеркало (chatsStore)
-// эти операции только зеркалит (проверено storeProjection.dialogs.test.ts).
+// bumpUnreadReactions переехали из chatsStore сюда как есть — меняется только
+// выход (publish patch/remove вместо set({dialogs})). Зеркало (chatsStore) эти
+// операции только зеркалит (проверено storeProjection.dialogs.test.ts).
+//
+// `applyChatMeta` отсюда УБРАН вместе с полями, которые он перекладывал:
+// title/username/photo/is_forum уехали из строки диалога в карточку чата
+// (вектор `chats` контейнера `/chats`), и кадр `chat_update` кладёт их туда же
+// одним `peers.saveApiPeers` — второго зеркала того же факта больше нет
+// (проводка — workerCore.dialogFrames.test.ts).
 describe('dialogsManager: realtime-кадры применяет владелец', () => {
-  it('new_message публикует patch с новым индексом и превью', async () => {
-    const ops: DialogOp[] = []
-    const mgr = newDialogsManager({
-      rest: restStub([]) as never,
-      onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), dialog(2, '2026-08-02T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-    })
-    await mgr.fillMirror()
-    ops.length = 0
-
-    mgr.applyNewMessage({ peer_id: 1, seq: 7, text: 'привет', sender_id: 9,
-      created_at: '2026-08-03T00:00:00Z', type: 'text' } as NewMessageEvt)
-
-    expect(ops).toHaveLength(1)
-    const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.peerId).toBe(1)
-    expect(op.fields.lastMessage?.text).toBe('привет')
-    expect(op.index).toBeGreaterThan(mgr.getSnapshot()[1].index) // диалог 1 теперь выше
-  })
-
-  it('read моего пользователя гасит непрочитанное и не двигает порядок', async () => {
-    const ops: DialogOp[] = []
-    const mgr = newDialogsManager({
-      rest: restStub([]) as never,
-      onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), dialog(2, '2026-08-02T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-    })
-    await mgr.fillMirror()
-    // dialog(1) стартует с unread:0 — сперва накопим непрочитанное живым
-    // сообщением, иначе применение read было бы тривиальным no-op'ом.
-    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'hi', sender_id: 9,
-      created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
-    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index
-    ops.length = 0
-
-    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
-
-    expect(ops).toHaveLength(1)
-    const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.peerId).toBe(1)
-    expect(op.fields.unread).toBe(0)
-    expect(op.index).toBeUndefined() // метаданные прочтения не двигают dialogIndex
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index).toBe(indexBefore)
-
-    // Идемпотентность: повторное эхо того же прочтения не публикует новую операцию
-    // (иначе на зеркале бесконечно перезапускался бы mark-read-эффект).
-    ops.length = 0
-    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2, unread: 0 } as ReadEvt, 7)
-    expect(ops).toHaveLength(0)
-  })
-
-  it('chat_update сливает абсолютный снимок метаданных, index не меняется', async () => {
-    const ops: DialogOp[] = []
-    const mgr = newDialogsManager({
-      rest: restStub([]) as never,
-      onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), dialog(2, '2026-08-02T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-    })
-    await mgr.fillMirror()
-    const indexBefore = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index
-    ops.length = 0
-
-    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя', photo_id: 42 }))
-
-    expect(ops).toHaveLength(1)
-    const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.peerId).toBe(1)
-    expect(op.fields.title).toBe('Новое имя')
-    expect(op.fields.photo).toEqual({ _: 'chatPhoto', photo_id: 42 })
-    expect(op.index).toBeUndefined()
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.index).toBe(indexBefore)
-
-    // Фото снято — снимок абсолютный, и «нет фото» это отдельный КОНСТРУКТОР
-    // (`chatPhotoEmpty`), а не null рядом с числом.
-    ops.length = 0
-    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя', photo_id: null }))
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.photo).toEqual({ _: 'chatPhotoEmpty' })
-  })
-
-  // Fix (ревью Task 3, Important): `patchDialog` публиковал `patch` безусловно —
-  // повторный ИДЕНТИЧНЫЙ `chat_update` (backend publishChatUpdate зовётся из 13
-  // мест и прилетает каждому участнику чата) пересоздавал объект диалога в кэше
-  // владельца при нулевом изменении данных. Патч теперь публикуется, только если
-  // смерженные поля структурно отличаются от текущего значения (`equal()` —
-  // общий структурный компаратор `core/store/reconcile.ts`, тот же, что
-  // `reconcileEntity` использует для сохранения ссылок в зеркале).
-  it('повторный идентичный chat_update НЕ публикует операцию и не пересоздаёт объект диалога', async () => {
-    const ops: DialogOp[] = []
-    const mgr = newDialogsManager({
-      rest: restStub([]) as never,
-      onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-    })
-    await mgr.fillMirror()
-
-    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя' }))
-    const dialogAfterFirst = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog
-    ops.length = 0
-
-    mgr.applyChatMeta(chatUpdate(1, { title: 'Новое имя' })) // тот же снимок повторно
-
-    expect(ops).toHaveLength(0) // patch не опубликован
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog).toBe(dialogAfterFirst) // ссылка сохранена
-  })
-
   it('bumpUnreadReactions: verbatim из кадра, fallback +1 без поля', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
@@ -244,10 +183,10 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     mgr.bumpUnreadReactions(1) // без count — fallback +1 (было 0)
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(1)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(1)
 
     mgr.bumpUnreadReactions(1, 5) // авторитетный счётчик из кадра — verbatim
-    expect((ops[1] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(5)
+    expect((ops[1] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(5)
 
     // Fix (ревью Task 3, Important): тот же счётчик повторно — patch не публикуется.
     ops.length = 0
@@ -287,7 +226,6 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     mgr.applyNewMessage({ peer_id: 99, seq: 1, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
     mgr.applyRead({ peer_id: 99, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
-    mgr.applyChatMeta(chatUpdate(99, { title: 'x' }))
     mgr.bumpUnreadReactions(99)
 
     expect(ops).toHaveLength(0)
@@ -309,7 +247,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'hi', sender_id: 7, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
 
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(0)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
   })
 
   it('applyNewMessage: verbatim unread из кадра (Wave 3), fallback +1 без поля', async () => {
@@ -326,12 +264,12 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     // server-authoritative unread=5 выигрывает у локального +1
     mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'a', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(5)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(5)
 
     ops.length = 0
     mgr.applyNewMessage({ peer_id: 1, seq: 3, text: 'b', sender_id: 9, created_at: '2026-08-01T00:00:02Z', type: 'text' } as NewMessageEvt)
     // поля unread в кадре нет — fallback: текущий unread(5) + 1
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(6)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(6)
   })
 
   it('новое сообщение в закреплённом диалоге не двигает блок закреплённых', async () => {
@@ -373,13 +311,13 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2 } as ReadEvt, 7)
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread).toBe(0)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
 
     ops.length = 0
     mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 9 } as ReadEvt, 7)
     const opPeer = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(opPeer.fields.peerReadSeq).toBe(9)
-    expect(opPeer.fields.unread).toBeUndefined() // чужое прочтение мой unread не трогает
+    expect(opPeer.fields.read_outbox_max_id).toBe(9)
+    expect(opPeer.fields.unread_count).toBeUndefined() // чужое прочтение мой unread не трогает
 
     ops.length = 0
     mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 4 } as ReadEvt, 7)
@@ -400,7 +338,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
 
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unreadReactions).toBe(0)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(0)
   })
 })
 
@@ -425,7 +363,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
     await expect(groups.setMute(1, true)).rejects.toThrow()
 
     expect(ops).toEqual([])
-    expect(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(false)
+    expect(isMuted(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(false)
   })
 
   it('setMute: успех — patch опубликован ПОСЛЕ ответа сервера', async () => {
@@ -451,8 +389,8 @@ describe('dialogsManager × groupsManager: действия без оптими�
     await call
 
     expect(ops).toHaveLength(1)
-    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { muted: true } })
-    expect(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(true)
+    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { notify_settings: MUTED } })
+    expect(isMuted(dialogs.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(true)
   })
 })
 
@@ -476,46 +414,85 @@ describe('dialogsManager: действия без оптимистики — п�
     return { mgr, ops, saved, mirrored }
   }
 
-  it('applyMute патчит поле muted', async () => {
+  it('applyNotifySettings несёт СРОК целиком, а не булево', async () => {
     const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z')])
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyMute(1, true)
+    mgr.applyNotifySettings(1, MUTED)
 
-    expect(ops).toEqual([{ op: 'patch', peerId: 1, fields: { muted: true } }])
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.muted).toBe(true)
+    expect(ops).toEqual([{ op: 'patch', peerId: 1, fields: { notify_settings: MUTED } }])
+    expect(isMuted(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(true)
   })
 
-  it('applyArchived архивирует и сбрасывает пин (как на бэке)', async () => {
+  it('applyArchived архивирует НОМЕРОМ ПАПКИ и сбрасывает пин (как на бэке)', async () => {
     const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z', true)])
     await mgr.fillMirror()
-    expect(mgr.getSnapshot()[0].dialog.pinned).toBe(true)
+    expect(isPinned(mgr.getSnapshot()[0].dialog)).toBe(true)
     ops.length = 0
 
     mgr.applyArchived(1, true)
 
-    // Диалог был закреплён — сброс pinned выкидывает его из «закреплённого»
-    // блока индекса в обычный (по дате активности), поэтому index в патче
-    // ТОЖЕ участвует (moved=true внутри patchDialog) — сверяем fields отдельно.
+    // Диалог был закреплён — сброс пина выкидывает его из «закреплённого» блока
+    // индекса в обычный (по дате активности), поэтому index в патче ТОЖЕ
+    // участвует (moved=true внутри patchDialog) — сверяем fields отдельно.
     expect(ops).toHaveLength(1)
-    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { archived: true, pinned: false } })
+    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { folder_id: 1, pFlags: undefined } })
     const d = mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog
-    expect(d.archived).toBe(true)
-    expect(d.pinned).toBe(false)
+    expect(isDialogArchived(d)).toBe(true)
+    expect(isPinned(d)).toBe(false)
+
+    // Обратно — «папка не указана» это ОТСУТСТВИЕ значения, а не третий член.
+    mgr.applyArchived(1, false)
+    expect(isDialogArchived(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(false)
   })
 
-  it('applyTheme ставит themeId; пустая строка сбрасывает к дефолту (undefined)', async () => {
+  // Р4: срок мьюта гасит КЛИЕНТ (порт appNotificationsManager.checkMuteUntil).
+  // Без этого «заглушить на час» оставалось бы неотличимо от «навсегда»:
+  // иконка не погасла бы в назначенный час, пересчёт случался бы только при
+  // следующей полной загрузке списка.
+  it('истёкший срок мьюта владелец снимает сам, по таймеру на ближайший срок', async () => {
+    vi.useFakeTimers()
+    const now = Math.floor(Date.now() / 1000)
+    const muted = makeDialog({ peerId: 1, muteUntil: now + 60, lastMessage: makeLastMessage({ peerId: 1, seq: 1 }) })
+    const { mgr, ops } = setup([muted])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    expect(isMuted(mgr.getSnapshot()[0].dialog)).toBe(true)
+    await vi.advanceTimersByTimeAsync(61_000)
+
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1 })
+    // Переопределения больше нет — ключ снят, а не обнулён.
+    const d = mgr.getSnapshot()[0].dialog
+    expect(d.notify_settings.mute_until).toBeUndefined()
+    expect(isMuted(d)).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('«навсегда» таймера не заводит — срок есть, но не наступит', async () => {
+    vi.useFakeTimers()
+    const { mgr, ops } = setup([makeDialog({ peerId: 1, muteUntil: true })])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    await vi.advanceTimersByTimeAsync(3600_000)
+
+    expect(ops).toEqual([])
+    expect(isMuted(mgr.getSnapshot()[0].dialog)).toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('снятие уже снятого архива — тихий no-op: «выключено» это ОТСУТСТВИЕ ключа', async () => {
     const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z')])
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyTheme(1, 'sunset')
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.themeId).toBe('sunset')
+    mgr.applyArchived(1, false) // диалог и так не в архиве
 
-    ops.length = 0
-    mgr.applyTheme(1, '')
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.themeId).toBeUndefined()
+    expect(ops).toEqual([])
+    expect(isDialogArchived(mgr.getSnapshot()[0].dialog)).toBe(false)
   })
 
   it('applyPinned: свежий пин встаёт первым (tweb order.unshift), пишет pinnedOrders на диск и зеркалит ключ', async () => {
@@ -530,10 +507,10 @@ describe('dialogsManager: действия без оптимистики — п�
     mgr.applyPinned(1, true)
 
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 3, 2])
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.pinned).toBe(true)
+    expect(isPinned(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(true)
     expect(saved[saved.length - 1]).toEqual({ 0: [1] })
     expect(mirrored[mirrored.length - 1]).toEqual({ key: 'pinnedOrders', value: { 0: [1] } })
-    expect(ops.some((o) => o.op === 'patch' && o.peerId === 1 && o.fields.pinned === true)).toBe(true)
+    expect(ops.some((o) => o.op === 'patch' && o.peerId === 1 && !!o.fields.pFlags?.pinned)).toBe(true)
 
     ops.length = 0
     mgr.applyPinned(2, true) // второй пин встаёт ПЕРВЫМ (unshift)
@@ -552,7 +529,7 @@ describe('dialogsManager: действия без оптимистики — п�
     mgr.applyPinned(1, false)
 
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([2, 1])
-    expect(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog.pinned).toBe(false)
+    expect(isPinned(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(false)
     expect(saved[saved.length - 1]).toEqual({ 0: [] })
   })
 
@@ -634,7 +611,7 @@ describe('dialogsManager: персист списка переезжает к в
     })
     await mgr.fillMirror()
 
-    mgr.applyMute(1, true); mgr.applyMute(1, false); mgr.applyMute(1, true)
+    mgr.applyNotifySettings(1, MUTED); mgr.applyNotifySettings(1, UNMUTED); mgr.applyNotifySettings(1, MUTED)
 
     expect(save).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1000)
@@ -654,12 +631,12 @@ describe('dialogsManager: персист списка переезжает к в
     })
     await mgr.fillMirror()
 
-    mgr.applyMute(1, true)
+    mgr.applyNotifySettings(1, MUTED)
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(save).toHaveBeenCalledTimes(1)
     const written = save.mock.calls[0][0]
-    expect(written.find((d) => d.peerId === 1)?.muted).toBe(true)
+    expect(isMuted(written.find((d) => d.peerId === 1)!)).toBe(true)
     vi.useRealTimers()
   })
 
@@ -682,7 +659,7 @@ describe('dialogsManager: персист списка переезжает к в
       saveCache: save,
     })
     await mgr.fillMirror()
-    mgr.applyMute(1, true)
+    mgr.applyNotifySettings(1, MUTED)
 
     mgr.cancelPersist()
     await vi.advanceTimersByTimeAsync(5000)
@@ -692,82 +669,76 @@ describe('dialogsManager: персист списка переезжает к в
   })
 })
 
-// Task 6 (диалоговая половина `loadChats` переезжает к владельцу): расшифровка
-// превью секретных чатов — порт main-thread `chatsStore.decryptSecretPreviews`
-// (снесённого этой же задачей), но без RPC — secretManager в этом же воркере.
-describe('dialogsManager: расшифровка превью секретных чатов (Task 6)', () => {
-  const secretDialog = (peerId: number, at: string, encBody: string, text = ''): Dialog => ({
-    peerId, type: 'secret', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-    lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-    lastMessage: { seq: 1, text, senderId: 1, at, encBody },
-  } as Dialog)
-
-  it('fillMirror (гидратация с диска) расшифровывает превью секретного диалога', async () => {
-    const decryptSecret = vi.fn(async (peerId: number) => ({ text: `plain-${peerId}`, media: undefined }))
+// Шаг C диалогов: `/chats` стал КОНТЕЙНЕРОМ. Векторы `chats`/`users` втекают в
+// владельца карточек, `messages` — в владельца сообщений, а `top_message`
+// разрешается ОТТУДА ЖЕ (решение Р11): наверх едет целый `Message`, а не
+// девятиполевая серверная выжимка.
+describe('dialogsManager: контейнер /chats (шаг C)', () => {
+  it('векторы chats/users уезжают владельцу карточек, messages — владельцу сообщений', async () => {
+    const peers = fakePeers()
+    const messages = fakeMessages()
     const mgr = newDialogsManager({
-      rest: restStub([]) as never,
+      rest: { get: vi.fn(async () => container([rawDialog(-9, 7)], undefined, {
+        messages: [rawMessage(-9, 7, 'привет', 77)],
+        chats: [{ _: 'channel', id: 9, title: 'Группа', pFlags: { megagroup: true } }],
+        users: [{ _: 'user', id: 77, first_name: 'Аня' }],
+      })) } as never,
       onDialogOps: () => {},
-      loadCache: async () => [secretDialog(1, '2026-08-01T00:00:00Z', 'ciphertext')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-      decryptSecret,
-    })
-
-    const op = await mgr.fillMirror()
-
-    expect(decryptSecret).toHaveBeenCalledWith(1, 'ciphertext')
-    expect((op as { items: { dialog: Dialog }[] }).items[0]!.dialog.lastMessage!.text).toBe('plain-1')
-  })
-
-  it('refresh (сетевой догон) расшифровывает превью секретного диалога из ответа /chats', async () => {
-    const raw = {
-      peer_id: 2, type: 'secret', title: 't2', last_read_seq: 0, unread: 0,
-      last_message: { seq: 1, text: '', sender_id: 1, at: '2026-08-02T00:00:00Z', enc_body: 'ciphertext2' },
-    }
-    const decryptSecret = vi.fn(async (peerId: number) => ({ text: `plain-${peerId}`, media: undefined }))
-    const ops: DialogOp[] = []
-    const mgr = newDialogsManager({
-      rest: restStub([raw]) as never,
-      onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [],
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-      decryptSecret,
+      peers, messages,
     })
 
     await mgr.refresh()
 
-    expect(decryptSecret).toHaveBeenCalledWith(2, 'ciphertext2')
-    const op = ops.find((o) => o.op === 'reset') as { items: { dialog: Dialog }[] } | undefined
-    expect(op!.items[0]!.dialog.lastMessage!.text).toBe('plain-2')
+    expect(peers.saved).toEqual([{
+      chats: [{ _: 'channel', id: 9, title: 'Группа', pFlags: { megagroup: true } }],
+      users: [{ _: 'user', id: 77, first_name: 'Аня' }],
+    }])
+    expect(messages.saved.map((m) => m.seq)).toEqual([7])
   })
 
-  it('готовый text/несекретный диалог — decryptSecret не зовётся', async () => {
-    const decryptSecret = vi.fn(async () => ({ text: 'x' }))
+  it('top_message разрешается в ЦЕЛОЕ сообщение из хранилища владельца сообщений', async () => {
+    const messages = fakeMessages()
     const mgr = newDialogsManager({
-      rest: restStub([]) as never,
+      rest: { get: vi.fn(async () => container([rawDialog(-9, 7)], undefined, {
+        messages: [rawMessage(-9, 7, 'привет', 77)],
+      })) } as never,
       onDialogOps: () => {},
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), secretDialog(2, '2026-08-02T00:00:00Z', 'ciphertext', 'уже есть текст')],
+      loadCache: async () => [],
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-      decryptSecret,
+      peers: fakePeers(), messages,
     })
 
-    await mgr.fillMirror()
+    await mgr.refresh()
 
-    expect(decryptSecret).not.toHaveBeenCalled()
+    const d = mgr.getSnapshot()[0].dialog
+    expect(d.top_message).toBe(7)
+    // Целое сообщение: у выжимки не было ни id, ни сущностей, ни `fwdFrom`.
+    expect(d.lastMessage).toMatchObject({ id: 7, seq: 7, peerId: -9, senderId: 77, text: 'привет' })
   })
 
-  it('упавшая дешифровка (ключ ещё не пришёл) глотается — превью остаётся как было, fillMirror не падает', async () => {
-    const decryptSecret = vi.fn(async () => { throw new Error('key missing') })
-    const mgr = newDialogsManager({
-      rest: restStub([]) as never,
+  it('«это всё» — ОТСУТСТВИЕ count, а не булев is_end (порт appMessagesManager.ts:3629)', async () => {
+    const whole = newDialogsManager({
+      rest: restStub([rawDialog(-9, 7)]) as never, // messages.dialogs — без count
       onDialogOps: () => {},
-      loadCache: async () => [secretDialog(1, '2026-08-01T00:00:00Z', 'ciphertext')],
+      loadCache: async () => [],
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
-      decryptSecret,
+      peers: fakePeers(), messages: fakeMessages(),
     })
+    await whole.refresh()
+    // Выборка объявлена загруженной целиком — страница отвечает из кэша.
+    expect((await whole.getDialogs({ limit: 20 })).isEnd).toBe(true)
 
-    const op = await mgr.fillMirror()
-
-    expect((op as { items: { dialog: Dialog }[] }).items[0]!.dialog.lastMessage!.text).toBe('')
+    const slice = newDialogsManager({
+      rest: restStub([rawDialog(-9, 7)], 50) as never, // messages.dialogsSlice{count:50}
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      peers: fakePeers(), messages: fakeMessages(),
+    })
+    await slice.refresh()
+    expect((await slice.getDialogs({ limit: 20 })).isEnd).toBe(false)
   })
 })
 
@@ -818,7 +789,7 @@ describe('dialogsManager: сброс кэша владельца при лога
     })
 
     mgr.resetForLogout()
-    mgr.applyMute(1, true) // диалога нет в (уже пустом) кэше
+    mgr.applyNotifySettings(1, MUTED) // диалога нет в (уже пустом) кэше
 
     expect(ops).toEqual([])
     expect(mgr.getSnapshot()).toEqual([])
@@ -879,12 +850,14 @@ describe('dialogsManager: черновик поднимает диалог (Task
 describe('dialogsManager: засеивание pinnedOrders из первого списка (Task 6, порт applyDialogs/syncPinnedOrder)', () => {
   it('порядок закреплённых переживает повторное применение списка (кэш → сеть, закреплённые пришли в другом порядке ответа)', async () => {
     const mgr = newDialogsManager({
-      rest: restStub([
-        { peer_id: 2, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T11:00:00Z' } },
-        { peer_id: 1, type: 'private', last_read_seq: 0, unread: 0, pinned: true, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T10:00:00Z' } },
-        { peer_id: 3, type: 'private', last_read_seq: 0, unread: 0, last_message: { seq: 1, text: 'x', sender_id: 1, at: '2026-08-09T12:00:00Z' } },
-      ]) as never,
+      rest: { get: vi.fn(async () => container(
+        // сеть: тот же набор, но закреплённые пришли в ДРУГОМ порядке ответа
+        [pinnedRaw(2), pinnedRaw(1), rawDialog(3, 1)],
+        undefined,
+        { messages: [rawMessage(2, 1, 'x', 1, '2026-08-09T11:00:00Z'), rawMessage(1, 1, 'x', 1, '2026-08-09T10:00:00Z'), rawMessage(3, 1, 'x', 1, '2026-08-09T12:00:00Z')] },
+      )) } as never,
       onDialogOps: () => {},
+      messages: fakeMessages(),
       loadCache: async () => [
         dialog(1, '2026-08-09T10:00:00Z', true),
         dialog(2, '2026-08-09T11:00:00Z', true),
@@ -968,23 +941,24 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
 // `reindex` и сам холодный старт переписывали весь S_DIALOGS. Половину зеркала
 // держит stores/chatsStore.order.test.ts.
 describe('dialogsManager: совпавший ответ не даёт ни операции, ни записи на диск (Important #4)', () => {
-  const raw = (peerId: number, at: string): RawDialog => ({
-    peer_id: peerId, type: 'private', title: 't' + peerId, unread: 0, last_read_seq: 0,
-    last_message: { seq: 1, text: 'x', sender_id: 1, at },
-  } as unknown as RawDialog)
+  const raw = (peerId: number) => rawDialog(peerId, 1)
+  const at = (peerId: number) => (peerId === 1 ? '2026-08-01T00:00:00Z' : '2026-08-02T00:00:00Z')
+  const msg = (peerId: number) => rawMessage(peerId, 1, 'x', 1, at(peerId))
+  const cached = (peerId: number): Dialog =>
+    makeDialog({ peerId, topMessage: 1, lastMessage: mapMessage(msg(peerId)) })
 
   it('ответ /chats совпал с кэшем — refresh() отдаёт null, ops пусты, saveCache не планируется, ссылки сохранены', async () => {
     vi.useFakeTimers()
-    const rows = [raw(1, '2026-08-01T00:00:00Z'), raw(2, '2026-08-02T00:00:00Z')]
     const ops: DialogOp[] = []
     const save = vi.fn(async () => {})
     const mgr = newDialogsManager({
       // сеть отдаёт РОВНО то же, что лежит в офлайн-кэше
-      rest: restStub(rows) as never,
+      rest: { get: vi.fn(async () => container([raw(1), raw(2)], undefined, { messages: [msg(1), msg(2)] })) } as never,
       onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => rows.map(mapDialog),
+      loadCache: async () => [cached(1), cached(2)],
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
       saveCache: save,
+      messages: fakeMessages(),
     })
     await mgr.fillMirror()
     const before = mgr.getSnapshot()
@@ -1006,11 +980,12 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
     const ops: DialogOp[] = []
     const save = vi.fn(async () => {})
     const mgr = newDialogsManager({
-      rest: restStub([raw(1, '2026-08-01T00:00:00Z'), raw(2, '2026-08-02T00:00:00Z')]) as never,
+      rest: { get: vi.fn(async () => container([raw(1), raw(2)], undefined, { messages: [msg(1), msg(2)] })) } as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
       saveCache: save,
+      messages: fakeMessages(),
     })
     await mgr.fillMirror()
     ops.length = 0

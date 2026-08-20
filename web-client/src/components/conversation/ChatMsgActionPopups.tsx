@@ -11,7 +11,8 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { dialogToChat } from '../../core/dialogToChat'
 import Avatar from '../../shared/ui/Avatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
-import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { peerTitle } from '../../core/peerCache'
+import { isUser } from '../../core/peers/peerId'
 import type { useMessageActions } from '../../core/hooks/useMessageActions'
 import MessageContextMenu from './MessageContextMenu'
 import FactCheckEditor from './FactCheckEditor'
@@ -89,8 +90,8 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
         <DeleteMessageDialog
           canRevoke={m.delIds.canRevoke}
           count={m.delIds.ids.length}
-          chatType={dialog?.type}
-          peerFirstName={dialog?.peer ? getUserTitle(dialog.peer, { onlyFirstName: true }) : undefined}
+          chatType={dialogChat?.type}
+          peerFirstName={dialog && isUser(dialog.peerId) ? peerTitle(dialog.peerId, { onlyFirstName: true }) : undefined}
           avatar={dialogChat ? (
             <Avatar background={dialogChat.avatar} text={dialogChat.avatarText} emoji={dialogChat.avatarEmoji} src={dialogAvatarSrc} size={32} />
           ) : undefined}

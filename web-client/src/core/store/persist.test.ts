@@ -14,14 +14,19 @@ import {
 import type { Dialog, Message, Draft } from '../models'
 import type { Folder } from '../managers/foldersManager'
 import type { PeerProfile } from '../managers/authManager'
+import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 
 // passcode-лок (locked()) мемоизирован на 3с внутри модуля, поэтому его переключение
 // здесь не тестируем (флаки по времени); проверяем только логику стора при откл. коде.
 
-const dialog = (peerId: number, type: Dialog['type'] = 'private', last?: Partial<NonNullable<Dialog['lastMessage']>>): Dialog => ({
-  peerId, type, lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false,
-  lastMessage: last ? { seq: 1, text: '', senderId: 1, at: '2026-01-01T00:00:00Z', ...last } : undefined,
-})
+const dialog = (peerId: number, secret = false, last?: Partial<NonNullable<Dialog['lastMessage']>>): Dialog =>
+  makeDialog({
+    peerId,
+    secret,
+    lastMessage: last
+      ? { ...makeLastMessage({ peerId, seq: 1, senderId: 1, createdAt: '2026-01-01T00:00:00Z' }), ...last }
+      : undefined,
+  })
 
 const msg = (peerId: number, seq: number, over: Partial<Message> = {}): Message => ({
   id: seq, peerId, seq, senderId: 1, type: 'text', text: `m${seq}`,
@@ -81,7 +86,7 @@ describe('persist (normalized offline store)', () => {
   })
 
   it('does not persist secret plaintext (dialogs preview + messages)', async () => {
-    await saveDialogs([dialog(1, 'secret', { text: 'secret preview', encBody: 'cipher' })])
+    await saveDialogs([dialog(1, true, { text: 'secret preview', encBody: 'cipher' })])
     const [d] = await loadDialogs()
     expect(d.lastMessage?.text).toBe('')
     expect(d.lastMessage?.encBody).toBeUndefined()
@@ -181,7 +186,7 @@ describe('persist (normalized offline store)', () => {
     })
     try {
       expect(upgraded).toBe(false) // апгрейда нет — данные не тронуты
-      expect([...db.objectStoreNames].sort()).toEqual(['dialogs', 'messages', 'meta', 'state', 'users'])
+      expect([...db.objectStoreNames].sort()).toEqual(['chats', 'dialogs', 'messages', 'meta', 'state', 'users'])
       const rows = await new Promise<unknown[]>((resolve, reject) => {
         const r = db.transaction('messages', 'readonly').objectStore('messages').index('byPeer').getAll(IDBKeyRange.only(4))
         r.onsuccess = () => resolve(r.result as unknown[])

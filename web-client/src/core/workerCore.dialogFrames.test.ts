@@ -1,5 +1,5 @@
 // Task 3 (realtime-кадры применяет владелец): проверяет, что createWorkerCore()
-// РЕАЛЬНО зовёт dialogs.applyNewMessage/applyRead/applyChatMeta/applyRemoved/
+// РЕАЛЬНО зовёт dialogs.applyNewMessage/applyRead/applyRemoved/
 // bumpUnreadReactions из dispatch()/routeNewMessage() — не только что сам
 // dialogsManager умеет считать patch/remove из этих же кадров (это отдельно
 // покрыто dialogsManager.test.ts), а что workerCore.ts реально подключает
@@ -39,6 +39,7 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
 
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
 // Тот же приём, что и в workerCore.test.ts/workerCore.dialogs.test.ts —
 // синхронная пара эндпоинтов.
@@ -56,11 +57,7 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-const dialog = (peerId: number, at: string): Dialog => ({
-  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-  lastMessage: { seq: 1, text: 'x', senderId: 1, at },
-} as Dialog)
+const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
 
 beforeEach(() => {
   // vi.stubGlobal (не прямое присваивание indexedDB=...) — та же замена, что и в
@@ -108,14 +105,16 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
 
     capturedConnDeps!.onFrame('read', { peer_id: 1, user_id: 7, up_to_seq: 1 })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { peerReadSeq: 1 } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { read_outbox_max_id: 1 } }])
   })
 
-  it('chat_update (без pts) → dialogs.applyChatMeta → rt:dialog_op patch, index не участвует', async () => {
+  // Строка диалога кадром `chat_update` БОЛЬШЕ НЕ ТРОГАЕТСЯ: title/username/
+  // photo/forum уехали из неё в карточку чата (вектор `chats` контейнера), и
+  // перекладывать их обратно значило бы держать тот же факт в двух местах.
+  // Единственный получатель снимка — зеркало пиров (следующий кейс).
+  it('chat_update (без pts) — строку диалога не патчит вовсе', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    // Кадр несёт `messages.chatFull` — ТОТ ЖЕ объект, что отдаёт ручка
-    // карточки чата; своей формы у кадра больше нет.
     capturedConnDeps!.onFrame('chat_update', {
       peer_id: 1,
       chat_full: {
@@ -126,7 +125,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
       },
     })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { title: 'Новое имя', username: undefined, photo: { _: 'chatPhotoEmpty' }, isForum: undefined } }])
+    expect(dialogOps).toEqual([])
   })
 
   // Пин пробела D2.5 №1 на втором его пути. Кадр `chat_update` несёт
@@ -145,7 +144,11 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     tab.on('rt:peer_op', (p) => peerOps.push(...(p as { ops: { op: string; peers: unknown[] }[] }).ops))
     await tab.invoke('manager', { name: 'dialogs', method: 'fillMirror', args: [] })
 
-    const chat = { _: 'channel', id: 1, title: 'Новое имя', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }
+    // Заголовок УНИКАЛЬНЫЙ на весь файл: офлайн-стор карточек (v4 схемы) живёт
+    // одним memoized-подключением на модуль, и карточка, записанная соседним
+    // кейсом, поднялась бы гидратацией — владелец счёл бы её неизменившейся и
+    // ничего бы не объявил.
+    const chat = { _: 'channel', id: 1, title: 'Имя только этого кейса', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }
     capturedConnDeps!.onFrame('chat_update', {
       peer_id: 1,
       chat_full: {
@@ -177,7 +180,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
       peer_id: 1, msg_id: 5, user_id: 9, emoji: '👍', action: 'add', unread_reactions: 3,
     })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unreadReactions: 3 } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 3 } }])
   })
 
   it('reaction от меня самого — bumpUnreadReactions НЕ зовётся (isMine)', async () => {
@@ -200,13 +203,22 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
 // происходит РОВНО ОДИН РАЗ (ops длиной 1, не 2 — раньше эти же 4 кадра ЕЩЁ и
 // разбирала витрина напрямую через storeProjection.ts/chatsStore-мутаторы;
 // тот путь убран вместе с мутаторами — второго применения быть не может).
-describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive/theme) применяет владелец РОВНО ОДИН РАЗ (Task 4)', () => {
-  it('dialog_mute (без pts) → dialogs.applyMute → ровно один rt:dialog_op patch', async () => {
+describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive) применяет владелец РОВНО ОДИН РАЗ (Task 4)', () => {
+  // Кадр несёт КОНСТРУКТОР настроек целиком: срок мьюта обязан дойти до
+  // владельца, а не потеряться на границе (из-за чего «на час» работало как
+  // «навсегда»). Мутация «взять из кадра булево» красит именно этот кейс.
+  it('dialog_mute (без pts) → dialogs.applyNotifySettings → ровно один patch СО СРОКОМ', async () => {
     const { dialogOps } = await bootWithSeededDialog()
+    const until = Math.floor(Date.now() / 1000) + 3600
 
-    capturedConnDeps!.onFrame('dialog_mute', { peer_id: 1, muted: true })
+    capturedConnDeps!.onFrame('dialog_mute', {
+      peer_id: 1,
+      notify_settings: { _: 'peerNotifySettings', mute_until: until },
+    })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { muted: true } }])
+    expect(dialogOps).toEqual([
+      { op: 'patch', peerId: 1, fields: { notify_settings: { _: 'peerNotifySettings', mute_until: until } } },
+    ])
   })
 
   it('dialog_archive (без pts) → dialogs.applyArchived → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {
@@ -214,15 +226,19 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
 
     capturedConnDeps!.onFrame('dialog_archive', { peer_id: 1, archived: true })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { archived: true, pinned: false } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { folder_id: 1, pFlags: undefined } }])
   })
 
-  it('chat_theme_update (без pts) → dialogs.applyTheme → ровно один rt:dialog_op patch', async () => {
+  // `chat_theme_update` строку диалога больше не трогает: тема живёт в ПОЛНОЙ
+  // карточке пира (решение Р7), её зеркало — `core/chatFullCache.ts` на главном
+  // потоке, и применяет кадр проектор (`storeProjection.ts`), а не владелец
+  // диалогов.
+  it('chat_theme_update (без pts) — строку диалога не патчит вовсе', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
     capturedConnDeps!.onFrame('chat_theme_update', { peer_id: 1, theme_id: 'sunset' })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { themeId: 'sunset' } }])
+    expect(dialogOps).toEqual([])
   })
 
   it('dialog_pin (без pts) → dialogs.applyPinned → ровно один патч + reindex, не двойное применение', async () => {
@@ -233,7 +249,7 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
     // patch (поле pinned) + reindex (порядок закреплённых) — обе от ОДНОГО
     // вызова applyPinned, не два независимых применения одного и того же факта.
     expect(dialogOps).toHaveLength(2)
-    expect(dialogOps[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { pinned: true } })
+    expect(dialogOps[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { pFlags: { pinned: true } } })
     expect(dialogOps[1]).toMatchObject({ op: 'reindex' })
   })
 })

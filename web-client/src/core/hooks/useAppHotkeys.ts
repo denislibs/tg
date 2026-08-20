@@ -5,6 +5,7 @@
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
+import { isPeerMuted } from '../dialogs/notifySettings'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import { initHotkeys } from '../hotkeys'
@@ -25,7 +26,7 @@ export function useAppHotkeys(): void {
   }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
-  // (dialogsManager.applyMute) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
+  // (dialogsManager.applyNotifySettings) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
   // как и в ChatListItem/Chat.tsx.
   const muteCurrentChat = useCallback(() => {
     const id = useNavigationStore.getState().selectedId
@@ -33,7 +34,7 @@ export function useAppHotkeys(): void {
     const peerId = parsePeerId(id)
     const dlg = useChatsStore.getState().dialogs.find((d) => d.peerId === peerId)
     if (!dlg) return
-    void managers.groups.setMute(peerId, !dlg.muted).catch(() => {})
+    void managers.groups.setMute(peerId, !isPeerMuted(dlg.notify_settings, Math.floor(Date.now() / 1000))).catch(() => {})
   }, [managers])
 
   // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара.

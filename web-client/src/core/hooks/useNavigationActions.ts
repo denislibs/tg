@@ -10,6 +10,7 @@ import { useChatsStore, loadPresence } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { isAnyChat } from '../peers/peerId'
+import { peerTitle } from '../peerCache'
 
 export function useNavigationActions() {
   const managers = useManagers()
@@ -29,7 +30,9 @@ export function useNavigationActions() {
   // ставим корень форума (`selectChat` заодно выставляет `selectedId`), и лишь
   // затем кладём тему поверх (`setInnerPeer`).
   const openTopicThread = useCallback((peerId: PeerId, topic: TopicRow) => {
-    const subtitle = useChatsStore.getState().dialogs.find((d) => d.peerId === peerId)?.title
+    // Заголовок форума — из карточки чата (зеркало пиров), а не из строки
+    // диалога: `title` с провода `/chats` ушёл в вектор `chats` контейнера.
+    const subtitle = peerTitle(peerId) || undefined
     useNavigationStore.getState().selectChat(String(peerId))
     useChatStackStore.getState().setInnerPeer({
       peerId,

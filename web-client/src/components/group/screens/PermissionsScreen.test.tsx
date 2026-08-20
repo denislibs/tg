@@ -43,7 +43,7 @@ const g = makeGroupEdit({
       _: 'channelFull', id: 1, about: '',
       read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null,
     },
-    peerId: -1, muted: false, creatorId: 0,
+    peerId: -1, creatorId: 0,
   },
   isCreator: false,
 })
