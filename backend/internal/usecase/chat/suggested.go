@@ -322,7 +322,10 @@ func (i *Interactor) notifyAuthorDecision(ctx context.Context, sp domain.Suggest
 		}
 	}
 	b, _ := json.Marshal(map[string]any{"action": action, "chat": title})
-	_ = i.PostServiceMessage(ctx, sp.AuthorID, string(b))
+	// Именно PostServiceAction: это ДЕЙСТВИЕ, а не текст. Через
+	// PostServiceMessage (Type=="text") клиент разбор не включал вовсе — он
+	// смотрит на вид сообщения — и автор видел сырой JSON.
+	_ = i.PostServiceAction(ctx, sp.AuthorID, string(b))
 }
 
 // publishSuggestedToAdmins рассылает состояние предложки решающим её админам.

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -260,4 +261,61 @@ func TestListSuggestedPosts_AdminVsAuthor(t *testing.T) {
 	if len(mine) != 1 || mine[0].AuthorID != 8 {
 		t.Fatalf("author list = %+v, want 1 own", mine)
 	}
+}
+
+// Решение по предложке уезжает автору СЛУЖЕБНЫМ сообщением, а не текстом.
+//
+// Дефект, который держит этот тест, был живым: notifyAuthorDecision слал
+// JSON-действие через PostServiceMessage, а тот зовёт Send БЕЗ типа — то есть
+// подставлялся дефолт "text". Клиент включает разбор действия по ВИДУ
+// сообщения, поэтому автор видел в чате сырой `{"action":"suggest_post_...`.
+//
+// Корень путаницы — имя: «service» в PostServiceMessage означает аккаунт-
+// отправитель, а не вид сообщения. Поэтому проверяем ОБА пути: действие едет
+// как service, а человекочитаемое уведомление (вход в аккаунт) — как text.
+func TestSuggestedDecision_GoesAsServiceMessage(t *testing.T) {
+	in, fg, _, _, _ := newSuggestTestInteractor(t)
+	ctx := context.Background()
+	id, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	_ = fg.AddMember(ctx, id, 8, domain.RoleSubscriber, 0)
+	info, _ := in.SuggestPost(ctx, id, 8, "hello", nil, nil, nil)
+
+	if _, err := in.ApproveSuggestedPost(ctx, info.ID, 7, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, ok := findServiceAccountMessage(t, in, 8)
+	if !ok {
+		t.Fatal("автор не получил сообщения из чата с сервисным аккаунтом")
+	}
+	if msg.Type != "service" {
+		t.Fatalf("вид сообщения = %q, want \"service\" — иначе клиент покажет сырой JSON", msg.Type)
+	}
+	if !strings.HasPrefix(msg.Text, `{"action":"suggest_post_`) {
+		t.Fatalf("текст = %q, want JSON-действие suggest_post_*", msg.Text)
+	}
+
+	// Обратная сторона: обычное уведомление остаётся ТЕКСТОМ.
+	if err := in.PostServiceMessage(ctx, 8, "Новый вход в аккаунт"); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := findServiceAccountMessage(t, in, 8)
+	if last.Type != "text" {
+		t.Fatalf("уведомление о входе = %q, want \"text\": его читает человек, а не разборщик действий", last.Type)
+	}
+}
+
+// findServiceAccountMessage — последнее сообщение в приватном чате userID с
+// сервисным аккаунтом.
+func findServiceAccountMessage(t *testing.T, in *Interactor, userID int64) (domain.Message, bool) {
+	t.Helper()
+	chatID, err := in.chats.FindPrivate(context.Background(), userID, domain.ServiceUserID)
+	if err != nil {
+		return domain.Message{}, false
+	}
+	msgs, err := in.msgs.GetHistory(context.Background(), chatID, userID, 0, 0, 50, nil, 0, "")
+	if err != nil || len(msgs) == 0 {
+		return domain.Message{}, false
+	}
+	return msgs[0], true
 }

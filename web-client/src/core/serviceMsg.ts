@@ -9,12 +9,11 @@
 // разбор возвращает сегменты, а `serviceMsgText` — их же, склеенные в строку
 // (для превью в списке чатов, где узлы не нужны).
 import { replyMediaLabel } from './messageToConvMsg'
+import { peerTitle } from './peerCache'
 
 interface ServiceAction {
   action: string
-  actor?: string
   actor_id?: number
-  user?: string
   user_id?: number
   ttl?: number
   /** название канала (предложка постов: suggest_post_approved/rejected) */
@@ -29,10 +28,18 @@ interface ServiceAction {
   msg_text?: string
 }
 
-/** Кусок фразы сервисной пилюли: обычный текст, имя-пир или ссылка на сообщение. */
+/** Кусок фразы сервисной пилюли: обычный текст, имя-пир или ссылка на сообщение.
+ *
+ *  У сегмента-пира ИМЕНИ НЕТ — только ссылка `peerId`. Имя собирает тот, кто
+ *  рисует, из зеркала карточек (`core/peerCache.ts`), ровно как это делает узел
+ *  `.peer-title` у автора бабла. Раньше здесь лежало готовое имя из JSON, и это
+ *  было то же самое `display_name`, которое сняли с провода у пиров: бэкенд
+ *  перестал его слать (`serviceText`, порт `messageActionChatAddUser` с
+ *  `users:Vector<long>`), а фолбэк «Пользователь» остался — и каждая пилюля в
+ *  группе читалась «Пользователь добавил(а) пользователя». */
 export type ServiceSeg =
   | { kind: 'text'; text: string }
-  | { kind: 'peer'; text: string; peerId?: number }
+  | { kind: 'peer'; peerId?: number; /** только для отсутствующей ссылки */ fallback: string }
   | { kind: 'msg'; text: string; msgId?: number; seq?: number }
 
 // Тексты — как в официальном ru-паке Telegram (ActionCreateGroup/ActionAddUser/…).
@@ -47,8 +54,12 @@ export function serviceMsgSegs(raw: string, out?: boolean): ServiceSeg[] {
     return plain(raw)
   }
   const t = (text: string): ServiceSeg => ({ kind: 'text', text })
-  const actor: ServiceSeg = { kind: 'peer', text: a.actor || 'Пользователь', peerId: a.actor_id }
-  const user: ServiceSeg = { kind: 'peer', text: a.user || 'пользователя', peerId: a.user_id }
+  // Фолбэк применяется ТОЛЬКО когда ссылки нет вовсе (старое сообщение из
+  // истории, записанное до перехода на ссылки). Когда ссылка есть, но карточка
+  // ещё не приехала, фолбэк даёт `getPeerTitle` — «Удалённый аккаунт» и прочие
+  // формулировки оригинала, а не выдуманное здесь слово.
+  const actor: ServiceSeg = { kind: 'peer', peerId: a.actor_id, fallback: 'Пользователь' }
+  const user: ServiceSeg = { kind: 'peer', peerId: a.user_id, fallback: 'пользователя' }
   switch (a.action) {
     // Предложение фото профиля (tweb messageActionSuggestProfilePhoto).
     case 'suggest_photo':
@@ -90,13 +101,34 @@ export function serviceMsgSegs(raw: string, out?: boolean): ServiceSeg[] {
           ? ` включил(а) автоудаление сообщений через ${ttlLabel(a.ttl)}`
           : ' отключил(а) автоудаление сообщений'),
       ]
-    default: return plain(raw)
+    // Ограничение прав участника (бэкенд group_settings.go RestrictMember).
+    // Конкретные снятые права в пилюле не перечисляем — их разбор живёт в
+    // экране прав, а не здесь; Telegram в ленте тоже показывает сам факт.
+    case 'restrict': return [actor, t(' ограничил(а) права '), user]
+    // Действие есть, а ветки для него нет. Показать `raw` тут НЕЛЬЗЯ: raw —
+    // это JSON, и пользователь увидел бы служебную кишку вместо фразы. Так уже
+    // случалось с `restrict`, который бэкенд слал, а разбор не знал.
+    default: return plain(UNSUPPORTED_ACTION)
   }
 }
 
-/** Та же фраза одной строкой — для превью в списке чатов. */
+/** Пилюля для действия, которого этот клиент не знает (новее бэкенд). */
+export const UNSUPPORTED_ACTION = 'Это действие не поддерживается вашей версией приложения'
+
+/** Та же фраза одной строкой — для превью в списке чатов и для `ConvMsg.text`.
+ *
+ *  Имена пиров разрешаются здесь, а не в `serviceMsgSegs`: разбор остаётся
+ *  чистым (его можно проверить без зеркала), а зависимость от зеркала живёт
+ *  ровно у тех, кто рисует. Промах зеркала — не пустая строка: `peerTitle`
+ *  отдаёт фолбэк оригинала. */
 export function serviceMsgText(raw: string, out?: boolean): string {
-  return serviceMsgSegs(raw, out).map((s) => s.text).join('')
+  return serviceMsgSegs(raw, out).map(segText).join('')
+}
+
+/** Текст одного сегмента: у пира — имя из зеркала карточек. */
+export function segText(s: ServiceSeg): string {
+  if (s.kind !== 'peer') return s.text
+  return s.peerId != null ? peerTitle(s.peerId) : s.fallback
 }
 
 // Превью закреплённого — как tweb messageForReply: сначала «медийная» часть

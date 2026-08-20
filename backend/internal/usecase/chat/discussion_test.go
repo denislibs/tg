@@ -391,7 +391,7 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 	// groupMembershipChatsFanout + fakeUpdates — единственная комбинация в
 	// пакете, где Send() реально фанаутит live-кадры per-member (обычный
 	// стаб groupMembershipChats.MemberIDs всегда nil, см. его комментарий).
-	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg}}, fakeMsgs{s},
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s},
 		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	i.SetChannelPublisher(&fakeChannelPublisher{})
 	fg.onCreate = func(id int64) {

@@ -36,11 +36,7 @@
 //    владелец — группировка (`components/chat/bubbleGroups.ts`).
 import { parseEntities, wrapRichText } from '@lib/richtext'
 import { serviceMsgSegs, type ServiceSeg } from '@core/serviceMsg'
-
-/** tweb `@appManagers/constants.ts::NULL_PEER_ID` — «пир неизвестен»;
- *  `PeerTitle.setOptions` пишет в `data-peer-id` именно его, а делегированный
- *  обработчик клика молча игнорирует такой узел (`bubbles.ts:3398`). */
-const NULL_PEER_ID = 0
+import PeerTitle, { type PeerTitleOptions } from './peerTitle'
 
 /** Порт tweb `helpers/dom/setInnerHTML.ts::setDirection` (тот же приём, что в
  *  `lib/richtext/wrapRichText.ts` у цитаты). */
@@ -63,16 +59,30 @@ function wrapEmojiText(text: string): DocumentFragment {
   return wrapRichText(text, { entities: parseEntities(text).filter((entity) => entity._ === 'messageEntityEmoji') })
 }
 
-/** Имя пира — порт tweb `PeerTitle` (`components/peerTitle.ts:66-95`, класс
- *  `peer-title` + `dir="auto"` + `data-peer-id`). */
-function createPeerTitle(seg: Extract<ServiceSeg, { kind: 'peer' }>): HTMLSpanElement {
-  const element = document.createElement('span')
-  element.classList.add('peer-title')
-  setDirection(element)
-  element.dataset.peerId = '' + (seg.peerId ?? NULL_PEER_ID)
-  element.append(wrapEmojiText(seg.text))
-  return element
+/** Имя пира в сервисной фразе — ТОТ ЖЕ узел `PeerTitle`, что у автора бабла.
+ *
+ *  Своей копии здесь больше нет. Прежняя печатала имя, пришедшее в JSON
+ *  действия, — а бэкенд перестал его слать (порт пиров, `serviceText`), и
+ *  фолбэк «Пользователь» стал единственным, что видел пользователь. Настоящий
+ *  `PeerTitle` берёт имя из зеркала карточек синхронно, объявляет пробел
+ *  зеркала и перерисовывается, когда карточка приезжает. */
+function createPeerTitle(
+  seg: Extract<ServiceSeg, { kind: 'peer' }>,
+  { middleware, managers }: Pick<PeerTitleOptions, 'middleware' | 'managers'>,
+): HTMLElement {
+  // Ссылки нет вовсе — сообщение из истории, записанное до перехода на ссылки.
+  // Карточки для него не существует, поэтому имя идёт `fromName`, как у send-as,
+  // а ключ — NULL_PEER_ID: узел остаётся целью делегированного клика, и тот
+  // молча его игнорирует (`bubbles.ts:3398`), вместо того чтобы вести в «чат 0».
+  return new PeerTitle(
+    seg.peerId != null
+      ? { peerId: seg.peerId, middleware, managers }
+      : { peerId: NULL_PEER_ID, fromName: seg.fallback, middleware, managers },
+  ).element
 }
+
+/** tweb `@appManagers/constants.ts::NULL_PEER_ID` — «пир неизвестен». */
+const NULL_PEER_ID = 0
 
 /**
  * Ссылка на сообщение (закреплённое) — порт tweb `wrapLinkToMessage`
@@ -103,6 +113,9 @@ export interface ServiceActionOptions {
   out?: boolean
   /** peerId чата — первая половина адреса в `data-saved-from` */
   peerId: number
+  /** нужны узлу имени: жизненный цикл подписки на зеркало и объявление пробела */
+  middleware: PeerTitleOptions['middleware']
+  managers: PeerTitleOptions['managers']
 }
 
 /**
@@ -111,13 +124,13 @@ export interface ServiceActionOptions {
  * и `i[data-saved-from]` внутри (tweb собирает его `_i18n(element, key, args)`,
  * `langPack.ts:652`, и так же зовёт `normalize()` при наличии аргументов).
  */
-export function wrapMessageActionText({ raw, out, peerId }: ServiceActionOptions): HTMLSpanElement {
+export function wrapMessageActionText({ raw, out, peerId, middleware, managers }: ServiceActionOptions): HTMLSpanElement {
   const element = document.createElement('span')
   element.classList.add('i18n')
 
   for (const seg of serviceMsgSegs(raw, out)) {
     if (seg.kind === 'peer') {
-      element.append(createPeerTitle(seg))
+      element.append(createPeerTitle(seg, { middleware, managers }))
     } else if (seg.kind === 'msg') {
       element.append(createLinkToMessage(seg, peerId))
     } else {
@@ -144,7 +157,7 @@ export interface ServiceBubbleOptions extends ServiceActionOptions {
  * Классы группировки (`is-group-first`/`is-group-last`) вешает не он, а
  * `bubbleGroups.ts` — как и в tweb.
  */
-export function createServiceBubble({ raw, out, peerId, mid, timestamp }: ServiceBubbleOptions): HTMLDivElement {
+export function createServiceBubble({ raw, out, peerId, mid, timestamp, middleware, managers }: ServiceBubbleOptions): HTMLDivElement {
   const bubble = document.createElement('div')
   bubble.className = 'bubble service'
   if (mid !== undefined) {
@@ -163,7 +176,7 @@ export function createServiceBubble({ raw, out, peerId, mid, timestamp }: Servic
 
   const serviceMsg = document.createElement('div')
   serviceMsg.classList.add('service-msg')
-  serviceMsg.append(wrapMessageActionText({ raw, out, peerId }))
+  serviceMsg.append(wrapMessageActionText({ raw, out, peerId, middleware, managers }))
 
   bubbleContainer.append(serviceMsg)
   contentWrapper.append(bubbleContainer)

@@ -277,7 +277,28 @@ func (i *Interactor) SavedDialogs(ctx context.Context, userID int64) ([]domain.S
 // PostServiceMessage delivers a message from the official service account
 // (domain.ServiceUserID) into its private chat with toUserID, creating that chat on
 // first use. Reuses the normal Send pipeline (seq, updates, realtime, push).
+//
+// ВНИМАНИЕ на имя: «service» здесь — это АККАУНТ-отправитель, а НЕ вид
+// сообщения. Уходит обычное текстовое сообщение (Type=="text"), и именно это
+// нужно уведомлениям о входе: их текст читает человек.
+//
+// Служебное сообщение в смысле Telegram (пилюля-действие) отправляется другой
+// функцией — PostServiceAction. Совпадение слова «service» в двух разных
+// смыслах уже стоило одного дефекта: решение по предложенному посту уезжало
+// СЮДА, то есть JSON-действие показывалось автору как обычный текст.
 func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, text string) error {
+	return i.postFromServiceAccount(ctx, toUserID, text, "")
+}
+
+// PostServiceAction кладёт в чат с сервисным аккаунтом СЛУЖЕБНОЕ сообщение —
+// пилюлю-действие (Type=="service"): actionJSON разбирает клиент и собирает
+// локализованную фразу сам. Отличается от PostServiceMessage ровно тем, чем
+// пилюля отличается от текста; см. докблок выше.
+func (i *Interactor) PostServiceAction(ctx context.Context, toUserID int64, actionJSON string) error {
+	return i.postFromServiceAccount(ctx, toUserID, actionJSON, "service")
+}
+
+func (i *Interactor) postFromServiceAccount(ctx context.Context, toUserID int64, text, msgType string) error {
 	if toUserID == domain.ServiceUserID {
 		return nil
 	}
@@ -285,7 +306,9 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 	if err != nil {
 		return err
 	}
-	_, err = i.Send(ctx, SendInput{ChatID: chatID, SenderID: domain.ServiceUserID, Text: text})
+	_, err = i.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: domain.ServiceUserID, Type: msgType, Text: text,
+	})
 	return err
 }
 

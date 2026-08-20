@@ -122,14 +122,49 @@ func (p *fakeChannelPublisher) lastPayload(t *testing.T) map[string]any {
 }
 
 // groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
-// (the only ChatRepo method the channel usecase needs).
-type groupMembershipChats struct{ fg *fakeGroupRepo }
+// (the ChatRepo methods the channel usecase needs).
+//
+// Приватные чаты здесь НЕ заглушка, и это важно: `CreatePrivate`, возвращавший
+// `(0, nil)`, делал недостижимым весь путь «сообщение от сервисного аккаунта» —
+// уведомление автору о решении по предложке уезжало в чат 0 и терялось. Из-за
+// этого дефект «решение едет текстом, а не действием» не мог покраснеть ни в
+// одном тесте. Чат заводится в ТОМ ЖЕ store, что и сообщения, иначе
+// `fakeMsgs.NextSeq` его не найдёт.
+type groupMembershipChats struct {
+	fg *fakeGroupRepo
+	s  *store
+}
 
-func (c groupMembershipChats) FindPrivate(context.Context, int64, int64) (int64, error) {
+func (c groupMembershipChats) FindPrivate(_ context.Context, a, b int64) (int64, error) {
+	if c.s == nil {
+		return 0, domain.ErrNotFound
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	for cid, typ := range c.s.chatType {
+		if typ != "private" {
+			continue
+		}
+		m := c.s.members[cid]
+		if m[a] != nil && m[b] != nil {
+			return cid, nil
+		}
+	}
 	return 0, domain.ErrNotFound
 }
-func (c groupMembershipChats) CreatePrivate(context.Context, int64, int64) (int64, error) {
-	return 0, nil
+
+func (c groupMembershipChats) CreatePrivate(_ context.Context, a, b int64) (int64, error) {
+	if c.s == nil {
+		return 0, nil
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	c.s.nextChatID++
+	cid := c.s.nextChatID
+	c.s.chatType[cid] = "private"
+	c.s.chatSeq[cid] = 0
+	c.s.members[cid] = map[int64]*member{a: {}, b: {}}
+	return cid, nil
 }
 func (c groupMembershipChats) CreateSecret(context.Context, int64, int64) (int64, error) {
 	return 0, nil
@@ -159,9 +194,15 @@ func (c groupMembershipChatsFanout) MemberIDs(_ context.Context, chatID int64) (
 }
 func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) (bool, error) {
 	c.fg.mu.Lock()
-	defer c.fg.mu.Unlock()
 	_, ok := c.fg.members[chatID][userID]
-	return ok, nil
+	c.fg.mu.Unlock()
+	if ok || c.s == nil {
+		return ok, nil
+	}
+	// Приватные чаты живут в store (см. CreatePrivate выше), а не в группах.
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	return c.s.members[chatID][userID] != nil, nil
 }
 func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
@@ -231,7 +272,7 @@ func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
 	fpub := &fakeChannelPublisher{}
-	in := New(fakeTx{}, groupMembershipChats{fg}, msgs(s), nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg, s}, msgs(s), nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	in.SetChannelPublisher(fpub)
 	// Media-фикстура для тестов Send с медиа (TestSendToChannel_CreatesMirror):
 	// mediaID=42 принадлежит пользователю 7 — стандартному создателю канала

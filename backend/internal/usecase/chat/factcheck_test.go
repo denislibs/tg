@@ -22,7 +22,7 @@ func newFactCheckInteractor() (*Interactor, *fakeGroupRepo, *store) {
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}
-	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, nil, nil, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg, s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, nil, nil, nil)
 	return in, fg, s
 }
 

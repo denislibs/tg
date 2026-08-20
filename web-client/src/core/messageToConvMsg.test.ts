@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { applyPeerOps } from './peerCache'
 import { getDocumentFromMessage, saveMessageMedia } from './media/messageMedia'
 import { messageToConvMsg } from './messageToConvMsg'
 import type { Message } from './models'
+
+applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 5, first_name: 'Алиса', pFlags: {} }] }])
 
 const base: Message = {
   id: 1, peerId: 1, seq: 1, senderId: 2, type: 'text', text: 'hi',
@@ -99,11 +102,12 @@ describe('messageToConvMsg', () => {
 
   it('keeps mediaId on a service message (edit_photo → round thumbnail)', () => {
     const c = messageToConvMsg(
-      { ...base, type: 'service', text: '{"action":"edit_photo","actor":"Алиса"}', mediaId: 55 },
+      { ...base, type: 'service', text: '{"action":"edit_photo","actor_id":5}', mediaId: 55 },
       7,
     )
     expect(c.type).toBe('service')
     expect(c.mediaId).toBe(55)
+    // Имя берётся из зеркала карточек — в действии его нет (см. serviceMsg.ts).
     expect(c.text).toBe('Алиса обновил(а) фото группы')
   })
 

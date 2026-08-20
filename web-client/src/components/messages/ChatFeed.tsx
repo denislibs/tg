@@ -13,7 +13,7 @@ import { peerColor } from '../peerColor'
 import { gradientFor } from '../../core/dialogToChat'
 import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/format/dayLabel'
-import { serviceMsgSegs, type ServiceSeg } from '../../core/serviceMsg'
+import { segText, serviceMsgSegs, type ServiceSeg } from '../../core/serviceMsg'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
@@ -341,14 +341,17 @@ function ChatFeed({
 function serviceSeg(sg: ServiceSeg, key: number, peerId: number | undefined, feedFns: FeedFns) {
   if (sg.kind === 'peer') {
     const peerId = sg.peerId
+    // Имя берётся из зеркала карточек (`segText` → `peerTitle`), а не из
+    // сегмента: в JSON действия его больше нет — бэкенд шлёт только ссылку.
+    const name = segText(sg)
     return (
       <span
         key={key}
         className="peer-title"
         data-peer-id={peerId}
-        onClick={peerId != null ? () => feedFns.openSender(peerId, sg.text) : undefined}
+        onClick={peerId != null ? () => feedFns.openSender(peerId, name) : undefined}
       >
-        {sg.text}
+        {name}
       </span>
     )
   }

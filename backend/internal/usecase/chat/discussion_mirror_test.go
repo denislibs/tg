@@ -484,7 +484,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	fg := newFakeGroupRepo()
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
-	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg}}, fakeMsgs{s},
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s},
 		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	i.SetChannelPublisher(&fakeChannelPublisher{})
 	fg.onCreate = func(id int64) {
