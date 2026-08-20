@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -214,7 +215,7 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
+	writeMessage(w, r, h.svc, msg)
 }
 
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
@@ -312,12 +313,16 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list chats")
 		return
 	}
-	// Вектор messages наполняет СУЩЕСТВУЮЩИЙ проводной рендерер сообщения:
-	// конструктора `message` в домене ещё нет (своя подсистема программы), а
-	// domain.Message без json-тегов отдал бы наружу имена полей Go. Стык
-	// временный и назван в domain.MessagesDialogs.Messages.
-	messages := make([]any, 0, len(res.Messages))
-	for _, m := range messagesJSON(r.Context(), h.svc, res.Messages) {
+	// Вектор messages контейнера — те же конструкторы схемы, что отдаёт история:
+	// временный стык «проводной рендерер из delivery/http» закрыт, и вектор
+	// наконец покрыт сверкой со схемой вместе с остальными тремя.
+	wire, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list chats")
+		return
+	}
+	messages := make([]any, 0, len(wire))
+	for _, m := range wire {
 		messages = append(messages, m)
 	}
 	if res.Whole {
@@ -362,6 +367,29 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// Call — исход звонка: сервер кладёт в чат СЛУЖЕБНОЕ сообщение
+	// messageActionPhoneCall. Прежде клиент присылал type == "call" и JSON
+	// {video, reason, duration} внутри ТЕКСТА — та же подделка дискриминатора,
+	// что у служебных действий, только в другом поле.
+	Call *callBody `json:"call"`
+}
+
+// callBody — исход завершившегося 1:1 звонка глазами клиента, который его вёл.
+type callBody struct {
+	Video    bool   `json:"video"`
+	Reason   string `json:"reason"` // missed|busy|cancelled|ok
+	Duration int    `json:"duration"`
+}
+
+// callAction — конструктор лога звонка из тела запроса (nil — звонка нет).
+// Единственный способ, которым клиент может создать СЛУЖЕБНОЕ сообщение:
+// произвольное действие он назначить не может, поле action на входе не
+// существует вовсе.
+func callAction(b *callBody) domain.MessageAction {
+	if b == nil {
+		return nil
+	}
+	return usecasechat.PhoneCallAction(b.Video, b.Reason, b.Duration)
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +402,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Type == "service" { // server-only type (group action pills)
+	// «Служебное ли» и «лог звонка ли» — ВЫБОР КОНСТРУКТОРА, а не значение
+	// поля type: клиент называет исход звонка полем call, всё остальное
+	// служебное производит сервер.
+	if body.Type == "service" || body.Type == "call" {
 		writeError(w, http.StatusBadRequest, "invalid type")
 		return
 	}
@@ -408,6 +439,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
+		Action:         callAction(body.Call),
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -433,7 +465,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "send failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
+	writeMessage(w, r, h.svc, msg)
 }
 
 func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
@@ -458,7 +490,11 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "history failed")
 			return
 		}
-		out := messagesJSON(r.Context(), h.svc, a.Messages)
+		out, err := messagesJSON(r.Context(), h.svc, a.Messages)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not render messages")
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": a.Count, "reached_top": a.ReachedTop, "reached_bottom": a.ReachedBottom})
 		return
 	}
@@ -476,8 +512,76 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, res.Messages)
+	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+}
+
+// MessagesByIDs — GET /chats/{peerID}/messages?ids=1,2,3: сообщения по их
+// НОМЕРАМ, и ПРОИЗВОДИТЕЛЬ конструктора messageEmpty.
+//
+// Пока ссылки на другие сообщения ехали снимками, разрешать их было незачем.
+// Теперь reply_to, reply_to_top_id и цель закрепления — ссылки, и на ссылку в
+// удалённое сообщение сервер обязан отвечать ДЫРОЙ, а не молчанием: без неё
+// клиент не отличает «ещё не загружено» от «больше не существует» и ждёт
+// вечно. Ровно так устроен messages.getMessages у оригинала.
+//
+// Порядок ответа повторяет порядок запроса: клиент сопоставляет ссылку с
+// объектом по позиции и по id, а не догадывается по длине вектора.
+func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	parts := strings.Split(r.URL.Query().Get("ids"), ",")
+	ids := make([]int64, 0, len(parts))
+	for _, s := range parts {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid ids")
+			return
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"messages": []domain.MTMessage{}})
+		return
+	}
+	found, err := h.svc.MessagesBySeqs(r.Context(), chatID, h.meID(r), ids)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "history failed")
+		return
+	}
+	wire, err := messagesJSON(r.Context(), h.svc, found)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
+	bySeq := make(map[int64]domain.MTMessage, len(wire))
+	for idx, m := range wire {
+		bySeq[found[idx].Seq] = m
+	}
+	peer := peerOf(r, h.svc, chatID)
+	out := make([]domain.MTMessage, 0, len(ids))
+	for _, id := range ids {
+		if m, ok := bySeq[id]; ok {
+			out = append(out, m)
+			continue
+		}
+		out = append(out, usecasechat.EmptyMessages(peer, []int64{id})[0])
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
 }
 
 type readBody struct {
@@ -611,7 +715,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "edit failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
+	writeMessage(w, r, h.svc, msg)
 }
 
 type factCheckBody struct {
@@ -657,7 +761,7 @@ func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "set fact check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, msg))
+	writeMessage(w, r, h.svc, msg)
 }
 
 // RemoveFactCheck — DELETE /chats/{chatID}/messages/{msgID}/factcheck.
@@ -791,7 +895,11 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "forward failed")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, msgs)
+	out, err := messagesJSON(r.Context(), h.svc, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
 }
 
@@ -833,7 +941,11 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list pins")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, msgs)
+	out, err := messagesJSON(r.Context(), h.svc, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
 }
 
@@ -901,7 +1013,11 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "media history failed")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, res.Messages)
+	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -928,7 +1044,11 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, res.Messages)
+	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -998,7 +1118,11 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, res.Messages)
+	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
@@ -1011,10 +1135,25 @@ func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load calls")
 		return
 	}
-	if calls == nil {
-		calls = []domain.CallLogEntry{}
+	// Журнал звонков — вектор СООБЩЕНИЙ плюс вектор пиров, а не собственная
+	// форма с вклеенной в каждую запись карточкой собеседника: у оригинала
+	// вкладка «Звонки» собирается из тех же messageActionPhoneCall.
+	msgs := make([]domain.Message, 0, len(calls))
+	users := make([]domain.UserReal, 0, len(calls))
+	seen := make(map[int64]bool, len(calls))
+	for _, c := range calls {
+		msgs = append(msgs, c.Message)
+		if !seen[c.Peer.ID] {
+			seen[c.Peer.ID] = true
+			users = append(users, c.Peer)
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"calls": calls})
+	wire, err := messagesJSON(r.Context(), h.svc, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load calls")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": wire, "users": users})
 }
 
 // SendPoll — POST /chats/{chatID}/polls: отправить опрос (сообщение типа 'poll').
@@ -1079,7 +1218,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send poll")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
+	writeMessage(w, r, h.svc, m)
 }
 
 // VotePoll — POST /polls/{pollID}/vote {options:[0,2]}: голос (пустой список — отзыв).
@@ -1169,7 +1308,7 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send checklist")
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
+	writeMessage(w, r, h.svc, m)
 }
 
 // ToggleChecklistItem — POST /checklists/{id}/items/{itemID}/toggle: отметить/
@@ -1233,18 +1372,12 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
 }
 
-// scheduledJSON — представление запланированного сообщения.
-func scheduledJSON(m domain.ScheduledMessage, peer domain.PeerID) map[string]any {
-	j := map[string]any{
-		"id": m.ID, "peer_id": peer, "sender_id": m.SenderID,
-		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
-		"media_id": m.MediaID, "send_at": m.SendAt, "created_at": m.CreatedAt,
-		"when_online": m.WhenOnline,
-	}
-	if len(m.Entities) > 0 {
-		j["entities"] = m.Entities
-	}
-	return j
+// scheduledJSON — отложенное сообщение ТЕМ ЖЕ конструктором `message`
+// (domain.ScheduledMessage.ToWire): собственной проводной формы у него больше
+// нет. Идентичность при этом своя — номера в чате у неотправленного не
+// существует, см. докблок ToWire.
+func scheduledJSON(m domain.ScheduledMessage, peer domain.PeerID) domain.MessageReal {
+	return m.ToWire(domain.NewPeer(peer))
 }
 
 // ScheduleMessage — POST /chats/{chatID}/scheduled: запланировать отправку.
@@ -1330,7 +1463,7 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list scheduled")
 		return
 	}
-	out := make([]map[string]any, 0, len(list))
+	out := make([]domain.MessageReal, 0, len(list))
 	for _, m := range list {
 		out = append(out, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
 	}
@@ -1361,7 +1494,7 @@ func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
+	writeMessage(w, r, h.svc, m)
 }
 
 func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
@@ -1616,7 +1749,11 @@ func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	out := messagesJSON(r.Context(), h.svc, msgs)
+	out, err := messagesJSON(r.Context(), h.svc, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
@@ -2002,206 +2139,26 @@ func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
 	return out
 }
 
-// messagesJSON — ЕДИНАЯ точка, которой обязан отдавать наружу список
-// сообщений любой хендлер: батчево переводит thread_root_id из внутреннего
-// id зеркала (где комментарий физически висит — см.
-// usecase/chat/discussion.go) в id ПОСТА, который знает клиент (см.
-// Interactor.ExternalizeThreadRoots), и только потом сериализует. Один
-// резолв на весь список — не по запросу на сообщение (N+1 недопустим).
-// Использовать вместо messageJSON(m) в цикле; сбой резолва не должен ронять
-// всю выдачу — тогда сообщения уезжают с внутренним id, что лучше 500-й.
-func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domain.Message) []map[string]any {
-	ext, err := svc.ExternalizeThreadRoots(ctx, msgs)
-	if err != nil {
-		ext = msgs
-	}
-	// Ссылки на пиры внутри сообщения (fwd_from.from_id, reply_to_peer_id)
-	// вычисляются здесь же: собрать их из плоских колонок можно только зная
-	// вид чата-источника — см. usecase/chat/messagepeers.go.
-	ext = svc.HydrateMessagePeers(ctx, ext)
-	// Ключ пира зависит от ЗРИТЕЛЯ (у приватного диалога стороны видят разный),
-	// поэтому резолвится здесь, по одному разу на чат: список истории почти
-	// всегда из одного чата, кэш слоя разрешения гасит остальное.
+// messagesJSON — витрина списка сообщений: КОНСТРУКТОРЫ схемы, собранные тем
+// же переводом, что и realtime-кадр (usecase/chat/messagewire.go). Второго
+// сериализатора у сообщения больше нет (решение Р5), поэтому здесь остаётся
+// только вызов.
+func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domain.Message) ([]domain.MTMessage, error) {
 	me, _ := UserFromContext(ctx)
-	peers := make(map[int64]domain.PeerID, 1)
-	out := make([]map[string]any, 0, len(ext))
-	for _, m := range ext {
-		peer, ok := peers[m.ChatID]
-		if !ok {
-			peer, _ = svc.ChatIDToPeer(ctx, me.ID, m.ChatID)
-			peers[m.ChatID] = peer
-		}
-		out = append(out, messageJSON(m, peer))
-	}
-	return out
+	return svc.MessagesWire(ctx, me.ID, msgs)
 }
 
-// messageJSONOut — то же самое для одного сообщения (Send/EditMessage/
-// SetFactCheck/UpdateGeoLive/PostComment и т.п. — ответы с одним сообщением).
-func messageJSONOut(ctx context.Context, svc *usecasechat.Interactor, m domain.Message) map[string]any {
-	return messagesJSON(ctx, svc, []domain.Message{m})[0]
-}
-
-// messageJSON — витрина одного сообщения. Идентичность здесь ОДНО число: `id`
-// со значением seq (номер в чате) — в схеме message.id по-пирный, а пара
-// «пир + id» и есть адрес. Глобальный messages.id остаётся ключом строки нашей
-// базы и на провод не выходит (usecase/chat/msgaddr.go).
-func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
-	j := map[string]any{
-		"id": m.Seq, "peer_id": peer, "sender_id": m.SenderID,
-		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
-		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
-		"created_at": m.CreatedAt, "deleted": m.Deleted,
-		"edited_at": m.EditedAt,
-		"views":     m.Views, "forwards": m.Forwards, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
+// writeMessage — ответ одним сообщением (Send/EditMessage/SetFactCheck/
+// UpdateGeoLive/PostComment и т.п.).
+//
+// Сбой перевода — 500-я, а не «отдать как есть»: см. MessagesWire.
+func writeMessage(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, m domain.Message) {
+	out, err := messagesJSON(r.Context(), svc, []domain.Message{m})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render message")
+		return
 	}
-	// Атрибуция пересылки — один конструктор messageFwdHeader вместо пяти
-	// плоских полей; автор в from_id:Peer.
-	if m.FwdFrom != nil {
-		j["fwd_from"] = m.FwdFrom
-	}
-	if len(m.Entities) > 0 {
-		j["entities"] = m.Entities
-	}
-	if len(m.Reactions) > 0 {
-		j["reactions"] = m.Reactions
-	}
-	if m.StarReactionTotal > 0 {
-		j["star_reaction"] = map[string]any{"total": m.StarReactionTotal, "mine": m.StarReactionMine}
-	}
-	if m.GeoLat != nil && m.GeoLng != nil {
-		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
-		if m.GeoTitle != nil {
-			g["title"] = *m.GeoTitle
-		}
-		if m.GeoAddress != nil {
-			g["address"] = *m.GeoAddress
-		}
-		if m.GeoLivePeriod != nil {
-			g["live_period"] = *m.GeoLivePeriod
-			g["live_stopped"] = m.GeoLiveStopped
-			if m.GeoHeading != nil {
-				g["heading"] = *m.GeoHeading
-			}
-			if m.EditedAt != nil {
-				g["edited_at"] = *m.EditedAt
-			}
-		}
-		j["geo"] = g
-	}
-	if m.ContactUserID != nil {
-		c := map[string]any{"user_id": *m.ContactUserID}
-		if m.ContactName != nil {
-			c["name"] = *m.ContactName
-		}
-		if m.ContactPhone != nil {
-			c["phone"] = *m.ContactPhone
-		}
-		j["contact"] = c
-	}
-	if m.EncBody != nil {
-		j["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
-		j["ttl_seconds"] = m.TTLSeconds
-		j["destruct_at"] = m.DestructAt
-	}
-	if m.PollID != nil {
-		j["poll_id"] = *m.PollID
-	}
-	if m.Poll != nil {
-		j["poll"] = m.Poll
-	}
-	if m.ChecklistID != nil {
-		j["checklist_id"] = *m.ChecklistID
-	}
-	if m.Checklist != nil {
-		j["checklist"] = m.Checklist
-	}
-	if m.GiveawayID != nil {
-		j["giveaway_id"] = *m.GiveawayID
-	}
-	if m.Giveaway != nil {
-		j["giveaway"] = m.Giveaway
-	}
-	if m.GiftID != nil {
-		j["gift_id"] = *m.GiftID
-	}
-	if m.Gift != nil {
-		j["gift"] = m.Gift
-	}
-	if m.ReplyMarkup != nil {
-		j["reply_markup"] = m.ReplyMarkup
-	}
-	if m.WebPage != nil {
-		j["web_page"] = m.WebPage
-	}
-	if m.FactCheck != nil {
-		fc := map[string]any{"text": m.FactCheck.Text}
-		if len(m.FactCheck.Entities) > 0 {
-			fc["entities"] = m.FactCheck.Entities
-		}
-		if m.FactCheck.Country != "" {
-			fc["country"] = m.FactCheck.Country
-		}
-		j["factcheck"] = fc
-	}
-	if m.Transcription != nil && *m.Transcription != "" {
-		j["transcription"] = *m.Transcription
-	}
-	if m.Effect != "" {
-		j["effect"] = m.Effect
-	}
-	// Send-as: отображаемый автор (канал/группа); sender_id остаётся реальным.
-	if m.SendAsChatID != nil {
-		sa := map[string]any{"peer_id": domain.ToPeerID(*m.SendAsChatID, true)}
-		if m.SendAsTitle != "" {
-			sa["title"] = m.SendAsTitle
-		}
-		if m.SendAsPhotoID != nil {
-			sa["photo_id"] = *m.SendAsPhotoID
-		}
-		j["send_as"] = sa
-	}
-	if m.ReplyTo != nil {
-		rt := map[string]any{
-			"id": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,
-			"text": m.ReplyTo.Text, "type": m.ReplyTo.Type,
-		}
-		if len(m.ReplyTo.Entities) > 0 {
-			rt["entities"] = m.ReplyTo.Entities
-		}
-		if m.ReplyTo.MediaID != nil {
-			rt["media_id"] = *m.ReplyTo.MediaID
-		}
-		if m.ReplyTo.QuoteText != "" {
-			rt["quote_text"] = m.ReplyTo.QuoteText
-		}
-		j["reply_to"] = rt
-	}
-	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
-	// (имя автора + текст/лейбл) — те же ключи, что frame.go: messageUpdatePayload.
-	// Оригинал в reply_to не подтягивается (чужой чат), клиент рисует из снимка.
-	if m.ReplyToPeerID != nil {
-		// Ссылка едет только когда источник — группа/канал: у приватного чата
-		// публичного ключа пира нет (шаг B убрал внутренний id из провода).
-		// Снимок превью при этом на месте, и бабл рисуется без ссылки.
-		if m.ReplyToPeer != nil {
-			j["reply_to_peer_id"] = m.ReplyToPeer
-		}
-		j["reply_snapshot_name"] = m.ReplySnapshotName
-		j["reply_snapshot_text"] = m.ReplySnapshotText
-	}
-	// Вложение (history read model) в форме оригинала — messageMediaPhoto /
-	// messageMediaDocument с лестницей превью и атрибутами: клиент рисует бабл
-	// целиком из сообщения (точный бокс, stripped-плейсхолдер, контур стикера,
-	// тип документа, спойлер в pFlags) без отдельного запроса меты медиа.
-	// Ровно тот же объект едет в live-кадре (usecase/chat/frame.go).
-	if m.Media != nil {
-		j["media"] = m.Media
-	}
-	if m.PaidMediaPrice != nil {
-		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
-	}
-	return j
+	writeJSON(w, http.StatusOK, out[0])
 }
 
 func pathInt(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {

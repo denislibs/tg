@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -288,11 +287,25 @@ func TestSuggestedDecision_GoesAsServiceMessage(t *testing.T) {
 	if !ok {
 		t.Fatal("автор не получил сообщения из чата с сервисным аккаунтом")
 	}
-	if msg.Type != "service" {
-		t.Fatalf("вид сообщения = %q, want \"service\" — иначе клиент покажет сырой JSON", msg.Type)
+	// Решение по предложке — ДЕЙСТВИЕ, а не текст: прежде оно уезжало обычным
+	// текстовым сообщением, и автор видел сырой JSON.
+	approval, ok := msg.Action.(domain.MessageActionSuggestedPostApproval)
+	if !ok {
+		t.Fatalf("действие = %#v, want messageActionSuggestedPostApproval", msg.Action)
 	}
-	if !strings.HasPrefix(msg.Text, `{"action":"suggest_post_`) {
-		t.Fatalf("текст = %q, want JSON-действие suggest_post_*", msg.Text)
+	// Одобрено: pFlags.rejected нет ВОВСЕ, а не false.
+	if approval.PFlags["rejected"] {
+		t.Fatalf("одобренная предложка помечена отказом: %#v", approval)
+	}
+	if msg.Text != "" {
+		t.Fatalf("текст = %q, у служебного сообщения текста нет", msg.Text)
+	}
+	// Канал назван ССЫЛКОЙ. Без неё фраза вырождается в «ваш пост одобрен» без
+	// ответа на вопрос «где»: у оригинала канал это peer_id пилюли, а у нас она
+	// приходит в чат с сервисным аккаунтом. Имя соберёт клиент из карточки —
+	// строкой название не едет (урок дефекта «Пользователь добавил(а)…»).
+	if want := int64(domain.ToPeerID(id, true)); approval.ChannelID != want {
+		t.Fatalf("канал в действии = %d, want %d", approval.ChannelID, want)
 	}
 
 	// Обратная сторона: обычное уведомление остаётся ТЕКСТОМ.

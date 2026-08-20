@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 // Frame is the WS envelope: a type tag and an opaque JSON payload.
@@ -28,6 +29,13 @@ func helloFrame(st domain.UserState) []byte {
 
 // Входящие кадры адресуют ПИРА знаковым ключом (пользователь ≥ 0, чат < 0);
 // внутренний chatID достаёт слой разрешения (usecase/chat/peeraddr.go).
+// callData — исход 1:1 звонка глазами клиента, который его вёл.
+type callData struct {
+	Video    bool   `json:"video"`
+	Reason   string `json:"reason"` // missed|busy|cancelled|ok
+	Duration int    `json:"duration"`
+}
+
 type sendMessageData struct {
 	PeerID   domain.PeerID          `json:"peer_id"`
 	Type     string                 `json:"type"`
@@ -69,6 +77,10 @@ type sendMessageData struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// SendAsPeerID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// Call — исход завершившегося звонка: сервер кладёт в чат СЛУЖЕБНОЕ
+	// сообщение messageActionPhoneCall. Прежде клиент присылал type == "call"
+	// и JSON {video, reason, duration} внутри ТЕКСТА.
+	Call *callData `json:"call"`
 }
 
 type readData struct {
@@ -122,4 +134,14 @@ func sendAsChatID(peer *domain.PeerID) *int64 {
 // вход/выход из группового звонка).
 type peerData struct {
 	PeerID domain.PeerID `json:"peer_id"`
+}
+
+// callAction — конструктор лога звонка из кадра send_message (nil — звонка
+// нет). Единственный способ, которым клиент может создать СЛУЖЕБНОЕ сообщение:
+// произвольное действие он назначить не может, поля action на входе нет вовсе.
+func callAction(c *callData) domain.MessageAction {
+	if c == nil {
+		return nil
+	}
+	return usecasechat.PhoneCallAction(c.Video, c.Reason, c.Duration)
 }

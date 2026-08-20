@@ -1,7 +1,10 @@
 package chat
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -29,12 +32,39 @@ func sendWithMedia(t *testing.T, kind string, mediaID int64, dims MediaDims, in 
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	p := i.messageUpdatePayload(ctx, msg)
-	frameMedia, _ := p["media"].(*domain.MessageMedia)
-	if frameMedia != msg.Media {
-		t.Fatalf("live-кадр отдаёт не то же вложение, что сообщение: %#v vs %#v", frameMedia, msg.Media)
+	assertSameMedia(t, i.messageUpdatePayload(ctx, msg), msg)
+	return msg, msg.Media
+}
+
+// frameMessage — сообщение из кадра: тело едет конструктором под ключом
+// `message`, а не полями вперемешку с конвертом.
+func frameMessage(t *testing.T, payload map[string]any) map[string]any {
+	t.Helper()
+	m, ok := payload["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("в кадре нет сообщения: %+v", payload)
 	}
-	return msg, frameMedia
+	return m
+}
+
+// assertSameMedia — вложение в кадре ПОБАЙТОВО совпадает с вложением
+// сообщения: витрина и кадр обязаны отдавать ОДИН конструктор.
+func assertSameMedia(t *testing.T, payload map[string]any, msg domain.Message) {
+	t.Helper()
+	got := frameMessage(t, payload)["media"]
+	raw, err := json.Marshal(msg.Media)
+	if err != nil {
+		t.Fatalf("сериализация вложения сообщения: %v", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var want any
+	if err := dec.Decode(&want); err != nil {
+		t.Fatalf("разбор вложения сообщения: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("live-кадр отдаёт не то же вложение, что сообщение: %#v vs %#v", got, want)
+	}
 }
 
 // Теги трека из read-модели доезжают до сообщения и до live-кадра внутри
@@ -268,20 +298,15 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 				t.Fatalf("hydrated dims = %dx%d, want %dx%d", w, h, tc.w, tc.h)
 			}
 			p := in.messageUpdatePayload(ctx, tc.msg)
-			md, _ := p["media"].(*domain.MessageMedia)
-			if md == nil {
-				t.Fatalf("в кадре нет вложения: %#v", p["media"])
-			}
-			if w, h := md.Dimensions(); w != tc.w || h != tc.h {
-				t.Fatalf("payload dims = %dx%d, want %dx%d", w, h, tc.w, tc.h)
-			}
-			if g, _ := p["grouped_id"].(*int64); g == nil || *g != 4242 {
-				t.Fatalf("payload grouped_id = %v", p["grouped_id"])
+			assertSameMedia(t, p, tc.msg)
+			wire := frameMessage(t, p)
+			if g, _ := wire["grouped_id"].(json.Number); g.String() != "4242" {
+				t.Fatalf("payload grouped_id = %v", wire["grouped_id"])
 			}
 			// stripped-превью тоже на КАЖДОМ элементе: без него элемент альбома
 			// открывается пустым прямоугольником до прихода байтов.
-			if len(md.StrippedThumb()) == 0 {
-				t.Fatalf("payload stripped-ступень отсутствует: %#v", md.Photo.Sizes)
+			if len(tc.msg.Media.StrippedThumb()) == 0 {
+				t.Fatalf("stripped-ступень отсутствует: %#v", tc.msg.Media.Photo.Sizes)
 			}
 		})
 	}

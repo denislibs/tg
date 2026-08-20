@@ -47,6 +47,21 @@ import (
 // попасть не могут по устройству сверщика — он спрашивает только про
 // ОБЯЗАТЕЛЬНЫЕ параметры. Они названы в шапке mtmessage.go, и это не
 // формальность: на фазе 2 «нет предмета» остаётся бесплатным ровно для них.
+// messagePendingSubject — ключи, у которых предмет в схеме ЕСТЬ, но
+// объединение MessageMedia у нас до него ещё не доведено: гео, контакт, опрос,
+// чек-лист, розыгрыш, подарок, превью ссылки и платное медиа — это
+// КОНСТРУКТОРЫ ТОГО ЖЕ объединения (messageMediaGeo/GeoLive/Venue/Contact/
+// Poll/ToDo/Giveaway/WebPage/PaidMedia), а у нас они пока собственные поля
+// сообщения.
+//
+// Список отдельный от additional СПЕЦИАЛЬНО: additional означает «предмета в
+// схеме нет вовсе» (effect_name, enc_body), и объявить долг им значило бы
+// закрыть его на бумаге. Каждая строка отсюда обязана однажды исчезнуть, а
+// новая — не появиться незаметно.
+var messagePendingSubject = map[string][]string{
+	"message": {"geo", "contact", "poll", "checklist", "giveaway", "gift", "web_page", "paid_media"},
+}
+
 var messageOmittedWithoutSubject = map[string][]string{
 	// Отдельного журнала апдейтов у треда нет: pts у нас на чат.
 	"messageReplies": {"replies_pts"},
@@ -127,7 +142,15 @@ func allMessageConstructors() []any {
 		},
 		[]MessagePeerReaction{NewMessagePeerReaction(NewPeerUser(43), now, NewReactionEmoji("🔥"))},
 	))
+	full.Reactions.TopReactors = []MessageReactor{NewMyMessageReactor(25)}
 	full.TTLPeriod = 86400
+	full.RandomID = "cm-1"
+	full.SendAt = now.Add(time.Hour).Unix()
+	full.WhenOnline = true
+	full.EncBody = "AQID"
+	full.DestructAt = ptr(now.Add(time.Minute).Format(time.RFC3339))
+	full.Geo = map[string]any{"lat": 1.0, "lng": 2.0}
+	full.Contact = map[string]any{"user_id": int64(42)}
 	full.Effect = "fireworks"
 	full.FactCheck = ptr(NewFactCheck("RU", NewTextWithEntities("это не так",
 		MessageEntities{NewMessageEntityBold(0, 3)})))
@@ -176,9 +199,9 @@ func allMessageConstructors() []any {
 		NewMessageActionTopicCreate("тема", 3),
 		NewMessageActionSuggestProfilePhoto(photo, true),
 		NewMessageActionSuggestProfilePhoto(photo, false),
-		NewMessageActionSuggestedPostApproval(true),
+		NewMessageActionSuggestedPostApproval(true, 8),
 		// Одобрено: pFlags.rejected нет вовсе, а не false.
-		NewMessageActionSuggestedPostApproval(false),
+		NewMessageActionSuggestedPostApproval(false, 8),
 		NewMessageActionPhoneCall(true, NewPhoneCallDiscardReasonHangup(), 42),
 		// Отменённый звонок: duration отсутствует — это и отличает его от
 		// состоявшегося.
@@ -199,6 +222,12 @@ func allMessageConstructors() []any {
 		NewReactionCount(NewReactionEmoji("🔥"), 3, true),
 		NewReactionPaid(),
 		NewMessagePeerReaction(NewPeerUser(42), now, NewReactionPaid()),
+		// Доска платных ⭐-реакций: вклад зрителя и вклад названного отправителя.
+		NewMyMessageReactor(25),
+		NewMessageReactor(NewPeerUser(43), 5, false),
+		// Анонимный отправитель: ссылки на пир нет ВОВСЕ — это и есть
+		// pFlags.anonymous, а не пустая карточка рядом с ним.
+		NewMessageReactor(nil, 3, false),
 
 		// ── FactCheck ────────────────────────────────────────────────────────
 		NewFactCheck("RU", NewTextWithEntities("это не так", nil)),
@@ -223,10 +252,11 @@ func checkMessagesAgainstSchema(t *testing.T, objects []any) (unexpected, omitte
 	}
 
 	c := &schemaChecker{
-		constructors: loadSchemaConstructors(t),
-		additional:   loadAdditionalParams(t),
-		own:          loadOwnConstructors(t),
-		omittedOK:    messageOmittedOK(),
+		constructors:   loadSchemaConstructors(t),
+		additional:     loadAdditionalParams(t),
+		own:            loadOwnConstructors(t),
+		omittedOK:      messageOmittedOK(),
+		pendingSubject: messagePendingSubject,
 	}
 	c.walk(decoded, "messages")
 	sort.Strings(c.unexpected)
@@ -259,6 +289,7 @@ func messageConstructorTags() []string {
 		PhoneCallDiscardReasonMissedTag, PhoneCallDiscardReasonBusyTag,
 		PhoneCallDiscardReasonHangupTag,
 		MessageReactionsTag, ReactionCountTag, ReactionPaidTag, MessagePeerReactionTag,
+		MessageReactorTag,
 		FactCheckTag, TextWithEntitiesTag,
 	}
 }

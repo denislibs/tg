@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -100,6 +99,11 @@ func assertSingleNumber(t *testing.T, where string, p map[string]any, wantSeq in
 		if _, ok := p[banned]; ok {
 			t.Errorf("%s: остался второй ключ %q — на одно сообщение должно быть одно число", where, banned)
 		}
+	}
+	// Кадр с сообщением несёт его ВНУТРИ ключа `message` (конструктор схемы), а
+	// pts лежит рядом — форма updateNewMessage. Адрес ищем там же, где он живёт.
+	if msg, ok := p["message"].(map[string]any); ok {
+		p = msg
 	}
 	id, ok := p["id"]
 	if !ok {
@@ -215,9 +219,11 @@ func TestWirePayloads_AddressMessageBySeqOnly(t *testing.T) {
 	check("delete_message", "delete_message", msg.Seq)
 }
 
-// Служебное сообщение о закреплении несёт превью цели прямо в тексте: там был
-// ОДИН объект с двумя числами на одну цель (msg_id + msg_seq).
-func TestPinServiceText_CarriesOneNumber(t *testing.T) {
+// Закрепление не несёт НИЧЕГО: у messageActionPinMessage параметров нет вовсе,
+// а цель адресуется reply_to самого служебного сообщения — тем же номером и в
+// том же пире, что и любой другой ответ. Прежде в действии ехали ДВА числа на
+// одну цель плюс склеенное сервером превью.
+func TestPinService_TargetRidesInReplyTo(t *testing.T) {
 	in, _ := newInteractor()
 	in.SetPublisher(&fakePublisher{})
 	ctx := context.Background()
@@ -228,17 +234,32 @@ func TestPinServiceText_CarriesOneNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	text := pinServiceText(a, msg)
-	var act map[string]any
-	if err := json.Unmarshal([]byte(text), &act); err != nil {
-		t.Fatalf("экшен закрепления не JSON: %s", text)
+	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+		t.Fatalf("SetPin: %v", err)
 	}
-	if _, ok := act["msg_seq"]; ok {
-		t.Errorf("в экшене закрепления осталось второе число: %s", text)
+	pill := lastMessage(t, in, chatID)
+	if _, ok := pill.Action.(domain.MessageActionPinMessage); !ok {
+		t.Fatalf("действие пилюли = %#v, ждали messageActionPinMessage", pill.Action)
 	}
-	if got := asInt64(t, act["msg_id"]); got != msg.Seq {
-		t.Errorf("экшен закрепления адресует %d, ждали номер %d (внутренний ключ %d)", got, msg.Seq, msg.ID)
+	if pill.Text != "" {
+		t.Errorf("у пилюли закрепления остался текст: %q", pill.Text)
 	}
+	if pill.ReplyToID == nil || *pill.ReplyToID != msg.Seq {
+		t.Fatalf("цель закрепления = %v, ждали номер %d (внутренний ключ %d)", pill.ReplyToID, msg.Seq, msg.ID)
+	}
+}
+
+// lastMessage — последнее сообщение чата в фейковом хранилище.
+func lastMessage(t *testing.T, in *Interactor, chatID int64) domain.Message {
+	t.Helper()
+	msgs, err := in.msgs.GetHistory(context.Background(), chatID, 0, 0, 0, 100, nil, 0, "")
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("в чате нет сообщений")
+	}
+	return msgs[0]
 }
 
 // Ответ адресуется парой «пир + номер». Пары не хватало ровно в том случае,
@@ -292,8 +313,8 @@ func TestReply_AddressedByPeerAndSeq(t *testing.T) {
 	if cross.ReplyToPeerID == nil || *cross.ReplyToPeerID != chatA {
 		t.Fatalf("кросс-чат-ответ потерял пир источника: %v", cross.ReplyToPeerID)
 	}
-	if !strings.Contains(cross.ReplySnapshotText, "оригинал в A") {
-		t.Errorf("снимок превью = %q, ждали текст оригинала ИЗ ЧАТА A", cross.ReplySnapshotText)
+	if cross.ReplyToID == nil || *cross.ReplyToID != seq {
+		t.Fatalf("кросс-чат-ответ адресует %v, ждали номер %d в чате A", cross.ReplyToID, seq)
 	}
 }
 

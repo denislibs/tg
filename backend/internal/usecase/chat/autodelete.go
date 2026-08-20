@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -53,10 +52,7 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err := i.chats.SetAutoDelete(ctx, chatID, seconds); err != nil {
 		return err
 	}
-	text, _ := json.Marshal(map[string]any{
-		"action": "set_ttl", "actor_id": actorID, "ttl": seconds,
-	})
-	i.postGroupService(ctx, chatID, actorID, string(text))
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionSetMessagesTTL(seconds))
 	return nil
 }
 

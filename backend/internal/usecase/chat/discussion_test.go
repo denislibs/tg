@@ -205,7 +205,8 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Алиса"}
 	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
-	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
+	disc, err := i.EnableDiscussion(ctx, ch, 7)
+	if err != nil {
 		t.Fatalf("EnableDiscussion: %v", err)
 	}
 
@@ -242,26 +243,37 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 
 	// 300 — заведомо несуществующий пост (без зеркала): счёт обязан остаться
 	// нулевым, а не упасть ошибкой резолва.
-	counts, recent, err := i.CommentCounts(ctx, ch, []int64{post1.ID, post2.ID, 300})
+	replies, users, err := i.CommentCounts(ctx, ch, []int64{post1.ID, post2.ID, 300})
 	if err != nil {
 		t.Fatalf("CommentCounts: %v", err)
 	}
-	if counts[post1.ID] != 2 || counts[post2.ID] != 1 || counts[300] != 0 {
-		t.Fatalf("CommentCounts = %v", counts)
+	if replies[post1.ID].Replies != 2 || replies[post2.ID].Replies != 1 {
+		t.Fatalf("CommentCounts = %v", replies)
 	}
-	// Авторы последних комментариев — новейшие первыми, без повторов.
-	if len(recent[post1.ID]) == 0 {
-		t.Fatalf("recent repliers for post = %v, want non-empty", recent[post1.ID])
+	if _, ok := replies[300]; ok {
+		t.Fatalf("пост без зеркала получил тред: %v", replies[300])
 	}
-	if len(recent[300]) != 0 {
-		t.Fatalf("recent repliers for post without comments = %v, want empty", recent[300])
+	// Группа обсуждения — channel_id конструктора, и делит бит с pFlags.comments.
+	if replies[post1.ID].ChannelID != disc || !replies[post1.ID].PFlags["comments"] {
+		t.Fatalf("messageReplies = %+v, ждали ссылку на группу обсуждения", replies[post1.ID])
+	}
+	// Авторы последних комментариев — ССЫЛКИ на пиров внутри треда, а карточки
+	// едут ОДНИМ вектором users на весь ответ (прежде карточка дублировалась в
+	// каждом посте).
+	if len(replies[post1.ID].RecentRepliers) == 0 {
+		t.Fatalf("recent repliers for post = %v, want non-empty", replies[post1.ID].RecentRepliers)
 	}
 	seen := map[int64]bool{}
-	for _, u := range recent[post1.ID] {
+	for _, u := range users {
 		if seen[u.ID] {
-			t.Fatalf("recent repliers have duplicates: %v", recent[post1.ID])
+			t.Fatalf("карточка пира продублирована в векторе users: %v", users)
 		}
 		seen[u.ID] = true
+	}
+	for _, p := range replies[post1.ID].RecentRepliers {
+		if !seen[p.PeerID().ToUserID()] {
+			t.Fatalf("ссылка на пира %v не подкреплена карточкой в users", p)
+		}
 	}
 }
 
@@ -291,15 +303,19 @@ func TestComments_ThreadOnMirror(t *testing.T) {
 		t.Fatalf("комментарий висит на %v, а корень треда — зеркало %d", msgs[0].ThreadRootID, mirrorID)
 	}
 
-	counts, recent, err := i.CommentCounts(ctx, ch, []int64{post.ID})
+	replies, users, err := i.CommentCounts(ctx, ch, []int64{post.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts[post.ID] != 1 {
-		t.Fatalf("CommentCounts[post] = %d, want 1", counts[post.ID])
+	if replies[post.ID].Replies != 1 {
+		t.Fatalf("CommentCounts[post] = %d, want 1", replies[post.ID].Replies)
 	}
-	if len(recent[post.ID]) != 1 || recent[post.ID][0].ID != 8 {
-		t.Fatalf("recent repliers = %+v, want автор 8", recent[post.ID])
+	rec := replies[post.ID].RecentRepliers
+	if len(rec) != 1 || rec[0].PeerID() != domain.PeerID(8) {
+		t.Fatalf("recent repliers = %+v, want ссылку на автора 8", rec)
+	}
+	if len(users) != 1 || users[0].ID != 8 {
+		t.Fatalf("вектор users = %+v, want карточку автора 8", users)
 	}
 }
 
@@ -428,8 +444,12 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 	var env struct {
 		T string `json:"t"`
 		D struct {
-			ID           int64  `json:"id"`
-			ThreadRootID *int64 `json:"thread_root_id"`
+			Message struct {
+				ID      int64 `json:"id"`
+				ReplyTo *struct {
+					ReplyToTopID *int64 `json:"reply_to_top_id"`
+				} `json:"reply_to"`
+			} `json:"message"`
 		} `json:"d"`
 	}
 	found := false
@@ -440,7 +460,7 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 		if err := json.Unmarshal(f.frame, &env); err != nil {
 			t.Fatalf("frame decode: %v", err)
 		}
-		if env.T == "new_message" && env.D.ID == comment.Seq {
+		if env.T == "new_message" && env.D.Message.ID == comment.Seq {
 			found = true
 			break
 		}
@@ -448,9 +468,17 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 	if !found {
 		t.Fatalf("не нашли new_message WS-кадр для комментария %d автору 8", comment.Seq)
 	}
-	// Корень треда наружу — НОМЕР поста в канале, а не ключ его строки.
-	if env.D.ThreadRootID == nil || *env.D.ThreadRootID != post.Seq {
-		t.Fatalf("WS thread_root_id = %v, want номер поста %d (HTTP отдаёт именно его — см. TestChannelDiscussion_HTTP)",
-			env.D.ThreadRootID, post.Seq)
+	// Корень треда — reply_to.reply_to_top_id, и он ВСЕГДА в том же пире: у
+	// комментария это номер ЗЕРКАЛА поста в группе обсуждения, где комментарий
+	// и живёт. Прежде наружу ехал номер поста В КАНАЛЕ — пара «пир + номер»
+	// была неполна, пир корня ехал неявно.
+	mirror, err := i.msgs.GetByID(ctx, mirrorID)
+	if err != nil {
+		t.Fatalf("зеркало не читается: %v", err)
+	}
+	if env.D.Message.ReplyTo == nil || env.D.Message.ReplyTo.ReplyToTopID == nil ||
+		*env.D.Message.ReplyTo.ReplyToTopID != mirror.Seq {
+		t.Fatalf("reply_to_top_id = %+v, want номер зеркала %d в группе обсуждения",
+			env.D.Message.ReplyTo, mirror.Seq)
 	}
 }

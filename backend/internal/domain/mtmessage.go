@@ -263,6 +263,57 @@ type MessageReal struct {
 	Effect string `json:"effect_name,omitempty"`
 	// FactCheck — flags2.3?FactCheck.
 	FactCheck *MTFactCheck `json:"factcheck,omitempty"`
+
+	// SendAt/WhenOnline — ОТЛОЖЕННАЯ отправка, наши параметры вне схемы.
+	// «Это отложенное» у оригинала выражает клиентский флаг pFlags.is_scheduled
+	// (он объявлен в schema_additional_params.json самим tweb), а вот СРОК у
+	// оригинала живёт не на сообщении: schedule_date это параметр МЕТОДА
+	// отправки, а «когда появится онлайн» — его sentinel-значение. У нас срок
+	// хранится строкой scheduled_messages и обязан доехать до списка
+	// отложенных, поэтому едет здесь, названным параметром.
+	SendAt     int64 `json:"send_at,omitempty"`
+	WhenOnline bool  `json:"when_online,omitempty"`
+
+	// RandomID — ключ, которым ОТПРАВИТЕЛЬ матчит эхо со своим оптимистичным
+	// баблом. Клиентский параметр самого оригинала (`random_id` у предиката
+	// `message` в schema_additional_params.json), а не наша выдумка: у нас он
+	// назывался client_msg_id и ехал только в кадре, из-за чего витрина и кадр
+	// расходились ещё в одном поле.
+	RandomID string `json:"random_id,omitempty"`
+
+	// ── ДОЛГ: объединение MessageMedia не доведено ──────────────────────────
+	// Гео, контакт, опрос, чек-лист, розыгрыш, подарок, превью ссылки и платное
+	// медиа — это КОНСТРУКТОРЫ ТОГО ЖЕ объединения MessageMedia
+	// (messageMediaGeo/GeoLive/Venue/Contact/Poll/ToDo/Giveaway/WebPage/
+	// PaidMedia), а у нас они по-прежнему собственные поля сообщения. Предмет в
+	// схеме ЕСТЬ — значит это не «названное отступление», а незакрытый долг, и
+	// он назван здесь и в сверке витрины со схемой (mediaUnionPending),
+	// а не спрятан объявлением клиентского параметра.
+	//
+	// Довести объединение до них — отдельный шаг: Poll, WebPage и Giveaway сами
+	// по себе конструкторы со своими вложенными объединениями (PollResults,
+	// PollAnswer, WebPage, TodoList), то есть работа масштаба подсистемы, а не
+	// перестановка полей.
+	Geo       map[string]any  `json:"geo,omitempty"`
+	Contact   map[string]any  `json:"contact,omitempty"`
+	Poll      *PollInfo       `json:"poll,omitempty"`
+	Checklist *ChecklistInfo  `json:"checklist,omitempty"`
+	Giveaway  *GiveawayInfo   `json:"giveaway,omitempty"`
+	Gift      *GiftInfo       `json:"gift,omitempty"`
+	WebPage   *WebPagePreview `json:"web_page,omitempty"`
+	PaidMedia map[string]any  `json:"paid_media,omitempty"`
+
+	// ── Секретные чаты: названное отступление от схемы ──────────────────────
+	// Шифрованное сообщение (EncryptedChat) в периметр порта не входит решением
+	// от 2026-08-19 — той же строкой, что и dialog.secret. Тела у него нет: на
+	// проводе едет блоб iv||ciphertext, а `type == "encrypted"` был третьим
+	// вопросом, на который отвечало снятое поле type.
+	//
+	// Срок самоуничтожения при этом больше НЕ живёт здесь: ttl_period есть в
+	// схеме, и он общий для шифрованного и обычного сообщения (прежде он
+	// выдавался только внутри ветки шифрованного и на обычном терялся).
+	EncBody    string  `json:"enc_body,omitempty"`
+	DestructAt *string `json:"destruct_at,omitempty"`
 }
 
 func (MessageReal) isMTMessage()  {}
@@ -706,21 +757,37 @@ func NewMessageActionSuggestProfilePhoto(photo *Photo, accepted bool) MessageAct
 // schedule_date:flags.3?int price:flags.4?StarsAmount = MessageAction;
 //
 // Наши `suggest_post_approved` и `suggest_post_rejected` — ОДИН конструктор,
-// решение выражает pFlags.rejected. Название канала («Ваш пост одобрен в
-// канале «X»») из действия уходит: канал — это peer_id самого сообщения.
+// решение выражает pFlags.rejected.
+//
+// ── channel_id: НАШ параметр вне схемы ──────────────────────────────────────
+// У оригинала канал называть незачем: пилюля лежит В САМОМ КАНАЛЕ, то есть
+// канал — это peer_id сообщения. У нас решение приходит автору в чат с
+// СЕРВИСНЫМ аккаунтом, поэтому peer_id указывает на сервисный аккаунт, а не на
+// канал, и без отдельного параметра фраза вырождается в «ваш пост одобрен» без
+// ответа на вопрос «где».
+//
+// Едет ССЫЛКА, а не название: имя канала соберёт клиент из карточки пира — тот
+// самый урок, который стоил дефекта «Пользователь добавил(а) пользователя»
+// (прежний вариант вёз `chat` строкой).
 //
 // Не производятся: balance_too_low, reject_comment, schedule_date и price —
 // платной предложки постов (Stars) у нас нет.
 type MessageActionSuggestedPostApproval struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	ChannelID  int64           `json:"channel_id,omitempty"`
 }
 
 func (MessageActionSuggestedPostApproval) isMessageAction() {}
 func (a MessageActionSuggestedPostApproval) Tag() string    { return a.Underscore }
 
-func NewMessageActionSuggestedPostApproval(rejected bool) MessageActionSuggestedPostApproval {
-	a := MessageActionSuggestedPostApproval{Underscore: MessageActionSuggestedPostApprovalTag}
+// NewMessageActionSuggestedPostApproval — решение по предложке. channelID —
+// внутренний id канала; наружу он уходит знаковым ключом пира, как везде.
+func NewMessageActionSuggestedPostApproval(rejected bool, channelID int64) MessageActionSuggestedPostApproval {
+	a := MessageActionSuggestedPostApproval{
+		Underscore: MessageActionSuggestedPostApprovalTag,
+		ChannelID:  int64(ToPeerID(channelID, true)),
+	}
 	setPFlag(&a.PFlags, "rejected", rejected)
 	return a
 }
@@ -893,6 +960,12 @@ type MessageReactions struct {
 	// RecentReactions — flags.1?Vector<MessagePeerReaction>: кто поставил, до
 	// трёх последних. Клиент показывает их аватары вместо числа при count<4.
 	RecentReactions []MessagePeerReaction `json:"recent_reactions,omitempty"`
+	// TopReactors — flags.4?Vector<MessageReactor>: доска ПЛАТНЫХ ⭐-реакций.
+	// Здесь живёт личный вклад зрителя: в reactionCount помещается только «моя
+	// или не моя», а число отданных звёзд — это count у messageReactor с
+	// pFlags.my. Прежде пара {total, mine} ехала отдельным ключом star_reaction
+	// рядом с обычными чипами.
+	TopReactors []MessageReactor `json:"top_reactors,omitempty"`
 }
 
 // NewMessageReactions — агрегаты реакций сообщения.
@@ -976,6 +1049,45 @@ func NewMessagePeerReaction(peer Peer, date time.Time, reaction Reaction) Messag
 		Date:       unixSeconds(date),
 		Reaction:   reaction,
 	}
+}
+
+// MessageReactorTag — дискриминатор `_` конструктора messageReactor.
+const MessageReactorTag = "messageReactor"
+
+// messageReactor#4ba3a95a flags:# top:flags.0?true my:flags.1?true
+// anonymous:flags.2?true peer_id:flags.3?Peer count:int = MessageReactor;
+//
+// Один отправитель ПЛАТНОЙ ⭐-реакции и его вклад. У нас это две разные
+// витрины: `star_reaction.mine` на самом сообщении и отдельная ручка
+// топ-отправителей (GET .../star_reaction), где карточка пользователя ехала
+// плоско рядом с числом звёзд.
+//
+// Не производится top («в тройке лидеров»): порядок задаёт сам вектор.
+type MessageReactor struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	// PeerID — flags.3?Peer: кто отправил. У анонимного отправителя ключа нет
+	// вовсе — это и есть pFlags.anonymous, а не пустая карточка рядом с ним.
+	PeerID Peer `json:"peer_id,omitempty"`
+	Count  int  `json:"count"`
+}
+
+// NewMessageReactor — вклад одного отправителя. peer == nil означает
+// анонимного: личность не раскрывается, и флаг ставится по тому же признаку.
+func NewMessageReactor(peer Peer, count int, my bool) MessageReactor {
+	r := MessageReactor{Underscore: MessageReactorTag, PeerID: peer, Count: count}
+	setPFlag(&r.PFlags, "my", my)
+	setPFlag(&r.PFlags, "anonymous", peer == nil)
+	return r
+}
+
+// NewMyMessageReactor — вклад САМОГО ЗРИТЕЛЯ. Ссылки на пир здесь нет
+// намеренно: «мой» вклад адресован тому, кто читает ответ, и второй раз
+// называть его именем незачем — ровно как out, который зритель выводит сам.
+func NewMyMessageReactor(count int) MessageReactor {
+	r := MessageReactor{Underscore: MessageReactorTag, Count: count}
+	setPFlag(&r.PFlags, "my", true)
+	return r
 }
 
 // ── FactCheck ───────────────────────────────────────────────────────────────

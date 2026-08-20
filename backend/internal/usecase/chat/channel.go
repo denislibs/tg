@@ -59,7 +59,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 			return e
 		}
 		mirrorDeliv = md
-		payload, _ := json.Marshal(channelPostPayload(m, actorID))
+		payload, _ := json.Marshal(i.channelPostPayload(ctx, m))
 		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
 		return e
 	})
@@ -69,7 +69,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 	// publish once after commit — the live frame carries channel_pts so the client
 	// gates it against the per-channel cursor (same envelope /difference replays).
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", channelPostPayload(msg, actorID), pts))
+		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", i.channelPostPayload(ctx, msg), pts))
 	}
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
@@ -78,30 +78,19 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 	return msg, nil
 }
 
-// channelPostPayload — снимок поста канала для channel-лога и живого кадра (единый
-// источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
-func channelPostPayload(m domain.Message, actorID int64) map[string]any {
-	p := map[string]any{
-		"peer_id": domain.ToPeerID(m.ChatID, true), "id": m.Seq, "sender_id": actorID,
-		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
-	}
-	// Форматирование поста. Без него подписчик получает живой кадр (и реплей
-	// difference) голым текстом: bold/text_link/mention/hashtag пропадают, а
-	// история из БД потом приезжает уже размеченной — бабл «перерисовывается»
-	// сам собой. Пустой срез не кладём — payload остаётся байт-в-байт прежним
-	// для постов без форматирования.
-	if len(m.Entities) > 0 {
-		p["entities"] = m.Entities
-	}
-	// client_msg_id — единственный ключ, которым отправитель матчит эхо со своим
-	// оптимистичным баблом: пост канала уходит REST'ом, message_ack (как у
-	// личных чатов и групп, см. messageUpdatePayload) на этом пути нет. Без
-	// поля бабл навсегда остаётся «отправляется», а эхо ложится вторым.
-	// Остальным подписчикам поле безвредно — им нечего им матчить.
-	if m.ClientMsgID != nil {
-		p["client_msg_id"] = *m.ClientMsgID
-	}
-	return p
+// channelPostPayload — тело кадра поста канала для channel-лога и живого кадра
+// (единый источник, чтобы difference-реплей и live совпадали побайтно, кроме
+// channel_pts).
+//
+// Собственной формы у него больше нет: это ТОТ ЖЕ messageUpdatePayload, что у
+// личного чата и группы. Прежде здесь была отдельная, ДЕВЯТАЯ проводная форма
+// сообщения, и она зашивала `"type": "text"` и `"media_id": nil` ЛИТЕРАЛАМИ —
+// медиа-пост этой формой передать было нельзя вовсе.
+//
+// Ключ пира здесь ставится сразу, а не приклеивается на выходе: у канала он
+// один на всех подписчиков (peerChannel), от зрителя не зависит.
+func (i *Interactor) channelPostPayload(ctx context.Context, m domain.Message) map[string]any {
+	return withPeer(i.messageUpdatePayload(ctx, m), domain.ToPeerID(m.ChatID, true))
 }
 
 // SetSignatures toggles channel post signatures (Telegram

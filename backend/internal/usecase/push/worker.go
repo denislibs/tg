@@ -78,6 +78,14 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 // buildPayload enriches the job with sender name + unread badge for the client.
 // С выключенным Message Preview текст в пуш не попадает (tweb: nopreview —
 // клиент покажет generic-текст).
+//
+// Конструктором `message` этот payload НЕ становится, и основание одно —
+// предмет ДРУГОЙ: это тело Web Push-уведомления, которое читает service worker
+// у выключенного приложения. Кэша пиров у него нет вовсе, поэтому имя
+// отправителя здесь ДОЛЖНО быть склеено сервером — единственное оставшееся
+// место, где это законно, и ровно то же исключение, что у публичной страницы
+// /u/{username}. Ровно так устроен и оригинал: push-payload у него свой
+// (title/body/custom), а не Message.
 func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
 	senderName, _ := w.enrich.SenderName(ctx, job.SenderID)
 	badge, _ := w.enrich.UnreadBadge(ctx, job.RecipientID)

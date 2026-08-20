@@ -19,13 +19,17 @@ const maxMessageRunes = 4096
 // quote), bounding storage/render cost independently of the full message limit.
 const maxReplyQuoteRunes = 1024
 
-// replySnapshotMaxRunes caps the cross-chat reply preview text snapshot (a short
-// preview line, not the whole message).
-const replySnapshotMaxRunes = 120
-
-// replyAuthorName resolves the display name of a replied-to message's author for
-// the cross-chat reply snapshot: the send-as channel/group title when posted
-// under one, else the sender's display name.
+// replyAuthorName — имя автора отвечаемого сообщения для КРОСС-ЧАТНОГО ответа:
+// название канала/группы, от чьего имени он опубликован, иначе имя человека.
+//
+// Единственное место, где сервер по-прежнему склеивает имя, и это не оплошность:
+// оригинал того ответа зрителю НЕДОСТУПЕН (публичного ключа у чата-источника не
+// существует), поэтому карточки пира у него не будет никогда. На проводе имя
+// едет как reply_from.from_name — ровно тем же параметром, каким оригинал
+// выражает скрытую атрибуцию пересылки.
+//
+// Снимка ТЕКСТА оригинала здесь больше нет: в схеме превью недоступного
+// оригинала строится из цитаты и вложения, а не из обрезанного сервером текста.
 func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) string {
 	if orig.SendAsChatID != nil && i.groups != nil {
 		if briefs, err := i.groups.ChatBriefs(ctx, []int64{*orig.SendAsChatID}); err == nil {
@@ -35,51 +39,6 @@ func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) s
 		}
 	}
 	return i.userCard(ctx, orig.SenderID).Title()
-}
-
-// replySnapshotText builds the cross-chat reply preview text: the original text
-// (truncated), or a short media label when the original has no text.
-func replySnapshotText(orig domain.Message) string {
-	if orig.Text != "" {
-		if utf8.RuneCountInString(orig.Text) > replySnapshotMaxRunes {
-			return string([]rune(orig.Text)[:replySnapshotMaxRunes])
-		}
-		return orig.Text
-	}
-	return mediaLabel(orig.Type)
-}
-
-// mediaLabel is the short type label for caption-less media in a reply preview,
-// mirroring the frontend mediaLabel (core/dialogToChat.ts).
-func mediaLabel(typ string) string {
-	switch typ {
-	case "photo":
-		return "Фото"
-	case "video":
-		return "Видео"
-	case "roundVideo":
-		return "Видеосообщение"
-	case "voice":
-		return "Голосовое сообщение"
-	case "audio":
-		return "Аудио"
-	case "document":
-		return "Файл"
-	case "sticker":
-		return "Стикер"
-	case "call":
-		return "Звонок"
-	case "poll":
-		return "📊 Опрос"
-	case "geo":
-		return "📍 Геолокация"
-	case "contact":
-		return "👤 Контакт"
-	case "gift":
-		return "🎁 Подарок"
-	default:
-		return ""
-	}
 }
 
 // mentionedUserIDs collects the distinct target users of a message's
@@ -124,8 +83,21 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}
-	if in.Type == "" {
+	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
+	// это выбор конструктора, и клиент его назначить не может (у него в теле
+	// запроса действия нет вовсе). Лог звонка при этом остаётся отдельным видом
+	// строки: по нему идёт выборка журнала звонков.
+	switch {
+	case in.Action == nil && in.Type == "":
 		in.Type = "text"
+	case in.Action == nil:
+	default:
+		in.Text, in.Entities = "", nil
+		if _, isCall := in.Action.(domain.MessageActionPhoneCall); isCall {
+			in.Type = "call"
+		} else {
+			in.Type = "service"
+		}
 	}
 	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
@@ -143,7 +115,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков
 	//     нет, ссылка на чужой пир сбрасывается (непроверенный чат наружу не едет).
 	var replyPeerID *int64
-	var snapName, snapText string
+	var snapName string
 	if in.ReplyToID != nil {
 		srcChat := in.ChatID
 		if in.ReplyToPeerID != nil {
@@ -168,7 +140,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			src := orig.ChatID
 			replyPeerID = &src
 			snapName = i.replyAuthorName(ctx, orig)
-			snapText = replySnapshotText(orig)
+
 		}
 	}
 	// Reply quote: осмыслен только при ответе; обрезаем длину, пустой — сбрасываем.
@@ -289,30 +261,20 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
-	// Sender's short name rides along in the new_message payload so clients can
-	// prefix group chat-list previews ("Имя: …") without an extra lookup.
-	senderName := i.userCard(ctx, in.SenderID).ShortName()
-
-	// PERF (send hot path): гидратация read-моделей (send-as/poll/checklist/
-	// giveaway/gift) читает ПРЕД-существующие строки по input-ID и не зависит от
+	// PERF (send hot path): гидратация read-моделей (poll/checklist/giveaway/
+	// gift) читает ПРЕД-существующие строки по input-ID и не зависит от
 	// msg.ID/Seq — делаем ДО транзакции, чтобы не держать row-lock строки чата
 	// (IncUnreadBulk) на этих чтениях. Результаты применяются к msg после Insert.
 	// Media-мета (hydrateMedia) и все записи (charge/SetPrice/fan-out) — в tx.
+	//
+	// Снимка send-as здесь больше нет: отображаемый автор едет ссылкой на пир
+	// (from_id), а его название и аватарка — карточкой чата.
 	var (
-		preSendAsTitle   string
-		preSendAsPhotoID *int64
-		prePoll          *domain.PollInfo
-		preChecklist     *domain.ChecklistInfo
-		preGiveaway      *domain.GiveawayInfo
-		preGift          *domain.GiftInfo
+		prePoll      *domain.PollInfo
+		preChecklist *domain.ChecklistInfo
+		preGiveaway  *domain.GiveawayInfo
+		preGift      *domain.GiftInfo
 	)
-	if in.SendAsChatID != nil && i.groups != nil {
-		if briefs, e := i.groups.ChatBriefs(ctx, []int64{*in.SendAsChatID}); e == nil {
-			if b, ok := briefs[*in.SendAsChatID]; ok {
-				preSendAsTitle, preSendAsPhotoID = b.Title, b.PhotoID
-			}
-		}
-	}
 	if in.PollID != nil && i.polls != nil {
 		if info, e := i.pollInfoFor(ctx, *in.PollID, 0); e == nil {
 			prePoll = &info
@@ -381,7 +343,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
-			ReplyToPeerID: replyPeerID, ReplySnapshotName: snapName, ReplySnapshotText: snapText,
+			ReplyToPeerID: replyPeerID, ReplySnapshotName: snapName, Action: in.Action,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			ChecklistID: in.ChecklistID,
 			GiveawayID:  in.GiveawayID,
@@ -411,11 +373,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		mirrorDeliv = md
-		msg.SenderName = senderName
-		// Применяем гидратацию, посчитанную ДО транзакции (send-as title/photo,
-		// poll/checklist/giveaway/gift-представления одинаковы для всех получателей
-		// и не зависят от только что вставленной строки). Пустые — no-op.
-		msg.SendAsTitle, msg.SendAsPhotoID = preSendAsTitle, preSendAsPhotoID
+		// Применяем гидратацию, посчитанную ДО транзакции (представления
+		// poll/checklist/giveaway/gift одинаковы для всех получателей и не
+		// зависят от только что вставленной строки). Пустые — no-op.
 		msg.Poll = prePoll
 		msg.Checklist = preChecklist
 		msg.Giveaway = preGiveaway
@@ -445,10 +405,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
 		mentioned := mentionedUserIDs(msg.Entities)
-		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot):
-		// WS-эхо обязано совпадать с тем, что уже отдаёт HTTP (тот же чокпоинт,
-		// messagesJSON/messageJSONOut в chat_handler.go), иначе один и тот же
-		// комментарий уезжает наружу то с id поста, то с id зеркала.
 		extRoot = i.externalThreadRoot(ctx, msg)
 		outMsg := i.messageUpdatePayload(ctx, msg)
 		outMsg["thread_root_id"] = extRoot

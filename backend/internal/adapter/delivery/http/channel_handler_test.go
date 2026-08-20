@@ -170,12 +170,11 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
 	}
-	var comment struct {
-		ThreadRootID *int64 `json:"thread_root_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &comment)
-	if comment.ThreadRootID == nil || *comment.ThreadRootID != post.ID {
-		t.Fatalf("comment thread_root_id = %v; want %d (%s)", comment.ThreadRootID, post.ID, rec.Body.String())
+	// Корень треда — номер ЗЕРКАЛА в ГРУППЕ ОБСУЖДЕНИЯ, а не номер поста в
+	// канале: пара «пир + номер» полна только внутри одного пира. Зеркало
+	// появилось в группе первым, поэтому его номер — 1.
+	if top := threadTop(t, rec.Body.Bytes()); top == nil || *top != 1 {
+		t.Fatalf("reply_to_top_id = %v; want номер зеркала 1 (%s)", top, rec.Body.String())
 	}
 
 	// GET comments → 1 message + count 1.
@@ -197,16 +196,54 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("comment_counts: %d %s", rec.Code, rec.Body.String())
 	}
+	// Тред каждого поста — конструктором messageReplies; карточки авторов едут
+	// ОДНИМ вектором users, а не вклеенными в каждый пост.
 	var cc struct {
-		Counts map[string]int `json:"counts"`
+		Replies map[string]struct {
+			Underscore     string `json:"_"`
+			Replies        int    `json:"replies"`
+			RecentRepliers []struct {
+				UserID int64 `json:"user_id"`
+			} `json:"recent_repliers"`
+		} `json:"replies"`
+		Users []struct {
+			ID int64 `json:"id"`
+		} `json:"users"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &cc)
-	if cc.Counts[pid] != 1 {
-		t.Fatalf("comment_counts[%s] = %d; want 1 (%s)", pid, cc.Counts[pid], rec.Body.String())
+	if cc.Replies[pid].Underscore != "messageReplies" || cc.Replies[pid].Replies != 1 {
+		t.Fatalf("comment_counts[%s] = %+v; want messageReplies с одним комментарием (%s)", pid, cc.Replies[pid], rec.Body.String())
+	}
+	if len(cc.Replies[pid].RecentRepliers) != 1 || len(cc.Users) != 1 {
+		t.Fatalf("recent_repliers = %+v, users = %+v; ждали ссылку + карточку один раз",
+			cc.Replies[pid].RecentRepliers, cc.Users)
+	}
+	if cc.Replies[pid].RecentRepliers[0].UserID != cc.Users[0].ID {
+		t.Fatalf("ссылка %d не подкреплена карточкой %d", cc.Replies[pid].RecentRepliers[0].UserID, cc.Users[0].ID)
 	}
 }
 
-// Комментарий обязан нести ОДИН И ТОТ ЖЕ thread_root_id (id ПОСТА) что через
+// threadTop — корень треда, как он реально уезжает: messageReplyHeader.
+// reply_to_top_id внутри самого сообщения. Отдельного поля thread_root_id в
+// схеме нет вовсе, и корень ВСЕГДА в том же пире, что и сообщение: у
+// комментария это номер ЗЕРКАЛА поста в группе обсуждения.
+func threadTop(t *testing.T, raw []byte) *int64 {
+	t.Helper()
+	var m struct {
+		ReplyTo *struct {
+			ReplyToTopID *int64 `json:"reply_to_top_id"`
+		} `json:"reply_to"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("разбор сообщения: %v (%s)", err, raw)
+	}
+	if m.ReplyTo == nil {
+		return nil
+	}
+	return m.ReplyTo.ReplyToTopID
+}
+
+// Комментарий обязан нести ОДИН И ТОТ ЖЕ корень треда что через
 // /comments, что через generic-историю группы обсуждения (GET
 // /chats/{id}/history?thread_root=<postId>) — именно так текущий клиент
 // читает тред комментариев. Плюс: (b) чтение по thread_root=<id поста>
@@ -259,12 +296,12 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
 	}
 	var comment struct {
-		ID           int64  `json:"id"`
-		ThreadRootID *int64 `json:"thread_root_id"`
+		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &comment)
-	if comment.ThreadRootID == nil || *comment.ThreadRootID != post.ID {
-		t.Fatalf("POST /comments thread_root_id = %v, want %d", comment.ThreadRootID, post.ID)
+	viaComments := threadTop(t, rec.Body.Bytes())
+	if viaComments == nil {
+		t.Fatalf("POST /comments не отдал корень треда: %s", rec.Body.String())
 	}
 
 	// (b) generic-история группы обсуждения по thread_root=<id поста> находит
@@ -274,22 +311,23 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
 	}
 	var hist struct {
-		Count    int `json:"count"`
-		Messages []struct {
-			ID           int64  `json:"id"`
-			ThreadRootID *int64 `json:"thread_root_id"`
-		} `json:"messages"`
+		Count    int               `json:"count"`
+		Messages []json.RawMessage `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
 	found := false
-	for _, m := range hist.Messages {
+	for _, raw := range hist.Messages {
+		var m struct {
+			ID int64 `json:"id"`
+		}
+		_ = json.Unmarshal(raw, &m)
 		if m.ID != comment.ID {
 			continue
 		}
 		found = true
-		// (a) тот же id, что и через /comments.
-		if m.ThreadRootID == nil || *m.ThreadRootID != post.ID {
-			t.Fatalf("generic history thread_root_id = %v, want %d (как в /comments)", m.ThreadRootID, post.ID)
+		// (a) тот же корень, что и через /comments.
+		if top := threadTop(t, raw); top == nil || *top != *viaComments {
+			t.Fatalf("generic history reply_to_top_id = %v, want %d (как в /comments)", top, *viaComments)
 		}
 	}
 	if !found {
@@ -304,12 +342,8 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit comment: %d %s", rec.Code, rec.Body.String())
 	}
-	var edited struct {
-		ThreadRootID *int64 `json:"thread_root_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
-	if edited.ThreadRootID == nil || *edited.ThreadRootID != post.ID {
-		t.Fatalf("edited comment thread_root_id = %v, want %d", edited.ThreadRootID, post.ID)
+	if top := threadTop(t, rec.Body.Bytes()); top == nil || *top != *viaComments {
+		t.Fatalf("edited comment reply_to_top_id = %v, want %d", top, *viaComments)
 	}
 }
 
@@ -374,14 +408,16 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 	}
 	var hist struct {
 		Messages []struct {
-			ID   int64  `json:"id"`
-			Text string `json:"text"`
+			ID int64 `json:"id"`
+			// Текст сообщения на проводе называется message — так он назван в
+			// схеме, где ключа text вообще не существует.
+			Message string `json:"message"`
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
 	n := 0
 	for _, m := range hist.Messages {
-		if m.Text == postText {
+		if m.Message == postText {
 			n++
 		}
 	}
@@ -445,12 +481,9 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
 	}
-	var viaComments struct {
-		ThreadRootID *int64 `json:"thread_root_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &viaComments)
-	if viaComments.ThreadRootID == nil || *viaComments.ThreadRootID != pid {
-		t.Fatalf("/comments thread_root_id = %v, want %d", viaComments.ThreadRootID, pid)
+	viaComments := threadTop(t, rec.Body.Bytes())
+	if viaComments == nil {
+		t.Fatalf("/comments не отдал корень треда: %s", rec.Body.String())
 	}
 
 	// Тот же тред, но generic-путём: thread_root_id в теле = id ПОСТА.
@@ -461,12 +494,11 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 		t.Fatalf("generic send: %d %s", rec.Code, rec.Body.String())
 	}
 	var viaGeneric struct {
-		ID           int64  `json:"id"`
-		ThreadRootID *int64 `json:"thread_root_id"`
+		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &viaGeneric)
-	if viaGeneric.ThreadRootID == nil || *viaGeneric.ThreadRootID != pid {
-		t.Fatalf("generic send thread_root_id = %v, want %d (тот же тред, что и через /comments)", viaGeneric.ThreadRootID, pid)
+	if top := threadTop(t, rec.Body.Bytes()); top == nil || *top != *viaComments {
+		t.Fatalf("generic send reply_to_top_id = %v, want %d (тот же тред, что и через /comments)", top, *viaComments)
 	}
 
 	// И физически лежит в том же треде — виден через /comments наравне с первым.
@@ -566,12 +598,12 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 		t.Fatalf("generic send к post1: %d %s", rec.Code, rec.Body.String())
 	}
 	var c1 struct {
-		ID           int64  `json:"id"`
-		ThreadRootID *int64 `json:"thread_root_id"`
+		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &c1)
-	if c1.ThreadRootID == nil || *c1.ThreadRootID != post1.ID {
-		t.Fatalf("thread_root_id комментария к post1 = %v, want %d (не sentinel 0)", c1.ThreadRootID, post1.ID)
+	top1 := threadTop(t, rec.Body.Bytes())
+	if top1 == nil || *top1 == 0 {
+		t.Fatalf("корень треда комментария к post1 = %v (не должен быть sentinel 0)", top1)
 	}
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
@@ -581,12 +613,16 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 		t.Fatalf("generic send к post2: %d %s", rec.Code, rec.Body.String())
 	}
 	var c2 struct {
-		ID           int64  `json:"id"`
-		ThreadRootID *int64 `json:"thread_root_id"`
+		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &c2)
-	if c2.ThreadRootID == nil || *c2.ThreadRootID != post2.ID {
-		t.Fatalf("thread_root_id комментария к post2 = %v, want %d (не sentinel 0)", c2.ThreadRootID, post2.ID)
+	top2 := threadTop(t, rec.Body.Bytes())
+	if top2 == nil || *top2 == 0 {
+		t.Fatalf("корень треда комментария к post2 = %v (не должен быть sentinel 0)", top2)
+	}
+	// Корни РАЗНЫЕ: схлопывание в sentinel 0 давало один и тот же.
+	if *top1 == *top2 {
+		t.Fatalf("корни тредов совпали (%d) — треды схлопнулись", *top1)
 	}
 
 	// (а) тот же тред, что и штатный /comments.
@@ -596,12 +632,8 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/comments к post1: %d %s", rec.Code, rec.Body.String())
 	}
-	var viaComments struct {
-		ThreadRootID *int64 `json:"thread_root_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &viaComments)
-	if viaComments.ThreadRootID == nil || *viaComments.ThreadRootID != post1.ID {
-		t.Fatalf("/comments thread_root_id = %v, want %d — разошлось с generic-send", viaComments.ThreadRootID, post1.ID)
+	if top := threadTop(t, rec.Body.Bytes()); top == nil || *top != *top1 {
+		t.Fatalf("/comments reply_to_top_id = %v, want %d — разошлось с generic-send", top, *top1)
 	}
 
 	// (б) треды НЕ схлопнулись: history для post1 не содержит комментарий post2 и наоборот.

@@ -48,11 +48,24 @@ type WebPagePreview struct {
 }
 
 type Message struct {
-	ID           int64
-	ChatID       int64
-	Seq          int64
-	SenderID     int64
-	Type         string
+	ID     int64
+	ChatID int64
+	Seq    int64
+	// SenderID — автор строки. На проводе это from_id:Peer, и отправка от имени
+	// канала (SendAsChatID) там его ЗАМЕЩАЕТ: в схеме отображаемый автор и есть
+	// from_id, отдельного снимка send_as рядом с настоящим отправителем не
+	// бывает.
+	SenderID int64
+	// Type — вид строки. ВНУТРЕННЕЕ поле: по нему стоят выборки shared media,
+	// журнал звонков и санитизация, но на провод оно не выходит (решение Р2).
+	// Вид вложения даёт объединение MessageMedia, «служебное ли» — выбор
+	// конструктора (Action != nil), «шифрованное ли» — EncBody.
+	Type string
+	// Action — СЛУЖЕБНОЕ действие (schema messageService.action), колонка
+	// messages.action. Не nil — сообщение служебное, и на проводе это
+	// messageService, а не message. Прежде действие ехало JSON-строкой внутри
+	// Text, и клиент опознавал его по `raw.startsWith('{')`.
+	Action       MessageAction
 	Text         string
 	Entities     MessageEntities // rich-text formatting spans over Text (nil when plain)
 	ReplyToID    *int64
@@ -107,14 +120,21 @@ type Message struct {
 	// Хранятся на отвечающем сообщении; nil — обычный ответ на всё сообщение.
 	ReplyQuoteText   *string
 	ReplyQuoteOffset *int
-	// Ответ на сообщение из ДРУГОГО чата (Telegram reply_to_peer_id): исходный
-	// чат оригинала (ReplyToID — id того сообщения). Т.к. получатель может не
-	// иметь доступа к исходному чату, превью сохраняется снимком прямо здесь:
-	// ReplySnapshotName — отображаемое имя автора оригинала, ReplySnapshotText —
-	// текст/лейбл медиа для превью. Nil/пусто — обычный ответ в том же чате.
+	// Ответ на сообщение из ДРУГОГО чата (schema messageReplyHeader.
+	// reply_to_peer_id): исходный чат оригинала (ReplyToID — НОМЕР того
+	// сообщения). Nil — обычный ответ в том же чате.
+	//
+	// ReplySnapshotName — имя автора оригинала, когда сам оригинал зрителю
+	// недоступен: на проводе это reply_from.from_name, то есть та же форма, что
+	// у скрытой пересылки — имя без ссылки на аккаунт.
+	//
+	// Снимка ТЕКСТА оригинала здесь больше нет. В схеме недоступный оригинал
+	// выражается парой reply_from/reply_media, и его текст не едет вовсе:
+	// превью строится из цитаты (quote_text) либо из вложения. Наш
+	// reply_snapshot_text предмета в схеме не имел и был последним местом, где
+	// сервер обрезал чужой текст за клиента.
 	ReplyToPeerID     *int64
 	ReplySnapshotName string
-	ReplySnapshotText string
 	// ReplyToPeer — тот же исходный чат в форме ССЫЛКИ НА ПИР (schema
 	// messageReplyHeader.reply_to_peer_id:Peer). ВЫЧИСЛЯЕМОЕ поле по той же
 	// причине, что и FwdFrom: у приватного источника ключом пира служит
@@ -193,10 +213,6 @@ type Message struct {
 	// Transcription — расшифровка голосового/видео-кружка (messages.transcription,
 	// Telegram transcribeAudio). Кэшируется по запросу; nil — ещё не расшифровано.
 	Transcription *string
-	// SenderName is the sender's short name (first name, else display name),
-	// populated on send for the new_message payload (not stored) — the client
-	// prefixes group chat-list previews with it, tweb-style.
-	SenderName string
 	// Effect — вид полноэкранного canvas-эффекта сообщения (наш аналог Telegram
 	// message effects): fireworks|confetti|hearts|thumbs|poop|cake, "" — нет.
 	// Санитизируется на отправке (whitelist); только у text/media-сообщений.
@@ -215,14 +231,15 @@ type Message struct {
 	// (не колонки messages). Total==0 — платных реакций нет.
 	StarReactionTotal int64
 	StarReactionMine  int64
-	// Send-as (Telegram send_as): когда задан — сообщение отображается от имени
-	// этого канала/группы, а не от реального SenderID (который сохраняется).
-	// SendAsChatID — колонка messages.send_as_chat_id. SendAsTitle/SendAsPhotoID —
-	// снимок отображаемого автора (title/photo чата), наполняется на отправке и
-	// read-моделью для бабла (не колонки messages). Nil — обычная отправка.
-	SendAsChatID  *int64
-	SendAsTitle   string
-	SendAsPhotoID *int64
+	// Send-as (schema send_as): когда задан — сообщение отображается от имени
+	// этого канала/группы. Колонка messages.send_as_chat_id; nil — обычная
+	// отправка.
+	//
+	// Снимка отображаемого автора (title/photo) здесь больше нет: на проводе
+	// send-as выражается тем, что from_id это САМ КАНАЛ, а название и аватарка
+	// приезжают карточкой чата — ровно как у любого другого пира после того,
+	// как с провода ушёл display_name.
+	SendAsChatID *int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.
@@ -242,9 +259,15 @@ type ReplyPreview struct {
 	QuoteText string
 }
 
-// CalendarDay — одно медиа-сообщение, представляющее день в пикере даты
-// (tweb messages.getSearchResultsCalendar → миниатюра в ячейке дня).
-// Day — полночь этого дня (UTC), MediaID — что показать в кружке.
+// CalendarDay — ДЕНЬ в пикере даты, а не сообщение (tweb
+// messages.getSearchResultsCalendar → миниатюра в ячейке дня). Day — полночь
+// этого дня (UTC), MediaID — что показать в кружке.
+//
+// Конструктором `message` не становится, и основание одно — предмет ДРУГОЙ: у
+// оригинала это messages.searchResultsCalendar{periods:
+// Vector<SearchResultsCalendarPeriod>}, где период несёт дату, счётчик и
+// НОМЕР сообщения. Само сообщение туда не кладут ни там, ни здесь: в ячейку
+// нужен один кружок, а не бабл.
 type CalendarDay struct {
 	Day time.Time
 	// Seq — адрес сообщения дня (номер в чате): второго числа у него нет,

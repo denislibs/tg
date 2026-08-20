@@ -275,7 +275,8 @@ func TestApproveSuggestedPost_ToChannelWithDiscussion_CreatesMirror(t *testing.T
 	// канального кадра. Адрес там ОДИН: `id` со значением номера в канале
 	// (channelPostPayload кладёт его туда же, что и PostToChannel), поэтому
 	// внутренний ключ строки резолвим через слой адресации.
-	postSeq, ok := fpub.lastPayload(t)["id"].(float64)
+	postMsg, _ := fpub.lastPayload(t)["message"].(map[string]any)
+	postSeq, ok := postMsg["id"].(float64)
 	if !ok {
 		t.Fatal("адрес поста отсутствует в опубликованном кадре")
 	}
@@ -543,9 +544,11 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 			continue
 		}
 		var d struct {
-			ID int64 `json:"id"`
+			Message struct {
+				ID int64 `json:"id"`
+			} `json:"message"`
 		}
-		if err := json.Unmarshal(u.Payload, &d); err == nil && d.ID == mirror.Seq {
+		if err := json.Unmarshal(u.Payload, &d); err == nil && d.Message.ID == mirror.Seq {
 			foundUpdate = true
 		}
 	}
@@ -558,7 +561,9 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	var env struct {
 		T string `json:"t"`
 		D struct {
-			ID int64 `json:"id"`
+			Message struct {
+				ID int64 `json:"id"`
+			} `json:"message"`
 		} `json:"d"`
 	}
 	found := false
@@ -569,7 +574,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 		if err := json.Unmarshal(f.frame, &env); err != nil {
 			t.Fatalf("frame decode: %v", err)
 		}
-		if env.T == "new_message" && env.D.ID == mirror.Seq {
+		if env.T == "new_message" && env.D.Message.ID == mirror.Seq {
 			found = true
 			break
 		}

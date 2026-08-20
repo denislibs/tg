@@ -310,7 +310,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		if d.Type == "service" { // server-only type (group action pills)
+		// «Служебное ли» и «лог звонка ли» — ВЫБОР КОНСТРУКТОРА, а не значение
+		// поля type: клиент называет исход звонка полем call, всё остальное
+		// служебное производит сервер.
+		if d.Type == "service" || d.Type == "call" {
 			return
 		}
 		var encBody []byte
@@ -367,6 +370,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
+			Action:         callAction(d.Call),
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.

@@ -192,7 +192,9 @@ func TestMigration0105_ConvertsMessageAddressing(t *testing.T) {
 		t.Fatalf("seed channel update: %v", err)
 	}
 
-	if err := storepostgres.Migrate(url); err != nil {
+	// Накатываем РОВНО 0105: следующая миграция переписывает те же служебные
+	// тексты, и проверка превратилась бы в проверку суммы, а не шага.
+	if err := storepostgres.MigrateUpTo(url, messageAddrMigrationPrevVersion+1); err != nil {
 		t.Fatalf("накат 0105: %v", err)
 	}
 
@@ -309,7 +311,7 @@ func TestMigration0105_ConvertsMessageAddressing(t *testing.T) {
 	if backID == nil || *backID != origID {
 		t.Errorf("после отката reply_to_id=%v, ждали ключ строки %d", backID, origID)
 	}
-	if err := storepostgres.Migrate(url); err != nil {
+	if err := storepostgres.MigrateUpTo(url, messageAddrMigrationPrevVersion+1); err != nil {
 		t.Fatalf("повторный накат: %v", err)
 	}
 	if seq, peer := replyOf(crossID); seq == nil || *seq != 1 || peer == nil || *peer != chatA {

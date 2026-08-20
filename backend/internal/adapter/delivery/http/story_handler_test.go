@@ -521,16 +521,24 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 		t.Fatalf("share sent = %d; want 1", shareResp.Sent)
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat.PeerID)+"/history?limit=10", tokenA, nil)
+	// Id медиа живёт ВНУТРИ вложения (document.id / photo.id), плоского
+	// media_id рядом с ним больше нет.
 	var hist struct {
 		Messages []struct {
-			MediaID *int64 `json:"media_id"`
-			Text    string `json:"text"`
+			Media *struct {
+				Photo    *struct{ ID int64 } `json:"photo"`
+				Document *struct{ ID int64 } `json:"document"`
+			} `json:"media"`
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
 	var shared bool
 	for _, m := range hist.Messages {
-		if m.MediaID != nil && *m.MediaID == created.MediaID {
+		if m.Media == nil {
+			continue
+		}
+		if (m.Media.Photo != nil && m.Media.Photo.ID == created.MediaID) ||
+			(m.Media.Document != nil && m.Media.Document.ID == created.MediaID) {
 			shared = true
 		}
 	}

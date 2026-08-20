@@ -264,11 +264,16 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}); err != nil {
 		return err
 	}
-	text, _ := json.Marshal(map[string]any{
-		"action": "restrict", "actor_id": actorID,
-		"user_id": targetID, "denied_rights": int(deniedRights),
-	})
-	i.postGroupService(ctx, chatID, actorID, string(text))
+	// Содержимое действия — сам набор запретов конструктором chatBannedRights,
+	// а не битмаск `denied_rights` числом, которого не читал ни один клиент.
+	// Срок ограничения там же (until_date): прежде он хранился, но наружу не
+	// ехал вовсе. Нулевое время — «навсегда», ровно как у прав чата.
+	var untilTime time.Time
+	if until != nil {
+		untilTime = *until
+	}
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
+		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
 	return nil
 }
 

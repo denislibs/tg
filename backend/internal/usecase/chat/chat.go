@@ -287,18 +287,17 @@ func (i *Interactor) SavedDialogs(ctx context.Context, userID int64) ([]domain.S
 // смыслах уже стоило одного дефекта: решение по предложенному посту уезжало
 // СЮДА, то есть JSON-действие показывалось автору как обычный текст.
 func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, text string) error {
-	return i.postFromServiceAccount(ctx, toUserID, text, "")
+	return i.postFromServiceAccount(ctx, toUserID, text, nil)
 }
 
 // PostServiceAction кладёт в чат с сервисным аккаунтом СЛУЖЕБНОЕ сообщение —
-// пилюлю-действие (Type=="service"): actionJSON разбирает клиент и собирает
-// локализованную фразу сам. Отличается от PostServiceMessage ровно тем, чем
-// пилюля отличается от текста; см. докблок выше.
-func (i *Interactor) PostServiceAction(ctx context.Context, toUserID int64, actionJSON string) error {
-	return i.postFromServiceAccount(ctx, toUserID, actionJSON, "service")
+// пилюлю-действие (messageService.action). Отличается от PostServiceMessage
+// ровно тем, чем пилюля отличается от текста; см. докблок выше.
+func (i *Interactor) PostServiceAction(ctx context.Context, toUserID int64, action domain.MessageAction) error {
+	return i.postFromServiceAccount(ctx, toUserID, "", action)
 }
 
-func (i *Interactor) postFromServiceAccount(ctx context.Context, toUserID int64, text, msgType string) error {
+func (i *Interactor) postFromServiceAccount(ctx context.Context, toUserID int64, text string, action domain.MessageAction) error {
 	if toUserID == domain.ServiceUserID {
 		return nil
 	}
@@ -307,7 +306,7 @@ func (i *Interactor) postFromServiceAccount(ctx context.Context, toUserID int64,
 		return err
 	}
 	_, err = i.Send(ctx, SendInput{
-		ChatID: chatID, SenderID: domain.ServiceUserID, Type: msgType, Text: text,
+		ChatID: chatID, SenderID: domain.ServiceUserID, Text: text, Action: action,
 	})
 	return err
 }

@@ -71,11 +71,12 @@ func TestChatFlow_HTTP(t *testing.T) {
 	var hist struct {
 		Count    int `json:"count"`
 		Messages []struct {
-			Text string `json:"text"`
+			// Текст на проводе называется message — так он назван в схеме.
+			Message string `json:"message"`
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
-	if hist.Count != 1 || len(hist.Messages) != 1 || hist.Messages[0].Text != "hello" {
+	if hist.Count != 1 || len(hist.Messages) != 1 || hist.Messages[0].Message != "hello" {
 		t.Fatalf("history = %+v", hist)
 	}
 
@@ -448,12 +449,28 @@ func msgWithMedia(kind string, s domain.MediaSource) domain.Message {
 // оригинала, а не как набор плоских ключей.
 func mediaOf(t *testing.T, m domain.Message) *domain.MessageMedia {
 	t.Helper()
-	j := messageJSON(m, domain.ToPeerID(m.ChatID, true))
-	md, ok := j["media"].(*domain.MessageMedia)
+	wire, ok := m.ToWire(domain.MessageContext{Peer: domain.NewPeer(domain.ToPeerID(m.ChatID, true))}).(domain.MessageReal)
 	if !ok {
-		t.Fatalf("media отсутствует или не MessageMedia: %#v", j["media"])
+		t.Fatalf("витрина отдала не message: %#v", wire)
 	}
-	return md
+	if wire.Media == nil {
+		t.Fatal("media отсутствует в витрине")
+	}
+	return wire.Media
+}
+
+// wireKeys — ключи витрины одного сообщения, как они реально уезжают.
+func wireKeys(t *testing.T, m domain.Message) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(m.ToWire(domain.MessageContext{Peer: domain.NewPeer(domain.ToPeerID(m.ChatID, true))}))
+	if err != nil {
+		t.Fatalf("сериализация витрины: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("разбор витрины: %v", err)
+	}
+	return out
 }
 
 // Контракт витрины истории: медиа едет ОДНИМ вложенным объектом в форме
@@ -640,7 +657,7 @@ func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 		Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6,
 		FileName: "clip.mp4", Blur: []byte{1, 2, 3}, HasThumb: true, Spoiler: true,
 	})
-	j := messageJSON(msg, domain.ToPeerID(msg.ChatID, true))
+	j := wireKeys(t, msg)
 
 	if _, ok := j["media"]; !ok {
 		t.Fatal("вложение в витрине отсутствует")
@@ -654,7 +671,7 @@ func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 	}
 
 	// Медиа нет — нет и самого ключа `media`.
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "text"}, domain.ToPeerID(2, true))
+	bare := wireKeys(t, domain.Message{ID: 1, ChatID: 2, Type: "text"})
 	if _, ok := bare["media"]; ok {
 		t.Fatalf("ключ media у сообщения без медиа: %v", bare["media"])
 	}

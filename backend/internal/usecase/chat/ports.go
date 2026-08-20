@@ -256,6 +256,8 @@ type MessageRepo interface {
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
+	// UpdateAction заменяет служебное действие сообщения (messages.action).
+	UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
@@ -305,14 +307,6 @@ type MessageRepo interface {
 	// продолжит указывать как на корень, — комментирование остальных
 	// элементов альбома снова сломается.
 	AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error)
-	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
-	// сообщений (это могут быть id зеркал, обычных сообщений или корней
-	// форум-топиков вперемешку — вызывающий не обязан их различать) отдаёт
-	// id постов, зеркалами которых они являются: mirrorID -> postID. Не-
-	// зеркала в карту не попадают. Единая точка внешнего перевода
-	// thread_root_id (id зеркала -> id поста) для любого набора отдаваемых
-	// наружу сообщений — см. Interactor.ExternalizeThreadRoots.
-	PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
@@ -547,7 +541,11 @@ type PushNotifier interface {
 type SendInput struct {
 	ChatID, SenderID int64
 	Type, Text       string
-	Entities         domain.MessageEntities
+	// Action — СЛУЖЕБНОЕ действие (schema messageService.action). Не nil —
+	// сообщение служебное, и Text у него пуст: прежде действие приезжало сюда
+	// JSON-строкой в Text вместе с Type == "service".
+	Action   domain.MessageAction
+	Entities domain.MessageEntities
 	// ReplyToID — НОМЕР отвечаемого сообщения в его чате (schema
 	// messageReplyHeader.reply_to_msg_id), а не глобальный ключ строки.
 	// Осмыслен только вместе с ReplyToPeerID: nil там значит «тот же пир».

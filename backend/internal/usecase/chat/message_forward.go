@@ -41,7 +41,6 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		}
 	}
 
-	senderName := i.userCard(ctx, in.SenderID).ShortName()
 	// Правило автора «кто может ссылаться на мой аккаунт при пересылке»:
 	// при запрете вместо ссылки (fwd_from_user_id) сохраняется только имя
 	// текстом (fwd_from_name), как tweb fwd_from.from_name. Кэш на автора.
@@ -157,7 +156,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			mirrorDelivs = append(mirrorDelivs, md)
-			msg.SenderName = senderName
+
 			// Медиа-мета в live-кадр — как в Send (иначе файл у получателя
 			// заглушкой «media-N» до перезагрузки истории).
 			if msg.MediaID != nil {
@@ -166,12 +165,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 					msg = one[0]
 				}
 			}
-			// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
-			// форвард сам не проставляет ThreadRootID (см. комментарий выше), так что
-			// это no-op без лишнего запроса — единый чокпоинт применяем всё равно,
-			// а не полагаемся на память о том, что этот путь «якобы безопасен».
 			fwdOut := i.messageUpdatePayload(ctx, msg)
-			fwdOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
 			if e != nil {
 				return e
@@ -208,7 +202,6 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	if i.publisher != nil {
 		for idx, msg := range created {
 			base := i.messageUpdatePayload(ctx, msg)
-			base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, base)
 			if e != nil {
 				break

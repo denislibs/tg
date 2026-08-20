@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -51,16 +50,20 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	if !ok {
 		return domain.ForumTopic{}, domain.ErrNotFound
 	}
-	name := i.userCard(ctx, userID).ShortName()
+	if iconColor < 0 {
+		iconColor = 0
+	}
+	// Корень темы — messageActionTopicCreate. Прежде это было ЕДИНСТВЕННОЕ
+	// служебное сообщение, чей текст даже не JSON, а готовая русская фраза с
+	// уже вклеенным именем автора («%s создал(а) тему «%s»») — склейка имени в
+	// самом чистом виде. Имя теперь собирает клиент из from_id, название темы
+	// едет параметром title.
 	root, err := i.Send(ctx, SendInput{
-		ChatID: chatID, SenderID: userID, Type: "service",
-		Text: fmt.Sprintf("%s создал(а) тему «%s»", name, title),
+		ChatID: chatID, SenderID: userID,
+		Action: domain.NewMessageActionTopicCreate(title, iconColor),
 	})
 	if err != nil {
 		return domain.ForumTopic{}, err
-	}
-	if iconColor < 0 {
-		iconColor = 0
 	}
 	iconEmoji = sanitizeTopicEmoji(iconEmoji)
 	return i.topics.Create(ctx, domain.ForumTopic{

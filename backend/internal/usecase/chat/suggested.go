@@ -243,12 +243,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 				msg = one[0]
 			}
 		}
-		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
-		// публикация одобренного поста сама не проставляет ThreadRootID (см.
-		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
-		// безусловно, тем же путём, что Send/ForwardMessages.
 		spOut := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
-		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		payload, e := json.Marshal(spOut)
 		if e != nil {
 			return e
@@ -261,7 +256,6 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	}
 	if i.chPub != nil {
 		base := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
-		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
 		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
 	}
 	if mirrorDeliv != nil {
@@ -311,21 +305,16 @@ func (i *Interactor) suggestedPostInfo(ctx context.Context, sp domain.SuggestedP
 // (в приватный чат с сервисным аккаунтом). Название канала едет данными — клиент
 // собирает локализованную фразу.
 func (i *Interactor) notifyAuthorDecision(ctx context.Context, sp domain.SuggestedPost, approved bool) {
-	action := "suggest_post_rejected"
-	if approved {
-		action = "suggest_post_approved"
-	}
-	title := ""
-	if i.groups != nil {
-		if card, err := i.groups.Card(ctx, sp.ChatID, sp.AuthorID); err == nil {
-			title = card.Title
-		}
-	}
-	b, _ := json.Marshal(map[string]any{"action": action, "chat": title})
+	// Одобрение и отказ — ОДИН конструктор, решение выражает pFlags.rejected.
+	// Канал едет ССЫЛКОЙ (наш параметр вне схемы, см. докблок конструктора):
+	// у оригинала пилюля лежит в самом канале и называть его незачем, а у нас
+	// она приходит в чат с сервисным аккаунтом. Имя канала соберёт клиент из
+	// карточки пира — строкой оно НЕ едет, этот урок уже оплачен.
+	//
 	// Именно PostServiceAction: это ДЕЙСТВИЕ, а не текст. Через
-	// PostServiceMessage (Type=="text") клиент разбор не включал вовсе — он
-	// смотрит на вид сообщения — и автор видел сырой JSON.
-	_ = i.PostServiceAction(ctx, sp.AuthorID, string(b))
+	// PostServiceMessage клиент разбор не включал вовсе — он смотрит на вид
+	// сообщения — и автор видел сырой JSON.
+	_ = i.PostServiceAction(ctx, sp.AuthorID, domain.NewMessageActionSuggestedPostApproval(!approved, sp.ChatID))
 }
 
 // publishSuggestedToAdmins рассылает состояние предложки решающим её админам.

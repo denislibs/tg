@@ -2,24 +2,10 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
-
-// suggestPhotoAction is the JSON stored in the text of a "suggested a profile
-// photo" service message (mirrors tweb messageActionSuggestProfilePhoto: the
-// action + suggested photo url travel as data). The client renders the pill,
-// the photo preview (media_id) and the recipient-only "Set Photo" button.
-type suggestPhotoAction struct {
-	Action  string `json:"action"` // always "suggest_photo"
-	ActorID int64  `json:"actor_id"`
-	// PhotoID — id медиа предложенной аватарки. Прежде здесь лежал
-	// content-путь строкой, из которого id пришлось бы выпарсивать обратно.
-	PhotoID  int64 `json:"photo_id"`
-	Accepted bool  `json:"accepted,omitempty"`
-}
 
 // SuggestProfilePhoto posts a service message into the private chat between
 // fromUserID and toUserID offering a new profile photo. The suggested photo
@@ -34,17 +20,14 @@ func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUser
 	if err != nil {
 		return domain.Message{}, err
 	}
-	payload, _ := json.Marshal(suggestPhotoAction{
-		Action:  "suggest_photo",
-		ActorID: fromUserID,
-		PhotoID: mediaID,
-	})
+	// Id предложенной аватарки хранился ДВАЖДЫ — в JSON действия и на media_id
+	// самого сообщения. Остаётся одно место: media_id, из которого фото и
+	// собирается конструктором photo на границе (Message.ToWire).
 	mid := mediaID
 	return i.Send(ctx, SendInput{
 		ChatID:   chatID,
 		SenderID: fromUserID,
-		Type:     "service",
-		Text:     string(payload),
+		Action:   domain.NewMessageActionSuggestProfilePhoto(nil, false),
 		MediaID:  &mid,
 	})
 }
@@ -62,11 +45,11 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if err != nil {
 		return err
 	}
-	if m.Type != "service" || m.Deleted {
+	if m.Deleted {
 		return domain.ErrNotFound
 	}
-	var act suggestPhotoAction
-	if err := json.Unmarshal([]byte(m.Text), &act); err != nil || act.Action != "suggest_photo" {
+	act, ok := m.Action.(domain.MessageActionSuggestProfilePhoto)
+	if !ok {
 		return domain.ErrNotFound
 	}
 	if act.Accepted {
@@ -76,30 +59,31 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if m.SenderID == userID {
 		return domain.ErrForbidden
 	}
-	ok, err := i.chats.IsMember(ctx, m.ChatID, userID)
+	member, err := i.chats.IsMember(ctx, m.ChatID, userID)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if !member {
 		return domain.ErrForbidden
 	}
-	if act.PhotoID <= 0 {
+	// Предложенная аватарка — медиа самого сообщения; второго места, где лежал
+	// бы её id, больше нет.
+	if m.MediaID == nil || *m.MediaID <= 0 {
 		return domain.ErrInvalid
 	}
-	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, act.PhotoID, nil); err != nil {
+	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, *m.MediaID, nil); err != nil {
 		return err
 	}
 
-	// Flag the service message accepted and fan out an edit so the button hides
-	// on every device. The recipient is not the author, so this bypasses the
-	// author-only EditMessage and updates the text directly.
+	// Отмечаем действие принятым и рассылаем правку, чтобы кнопка «Установить
+	// фото» пропала на всех устройствах. Получатель не автор, поэтому
+	// author-only EditMessage обходится.
 	act.Accepted = true
-	updated, _ := json.Marshal(act)
 	var members []int64
 	ptsByUser := map[int64]int64{}
 	var pp *peerPayloads
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		msg, e := i.msgs.UpdateText(ctx, msgID, string(updated), nil)
+		msg, e := i.msgs.UpdateAction(ctx, msgID, act)
 		if e != nil {
 			return e
 		}

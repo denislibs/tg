@@ -242,7 +242,8 @@ func TestNewMessageEcho_CarriesClientMsgID(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 	d := lastFrameFor(t, pub, a)
-	if got, _ := d["client_msg_id"].(string); got != "opt-42" {
-		t.Fatalf("echo client_msg_id = %q; want opt-42", got)
+	msg, _ := d["message"].(map[string]any)
+	if got, _ := msg["random_id"].(string); got != "opt-42" {
+		t.Fatalf("echo random_id = %q; want opt-42", got)
 	}
 }

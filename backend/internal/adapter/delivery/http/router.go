@@ -160,6 +160,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/saved/tags/{reaction}", ch.SetSavedTagName) // имя тега (updateSavedReactionTag)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{peerID}/messages", ch.Send)
+		// Выборка по АДРЕСАМ (?ids=): разрешение ссылок reply_to/reply_to_top_id
+		// и единственный производитель messageEmpty — аналог messages.getMessages.
+		pr.Get("/chats/{peerID}/messages", ch.MessagesByIDs)
 		pr.Patch("/chats/{peerID}/messages/{msgSeq}", ch.EditMessage)
 		pr.Delete("/chats/{peerID}/messages/{msgSeq}", ch.DeleteMessage)
 		pr.Post("/chats/{peerID}/forward", ch.Forward)

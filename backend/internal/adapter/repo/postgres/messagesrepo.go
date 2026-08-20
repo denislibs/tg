@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text, is_discussion_mirror, media_spoiler`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -394,7 +394,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 // messageActionPhoneCall, как в Telegram).
 func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT m.seq, m.chat_id, m.sender_id, m.text, m.created_at, `+userRealCols("u.")+`
+		`SELECT `+messageColsPrefixed("m")+`, `+userRealCols("u.")+`
 		   FROM messages m
 		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
@@ -408,22 +408,30 @@ func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit 
 	defer rows.Close()
 	var out []domain.CallLogEntry
 	for rows.Next() {
-		var e domain.CallLogEntry
-		var senderID int64
-		var created time.Time
 		var peer userRealScan
-		dest := []any{&e.ID, &e.ChatID, &senderID, &e.Text, &created}
-		dest = append(dest, peer.dest()...)
-		if err := rows.Scan(dest...); err != nil {
+		// Сообщение сканируется ТЕМ ЖЕ scanMessage, что и история: журнал
+		// звонков перестал быть отдельной выборкой из пяти колонок.
+		s := &joinedScanner{row: rows, extra: peer.dest()}
+		m, err := scanMessage(s)
+		if err != nil {
 			return nil, err
 		}
-		e.Peer = peer.user(true)
-		e.PeerID = peer.id
-		e.Out = senderID == userID
-		e.Date = created.Format(time.RFC3339)
-		out = append(out, e)
+		out = append(out, domain.CallLogEntry{Message: m, Peer: peer.user(true)})
 	}
 	return out, rows.Err()
+}
+
+// joinedScanner — scanMessage поверх строки, у которой ПОСЛЕ колонок сообщения
+// идут ещё колонки джойна. Нужен там, где сообщение выбирается вместе с
+// попутчиком (журнал звонков + собеседник), а разбирать его хочется той же
+// единственной функцией.
+type joinedScanner struct {
+	row   scanner
+	extra []any
+}
+
+func (s *joinedScanner) Scan(dest ...any) error {
+	return s.row.Scan(append(dest, s.extra...)...)
 }
 
 // MediaHistory returns a chat's messages of one shared-media kind (the
@@ -588,7 +596,7 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, reply_snapshot_text, is_discussion_mirror, media_spoiler, auto_delete_at)
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action, auto_delete_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
@@ -597,7 +605,7 @@ func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Mes
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
 		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect), m.GiveawayID, m.ChecklistID, m.SendAsChatID,
-		m.ReplyToPeerID, m.ReplySnapshotName, m.ReplySnapshotText, m.IsDiscussionMirror, m.MediaSpoiler))
+		m.ReplyToPeerID, m.ReplySnapshotName, m.IsDiscussionMirror, m.MediaSpoiler, actionParam(m.Action)))
 }
 
 // SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
@@ -666,6 +674,16 @@ func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string,
 	return scanOneMessage(q.QueryRow(ctx,
 		`UPDATE messages SET text=$2, entities=$3, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
 		msgID, text, entitiesParam(entities)))
+}
+
+// UpdateAction заменяет служебное действие сообщения (edited_at=now()) и
+// возвращает обновлённую строку. Единственный сегодняшний вызывающий —
+// принятие предложенного фото: признак «принято» живёт на самом действии.
+func (r *MessagesRepo) UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
+	q := querier(ctx, r.pool)
+	return scanOneMessage(q.QueryRow(ctx,
+		`UPDATE messages SET action=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
+		msgID, actionParam(action)))
 }
 
 // UpdateReplyMarkup replaces a message's inline/reply keyboard (edited_at=now());
@@ -1023,46 +1041,6 @@ func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedI
 	return out, rows.Err()
 }
 
-// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по id сообщений
-// отдаёт id постов, зеркалами которых они являются (mirrorID -> postID).
-// В отличие от MirrorByPost/MirrorsByPosts, здесь резолв по PRIMARY KEY
-// конкретной строки-зеркала, а не «текущее зеркало канала» — ограничение
-// chat_id=discussion_chat_id тут не нужно и не действует: зеркало уже
-// физически существует по этому id, привязку канала переигрывать незачем.
-//
-// Согласованность с правилом «один тред на альбом» здесь не требует
-// отдельной логики: MirrorByPost/MirrorsByPosts для ЛЮБОГО элемента альбома
-// теперь резолвят зеркало КОРНЯ (fwd_from_msg_id = id первого элемента), а не
-// зеркало самого элемента. Значит thread_root_id, который клиент получает и
-// потом присылает назад, всегда указывает на строку-зеркало, чей
-// fwd_from_msg_id уже равен id первого элемента — простой обратный SELECT по
-// PK возвращает ровно его. «Чужие» зеркала прочих элементов альбома (не
-// первого) в качестве thread_root_id наружу никогда не отдаются, так что их
-// сюда и не передадут.
-func (r *MessagesRepo) PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error) {
-	out := map[int64]int64{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	q := querier(ctx, r.pool)
-	rows, err := q.Query(ctx,
-		`SELECT id, fwd_from_msg_id FROM messages
-		 WHERE id = ANY($1) AND is_discussion_mirror AND deleted_at IS NULL`,
-		ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var mirror, post int64
-		if err := rows.Scan(&mirror, &post); err != nil {
-			return nil, err
-		}
-		out[mirror] = post
-	}
-	return out, rows.Err()
-}
-
 // RecentThreadRepliers returns, for each thread root, the авторы последних
 // комментариев (новейшие первыми, не более limit различных). Нужен футеру
 // «N комментариев» под постом канала — Telegram показывает там стек аватаров
@@ -1195,13 +1173,14 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var geoMetaRaw []byte
 	var webPageRaw []byte
 	var factCheckRaw []byte
+	var actionRaw []byte
 	var effect *string
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
 		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID, &factCheckRaw, &m.SendAsChatID, &m.Transcription,
-		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.ReplySnapshotText, &m.IsDiscussionMirror, &m.MediaSpoiler)
+		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.IsDiscussionMirror, &m.MediaSpoiler, &actionRaw)
 	m.Deleted = deletedAt != nil
 	if effect != nil {
 		m.Effect = *effect
@@ -1235,7 +1214,28 @@ func scanMessage(s scanner) (domain.Message, error) {
 			m.FactCheck = &fc
 		}
 	}
+	if err == nil {
+		// Служебное действие — объединение по дискриминатору `_`. Неизвестный
+		// конструктор оставляет Action nil: сообщение приезжает обычным, а не
+		// роняет чтение истории — то же правило, что у клавиатуры выше.
+		if a, e := domain.ParseMessageAction(actionRaw); e == nil {
+			m.Action = a
+		}
+	}
 	return m, err
+}
+
+// actionParam — служебное действие в jsonb-колонку. Строкой, а не []byte: pgx
+// иначе закодирует его как bytea (см. entitiesParam).
+func actionParam(a domain.MessageAction) any {
+	if a == nil {
+		return nil
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		return nil
+	}
+	return string(b)
 }
 
 func scanOneMessage(row pgx.Row) (domain.Message, error) {

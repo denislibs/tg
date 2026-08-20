@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -94,20 +96,19 @@ func TestSend_SendAs_AdminOK_OutsiderForbidden(t *testing.T) {
 	if msg.SendAsChatID == nil || *msg.SendAsChatID != chID {
 		t.Fatalf("send_as_chat_id = %v, want %d", msg.SendAsChatID, chID)
 	}
-	if msg.SendAsTitle != "News" {
-		t.Fatalf("send_as title not hydrated: %q", msg.SendAsTitle)
+	// На проводе отображаемый автор ЗАМЕЩАЕТ from_id: в схеме send-as это и
+	// есть from_id, а не снимок {peer_id,title,photo_id} рядом с настоящим
+	// отправителем. Название и аватарка приезжают карточкой чата.
+	wire, _ := in.messageUpdatePayload(ctx, msg)["message"].(map[string]any)
+	if _, ok := wire["send_as"]; ok {
+		t.Fatalf("снимок send_as всё ещё уезжает: %+v", wire["send_as"])
 	}
-	// Serialization carries send_as while preserving the real sender.
-	p := in.messageUpdatePayload(ctx, msg)
-	sa, ok := p["send_as"].(map[string]any)
+	from, ok := wire["from_id"].(map[string]any)
 	if !ok {
-		t.Fatalf("payload send_as missing: %+v", p)
+		t.Fatalf("from_id отсутствует: %+v", wire)
 	}
-	if sa["peer_id"] != domain.ToPeerID(chID, true) || sa["title"] != "News" {
-		t.Fatalf("payload send_as = %+v", sa)
-	}
-	if p["sender_id"] != int64(7) {
-		t.Fatalf("payload sender_id = %v, want 7", p["sender_id"])
+	if from["_"] != domain.PeerChannelTag || from["channel_id"] != json.Number(strconv.FormatInt(chID, 10)) {
+		t.Fatalf("from_id = %+v, ждали ссылку на канал %d", from, chID)
 	}
 
 	// A group member who is not an admin of the channel cannot post as it.

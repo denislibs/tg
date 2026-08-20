@@ -141,37 +141,27 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser, unreadByUser: unreadByUser}, nil
 }
 
-// ExternalizeThreadRoots — обратный перевод mirrorChannelPost и ЕДИНАЯ точка
-// перевода thread_root_id для ЛЮБОГО пути, которым сообщения покидают
-// процесс: HTTP-сериализация ответа (см. messagesJSON/messageJSONOut,
-// chat_handler.go) и сборка WS/лог-пейлоада (см. externalThreadRoot ниже,
-// вызывается из message.go/message_forward.go/suggested.go/paidmedia.go).
-// Наружу комментарий обязан нести thread_root_id = НОМЕР ПОСТА в канале, а не
-// внутренний id зеркала, на котором тред физически держится в БД (см.
-// PostComment/ListComments/CommentCounts) — иначе один и тот же комментарий
-// уезжает клиенту с разными числами по разным путям, и окно треда на клиенте
-// расъезжается с историей.
+// ExternalizeThreadRoots переводит thread_root_id из внутреннего ключа строки в
+// НОМЕР корня В ТОМ ЖЕ ПИРЕ — единая точка для любого пути, которым сообщения
+// покидают процесс (MessagesWire для HTTP, externalThreadRoot для кадров).
 //
-// Перевод двухступенчатый: id зеркала -> id поста (PostsByMirrors) -> номер
-// поста (SeqsByIDs). У форум-топика первой ступени нет — корень это настоящее
-// сообщение ЭТОГО чата, — но вторая нужна и ему: наружу уходит номер, а не
-// ключ строки.
+// На проводе корень треда это messageReplyHeader.reply_to_top_id, и он ВСЕГДА
+// в том же пире, что и само сообщение: у комментария это номер ЗЕРКАЛА поста в
+// группе обсуждения, где комментарий физически и живёт.
 //
-// ⚠ Названный остаток. Для комментария номер корня — номер в ДРУГОМ пире (в
-// канале), а само сообщение живёт в группе обсуждения: пара «пир + номер»
-// здесь неполна, пир корня едет неявно. В схеме этого поля нет вовсе —
-// корень треда там `messageReplyHeader.reply_to_top_id` и он ВСЕГДА в том же
-// пире (id зеркала в группе обсуждения). Лечится решением Р4 (reply_to
-// становится messageReplyHeader), то есть шагом витрин, а не адресацией.
+// Ступени перевода «зеркало → пост канала» здесь БОЛЬШЕ НЕТ, и это снятая
+// самодеятельность: наружу уезжал номер поста В ДРУГОМ ПИРЕ, то есть пара «пир
+// + номер» была неполна — пир корня ехал неявно. Поля thread_root_id в схеме
+// нет вовсе.
 //
-// Батчевый: один резолв (PostsByMirrors) на весь набор сообщений, а не
-// запрос на сообщение — критично для списков истории (N+1 недопустим).
-// Обычные сообщения (ThreadRootID == nil) и форум-топики (root — настоящее
-// сообщение темы чата, не зеркало) не меняются. Возвращает НОВЫЙ слайс
-// (той же длины и порядка) — входной msgs не мутируется, вызывающие вправе
-// держать оригинал (например, PostComment/ListComments отдают его тестам
-// как внутреннее представление с id зеркала — контракт этих методов не
-// меняется, перевод применяется только на границе доставки).
+// Входящий контракт при этом не меняется: комментарии по-прежнему
+// запрашиваются номером ПОСТА (GET /channels/{peerID}/posts/{postSeq}/comments,
+// ?thread_root=), ровно как messages.getReplies у оригинала берёт пир канала и
+// номер поста. Асимметрия «спрашиваю постом, получаю зеркало» — устройство
+// оригинала, где переводит getDiscussionMessage.
+//
+// Батчевый: один резолв на весь набор, а не запрос на сообщение. Возвращает
+// НОВЫЙ слайс (той же длины и порядка) — входной msgs не мутируется.
 func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.Message) ([]domain.Message, error) {
 	roots := make([]int64, 0, len(msgs))
 	seen := map[int64]bool{}
@@ -184,21 +174,7 @@ func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.M
 	if len(roots) == 0 {
 		return msgs, nil
 	}
-	postByRoot, err := i.msgs.PostsByMirrors(ctx, roots)
-	if err != nil {
-		return nil, err
-	}
-	// Ступень 2: ключ строки корня -> его номер. Для зеркала берём номер
-	// ПОСТА, для остальных корней (форум-топик) — номер самого корня.
-	targets := make([]int64, 0, len(roots))
-	for _, root := range roots {
-		if postID, ok := postByRoot[root]; ok {
-			targets = append(targets, postID)
-			continue
-		}
-		targets = append(targets, root)
-	}
-	seqByID, err := i.msgs.SeqsByIDs(ctx, targets)
+	seqByID, err := i.msgs.SeqsByIDs(ctx, roots)
 	if err != nil {
 		return nil, err
 	}
@@ -208,14 +184,10 @@ func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.M
 		if out[idx].ThreadRootID == nil {
 			continue
 		}
-		target := *out[idx].ThreadRootID
-		if postID, ok := postByRoot[target]; ok {
-			target = postID
-		}
-		seq, ok := seqByID[target]
+		seq, ok := seqByID[*out[idx].ThreadRootID]
 		if !ok {
-			// Корня в базе больше нет: номера у него не существует, а
-			// внутренний ключ наружу не выходит ни при каких обстоятельствах.
+			// Корня в базе больше нет: номера у него не существует, а внутренний
+			// ключ наружу не выходит ни при каких обстоятельствах.
 			out[idx].ThreadRootID = nil
 			continue
 		}

@@ -236,43 +236,38 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 // (Telegram рисует стек последних комментаторов).
 const RecentRepliersLimit = 3
 
-// CommentCounts returns a postID -> comment count map for the given posts plus
-// the authors of each thread's latest comments (newest first, up to
-// RecentRepliersLimit distinct). Тред живёт на зеркале поста (см. PostComment),
-// поэтому счёт и авторов читаем по id зеркал — но ключи обоих результатов
-// остаются id ПОСТОВ: внешний HTTP-контракт про пару (канал, пост) не меняется,
-// зеркало — деталь реализации треда. Посты без зеркала просто не набирают
-// комментариев (out[postID] остаётся нулевым значением карты). When discussions
-// aren't enabled it returns empty maps (no error).
-func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserReal, error) {
-	out := map[int64]int{}
-	empty := map[int64][]domain.UserReal{}
+// CommentCounts — тред комментариев каждого поста конструктором
+// messageReplies плюс ОБЩИЙ вектор карточек авторов последних комментариев.
+//
+// Прежде это была одиннадцатая проводная форма сообщения: {counts, recent_repliers},
+// где карточка пользователя ехала ВКЛЕЕННОЙ в каждый пост — тот же дубликат, что
+// чинил контейнер диалогов. В схеме messageReplies.recent_repliers это
+// Vector<Peer>, то есть ССЫЛКИ, а тела пиров едут своим вектором users один раз.
+//
+// Тред живёт на зеркале поста (см. PostComment), поэтому счёт и авторов читаем
+// по id зеркал — но ключи результата остаются НОМЕРАМИ ПОСТОВ: внешний контракт
+// про пару (канал, пост) не меняется, зеркало — деталь реализации треда. Посты
+// без зеркала комментариев не набирают. Обсуждение не включено — пустой
+// результат без ошибки.
+func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]domain.MessageReplies, []domain.UserReal, error) {
+	out := map[int64]domain.MessageReplies{}
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
-		return out, empty, nil
+		return out, nil, nil
 	}
 	// один батч-запрос на все посты вместо резолва зеркала по одному
 	mirrors, err := i.msgs.MirrorsByPosts(ctx, channelID, postIDs)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	// обратная карта — вернуть найденное по root к id поста для ключей результата
-	postByRoot := make(map[int64]int64, len(mirrors))
 	roots := make([]int64, 0, len(mirrors))
-	for postID, root := range mirrors {
-		postByRoot[root] = postID
+	for _, root := range mirrors {
 		roots = append(roots, root)
-	}
-	for postID, root := range mirrors {
-		c, _ := i.msgs.CountThread(ctx, disc, root)
-		out[postID] = c
 	}
 	recent, err := i.msgs.RecentThreadRepliers(ctx, disc, roots, RecentRepliersLimit)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	// Карточки комментаторов тянем одним запросом: клиенту нужны имя и аватар,
-	// а не голые id (иначе стек аватаров пришлось бы дорезолвливать по одному).
 	seen := map[int64]bool{}
 	ids := make([]int64, 0, len(recent)*RecentRepliersLimit)
 	for _, users := range recent {
@@ -283,28 +278,31 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 			}
 		}
 	}
+	// Карточки комментаторов — ОДНИМ вектором на весь ответ.
 	cards, err := i.groups.UsersByIDs(ctx, ids)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	byID := make(map[int64]domain.UserReal, len(cards))
+	byID := make(map[int64]bool, len(cards))
 	for _, c := range cards {
-		byID[c.ID] = c
+		byID[c.ID] = true
 	}
-	res := make(map[int64][]domain.UserReal, len(recent))
-	for root, users := range recent {
-		postID := postByRoot[root]
-		for _, u := range users {
-			// та же деградация, что и у userCard() (group.go): не нашли карточку —
-			// отдаём голый id, а не молча теряем комментатора из стека.
-			c, ok := byID[u]
-			if !ok {
-				c = domain.NewUser(u, domain.UserFlags{})
-			}
-			res[postID] = append(res[postID], c)
+	for _, u := range ids {
+		if !byID[u] {
+			// та же деградация, что и у userCard() (group.go): карточки нет —
+			// отдаём голую, а не молча теряем комментатора из стека.
+			cards = append(cards, domain.NewUser(u, domain.UserFlags{}))
 		}
 	}
-	return out, res, nil
+	for postID, root := range mirrors {
+		c, _ := i.msgs.CountThread(ctx, disc, root)
+		peers := make([]domain.Peer, 0, RecentRepliersLimit)
+		for _, u := range recent[root] {
+			peers = append(peers, domain.NewPeerUser(u))
+		}
+		out[postID] = domain.NewMessageReplies(c, disc, peers)
+	}
+	return out, cards, nil
 }
 
 // ViewCounts returns the current view count for each of the given channel post

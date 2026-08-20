@@ -154,9 +154,15 @@ type schemaChecker struct {
 	// omittedOK — обязательные параметры схемы, которых мы сознательно не
 	// производим (см. omittedWithoutSubject у медиа). Поле, а не глобальная
 	// карта: у каждой подсистемы свой список.
-	omittedOK  map[string][]string
-	unexpected []string
-	omitted    []string
+	omittedOK map[string][]string
+	// pendingSubject — ключи, у которых предмет в схеме ЕСТЬ, но объединение до
+	// него у нас ещё не доведено. НЕ то же самое, что additional: там наш
+	// собственный параметр (предмета в схеме нет вовсе), здесь — названный ДОЛГ.
+	// Разводить их обязательно: объявить долг клиентским параметром значило бы
+	// закрыть его на бумаге.
+	pendingSubject map[string][]string
+	unexpected     []string
+	omitted        []string
 }
 
 func (c *schemaChecker) walk(value any, path string) {
@@ -210,7 +216,10 @@ func (c *schemaChecker) walkObject(obj map[string]any, path string) {
 		if key == "pFlags" {
 			flags, _ := val.(map[string]any)
 			for flag := range flags {
-				if !booleanFlags[flag] {
+				// Клиентские булевы флаги оригинала (is_scheduled, unread и
+				// прочие из schema_additional_params.json) живут там же, где
+				// схемные, — сверщик обязан их признавать.
+				if !booleanFlags[flag] && !c.additional[predicate][flag] {
 					c.unexpected = append(c.unexpected,
 						fmt.Sprintf("%s.pFlags: %q не булев флаг конструктора %q", path, flag, predicate))
 				}
@@ -218,6 +227,10 @@ func (c *schemaChecker) walkObject(obj map[string]any, path string) {
 			continue
 		}
 
+		if contains(c.pendingSubject[predicate], key) {
+			c.walk(val, path+"."+key)
+			continue
+		}
 		if !wireParams[key] && !c.additional[predicate][key] {
 			c.unexpected = append(c.unexpected,
 				fmt.Sprintf("%s: ключ %q не описан ни схемой, ни надстройками конструктора %q", path, key, predicate))

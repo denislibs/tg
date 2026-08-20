@@ -276,7 +276,7 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	// см. usecase/chat/discussion_mirror.go): внутри PostComment комментарий
 	// тредится на id зеркала поста в группе обсуждения, но клиент про
 	// зеркало ничего не знает и сверяет thread_root_id с постом, который открыл.
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.uc, m))
+	writeMessage(w, r, h.uc, m)
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +296,11 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := messagesJSON(r.Context(), h.uc, msgs)
+	out, err := messagesJSON(r.Context(), h.uc, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
@@ -324,7 +328,7 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	counts, recent, err := h.uc.CommentCounts(r.Context(), chatID, postIDs)
+	replies, users, err := h.uc.CommentCounts(r.Context(), chatID, postIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -333,16 +337,18 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 	for seq, id := range bySeq {
 		seqByID[id] = seq
 	}
-	out := make(map[string]int, len(counts))
-	for id, n := range counts {
-		out[strconv.FormatInt(seqByID[id], 10)] = n
+	// Тред каждого поста — конструктором messageReplies; авторы последних
+	// комментариев внутри него это ССЫЛКИ на пиров, а карточки едут ОДНИМ
+	// вектором users, как в контейнере диалогов. Прежде карточка дублировалась
+	// в каждом посте.
+	out := make(map[string]domain.MessageReplies, len(replies))
+	for id, rep := range replies {
+		out[strconv.FormatInt(seqByID[id], 10)] = rep
 	}
-	// Авторы последних комментариев — под стек аватаров в футере поста.
-	rec := make(map[string][]domain.UserReal, len(recent))
-	for id, users := range recent {
-		rec[strconv.FormatInt(seqByID[id], 10)] = users
+	if users == nil {
+		users = []domain.UserReal{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"counts": out, "recent_repliers": rec})
+	writeJSON(w, http.StatusOK, map[string]any{"replies": out, "users": users})
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {

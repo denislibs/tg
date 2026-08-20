@@ -323,9 +323,21 @@ func (h *BotAPIHandler) File(w http.ResponseWriter, r *http.Request) {
 // botMessageResult — ответ метода, отправившего сообщение. Вид чата берётся из
 // самого чата: раньше он был прибит к "private" независимо от настоящего типа,
 // и бот, пишущий в группу, получал в ответ свою же группу как приватный чат.
+//
+// Конструктором схемы этот ответ НЕ становится — и это единственное законное
+// основание отступить: предмет здесь другой. Bot API — чужая ПУБЛИЧНАЯ
+// документация Telegram, фасад над MTProto, и его записи (плоские entities,
+// плоская клавиатура, chat вместо peer) обязаны читаться теми же клиентскими
+// библиотеками, что и у настоящего Telegram. То же решение уже принято для
+// разметки сущностей и клавиатур.
+//
+// А вот message_id был ДЕФЕКТОМ, а не отступлением: в Bot API это номер
+// сообщения В ЧАТЕ, а уезжал внутренний ключ строки — тот самый, который шаг B
+// с провода убрал. Здесь он остался незамеченным, потому что Bot API живёт
+// своими именами полей.
 func (h *BotAPIHandler) botMessageResult(ctx context.Context, msg domain.Message, chatID int64, text string) map[string]any {
 	res := map[string]any{
-		"message_id": msg.ID,
+		"message_id": msg.Seq,
 		"chat":       botAPIView{}.Chat(chatID, h.svc.BotChatType(ctx, chatID), ""),
 		"text":       text,
 	}

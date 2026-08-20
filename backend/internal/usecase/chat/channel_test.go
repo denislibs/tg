@@ -121,6 +121,17 @@ func (p *fakeChannelPublisher) lastPayload(t *testing.T) map[string]any {
 	return env.D
 }
 
+// lastMessage — САМО СООБЩЕНИЕ последнего кадра: кадр несёт его конструктором
+// под ключом `message`, как updateNewMessage у оригинала, а pts лежит рядом.
+func (p *fakeChannelPublisher) lastMessage(t *testing.T) map[string]any {
+	t.Helper()
+	m, ok := p.lastPayload(t)["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("в кадре нет сообщения: %+v", p.lastPayload(t))
+	}
+	return m
+}
+
 // groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
 // (the ChatRepo methods the channel usecase needs).
 //
@@ -342,8 +353,10 @@ func TestPostToChannel_EchoCarriesClientMsgID(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if got, _ := fpub.lastPayload(t)["client_msg_id"].(string); got != "opt-7" {
-		t.Fatalf("client_msg_id живого кадра = %q, want opt-7", got)
+	// Ключ сопоставления эха называется random_id — клиентским параметром
+	// оригинала, а не нашим client_msg_id.
+	if got, _ := fpub.lastMessage(t)["random_id"].(string); got != "opt-7" {
+		t.Fatalf("random_id живого кадра = %q, want opt-7", got)
 	}
 }
 
@@ -367,8 +380,9 @@ func TestChannelDifference_CarriesClientMsgID(t *testing.T) {
 	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
 		t.Fatalf("разбор payload: %v", err)
 	}
-	if got, _ := d["client_msg_id"].(string); got != "opt-8" {
-		t.Fatalf("client_msg_id в difference = %q, want opt-8", got)
+	msg, _ := d["message"].(map[string]any)
+	if got, _ := msg["random_id"].(string); got != "opt-8" {
+		t.Fatalf("random_id в difference = %q, want opt-8", got)
 	}
 }
 
@@ -384,8 +398,8 @@ func TestPostToChannel_NoClientMsgID_NoField(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if _, ok := fpub.lastPayload(t)["client_msg_id"]; ok {
-		t.Fatal("client_msg_id присутствует в кадре, хотя его не присылали")
+	if _, ok := fpub.lastMessage(t)["random_id"]; ok {
+		t.Fatal("random_id присутствует в кадре, хотя его не присылали")
 	}
 }
 
@@ -410,7 +424,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	}
 
 	// 2. уехали в живом кадре (иначе подписчик видит голый текст до перезагрузки)
-	raw, ok := fpub.lastPayload(t)["entities"]
+	raw, ok := fpub.lastMessage(t)["entities"]
 	if !ok {
 		t.Fatal("в живом кадре нет entities — форматирование поста теряется")
 	}
@@ -428,7 +442,8 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
 		t.Fatalf("разбор payload: %v", err)
 	}
-	if _, ok := d["entities"]; !ok {
+	dmsg, _ := d["message"].(map[string]any)
+	if _, ok := dmsg["entities"]; !ok {
 		t.Fatal("в difference нет entities — реплей разойдётся с живым кадром")
 	}
 }

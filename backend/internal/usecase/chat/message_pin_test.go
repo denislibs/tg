@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -28,26 +29,23 @@ func pinTestSetup(t *testing.T) (*Interactor, *store, int64) {
 	return in, s, chatID
 }
 
-// lastAction парсит JSON-экшен последнего сервисного сообщения чата.
-func lastAction(t *testing.T, s *store, chatID int64) map[string]any {
+// lastServicePill — последнее СЛУЖЕБНОЕ сообщение чата.
+func lastServicePill(t *testing.T, s *store, chatID int64) domain.Message {
 	t.Helper()
 	msgs := s.messages[chatID]
 	if len(msgs) == 0 {
 		t.Fatal("в чате нет сообщений")
 	}
 	last := msgs[len(msgs)-1]
-	if last.Type != "service" {
-		t.Fatalf("последнее сообщение не сервисное: %+v", last)
+	if last.Action == nil {
+		t.Fatalf("последнее сообщение не служебное: %+v", last)
 	}
-	var a map[string]any
-	if err := json.Unmarshal([]byte(last.Text), &a); err != nil {
-		t.Fatalf("экшен %q не JSON: %v", last.Text, err)
-	}
-	return a
+	return last
 }
 
-// Закрепление постит сервисное сообщение с автором и превью цели; открепление —
-// нет (парного экшена в Telegram не существует).
+// Закрепление постит служебное сообщение, у действия которого НЕТ НИ ОДНОГО
+// параметра: цель адресуется reply_to, превью строит клиент. Открепление
+// сообщения не постит — парного действия в схеме не существует.
 func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 	in, s, chatID := pinTestSetup(t)
 	ctx := context.Background()
@@ -59,27 +57,29 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 	if err := in.SetPin(ctx, chatID, msg.ID, 7, true); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
-	a := lastAction(t, s, chatID)
-	// Имени актора в экшене больше нет — только ссылка на него.
-	if a["action"] != "pin_message" || int64(a["actor_id"].(float64)) != 7 {
-		t.Fatalf("экшен = %v", a)
+	pill := lastServicePill(t, s, chatID)
+	if _, ok := pill.Action.(domain.MessageActionPinMessage); !ok {
+		t.Fatalf("действие = %#v, ждали messageActionPinMessage", pill.Action)
 	}
-	if _, ok := a["actor"]; ok {
-		t.Fatalf("имя актора уехало на провод: %v", a)
+	// Ни адреса цели, ни типа, ни имени медиа, ни обрезанного сервером текста:
+	// у конструктора параметров нет вовсе.
+	raw, err := json.Marshal(pill.Action)
+	if err != nil {
+		t.Fatalf("сериализация действия: %v", err)
 	}
-	// Цель адресуется ОДНИМ числом — номером в чате (msg_seq исчез вместе с
-	// внутренним ключом строки).
-	if _, ok := a["msg_seq"]; ok {
-		t.Fatalf("в экшене осталось второе число: %v", a)
+	if string(raw) != `{"_":"messageActionPinMessage"}` {
+		t.Fatalf("действие закрепления несёт параметры: %s", raw)
 	}
-	if int64(a["msg_id"].(float64)) != msg.Seq {
-		t.Fatalf("цель экшена = %v; want номер %d", a, msg.Seq)
+	if pill.Text != "" {
+		t.Fatalf("у пилюли остался текст: %q", pill.Text)
 	}
-	if a["msg_type"] != "text" || a["msg_text"] != "закрепи меня" {
-		t.Fatalf("превью = %v", a)
+	// Цель — reply_to самой пилюли, ОДНИМ числом (номер в чате).
+	if pill.ReplyToID == nil || *pill.ReplyToID != msg.Seq {
+		t.Fatalf("цель закрепления = %v; want номер %d", pill.ReplyToID, msg.Seq)
 	}
-	if _, ok := a["msg_name"]; ok {
-		t.Fatalf("у текста не должно быть msg_name: %v", a)
+	// Автор пилюли — тот, кто закрепил; отдельного actor_id в действии нет.
+	if pill.SenderID != 7 {
+		t.Fatalf("автор пилюли = %d; want 7", pill.SenderID)
 	}
 
 	before := len(s.messages[chatID])
@@ -91,9 +91,10 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 	}
 }
 
-// У аудио превью строится из ID3-тегов (tweb messageForReply: «название - исполнитель»),
-// а без тегов — из имени файла; подписи у сообщения нет → msg_text отсутствует.
-func TestSetPin_AudioPreviewFromTags(t *testing.T) {
+// Превью закреплённого сервер больше не собирает ВООБЩЕ: ни тегов трека, ни
+// имени файла, ни обрезанного до 100 символов текста. Клиент строит его той же
+// wrapMessageForReply, что рисует цитату ответа, — по ссылке reply_to.
+func TestSetPin_NoServerBuiltPreview(t *testing.T) {
 	in, s, chatID := pinTestSetup(t)
 	ctx := context.Background()
 	const mediaID int64 = 42
@@ -110,23 +111,14 @@ func TestSetPin_AudioPreviewFromTags(t *testing.T) {
 	if err := in.SetPin(ctx, chatID, msg.ID, 7, true); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
-	a := lastAction(t, s, chatID)
-	if a["msg_type"] != "audio" || a["msg_name"] != "Батырбек далбоеб - denis1488" {
-		t.Fatalf("превью аудио = %v", a)
+	pill := lastServicePill(t, s, chatID)
+	raw, _ := json.Marshal(pill.Action)
+	for _, tag := range []string{"denis1488", "track.mp3", "audio"} {
+		if strings.Contains(string(raw), tag) {
+			t.Fatalf("сервер снова склеил превью закреплённого: %s", raw)
+		}
 	}
-	if _, ok := a["msg_text"]; ok {
-		t.Fatalf("у аудио без подписи не должно быть msg_text: %v", a)
-	}
-
-	// Файл без тегов — имя файла.
-	const bare int64 = 43
-	s.seedMedia(bare, 7)
-	s.seedMediaDims(bare, MediaDims{FileName: "noname.mp3"})
-	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Type: "audio", MediaID: ptr(bare)})
-	if err := in.SetPin(ctx, chatID, m2.ID, 7, true); err != nil {
-		t.Fatalf("SetPin: %v", err)
-	}
-	if a := lastAction(t, s, chatID); a["msg_name"] != "noname.mp3" {
-		t.Fatalf("превью аудио без тегов = %v", a)
+	if pill.ReplyToID == nil || *pill.ReplyToID != msg.Seq {
+		t.Fatalf("цель закрепления = %v; want номер %d", pill.ReplyToID, msg.Seq)
 	}
 }

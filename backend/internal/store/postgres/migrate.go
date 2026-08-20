@@ -25,6 +25,14 @@ func MigrateDownTo(databaseURL string, version int64) error {
 	return withGoose(databaseURL, func(db *sql.DB) error { return goose.DownTo(db, "migrations", version) })
 }
 
+// MigrateUpTo накатывает миграции ДО версии version включительно. Нужна тестам
+// миграций по той же причине, что MigrateDownTo: тест конвертации проверяет
+// ОДНУ миграцию, и следующая, накатившаяся заодно, переписала бы те же строки
+// ещё раз — проверка стала бы проверять сумму, а не шаг.
+func MigrateUpTo(databaseURL string, version int64) error {
+	return withGoose(databaseURL, func(db *sql.DB) error { return goose.UpTo(db, "migrations", version) })
+}
+
 func withGoose(databaseURL string, run func(*sql.DB) error) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {

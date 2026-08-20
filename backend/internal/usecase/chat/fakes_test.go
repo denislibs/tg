@@ -1031,6 +1031,23 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entiti
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) UpdateAction(_ context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	now := time.Now()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.Action = action
+				m.EditedAt = &now
+				r.s.messages[chatID][idx] = m
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
 func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1294,30 +1311,6 @@ func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID int64
 	for _, m := range r.s.messages[chatID] {
 		if m.GroupedID != nil && *m.GroupedID == groupedID {
 			out = append(out, m)
-		}
-	}
-	return out, nil
-}
-
-// PostsByMirrors — обратный резолв к MirrorsByPosts: по id сообщений отдаёт
-// id постов, зеркалами которых они являются (перебор по PRIMARY KEY id, без
-// привязки к «текущей» группе обсуждения — см. комментарий у Postgres-версии).
-func (r fakeMsgs) PostsByMirrors(_ context.Context, ids []int64) (map[int64]int64, error) {
-	out := map[int64]int64{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	want := map[int64]bool{}
-	for _, id := range ids {
-		want[id] = true
-	}
-	for _, msgs := range r.s.messages {
-		for _, m := range msgs {
-			if m.IsDiscussionMirror && !m.Deleted && want[m.ID] && m.FwdFromMsgID != nil {
-				out[m.ID] = *m.FwdFromMsgID
-			}
 		}
 	}
 	return out, nil

@@ -97,7 +97,12 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not unlock")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
+	wire, err := messagesJSON(r.Context(), h.svc, []domain.Message{msg})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render message")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": wire[0], "balance": bal})
 }
 
 // GiftCatalog — GET /gifts/catalog: доступные подарки.
@@ -146,7 +151,12 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send gift")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
+	wire, err := messagesJSON(r.Context(), h.svc, []domain.Message{msg})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render message")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": wire[0], "balance": bal})
 }
 
 // ProfileGifts — GET /users/{userID}/gifts: подарки в профиле пользователя.

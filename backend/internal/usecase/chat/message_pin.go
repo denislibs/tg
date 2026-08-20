@@ -2,75 +2,10 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
-
-// pinPreviewMaxRunes — предел длины подписи в превью закреплённого
-// (tweb messageForReply: limitSymbols(text, 100)).
-const pinPreviewMaxRunes = 100
-
-// pinServiceText — JSON-экшен сервисного сообщения о закреплении (tweb
-// messageActionPinMessage). Помимо автора несёт разобранное превью закреплённого
-// (tweb messageForReply): адрес цели для ссылки-перехода, тип сообщения и
-// «имя» медиа с подписью — так клиент собирает фразу целиком, не заглядывая в
-// само сообщение (его может не быть в загруженном окне истории).
-//
-// Адрес цели — ОДНО число (msg_id = номер в чате). Пара {msg_id, msg_seq}
-// исчезла вместе с глобальным ключом строки; сам этот JSON внутри текста уйдёт
-// целиком вместе с решением Р3 (messageService.action: MessageAction), где у
-// messageActionPinMessage параметров нет вовсе — цель находится по reply_to.
-func pinServiceText(actorID int64, m domain.Message) string {
-	a := map[string]any{
-		"action":   "pin_message",
-		"actor_id": actorID,
-		"msg_id":   m.Seq,
-		"msg_type": m.Type,
-	}
-	if name := pinMediaName(m); name != "" {
-		a["msg_name"] = name
-	}
-	if m.Text != "" {
-		text := m.Text
-		if utf8.RuneCountInString(text) > pinPreviewMaxRunes {
-			text = string([]rune(text)[:pinPreviewMaxRunes])
-		}
-		a["msg_text"] = text
-	}
-	b, _ := json.Marshal(a)
-	return string(b)
-}
-
-// pinMediaName — «имя» медиа для превью (tweb messageForReply:234-239): у аудио
-// это теги «название - исполнитель», иначе имя файла; у документа — имя файла.
-// У остального медиа имени нет — клиент подставляет лейбл по типу сообщения.
-func pinMediaName(m domain.Message) string {
-	fileName := m.Media.FileName()
-	switch m.Type {
-	case "audio":
-		tags := make([]string, 0, 2)
-		if a, ok := m.Media.AudioAttr(); ok {
-			if a.Title != "" {
-				tags = append(tags, a.Title)
-			}
-			if a.Performer != "" {
-				tags = append(tags, a.Performer)
-			}
-		}
-		if len(tags) > 0 {
-			return strings.Join(tags, " - ")
-		}
-		return fileName
-	case "document":
-		return fileName
-	default:
-		return ""
-	}
-}
 
 // SetPin pins or unpins a message in a chat and fans out a pin_message update to
 // all members (so everyone's pinned bar updates live). Gated by the group's
@@ -144,12 +79,17 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	// Chat.Service.Group.UpdatedPinnedMessage/ActionPinnedNoText, ключа «открепил»
 	// не существует) — снимаем закрепление молча.
 	if pin {
-		pinned := []domain.Message{cur}
-		// Теги трека/имя файла лежат не в строке messages, а в мете медиа —
-		// подмешиваем той же ручкой, что и read-модель истории. Best-effort:
-		// без меты превью просто беднее (лейбл по типу).
-		_ = i.hydrateMedia(ctx, pinned)
-		i.postGroupService(ctx, chatID, userID, pinServiceText(userID, pinned[0]))
+		// messageActionPinMessage НЕ НЕСЁТ НИЧЕГО: ни адреса цели, ни превью.
+		// Цель — reply_to самого служебного сообщения, превью строит клиент той
+		// же wrapMessageForReply, что рисует цитату ответа и строку списка
+		// чатов. Прежде сервер клал в действие msg_id, msg_type, «имя» медиа и
+		// текст, обрезанный до 100 символов, — то есть склеивал за клиента
+		// фразу целиком.
+		target := cur.Seq
+		_, _ = i.Send(ctx, SendInput{
+			ChatID: chatID, SenderID: userID,
+			Action: domain.NewMessageActionPinMessage(), ReplyToID: &target,
+		})
 	}
 	return nil
 }

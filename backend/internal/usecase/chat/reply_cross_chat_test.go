@@ -42,19 +42,22 @@ func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 	if msg.ReplySnapshotName != "Автор Оригинала" {
 		t.Fatalf("snapshot name = %q", msg.ReplySnapshotName)
 	}
-	if msg.ReplySnapshotText != "исходный текст" {
-		t.Fatalf("snapshot text = %q", msg.ReplySnapshotText)
-	}
-	// В payload превью едет отдельными полями.
-	p := in.messageUpdatePayload(ctx, msg)
+	// В кадре ссылка едет messageReplyHeader.
+	wire, _ := in.messageUpdatePayload(ctx, msg)["message"].(map[string]any)
+	reply, _ := wire["reply_to"].(map[string]any)
 	// Источник — ПРИВАТНЫЙ чат: публичного ключа пира у него нет, поэтому
 	// ссылки в кадре быть не должно (иначе наружу уехал бы внутренний chats.id
-	// — ровно то, что шаг B из провода убрал). Снимок превью при этом на месте.
-	if _, ok := p["reply_to_peer_id"]; ok {
-		t.Fatalf("приватный источник отдал ссылку на пир: %v", p["reply_to_peer_id"])
+	// — ровно то, что шаг B из провода убрал). Недоступный оригинал выражается
+	// атрибуцией автора reply_from, а не снимком текста рядом.
+	if _, ok := reply["reply_to_peer_id"]; ok {
+		t.Fatalf("приватный источник отдал ссылку на пир: %v", reply["reply_to_peer_id"])
 	}
-	if p["reply_snapshot_name"] != "Автор Оригинала" || p["reply_snapshot_text"] != "исходный текст" {
-		t.Fatalf("payload snapshot = %v / %v", p["reply_snapshot_name"], p["reply_snapshot_text"])
+	from, _ := reply["reply_from"].(map[string]any)
+	if from["from_name"] != "Автор Оригинала" {
+		t.Fatalf("reply_from = %v", reply["reply_from"])
+	}
+	if _, ok := reply["reply_snapshot_text"]; ok {
+		t.Error("снимок чужого текста всё ещё уезжает в кадре")
 	}
 }
 
@@ -75,8 +78,8 @@ func TestReplyCrossChat_MediaSnapshotLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reply to media: %v", err)
 	}
-	if msg.ReplySnapshotText != "Фото" {
-		t.Fatalf("media snapshot label = %q, want Фото", msg.ReplySnapshotText)
+	if msg.ReplySnapshotName != "Автор" {
+		t.Fatalf("атрибуция автора недоступного оригинала = %q", msg.ReplySnapshotName)
 	}
 }
 
@@ -109,9 +112,9 @@ func TestReplyCrossChat_NoAccessForbidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reply without peer: %v", err)
 	}
-	if sent.ReplyToPeerID != nil || sent.ReplySnapshotText != "" {
+	if sent.ReplyToPeerID != nil || sent.ReplySnapshotName != "" {
 		t.Fatalf("номер без пира дотянулся до чужого чата: peer=%v snapshot=%q",
-			sent.ReplyToPeerID, sent.ReplySnapshotText)
+			sent.ReplyToPeerID, sent.ReplySnapshotName)
 	}
 }
 
@@ -128,9 +131,9 @@ func TestReply_SameChatUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normal reply: %v", err)
 	}
-	if msg.ReplyToPeerID != nil || msg.ReplySnapshotName != "" || msg.ReplySnapshotText != "" {
-		t.Fatalf("normal reply should have no snapshot: peer=%v name=%q text=%q",
-			msg.ReplyToPeerID, msg.ReplySnapshotName, msg.ReplySnapshotText)
+	if msg.ReplyToPeerID != nil || msg.ReplySnapshotName != "" {
+		t.Fatalf("normal reply should have no snapshot: peer=%v name=%q",
+			msg.ReplyToPeerID, msg.ReplySnapshotName)
 	}
 }
 
@@ -153,7 +156,7 @@ func TestHydrateReplies_CrossChatNotLeaked(t *testing.T) {
 		// (a) кросс-чат-ответ: снимок есть, ReplyToPeerID выставлен.
 		{ID: 100, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ1",
 			ReplyToID: &orig.Seq, ReplyToPeerID: &peer,
-			ReplySnapshotName: "Автор", ReplySnapshotText: "снимок"},
+			ReplySnapshotName: "Автор"},
 		// (b) тот же номер БЕЗ пира: выборка идёт по (chat_id, seq) этого чата,
 		// поэтому оригинал чужого чата недостижим — в нашем чате под этим
 		// номером лежит своё сообщение (local).

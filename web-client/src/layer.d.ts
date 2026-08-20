@@ -1072,7 +1072,11 @@ export namespace Message {
     uploadingFileName?: string[],
     storageKey?: MessagesStorageKey,
     repayRequest?: {id: number, messageCount: number},
-    effect_name?: string
+    effect_name?: string,
+    send_at?: number,
+    when_online?: boolean,
+    enc_body?: string,
+    destruct_at?: string
   };
 
   export type messageService = {
@@ -1760,7 +1764,8 @@ export namespace MessageAction {
     }>,
     reject_comment?: string,
     schedule_date?: number,
-    price?: StarsAmount
+    price?: StarsAmount,
+    channel_id?: PeerId
   };
 
   export type messageActionSuggestedPostSuccess = {

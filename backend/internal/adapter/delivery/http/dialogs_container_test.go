@@ -72,8 +72,10 @@ func TestListDialogs_Container_HTTP(t *testing.T) {
 	if len(body.Messages) != 1 || int64(body.Messages[0]["id"].(float64)) != sent.ID {
 		t.Fatalf("messages = %v; want последнее сообщение объектом", body.Messages)
 	}
-	if body.Messages[0]["text"] != "привет всем" {
-		t.Errorf("текст последнего сообщения = %v", body.Messages[0]["text"])
+	// Вектор messages контейнера наполняет ТОТ ЖЕ конструктор, что и история:
+	// временного проводного рендерера из delivery/http больше нет.
+	if body.Messages[0]["_"] != "message" || body.Messages[0]["message"] != "привет всем" {
+		t.Errorf("последнее сообщение = %v; want конструктор message", body.Messages[0])
 	}
 
 	// Тело группы — конструктор channel в chats. Ключ `chats` наконец означает

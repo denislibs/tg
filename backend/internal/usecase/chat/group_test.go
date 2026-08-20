@@ -922,13 +922,20 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 			t.Fatalf("group_create frame for %d = %d; want 1", uid, pub.countFor(uid))
 		}
 	}
-	// Сервисное сообщение несёт ССЫЛКУ на актора (actor_id), а не его имя:
-	// имя рисует клиент из своего кэша пиров.
-	if msgs := s.messages[id]; len(msgs) != 1 || msgs[0].Type != "service" ||
-		!strings.Contains(msgs[0].Text, `"action":"group_create"`) ||
-		!strings.Contains(msgs[0].Text, `"actor_id":7`) ||
-		strings.Contains(msgs[0].Text, "Алиса") {
-		t.Fatalf("group_create service msg: %+v", s.messages[id])
+	// Служебное действие — КОНСТРУКТОР, а не JSON внутри текста. Автор в нём не
+	// дублируется: он from_id самого сообщения. Название и список позванных —
+	// параметры, которых в старом действии не было вовсе.
+	msgs := s.messages[id]
+	if len(msgs) != 1 || msgs[0].Text != "" {
+		t.Fatalf("group_create service msg: %+v", msgs)
+	}
+	create, ok := msgs[0].Action.(domain.MessageActionChatCreate)
+	if !ok || create.Title != "Team" {
+		t.Fatalf("group_create action = %#v", msgs[0].Action)
+	}
+	// В users — те, кто РЕАЛЬНО добавлен: без создателя и без повторов.
+	if len(create.Users) != 2 || create.Users[0] != 8 || create.Users[1] != 9 {
+		t.Fatalf("group_create users = %v, ждали [8 9]", create.Users)
 	}
 
 	// Добавление: сервисное сообщение add_user доходит и новому участнику.
@@ -941,10 +948,12 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if pub.countFor(10) != 2 {
 		t.Fatalf("add_user+chat_update frames for new member = %d; want 2", pub.countFor(10))
 	}
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"add_user"`) ||
-		!strings.Contains(msgs[len(msgs)-1].Text, `"user_id":10`) ||
-		strings.Contains(msgs[len(msgs)-1].Text, "Дарья") {
-		t.Fatalf("add_user service msg: %s", msgs[len(msgs)-1].Text)
+	if msgs := s.messages[id]; func() bool {
+		add, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatAddUser)
+		// users — ВЕКТОР идентификаторов, а не одно число и не имя.
+		return !ok || len(add.Users) != 1 || add.Users[0] != 10
+	}() {
+		t.Fatalf("add_user service msg: %#v", msgs[len(msgs)-1].Action)
 	}
 
 	// Фото группы: владелец медиа с CHANGE_INFO ставит фото + сервисное edit_photo;
@@ -956,10 +965,13 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if card, _ := in.ChatCard(ctx, id, 7); card.PhotoID == nil || *card.PhotoID != 55 {
 		t.Fatalf("photo media id = %v; want 55", card.PhotoID)
 	}
-	// edit_photo несёт media_id нового фото (tweb messageActionChatEditPhoto) —
-	// клиент рисует круглую миниатюру под пилюлей.
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"edit_photo"`) {
-		t.Fatalf("edit_photo service msg: %s", msgs[len(msgs)-1].Text)
+	// Новая аватарка едет ВНУТРИ действия конструктором photo (собирается на
+	// границе из media_id сообщения), а не полем media_id рядом с действием.
+	if msgs := s.messages[id]; func() bool {
+		_, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatEditPhoto)
+		return !ok
+	}() {
+		t.Fatalf("edit_photo service msg: %#v", msgs[len(msgs)-1].Action)
 	} else if last := msgs[len(msgs)-1]; last.MediaID == nil || *last.MediaID != 55 {
 		t.Fatalf("edit_photo media_id = %v; want 55", last.MediaID)
 	}
@@ -1000,8 +1012,14 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.RemoveMember(ctx, id, 7, 8); err != nil {
 		t.Fatal(err)
 	}
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"kick_user"`) {
-		t.Fatalf("kick_user service msg: %s", msgs[len(msgs)-1].Text)
+	// «Выгнали» и «вышел сам» — ОДИН конструктор: различие выводит клиент по
+	// совпадению автора с целью, как appMessagesManager уточняет его до
+	// синтетического messageActionChatLeave.
+	if msgs := s.messages[id]; func() bool {
+		del, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatDeleteUser)
+		return !ok || del.UserID != 8 || msgs[len(msgs)-1].SenderID == 8
+	}() {
+		t.Fatalf("kick_user service msg: %#v", msgs[len(msgs)-1].Action)
 	}
 	svcCount := len(s.messages[id])
 	if err := in.RemoveMember(ctx, id, 7, 8); !errors.Is(err, domain.ErrNotFound) {
@@ -1107,11 +1125,14 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 		t.Fatalf("service messages after join = %d; want %d", len(msgs), before+1)
 	}
 	last := msgs[len(msgs)-1]
-	if last.Type != "service" ||
-		!strings.Contains(last.Text, `"action":"joined_by_link"`) ||
-		!strings.Contains(last.Text, `"actor_id":9`) ||
-		strings.Contains(last.Text, "Чарли") {
+	joined, ok := last.Action.(domain.MessageActionChatJoinedByLink)
+	if !ok || last.Text != "" {
 		t.Fatalf("joined_by_link service msg: %+v", last)
+	}
+	// inviter_id — СОЗДАТЕЛЬ ССЫЛКИ (7), а не вошедший (9): вошедший и так
+	// известен, он from_id самого сообщения. Долг шага A.
+	if joined.InviterID != 7 {
+		t.Fatalf("inviter_id = %d, ждали создателя ссылки 7, а не вошедшего", joined.InviterID)
 	}
 	if last.SenderID != 9 {
 		t.Fatalf("joined_by_link sender = %d; want 9 (the joiner)", last.SenderID)

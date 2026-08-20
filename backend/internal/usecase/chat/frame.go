@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -51,176 +50,85 @@ func frameChannelPts(t string, base map[string]any, pts int64) []byte {
 // withPeer — копия базового payload с ключом пира ПОЛУЧАТЕЛЯ. base общий для
 // всех получателей (он же маршалится в журнал) и никогда не мутируется: у
 // приватного диалога peer_id у двух сторон РАЗНЫЙ, см. peeraddr.go.
+//
+// Кадр с сообщением несёт его ВНУТРИ ключа `message` (тело — конструктор
+// схемы), и peer_id там ПАРАМЕТР САМОГО СООБЩЕНИЯ, а не поле конверта. Поэтому
+// у такого кадра ключ пира кладётся внутрь сообщения: положить его рядом
+// значило бы завести на конструкторе поле, которого в схеме нет.
 func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
 	d := make(map[string]any, len(base)+1)
 	for k, v := range base {
 		d[k] = v
 	}
+	if msg, ok := d[frameMessageKey].(map[string]any); ok {
+		withinMsg := make(map[string]any, len(msg)+1)
+		for k, v := range msg {
+			withinMsg[k] = v
+		}
+		withinMsg["peer_id"] = domain.NewPeer(peer)
+		d[frameMessageKey] = withinMsg
+		return d
+	}
 	d["peer_id"] = peer
 	return d
 }
 
+// frameMessageKey — ключ, под которым кадр несёт САМО СООБЩЕНИЕ. Форма взята у
+// схемы: там кадр с сообщением это updateNewMessage{message, pts, pts_count},
+// то есть сообщение вложено, а pts лежит рядом. Прежде поля сообщения лежали
+// вперемешку с полями конверта, и pts оказывался «ещё одним полем сообщения».
+const frameMessageKey = "message"
+
 // Payload-строители НЕ кладут ключ чата: он зависит от получателя и
 // приклеивается на выходе (withPeer / peerPayloads в updates_log.go).
+
+// messageUpdatePayload — тело кадра с сообщением: ОДИН конструктор схемы под
+// ключом `message` (решение Р5). Витрина HTTP отдаёт ровно его же —
+// Message.ToWire, второго сериализатора у сообщения больше нет.
 //
-// Сообщение адресуется ОДНИМ числом — ключ `id`, значение `seq` (номер в
-// чате). Пары {msg_id, seq} на проводе больше нет: глобальный messages.id —
-// ключ строки нашей базы, наружу он не выходит (см. usecase/chat/msgaddr.go).
-// Имя ключа взято из схемы: там идентификатор сообщения называется `id`.
+// Прежде здесь жила ВТОРАЯ форма, и расходилась она с витриной в обе стороны:
+// тут были sender_name, client_msg_id и reply_quote_*, там — views, forwards,
+// deleted, edited_at, reactions, star_reaction, web_page и reply_to.
 func (i *Interactor) messageUpdatePayload(ctx context.Context, m domain.Message) map[string]any {
 	i.hydrateMessagePeers(ctx, &m)
-	p := map[string]any{
-		"id":        m.Seq,
-		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
-		"entities": m.Entities,
-		"media_id": m.MediaID, "created_at": m.CreatedAt,
-		"reply_to_id":  m.ReplyToID,
-		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
-		"grouped_id":     m.GroupedID,
-		"thread_root_id": m.ThreadRootID,
-		"poll_id":        m.PollID,
-		"poll":           m.Poll,
-		"checklist_id":   m.ChecklistID,
-		"checklist":      m.Checklist,
-		"giveaway_id":    m.GiveawayID,
-		"giveaway":       m.Giveaway,
-		"gift_id":        m.GiftID,
-		"gift":           m.Gift,
-	}
-	// client_msg_id едет в echo нового сообщения: отправитель матчит его со своим
-	// оптимистичным баблом тем же ключом, что и message_ack (у остальных
-	// получателей такого ключа нет — поле для них безвредно).
-	if m.ClientMsgID != nil {
-		p["client_msg_id"] = *m.ClientMsgID
-	}
-	if m.ReplyMarkup != nil {
-		p["reply_markup"] = m.ReplyMarkup
-	}
-	// Атрибуция пересылки одним конструктором: автор в from_id:Peer, а не
-	// парой плоских fwd_from_user_id/fwd_from_peer_id, где второй у
-	// приватного источника нёс внутренний ключ chats.
-	if m.FwdFrom != nil {
-		p["fwd_from"] = m.FwdFrom
-	}
-	if m.Effect != "" {
-		p["effect"] = m.Effect
-	}
-	// Вложение live-кадра — ТОТ ЖЕ объект, что отдаёт history read model
-	// (chat_handler: messageJSON). Одна форма на обе витрины: иначе получатель
-	// (и echo отправителя) рисует файл заглушкой «media-N» без имени/размера,
-	// гифку — видео-баблом, а спойлер вообще не появляется, пока историю не
-	// перезагрузят (ровно тот класс дефектов, что был у send_as). Спойлер здесь
-	// живёт внутри media.pFlags — его отсутствие означало бы утечку того, что
-	// отправитель просил скрыть.
-	if m.Media != nil {
-		p["media"] = m.Media
-	}
-	if m.PaidMediaPrice != nil {
-		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
-	}
-	if m.FactCheck != nil {
-		p["factcheck"] = factCheckJSON(m.FactCheck)
-	}
-	if m.Transcription != nil && *m.Transcription != "" {
-		p["transcription"] = *m.Transcription
-	}
-	// Send-as: отображаемый автор (канал/группа). sender_id остаётся реальным —
-	// клиент рисует бабл от имени send_as, не теряя настоящего отправителя.
-	if m.SendAsChatID != nil {
-		p["send_as"] = sendAsJSON(m)
-	}
-	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
-	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.
-	if m.ReplyQuoteText != nil {
-		p["reply_quote_text"] = *m.ReplyQuoteText
-		p["reply_quote_offset"] = m.ReplyQuoteOffset
-	}
-	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
-	// (имя автора + текст/лейбл), т.к. получатель может не иметь к нему доступа.
-	if m.ReplyToPeerID != nil {
-		// Ссылка едет только когда источник — группа/канал: у приватного чата
-		// публичного ключа пира нет. Снимок превью при этом на месте, поэтому
-		// бабл рисуется и без ссылки.
-		if m.ReplyToPeer != nil {
-			p["reply_to_peer_id"] = m.ReplyToPeer
-		}
-		p["reply_snapshot_name"] = m.ReplySnapshotName
-		p["reply_snapshot_text"] = m.ReplySnapshotText
-	}
-	if m.GeoLat != nil && m.GeoLng != nil {
-		p["geo"] = geoJSON(m)
-	}
-	if m.ContactUserID != nil {
-		p["contact"] = contactJSON(m)
-	}
-	if m.EncBody != nil {
-		p["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
-		p["ttl_seconds"] = m.TTLSeconds
-		p["destruct_at"] = m.DestructAt
-	}
-	return p
+	// Корень треда наружу — НОМЕР в том же пире (ЕДИНАЯ точка перевода, см.
+	// ExternalizeThreadRoots). Прежде каждый вызывающий дописывал ключ
+	// thread_root_id в готовый payload сам, и забыть его было нечем не
+	// прикрыто.
+	m.ThreadRootID = i.externalThreadRoot(ctx, m)
+	return map[string]any{frameMessageKey: m.ToWireMap(i.messageContext(ctx, m, domain.NullPeerID))}
 }
 
-// sendAsJSON — представление отображаемого автора send-as (peer_id + снимок
-// title/photo). Реальный sender_id сериализуется отдельным полем и не теряется.
+// messageContext — то, чего строка messages не знает о себе сама. Ключ пира у
+// кадра приклеивается позже (withPeer), поэтому здесь допустим NullPeerID.
 //
-// Снимок остался ПЛОСКИМ сознательно: в оригинале это message.from_id:Peer
-// плюс тело чата в векторе chats того же ответа, то есть переделка формы
-// СООБЩЕНИЯ, а не пира. Внутреннего ключа здесь при этом нет — peer_id
-// знаковый (шаг B), — так что долга по адресации не остаётся; форма
-// приводится к оригиналу вместе с подсистемой сообщений.
-func sendAsJSON(m domain.Message) map[string]any {
-	s := map[string]any{"peer_id": domain.ToPeerID(*m.SendAsChatID, true)}
-	if m.SendAsTitle != "" {
-		s["title"] = m.SendAsTitle
+// Post берётся из ВИДА ЧАТА: «это пост канала» — свойство чата, и прежде тот же
+// факт выражала целая отдельная проводная форма (channelPostPayload).
+func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer domain.PeerID) domain.MessageContext {
+	out := domain.MessageContext{}
+	if peer != domain.NullPeerID {
+		out.Peer = domain.NewPeer(peer)
 	}
-	if m.SendAsPhotoID != nil {
-		s["photo_id"] = *m.SendAsPhotoID
-	}
-	return s
-}
-
-// geoJSON — представление гео-сообщения: точка + опционально venue (title/address)
-// и live location (live_period/heading/stopped + edited_at = время обновления).
-func geoJSON(m domain.Message) map[string]any {
-	g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
-	if m.GeoTitle != nil {
-		g["title"] = *m.GeoTitle
-	}
-	if m.GeoAddress != nil {
-		g["address"] = *m.GeoAddress
-	}
-	if m.GeoLivePeriod != nil {
-		g["live_period"] = *m.GeoLivePeriod
-		g["live_stopped"] = m.GeoLiveStopped
-		if m.GeoHeading != nil {
-			g["heading"] = *m.GeoHeading
-		}
-		if m.EditedAt != nil {
-			g["edited_at"] = *m.EditedAt
+	if i.chats != nil {
+		if typ, err := i.chats.ChatType(ctx, m.ChatID); err == nil {
+			out.Post = typ == domain.ChatTypeChannel
 		}
 	}
-	return g
+	return out
 }
 
 // geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат
 // трансляции): клиент правит гео открытого бабла без перезагрузки истории.
+//
+// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри geo: одно и то
+// же edited_at прежде значило и «время правки» на верхнем уровне, и «время
+// обновления координат» внутри гео — два смысла на одну колонку.
 func geoLiveUpdatePayload(m domain.Message) map[string]any {
-	return map[string]any{
-		"id": m.Seq, "geo": geoJSON(m),
+	p := map[string]any{"id": m.Seq, "geo": m.ToWire(domain.MessageContext{}).(domain.MessageReal).Geo}
+	if m.EditedAt != nil {
+		p["edit_date"] = m.EditedAt.Unix()
 	}
-}
-
-// contactJSON — представление контакта сообщения (снимок имени/телефона).
-func contactJSON(m domain.Message) map[string]any {
-	c := map[string]any{"user_id": *m.ContactUserID}
-	if m.ContactName != nil {
-		c["name"] = *m.ContactName
-	}
-	if m.ContactPhone != nil {
-		c["phone"] = *m.ContactPhone
-	}
-	return c
+	return p
 }
 
 // factCheckJSON — представление «проверки фактов» для клиента (nil → nil).
@@ -247,14 +155,26 @@ func factCheckUpdatePayload(m domain.Message) map[string]any {
 	}
 }
 
-// editUpdatePayload is the body of an "edit_message" update/frame. reply_markup
-// rides along so a bot editing a message's keyboard updates the bubble live.
+// editUpdatePayload — тело кадра edit_message: ПАТЧ уже нарисованного бабла, а
+// не сообщение целиком. Имена ключей здесь схемные (message/edit_date), но сам
+// кадр конструктором Message не является — в схеме это updateEditMessage,
+// несущий сообщение целиком, и приведение кадров-патчей к нему принадлежит
+// подсистеме ОБНОВЛЕНИЙ, а не сообщения. Названный остаток шага.
+//
+// action едет здесь потому, что правка служебного сообщения существует ровно
+// одна — принятие предложенного фото, и меняется в ней только действие.
 func editUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
-		"id":   m.Seq,
-		"text": m.Text, "entities": m.Entities, "edited_at": m.EditedAt,
+		"id":      m.Seq,
+		"message": m.Text, "entities": m.Entities,
+	}
+	if m.EditedAt != nil {
+		p["edit_date"] = m.EditedAt.Unix()
 	}
 	p["reply_markup"] = m.ReplyMarkup // may be null → keyboard removed
+	if m.Action != nil {
+		p["action"] = m.Action
+	}
 	return p
 }
 
