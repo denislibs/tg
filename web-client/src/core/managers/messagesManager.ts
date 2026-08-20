@@ -5,14 +5,16 @@ import { HttpError, type RestClient } from '../net/restClient'
 export interface CalendarDay {
   /** полночь дня, unix-секунды (UTC) */
   day: number
-  msg_id: number
-  seq: number
+  /** НОМЕР сообщения этого дня (серверное пространство — как приехало) */
+  id: number
   media_id: number
   type: string
   /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
   has_thumb: boolean
 }
-import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, fromNewMessageEvt, deriveOut, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { getThreadRootId, mapMyMessage, mapGeo, mapWebPage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
+import { getPeerId } from '../peers/peerId'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
@@ -32,15 +34,16 @@ export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReaction
 
 export interface HistoryArgs {
   peerId: number
-  offsetSeq?: number // reference seq; 0 = newest
+  /** опорный НОМЕР (клиентское пространство); 0 — самое новое */
+  offsetId?: number
   addOffset?: number // >0 older (inclusive), <=0 newer
   limit?: number
-  /** окно треда (форум-топик / комментарии): id корневого сообщения */
+  /** окно треда (форум-топик / комментарии): номер корневого сообщения */
   threadRoot?: number
 }
 
 export interface HistoryResult {
-  messages: Message[] // ascending (oldest-first) for top→bottom rendering
+  messages: MyMessage[] // ascending (oldest-first) for top→bottom rendering
   count: number // rows returned by the last fetch (or cached count)
   reachedTop: boolean
   reachedBottom: boolean
@@ -66,15 +69,16 @@ export interface MessagesDeps {
   decryptSecret?: (peerId: number, encBody: string) => Promise<{ text: string; entities?: unknown[]; media?: SecretMedia } | null>
   /** id текущего пользователя — воркеру нужен, чтобы кэшировать `mine` реакций
    * (событие reaction несёт user_id реагирующего, а не флаг «моё») и чтобы
-   * выводить `Message.out` на границе маппинга. Разрешается лениво (воркер зовёт
-   * /me), поэтому геттер, а не значение. */
+   * уточнять служебное действие до синтетического конструктора («Вы
+   * присоединились» против «X присоединился», `refineMessageAction`).
+   * Разрешается лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
   /** Гейт «личность уже известна» (workerCore: гидрация `me` с диска / первый
-   *  setMe). Сетевые пути, отдающие сообщения, ждут его ПЕРЕД маппингом: `out`
-   *  выводится сравнением с `getMeId()`, а страница истории, обслуженная раньше
-   *  ответа /me, уехала бы вкладке с out=false у ВСЕХ сообщений (молчаливая
-   *  регрессия). Опционален: юнит-тесты кэш-методов собирают менеджер одним
-   *  `rest` — без гейта маппинг идёт сразу, как раньше. */
+   *  setMe). Сетевые пути, отдающие сообщения, ждут его ПЕРЕД маппингом:
+   *  уточнение служебного действия сравнивает автора с `getMeId()`, а страница
+   *  истории, обслуженная раньше ответа /me, уехала бы вкладке с чужой
+   *  формулировкой пилюли. Опционален: юнит-тесты кэш-методов собирают менеджер
+   *  одним `rest` — без гейта маппинг идёт сразу. */
   meReady?: () => Promise<void>
   /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
    * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
@@ -97,39 +101,38 @@ export interface MessagesDeps {
 }
 
 export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
-  // ── Граница маппинга: здесь на сообщении появляется `out` ───────────────────
-  // Порт tweb `message.pFlags.out` — свойство самого сообщения, а не вывод
-  // витрины. Ставится ИМЕННО ЗДЕСЬ, а не в `put()`: `put` — единственный вход в
-  // SSOT, но не единственный ВЫХОД сообщений наружу. Мимо `put` идут `getAround`
-  // и офлайн-ветка `getHistory`, а `mediaHistory`/`searchMessages`/`searchGlobal`/
-  // `listPins`/`threadMessages`/`sendScheduledNow` возвращают сообщения, вообще
-  // не кладя их в SSOT.
-  const withOut = (m: Message): Message => ({ ...m, out: deriveOut(m, getMeId?.() ?? null) })
-  const mapOne = (r: RawMessage): Message => withOut(mapMessage(r))
-  // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути, у
-  // которых `out` выводится впервые. `cacheLive`/`insertPending` синхронны и
-  // ждать не могут: живой кадр приходит по уже поднятому WS, а неотправленный
-  // бабл заводит сам пользователь — оба заведомо позже гидрации `me`, которая
-  // стартует в `workerCore.start()` до подключения сокета.
+  // ── Граница маппинга ────────────────────────────────────────────────────────
+  // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
+  // сообщения от лица канала автором на проводе становится сам канал, и прежней
+  // формулы клиента «автор это я» вывести стало не из чего. Здесь остались
+  // перевод номеров в клиентское пространство и уточнение служебного действия —
+  // и то и другое делает `mapMyMessage`.
+  const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
+  // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути.
+  // `cacheLive`/`insertPending` синхронны и ждать не могут: живой кадр приходит
+  // по уже поднятому WS, а неотправленный бабл заводит сам пользователь — оба
+  // заведомо позже гидрации `me`, которая стартует в `workerCore.start()` до
+  // подключения сокета.
   const whenMeReady = meReady ?? (() => Promise.resolve())
-  const mapPage = async (list: RawMessage[] | undefined): Promise<Message[]> => {
+  const mapPage = async (list: RawMyMessage[] | undefined): Promise<MyMessage[]> => {
     await whenMeReady()
     return (list ?? []).map(mapOne)
   }
-  const mapNet = async (r: RawMessage): Promise<Message> => {
+  const mapNet = async (r: RawMyMessage): Promise<MyMessage> => {
     await whenMeReady()
     return mapOne(r)
   }
-  // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
-  // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
-  // (UI покажет плейсхолдер). Живые сообщения дешифруются в workerCore.ts.
-  async function decryptPage(list: Message[]): Promise<Message[]> {
+  // История секретного чата приходит с REST как enc_body + пустой текст —
+  // расшифровываем страницу до отдачи в UI. Без ключа текст остаётся пустым, но
+  // secret:true проставлен (UI покажет плейсхолдер). Живые сообщения
+  // дешифруются в workerCore.ts.
+  async function decryptPage(list: MyMessage[]): Promise<MyMessage[]> {
     if (!decryptSecret) return list
     return Promise.all(list.map(async (m) => {
-      if (!m.encBody) return m
-      const dec = await decryptSecret(m.peerId, m.encBody)
+      if (m._ !== 'message' || !m.enc_body) return m
+      const dec = await decryptSecret(m.peerId, m.enc_body)
       return dec
-        ? { ...m, text: dec.text, entities: (dec.entities as Message['entities']) ?? m.entities, secret: true, secretMedia: dec.media ?? m.secretMedia }
+        ? { ...m, message: dec.text, entities: (dec.entities as MessageReal['entities']) ?? m.entities, secret: true, secretMedia: dec.media ?? m.secretMedia }
         : { ...m, secret: true }
     }))
   }
@@ -141,7 +144,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
   // по окну, и тред-сообщение дублировало объект между основным окном и окном
   // треда; живые апдейты приходилось раскатывать по всем окнам (keysOf).
   const slices = new Map<string, SlicedArray<number>>()
-  const msgsByChat = new Map<number, Map<number, Message>>()
+  const msgsByChat = new Map<number, Map<number, MyMessage>>()
   const hkey = (peerId: number, threadRoot?: number | null): string =>
     threadRoot ? `${peerId}:${threadRoot}` : String(peerId)
   // Ключи-ОКНА чата (основное + треды) — для операций над срезами (slices).
@@ -156,60 +159,56 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
   // peerId из ключа истории ("peerId" / "peerId:root") — для персиста по чату.
   const peerIdOf = (key: string): number => parseInt(key, 10)
   // Единая по чату Map сообщений (SSOT воркера). Все окна чата читают/пишут сюда.
-  const msgsFor = (peerId: number): Map<number, Message> => {
+  const msgsFor = (peerId: number): Map<number, MyMessage> => {
     let c = msgsByChat.get(peerId)
     if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
     return c
   }
   // Совместимость: сайты истории оперируют «кэшем окна» — теперь это единая
   // по чату Map (окно определяется срезом `slices`, а не отдельной Map).
-  const cacheFor = (key: string): Map<number, Message> => msgsFor(peerIdOf(key))
-  const put = (key: string, msgs: Message[]) => {
+  const cacheFor = (key: string): Map<number, MyMessage> => msgsFor(peerIdOf(key))
+  const put = (key: string, msgs: MyMessage[]) => {
     const c = msgsFor(peerIdOf(key))
-    for (const m of msgs) c.set(m.seq, m)
+    for (const m of msgs) c.set(m.id, m)
     // Write-through в офлайн-стор: put — единственный путь входа/обновления
     // сообщений в SSOT (страницы истории, отправка, live, пересылка, правки),
     // поэтому персист здесь покрывает их все.
     if (msgs.length) void saveMessages(peerIdOf(key), msgs)
   }
-  // Точечно обновить одно сообщение чата в SSOT + персист. match — по id/вложенному
-  // объекту (события реакций/опросов/read несут msg_id, а не seq). upd строит новую
-  // версию. Идемпотентно, единый проход по одной Map (раньше — по всем окнам).
-  const patchMsg = (peerId: number, match: (m: Message) => boolean, upd: (m: Message) => Message | null): void => {
+  // Точечно обновить одно сообщение чата в SSOT + персист. Идентичность — ОДНО
+  // число, поэтому чаще всего хватает прямого доступа по ключу; `match` остаётся
+  // ради обновлений, адресованных не номером, а вложенным объектом (опрос,
+  // чек-лист, розыгрыш — у них свои id).
+  const patchMsg = (peerId: number, match: (m: MyMessage) => boolean, upd: (m: MyMessage) => MyMessage | null): void => {
     const c = msgsByChat.get(peerId)
     if (!c) return
-    for (const [seq, m] of c) {
+    for (const [id, m] of c) {
       if (!match(m)) continue
       const n = upd(m) // null — применять нечего (идемпотентное эхо своего действия)
       if (n === null) return
-      c.set(seq, n)
+      c.set(id, n)
       void saveMessages(peerId, [n])
       return
     }
   }
-  // Удалить сообщение из SSOT + снять его seq из всех окон-срезов чата + персист.
+  // Удалить сообщение из SSOT + снять его номер из всех окон-срезов чата +
+  // персист. Прежде здесь стоял ПОЛНЫЙ СКАН по Map: метод принимал глобальный
+  // ключ строки, а Map ключевалась номером в чате, и одно приходилось переводить
+  // в другое. Числа свелись к одному — перевода больше нет.
   const evictMsg = (peerId: number, msgId: number): void => {
     const c = msgsByChat.get(peerId)
-    let seq: number | undefined
-    if (c) for (const [s, m] of c) if (m.id === msgId) { seq = s; c.delete(s); break }
-    if (seq === undefined) return
-    for (const k of winKeysOf(peerId)) slices.get(k)?.delete(seq)
-    void deletePersistedMessage(peerId, seq)
+    if (!c?.delete(msgId)) return
+    for (const k of winKeysOf(peerId)) slices.get(k)?.delete(msgId)
+    void deletePersistedMessage(peerId, msgId)
   }
-  // Ключи ВСЕХ окон чата (основное + треды), где сообщение сейчас видно (его seq
-  // есть в срезе) — нужно операциям patch/remove (Stage 1B.3, Task 3). Важный
-  // нюанс: patchMsg выше мутирует ОДНУ копию в единой SSOT-Map чата и
-  // останавливается на первом совпадении, а сторный patchChat переигрывает
-  // мутацию по ВСЕМ окнам чата (основному и тредам) — без этого перечисления
-  // операция дошла бы только до окна из первого совпавшего среза, и окно треда
-  // осталось бы со старыми данными до следующей перезагрузки.
+  // Ключи ВСЕХ окон чата (основное + треды), где сообщение сейчас видно (его
+  // номер есть в срезе) — нужно операциям patch/remove (Stage 1B.3, Task 3).
+  // Важный нюанс: patchMsg выше мутирует ОДНУ копию в единой SSOT-Map чата, а
+  // сторный patchChat переигрывает мутацию по ВСЕМ окнам чата (основному и
+  // тредам) — без этого перечисления операция дошла бы только до одного окна.
   const opWindowsFor = (peerId: number, msgId: number): string[] => {
-    const c = msgsByChat.get(peerId)
-    if (!c) return []
-    let seq: number | undefined
-    for (const [s, m] of c) if (m.id === msgId) { seq = s; break }
-    if (seq === undefined) return []
-    return winKeysOf(peerId).filter((k) => slices.get(k)?.findSlice(seq!))
+    if (!msgsByChat.get(peerId)?.has(msgId)) return []
+    return winKeysOf(peerId).filter((k) => slices.get(k)?.findSlice(msgId))
   }
   // Удаление сообщения → remove-операции по всем окнам, где оно было видно.
   // Общая точка входа для WS-пути (cacheDelete, funnel воркера) и RPC-пути
@@ -273,9 +272,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
      * Секретные расшифровываются тем же `decryptPage`, что и страница истории:
      * ключ живёт в этом же воркере, второй копии правила не заводим.
      */
-    async saveApiMessages(list: RawMessage[] | undefined): Promise<Message[]> {
+    async saveApiMessages(list: RawMyMessage[] | undefined): Promise<MyMessage[]> {
       const mapped = await decryptPage(await mapPage(list))
-      const byPeer = new Map<number, Message[]>()
+      const byPeer = new Map<number, MyMessage[]>()
       for (const m of mapped) {
         const arr = byPeer.get(m.peerId)
         if (arr) arr.push(m)
@@ -294,30 +293,30 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
      * Синхронный: разрешение ссылки `top_message` идёт по УЖЕ положенному в
      * SSOT (см. `saveApiMessages` выше), а не ходит в сеть.
      */
-    getMessageByPeer(peerId: number, seq: number): Message | undefined {
+    getMessageByPeer(peerId: number, seq: number): MyMessage | undefined {
       return seq ? msgsByChat.get(peerId)?.get(seq) : undefined
     },
 
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
-      const { peerId, offsetSeq = 0, addOffset = 0, limit = 40, threadRoot } = args
+      const { peerId, offsetId = 0, addOffset = 0, limit = 40, threadRoot } = args
       const key = hkey(peerId, threadRoot)
       const sa = sliceFor(key)
       const c = cacheFor(key)
 
       // --- cache check (mirrors tweb appMessagesManager.getHistory) ---
-      const have = sa.sliceMe(offsetSeq, addOffset, limit)
+      const have = sa.sliceMe(offsetId, addOffset, limit)
       const pagingOlder = addOffset > 0
-      const pagingNewer = addOffset <= 0 && offsetSeq !== 0
+      const pagingNewer = addOffset <= 0 && offsetId !== 0
       const cacheHit =
         have &&
         (have.slice.length >= limit ||
           (have.fulfilled & SliceEnd.Both) === SliceEnd.Both ||
           (pagingOlder && (have.fulfilled & SliceEnd.Top) === SliceEnd.Top) ||
-          ((pagingNewer || offsetSeq === 0) && (have.fulfilled & SliceEnd.Bottom) === SliceEnd.Bottom))
+          ((pagingNewer || offsetId === 0) && (have.fulfilled & SliceEnd.Bottom) === SliceEnd.Bottom))
 
       if (cacheHit && have) {
         const seqsDesc = Array.from(have.slice) // descending
-        const msgs = seqsDesc.map((s) => c.get(s)).filter((m): m is Message => !!m)
+        const msgs = seqsDesc.map((s) => c.get(s)).filter((m): m is MyMessage => !!m)
         const asc = msgs.slice().reverse()
         // reachedTop/Bottom must reflect the REAL ends of history, not `fulfilled`
         // (which only means the requested page had enough cached rows). Using
@@ -333,25 +332,38 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       }
 
       // --- network fetch ---
-      let r: { messages: RawMessage[]; count: number }
+      let r: { messages: RawMyMessage[]; count: number }
       try {
-        r = await rest.get<{ messages: RawMessage[]; count: number }>(
+        r = await rest.get<{ messages: RawMyMessage[]; count: number }>(
           `/chats/${peerId}/history`,
-          { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
+          // ГРАНИЦА: наружу уходят СЕРВЕРНЫЕ номера. Ноль означает «самое новое»
+          // и остаётся нулём — приведение идемпотентно.
+          { offset_id: getServerMessageId(offsetId), add_offset: addOffset, limit, ...(threadRoot ? { thread_root: getServerMessageId(threadRoot) } : {}) },
         )
       } catch (e) {
         // Сеть недоступна (fetch reject, не HttpError): отдаём персистнутую историю
         // основного окна чата (тред офлайн не поднимаем — его срез не хранится
         // отдельно). Сидим кэш+срез напрямую (минуя put, чтобы не перезаписывать).
         if (!(e instanceof HttpError) && !threadRoot) {
-          // `out` ПЕРЕСЧИТЫВАЕМ, а не берём с диска: сохранённое значение
-          // привязано к сессии, а офлайн-стор её переживает (разбор — докблок
-          // поля `out` в core/models.ts).
-          await whenMeReady()
-          const persisted = (await loadMessages(peerId)).map(withOut)
+          // Гейта `me` здесь НЕТ, и это не упущение: ветка ничего не выводит из
+          // личности. Раньше выводила — пересчитывала `out`, потому что бэкенд
+          // флага не отдавал; теперь `pFlags.out` производит СЕРВЕР (решение Р7
+          // отменено), и пересчитывать нечего. `await whenMeReady()` тут стал бы
+          // строкой, удаление которой не красит ни одного теста и ничего не
+          // ломает, — такую держать нельзя.
+          //
+          // НАЗВАННЫЙ ОСТАТОК (не этого шага): всё, что зависит от того, КТО
+          // смотрит, — и `pFlags.out`, и уточнённое служебное действие
+          // (`refineMessageAction`) — сохраняется на диск вместе с сессией, а
+          // офлайн-стор её переживает. Чинится это не пересчётом отдельных
+          // полей при чтении (уточнённое действие обратно в серверное уже не
+          // разворачивается), а тем, чтобы история прошлого аккаунта на диске
+          // не оставалась: `persist.clearAll` в useAuthGate срабатывает только
+          // при migrateTo === null.
+          const persisted = await loadMessages(peerId)
           if (persisted.length) {
-            for (const m of persisted) c.set(m.seq, m)
-            const seqsDesc = persisted.map((m) => m.seq).sort((a, b) => b - a)
+            for (const m of persisted) c.set(m.id, m)
+            const seqsDesc = persisted.map((m) => m.id).sort((a, b) => b - a)
             const inserted = sa.insertSlice(seqsDesc)
             if (inserted) inserted.setEnd(SliceEnd.Bottom) // низ = последнее известное
             return { messages: persisted.slice(), count: persisted.length, reachedTop: false, reachedBottom: true, cached: true }
@@ -363,7 +375,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
-      const seqsDesc = fetched.map((m) => m.seq).sort((a, b) => b - a)
+      const seqsDesc = fetched.map((m) => m.id).sort((a, b) => b - a)
       const inserted = seqsDesc.length ? sa.insertSlice(seqsDesc) : sa.first
 
       // end detection: a short page means we hit the end in the paging direction.
@@ -373,7 +385,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       let reachedTop = false
       let reachedBottom = false
       if (inserted) {
-        if (offsetSeq === 0) {
+        if (offsetId === 0) {
           inserted.setEnd(SliceEnd.Bottom) // newest page always includes the bottom
           reachedBottom = true
           if (short) { inserted.setEnd(SliceEnd.Top); reachedTop = true }
@@ -385,61 +397,63 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       }
 
       // return ascending; for an older fetch we filter out the inclusive overlap
-      // (caller passes offsetSeq=oldestLoaded with addOffset=1)
-      let asc = fetched.slice().sort((a, b) => a.seq - b.seq)
-      if (pagingOlder) asc = asc.filter((m) => m.seq < offsetSeq)
+      // (caller passes offsetId=oldestLoaded with addOffset=1)
+      let asc = fetched.slice().sort((a, b) => a.id - b.id)
+      if (pagingOlder) asc = asc.filter((m) => m.id < offsetId)
 
       return { messages: asc, count: r.count, reachedTop, reachedBottom, cached: false }
     },
 
-    async sendMessage(args: SendArgs): Promise<Message> {
-      const created = await rest.post<RawMessage>(`/chats/${args.peerId}/messages`, {
+    async sendMessage(args: SendArgs): Promise<MyMessage> {
+      const created = await rest.post<RawMyMessage>(`/chats/${args.peerId}/messages`, {
         type: 'text',
         text: args.text,
         entities: args.entities ?? null,
         client_msg_id: args.clientMsgId,
-        reply_to_id: args.replyToId ?? null,
+        // ГРАНИЦА: номера, уходящие на сервер, приводятся к серверным.
+        reply_to_id: args.replyToId != null ? getServerMessageId(args.replyToId) : null,
         reply_to_peer_id: args.replyToPeerId ?? null,
         media_id: args.mediaId ?? null,
-        thread_root_id: args.threadRootId ?? null,
+        thread_root_id: args.threadRootId != null ? getServerMessageId(args.threadRootId) : null,
       })
       const m = await mapNet(created)
+      const root = getThreadRootId(m)
       // Кладём и в основное окно чата, и в окно треда (если это тред-сообщение).
-      for (const key of m.threadRootId ? [hkey(args.peerId), hkey(args.peerId, m.threadRootId)] : [hkey(args.peerId)]) {
+      for (const key of root ? [hkey(args.peerId), hkey(args.peerId, root)] : [hkey(args.peerId)]) {
         put(key, [m])
         const sa = sliceFor(key)
         // a sent message is the newest — push to the bottom end if we hold it
-        if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+        if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.id)) sa.unshift(m.id)
       }
       return m
     },
 
     // Edit a message's text (author only, server-enforced). Returns the updated
     // message and refreshes the cache entry.
-    async editMessage(peerId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message> {
-      const updated = await rest.patch<RawMessage>(`/chats/${peerId}/messages/${msgId}`, { text, entities: entities ?? null })
+    async editMessage(peerId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<MyMessage> {
+      const updated = await rest.patch<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, { text, entities: entities ?? null })
       const m = await mapNet(updated)
       // upsert правки в SSOT (только если сообщение уже загружено в чат).
-      if (msgsFor(peerId).has(m.seq)) put(hkey(peerId), [m])
+      if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
       return m
     },
 
     // «Проверка фактов» (Telegram editFactCheck): прикрепить/изменить блок на
     // сообщении канала (право проверяет бэк — автор/админ канала). Возвращает
     // обновлённое сообщение и патчит SSOT.
-    async setFactCheck(peerId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message> {
-      const updated = await rest.post<RawMessage>(`/chats/${peerId}/messages/${msgId}/factcheck`, {
+    async setFactCheck(peerId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<MyMessage> {
+      const updated = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`, {
         text, entities: entities ?? null, country: country ?? '',
       })
       const m = await mapNet(updated)
-      if (msgsFor(peerId).has(m.seq)) put(hkey(peerId), [m])
+      if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
       // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
       return m
     },
 
     // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит SSOT + эхо.
     async removeFactCheck(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${msgId}/factcheck`)
+      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`)
       patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, factCheck: undefined }))
       // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
       return r
@@ -458,7 +472,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       // оптимистично до REST: сервер может отклонить удаление (напр. «для всех»
       // после окна времени), а откат eviction+persist сложен и рисковен —
       // мгновенность удаления тут не критична (tweb-компромисс).
-      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
+      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}?revoke=${revoke ? 'true' : 'false'}`)
       const ops = evictAndBuildRemoveOps(peerId, msgId)
       if (ops.length) broadcast?.(RT.messageOp, { ops })
       return r
@@ -472,10 +486,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       fromPeerId: number,
       msgIds: number[],
       opts?: { dropAuthor?: boolean; dropCaption?: boolean },
-    ): Promise<Message[]> {
-      const r = await rest.post<{ messages: RawMessage[] }>(`/chats/${toPeerId}/forward`, {
+    ): Promise<MyMessage[]> {
+      const r = await rest.post<{ messages: RawMyMessage[] }>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
-        msg_ids: msgIds,
+        msg_ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
       })
@@ -485,32 +499,32 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     },
 
     async pin(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      return rest.post<{ ok: boolean }>(`/chats/${peerId}/messages/${msgId}/pin`, {})
+      return rest.post<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`, {})
     },
 
     async unpin(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      return rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${msgId}/pin`)
+      return rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
     },
 
-    async listPins(peerId: number): Promise<Message[]> {
-      const r = await rest.get<{ messages: RawMessage[] }>(`/chats/${peerId}/pins`)
+    async listPins(peerId: number): Promise<MyMessage[]> {
+      const r = await rest.get<{ messages: RawMyMessage[] }>(`/chats/${peerId}/pins`)
       return decryptPage(await mapPage(r.messages))
     },
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
     // slice/cache to it (so loadOlder/loadNewer continue from the jumped spot).
-    async getAround(peerId: number, centerSeq: number, limit = 40, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }> {
-      const r = await rest.get<{ messages: RawMessage[]; reached_top: boolean; reached_bottom: boolean }>(
-        `/chats/${peerId}/history`, { around: centerSeq, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
+    async getAround(peerId: number, centerId: number, limit = 40, threadRoot?: number): Promise<{ messages: MyMessage[]; reachedTop: boolean; reachedBottom: boolean }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; reached_top: boolean; reached_bottom: boolean }>(
+        `/chats/${peerId}/history`, { around: getServerMessageId(centerId), limit, ...(threadRoot ? { thread_root: getServerMessageId(threadRoot) } : {}) },
       )
       const asc = await decryptPage(await mapPage(r.messages))
       const key = hkey(peerId, threadRoot)
       const sa = new SlicedArray<number>()
       slices.set(key, sa)
       const c = cacheFor(key)
-      for (const m of asc) c.set(m.seq, m)
+      for (const m of asc) c.set(m.id, m)
       void saveMessages(peerId, asc) // офлайн-персист окна jump-to-message
-      const seqsDesc = asc.map((m) => m.seq).sort((a, b) => b - a)
+      const seqsDesc = asc.map((m) => m.id).sort((a, b) => b - a)
       const inserted = seqsDesc.length ? sa.insertSlice(seqsDesc) : sa.first
       if (inserted) {
         if (r.reached_top) inserted.setEnd(SliceEnd.Top)
@@ -522,8 +536,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // Search messages in a chat by text (newest first) + total match count.
     // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
     // одного типа, новые сверху (tweb inputMessagesFilter*).
-    async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${peerId}/media`, { filter, offset, limit })
+    async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/media`, { filter, offset, limit })
       return { messages: await mapPage(r.messages), count: r.count }
     },
 
@@ -534,21 +548,21 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       peerId: number,
       q: string,
       opts: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number } = {},
-    ): Promise<{ messages: Message[]; count: number }> {
+    ): Promise<{ messages: MyMessage[]; count: number }> {
       const query: Record<string, string | number> = { q, offset: opts.offset ?? 0, limit: opts.limit ?? 20 }
       if (opts.senderId) query.sender_id = opts.senderId
       if (opts.mediaType) query.media_type = opts.mediaType
       if (opts.reaction) query.reaction = opts.reaction
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${peerId}/search`, query)
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/search`, query)
       return { messages: await mapPage(r.messages), count: r.count }
     },
 
-    // Jump-to-date: seq ближайшего сообщения на/после даты (unix, сек). null, если
-    // сообщений в чате нет (404).
+    // Jump-to-date: НОМЕР ближайшего сообщения на/после даты (unix, сек). null,
+    // если сообщений в чате нет (404). Ответ серверный — переводим на границе.
     async messageByDate(peerId: number, date: number): Promise<number | null> {
       try {
-        const r = await rest.get<{ seq: number }>(`/chats/${peerId}/message_by_date`, { date })
-        return r.seq
+        const r = await rest.get<{ id: number }>(`/chats/${peerId}/message_by_date`, { date })
+        return generateMessageId(r.id)
       } catch {
         return null
       }
@@ -567,44 +581,57 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
 
     // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
     // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
-    async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
+    async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
       return { messages: await mapPage(r.messages), count: r.count }
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.
-    async threadMessages(peerId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${peerId}/threads/${rootId}`, { offset, limit })
+    async threadMessages(peerId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/threads/${getServerMessageId(rootId)}`, { offset, limit })
       return { messages: await decryptPage(await mapPage(r.messages)), count: r.count }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──
-    // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления собеседника
-    // в сети — send_at игнорируется бэком (только приватный чат, иначе 403).
-    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean }): Promise<Scheduled> {
-      const r = await rest.post<RawScheduled>(`/chats/${peerId}/scheduled`, {
+    //
+    // Собственной проводной формы у отложенного больше НЕТ: сервер отдаёт тот же
+    // конструктор `message` с клиентским флагом `pFlags.is_scheduled` и нашими
+    // параметрами `send_at`/`when_online` — ровно как у оригинала, где
+    // отложенные едут вектором `messages.Message`.
+    //
+    // Идентичность у них СВОЯ: номера в чате отложенное ещё не получило (он
+    // назначается при отправке), поэтому `id` здесь — ключ строки
+    // `scheduled_messages`, а адрес — `/chats/{peerID}/scheduled/{schedID}`.
+    // Клиентское пространство при этом ОБЩЕЕ (`generateMessageId` применяется на
+    // границе разбора ко всему), значит и обратно оно приводится тем же
+    // `getServerMessageId`.
+    //
+    // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления
+    // собеседника в сети — send_at игнорируется бэком (только приватный чат).
+    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean }): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled`, {
         type: 'text', text: p.text, entities: p.entities ?? null,
-        reply_to_id: p.replyToId ?? null, send_at: p.sendAt,
+        reply_to_id: p.replyToId != null ? getServerMessageId(p.replyToId) : null, send_at: p.sendAt,
         when_online: p.whenOnline ?? false,
       })
-      return mapScheduled(r)
+      return mapNet(r)
     },
-    async listScheduled(peerId: number): Promise<Scheduled[]> {
-      const r = await rest.get<{ scheduled: RawScheduled[] }>(`/chats/${peerId}/scheduled`)
-      return (r.scheduled ?? []).map(mapScheduled)
+    async listScheduled(peerId: number): Promise<MyMessage[]> {
+      const r = await rest.get<{ scheduled: RawMyMessage[] }>(`/chats/${peerId}/scheduled`)
+      return mapPage(r.scheduled)
     },
     async deleteScheduled(peerId: number, id: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/scheduled/${id}`)
+      await rest.del(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`)
     },
     // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
     // Сброс when_online делает бэк (появляется конкретная дата).
-    async editScheduled(peerId: number, id: number, sendAt: number): Promise<Scheduled> {
-      const r = await rest.patch<RawScheduled>(`/chats/${peerId}/scheduled/${id}`, { send_at: sendAt })
-      return mapScheduled(r)
+    async editScheduled(peerId: number, id: number, sendAt: number): Promise<MyMessage> {
+      const r = await rest.patch<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`, { send_at: sendAt })
+      return mapNet(r)
     },
     // Отправить запланированное немедленно; возвращает созданное сообщение.
-    async sendScheduledNow(peerId: number, id: number): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${peerId}/scheduled/${id}/send_now`, {})
+    async sendScheduledNow(peerId: number, id: number): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}/send_now`, {})
       return mapNet(r)
     },
 
@@ -615,7 +642,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     },
 
     async viewers(peerId: number, msgId: number): Promise<number[]> {
-      const r = await rest.get<{ user_ids: number[] }>(`/chats/${peerId}/messages/${msgId}/viewers`)
+      const r = await rest.get<{ user_ids: number[] }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/viewers`)
       return r.user_ids ?? []
     },
 
@@ -627,28 +654,23 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // потока (routeNewMessage → RT.messageOp), тот переигрывает поверх стора вместо
     // самостоятельного разбора кадра.
     cacheLive(evt: NewMessageEvt): MessageOp[] {
-      // Fix (пост-ревью Task 4): раньше здесь жил собственный литерал mapMessage(),
-      // независимый от fromNewMessageEvt (единый маппер live-кадра, models.ts) — он
-      // отставал полями (не было fwd_from_*/gift/reply_markup/effect/media_title/
-      // media_performer/reply_to). Пока вставку в окно на главном потоке делал
-      // applyIncoming(fromNewMessageEvt(...)), расхождение было не видно —
-      // рендерился полный вариант. После Task 4 (проектор переигрывает ОПЕРАЦИЮ,
-      // а не разбирает кадр сам) обеднённый вариант стал единственным источником
-      // вставки — расхождение сделалось бы молчаливой регрессией данных на
-      // горячем пути. Переиспользуем fromNewMessageEvt напрямую: один маппер вместо
-      // двух, расхождение невозможно by construction. `replyTo` не передаём (второй
-      // параметр) — резолв превью ответа нужен уже загруженное окно (main-thread
-      // забота, см. storeProjection.ts), у воркера его нет; сама fromNewMessageEvt
-      // уже делает то же, что раньше делал этот метод вручную: инжект secretMedia/
-      // secret расшифрованного E2E-медиа и clientId эха своей отправки.
-      const m = withOut(fromNewMessageEvt(evt))
-      // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт client_msg_id —
+      // Отдельного маппера live-кадра (`fromNewMessageEvt`) больше НЕТ и быть не
+      // может: кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — тот же
+      // конструктор, что и витрина (решение Р5). Прежде это была вторая проводная
+      // форма и второй маппер к ней, и расходились они в обе стороны.
+      // Дыра в кадре `new_message` невозможна по построению (сервер объявляет
+      // появление сообщения, а не его отсутствие), но объединение это допускает —
+      // отвечаем ПУСТЫМ списком операций, а не молчаливой подстановкой.
+      if (evt.message._ === 'messageEmpty') return []
+      const m = mapOne(evt.message)
+      // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт random_id —
       // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
       // хранилище остались бы два объекта, и переоткрытие чата показало бы
-      // «отправляется…» рядом с уже отправленным. Слияние полей (clientId,
+      // «отправляется…» рядом с уже отправленным. Слияние полей (random_id,
       // localUrl, secret) делает потребитель — messageOps.insert.
-      pending.checkPendingMessage(m.clientId)
-      const keys = m.threadRootId ? [hkey(m.peerId), hkey(m.peerId, m.threadRootId)] : [hkey(m.peerId)]
+      pending.checkPendingMessage(m.random_id)
+      const root = getThreadRootId(m)
+      const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
       const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
@@ -658,7 +680,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
         const sa = slices.get(key)
         if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
         put(key, [m])
-        if (!sa.findSlice(m.seq)) sa.unshift(m.seq)
+        if (!sa.findSlice(m.id)) sa.unshift(m.id)
         ops.push({ op: 'insert', key, msg: m })
       }
       return ops
@@ -673,13 +695,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // структурных препятствий к переводу на patch не осталось — перевод остаётся
     // отдельной задачей (вне объёма этой), а не решением проблемы с данными.
     cacheEdit(evt: EditMessageEvt): void {
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id,
-        (m) => ({
+      const id = generateMessageId(evt.id)
+      patchMsg(evt.peer_id, (m) => m.id === id,
+        (m) => (m._ !== 'message' ? m : {
           ...m,
-          text: evt.text,
+          message: evt.message,
           entities: evt.entities ?? undefined,
-          editedAt: evt.edited_at,
-          replyMarkup: evt.reply_markup ?? undefined,
+          edit_date: evt.edit_date,
+          reply_markup: evt.reply_markup ?? undefined,
         }))
     },
 
@@ -694,22 +717,25 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // как есть; и cache, и проекция не тронуты.
     cacheGeoLive(evt: GeoLiveUpdateEvt): void {
       const geo = mapGeo(evt.geo)
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, geo }))
+      const id = generateMessageId(evt.id)
+      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, geo }))
     },
 
     // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной
     // операции 'patch' на каждое окно чата, где сообщение видно (Stage 1B.3, Task 3).
     cacheWebPage(evt: WebPageUpdateEvt): MessageOp[] {
-      const webPage = mapWebPage(evt.web_page)
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, webPage }))
-      return opWindowsFor(evt.peer_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { webPage } }))
+      const web_page = mapWebPage(evt.web_page)
+      const id = generateMessageId(evt.id)
+      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, web_page }))
+      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { web_page } }))
     },
 
     // «Проверка фактов» прикреплена/изменена/снята → SSOT + операции по всем окнам.
     cacheFactCheck(evt: FactCheckUpdateEvt): MessageOp[] {
-      const factCheck = evt.factcheck ? mapFactCheck(evt.factcheck) : undefined
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, factCheck }))
-      return opWindowsFor(evt.peer_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { factCheck } }))
+      const factcheck = evt.factcheck ?? undefined
+      const id = generateMessageId(evt.id)
+      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
+      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { factcheck } }))
     },
 
     // Платное медиа разблокировано: раскрываем баббл в SSOT — возвращаем ссылку на
@@ -717,8 +743,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // (не полный объект — см. карту обогащений); сторный applyPaidUnlock, резавший
     // те же поля вручную, стал недостижим и удалён (Task 6).
     cachePaidUnlock(evt: NewMessageEvt): MessageOp[] {
-      const fields: Partial<Message> = {
-        mediaId: evt.media_id ?? null,
+      const unlocked = evt.message
+      if (unlocked._ !== 'message') return []
+      const id = generateMessageId(unlocked.id)
+      const fields: Partial<MessageReal> = {
         // Вложение целиком — то же, что у обычного сообщения: у заблокированного
         // сервер отдавал псевдо-фото из одной stripped-ступени (`LockedPlaceholder`),
         // кадр разблокировки приносит настоящее медиа со ступенями и атрибутами.
@@ -731,15 +759,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
         // там же, признак гифки — `documentAttributeAnimated`, размеры и
         // превью — в ступенях. Раньше каждое из этих полей приходилось
         // перекладывать отдельной строкой и легко было потерять поштучно.
-        media: saveMessageMedia(evt.media),
-        paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
+        media: saveMessageMedia(unlocked.media),
+        paid_media: unlocked.paid_media,
       }
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, ...fields }))
-      return opWindowsFor(evt.peer_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields }))
+      const peerId = getPeerId(unlocked.peer_id)
+      patchMsg(peerId, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, ...fields }))
+      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
     },
 
     cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
-      return evictAndBuildRemoveOps(evt.peer_id, evt.msg_id)
+      return evictAndBuildRemoveOps(evt.peer_id, generateMessageId(evt.id))
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие
@@ -747,9 +776,19 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // (уже прочитанное сообщение не патчим и операцию на него не порождаем).
     cacheMediaRead(evt: MediaReadEvt): MessageOp[] {
       let matched = false
-      patchMsg(evt.peer_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => { matched = true; return { ...m, mediaUnread: false } })
+      const id = generateMessageId(evt.id)
+      // «Ещё не прослушано» — булев флаг СХЕМЫ (`pFlags.media_unread`), а не
+      // отдельное поле рядом; «прослушано» значит ОТСУТСТВИЕ ключа.
+      const pFlags = (m: MyMessage): MyMessage['pFlags'] => {
+        const next = { ...m.pFlags }
+        delete next.media_unread
+        return next
+      }
+      patchMsg(evt.peer_id, (m) => m.id === id && !!m.pFlags.media_unread, (m) => { matched = true; return { ...m, pFlags: pFlags(m) } })
       if (!matched) return []
-      return opWindowsFor(evt.peer_id, evt.msg_id).map((key): MessageOp => ({ op: 'patch', key, msgId: evt.msg_id, fields: { mediaUnread: false } }))
+      const cur = msgsByChat.get(evt.peer_id)?.get(id)
+      const fields = cur ? { pFlags: cur.pFlags } : {}
+      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,
@@ -760,9 +799,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
     // `silent`/`effect` этот эндпоинт не принимает (`sendBody`,
     // backend/internal/adapter/delivery/http/chat_handler.go:338), их несёт
     // только WS-кадр.
-    async sendGeoLive(peerId: number, lat: number, lng: number, livePeriod: number, heading: number | undefined, params: MessageSendingParams): Promise<Message> {
+    async sendGeoLive(peerId: number, lat: number, lng: number, livePeriod: number, heading: number | undefined, params: MessageSendingParams): Promise<MyMessage> {
       const wire = sendingParamsToWire(params)
-      const created = await rest.post<RawMessage>(`/chats/${peerId}/messages`, {
+      const created = await rest.post<RawMyMessage>(`/chats/${peerId}/messages`, {
         type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
         geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
         reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
@@ -772,17 +811,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
       const m = await mapNet(created)
       put(hkey(peerId), [m])
       const sa = sliceFor(hkey(peerId))
-      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.id)) sa.unshift(m.id)
       return m
     },
 
     // Live location: обновить координаты (или остановить трансляцию stopped=true).
-    async updateGeoLive(peerId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${peerId}/messages/${msgId}/geo_live`, {
+    async updateGeoLive(peerId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/geo_live`, {
         lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
       })
       const m = await mapNet(r)
-      if (msgsFor(peerId).has(m.seq)) put(hkey(peerId), [m])
+      if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
       return m
     },
 

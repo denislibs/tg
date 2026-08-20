@@ -17,7 +17,7 @@ import type { Cursor } from './cursor'
 
 describe('realtime.markMediaRead', () => {
   it('broadcasts the MessageOp[] returned by cacheMediaRead as rt:message_op', async () => {
-    const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }]
+    const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { pFlags: {} } }]
     const conn = { markMediaRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
     const messages = { cacheMediaRead: vi.fn(() => ops) }
     const broadcast = vi.fn()

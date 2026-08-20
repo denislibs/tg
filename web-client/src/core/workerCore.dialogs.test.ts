@@ -15,7 +15,7 @@ import { STATE_VERSION } from './state/state'
 import type { Dialog } from './models'
 import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
-const dialog = (peerId: number, at: string, pinned = false): Dialog => makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+const dialog = (peerId: number, at: string, pinned = false): Dialog => makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 // vi.stubGlobal (не прямое присваивание indexedDB=...) — та же замена, что и в
 // workerCore.test.ts, но без нового eslint(no-global-assign)-финда: линт-ворота

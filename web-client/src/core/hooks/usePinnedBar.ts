@@ -15,21 +15,21 @@ import { usePinsStore } from '../../stores/pinsStore'
 import { clampPinIndex, nextPinIndex, pinIndexForVisibleMid } from '../pinnedCycle'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 
 /** throttle скролл-трекинга — tweb `throttle(setCorrectIndex, 100, false)` */
 const SCROLL_THROTTLE_MS = 100
 
 export interface PinnedBarState {
   /** пины чата, новейший первым */
-  pins: Message[]
+  pins: MyMessage[]
   /** индекс пина, который показывает плашка (к нему прыгнет следующий клик) */
   index: number
   /** клик по плашке: вернуть текущий пин (для прыжка) и перелистнуть дальше */
-  follow: () => Message | undefined
+  follow: () => MyMessage | undefined
 }
 
-const NO_PINS: Message[] = []
+const NO_PINS: MyMessage[] = []
 
 export function usePinnedBar(
   numericChatId: number,

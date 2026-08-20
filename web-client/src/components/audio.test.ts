@@ -153,7 +153,7 @@ describe('AudioElement — настоящий web-component, а не пусто�
     const { element } = wrap(voiceDoc(), { mid: 5, peerId: 42, mediaUnread: true })
     expect(element.classList.contains('is-unread')).toBe(true)
 
-    rootScope.dispatchEventSingle(RT.mediaRead, { peer_id: 42, msg_id: 5 })
+    rootScope.dispatchEventSingle(RT.mediaRead, { peer_id: 42, id: 5 })
 
     expect(element.classList.contains('is-unread')).toBe(false)
   })

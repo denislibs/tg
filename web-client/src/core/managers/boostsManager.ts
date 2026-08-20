@@ -1,9 +1,9 @@
 import type { RestClient } from '../net/restClient'
 import {
-  mapBoostStatus, mapGiveaway, mapMessage, deriveOut,
+  mapBoostStatus, mapGiveaway, mapMyMessage,
   type BoostStatus, type RawBoostStatus,
   type Giveaway, type RawGiveaway,
-  type Message, type RawMessage,
+  type MyMessage, type RawMyMessage,
 } from '../models'
 
 // Бусты каналов + розыгрыши. Буст доступен только premium-пользователю и тратит
@@ -37,8 +37,8 @@ export function newBoostsManager({ rest, getMeId }: {
       return mapBoostStatus(r)
     },
     // Создаёт розыгрыш; возвращает сообщение-баббл розыгрыша.
-    async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${peerId}/giveaways`, {
+    async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/channels/${peerId}/giveaways`, {
         prize_kind: a.prizeKind,
         months: a.months ?? 0,
         stars: a.stars ?? 0,
@@ -46,8 +46,9 @@ export function newBoostsManager({ rest, getMeId }: {
         until_date: a.untilDate,
         client_msg_id: a.clientMsgId ?? '',
       })
-      const m = mapMessage(r)
-      return { ...m, out: deriveOut(m, getMeId?.() ?? null) }
+      // `pFlags.out` производит сервер; клиенту остаётся перевод номеров и
+      // уточнение действия — их делает сам маппер.
+      return mapMyMessage(r, getMeId?.() ?? null)
     },
     // participateGiveaway перенесён в messagesManager (single-writer: пуш в SSOT
     // сообщений + broadcast → storeProjection). Здесь остаётся только чтение статуса.

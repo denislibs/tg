@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { useMessagesStore } from '../../stores/messagesStore'
-import type { Scheduled } from '../models'
+import type { MyMessage } from '../models'
 
 // Запланированные сообщения чата (tweb ChatType.Scheduled): список + действия
 // «отправить сейчас» / «удалить» / «перепланировать». Read/command-путь через
 // managers; onChanged уведомляет родителя о новом счётчике (для календарика).
 export function useScheduledMessages(chatId: number, onChanged: (count: number) => void): {
-  list: Scheduled[] | null
-  reschedule: { id: number; sendAt: string } | null
-  setReschedule: (r: { id: number; sendAt: string } | null) => void
+  list: MyMessage[] | null
+  reschedule: { id: number; sendAt: number } | null
+  setReschedule: (r: { id: number; sendAt: number } | null) => void
   doReschedule: (sendAtUnix: number) => void
   sendNow: (id: number) => void
   remove: (id: number) => void
 } {
   const managers = useManagers()
-  const [list, setList] = useState<Scheduled[] | null>(null)
+  const [list, setList] = useState<MyMessage[] | null>(null)
   // Перепланирование (tweb MessageScheduleEditTime): id записи + её текущее время
   // для префилла пикера.
-  const [reschedule, setReschedule] = useState<{ id: number; sendAt: string } | null>(null)
+  const [reschedule, setReschedule] = useState<{ id: number; sendAt: number } | null>(null)
 
   // onChanged держим в ref — колбэк родителя не обязан быть стабильным, а
   // перезагрузку хотим только при смене чата.

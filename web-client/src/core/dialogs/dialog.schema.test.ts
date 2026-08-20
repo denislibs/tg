@@ -133,7 +133,7 @@ describe('модель диалогов совпадает со схемой TL'
       archived: true,
       muteUntil: 1700000000,
       ttlPeriod: 86400,
-      lastMessage: makeLastMessage({ peerId: -42, seq: 120, text: 'привет' }),
+      lastMessage: makeLastMessage({ peerId: -42, id: 120, text: 'привет' }),
     }) as unknown],
     ['dialog (пустой: только обязательное)', makeDialog({ peerId: 7 }) as unknown],
     ['dialog (замьючен навсегда)', makeDialog({ peerId: 7, muteUntil: true }) as unknown],

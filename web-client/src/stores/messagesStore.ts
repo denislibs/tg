@@ -10,7 +10,7 @@
 // с peer_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, FactCheck, ReactionCount } from '../core/models'
+import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type Poll, type Checklist, type Giveaway, type GeoData, type FactCheck, type ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/markup/replyMarkup'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
@@ -23,7 +23,7 @@ import { winKey } from '../core/history/messagesMirror'
 export { winKey }
 
 export interface ChatWindow {
-  msgs: Message[]
+  msgs: MyMessage[]
   reachedTop: boolean
   reachedBottom: boolean
   loadingOlder: boolean
@@ -81,24 +81,24 @@ interface MessagesState {
   /** Reset a window to the loading state (called on chat/thread open before fetch). */
   beginLoad: (key: string) => void
   /** Replace a window with a freshly loaded page (initial / jumpTo / reloadNewest). */
-  setWindow: (key: string, w: { msgs: Message[]; reachedTop: boolean; reachedBottom: boolean; cached?: boolean }) => void
+  setWindow: (key: string, w: { msgs: MyMessage[]; reachedTop: boolean; reachedBottom: boolean; cached?: boolean }) => void
   setLoadingOlder: (key: string, v: boolean) => void
   setLoadingNewer: (key: string, v: boolean) => void
-  prepend: (key: string, msgs: Message[], reachedTop: boolean) => void
-  append: (key: string, msgs: Message[], reachedBottom: boolean) => void
-  appendLocal: (key: string, m: Message) => void
+  prepend: (key: string, msgs: MyMessage[], reachedTop: boolean) => void
+  append: (key: string, msgs: MyMessage[], reachedBottom: boolean) => void
+  appendLocal: (key: string, m: MyMessage) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
-  applyIncoming: (peerId: number, m: Message) => void
+  applyIncoming: (peerId: number, m: MyMessage) => void
   /** Stage 1B.2 (Task 4): переигрывает операции воркера (rt:message_op) поверх
    * окон — единственный писатель окна для входящих сообщений (заменяет прямой
    * вызов applyIncoming из RT.newMessage). Окно, не загруженное на этой вкладке
    * (`!byKey[op.key]`), пропускается — та же гарантия, что и у applyIncoming
    * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
   applyOps: (ops: MessageOp[]) => void
-  applyEdit: (peerId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
+  applyEdit: (peerId: number, msgId: number, message: string, editDate: number | undefined, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyGeoLive: (peerId: number, msgId: number, geo: GeoData) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
-  applyFactCheck: (peerId: number, msgId: number, factCheck: FactCheck | undefined) => void
+  applyFactCheck: (peerId: number, msgId: number, factcheck: FactCheck | undefined) => void
   applyDelete: (peerId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (peerId: number, views: Map<number, number>) => void
@@ -136,6 +136,10 @@ interface MessagesState {
   applyStarReaction: (peerId: number, msgId: number, total: number, mine?: number) => void
 }
 
+/** Обычное сообщение, а не пилюля: у `messageService` нет ни текста, ни медиа,
+ *  ни опроса — правки содержимого к ней просто неприменимы. */
+const isReal = (m: MyMessage): m is MessageReal => m._ === 'message'
+
 // Update a single window immutably.
 function patch(
   state: MessagesState,
@@ -151,7 +155,7 @@ function patch(
 function patchChat(
   state: MessagesState,
   peerId: number,
-  fn: (w: ChatWindow) => Message[] | null,
+  fn: (w: ChatWindow) => MyMessage[] | null,
 ): Pick<MessagesState, 'byKey'> | Record<string, never> {
   const prefix = String(peerId)
   let next: Record<string, ChatWindow> | null = null
@@ -197,26 +201,19 @@ export const useMessagesStore = create<MessagesState>((set) => ({
 
   applyIncoming: (peerId, m) =>
     set((s) => {
-      // Apply to the main chat window AND (for a thread message) that thread's
-      // window — each only if loaded (else refetched on open).
-      const keys = m.threadRootId ? [winKey(peerId), winKey(peerId, m.threadRootId)] : [winKey(peerId)]
+      // В основное окно чата И (для сообщения треда) в окно самого треда —
+      // каждое только если загружено (иначе догрузится при открытии). Корень
+      // треда живёт в `reply_to.reply_to_top_id`: отдельного поля в схеме нет.
+      const root = getThreadRootId(m)
+      const keys = root ? [winKey(peerId), winKey(peerId, root)] : [winKey(peerId)]
       let out: Pick<MessagesState, 'byKey'> | Record<string, never> = {}
       let cur = s
       for (const key of keys) {
         if (!cur.byKey[key]) continue
-        const w = cur.byKey[key]
-        // ack-then-echo: бабл уже сверен ack'ом (id=серверный) → эхо здесь дубль, skip.
-        if (w.msgs.some((x) => x.id === m.id)) continue
-        // Wave 3: эхо своей отправки несёт client_msg_id (m.clientId) → матчим
-        // оптимистичный бабл ПО НЕМУ (не по подгаданному tentative seq). Старый
-        // бабл (с tentative seq) удаляем и вставляем merged (серверный seq), иначе
-        // при расхождении seq остались бы два бабла. Переносим clientId (стабильный
-        // React-ключ — appear-анимация не обрывается), localUrl (загруженное фото не
-        // рефетчится) и secret-флаг (эхо несёт расшифрованный text без флага).
-        const optimistic = m.clientId ? w.msgs.find((x) => x.clientId === m.clientId) : undefined
-        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
-        const base = optimistic ? w.msgs.filter((x) => x !== optimistic) : w.msgs
-        out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...base, merged]) }))
+        // Семантика вставки (ack-then-echo, слияние с оптимистичным баблом по
+        // random_id) живёт в ОДНОМ месте — `applyOp`. Второй экземпляр той же
+        // семантики здесь и был бы вторым выводом одного факта.
+        out = patch(cur as MessagesState, key, (w) => ({ msgs: applyOp(w.msgs, { op: 'insert', key, msg: m }) }))
         cur = { ...cur, ...out }
       }
       return out
@@ -242,34 +239,34 @@ export const useMessagesStore = create<MessagesState>((set) => ({
   setPoll: (peerId, poll) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.poll?.id === poll.id)
-          ? w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m))
+        w.msgs.some((m) => isReal(m) && m.poll?.id === poll.id)
+          ? w.msgs.map((m) => (isReal(m) && m.poll?.id === poll.id ? { ...m, poll } : m))
           : null,
       )),
 
   applyChecklistUpdate: (peerId, checklist) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.checklist?.id === checklist.id)
-          ? w.msgs.map((m) => (m.checklist?.id === checklist.id ? { ...m, checklist } : m))
+        w.msgs.some((m) => isReal(m) && m.checklist?.id === checklist.id)
+          ? w.msgs.map((m) => (isReal(m) && m.checklist?.id === checklist.id ? { ...m, checklist } : m))
           : null,
       )),
 
   setGiveaway: (peerId, giveaway) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
-          ? w.msgs.map((m) => (m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
+        w.msgs.some((m) => isReal(m) && m.giveaway?.id === giveaway.id)
+          ? w.msgs.map((m) => (isReal(m) && m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
           : null,
       )),
 
-  applyEdit: (peerId, msgId, text, editedAt, entities, replyMarkup) =>
+  applyEdit: (peerId, msgId, message, editDate, entities, replyMarkup) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.id === msgId)
+        w.msgs.some((m) => isReal(m) && m.id === msgId)
           ? w.msgs.map((m) =>
-              m.id === msgId
-                ? { ...m, text, editedAt, entities, ...(replyMarkup !== undefined ? { replyMarkup: replyMarkup ?? undefined } : {}) }
+              isReal(m) && m.id === msgId
+                ? { ...m, message, edit_date: editDate, entities, ...(replyMarkup !== undefined ? { reply_markup: replyMarkup ?? undefined } : {}) }
                 : m,
             )
           : null,
@@ -278,16 +275,16 @@ export const useMessagesStore = create<MessagesState>((set) => ({
   applyGeoLive: (peerId, msgId, geo) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.id === msgId)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, geo } : m))
+        w.msgs.some((m) => isReal(m) && m.id === msgId)
+          ? w.msgs.map((m) => (isReal(m) && m.id === msgId ? { ...m, geo } : m))
           : null,
       )),
 
-  applyFactCheck: (peerId, msgId, factCheck) =>
+  applyFactCheck: (peerId, msgId, factcheck) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => m.id === msgId)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, factCheck } : m))
+        w.msgs.some((m) => isReal(m) && m.id === msgId)
+          ? w.msgs.map((m) => (isReal(m) && m.id === msgId ? { ...m, factcheck } : m))
           : null,
       )),
 
@@ -302,8 +299,8 @@ export const useMessagesStore = create<MessagesState>((set) => ({
       patchChat(s, peerId, (w) =>
         // Only rebuild rows whose count actually changed, so unaffected bubbles keep
         // their reference (memoized rows don't re-render).
-        w.msgs.some((m) => views.has(m.id) && views.get(m.id) !== m.views)
-          ? w.msgs.map((m) => (views.has(m.id) && views.get(m.id) !== m.views ? { ...m, views: views.get(m.id) } : m))
+        w.msgs.some((m) => isReal(m) && views.has(m.id) && views.get(m.id) !== m.views)
+          ? w.msgs.map((m) => (isReal(m) && views.has(m.id) && views.get(m.id) !== m.views ? { ...m, views: views.get(m.id) } : m))
           : null,
       )),
 

@@ -46,7 +46,8 @@ import { useNavigationStore } from '../stores/navigationStore'
 import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
 import type { Managers } from './bootstrap'
-import { mapMessage, type Message, type RawDialog, type RawMessage } from '../core/models'
+import { mapMyMessage, type MyMessage, type RawDialog, type RawMyMessage } from '../core/models'
+import { makeRawMessage } from '../core/messages/testMessage'
 import type { Folder } from '../core/managers/foldersManager'
 import { makeDialog } from '../core/dialogs/testDialog'
 
@@ -77,10 +78,9 @@ const FOLDER: Folder = {
 /** Порядок в ответе — по времени последнего сообщения (его же считает
  *  `dialogIndex`), поэтому позиция в массиве и есть позиция в глобальном
  *  порядке: peer_id 1 — самый свежий, TOTAL — самый старый. */
-const rawMessage = (peerId: number): RawMessage => ({
-  id: 1, peer_id: peerId, seq: 1, sender_id: 1, type: 'text', text: 'x',
-  reply_to_id: null, media_id: null, thread_root_id: null,
-  created_at: new Date(Date.UTC(2026, 7, 1) - peerId * 60_000).toISOString(),
+const rawMessage = (peerId: number): RawMyMessage => makeRawMessage({
+  id: 1, peerId, fromId: 1, text: 'x',
+  createdAt: new Date(Date.UTC(2026, 7, 1) - peerId * 60_000).toISOString(),
 })
 
 /** Строка на проводе — конструктор `dialog` минус два клиентских параметра. */
@@ -126,18 +126,18 @@ function fakeRest() {
 
 /** SSOT сообщений воркера в объёме, нужном разрешению `top_message`. */
 function fakeMessagesOwner() {
-  const byPeer = new Map<number, Map<number, Message>>()
+  const byPeer = new Map<number, Map<number, MyMessage>>()
   return {
-    async saveApiMessages(list?: RawMessage[]): Promise<Message[]> {
-      const out = (list ?? []).map(mapMessage)
+    async saveApiMessages(list?: RawMyMessage[]): Promise<MyMessage[]> {
+      const out = (list ?? []).map((r) => mapMyMessage(r))
       for (const m of out) {
         let c = byPeer.get(m.peerId)
         if (!c) { c = new Map(); byPeer.set(m.peerId, c) }
-        c.set(m.seq, m)
+        c.set(m.id, m)
       }
       return out
     },
-    getMessageByPeer: (peerId: number, seq: number) => (seq ? byPeer.get(peerId)?.get(seq) : undefined),
+    getMessageByPeer: (peerId: number, id: number) => (id ? byPeer.get(peerId)?.get(id) : undefined),
   }
 }
 

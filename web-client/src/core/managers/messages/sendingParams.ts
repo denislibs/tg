@@ -41,6 +41,7 @@
 // — «источник истины — ФАКТИЧЕСКИЙ чат оригинала»). В кадре поле остаётся (так
 // его же кладёт и текстовый путь сегодня), но решающим является серверный вывод.
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
+import { getServerMessageId } from '../../history/messageId'
 
 /** Порт tweb `MessageSendingParams` (:255) — имена полей 1:1 с оригиналом. */
 export interface MessageSendingParams {
@@ -84,11 +85,16 @@ export type SendingParamsWireFields =
 export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireFields {
   const replyToId = p.replyToMsgId ?? null
   return {
-    replyToId,
+    // ГРАНИЦА ПРОСТРАНСТВ НОМЕРОВ: пакет несёт КЛИЕНТСКИЕ номера (он собран из
+    // того же окна, что рисует лента), а в кадр уезжают СЕРВЕРНЫЕ. Приведение
+    // стоит здесь, потому что это единственное место, которым пакет становится
+    // проводными полями, — второй экземпляр приведения означал бы, что какой-то
+    // путь отправки его забудет (ровно то, ради чего пакет и портировался).
+    replyToId: replyToId != null ? getServerMessageId(replyToId) : null,
     replyToPeerId: replyToId != null ? p.replyToPeerId ?? null : null,
     replyQuoteText: replyToId != null ? p.replyToQuote?.text ?? null : null,
     replyQuoteOffset: replyToId != null ? p.replyToQuote?.offset ?? null : null,
-    threadRootId: p.threadId ?? null,
+    threadRootId: p.threadId != null ? getServerMessageId(p.threadId) : null,
     silent: p.silent ?? false,
     effect: p.effect ?? null,
     sendAsPeerId: p.sendAsPeerId ?? null,

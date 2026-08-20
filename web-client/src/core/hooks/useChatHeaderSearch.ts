@@ -148,7 +148,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
   const searchTypesHeight = 0
 
   // ── имена/аватары строк выдачи ──
-  const resultPeerIds = useMemo(() => search.messages.map((m) => m.senderId), [search.messages])
+  const resultPeerIds = useMemo(() => search.messages.map((m) => m.fromId ?? 0), [search.messages])
   const resultPeers = usePeers(resultPeerIds)
   const senderPeers = usePeers(senders.peerIds)
   const filterPeer = usePeers(useMemo(() => (filterPeerId != null ? [filterPeerId] : []), [filterPeerId]))
@@ -164,7 +164,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
         return
       }
       const message = search.messages[idx]
-      if (message) onJumpToSeq(message.seq)
+      if (message) onJumpToSeq(message.id)
     },
     [choosingSender, senders.peerIds, search.messages, onJumpToSeq],
   )

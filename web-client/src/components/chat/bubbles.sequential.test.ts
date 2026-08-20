@@ -25,7 +25,9 @@ import SlicedArray, { SliceEnd } from '@core/history/slicedArray'
 import { applyOpsToMirror, resetMessagesMirror } from '@core/history/messagesMirror'
 import { newPendingMethods } from '@core/managers/messages/pending'
 import { resetPeerMirror } from '@core/peerCache'
-import type { Message } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
+import { generateMessageId } from '@core/history/messageId'
+import { makeMessage } from '@core/messages/testMessage'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { makeFullMid, type BubblesManagers } from './bubbles'
@@ -34,12 +36,17 @@ const CHAT = 50
 const ME = 42
 const KEY = String(CHAT)
 
+/** Номер в КЛИЕНТСКОМ пространстве. */
+const cid = generateMessageId
+/** Дата подтверждения — на проводе строка ISO, в модели `date:int`. */
+const iso = (date: number) => new Date(date * 1000).toISOString()
+
 /** Владелец: SSOT воркера + срез окна + публикация операций ПРЯМО В ЗЕРКАЛО
  *  вкладки (в проде между ними веер портов и `realtimeBridge`, здесь — прямой
  *  вызов, как в `storeProjection.*.test.ts`). */
 function owner() {
   const slices = new Map<string, SlicedArray<number>>()
-  const msgsByChat = new Map<number, Map<number, Message>>()
+  const msgsByChat = new Map<number, Map<number, MyMessage>>()
   const msgsFor = (chatId: number) => {
     let c = msgsByChat.get(chatId)
     if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
@@ -72,8 +79,8 @@ function owner() {
   /** Кадр `message_ack`: в проде его перехватывает `workerCore.ts::onFrame` —
    *  зовёт владельца и публикует ЕГО операции (сам менеджер их только
    *  возвращает). Здесь тот же порядок. */
-  const ack = (clientMsgId: string, msgId: number, seq: number, createdAt: string) =>
-    emit(pending.ackPendingMessage({ client_msg_id: clientMsgId, msg_id: msgId, seq, created_at: createdAt }))
+  const ack = (clientMsgId: string, id: number, createdAt: string) =>
+    emit(pending.ackPendingMessage({ client_msg_id: clientMsgId, id, created_at: createdAt }))
 
   return { pending, ops, ack }
 }
@@ -122,11 +129,12 @@ describe('sequential: признак доезжает от владельца б
 
     try {
       await sendAndRender(pending, 'c1', 'привет')
-      const temp = (ops[0][0] as { msg: Message }).msg
+      const temp = (ops[0][0] as { msg: MessageReal }).msg
 
       // ack сервера → finalizePendingMessage → insert финального
-      ack('c1', 900, temp.seq, temp.createdAt)
+      ack('c1', 900, iso(temp.date))
 
+      // Номер в подтверждении СЕРВЕРНЫЙ — владелец переводит его на границе.
       // Операция владельца несёт признак...
       expect(ops[1][0]).toMatchObject({ op: 'insert', sequential: true })
       // ...и он же доехал событием до подписчиков ленты.
@@ -147,9 +155,9 @@ describe('sequential: признак доезжает от владельца б
         file: new Blob(['x'], { type: 'image/png' }), type: 'photo', mime: 'image/png',
       })
       await settle()
-      const temp = (ops[0][0] as { msg: Message }).msg
+      const temp = (ops[0][0] as { msg: MessageReal }).msg
 
-      ack('c2', 901, temp.seq, temp.createdAt)
+      ack('c2', 901, iso(temp.date))
 
       expect(seen).toEqual([undefined])
     } finally {
@@ -169,18 +177,18 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     await bubbles.loadFirstHistory()
 
     await sendAndRender(pending, 'c1', 'привет')
-    const temp = (ops[0][0] as { msg: Message }).msg
+    const temp = (ops[0][0] as { msg: MessageReal }).msg
     const bubble = bubbles.getBubble(makeFullMid(CHAT, temp.id))
     expect(bubble).toBeDefined()
 
     const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
-    ack('c1', 900, temp.seq, temp.createdAt)
+    ack('c1', 900, iso(temp.date))
     await settle()
 
     expect(groupBubbles).not.toHaveBeenCalled()
     // тот же УЗЕЛ под новым адресом, и порядок в сериях уже по новому id
-    expect(bubbles.getBubble(makeFullMid(CHAT, 900))).toBe(bubble)
-    expect(bubble!.dataset.mid).toBe('900')
+    expect(bubbles.getBubble(makeFullMid(CHAT, cid(900)))).toBe(bubble)
+    expect(bubble!.dataset.mid).toBe(String(cid(900)))
     expect(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).toHaveLength(1)
   })
 
@@ -196,14 +204,14 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
       file: new Blob(['x'], { type: 'image/png' }), type: 'photo', mime: 'image/png',
     })
     await settle()
-    const temp = (ops[0][0] as { msg: Message }).msg
+    const temp = (ops[0][0] as { msg: MessageReal }).msg
 
     const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
-    ack('c2', 901, temp.seq, temp.createdAt)
+    ack('c2', 901, iso(temp.date))
     await settle()
 
     expect(groupBubbles).toHaveBeenCalledTimes(1)
-    expect(bubbles.getBubble(makeFullMid(CHAT, 901))).toBeDefined()
+    expect(bubbles.getBubble(makeFullMid(CHAT, cid(901)))).toBeDefined()
     expect(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).toHaveLength(1)
   })
 
@@ -216,26 +224,23 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     await bubbles.loadFirstHistory()
 
     await sendAndRender(pending, 'c1', 'привет')
-    const temp = (ops[0][0] as { msg: Message }).msg
+    const temp = (ops[0][0] as { msg: MessageReal }).msg
 
     // Чужое сообщение НИЖЕ бабла: своя серия, и бабл больше не последний.
     rootScope.dispatchEventSingle('history_append', {
       storageKey: KEY,
-      message: {
-        id: 800, peerId: CHAT, seq: temp.seq + 1, senderId: 7, type: 'text', text: 'чужое',
-        replyToId: null, mediaId: null, createdAt: temp.createdAt, threadRootId: null,
-      },
+      message: makeMessage({ id: cid(800), peerId: CHAT, fromId: 7, text: 'чужое', date: temp.date }),
     })
     await settle()
 
     const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
-    // ack переносит бабл ПОД чужое сообщение (seq больше) — значит его серия
+    // ack переносит бабл ПОД чужое сообщение (номер больше) — значит его серия
     // меняется, и короткий путь неприменим.
-    ack('c1', 900, temp.seq + 2, temp.createdAt)
+    ack('c1', 900, iso(temp.date))
     await settle()
 
     expect(groupBubbles).toHaveBeenCalledTimes(1)
     expect(Array.from(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).map((el) => el.getAttribute('data-mid')))
-      .toEqual(['800', '900'])
+      .toEqual([String(cid(800)), String(cid(900))])
   })
 })

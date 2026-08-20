@@ -12,8 +12,9 @@ import {
   type MessageMedia,
   type MyDocument,
 } from './messageMedia'
-import { mapMessage } from '../models'
-import type { RawMessage } from '../models'
+import { mapMyMessage } from '../models'
+import { makeRawMessage } from '../messages/testMessage'
+import type { RawMessageReal } from '../models'
 
 // Документ в форме провода: только поля схемы, без выведенных подсказок —
 // ровно то, что отдаёт бэк (domain/mtmedia.go).
@@ -168,13 +169,11 @@ describe('вложение сообщения', () => {
 // Маппер: вложение с провода попадает в модель УЖЕ нормализованным — тип
 // документа выведен. Без этого шага каждый потребитель выводил бы его сам.
 describe('mapMessage — нормализация вложения', () => {
-  const raw = (media: MessageMedia): RawMessage => ({
-    id: 1, peer_id: 2, seq: 3, sender_id: 4, type: 'video', text: '',
-    reply_to_id: null, media_id: 42, created_at: '2026-08-19T00:00:00Z', media,
-  })
+  const raw = (media: MessageMedia): RawMessageReal =>
+    makeRawMessage({ id: 1, peerId: 2, fromId: 4, media })
 
   it('doc.type выведен на границе маппинга', () => {
-    const m = mapMessage(raw({
+    const m = mapMyMessage(raw({
       _: 'messageMediaDocument',
       document: doc('video/mp4', [
         { _: 'documentAttributeVideo', duration: 61, w: 1280, h: 720 },
@@ -188,11 +187,8 @@ describe('mapMessage — нормализация вложения', () => {
   })
 
   it('вложения нет — media остаётся undefined', () => {
-    const m = mapMessage({
-      id: 1, peer_id: 2, seq: 3, sender_id: 4, type: 'text', text: 'hi',
-      reply_to_id: null, media_id: null, created_at: '2026-08-19T00:00:00Z',
-    })
-    expect(m.media).toBeUndefined()
+    const m = mapMyMessage(makeRawMessage({ id: 1, peerId: 2, fromId: 4, text: 'hi' }))
+    expect(m._ === 'message' && m.media).toBeUndefined()
     expect(getMediaFromMessage(m)).toBeUndefined()
   })
 })

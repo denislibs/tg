@@ -54,17 +54,15 @@ export interface ConvMsg {
   geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
-  deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
   // Предложение фото профиля (service-сообщение suggest_photo): у получателя под
   // превью — кнопка «Установить фото»; accepted скрывает её на всех устройствах.
   photoSuggestion?: { accepted: boolean }
   reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
-  /** кросс-чат ответ (tweb ReplyToAnotherChat): id исходного чата оригинала +
-   * готовый снимок превью. При наличии replyToPeerId `reply` строится из снимка. */
+  /** кросс-чат ответ (tweb ReplyToAnotherChat): ключ ЧАТА оригинала. Готового
+   *  снимка превью рядом больше нет: недоступный оригинал выражают
+   *  `reply_to.reply_from`/`reply_media`, и `reply` строится уже из них. */
   replyToPeerId?: number
-  replySnapshotName?: string
-  replySnapshotText?: string
   // media (history read model — render the bubble fully, no per-media meta request)
   mediaId?: number
   // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
@@ -74,7 +72,7 @@ export interface ConvMsg {
    *  tweb: `doc.type`, `doc.w`/`doc.h`, `doc.attributes`, `photo.sizes`
    *  (см. `core/media/messageMedia.ts`). */
   media?: MessageMedia
-  groupedId?: string // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
+  groupedId?: number // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')

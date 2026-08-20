@@ -17,7 +17,7 @@ const dlg = (peerId: number, extra: Partial<Dialog> = {}): Dialog => ({
     // канонический порядок был бы [2, 1] — тесты про сохранение ссылок проверяли бы
     // тогда не то (список пересортировался бы на первом же обновлении).
     lastMessage: makeLastMessage({
-      peerId, seq: 1, senderId: 5, text: 'привет',
+      peerId, id: 1, fromId: 5, text: 'привет',
       createdAt: peerId === 1 ? '2026-08-09T11:00:00Z' : '2026-08-09T10:00:00Z',
     }),
   }),

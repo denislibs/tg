@@ -27,7 +27,9 @@ import rootScope from '@lib/rootScope'
 import { getDocumentFromMessage } from '../media/messageMedia'
 import { buildMessageLink } from '../messageLink'
 import { parseMarkdown } from '../richtext/markdown'
-import type { FactCheck } from '../models'
+import { getReplyToMsgId, getThreadRootId, type FactCheck } from '../models'
+import { getMediaId, getMessageKind, type MessageKind } from '../messages/messageKind'
+import { getServerMessageId } from '../history/messageId'
 import { friendlyMsgTime } from '../format/friendlyTime'
 import { useT, useLang } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
@@ -162,6 +164,16 @@ export function useMessageActions({
 
   // The selected message's raw window entry (real id/seq) for actions.
   const menuRawMsg = () => (msgMenu && isRealChat ? win.msgs[msgMenu.idx] : undefined)
+  // Вид и адрес вложения СПРАШИВАЮТСЯ у модели (`core/messages/messageKind.ts`),
+  // а не читаются полями `type`/`media_id`: обоих на проводе больше нет.
+  const menuRawMsgKind = () => { const r = menuRawMsg(); return r ? getMessageKind(r) : undefined }
+  const getMenuMediaId = () => { const r = menuRawMsg(); return r ? getMediaId(r) : undefined }
+  const menuRawFactCheck = () => { const r = menuRawMsg(); return r?._ === 'message' ? r.factcheck : undefined }
+  /** Вид вью-модельной строки → `MessageKind` для таблицы лейблов. Совпадают
+   *  везде, кроме синтетических рядов ленты (`date`, `album`), которых у самого
+   *  сообщения нет. */
+  const convKindLabel = (t: ConvMsg['type']): MessageKind | undefined =>
+    t === 'date' ? undefined : t === 'album' ? 'photo' : t
 
   const startReply = () => {
     const m = msgMenu && msgs[msgMenu.idx]
@@ -181,7 +193,7 @@ export function useMessageActions({
     const raw = menuRawMsg()
     const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent, { meId: meId ?? undefined, peerId: Number(chat.id) }) : null
     if (rs && raw?.id != null) {
-      setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(m!.type), color: rs.color })
+      setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(convKindLabel(m!.type)), color: rs.color })
     }
     closeMsgMenu()
   }
@@ -201,7 +213,7 @@ export function useMessageActions({
     const m = msgMenu && msgs[msgMenu.idx]
     const raw = menuRawMsg()
     if (m && raw?.id != null) {
-      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw.entities })
+      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
       setReply(null)
       // Composer prefills its draft + focuses when `editing` becomes set.
     }
@@ -222,7 +234,7 @@ export function useMessageActions({
   // ВНУТРИ промиса, а не до вызова write.
   const copyMedia = () => {
     const raw = menuRawMsg()
-    const mediaId = raw?.mediaId
+    const mediaId = raw ? getMediaId(raw) : undefined
     closeMsgMenu()
     if (mediaId == null || !navigator.clipboard?.write) return
 
@@ -254,13 +266,13 @@ export function useMessageActions({
   const copyMsgLink = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.seq == null) return
+    if (raw == null) return
     const link = buildMessageLink({
       origin: location.origin,
       pathname: location.pathname,
       peerId: numericChatId,
       username: chat.username,
-      seq: raw.seq,
+      seq: getServerMessageId(raw.id),
     })
     void navigator.clipboard
       ?.writeText(link)
@@ -277,7 +289,7 @@ export function useMessageActions({
   // "Delete for everyone" is offered when every target is the author's own or the
   // chat is private (Telegram). Backend re-checks; group admins handled server-side.
   const canRevokeAll = (ids: number[]) =>
-    chat.type === 'private' || ids.every((id) => win.msgs.find((m) => m.id === id)?.senderId === meId)
+    chat.type === 'private' || ids.every((id) => win.msgs.find((m) => m.id === id)?.fromId === meId)
   const openDelete = () => {
     const raw = menuRawMsg()
     if (raw?.id != null) setDelIds({ ids: [raw.id], canRevoke: canRevokeAll([raw.id]) })
@@ -331,7 +343,7 @@ export function useMessageActions({
     let text: string
     if (count === 1 && picked[0]) {
       const m = picked[0]
-      const body = m.text || mediaLabel(m.type) || ''
+      const body = m.text || mediaLabel(convKindLabel(m.type)) || ''
       text = body ? `${senders[0]}: ${body}` : senders[0]
     } else {
       const names = senders.length <= 2 ? senders.join(', ') : `${senders.slice(0, 2).join(', ')} …`
@@ -397,16 +409,16 @@ export function useMessageActions({
   // Токен-URL сознательно (Task 7): это БАЙТОВОЕ скачивание файла браузером,
   // категория «МОЖНО: bytes прямым fetch», не картинка для <img>.
   const downloadMsg = async () => {
-    const raw = menuRawMsg()
+    const mediaId = getMenuMediaId()
     closeMsgMenu()
-    if (raw?.mediaId == null) return
+    if (mediaId == null) return
     const [meta, url] = await Promise.all([
-      managers.media.meta(raw.mediaId),
-      managers.media.contentUrl(raw.mediaId),
+      managers.media.meta(mediaId),
+      managers.media.contentUrl(mediaId),
     ])
     const a = document.createElement('a')
     a.href = url
-    a.download = meta.fileName || `media-${raw.mediaId}`
+    a.download = meta.fileName || `media-${mediaId}`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -415,10 +427,10 @@ export function useMessageActions({
   // «Сохранить GIF» для гифок (tweb: `doc.type === 'gif'`):
   // POST /gifs/saved — гиф появляется во вкладке GIF пикера (лимит 200 LIFO на бэке).
   const saveGifFromMsg = () => {
-    const raw = menuRawMsg()
+    const mediaId = getMenuMediaId()
     closeMsgMenu()
-    if (raw?.mediaId == null) return
-    void managers.stickers.saveGif(raw.mediaId)
+    if (mediaId == null) return
+    void managers.stickers.saveGif(mediaId)
       .then(() => rootScope.dispatchEvent('ui:toast', t('GIF saved to your GIFs.')))
       .catch(() => {})
   }
@@ -528,7 +540,7 @@ export function useMessageActions({
   const openFactCheckEditor = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.id != null && isRealChat) setFactCheckEdit({ msgId: raw.id, initial: raw.factCheck })
+    if (raw != null && isRealChat) setFactCheckEdit({ msgId: raw.id, initial: raw._ === 'message' ? raw.factcheck : undefined })
   }
   // Сохранить проверку: разбор markdown (сущности как при отправке), REST + оптимистичный патч стора.
   const submitFactCheck = async (text: string, country: string) => {
@@ -540,7 +552,7 @@ export function useMessageActions({
     // Воркер пишет свой SSOT; main-стор патчим здесь результатом (factcheck на
     // сообщении, не пер-юзерный), WS factcheck_update затем реконсилит.
     const m = await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => null)
-    if (m) useMessagesStore.getState().applyFactCheck(numericChatId, edit.msgId, m.factCheck)
+    if (m) useMessagesStore.getState().applyFactCheck(numericChatId, edit.msgId, m._ === 'message' ? m.factcheck : undefined)
   }
   // Снять проверку фактов (tweb deleteFactCheck): оптимистично + REST.
   const removeFactCheck = () => {
@@ -565,26 +577,27 @@ export function useMessageActions({
   const resendFailed = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (!raw?.failed || !raw.clientId) return
+    if (raw?._ !== 'message' || !raw.failed || !raw.random_id) return
+    const kind = getMessageKind(raw)
     // Снять пометку ошибки (владелец → операция patch) и переотправить тем же
-    // clientId. `optimistic` в sendText НЕ передаём: бабл уже есть и в окне, и
+    // random_id. `optimistic` в sendText НЕ передаём: бабл уже есть и в окне, и
     // в pending-реестре воркера — beforeMessageSending завёл бы рядом второй.
-    void managers.messages.retryPending({ clientMsgId: raw.clientId })
+    void managers.messages.retryPending({ clientMsgId: raw.random_id })
     void managers.messages.sendText({
-      peerId: numericChatId, text: raw.text, entities: raw.entities,
-      clientMsgId: raw.clientId, mediaId: raw.mediaId,
-      type: raw.type !== 'text' ? raw.type : undefined,
+      peerId: numericChatId, text: raw.message, entities: raw.entities,
+      clientMsgId: raw.random_id, mediaId: getMediaId(raw),
+      type: kind !== 'text' ? kind : undefined,
       // Пакет параметров отправки восстанавливается из САМОГО бабла — порт tweb
       // `repayCallback` (appMessagesManager.ts:1484-1489: повтор идёт тем же
       // `options`, что и первая попытка). Плашки композера здесь уже нет: ответ
       // и тред — свойства неотправленного сообщения, не текущего инпута.
-      replyToMsgId: raw.replyToId, threadId: raw.threadRootId,
+      replyToMsgId: getReplyToMsgId(raw), threadId: getThreadRootId(raw),
     })
   }
   const removeFailed = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.clientId) void managers.messages.cancelPending({ clientMsgId: raw.clientId })
+    if (raw?.random_id) void managers.messages.cancelPending({ clientMsgId: raw.random_id })
   }
   const failedMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="send" size={20} />, label: 'Resend', onClick: resendFailed },
@@ -631,12 +644,12 @@ export function useMessageActions({
     ...(!isSecret ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg }] : []),
     // «Copy Media» — сразу после «Copy», как в оригинале. Только фото: буфер
     // обмена принимает картинку, для видео/файлов пункта нет (там «Download»).
-    ...(isRealChat && !isSecret && menuRawMsg()?.type === 'photo' && menuRawMsg()?.mediaId != null
+    ...(isRealChat && !isSecret && menuRawMsgKind() === 'photo'
       ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy Media', onClick: copyMedia }]
       : []),
     // «Copy Message Link» — только в каналах (tweb verify: isChannel), у поста
     // с серверным seq: у неотправленного якоря ещё нет.
-    ...(isRealChat && chat.type === 'channel' && menuRawMsg()?.seq != null
+    ...(isRealChat && chat.type === 'channel' && menuRawMsg() != null
       ? [{ icon: <TgIcon name="link" size={20} />, label: 'Copy Message Link', onClick: copyMsgLink }]
       : []),
     ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
@@ -654,19 +667,19 @@ export function useMessageActions({
       // tweb contextMenu «Save GIF» — `doc.type === 'gif'` (тот же вопрос к
       // документу, что и у бабла): признак выведен из `documentAttributeAnimated`
       // в `saveDocument`, а не угадан по mime/имени файла.
-      return isRealChat && raw?.mediaId != null
-        && getDocumentFromMessage(raw)?.type === 'gif'
+      return isRealChat && raw != null && getMediaId(raw) != null
+        && getDocumentFromMessage(raw._ === 'message' ? raw : undefined)?.type === 'gif'
         ? [{ icon: <TgIcon name="gifs" size={20} />, label: 'Save GIF', onClick: saveGifFromMsg }]
         : []
     })(),
-    ...(isRealChat && menuRawMsg()?.mediaId != null
+    ...(isRealChat && getMenuMediaId() != null
       ? [{ icon: <TgIcon name="download" size={20} />, label: 'Download', onClick: downloadMsg }]
       : []),
     // Опрос: «Отменить голос» (не викторина, не закрыт, голосовал) и
     // «Остановить опрос» (своё сообщение, не закрыт) — tweb contextMenu
     ...(() => {
       const raw = menuRawMsg()
-      const poll = raw?.poll
+      const poll = raw?._ === 'message' ? raw.poll : undefined
       if (!isRealChat || !poll) return []
       const items: MsgMenuItem[] = []
       if (!poll.closed && !poll.quiz && poll.myVotes.length > 0) {
@@ -676,7 +689,7 @@ export function useMessageActions({
           onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []).then((p) => useMessagesStore.getState().setPoll(numericChatId, p)) },
         })
       }
-      if (!poll.closed && raw!.senderId === meId) {
+      if (!poll.closed && raw!.fromId === meId) {
         items.push({
           icon: <TgIcon name="stop" size={20} />,
           label: 'Stop Poll',
@@ -696,8 +709,8 @@ export function useMessageActions({
     // добавить/изменить + (если есть) удалить.
     ...(canEditFactCheck && menuRawMsg()?.id != null
       ? [
-          { icon: <TgIcon name="factcheck" size={20} />, label: menuRawMsg()?.factCheck ? 'Edit Fact Check' : 'Add Fact Check', onClick: openFactCheckEditor },
-          ...(menuRawMsg()?.factCheck ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete Fact Check', danger: true, onClick: removeFactCheck }] : []),
+          { icon: <TgIcon name="factcheck" size={20} />, label: menuRawFactCheck() ? 'Edit Fact Check' : 'Add Fact Check', onClick: openFactCheckEditor },
+          ...(menuRawFactCheck() ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete Fact Check', danger: true, onClick: removeFactCheck }] : []),
         ]
       : []),
     // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).

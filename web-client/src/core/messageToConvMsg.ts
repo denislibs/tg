@@ -1,24 +1,35 @@
 import type { CallLog, ConvMsg } from '../data'
-import type { Message } from './models'
+import { getMessageText, isOurMessage, type MyMessage } from './models'
+import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
 import { serviceMsgText } from './serviceMsg'
+import { isLocalMessageId } from './history/messageId'
+import { getPeerId } from './peers/peerId'
 import { AUTHOR_HIDDEN_TITLE } from './peers/getPeerTitle'
 
-// Format an ISO timestamp as local 24h "HH:MM"; returns '' on an invalid date.
+// Format a unix timestamp (seconds) as local 24h "HH:MM".
 // The renderer's formatTime renders this as-is in 24h mode and converts to AM/PM
-// in 12h mode, so the bubble shows a real clock time, not the raw ISO string.
-function hhmm(iso: string): string {
-  const d = new Date(iso)
+// in 12h mode, so the bubble shows a real clock time, not the raw value.
+function hhmm(date: number): string {
+  const d = new Date(date * 1000)
   if (Number.isNaN(d.getTime())) return ''
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** Дата сообщения в ISO — вью-модель (`ConvMsg.createdAt`) считает отсчёты по
+ *  абсолютному времени. На проводе и в модели это `date:int` (секунды), перевод
+ *  живёт здесь, на границе витрины. */
+export function messageDateISO(date: number): string {
+  return new Date(date * 1000).toISOString()
 }
 
 // Human label for a replied-to media message that has no caption (Telegram shows
 // these in the quote line, e.g. "Фотография"). Экспорт: тот же лейбл использует
 // пин-бар и экран закреплённых для медиа без подписи.
-export function replyMediaLabel(type?: string): string {
-  switch (type) {
+export function replyMediaLabel(kind?: MessageKind): string {
+  switch (kind) {
     case 'photo': return 'Фотография'
     case 'video': return 'Видео'
+    case 'gif': return 'GIF'
     case 'roundVideo': return 'Видеосообщение'
     case 'voice': return 'Голосовое сообщение'
     case 'audio': return 'Аудио'
@@ -30,153 +41,189 @@ export function replyMediaLabel(type?: string): string {
   }
 }
 
-// Convert a backend Message into the renderer's ConvMsg shape.
-// out/in — свойство САМОГО сообщения (`Message.out`, порт tweb pFlags.out):
-// выводит его владелец на границе маппинга (core/models.ts::deriveOut, зовётся из
-// менеджеров воркера), витрина только читает. `meId` здесь остался ради ДРУГОГО:
-// автор превью ответа («Вы» vs имя собеседника) — у replyTo своего `out` нет.
-// For outgoing messages status is 'read' (double check) once
-// the peer has read up to this message's seq (opts.readUpToSeq, tracked by the
-// caller from rt:read events), otherwise 'sent'.
-// opts.senderName, when provided for an incoming message, populates `sender`
-// so group bubbles can show the author name/avatar (the renderer picks a color).
+/**
+ * Превью ЧУЖОГО сообщения — цитата ответа, строка индекса закреплённых, пилюля
+ * закрепления. Прежде такой снимок склеивал СЕРВЕР (`reply_to.text`,
+ * `msg_text`, обрезанный до 100 символов), теперь его строит клиент из того же
+ * объекта, что рисует лента, — как `wrapMessageForReply` у оригинала.
+ */
+export function messageForReply(m: MyMessage): string {
+  const kind = getMessageKind(m)
+  if (kind === 'service') return serviceMsgText(m as Extract<MyMessage, { _: 'messageService' }>)
+  return getMessageText(m) || replyMediaLabel(kind)
+}
+
+/**
+ * Backend Message → вью-модель бабла.
+ *
+ * `out` здесь — СТОРОНА бабла (`isOurMessage`), а не «я ли отправил»: пост
+ * канала и сообщение от лица канала остаются `pFlags.out` у своего автора, но
+ * рисуются входящими. Решает это `from_id`: если автор не человек (или его нет
+ * вовсе), бабл входящий.
+ *
+ * `opts.replyToMessage` — РАЗРЕШЁННЫЙ оригинал ответа: с провода едет только
+ * ссылка (`reply_to.reply_to_msg_id`), а сообщение берётся из окна тем, у кого
+ * оно есть.
+ */
 export function messageToConvMsg(
-  m: Message,
+  m: MyMessage,
   meId: number | null,
-  opts?: { senderName?: string; readUpToSeq?: number; forwardFromName?: string; replyToName?: string },
+  opts?: {
+    senderName?: string
+    /** горизонт чтения СОБЕСЕДНИКА в КЛИЕНТСКОМ пространстве номеров */
+    readUpToId?: number
+    forwardFromName?: string
+    replyToName?: string
+    /** оригинал ответа, разрешённый вызывающим из окна */
+    replyToMessage?: MyMessage
+    /** закреплённое сообщение (цель `messageActionPinMessage`), тоже разрешённое */
+    pinnedTarget?: MyMessage
+  },
 ): ConvMsg {
-  const out = !!m.out
-  // Voice messages get their own bubble; service events render as a centered
-  // pill (no sender/ticks); other media render via the generic media bubble
-  // (keyed off mediaId), so everything else maps to 'text'.
-  // Секретное медиа приходит с проводным type:'encrypted' — вид ('photo'|'video'|
-  // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType. Он и решает
-  // ветку рендера (SecretMediaBubble рисуется вместо RealMediaBubble по m.secretMedia).
-  const secretType = m.secretMedia?.mediaType
-  const convType =
-    m.type === 'voice' ? 'voice'
-    : m.type === 'roundVideo' ? 'roundVideo'
-    : m.type === 'call' ? 'call'
-    : m.type === 'poll' ? 'poll'
-    : m.type === 'checklist' ? 'checklist'
-    : m.type === 'giveaway' ? 'giveaway'
-    : m.type === 'geo' ? 'geo'
-    : m.type === 'contact' ? 'contact'
-    : m.type === 'gift' ? 'gift'
-    : m.type === 'sticker' ? 'sticker'
-    : m.type === 'service' ? 'service'
-    : secretType === 'voice' ? 'voice'
-    : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
-    : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
-    : 'text'
-  // Предложение фото профиля (service-сообщение suggest_photo): распарсиваем
-  // action, чтобы показать у получателя кнопку «Установить фото».
-  let photoSuggestion: { accepted: boolean } | undefined
-  if (convType === 'service' && m.text.startsWith('{')) {
-    try {
-      const a = JSON.parse(m.text) as { action?: string; accepted?: boolean }
-      if (a.action === 'suggest_photo') photoSuggestion = { accepted: !!a.accepted }
-    } catch {
-      /* не suggest_photo — обычная сервисная пилюля */
-    }
-  }
+  const out = isOurMessage(m)
+  const kind = getMessageKind(m)
+  // Секретное медиа приходит шифртекстом (`enc_body`); вид ('photo'|'video'|
+  // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType — он и
+  // решает ветку рендера (SecretMediaBubble вместо RealMediaBubble).
+  const secretType = m.secretMedia?.mediaType as MessageKind | undefined
+  const convType: ConvMsg['type'] =
+    kind === 'encrypted' && secretType ? convKind(secretType) : convKind(kind)
+
+  const real = m._ === 'message' ? m : undefined
+  const action = m._ === 'messageService' ? m.action : undefined
+  // Предложение фото профиля: у получателя под превью кнопка «Установить фото»;
+  // `accepted` — НАШ параметр действия, он скрывает её на всех устройствах.
+  const photoSuggestion = action?._ === 'messageActionSuggestProfilePhoto'
+    ? { accepted: !!action.accepted }
+    : undefined
+
+  const replyTo = opts?.replyToMessage
+  const quoteText = m.reply_to?.quote_text
+  const replyKind = replyTo ? getMessageKind(replyTo) : undefined
+  // Оригинал недоступен зрителю (ответ на сообщение из чужого чата): вместо
+  // ссылки едут СТРУКТУРЫ `reply_from` (атрибуция автора) и `reply_media`
+  // (вложение) — прежде это были плоские `reply_snapshot_name`/`_text`.
+  const replyFrom = m.reply_to?.reply_from
   return {
     id: m.id,
     peerId: m.peerId,
-    clientId: m.clientId,
+    clientId: m.random_id,
     type: convType,
     out,
-    text: convType === 'service' ? serviceMsgText(m.text, out) : m.text,
+    text: convType === 'service' ? serviceMsgText(m as Extract<MyMessage, { _: 'messageService' }>, opts?.pinnedTarget ? messageForReply(opts.pinnedTarget) : undefined) : getMessageText(m),
     photoSuggestion,
-    entities: m.entities,
-    time: hhmm(m.createdAt),
-    createdAt: m.createdAt,
-    // sending → до message_ack (оптимистичный id < 0); error → send отвергнут;
-    // после ack id становится серверным и статус сам «дорастает» до sent/read.
+    entities: real?.entities,
+    time: hhmm(m.date),
+    createdAt: messageDateISO(m.date),
+    // sending → до message_ack (номер назначен клиентом, значит дробный);
+    // error → send отвергнут; после ack номер становится серверным и статус сам
+    // «дорастает» до sent/read.
     status: out
       ? m.failed
         ? 'error'
-        : m.id < 0
+        : isLocalMessageId(m.id)
           ? 'sending'
-          : opts?.readUpToSeq != null && m.seq <= opts.readUpToSeq
+          : opts?.readUpToId != null && m.id <= opts.readUpToId
             ? 'read'
             : 'sent'
       : undefined,
-    call: m.type === 'call' ? parseCallLog(m.text) : undefined,
-    webPage: m.webPage,
-    factCheck: m.factCheck,
-    transcription: m.transcription,
-    effect: m.effect,
-    poll: m.poll,
-    checklist: m.checklist,
-    giveaway: m.giveaway,
-    gift: m.gift,
-    replyMarkup: m.replyMarkup,
+    call: action?._ === 'messageActionPhoneCall' ? callLog(action) : undefined,
+    webPage: real?.web_page,
+    factCheck: real?.factcheck,
+    transcription: real?.transcription,
+    effect: real?.effect_name,
+    poll: real?.poll,
+    checklist: real?.checklist,
+    giveaway: real?.giveaway,
+    gift: real?.gift,
+    replyMarkup: real?.reply_markup,
     reactions: m.reactions,
     starReaction: m.starReaction,
-    geo: m.geo,
-    contact: m.contact,
-    mediaId: m.mediaId ?? undefined,
-    media: m.media,
-    paidMedia: m.paidMedia,
-    groupedId: m.groupedId ?? undefined,
-    localUrl: m.localUrl,
-    // Send-as: автор бабла — канал/группа (её title), клик-профиль отключаем
-    // (senderId скрыт). Иначе — обычная логика имени участника группы.
-    sender: m.sendAs ? m.sendAs.title : (!out && opts?.senderName ? opts.senderName : undefined),
-    senderId: m.sendAs ? undefined : (!out ? m.senderId : undefined),
-    edited: m.editedAt != null,
-    views: m.views,
-    forwards: m.forwards,
-    mediaUnread: m.mediaUnread || undefined,
-    deleted: m.deleted ?? false,
-    // Пересылка: признак — САМ конструктор `messageFwdHeader`, а не «одно из
-    // пяти плоских полей не null». Скрытая атрибуция едет в `from_name` —
-    // ровно тот случай, ради которого в оригинале есть фолбэк имени.
-    forwardFrom: m.fwdFrom ? { name: opts?.forwardFromName ?? m.fwdFrom.from_name ?? AUTHOR_HIDDEN_TITLE } : undefined,
-    // Секретное сообщение: флаг + таймер самоуничтожения (destructAt ставит сервер
-    // после прочтения получателем; ttlSeconds — «взведённый» TTL до этого).
+    geo: real?.geo,
+    contact: real?.contact
+      ? { userId: real.contact.user_id, name: real.contact.name ?? '', phone: real.contact.phone ?? '' }
+      : undefined,
+    mediaId: getMediaId(m),
+    media: real?.media,
+    paidMedia: real?.paid_media,
+    groupedId: real?.grouped_id,
+    localUrl: real?.localUrl,
+    // Автор бабла — `from_id`: у сообщения от лица канала там сам канал, и имя
+    // с аватаркой берутся из карточки этого пира, как у любого другого.
+    sender: !out && opts?.senderName ? opts.senderName : undefined,
+    senderId: !out ? m.fromId : undefined,
+    edited: real?.edit_date != null,
+    views: real?.views,
+    forwards: real?.forwards,
+    mediaUnread: m.pFlags.media_unread || undefined,
+    // Пересылка: признак — САМ конструктор `messageFwdHeader`. Скрытая
+    // атрибуция едет в `from_name` — ровно тот случай, ради которого в
+    // оригинале есть фолбэк имени.
+    forwardFrom: real?.fwd_from ? { name: opts?.forwardFromName ?? real.fwd_from.from_name ?? AUTHOR_HIDDEN_TITLE } : undefined,
+    // Секретное сообщение: флаг + таймер самоуничтожения (destruct_at ставит
+    // сервер после прочтения получателем; ttl_period — «взведённый» TTL).
     secret: m.secret || undefined,
     secretMedia: m.secretMedia,
-    ttlSeconds: m.ttlSeconds ?? undefined,
-    destructAt: m.destructAt ?? undefined,
-    replyToPeerId: m.replyToPeerId ?? undefined,
-    replySnapshotName: m.replySnapshotName,
-    replySnapshotText: m.replySnapshotText,
-    // Кросс-чат ответ (tweb ReplyToAnotherChat): оригинала нет в текущем сторе —
-    // превью рисуем ИЗ ГОТОВОГО СНИМКА (имя автора + текст/медиа-лейбл), без seq
-    // (в текущем чате прыгать некуда) и без поиска оригинала по replyToId.
-    reply: m.replyToPeerId != null
-      ? { name: m.replySnapshotName || 'Сообщение', text: m.replySnapshotText || '' }
-      : m.replyTo
+    ttlSeconds: m.ttl_period,
+    destructAt: real?.destruct_at,
+    // Чат ОРИГИНАЛА, когда он другой: отсутствие `reply_to_peer_id` в схеме и
+    // значит «тот же пир», поэтому отдельного признака кросс-чат-ответа нет.
+    replyToPeerId: m.reply_to?.reply_to_peer_id ? getPeerId(m.reply_to.reply_to_peer_id) : undefined,
+    reply: replyFrom
       ? {
-          name: m.replyTo.senderId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',
+          // Оригинала в этом чате нет: имя автора — из атрибуции, текст — лейбл
+          // вложения (`reply_media`), потому что самого текста нам не дали.
+          name: replyFrom.from_name || opts?.replyToName || 'Сообщение',
+          text: quoteText || replyMediaLabel(mediaKindOfReply(m)) || 'Сообщение',
+          quote: quoteText ? true : undefined,
+        }
+      : m.reply_to?.reply_to_msg_id
+      ? {
+          name: replyTo && replyTo.fromId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',
           // Ответ с цитатой (reply quote): показываем выделенный фрагмент вместо
-          // превью всего сообщения. Иначе — обычная логика:
-          // медиа без подписи → метка типа, с подписью → текст подписи.
-          text: m.replyTo.quoteText || m.replyTo.text || replyMediaLabel(m.replyTo.type),
+          // превью всего сообщения. Иначе — обычная логика: медиа без подписи →
+          // метка типа, с подписью → текст подписи.
+          text: quoteText || (replyTo ? messageForReply(replyTo) : ''),
           // entity-оффсеты заданы по полному тексту оригинала, для цитаты они не
           // совпадают → форматирование фрагмента опускаем.
-          entities: m.replyTo.quoteText ? undefined : (m.replyTo.text ? m.replyTo.entities : undefined),
-          seq: m.replyTo.seq,
-          mediaId: m.replyTo.mediaId,
-          mediaType: m.replyTo.type,
-          quote: m.replyTo.quoteText ? true : undefined,
+          entities: quoteText ? undefined : (replyTo && replyTo._ === 'message' && replyTo.message ? replyTo.entities : undefined),
+          seq: m.reply_to.reply_to_msg_id,
+          mediaId: replyTo ? getMediaId(replyTo) : undefined,
+          mediaType: replyKind,
+          quote: quoteText ? true : undefined,
         }
       : undefined,
   }
 }
 
-// Лог звонка хранится в text как JSON (см. callEngine.logCallMessage).
-export function parseCallLog(text: string): CallLog {
-  try {
-    const p = JSON.parse(text) as Partial<CallLog>
-    return {
-      video: !!p.video,
-      reason: p.reason === 'ok' || p.reason === 'missed' || p.reason === 'busy' ? p.reason : 'cancelled',
-      duration: typeof p.duration === 'number' ? p.duration : undefined,
-    }
-  } catch {
-    return { video: false, reason: 'cancelled' }
+/** Вид вложения НЕДОСТУПНОГО оригинала — из `reply_to.reply_media`. */
+function mediaKindOfReply(m: MyMessage): MessageKind | undefined {
+  const media = m.reply_to?.reply_media
+  if (!media) return undefined
+  return media._ === 'messageMediaPhoto' ? 'photo' : 'document'
+}
+
+/** `MessageKind` → ветка рендера бабла. Виды, у которых своей ветки нет
+ *  (`gif`, `encrypted` без расшифровки), рисуются как их ближайший бабл. */
+function convKind(kind: MessageKind): ConvMsg['type'] {
+  switch (kind) {
+    case 'gif': return 'video'
+    case 'encrypted': return 'text'
+    default: return kind
   }
+}
+
+/** Лог звонка из действия. Прежде это был JSON внутри текста сообщения — та же
+ *  подделка дискриминатора, что у служебных действий, но в другом поле.
+ *
+ *  Наши четыре исхода ложатся на схему так: Missed → `missed`, Busy → `busy`,
+ *  Hangup → `ok` либо `cancelled`, и различает их НАЛИЧИЕ длительности (у
+ *  соединившегося звонка она есть, у сорвавшегося нет). */
+function callLog(a: Extract<import('./messages/messageAction').MessageAction, { _: 'messageActionPhoneCall' }>): CallLog {
+  const reason: CallLog['reason'] =
+    a.reason?._ === 'phoneCallDiscardReasonMissed' ? 'missed'
+    : a.reason?._ === 'phoneCallDiscardReasonBusy' ? 'busy'
+    : a.duration ? 'ok'
+    : 'cancelled'
+  return { video: !!a.pFlags?.video, reason, duration: a.duration }
 }

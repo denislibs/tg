@@ -24,6 +24,8 @@ import { useIsActiveChat } from '../chat/chatInstanceContext'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../realtime/events'
+import { getPeerId } from '../peers/peerId'
+import { generateMessageId } from '../history/messageId'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
@@ -68,7 +70,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   const unreadBelow = useChatsStore((s) => {
     const d = s.dialogs.find((x) => x.peerId === numericChatId)
     if (!d) return 0
-    return Math.max(0, (d.lastMessage?.seq ?? 0) - d.read_inbox_max_id)
+    return Math.max(0, (d.lastMessage?.id ?? 0) - d.read_inbox_max_id)
   })
   // Briefly highlighted message (jump-to target), by seq.
   const [highlightSeq, setHighlightSeq] = useState<number | null>(null)
@@ -228,7 +230,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
       if (hasLayout && atRealBottom && document.hasFocus() && isActive) {
-        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToId: win.msgs[win.msgs.length - 1].id })
       }
     }
     lastScrollTopRef.current = st
@@ -623,9 +625,11 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
     const onNewMessage = (m: NewMessageEvt) => {
-      if (m.peer_id !== numericChatId) return
+      // Кадр несёт сообщение целиком: и ключ пира, и номер берутся из него.
+      const msg = m.message
+      if (msg._ === 'messageEmpty' || getPeerId(msg.peer_id) !== numericChatId) return
       if (atBottomRef.current && document.hasFocus()) {
-        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: m.seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToId: generateMessageId(msg.id) })
       }
     }
     rootScope.addEventListener(RT.newMessage, onNewMessage)
@@ -644,8 +648,8 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   useEffect(() => {
     if (!isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
     if (!atBottomRef.current || !document.hasFocus()) return
-    const maxSeq = win.msgs[win.msgs.length - 1].seq
-    void managers.realtime.markRead({ peerId: numericChatId, upToSeq: maxSeq })
+    const maxId = win.msgs[win.msgs.length - 1].id
+    void managers.realtime.markRead({ peerId: numericChatId, upToId: maxId })
   }, [isRealChat, isActive, win.reachedBottom, win.msgs, numericChatId, managers])
 
   // Mark read when the window regains focus while we're at the bottom of this chat.
@@ -658,7 +662,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       if (!el || win.msgs.length === 0) return
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
         // markRead advances lastReadSeq → derived unread-below badge → 0.
-        void managers.realtime.markRead({ peerId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
+        void managers.realtime.markRead({ peerId: numericChatId, upToId: win.msgs[win.msgs.length - 1].id })
       }
     }
     window.addEventListener('focus', onFocus)

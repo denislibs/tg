@@ -7,7 +7,7 @@
 // <MessageRow> bails out; appending re-renders only the new/last row).
 import { useMemo, useRef } from 'react'
 import type { ConvMsg } from '../../data'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import { messageToConvMsg } from '../messageToConvMsg'
 import { usePeers, peersKey } from './usePeers'
 import type { Chat as PeerChat, User } from '../peers/peer'
@@ -26,8 +26,21 @@ const NO_PINS: never[] = []
  * `NULL_PEER_ID` — пересылки нет либо атрибуция скрыта правилом приватности
  * (`from_name` без `from_id`), и тогда имя берётся из самого заголовка.
  */
-function fwdFromPeerId(m: Message): PeerId {
-  return m.fwdFrom?.from_id ? getPeerId(m.fwdFrom.from_id) : NULL_PEER_ID
+function fwdFromPeerId(m: MyMessage): PeerId {
+  const fwd = m._ === 'message' ? m.fwd_from : undefined
+  return fwd?.from_id ? getPeerId(fwd.from_id) : NULL_PEER_ID
+}
+
+/** Оригинал ответа — по ССЫЛКЕ `reply_to.reply_to_msg_id` в СВОЁМ окне (снимка
+ *  на проводе больше нет, решение Р4). Порт tweb `wrapMessageForReply(
+ *  getMessageByPeer(peerId, reply_to_mid))`: превью строит тот, у кого есть окно. */
+function resolveReply(msgs: readonly MyMessage[], m: MyMessage): MyMessage | undefined {
+  const id = m.reply_to?.reply_to_msg_id
+  // Ответ в ЧУЖОЙ чат: отсутствие `reply_to_peer_id` и значит «тот же пир», а с
+  // ним оригинала в этом окне нет по построению — его атрибуцию везёт
+  // `reply_to.reply_from`.
+  if (id == null || m.reply_to?.reply_to_peer_id) return undefined
+  return msgs.find((x) => x.id === id)
 }
 
 interface UseConvMessagesArgs {
@@ -66,7 +79,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
   const senderIds = useMemo(
     () => {
       if (!isRealChat) return []
-      const ids = resolveSenders ? win.msgs.filter((m) => m.senderId !== meId).map((m) => m.senderId) : []
+      const ids = resolveSenders ? win.msgs.filter((m) => m.fromId !== meId).map((m) => m.fromId ?? NULL_PEER_ID) : []
       // Атрибуция пересылки («Переслано от X») в ЛЮБОМ чате: автор оригинала —
       // `fwdFrom.from_id`, конструктор `Peer` схемы. Ключ выводит `getPeerId`,
       // и это может быть КАНАЛ (`peerChannel`), а не только человек — прежнее
@@ -77,12 +90,15 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
         if (id !== NULL_PEER_ID) ids.push(id)
       }
       // Reply previews need the replied-to author's name (any chat).
-      for (const m of win.msgs) if (m.replyTo && m.replyTo.senderId !== meId) ids.push(m.replyTo.senderId)
+      for (const m of win.msgs) {
+        const rt = resolveReply(win.msgs, m)
+        if (rt?.fromId != null && rt.fromId !== meId) ids.push(rt.fromId)
+      }
       return ids
     },
     // peersKey gives a stable dep that ignores ordering/duplicates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [resolveSenders, isRealChat, meId, peersKey(win.msgs.map((m) => m.senderId)), peersKey(win.msgs.map((m) => fwdFromPeerId(m))), peersKey(win.msgs.map((m) => m.replyTo?.senderId ?? 0))],
+    [resolveSenders, isRealChat, meId, peersKey(win.msgs.map((m) => m.fromId ?? NULL_PEER_ID)), peersKey(win.msgs.map((m) => fwdFromPeerId(m))), peersKey(win.msgs.map((m) => resolveReply(win.msgs, m)?.fromId ?? 0))],
   )
   const peers = usePeers(senderIds)
 
@@ -108,11 +124,18 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
     const title = (peerId: PeerId): string | undefined =>
       getPeerTitle({ peerId, peer: peers.get(peerId) }) || undefined
     const next = win.msgs.map((m) => {
+      // Оригинал ответа разрешается ЗДЕСЬ, из окна: на проводе едет ссылка, а
+      // превью строит тот, у кого есть сообщение (порт wrapMessageForReply).
+      const replyToMessage = resolveReply(win.msgs, m)
+      // Цель закрепления у пилюли `messageActionPinMessage` — тоже ссылка
+      // (`reply_to`), и разрешается тем же способом.
       let conv = messageToConvMsg(m, meId, {
-        senderName: resolveSenders ? title(m.senderId) : undefined,
-        readUpToSeq: peerReadSeq,
+        senderName: resolveSenders && m.fromId != null ? title(m.fromId) : undefined,
+        readUpToId: peerReadSeq,
         forwardFromName: fwdFromPeerId(m) !== NULL_PEER_ID ? title(fwdFromPeerId(m)) : undefined,
-        replyToName: m.replyTo ? title(m.replyTo.senderId) : undefined,
+        replyToName: replyToMessage?.fromId != null ? title(replyToMessage.fromId) : undefined,
+        replyToMessage,
+        pinnedTarget: m._ === 'messageService' && m.action._ === 'messageActionPinMessage' ? replyToMessage : undefined,
       })
       // Корневой пост канала в треде комментариев: всегда входящий, от имени
       // канала (даже если автор поста — я), без тиков.
@@ -125,11 +148,11 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
       // сам пост с seq=0. Правило зависит от того, ЧТО СЕЙЧАС ОТКРЫТО
       // (numericChatId), — знание витрины, не владельца; переносить его к
       // владельцу до этапа рендера тредов не надо.
-      if (m.seq === 0 && m.peerId !== numericChatId) {
+      if (m.peerId !== numericChatId) {
         conv = { ...conv, out: false, status: undefined, sender: foreignRootName || conv.sender, senderId: undefined }
       }
-      if (m.id != null && pinnedIds.has(m.id)) conv = { ...conv, pinned: true }
-      const key = m.clientId ?? m.id ?? m.seq
+      if (pinnedIds.has(m.id)) conv = { ...conv, pinned: true }
+      const key = m.random_id ?? m.id
       seen.add(key)
       const json = JSON.stringify(conv)
       const hit = cache.get(key)

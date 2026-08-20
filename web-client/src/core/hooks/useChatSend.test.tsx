@@ -202,14 +202,18 @@ describe('useChatSend: цитата', () => {
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ replyToQuote: { text: 'вет', offset: 4 } })
   })
 
-  it('кросс-чат ответ: peer в пакете, снимок превью — в оптимистичном бабле', () => {
+  // Кросс-чат ответ: на провод уходит ССЫЛКА (чат оригинала), а снимка превью
+  // рядом с ней больше нет. `snapshotName`/`snapshotText` остались состоянием
+  // ПЛАШКИ композера (`ReplyWrapper`) — оригинал зрителю недоступен, и до эха
+  // сервера превью показывать неоткуда; в бабл эти строки не едут, его плашку
+  // строит рендерер из `reply_to.reply_from`/`reply_media`.
+  it('кросс-чат ответ: в пакет едет ССЫЛКА на чат, снимок превью — не едет', () => {
     const { managers, result } = setup()
     openReply(result, { sourcePeerId: 99, snapshotName: 'Петя', snapshotText: 'оригинал' })
     act(() => { result.current.sendContact(42, 'Маша') })
     const args = managers.messages.sendText.mock.calls[0][0]
-    expect(args).toMatchObject({ replyToPeerId: 99 })
-    expect((args.optimistic as Record<string, unknown>).replySnapshot)
-      .toEqual({ peerId: 99, name: 'Петя', text: 'оригинал' })
+    expect(args).toMatchObject({ replyToMsgId: ORIG, replyToPeerId: 99 })
+    expect(args.optimistic as Record<string, unknown>).not.toHaveProperty('replySnapshot')
   })
 })
 

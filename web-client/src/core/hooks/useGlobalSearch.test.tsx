@@ -9,16 +9,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useGlobalSearch, type SearchFilter } from './useGlobalSearch'
 import { ManagersProvider } from './useManagers'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
 
-function msg(id: number, text: string): Message {
-  return {
-    id, peerId: 1, seq: id, senderId: 1, type: 'text', text,
-    replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
-  }
+function msg(id: number, text: string): MyMessage {
+  return makeMessage({ id, peerId: 1, fromId: 1, text })
 }
 
-type SearchPage = { messages: Message[]; count: number }
+type SearchPage = { messages: MyMessage[]; count: number }
 
 // Управляемый deferred-промис: тест сам решает, когда и в каком порядке
 // резолвить страницы searchGlobal (иначе гонку не воспроизвести).

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { useMiddlewareHelper } from './useMiddlewareHelper'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 
 export type SearchFilter = '' | 'media' | 'links' | 'files' | 'music' | 'voice'
 
@@ -14,13 +14,13 @@ const PAGE = 30
 // Актуальность — @helpers/middleware: смена q/tab/filter (cleanup эффекта)
 // гасит и первую страницу, и висящую пагинацию onScroll.
 export function useGlobalSearch(q: string, tab: number, filter: SearchFilter): {
-  msgs: Message[] | null
+  msgs: MyMessage[] | null
   msgCount: number
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void
 } {
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
-  const [msgs, setMsgs] = useState<Message[] | null>(null)
+  const [msgs, setMsgs] = useState<MyMessage[] | null>(null)
   const [msgCount, setMsgCount] = useState(0)
   const loadingMore = useRef(false)
 

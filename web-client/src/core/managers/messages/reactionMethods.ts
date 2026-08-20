@@ -5,7 +5,8 @@
 // (patchMsg) и meId (для деривации `mine`) через ctx. Публичный API не меняется —
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
 import { reactionDelta } from '../../reactionDelta'
-import type { Message } from '../../models'
+import { generateMessageId, getServerMessageId } from '../../history/messageId'
+import type { MyMessage } from '../../models'
 import type { ReactionEvt, StarReactionEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
 import type { UserReal } from '../../peers/peer'
@@ -96,7 +97,8 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
   // (user_id === meId). null из дельты — эхо своего уже применённого действия, no-op.
   const applyReactionToCache = (evt: ReactionEvt): void => {
     const mine = evt.user_id === (getMeId?.() ?? null)
-    patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m: Message) => {
+    const id = generateMessageId(evt.id)
+    patchMsg(evt.peer_id, (m) => m.id === id, (m: MyMessage) => {
       const next = reactionDelta(m.reactions, evt.emoji, evt.action, mine)
       return next === null ? null : { ...m, reactions: next }
     })
@@ -106,7 +108,8 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
   const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
     const counts = evt.counts ?? []
     const isMine = evt.user_id === (getMeId?.() ?? null)
-    patchMsg(evt.peer_id, (m) => m.id === evt.msg_id, (m: Message) => {
+    const id = generateMessageId(evt.id)
+    patchMsg(evt.peer_id, (m) => m.id === id, (m: MyMessage) => {
       const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
       const next = counts.map((c) => {
         let mine = prevMine.has(c.emoji)
@@ -120,8 +123,9 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
   // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
   const applyStarToCache = (evt: StarReactionEvt): void => {
     const isMine = evt.sender_id === (getMeId?.() ?? null)
-    patchMsg(evt.peer_id, (m) => m.id === evt.msg_id,
-      (m: Message) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
+    const id = generateMessageId(evt.id)
+    patchMsg(evt.peer_id, (m) => m.id === id,
+      (m: MyMessage) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
   }
 
   return {
@@ -141,22 +145,22 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
     // обязателен для верной деривации `mine`; пока не разрешён (старт) — ждём эхо.
     async react(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ peer_id: peerId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+      if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'add' })
       try {
-        await rest.post(`/chats/${peerId}/messages/${msgId}/reactions`, { emoji })
+        await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions`, { emoji })
       } catch (e) {
-        if (me != null) applyReactionToCache({ peer_id: peerId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+        if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'remove' })
         throw e
       }
     },
 
     async unreact(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ peer_id: peerId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+      if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'remove' })
       try {
-        await rest.del(`/chats/${peerId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+        await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/${encodeURIComponent(emoji)}`)
       } catch (e) {
-        if (me != null) applyReactionToCache({ peer_id: peerId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+        if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'add' })
         throw e
       }
     },
@@ -164,7 +168,7 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
     // Кто отреагировал (who-reacted попап). Член чата — проверяет бэк.
     async reactionUsers(peerId: number, msgId: number): Promise<ReactionUser[]> {
       // Маппера нет: форма провода и форма модели совпали.
-      const r = await rest.get<{ users: ReactionUser[] }>(`/chats/${peerId}/messages/${msgId}/reactions/users`)
+      const r = await rest.get<{ users: ReactionUser[] }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/users`)
       return r.users ?? []
     },
 
@@ -183,14 +187,14 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
     // тоже придёт (идемпотентно правит total в сторе).
     async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
       const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: StarSender[]; balance: number }>(
-        `/chats/${peerId}/messages/${msgId}/star_reaction`, { count, anonymous })
-      applyStarToCache({ peer_id: peerId, msg_id: msgId, sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
+        `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`, { count, anonymous })
+      applyStarToCache({ peer_id: peerId, id: getServerMessageId(msgId), sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
       return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
     },
     // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
     async getStarReaction(peerId: number, msgId: number): Promise<StarReactionInfo> {
       const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: StarSender[] }>(
-        `/chats/${peerId}/messages/${msgId}/star_reaction`)
+        `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`)
       return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
     },
   }

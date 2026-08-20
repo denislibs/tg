@@ -12,6 +12,8 @@ import { peersKey } from './usePeers'
 import type { Chat, User } from '../peers/peer'
 import { getPeerTitle } from '../peers/getPeerTitle'
 import type { MessageWindow } from './useMessageWindow'
+import { getMediaId, getMessageKind } from '../messages/messageKind'
+import { messageDateISO } from '../messageToConvMsg'
 
 interface UseVoiceQueueArgs {
   win: MessageWindow
@@ -33,8 +35,8 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
   // Секретный голос: сырой store-type остаётся 'encrypted' (воркер меняет только
   // secret_media, не type), вид лежит в secretMedia.mediaType. Учитываем оба.
   const isVoiceMsg = (m: MessageWindow['msgs'][number]) =>
-    !!m.mediaId && (m.type === 'voice' || m.secretMedia?.mediaType === 'voice')
-  const isRoundMsg = (m: MessageWindow['msgs'][number]) => !!m.mediaId && m.type === 'roundVideo'
+    getMediaId(m) != null && (getMessageKind(m) === 'voice' || m.secretMedia?.mediaType === 'voice')
+  const isRoundMsg = (m: MessageWindow['msgs'][number]) => getMediaId(m) != null && getMessageKind(m) === 'roundVideo'
   // Голосовые и кружки — ОДНА очередь (tweb: и те и другие ищутся фильтром
   // inputMessagesFilterRoundVoice, chat/bubbles.ts:8564,8601), поэтому доиграв
   // голосовое, плеер едет на следующий кружок и наоборот. Музыка — своя очередь
@@ -44,36 +46,37 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
       (isRealChat ? win.msgs : [])
         .filter((m) => isVoiceMsg(m) || isRoundMsg(m))
         .map((m) => ({
-          mediaId: m.mediaId as number,
-          title: m.senderId === meId ? meName || 'Вы' : getPeerTitle({ peerId: m.senderId, peer: peers.get(m.senderId) }) || chatName,
-          subtitle: friendlyMsgTime(m.createdAt, lang),
+          mediaId: getMediaId(m) as number,
+          title: m.fromId === meId ? meName || 'Вы' : getPeerTitle({ peerId: m.fromId ?? 0, peer: peers.get(m.fromId ?? 0) }) || chatName,
+          subtitle: friendlyMsgTime(messageDateISO(m.date), lang),
           chatId: numericChatId,
           msgId: m.id,
-          type: (m.type === 'roundVideo' ? 'round' : 'voice') as 'round' | 'voice',
+          type: (getMessageKind(m) === 'roundVideo' ? 'round' : 'voice') as 'round' | 'voice',
           // Секретный голос: ключ/iv/mime для расшифровки ciphertext'а в плеере.
           secret: m.secretMedia
             ? { keyB64: m.secretMedia.keyB64, ivB64: m.secretMedia.ivB64, mime: m.secretMedia.mime }
             : undefined,
         })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [win.msgs, isRealChat, chatName, numericChatId, meId, meName, peersKey(win.msgs.map((m) => m.senderId)), lang],
+    [win.msgs, isRealChat, chatName, numericChatId, meId, meName, peersKey(win.msgs.map((m) => m.fromId ?? 0)), lang],
   )
   const playVoice = (mediaId: number) => {
     const idx = voiceTracks.findIndex((t) => t.mediaId === mediaId)
     if (idx < 0) return
     playQueue(voiceTracks, idx)
     // Чужое непрослушанное голосовое → снять media_unread (tweb readMessageContents).
-    const msg = win.msgs.find((m) => isVoiceMsg(m) && m.mediaId === mediaId)
-    if (msg && msg.senderId !== meId && msg.mediaUnread) markMediaPlayed(numericChatId, msg.id)
+    const msg = win.msgs.find((m) => isVoiceMsg(m) && getMediaId(m) === mediaId)
+    if (msg && msg.fromId !== meId && msg.pFlags.media_unread) markMediaPlayed(numericChatId, msg.id)
   }
 
   // Кружок заиграл со звуком → зарегистрировать его <video> в глобальном плеере
   // (tweb: round идёт через appMediaPlaybackController и pinned-плашку). Отдаём ту
   // же очередь voice+round, что и у голосовых, — с позицией этого кружка.
   const attachRound = (msgId: number, el: HTMLMediaElement) => {
-    const m = win.msgs.find((x) => x.id === msgId && x.type === 'roundVideo')
-    if (!m || m.mediaId == null) return
-    const idx = voiceTracks.findIndex((t) => t.mediaId === m.mediaId)
+    const m = win.msgs.find((x) => x.id === msgId && getMessageKind(x) === 'roundVideo')
+    const mediaId = m ? getMediaId(m) : undefined
+    if (mediaId == null) return
+    const idx = voiceTracks.findIndex((t) => t.mediaId === mediaId)
     if (idx < 0) return
     playExternal(voiceTracks, idx, el)
   }

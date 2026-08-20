@@ -8,7 +8,9 @@
 import { friendlyMsgTime } from '@core/format/friendlyTime'
 import { getMediaDimensions, getMediaFromMessage, getStrippedThumb } from '@core/media/messageMedia'
 import { getSecretMediaUrl, peekSecretMediaUrl } from '@core/secret/mediaCache'
-import type { Message } from '@core/models'
+import { getMessageText, type MyMessage } from '@core/models'
+import { getMediaId } from '@core/messages/messageKind'
+import { messageDateISO } from '@core/messageToConvMsg'
 import type { Chat, User } from '@core/peers/peer'
 import { getPeerPhoto, getPeerPhotoStrippedThumb } from '@core/peers/peer'
 import { getPeerTitle } from '@core/peers/getPeerTitle'
@@ -28,18 +30,18 @@ export type LightboxCtx = {
   lang: string
 }
 
-const senderPeer = (m: Message, ctx: LightboxCtx) => ctx.peers?.get(m.senderId)
+const senderPeer = (m: MyMessage, ctx: LightboxCtx) => ctx.peers?.get((m.fromId ?? 0))
 
-const senderName = (m: Message, ctx: LightboxCtx): string =>
-  m.senderId === ctx.meId
+const senderName = (m: MyMessage, ctx: LightboxCtx): string =>
+  (m.fromId ?? 0) === ctx.meId
     ? (ctx.meName || 'Вы')
-    : (ctx.peers?.has(m.senderId)
-        ? getPeerTitle({ peerId: m.senderId, peer: senderPeer(m, ctx) })
+    : (ctx.peers?.has(m.fromId ?? 0)
+        ? getPeerTitle({ peerId: (m.fromId ?? 0), peer: senderPeer(m, ctx) })
         : ctx.chatName || '')
 
 /** Один Message → ViewerItem (модель вьювера). Используется и сбором окна ниже,
  * и маппингом ответа REST `/chats/{id}/media` (loadMoreMedia), и shared media. */
-export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLElement | null = null): ViewerItem {
+export function messageToViewerItem(m: MyMessage, ctx: LightboxCtx, element: HTMLElement | null = null): ViewerItem {
   const sec = m.secretMedia
   // Медиа сообщения — как у оригинала: вьювер спрашивает его у самого сообщения
   // (tweb `getMediaFromMessage(message)`, mediaViewer/index.ts), а не собирает из
@@ -54,9 +56,9 @@ export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLE
   return {
     element,
     mid: m.id,
-    seq: m.seq,
+    seq: m.id,
     media: {
-      mediaId: (sec?.mediaId ?? m.mediaId) as number,
+      mediaId: (sec?.mediaId ?? getMediaId(m)) as number,
       width: w ?? 0,
       height: h ?? 0,
       blurPreview: getStrippedThumb(media),
@@ -76,16 +78,16 @@ export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLE
         : undefined,
     },
     author: {
-      peerId: m.senderId,
+      peerId: (m.fromId ?? 0),
       name: senderName(m, ctx),
-      date: friendlyMsgTime(m.createdAt, ctx.lang),
-      avatarPreview: m.senderId === ctx.meId
+      date: friendlyMsgTime(messageDateISO(m.date), ctx.lang),
+      avatarPreview: (m.fromId ?? 0) === ctx.meId
         ? undefined
         : getPeerPhotoStrippedThumb(getPeerPhoto(senderPeer(m, ctx))) || undefined,
     },
     // подпись к медиа — текст самого сообщения (tweb `.media-viewer-caption`)
-    caption: m.text || undefined,
-    captionEntities: m.entities,
+    caption: getMessageText(m) || undefined,
+    captionEntities: m._ === 'message' ? m.entities : undefined,
   }
 }
 
@@ -93,11 +95,11 @@ export function messageToViewerItem(m: Message, ctx: LightboxCtx, element: HTMLE
  * Порядок — порядок окна (по возрастанию seq) → вьювер открывается с
  * reverse: true, как tweb bubbles.ts:3838. */
 export function collectLightboxItems({ msgs, mediaId, ctx, findElement }: {
-  msgs: Message[]
+  msgs: MyMessage[]
   mediaId: number
   ctx: LightboxCtx
   /** миниатюра сообщения в отрендеренных баблах (null — не отрендерено) */
-  findElement?: (m: Message) => HTMLElement | null
+  findElement?: (m: MyMessage) => HTMLElement | null
 }): { items: ViewerItem[]; index: number } {
   // Квалификация медиа — 1:1 критерий tweb (bubbles.ts:3722):
   // `media._ === 'photo' || ['video','gif'].includes(media.type)`. Секретные
@@ -106,22 +108,22 @@ export function collectLightboxItems({ msgs, mediaId, ctx, findElement }: {
   // `mediaId != null` остаётся гейтом ФАЙЛА: у платного медиа до оплаты его нет
   // вовсе (сервер отдаёт псевдо-фото из одной stripped-ступени), открывать
   // нечего.
-  const isViewable = (m: Message) => {
-    if (m.mediaId == null) return false
+  const isViewable = (m: MyMessage) => {
+    if (getMediaId(m) == null) return false
     const sec = m.secretMedia?.mediaType
     if (sec) return sec === 'photo' || sec === 'video'
     const media = getMediaFromMessage(m)
     return media?._ === 'photo' || (media?._ === 'document' && (media.type === 'video' || media.type === 'gif'))
   }
   const viewable = msgs.filter(isViewable)
-  const index = viewable.findIndex((m) => m.mediaId === mediaId)
+  const index = viewable.findIndex((m) => getMediaId(m) === mediaId)
   if (index >= 0) {
     return { items: viewable.map((m) => messageToViewerItem(m, ctx, findElement?.(m) ?? null)), index }
   }
 
   // Медиа не в ленте фото/видео (сервисное сообщение смены фото группы — type
   // 'service'): одиночный просмотр именно этого фото (фолбэк useLightbox).
-  const src = msgs.find((m) => m.mediaId === mediaId)
+  const src = msgs.find((m) => getMediaId(m) === mediaId)
   const item: ViewerItem = src
     ? messageToViewerItem(src, ctx, findElement?.(src) ?? null)
     : {

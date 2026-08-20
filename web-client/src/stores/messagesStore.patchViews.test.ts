@@ -1,17 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useMessagesStore } from './messagesStore'
-import { mapMessage, type RawMessage } from '../core/models'
+import type { MessageReal, MyMessage } from '../core/models'
+import { makeMessage } from '../core/messages/testMessage'
 
-const raw = (id: number, views = 0): RawMessage => ({
-  id, peer_id: 5, seq: id, sender_id: 1, type: 'text', text: `m${id}`,
-  reply_to_id: null, media_id: null, created_at: '2026-07-01T00:00:00Z', views,
-})
+const msg = (id: number, views = 0): MessageReal =>
+  ({ ...makeMessage({ id, peerId: 5, fromId: 1, text: `m${id}` }), views })
+
+const viewsOf = (msgs: MyMessage[], id: number) => (msgs.find((m) => m.id === id) as MessageReal | undefined)?.views
 
 describe('messagesStore.patchViews', () => {
   beforeEach(() => {
     useMessagesStore.setState({ byKey: {} })
     useMessagesStore.getState().setWindow(String(5), {
-      msgs: [mapMessage(raw(1)), mapMessage(raw(2)), mapMessage(raw(3))],
+      msgs: [msg(1), msg(2), msg(3)],
       reachedTop: true, reachedBottom: true,
     })
   })
@@ -19,9 +20,9 @@ describe('messagesStore.patchViews', () => {
   it('patches view counts onto the matching messages', () => {
     useMessagesStore.getState().patchViews(5, new Map([[1, 9200], [3, 5]]))
     const msgs = useMessagesStore.getState().byKey[String(5)].msgs
-    expect(msgs.find((m) => m.id === 1)?.views).toBe(9200)
-    expect(msgs.find((m) => m.id === 2)?.views).toBe(0)
-    expect(msgs.find((m) => m.id === 3)?.views).toBe(5)
+    expect(viewsOf(msgs, 1)).toBe(9200)
+    expect(viewsOf(msgs, 2)).toBe(0)
+    expect(viewsOf(msgs, 3)).toBe(5)
   })
 
   it('keeps references stable for unchanged rows (memoized bubbles do not re-render)', () => {

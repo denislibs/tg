@@ -4,7 +4,7 @@
 // диалогов, без сообщений) — полный нормализованный стор:
 //   • dialogs  — весь список (keyPath peerId);
 //   • users    — карточки пиров, конструктор `user` целиком (keyPath id);
-//   • messages — история чатов (keyPath `${peerId}:${seq}`, индекс byPeer);
+//   • messages — история чатов (keyPath `${peerId}:${id}`, индекс byPeer);
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
 //
 // ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера:
@@ -23,7 +23,7 @@
 //
 // Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БД origin).
 import { idbGet } from './idbKv'
-import type { Dialog, Message, Draft } from '../models'
+import type { Dialog, MyMessage, Draft } from '../models'
 import type { Chat, UserReal } from '../peers/peer'
 import type { PeerProfile } from '../managers/authManager'
 import type { Folder } from '../managers/foldersManager'
@@ -31,7 +31,7 @@ import type { AppState } from '../state/state'
 
 const DB = 'msgr-store'
 /** Текущая версия схемы. Экспортируется для тестов, чтобы они не прибивались к литералу. */
-export const DB_VERSION = 4
+export const DB_VERSION = 5
 const VERSION = DB_VERSION
 const S_META = 'meta'
 const S_DIALOGS = 'dialogs'
@@ -57,7 +57,7 @@ export type PersistUser = UserReal
 // ОФЛАЙН-старт показал бы группы без имён.
 export type PersistChat = Chat
 
-interface StoredMessage extends Message { pk: string }
+type StoredMessage = MyMessage & { pk: string }
 
 // ── Схема + миграции ────────────────────────────────────────────────────────
 // Явный детерминированный путь апгрейда (аналог build-gated VERSION-шага в tweb
@@ -132,6 +132,27 @@ const MIGRATIONS: Record<number, Migration> = {
   // `chats`, и персистить его теперь надо там же, где карточки людей.
   4: (db) => {
     if (!db.objectStoreNames.contains(S_CHATS)) db.createObjectStore(S_CHATS, { keyPath: 'id' })
+  },
+  // v5 — переезд СООБЩЕНИЙ на конструкторы схемы TL (шаг D порта сообщений).
+  //
+  // Второй шаг, который данные не переливает, а пересоздаёт сторы, и причина та
+  // же, что у v3, — переливать НЕЧЕМ:
+  //  • сменился сам ключ записи (`${peerId}:${seq}` → `${peerId}:${id}`), причём
+  //    номер переехал в КЛИЕНТСКОЕ пространство (`core/history/messageId.ts`);
+  //  • сменилась форма: плоская строка с `type`/`text`/`createdAt`/`senderId`
+  //    стала конструктором `message`/`messageService`, а поля `deleted`,
+  //    `media_id`, снимок `reply_to` и `send_as` исчезли вовсе;
+  //  • у диалогов в `lastMessage` лежит ровно такой же старый объект, а
+  //    `top_message` и оба горизонта чтения — номера прошлого пространства.
+  //
+  // Цена та же: один холодный старт без офлайн-кэша истории и списка. Это кэш,
+  // а не источник истины; карточки пиров/чатов и `state` шагом не затрагиваются.
+  5: (db) => {
+    for (const store of [S_MESSAGES, S_DIALOGS]) {
+      if (db.objectStoreNames.contains(store)) db.deleteObjectStore(store)
+    }
+    db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
+    db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
   },
 }
 
@@ -301,8 +322,10 @@ export async function persistClearAll(): Promise<void> {
 // Признак секретного — НАШ параметр `secret` самого конструктора `dialog`
 // (решение Р9), а не прежняя строка `type === 'secret'`.
 function sanitizeDialog(d: Dialog): Dialog {
-  if (!d.secret || !d.lastMessage) return d
-  return { ...d, lastMessage: { ...d.lastMessage, text: '', entities: undefined, encBody: undefined } }
+  const lm = d.lastMessage
+  if (!d.secret || !lm) return d
+  if (lm._ !== 'message') return d
+  return { ...d, lastMessage: { ...lm, message: '', entities: undefined, enc_body: undefined } }
 }
 
 export async function saveDialogs(dialogs: Dialog[]): Promise<void> {
@@ -389,28 +412,28 @@ export async function loadChats(): Promise<PersistChat[]> {
 
 // ── Сообщения (пишет messagesManager воркера) ──────────────────────────────────
 
-export async function saveMessages(peerId: PeerId, msgs: Message[]): Promise<void> {
+export async function saveMessages(peerId: PeerId, msgs: MyMessage[]): Promise<void> {
   if (await locked()) return
   // Секретные (E2E) не персистим в открытом виде: text/entities расшифрованы в памяти.
-  const safe = msgs.filter((m) => !m.secret && !m.encBody && m.type !== 'encrypted')
+  const safe = msgs.filter((m) => !m.secret && !(m._ === 'message' && m.enc_body))
   if (!safe.length) return
   try {
-    await enqueue(S_MESSAGES, ...safe.map((m): Op => ({ kind: 'put', value: { ...m, pk: `${peerId}:${m.seq}` } })))
+    await enqueue(S_MESSAGES, ...safe.map((m): Op => ({ kind: 'put', value: { ...m, pk: `${peerId}:${m.id}` } })))
   } catch { /* idb недоступен */ }
 }
 
-export async function loadMessages(peerId: PeerId): Promise<Message[]> {
+export async function loadMessages(peerId: PeerId): Promise<MyMessage[]> {
   if (await locked()) return []
   try {
     const rows = await read<StoredMessage[]>(S_MESSAGES, (s) => s.index('byPeer').getAll(IDBKeyRange.only(peerId)))
     return (rows ?? [])
-      .map((r) => { const m = { ...r } as Partial<StoredMessage>; delete m.pk; return m as Message })
-      .sort((a, b) => a.seq - b.seq)
+      .map((r) => { const m = { ...r } as Partial<StoredMessage>; delete m.pk; return m as MyMessage })
+      .sort((a, b) => a.id - b.id)
   } catch { return [] }
 }
 
-export async function deletePersistedMessage(peerId: PeerId, seq: number): Promise<void> {
-  try { await enqueue(S_MESSAGES, { kind: 'delete', key: `${peerId}:${seq}` }) } catch { /* idb недоступен */ }
+export async function deletePersistedMessage(peerId: PeerId, msgId: number): Promise<void> {
+  try { await enqueue(S_MESSAGES, { kind: 'delete', key: `${peerId}:${msgId}` }) } catch { /* idb недоступен */ }
 }
 
 export async function clearPersistedChat(peerId: PeerId): Promise<void> {

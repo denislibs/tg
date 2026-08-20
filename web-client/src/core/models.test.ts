@@ -1,107 +1,122 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { deriveOut, fromNewMessageEvt, mapChecklist, mapDraft, mapMessage, type RawChecklist, type RawMessage } from './models'
-import type { NewMessageEvt } from './realtime/events'
+import {
+  isOurMessage, mapChecklist, mapDraft, mapMessage, mapMyMessage,
+  type RawChecklist, type RawMessageReal, type RawMessageService,
+} from './models'
+import { generateMessageId } from './history/messageId'
+import { makeRawMessage, makeRawServiceMessage } from './messages/testMessage'
+
+/** Проводное сообщение с нужными полями поверх минимального. */
+const raw = (over: Partial<RawMessageReal> = {}): RawMessageReal =>
+  ({ ...makeRawMessage({ id: 5, peerId: 1, fromId: 1, text: 'hello', date: 1_750_000_000 }), ...over })
 
 describe('mapMessage', () => {
-  it('maps a raw message and computes seq/ids', () => {
-    const raw: RawMessage = {
-      id: 10, peer_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'hello',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-    }
-    expect(mapMessage(raw)).toEqual({
-      id: 10, peerId: 1, seq: 5, senderId: 1, type: 'text', text: 'hello',
-      replyToId: null, mediaId: null, createdAt: '2026-06-24T10:01:00Z', threadRootId: null,
-      groupedId: null, editedAt: null, deleted: false,
-      // Пяти плоских `fwd_from_*` больше нет — атрибуция пересылки это
-      // конструктор `messageFwdHeader`, и его отсутствие означает «не переслано».
-      fwdFrom: undefined,
-      replyTo: null,
+  // Маппер УСОХ: формы совпали, и переводить осталось ровно три вещи —
+  // пространство номеров, знаковые ключи пиров и не пройденные программой
+  // подсистемы. Этот тест держит первые две.
+  it('переводит номер в клиентское пространство и выводит ключи пиров', () => {
+    const m = mapMessage(raw())
+    expect(m).toEqual({
+      _: 'message',
+      pFlags: {},
+      id: generateMessageId(5),
+      from_id: { _: 'peerUser', user_id: 1 },
+      peer_id: { _: 'peerUser', user_id: 1 },
+      peerId: 1,
+      fromId: 1,
+      date: 1_750_000_000,
+      message: 'hello',
+      reply_to: undefined,
+      ttl_period: undefined,
+      random_id: undefined,
+      secret: undefined,
+      secretMedia: undefined,
+      fwd_from: undefined,
+      media: undefined,
+      reply_markup: undefined,
+      entities: undefined,
+      views: undefined,
+      forwards: undefined,
+      edit_date: undefined,
+      grouped_id: undefined,
+      effect_name: undefined,
+      factcheck: undefined,
+      send_at: undefined,
+      when_online: undefined,
+      enc_body: undefined,
+      destruct_at: undefined,
+      geo: undefined,
+      contact: undefined,
+      poll: undefined,
+      checklist: undefined,
+      giveaway: undefined,
+      gift: undefined,
+      web_page: undefined,
+      paid_media: undefined,
     })
   })
 
-  it('maps thread_root_id to threadRootId', () => {
-    const raw: RawMessage = {
-      id: 11, peer_id: 99, seq: 1, sender_id: 1, type: 'text', text: 'c',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', thread_root_id: 5,
-    }
-    expect(mapMessage(raw).threadRootId).toBe(5)
-  })
-
-  it('defaults threadRootId to null when thread_root_id absent', () => {
-    const raw: RawMessage = {
-      id: 12, peer_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'x',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-    }
-    expect(mapMessage(raw).threadRootId).toBeNull()
-  })
-
-  it('maps a valid effect and drops unknown/empty effects', () => {
-    const mk = (effect: string | null | undefined): RawMessage => ({
-      id: 20, peer_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'party',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', effect,
+  // Ссылка на отвечаемое и корень треда — номера сообщений, значит живут в том
+  // же пространстве, что и `id`: сравнивать их с ним иначе было бы нельзя.
+  it('переводит номера внутри reply_to тем же приведением', () => {
+    const m = mapMessage(raw({ reply_to: { _: 'messageReplyHeader', reply_to_msg_id: 3, reply_to_top_id: 1 } }))
+    expect(m._ === 'message' && m.reply_to).toEqual({
+      _: 'messageReplyHeader',
+      reply_to_msg_id: generateMessageId(3),
+      reply_to_top_id: generateMessageId(1),
     })
-    expect(mapMessage(mk('confetti')).effect).toBe('confetti')
-    expect(mapMessage(mk('fireworks')).effect).toBe('fireworks')
-    // вне whitelist / пусто → undefined
-    expect(mapMessage(mk('boom')).effect).toBeUndefined()
-    expect(mapMessage(mk('')).effect).toBeUndefined()
-    expect(mapMessage(mk(null)).effect).toBeUndefined()
-    expect(mapMessage(mk(undefined)).effect).toBeUndefined()
   })
 
-  it('maps web_page (server link preview) to webPage', () => {
-    const raw: RawMessage = {
-      id: 13, peer_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+  it('дыра остаётся дырой: ни даты, ни автора у неё нет', () => {
+    const m = mapMessage({ _: 'messageEmpty', id: 4, peer_id: { _: 'peerUser', user_id: 1 } })
+    expect(m).toEqual({ _: 'messageEmpty', id: generateMessageId(4), peer_id: { _: 'peerUser', user_id: 1 }, peerId: 1 })
+  })
+
+  it('маппит валидный эффект и отбрасывает неизвестный', () => {
+    const eff = (effect_name?: string) => {
+      const m = mapMessage(raw({ effect_name }))
+      return m._ === 'message' ? m.effect_name : undefined
+    }
+    expect(eff('confetti')).toBe('confetti')
+    expect(eff('fireworks')).toBe('fireworks')
+    expect(eff('boom')).toBeUndefined()
+    expect(eff('')).toBeUndefined()
+    expect(eff(undefined)).toBeUndefined()
+  })
+
+  it('превью ссылки приводится из проводной формы (подсистема WebPage не пройдена)', () => {
+    const m = mapMessage(raw({
       web_page: {
         url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание',
         photo_id: 42, photo_w: 1280, photo_h: 720, photo_blur: 'Ymx1cg==', photo_has_thumb: true, has_iv: true,
       },
-    }
-    expect(mapMessage(raw).webPage).toEqual({
+    }))
+    expect(m._ === 'message' && m.web_page).toEqual({
       url: 'https://example.com', siteName: 'Example', title: 'Заголовок', description: 'Описание',
       photoId: 42, photoW: 1280, photoH: 720, photoBlur: 'Ymx1cg==', photoHasThumb: true, hasIV: true,
     })
+    expect(mapMessage(raw())).toMatchObject({ web_page: undefined })
   })
 
-  it('drops empty web_page fields and defaults webPage to undefined', () => {
-    const base = {
-      id: 14, peer_id: 1, seq: 4, sender_id: 1, type: 'text', text: 'x',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+  // «Проверка фактов» — текст и его разметка ОДНИМ объектом `textWithEntities`,
+  // а не парой полей рядом.
+  it('проверка фактов приезжает конструктором и не разбирается', () => {
+    const factcheck = {
+      _: 'factCheck' as const,
+      country: 'DE',
+      text: { _: 'textWithEntities' as const, text: 'clarification', entities: [{ _: 'messageEntityBold' as const, offset: 0, length: 4 }] },
     }
-    expect(mapMessage({ ...base }).webPage).toBeUndefined()
-    expect(mapMessage({ ...base, web_page: null }).webPage).toBeUndefined()
-    const wp = mapMessage({ ...base, web_page: { title: 't' } }).webPage
-    expect(wp).toEqual({
-      url: undefined, siteName: '', title: 't', description: undefined,
-      photoId: undefined, photoW: undefined, photoH: undefined,
-      photoBlur: undefined, photoHasThumb: undefined, hasIV: undefined,
-    })
-  })
-
-  it('maps factcheck (fact check block) to factCheck', () => {
-    const raw: RawMessage = {
-      id: 15, peer_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'post',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-      factcheck: { text: 'clarification', entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }], country: 'DE' },
-    }
-    expect(mapMessage(raw).factCheck).toEqual({
-      text: 'clarification', entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }], country: 'DE',
-    })
-    const base = { ...raw, factcheck: null }
-    expect(mapMessage(base).factCheck).toBeUndefined()
+    const m = mapMessage(raw({ factcheck }))
+    expect(m._ === 'message' && m.factcheck).toEqual(factcheck)
   })
 
   // Вложение — то, из чего бабл строится ЦЕЛИКОМ, без отдельного запроса меты
   // медиа. Маппер обязан прогнать его через `saveMessageMedia`: сам провод несёт
   // только атрибуты и ступени, а `doc.type`/`doc.w`/`doc.h`/`doc.duration`
-  // выводит клиент — ровно как `appDocsManager.saveDoc` в оригинале. Без этого
-  // вывода у КАЖДОГО медиа-бабла не будет ни типа, ни бокса.
+  // выводит клиент — ровно как `appDocsManager.saveDoc` в оригинале.
   it('нормализует вложение: тип и геометрия выводятся из атрибутов', () => {
-    const raw: RawMessage = {
-      id: 30, peer_id: 1, seq: 7, sender_id: 1, type: 'video', text: '',
-      reply_to_id: null, media_id: 42, created_at: '2026-06-24T10:01:00Z',
+    const m = mapMessage(raw({
       media: {
         _: 'messageMediaDocument',
         document: {
@@ -116,44 +131,104 @@ describe('mapMessage', () => {
           ],
         },
       },
-    }
-    const media = mapMessage(raw).media
+    }))
+    const media = m._ === 'message' ? m.media : undefined
     expect(media?._).toBe('messageMediaDocument')
     const doc = media?._ === 'messageMediaDocument' ? media.document : undefined
     expect({ type: doc?.type, w: doc?.w, h: doc?.h, duration: doc?.duration, file_name: doc?.file_name })
       .toEqual({ type: 'video', w: 1600, h: 900, duration: 61, file_name: 'clip.mp4' })
-    // Ступени доезжают обе — превью до сети и серверный постер.
     expect(doc?.thumbs?.map((t) => t._)).toEqual(['photoStrippedSize', 'photoSize'])
   })
 
-  // Скрытое медиа (`messageMedia.pFlags.spoiler`). Признак ОДНОСТОРОННИЙ: ключ
-  // есть только когда true, поэтому «нет ключа» обязано давать undefined, а не
-  // false — иначе спойлер не отличить от «сервер не сказал». В плоской модели
-  // это приходилось держать соглашением, теперь это семантика самого `pFlags`.
+  // Признак скрытого медиа ОДНОСТОРОННИЙ: ключ есть только когда true, поэтому
+  // «нет ключа» обязано давать undefined, а не false.
   it('признак скрытого медиа живёт в pFlags и односторонний', () => {
-    const raw: RawMessage = {
-      id: 31, peer_id: 1, seq: 8, sender_id: 1, type: 'photo', text: '',
-      reply_to_id: null, media_id: 43, created_at: '2026-06-24T10:02:00Z',
-      media: {
-        _: 'messageMediaPhoto',
-        pFlags: { spoiler: true },
-        photo: { _: 'photo', id: 43, sizes: [{ _: 'photoStrippedSize', type: 'i', bytes: 'AAECAw==' }] },
-      },
+    const media = {
+      _: 'messageMediaPhoto' as const,
+      pFlags: { spoiler: true as const },
+      photo: { _: 'photo' as const, id: 43, sizes: [{ _: 'photoStrippedSize' as const, type: 'i', bytes: 'AAECAw==' }] },
     }
-    expect(mapMessage(raw).media?.pFlags?.spoiler).toBe(true)
-
-    const bare = mapMessage({ ...raw, media: { ...raw.media!, pFlags: {} } })
-    expect(bare.media?.pFlags?.spoiler).toBeUndefined()
+    const m = mapMessage(raw({ media }))
+    expect(m._ === 'message' && m.media?.pFlags?.spoiler).toBe(true)
+    const bare = mapMessage(raw({ media: { ...media, pFlags: {} } }))
+    expect(bare._ === 'message' && bare.media?.pFlags?.spoiler).toBeUndefined()
   })
 
-  it('маппит send_as (отображаемый автор канала/группы)', () => {
-    const raw: RawMessage = {
-      id: 31, peer_id: 1, seq: 8, sender_id: 7, type: 'text', text: 'post',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
-      send_as: { peer_id: 9, title: 'Канал', photo_id: 5 },
-    }
-    expect(mapMessage(raw).sendAs).toEqual({ peerId: 9, title: 'Канал', photoId: 5 })
-    expect(mapMessage({ ...raw, send_as: null }).sendAs).toBeUndefined()
+  // Плоская проекция объединения `MessageReactions` — единственное, что маппер
+  // ещё разбирает сверх номеров и ключей: подсистема реакций программой TL не
+  // пройдена, кадры `reaction` по-прежнему плоские.
+  it('агрегаты реакций приводятся из объединения MessageReactions', () => {
+    const m = mapMyMessage(raw({
+      reactions: {
+        _: 'messageReactions',
+        results: [
+          { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2, chosen_order: 0 },
+          { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '🔥' }, count: 1 },
+          { _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 50 },
+        ],
+        recent_reactions: [
+          { _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 8 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' } },
+        ],
+        top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 30 }],
+      },
+    }))
+    expect(m.reactions).toEqual([
+      { emoji: '👍', count: 2, mine: true, recent: [8] },
+      { emoji: '🔥', count: 1, mine: false },
+    ])
+    expect(m.starReaction).toEqual({ total: 50, mine: 30 })
+  })
+
+  // «Моя» реакция — это НАЛИЧИЕ chosen_order, а не его истинность: ноль там
+  // значит «моя первая», и склеивать его с «не моя» нельзя.
+  it('chosen_order = 0 это «моя», а не «не моя»', () => {
+    const m = mapMyMessage(raw({
+      reactions: {
+        _: 'messageReactions',
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1, chosen_order: 0 }],
+      },
+    }))
+    expect(m.reactions?.[0].mine).toBe(true)
+  })
+})
+
+// Служебное действие: сервер производит НАСТОЯЩИЕ конструкторы схемы, клиент
+// уточняет их до синтетических (порт appMessagesManager.ts:5215-5238).
+describe('mapMessage — уточнение служебного действия', () => {
+  const svc = (action: RawMessageService['action'], fromId: number) =>
+    mapMessage(makeRawServiceMessage({ id: 1, peerId: -10, fromId, action }))
+
+  it('удаление САМОГО СЕБЯ становится «покинул(а) группу»', () => {
+    const m = svc({ _: 'messageActionChatDeleteUser', user_id: 7 }, 7)
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatLeave')
+  })
+
+  it('удаление ДРУГОГО остаётся messageActionChatDeleteUser', () => {
+    const m = svc({ _: 'messageActionChatDeleteUser', user_id: 8 }, 7)
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatDeleteUser')
+  })
+
+  it('добавление НЕСКОЛЬКИХ становится messageActionChatAddUsers', () => {
+    const m = svc({ _: 'messageActionChatAddUser', users: [8, 9] }, 7)
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatAddUsers')
+  })
+
+  it('добавление САМОГО СЕБЯ становится «присоединился(ась)»', () => {
+    const m = svc({ _: 'messageActionChatAddUser', users: [7] }, 7)
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatJoined')
+  })
+
+  it('присоединился ЗРИТЕЛЬ — вариант с суффиксом You', () => {
+    const m = mapMessage(
+      makeRawServiceMessage({ id: 1, peerId: -10, fromId: 7, action: { _: 'messageActionChatAddUser', users: [7] } }),
+      7,
+    )
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatJoinedYou')
+  })
+
+  it('добавление ОДНОГО ДРУГОГО конструктор не меняет', () => {
+    const m = svc({ _: 'messageActionChatAddUser', users: [8] }, 7)
+    expect(m._ === 'messageService' && m.action._).toBe('messageActionChatAddUser')
   })
 })
 
@@ -187,7 +262,7 @@ describe('mapDraft', () => {
 
 describe('mapChecklist', () => {
   it('maps items with marks and permission flags (snake_case → camelCase)', () => {
-    const raw: RawChecklist = {
+    const rawChecklist: RawChecklist = {
       id: 7, title: 'todo',
       items: [
         { id: 1, text: 'a', marked_by: [10, 11] },
@@ -195,7 +270,7 @@ describe('mapChecklist', () => {
       ],
       others_can_add: true, others_can_mark: false,
     }
-    expect(mapChecklist(raw)).toEqual({
+    expect(mapChecklist(rawChecklist)).toEqual({
       id: 7, title: 'todo',
       items: [
         { id: 1, text: 'a', markedBy: [10, 11] },
@@ -213,90 +288,29 @@ describe('mapChecklist', () => {
   })
 })
 
-// Порт tweb `message.pFlags.out`. Бэкенд поля не отдаёт (ни REST-витрина
-// messageJSON, ни WS-кадр messageUpdatePayload), поэтому предикат — ЕДИНСТВЕННОЕ
-// место вывода этого факта: его зовут границы маппинга владельца (messagesManager,
-// pending, pollMethods, boostsManager). Прежде тот же вывод жил в витрине
-// (messageToConvMsg) — правило перенесено сюда дословно, включая send-as.
-describe('deriveOut — исходящее/входящее', () => {
-  it('моё сообщение — исходящее', () => {
-    expect(deriveOut({ senderId: 7 }, 7)).toBe(true)
+/**
+ * `pFlags.out` производит СЕРВЕР (решение Р7 отменено). Клиенту остался ДРУГОЙ
+ * вопрос — сторона бабла, и она решается `from_id`: сообщение от лица канала
+ * остаётся `out` у своего автора, но рисуется входящим, потому что автор на
+ * проводе там САМ КАНАЛ.
+ */
+describe('isOurMessage — сторона бабла', () => {
+  const withFrom = (out: boolean, fromId?: PeerId) =>
+    mapMessage(makeRawMessage({ id: 1, peerId: -10, fromId, out }))
+
+  it('моё сообщение от человека — справа', () => {
+    expect(isOurMessage(withFrom(true, 7) as never)).toBe(true)
   })
 
-  it('чужое сообщение — входящее', () => {
-    expect(deriveOut({ senderId: 2 }, 7)).toBe(false)
+  it('чужое сообщение — слева', () => {
+    expect(isOurMessage(withFrom(false, 2) as never)).toBe(false)
   })
 
-  it('личность ещё не известна (meId === null) — входящее', () => {
-    expect(deriveOut({ senderId: 7 }, null)).toBe(false)
+  it('send-as: автор на проводе — КАНАЛ, значит бабл входящий даже при out', () => {
+    expect(isOurMessage(withFrom(true, -9) as never)).toBe(false)
   })
 
-  it('send-as: пост от имени канала/группы рисуется ВХОДЯЩИМ, хотя отправитель — я', () => {
-    expect(deriveOut({ senderId: 7, sendAs: { peerId: 9, title: 'Канал' } }, 7)).toBe(false)
-  })
-})
-
-// Живой кадр new_message → Message. Единственная точка этого перехода
-// (зовётся из messagesManager.cacheLive), поэтому непереложенное здесь поле
-// отсутствует у сообщения до перезагрузки истории — и только у неё.
-describe('fromNewMessageEvt — проводной кадр в модель', () => {
-  const base: NewMessageEvt = {
-    peer_id: 1, msg_id: 10, seq: 5, sender_id: 7, type: 'text', text: 'hi',
-    media_id: null, created_at: '2026-06-24T10:01:00Z',
-  }
-
-  // Бэк кладёт send_as в кадр (usecase/chat/frame.go: messageUpdatePayload), но
-  // маппер его не переносил: у живого сообщения не было ни имени автора
-  // (бабл рисуется от имени канала/группы), ни правила `out` — send-as рисуется
-  // ВХОДЯЩИМ даже когда отправитель я. Расхождение держалось до перезагрузки.
-  it('переносит send_as живого кадра', () => {
-    const m = fromNewMessageEvt({ ...base, send_as: { peer_id: 9, title: 'Канал', photo_id: 5 } })
-    expect(m.sendAs).toEqual({ peerId: 9, title: 'Канал', photoId: 5 })
-  })
-
-  it('без send_as в кадре — sendAs undefined (обычная отправка)', () => {
-    expect(fromNewMessageEvt(base).sendAs).toBeUndefined()
-  })
-
-  it('send-as живого кадра делает сообщение ВХОДЯЩИМ у самого отправителя', () => {
-    const meId = 7
-    const asChannel = fromNewMessageEvt({ ...base, send_as: { peer_id: 9, title: 'Канал' } })
-    const asMyself = fromNewMessageEvt(base)
-    expect(deriveOut(asChannel, meId)).toBe(false)
-    expect(deriveOut(asMyself, meId)).toBe(true)
-  })
-
-  // Вложение живого кадра — то же самое, что у витрины истории, и нормализуется
-  // тем же `saveMessageMedia`. Раньше здесь стояли ТРИ отдельных пина (мета
-  // целиком, спойлер, пики волны): каждое поле терялось поштучно, и потеря
-  // проявлялась как «после перезагрузки истории появилось, а живьём не было» —
-  // дефект класса send_as. Со вложенной моделью потерять поштучно уже нечего,
-  // но проверяем оба исторически терявшихся признака явно.
-  it('переносит вложение кадра целиком и нормализует его', () => {
-    const m = fromNewMessageEvt({
-      ...base, type: 'voice', media_id: 55,
-      media: {
-        _: 'messageMediaDocument',
-        pFlags: { spoiler: true },
-        document: {
-          _: 'document', id: 55, mime_type: 'audio/ogg', size: 4200,
-          attributes: [
-            { _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 7, waveform: 'HwAq/wc=' },
-            { _: 'documentAttributeFilename', file_name: 'voice.ogg' },
-          ],
-        },
-      },
-    })
-
-    const doc = m.media?._ === 'messageMediaDocument' ? m.media.document : undefined
-    // Тип выведен из атрибутов и mime — то есть кадр прошёл через saveDocument.
-    expect(doc?.type).toBe('voice')
-    expect(doc?.duration).toBe(7)
-    // Пики волны: без них живое голосовое рисовалось бы без волны до перезагрузки.
-    expect(doc?.attributes.find((a) => a._ === 'documentAttributeAudio')?.waveform).toBe('HwAq/wc=')
-    // Спойлер: без него живое сообщение на миг обнажило бы медиа.
-    expect(m.media?.pFlags?.spoiler).toBe(true)
-
-    expect(fromNewMessageEvt({ ...base, type: 'voice', media_id: 55 }).media).toBeUndefined()
+  it('пост канала (автора нет вовсе) — входящий', () => {
+    expect(isOurMessage(withFrom(true) as never)).toBe(false)
   })
 })

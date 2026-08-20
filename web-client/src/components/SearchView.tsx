@@ -15,7 +15,9 @@ import PlayPauseGlyph from './PlayPauseGlyph'
 import ConfirmDialog from './settings/ConfirmDialog'
 import type { Chat, OpenPeer } from '../data'
 import type { ContactsFound } from '../core/managers/channelsManager'
-import type { Message } from '../core/models'
+import { getMessageText, type MyMessage } from '../core/models'
+import { getMediaId, getMessageKind } from '../core/messages/messageKind'
+import { messageDateISO } from '../core/messageToConvMsg'
 import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
 import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appState'
@@ -128,8 +130,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     onOpenPeer?.({ id: peerKey(u), title: getUserTitle(u), username: u.username, photoId: getPeerPhotoId(u.photo) || undefined })
   }
   // Клик по сообщению: открыть чат и прыгнуть к seq (pendingJump потребляет Chat)
-  const openMessage = (m: Message) => {
-    useSearchStore.getState().setPendingJump(m.peerId, m.seq)
+  const openMessage = (m: MyMessage) => {
+    useSearchStore.getState().setPendingJump(m.peerId, m.id)
     openDialog(String(m.peerId))
   }
 
@@ -139,22 +141,22 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const togglePlay = useAudioStore((st) => st.toggle)
   const curMediaId = useAudioStore((st) => st.track?.mediaId)
   const audioPlaying = useAudioStore((st) => st.playing)
-  const playRow = (m: Message, title: string) => {
-    if (m.mediaId == null) return
-    if (m.mediaId === curMediaId) {
+  const playRow = (m: MyMessage, title: string) => {
+    if (getMediaId(m) == null) return
+    if (getMediaId(m) === curMediaId) {
       togglePlay()
       return
     }
-    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
-      mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
-      subtitle: friendlyMsgTime(x.createdAt, lang),
+      mediaId: getMediaId(x) as number,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
+      subtitle: friendlyMsgTime(messageDateISO(x.date), lang),
       peerId: x.peerId,
       msgId: x.id,
     }))
     playQueue(tracks, list.indexOf(m))
-    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(m.peerId, m.id)
+    if ((m.fromId ?? 0) !== meId && m.pFlags.media_unread) markMediaPlayed(m.peerId, m.id)
   }
 
   const goTab = (i: number) => setTab(i)
@@ -169,10 +171,10 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const clearRecent = () => { setAppState('recentSearch', []) }
 
   // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
-  const MsgRow = ({ m }: { m: Message }) => {
+  const MsgRow = ({ m }: { m: MyMessage }) => {
     const chat = byId.get(String(m.peerId))
     const msgAvatarSrc = useMediaUrl(chat?.photoId ?? null)
-    const snippet = m.text || getDocumentFromMessage(m)?.file_name || mediaLabel(m.type)
+    const snippet = getMessageText(m) || getDocumentFromMessage(m)?.file_name || mediaLabel(getMessageKind(m))
     return (
       <div className={s.row} onClick={() => openMessage(m)}>
         <Avatar
@@ -187,7 +189,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
             <Text noWrap size={16} weight={600} color="var(--primary-text-color)" className={s.titleFlex}>
               {chat?.name ?? `#${m.peerId}`}
             </Text>
-            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(m.createdAt, lang)}</Text>
+            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(m.date), lang)}</Text>
           </div>
           <Text noWrap size={15} color="var(--secondary-text-color)">
             <Highlighted text={snippet} q={q} />
@@ -315,10 +317,10 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                   <div className={s.mediaGrid}>
                     {msgs.map((m) => (
                       <div key={m.id} className={s.mediaTile} onClick={() => openMessage(m)}>
-                        {m.mediaId != null && (
-                          <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
+                        {getMediaId(m) != null && (
+                          <MediaGridThumb className={s.tileImg} mediaId={getMediaId(m)!} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
                         )}
-                        {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
+                        {getMessageKind(m) === 'video' && <span className={s.tileDuration}>{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
                       </div>
                     ))}
                   </div>
@@ -332,7 +334,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 msgs.length > 0 ? (
                   <SidebarSection>
                     {msgs.map((m) => {
-                      const url = firstUrl(m.text)
+                      const url = firstUrl(getMessageText(m))
                       return (
                         <div key={m.id} className={s.row} onClick={() => window.open(url, '_blank', 'noopener')}>
                           <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
@@ -370,7 +372,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                             <Highlighted text={doc?.file_name || t('Document')} q={q} />
                           </Text>
                           <Text size={13.5} color="var(--secondary-text-color)">
-                            {[fmtSize(doc?.size), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                            {[fmtSize(doc?.size), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
                           </Text>
                         </div>
                       </div>
@@ -390,18 +392,18 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       const doc = getDocumentFromMessage(m)
                       const title = tab === 5
                         ? doc?.file_name || t('Audio')
-                        : m.type === 'roundVideo' ? t('Video message') : t('Voice message')
+                        : getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')
                       return (
                         <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
                           <div className={s.rowPlay}>
-                            <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
+                            <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} className={s.rowGlyph} />
                           </div>
                           <div className={s.body}>
                             <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
                               <Highlighted text={title} q={q} />
                             </Text>
                             <Text size={13.5} color="var(--secondary-text-color)">
-                              {[fmtDur(doc?.duration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                              {[fmtDur(doc?.duration), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
                             </Text>
                           </div>
                         </div>

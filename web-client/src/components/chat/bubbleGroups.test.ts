@@ -15,7 +15,10 @@
 //       (`mid` + `group`), и переживает `changeBubbleMessage`.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
-import type { Message } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
+import type { ReplyMarkup } from '@core/markup/replyMarkup'
+import { makeMessage, makeServiceMessage, type MessageFixture } from '@core/messages/testMessage'
+import { generateTempMessageId } from '@core/history/messageId'
 import BubbleGroups, {
   STICKY_OFFSET,
   type BubbleGroupsHost,
@@ -30,23 +33,26 @@ const NEXT_DAY = '2026-08-16'
 /** `createdAt` из «времени суток» — тесту важны только разрывы между ними. */
 const at = (time: string, day = DAY) => `${day}T${time}Z`
 
+// Номер у сообщения ОДИН (решение Р1): он же адрес бабла, он же порядок в
+// серии. Фикстуры пишут его маленькими числами — читаемость важнее, а
+// клиентское пространство здесь ни на что не влияет (группировка сравнивает
+// номера между собой).
 let nextSeq = 0
-function msg(over: Partial<Message> = {}): Message {
-  const seq = over.seq ?? ++nextSeq
-  return {
-    id: over.id ?? seq,
-    peerId: CHAT,
-    senderId: 2,
-    type: 'text',
-    text: `m${seq}`,
-    replyToId: null,
-    mediaId: null,
-    createdAt: at('12:00:00'),
-    threadRootId: null,
-    out: false,
-    ...over,
-    seq,
-  }
+type Over = Partial<MessageFixture> & { replyMarkup?: ReplyMarkup }
+
+function msg({ replyMarkup, ...f }: Over = {}): MessageReal {
+  const id = f.id ?? ++nextSeq
+  const m = makeMessage({ peerId: CHAT, fromId: 2, text: `m${id}`, createdAt: at('12:00:00'), ...f, id })
+  return replyMarkup ? { ...m, reply_markup: replyMarkup } : m
+}
+
+/** Пилюля: «служебность» — это КОНСТРУКТОР сообщения, а не строка в поле type. */
+function svc(f: Over = {}): MyMessage {
+  const id = f.id ?? ++nextSeq
+  return makeServiceMessage({
+    peerId: CHAT, fromId: 2, createdAt: at('12:00:00'), ...f, id,
+    action: { _: 'messageActionChatEditPhoto' },
+  })
 }
 
 /** Хост групп — срез `ChatBubbles` (контейнеры дней + аватар), собранный так же,
@@ -99,7 +105,7 @@ class TestHost implements BubbleGroupsHost {
     return this.middlewareHelper.get()
   }
 
-  public createAvatar(_message: Message, _middleware: Middleware): GroupAvatar {
+  public createAvatar(_message: MyMessage, _middleware: Middleware): GroupAvatar {
     ++this.avatarsCreated
     const node = document.createElement('div')
     node.classList.add('avatar')
@@ -122,7 +128,7 @@ beforeEach(() => {
  *  scheduled: положить баблы в кэш → разложить по сериям → (по флагу) завести
  *  аватары затронутых серий, как это делает оригинал ДО монтирования, —
  *  → смонтировать. */
-function feed(messages: Message[], withAvatars = false) {
+function feed(messages: MyMessage[], withAvatars = false) {
   for (const message of messages) {
     const bubble = document.createElement('div')
     bubble.classList.add('bubble')
@@ -182,9 +188,9 @@ describe('правила разрыва серии', () => {
 
   it('смена автора рвёт серию', () => {
     feed([
-      msg({ senderId: 2, createdAt: at('12:00:00') }),
-      msg({ senderId: 3, createdAt: at('12:00:10') }),
-      msg({ senderId: 2, createdAt: at('12:00:20') }),
+      msg({ fromId: 2, createdAt: at('12:00:00') }),
+      msg({ fromId: 3, createdAt: at('12:00:10') }),
+      msg({ fromId: 2, createdAt: at('12:00:20') }),
     ])
 
     expect(layout()).toEqual([[1], [2], [3]])
@@ -214,7 +220,7 @@ describe('правила разрыва серии', () => {
   it('сервисное сообщение не группируется ни с чем и рвёт серию', () => {
     feed([
       msg({ createdAt: at('12:00:00') }),
-      msg({ createdAt: at('12:00:10'), type: 'service' }),
+      svc({ createdAt: at('12:00:10') }),
       msg({ createdAt: at('12:00:20') }),
     ])
 
@@ -223,18 +229,18 @@ describe('правила разрыва серии', () => {
 
   it('входящее и исходящее не попадают в одну серию', () => {
     feed([
-      msg({ createdAt: at('12:00:00'), out: false }),
+      msg({ createdAt: at('12:00:00') }),
       msg({ createdAt: at('12:00:10'), out: true }),
     ])
 
     expect(layout()).toEqual([[1], [2]])
   })
 
-  it('порядок в серии — по seq, а не по порядку прихода баблов', () => {
+  it('порядок в серии — по номеру, а не по порядку прихода баблов', () => {
     feed([
-      msg({ seq: 3, createdAt: at('12:00:20') }),
-      msg({ seq: 1, createdAt: at('12:00:00') }),
-      msg({ seq: 2, createdAt: at('12:00:10') }),
+      msg({ id: 3, createdAt: at('12:00:20') }),
+      msg({ id: 1, createdAt: at('12:00:00') }),
+      msg({ id: 2, createdAt: at('12:00:10') }),
     ])
 
     expect(layout()).toEqual([[1, 2, 3]])
@@ -244,9 +250,9 @@ describe('правила разрыва серии', () => {
 describe('инкрементальность', () => {
   /** Окно из `groupCount` серий по 5 сообщений: автор меняется каждые 5 штук. */
   const window5 = (groupCount: number) => {
-    const messages: Message[] = []
+    const messages: MyMessage[] = []
     for (let i = 0; i < groupCount * 5; ++i) {
-      messages.push(msg({ senderId: 2 + Math.floor(i / 5) % 2, createdAt: at('12:00:00') }))
+      messages.push(msg({ fromId: 2 + Math.floor(i / 5) % 2, createdAt: at('12:00:00') }))
     }
     return messages
   }
@@ -264,7 +270,7 @@ describe('инкрементальность', () => {
 
     const before = snapshotClassNames()
     const canGroupSpy = vi.spyOn(groups, 'canItemsBeGrouped')
-    const modified = feed([msg({ senderId: last.senderId, createdAt: at('12:00:00') })])
+    const modified = feed([msg({ fromId: last.fromId, createdAt: at('12:00:00') })])
     const comparisons = canGroupSpy.mock.calls.length
     canGroupSpy.mockRestore()
 
@@ -333,9 +339,9 @@ describe('удаление бабла', () => {
 
   it('удаление разделителя серий сливает соседей обратно в одну серию', () => {
     feed([
-      msg({ senderId: 2, createdAt: at('12:00:00') }),
-      msg({ senderId: 3, createdAt: at('12:00:10') }),
-      msg({ senderId: 2, createdAt: at('12:00:20') }),
+      msg({ fromId: 2, createdAt: at('12:00:00') }),
+      msg({ fromId: 3, createdAt: at('12:00:10') }),
+      msg({ fromId: 2, createdAt: at('12:00:20') }),
     ])
     expect(layout()).toEqual([[1], [2], [3]])
 
@@ -384,8 +390,8 @@ describe('прилипающий аватар серии', () => {
 
   it('у каждой серии свой аватар', () => {
     feed([
-      msg({ senderId: 2, createdAt: at('12:00:00') }),
-      msg({ senderId: 3, createdAt: at('12:00:10') }),
+      msg({ fromId: 2, createdAt: at('12:00:00') }),
+      msg({ fromId: 3, createdAt: at('12:00:10') }),
     ], true)
 
     expect(host.avatarsCreated).toBe(2)
@@ -393,7 +399,7 @@ describe('прилипающий аватар серии', () => {
   })
 
   it('у сервисной серии аватара нет', () => {
-    feed([msg({ type: 'service' })])
+    feed([svc()])
     const group = groups.lastGroup
 
     expect(group.createAvatar(group.firstItem.message)).toBeUndefined()
@@ -432,7 +438,7 @@ describe('getItemByBubble', () => {
     const item = groups.getItemByBubble(bubble(2))
     expect(item?.mid).toBe(2)
     expect(item?.group).toBe(groups.lastGroup)
-    expect(item?.message.text).toBe('m2')
+    expect(item?.message._ === 'message' ? item.message.message : null).toBe('m2')
   })
 
   it('чужой узел — undefined', () => {
@@ -440,16 +446,20 @@ describe('getItemByBubble', () => {
     expect(groups.getItemByBubble(document.createElement('div'))).toBeUndefined()
   })
 
-  it('changeBubbleMessage переклеивает адрес и порядок, не трогая узел и серию', () => {
-    feed([msg({ id: -7, seq: 1 })])
-    const el = bubble(-7)
+  // Это и есть путь ack'а: у неотправленного бабла номер назначен КЛИЕНТОМ
+  // (дробь поверх последнего занятого — `generateTempMessageId`), и после
+  // подтверждения сервера на его месте оказывается серверный номер. Прежде
+  // адрес и порядок были разными полями, теперь переклеивается ОДИН.
+  it('changeBubbleMessage переклеивает номер, не трогая узел и серию', () => {
+    const tempId = generateTempMessageId(0)
+    feed([msg({ id: tempId })])
+    const el = bubble(tempId)
     const group = groups.getItemByBubble(el)!.group
 
-    groups.changeBubbleMessage(el, msg({ id: 42, seq: 9 }))
+    groups.changeBubbleMessage(el, msg({ id: 42 }))
 
     const item = groups.getItemByBubble(el)!
     expect(item.mid).toBe(42)
-    expect(item.seq).toBe(9)
     expect(item.group).toBe(group)
     expect(item.bubble).toBe(el)
   })

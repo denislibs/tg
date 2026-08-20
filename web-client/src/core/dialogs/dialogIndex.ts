@@ -55,7 +55,12 @@ function pinnedDate(dialog: Dialog, order: readonly number[]): number {
 
 /** tweb `generateIndexForDialog` (dialogs.ts:869-922): дата последней активности. */
 function activityDate(dialog: Dialog, draft?: Pick<Draft, 'updatedAt'>): number {
-  const top = secs(dialog.lastMessage?.createdAt)
+  // `date:int` на проводе, но JSON может привезти что угодно; NaN здесь отравил
+  // бы СОРТИРОВКУ ЦЕЛИКОМ (сравнения с NaN ложны в обе стороны — порядок
+  // становится непредсказуемым, а не «этот диалог внизу»). Поэтому непригодное
+  // значение сводим к 0 явно.
+  const date = dialog.lastMessage?.date
+  const top = Number.isFinite(date) ? (date as number) : 0
   // Черновик свежее последнего сообщения поднимает диалог (dialogs.ts:904-910).
   const draftDate = secs(draft?.updatedAt)
   // Осознанное отступление от tweb: там пустой диалог получает `topDate ||= tsNow()`

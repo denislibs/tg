@@ -22,7 +22,7 @@
 // * применения кадров, которые ещё НЕ переведены на операции (edit_message,
 //   geo_live_update, reaction/star_reaction — таблица в web-client/CLAUDE.md):
 //   их правит только стор, зеркало узнает о них, когда они станут операциями.
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import { applyOp, dedupAsc, type MessageOp } from '../realtime/messageOps'
 import rootScope from '@lib/rootScope'
 
@@ -37,9 +37,9 @@ import rootScope from '@lib/rootScope'
 export const winKey = (peerId: number, threadRootId?: number | null): string =>
   threadRootId ? `${peerId}:${threadRootId}` : String(peerId)
 
-// key (winKey: "peerId" | "peerId:threadRoot") → сообщения окна, по возрастанию
-// seq — тот же порядок и та же дедупликация, что у окна в сторе.
-const windows = new Map<string, Message[]>()
+// key (winKey: "peerId" | "peerId:threadRoot") → сообщения окна, по возрастанию номера
+// — тот же порядок и та же дедупликация, что у окна в сторе.
+const windows = new Map<string, MyMessage[]>()
 
 // Окно, которого ещё нет: применяем операцию поверх пустого списка. Для
 // replace/remove/patch `applyOp` вернёт ЭТУ ЖЕ ссылку (нечего править) — окно не
@@ -49,29 +49,18 @@ const windows = new Map<string, Message[]>()
 // отсеивает чужое сам — сверкой `storageKey`/`peerId`). У zustand-копии гейт
 // другой (окно должно быть открыто React'ом) — единственное структурное
 // расхождение копий, см. storeProjection.mirror.test.ts.
-const EMPTY: Message[] = []
+const EMPTY: MyMessage[] = []
 
 /** Синхронное чтение окна (аналог `historyStorage.history` в tweb).
  *  undefined — про это окно зеркало ещё ничего не знает. */
-export function mirrorWindow(key: string): readonly Message[] | undefined {
+export function mirrorWindow(key: string): readonly MyMessage[] | undefined {
   return windows.get(key)
 }
 
-/** Синхронное чтение сообщения — аналог tweb `getMessageByPeer(peerId, mid)`:
- *  сначала основное окно чата, затем его окна тредов (сообщение треда попадает
- *  и туда, и туда, но открыто может быть только окно треда). */
-export function mirrorMessage(peerId: number, seq: number): Message | undefined {
-  const main = windows.get(String(peerId))
-  const found = main?.find((m) => m.seq === seq)
-  if (found) return found
-  const prefix = `${peerId}:`
-  for (const [key, msgs] of windows) {
-    if (!key.startsWith(prefix)) continue
-    const m = msgs.find((x) => x.seq === seq)
-    if (m) return m
-  }
-  return undefined
-}
+// Синхронного чтения ОДНОГО сообщения (аналог tweb `getMessageByPeer`) здесь
+// больше нет: `mirrorMessage(peerId, msgId)` не звал никто, кроме собственного
+// теста, — инвентарь разбора нашёл его в списке «с нулём читателей». Заведётся
+// обратно вместе с потребителем, а не «на будущее».
 
 /** Положить в окно страницу истории — единственный вход, которым в зеркало
  *  попадает НЕ операция воркера, а результат `messages.getHistory`.
@@ -84,12 +73,12 @@ export function mirrorMessage(peerId: number, seq: number): Message | undefined 
  *  этого вызова.
  *
  *  Слияние (а не подмена окна) идёт через тот же `dedupAsc`, что и операции:
- *  ключ неотправленного бабла — `c:${clientId}`, серверного — `s:${seq}`
+ *  ключ неотправленного бабла — `c:${random_id}`, серверного — `s:${id}`
  *  (`core/realtime/messageOps.ts::dedupKey`), поэтому страница не может
  *  вытеснить из окна бабл «отправляется…», который воркер уже объявил
  *  операцией, а пришедшая позже страница выигрывает у своей же более старой
  *  копии того же сообщения. */
-export function putMirrorPage(key: string, msgs: readonly Message[]): void {
+export function putMirrorPage(key: string, msgs: readonly MyMessage[]): void {
   const prev = windows.get(key) ?? EMPTY
   windows.set(key, dedupAsc([...prev, ...msgs]))
 }
@@ -160,9 +149,9 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
       callbacks.push(() => rootScope.dispatchEventSingle('message_edit', { storageKey: op.key, peerId, mid, message }))
       continue
     }
-    // Слияние с оптимистичным баблом: в окне БЫЛ временный с тем же clientId
+    // Слияние с оптимистичным баблом: в окне БЫЛ временный с тем же random_id
     // (его id — tempId события, как в tweb pendingData.tempId).
-    const optimistic = op.msg.clientId ? prev.find((m) => m.clientId === op.msg.clientId) : undefined
+    const optimistic = op.msg.random_id ? prev.find((m) => m.random_id === op.msg.random_id) : undefined
     // `sequential` едет от отправителя как есть: его посчитал владелец бабла
     // (`managers/messages/pending.ts`), зеркало его не выводит — ровно как в
     // tweb, где `checkPendingMessage` кладёт в событие `pendingData.sequential`.

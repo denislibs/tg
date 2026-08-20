@@ -17,7 +17,9 @@
 //  • заглушённость считается по СРОКУ (`notify_settings.mute_until`), а не по
 //    булеву полю строки.
 import type { Chat, ChatType } from '../data'
-import { isDialogArchived, type Dialog, type Draft, type Message } from './models'
+import { getMessageText, isDialogArchived, type Dialog, type Draft, type MyMessage } from './models'
+import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
+import { messageDateISO } from './messageToConvMsg'
 import { serviceMsgText } from './serviceMsg'
 import { getPeerPhotoId, getPeerPhotoStrippedThumb, type Chat as PeerChat, type User } from './peers/peer'
 import { SAVED_MESSAGES_TITLE, getPeerTitle } from './peers/getPeerTitle'
@@ -63,8 +65,8 @@ export function fmtWhen(iso?: string): string {
 // A human label for a media message with no caption (tweb wrapMessageForReply:
 // grey type label, эмодзи-иконки для не-визуальных видов). Никогда не возвращаем
 // пустую строку — иначе не-текстовое сообщение выглядит в списке как пустой чат.
-export function mediaLabel(type?: string): string {
-  switch (type) {
+export function mediaLabel(kind?: MessageKind): string {
+  switch (kind) {
     case 'photo': return 'Фото'
     case 'video': return 'Видео'
     case 'gif': return 'GIF'
@@ -78,14 +80,13 @@ export function mediaLabel(type?: string): string {
     case 'geo': return '📍 Геолокация'
     case 'contact': return '👤 Контакт'
     case 'gift': return '🎁 Подарок'
-    case 'game': return '🎮 Игра'
     case 'giveaway': return '🎉 Розыгрыш'
-    case 'story': return 'История'
     case 'text':
-    case '':
     case undefined:
       return ''
-    // Незнакомый вид медиа (новый серверный type) — не показываем пустоту.
+    // Вид, у которого своей строки нет (чек-лист, шифрованное, пилюля), —
+    // не показываем пустоту. Прежние ветки 'game'/'story' сняты: таких видов
+    // сообщения у нас нет вовсе, а `MessageKind` перечисляет ровно те, что есть.
     default: return 'Сообщение'
   }
 }
@@ -126,13 +127,16 @@ export function dialogChatType(
  * портирован вовсе. Этот шаг даёт ему ПРЕДМЕТ (целое сообщение), сам порт —
  * отдельная задача следом.
  */
-function previewOf(lm: Message | undefined): { text: string; isService: boolean } {
+function previewOf(lm: MyMessage | undefined): { text: string; isService: boolean } {
   if (!lm) return { text: '', isService: false }
-  const isService = lm.type === 'service'
-  if (isService) return { text: serviceMsgText(lm.text), isService }
-  // У лога звонка `text` — служебный JSON, в превью всегда идёт лейбл.
-  if (lm.type === 'call') return { text: mediaLabel('call'), isService }
-  return { text: lm.text || mediaLabel(lm.type), isService }
+  const kind = getMessageKind(lm)
+  // «Служебное ли» — ВЫБОР КОНСТРУКТОРА (messageService), а не значение поля
+  // type; лог звонка это тоже служебное сообщение, но со своим баблом, поэтому
+  // пилюлей он не считается.
+  const isService = kind === 'service'
+  if (isService) return { text: serviceMsgText(lm as Extract<MyMessage, { _: 'messageService' }>), isService }
+  if (kind === 'call') return { text: mediaLabel('call'), isService }
+  return { text: getMessageText(lm) || mediaLabel(kind), isService }
 }
 
 export function dialogToChat(
@@ -157,20 +161,20 @@ export function dialogToChat(
   const lm = d.lastMessage
   // Sidebar tick: only when the LAST message is mine and it's not a broadcast
   // channel. ✓✓ once the peer's read horizon (read_outbox_max_id) reaches its seq.
-  const lastMine = lm != null && meId != null && lm.senderId === meId && type !== 'channel'
+  const lastMine = lm != null && meId != null && lm.fromId === meId && type !== 'channel'
   const { text: baseText, isService: isServiceMsg } = previewOf(lm)
   let preview = baseText
   // Forwarded last message: a forward arrow stands in front (no "Вы:" prefix, like
   // Telegram) — the arrow itself signals it wasn't authored here.
-  const forwarded = !!lm?.fwdFrom
+  const forwarded = !!(lm?._ === 'message' ? lm.fwd_from : undefined)
   if (preview && !forwarded && !isServiceMsg) {
     if (lastMine) preview = `Вы: ${preview}`
-    else if (type === 'group' && lm?.senderId) {
+    else if (type === 'group' && lm?.fromId) {
       // Имя автора — ПИР из зеркала (он приезжает в векторе `users` того же
       // контейнера), а не серверная строка `sender_name`. `onlyFirstName` —
       // потому что в строке списка оригинал показывает короткое имя, а фолбэк
       // «Удалён» у пропавшей карточки даёт сам `getPeerTitle`.
-      const author = getPeerTitle({ peerId: lm.senderId, peer: lookup(lm.senderId), onlyFirstName: true })
+      const author = getPeerTitle({ peerId: lm.fromId!, peer: lookup(lm.fromId!), onlyFirstName: true })
       if (author) preview = `${author}: ${preview}`
     }
   }
@@ -200,7 +204,9 @@ export function dialogToChat(
     verified: user?.pFlags?.verified || undefined,
     premium: user?.pFlags?.premium || undefined,
     emojiStatus: user?.emoji_status_emoticon || undefined,
-    date: hasDraft && (!lm?.createdAt || draft!.updatedAt > lm.createdAt) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm?.createdAt),
+    // `date` сообщения — секунды эпохи (в схеме `date:int`), у черновика — ISO
+    // своей ручки: сравниваем и форматируем в одних единицах.
+    date: hasDraft && (!lm || draft!.updatedAt > messageDateISO(lm.date)) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm ? messageDateISO(lm.date) : undefined),
     preview,
     draftPreview: hasDraft ? draft!.text : undefined,
     type,
@@ -216,8 +222,8 @@ export function dialogToChat(
     unreadMentions: d.unread_mentions_count > 0 ? d.unread_mentions_count : undefined,
     unreadReactions: d.unread_reactions_count > 0 ? d.unread_reactions_count : undefined,
     sent: (lastMine && !hasDraft) || undefined,
-    read: lastMine && !hasDraft && lm!.seq <= d.read_outbox_max_id ? true : undefined,
-    previewMediaId: !hasDraft && lm?.type === 'photo' && lm.mediaId ? lm.mediaId : undefined,
+    read: lastMine && !hasDraft && lm!.id <= d.read_outbox_max_id ? true : undefined,
+    previewMediaId: !hasDraft && lm && getMessageKind(lm) === 'photo' ? getMediaId(lm) : undefined,
     forwarded: (forwarded && !hasDraft) || undefined,
   }
 }

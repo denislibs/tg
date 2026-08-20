@@ -12,6 +12,7 @@
 import { WIRE_FOLDER_ARCHIVE, type Dialog } from '../models'
 import { EMPTY_NOTIFY_SETTINGS, MUTE_UNTIL_FOREVER, type PeerNotifySettings } from './notifySettings'
 import { toPeerId, type Peer } from '../peers/peerId'
+import { makeMessage } from '../messages/testMessage'
 
 /** Ссылка на пир из знакового ключа — обратная `getPeerId`. Знак и есть ответ
  *  на вопрос «пользователь или чат» (`core/peers/peerId.ts`). */
@@ -47,7 +48,7 @@ export function makeDialog(f: DialogFixture): Dialog {
     _: 'dialog',
     peerId: toPeerId(f.peerId),
     peer: peerOf(f.peerId),
-    top_message: f.topMessage ?? f.lastMessage?.seq ?? 0,
+    top_message: f.topMessage ?? f.lastMessage?.id ?? 0,
     read_inbox_max_id: f.readInboxMaxId ?? 0,
     read_outbox_max_id: f.readOutboxMaxId ?? 0,
     unread_count: f.unread ?? 0,
@@ -63,26 +64,7 @@ export function makeDialog(f: DialogFixture): Dialog {
   }
 }
 
-/** Последнее сообщение для превью: минимальный валидный `Message`. */
-export function makeLastMessage(m: {
-  peerId: PeerId
-  seq: number
-  senderId?: number
-  text?: string
-  createdAt?: string
-  type?: string
-  mediaId?: number | null
-}): NonNullable<Dialog['lastMessage']> {
-  return {
-    id: m.seq,
-    peerId: m.peerId,
-    seq: m.seq,
-    senderId: m.senderId ?? 0,
-    type: m.type ?? 'text',
-    text: m.text ?? '',
-    replyToId: null,
-    mediaId: m.mediaId ?? null,
-    createdAt: m.createdAt ?? new Date(0).toISOString(),
-    threadRootId: null,
-  }
-}
+/** Последнее сообщение для превью — та же фабрика, что у самих сообщений
+ *  (`core/messages/testMessage.ts`): второй формы сообщения в тестах быть не
+ *  должно ровно по той же причине, по какой её больше нет на проводе. */
+export const makeLastMessage = makeMessage

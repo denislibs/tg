@@ -14,21 +14,22 @@ import rootScope from '@lib/rootScope'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import { resetMessagesMirror, winKey } from '@core/history/messagesMirror'
 import type { Managers } from '../../client/bootstrap'
-import type { Message } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
+import { generateMessageId } from '@core/history/messageId'
+import { makeMessage } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import VanillaFeed from './VanillaFeed'
 
 const CHAT = 50
 
-function msg(over: Partial<Message> & { id: number; seq: number }): Message {
-  return {
-    peerId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
-    ...over,
-  }
+/** Номер в КЛИЕНТСКОМ пространстве — окно живёт только в нём. */
+const cid = generateMessageId
+
+function msg(id: number, over: Partial<MessageReal> = {}): MyMessage {
+  return { ...makeMessage({ id, peerId: CHAT, fromId: 2, text: `m${id}`, date: 1_755_259_200 }), ...over }
 }
 
-function managersWith(messages: Message[]) {
+function managersWith(messages: MyMessage[]) {
   const getHistory = vi.fn(
     async (): Promise<HistoryResult> => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true }),
   )
@@ -40,7 +41,7 @@ function managersWith(messages: Message[]) {
 /** Колонка чата (`.chat`) вокруг хоста — как в проде (`Chat.tsx`). Без неё
  *  эффект `VanillaFeed` не найдёт узел, которому лента вешает
  *  `is-go-down-visible` (порт tweb `chat.container`), и не поднимется. */
-function mount(messages: Message[], props: { peerId: PeerId; threadRootId?: number } = { peerId: CHAT }) {
+function mount(messages: MyMessage[], props: { peerId: PeerId; threadRootId?: number } = { peerId: CHAT }) {
   const { managers, getHistory } = managersWith(messages)
   const view = render(
     <ManagersProvider managers={managers}>
@@ -78,7 +79,7 @@ describe('VanillaFeed — проводка императивной ленты �
   })
 
   it('просит у ленты первую страницу и рисует её (`void bubbles.loadFirstHistory()`)', async () => {
-    const { container, getHistory } = mount([msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2, text: 'привет' })])
+    const { container, getHistory } = mount([msg(cid(1)), msg(cid(2), { message: 'привет' })])
 
     expect(getHistory).toHaveBeenCalledTimes(1)
     await vi.waitFor(() => {
@@ -100,20 +101,21 @@ describe('VanillaFeed — проводка императивной ленты �
     // Подписки сверяют событие по этому же ключу: событие окна треда доезжает,
     // событие основного окна того же чата — нет. Рисуется бабл не сразу:
     // отрисовкой владеет очередь рендера ленты (порт tweb `batchProcessor`).
-    rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 1, seq: 1 }) })
+    rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg(cid(1)) })
 
     rootScope.dispatchEventSingle('history_append', {
-      storageKey: winKey(CHAT, 60), message: msg({ id: 2, seq: 2, threadRootId: 60 }),
+      storageKey: winKey(CHAT, 60),
+      message: msg(cid(2), { reply_to: { _: 'messageReplyHeader', reply_to_top_id: 60 } }),
     })
     await vi.waitFor(() => {
       expect(bubblesIn(container)).toHaveLength(1)
     })
     // ...и это бабл ИМЕННО окна треда
-    expect(container.querySelector('.bubble:not(.service)')!.getAttribute('data-mid')).toBe('2')
+    expect(container.querySelector('.bubble:not(.service)')!.getAttribute('data-mid')).toBe(String(cid(2)))
   })
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {
-    const { container, unmount } = mount([msg({ id: 1, seq: 1 })])
+    const { container, unmount } = mount([msg(cid(1))])
     await vi.waitFor(() => {
       expect(bubblesIn(container)).toHaveLength(1)
     })
@@ -128,7 +130,7 @@ describe('VanillaFeed — проводка императивной ленты �
     expect(container.querySelector('.bubbles')).toBeNull()
     // Живая подписка после размонтирования — утечка: лента продолжала бы
     // рисовать в оторванное от документа дерево.
-    rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg({ id: 2, seq: 2 }) })
+    rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg(cid(2)) })
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(bubblesIn(detached)).toHaveLength(1)
   })

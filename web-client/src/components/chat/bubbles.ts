@@ -80,7 +80,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@li
 import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
-import type { Message } from '@core/models'
+import { getMessageText, isOurMessage, type MyMessage } from '@core/models'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -97,7 +97,7 @@ import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
  *
- *  Вторая половина ключа у нас — `Message.id`, а НЕ `seq`. Причина ровно та же,
+ *  Вторая половина ключа у нас — `MyMessage.id`, а НЕ `seq`. Причина ровно та же,
  *  по которой события истории адресуют сообщение по `id`
  *  (`core/realtime/messageOps.ts::dedupKey`): у неотправленного бабла `seq` —
  *  выдумка владельца (`tentativeSeq = maxSeq + 1`), и чужое входящее может
@@ -208,7 +208,7 @@ const PEER_CHANGED_ERROR = new Error('peer changed')
  *  его узел; `updatePosition` (в tweb — «не трогать позицию», для баблов
  *  плейсхолдеров и sponsored) предмета не имеет. */
 interface RenderedMessage {
-  message: Message
+  message: MyMessage
   bubble: HTMLElement
   /** Порт поля `reverse` единицы очереди (tweb bubbles.ts:6294): «сообщение
    *  дописывается НАД вьюпортом». Из него `processBatch` выводит направление
@@ -422,18 +422,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
   /** Синхронное чтение сообщения окна — аналог tweb `chat.getMessage(mid)`
    *  (там за ним стоит `apiManagerProxy`, у нас — зеркало). */
-  private getMessage(mid: number): Message | undefined {
+  private getMessage(mid: number): MyMessage | undefined {
     return mirrorWindow(this.chat.messagesStorageKey)?.find((m) => m.id === mid)
   }
 
-  private classesFor(message: Message): string[] {
+  private classesFor(message: MyMessage): string[] {
     // `out` — поле самого сообщения (порт tweb `pFlags.out`), его выводит
     // владелец в воркере; лента только читает. `rootScope.myId` (порт tweb
     // rootScope.ts:253) нужен messageToConvMsg лишь для автора превью ответа
     // («Вы» vs имя собеседника) — 1:1 с оригиналом, где лента берёт свой id
     // оттуда же (bubbles.ts:740, 813, 928).
-    const conv = messageToConvMsg(message, rootScope.myId)
-    return bubbleClasses(conv, { ...STUB_CTX, out: !!message.out, showName: this.needName(message) })
+    const conv = messageToConvMsg(message as MyMessage, rootScope.myId)
+    return bubbleClasses(conv, { ...STUB_CTX, out: isOurMessage(message), showName: this.needName(message) })
   }
 
   /**
@@ -460,9 +460,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * &:not(.is-group-first) .name { display: none }`). Иначе слияние/разрыв
    * серии требовал бы пересборки узлов, а не одного класса.
    */
-  private needName(message: Message): boolean {
+  private needName(message: MyMessage): boolean {
     const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
-    return (iPostedAsSomeoneElse || !message.out) && !!this.chat.isLikeGroup
+    return (iPostedAsSomeoneElse || !isOurMessage(message)) && !!this.chat.isLikeGroup
   }
 
   /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира
@@ -470,13 +470,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  портированы: палитры пиров и премиум-статусов в нашей модели нет — сам
    *  класс `colored-name` при этом ставится, его CSS берёт цвет от
    *  `data-peer-id` бабла. */
-  private createTitle(message: Message, fromId: number): PeerTitle {
+  private createTitle(fromId: number): PeerTitle {
     return new PeerTitle({
       peerId: fromId,
       // send-as: карточки у чат-личности нет (владелец знает только
       // пользователей), а её заголовок приезжает прямо в сообщении — это ровно
       // случай `fromName` в оригинале (peerTitle.ts:105-113).
-      fromName: message.sendAs?.title,
+      // send-as: автором на проводе стоит сам канал (`from_id`), и его имя
+      // берётся из карточки пира — снимка `send_as.title` рядом больше нет.
+      fromName: undefined,
       middleware: this.getMiddleware(),
       managers: this.managers,
     })
@@ -485,7 +487,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // Каркас бабла: `.bubble > .bubble-content-wrapper > .bubble-content >
   // .message.spoilers-container` (tweb bubbles.ts:6618-6629). Медиа, время,
   // реакции и прочий состав `.bubble-content` — следующие этапы.
-  private renderMessage(message: Message): HTMLElement {
+  private renderMessage(message: MyMessage): HTMLElement {
     const bubble = document.createElement('div')
     bubble.dataset.mid = '' + message.id
     bubble.dataset.peerId = '' + this.peerId
@@ -521,11 +523,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (this.needName(message)) {
       const fromId = this.bubbleGroups.getMessageFromId(message)
       const nameDiv = document.createElement('div')
-      nameDiv.append(this.createTitle(message, fromId).element)
+      nameDiv.append(this.createTitle(fromId).element)
       // tweb :9502-9513. `noColor` в оригинале не присваивается никогда, так что
       // ветка всегда живая; `our` для группы — ровно `pFlags.out`
       // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`).
-      if (!message.out) {
+      if (!isOurMessage(message)) {
         nameDiv.classList.add('colored-name')
       }
       nameDiv.dataset.peerId = '' + fromId
@@ -565,8 +567,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *     `textColor`, `passMaskedLinks` — у нашего `wrapRichText` таких опций нет:
    *     общий рендерер кастом-эмодзи, медиа-таймстемпы и sponsored-сообщения не
    *     портированы (см. шапку `lib/richtext/wrapRichText.ts`). */
-  private wrapMessageContent(message: Message): DocumentFragment {
-    return wrapMessageText(message.text, message.entities, { middleware: this.getMiddleware() })
+  private wrapMessageContent(message: MyMessage): DocumentFragment {
+    return wrapMessageText(getMessageText(message), message._ === 'message' ? message.entities : undefined, { middleware: this.getMiddleware() })
   }
 
   /** Порт tweb `groupBubbles` (bubbles.ts:5984-6028) в применимом объёме: ветка
@@ -575,7 +577,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  `chat.isLikeGroup && !isOutMessage`), а `isLikeGroup` — знание о типе
    *  пира, которого в `ChatContext` ещё нет; поэтому и гейт, и сам узел
    *  аватара приедут одной работой (см. `createAvatar` ниже). */
-  public groupBubbles(items: { bubble: HTMLElement, message: Message }[]): BubbleGroup[] {
+  public groupBubbles(items: { bubble: HTMLElement, message: MyMessage }[]): BubbleGroup[] {
     items.forEach(({ bubble, message }) => {
       this.bubbleGroups.prepareForGrouping(bubble, message)
     })
@@ -696,7 +698,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  когда поколение ленты умерло за время её обработки. Здесь результат никому
    *  не нужен (в tweb он тоже отбрасывается — :6360), а необработанное
    *  отвержение шумело бы в консоли. */
-  private safeRenderMessage(message: Message, reverse: boolean): RenderedMessage | undefined {
+  private safeRenderMessage(message: MyMessage, reverse: boolean): RenderedMessage | undefined {
     const fullMid = makeFullMid(this.peerId, message.id)
     if (this.bubbles[fullMid]) return undefined
 
@@ -724,7 +726,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb `renderNewMessage` (bubbles.ts:4528): промис рендера нового
    *  сообщения живёт в реестре, пока не разрешится, — на него смотрит
    *  обработчик `history_update` (:780-783). */
-  private renderNewMessage(message: Message, scrolledDown?: boolean): Promise<void> {
+  private renderNewMessage(message: MyMessage, scrolledDown?: boolean): Promise<void> {
     const promise = this._renderNewMessage(message, scrolledDown)
     this.renderNewPromises.add(promise)
     promise.catch(noop).finally(() => {
@@ -752,7 +754,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * своей реакции — подсистемы нет), `cancelPreservePaddingScroll` (нижняя
    * распорка композера — окружение `Chat`), ветка `ChatType.Scheduled`.
    */
-  private async _renderNewMessage(message: Message, scrolledDown?: boolean): Promise<void> {
+  private async _renderNewMessage(message: MyMessage, scrolledDown?: boolean): Promise<void> {
     if (!this.scrollable.loadedAll.bottom) { // seems search active or sliced
       return
     }
@@ -914,7 +916,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  реализован потому, что его требует контракт `BubbleGroupsHost`, и служит
    *  точкой подключения: ванильный порт `avatarNew` встанет ровно сюда, а
    *  вызов — в `groupBubbles` (tweb bubbles.ts:6005-6015). */
-  public createAvatar(_message: Message, _middleware: Middleware): GroupAvatar {
+  public createAvatar(_message: MyMessage, _middleware: Middleware): GroupAvatar {
     return { node: document.createElement('div') }
   }
 
@@ -987,7 +989,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  оригинале, край только ВЗВОДИТСЯ (`if(isEnd.top) setLoaded('top', true)`) —
    *  ответ, не дошедший до края, не гасит уже известный край. */
   public async performHistoryResult(
-    history: readonly (Message | number)[],
+    history: readonly (MyMessage | number)[],
     reverse: boolean,
     isEnd?: { top?: boolean, bottom?: boolean },
   ): Promise<void> {
@@ -1062,7 +1064,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    *  РАСХОЖДЕНИЕ, которое нельзя обойти: в tweb `mid` — И идентификатор, И
    *  порядковый ключ, поэтому `offset_id` там буквально `maxId`. У нас это два
-   *  разных поля (`Message.id` — адрес, `Message.seq` — порядок, см. докблок
+   *  разных поля (`MyMessage.id` — адрес, `MyMessage.seq` — порядок, см. докблок
    *  `FullMid`), а страницу бэкенд отдаёт по `offset_seq`. Поэтому seq берётся
    *  из зеркала по адресу.
    *
@@ -1073,13 +1075,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  `offsetSeq: 0`. */
   private requestHistory(maxId: FullMid, loadCount: number, backLimit: number): Promise<HistoryResult> {
     const { mid } = splitFullMid(maxId)
-    const offsetSeq = mid ? (this.getMessage(mid)?.seq ?? 0) : 0
+    const offsetId = mid ? (this.getMessage(mid)?.id ?? 0) : 0
 
     return this.managers.messages.getHistory({
       peerId: this.chat.peerId,
       threadRoot: this.chat.threadId,
-      offsetSeq,
-      addOffset: backLimit ? -backLimit : (offsetSeq ? 1 : 0),
+      offsetId,
+      addOffset: backLimit ? -backLimit : (offsetId ? 1 : 0),
       limit: loadCount || backLimit,
     })
   }
@@ -1635,7 +1637,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const found = this.getRenderedHistory('asc', true)
       .filter((fullMid) => !this.getBubble(fullMid)!.classList.contains('is-out'))
-      .find((fullMid) => (this.bubbleGroups.getItemByBubble(this.getBubble(fullMid)!)?.seq ?? 0) > readMaxSeq)
+      .find((fullMid) => (this.bubbleGroups.getItemByBubble(this.getBubble(fullMid)!)?.mid ?? 0) > readMaxSeq)
 
     if(!found) {
       return
@@ -1651,7 +1653,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.firstUnreadBubble = undefined
     }
 
-    const foundSeq = this.bubbleGroups.getItemByBubble(bubble)?.seq ?? 0
+    const foundSeq = this.bubbleGroups.getItemByBubble(bubble)?.mid ?? 0
     if(foundSeq !== historyMaxSeq) {
       bubble.classList.add('is-first-unread')
     }
@@ -1863,7 +1865,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  `item.message` в группах при этом не обновляется — как и в tweb, где
    *  `prepareForGrouping` на правке находит существующий элемент и выходит
    *  (bubbleGroups.ts:619, «should happen only on edit»). */
-  private onMessageEdit(message: Message) {
+  private onMessageEdit(message: MyMessage) {
     const bubble = this.getBubble(makeFullMid(this.peerId, message.id))
     if (!bubble) return
 

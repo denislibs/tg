@@ -261,8 +261,13 @@ export function saveMessageMedia(media: MessageMedia | undefined): MessageMedia 
  * варианта, поэтому ветки webpage/extended_media/game здесь нет — у нас превью
  * ссылки и платное медиа едут своими полями сообщения.
  */
+/** Носитель вложения: обычное сообщение либо вью-модельная строка ленты. Ветка
+ *  `{ media?: never }` — это ПИЛЮЛЯ (`messageService`): поля `media` у неё в
+ *  схеме нет вовсе, и вопрос «какое вложение» законно отвечается «никакого». */
+export type MaybeWithMedia = { _?: string; media?: MessageMedia } | undefined | null
+
 export function getMediaFromMessage(
-  message: { media?: MessageMedia } | undefined | null,
+  message: MaybeWithMedia,
 ): MyPhoto | MyDocument | undefined {
   const media = message?.media
   if (!media) return undefined
@@ -271,14 +276,14 @@ export function getMediaFromMessage(
 
 /** Документ вложения; `undefined`, если вложение — фотография или его нет. */
 export function getDocumentFromMessage(
-  message: { media?: MessageMedia } | undefined | null,
+  message: MaybeWithMedia,
 ): MyDocument | undefined {
   const media = message?.media
   return media?._ === 'messageMediaDocument' ? media.document : undefined
 }
 
 /** Медиа скрыто заслонкой (`messageMedia.pFlags.spoiler`). */
-export function isMediaSpoiler(message: { media?: MessageMedia } | undefined | null): boolean {
+export function isMediaSpoiler(message: MaybeWithMedia): boolean {
   return message?.media?.pFlags?.spoiler === true
 }
 

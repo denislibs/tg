@@ -3,26 +3,24 @@
 // Опросы + чек-листы + розыгрыши (порт tweb appPolls). Выделено из God-объекта
 // messagesManager: зависит только от rest и точечного патча SSOT (patchMsg через
 // ctx). Публичный API не меняется — методы спредятся в объект messagesManager.
-import { mapMessage, mapPoll, mapChecklist, mapGiveaway, deriveOut, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
+import { mapMyMessage, mapPoll, mapChecklist, mapGiveaway, type MyMessage, type MessageReal, type Poll, type Checklist, type Giveaway, type RawMyMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { MessagesCtx } from './ctx'
 import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
 
 export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: MessagesCtx) {
-  // Та же граница маппинга, что в messagesManager: созданный опрос/чек-лист
-  // вкладка кладёт прямо в окно (useChatPopups → applyIncoming), минуя SSOT
-  // воркера и его маппер, — без `out` бабл своего же опроса рисовался бы входящим.
-  const mapOne = (r: RawMessage): Message => {
-    const m = mapMessage(r)
-    return { ...m, out: deriveOut(m, getMeId?.() ?? null) }
-  }
+  // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
+  // сервер, здесь остаются перевод номеров и уточнение служебного действия.
+  const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
+  /** Опрос/чек-лист/розыгрыш живут только у обычного сообщения — у пилюли их нет. */
+  const isReal = (m: MyMessage): m is MessageReal => m._ === 'message'
   // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
   // Возвращает id патченного сообщения (для построения операций у cacheChecklist) —
   // undefined, если чек-лист ни на одном сообщении SSOT не найден.
   const applyChecklistToCache = (peerId: number, raw: RawChecklist): number | undefined => {
     const checklist = mapChecklist(raw)
     let msgId: number | undefined
-    patchMsg(peerId, (m) => m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
+    patchMsg(peerId, (m) => isReal(m) && m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
     return msgId
   }
 
@@ -34,9 +32,9 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // бэкенд снимает эффект с типа 'poll' по whitelist (sanitizeEffect,
     // backend/internal/usecase/chat/sanitize.go:29-32) — как и Telegram, который
     // эффекты на опросах не показывает.
-    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<Message> {
+    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage> {
       const wire = sendingParamsToWire(p)
-      const r = await rest.post<RawMessage>(`/chats/${peerId}/polls`, {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
@@ -53,7 +51,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     async votePoll(peerId: number, pollId: number, options: number[]): Promise<Poll> {
       const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
       const poll = mapPoll(r.poll)
-      patchMsg(peerId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
+      patchMsg(peerId, (m) => isReal(m) && m.poll?.id === poll.id, (m) => ({ ...m, poll }))
       return poll
     },
     async closePoll(pollId: number): Promise<void> {
@@ -61,8 +59,8 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     },
 
     // ── Чек-листы (Telegram todo list) ──
-    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${peerId}/checklists`, {
+    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/checklists`, {
         title: c.title, items: c.items,
         others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
         client_msg_id: c.clientMsgId ?? '',
@@ -89,14 +87,14 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     async participateGiveaway(peerId: number, giveawayId: number): Promise<Giveaway> {
       const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
       const giveaway = mapGiveaway(r.giveaway)
-      patchMsg(peerId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
+      patchMsg(peerId, (m) => isReal(m) && m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
       return giveaway
     },
 
     // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT + операции ──
     // Опрос: свой выбор (myVotes) — локальный, WS его не несёт (poll_update шлёт
-    // только агрегат). SSOT воркера всё равно сохраняем как раньше (m.poll!.myVotes
-    // из своей же копии — эта мутация не про операцию, а про офлайн-кэш воркера).
+    // только агрегат). SSOT воркера всё равно сохраняем как раньше (свой myVotes
+    // из собственной копии — эта мутация не про операцию, а про офлайн-кэш воркера).
     // Операция же (Stage 1B.3, Task 4) несёт ТОЛЬКО агрегат mapPoll(evt.poll), БЕЗ
     // myVotes — окно вкладки сохраняет свой локальный выбор само при слиянии патча
     // (см. patch() в core/realtime/messageOps.ts и карту обогащений §3.1): если бы
@@ -105,7 +103,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     cachePoll(evt: { peer_id: number; poll: RawPoll }): MessageOp[] {
       const poll = mapPoll(evt.poll)
       let msgId: number | undefined
-      patchMsg(evt.peer_id, (m) => m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: m.poll!.myVotes } } })
+      patchMsg(evt.peer_id, (m) => isReal(m) && m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: (m as MessageReal).poll!.myVotes } } })
       if (msgId === undefined) return []
       return opWindowsFor(evt.peer_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { poll } }))
     },
@@ -121,7 +119,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     cacheGiveaway(evt: { peer_id: number; giveaway: RawGiveaway }): MessageOp[] {
       const giveaway = mapGiveaway(evt.giveaway)
       let msgId: number | undefined
-      patchMsg(evt.peer_id, (m) => m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } } })
+      patchMsg(evt.peer_id, (m) => isReal(m) && m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: (m as MessageReal).giveaway!.participating, iWon: (m as MessageReal).giveaway!.iWon } } })
       if (msgId === undefined) return []
       return opWindowsFor(evt.peer_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { giveaway } }))
     },

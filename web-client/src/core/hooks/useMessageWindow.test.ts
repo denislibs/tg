@@ -5,13 +5,19 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { useMessageWindow } from './useMessageWindow'
 import { ManagersProvider } from './useManagers'
 import { useMessagesStore } from '../../stores/messagesStore'
-import type { Message } from '../models'
+import type { MessageReal, MyMessage } from '../models'
+import { generateMessageId, generateTempMessageId } from '../history/messageId'
+import { makeMessage } from '../messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '../managers/messagesManager'
 
-function msg(seq: number): Message {
-  return { id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null }
+/** Номер в КЛИЕНТСКОМ пространстве — окно живёт только в нём. */
+const cid = generateMessageId
+
+function msg(id: number, over: Partial<MessageReal> = {}): MyMessage {
+  return { ...makeMessage({ id: cid(id), peerId: 1, fromId: 1, text: `m${id}`, date: 1_750_000_000 }), ...over }
 }
+
+const real = (m: MyMessage | undefined): MessageReal | undefined => (m?._ === 'message' ? m : undefined)
 
 function fakeManagers(handler: (a: HistoryArgs) => HistoryResult) {
   return { messages: { getHistory: async (a: HistoryArgs) => handler(a), sendMessage: async () => msg(99) } }
@@ -32,7 +38,7 @@ describe('useMessageWindow', () => {
     }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(3))
-    expect(result.current.msgs.map((m) => m.seq)).toEqual([3, 4, 5])
+    expect(result.current.msgs.map((m) => m.id)).toEqual([cid(3), cid(4), cid(5)])
     expect(result.current.reachedBottom).toBe(true)
   })
 
@@ -40,13 +46,13 @@ describe('useMessageWindow', () => {
     let call = 0
     const managers = fakeManagers((a) => {
       call++
-      if (a.offsetSeq === 0) return { messages: [msg(3), msg(4), msg(5)], count: 3, reachedBottom: true, reachedTop: false }
+      if (a.offsetId === 0) return { messages: [msg(3), msg(4), msg(5)], count: 3, reachedBottom: true, reachedTop: false }
       return { messages: [msg(1), msg(2)], count: 2, reachedBottom: false, reachedTop: true }
     })
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(3))
     await act(async () => { await result.current.loadOlder() })
-    expect(result.current.msgs.map((m) => m.seq)).toEqual([1, 2, 3, 4, 5])
+    expect(result.current.msgs.map((m) => m.id)).toEqual([cid(1), cid(2), cid(3), cid(4), cid(5)])
     expect(result.current.reachedTop).toBe(true)
     expect(call).toBe(2)
   })
@@ -55,7 +61,7 @@ describe('useMessageWindow', () => {
     let call = 0
     const managers = fakeManagers((a) => {
       call++
-      if (a.offsetSeq === 0) return { messages: [msg(1), msg(2)], count: 2, reachedBottom: true, reachedTop: true }
+      if (a.offsetId === 0) return { messages: [msg(1), msg(2)], count: 2, reachedBottom: true, reachedTop: true }
       return { messages: [], count: 0, reachedBottom: false, reachedTop: true }
     })
     const { result } = mount(managers)
@@ -70,64 +76,67 @@ describe('useMessageWindow', () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    const temp: Message = { id: -1, peerId: 1, seq: 1, senderId: 7, type: 'text', text: 'hi', replyToId: null, mediaId: 42, createdAt: 'now', threadRootId: null, clientId: 'c1' }
+    // Номер бабла — ДРОБЬ поверх последнего занятого (порт tweb
+    // `generateTempMessageId`), отрицательных номеров больше нет.
+    const temp: MyMessage = makeMessage({
+      id: generateTempMessageId(cid(0)), peerId: 1, fromId: 7, text: 'hi', randomId: 'c1',
+    })
     act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: temp }]) })
-    expect(result.current.msgs[result.current.msgs.length - 1]?.text).toBe('hi')
-    expect(result.current.msgs[result.current.msgs.length - 1]?.mediaId).toBe(42)
-    act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: { ...temp, id: 50, seq: 12 } }]) })
-    const last = result.current.msgs[result.current.msgs.length - 1]!
-    expect(last.id).toBe(50); expect(last.seq).toBe(12)
+    const lastOf = () => result.current.msgs[result.current.msgs.length - 1]
+    expect(real(lastOf())?.message).toBe('hi')
+    expect(lastOf()?.random_id).toBe('c1')
+    act(() => { useMessagesStore.getState().applyOps([{ op: 'insert', key: '1', msg: { ...temp, id: cid(12) } }]) })
+    expect(lastOf()!.id).toBe(cid(12))
   })
 
   it('applyIncoming appends and dedups by id', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    const m = { id: 9, peerId: 1, seq: 3, senderId: 5, type: 'text', text: 'yo', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null }
+    const m = msg(9, { fromId: 5, message: 'yo' })
     act(() => { result.current.applyIncoming(m) })
     act(() => { result.current.applyIncoming(m) })
-    expect(result.current.msgs.filter((x) => x.id === 9)).toHaveLength(1)
+    expect(result.current.msgs.filter((x) => x.id === cid(9))).toHaveLength(1)
   })
 
-  it('applyIncoming echo of our own message keeps the optimistic clientId (stable key)', async () => {
+  it('applyIncoming echo of our own message keeps the optimistic random_id (stable key)', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    // Send → optimistic entry carries a stable clientId at tentative seq 1 (the
-    // worker-side owner builds it; here we put the same shape in directly).
+    // Отправка → оптимистичный бабл с устойчивым `random_id` под клиентским
+    // (дробным) номером; владелец собирает его в воркере, здесь кладём ту же форму.
     act(() => {
-      useMessagesStore.getState().appendLocal('1', { id: -1, peerId: 1, seq: 1, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' })
+      useMessagesStore.getState().appendLocal('1', makeMessage({
+        id: generateTempMessageId(cid(0)), peerId: 1, fromId: 7, text: 'hey', randomId: 'c-stable',
+      }))
     })
-    // Wave 3: the realtime echo carries the real server id/seq AND the client_msg_id
-    // (mapped to clientId). Matched by clientId, it replaces the optimistic bubble
-    // (no duplicate even if the server seq differs) and preserves clientId so the
-    // React key stays stable (no remount mid-appear).
-    const echo: Message = { id: 500, peerId: 1, seq: 9, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' }
+    // Эхо несёт НАСТОЯЩИЙ номер и тот же `random_id` — по нему оно и сливается с
+    // баблом (дубля нет, даже если номер сервера иной), а сам `random_id`
+    // сохраняется, чтобы ключ строки не менялся посреди анимации появления.
+    const echo = msg(500, { fromId: 7, message: 'hey', random_id: 'c-stable' })
     act(() => { result.current.applyIncoming(echo) })
-    const merged = result.current.msgs.filter((x) => x.clientId === 'c-stable')
+    const merged = result.current.msgs.filter((x) => x.random_id === 'c-stable')
     expect(merged).toHaveLength(1)
-    expect(merged[0]!.id).toBe(500)
-    expect(merged[0]!.seq).toBe(9)
-    expect(merged[0]!.clientId).toBe('c-stable')
+    expect(merged[0]!.id).toBe(cid(500))
   })
 
   it('applyEdit patches text + editedAt in place', async () => {
     const managers = fakeManagers(() => ({ messages: [msg(3)], count: 1, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(1))
-    act(() => { result.current.applyEdit(3, 'edited!', 'now') })
-    const m = result.current.msgs.find((x) => x.id === 3)!
-    expect(m.text).toBe('edited!')
-    expect(m.editedAt).toBe('now')
+    act(() => { result.current.applyEdit(cid(3), 'edited!', 1_750_000_100) })
+    const m = real(result.current.msgs.find((x) => x.id === cid(3)))!
+    expect(m.message).toBe('edited!')
+    expect(m.edit_date).toBe(1_750_000_100)
   })
 
   it('applyDelete drops the row (deleted messages are never shown)', async () => {
     const managers = fakeManagers(() => ({ messages: [msg(3), msg(4)], count: 2, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(2))
-    act(() => { result.current.applyDelete(3, false) }) // revoke
-    expect(result.current.msgs.find((x) => x.id === 3)).toBeUndefined()
-    act(() => { result.current.applyDelete(4, true) }) // for me
-    expect(result.current.msgs.find((x) => x.id === 4)).toBeUndefined()
+    act(() => { result.current.applyDelete(cid(3), false) }) // revoke
+    expect(result.current.msgs.find((x) => x.id === cid(3))).toBeUndefined()
+    act(() => { result.current.applyDelete(cid(4), true) }) // for me
+    expect(result.current.msgs.find((x) => x.id === cid(4))).toBeUndefined()
   })
 })

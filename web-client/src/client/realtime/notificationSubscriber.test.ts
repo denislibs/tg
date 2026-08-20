@@ -6,6 +6,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../../core/realtime/events'
+import { mapMessage } from '../../core/models'
+import { makeRawMessage } from '../../core/messages/testMessage'
 
 const notifyIncomingMessage = vi.fn()
 vi.mock('../uiNotifications', () => ({
@@ -14,7 +16,11 @@ vi.mock('../uiNotifications', () => ({
 
 import { registerNotificationSubscriber } from './notificationSubscriber'
 
-const evt = { peer_id: 5, sender_id: 2, type: 'text', text: 'привет' } as unknown as NewMessageEvt
+// Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` (форма `updateNewMessage`),
+// и уведомлению уходит РАЗОБРАННОЕ сообщение — тот же объект, что и ленте, а не
+// вторая выжимка из четырёх полей.
+const raw = makeRawMessage({ id: 1, peerId: 5, fromId: 2, text: 'привет' })
+const evt: NewMessageEvt = { message: raw }
 
 describe('notificationSubscriber — RT.newMessage учитывает meta.catchUp', () => {
   beforeAll(() => registerNotificationSubscriber())
@@ -26,7 +32,7 @@ describe('notificationSubscriber — RT.newMessage учитывает meta.catch
   it('живой кадр (catchUp: false) — уведомление уходит в notifyIncomingMessage', () => {
     rootScope.dispatchEventSingle(RT.newMessage, evt, { catchUp: false })
     expect(notifyIncomingMessage).toHaveBeenCalledTimes(1)
-    expect(notifyIncomingMessage).toHaveBeenCalledWith(evt)
+    expect(notifyIncomingMessage).toHaveBeenCalledWith(mapMessage(raw))
   })
 
   it('кадр из catch-up (catchUp: true) — уведомление НЕ показывается', () => {

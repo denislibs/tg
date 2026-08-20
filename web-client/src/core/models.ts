@@ -2,11 +2,12 @@
 import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
 import type { ReplyMarkup } from './markup/replyMarkup'
 import type { EmojiEffectKind } from './effects/emojiEffects'
-import type { NewMessageEvt } from './realtime/events'
 import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
 import { getPeerId, type Peer } from './peers/peerId'
 import type { PeerNotifySettings } from './dialogs/notifySettings'
+import { generateMessageId } from './history/messageId'
+import { refineMessageAction, type MessageAction } from './messages/messageAction'
 
 // Форматирующая разметка текста сообщения — тип ИЗ СХЕМЫ (`@layer`, генерируется
 // из `schema/schema.json`), объединение по дискриминатору `_`:
@@ -131,7 +132,7 @@ export interface Dialog extends RawDialog {
   /** знаковый ключ диалога ГЛАЗАМИ ЗРИТЕЛЯ: у приватного это id собеседника
    *  (у двух сторон одного разговора он РАЗНЫЙ), у группы/канала `-chatID`. */
   peerId: PeerId
-  lastMessage?: Message
+  lastMessage?: MyMessage
 }
 
 /** Папка диалога НА ПРОВОДЕ — порт tweb `FOLDER_ID_ARCHIVE`
@@ -196,77 +197,270 @@ export function mapWebPage(w: RawWebPage): WebPageData {
   }
 }
 
-export interface RawMessage {
+/**
+ * messageReplyHeader#1b97dd66 flags:# … reply_to_msg_id:flags.4?int
+ * reply_to_peer_id:flags.0?Peer reply_from:flags.5?MessageFwdHeader
+ * reply_media:flags.8?MessageMedia reply_to_top_id:flags.1?int
+ * quote_text:flags.6?string quote_entities:flags.7?Vector<MessageEntity>
+ * quote_offset:flags.10?int = MessageReplyHeader;
+ *
+ * ССЫЛКА на отвечаемое сообщение — и только ссылка (решение Р4 разбора). На её
+ * месте ехал СНИМОК `{msg_id, seq, sender_id, text, entities, type, media_id,
+ * quote_text}`, собранный сервером, — четвёртый экземпляр той же болезни, что
+ * уже снята у диалогов, пиров и закрепления. Сообщение клиент берёт из своего
+ * хранилища.
+ *
+ * Схема при этом различает два случая, которые снимок смешивал:
+ *  • ЦИТАТА (`quote_text`/`quote_entities`/`quote_offset`) едет ВСЕГДА, когда
+ *    она есть: выделенный фрагмент нельзя вывести из оригинала, если оригинал
+ *    потом изменили;
+ *  • НЕДОСТУПНЫЙ ОРИГИНАЛ (ответ на сообщение из чужого чата) выражается
+ *    СТРУКТУРАМИ `reply_from`/`reply_media`, а не плоскими
+ *    `reply_snapshot_name` (имя автора строкой) и `reply_snapshot_text`.
+ *
+ * КОРЕНЬ ТРЕДА — `reply_to_top_id` ЗДЕСЬ ЖЕ; отдельного `thread_root_id` в
+ * схеме нет вовсе.
+ *
+ * `reply_to_msg_id`/`reply_to_top_id` лежат в КЛИЕНТСКОМ пространстве номеров
+ * (`core/history/messageId.ts`) — как и `id` самого сообщения: они с ним
+ * сравниваются, значит обязаны быть в одном пространстве.
+ */
+export interface MessageReplyHeader {
+  _: 'messageReplyHeader'
+  pFlags?: Partial<{ quote: true; forum_topic: true }>
+  reply_to_msg_id?: number
+  /** чат оригинала, когда он ДРУГОЙ; отсутствует — ответ в своём чате */
+  reply_to_peer_id?: Peer
+  /** атрибуция автора оригинала, когда сам оригинал зрителю недоступен */
+  reply_from?: MessageFwdHeader
+  /** вложение недоступного оригинала */
+  reply_media?: MessageMedia
+  /** корень треда (форум-топик / комментарии) — ВСЕГДА в том же пире */
+  reply_to_top_id?: number
+  quote_text?: string
+  quote_entities?: MessageEntity[]
+  quote_offset?: number
+}
+
+/** Булевы флаги схемы у обоих конструкторов сообщения. «Выключено» — ОТСУТСТВИЕ
+ *  ключа, а не `false` (правило фазы 0, см. `core/peers/peer.ts`).
+ *
+ *  `out` производит СЕРВЕР (решение Р7 разбора ОТМЕНЕНО, обоснование — в
+ *  докблоке `MessageContext.Out` бэкенда): после порта у сообщения от лица
+ *  канала автором на проводе становится сам канал, и прежней формулы клиента
+ *  «автор это я» вывести стало не из чего. `is_scheduled` — клиентский флаг
+ *  самого оригинала, им помечены отложенные. */
+export type MessagePFlags = Partial<{
+  out: true
+  mentioned: true
+  media_unread: true
+  post: true
+  pinned: true
+  is_scheduled: true
+}>
+
+/** Общее у `message` и `messageService` — то, что читают без ветвления по
+ *  конструктору (адрес, автор, дата, ответ, срок самоуничтожения). */
+interface MessageCommon {
+  pFlags: MessagePFlags
+  /** НОМЕР сообщения в чате, в КЛИЕНТСКОМ пространстве
+   *  (`core/history/messageId.ts`). Глобального ключа строки больше нет —
+   *  идентичность это пара «пир + номер» (решение Р1 разбора). */
   id: number
-  /** знаковый ключ чата сообщения глазами зрителя */
-  peer_id: PeerId
-  seq: number
-  sender_id: number
-  type: string
-  text: string
-  entities?: MessageEntity[] | null
-  reply_to_id: number | null
-  media_id: number | null
-  created_at: string
-  thread_root_id?: number | null
-  grouped_id?: string | null
-  edited_at?: string | null
-  deleted?: boolean
-  /** атрибуция пересылки — конструктор `messageFwdHeader`. Пяти плоских
-   *  `fwd_from_*` больше нет: у автора оригинала в схеме `from_id:Peer`, и для
-   *  приватного источника это `peerUser` — ссылки на приватный ЧАТ там нет
-   *  вовсе, потому что и сущности такой нет. */
-  fwd_from?: MessageFwdHeader | null
-  reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
-  /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
-   * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
-  reply_to_peer_id?: Peer | null
-  reply_snapshot_name?: string
-  reply_snapshot_text?: string
-  poll_id?: number | null
-  poll?: RawPoll | null
-  checklist_id?: number | null
-  checklist?: RawChecklist | null
-  giveaway_id?: number | null
-  giveaway?: RawGiveaway | null
-  /** Вложение в форме оригинала (TL): messageMediaPhoto/messageMediaDocument с
-   * лестницей PhotoSize[] и атрибутами. Тип документа выводит клиент
-   * (`saveDocument`), спойлер лежит в `pFlags.spoiler`. */
+  /** АВТОР ссылкой на пир. У поста канала автора нет — сообщение «от самого
+   *  пира», и параметра нет вовсе. Отправка от лица канала (send-as) выражается
+   *  тем, что автором становится САМ КАНАЛ: прежнего поля `send_as` со снимком
+   *  `{peer_id, title, photo_id}` на проводе больше нет. */
+  from_id?: Peer
+  peer_id: Peer
+  reply_to?: MessageReplyHeader
+  /** секунды эпохи (в схеме `date:int`), а не ISO-строка */
+  date: number
+  /** самоуничтожение, секунды */
+  ttl_period?: number
+
+  // ── клиентские параметры (`schema_additional_params.json`) ────────────────
+  /** знаковый ключ чата — выведен из `peer_id` один раз на границе разбора */
+  peerId: PeerId
+  /** знаковый ключ автора — выведен из `from_id`; отсутствует у поста канала */
+  fromId?: PeerId
+  /** ключ, которым ОТПРАВИТЕЛЬ матчит эхо со своим оптимистичным баблом
+   *  (клиентский параметр самого оригинала; прежде звался `client_msg_id` и
+   *  ехал только в кадре) */
+  random_id?: string
+
+  // ── НАШИ параметры вне схемы ──────────────────────────────────────────────
+  /** отправка отвергнута (`message_error`) — красная пометка до повтора либо
+   *  удаления. У оригинала на этом месте `error: ApiError`, объекта ошибки у
+   *  нас нет. */
+  failed?: boolean
+  /** агрегаты реакций ПЛОСКОЙ проекцией. Объединение `MessageReactions`
+   *  приезжает с провода и разбирается в `mapMessage`: подсистема РЕАКЦИЙ ещё
+   *  не портирована (кадры `reaction`/`star_reaction` по-прежнему плоские), и
+   *  держать две формы одновременно в полёте значило бы развести их. */
+  reactions?: ReactionCount[]
+  /** платная ⭐-реакция: суммарно звёзд + личный вклад зрителя. Та же плоская
+   *  проекция того же объединения (`reactionPaid` + `messageReactor`). */
+  starReaction?: { total: number; mine: number }
+  /** сообщение из секретного чата (после расшифровки `message` заполнен локально) */
+  secret?: boolean
+  /** E2E-медиа секретного чата — инжектит расшифровка воркера, не провод */
+  secretMedia?: SecretMedia
+}
+
+/**
+ * message#7600b9d3 … id:int from_id:flags.8?Peer peer_id:Peer
+ * fwd_from:flags.2?MessageFwdHeader reply_to:flags.3?MessageReplyHeader
+ * date:int message:string media:flags.9?MessageMedia
+ * reply_markup:flags.6?ReplyMarkup entities:flags.7?Vector<MessageEntity>
+ * views:flags.10?int forwards:flags.10?int edit_date:flags.15?int
+ * grouped_id:flags.17?long reactions:flags.20?MessageReactions
+ * ttl_period:flags.25?int effect:flags2.2?long factcheck:flags2.3?FactCheck
+ * = Message;
+ *
+ * ОБЫЧНОЕ сообщение. Зеркало `backend/internal/domain/mtmessage.go`.
+ */
+export interface MessageReal extends MessageCommon {
+  _: 'message'
+  fwd_from?: MessageFwdHeader
+  /** текст. Обязательный по схеме и едет ВСЕГДА, даже пустой: у картинки без
+   *  подписи это пустая строка, а не отсутствие ключа. */
+  message: string
+  /** Вложение в форме оригинала: `messageMediaPhoto`/`messageMediaDocument` со
+   *  ступенями `PhotoSize[]` и атрибутами. Тип документа выводит клиент
+   *  (`saveDocument`), заслонка — `pFlags.spoiler`. Плоского `media_id` рядом
+   *  БОЛЬШЕ НЕТ: адрес файла спрашивают у вложения
+   *  (`getMediaFromMessage(m)?.id`). */
   media?: MessageMedia
+  reply_markup?: ReplyMarkup
+  entities?: MessageEntity[]
   views?: number
   forwards?: number
-  media_unread?: boolean
-  /** `recent` — вектор `Peer` (ссылок на пиров), а не мини-карточек: имя и фото
-   *  клиент берёт из своего кэша пиров, как у `recent_reactions:Vector<
-   *  MessagePeerReaction>` в схеме. Прежние `{id, name, avatar}` были ТРЕТЬЕЙ
-   *  формой пользователя на проводе, вклеенной в jsonb прямо в SQL. */
-  reactions?: { emoji: string; count: number; mine?: boolean; recent?: Peer[] }[] | null
-  geo?: RawGeo | null
-  contact?: { user_id: number; name?: string; phone?: string } | null
-  gift_id?: number | null
-  gift?: RawGiftInfo | null
-  /** Клавиатура в форме оригинала (TL): объединение конструкторов ReplyMarkup
-   * с дискриминатором `_`; `null` — клавиатуры нет. */
-  reply_markup?: ReplyMarkup | null
-  enc_body?: string | null
-  ttl_seconds?: number | null
-  destruct_at?: string | null
-  web_page?: RawWebPage | null
-  /** вид эффекта сообщения (наш аналог Telegram message effects) */
-  effect?: string | null
-  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
-   * зрителя. У заблокированного media_id отсутствует — только blur/размеры/цена. */
-  paid_media?: { price: number; locked: boolean } | null
-  /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
-   * (total) и личный вклад зрителя (mine). Отсутствует — платных реакций нет. */
-  star_reaction?: { total: number; mine?: number } | null
-  /** «проверка фактов» (Telegram factCheck): текст + сущности + опц. страна ISO2 */
-  factcheck?: RawFactCheck | null
-  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
-  transcription?: string | null
-  /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
-   * sender_id, который остаётся реальным. Отсутствует — обычная отправка. */
-  send_as?: { peer_id: PeerId; title?: string; photo_id?: number } | null
+  /** время правки, секунды эпохи. У живой геолокации этим же полем едет время
+   *  последнего обновления координат — два смысла на одну колонку, названный
+   *  остаток шага витрин бэкенда. */
+  edit_date?: number
+  /** ключ альбома. ЧИСЛО (в схеме `long`), а не строка: прежний клиентский
+   *  генератор выдавал `g<base36-время><random>`. */
+  grouped_id?: number
+  /** НАШ параметр вне схемы: в схеме `effect` это id документа-эффекта, у нас —
+   *  одно из шести КЛИЕНТСКИХ пресет-имён, рисуемых на canvas. */
+  effect_name?: EmojiEffectKind
+  /** «проверка фактов» на посте канала */
+  factcheck?: FactCheck
+
+  // ── НАШИ параметры вне схемы ──────────────────────────────────────────────
+  /** отложенная отправка: срок и его sentinel «когда появится онлайн» */
+  send_at?: number
+  when_online?: boolean
+  /** E2E-шифртекст секретного чата (base64 `iv||ciphertext`) */
+  enc_body?: string
+  /** абсолютный дедлайн самоуничтожения (ISO), проставляется после прочтения */
+  destruct_at?: string
+  /** object-URL локального файла — мгновенное превью исходящего медиа, пока
+   *  идёт аплоад. blob минтит ВОРКЕР, поэтому URL валиден во всех вкладках. */
+  localUrl?: string
+  /** расшифровка голосового/кружка (Telegram transcribeAudio) — КЛИЕНТСКИЙ кэш:
+   *  с провода поле ушло, у схемы его на сообщении нет */
+  transcription?: string
+
+  // ── ДОЛГ: объединение MessageMedia не доведено ────────────────────────────
+  // Гео, контакт, опрос, чек-лист, розыгрыш, подарок, превью ссылки и платное
+  // медиа — это КОНСТРУКТОРЫ ТОГО ЖЕ объединения (messageMediaGeo/Contact/Poll/
+  // ToDo/Giveaway/WebPage/PaidMedia), а едут собственными полями сообщения. То
+  // же самое названо долгом и на бэкенде (`mediaUnionPending`): предмет в схеме
+  // ЕСТЬ, значит это не «названное отступление», а незакрытый долг. Довести —
+  // отдельная работа: Poll, WebPage и Giveaway сами конструкторы со своими
+  // вложенными объединениями.
+  geo?: GeoData
+  contact?: { user_id: number; name?: string; phone?: string }
+  poll?: Poll
+  checklist?: Checklist
+  giveaway?: Giveaway
+  gift?: GiftInfo
+  web_page?: WebPageData
+  paid_media?: { price: number; locked: boolean }
+}
+
+/**
+ * messageService#7a800e0a … id:int from_id:flags.8?Peer peer_id:Peer
+ * reply_to:flags.3?MessageReplyHeader date:int action:MessageAction … = Message;
+ *
+ * СЛУЖЕБНОЕ сообщение — пилюля посреди ленты. ТЕКСТА У НЕГО НЕТ ВОВСЕ: есть
+ * `action`, и это главное расхождение подсистемы — прежде действие ехало
+ * JSON-строкой внутри поля `text`, а «служебное ли» подделывалось значением
+ * `type === 'service'`.
+ */
+export interface MessageService extends MessageCommon {
+  _: 'messageService'
+  action: MessageAction
+}
+
+/** messageEmpty#90a6ca84 flags:# id:int peer_id:flags.0?Peer = Message;
+ *
+ *  ДЫРА В ИСТОРИИ: номер известен, сообщения по нему нет — ни даты, ни автора,
+ *  ни текста у конструктора нет вовсе. Производитель на бэкенде появился вместе
+ *  с тем, что ссылки на другие сообщения перестали быть снимками
+ *  (`GET /chats/{peerID}/messages?ids=`): на ссылку в снесённое сообщение
+ *  сервер обязан отвечать ДЫРОЙ, а не молчанием.
+ *
+ *  Наш прежний `deleted: boolean` — НЕ он: у нас удалённое просто не попадало в
+ *  выборку, и поле уезжало пустым в каждом ответе. */
+export interface MessageEmpty {
+  _: 'messageEmpty'
+  id: number
+  peer_id?: Peer
+  peerId: PeerId
+}
+
+/** Объединение `Message` схемы целиком — то, что может приехать с провода. */
+export type Message = MessageEmpty | MessageReal | MessageService
+
+/** Порт tweb `MyMessage`: то, что может лежать в окне — сообщение либо пилюля.
+ *  Дыра в окно не кладётся: у неё нет ни даты, ни автора, рисовать нечего. */
+export type MyMessage = MessageReal | MessageService
+
+/**
+ * Поля точечного патча сообщения — параметры ОБОИХ конструкторов без
+ * дискриминатора. Не `Partial<MyMessage>`: это объединение двух частичных
+ * типов, у которого нельзя прочитать даже общее поле, не сузив ветку, — а патч
+ * по построению меняет содержимое, а НЕ вид сообщения (`_` в него не попадает
+ * вовсе, поэтому пилюля не может стать сообщением сквозь `patch`).
+ */
+export type MessageFields = Partial<Omit<MessageReal, '_'> & Omit<MessageService, '_'>>
+
+/** Пилюля посреди ленты, а не сообщение. Ветвление по `_` — как везде. */
+export function isServiceMessage(m: MyMessage): m is MessageService {
+  return m._ === 'messageService'
+}
+
+/** Текст сообщения; у пилюли текста нет вовсе — она рисуется из `action`. */
+export function getMessageText(m: MyMessage): string {
+  return m._ === 'message' ? m.message : ''
+}
+
+/** Номер отвечаемого сообщения (клиентское пространство); `undefined` — ответа нет. */
+export function getReplyToMsgId(m: MyMessage): number | undefined {
+  return m.reply_to?.reply_to_msg_id
+}
+
+/** Корень треда — `reply_to.reply_to_top_id`, отдельного поля в схеме нет. */
+export function getThreadRootId(m: MyMessage): number | undefined {
+  return m.reply_to?.reply_to_top_id
+}
+
+/**
+ * Рисовать бабл СПРАВА. Это НЕ то же самое, что `pFlags.out`: `out` отвечает
+ * «я ли отправил», а сторона бабла — вопрос витрины.
+ *
+ * Сообщение от лица канала (send-as) и пост канала остаются `out` у своего
+ * автора, но рисуются ВХОДЯЩИМИ — ровно как в оригинале, где такой пост
+ * приходит автофорвардом от имени канала. Раньше это выражало отдельное поле
+ * `send_as`; теперь — сам `from_id`: если автор не человек (или его нет вовсе,
+ * что и значит «от самого пира»), бабл входящий.
+ */
+export function isOurMessage(m: MyMessage): boolean {
+  return !!m.pFlags.out && m.from_id?._ === 'peerUser'
 }
 
 /**
@@ -292,25 +486,31 @@ export interface MessageFwdHeader {
   saved_from_msg_id?: number
 }
 
-// «Проверка фактов» (Telegram factCheck): пояснение автора/админа канала к посту.
-export interface RawFactCheck {
+/**
+ * textWithEntities#751f3146 text:string entities:Vector<MessageEntity> =
+ * TextWithEntities;
+ *
+ * Строка вместе со своей разметкой ОДНИМ объектом, а не парой полей рядом: в
+ * схеме эта связка именована, и она же лежит в цитатах, переводах и описаниях.
+ */
+export interface TextWithEntities {
+  _: 'textWithEntities'
   text: string
-  entities?: MessageEntity[] | null
-  country?: string
+  entities: MessageEntity[]
 }
 
+/**
+ * factCheck#b89bfccf flags:# need_check:flags.0?true country:flags.1?string
+ * text:flags.1?TextWithEntities hash:long = FactCheck;
+ *
+ * «Проверка фактов» на посте канала. `hash` (обязательный) не производится:
+ * хэш-кэширования запросов у нас нет вовсе.
+ */
 export interface FactCheck {
-  text: string
-  entities?: MessageEntity[]
+  _: 'factCheck'
+  /** код страны ISO-3166 alpha-2; делит бит с `text` — у оригинала они парой */
   country?: string
-}
-
-export function mapFactCheck(f: RawFactCheck): FactCheck {
-  return {
-    text: f.text ?? '',
-    entities: f.entities ?? undefined,
-    country: f.country || undefined,
-  }
+  text?: TextWithEntities
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -340,140 +540,6 @@ export interface SecretMedia {
   /** вид медиа приложения ('photo'|'video'|'document') — как у обычной отправки */
   mediaType: string
 }
-
-export interface Message {
-  id: number
-  /** знаковый ключ чата сообщения глазами зрителя */
-  peerId: PeerId
-  seq: number
-  senderId: number
-  type: string
-  text: string
-  /** rich-text formatting spans over `text` (undefined/empty = plain) */
-  entities?: MessageEntity[]
-  replyToId: number | null
-  mediaId: number | null
-  createdAt: string
-  threadRootId: number | null
-  /** идентификатор медиагруппы (Telegram grouped_id); null — не в альбоме */
-  groupedId?: string | null
-  /** object-URL локального файла для мгновенного превью исходящего медиа
-   * (пока идёт аплоад и до перезагрузки окна истории) */
-  localUrl?: string
-  /** Stable client-side id for an optimistic message; preserved across the ack
-   * (when `id`/`seq` are rewritten to server values) so the React key never
-   * changes and the bubble isn't remounted mid-animation. */
-  clientId?: string
-  /** Send was rejected (message_error): the bubble stays with a red error mark
-   * until the user retries or removes it (tweb sendingerror). */
-  failed?: boolean
-  editedAt?: string | null
-  deleted?: boolean
-  /** Атрибуция пересылки — конструктор `messageFwdHeader` целиком (см.
-   *  RawMessage.fwd_from). Ветвление по `from_id._`, как в оригинале; вывод
-   *  ключа пира — `getPeerId(fwdFrom.from_id)`. */
-  fwdFrom?: MessageFwdHeader
-  /** Lightweight preview of the replied-to message (history read model). */
-  replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number; quoteText?: string } | null
-  /** кросс-чат ответ (tweb ReplyToAnotherChat): id исходного чата оригинала +
-   * готовый снимок превью (имя автора + текст/медиа-лейбл). Оригинала нет в
-   * текущем сторе, поэтому превью рисуется из снимка, а не поиском по replyToId. */
-  replyToPeerId?: PeerId
-  replySnapshotName?: string
-  replySnapshotText?: string
-  /** Вложение сообщения в форме оригинала (MTProto) —
-   * `messageMediaPhoto`/`messageMediaDocument` с лестницей `PhotoSize[]` и
-   * `DocumentAttribute[]`; см. `core/media/messageMedia.ts`. Бабл рисуется
-   * целиком из него — точный бокс, stripped-плейсхолдер, контур стикера,
-   * тип документа, заслонка (`pFlags.spoiler`) — без запроса меты медиа.
-   * Тип документа выводится ИЗ АТРИБУТОВ (`saveDocument`), а не подделывается
-   * флагами витрины. */
-  media?: MessageMedia
-  // ── ВРЕМЕННО: плоская проекция того же вложения ────────────────────────────
-  // Ровно те же данные, что в `media`, только развёрнутые полями — их читают
-  // ещё не мигрировавшие потребители. Оба набора приходят из ОДНОГО источника
-  // (бэк выводит плоские ключи из модели), поэтому разъехаться не могут.
-  // Новых читателей не заводить: правильный вопрос к модели — через
-  // `getMediaFromMessage`/`choosePhotoSize`/`getStrippedThumb`.
-  /** deduplicated viewer count for a channel post (undefined = not a channel post) */
-  views?: number
-  /** number of times a channel post was forwarded (Telegram message.forwards) */
-  forwards?: number
-  /** голосовое/кружок ещё не прослушано получателем (Telegram media_unread) */
-  mediaUnread?: boolean
-  /** опрос сообщения типа 'poll' (представление для зрителя) */
-  poll?: Poll
-  /** чек-лист сообщения типа 'checklist' (представление для зрителя) */
-  checklist?: Checklist
-  /** розыгрыш сообщения типа 'giveaway' (представление для зрителя) */
-  giveaway?: Giveaway
-  /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
-  reactions?: ReactionCount[]
-  /** гео-точка сообщения типа 'geo' (+ venue/live location) */
-  geo?: GeoData
-  /** контакт сообщения типа 'contact' (снимок имени/телефона + аккаунт) */
-  contact?: { userId: number; name: string; phone: string }
-  /** подарок сообщения типа 'gift' (представление для зрителя) */
-  gift?: GiftInfo
-  /** клавиатура сообщения (inline/reply) — у сообщений бота */
-  replyMarkup?: ReplyMarkup
-  /** E2E-шифртекст (base64 iv||ciphertext) сообщения типа 'encrypted'; расшифровка на клиенте */
-  encBody?: string | null
-  /** self-destruct: срок жизни после прочтения (сек) и абсолютный дедлайн (ISO) */
-  ttlSeconds?: number | null
-  destructAt?: string | null
-  /** true — сообщение из секретного чата (после дешифровки text/entities заполнены локально) */
-  secret?: boolean
-  /** E2E-медиа секретного чата (расшифровывается на просмотре из mediaId+key+iv).
-   * Инжектится клиентской расшифровкой (worker/bridge/history) — НЕ проводное поле. */
-  secretMedia?: SecretMedia
-  /** серверное превью первой ссылки текстового сообщения (Telegram webPage) */
-  webPage?: WebPageData
-  /** «проверка фактов» на сообщении (Telegram factCheck) — блок в бабле */
-  factCheck?: FactCheck
-  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
-  transcription?: string
-  /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
-  effect?: EmojiEffectKind
-  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
-   * зрителя. Заблокированное — без mediaId (только blur/размеры), раскрывается
-   * после разблокировки за Stars. */
-  paidMedia?: { price: number; locked: boolean }
-  /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
-   * на сообщение (total) + личный вклад зрителя (mine). undefined — реакций нет. */
-  starReaction?: { total: number; mine: number }
-  /** send-as (Telegram send_as): отображаемый автор (канал/группа) — бабл
-   * рисуется от его имени; senderId остаётся реальным. undefined — обычная. */
-  sendAs?: { peerId: PeerId; title: string; photoId?: number }
-  /** Исходящее ли сообщение — порт tweb `message.pFlags.out`: свойство САМОГО
-   * сообщения, а не вывод витрины (императивная лента читает его синхронно,
-   * `bubbles.ts`). Ставит владелец на границе маппинга (`messagesManager`,
-   * `pending.ts`) чистым предикатом `deriveOut` ниже.
-   *
-   * Бэкенд поля не отдаёт (ни `messageJSON` в chat_handler.go, ни
-   * `messageUpdatePayload` в frame.go) — выводим сами, поэтому значение
-   * ПРИВЯЗАНО К СЕССИИ и на диске может протухнуть: `onLoggingOut` в воркере
-   * IndexedDB не чистит (это делает вкладка — useAuthGate → persist.clearAll(),
-   * и только в ветке migrateTo === null), а вход другого пользователя на
-   * вкладке, которая была на экране входа, идёт без reload — история прошлого
-   * аккаунта остаётся на диске. Поэтому читатель офлайн-кэша (`loadMessages` в
-   * `messagesManager.getHistory`) ПЕРЕСЧИТЫВАЕТ `out`, а не доверяет
-   * сохранённому. undefined — сообщение пришло с границы, где владелец ещё не
-   * проставил флаг (витрина трактует как входящее). */
-  out?: boolean
-}
-
-/** Порт tweb `message.pFlags.out` — единственное место, где выводится
- *  «исходящее/входящее». Чистый предикат: `meId` приходит аргументом, владельцем
- *  факта `me` предикат от этого не становится (владелец — воркер, `workerCore.ts::setMe`).
- *
- *  Send-as (Telegram send_as): сообщение авторства канала/группы — рисуется
- *  входящим от имени send-as личности (как автофорвард поста канала), даже если
- *  реальный отправитель — я. Реальный senderId в бабле не показываем. */
-export function deriveOut(m: Pick<Message, 'senderId' | 'sendAs'>, meId: number | null): boolean {
-  return meId != null && m.senderId === meId && !m.sendAs
-}
-
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
 export interface RawPoll {
   id: number
@@ -648,38 +714,6 @@ export function boostProgress(s: Pick<BoostStatus, 'boostsCount' | 'currentLevel
   return { progress, need: Math.max(s.nextLevelBoosts - s.boostsCount, 0) }
 }
 
-// Запланированное сообщение (backend scheduled_messages): очередь до send_at.
-export interface RawScheduled {
-  id: number
-  peer_id: PeerId
-  sender_id: number
-  type: string
-  text: string
-  entities?: MessageEntity[] | null
-  reply_to_id?: number | null
-  media_id?: number | null
-  send_at: string
-  created_at: string
-  /** отправить, когда собеседник появится в сети (tweb Schedule.SendWhenOnline);
-   * при true send_at игнорируется — очередь ждёт presence, только приватный чат */
-  when_online?: boolean
-}
-
-export interface Scheduled {
-  id: number
-  peerId: PeerId
-  type: string
-  text: string
-  entities?: MessageEntity[]
-  sendAt: string
-  /** отправить при появлении собеседника онлайн — лейбл «Scheduled until online» */
-  whenOnline: boolean
-}
-
-export function mapScheduled(r: RawScheduled): Scheduled {
-  return { id: r.id, peerId: r.peer_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at, whenOnline: !!r.when_online }
-}
-
 // Предложенный в канал пост (backend suggested_posts): статус pending|approved|
 // rejected; publishAt/createdAt/decidedAt — unix-миллисекунды (0 — нет значения).
 export type SuggestedPostStatus = 'pending' | 'approved' | 'rejected'
@@ -766,93 +800,249 @@ export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
   return e && EFFECT_KINDS.has(e as EmojiEffectKind) ? (e as EmojiEffectKind) : undefined
 }
 
-export function mapMessage(r: RawMessage): Message {
+// ── Форма ПРОВОДА ───────────────────────────────────────────────────────────
+//
+// Отличается от модели ровно тремя вещами, и каждая — названная:
+//
+//  1. **Пространство номеров.** На проводе `id`, `reply_to_msg_id` и
+//     `reply_to_top_id` серверные; в модели — клиентские
+//     (`core/history/messageId.ts`).
+//  2. **Ссылки на пиров.** Знаковые ключи `peerId`/`fromId` выводит клиент.
+//  3. **Не пройденные программой подсистемы.** Реакции приезжают объединением
+//     `MessageReactions`, а модель держит плоскую проекцию; опрос, чек-лист,
+//     розыгрыш, подарок, гео и превью ссылки едут своими проводными формами
+//     (долг «объединение MessageMedia не доведено»).
+//
+// Всё остальное совпало — поэтому маппер и усох до этих трёх пунктов.
+
+/** reactionEmoji#1b2286b8 emoticon:string | reactionPaid#523da4eb = Reaction; */
+export type WireReaction =
+  | { _: 'reactionEmoji'; emoticon: string }
+  | { _: 'reactionPaid' }
+
+/** reactionCount#a3d1cb80 flags:# chosen_order:flags.0?int reaction:Reaction
+ *  count:int = ReactionCount;
+ *
+ *  `chosen_order` — ПОРЯДКОВЫЙ НОМЕР среди моих реакций, а не булево «моя»:
+ *  «не поставил» выражается отсутствием параметра, поэтому ноль это значение. */
+export interface WireReactionCount {
+  _: 'reactionCount'
+  chosen_order?: number
+  reaction: WireReaction
+  count: number
+}
+
+/** messagePeerReaction#8c79b63c … peer_id:Peer date:int reaction:Reaction; */
+export interface WireMessagePeerReaction {
+  _: 'messagePeerReaction'
+  peer_id: Peer
+  date: number
+  reaction: WireReaction
+}
+
+/** messageReactor#4ba3a95a flags:# … my:flags.1?true anonymous:flags.2?true
+ *  peer_id:flags.3?Peer count:int = MessageReactor; */
+export interface WireMessageReactor {
+  _: 'messageReactor'
+  pFlags?: Partial<{ my: true; anonymous: true }>
+  peer_id?: Peer
+  count: number
+}
+
+/** messageReactions#0a339f0b flags:# … results:Vector<ReactionCount>
+ *  recent_reactions:flags.1?Vector<MessagePeerReaction>
+ *  top_reactors:flags.4?Vector<MessageReactor> = MessageReactions; */
+export interface WireMessageReactions {
+  _: 'messageReactions'
+  results: WireReactionCount[]
+  recent_reactions?: WireMessagePeerReaction[]
+  top_reactors?: WireMessageReactor[]
+}
+
+interface RawMessageCommon {
+  id: number
+  from_id?: Peer
+  peer_id: Peer
+  pFlags?: MessagePFlags
+  /** та же форма, что в модели, но номера СЕРВЕРНЫЕ */
+  reply_to?: MessageReplyHeader
+  date: number
+  ttl_period?: number
+  reactions?: WireMessageReactions
+  random_id?: string
+  /** НЕ проводные. Расшифровка секретного чата живёт в ВОРКЕРЕ (там ключи) и
+   *  идёт ДО разбора — иначе кадр уехал бы мимо своего места в потоке pts.
+   *  Поэтому её результат кладётся сюда, на проводной объект, и подхватывается
+   *  маппером как клиентские параметры (те же поля, что у REST-пути ставит
+   *  `decryptPage`). */
+  secret?: boolean
+  secretMedia?: SecretMedia
+}
+
+export interface RawMessageReal extends RawMessageCommon {
+  _: 'message'
+  fwd_from?: MessageFwdHeader
+  message: string
+  media?: MessageMedia
+  reply_markup?: ReplyMarkup
+  entities?: MessageEntity[]
+  views?: number
+  forwards?: number
+  edit_date?: number
+  grouped_id?: number
+  effect_name?: string
+  factcheck?: FactCheck
+  send_at?: number
+  when_online?: boolean
+  enc_body?: string
+  destruct_at?: string
+  // долг «объединение MessageMedia не доведено» — проводные формы подсистем
+  geo?: RawGeo
+  contact?: { user_id: number; name?: string; phone?: string }
+  poll?: RawPoll
+  checklist?: RawChecklist
+  giveaway?: RawGiveaway
+  gift?: RawGiftInfo
+  web_page?: RawWebPage
+  paid_media?: { price: number; locked: boolean }
+}
+
+export interface RawMessageService extends RawMessageCommon {
+  _: 'messageService'
+  action: MessageAction
+}
+
+export interface RawMessageEmpty {
+  _: 'messageEmpty'
+  id: number
+  peer_id?: Peer
+}
+
+export type RawMessage = RawMessageEmpty | RawMessageReal | RawMessageService
+
+/**
+ * Проводное сообщение БЕЗ дыры. Историю, поиск, закреплённые и тред сервер
+ * отдаёт только настоящими сообщениями: `messageEmpty` производит ровно одна
+ * ручка — `GET /chats/{peerID}/messages?ids=` (разрешение ссылок). Тип
+ * запрещает положить дыру в окно, вместо того чтобы молча её отфильтровать.
+ */
+export type RawMyMessage = RawMessageReal | RawMessageService
+
+/**
+ * Плоская проекция объединения `MessageReactions` — ЕДИНСТВЕННОЕ место, где
+ * агрегаты реакций переводятся в форму, которую читают чипы и оптимистичный
+ * клик. Подсистема реакций программой TL ещё не пройдена: кадры
+ * `reaction`/`star_reaction` по-прежнему несут плоские `counts`, и держать обе
+ * формы одновременно в полёте значило бы развести их.
+ */
+function mapReactions(r: WireMessageReactions | undefined): { reactions?: ReactionCount[]; starReaction?: { total: number; mine: number } } {
+  if (!r) return {}
+  const flat: ReactionCount[] = []
+  let starTotal = 0
+  for (const c of r.results ?? []) {
+    if (c.reaction._ === 'reactionPaid') { starTotal = c.count; continue }
+    const emoji = c.reaction.emoticon
+    const recent = (r.recent_reactions ?? [])
+      .filter((x) => x.reaction._ === 'reactionEmoji' && x.reaction.emoticon === emoji)
+      .map((x) => getPeerId(x.peer_id))
+    flat.push({
+      emoji,
+      count: c.count,
+      // «Моя» — это НАЛИЧИЕ chosen_order, а не его истинность: ноль там значит
+      // «моя первая», и склеивать его с «не моя» нельзя.
+      mine: c.chosen_order !== undefined,
+      ...(recent.length ? { recent } : {}),
+    })
+  }
+  // Личный вклад в платную реакцию лежит в messageReactor с pFlags.my — рядом с
+  // чипом его нет, потому что в reactionCount помещается только «моя или нет».
+  const mine = (r.top_reactors ?? []).find((x) => x.pFlags?.my)?.count ?? 0
   return {
-    id: r.id,
-    peerId: r.peer_id,
-    seq: r.seq,
-    senderId: r.sender_id,
-    type: r.type,
-    text: r.text,
-    entities: r.entities ?? undefined,
-    replyToId: r.reply_to_id,
-    mediaId: r.media_id,
-    createdAt: r.created_at,
-    threadRootId: r.thread_root_id ?? null,
-    groupedId: r.grouped_id ?? null,
-    poll: r.poll ? mapPoll(r.poll) : undefined,
-    checklist: r.checklist ? mapChecklist(r.checklist) : undefined,
-    giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
-    editedAt: r.edited_at ?? null,
-    deleted: r.deleted ?? false,
-    fwdFrom: r.fwd_from ?? undefined,
-    replyTo: r.reply_to
-      ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined, quoteText: r.reply_to.quote_text || undefined }
-      : null,
-    // Ключ выводится из конструктора один раз здесь — дальше по коду он число.
-    replyToPeerId: r.reply_to_peer_id ? getPeerId(r.reply_to_peer_id) : undefined,
-    replySnapshotName: r.reply_snapshot_name || undefined,
-    replySnapshotText: r.reply_snapshot_text || undefined,
-    // Вложение нормализуется здесь один раз: `saveMessageMedia` выводит
-    // `doc.type`/`w`/`h`/`duration`/`file_name` из атрибутов и mime — порт
-    // `appDocsManager.saveDoc`. Дальше по коду тип медиа СПРАШИВАЮТ у модели,
-    // а не подделывают флагом.
-    media: saveMessageMedia(r.media),
-    // Плоская проекция — временная, см. комментарий у полей Message.
-    views: r.views,
-    forwards: r.forwards,
-    mediaUnread: r.media_unread,
-    reactions: r.reactions?.length
-      ? r.reactions.map((x) => ({
-          emoji: x.emoji,
-          count: x.count,
-          mine: !!x.mine,
-          recent: x.recent?.map(getPeerId),
-        }))
-      : undefined,
-    geo: r.geo ? mapGeo(r.geo) : undefined,
-    contact: r.contact
-      ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
-      : undefined,
-    gift: r.gift ? mapGiftInfo(r.gift) : undefined,
-    replyMarkup: r.reply_markup ?? undefined,
-    encBody: r.enc_body ?? undefined,
-    ttlSeconds: r.ttl_seconds ?? undefined,
-    destructAt: r.destruct_at ?? undefined,
-    webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
-    factCheck: r.factcheck ? mapFactCheck(r.factcheck) : undefined,
-    transcription: r.transcription ?? undefined,
-    effect: mapEffect(r.effect),
-    paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
-    starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,
-    sendAs: r.send_as ? { peerId: r.send_as.peer_id, title: r.send_as.title ?? '', photoId: r.send_as.photo_id } : undefined,
+    reactions: flat.length ? flat : undefined,
+    starReaction: starTotal > 0 ? { total: starTotal, mine } : undefined,
   }
 }
 
-// Единый маппер проводного live-кадра (new_message / paid_media_unlock) в read-model
-// Message. Раньше этот литерал на ~35 полей дублировался инлайном в realtimeBridge
-// (дважды) — теперь единственный источник, чтобы новое поле кадра не забыть в одном
-// из мест. `replyTo` резолвится вызывающим из уже загруженного окна (в кадре его нет).
-export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply_to'] = null): Message {
-  const msg = mapMessage({
-    id: evt.msg_id, peer_id: evt.peer_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type,
-    text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null,
-    media_id: evt.media_id, created_at: evt.created_at,
-    fwd_from: evt.fwd_from ?? null,
-    reply_to: replyTo, reply_to_peer_id: evt.reply_to_peer_id ?? null,
-    reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text,
-    media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null,
-    contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null,
-    thread_root_id: evt.thread_root_id ?? null, media: evt.media,
-    effect: evt.effect ?? null, paid_media: evt.paid_media ?? null,
-    send_as: evt.send_as ?? null,
-  })
-  // E2E-медиа секретного чата: воркер расшифровал enc_body и положил key/iv/mime в
-  // secret_media (не проводное поле → инжектим после mapMessage). Для paid-unlock кадра
-  // поля нет — ветка no-op.
-  if (evt.secret_media) { msg.secretMedia = evt.secret_media; msg.secret = true }
-  // Эхо своей отправки: несёт client_msg_id → applyIncoming матчит оптимистичный
-  // бабл по нему (стабильный React-ключ, без tentative-seq подгадывания).
-  if (evt.client_msg_id) msg.clientId = evt.client_msg_id
-  return msg
+/** Ссылка на отвечаемое: единственное, что меняется, — пространство номеров. */
+function mapReplyHeader(h: MessageReplyHeader | undefined): MessageReplyHeader | undefined {
+  if (!h) return undefined
+  const out: MessageReplyHeader = { ...h }
+  if (h.reply_to_msg_id !== undefined) out.reply_to_msg_id = generateMessageId(h.reply_to_msg_id)
+  if (h.reply_to_top_id !== undefined) out.reply_to_top_id = generateMessageId(h.reply_to_top_id)
+  return out
 }
+
+/**
+ * Проводное сообщение → модель. Разбирать почти нечего: формы совпали, и
+ * маппер остался ровно тем, чем должен, — ГРАНИЦЕЙ. Он переводит номера в
+ * клиентское пространство, выводит знаковые ключи пиров и приводит те
+ * подсистемы, которые программой TL ещё не пройдены (реакции, опрос, гео,
+ * превью ссылки, подарок).
+ *
+ * `meId` нужен ровно одному: уточнению служебного действия до синтетического
+ * конструктора («Вы присоединились» против «X присоединился»).
+ */
+/** Тот же маппер для путей, где дыры не бывает (см. `RawMyMessage`). */
+export function mapMyMessage(r: RawMyMessage, meId: PeerId | null = null): MyMessage {
+  return mapMessage(r, meId) as MyMessage
+}
+
+export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
+  const peerId = getPeerId(r.peer_id)
+  if (r._ === 'messageEmpty') return { _: 'messageEmpty', id: generateMessageId(r.id), peer_id: r.peer_id, peerId }
+
+  const fromId = r.from_id ? getPeerId(r.from_id) : undefined
+  const common = {
+    pFlags: r.pFlags ?? {},
+    id: generateMessageId(r.id),
+    from_id: r.from_id,
+    peer_id: r.peer_id,
+    reply_to: mapReplyHeader(r.reply_to),
+    date: r.date,
+    ttl_period: r.ttl_period,
+    peerId,
+    fromId,
+    random_id: r.random_id,
+    secret: r.secret,
+    secretMedia: r.secretMedia,
+    ...mapReactions(r.reactions),
+  }
+
+  if (r._ === 'messageService') {
+    // Синтетические конструкторы уточняет КЛИЕНТ — сервер производит только
+    // настоящие (порт appMessagesManager.ts:5215-5238).
+    return { ...common, _: 'messageService', action: refineMessageAction(r.action, fromId, meId) }
+  }
+
+  return {
+    ...common,
+    _: 'message',
+    fwd_from: r.fwd_from,
+    message: r.message,
+    // Вложение нормализуется здесь один раз: `saveMessageMedia` выводит
+    // `doc.type`/`w`/`h`/`duration`/`file_name` из атрибутов и mime — порт
+    // `appDocsManager.saveDoc`.
+    media: saveMessageMedia(r.media),
+    reply_markup: r.reply_markup,
+    entities: r.entities,
+    views: r.views,
+    forwards: r.forwards,
+    edit_date: r.edit_date,
+    grouped_id: r.grouped_id,
+    effect_name: mapEffect(r.effect_name),
+    factcheck: r.factcheck,
+    send_at: r.send_at,
+    when_online: r.when_online,
+    enc_body: r.enc_body,
+    destruct_at: r.destruct_at,
+    geo: r.geo ? mapGeo(r.geo) : undefined,
+    contact: r.contact,
+    poll: r.poll ? mapPoll(r.poll) : undefined,
+    checklist: r.checklist ? mapChecklist(r.checklist) : undefined,
+    giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
+    gift: r.gift ? mapGiftInfo(r.gift) : undefined,
+    web_page: r.web_page ? mapWebPage(r.web_page) : undefined,
+    paid_media: r.paid_media,
+  }
+}
+

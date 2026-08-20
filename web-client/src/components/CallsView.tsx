@@ -14,10 +14,11 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useCallsLog } from '../core/hooks/useCallsLog'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { gradientFor } from '../core/dialogToChat'
-import { parseCallLog } from '../core/messageToConvMsg'
+import { messageDateISO } from '../core/messageToConvMsg'
+import { cachedUser } from '../core/peerCache'
 import { dayLabel, startOfDayMs } from '../core/format/dayLabel'
 import { startOutgoing } from '../core/calls/callEngine'
-import type { CallLogEntry } from '../core/managers/callsManager'
+import type { MyMessage } from '../core/models'
 import { useT, useLang } from '../i18n'
 import s from './CallsView.module.scss'
 
@@ -26,27 +27,33 @@ const hhmm = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (peerId: PeerId) => void }) {
+function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) => void }) {
   const t = useT()
-  // Имя собирает клиент, аватарка — `peer.photo.photo_id`: плоского снимка
-  // `peerName`/`peerAvatar` рядом с настоящим конструктором больше нет.
-  const photoId = getPeerPhotoId(call.peer.photo)
-  const name = getUserTitle(call.peer)
+  // Собеседник приватного звонка — это САМ пир записи: его карточка приехала
+  // вектором `users` того же ответа и лежит в зеркале.
+  const peerId = call.peerId
+  const peer = cachedUser(peerId)
+  const photoId = peer?._ === 'user' ? getPeerPhotoId(peer.photo) : 0
+  const name = getUserTitle(peer)
   const src = useMediaUrl(photoId || null)
-  const log = parseCallLog(call.text)
+  // Исход звонка — в САМОМ действии (`messageActionPhoneCall`), а не в JSON
+  // внутри текста: «состоялся» от «отменён» отличает НАЛИЧИЕ длительности.
+  const action = call._ === 'messageService' && call.action._ === 'messageActionPhoneCall' ? call.action : undefined
+  const out = !!call.pFlags.out
+  const date = messageDateISO(call.date)
   // Пропущенный входящий (не мы инициировали, не состоялся) — красным.
-  const missed = !call.out && log.reason !== 'ok'
+  const missed = !out && !action?.duration
   const startCall = (video: boolean) => (e: React.MouseEvent) => {
     e.stopPropagation()
     startOutgoing(
-      { id: call.peerId, name, avatar: gradientFor(call.peerId), avatarText: name.charAt(0).toUpperCase(), photoId },
+      { id: peerId, name, avatar: gradientFor(peerId), avatarText: name.charAt(0).toUpperCase(), photoId },
       video,
-      call.peerId,
+      peerId,
     )
   }
   return (
-    <div className={s.row} onClick={() => onOpen(call.peerId)}>
-      <Avatar background={gradientFor(call.peerId)} text={name.charAt(0).toUpperCase()} src={src} size={46} />
+    <div className={s.row} onClick={() => onOpen(peerId)}>
+      <Avatar background={gradientFor(peerId)} text={name.charAt(0).toUpperCase()} src={src} size={46} />
       <div className={s.rowText}>
         <Text noWrap size={16} color={missed ? '#ff595a' : 'var(--primary-text-color)'}>
           {name}
@@ -56,16 +63,16 @@ function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (peerId: PeerId
           <TgIcon
             name="arrow_next"
             size={15}
-            color={call.out ? '#4dcd5e' : '#ff595a'}
-            style={{ transform: call.out ? 'rotate(-45deg)' : 'rotate(135deg)', flexShrink: 0 }}
+            color={out ? '#4dcd5e' : '#ff595a'}
+            style={{ transform: out ? 'rotate(-45deg)' : 'rotate(135deg)', flexShrink: 0 }}
           />
           <Text noWrap size={13.5} color="var(--secondary-text-color)">
-            {(call.out ? t('Outgoing') : missed ? t('Missed') : t('Incoming')) + ' · ' + hhmm(call.date)}
+            {(out ? t('Outgoing') : missed ? t('Missed') : t('Incoming')) + ' · ' + hhmm(date)}
           </Text>
         </div>
       </div>
       <IconButton onClick={startCall(false)} color="var(--primary-color)">
-        <TgIcon name={log.video ? 'videocamera' : 'phone'} size={22} />
+        <TgIcon name={action?.pFlags?.video ? 'videocamera' : 'phone'} size={22} />
       </IconButton>
     </div>
   )
@@ -80,12 +87,12 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
   // Группировка по дням (Сегодня/Вчера/дата) — записи с бэка уже отсортированы
   // от новых к старым, поэтому дни идут по порядку.
   const groups = useMemo(() => {
-    const out: { key: number; label: string; items: CallLogEntry[] }[] = []
+    const out: { key: number; label: string; items: MyMessage[] }[] = []
     for (const c of calls ?? []) {
-      const key = startOfDayMs(c.date)
+      const key = startOfDayMs(messageDateISO(c.date))
       const last = out[out.length - 1]
       if (last && last.key === key) last.items.push(c)
-      else out.push({ key, label: dayLabel(c.date, lang), items: [c] })
+      else out.push({ key, label: dayLabel(messageDateISO(c.date), lang), items: [c] })
     }
     return out
   }, [calls, lang])

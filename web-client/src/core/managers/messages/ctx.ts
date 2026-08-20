@@ -4,10 +4,10 @@
 // получают как ctx. Ядро истории/кэша (slices/msgsByChat/put/…) остаётся в
 // messagesManager; наружу под-модулям нужны лишь rest, точечный патч SSOT и meId.
 import type { RestClient } from '../../net/restClient'
-import type { Message } from '../../models'
+import type { MyMessage } from '../../models'
 
 /** Точечно обновить одно сообщение чата в SSOT + персист (см. messagesManager.patchMsg). */
-export type PatchMsg = (peerId: number, match: (m: Message) => boolean, upd: (m: Message) => Message | null) => void
+export type PatchMsg = (peerId: number, match: (m: MyMessage) => boolean, upd: (m: MyMessage) => MyMessage | null) => void
 
 export interface MessagesCtx {
   rest: RestClient

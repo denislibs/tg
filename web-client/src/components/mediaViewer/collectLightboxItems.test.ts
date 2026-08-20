@@ -3,7 +3,9 @@
 // порядок окна, single-item фолбэк (сервисное фото), gif-детект и duration,
 // секретная ветка (url мимо конвейера downloadMediaURL).
 import { describe, expect, it, vi } from 'vitest'
-import type { Message } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
+import { generateMessageId } from '@core/history/messageId'
+import { makeMessage, makeServiceMessage } from '@core/messages/testMessage'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
 import { collectLightboxItems, messageToViewerItem, type LightboxCtx } from './collectLightboxItems'
 import type { Chat, User } from '@core/peers/peer'
@@ -34,17 +36,13 @@ const videoMedia = (id: number, duration: number, animated = false): MessageMedi
     ...(animated ? [{ _: 'documentAttributeAnimated' as const }] : []),
   ])
 
-const msg = (over: Partial<Message>): Message => ({
-  id: 1,
-  peerId: -5,
-  seq: 1,
-  senderId: 10,
-  type: 'photo',
-  text: '',
-  replyToId: null,
-  mediaId: null,
-  createdAt: '2026-08-01T10:00:00Z',
-  threadRootId: null,
+/** Номер в КЛИЕНТСКОМ пространстве. Вид медиа больше НЕ едет полем `type`:
+ *  его выводит само вложение (`media._` + `document.type`), поэтому фикстура
+ *  задаёт вложение, а не подпись к нему. */
+const cid = generateMessageId
+
+const msg = (over: Partial<MessageReal> = {}): MessageReal => ({
+  ...makeMessage({ id: cid(1), peerId: -5, fromId: 10, date: 1_785_924_000 }),
   ...over,
 })
 
@@ -61,28 +59,27 @@ const ctx: LightboxCtx = {
 }
 
 describe('collectLightboxItems: фильтрация окна', () => {
-  it('фото+видео в порядке окна; текст/голос/документ мимо; индекс — по mediaId', () => {
-    const msgs = [
-      msg({ id: 1, seq: 1, type: 'photo', mediaId: 101, media: photoMedia(101) }),
-      msg({ id: 2, seq: 2, type: 'text', text: 'привет' }),
-      msg({ id: 3, seq: 3, type: 'video', mediaId: 103, media: videoMedia(103, 95) }),
-      msg({ id: 4, seq: 4, type: 'voice', mediaId: 104, media: docMedia(104, 'audio/ogg', [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 3 }]) }),
-      msg({ id: 5, seq: 5, type: 'document', mediaId: 105, media: docMedia(105, 'application/pdf', [{ _: 'documentAttributeFilename', file_name: 'a.pdf' }]) }),
-      msg({ id: 6, seq: 6, type: 'photo', mediaId: 106, media: photoMedia(106) }),
+  it('фото+видео в порядке окна; текст/голос/документ мимо; индекс — по id файла', () => {
+    const msgs: MyMessage[] = [
+      msg({ id: cid(1), media: photoMedia(101) }),
+      msg({ id: cid(2), message: 'привет' }),
+      msg({ id: cid(3), media: videoMedia(103, 95) }),
+      msg({ id: cid(4), media: docMedia(104, 'audio/ogg', [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 3 }]) }),
+      msg({ id: cid(5), media: docMedia(105, 'application/pdf', [{ _: 'documentAttributeFilename', file_name: 'a.pdf' }]) }),
+      msg({ id: cid(6), media: photoMedia(106) }),
     ]
     const { items, index } = collectLightboxItems({ msgs, mediaId: 103, ctx })
     expect(items.map((i) => i.media.mediaId)).toEqual([101, 103, 106])
-    expect(items.map((i) => i.mid)).toEqual([1, 3, 6])
-    expect(items.map((i) => i.seq)).toEqual([1, 3, 6].map((id) => msgs.find((m) => m.id === id)!.seq))
+    expect(items.map((i) => i.mid)).toEqual([cid(1), cid(3), cid(6)])
     expect(index).toBe(1)
     expect(items[1].media.kind).toBe('video')
   })
 
-  it('секретные E2E-медиа вида фото/видео включаются (type в сторе — encrypted)', () => {
-    const msgs = [
-      msg({ id: 1, type: 'photo', mediaId: 101, media: photoMedia(101) }),
+  it('секретные E2E-медиа вида фото/видео включаются (вид — в secretMedia)', () => {
+    const msgs: MyMessage[] = [
+      msg({ id: cid(1), media: photoMedia(101) }),
       msg({
-        id: 2, type: 'encrypted', mediaId: 202,
+        id: cid(2), enc_body: 'cipher', media: photoMedia(202),
         secretMedia: { mediaId: 202, keyB64: 'k', ivB64: 'iv', name: 'p.jpg', mime: 'image/jpeg', size: 1, mediaType: 'photo' },
       }),
     ]
@@ -93,9 +90,14 @@ describe('collectLightboxItems: фильтрация окна', () => {
   })
 
   it('single-item фолбэк: медиа сервисного сообщения (не в ленте фото/видео) → одиночный просмотр', () => {
-    const msgs = [
-      msg({ id: 1, type: 'photo', mediaId: 101, media: photoMedia(101) }),
-      msg({ id: 2, type: 'service', mediaId: 500, text: 'Фото группы обновлено' }),
+    const msgs: MyMessage[] = [
+      msg({ id: cid(1), media: photoMedia(101) }),
+      // Пилюля смены фото группы: фото едет ВНУТРИ действия, вложения у
+      // сообщения нет — окно его не видит, и вьювер уходит в одиночный фолбэк.
+      makeServiceMessage({
+        id: cid(2), peerId: -5, fromId: 10,
+        action: { _: 'messageActionChatEditPhoto', photo: { _: 'photo', id: 500, sizes: [] } },
+      }),
     ]
     const { items, index } = collectLightboxItems({ msgs, mediaId: 500, ctx })
     expect(items).toHaveLength(1)
@@ -106,13 +108,13 @@ describe('collectLightboxItems: фильтрация окна', () => {
 
   it('элементы соседей — из findElement; не отрендеренные остаются null', () => {
     const el = document.createElement('div')
-    const msgs = [
-      msg({ id: 1, type: 'photo', mediaId: 101, media: photoMedia(101) }),
-      msg({ id: 2, type: 'photo', mediaId: 102, media: photoMedia(102) }),
+    const msgs: MyMessage[] = [
+      msg({ id: cid(1), media: photoMedia(101) }),
+      msg({ id: cid(2), media: photoMedia(102) }),
     ]
     const { items } = collectLightboxItems({
       msgs, mediaId: 101, ctx,
-      findElement: (m) => (m.id === 1 ? el : null),
+      findElement: (m) => (m.id === cid(1) ? el : null),
     })
     expect(items[0].element).toBe(el)
     expect(items[1].element).toBeNull()
@@ -125,14 +127,14 @@ describe('collectLightboxItems: фильтрация окна', () => {
 // вместо автоплей-цикла, а обычное видео — наоборот.
 describe('messageToViewerItem: вид, gif и duration — из документа', () => {
   it('documentAttributeAnimated → gif: true; duration — из атрибута видео', () => {
-    const it1 = messageToViewerItem(msg({ type: 'video', mediaId: 1, media: videoMedia(1, 3, true) }), ctx)
+    const it1 = messageToViewerItem(msg({ media: videoMedia(1, 3, true) }), ctx)
     expect(it1.media.kind).toBe('video')
     expect(it1.media.gif).toBe(true)
     expect(it1.media.duration).toBe(3)
   })
 
   it('без атрибута animated — обычное видео: gif не ставится, duration доезжает', () => {
-    const it1 = messageToViewerItem(msg({ type: 'video', mediaId: 1, media: videoMedia(1, 95) }), ctx)
+    const it1 = messageToViewerItem(msg({ media: videoMedia(1, 95) }), ctx)
     expect(it1.media.gif).toBeUndefined()
     expect(it1.media.duration).toBe(95)
   })
@@ -144,12 +146,12 @@ describe('messageToViewerItem: вид, gif и duration — из документ
       { _: 'documentAttributeVideo', duration: 0, w: 320, h: 240 },
       { _: 'documentAttributeFilename', file_name: 'tenor_dance.mp4' },
     ])
-    expect(messageToViewerItem(msg({ type: 'video', mediaId: 1, media }), ctx).media.gif).toBeUndefined()
+    expect(messageToViewerItem(msg({ media }), ctx).media.gif).toBeUndefined()
   })
 
   it('image/gif — гифка по mime (saveDocument: doc.type === gif)', () => {
     const media = docMedia(1, 'image/gif', [{ _: 'documentAttributeFilename', file_name: 'cat.gif' }])
-    const item = messageToViewerItem(msg({ type: 'video', mediaId: 1, media }), ctx)
+    const item = messageToViewerItem(msg({ media }), ctx)
     expect(item.media.gif).toBe(true)
     // mime не video/*, но doc.type === 'gif' — tweb ведёт такое видео-веткой
     expect(item.media.kind).toBe('video')
@@ -169,7 +171,7 @@ describe('messageToViewerItem: вид, gif и duration — из документ
         ],
       },
     }
-    const item = messageToViewerItem(msg({ type: 'photo', mediaId: 1, media }), ctx)
+    const item = messageToViewerItem(msg({ media }), ctx)
     expect(item.media.width).toBe(800)
     expect(item.media.height).toBe(600)
     expect(item.media.blurPreview).toBe('BLUR')
@@ -178,7 +180,7 @@ describe('messageToViewerItem: вид, gif и duration — из документ
 
 describe('messageToViewerItem: секретная ветка (E2E) — мимо конвейера', () => {
   const secret = (id: number) => msg({
-    id, type: 'encrypted', mediaId: id,
+    id: cid(id), enc_body: 'cipher', media: photoMedia(id),
     secretMedia: { mediaId: id, keyB64: 'kk', ivB64: 'ii', name: 's.jpg', mime: 'image/jpeg', size: 9, mediaType: 'photo' },
   })
 
@@ -201,15 +203,15 @@ describe('messageToViewerItem: секретная ветка (E2E) — мимо 
 
 describe('messageToViewerItem: автор', () => {
   it('своё — meName, чужое — из peers (+avatarPreview), фолбэк — имя чата', () => {
-    expect(messageToViewerItem(msg({ senderId: 42, type: 'photo', mediaId: 1, media: photoMedia(1) }), ctx).author.name).toBe('Я Сам')
-    const alien = messageToViewerItem(msg({ senderId: 10, type: 'photo', mediaId: 1, media: photoMedia(1) }), ctx)
+    expect(messageToViewerItem(msg({ fromId: 42, media: photoMedia(1) }), ctx).author.name).toBe('Я Сам')
+    const alien = messageToViewerItem(msg({ fromId: 10, media: photoMedia(1) }), ctx)
     expect(alien.author.name).toBe('Алиса')
     expect(alien.author.avatarPreview).toBe('AVPREV')
-    expect(messageToViewerItem(msg({ senderId: 77, type: 'photo', mediaId: 1, media: photoMedia(1) }), ctx).author.name).toBe('Чат')
+    expect(messageToViewerItem(msg({ fromId: 77, media: photoMedia(1) }), ctx).author.name).toBe('Чат')
   })
 
   it('подпись — текст сообщения + entities', () => {
-    const item = messageToViewerItem(msg({ type: 'photo', mediaId: 1, media: photoMedia(1), text: 'подпись', entities: [{ _: 'messageEntityBold', offset: 0, length: 7 }] }), ctx)
+    const item = messageToViewerItem(msg({ media: photoMedia(1), message: 'подпись', entities: [{ _: 'messageEntityBold', offset: 0, length: 7 }] }), ctx)
     expect(item.caption).toBe('подпись')
     expect(item.captionEntities).toEqual([{ _: 'messageEntityBold', offset: 0, length: 7 }])
   })

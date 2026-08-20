@@ -5,19 +5,18 @@
 // messageOps.test.ts); сторный applyPaidUnlock, дублировавший ту же семантику
 // вручную, стал недостижим и удалён.
 import { describe, it, expect } from 'vitest'
-import { mapMessage, type RawMessage } from '../core/models'
+import { mapMyMessage, type MessageReal, type RawMessageReal } from '../core/models'
+import { makeRawMessage } from '../core/messages/testMessage'
 import { getMediaFromMessage, getStrippedThumb } from '../core/media/messageMedia'
 
-const base = (id: number, peerId = 5): RawMessage => ({
-  id, peer_id: peerId, seq: id, sender_id: 1, type: 'photo', text: '',
-  reply_to_id: null, media_id: null, created_at: '2026-07-01T00:00:00Z',
-})
+const base = (id: number, peerId: PeerId = 5): RawMessageReal =>
+  makeRawMessage({ id, peerId, fromId: 1 })
 
 // Заблокированное платное фото: media_id отсутствует, а вместо медиа сервер
 // отдаёт ПСЕВДО-ФОТО (domain.LockedPlaceholder) — одна stripped-ступень с
 // размерами кадра, ровно как оригинал собирает из messageExtendedMediaPreview.
-const locked = (id: number): RawMessage => ({
-  ...base(id), media_id: null,
+const locked = (id: number): RawMessageReal => ({
+  ...base(id),
   media: {
     _: 'messageMediaPhoto',
     // Две ступени, как их и собирает `domain.LockedPlaceholder`: превью и
@@ -35,9 +34,10 @@ const locked = (id: number): RawMessage => ({
 
 describe('mapMessage paid_media', () => {
   it('maps a locked paid photo: no mediaId, has price + locked flag', () => {
-    const m = mapMessage(locked(1))
-    expect(m.mediaId).toBeNull()
-    expect(m.paidMedia).toEqual({ price: 25, locked: true })
+    const m = mapMyMessage(locked(1)) as MessageReal
+    // Адреса файла нет вовсе: у заблокированного медиа сервер отдаёт
+    // псевдо-фото с нулевым id и одной stripped-ступенью.
+    expect(m.paid_media).toEqual({ price: 25, locked: true })
     // плейсхолдер остаётся — но спрашиваем его у вложения (ступень
     // photoStrippedSize), как это делает wrapPhoto оригинала
     expect(getStrippedThumb(getMediaFromMessage(m))).toBe('AAAA')

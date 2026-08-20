@@ -11,7 +11,7 @@
 //   finalizePendingMessage()      → finalizePendingMessage()
 //   checkPendingMessage()         → checkPendingMessage() (зовёт cacheLive)
 //   cancelPendingMessage()        → cancelPendingMessage()
-//   message.error / pFlags.is_outgoing → Message.failed
+//   message.error / pFlags.is_outgoing → MyMessage.failed
 //
 // ТРАНСПОРТ — ВНУТРИ. В tweb хвост `beforeMessageSending` — это `message.send()`
 // (appMessagesManager.ts:2846-2853), где `send` — закрытие, поставленное
@@ -61,7 +61,7 @@
 //     сравнивать не с чем, это наша фича, а не расхождение с оригиналом;
 //   • пост канала уходит по REST (`channelsManager.post`) — транспорт другой,
 //     но владелец бабла тот же: он зовёт `beforeMessageSending` явно.
-import { deriveOut, type Message, type MessageEntity } from '../../models'
+import type { MyMessage, MessageReal, MessageEntity } from '../../models'
 import {
   saveDocument, THUMB_TYPE_FULL,
   type DocumentAttribute, type MessageMedia, type MyDocument,
@@ -72,6 +72,8 @@ import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
 import { b64FromBytes } from '../../secret/crypto'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
+import { generateMessageId, generateTempMessageId } from '../../history/messageId'
+import { getOutputPeer } from '../../peers/peerId'
 import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
 
 /** Данные временного бабла, которых нет в проводных полях send_message: автор,
@@ -84,12 +86,13 @@ export interface SendOptimistic {
   media?: PendingMedia
   /** имя контакта для бабла — проводной contactUserId имени не несёт */
   contactName?: string
-  /** send-as: бабл сразу от имени выбранной личности, а не «от себя» */
-  sendAs?: { peerId: number; title: string }
+  /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
+   *  (знаковый ключ), а не снимок `{title, photo_id}`: имя и аватарку автор
+   *  бабла берёт из зеркала карточек — как и у серверного эха, где `from_id`
+   *  указывает на тот же канал. */
+  sendAs?: PeerId
   /** секретный чат: бабл с плейнтекстом, помеченный secret */
   secret?: boolean
-  /** кросс-чат ответ: снимок превью оригинала (его нет в SSOT этого чата) */
-  replySnapshot?: { peerId: number; name: string; text: string }
 }
 
 /** Проводные поля кадра МИНУС те, что целиком покрыты пакетом параметров:
@@ -126,7 +129,7 @@ export interface SendFileArgs extends MessageSendingParams {
   duration?: number
   waveform?: Uint8Array
   /** альбом (Telegram grouped_id): общий id на все сообщения группы */
-  groupedId?: string
+  groupedId?: number
   paidMediaPrice?: number | null
   /** tweb `isMedia`: фото/видео «как медиа» — бабл сразу с локальным превью */
   isMedia?: boolean
@@ -139,8 +142,6 @@ export interface SendFileArgs extends MessageSendingParams {
   spoiler?: boolean
   /** «отправляет фото/файл…» у собеседника на время аплоада (tweb sendMessageUpload*Action) */
   uploadAction?: TypingAction
-  /** кросс-чат ответ: снимок превью оригинала для бабла (см. SendOptimistic) */
-  replySnapshot?: { peerId: number; name: string; text: string }
 }
 
 /** Регистрация неотправленного сообщения — аналог tweb PendingMessageDetails. */
@@ -148,7 +149,7 @@ interface PendingDetails {
   peerId: number
   threadRootId?: number | null
   /** позиция в окне (у нас порядок задаёт seq, в tweb — временный mid) */
-  tempSeq: number
+  tempId: number
   /** окна, куда бабл вставлен: основное чата и, для тред-сообщения, окно треда */
   keys: string[]
   /** Порт поля tweb `PendingMessageDetails.sequential` (appMessagesManager.ts:228):
@@ -167,9 +168,10 @@ interface PendingDetails {
 export interface PendingCtx {
   hkey: (peerId: number, threadRoot?: number | null) => string
   slices: Map<string, SlicedArray<number>>
-  msgsFor: (peerId: number) => Map<number, Message>
-  /** id текущего пользователя — временный бабл получает `out` тем же предикатом
-   *  (`deriveOut`), что и настоящие сообщения на границе маппинга. Геттер, а не
+  msgsFor: (peerId: number) => Map<number, MyMessage>
+  /** id текущего пользователя. Временному баблу он больше НЕ нужен для `out`
+   *  (флаг производит сервер, а у бабла он исходящий по определению) — нужен
+   *  границе разбора, которая уточняет служебное действие. Геттер, а не
    *  значение: `me` у воркера разрешается лениво. */
   getMeId: () => number | null
   /** Публикация изменений окна всем вкладкам (rt:message_op). Правило: публикует
@@ -214,7 +216,7 @@ const UPLOAD_TYPING_MS = 3000
  *    получает stripped-байты из попапа отправки, где превью уже посчитано; у нас
  *    их до аплоада не считает никто, роль подложки бабла несёт `localUrl`;
  *  • `thumb` + `thumbsStorage.setCacheContextURL` — ступени в оригинале нужны,
- *    чтобы повесить на них локальный objectURL; у нас его несёт `Message.localUrl`
+ *    чтобы повесить на них локальный objectURL; у нас его несёт `MyMessage.localUrl`
  *    (blob-URL минтит воркер, см. `sendFile`), а ступени адресуются id медиа,
  *    которого до аплоада ещё нет. Поэтому `thumbs` у локального документа пуст.
  */
@@ -312,9 +314,11 @@ export function newPendingMethods(ctx: PendingCtx) {
     return keys.filter((k) => slices.get(k)?.first.isEnd(SliceEnd.Bottom))
   }
 
-  /** Следующий свободный seq внизу окна. Порядок бабла и только: реконсиляция
-   *  матчит по clientId, а не по этому seq (см. dedupKey в messageOps). */
-  const tentativeSeq = (peerId: number, keys: string[]): number => {
+  /** ВРЕМЕННЫЙ номер бабла — порт tweb `generateTempMessageId`: ДРОБЬ поверх
+   *  последнего занятого номера окна, а не «максимум + 1» и не отрицательное
+   *  число. Дробь и есть признак «номер назначен клиентом» (`isLocalMessageId`),
+   *  и она же держит бабл ПОСЛЕ последнего сообщения при сортировке. */
+  const tentativeId = (peerId: number, keys: string[]): number => {
     const c = msgsFor(peerId)
     let max = 0
     for (const key of keys) {
@@ -323,24 +327,26 @@ export function newPendingMethods(ctx: PendingCtx) {
       for (const slice of sa.slices) for (const s of slice) if (s > max) max = s
     }
     for (const s of c.keys()) if (s > max) max = s
-    return max + 1
+    // Пустое окно: до первого сообщения занятых номеров нет, и клиентская
+    // граница начинается с самого порога.
+    return generateTempMessageId(Math.max(max, generateMessageId(0)))
   }
 
   /** Снять временный бабл из SSOT и срезов. Возвращает, был ли он там. */
   const dropTemp = (d: PendingDetails): boolean => {
     const c = msgsFor(d.peerId)
-    const existed = c.delete(d.tempSeq)
-    for (const key of d.keys) slices.get(key)?.delete(d.tempSeq)
+    const existed = c.delete(d.tempId)
+    for (const key of d.keys) slices.get(key)?.delete(d.tempId)
     return existed
   }
 
   /** Точечно поправить временный бабл в SSOT. */
-  const patchTemp = (d: PendingDetails, upd: (m: Message) => Message): Message | undefined => {
+  const patchTemp = (d: PendingDetails, upd: (m: MyMessage) => MyMessage): MyMessage | undefined => {
     const c = msgsFor(d.peerId)
-    const cur = c.get(d.tempSeq)
+    const cur = c.get(d.tempId)
     if (!cur) return undefined
     const next = upd(cur)
-    c.set(d.tempSeq, next)
+    c.set(d.tempId, next)
     return next
   }
 
@@ -351,16 +357,16 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  на его место встаёт настоящее сообщение. Наружу — `insert` финального:
    *  слияние с оптимистичным по clientId (перенос clientId/localUrl/secret)
    *  живёт в `messageOps.insert` и работает одинаково у всех потребителей. */
-  const finalizePendingMessage = (clientMsgId: string, final: Message): MessageOp[] => {
+  const finalizePendingMessage = (clientMsgId: string, final: MyMessage): MessageOp[] => {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
     dropTemp(d)
     const c = msgsFor(d.peerId)
-    c.set(final.seq, final)
+    c.set(final.id, final)
     for (const key of d.keys) {
       const sa = slices.get(key)
-      if (sa && !sa.findSlice(final.seq)) sa.unshift(final.seq)
+      if (sa && !sa.findSlice(final.id)) sa.unshift(final.id)
     }
     // `sequential` объявляется вместе с финальным сообщением — ровно как в tweb,
     // где `checkPendingMessage` кладёт `pendingData.sequential` в `history_update`
@@ -391,47 +397,56 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  когда её принесёт эхо. Оригинал ищем в SSOT воркера — той же единой Map
    *  сообщений чата, из которой живёт окно (у главного потока для входящих ту же
    *  работу делает `storeProjection`, но у СВОЕЙ отправки владелец бабла — здесь). */
-  const resolveReplyTo = (peerId: number, replyToId: number, quoteText?: string): Message['replyTo'] => {
-    for (const m of msgsFor(peerId).values()) {
-      if (m.id !== replyToId) continue
-      return {
-        msgId: m.id, seq: m.seq, senderId: m.senderId, text: m.text,
-        entities: m.entities, type: m.type, mediaId: m.mediaId ?? undefined,
-        quoteText: quoteText || undefined,
-      }
+  /** Ссылка на отвечаемое для ВРЕМЕННОГО бабла. Порт tweb `generateReplyHeader`
+   *  (appMessagesManager.ts:2926 — исходящее сообщение получает `reply_to` ещё
+   *  до ухода на сервер): без этого бабл появлялся бы без цитаты и «прыгал» бы,
+   *  когда её принесёт эхо.
+   *
+   *  Это именно ССЫЛКА, а не снимок: превью строит тот, кто рисует, разрешив
+   *  номер в своём окне. Резолвить оригинал здесь больше незачем — снимка
+   *  `{msgId, seq, senderId, text, type, mediaId}` в модели больше нет. */
+  const replyHeaderFor = (e: PendingNewEvt): MyMessage['reply_to'] => {
+    if (e.reply_to_id == null && e.thread_root_id == null) return undefined
+    return {
+      _: 'messageReplyHeader',
+      ...(e.reply_to_id != null ? { reply_to_msg_id: e.reply_to_id } : {}),
+      ...(e.thread_root_id != null ? { reply_to_top_id: e.thread_root_id } : {}),
+      ...(e.reply_to_peer_id != null ? { reply_to_peer_id: getOutputPeer(e.reply_to_peer_id) } : {}),
+      ...(e.reply_quote_text ? { pFlags: { quote: true as const }, quote_text: e.reply_quote_text } : {}),
     }
-    return null
   }
 
   const insertPending = (e: PendingNewEvt): MessageOp[] => {
     const keys = targetKeys(e.peer_id, e.thread_root_id)
     if (!keys.length) return []
-    const seq = tentativeSeq(e.peer_id, keys)
-    const replyToId = e.reply_to_id ?? null
-    const msg: Message = {
-      // Отрицательный id помечает неотправленное (dedupKey ключует такое по
-      // clientId — иначе чужое входящее с тем же tentative seq вытеснило бы
-      // бабл из окна без ack и без ошибки).
-      id: -seq,
+    // Номер назначен КЛИЕНТОМ: дробь поверх последнего занятого (порт
+    // `generateTempMessageId`). Отрицательного id больше нет — dedupKey отличает
+    // бабл по самой дробности, а не по знаку.
+    const id = tentativeId(e.peer_id, keys)
+    const msg: MyMessage = {
+      _: 'message',
+      // `out` у бабла: он ИСХОДЯЩИЙ по определению — это сообщение зрителя,
+      // которое ещё не ушло. Сторону бабла решает `isOurMessage` по `from_id`:
+      // send-as (пост от лица канала) остаётся out, но рисуется входящим.
+      pFlags: {
+        out: true,
+        // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
+        // чтобы точка не «моргала» после ack.
+        ...(e.type === 'voice' || e.type === 'roundVideo' ? { media_unread: true as const } : {}),
+      },
+      id,
+      // Автор бабла — send-as личность, если она выбрана: на проводе у эха там
+      // будет тот же канал, и имя с аватаркой берутся из зеркала карточек.
+      from_id: getOutputPeer(e.send_as ?? e.sender_id),
+      fromId: e.send_as ?? e.sender_id,
+      peer_id: getOutputPeer(e.peer_id),
       peerId: e.peer_id,
-      seq,
-      senderId: e.sender_id,
-      type: e.type ?? 'text',
-      text: e.text,
+      reply_to: replyHeaderFor(e),
+      date: Math.floor(Date.now() / 1000),
+      message: e.text,
       entities: e.entities,
-      replyToId,
-      // Кросс-чат ответ: оригинала в этом чате нет, превью рисуется из снимка
-      // (та же ветка `messageToConvMsg`, что у серверного `reply_snapshot_*`);
-      // обычный ответ — резолв оригинала по SSOT.
-      replyToPeerId: e.reply_snapshot?.peerId,
-      replySnapshotName: e.reply_snapshot?.name,
-      replySnapshotText: e.reply_snapshot?.text,
-      replyTo: replyToId != null && !e.reply_snapshot ? resolveReplyTo(e.peer_id, replyToId, e.reply_quote_text) : undefined,
-      mediaId: e.media_id ?? null,
-      createdAt: new Date().toISOString(),
-      threadRootId: e.thread_root_id ?? null,
-      groupedId: e.grouped_id ?? null,
-      clientId: e.client_msg_id,
+      grouped_id: e.grouped_id,
+      random_id: e.client_msg_id,
       // localUrl — обычное поле SSOT: blob-URL минтит ВОРКЕР (sendFile ниже), а
       // воркерный blob виден всем вкладкам (тот же приём, что у downloadMediaURL
       // в mediaManager). Раньше поля здесь не было, потому что URL создавала
@@ -448,26 +463,18 @@ export function newPendingMethods(ctx: PendingCtx) {
       // кладётся УЖЕ сохранённый документ), иначе временный — id самого бабла,
       // ровно как tweb `mediaTempId = message.id` (:1554).
       media: e.media
-        ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? -seq, attachType: e.type ?? 'document' })
+        ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? id, attachType: e.type ?? 'document' })
         : undefined,
-      // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
-      // чтобы точка не «моргала» после ack.
-      mediaUnread: e.type === 'voice' || e.type === 'roundVideo' || undefined,
       geo: e.geo,
       contact: e.contact,
       secret: e.secret,
-      sendAs: e.send_as,
-      // Тот же предикат, что на границе маппинга (порт tweb pFlags.out): бабл
-      // «отправляется…» исходящий, но send-as (пост от имени канала/группы)
-      // рисуется входящим — как и его серверное эхо.
-      out: deriveOut({ senderId: e.sender_id, sendAs: e.send_as }, ctx.getMeId()),
     }
-    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempSeq: seq, keys, sequential: e.sequential }
+    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempId: id, keys, sequential: e.sequential }
     pendingByClientId.set(e.client_msg_id, d)
-    msgsFor(e.peer_id).set(seq, msg)
+    msgsFor(e.peer_id).set(id, msg)
     for (const key of keys) {
       const sa = slices.get(key)
-      if (sa && !sa.findSlice(seq)) sa.unshift(seq)
+      if (sa && !sa.findSlice(id)) sa.unshift(id)
     }
     return opsFor(d, (key) => ({ op: 'insert', key, msg }))
   }
@@ -481,9 +488,12 @@ export function newPendingMethods(ctx: PendingCtx) {
   const attachPendingMedia = (clientMsgId: string, mediaId: number): MessageOp[] => {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
-    let fields: Partial<Message> = { mediaId }
+    // Плоского `media_id` рядом с вложением больше нет: адрес файла живёт ВНУТРИ
+    // `messageMediaPhoto`/`messageMediaDocument`, и подменять надо ровно его.
+    let fields: Partial<MessageReal> = {}
     const next = patchTemp(d, (m) => {
-      fields = m.media ? { mediaId, media: withMediaId(m.media, mediaId) } : { mediaId }
+      if (m._ !== 'message' || !m.media) return m
+      fields = { media: withMediaId(m.media, mediaId) }
       return { ...m, ...fields }
     })
     if (!next) return []
@@ -516,7 +526,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
-    const cur = msgsFor(d.peerId).get(d.tempSeq)
+    const cur = msgsFor(d.peerId).get(d.tempId)
     if (!dropTemp(d) || !cur) return []
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
   }
@@ -584,12 +594,12 @@ export function newPendingMethods(ctx: PendingCtx) {
         geo: args.geo,
         // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
         // только локальный снимок имени.
-        contact: args.contactUserId != null ? { userId: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+        contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
         secret: optimistic.secret,
         send_as: optimistic.sendAs,
         reply_to_id: params.replyToMsgId ?? null,
         reply_quote_text: params.replyToQuote?.text,
-        reply_snapshot: optimistic.replySnapshot,
+        reply_to_peer_id: params.replyToPeerId ?? undefined,
         // Порт tweb `sendText → beforeMessageSending({sequential: true})`
         // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
         // ходом, что и бабл, — позиция внизу окна за ним и останется.
@@ -634,7 +644,7 @@ export function newPendingMethods(ctx: PendingCtx) {
         client_msg_id: o.clientMsgId,
         reply_to_id: params.replyToMsgId ?? null,
         reply_quote_text: params.replyToQuote?.text,
-        reply_snapshot: o.replySnapshot,
+        reply_to_peer_id: params.replyToPeerId ?? undefined,
         sender_id: o.senderId,
         text: o.caption ?? '',
         type: o.type,
@@ -694,13 +704,14 @@ export function newPendingMethods(ctx: PendingCtx) {
     ackPendingMessage(ack: AckEvt): MessageOp[] {
       const d = pendingByClientId.get(ack.client_msg_id)
       if (!d) return []
-      const cur = msgsFor(d.peerId).get(d.tempSeq)
+      const cur = msgsFor(d.peerId).get(d.tempId)
       if (!cur) return []
       return finalizePendingMessage(ack.client_msg_id, {
         ...cur,
-        id: ack.msg_id,
-        seq: ack.seq,
-        createdAt: ack.created_at,
+        // Номер приезжает СЕРВЕРНЫЙ — переводим на границе, как и всё, что
+        // приходит с провода.
+        id: generateMessageId(ack.id),
+        date: Math.floor(new Date(ack.created_at).getTime() / 1000),
         failed: undefined,
       })
     },

@@ -40,6 +40,8 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { makeDialog, makeLastMessage } from './dialogs/testDialog'
+import { makeRawMessage } from './messages/testMessage'
+import { generateMessageId } from './history/messageId'
 
 // Тот же приём, что и в workerCore.test.ts/workerCore.dialogs.test.ts —
 // синхронная пара эндпоинтов.
@@ -57,7 +59,7 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 beforeEach(() => {
   // vi.stubGlobal (не прямое присваивание indexedDB=...) — та же замена, что и в
@@ -85,15 +87,16 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
   it('new_message (без pts) → dialogs.applyNewMessage → rt:dialog_op patch', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
+    // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — форма
+    // `updateNewMessage` (решение Р5), плоских полей рядом больше нет.
     capturedConnDeps!.onFrame('new_message', {
-      peer_id: 1, msg_id: 9, seq: 2, sender_id: 9, type: 'text', text: 'привет',
-      media_id: null, created_at: '2026-08-01T00:00:01Z',
+      message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'привет', createdAt: '2026-08-01T00:00:01Z' }),
     })
 
     expect(dialogOps).toHaveLength(1)
     const op = dialogOps[0] as Extract<DialogOp, { op: 'patch' }>
     expect(op.peerId).toBe(1)
-    expect(op.fields.lastMessage?.text).toBe('привет')
+    expect((op.fields.lastMessage as { message?: string } | undefined)?.message).toBe('привет')
   })
 
   // `core.start()` здесь не звался (см. докблок выше) — `me` в воркере null,
@@ -105,7 +108,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
 
     capturedConnDeps!.onFrame('read', { peer_id: 1, user_id: 7, up_to_seq: 1 })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { read_outbox_max_id: 1 } }])
+    // Горизонт на проводе СЕРВЕРНЫЙ, в строке диалога — уже клиентский.
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { read_outbox_max_id: generateMessageId(1) } }])
   })
 
   // Строка диалога кадром `chat_update` БОЛЬШЕ НЕ ТРОГАЕТСЯ: title/username/

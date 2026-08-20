@@ -74,7 +74,7 @@ const UNMOUNT_PRELOADER = true
  * Держит `components/audio.test.ts`.
  */
 rootScope.addEventListener(RT.mediaRead, (evt) => {
-  const selector = `audio-element.is-unread[data-mid="${evt.msg_id}"][data-peer-id="${evt.peer_id}"]`
+  const selector = `audio-element.is-unread[data-mid="${evt.id}"][data-peer-id="${evt.peer_id}"]`
   document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
     element.classList.remove('is-unread')
   })

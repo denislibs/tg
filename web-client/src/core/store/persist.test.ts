@@ -11,7 +11,7 @@ import {
   saveFolders, loadFolders, saveDrafts, loadDrafts,
   DB_VERSION,
 } from './persist'
-import type { Dialog, Message, Draft } from '../models'
+import type { Dialog, MessageReal, MyMessage, Draft } from '../models'
 import type { Folder } from '../managers/foldersManager'
 import type { PeerProfile } from '../managers/authManager'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
@@ -19,19 +19,17 @@ import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 // passcode-лок (locked()) мемоизирован на 3с внутри модуля, поэтому его переключение
 // здесь не тестируем (флаки по времени); проверяем только логику стора при откл. коде.
 
-const dialog = (peerId: number, secret = false, last?: Partial<NonNullable<Dialog['lastMessage']>>): Dialog =>
+const dialog = (peerId: number, secret = false, last?: Partial<MessageReal>): Dialog =>
   makeDialog({
     peerId,
     secret,
     lastMessage: last
-      ? { ...makeLastMessage({ peerId, seq: 1, senderId: 1, createdAt: '2026-01-01T00:00:00Z' }), ...last }
+      ? { ...makeLastMessage({ peerId, id: 1, fromId: 1, createdAt: '2026-01-01T00:00:00Z' }), ...last }
       : undefined,
   })
 
-const msg = (peerId: number, seq: number, over: Partial<Message> = {}): Message => ({
-  id: seq, peerId, seq, senderId: 1, type: 'text', text: `m${seq}`,
-  replyToId: null, mediaId: null, createdAt: '2026-01-01T00:00:00Z', threadRootId: null, ...over,
-})
+const msg = (peerId: number, id: number, over: Partial<MessageReal> = {}): MyMessage =>
+  ({ ...makeLastMessage({ peerId, id, fromId: 1, text: `m${id}`, createdAt: '2026-01-01T00:00:00Z' }), ...over })
 
 async function wipe(): Promise<void> {
   await idbDel('passcode')
@@ -76,23 +74,25 @@ describe('persist (normalized offline store)', () => {
   it('round-trips + deletes messages by chat', async () => {
     await saveMessages(10, [msg(10, 1), msg(10, 2), msg(10, 3)])
     await saveMessages(20, [msg(20, 1)])
-    expect((await loadMessages(10)).map((m) => m.seq)).toEqual([1, 2, 3]) // ascending
-    expect((await loadMessages(20)).map((m) => m.seq)).toEqual([1])
+    expect((await loadMessages(10)).map((m) => m.id)).toEqual([1, 2, 3]) // ascending
+    expect((await loadMessages(20)).map((m) => m.id)).toEqual([1])
     await deletePersistedMessage(10, 2)
-    expect((await loadMessages(10)).map((m) => m.seq)).toEqual([1, 3])
+    expect((await loadMessages(10)).map((m) => m.id)).toEqual([1, 3])
     await clearPersistedChat(10)
     expect(await loadMessages(10)).toEqual([])
     expect((await loadMessages(20)).length).toBe(1) // другой чат не тронут
   })
 
   it('does not persist secret plaintext (dialogs preview + messages)', async () => {
-    await saveDialogs([dialog(1, true, { text: 'secret preview', encBody: 'cipher' })])
+    await saveDialogs([dialog(1, true, { message: 'secret preview', enc_body: 'cipher' })])
     const [d] = await loadDialogs()
-    expect(d.lastMessage?.text).toBe('')
-    expect(d.lastMessage?.encBody).toBeUndefined()
+    expect((d.lastMessage as MessageReal | undefined)?.message).toBe('')
+    expect((d.lastMessage as MessageReal | undefined)?.enc_body).toBeUndefined()
 
-    await saveMessages(1, [msg(1, 1, { secret: true, text: 'plain' }), msg(1, 2, { encBody: 'x' }), msg(1, 3, { type: 'encrypted' })])
-    expect(await loadMessages(1)).toEqual([]) // все три отфильтрованы
+    // Двух признаков, а не трёх: отдельного `type === 'encrypted'` больше нет —
+    // вид сообщения производится из `enc_body`, а не едет полем рядом.
+    await saveMessages(1, [msg(1, 1, { secret: true, message: 'plain' }), msg(1, 2, { enc_body: 'x' })])
+    expect(await loadMessages(1)).toEqual([]) // оба отфильтрованы
   })
 
   it('persistScope clears data only when switching to a different non-null token', async () => {
@@ -144,7 +144,7 @@ describe('persist (normalized offline store)', () => {
     }
 
     expect(rw).toBe(1) // три save одного тика → одна транзакция
-    expect((await loadMessages(1)).map((m) => m.seq)).toEqual([1, 10, 11, 12])
+    expect((await loadMessages(1)).map((m) => m.id)).toEqual([1, 10, 11, 12])
   })
 
   it('read-after-write: loadMessages sees enqueued-but-not-yet-flushed writes in the same tick', async () => {
@@ -152,7 +152,7 @@ describe('persist (normalized offline store)', () => {
     const p1 = saveMessages(2, [msg(2, 1)])
     const p2 = saveMessages(2, [msg(2, 2)])
     // p1/p2 намеренно НЕ ждём по отдельности: read обязан сфлашить буфер до чтения
-    expect((await loadMessages(2)).map((m) => m.seq)).toEqual([1, 2])
+    expect((await loadMessages(2)).map((m) => m.id)).toEqual([1, 2])
     await Promise.all([p1, p2]) // и промисы записи резолвятся по факту коммита
   })
 

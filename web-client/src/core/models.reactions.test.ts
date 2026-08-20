@@ -1,27 +1,32 @@
 import { describe, it, expect } from 'vitest'
-import { mapMessage, type RawMessage } from './models'
+import { mapMyMessage, type RawMessageReal, type WireMessageReactions } from './models'
+import { makeRawMessage } from './messages/testMessage'
 
-// `recent` на проводе — вектор `Peer` (ссылок на пиров), как
-// `recent_reactions:Vector<MessagePeerReaction>` в схеме; клиент выводит из него
-// ЗНАКОВЫЙ ключ и берёт имя/фото из своего кэша пиров. Прежние мини-карточки
-// `{id, name, avatar}` были третьей формой пользователя на проводе.
+// `recent_reactions` на проводе — вектор `messagePeerReaction`, у которого автор
+// это ССЫЛКА `peer_id: Peer`; клиент выводит из неё ЗНАКОВЫЙ ключ и берёт
+// имя/фото из своего кэша пиров. Прежние мини-карточки `{id, name, avatar}`
+// были третьей формой пользователя на проводе, вклеенной в jsonb прямо в SQL.
 describe('mapMessage — реакции: вектор Peer → ключи пиров', () => {
-  const base = {
-    id: 1, peer_id: 2, seq: 1, sender_id: 3, type: 'text', text: 'hi', created_at: 0,
-  }
+  const withReactions = (reactions: WireMessageReactions): RawMessageReal =>
+    ({ ...makeRawMessage({ id: 1, peerId: 2, fromId: 3, text: 'hi' }), reactions })
 
   it('peerUser → положительный ключ, peerChannel → ОТРИЦАТЕЛЬНЫЙ (реагировать может и канал)', () => {
-    const raw = { ...base, reactions: [{
-      emoji: '👍', count: 2, mine: true,
-      recent: [{ _: 'peerUser', user_id: 7 }, { _: 'peerChannel', channel_id: 8 }],
-    }] } as unknown as RawMessage
-    const m = mapMessage(raw)
+    const m = mapMyMessage(withReactions({
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2, chosen_order: 0 }],
+      recent_reactions: [
+        { _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 7 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' } },
+        { _: 'messagePeerReaction', peer_id: { _: 'peerChannel', channel_id: 8 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' } },
+      ],
+    }))
     expect(m.reactions?.[0]).toEqual({ emoji: '👍', count: 2, mine: true, recent: [7, -8] })
   })
 
-  it('recent = undefined когда бэк не прислал список', () => {
-    const raw = { ...base, reactions: [{ emoji: '❤️', count: 1 }] } as unknown as RawMessage
-    const m = mapMessage(raw)
+  it('recent = undefined когда список не приехал', () => {
+    const m = mapMyMessage(withReactions({
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '❤️' }, count: 1 }],
+    }))
     expect(m.reactions?.[0].recent).toBeUndefined()
     expect(m.reactions?.[0].mine).toBe(false)
   })

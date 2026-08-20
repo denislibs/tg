@@ -28,7 +28,9 @@ import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
 import type { GiftInfo } from '../../core/managers/starsManager'
-import type { Message } from '../../core/models'
+import { getMessageText, type MyMessage } from '../../core/models'
+import { getMediaId, getMessageKind, type MessageKind } from '../../core/messages/messageKind'
+import { messageDateISO } from '../../core/messageToConvMsg'
 import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
 import type { Chat as PeerChat, User } from '../../core/peers/peer'
@@ -117,7 +119,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const audioPlaying = useAudioStore((st) => st.playing)
   // Кэш по фильтру с infinite scroll (tweb searchSuper.load + loadMutex):
   // страницы аккумулируются, hasMore гасится по total count с бэка.
-  const [byFilter, setByFilter] = useState<Partial<Record<string, { msgs: Message[]; hasMore: boolean }>>>({})
+  const [byFilter, setByFilter] = useState<Partial<Record<string, { msgs: MyMessage[]; hasMore: boolean }>>>({})
   const byFilterRef = useRef(byFilter)
   byFilterRef.current = byFilter
   // guard от параллельных загрузок одного фильтра (tweb loadMutex)
@@ -215,26 +217,26 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     return () => io.disconnect()
   }, [filter, tab, hasMore, msgs?.length])
 
-  const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
+  const when = (m: MyMessage) => friendlyMsgTime(messageDateISO(m.date), lang)
 
   // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
   // с этой позиции; чужое непрослушанное голосовое гасит media_unread.
-  const playRow = (m: Message, title: string) => {
-    if (m.mediaId == null || chatId == null) return
-    if (m.mediaId === curMediaId) {
+  const playRow = (m: MyMessage, title: string) => {
+    if (getMediaId(m) == null || chatId == null) return
+    if (getMediaId(m) === curMediaId) {
       togglePlay()
       return
     }
-    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
-      mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
+      mediaId: getMediaId(x) as number,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
       subtitle: when(x),
       chatId,
       msgId: x.id,
     }))
     playQueue(tracks, list.indexOf(m))
-    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(chatId, m.id)
+    if ((m.fromId ?? 0) !== meId && m.pFlags.media_unread) markMediaPlayed(chatId, m.id)
   }
 
   // Просмотрщик медиа — тот же vanilla-вьювер, что в чате (клик по тайлу,
@@ -242,7 +244,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   // из зеркала карточек пиров (core/peerCache), фолбэков чата у панели нет.
   // jump/forward/delete не пробрасываются — их не было и у старого лайтбокса.
   const openMedia = (rawIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
-    const list = (msgs ?? []).filter((m) => m.mediaId != null)
+    const list = (msgs ?? []).filter((m) => getMediaId(m) != null)
     // индекс грида — по msgs целиком; во вьювер идёт индекс в отфильтрованном
     const clicked = msgs?.[rawIndex]
     const index = clicked ? list.indexOf(clicked) : -1
@@ -254,7 +256,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       meId,
       meName: me ? getUserTitle(me.user) : undefined,
       peers: new Map(
-        list.map((m) => [m.senderId, cachedPeer(m.senderId)] as const)
+        list.map((m) => [(m.fromId ?? 0), cachedPeer((m.fromId ?? 0))] as const)
           .filter((p): p is [PeerId, User | PeerChat] => !!p[1]),
       ),
       lang,
@@ -447,10 +449,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="grid">
           {msgs.map((m, i) => (
             <div key={m.id} className="grid-item search-super-item media-container" data-mid={m.id} onClick={(e) => openMedia(i, e)}>
-              {m.mediaId != null && (
-                <MediaGridThumb className="grid-item-media" mediaId={m.mediaId} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
+              {getMediaId(m) != null && (
+                <MediaGridThumb className="grid-item-media" mediaId={getMediaId(m)!} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
               )}
-              {m.type === 'video' && <span className="video-time">{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
+              {getMessageKind(m) === 'video' && <span className="video-time">{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
             </div>
           ))}
         </div>
@@ -507,7 +509,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
             слева (`_searchSuper.scss` → `.search-super-content-links`):
             превью-квадрат, заголовок хоста и сам url. */}
         {msgs.map((m) => {
-          const url = firstUrl(m.text)
+          const url = firstUrl(getMessageText(m))
           return (
             <div key={m.id} className="search-super-item rp" onClick={() => window.open(url, '_blank', 'noopener')}>
               <div className="row-media">{hostOf(url).charAt(0).toUpperCase()}</div>
@@ -536,8 +538,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
               <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('Audio'))}>
-                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
-                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
                   <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('Audio')}</div>
@@ -563,12 +565,12 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))}>
-                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
-                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
                   <div className="audio-subtitle">
                     <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
@@ -743,7 +745,7 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
         <div className="row-title row-title-right row-title-right-secondary">{fmtWhen(dialog.last.at)}</div>
       </div>
       <div className="row-row row-subtitle-row dialog-subtitle">
-        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type)}</div>
+        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type as MessageKind)}</div>
       </div>
       {isSelf ? (
         <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />

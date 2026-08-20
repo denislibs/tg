@@ -6,7 +6,7 @@
 // докачка страницами по 30, сброс при смене ключа запроса. Открытость панели
 // живёт в searchStore (её видят пин-бар и колонка чата), сам запрос — в компоненте.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import { useManagers } from './useManagers'
 import { usePeers } from './usePeers'
 import { getPeerTitle } from '../peers/getPeerTitle'
@@ -15,7 +15,7 @@ import { getPeerTitle } from '../peers/getPeerTitle'
 const LIMIT = 30
 
 export interface MessageSearchLoader {
-  messages: Message[]
+  messages: MyMessage[]
   /** tweb count() — сколько СТРОК уже отрисовано (от него считается высота списка) */
   count: number | undefined
   /** tweb totalCount() — сколько всего нашёл сервер */
@@ -37,7 +37,7 @@ export function useMessageSearchLoader(
   const managers = useManagers()
   const { enabled, query, fromPeerId, reaction } = o
 
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<MyMessage[]>([])
   const [count, setCount] = useState<number | undefined>(undefined)
   const [totalCount, setTotalCount] = useState<number | undefined>(undefined)
   const [isEnd, setIsEnd] = useState(false)

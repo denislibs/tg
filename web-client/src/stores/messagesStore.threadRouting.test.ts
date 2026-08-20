@@ -5,26 +5,20 @@
 // пин нужен ДО правок — фиксирует ТЕКУЩЕЕ поведение, продакшн-код не трогается.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useMessagesStore, winKey } from './messagesStore'
-import type { Message } from '../core/models'
+import { makeMessage } from '../core/messages/testMessage'
+import { generateTempMessageId } from '../core/history/messageId'
+import type { MessageReal } from '../core/models'
 
 const CHAT = 21
 const ROOT = 100
 const ME = 1
 
-function threadMsg(seq: number, id: number, clientId?: string): Message {
-  return {
-    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-10T11:00:00Z',
-    threadRootId: ROOT, clientId,
-  }
+function threadMsg(id: number, randomId?: string): MessageReal {
+  return makeMessage({ id, peerId: CHAT, fromId: ME, text: `m${id}`, threadRootId: ROOT, randomId })
 }
 
-function mainMsg(seq: number, id: number): Message {
-  return {
-    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-10T11:00:00Z',
-    threadRootId: null,
-  }
+function mainMsg(id: number): MessageReal {
+  return makeMessage({ id, peerId: CHAT, fromId: ME, text: `m${id}` })
 }
 
 function win(key: string) {
@@ -44,7 +38,7 @@ describe('applyIncoming: маршрутизация по основному ок
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
     st.setWindow(winKey(CHAT, ROOT), { msgs: [], reachedTop: true, reachedBottom: true })
 
-    st.applyIncoming(CHAT, threadMsg(1, 501))
+    st.applyIncoming(CHAT, threadMsg(501))
 
     const main = win(winKey(CHAT)).msgs
     const thread = win(winKey(CHAT, ROOT)).msgs
@@ -62,7 +56,7 @@ describe('applyIncoming: маршрутизация по основному ок
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
 
-    st.applyIncoming(CHAT, threadMsg(1, 502))
+    st.applyIncoming(CHAT, threadMsg(502))
 
     expect(win(winKey(CHAT)).msgs).toHaveLength(1)
     expect(win(winKey(CHAT)).msgs[0].id).toBe(502)
@@ -76,7 +70,7 @@ describe('applyIncoming: маршрутизация по основному ок
     const st = useMessagesStore.getState()
     st.setWindow(winKey(CHAT, ROOT), { msgs: [], reachedTop: true, reachedBottom: true })
 
-    st.applyIncoming(CHAT, threadMsg(1, 503))
+    st.applyIncoming(CHAT, threadMsg(503))
 
     expect(win(winKey(CHAT, ROOT)).msgs).toHaveLength(1)
     expect(win(winKey(CHAT, ROOT)).msgs[0].id).toBe(503)
@@ -93,7 +87,7 @@ describe('applyIncoming: маршрутизация по основному ок
     st.setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
     st.setWindow(winKey(CHAT, ROOT), { msgs: [], reachedTop: true, reachedBottom: true })
 
-    st.applyIncoming(CHAT, mainMsg(1, 504))
+    st.applyIncoming(CHAT, mainMsg(504))
 
     expect(win(winKey(CHAT)).msgs).toHaveLength(1)
     expect(win(winKey(CHAT)).msgs[0].id).toBe(504)
@@ -109,14 +103,14 @@ describe('applyIncoming: маршрутизация по основному ок
     st.setWindow(winKey(CHAT, ROOT), { msgs: [], reachedTop: true, reachedBottom: true })
     // Неотправленный бабл заводит владелец (менеджер воркера) и присылает
     // операцией; здесь предмет — только слияние в СТОРЕ, поэтому кладём такой же
-    // объект (временный отрицательный id + clientId) напрямую.
-    st.appendLocal(winKey(CHAT, ROOT), { ...threadMsg(1, -1, 'c-thread'), text: 'draft' })
+    // объект (дробный клиентский номер + random_id) напрямую.
+    st.appendLocal(winKey(CHAT, ROOT), { ...threadMsg(generateTempMessageId(1), 'c-thread'), message: 'draft' })
 
-    st.applyIncoming(CHAT, threadMsg(5, 900, 'c-thread'))
+    st.applyIncoming(CHAT, threadMsg(900, 'c-thread'))
 
     const thread = win(winKey(CHAT, ROOT)).msgs
     expect(thread).toHaveLength(1)
     expect(thread[0].id).toBe(900)
-    expect(thread[0].clientId).toBe('c-thread')
+    expect(thread[0].random_id).toBe('c-thread')
   })
 })

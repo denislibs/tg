@@ -5,34 +5,36 @@
 // проектор и будущий Solid-остров могли переиграть операцию без стора.
 import { describe, expect, it } from 'vitest'
 import { applyOp, type MessageOp } from './messageOps'
-import type { Message } from '../models'
+import type { MessageReal, MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
+import { generateTempMessageId } from '../history/messageId'
 
 const CHAT = 30
 const ME = 1
 const OTHER = 2
 
-function msg(seq: number, id: number, extra?: Partial<Message>): Message {
-  return {
-    id, peerId: CHAT, seq, senderId: ME, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-10T12:00:00Z', threadRootId: null,
-    ...extra,
-  }
+/** Чисел стало ОДНО: адрес и порядок это один и тот же `id` (решение Р1). */
+function msg(id: number, extra?: Partial<MessageReal>): MessageReal {
+  return { ...makeMessage({ id, peerId: CHAT, fromId: ME, text: `m${id}`, date: 1_750_000_000 }), ...extra }
 }
 
-// Неподтверждённый оптимистичный бабл: clientId есть И id < 0 (несущий инвариант
-// 1B.1 — messagesStore.ts:62-64).
-function optimisticBubble(seq: number, clientId: string): Message {
-  return msg(seq, -1, { clientId, senderId: ME })
+// Неподтверждённый оптимистичный бабл: random_id есть И номер назначен КЛИЕНТОМ
+// (дробный — `core/history/messageId.ts`). Прежде признаком был отрицательный
+// id; теперь бабл стоит ПОСЛЕ последнего сообщения, как и его будущее эхо.
+function optimisticBubble(afterId: number, randomId: string): MyMessage {
+  return msg(generateTempMessageId(afterId), { random_id: randomId })
 }
 
 const KEY = String(CHAT)
 
+/** Сузить до обычного сообщения: у пилюли ни текста, ни опроса нет вовсе. */
+const real = (m: MyMessage): MessageReal => m as MessageReal
+
 describe('applyOp', () => {
   it('insert нового сообщения → добавлено, порядок по возрастанию seq', () => {
-    const base = [msg(1, 101), msg(3, 103)]
-    const op: MessageOp = { op: 'insert', key: KEY, msg: msg(2, 102) }
+    const base = [msg(101), msg(103)]
+    const op: MessageOp = { op: 'insert', key: KEY, msg: msg(102) }
     const next = applyOp(base, op)
-    expect(next.map((m) => m.seq)).toEqual([1, 2, 3])
     expect(next.map((m) => m.id)).toEqual([101, 102, 103])
   })
 
@@ -41,19 +43,18 @@ describe('applyOp', () => {
   // серверное эхо — вместо слияния в один.
   it('insert сообщения, чей clientId совпал с неподтверждённым баблом → бабл заменён, один элемент, clientId сохранён', () => {
     const bubble = optimisticBubble(1, 'c1')
-    const echo = msg(5, 900, { clientId: 'c1', senderId: ME })
+    const echo = msg(900, { random_id: 'c1' })
     const next = applyOp([bubble], { op: 'insert', key: KEY, msg: echo })
     expect(next).toHaveLength(1)
     expect(next[0].id).toBe(900)
-    expect(next[0].seq).toBe(5)
-    expect(next[0].clientId).toBe('c1')
+    expect(next[0].random_id).toBe('c1')
   })
 
   // Что ломается: без проверки "id уже есть" повторное применение эха (ack
   // пришёл раньше, эхо — дубликат по id) добавило бы дубль-бабл на экран.
   it('insert сообщения, чей id уже есть (ack-then-echo) → дубля нет, список не изменился', () => {
-    const base = [msg(5, 900, { clientId: 'c1' })]
-    const echo = msg(5, 900, { clientId: 'c1' }) // то же серверное сообщение приходит повторно
+    const base = [msg(900, { random_id: 'c1' })]
+    const echo = msg(900, { random_id: 'c1' }) // то же серверное сообщение приходит повторно
     const next = applyOp(base, { op: 'insert', key: KEY, msg: echo })
     expect(next).toHaveLength(1)
     expect(next[0].id).toBe(900)
@@ -63,31 +64,31 @@ describe('applyOp', () => {
   // tentativeSeq бабла, но БЕЗ совпадения clientId — не вытесняет бабл.
   it('insert сообщения с тем же seq, что у бабла, но БЕЗ совпадения clientId → оба остаются', () => {
     const bubble = optimisticBubble(1, 'c-opt')
-    const foreign = msg(1, 501, { senderId: OTHER })
+    const foreign = msg(501, { fromId: OTHER })
     const next = applyOp([bubble], { op: 'insert', key: KEY, msg: foreign })
     expect(next).toHaveLength(2)
-    expect(next.some((m) => m.clientId === 'c-opt')).toBe(true)
+    expect(next.some((m) => m.random_id === 'c-opt')).toBe(true)
     expect(next.some((m) => m.id === 501)).toBe(true)
   })
 
   it('replace существующего → заменено, позиция по seq сохранена', () => {
-    const base = [msg(1, 1, { text: 'a' }), msg(2, 2, { text: 'b' }), msg(3, 3, { text: 'c' })]
-    const next = applyOp(base, { op: 'replace', key: KEY, msg: msg(2, 2, { text: 'edited' }) })
-    expect(next.map((m) => m.seq)).toEqual([1, 2, 3])
-    expect(next[1].text).toBe('edited')
-    expect(next[0].text).toBe('a')
-    expect(next[2].text).toBe('c')
+    const base = [msg(1, { message: 'a' }), msg(2, { message: 'b' }), msg(3, { message: 'c' })]
+    const next = applyOp(base, { op: 'replace', key: KEY, msg: msg(2, { message: 'edited' }) })
+    expect(next.map((m) => m.id)).toEqual([1, 2, 3])
+    expect(real(next[1]).message).toBe('edited')
+    expect(real(next[0]).message).toBe('a')
+    expect(real(next[2]).message).toBe('c')
   })
 
   it('replace отсутствующего → список не изменился (no-op)', () => {
-    const base = [msg(1, 1)]
-    const next = applyOp(base, { op: 'replace', key: KEY, msg: msg(9, 999) })
+    const base = [msg(1)]
+    const next = applyOp(base, { op: 'replace', key: KEY, msg: msg(999) })
     expect(next).toEqual(base)
     expect(next).toBe(base) // ссылка сохранена — no-op, не «пересборка с тем же содержимым»
   })
 
   it('remove существующего по msgId → удалено', () => {
-    const base = [msg(1, 1), msg(2, 2), msg(3, 3)]
+    const base = [msg(1), msg(2), msg(3)]
     const next = applyOp(base, { op: 'remove', key: KEY, msgId: 2 })
     expect(next.map((m) => m.id)).toEqual([1, 3])
   })
@@ -96,7 +97,7 @@ describe('applyOp', () => {
   // новый массив (например, через filter без предварительной проверки), любой
   // подписчик, мемоизированный по ссылке на msgs, перерисовался бы впустую.
   it('remove отсутствующего → no-op, та же ссылка на массив', () => {
-    const base = [msg(1, 1)]
+    const base = [msg(1)]
     const next = applyOp(base, { op: 'remove', key: KEY, msgId: 999 })
     expect(next).toBe(base)
   })
@@ -108,24 +109,24 @@ describe('applyOp', () => {
   // остаются нетронутыми, если patch их не перечисляет.
   it('patch существующего → перечисленные поля слились, остальные целы, позиция по seq сохранена', () => {
     const base = [
-      msg(1, 1, { text: 'a' }),
-      msg(2, 2, { text: 'b', editedAt: null, localUrl: 'blob:keep-me' }),
-      msg(3, 3, { text: 'c' }),
+      msg(1, { message: 'a' }),
+      msg(2, { message: 'b', localUrl: 'blob:keep-me' }),
+      msg(3, { message: 'c' }),
     ]
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 2, fields: { text: 'edited', editedAt: '2026-08-10T12:05:00Z' } })
-    expect(next.map((m) => m.seq)).toEqual([1, 2, 3])
-    expect(next[1].text).toBe('edited')
-    expect(next[1].editedAt).toBe('2026-08-10T12:05:00Z')
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 2, fields: { message: 'edited', edit_date: 1_750_000_300 } })
+    expect(next.map((m) => m.id)).toEqual([1, 2, 3])
+    expect(real(next[1]).message).toBe('edited')
+    expect(real(next[1]).edit_date).toBe(1_750_000_300)
     // поле, не перечисленное в fields, не тронуто (тест ловит регрессию до replace-семантики)
-    expect(next[1].localUrl).toBe('blob:keep-me')
+    expect(real(next[1]).localUrl).toBe('blob:keep-me')
     // соседи не задеты
-    expect(next[0].text).toBe('a')
-    expect(next[2].text).toBe('c')
+    expect(real(next[0]).message).toBe('a')
+    expect(real(next[2]).message).toBe('c')
   })
 
   it('patch отсутствующего сообщения → no-op, та же ссылка на массив', () => {
-    const base = [msg(1, 1)]
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 999, fields: { text: 'nope' } })
+    const base = [msg(1)]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 999, fields: { message: 'nope' } })
     expect(next).toBe(base)
   })
 
@@ -134,18 +135,18 @@ describe('applyOp', () => {
   // messagesStore.ts (сравнение перед записью, см. отчёт Task 2), чтобы
   // идемпотентный реплей (catch-up/дубль кадра) не дёргал лишний ре-рендер.
   it('patch, не меняющий значений → no-op, та же ссылка на массив (нет лишнего ре-рендера)', () => {
-    const base = [msg(1, 1, { text: 'a', editedAt: '2026-08-10T12:00:00Z' })]
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { text: 'a', editedAt: '2026-08-10T12:00:00Z' } })
+    const base = [msg(1, { message: 'a', edit_date: 1_750_000_000 })]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { message: 'a', edit_date: 1_750_000_000 } })
     expect(next).toBe(base)
   })
 
   // Частичное совпадение — если хоть одно поле реально меняется, применяем и
   // строим новый массив (иначе половина патча молча потерялась бы).
   it('patch, где часть полей совпадает, а часть меняется → применено целиком, новая ссылка', () => {
-    const base = [msg(1, 1, { text: 'a', editedAt: '2026-08-10T12:00:00Z' })]
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { text: 'a', editedAt: '2026-08-10T12:05:00Z' } })
+    const base = [msg(1, { message: 'a', edit_date: 1_750_000_000 })]
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { message: 'a', edit_date: 1_750_000_300 } })
     expect(next).not.toBe(base)
-    expect(next[0].editedAt).toBe('2026-08-10T12:05:00Z')
+    expect(real(next[0]).edit_date).toBe(1_750_000_300)
   })
 
   // Task 4 (Stage 1B.3): опрос/розыгрыш несут вложенный локальный выбор
@@ -160,16 +161,16 @@ describe('applyOp', () => {
       id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
       quiz: false, closed: false, counts: [1, 0], totalVoters: 1, myVotes: [0],
     }
-    const base = [msg(1, 1, { poll })]
+    const base = [msg(1, { poll })]
     // Операция несёт НОВЫЙ агрегат (кто-то ещё проголосовал), но БЕЗ myVotes
     // окна (у операции своё значение myVotes — то, что успел насчитать воркер,
     // не обязано совпадать с локальным выбором именно этой вкладки).
     const incomingPoll = { ...poll, counts: [1, 1], totalVoters: 2, myVotes: [] }
     const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { poll: incomingPoll } })
-    expect(next[0].poll?.totalVoters).toBe(2)
-    expect(next[0].poll?.counts).toEqual([1, 1])
+    expect(real(next[0]).poll?.totalVoters).toBe(2)
+    expect(real(next[0]).poll?.counts).toEqual([1, 1])
     // локальный выбор ЭТОГО окна — на месте, а не затёрт значением из операции
-    expect(next[0].poll?.myVotes).toEqual([0])
+    expect(real(next[0]).poll?.myVotes).toEqual([0])
   })
 
   it('patch агрегата розыгрыша → participants обновился, participating/iWon окна сохранены', () => {
@@ -178,11 +179,11 @@ describe('applyOp', () => {
       winnersCount: 1, untilDate: 0, status: 'active' as const, participants: 4,
       participating: true, winnerIds: [], iWon: false,
     }
-    const base = [msg(1, 1, { giveaway })]
+    const base = [msg(1, { giveaway })]
     const incoming = { ...giveaway, participants: 5, participating: false, iWon: true }
     const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { giveaway: incoming } })
-    expect(next[0].giveaway?.participants).toBe(5)
-    expect(next[0].giveaway?.participating).toBe(true) // окна, не из операции
-    expect(next[0].giveaway?.iWon).toBe(false) // окна, не из операции
+    expect(real(next[0]).giveaway?.participants).toBe(5)
+    expect(real(next[0]).giveaway?.participating).toBe(true) // окна, не из операции
+    expect(real(next[0]).giveaway?.iWon).toBe(false) // окна, не из операции
   })
 })

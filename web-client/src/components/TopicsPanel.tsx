@@ -26,6 +26,7 @@ import { useEvent } from '../core/hooks/useEvent'
 // занят мемоизированным КОМПОНЕНТОМ строки (см. ниже).
 import type { TopicRow as Topic } from '../core/managers/groupsManager'
 import { fmtWhen, mediaLabel } from '../core/dialogToChat'
+import type { MessageKind } from '../core/messages/messageKind'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import s from './TopicsPanel.module.scss'
@@ -137,7 +138,7 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
       <div className={s.subtitleRow}>
         <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
           {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
-          {topic.lastText || mediaLabel(topic.lastType)}
+          {topic.lastText || mediaLabel(topic.lastType as MessageKind)}
         </Text>
         {/* Порядок бейджей как в tweb: mention → unread; pinned вместо счётчика у прочитанной. */}
         {topic.unreadMentions > 0 && <Badge muted={topic.muted} className={s.badge}>@</Badge>}

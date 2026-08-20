@@ -17,7 +17,7 @@
 // ─── Расхождения с tweb (осознанные) ──────────────────────────────────────────
 //  • Разбор экшена — наш `core/serviceMsg.ts::serviceMsgSegs` (сегменты
 //    text/peer/msg), а не `switch` по TL-конструктору + langPack: у нас сервисное
-//    действие приезжает JSON'ом в `text`, а словаря langPack нет. Здесь — только
+//    действие приезжает конструктором `action`, а словаря langPack нет. Здесь — только
 //    УЗЛЫ по готовым сегментам, второго разбора не заводим.
 //  • tweb различает текст шаблона фразы (кладётся строкой) и текст-АРГУМЕНТ
 //    (`wrapSomeText` → `htmlToSpan`, т.е. лишний `<span>` без класса). В
@@ -36,6 +36,7 @@
 //    владелец — группировка (`components/chat/bubbleGroups.ts`).
 import { parseEntities, wrapRichText } from '@lib/richtext'
 import { serviceMsgSegs, type ServiceSeg } from '@core/serviceMsg'
+import type { MessageService } from '@core/models'
 import PeerTitle, { type PeerTitleOptions } from './peerTitle'
 
 /** Порт tweb `helpers/dom/setInnerHTML.ts::setDirection` (тот же приём, что в
@@ -107,10 +108,13 @@ function createLinkToMessage(seg: Extract<ServiceSeg, { kind: 'msg' }>, peerId: 
 /** Общее для фразы и бабла: чей это чат (адрес ссылки на сообщение) и что
  *  разбирать. */
 export interface ServiceActionOptions {
-  /** сырой `Message.text` сервисного сообщения: JSON-экшен либо готовая строка */
-  raw: string
-  /** сообщение наше — формулировки «Вы …» (`serviceMsgSegs`) */
-  out?: boolean
+  /** САМО служебное сообщение: фраза строится из `action` (объединение
+   *  конструкторов), а не из JSON внутри текста. Формулировки «Вы …» решает
+   *  `pFlags.out` самого сообщения. */
+  message: MessageService
+  /** превью ЗАКРЕПЛЁННОГО, разрешённое вызывающим по `reply_to` (у
+   *  `messageActionPinMessage` параметров нет вовсе) */
+  pinnedPreview?: string
   /** peerId чата — первая половина адреса в `data-saved-from` */
   peerId: number
   /** нужны узлу имени: жизненный цикл подписки на зеркало и объявление пробела */
@@ -124,11 +128,11 @@ export interface ServiceActionOptions {
  * и `i[data-saved-from]` внутри (tweb собирает его `_i18n(element, key, args)`,
  * `langPack.ts:652`, и так же зовёт `normalize()` при наличии аргументов).
  */
-export function wrapMessageActionText({ raw, out, peerId, middleware, managers }: ServiceActionOptions): HTMLSpanElement {
+export function wrapMessageActionText({ message, pinnedPreview, peerId, middleware, managers }: ServiceActionOptions): HTMLSpanElement {
   const element = document.createElement('span')
   element.classList.add('i18n')
 
-  for (const seg of serviceMsgSegs(raw, out)) {
+  for (const seg of serviceMsgSegs(message, pinnedPreview)) {
     if (seg.kind === 'peer') {
       element.append(createPeerTitle(seg, { middleware, managers }))
     } else if (seg.kind === 'msg') {
@@ -157,7 +161,7 @@ export interface ServiceBubbleOptions extends ServiceActionOptions {
  * Классы группировки (`is-group-first`/`is-group-last`) вешает не он, а
  * `bubbleGroups.ts` — как и в tweb.
  */
-export function createServiceBubble({ raw, out, peerId, mid, timestamp, middleware, managers }: ServiceBubbleOptions): HTMLDivElement {
+export function createServiceBubble({ message, pinnedPreview, peerId, mid, timestamp, middleware, managers }: ServiceBubbleOptions): HTMLDivElement {
   const bubble = document.createElement('div')
   bubble.className = 'bubble service'
   if (mid !== undefined) {
@@ -176,7 +180,7 @@ export function createServiceBubble({ raw, out, peerId, mid, timestamp, middlewa
 
   const serviceMsg = document.createElement('div')
   serviceMsg.classList.add('service-msg')
-  serviceMsg.append(wrapMessageActionText({ raw, out, peerId, middleware, managers }))
+  serviceMsg.append(wrapMessageActionText({ message, pinnedPreview, peerId, middleware, managers }))
 
   bubbleContainer.append(serviceMsg)
   contentWrapper.append(bubbleContainer)

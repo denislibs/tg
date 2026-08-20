@@ -50,6 +50,7 @@ import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
+import { getPeerId } from './peers/peerId'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
@@ -296,7 +297,7 @@ export function createWorkerCore() {
   // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
   const chatThemes = newChatThemesManager({ rest })
   const sessions = newSessionsManager({ rest })
-  const calls = newCallsManager({ rest })
+  const calls = newCallsManager({ rest, getMeId: () => me?.user.id ?? null, peers })
   const livestream = newLivestreamManager({ rest })
   const stars = newStarsManager({ rest })
   // getMeId — по той же причине, что у messages выше: созданный розыгрыш вкладка
@@ -562,10 +563,20 @@ export function createWorkerCore() {
       }
       // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
       if (type === 'new_message') {
-        const p = payload as { peer_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown; pts?: number }
-        if (p.enc_body && p.peer_id) {
-          void secret.decryptMessage(p.peer_id, p.enc_body).then((dec) => {
-            if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
+        const p = payload as NewMessageEvt
+        // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message`, поэтому и шифртекст
+        // лежит там же — на конструкторе, а не в конверте.
+        const m = p.message
+        const encBody = m._ === 'message' ? m.enc_body : undefined
+        if (m._ === 'message' && encBody) {
+          const peerId = getPeerId(m.peer_id)
+          void secret.decryptMessage(peerId, encBody).then((dec) => {
+            if (dec) {
+              m.message = dec.text
+              m.entities = dec.entities as typeof m.entities
+              m.secret = true
+              if (dec.media) m.secretMedia = dec.media
+            }
             funnel.applyUpdate('new_message', p.pts, payload, true)
           })
         } else {

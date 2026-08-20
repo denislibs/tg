@@ -30,7 +30,8 @@ import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { getPeerPhoto, getPeerPhotoId, type Chat as PeerChat, type User } from '../../core/peers/peer'
 import { getPeerTitle } from '../../core/peers/getPeerTitle'
 import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
-import { gradientFor, mediaLabel } from '../../core/dialogToChat'
+import { gradientFor } from '../../core/dialogToChat'
+import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { useLang, useT } from '../../i18n'
 import type { Chat } from '../../data'
@@ -499,11 +500,11 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                       <MessageRow
                         key={m.id}
                         chatId={chat.id}
-                        senderId={m.senderId}
-                        name={getPeerTitle({ peerId: m.senderId, peer: s.resultPeers.get(m.senderId) }) || s.chatName}
-                        photoId={getPeerPhotoId(getPeerPhoto(s.resultPeers.get(m.senderId)))}
-                        preview={m.text?.trim() ? m.text : mediaLabel(m.type)}
-                        time={friendlyMsgTime(m.createdAt, lang)}
+                        senderId={m.fromId ?? 0}
+                        name={getPeerTitle({ peerId: m.fromId ?? 0, peer: s.resultPeers.get(m.fromId ?? 0) }) || s.chatName}
+                        photoId={getPeerPhotoId(getPeerPhoto(s.resultPeers.get(m.fromId ?? 0)))}
+                        preview={messageForReply(m)}
+                        time={friendlyMsgTime(messageDateISO(m.date), lang)}
                         query={s.value}
                         active={i === s.targetIdx}
                         navigated={i === navIdx}

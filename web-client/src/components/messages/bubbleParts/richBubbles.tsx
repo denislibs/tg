@@ -135,7 +135,7 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
   const t = useT()
   const accent = out ? '#fff' : linkColor
   const [expanded, setExpanded] = useState(false)
-  const collapsible = (fc.text?.length ?? 0) > 160
+  const collapsible = (fc.text?.text.length ?? 0) > 160
   return (
     <div
       className={classNames('bubble-fact-check', 'quote-like', 'quote-like-border', s.factCheck)}
@@ -144,7 +144,7 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
       <Text size={14} weight={600} color={accent}>{t('Fact Check')}</Text>
       <div className={classNames(s.factText, collapsible && !expanded ? s.clamped : '')}>
         <Text size={14.5} color="var(--wp-title)" style={{ lineHeight: 1.35 }}>
-          <RichText text={fc.text} entities={fc.entities} linkColor={out ? '#fff' : linkColor} />
+          <RichText text={fc.text?.text ?? ''} entities={fc.text?.entities} linkColor={out ? '#fff' : linkColor} />
         </Text>
       </div>
       {collapsible && !expanded && (

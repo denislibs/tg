@@ -13,7 +13,7 @@ import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, OpenPeer } from '../../data'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import type { ThreadInfo } from '../../components/Chat'
 import type { MessageSendingParams } from '../managers/messages/sendingParams'
 import HeaderMenu from '../../components/HeaderMenu'
@@ -58,7 +58,7 @@ export interface ChatPopupDeps {
   canAddMember: boolean
   canCreateGiveaway: boolean
   canUnpinAll: boolean
-  pins: Message[]
+  pins: MyMessage[]
   deleteLabels: { title: string; text: string; action: string }
   livestreamActive: boolean
   /** инфо-панель живёт локальным стейтом в Chat (toggle + сосуществует с gift) */

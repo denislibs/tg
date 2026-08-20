@@ -2,15 +2,13 @@
 // вклада (mine) когда апдейт не от самого зрителя.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useMessagesStore } from './messagesStore'
-import type { Message } from '../core/models'
+import type { MyMessage } from '../core/models'
+import { makeMessage } from '../core/messages/testMessage'
 
 const CHAT = 7
 
-function msg(id: number): Message {
-  return {
-    id, peerId: CHAT, seq: id, senderId: 1, type: 'text', text: 'hi',
-    replyToId: null, mediaId: null, createdAt: '2026-07-19T10:00:00Z', threadRootId: null,
-  }
+function msg(id: number): MyMessage {
+  return makeMessage({ id, peerId: CHAT, fromId: 1, text: 'hi' })
 }
 
 function starOf(id: number) {

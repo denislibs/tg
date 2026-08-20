@@ -18,6 +18,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import type { CMDeps } from './realtime/connectionManager'
 import type { MessageOp } from './realtime/messageOps'
 import { RT } from './realtime/events'
+import { makeMessage } from './messages/testMessage'
 
 let capturedConnDeps: CMDeps | null = null
 vi.mock('./realtime/connectionManager', async (importOriginal) => {
@@ -28,8 +29,8 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
   }
 })
 
-const ACK_OPS: MessageOp[] = [{ op: 'insert', key: '1', msg: { id: 500, peerId: 1, seq: 20, senderId: 5, type: 'text', text: 'hi', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-1' } }]
-const FAIL_OPS: MessageOp[] = [{ op: 'patch', key: '1', msgId: -11, fields: { failed: true } }]
+const ACK_OPS: MessageOp[] = [{ op: 'insert', key: '1', msg: makeMessage({ id: 500, peerId: 1, fromId: 5, text: 'hi', randomId: 'c-1' }) }]
+const FAIL_OPS: MessageOp[] = [{ op: 'patch', key: '1', msgId: 1.0001, fields: { failed: true } }]
 const ackPendingMessage = vi.fn(() => ACK_OPS)
 const failPendingMessage = vi.fn(() => FAIL_OPS)
 vi.mock('./managers/messagesManager', async (importOriginal) => {

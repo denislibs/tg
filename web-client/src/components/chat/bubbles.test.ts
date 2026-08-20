@@ -19,7 +19,9 @@ import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { UserReal } from '@core/peers/peer'
-import type { Message } from '@core/models'
+import type { MyMessage } from '@core/models'
+import { generateTempMessageId } from '@core/history/messageId'
+import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, {
   makeFullMid,
@@ -42,18 +44,19 @@ const chatContext = (peerId = CHAT): ChatContext => ({
   bubblesViewport: document.createElement('div'),
 })
 
-function msg(over: Partial<Message> & { id: number; seq: number }): Message {
-  return {
-    peerId: CHAT, senderId: 2, type: 'text', text: `m${over.seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
-    ...over,
-  }
+// Номер у сообщения ОДИН (решение Р1) — он же адрес бабла, он же порядок в
+// серии. Фикстуры пишут его маленькими числами: читаемость важнее, а в границу
+// пространств этот файл не бьёт (менеджер здесь фейковый).
+function msg(over: Partial<MessageFixture> & { id: number }): MyMessage {
+  return makeMessage({
+    peerId: CHAT, fromId: 2, text: `m${over.id}`, createdAt: '2026-08-15T12:00:00Z', ...over,
+  })
 }
 
-const historyResult = (messages: Message[]): HistoryResult =>
+const historyResult = (messages: MyMessage[]): HistoryResult =>
   ({ messages, count: messages.length, reachedTop: true, reachedBottom: true })
 
-function managersWith(messages: Message[]) {
+function managersWith(messages: MyMessage[]) {
   const getHistory = vi.fn(async () => historyResult(messages))
   // Владелец карточек пиров: узел имени объявляет ему пробел зеркала
   // (`peerTitle.ts`), ответ приезжает операцией — в тестах её подаём руками
@@ -157,17 +160,17 @@ describe('ChatBubbles — дерево DOM 1:1 с tweb constructBubbles', () => 
 
 // Модификатор is-out/is-in бабла. Порт tweb: лента читает `message.pFlags.out`
 // (свойство самого сообщения) и `rootScope.myId` — своего вывода
-// «исходящее/входящее» у неё нет. У нас `out` ставит владелец в воркере
-// (core/models.ts::deriveOut на границах маппинга), а `rootScope.myId` пишет
-// проектор на rt:me. Пин ловит возврат к выводу на вкладке: раньше лента лезла
-// за meId в zustand (`useChatsStore.getState().meId`) и сравнивала с senderId —
-// зависимость, недопустимая для ленты (grep по components/chat/ на импорт стора).
+// «исходящее/входящее» у неё нет. У нас `pFlags.out` производит СЕРВЕР (решение
+// Р7 отменено), а `rootScope.myId` пишет проектор на rt:me. Пин ловит возврат к
+// выводу на вкладке: раньше лента лезла за meId в zustand
+// (`useChatsStore.getState().meId`) и сравнивала с автором — зависимость,
+// недопустимая для ленты (grep по components/chat/ на импорт стора).
 describe('ChatBubbles — классы бабла берут `out` из самого сообщения', () => {
-  it('out=true → is-out, out=false → is-in (senderId ни на что не влияет)', async () => {
+  it('out=true → is-out, out отсутствует → is-in (автор ни на что не влияет)', async () => {
     rootScope.myId = 999 // «я» — заведомо не автор ни одного из сообщений ниже
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: 2, out: true }),
-      msg({ id: 2, seq: 2, senderId: 999 }),
+      msg({ id: 1, fromId: 2, out: true }),
+      msg({ id: 2, fromId: 999 }),
     ]))
 
     await bubbles.loadFirstHistory()
@@ -182,7 +185,7 @@ describe('ChatBubbles — классы бабла берут `out` из само
 
 describe('ChatBubbles.getHistory — страница в зеркало и в DOM', () => {
   it('кладёт результат в зеркало и рисует по узлу на сообщение', async () => {
-    const page = [msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2, text: 'привет' })]
+    const page = [msg({ id: 1 }), msg({ id: 2, text: 'привет' })]
     bubbles = new ChatBubbles(chatContext(), managersWith(page))
 
     await bubbles.loadFirstHistory()
@@ -193,7 +196,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
   })
 
   it('бабл — .bubble > .bubble-content-wrapper > .bubble-content с текстом', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1, text: 'ок' })]))
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, text: 'ок' })]))
     await bubbles.loadFirstHistory()
 
     const bubble = rendered(bubbles)[0]
@@ -220,7 +223,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
 
     const promise = b.loadFirstHistory()
     b.destroy()
-    release(historyResult([msg({ id: 1, seq: 1 })]))
+    release(historyResult([msg({ id: 1 })]))
     await promise
 
     expect(mirrorWindow(String(CHAT))).toBeUndefined()
@@ -229,7 +232,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
 })
 
 describe('ChatBubbles — подписки на события истории', () => {
-  const page = [msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2 })]
+  const page = [msg({ id: 1 }), msg({ id: 2 })]
 
   beforeEach(async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith(page))
@@ -238,7 +241,7 @@ describe('ChatBubbles — подписки на события истории', 
 
   describe('history_append', () => {
     it('рисует РОВНО один новый узел', async () => {
-      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 3, seq: 3, text: 'новое' }) })
+      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 3, text: 'новое' }) })
       await settle()
 
       expect(rendered(bubbles!).map((el) => el.dataset.mid)).toEqual(['1', '2', '3'])
@@ -247,7 +250,7 @@ describe('ChatBubbles — подписки на события истории', 
     })
 
     it('событие про ЧУЖОЕ окно игнорируется', async () => {
-      rootScope.dispatchEventSingle('history_append', { storageKey: String(OTHER_CHAT), message: msg({ id: 3, seq: 3 }) })
+      rootScope.dispatchEventSingle('history_append', { storageKey: String(OTHER_CHAT), message: msg({ id: 3 }) })
       await settle()
       expect(rendered(bubbles!)).toHaveLength(2)
     })
@@ -255,19 +258,22 @@ describe('ChatBubbles — подписки на события истории', 
 
   describe('history_update', () => {
     it('переклеивает ключ бабла на новый идентификатор, НЕ пересоздавая узел', async () => {
-      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: -7, seq: 3, clientId: 'c1' }) })
+      // Номер неотправленного бабла назначен КЛИЕНТОМ — это ДРОБЬ поверх
+      // последнего занятого (`generateTempMessageId`), а не отрицательное число.
+      const tempId = generateTempMessageId(2)
+      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: tempId, randomId: 'c1' }) })
       await settle()
-      const before = bubbles!.getBubble(makeFullMid(CHAT, -7))
+      const before = bubbles!.getBubble(makeFullMid(CHAT, tempId))
       expect(before).toBeDefined()
 
       rootScope.dispatchEventSingle('history_update', {
         storageKey: String(CHAT),
-        message: msg({ id: 9, seq: 3, clientId: 'c1' }),
-        tempId: -7,
+        message: msg({ id: 9, randomId: 'c1' }),
+        tempId,
       })
       await settle()
 
-      expect(bubbles!.getBubble(makeFullMid(CHAT, -7))).toBeUndefined()
+      expect(bubbles!.getBubble(makeFullMid(CHAT, tempId))).toBeUndefined()
       // ТОТ ЖЕ элемент под новым ключом — не пересоздан.
       expect(bubbles!.getBubble(makeFullMid(CHAT, 9))).toBe(before)
       expect(before!.dataset.mid).toBe('9')
@@ -277,7 +283,7 @@ describe('ChatBubbles — подписки на события истории', 
     it('событие про ЧУЖОЕ окно игнорируется', async () => {
       rootScope.dispatchEventSingle('history_update', {
         storageKey: String(OTHER_CHAT),
-        message: msg({ id: 9, seq: 1 }),
+        message: msg({ id: 9 }),
         tempId: 1,
       })
       await settle()
@@ -291,7 +297,7 @@ describe('ChatBubbles — подписки на события истории', 
       const before = bubbles!.getBubble(makeFullMid(CHAT, 2))
 
       rootScope.dispatchEventSingle('message_edit', {
-        storageKey: String(CHAT), peerId: CHAT, mid: 2, message: msg({ id: 2, seq: 2, text: 'правка' }),
+        storageKey: String(CHAT), peerId: CHAT, mid: 2, message: msg({ id: 2, text: 'правка' }),
       })
 
       expect(bubbles!.getBubble(makeFullMid(CHAT, 2))).toBe(before)
@@ -302,7 +308,7 @@ describe('ChatBubbles — подписки на события истории', 
 
     it('событие про ЧУЖОЕ окно игнорируется', () => {
       rootScope.dispatchEventSingle('message_edit', {
-        storageKey: String(OTHER_CHAT), peerId: OTHER_CHAT, mid: 2, message: msg({ id: 2, seq: 2, text: 'правка' }),
+        storageKey: String(OTHER_CHAT), peerId: OTHER_CHAT, mid: 2, message: msg({ id: 2, text: 'правка' }),
       })
       expect(bubbles!.getBubble(makeFullMid(CHAT, 2))!.querySelector('.bubble-content')!.textContent).toBe('m2')
     })
@@ -325,15 +331,15 @@ describe('ChatBubbles — подписки на события истории', 
 
 describe('ChatBubbles.destroy/cleanup', () => {
   it('destroy() снимает подписки — после него ни одно из четырёх событий ничего не делает', async () => {
-    const b = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1 })]))
+    const b = new ChatBubbles(chatContext(), managersWith([msg({ id: 1 })]))
     await b.loadFirstHistory()
     expect(rendered(b)).toHaveLength(1)
 
     b.destroy()
 
-    rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 2, seq: 2 }) })
-    rootScope.dispatchEventSingle('message_edit', { storageKey: String(CHAT), peerId: CHAT, mid: 1, message: msg({ id: 1, seq: 1, text: 'правка' }) })
-    rootScope.dispatchEventSingle('history_update', { storageKey: String(CHAT), message: msg({ id: 5, seq: 1 }), tempId: 1 })
+    rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 2 }) })
+    rootScope.dispatchEventSingle('message_edit', { storageKey: String(CHAT), peerId: CHAT, mid: 1, message: msg({ id: 1, text: 'правка' }) })
+    rootScope.dispatchEventSingle('history_update', { storageKey: String(CHAT), message: msg({ id: 5 }), tempId: 1 })
     rootScope.dispatchEventSingle('history_delete', { peerId: CHAT, msgs: new Set([1]) })
     await settle()
 
@@ -343,7 +349,7 @@ describe('ChatBubbles.destroy/cleanup', () => {
   })
 
   it('cleanup(true) забывает адреса и снимает узлы', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1 })]))
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1 })]))
     await bubbles.loadFirstHistory()
 
     bubbles.cleanup(true)
@@ -363,7 +369,7 @@ describe('ChatBubbles — текст сообщения проходит чер�
     b.getBubble(makeFullMid(CHAT, mid))!.querySelector('.message')!
 
   it('.bubble-content > .message.spoilers-container — контейнер тела (tweb bubbles.ts:6618)', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1, text: 'привет' })]))
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, text: 'привет' })]))
     await bubbles.loadFirstHistory()
 
     const messageDiv = contentOf(bubbles, 1)
@@ -375,7 +381,7 @@ describe('ChatBubbles — текст сообщения проходит чер�
   it('bold/ссылка/спойлер приезжают УЗЛАМИ, а не текстом', async () => {
     const text = 'жирный ссылка секрет'
     bubbles = new ChatBubbles(chatContext(), managersWith([msg({
-      id: 1, seq: 1, text,
+      id: 1, text,
       entities: [
         { _: 'messageEntityBold', offset: 0, length: 6 },
         { _: 'messageEntityTextUrl', offset: 7, length: 6, url: 'https://example.com/page' },
@@ -395,12 +401,12 @@ describe('ChatBubbles — текст сообщения проходит чер�
   })
 
   it('правка (message_edit) перерисовывает тело тем же конвейером', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1, text: 'было' })]))
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, text: 'было' })]))
     await bubbles.loadFirstHistory()
 
     rootScope.dispatchEventSingle('message_edit', {
       storageKey: String(CHAT), peerId: CHAT, mid: 1,
-      message: msg({ id: 1, seq: 1, text: 'стало жирным', entities: [{ _: 'messageEntityBold', offset: 6, length: 6 }] }),
+      message: msg({ id: 1, text: 'стало жирным', entities: [{ _: 'messageEntityBold', offset: 6, length: 6 }] }),
     })
 
     expect(contentOf(bubbles, 1).querySelector('strong')!.textContent).toBe('жирным')
@@ -423,9 +429,9 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('подряд идущие сообщения одного автора — одна серия с краями is-group-first/last', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
-      msg({ id: 3, seq: 3, senderId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
+      msg({ id: 3, fromId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -444,10 +450,10 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('другой автор и разрыв больше NEW_GROUP_DIFF рвут серию', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, senderId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:00:10Z') }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, fromId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:00:10Z') }),
       // тот же автор, что и №2, но через 10 минут — NEW_GROUP_DIFF = 121 сек
-      msg({ id: 3, seq: 3, senderId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:10:10Z') }),
+      msg({ id: 3, fromId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:10:10Z') }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -463,8 +469,8 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('разные дни — разные секции, по возрастанию дня, с дата-баблом в начале', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, createdAt: at('2026-08-16T12:00:00Z') }),
+      msg({ id: 1, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, createdAt: at('2026-08-16T12:00:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -499,9 +505,9 @@ describe('ChatBubbles — серии и секции дней', () => {
   // бабл нарисован раньше более старого, встала бы ВЫШЕ него.
   it('порядок серий в секции — по времени, даже когда страница пришла от новых к старым', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 3, seq: 3, senderId: AUTHOR, createdAt: at('2026-08-15T12:10:00Z') }),
-      msg({ id: 2, seq: 2, senderId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:05:00Z') }),
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 3, fromId: AUTHOR, createdAt: at('2026-08-15T12:10:00Z') }),
+      msg({ id: 2, fromId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:05:00Z') }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -512,9 +518,9 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('новое сообщение серии трогает СОСЕДА, а не всё окно', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
-      msg({ id: 3, seq: 3, senderId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
+      msg({ id: 3, fromId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -522,7 +528,7 @@ describe('ChatBubbles — серии и секции дней', () => {
 
     rootScope.dispatchEventSingle('history_append', {
       storageKey: String(CHAT),
-      message: msg({ id: 4, seq: 4, senderId: AUTHOR, createdAt: at('2026-08-15T12:01:30Z') }),
+      message: msg({ id: 4, fromId: AUTHOR, createdAt: at('2026-08-15T12:01:30Z') }),
     })
     await settle()
 
@@ -539,8 +545,8 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('удаление последнего бабла дня снимает и серию, и секцию дня', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, createdAt: at('2026-08-16T12:00:00Z') }),
+      msg({ id: 1, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, createdAt: at('2026-08-16T12:00:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
     expect(sections(bubbles)).toHaveLength(2)
@@ -556,9 +562,9 @@ describe('ChatBubbles — серии и секции дней', () => {
 
   it('удаление разделявшего бабла сливает соседей обратно в одну серию', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
-      msg({ id: 2, seq: 2, senderId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
-      msg({ id: 3, seq: 3, senderId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: at('2026-08-15T12:00:00Z') }),
+      msg({ id: 2, fromId: OTHER_AUTHOR, createdAt: at('2026-08-15T12:00:30Z') }),
+      msg({ id: 3, fromId: AUTHOR, createdAt: at('2026-08-15T12:01:00Z') }),
     ]))
     await bubbles.loadFirstHistory()
     expect(groupsIn(sections(bubbles)[0])).toHaveLength(3)
@@ -579,7 +585,7 @@ describe('ChatBubbles — делегированный слушатель кли
   /** Адресат, который «исполнил» действие (вернул true) — лента обязана гасить событие. */
   const nav = () => ({ openInternalLink: vi.fn(() => true), openPeer: vi.fn(() => true) })
 
-  const withNav = (navigation: BubblesNavigation, messages: Message[]) =>
+  const withNav = (navigation: BubblesNavigation, messages: MyMessage[]) =>
     new ChatBubbles({ ...chatContext(), navigation }, managersWith(messages))
 
   const click = (el: Element) => {
@@ -591,7 +597,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('t.me-ссылка (`data-anchor-action`) уходит в openInternalLink, событие гасится', async () => {
     const navigation = nav()
     bubbles = withNav(navigation, [msg({
-      id: 1, seq: 1, text: 'канал',
+      id: 1, text: 'канал',
       entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })])
     await bubbles.loadFirstHistory()
@@ -609,7 +615,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('клик по узлу ВНУТРИ ссылки тоже считается (делегирование, а не listener на самом <a>)', async () => {
     const navigation = nav()
     bubbles = withNav(navigation, [msg({
-      id: 1, seq: 1, text: 'жирная ссылка',
+      id: 1, text: 'жирная ссылка',
       entities: [
         { _: 'messageEntityTextUrl', offset: 0, length: 13, url: 'https://t.me/durov' },
         { _: 'messageEntityBold', offset: 0, length: 6 },
@@ -625,7 +631,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('упоминание без username (`a.follow[data-follow]`) уходит в openPeer', async () => {
     const navigation = nav()
     bubbles = withNav(navigation, [msg({
-      id: 1, seq: 1, text: 'Иван',
+      id: 1, text: 'Иван',
       entities: [{ _: 'messageEntityMentionName', offset: 0, length: 4, user_id: 77 }],
     })])
     await bubbles.loadFirstHistory()
@@ -646,7 +652,7 @@ describe('ChatBubbles — делегированный слушатель кли
     const navigation = nav()
     bubbles = new ChatBubbles(
       { ...chatContext(), isLikeGroup: true, navigation },
-      managersWith([msg({ id: 1, seq: 1, senderId: 42 })]),
+      managersWith([msg({ id: 1, fromId: 42 })]),
     )
     applyPeerOps([{ op: 'upsert', peers: [peerCard(42, 'Пётр')] }])
     await bubbles.loadFirstHistory()
@@ -663,7 +669,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('обычный текст бабла НЕ ловится, а необработанный клик не гасится', async () => {
     const navigation = { openInternalLink: vi.fn(() => false), openPeer: vi.fn(() => false) }
     bubbles = withNav(navigation, [msg({
-      id: 1, seq: 1, text: 'просто текст и https://example.com',
+      id: 1, text: 'просто текст и https://example.com',
     })])
     await bubbles.loadFirstHistory()
 
@@ -684,7 +690,7 @@ describe('ChatBubbles — делегированный слушатель кли
 
   it('без адресата навигации клик ничего не ломает и не гасится', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg({
-      id: 1, seq: 1, text: 'канал',
+      id: 1, text: 'канал',
       entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })]))
     await bubbles.loadFirstHistory()
@@ -696,7 +702,7 @@ describe('ChatBubbles — делегированный слушатель кли
   it('destroy() снимает и делегированный слушатель', async () => {
     const navigation = nav()
     const b = withNav(navigation, [msg({
-      id: 1, seq: 1, text: 'канал',
+      id: 1, text: 'канал',
       entities: [{ _: 'messageEntityTextUrl', offset: 0, length: 5, url: 'https://t.me/durov' }],
     })])
     await b.loadFirstHistory()
@@ -721,7 +727,7 @@ describe('ChatBubbles — делегированный слушатель кли
 describe('ChatBubbles — очередь рендера', () => {
   const page = (n: number) =>
     Array.from({ length: n }, (_, i) => msg({
-      id: i + 1, seq: i + 1, senderId: 2 + i,
+      id: i + 1, fromId: 2 + i,
       createdAt: `2026-08-15T12:${String(i * 5).padStart(2, '0')}:00Z`,
     }))
 
@@ -758,7 +764,7 @@ describe('ChatBubbles — очередь рендера', () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([]))
     await bubbles.loadFirstHistory()
 
-    rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 7, seq: 7 }) })
+    rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: 7 }) })
 
     expect(bubbles.getBubble(makeFullMid(CHAT, 7))).toBeDefined()
     expect(rendered(bubbles)).toHaveLength(0)
@@ -788,8 +794,9 @@ describe('ChatBubbles — очередь рендера', () => {
   // позже. Без ожидания порядок обратный, и бабл раскладывается в окно, в
   // котором соседа ещё нет.
   it('history_update ждёт очередь: сначала группируется пачка, потом переставляется бабл', async () => {
+    const tempId = generateTempMessageId(5)
     bubbles = new ChatBubbles(chatContext(), managersWith([
-      msg({ id: -5, seq: 5, senderId: 3, clientId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
+      msg({ id: tempId, fromId: 3, randomId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
     ]))
     await bubbles.loadFirstHistory()
     const groupBubbles = vi.spyOn(bubbles, 'groupBubbles')
@@ -797,20 +804,24 @@ describe('ChatBubbles — очередь рендера', () => {
     // Пачка в полёте: узел соседа создан, серии у него ещё нет.
     rootScope.dispatchEventSingle('history_append', {
       storageKey: String(CHAT),
-      message: msg({ id: 6, seq: 6, senderId: 3, createdAt: '2026-08-15T12:00:30Z' }),
+      message: msg({ id: 6, fromId: 3, createdAt: '2026-08-15T12:00:30Z' }),
     })
     // ...и в этот момент приезжает ack бабла «отправляется…».
     rootScope.dispatchEventSingle('history_update', {
       storageKey: String(CHAT),
-      message: msg({ id: 9, seq: 5, senderId: 3, clientId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
-      tempId: -5,
+      message: msg({ id: 9, fromId: 3, randomId: 'c1', createdAt: '2026-08-15T12:00:00Z' }),
+      tempId,
     })
 
     await settle()
 
     expect(groupBubbles.mock.calls.map((c) => c[0].map((d) => d.message.id))).toEqual([[6], [9]])
-    expect(bubbles.getBubble(makeFullMid(CHAT, -5))).toBeUndefined()
-    expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['9', '6'])
+    expect(bubbles.getBubble(makeFullMid(CHAT, tempId))).toBeUndefined()
+    // Порядок в серии — по ЕДИНСТВЕННОМУ номеру: подтверждённый бабл получил 9
+    // и встал ПОСЛЕ соседа с номером 6. Прежде адрес и порядок были разными
+    // полями (`id` против `seq`), и тот же ack с `seq: 5` ставил бабл ПЕРЕД
+    // соседом — расхождение двух чисел и было тем, что убрало решение Р1.
+    expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['6', '9'])
     // соседа нашли — оба бабла в одной серии
     expect(bubbles.chatInner.querySelectorAll('.bubbles-group')).toHaveLength(1)
   })
@@ -831,7 +842,7 @@ describe('ChatBubbles — имя автора', () => {
   })
 
   it('входящее в групповом чате: .bubble-content > .name.colored-name > span.peer-title[data-peer-id]', async () => {
-    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, fromId: AUTHOR })]))
     await bubbles.loadFirstHistory()
 
     const nameDiv = nameOf(bubbles, 1)!
@@ -851,7 +862,7 @@ describe('ChatBubbles — имя автора', () => {
   })
 
   it('своё исходящее в группе имени НЕ получает (bubble.hide-name)', async () => {
-    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: 999, out: true })]))
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, fromId: 999, out: true })]))
     await bubbles.loadFirstHistory()
 
     expect(nameOf(bubbles, 1)).toBeNull()
@@ -859,7 +870,7 @@ describe('ChatBubbles — имя автора', () => {
   })
 
   it('НЕ группа (isLikeGroup не взведён): имени нет и у входящего', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, fromId: AUTHOR })]))
     await bubbles.loadFirstHistory()
 
     expect(nameOf(bubbles, 1)).toBeNull()
@@ -867,12 +878,15 @@ describe('ChatBubbles — имя автора', () => {
   })
 
   // send-as (порт `iPostedAsSomeoneElse`, tweb :9325): пост от имени
-  // канала/группы подписывается ДАЖЕ будучи своим. Карточки у чат-личности
-  // нет — заголовок приезжает в самом сообщении (`fromName` в tweb).
-  it('send-as в группе: имя из sendAs.title, data-peer-id — знаковый ключ личности', async () => {
+  // канала/группы подписывается ДАЖЕ будучи своим. Снимка `{peerId, title}`
+  // рядом с сообщением больше НЕТ — автором стоит сам канал (`from_id`
+  // указывает на ЧАТ), а имя лента берёт из зеркала карточек, как у любого
+  // другого автора.
+  it('send-as в группе: автор — ссылка на канал, имя из зеркала карточек', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: 999, sendAs: { peerId: -7, title: 'Канал' } }),
+      msg({ id: 1, fromId: -7, out: true }),
     ]))
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 7, title: 'Канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true } }] }])
     await bubbles.loadFirstHistory()
 
     const nameDiv = nameOf(bubbles, 1)!
@@ -880,15 +894,26 @@ describe('ChatBubbles — имя автора', () => {
     expect(nameDiv.firstElementChild!.textContent).toBe('Канал')
   })
 
-  it('чужое имя цветное, а имя своего сообщения — нет (colored-name по !out)', async () => {
+  // `colored-name` — «только для чужих» (docs/tweb/bubbles.md:535), и решает
+  // это `isOurMessage`, а не `pFlags.out`: пост от лица канала ОСТАЁТСЯ out, но
+  // рисуется входящим — значит имя у него цветное, как у любого чужого.
+  //
+  // Прежде вторая половина этого пина брала «своё» сообщение с `send_as` —
+  // единственную комбинацию, где имя было и при этом считалось своим. Снимка
+  // `send_as` больше нет, а у своего сообщения (out + автор-человек) имени НЕТ
+  // ВОВСЕ (`needName`, пин «своё исходящее в группе имени НЕ получает» выше),
+  // поэтому вторая половина проверяет теперь именно это — отсутствие узла.
+  it('имя чужого и имя поста от лица канала — цветные; у своего имени нет вовсе', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR }),
-      msg({ id: 2, seq: 2, senderId: 999, out: true, sendAs: { peerId: -7, title: 'Канал' } }),
+      msg({ id: 1, fromId: AUTHOR }),
+      msg({ id: 2, fromId: -7, out: true }),
+      msg({ id: 3, fromId: 999, out: true }),
     ]))
     await bubbles.loadFirstHistory()
 
     expect(nameOf(bubbles, 1)!.classList.contains('colored-name')).toBe(true)
-    expect(nameOf(bubbles, 2)!.classList.contains('colored-name')).toBe(false)
+    expect(nameOf(bubbles, 2)!.classList.contains('colored-name')).toBe(true)
+    expect(nameOf(bubbles, 3)).toBeNull()
   })
 
   // 1:1 с tweb: узел строится у КАЖДОГО бабла серии, лишние прячет CSS
@@ -896,8 +921,8 @@ describe('ChatBubbles — имя автора', () => {
   // отсебятиной и ломался бы при слиянии/разрыве серии.
   it('узел имени — у каждого бабла серии, а не только у первого', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
-      msg({ id: 1, seq: 1, senderId: AUTHOR, createdAt: '2026-08-15T12:00:00Z' }),
-      msg({ id: 2, seq: 2, senderId: AUTHOR, createdAt: '2026-08-15T12:00:30Z' }),
+      msg({ id: 1, fromId: AUTHOR, createdAt: '2026-08-15T12:00:00Z' }),
+      msg({ id: 2, fromId: AUTHOR, createdAt: '2026-08-15T12:00:30Z' }),
     ]))
     await bubbles.loadFirstHistory()
 
@@ -910,7 +935,7 @@ describe('ChatBubbles — имя автора', () => {
   // (`peers.fillMirror`) и подхватывает карточку, когда та приезжает операцией.
   it('карточки ещё нет: узел объявляет пробел владельцу и дорисовывает имя по операции', async () => {
     resetPeerMirror()
-    const managers = managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })])
+    const managers = managersWith([msg({ id: 1, fromId: AUTHOR })])
     bubbles = new ChatBubbles(groupContext(), managers)
     await bubbles.loadFirstHistory()
 
@@ -924,7 +949,7 @@ describe('ChatBubbles — имя автора', () => {
   })
 
   it('переименование пира (операция upsert) перерисовывает уже нарисованное имя', async () => {
-    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, fromId: AUTHOR })]))
     await bubbles.loadFirstHistory()
     const title = nameOf(bubbles, 1)!.firstElementChild!
     expect(title.textContent).toBe('Пётр')
@@ -936,7 +961,7 @@ describe('ChatBubbles — имя автора', () => {
 
   // Утечки нет: у убитой ленты узлы уходят из реестра по middleware.onClean.
   it('после destroy() узел уже не перерисовывается', async () => {
-    const b = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, seq: 1, senderId: AUTHOR })]))
+    const b = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, fromId: AUTHOR })]))
     await b.loadFirstHistory()
     const title = b.chatInner.querySelector('.name > .peer-title')!
 

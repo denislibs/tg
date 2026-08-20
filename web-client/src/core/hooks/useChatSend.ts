@@ -81,7 +81,6 @@ interface UseChatSendArgs {
   sendAsPeerId?: PeerId | null
   /** Заголовок выбранной send-as личности — чтобы оптимистичный бабл сразу
    * отрисовался от её имени (иначе показывался бы «от себя» до reconcile). */
-  sendAsTitle?: string
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
@@ -99,7 +98,6 @@ export function useChatSend({
   meId,
   threadRootId,
   sendAsPeerId = null,
-  sendAsTitle,
   atBottomRef,
   userScrolledUpRef,
   onChatCreated,
@@ -136,10 +134,13 @@ export function useChatSend({
 
   /** Снимок превью оригинала для ОПТИМИСТИЧНОГО бабла кросс-чат ответа: его нет
    *  в SSOT текущего чата, а серверный `reply_snapshot_*` приедет только с эхом. */
-  const replySnapshotForBubble = () =>
-    reply?.msgId != null && reply.sourcePeerId != null && reply.sourcePeerId !== numericChatId
-      ? { peerId: reply.sourcePeerId, name: reply.snapshotName ?? reply.name, text: reply.snapshotText ?? reply.text }
-      : undefined
+  // Снимка превью для кросс-чат ответа здесь БОЛЬШЕ НЕТ. Пока `reply_to` ехал
+  // снимком, вкладке приходилось собирать такой же локально, чтобы бабл
+  // «отправляется…» не появился без плашки. Теперь это ССЫЛКА (решение Р4):
+  // недоступный оригинал выражают `reply_to.reply_from`/`reply_media`, которые
+  // приезжают с эхом, а исходный чат уезжает пакетом параметров
+  // (`MessageSendingParams.replyToPeerId`) — второй, локально склеенной формы
+  // того же превью быть не должно.
 
   /**
    * Порт tweb `ChatInput.onMessageSent()` (`components/chat/input.ts:4067`):
@@ -172,7 +173,6 @@ export function useChatSend({
       // `chatRecording.ts:215,239`: `getMessageSendingParams()` перед отправкой,
       // `onMessageSent(false, true)` сразу после неё).
       const sendingParams = getMessageSendingParams()
-      const replySnapshot = replySnapshotForBubble()
       onMessageSent()
       atBottomRef.current = true; userScrolledUpRef.current = false
       // Секретный чат (E2E): голос шифруем своим ключом файла и шлём как secret-медиа
@@ -200,7 +200,7 @@ export function useChatSend({
       await managers.messages.sendFile({
         peerId: cid, clientMsgId, senderId: meId ?? -1, file: blob, type, mime,
         duration: secs, waveform: type === 'voice' ? (waveform ?? undefined) : undefined,
-        ...sendingParams, replySnapshot,
+        ...sendingParams,
       })
       if (draftPeerId != null) onChatCreated?.(cid)
     },
@@ -228,15 +228,16 @@ export function useChatSend({
       void managers.secret.sendText({ peerId: numericChatId, text, entities, clientMsgId, ttlSeconds, ...sendingParams, optimistic: { senderId: meId ?? -1, type: 'text' } })
       return
     }
-    const sendAs = sendAsPeerId != null ? { peerId: sendAsPeerId, title: sendAsTitle ?? '' } : undefined
-    void managers.messages.sendText({ peerId: numericChatId, text, entities, clientMsgId, ...sendingParams, optimistic: { senderId: meId ?? -1, sendAs, replySnapshot: replySnapshotForBubble() } })
+    // send-as: в бабл едет ССЫЛКА (ключ пира) — имя и аватарку он берёт из
+    // зеркала карточек, как и серверное эхо с тем же `from_id`.
+    const sendAs = sendAsPeerId ?? undefined
+    void managers.messages.sendText({ peerId: numericChatId, text, entities, clientMsgId, ...sendingParams, optimistic: { senderId: meId ?? -1, sendAs } })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
   // на бэк — WS-полями geo_lat/geo_lng (type 'geo').
   const sendGeo = (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => {
     const sendingParams = getMessageSendingParams()
-    const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     // Live location: шлём по REST (нужен msgId для последующих обновлений) и
@@ -250,7 +251,7 @@ export function useChatSend({
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
-    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'geo', geo, ...sendingParams, optimistic: { senderId: meId ?? -1, replySnapshot } })
+    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'geo', geo, ...sendingParams, optimistic: { senderId: meId ?? -1 } })
   }
 
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
@@ -262,13 +263,12 @@ export function useChatSend({
     // Порт tweb `sendMessageWithDocument` (input.ts:4341-4355): пакет снимается
     // ДО отправки, `onMessageSent(clearDraft, true)` — сразу после неё.
     const sendingParams = getMessageSendingParams()
-    const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot } : undefined })
+      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
@@ -285,7 +285,6 @@ export function useChatSend({
     const clientMsgId = mkClientMsgId()
     // Тот же порядок, что у стикера (tweb `sendMessageWithDocument`).
     const sendingParams = getMessageSendingParams()
-    const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
     if (g.mediaId != null) {
@@ -298,7 +297,7 @@ export function useChatSend({
           // animated — это САМ предмет вкладки GIF (tweb sendFile({isAnimated}) для
           // гифки): без него бабл «отправляется…» описан обычным видео и рисуется
           // видео-баблом с плашкой play, а не автоплей-циклом.
-          optimistic: isRealChat ? { senderId: meId ?? -1, replySnapshot, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName, animated: true } } : undefined,
+          optimistic: isRealChat ? { senderId: meId ?? -1, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName, animated: true } } : undefined,
         })
         if (draftPeerId != null) onChatCreated?.(cid)
       })()
@@ -321,7 +320,7 @@ export function useChatSend({
         peerId: numericChatId, clientMsgId, senderId: meId ?? -1, file: blob, type: 'video',
         mime: 'video/mp4', fileName: 'tenor.mp4', width: g.width, height: g.height,
         // tweb `sendFile({isAnimated: true})` для гифки — см. sendGif выше.
-        isMedia: true, isAnimated: true, ...sendingParams, replySnapshot,
+        isMedia: true, isAnimated: true, ...sendingParams,
       })
       if (mediaId != null) void managers.stickers.saveGif(mediaId).catch(() => {})
     })()
@@ -332,10 +331,9 @@ export function useChatSend({
   const sendContact = (userId: number, name: string) => {
     const clientMsgId = mkClientMsgId()
     const sendingParams = getMessageSendingParams()
-    const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     atBottomRef.current = true; userScrolledUpRef.current = false
-    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name, replySnapshot } })
+    void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name } })
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -352,13 +350,13 @@ export function useChatSend({
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  // sendingParams/replySnapshot приходят СНАРУЖИ (sendPendingMedia снимает их до
+  // sendingParams приходит СНАРУЖИ (sendPendingMedia снимает его до
   // цикла): в tweb попап медиа тоже снимает пакет один раз и раздаёт его всем
   // файлам выборки (`newMedia.ts:922` → `sendGrouped({...sendingParams, ...})`),
   // а плашку гасит после цикла (`newMedia.ts:996-998`, `input.onHelperCancel()`).
   const onPickFile = async (
-    input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null, spoiler = false,
-    sendingParams: MessageSendingParams = {}, replySnapshot?: { peerId: number; name: string; text: string },
+    input: File, asFile = false, caption = '', groupedId?: number, paidMediaPrice?: number | null, spoiler = false,
+    sendingParams: MessageSendingParams = {},
   ) => {
     if (!isRealChat || secretLocked) return
     const origMime = input.type || 'application/octet-stream'
@@ -425,7 +423,7 @@ export function useChatSend({
     await managers.messages.sendFile({
       peerId: numericChatId, clientMsgId, senderId: meId ?? -1, file, type, mime,
       fileName: file.name, caption, width, height, duration,
-      ...sendingParams, replySnapshot, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
+      ...sendingParams, groupedId, paidMediaPrice, isMedia: isVisual, uploadAction,
       // Спойлер имеет смысл только у визуального медиа: «как файл» прятать нечего
       // (tweb гейтит пункт меню тем же условием — canToggleSpoilers).
       spoiler: spoiler && isVisual,
@@ -442,18 +440,22 @@ export function useChatSend({
     // один раз до `iterate`), плашка гаснет здесь же: в оригинале это
     // `input.onHelperCancel()` после цикла (`newMedia.ts:996-998`).
     const sendingParams = getMessageSendingParams()
-    const replySnapshot = replySnapshotForBubble()
     onMessageSent()
     // Несколько фото/видео «как медиа» → один альбом (Telegram grouped_id):
     // общий id на все сообщения группы, подпись — на первом (tweb).
     const asAlbum = !asFile
       && pm.files.length > 1
       && pm.files.every((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
-    const groupedId = asAlbum ? `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined
+    // Ключ альбома — ЧИСЛО: в схеме `grouped_id:flags.17?long`, и прежний
+    // клиентский генератор выдавал строку `g<base36-время><random>` только
+    // потому, что колонка была TEXT. Непрозрачность ключа при этом та же:
+    // время в миллисекундах плюс случайный хвост, лишь бы не совпало у двух
+    // выборок подряд.
+    const groupedId = asAlbum ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : undefined
     // Платное медиа — только для одиночного фото/видео «как медиа» (см. SendMediaPopup).
     const price = !asFile && !asAlbum && pm.files.length === 1 ? paidMediaPrice ?? null : null
     for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price, !!spoilers?.[i], sendingParams, replySnapshot)
+      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price, !!spoilers?.[i], sendingParams)
     }
   }
 

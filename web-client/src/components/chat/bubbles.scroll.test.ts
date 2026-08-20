@@ -15,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import type { Message } from '@core/models'
+import type { MyMessage } from '@core/models'
+import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
 
@@ -23,14 +24,11 @@ const CHAT = 50
 const VIEWPORT_H = 500
 const BUBBLE_H = 100
 
-/** id === seq намеренно: адресация бабла и порядок — разные поля модели, но в
- *  этих тестах их совпадение убирает лишний шум из ожиданий. */
-function msg(seq: number, over: Partial<Message> = {}): Message {
-  return {
-    id: seq, seq, peerId: CHAT, senderId: 2, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
-    ...over,
-  }
+/** Номер у сообщения ОДИН (решение Р1) — он же адрес бабла, он же порядок.
+ *  Фикстуры пишут его маленькими числами: читаемость важнее, а в границу
+ *  пространств этот файл не бьёт (менеджер здесь фейковый). */
+function msg(id: number, over: Partial<MessageFixture> = {}): MyMessage {
+  return makeMessage({ id, peerId: CHAT, fromId: 2, text: `m${id}`, createdAt: '2026-08-15T12:00:00Z', ...over })
 }
 
 type ContextExtras = Partial<ChatContext>
@@ -49,9 +47,10 @@ function makeContext(over: ContextExtras = {}) {
   return { ctx, container, bubblesViewport }
 }
 
-const page = (seqs: number[], reachedTop: boolean, reachedBottom: boolean): HistoryResult => ({
-  messages: seqs.map((s) => msg(s)),
-  count: seqs.length,
+const page = (ids: number[], reachedTop: boolean, reachedBottom: boolean): HistoryResult => ({
+  messages: ids.map((id) => msg(id)),
+
+  count: ids.length,
   reachedTop,
   reachedBottom,
 })
@@ -63,7 +62,7 @@ function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, ne
   const calls: HistoryArgs[] = []
   const getHistory = vi.fn(async (args: HistoryArgs): Promise<HistoryResult> => {
     calls.push(args)
-    if (!args.offsetSeq) return pages.first
+    if (!args.offsetId) return pages.first
     if ((args.addOffset ?? 0) > 0) return pages.older ?? page([], true, false)
     return pages.newer ?? page([], false, true)
   })
@@ -204,9 +203,9 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
     const managers = pagingManagers({ first: page([11, 12, 13, 14, 15], true, false) })
     managers.getHistory.mockImplementation(async (args: HistoryArgs) => {
       managers.calls.push(args)
-      if (!args.offsetSeq) return page([11, 12, 13, 14, 15], true, false)
+      if (!args.offsetId) return page([11, 12, 13, 14, 15], true, false)
       if ((args.addOffset ?? 0) > 0) return page([], true, false)
-      return newerPages.find((p) => p.messages[0].seq > args.offsetSeq!) ?? page([], false, true)
+      return newerPages.find((p) => p.messages[0].id > args.offsetId!) ?? page([], false, true)
     })
 
     const { b } = mount(managers)
@@ -234,7 +233,7 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
     // `loadMoreHistory` живёт гейт `getHistoryTopPromise`.
     managers.getHistory.mockImplementation(async (args: HistoryArgs) => {
       managers.calls.push(args)
-      if (!args.offsetSeq) return page([11, 12, 13], false, true)
+      if (!args.offsetId) return page([11, 12, 13], false, true)
       return new Promise<HistoryResult>(() => {})
     })
 

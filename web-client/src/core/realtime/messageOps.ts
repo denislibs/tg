@@ -7,7 +7,8 @@
 // порождает ТОЛЬКО воркер (единственный интерпретатор кадра), переигрывает —
 // только проектор. Исключение: обработчик RT.newMessage на главном потоке может
 // порождать `replace` для резолва превью ответа (storeProjection.ts:107-123).
-import type { Message } from '../models'
+import type { MessageFields, MyMessage } from '../models'
+import { isLocalMessageId } from '../history/messageId'
 
 export type MessageOp =
   // `sequential` — порт поля tweb `PendingMessageDetails.sequential`, которое
@@ -19,29 +20,29 @@ export type MessageOp =
   // и признак отправителя доезжает до ленты только ими. Смысл — в докблоке
   // `PendingNewEvt.sequential` (`core/realtime/events.ts`), потребитель —
   // подписка `history_update` в `components/chat/bubbles.ts`.
-  | { op: 'insert'; key: string; msg: Message; sequential?: boolean }
-  | { op: 'replace'; key: string; msg: Message }
+  | { op: 'insert'; key: string; msg: MyMessage; sequential?: boolean }
+  | { op: 'replace'; key: string; msg: MyMessage }
   | { op: 'remove'; key: string; msgId: number }
-  | { op: 'patch'; key: string; msgId: number; fields: Partial<Message> }
+  | { op: 'patch'; key: string; msgId: number; fields: MessageFields }
 
-// Ключ дедупа: оптимистичный бабл (временный id < 0, ещё не сверен с сервером)
-// ключуется по clientId — его seq лишь выдумка владельца
-// (managers/messages/pending.ts::tentativeSeq, maxSeq + 1) для порядка внизу
-// окна, не настоящая позиция в истории чата. Серверные сообщения (включая уже
-// сверенные баблы — ack ставит настоящий положительный id) ключуются по seq. Так пространства ключей не
-// пересекаются: чужое входящее с тем же tentativeSeq, что и у бабла, не может
-// вытеснить его из Map (несущий инвариант 1B.1 — до фикса dedupAsc ключевал всё
-// по seq, и последний вставленный побеждал, молча стирая бабл без ack/error).
-export function dedupKey(m: Message): string {
-  return m.clientId && m.id < 0 ? `c:${m.clientId}` : `s:${m.seq}`
+// Ключ дедупа: оптимистичный бабл (номер назначен КЛИЕНТОМ — дробный, см.
+// core/history/messageId.ts) ключуется по random_id, потому что его номер лишь
+// выдумка владельца для порядка внизу окна, а не позиция в истории чата.
+// Серверные сообщения (включая уже сверенные баблы — ack ставит настоящий
+// номер) ключуются по номеру. Так пространства ключей не пересекаются: чужое
+// входящее с соседним номером не может вытеснить бабл из Map (несущий инвариант
+// 1B.1 — до фикса dedupAsc ключевал всё одинаково, и последний вставленный
+// побеждал, молча стирая бабл без ack/error).
+export function dedupKey(m: MyMessage): string {
+  return m.random_id && isLocalMessageId(m.id) ? `c:${m.random_id}` : `s:${m.id}`
 }
 
 // Схлопывает список по dedupKey (последний вставленный побеждает) и сортирует
-// по возрастанию seq.
-export function dedupAsc(list: Message[]): Message[] {
-  const byKey = new Map<string, Message>()
+// по возрастанию номера.
+export function dedupAsc(list: MyMessage[]): MyMessage[] {
+  const byKey = new Map<string, MyMessage>()
   for (const m of list) byKey.set(dedupKey(m), m)
-  return Array.from(byKey.values()).sort((a, b) => a.seq - b.seq)
+  return Array.from(byKey.values()).sort((a, b) => a.id - b.id)
 }
 
 // insert: та же семантика, что applyIncoming в messagesStore.ts —
@@ -54,26 +55,35 @@ export function dedupAsc(list: Message[]): Message[] {
 //   3) иначе — обычная вставка. dedupAsc держит инвариант: чужое входящее с тем
 //      же seq, что и tentativeSeq бабла, но без совпадения clientId, ключуется
 //      по seq — отдельно от бабла (ключ по clientId) — оба остаются.
-function insert(msgs: Message[], m: Message): Message[] {
+function insert(msgs: MyMessage[], m: MyMessage): MyMessage[] {
   if (msgs.some((x) => x.id === m.id)) return msgs
-  const optimistic = m.clientId ? msgs.find((x) => x.clientId === m.clientId) : undefined
+  const optimistic = m.random_id ? msgs.find((x) => x.random_id === m.random_id) : undefined
   const merged = optimistic
-    ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret }
+    ? {
+        ...m,
+        random_id: optimistic.random_id,
+        secret: m.secret ?? optimistic.secret,
+        // Локальное превью живёт только у обычного сообщения — у пилюли медиа
+        // нет вовсе, поэтому и переносить нечего.
+        ...(m._ === 'message' && optimistic._ === 'message' && optimistic.localUrl
+          ? { localUrl: optimistic.localUrl }
+          : {}),
+      }
     : m
   const base = optimistic ? msgs.filter((x) => x !== optimistic) : msgs
-  return dedupAsc([...base, merged])
+  return dedupAsc([...base, merged as MyMessage])
 }
 
 // replace: точечная замена по id (правки/апдейты полей), позиция в списке
 // (по seq) сохраняется — в отличие от insert, пересборка/дедуп тут не нужны.
-function replace(msgs: Message[], m: Message): Message[] {
+function replace(msgs: MyMessage[], m: MyMessage): MyMessage[] {
   if (!msgs.some((x) => x.id === m.id)) return msgs
   return msgs.map((x) => (x.id === m.id ? m : x))
 }
 
 // remove: удаление по id. Не найдено → та же ссылка на массив (важно для
 // мемоизации — подписчик по ссылке не перерисовывается впустую).
-function remove(msgs: Message[], msgId: number): Message[] {
+function remove(msgs: MyMessage[], msgId: number): MyMessage[] {
   if (!msgs.some((x) => x.id === msgId)) return msgs
   return msgs.filter((x) => x.id !== msgId)
 }
@@ -88,10 +98,27 @@ function remove(msgs: Message[], msgId: number): Message[] {
 // ссылка: согласовано с прецедентом applyReaction/patchViews в
 // messagesStore.ts (сравнение перед записью), чтобы идемпотентный реплей
 // (catch-up/дубль кадра) не дёргал лишний ре-рендер.
-function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Message[] {
+/** Патч ничего не меняет — операция no-op, ссылку списка не рвём (мемоизированные
+ *  баблы иначе перерисовались бы на ровном месте). */
+function sameFields(cur: MyMessage, fields: MessageFields): boolean {
+  const seen = cur as unknown as Record<string, unknown>
+  const next = fields as Record<string, unknown>
+  return Object.keys(next).every((k) => Object.is(seen[k], next[k]))
+}
+
+function patch(msgs: MyMessage[], msgId: number, fields: MessageFields): MyMessage[] {
   const idx = msgs.findIndex((x) => x.id === msgId)
   if (idx === -1) return msgs
   const cur = msgs[idx]
+  // Опрос и розыгрыш живут только у обычного сообщения — у пилюли их нет вовсе,
+  // и сохранять локальный выбор не из чего.
+  if (cur._ !== 'message') {
+    const untouched = sameFields(cur, fields)
+    if (untouched) return msgs
+    const out = msgs.slice()
+    out[idx] = { ...cur, ...fields } as MyMessage
+    return out
+  }
   // Опрос/розыгрыш несут вложенный локальный выбор (poll.myVotes,
   // giveaway.participating/iWon), которого fields.poll/fields.giveaway
   // сознательно НЕ несёт (cachePoll/cacheGiveaway строят операцию из голого
@@ -103,7 +130,7 @@ function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Messag
   // не факт что совпадающий с тем, что успел насчитать воркер). Подставляем
   // текущее значение окна, если оно уже есть; иначе (первая загрузка агрегата)
   // используем то, что пришло в операции.
-  let f = fields
+  let f: MessageFields = fields
   if (f.poll) f = { ...f, poll: { ...f.poll, myVotes: cur.poll ? cur.poll.myVotes : f.poll.myVotes } }
   if (f.giveaway) {
     f = {
@@ -115,8 +142,7 @@ function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Messag
       },
     }
   }
-  const keys = Object.keys(f) as (keyof Message)[]
-  if (keys.every((k) => Object.is(cur[k], f[k]))) return msgs
+  if (sameFields(cur, f)) return msgs
   const next = msgs.slice()
   next[idx] = { ...cur, ...f }
   return next
@@ -124,7 +150,7 @@ function patch(msgs: Message[], msgId: number, fields: Partial<Message>): Messag
 
 /** Применить операцию к списку сообщений окна. Чистая функция — вся семантика
  *  дедупа/слияния живёт здесь, поэтому её можно тестировать без стора. */
-export function applyOp(msgs: Message[], op: MessageOp): Message[] {
+export function applyOp(msgs: MyMessage[], op: MessageOp): MyMessage[] {
   switch (op.op) {
     case 'insert': return insert(msgs, op.msg)
     case 'replace': return replace(msgs, op.msg)

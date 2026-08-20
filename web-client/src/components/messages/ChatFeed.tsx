@@ -18,14 +18,15 @@ import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
-import type { Message } from '../../core/models'
+import type { MyMessage } from '../../core/models'
+import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
 import type { CommentReplier } from '../../core/managers/channelsManager'
 import classNames from '../../shared/lib/classNames'
 import s from './ChatFeed.module.scss'
 
 export interface ChatFeedProps {
   msgs: ConvMsg[]
-  winMsgs: Message[]
+  winMsgs: MyMessage[]
   isRealChat: boolean
   isGroup: boolean
   /** можно ли ставить быструю реакцию по ховеру бабла (tweb: не в «Избранном») */
@@ -140,8 +141,8 @@ function ChatFeed({
       const am = winMsgs[aIdx]
       const bm = winMsgs[bIdx]
       if (am && bm) {
-        if (startOfDayMs(am.createdAt) !== startOfDayMs(bm.createdAt)) return true
-        if (Math.abs(new Date(bm.createdAt).getTime() - new Date(am.createdAt).getTime()) > 121_000) return true
+        if (startOfDayMs(messageDateISO(am.date)) !== startOfDayMs(messageDateISO(bm.date))) return true
+        if (Math.abs(bm.date - am.date) > 121) return true
       }
     }
     return false
@@ -197,21 +198,21 @@ function ChatFeed({
     // Real chats: inject a per-day date divider when the calendar day changes.
     if (isRealChat && winMsgs[i]) {
       const prevReal = i > 0 ? winMsgs[i - 1] : undefined
-      if (i === 0 || (prevReal && startOfDayMs(winMsgs[i].createdAt) !== startOfDayMs(prevReal.createdAt))) {
+      if (i === 0 || (prevReal && startOfDayMs(messageDateISO(winMsgs[i].date)) !== startOfDayMs(messageDateISO(prevReal.date)))) {
         flushGroup()
         // Key the section by the DAY bucket, not the first-loaded message — so a
         // loadOlder prepend (which changes which message is first in the window)
         // doesn't change the section key and remount the whole day's bubbles.
-        const dayMs = startOfDayMs(winMsgs[i].createdAt)
+        const dayMs = startOfDayMs(messageDateISO(winMsgs[i].date))
         const dayKey = `day-${dayMs}`
-        startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang), dayMs))
+        startSection(dayKey, dayPill(dayKey, dayLabel(messageDateISO(winMsgs[i].date), lang), dayMs))
       }
     }
     // Граница «Непрочитанные сообщения» — не отдельный узел, а модификатор
     // самого бабла (tweb bubbles.ts:11609 `is-first-unread` + ::before на всю
     // ширину ленты, _chatBubble.scss:238-258). Текст берётся из
     // --unread-messages-text (ставит Chat из i18n).
-    const isFirstUnread = isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq
+    const isFirstUnread = isRealChat && unreadDividerSeq != null && winMsgs[i]?.id === unreadDividerSeq
     if (isFirstUnread) flushGroup()
     if (m.type === 'date') {
       flushGroup()
@@ -228,7 +229,13 @@ function ChatFeed({
       // Фразу собираем из СЫРОГО JSON-экшена (winMsgs — тот же индекс, что и
       // msgs): в ConvMsg.text он уже сплющен в строку, а узлы .peer-title /
       // i[data-saved-from] нужны структурой. Демо-лента без winMsgs — строкой.
-      const segs = serviceMsgSegs((isRealChat && winMsgs[i]?.text) || m.text || '', m.out)
+      const raw = isRealChat ? winMsgs[i] : undefined
+      const target = raw?._ === 'messageService' && raw.action._ === 'messageActionPinMessage'
+        ? winMsgs.find((x) => x.id === raw.reply_to?.reply_to_msg_id)
+        : undefined
+      const segs: ServiceSeg[] = raw?._ === 'messageService'
+        ? serviceMsgSegs(raw, target ? messageForReply(target) : undefined)
+        : [{ kind: 'text', text: m.text ?? '' }]
       const ts = m.createdAt ? Math.floor(new Date(m.createdAt).getTime() / 1000) : undefined
       // Сервисный бабл tweb: `.bubble.service > .bubble-content-wrapper >
       // .bubble-content > .service-msg > span.i18n` (живой DOM §3, «service action
@@ -283,13 +290,13 @@ function ChatFeed({
         canQuickReact={canQuickReact}
         key={k}
         m={m}
-        seq={isRealChat ? winMsgs[i]?.seq : undefined}
+        seq={isRealChat ? winMsgs[i]?.id : undefined}
         out={out}
         firstInGroup={firstInGroup}
         lastInGroup={lastInGroup}
         selecting={selecting}
         isSelected={m.id != null && selected.has(m.id)}
-        isHighlighted={isRealChat && highlightSeq != null && winMsgs[i]?.seq === highlightSeq}
+        isHighlighted={isRealChat && highlightSeq != null && winMsgs[i]?.id === highlightSeq}
         // Имя в бабле показывается там же, где раньше решал MessageContent:
         // групповой чат, входящее, первое сообщение серии.
         showName={isGroup && !out && !!m.sender && firstInGroup}
@@ -356,7 +363,7 @@ function serviceSeg(sg: ServiceSeg, key: number, peerId: number | undefined, fee
     )
   }
   if (sg.kind === 'msg') {
-    const seq = sg.seq
+    const seq = sg.msgId
     return (
       <i
         key={key}

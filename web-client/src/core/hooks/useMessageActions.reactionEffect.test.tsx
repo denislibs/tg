@@ -13,7 +13,8 @@ import { ManagersProvider } from './useManagers'
 import { useReactionEffectStore } from '../../stores/reactionEffectStore'
 import type { Chat, ConvMsg } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
 
 function wrapper(managers: unknown) {
   return ({ children }: { children: ReactNode }) => (
@@ -32,16 +33,11 @@ function mockManagers() {
 
 const chat: Chat = { id: '1', name: 'Test', avatar: '', date: '', preview: '', type: 'private' }
 
-function rawMsg(over: Partial<Message> = {}): Message {
-  return {
-    id: 5, peerId: 1, seq: 5, senderId: 2, type: 'text', text: 'hi',
-    replyToId: null, mediaId: null, createdAt: '', threadRootId: null,
-    reactions: [],
-    ...over,
-  }
+function rawMsg(over: Partial<MyMessage> = {}): MyMessage {
+  return { ...makeMessage({ id: 5, peerId: 1, fromId: 2, text: 'hi' }), reactions: [], ...over } as MyMessage
 }
 
-function makeWin(msgs: Message[]): MessageWindow {
+function makeWin(msgs: MyMessage[]): MessageWindow {
   return {
     msgs, reachedTop: true, reachedBottom: true, loadingOlder: false, loadingNewer: false,
     loading: false, loadedFromCache: true,

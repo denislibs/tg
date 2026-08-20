@@ -1,6 +1,6 @@
 import type { RestClient } from '../net/restClient'
 import type { PendingNewEvt } from '../realtime/events'
-import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
+import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 import type { Chat, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
 import type { PeersManager } from './peersManager'
@@ -62,7 +62,7 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
     // заводится здесь, живое эхо приезжает кадром new_message и сливается по
     // clientMsgId, как у всех остальных путей. Транспорт другой, владелец бабла
     // тот же — это и есть граница tweb.
-    async post(peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<Message> {
+    async post(peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<MyMessage> {
       if (optimistic) {
         beforeSending({
           peer_id: peerId, thread_root_id: optimistic.threadRootId ?? null, client_msg_id: clientMsgId,
@@ -73,8 +73,8 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
           sequential: true,
         })
       }
-      const r = await rest.post<RawMessage>(`/channels/${peerId}/messages`, { text, entities, client_msg_id: clientMsgId })
-      return mapMessage(r)
+      const r = await rest.post<RawMyMessage>(`/channels/${peerId}/messages`, { text, entities, client_msg_id: clientMsgId })
+      return mapMyMessage(r)
     },
     // catch-up канала (GET /channels/{id}/difference) ведёт per-channel funnel в
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где
@@ -102,13 +102,13 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
     async setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void> {
       await rest.put(`/channels/${channelId}/sign_messages`, { signatures, profiles })
     },
-    async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })
-      return mapMessage(r)
+    async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })
+      return mapMyMessage(r)
     },
-    async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
+      return { messages: (r.messages ?? []).map((m) => mapMyMessage(m)), count: r.count }
     },
     // Счётчики комментариев + авторы последних комментариев по каждому посту
     // (стек аватаров в футере «N комментариев», как в Telegram).

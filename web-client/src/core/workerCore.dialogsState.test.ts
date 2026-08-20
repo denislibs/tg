@@ -25,7 +25,7 @@ import { STATE_VERSION } from './state/state'
 import type { Dialog, Draft } from './models'
 import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
-const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
 

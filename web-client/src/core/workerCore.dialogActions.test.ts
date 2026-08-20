@@ -21,7 +21,7 @@ import type { DialogOp } from './dialogs/dialogOps'
 import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 import { MUTE_UNTIL_FOREVER } from './dialogs/notifySettings'
 
-const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 function pair(): [Endpoint, Endpoint] {
   const listenersA: Array<(ev: MessageEvent) => void> = []

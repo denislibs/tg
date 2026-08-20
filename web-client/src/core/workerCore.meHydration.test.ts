@@ -1,11 +1,16 @@
-// Гонка личности на холодном старте (поле `Message.out`, порт tweb pFlags.out).
+// Гонка личности на холодном старте.
 //
-// Бэкенд `out` не отдаёт — воркер выводит его сам, сравнивая `senderId` с id
-// текущего пользователя. А `me` у воркера появлялся ТОЛЬКО с ответом `/me`
-// (`workerCore.ts` импортировал `saveMe`, но не `loadMe`), значит страница
-// истории, обслуженная раньше этого ответа, уехала бы вкладке с out=false у
-// ВСЕХ сообщений: свои сообщения слева, без галочек, до перезагрузки чата.
-// Молчаливая регрессия — ни один тест её бы не заметил.
+// ПРЕДМЕТ ГЕЙТА СМЕНИЛСЯ вместе с портом сообщения. Прежде он держал
+// `Message.out`: бэкенд флага не отдавал, воркер выводил его сам сравнением
+// автора с `me`, и страница, обслуженная раньше ответа `/me`, уезжала вкладке с
+// out=false у ВСЕХ сообщений. Теперь `pFlags.out` производит СЕРВЕР (решение Р7
+// отменено), и этой гонки нет.
+//
+// Но `me` воркеру по-прежнему нужен, и ровно на границе разбора: сервер
+// производит только НАСТОЯЩИЕ конструкторы служебного действия, а клиент
+// уточняет их до синтетических — «Вы присоединились» против «X присоединился»
+// (`refineMessageAction`, порт appMessagesManager.ts:5215-5238). Обслуженная
+// раньше гидрации страница отдала бы вкладке ЧУЖУЮ формулировку пилюли.
 //
 // Закрыто ДВУМЯ строками, и обе пинит этот файл (каждая по отдельности красит
 // оба кейса ниже):
@@ -13,7 +18,7 @@
 //      `setMe`, и строго ПОСЛЕ `persistScope` (тот стирает данные прошлого
 //      аккаунта, чтение до него отдало бы чужой профиль);
 //   2. `messages` получает гейт `meReady: () => meReady`, и сетевые границы
-//      маппинга ждут его перед выводом `out`.
+//      маппинга ждут его перед уточнением действия.
 //
 // Прогон настоящий: createWorkerCore() + core.start(), тот же messagesManager и
 // тот же persist, что в проде. fake-indexeddb — ПЕРВОЙ строкой (newCursor()/
@@ -24,7 +29,9 @@ import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { saveMe } from './store/persist'
+import { makeRawServiceMessage } from './messages/testMessage'
 import type { PeerProfile } from './managers/authManager'
+import type { MyMessage } from './models'
 
 const ME: PeerProfile = {
   user: { _: 'user', pFlags: { self: true }, id: 7, phone: '+79990000007', username: 'me', first_name: 'Я', photo: { _: 'userProfilePhotoEmpty' } },
@@ -32,15 +39,14 @@ const ME: PeerProfile = {
   canMessage: true,
 }
 
-// Страница истории: одно моё сообщение, одно чужое. `/me` в этом стенде НЕ
+// Страница истории: пилюля «участник добавил сам себя». `/me` в этом стенде НЕ
 // отвечает вовсе (токена нет → authManager.fetchMe возвращает null, не ходя в
 // сеть) — ровно тот случай, ради которого нужна гидрация с диска.
 const historyPage = {
   messages: [
-    { id: 2, peer_id: 1, seq: 2, sender_id: 7, type: 'text', text: 'моё', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
-    { id: 1, peer_id: 1, seq: 1, sender_id: 3, type: 'text', text: 'чужое', reply_to_id: null, media_id: null, created_at: '2026-08-16T10:00:00Z' },
+    makeRawServiceMessage({ id: 1, peerId: 1, fromId: 7, action: { _: 'messageActionChatAddUser', users: [7] } }),
   ],
-  count: 2,
+  count: 1,
 }
 
 beforeEach(() => {
@@ -54,8 +60,10 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals() })
 
+const actionOf = (m: MyMessage) => (m._ === 'messageService' ? m.action._ : undefined)
+
 describe('createWorkerCore(): личность гидрируется с диска ДО обслуживания истории', () => {
-  it('страница, запрошенная сразу после start(), знает, какие сообщения мои', async () => {
+  it('страница, запрошенная сразу после start(), знает, что пилюля про ЗРИТЕЛЯ', async () => {
     await saveMe(ME) // прошлый запуск оставил профиль на диске (write-through setMe)
 
     const core = createWorkerCore()
@@ -64,10 +72,10 @@ describe('createWorkerCore(): личность гидрируется с дис�
     // старте (boot вкладки шлёт RPC, как только поднялся порт).
     const r = await core.registry.messages.getHistory({ peerId: 1 })
 
-    expect(r.messages.map((m) => [m.seq, m.out])).toEqual([[1, false], [2, true]])
+    expect(r.messages.map(actionOf)).toEqual(['messageActionChatJoinedYou'])
   })
 
-  it('пустой диск гейт не подвешивает: история приезжает (пусть и вся входящей)', async () => {
+  it('пустой диск гейт не подвешивает: история приезжает (пусть и с формулировкой про другого)', async () => {
     // Диск чистим ЯВНО: `core/store/persist.ts` мемоизирует соединение в
     // модульном `dbPromise`, поэтому свежий IDBFactory из beforeEach его не
     // переоткрывает — профиль предыдущего кейса иначе доживает сюда.
@@ -78,9 +86,9 @@ describe('createWorkerCore(): личность гидрируется с дис�
 
     // Ключевое здесь — что промис вообще резолвится: гейт снимается в любом
     // исходе гидрации, включая «на диске ничего нет». Подвисший навсегда гейт
-    // заморозил бы ленту, что хуже неверного `out`.
+    // заморозил бы ленту, что хуже неточной формулировки.
     const r = await core.registry.messages.getHistory({ peerId: 1 })
 
-    expect(r.messages.map((m) => m.out)).toEqual([false, false])
+    expect(r.messages.map(actionOf)).toEqual(['messageActionChatJoined'])
   })
 })

@@ -12,8 +12,8 @@ import IconButton from '../../shared/ui/IconButton'
 import UserAvatar from '../UserAvatar'
 import ConfirmDialog from '../settings/ConfirmDialog'
 import { useManagers } from '../../core/hooks/useManagers'
-import { replyMediaLabel } from '../../core/messageToConvMsg'
-import type { Message } from '../../core/models'
+import { getMessageText, type MyMessage } from '../../core/models'
+import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
 import { getPeerPhotoId, type UserReal } from '../../core/peers/peer'
 import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useT } from '../../i18n'
@@ -36,7 +36,7 @@ const hhmm = (iso: string) => {
 export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUnpinAll, onJump, onClose }: {
   chatId: number
   /** пины чата (новейший первым) — live из pinsStore через родителя */
-  pins: Message[]
+  pins: MyMessage[]
   meId: number | null
   meName?: string
   /** право «Открепить все» (tweb canPinMessage) */
@@ -52,7 +52,7 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
 
   // Имена/аватары отправителей: пины могут быть вне окна истории, резолвим сами.
   useEffect(() => {
-    const ids = [...new Set(pins.map((p) => p.senderId))].filter((id) => id > 0)
+    const ids = [...new Set(pins.map((p) => p.fromId ?? 0))].filter((id) => id > 0)
     if (!ids.length) return
     let alive = true
     void managers.peers.getUsers(ids).then((users) => {
@@ -85,21 +85,21 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
         </div>
         <div className={s.list}>
           {pins.map((m) => {
-            const mine = meId != null && m.senderId === meId
-            const peer = peers.get(m.senderId)
+            const mine = meId != null && m.fromId === meId
+            const peer = peers.get(m.fromId ?? 0)
             const name = mine ? (meName || t('You')) : getUserTitle(peer)
             return (
-              <div key={m.id} className={s.row} onClick={() => onJump(m.seq)}>
-                <UserAvatar id={m.senderId} name={name} photoId={getPeerPhotoId(peer?.photo)} size="sm" />
+              <div key={m.id} className={s.row} onClick={() => onJump(m.id)}>
+                <UserAvatar id={m.fromId ?? 0} name={name} photoId={getPeerPhotoId(peer?.photo)} size="sm" />
                 <div className={s.rowBody}>
                   <div className={s.rowTop}>
                     <Text noWrap size={14} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
                       {name}
                     </Text>
-                    <Text size={12} color="var(--secondary-text-color)">{hhmm(m.createdAt)}</Text>
+                    <Text size={12} color="var(--secondary-text-color)">{hhmm(messageDateISO(m.date))}</Text>
                   </div>
-                  <Text noWrap size={13.5} color={m.text ? 'var(--secondary-text-color)' : 'var(--primary-color)'}>
-                    {m.text || replyMediaLabel(m.type) || t('Message')}
+                  <Text noWrap size={13.5} color={getMessageText(m) ? 'var(--secondary-text-color)' : 'var(--primary-color)'}>
+                    {messageForReply(m) || t('Message')}
                   </Text>
                 </div>
                 <IconButton

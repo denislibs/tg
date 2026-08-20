@@ -4,9 +4,10 @@
 // message_edit/history_delete, tweb rootScope.ts:77-88).
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import rootScope, { type BroadcastEvents } from '@lib/rootScope'
-import type { Message } from '../models'
+import type { MessageReal, MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
 import type { MessageOp } from '../realtime/messageOps'
-import { applyOpsToMirror, mirrorWindow, mirrorMessage, putMirrorPage, resetMessagesMirror, winKey } from './messagesMirror'
+import { applyOpsToMirror, mirrorWindow, putMirrorPage, resetMessagesMirror, winKey } from './messagesMirror'
 import { winKey as winKeyFromStore } from '@stores/messagesStore'
 
 const CHAT = 50
@@ -14,13 +15,12 @@ const THREAD = 60
 const ME = 1
 const OTHER = 2
 
-function msg(over: Partial<Message> & { id: number; seq: number }): Message {
-  return {
-    peerId: CHAT, senderId: OTHER, type: 'text', text: `m${over.seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-08-15T12:00:00Z', threadRootId: null,
-    ...over,
-  }
+function msg(over: Partial<MessageReal> & { id: number }, threadRootId?: number): MessageReal {
+  return { ...makeMessage({ id: over.id, peerId: CHAT, fromId: OTHER, text: `m${over.id}`, date: 1_750_000_000, threadRootId }), ...over }
 }
+
+/** Сузить до обычного сообщения: у пилюли ни текста, ни просмотров нет. */
+const real = (m: MyMessage): MessageReal => m as MessageReal
 
 // Собирает все четыре события истории в порядке отправки.
 type HistoryEventName = 'history_append' | 'history_update' | 'message_edit' | 'history_delete'
@@ -55,40 +55,40 @@ const ids = (key: string) => (mirrorWindow(key) ?? []).map((m) => m.id)
 // Точечные изменения приезжают в зеркало потоком операций; страницу истории
 // кладёт тот, кто её грузит, — императивная лента через `putMirrorPage`
 // (см. отдельный describe ниже).
-const seed = (key: string, msgs: Message[]) =>
+const seed = (key: string, msgs: MyMessage[]) =>
   applyOpsToMirror(msgs.map((m): MessageOp => ({ op: 'insert', key, msg: m })))
 
 describe('messagesMirror — содержимое окна', () => {
   it('insert заводит окно и кладёт сообщение', () => {
-    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7, seq: 7 }) }])
+    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7 }) }])
     expect(ids(String(CHAT))).toEqual([7])
   })
 
   it('окно держится по возрастанию seq независимо от порядка операций', () => {
-    seed(String(CHAT), [msg({ id: 3, seq: 3 }), msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2 })])
+    seed(String(CHAT), [msg({ id: 3 }), msg({ id: 1 }), msg({ id: 2 })])
     expect(ids(String(CHAT))).toEqual([1, 2, 3])
   })
 
   it('insert сливается с оптимистичным баблом по clientId (один элемент, localUrl сохранён)', () => {
-    seed(String(CHAT), [msg({ id: -1, seq: 1, senderId: ME, clientId: 'c-1', localUrl: 'blob:local-1' })])
-    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 700, seq: 9, senderId: ME, clientId: 'c-1' }) }])
+    seed(String(CHAT), [msg({ id: -1, fromId: ME, random_id: 'c-1', localUrl: 'blob:local-1' })])
+    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 700, fromId: ME, random_id: 'c-1' }) }])
     const list = mirrorWindow(String(CHAT))!
     expect(list).toHaveLength(1)
     expect(list[0].id).toBe(700)
-    expect(list[0].localUrl).toBe('blob:local-1')
+    expect(real(list[0]).localUrl).toBe('blob:local-1')
   })
 
   it('replace подменяет сообщение по id, patch сливает перечисленные поля', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10, text: 'было' })])
-    applyOpsToMirror([{ op: 'replace', key: String(CHAT), msg: msg({ id: 10, seq: 10, text: 'стало' }) }])
-    expect(mirrorWindow(String(CHAT))![0].text).toBe('стало')
+    seed(String(CHAT), [msg({ id: 10, message: 'было' })])
+    applyOpsToMirror([{ op: 'replace', key: String(CHAT), msg: msg({ id: 10, message: 'стало' }) }])
+    expect(real(mirrorWindow(String(CHAT))![0]).message).toBe('стало')
     applyOpsToMirror([{ op: 'patch', key: String(CHAT), msgId: 10, fields: { views: 42 } }])
-    expect(mirrorWindow(String(CHAT))![0].text).toBe('стало')
-    expect(mirrorWindow(String(CHAT))![0].views).toBe(42)
+    expect(real(mirrorWindow(String(CHAT))![0]).message).toBe('стало')
+    expect(real(mirrorWindow(String(CHAT))![0]).views).toBe(42)
   })
 
   it('remove убирает сообщение из окна', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10 }), msg({ id: 11, seq: 11 })])
+    seed(String(CHAT), [msg({ id: 10 }), msg({ id: 11 })])
     applyOpsToMirror([{ op: 'remove', key: String(CHAT), msgId: 10 }])
     expect(ids(String(CHAT))).toEqual([11])
   })
@@ -98,7 +98,7 @@ describe('messagesMirror — содержимое окна', () => {
   // а заводить окно из ничего значило бы соврать читателю, что окно есть.
   it('replace/patch/remove в неизвестное окно окна не заводят', () => {
     applyOpsToMirror([
-      { op: 'replace', key: String(CHAT), msg: msg({ id: 1, seq: 1 }) },
+      { op: 'replace', key: String(CHAT), msg: msg({ id: 1 }) },
       { op: 'patch', key: String(CHAT), msgId: 1, fields: { views: 1 } },
       { op: 'remove', key: String(CHAT), msgId: 1 },
     ])
@@ -106,24 +106,10 @@ describe('messagesMirror — содержимое окна', () => {
   })
 
   it('операции адресуются окну треда отдельно от основного', () => {
-    seed(String(CHAT), [msg({ id: 1, seq: 1 })])
-    applyOpsToMirror([{ op: 'insert', key: `${CHAT}:${THREAD}`, msg: msg({ id: 800, seq: 3, threadRootId: THREAD }) }])
+    seed(String(CHAT), [msg({ id: 1 })])
+    applyOpsToMirror([{ op: 'insert', key: `${CHAT}:${THREAD}`, msg: msg({ id: 800 }, THREAD) }])
     expect(ids(`${CHAT}:${THREAD}`)).toEqual([800])
     expect(ids(String(CHAT))).toEqual([1])
-  })
-})
-
-describe('messagesMirror — синхронные чтения', () => {
-  it('сообщение по (peerId, seq) читается синхронно сразу после применения операции', () => {
-    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7, seq: 7, text: 'привет' }) }])
-    expect(mirrorMessage(CHAT, 7)?.text).toBe('привет')
-    expect(mirrorMessage(CHAT, 8)).toBeUndefined()
-    expect(mirrorMessage(CHAT + 1, 7)).toBeUndefined()
-  })
-
-  it('сообщение находится и в окне треда, когда основное окно не открыто', () => {
-    seed(`${CHAT}:${THREAD}`, [msg({ id: 800, seq: 3, threadRootId: THREAD })])
-    expect(mirrorMessage(CHAT, 3)?.id).toBe(800)
   })
 })
 
@@ -132,18 +118,17 @@ describe('messagesMirror — сброс на логауте', () => {
   // аккаунта прочитала бы историю прошлого (та же причина, что у
   // resetMediaUrlMirror в core/mediaCache.ts).
   it('resetMessagesMirror стирает все окна', () => {
-    seed(String(CHAT), [msg({ id: 1, seq: 1 })])
-    seed(`${CHAT}:${THREAD}`, [msg({ id: 2, seq: 2, threadRootId: THREAD })])
+    seed(String(CHAT), [msg({ id: 1 })])
+    seed(`${CHAT}:${THREAD}`, [msg({ id: 2 }, THREAD)])
 
     resetMessagesMirror()
 
     expect(mirrorWindow(String(CHAT))).toBeUndefined()
     expect(mirrorWindow(`${CHAT}:${THREAD}`)).toBeUndefined()
-    expect(mirrorMessage(CHAT, 1)).toBeUndefined()
   })
 
   it('после сброса правка стёртого сообщения его не воскрешает', () => {
-    seed(String(CHAT), [msg({ id: 1, seq: 1 })])
+    seed(String(CHAT), [msg({ id: 1 })])
     resetMessagesMirror()
     applyOpsToMirror([{ op: 'patch', key: String(CHAT), msgId: 1, fields: { views: 5 } }])
     expect(mirrorWindow(String(CHAT))).toBeUndefined()
@@ -158,7 +143,7 @@ describe('messagesMirror — сброс на логауте', () => {
 // появления).
 describe('messagesMirror — операции объявляются событиями tweb', () => {
   it('insert нового сообщения → history_append {storageKey, message}', () => {
-    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7, seq: 7 }) }])
+    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 7 }) }])
     expect(captured).toHaveLength(1)
     expect(captured[0].name).toBe('history_append')
     const payload = captured[0].payload as BroadcastEvents['history_append'][0]
@@ -170,9 +155,9 @@ describe('messagesMirror — операции объявляются событ�
   // appMessagesManager.ts:8722-8737): бабл не появляется второй раз, а
   // ПЕРЕСТАВЛЯЕТСЯ, и подписчик узнаёт, какой временный id заменён.
   it('insert, слившийся с оптимистичным баблом → history_update с tempId', () => {
-    seed(String(CHAT), [msg({ id: -5, seq: 1, senderId: ME, clientId: 'c-1' })])
+    seed(String(CHAT), [msg({ id: -5, fromId: ME, random_id: 'c-1' })])
     captured.length = 0
-    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 700, seq: 9, senderId: ME, clientId: 'c-1' }) }])
+    applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: msg({ id: 700, fromId: ME, random_id: 'c-1' }) }])
     expect(captured).toHaveLength(1)
     expect(captured[0].name).toBe('history_update')
     const payload = captured[0].payload as BroadcastEvents['history_update'][0]
@@ -185,20 +170,20 @@ describe('messagesMirror — операции объявляются событ�
   // подписчик bubbles.ts:1104). Через 'history_update' она бы не доехала:
   // обработчик history_update в bubbles.ts на неизменившемся mid выходит.
   it('replace → message_edit {storageKey, peerId, mid, message}', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10, text: 'было' })])
+    seed(String(CHAT), [msg({ id: 10, message: 'было' })])
     captured.length = 0
-    applyOpsToMirror([{ op: 'replace', key: String(CHAT), msg: msg({ id: 10, seq: 10, text: 'стало' }) }])
+    applyOpsToMirror([{ op: 'replace', key: String(CHAT), msg: msg({ id: 10, message: 'стало' }) }])
     expect(captured).toHaveLength(1)
     expect(captured[0].name).toBe('message_edit')
     const payload = captured[0].payload as BroadcastEvents['message_edit'][0]
     expect(payload.storageKey).toBe(String(CHAT))
     expect(payload.peerId).toBe(CHAT)
     expect(payload.mid).toBe(10)
-    expect(payload.message.text).toBe('стало')
+    expect(real(payload.message).message).toBe('стало')
   })
 
   it('patch → message_edit, message несёт слитые поля', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10, text: 'текст' })])
+    seed(String(CHAT), [msg({ id: 10, message: 'текст' })])
     captured.length = 0
     applyOpsToMirror([{ op: 'patch', key: String(CHAT), msgId: 10, fields: { failed: true } }])
     expect(captured).toHaveLength(1)
@@ -206,11 +191,11 @@ describe('messagesMirror — операции объявляются событ�
     const payload = captured[0].payload as BroadcastEvents['message_edit'][0]
     expect(payload.mid).toBe(10)
     expect(payload.message.failed).toBe(true)
-    expect(payload.message.text).toBe('текст')
+    expect(real(payload.message).message).toBe('текст')
   })
 
   it('remove → history_delete {peerId, msgs}', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10 })])
+    seed(String(CHAT), [msg({ id: 10 })])
     captured.length = 0
     applyOpsToMirror([{ op: 'remove', key: String(CHAT), msgId: 10 }])
     expect(captured).toHaveLength(1)
@@ -223,7 +208,7 @@ describe('messagesMirror — операции объявляются событ�
   // peerId у события — чат, а не ключ окна: у треда ключ "50:60", а удалять/
   // править бабл надо в чате 50 (в tweb peerId и storageKey тоже раздельны).
   it('у окна треда peerId события — чат, storageKey — ключ окна', () => {
-    seed(`${CHAT}:${THREAD}`, [msg({ id: 800, seq: 3, threadRootId: THREAD })])
+    seed(`${CHAT}:${THREAD}`, [msg({ id: 800 }, THREAD)])
     captured.length = 0
     applyOpsToMirror([
       { op: 'patch', key: `${CHAT}:${THREAD}`, msgId: 800, fields: { views: 3 } },
@@ -238,13 +223,13 @@ describe('messagesMirror — операции объявляются событ�
   // Операция, ничего не изменившая (ack-then-echo дубль, remove по чужому id,
   // идемпотентный реплей кадра) — не событие: лента перерисовала бы бабл впустую.
   it('операция без изменений события не объявляет', () => {
-    seed(String(CHAT), [msg({ id: 10, seq: 10 })])
+    seed(String(CHAT), [msg({ id: 10 })])
     captured.length = 0
     applyOpsToMirror([
-      { op: 'insert', key: String(CHAT), msg: msg({ id: 10, seq: 10 }) },
+      { op: 'insert', key: String(CHAT), msg: msg({ id: 10 }) },
       { op: 'remove', key: String(CHAT), msgId: 999 },
       { op: 'patch', key: String(CHAT), msgId: 999, fields: { failed: true } },
-      { op: 'patch', key: String(CHAT), msgId: 10, fields: { seq: 10 } },
+      { op: 'patch', key: String(CHAT), msgId: 10, fields: { message: 'm10' } },
     ])
     expect(captured).toEqual([])
   })
@@ -257,8 +242,8 @@ describe('messagesMirror — операции объявляются событ�
     const spy = () => { seen.push(ids(String(CHAT))) }
     rootScope.addEventListener('history_append', spy)
     const ops: MessageOp[] = [
-      { op: 'insert', key: String(CHAT), msg: msg({ id: 1, seq: 1 }) },
-      { op: 'insert', key: String(CHAT), msg: msg({ id: 2, seq: 2 }) },
+      { op: 'insert', key: String(CHAT), msg: msg({ id: 1 }) },
+      { op: 'insert', key: String(CHAT), msg: msg({ id: 2 }) },
     ]
     applyOpsToMirror(ops)
     rootScope.removeEventListener('history_append', spy)
@@ -290,19 +275,19 @@ describe('winKey — ключ окна живёт в зеркале', () => {
 // `bubbles.ts::performHistoryResult` читает загруженное).
 describe('putMirrorPage — страница истории', () => {
   it('заводит окно, которого ещё не было', () => {
-    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 }), msg({ id: 2, seq: 2 })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 1 }), msg({ id: 2 })])
     expect(ids(winKey(CHAT))).toEqual([1, 2])
   })
 
   it('не объявляет событий: страницу рисует сам загрузивший, синхронно после вызова', () => {
-    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 1 })])
     expect(captured).toEqual([])
   })
 
   it('сливается с окном по возрастанию seq, а не подменяет его', () => {
-    seed(winKey(CHAT), [msg({ id: 5, seq: 5 })])
+    seed(winKey(CHAT), [msg({ id: 5 })])
     captured.length = 0
-    putMirrorPage(winKey(CHAT), [msg({ id: 3, seq: 3 }), msg({ id: 4, seq: 4 })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 3 }), msg({ id: 4 })])
     expect(ids(winKey(CHAT))).toEqual([3, 4, 5])
   })
 
@@ -310,23 +295,23 @@ describe('putMirrorPage — страница истории', () => {
     // Ровно тот дефект, ради которого слияние идёт через dedupAsc: у
     // неотправленного бабла seq — выдумка владельца (maxSeq + 1), и страница с
     // настоящим сообщением того же seq не должна стирать бабл с экрана.
-    seed(winKey(CHAT), [msg({ id: -1, seq: 9, senderId: ME, clientId: 'c-1', out: true })])
+    seed(winKey(CHAT), [msg({ id: -1, fromId: ME, random_id: 'c-1' })])
     captured.length = 0
-    putMirrorPage(winKey(CHAT), [msg({ id: 700, seq: 9 })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 700 })])
     // Оба живы. Порядок при равном seq — стабильный (`[...prev, ...page]`), то
     // есть уже стоящий бабл остаётся на месте, а страница дописывается за ним.
     expect(ids(winKey(CHAT))).toEqual([-1, 700])
   })
 
   it('своя более свежая копия того же сообщения выигрывает у старой', () => {
-    putMirrorPage(winKey(CHAT), [msg({ id: 8, seq: 8, text: 'старое' })])
-    putMirrorPage(winKey(CHAT), [msg({ id: 8, seq: 8, text: 'новое' })])
-    expect(mirrorWindow(winKey(CHAT))?.map((m) => m.text)).toEqual(['новое'])
+    putMirrorPage(winKey(CHAT), [msg({ id: 8, message: 'старое' })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 8, message: 'новое' })])
+    expect(mirrorWindow(winKey(CHAT))?.map((m) => real(m).message)).toEqual(['новое'])
   })
 
   it('окна разных ключей не смешиваются', () => {
-    putMirrorPage(winKey(CHAT), [msg({ id: 1, seq: 1 })])
-    putMirrorPage(winKey(CHAT, THREAD), [msg({ id: 2, seq: 2, threadRootId: THREAD })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 1 })])
+    putMirrorPage(winKey(CHAT, THREAD), [msg({ id: 2 }, THREAD)])
     expect(ids(winKey(CHAT))).toEqual([1])
     expect(ids(winKey(CHAT, THREAD))).toEqual([2])
   })

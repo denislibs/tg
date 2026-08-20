@@ -8,7 +8,7 @@ import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
-import type { Scheduled } from '../core/models'
+import { getMessageText, type MyMessage } from '../core/models'
 import { useLang, useT } from '../i18n'
 import s from './ScheduledView.module.scss'
 
@@ -22,10 +22,12 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
   const [lang] = useLang()
   const { list, reschedule, setReschedule, doReschedule, sendNow, remove } = useScheduledMessages(chatId, onChanged)
 
-  const fmtWhen = (m: Scheduled) => {
+  const fmtWhen = (m: MyMessage) => {
     // «Отправить, когда онлайн» (tweb MessageScheduledUntilOnline): вместо даты.
-    if (m.whenOnline) return t('Scheduled until online')
-    const d = new Date(m.sendAt)
+    // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
+    if (m._ !== 'message') return ''
+    if (m.when_online) return t('Scheduled until online')
+    const d = new Date((m.send_at ?? 0) * 1000)
     const today = d.toDateString() === new Date().toDateString()
     const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     if (today) return `${t('Scheduled for today')}, ${hm}`
@@ -35,7 +37,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
   return <>
     {reschedule && (
       <SchedulePopup
-        initUnix={Math.floor(new Date(reschedule.sendAt).getTime() / 1000)}
+        initUnix={reschedule.sendAt}
         onPick={doReschedule}
         onClose={() => setReschedule(null)}
       />
@@ -64,14 +66,14 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
                   {fmtWhen(m)}
                 </Text>
                 <Text size={15} color="var(--primary-text-color)" style={{ wordBreak: 'break-word' }}>
-                  <RichText text={m.text} entities={m.entities} linkColor="var(--link-color)" />
+                  <RichText text={getMessageText(m)} entities={m._ === 'message' ? m.entities : undefined} linkColor="var(--link-color)" />
                 </Text>
               </div>
               <div className={s.actions}>
                 <IconButton size="small" onClick={() => sendNow(m.id)} title={t('Send Now')} aria-label={t('Send Now')}>
                   <TgIcon name="send" size={18} color="var(--primary-color)" />
                 </IconButton>
-                <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m.sendAt })} title={t('Reschedule')} aria-label={t('Reschedule')}>
+                <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m._ === 'message' ? (m.send_at ?? 0) : 0 })} title={t('Reschedule')} aria-label={t('Reschedule')}>
                   <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => remove(m.id)} title={t('Delete')} aria-label={t('Delete')}>

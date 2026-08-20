@@ -19,6 +19,7 @@
 // wrapPhoto, wrapMediaSpoiler, ensureMediaUrl и зеркало работают настоящие.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getMediaFromMessage,
   saveDocument,
   THUMB_TYPE_FULL,
   THUMB_TYPE_SERVER,
@@ -26,7 +27,9 @@ import {
   type MessageMedia,
   type PhotoSize,
 } from '@core/media/messageMedia'
-import type { Message } from '@core/models'
+import type { MessageReal } from '@core/models'
+import { generateMessageId } from '@core/history/messageId'
+import { makeMessage } from '@core/messages/testMessage'
 import { getMiddleware } from '@helpers/middleware'
 
 const { downloadMediaURL } = vi.hoisted(() => ({
@@ -135,26 +138,22 @@ const videoMedia = (
 })
 
 let seq = 0
-/** Сообщение альбома; вложение строит фабрика по тому же id, что и `mediaId`. */
-function msg(patch: Partial<Message> = {}, makeMedia: (id: number) => MessageMedia = photoMedia): Message {
+/** Сообщение альбома. Адрес файла живёт ВНУТРИ вложения (плоского `media_id`
+ *  рядом больше нет), поэтому фабрика вложения и есть источник этого id. */
+function msg(patch: Partial<MessageReal> = {}, makeMedia: (id: number) => MessageMedia = photoMedia): MessageReal {
   ++seq
   const mediaId = 1000 + seq
   return {
-    id: 100 + seq,
-    peerId: -42,
-    seq,
-    senderId: 1,
-    type: 'photo',
-    text: '',
-    replyToId: null,
-    mediaId,
-    createdAt: '2026-08-16T00:00:00Z',
-    threadRootId: null,
-    groupedId: 'g1',
-    media: makeMedia(mediaId),
+    ...makeMessage({
+      id: generateMessageId(100 + seq), peerId: -42, fromId: 1,
+      date: 1_755_302_400, groupedId: 1, media: makeMedia(mediaId),
+    }),
     ...patch,
   }
 }
+
+/** Адрес файла вложения — то, чем раньше был плоский `mediaId`. */
+const mediaIdOf = (m: MessageReal) => getMediaFromMessage(m)?.id
 
 beforeEach(async () => {
   vi.resetModules()
@@ -176,7 +175,7 @@ afterEach(() => {
  * размеры и stripped-ступень (`stripLockedMedia`, backend paidmedia.go:63).
  */
 const paid = ({ stripped = true }: { stripped?: boolean } = {}) =>
-  msg({ mediaId: null, paidMedia: { price: 5, locked: true } }, (id) => photoMedia(id, { stripped }))
+  msg({ paid_media: { price: 5, locked: true } }, (id) => photoMedia(id, { stripped }))
 
 const attachment = () => {
   const div = document.createElement('div')
@@ -241,9 +240,9 @@ describe('wrapAlbum', () => {
     wrapAlbum({ messages, attachmentDiv })
     await flush()
 
-    expect(downloadMediaURL.mock.calls.map(([id]) => id)).toEqual(messages.map((m) => m.mediaId))
+    expect(downloadMediaURL.mock.calls.map(([id]) => id)).toEqual(messages.map(mediaIdOf))
     const srcs = [...attachmentDiv.querySelectorAll('img.media-photo')].map((i) => (i as HTMLImageElement).src)
-    expect(srcs).toEqual(messages.map((m) => `blob:${m.mediaId}`))
+    expect(srcs).toEqual(messages.map((m) => `blob:${mediaIdOf(m)}`))
   })
 
   // Адрес файла ячейки решает ступень, выбранная под 480×480 (tweb album.ts:43):
@@ -280,7 +279,7 @@ describe('wrapAlbum', () => {
     const attachmentDiv = attachment()
     const messages = [
       msg(),
-      msg({ type: 'video' }, (id) => videoMedia(id)),
+      msg({}, (id) => videoMedia(id)),
     ]
 
     wrapAlbum({ messages, attachmentDiv })
@@ -304,7 +303,7 @@ describe('wrapAlbum', () => {
 
   it('видео-элемент с серверным постером качает уменьшенную версию, а не полный файл', async () => {
     const attachmentDiv = attachment()
-    const messages = [msg({ type: 'video' }, (id) => videoMedia(id, { serverThumb: true }))]
+    const messages = [msg({}, (id) => videoMedia(id, { serverThumb: true }))]
 
     wrapAlbum({ messages, attachmentDiv })
     await flush()
@@ -370,7 +369,7 @@ describe('wrapAlbum: скрытое медиа', () => {
     const mediaDiv = attachmentDiv.children[1].firstElementChild!
     expect(hidden!.parentElement).toBe(mediaDiv)
     expect(mediaDiv.querySelector('img.media-photo')).toBeTruthy()
-    expect(downloadMediaURL).toHaveBeenCalledWith(messages[1].mediaId, { thumb: false })
+    expect(downloadMediaURL).toHaveBeenCalledWith(mediaIdOf(messages[1]), { thumb: false })
   })
 
   it('размер крышки — процент ячейки от пиксельного бокса контейнера', async () => {
@@ -436,7 +435,7 @@ describe('wrapAlbum: неоплаченное платное медиа', () => 
     wrapAlbum({
       // вложение приехало документом, но подстановка делает из него ФОТО —
       // как `generatePhotoForExtendedMediaPreview` у оригинала
-      messages: [msg({ mediaId: null, paidMedia: { price: 5, locked: true } }, (id) => videoMedia(id))],
+      messages: [msg({ paid_media: { price: 5, locked: true } }, (id) => videoMedia(id))],
       attachmentDiv,
     })
     await flush()

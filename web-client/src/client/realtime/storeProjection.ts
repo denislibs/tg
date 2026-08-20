@@ -3,13 +3,15 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import { useMessagesStore } from '../../stores/messagesStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
 import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
 import { mapDraft, mapGeo, mapBoostStatus, mapSuggestedPost } from '../../core/models'
+import { generateMessageId } from '../../core/history/messageId'
+import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { removeDraft, setDraft } from '../../stores/draftsStore'
@@ -20,7 +22,6 @@ import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
-import type { MessageOp } from '../../core/realtime/messageOps'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -154,8 +155,10 @@ const APPLY: Projector = {
   [RT.chatThemeUpdate]: (e) => { applyChatTheme(e.peer_id, e.theme_id) },
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
-  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ?? null) },
-  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, e.msg_id, mapGeo(e.geo)) },
+  // Номер в кадре СЕРВЕРНЫЙ, в окне — клиентский: перевод на границе, как везде
+  // (`core/history/messageId.ts`).
+  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, generateMessageId(e.id), e.message, e.edit_date, e.entities ?? undefined, e.reply_markup ?? null) },
+  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), mapGeo(e.geo)) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
@@ -171,35 +174,27 @@ export function registerStoreProjection(managers: Managers): void {
 
   rootScope.addEventListener(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
-    // Stage 1B.2 (Task 4): вставку/дедуп/слияние с оптимистикой по clientId уже
+    // Stage 1B.2 (Task 4): вставку/дедуп/слияние с оптимистикой по random_id уже
     // сделала операция RT.messageOp — routeNewMessage шлёт её ПЕРВЫМ кадром, до
     // этого события (workerCore.ts:routeNewMessage), и APPLY[RT.messageOp] выше уже
-    // применил её к окну. applyIncoming здесь больше не зовём — единственный
-    // писатель окна для входящих теперь applyOps. markRead/unread-below решает
-    // Chat (нужны scroll/focus, которых тут нет).
-    const ms = useMessagesStore.getState()
-    // Резолв превью ответа операция не несёт (в кадре только reply_to_id, не
-    // текст/тип/автор оригинала — воркер не знает, что отрисовано на вкладке).
-    // Точечно накладываем его поверх уже вставленного сообщения (по id), не
-    // трогая остальные поля (localUrl/clientId/secret — их корректно перенесла
-    // операция вставки).
-    const rt = evt.reply_to_id != null ? ms.byKey[String(evt.peer_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
-    if (rt) {
-      const replyTo = { msgId: rt.id, seq: rt.seq, senderId: rt.senderId, text: rt.text, type: rt.type, quoteText: evt.reply_quote_text || undefined }
-      const keys = evt.thread_root_id != null ? [winKey(evt.peer_id), winKey(evt.peer_id, evt.thread_root_id)] : [winKey(evt.peer_id)]
-      const ops = keys
-        .map((key): MessageOp | null => {
-          const cur = ms.byKey[key]?.msgs.find((x) => x.id === evt.msg_id)
-          return cur ? { op: 'replace', key, msg: { ...cur, replyTo } } : null
-        })
-        .filter((op): op is MessageOp => op !== null)
-      if (ops.length) ms.applyOps(ops)
-    }
+    // применил её к окну. markRead/unread-below решает Chat (нужны scroll/focus,
+    // которых тут нет).
+    //
+    // ИСКЛЮЧЕНИЯ «точечный replace ради превью ответа» здесь БОЛЬШЕ НЕТ. Оно
+    // существовало ровно потому, что `reply_to` ехал СНИМКОМ, собранным
+    // сервером, а живой кадр снимка не нёс — вкладке приходилось достраивать
+    // его из своего окна поверх уже вставленного сообщения. Теперь `reply_to`
+    // это ССЫЛКА (решение Р4), и превью строит тот, кто рисует, разрешая номер
+    // в своём окне (`messageToConvMsg(opts.replyToMessage)`). Окно правит
+    // ТОЛЬКО applyOps, без исключений.
+    const msg = evt.message
+    const peerId = getPeerId(msg._ === 'messageEmpty' ? undefined : msg.peer_id)
     // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
     // сообщение / сервисное «создал группу») → подтянуть список диалогов.
     // Сервисное сообщение в известный чат — признак смены метаданных группы
-    // (фото/название) → тоже рефетч (дебаунс внутри).
-    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === evt.peer_id) || evt.type === 'service') {
+    // (фото/название) → тоже рефетч (дебаунс внутри). «Служебное ли» — ВЫБОР
+    // КОНСТРУКТОРА, а не значение снятого поля `type`.
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === peerId) || msg._ === 'messageService') {
       scheduleChatsReload(managers)
     }
     // Task 3: превью/unread диалога в списке теперь применяет владелец
@@ -208,7 +203,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    store.clearTyping(evt.peer_id, evt.sender_id)
+    if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(peerId, getPeerId(msg.from_id))
     // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
     // звук, нотификация) — отдельные подписчики rootScope напрямую, без
     // дублирующего тоста.
@@ -248,7 +243,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Серверное эхо реакции несёт АБСОЛЮТНЫЙ агрегат (counts) → ставим verbatim.
     // Оптимистику клика теперь двигает хук (applyReactionOptimistic), не воркер-эхо.
     if (e.counts) {
-      useMessagesStore.getState().applyReaction(e.peer_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
+      useMessagesStore.getState().applyReaction(e.peer_id, generateMessageId(e.id), e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
     }
     // Task 3: бейдж непрочитанных реакций диалога (Telegram unread_reactions_count)
     // теперь бампит владелец (workerCore.ts::dispatch → dialogs.bumpUnreadReactions →
@@ -260,7 +255,7 @@ export function registerStoreProjection(managers: Managers): void {
   rootScope.addEventListener(RT.starReaction, (raw) => {
     const e = raw as StarReactionEvt
     const meId = useChatsStore.getState().meId
-    useMessagesStore.getState().applyStarReaction(e.peer_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
+    useMessagesStore.getState().applyStarReaction(e.peer_id, generateMessageId(e.id), e.total, e.sender_id === meId ? e.mine : undefined)
   })
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его

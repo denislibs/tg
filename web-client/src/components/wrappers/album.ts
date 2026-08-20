@@ -15,7 +15,7 @@
  *         img.media-photo
  *
  * ── Отличия от оригинала ────────────────────────────────────────────────────
- *  • вход — наши `Message[]` вместо `Message.message[]` MTProto; вложение из них
+ *  • вход — наши `MessageReal[]` вместо `Message.message[]` MTProto; вложение из них
  *    достаётся так же, как в оригинале, — `getMediaFromMessage`, и дальше
  *    ветвление идёт по САМОМУ вложению (`media._ === 'photo'`);
  *  • ветка `media` (album.ts:38-46, `noGroupedItem`/`data-index`) не портирована:
@@ -44,7 +44,8 @@ import {
   getMediaFromMessage,
   type MyDocument,
 } from '@core/media/messageMedia'
-import type { Message } from '@core/models'
+import type { MessageReal } from '@core/models'
+import { isLocalMessageId } from '@core/history/messageId'
 import prepareAlbum from '@components/prepareAlbum'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import wrapPhoto from '@components/wrappers/photo'
@@ -63,7 +64,7 @@ export default function wrapAlbum({
   messages, attachmentDiv, middleware, lazyLoadQueue, isVisible, loadPromises,
   autoDownload, uploadPromises, videoTimes, spoilered, animationGroup,
 }: {
-  messages: Message[]
+  messages: MessageReal[]
   attachmentDiv: HTMLElement
   middleware?: Middleware
   lazyLoadQueue?: LazyLoadQueue
@@ -102,7 +103,7 @@ export default function wrapAlbum({
     // одна и она же stripped, поэтому `wrapPhoto` покажет её КАК медиа и
     // ничего не скачает (ранний выход photo.ts:207).
     const attachment = getMediaFromMessage(message)
-    const media = message.paidMedia?.locked ? generatePhotoForExtendedMediaPreview(attachment) : attachment
+    const media = message.paid_media?.locked ? generatePhotoForExtendedMediaPreview(attachment) : attachment
 
     // tweb album.ts:42-44 — пропорции ячейки: у фотографии их даёт ступень,
     // выбранная под 480×480, у документа — его собственная геометрия.
@@ -212,16 +213,16 @@ export default function wrapAlbum({
     }
   })
 
-  function wrapVideoItem(doc: MyDocument, message: Message, mediaDiv: HTMLElement, idx: number) {
+  function wrapVideoItem(doc: MyDocument, message: MessageReal, mediaDiv: HTMLElement, idx: number) {
     return wrapVideo({
       doc,
       container: mediaDiv,
       message: {
         mid: message.id,
         peerId: message.peerId,
-        mediaUnread: message.mediaUnread,
+        mediaUnread: message.pFlags.media_unread,
         // tweb `pFlags.is_outgoing` — у нас оптимистичный id до ack (core/messageToConvMsg.ts:98)
-        isOutgoing: message.id < 0,
+        isOutgoing: isLocalMessageId(message.id),
       },
       boxWidth: 0,
       boxHeight: 0,

@@ -8,7 +8,8 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { fromNewMessageEvt, isDialogArchived, type Dialog, type Draft, type RawDialog, type RawMessage } from '../models'
+import { mapMessage, isDialogArchived, type Dialog, type Draft, type RawDialog, type RawMyMessage } from '../models'
+import { generateMessageId } from '../history/messageId'
 import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
 import type { Chat, UserReal } from '../peers/peer'
@@ -49,7 +50,7 @@ type MessagesDialogs = {
   _?: 'messages.dialogs' | 'messages.dialogsSlice'
   count?: number
   dialogs?: RawDialog[]
-  messages?: RawMessage[]
+  messages?: RawMyMessage[]
   chats?: Chat[]
   users?: UserReal[]
 }
@@ -526,10 +527,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * Строка провода → строка модели: два КЛИЕНТСКИХ параметра поверх конструктора
    * (`schema/schema_additional_params.json`, предикат `dialog`). Маппера полей
    * здесь нет и быть не может — форма провода и форма модели совпали.
+   *
+   * Единственное, что переводится, — ПРОСТРАНСТВО НОМЕРОВ: `top_message` и оба
+   * горизонта чтения это номера сообщений, и сравниваются они с `message.id`
+   * (тики «прочитано», черта непрочитанных, разрешение ссылки на последнее
+   * сообщение). Оставить их серверными значило бы сравнивать числа из разных
+   * пространств — то же самое делает оригинал в `saveConversation`.
    */
   function toDialog(raw: RawDialog): Dialog {
     const peerId = getPeerId(raw.peer)
-    return { ...raw, peerId, lastMessage: messages?.getMessageByPeer(peerId, raw.top_message) }
+    const top_message = generateMessageId(raw.top_message)
+    return {
+      ...raw,
+      top_message,
+      read_inbox_max_id: generateMessageId(raw.read_inbox_max_id),
+      read_outbox_max_id: generateMessageId(raw.read_outbox_max_id),
+      peerId,
+      lastMessage: messages?.getMessageByPeer(peerId, top_message),
+    }
   }
 
   async function doHydrate(): Promise<void> {
@@ -695,8 +710,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * ключом. `0` — сообщений нет (пустой чат либо очищенная история).
    */
   const msgTime = (d: Dialog): number => {
-    const ms = Date.parse(d.lastMessage?.createdAt ?? '')
-    return Number.isNaN(ms) ? 0 : ms
+    // `date` — секунды эпохи (в схеме `date:int`); ключ порядка сервер считает
+    // в миллисекундах, поэтому переводим здесь, а не храним два формата.
+    return (d.lastMessage?.date ?? 0) * 1000
   }
 
   /**
@@ -1095,7 +1111,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * `readMaxId !== historyMaxId`).
      */
     getHistoryMaxSeq(peerId: number): number {
-      return findDialog(peerId)?.lastMessage?.seq ?? 0
+      return findDialog(peerId)?.lastMessage?.id ?? 0
     },
 
     /**
@@ -1229,7 +1245,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
 
     /** Новое сообщение (live `new_message`) поднимает диалог и бампит превью/unread. */
     applyNewMessage(e: NewMessageEvt): void {
-      const cur = findDialog(e.peer_id)
+      // Кадр несёт сообщение ЦЕЛИКОМ (форма `updateNewMessage`), поэтому и ключ
+      // пира, и автор, и номер берутся из него, а не из россыпи полей конверта.
+      const m = mapMessage(e.message, getMeId?.() ?? null)
+      if (m._ === 'messageEmpty') return
+      const cur = findDialog(m.peerId)
       if (!cur) return // unknown chat (приедет на следующей reset-загрузке)
       const meId = getMeId?.() ?? null
       // Wave 3: сервер шлёт авторитетный unread получателям — берём verbatim; локальный
@@ -1244,15 +1264,15 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // ChatsState.activePeerId, спека docs/superpowers/specs/2026-08-12-
       // dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
-      const incoming = e.sender_id !== meId
+      const incoming = m.fromId !== meId
       const nextUnread = incoming ? (e.unread ?? cur.unread_count + 1) : cur.unread_count
       // Превью строится из ЦЕЛОГО сообщения — тем же единственным маппером
       // живого кадра, что и вставка в окно (`messages.cacheLive` зовёт его же).
       // Прежняя девятиполевая выжимка (`senderName` от сервера, `mediaType`
       // строкой) исчезла вместе с выжимкой на проводе.
-      patchDialog(e.peer_id, {
-        top_message: e.seq,
-        lastMessage: fromNewMessageEvt(e),
+      patchDialog(m.peerId, {
+        top_message: m.id,
+        lastMessage: m,
         unread_count: nextUnread,
       })
     },
@@ -1261,10 +1281,12 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     applyRead(e: ReadEvt, meId: number | null): void {
       const cur = findDialog(e.peer_id)
       if (!cur) return
+      // Горизонт из кадра — СЕРВЕРНЫЙ номер; в модели он клиентский (см. toDialog).
+      const upTo = generateMessageId(e.up_to_seq)
       if (e.user_id === meId) {
         // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
         const unread = e.unread ?? 0
-        const readInbox = Math.max(cur.read_inbox_max_id, e.up_to_seq)
+        const readInbox = Math.max(cur.read_inbox_max_id, upTo)
         // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
         // unread уже 0) НЕ публикует операцию — иначе на зеркале перезапустится
         // mark-read-эффект (деп win.msgs) и получится бесконечный цикл ре-рендера.
@@ -1277,7 +1299,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
         })
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
-        const readOutbox = Math.max(cur.read_outbox_max_id, e.up_to_seq)
+        const readOutbox = Math.max(cur.read_outbox_max_id, upTo)
         if (readOutbox === cur.read_outbox_max_id) return // no advance → no-op (без операции)
         patchDialog(e.peer_id, { read_outbox_max_id: readOutbox })
       }

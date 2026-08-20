@@ -35,16 +35,14 @@ import { ManagersProvider } from './useManagers'
 import { ChatInstanceProvider } from '../chat/chatInstanceContext'
 import type { ChatInstanceDesc } from '../../stores/chatStackStore'
 import type { MessageWindow } from './useMessageWindow'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
 
-function msg(seq: number): Message {
-  return {
-    id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
-  }
+function msg(id: number): MyMessage {
+  return makeMessage({ id, peerId: 1, fromId: 1, text: `m${id}` })
 }
 
-function makeWin(msgs: Message[], overrides: Partial<MessageWindow> = {}): MessageWindow {
+function makeWin(msgs: MyMessage[], overrides: Partial<MessageWindow> = {}): MessageWindow {
   return {
     msgs, reachedTop: false, reachedBottom: true, loadingOlder: false, loadingNewer: false,
     loading: false, loadedFromCache: false,

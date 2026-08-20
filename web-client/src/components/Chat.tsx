@@ -40,7 +40,8 @@ import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { hasRights } from '../core/peers/rights'
 import { isBroadcast, isMegagroup } from '../core/peers/predicates'
-import { NULL_PEER_ID } from '../core/peers/peerId'
+import { NULL_PEER_ID, getOutputPeer } from '../core/peers/peerId'
+import { generateTempMessageId } from '../core/history/messageId'
 import { getPeerPhoto, getPeerPhotoId, isUserStatusOnline, userStatusWasOnline } from '../core/peers/peer'
 import { getPeerTitle, getUserTitle } from '../core/peers/getPeerTitle'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
@@ -91,7 +92,7 @@ import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
-import { type Message, type MessageEntity } from '../core/models'
+import { type MyMessage, type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
@@ -300,17 +301,31 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // generateThreadServiceStartMessage — messageActionDiscussionStarted).
   const winV = useMemo(() => {
     if (!thread) return win
-    const idx = win.msgs.findIndex((m) => m.seq === 0 && m.peerId !== numericChatId)
+    // Корневой пост подшит бэком из ДРУГОГО чата (канала) — его и ищем по пиру;
+    // прежнего сентинела `seq === 0` больше нет.
+    const idx = win.msgs.findIndex((m) => m.peerId !== numericChatId)
     if (idx < 0) return win
-    const svc = {
-      id: -900, peerId: numericChatId, seq: 0.5, senderId: 0, type: 'service',
-      text: t('Discussion started'), replyToId: null, mediaId: null,
-      createdAt: win.msgs[idx].createdAt, threadRootId: null, clientId: 'discussion-start',
-    } as (typeof win.msgs)[number]
+    const root = win.msgs[idx]
+    // Плашка — настоящее СЛУЖЕБНОЕ сообщение с клиентским конструктором
+    // `messageActionDiscussionStarted` (порт tweb
+    // `generateThreadServiceStartMessage`), а не подделка с `type: 'service'`.
+    // Номер у неё КЛИЕНТСКИЙ — дробь поверх корневого поста
+    // (`core/history/messageId.ts`), поэтому она встаёт сразу за ним и заведомо
+    // не может уехать на сервер: прежний `seq: 0.5` жил в том же поле, что и
+    // настоящие номера.
+    const svc: (typeof win.msgs)[number] = {
+      _: 'messageService',
+      pFlags: {},
+      id: generateTempMessageId(root.id),
+      peer_id: getOutputPeer(numericChatId),
+      peerId: numericChatId,
+      date: root.date,
+      action: { _: 'messageActionDiscussionStarted' },
+    }
     const msgs = [...win.msgs]
     msgs.splice(idx + 1, 0, svc)
     return { ...win, msgs }
-  }, [win, thread, numericChatId, t])
+  }, [win, thread, numericChatId])
 
   // Register the active chat so chatsStore suppresses unread bumps while it's open.
   const setActiveChat = useChatsStore((s) => s.setActiveChat)
@@ -465,8 +480,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const unreadDividerRef = useRef<number | null>(null)
   if (unreadDividerRef.current === null && isRealChat && !thread && meId != null && openReadRef.current.unread > 0) {
     const horizon = openReadRef.current.lastReadSeq
-    const first = win.msgs.find((m) => m.seq > horizon && m.senderId !== meId)
-    if (first) unreadDividerRef.current = first.seq
+    const first = win.msgs.find((m) => m.id > horizon && m.fromId !== meId)
+    if (first) unreadDividerRef.current = first.id
   }
   const unreadDividerSeq = unreadDividerRef.current
 
@@ -570,7 +585,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
   const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId)
   const sendAsPeerId = sendAs.currentId !== NULL_PEER_ID && sendAs.currentId !== meId ? sendAs.currentId : null
-  const sendAsTitle = sendAsPeerId != null ? sendAs.peers.find((p) => p.peerId === sendAsPeerId)?.title : undefined
 
   const {
     reply, setReply, editing, setEditing,
@@ -584,7 +598,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     getMessageSendingParams, onMessageSent,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, threadRootId, sendAsPeerId, sendAsTitle, atBottomRef, userScrolledUpRef,
+    meId, win, threadRootId, sendAsPeerId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -799,7 +813,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // снесённого React-лайтбокса. Сбор items — из окна сообщений
   // (collectLightboxItems — чистая логика бывшего useLightbox), действия —
   // существующие флоу чата, дозагрузка соседей — REST /chats/{id}/media. ──
-  const mediaPagesRef = useRef<{ msgs: Message[]; complete: boolean } | null>(null)
+  const mediaPagesRef = useRef<{ msgs: MyMessage[]; complete: boolean } | null>(null)
   // close-колбэк вьювера на время открытого попапа удаления/пересылки:
   // подтверждение попапа закрывает вьювер (tweb PopupDeleteMessages/
   // showForwardPopup зовут this.close() по действию), отмена — снимает колбэк
@@ -1040,7 +1054,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // бар перелистывается на следующий (более старый, циклически).
   const onPinFollow = useEvent(() => {
     const m = followPin()
-    if (m) jumpToSeqE(m.seq)
+    if (m) jumpToSeqE(m.id)
   })
   const onOpenPinList = useEvent(() => pop.openPinned())
   // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
@@ -1131,10 +1145,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const onComposerEditLast = useEvent(() => {
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
-      if (!m.out || m.deleted || m.type === 'date' || m.type === 'service') continue
+      if (!m.out || m.type === 'date' || m.type === 'service') continue
       const raw = winV.msgs[i]
       if (raw?.id == null) continue
-      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw.entities })
+      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
       setReply(null)
       return
     }
@@ -1144,7 +1158,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const onComposerReplyPrev = useEvent(() => {
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
-      if (m.deleted || m.type === 'date' || m.type === 'service') continue
+      if (m.type === 'date' || m.type === 'service') continue
       const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
       if (rs) { setReply(rs); setEditing(null); return }
     }

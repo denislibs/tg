@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { serviceMsgSegs, serviceMsgText, UNSUPPORTED_ACTION } from './serviceMsg'
 import { applyPeerOps } from './peerCache'
+import { makeServiceMessage } from './messages/testMessage'
+import type { MessageAction } from './messages/messageAction'
 
-// Бэк хранит сервисное действие как JSON (зеркало tweb messageAction); клиент
-// собирает локализованную пилюлю. Проверяем разбор ключевых действий.
+// Служебное действие — ОБЪЕДИНЕНИЕ КОНСТРУКТОРОВ (`messageService.action`), а не
+// JSON внутри текста: дискриминатор больше не подделан ни разу.
 //
 // ИМЁН В ДЕЙСТВИИ НЕТ — только ссылки на пиров, как `messageActionChatAddUser`
 // несёт `users:Vector<long>`. Поэтому фикстура заселяет ЗЕРКАЛО карточек, а имя
@@ -19,79 +21,68 @@ applyPeerOps([
   ] },
 ])
 
-const raw = (action: string, extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ action, actor_id: ALICE, ...extra })
+const pill = (action: MessageAction, over: { replyToMsgId?: number; out?: boolean } = {}) =>
+  makeServiceMessage({ id: 10, peerId: -1, fromId: ALICE, action, ...over })
 
 describe('serviceMsgText', () => {
   it('renders joined_by_link (вступление по инвайт-ссылке)', () => {
-    expect(serviceMsgText(raw('joined_by_link'))).toBe(
-      'Алиса присоединился(ась) к группе по ссылке-приглашению',
+    expect(serviceMsgText(pill({ _: 'messageActionChatJoinedByLink', inviter_id: BOB }))).toBe(
+      'Алиса присоединился(ась) к группе по ссылке-приглашению от Боб',
     )
   })
 
-  it('renders edit_photo pill (media rides on media_id, not the text)', () => {
-    expect(serviceMsgText(raw('edit_photo'))).toBe('Алиса обновил(а) фото группы')
+  it('renders edit_photo pill (фото едет ВНУТРИ действия, а не media_id рядом)', () => {
+    expect(serviceMsgText(pill({ _: 'messageActionChatEditPhoto' }))).toBe('Алиса обновил(а) фото группы')
   })
 
   it('renders group lifecycle actions', () => {
-    expect(serviceMsgText(raw('group_create'))).toBe('Алиса создал(а) группу')
-    expect(serviceMsgText(raw('add_user', { user_id: BOB }))).toBe('Алиса добавил(а) Боб')
-    expect(serviceMsgText(raw('leave'))).toBe('Алиса покинул(а) группу')
+    expect(serviceMsgText(pill({ _: 'messageActionChatCreate', title: 'Наш чат', users: [BOB] })))
+      .toBe('Алиса создал(а) группу «Наш чат»')
+    expect(serviceMsgText(pill({ _: 'messageActionChatAddUser', users: [BOB] }))).toBe('Алиса добавил(а) Боб')
+    expect(serviceMsgText(pill({ _: 'messageActionChatLeave', user_id: ALICE }))).toBe('Алиса покинул(а) группу')
   })
 
-  it('passes through plain (non-JSON) service strings untouched', () => {
-    expect(serviceMsgText('Сообщения зашифрованы')).toBe('Сообщения зашифрованы')
+  // Новое название теперь ЕДЕТ: прежде в действии был один `actor_id`, и пилюля
+  // читалась «Имя изменил(а) название группы» без самого названия.
+  it('переименование несёт новое название', () => {
+    expect(serviceMsgText(pill({ _: 'messageActionChatEditTitle', title: 'Новое' })))
+      .toBe('Алиса изменил(а) название группы на «Новое»')
   })
 
-  // Незнакомое действие НЕ показывается сырым JSON: это служебная кишка, а не
-  // текст пользователя. Так уже случалось вживую — бэкенд слал `restrict`,
+  // Незнакомый конструктор НЕ показывается сырым объектом: это служебная кишка,
+  // а не текст пользователя. Так уже случалось вживую — бэкенд слал `restrict`,
   // разбор его не знал, и в пилюле висел `{"action":"restrict",...}`.
-  it('незнакомое действие — честная заглушка, а не сырой JSON', () => {
-    const r = raw('totally_unknown')
-    expect(serviceMsgText(r)).toBe(UNSUPPORTED_ACTION)
-    expect(serviceMsgText(r)).not.toContain('{')
+  it('незнакомый конструктор — честная заглушка, а не служебная кишка', () => {
+    const m = pill({ _: 'messageActionTotallyUnknown' } as unknown as MessageAction)
+    expect(serviceMsgText(m)).toBe(UNSUPPORTED_ACTION)
+    expect(serviceMsgText(m)).not.toContain('{')
   })
 
   it('restrict — ограничение прав участника', () => {
-    expect(serviceMsgText(raw('restrict', { user_id: BOB, denied_rights: 5 })))
+    expect(serviceMsgText(pill({ _: 'messageActionRestrict', user_id: BOB })))
       .toBe('Алиса ограничил(а) права Боб')
   })
 
   // tweb Chat.Service.Group.UpdatedPinnedMessage: `%@ pinned "%@"`, где второй
-  // аргумент — превью закреплённого (messageForReply).
+  // аргумент — превью закреплённого (messageForReply). У самого действия
+  // параметров НЕТ ВОВСЕ: цель находится по `reply_to`, превью строит клиент.
   describe('pin_message', () => {
-    const pin = (extra: Record<string, unknown>) =>
-      raw('pin_message', { msg_id: 42, msg_seq: 5, ...extra })
+    const pin = pill({ _: 'messageActionPinMessage' }, { replyToMsgId: 42 })
 
-    it('quotes the pinned text', () => {
-      expect(serviceMsgText(pin({ msg_type: 'text', msg_text: 'привет' }))).toBe(
-        'Алиса закрепил(а) "привет"',
-      )
+    it('quotes the pinned preview, собранное вызывающим', () => {
+      expect(serviceMsgText(pin, 'привет')).toBe('Алиса закрепил(а) "привет"')
     })
 
-    it('renders audio tags with the 🎵 prefix', () => {
-      expect(
-        serviceMsgText(pin({ msg_type: 'audio', msg_name: 'Батырбек далбоеб - denis1488' })),
-      ).toBe('Алиса закрепил(а) "🎵 Батырбек далбоеб - denis1488"')
-    })
-
-    it('labels caption-less media by type, and appends the caption after it', () => {
-      expect(serviceMsgText(pin({ msg_type: 'photo' }))).toBe('Алиса закрепил(а) "Фотография"')
-      expect(serviceMsgText(pin({ msg_type: 'photo', msg_text: 'вид' }))).toBe(
-        'Алиса закрепил(а) "Фотография, вид"',
-      )
-    })
-
-    it('falls back to ActionPinnedNoText when there is no preview at all', () => {
-      expect(serviceMsgText(pin({ msg_type: 'poll' }))).toBe('Алиса закрепил(а) сообщение')
+    it('falls back to ActionPinnedNoText, когда превью нет', () => {
+      expect(serviceMsgText(pin)).toBe('Алиса закрепил(а) сообщение')
     })
 
     it('exposes the author and the pinned message as clickable segments', () => {
-      expect(serviceMsgSegs(pin({ msg_type: 'text', msg_text: 'привет' }))).toEqual([
+      expect(serviceMsgSegs(pin, 'привет')).toEqual([
         // У сегмента-пира имени НЕТ — только ссылка; имя подставит рендерер.
         { kind: 'peer', peerId: ALICE, fallback: 'Пользователь' },
         { kind: 'text', text: ' закрепил(а) "' },
-        { kind: 'msg', text: 'привет', msgId: 42, seq: 5 },
+        { kind: 'msg', text: 'привет', msgId: 42 },
         { kind: 'text', text: '"' },
       ])
     })

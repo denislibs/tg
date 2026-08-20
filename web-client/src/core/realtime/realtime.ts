@@ -19,6 +19,7 @@ import type { newConnectionManager } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
 import { RT, type TypingAction } from './events'
 import type { MessageOp } from './messageOps'
+import { getServerMessageId } from '../history/messageId'
 
 type Conn = ReturnType<typeof newConnectionManager>
 
@@ -35,7 +36,7 @@ export interface RealtimeDeps {
   // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
   // выбрасывал результат.
   messages: {
-    cacheMediaRead(p: { peer_id: number; msg_id: number }): MessageOp[]
+    cacheMediaRead(p: { peer_id: number; id: number }): MessageOp[]
   }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
@@ -84,16 +85,21 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // другой — сверяющий не должен читать ЭТО как расхождение с оригиналом
     // (в отличие от `syncing` выше, которое расхождение и есть).
     async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
-    async markRead(args: { peerId: number; upToSeq: number }) { conn.markRead(args.peerId, args.upToSeq); return { ok: true } },
+    // Горизонт чтения уходит на сервер СЕРВЕРНЫМ номером — как и всё остальное,
+    // что покидает клиентское пространство (core/history/messageId.ts).
+    async markRead(args: { peerId: number; upToId: number }) { conn.markRead(args.peerId, getServerMessageId(args.upToId)); return { ok: true } },
     async markMediaRead(args: { peerId: number; msgId: number }) {
       // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
       // (окно теперь правит ТОЛЬКО applyOps(RT.messageOp) — сырой rt:media_read
       // проектор больше не слушает), затем шлём read_media серверу (у отправителя
       // точка гаснет по его серверному media_read-кадру).
-      const ops = messages.cacheMediaRead({ peer_id: args.peerId, msg_id: args.msgId })
+      // ГРАНИЦА: наружу (кадр серверу и его же форма в broadcast) уходит
+      // СЕРВЕРНЫЙ номер, внутрь SSOT — клиентский.
+      const serverId = getServerMessageId(args.msgId)
+      const ops = messages.cacheMediaRead({ peer_id: args.peerId, id: serverId })
       if (ops.length) broadcast(RT.messageOp, { ops })
-      broadcast(RT.mediaRead, { peer_id: args.peerId, msg_id: args.msgId })
-      conn.markMediaRead(args.peerId, args.msgId)
+      broadcast(RT.mediaRead, { peer_id: args.peerId, id: serverId })
+      conn.markMediaRead(args.peerId, serverId)
       return { ok: true }
     },
     async sendTyping(args: { peerId: number; action?: TypingAction }) { conn.sendTyping(args.peerId, args.action ?? 'typing'); return { ok: true } },

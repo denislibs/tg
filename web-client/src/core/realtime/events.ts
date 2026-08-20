@@ -1,6 +1,7 @@
 // src/core/realtime/events.ts
-import type { GeoData, MessageEntity, MessageFwdHeader, RawGeo } from '../models'
-import type { Peer } from '../peers/peerId'
+import type { GeoData, MessageEntity, RawGeo } from '../models'
+import type { ReplyMarkup } from '../markup/replyMarkup'
+import type { MessageAction } from '../messages/messageAction'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
@@ -142,53 +143,46 @@ export const RT = {
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
-export interface NewMessageEvt { peer_id: PeerId; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; reply_quote_text?: string; reply_quote_offset?: number | null;
-  /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
-   * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
-  reply_to_peer_id?: Peer | null; reply_snapshot_name?: string; reply_snapshot_text?: string;
-  /** атрибуция пересылки — конструктор `messageFwdHeader` (пяти плоских
-   *  `fwd_from_*` на проводе больше нет, см. `core/models.ts`) */
-  fwd_from?: MessageFwdHeader | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
-  /** Вложение live-кадра — ТОТ ЖЕ объект, что в витрине истории
-   * (`messageMediaPhoto`/`messageMediaDocument` со ступенями и атрибутами).
-   * Одна форма на обе витрины: без неё у ЖИВОГО сообщения не было бы ни волны
-   * голосового, ни бейджа гифки, ни заслонки спойлера до перезагрузки истории
-   * (тот же класс дефектов, что был у send_as), а последнее — ещё и утечка
-   * того, что отправитель просил скрыть. */
-  media?: import('../media/messageMedia').MessageMedia;
-  // ВРЕМЕННО: плоская проекция того же вложения — бэк выводит её ИЗ `media`
-  // (domain.LegacyFlatKeys). Уходит вместе с переездом потребителей на `media`.
-  /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
-   * sender_id, который остаётся реальным. Бэк кладёт ключ в кадр
-   * (usecase/chat/frame.go: messageUpdatePayload), и без него у живого
-   * сообщения не было ни имени автора, ни правила `out` (send-as рисуется
-   * ВХОДЯЩИМ даже когда отправитель — я, см. models.deriveOut) — расхождение
-   * держалось до перезагрузки истории. */
-  send_as?: { peer_id: PeerId; title?: string; photo_id?: number } | null;
-  /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
-  secret_media?: import('../models').SecretMedia;
-  /** вид эффекта сообщения (наш аналог Telegram message effects) */
-  effect?: string | null;
-  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
-   * получателя (у заблокированного кадра media_id отсутствует) */
-  paid_media?: { price: number; locked: boolean } | null;
-  /** Wave 3: эхо своей отправки несёт client_msg_id → applyIncoming/reconcileAck
-   * матчат оптимистичный бабл по нему (а не по фабричному tentative seq). */
-  client_msg_id?: string;
+/**
+ * Кадр с новым сообщением — форма `updateNewMessage` схемы: сообщение ЦЕЛИКОМ
+ * лежит под ключом `message`, а `pts` рядом с ним.
+ *
+ * Прежде поля сообщения лежали вперемешку с полями конверта (`msg_id`, `seq`,
+ * `sender_id`, `type`, `text`, `sender_name`, `client_msg_id`, `grouped_id`,
+ * `send_as`, `reply_snapshot_*`, …), и это была ВТОРАЯ проводная форма
+ * сообщения, расходившаяся с витриной в обе стороны. Теперь форма одна —
+ * решение Р5 разбора.
+ *
+ * `peer_id` внутри сообщения зависит от ПОЛУЧАТЕЛЯ (у приватного диалога
+ * стороны видят разный ключ) и приклеивается сервером на выходе; `pFlags.out`
+ * — тоже пер-зритель и приезжает там же.
+ */
+export interface NewMessageEvt {
+  message: import('../models').RawMessage
   /** плотный монотонный pts (funnel-дедуп/гейт/gap). */
-  pts?: number;
-  /** авторитетный счётчик непрочитанных диалога (только получателям): стор берёт
-   * его verbatim вместо локального +1. Отсутствует у старого бэка → fallback. */
-  unread?: number }
-export interface EditMessageEvt { peer_id: PeerId; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
-// Live-обновление координат гео-трансляции (geo_live_update).
-export interface GeoLiveUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; geo: RawGeo }
+  pts?: number
+  /** авторитетный счётчик непрочитанных диалога (только получателям): владелец
+   *  берёт его verbatim вместо локального +1. */
+  unread?: number
+}
+/** Патч уже нарисованного бабла: правка текста/разметки/клавиатуры. Кадром-
+ *  конструктором `Message` он НЕ является — в схеме это `updateEditMessage`,
+ *  несущий сообщение целиком, и приведение кадров-патчей к нему принадлежит
+ *  подсистеме ОБНОВЛЕНИЙ, а не сообщения (названный остаток шага витрин).
+ *
+ *  `action` едет здесь потому, что правка служебного сообщения существует ровно
+ *  одна — принятие предложенного фото, и меняется в ней только действие. */
+export interface EditMessageEvt { peer_id: PeerId; id: number; message: string; entities?: MessageEntity[] | null; edit_date?: number; reply_markup?: ReplyMarkup | null; action?: MessageAction }
+// Live-обновление координат гео-трансляции (geo_live_update). Время обновления
+// едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри geo: одно и то же поле прежде
+// значило и «время правки», и «время обновления координат».
+export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; geo: RawGeo; edit_date?: number }
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
-export interface WebPageUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
+export interface WebPageUpdateEvt { peer_id: PeerId; id: number; web_page: import('../models').RawWebPage }
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
-export interface FactCheckUpdateEvt { peer_id: PeerId; msg_id: number; seq: number; factcheck: import('../models').RawFactCheck | null }
+export interface FactCheckUpdateEvt { peer_id: PeerId; id: number; factcheck: import('../models').FactCheck | null }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
@@ -214,14 +208,14 @@ export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').R
 // Аватарка гасится ПОКАЖДОМУ получателю: `photo` живёт внутри `user`, и
 // правило `profile_photo` применяется на бэкенде при сборке кадра.
 export interface UserUpdateEvt { user: UserReal; pts?: number }
-export interface DeleteMessageEvt { peer_id: PeerId; msg_id: number; seq: number; for_me: boolean }
-export interface PinMessageEvt { peer_id: PeerId; msg_id: number; pinned: boolean }
+export interface DeleteMessageEvt { peer_id: PeerId; id: number; for_me: boolean }
+export interface PinMessageEvt { peer_id: PeerId; id: number; pinned: boolean }
 export interface ReadEvt { peer_id: PeerId; user_id: number; up_to_seq: number;
   /** авторитетный счётчик непрочитанных диалога после этого read (Wave 3): стор
    * берёт его verbatim вместо локального =0. Отсутствует у старого бэка → fallback. */
   unread?: number; pts?: number }
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
-export interface MediaReadEvt { peer_id: PeerId; msg_id: number }
+export interface MediaReadEvt { peer_id: PeerId; id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
 export interface ChatRemovedEvt { peer_id: PeerId; removed: true }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
@@ -281,15 +275,17 @@ export interface PresenceEvt { user_id: number; status: UserStatus }
 // чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
 // клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
 // наличию counts. pts — для funnel-дедупа/гейта.
-export interface ReactionEvt { peer_id: PeerId; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
+export interface ReactionEvt { peer_id: PeerId; id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
 // Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
 // отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
-export interface StarReactionEvt { peer_id: PeerId; msg_id: number; sender_id: number; total: number; mine: number }
+export interface StarReactionEvt { peer_id: PeerId; id: number; sender_id: number; total: number; mine: number }
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
 export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
 export interface StoryDeletedEvt { story_id: number; author_id: number }
 export interface StoryReactionEvt { story_id: number; user_id: number; reaction: string | null; reactions_count: number }
-export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
+/** Сервер подтвердил отправку: у бабла появляется НАСТОЯЩИЙ номер в чате
+ *  (серверное пространство — владелец переводит его в клиентское) и дата. */
+export interface AckEvt { client_msg_id: string; id: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
 export interface MessageErrorEvt { client_msg_id: string; reason: string }
@@ -332,26 +328,29 @@ export interface PendingNewEvt {
   type?: string
   media_id?: number | null
   entities?: MessageEntity[]
-  grouped_id?: string
+  /** ключ альбома — ЧИСЛО (в схеме `grouped_id:flags.17?long`) */
+  grouped_id?: number
   media?: PendingMedia
   /** blob-URL локального превью, сминченный воркером (см. выше) */
   local_url?: string
   geo?: GeoData
-  contact?: { userId: number; name: string; phone: string }
+  contact?: { user_id: number; name?: string; phone?: string }
   secret?: boolean
-  send_as?: { peerId: PeerId; title: string; photoId?: number }
+  /** send-as: бабл сразу от лица канала/группы. Едет ССЫЛКА (знаковый ключ), а
+   *  не снимок `{title, photo_id}`: имя и фото автор бабла берёт из зеркала
+   *  карточек — ровно так же, как их берёт серверное эхо, у которого `from_id`
+   *  указывает на тот же канал. */
+  send_as?: PeerId
   /** Ответ на сообщение — в бабле СРАЗУ, до подтверждения сервера (порт tweb
    *  `generateOutgoingMessage → reply_to: generateReplyHeader(...)`,
-   *  appMessagesManager.ts:2926). Сам превью-снимок (`Message.replyTo`) собирает
-   *  владелец SSOT — `insertPending` резолвит оригинал по этому id в своей же
-   *  Map сообщений чата. */
+   *  appMessagesManager.ts:2926). Номер — в КЛИЕНТСКОМ пространстве. */
   reply_to_id?: number | null
   /** Текст цитаты (reply quote) — в превью бабла вместо текста оригинала. */
   reply_quote_text?: string
-  /** Кросс-чат ответ: готовый снимок превью (оригинала нет в этом чате, а
-   *  серверный `reply_snapshot_*` приедет только с эхом) — тот же снимок, что
-   *  рисует плашка ответа в композере. */
-  reply_snapshot?: { peerId: PeerId; name: string; text: string }
+  /** Кросс-чат ответ: чат оригинала. Оригинала нет в этом чате, поэтому превью
+   *  строится из `reply_to.reply_from`/`reply_media`, которые приедут с эхом; до
+   *  него плашка показывает ссылку. */
+  reply_to_peer_id?: PeerId
   /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
    *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
    *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит

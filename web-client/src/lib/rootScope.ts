@@ -17,7 +17,7 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState, UserUpdateEvt,
 } from '@core/realtime/events'
-import type { Message, RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
+import type { MyMessage, RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
@@ -150,7 +150,6 @@ export type BroadcastEvents = {
   // серверный ответ (tweb pendingData.tempId); `history_update` в tweb значит
   // ровно смену идентификатора, а не правку содержимого — правку объявляет
   // `message_edit`.
-  // `mid` у tweb — id сообщения внутри пира; у нас ту же роль адреса в операциях
   // играет `Message.id` (у неотправленного бабла он отрицательный, а `seq` —
   // выдумка владельца, поэтому адресуем именно по id).
   // `sequential` — 1:1 с tweb (rootScope.ts:78): признак приходит от отправителя
@@ -160,9 +159,9 @@ export type BroadcastEvents = {
   // занятую баблом позицию внизу окна. До ленты он доезжает полем операции
   // `insert` (`core/realtime/messageOps.ts`) — канал «воркер → вкладка» у нас
   // один; сюда его перекладывает зеркало окон.
-  'history_append': [{ storageKey: string; message: Message }]
-  'history_update': [{ storageKey: string; message: Message; tempId?: number; sequential?: boolean }]
-  'message_edit': [{ storageKey: string; peerId: number; mid: number; message: Message }]
+  'history_append': [{ storageKey: string; message: MyMessage }]
+  'history_update': [{ storageKey: string; message: MyMessage; tempId?: number; sequential?: boolean }]
+  'message_edit': [{ storageKey: string; peerId: number; mid: number; message: MyMessage }]
   'history_delete': [{ peerId: number; msgs: Set<number> }]
 
   // ── служебные ──

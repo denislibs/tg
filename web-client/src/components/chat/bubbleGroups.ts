@@ -25,12 +25,12 @@
 //    middleware и `lazyLoadQueue`. У нас (как `ChatContext`/`BubblesManagers`
 //    в `bubbles.ts`) — узкий структурный тип с ровно теми четырьмя методами,
 //    которые нужны группам. Полный `Chat` — этап 7.
-//  • Ключ сортировки — `seq`, а не `mid`. В tweb `mid` монотонен по времени и
-//    служит и адресом, и порядком. У нас это разные поля: `id` — адрес (у
-//    неотправленного бабла он ОТРИЦАТЕЛЬНЫЙ, см. докблок `FullMid` в
-//    `bubbles.ts`), а порядок окна задаёт `seq` (`core/realtime/messageOps.ts`
-//    сортирует окно по возрастанию `seq`). Сортировать группы по `id` значило
-//    бы уронить бабл «отправляется…» в самый верх ленты.
+//  • Ключ сортировки — `mid`, как и в оригинале. Прежде адрес и порядок были
+//    РАЗНЫМИ полями (`id` против `seq`), потому что у неотправленного бабла id
+//    был отрицательным и утащил бы серию в самый верх ленты. Чисел стало одно
+//    (решение Р1), а временный номер теперь ДРОБЬ поверх последнего занятого
+//    (`core/history/messageId.ts`) — он сортируется туда же, куда встанет
+//    настоящий.
 //  • Не портированы ветки `ChatType.Scheduled` / `ChatType.Search`: у нас нет
 //    ни отложенных сообщений, ни чата-выдачи поиска. Вместе с ними ушли
 //    `generateGroupMid` (для не-scheduled он возвращает тот же `mid`, то есть
@@ -52,7 +52,9 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import forEachReverse from '@helpers/array/forEachReverse'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
 import { startOfDayMs } from '@core/format/dayLabel'
-import type { Message } from '@core/models'
+import { isOurMessage, type MyMessage } from '@core/models'
+import { isServicePill } from '@core/serviceMsg'
+import { messageDateISO } from '@core/messageToConvMsg'
 import { getInlineMarkupRows } from '@core/markup/replyMarkup'
 
 /** Порт tweb `bubbles.ts:306`. Позиция первой группы внутри контейнера дня:
@@ -90,17 +92,17 @@ export interface BubbleGroupsHost {
   /** порт `chat.bubbles.getMiddleware` (bubbles.ts:6030) */
   getMiddleware(): Middleware
   /** порт связки `avatarNew` + `chat.bubbles.lazyLoadQueue` (bubbleGroups.ts:140) */
-  createAvatar(message: Message, middleware: Middleware): GroupAvatar
+  createAvatar(message: MyMessage, middleware: Middleware): GroupAvatar
 }
 
-/** Порт tweb `GroupItem`. `mid` — адрес бабла (`Message.id`), `seq` — порядок
- *  в окне; в оригинале обе роли играет `mid` (см. расхождения в шапке). */
+/** Порт tweb `GroupItem`. `mid` — адрес бабла и он же порядок в окне: чисел
+ *  стало одно (решение Р1), и прежнего `seq` рядом с ним больше нет — в
+ *  оригинале обе роли тоже играет `mid`. */
 export interface GroupItem {
   bubble: HTMLElement
   /** ключ автора серии; отрицательный — send-as личность (см. `getMessageFromId`) */
   fromId: number
   mid: number
-  seq: number
   /** unix-секунды отправки — по ним считается разрыв серии */
   timestamp: number
   /** локальная полночь дня сообщения — по ней бьются серии и контейнеры дней */
@@ -109,7 +111,7 @@ export interface GroupItem {
   /** сообщение, которое не группируется ни с чем (у нас — сервисное) */
   single: boolean
   group?: BubbleGroup
-  message: Message
+  message: MyMessage
 }
 
 // ─── вендорные хелперы tweb (см. расхождения в шапке) ───────────────────────
@@ -199,8 +201,8 @@ function partition<T>(array: T[], predicate: (value: T) => boolean): [T[], T[]] 
 
 /** Порт tweb `canHaveReplyMarkup` (bubbleGroups.ts:51): у аватара серии свой
  *  отступ, когда под последним баблом висит инлайн-клавиатура. */
-function canHaveReplyMarkup(message: Message): boolean {
-  return !!getInlineMarkupRows(message.replyMarkup)
+function canHaveReplyMarkup(message: MyMessage): boolean {
+  return !!getInlineMarkupRows(message._ === 'message' ? message.reply_markup : undefined)
 }
 
 /** Порт tweb `BubbleGroup`. */
@@ -233,10 +235,10 @@ export class BubbleGroup {
    *  Расхождение: tweb сторожит вход по `avatarLoadPromise` (у `avatarNew`
    *  промис есть всегда), у нас — по самому узлу: хост вправе отдать аватар
    *  без промиса, и тогда сторож tweb пропустил бы второй узел в ту же серию. */
-  public createAvatar(message: Message): Promise<void> | undefined {
+  public createAvatar(message: MyMessage): Promise<void> | undefined {
     if (this.avatarContainer) {
       return this.avatarLoadPromise
-    } else if (message.type === 'service') {
+    } else if (isServicePill(message)) {
       return undefined
     }
 
@@ -269,8 +271,8 @@ export class BubbleGroup {
 
   /** Порт tweb bubbleGroups.ts:168. Отступ аватара считается по ПОСЛЕДНЕМУ
    *  баблу серии — под ним и висит клавиатура. */
-  public updateAvatarClassNames(message: Message = this.lastItem.message) {
-    if (!this.avatar || message.type === 'service') {
+  public updateAvatarClassNames(message: MyMessage = this.lastItem.message) {
+    if (!this.avatar || isServicePill(message)) {
       return
     }
 
@@ -297,7 +299,7 @@ export class BubbleGroup {
 
   /** Ключ сортировки групп между собой (порт tweb `lastMid`). */
   public get lastSeq(): number {
-    return this.lastItem.seq
+    return this.lastItem.mid
   }
 
   /** Порт tweb bubbleGroups.ts:201. Один проход по СВОЕЙ серии: края получают
@@ -334,7 +336,7 @@ export class BubbleGroup {
   /** Порт tweb bubbleGroups.ts:242. */
   public insertItem(item: GroupItem) {
     const { items } = this
-    insertInDescendSortedArray(items, item, 'seq')
+    insertInDescendSortedArray(items, item, 'mid')
 
     item.group = this
     if (items.length === 1) {
@@ -437,7 +439,7 @@ export class BubbleGroup {
 
 /** Порт tweb `BubbleGroups` (default export оригинала). */
 export default class BubbleGroups {
-  /** descend sorted по `seq` (itemsArr[0] — самое новое сообщение окна) */
+  /** descend sorted по `mid` (itemsArr[0] — самое новое сообщение окна) */
   public itemsArr: GroupItem[] = []
   private itemsMap: Map<HTMLElement, GroupItem> = new Map()
   /** descend sorted по `lastSeq` (groups[0] — самая нижняя серия) */
@@ -466,16 +468,15 @@ export default class BubbleGroups {
    *  `SERVICE_AS_REGULAR` (звонок). У нас звонок — обычное сообщение
    *  (`type === 'call'`), поэтому весь `SERVICE_AS_REGULAR` сводится к
    *  «сервисное = single». */
-  public createItem(bubble: HTMLElement, message: Message): GroupItem {
+  public createItem(bubble: HTMLElement, message: MyMessage): GroupItem {
     return {
       bubble,
       fromId: this.getMessageFromId(message),
       mid: message.id,
-      seq: message.seq,
-      timestamp: Math.floor(new Date(message.createdAt).getTime() / 1000),
-      dateTimestamp: startOfDayMs(message.createdAt),
+      timestamp: message.date,
+      dateTimestamp: startOfDayMs(messageDateISO(message.date)),
       mounted: false,
-      single: message.type === 'service',
+      single: isServicePill(message),
       message,
     }
   }
@@ -485,8 +486,8 @@ export default class BubbleGroups {
    *  `senderId` остаётся реальным, а личность лежит в `sendAs`. Ключ личности
    *  ЗНАКОВЫЙ уже на проводе (`send_as.peer_id`), поэтому кодировать чат
    *  минусом здесь больше нечем — и не нужно. */
-  public getMessageFromId(message: Message): PeerId {
-    return message.sendAs ? message.sendAs.peerId : message.senderId
+  public getMessageFromId(message: MyMessage): PeerId {
+    return message.fromId ?? message.peerId
   }
 
   /** Порт tweb bubbleGroups.ts:573 — единственное место, где живут правила
@@ -497,7 +498,7 @@ export default class BubbleGroups {
       Math.abs(item2.timestamp - item1.timestamp) <= NEW_GROUP_DIFF &&
       !item1.single &&
       !item2.single &&
-      !!item1.message.out === !!item2.message.out &&
+      isOurMessage(item1.message) === isOurMessage(item2.message) &&
       item1.message.peerId === item2.message.peerId
   }
 
@@ -552,7 +553,7 @@ export default class BubbleGroups {
 
   /** Порт tweb bubbleGroups.ts:641. */
   public insertItemToArray(item: GroupItem, array: GroupItem[]): number {
-    return insertInDescendSortedArray(array, item, 'seq')
+    return insertInDescendSortedArray(array, item, 'mid')
   }
 
   /** Порт tweb bubbleGroups.ts:645. */
@@ -606,14 +607,13 @@ export default class BubbleGroups {
   /** Порт tweb bubbleGroups.ts:539. Бабл остался тем же узлом, но приехало
    *  новое сообщение (ack оптимистичной отправки): переезжают адрес, порядок и
    *  само сообщение — узел и группа не трогаются. */
-  public changeBubbleMessage(bubble: HTMLElement, message: Message) {
+  public changeBubbleMessage(bubble: HTMLElement, message: MyMessage) {
     const item = this.getItemByBubble(bubble)
     if (!item) {
       return
     }
 
     item.mid = message.id
-    item.seq = message.seq
     item.message = message
 
     indexOfAndSplice(this.itemsArr, item)
@@ -622,7 +622,7 @@ export default class BubbleGroups {
 
   /** Порт tweb bubbleGroups.ts:739. Кладёт бабл в кэш окна ДО группировки —
    *  так `groupUngrouped` видит весь прогон разом. */
-  public prepareForGrouping(bubble: HTMLElement, message: Message) {
+  public prepareForGrouping(bubble: HTMLElement, message: MyMessage) {
     const foundItem = this.getItemByBubble(bubble)
     if (foundItem) { // should happen only on edit
       return

@@ -7,7 +7,7 @@ import type { Dialog } from '../models'
 import { makeDialog, makeLastMessage } from './testDialog'
 
 const at = (iso: string): Dialog['lastMessage'] =>
-  makeLastMessage({ peerId: 1, seq: 1, senderId: 1, text: 'x', createdAt: iso })
+  makeLastMessage({ peerId: 1, id: 1, fromId: 1, text: 'x', createdAt: iso })
 
 const dlg = (over: { peerId?: PeerId; pinned?: boolean; lastMessage?: Dialog['lastMessage'] }): Dialog =>
   makeDialog({
@@ -88,7 +88,9 @@ describe('dialogIndex', () => {
     expect(Number.isFinite(dialogIndex(dlg({ lastMessage: undefined }), []))).toBe(true)
   })
 
-  it('битая дата не ломает индекс', () => {
+  // Дата на проводе — `date:int`, но непригодное значение (NaN из битого JSON)
+  // отравило бы сортировку ЦЕЛИКОМ: сравнения с NaN ложны в обе стороны.
+  it('непригодная дата не ломает индекс', () => {
     const broken = dialogIndex(dlg({ peerId: 4, lastMessage: at('не-дата') }), [])
 
     expect(Number.isFinite(broken)).toBe(true)

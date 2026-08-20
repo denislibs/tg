@@ -2,18 +2,24 @@
 import { describe, it, expect, vi } from 'vitest'
 import { newChannelsManager } from './channelsManager'
 import type { RestClient } from '../net/restClient'
-import type { RawMessage } from '../models'
+import type { MessageReal, MyMessage, RawMessage } from '../models'
+import { generateMessageId } from '../history/messageId'
+import { makeRawMessage } from '../messages/testMessage'
 
 // Владелец карточек пиров: авторы последних комментариев приезжают попутно и
 // обязаны доехать до зеркала (`saveApiPeers`) — см. commentCounts.
 const fakePeers = () => ({ saveApiPeers: vi.fn() })
 
-function raw(seq: number): RawMessage {
-  return {
-    id: seq, peer_id: 7, seq, sender_id: 1, type: 'text', text: `m${seq}`,
-    reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
-  }
+/** Номер в КЛИЕНТСКОМ пространстве. */
+const cid = generateMessageId
+
+function raw(id: number, threadRootId?: number): RawMessage {
+  return makeRawMessage({
+    id, peerId: 7, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z', threadRootId,
+  }) as RawMessage
 }
+
+const real = (m: MyMessage): MessageReal | undefined => (m._ === 'message' ? m : undefined)
 
 describe('ChannelsManager.createChannel', () => {
   it('POSTs /channels and returns the new chat id', async () => {
@@ -34,8 +40,8 @@ describe('ChannelsManager.post', () => {
     const m = await mgr.post(7, 'hey', 'c1')
     expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1' })
     expect(m.peerId).toBe(7)
-    expect(m.seq).toBe(6)
-    expect(m.text).toBe('m6')
+    expect(m.id).toBe(cid(6))
+    expect(real(m)?.message).toBe('m6')
   })
 
   // Разметка поста (bold/text_link/mention/hashtag) обязана уехать на бэк: без
@@ -99,14 +105,16 @@ describe('ChannelsManager.enableDiscussion', () => {
 })
 
 describe('ChannelsManager.postComment', () => {
-  it('POSTs comment and returns a mapped Message with threadRootId', async () => {
-    const post = vi.fn(async () => ({ ...raw(9), thread_root_id: 3 }))
+  it('POSTs comment and returns a mapped Message with the thread root inside reply_to', async () => {
+    const post = vi.fn(async () => raw(9, 3))
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
     const m = await mgr.postComment(7, 3, 'hi', 'c2')
     expect(post).toHaveBeenCalledWith('/channels/7/posts/3/comments', { text: 'hi', client_msg_id: 'c2' })
-    expect(m.seq).toBe(9)
-    expect(m.threadRootId).toBe(3)
+    expect(m.id).toBe(cid(9))
+    // Корень треда живёт ВНУТРИ ссылки на ответ (`reply_to.reply_to_top_id`) —
+    // отдельного поля рядом с сообщением больше нет.
+    expect(m.reply_to?.reply_to_top_id).toBe(cid(3))
   })
 })
 
@@ -118,8 +126,8 @@ describe('ChannelsManager.listComments', () => {
     const r = await mgr.listComments(7, 3)
     expect(get).toHaveBeenCalledWith('/channels/7/posts/3/comments', { offset: 0, limit: 50 })
     expect(r.count).toBe(2)
-    expect(r.messages.map((m) => m.seq)).toEqual([1, 2])
-    expect(r.messages[0].threadRootId).toBeNull()
+    expect(r.messages.map((m) => m.id)).toEqual([cid(1), cid(2)])
+    expect(r.messages[0].reply_to).toBeUndefined()
   })
 
   it('handles missing messages array', async () => {

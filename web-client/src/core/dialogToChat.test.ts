@@ -56,7 +56,7 @@ describe('dialogToChat', () => {
     const c = dialogToChat(makeDialog({
       peerId: 1,
       unread: 3,
-      lastMessage: makeLastMessage({ peerId: 1, seq: 4, senderId: 2, text: 'yo', createdAt: '2026-06-24T10:00:00Z' }),
+      lastMessage: makeLastMessage({ peerId: 1, id: 4, fromId: 2, text: 'yo', createdAt: '2026-06-24T10:00:00Z' }),
     }), null, undefined, NONE)
     expect(c.preview).toBe('yo')
     expect(c.date).not.toBe('2026-06-24T10:00:00Z')
@@ -67,7 +67,7 @@ describe('dialogToChat', () => {
   it('имя автора превью в группе собирает КЛИЕНТ по пиру (sender_name с провода убран)', () => {
     const c = dialogToChat(makeDialog({
       peerId: -9,
-      lastMessage: makeLastMessage({ peerId: -9, seq: 4, senderId: 77, text: 'привет' }),
+      lastMessage: makeLastMessage({ peerId: -9, id: 4, fromId: 77, text: 'привет' }),
     }), 1, undefined, lookup({
       [-9]: { _: 'channel' as const, id: 9, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
       77: { _: 'user', id: 77, first_name: 'Аня', last_name: 'Петрова' },
@@ -78,7 +78,7 @@ describe('dialogToChat', () => {
   it('автора без карточки подписывает фолбэком оригинала, а не молчит', () => {
     const c = dialogToChat(makeDialog({
       peerId: -9,
-      lastMessage: makeLastMessage({ peerId: -9, seq: 4, senderId: 77, text: 'привет' }),
+      lastMessage: makeLastMessage({ peerId: -9, id: 4, fromId: 77, text: 'привет' }),
     }), 1, undefined, lookup({
       [-9]: { _: 'channel' as const, id: 9, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
     }))

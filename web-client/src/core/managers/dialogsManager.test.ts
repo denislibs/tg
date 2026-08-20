@@ -6,15 +6,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { newGroupsManager } from './groupsManager'
-import { isDialogArchived, mapMessage, type Dialog, type Message, type RawDialog, type RawMessage } from '../models'
+import { isDialogArchived, mapMyMessage, type Dialog, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
+import { makeRawMessage } from '../messages/testMessage'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
-import type { NewMessageEvt, ReadEvt } from '../realtime/events'
+import type { ReadEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Draft } from '../models'
 
 const dialog = (peerId: number, at: string, pinned = false): Dialog =>
-  makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+  makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
 const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)
@@ -51,10 +53,8 @@ const rawDialog = (peerId: number, seq: number): RawDialog => {
 const pinnedRaw = (peerId: number): RawDialog => ({ ...rawDialog(peerId, 1), pFlags: { pinned: true } })
 
 /** Сообщение на проводе — вектор `messages` контейнера. */
-const rawMessage = (peerId: number, seq: number, text = 'x', senderId = 1, at = '2026-08-01T00:00:00Z'): RawMessage => ({
-  id: seq, peer_id: peerId, seq, sender_id: senderId, type: 'text', text,
-  reply_to_id: null, media_id: null, created_at: at, thread_root_id: null,
-})
+const rawMessage = (peerId: number, seq: number, text = 'x', senderId = 1, at = '2026-08-01T00:00:00Z'): RawMyMessage =>
+  makeRawMessage({ id: seq, peerId, fromId: senderId, text, createdAt: at })
 
 /** Владелец карточек: контейнер обязан отдать ему свои векторы целиком. */
 function fakePeers() {
@@ -71,20 +71,20 @@ function fakePeers() {
 /** Владелец сообщений: SSOT воркера, куда втекает вектор `messages` и откуда
  *  разрешается `top_message` (решение Р11). */
 function fakeMessages() {
-  const byPeer = new Map<number, Map<number, Message>>()
+  const byPeer = new Map<number, Map<number, MyMessage>>()
   return {
-    saved: [] as Message[],
-    async saveApiMessages(list?: RawMessage[]): Promise<Message[]> {
-      const out = (list ?? []).map(mapMessage)
+    saved: [] as MyMessage[],
+    async saveApiMessages(list?: RawMyMessage[]): Promise<MyMessage[]> {
+      const out = (list ?? []).map((r) => mapMyMessage(r))
       for (const m of out) {
         let c = byPeer.get(m.peerId)
         if (!c) { c = new Map(); byPeer.set(m.peerId, c) }
-        c.set(m.seq, m)
+        c.set(m.id, m)
         this.saved.push(m)
       }
       return out
     },
-    getMessageByPeer: (peerId: number, seq: number) => (seq ? byPeer.get(peerId)?.get(seq) : undefined),
+    getMessageByPeer: (peerId: number, id: number) => (id ? byPeer.get(peerId)?.get(id) : undefined),
   }
 }
 
@@ -224,7 +224,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ peer_id: 99, seq: 1, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 1, peerId: 99, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
     mgr.applyRead({ peer_id: 99, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
     mgr.bumpUnreadReactions(99)
 
@@ -245,7 +245,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'hi', sender_id: 7, created_at: '2026-08-01T00:00:01Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 7, text: 'hi', createdAt: '2026-08-01T00:00:01Z' }) })
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
   })
@@ -263,11 +263,11 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     // server-authoritative unread=5 выигрывает у локального +1
-    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'a', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(5)
 
     ops.length = 0
-    mgr.applyNewMessage({ peer_id: 1, seq: 3, text: 'b', sender_id: 9, created_at: '2026-08-01T00:00:02Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'b', createdAt: '2026-08-01T00:00:02Z' }) })
     // поля unread в кадре нет — fallback: текущий unread(5) + 1
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(6)
   })
@@ -288,7 +288,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     ops.length = 0
 
-    mgr.applyNewMessage({ peer_id: 2, seq: 4, text: 'yo', sender_id: 5, created_at: '2026-08-09T23:00:00Z', type: 'text' } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 4, peerId: 2, fromId: 5, text: 'yo', createdAt: '2026-08-09T23:00:00Z' }) })
 
     // закреплённые держатся своим порядком (pinnedOrders), а не датой
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
@@ -307,7 +307,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    mgr.applyNewMessage({ peer_id: 1, seq: 2, text: 'x', sender_id: 9, created_at: '2026-08-01T00:00:01Z', type: 'text', unread: 5 } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
     ops.length = 0
 
     mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2 } as ReadEvt, 7)
@@ -316,7 +316,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
     mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 9 } as ReadEvt, 7)
     const opPeer = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(opPeer.fields.read_outbox_max_id).toBe(9)
+    expect(opPeer.fields.read_outbox_max_id).toBe(generateMessageId(9))
     expect(opPeer.fields.unread_count).toBeUndefined() // чужое прочтение мой unread не трогает
 
     ops.length = 0
@@ -454,7 +454,7 @@ describe('dialogsManager: действия без оптимистики — п�
   it('истёкший срок мьюта владелец снимает сам, по таймеру на ближайший срок', async () => {
     vi.useFakeTimers()
     const now = Math.floor(Date.now() / 1000)
-    const muted = makeDialog({ peerId: 1, muteUntil: now + 60, lastMessage: makeLastMessage({ peerId: 1, seq: 1 }) })
+    const muted = makeDialog({ peerId: 1, muteUntil: now + 60, lastMessage: makeLastMessage({ peerId: 1, id: 1 }) })
     const { mgr, ops } = setup([muted])
     await mgr.fillMirror()
     ops.length = 0
@@ -695,7 +695,7 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
       chats: [{ _: 'channel', id: 9, title: 'Группа', pFlags: { megagroup: true } }],
       users: [{ _: 'user', id: 77, first_name: 'Аня' }],
     }])
-    expect(messages.saved.map((m) => m.seq)).toEqual([7])
+    expect(messages.saved.map((m) => getServerMessageId(m.id))).toEqual([7])
   })
 
   it('top_message разрешается в ЦЕЛОЕ сообщение из хранилища владельца сообщений', async () => {
@@ -713,9 +713,9 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
     await mgr.refresh()
 
     const d = mgr.getSnapshot()[0].dialog
-    expect(d.top_message).toBe(7)
+    expect(d.top_message).toBe(generateMessageId(7))
     // Целое сообщение: у выжимки не было ни id, ни сущностей, ни `fwdFrom`.
-    expect(d.lastMessage).toMatchObject({ id: 7, seq: 7, peerId: -9, senderId: 77, text: 'привет' })
+    expect(d.lastMessage).toMatchObject({ id: generateMessageId(7), peerId: -9, fromId: 77, message: 'привет' })
   })
 
   it('«это всё» — ОТСУТСТВИЕ count, а не булев is_end (порт appMessagesManager.ts:3629)', async () => {
@@ -924,8 +924,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
     // recompute дал бы peerId=2 БОЛЬШИЙ индекс, чем ещё не пересчитанные
     // соседи (те остались бы на старом «общем для всех неотслеженных»
     // значении), и он ошибочно прыгнул бы наверх пин-блока: [1,2,3] → [2,1,3].
-    mgr.applyNewMessage({ peer_id: 2, seq: 2, sender_id: 9, type: 'text', text: 'hi',
-      created_at: '2026-08-09T15:00:00Z' } as NewMessageEvt)
+    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 2, fromId: 9, text: 'hi', createdAt: '2026-08-09T15:00:00Z' }) })
 
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
   })
@@ -945,7 +944,15 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
   const at = (peerId: number) => (peerId === 1 ? '2026-08-01T00:00:00Z' : '2026-08-02T00:00:00Z')
   const msg = (peerId: number) => rawMessage(peerId, 1, 'x', 1, at(peerId))
   const cached = (peerId: number): Dialog =>
-    makeDialog({ peerId, topMessage: 1, lastMessage: mapMessage(msg(peerId)) })
+    makeDialog({
+      peerId,
+      topMessage: generateMessageId(1),
+      // Горизонты чтения в КЭШЕ уже клиентские (их перевёл `toDialog` в прошлой
+      // сессии) — иначе совпавший ответ сети выглядел бы изменившимся.
+      readInboxMaxId: generateMessageId(0),
+      readOutboxMaxId: generateMessageId(0),
+      lastMessage: mapMyMessage(msg(peerId)),
+    })
 
   it('ответ /chats совпал с кэшем — refresh() отдаёт null, ops пусты, saveCache не планируется, ссылки сохранены', async () => {
     vi.useFakeTimers()

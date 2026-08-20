@@ -7,6 +7,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
+import { makeRawMessage } from '../../core/messages/testMessage'
 
 const playEmojiEffect = vi.fn()
 vi.mock('../../core/effects/emojiEffects', () => ({
@@ -17,7 +18,15 @@ import { registerSoundSubscriber } from './soundSubscriber'
 
 // Открытый чат 5, эффект от чужого отправителя (2 !== meId 1) — оба условия
 // обработчика выполнены, дальше решает только meta.catchUp.
-const evt = { peer_id: 5, sender_id: 2, effect: 'hearts' } as unknown as NewMessageEvt
+//
+// Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` (форма `updateNewMessage`),
+// а эффект — НАШ параметр вне схемы у конструктора `message` (`effect_name`).
+const evt: NewMessageEvt = {
+  message: {
+    ...makeRawMessage({ id: 1, peerId: 5, fromId: 2, text: 'привет' }),
+    effect_name: 'hearts',
+  },
+}
 
 describe('soundSubscriber — RT.newMessage учитывает meta.catchUp', () => {
   beforeAll(() => registerSoundSubscriber())

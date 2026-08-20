@@ -30,21 +30,19 @@ import { render, act } from '@testing-library/react'
 import { useChatScroll } from './useChatScroll'
 import { ManagersProvider } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
+import { makeMessage } from '../messages/testMessage'
 import Scrollable from '@components/scrollable'
 
 async function flushScrollThrottle() {
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
 
-function msg(seq: number): Message {
-  return {
-    id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
-  }
+function msg(id: number): MyMessage {
+  return makeMessage({ id, peerId: 1, fromId: 1, text: `m${id}`, date: 1_750_000_000 })
 }
 
-function makeWin(msgs: Message[], overrides: Partial<MessageWindow> = {}): MessageWindow {
+function makeWin(msgs: MyMessage[], overrides: Partial<MessageWindow> = {}): MessageWindow {
   return {
     msgs, reachedTop: false, reachedBottom: true, loadingOlder: false, loadingNewer: false,
     loading: false, loadedFromCache: false,
@@ -153,7 +151,7 @@ function Harness({ win, paddingTop = 0, unreadDividerSeq = null }: {
           // data-unread-divider — маркер плашки «Непрочитанные сообщения»
           // (реальный ряд её несёт в UnreadDivider.tsx); хук ищет её через
           // `sc?.querySelector('[data-unread-divider]')`.
-          <div key={m.id} data-seq={m.seq} {...(m.seq === unreadDividerSeq ? { 'data-unread-divider': '' } : {})} />
+          <div key={m.id} data-seq={m.id} {...(m.id === unreadDividerSeq ? { 'data-unread-divider': '' } : {})} />
         ))}
       </div>
     </div>
@@ -532,7 +530,7 @@ function HarnessRealMarkup({ win, unreadDividerSeq }: { win: MessageWindow, unre
   return (
     <div ref={scrollRef} data-scroll-container="1" data-show-scroll-down={showScrollDown ? '1' : '0'}>
       <div ref={contentRef}>
-        {win.msgs.map((m) => <div key={m.id} data-seq={m.seq} />)}
+        {win.msgs.map((m) => <div key={m.id} data-seq={m.id} />)}
       </div>
     </div>
   )

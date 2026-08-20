@@ -32,20 +32,26 @@ import { ManagersProvider } from './useManagers'
 import { ChatInstanceProvider } from '../chat/chatInstanceContext'
 import type { ChatInstanceDesc } from '../../stores/chatStackStore'
 import type { MessageWindow } from './useMessageWindow'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
+import { makeMessage, makeRawMessage } from '../messages/testMessage'
+import { generateMessageId } from '../history/messageId'
 import rootScope from '@lib/rootScope'
 import { RT, type NewMessageEvt } from '../realtime/events'
 
 afterEach(cleanup)
 
-function msg(seq: number): Message {
-  return {
-    id: seq, peerId: 1, seq, senderId: 1, type: 'text', text: `m${seq}`,
-    replyToId: null, mediaId: null, createdAt: '2026-06-24T10:00:00Z', threadRootId: null,
-  }
+/** Номер в КЛИЕНТСКОМ пространстве — окно живёт только в нём. */
+const cid = generateMessageId
+
+function msg(id: number): MyMessage {
+  return makeMessage({ id: cid(id), peerId: 1, fromId: 1, text: `m${id}` })
 }
 
-function makeWin(msgs: Message[], overrides: Partial<MessageWindow> = {}): MessageWindow {
+/** Кадр `new_message`: сообщение ЦЕЛИКОМ под ключом `message`, номер СЕРВЕРНЫЙ. */
+const newMessageEvt = (id: number): NewMessageEvt =>
+  ({ message: makeRawMessage({ id, peerId: 1, fromId: 1, text: `m${id}` }) })
+
+function makeWin(msgs: MyMessage[], overrides: Partial<MessageWindow> = {}): MessageWindow {
   return {
     msgs, reachedTop: false, reachedBottom: true, loadingOlder: false, loadingNewer: false,
     loading: false, loadedFromCache: false,
@@ -86,7 +92,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1)], { reachedBottom: false })
       mount(win, markRead, false)
 
-      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { peer_id: 1, seq: 42 } as unknown as NewMessageEvt) })
+      act(() => { rootScope.dispatchEventSingle(RT.newMessage, newMessageEvt(42)) })
 
       expect(markRead).not.toHaveBeenCalled()
     })
@@ -96,9 +102,9 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1)], { reachedBottom: false })
       mount(win, markRead, true)
 
-      act(() => { rootScope.dispatchEventSingle(RT.newMessage, { peer_id: 1, seq: 42 } as unknown as NewMessageEvt) })
+      act(() => { rootScope.dispatchEventSingle(RT.newMessage, newMessageEvt(42)) })
 
-      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 42 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToId: cid(42) })
     })
   })
 
@@ -118,7 +124,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
       const win = makeWin([msg(1), msg(2)], { reachedBottom: true })
       mount(win, markRead, true)
 
-      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 2 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToId: cid(2) })
     })
   })
 
@@ -142,7 +148,7 @@ describe('useChatScroll: markRead-эффекты гейтированы акти
 
       act(() => { window.dispatchEvent(new Event('focus')) })
 
-      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToSeq: 1 })
+      expect(markRead).toHaveBeenCalledWith({ peerId: 1, upToId: cid(1) })
     })
   })
 })

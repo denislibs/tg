@@ -10,8 +10,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import { ARCHIVE_FOLDER_ID } from '../folderIds'
-import { mapMessage, type Dialog, type Draft, type Message, type RawDialog, type RawMessage } from '../models'
+import { mapMyMessage, type Dialog, type Draft, type MyMessage, type RawDialog, type RawMessage, type RawMessageReal } from '../models'
+import { generateMessageId } from '../history/messageId'
 import { makeDialog } from '../dialogs/testDialog'
+import { makeRawMessage } from '../messages/testMessage'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Folder } from './foldersManager'
 
@@ -26,24 +28,33 @@ type Over = { archived?: boolean; pinned?: boolean; noMessage?: boolean }
 // диалога адресует последнее сообщение ЧИСЛОМ, и без объекта рядом ссылка не
 // разрешится (решение Р3/Р11). Карта живёт на модуль — фикстуры строятся до
 // запроса, а `restStub` собирает по ней вектор.
-const wireMessages = new Map<number, RawMessage>()
+const wireMessages = new Map<number, RawMessageReal>()
 
-const message = (peerId: number, day: number): RawMessage => ({
-  id: 1, peer_id: peerId, seq: 1, sender_id: 1, type: 'text', text: 'x',
-  reply_to_id: null, media_id: null, created_at: at(day), thread_root_id: null,
-})
+const message = (peerId: number, day: number): RawMessageReal =>
+  makeRawMessage({ id: 1, peerId, fromId: 1, text: 'x', createdAt: at(day) })
 
+/** Строка КЭША владельца: номера в ней уже КЛИЕНТСКИЕ — их перевёл `toDialog`
+ *  при загрузке. Иначе совпавший с памятью ответ сети выглядел бы изменившимся,
+ *  и `reconcile` рвал бы ссылки на ровном месте. */
 const dialog = (peerId: number, day: number, over: Over = {}): Dialog => makeDialog({
   peerId,
   archived: over.archived,
   pinned: over.pinned,
-  topMessage: over.noMessage ? 0 : 1,
-  lastMessage: over.noMessage ? undefined : mapMessage(message(peerId, day)),
+  topMessage: over.noMessage ? 0 : generateMessageId(1),
+  readInboxMaxId: generateMessageId(0),
+  readOutboxMaxId: generateMessageId(0),
+  lastMessage: over.noMessage ? undefined : mapMyMessage(message(peerId, day)),
 })
 
+/** Та же строка в форме ПРОВОДА: номера серверные, клиентских полей нет. */
 const raw = (peerId: number, day: number, over: Over = {}): RawDialog => {
   if (!over.noMessage) wireMessages.set(peerId, message(peerId, day))
-  const { peerId: _peerId, lastMessage: _lastMessage, ...wire } = dialog(peerId, day, over)
+  const { peerId: _peerId, lastMessage: _lastMessage, ...wire } = makeDialog({
+    peerId,
+    archived: over.archived,
+    pinned: over.pinned,
+    topMessage: over.noMessage ? 0 : 1,
+  })
   return wire
 }
 
@@ -66,7 +77,7 @@ const containerOf = (r: Partial<ChatsResponse> & { chats: RawDialog[] }) => {
   const whole = r.is_end ?? true
   const messages = r.chats
     .map((d) => wireMessages.get(peerIdOfRaw(d)))
-    .filter((m): m is RawMessage => !!m)
+    .filter((m): m is RawMessageReal => !!m)
   return {
     _: whole ? 'messages.dialogs' : 'messages.dialogsSlice',
     ...(whole ? {} : { count: r.count ?? r.chats.length }),
@@ -82,18 +93,18 @@ const restStub = (r: Partial<ChatsResponse> & { chats: RawDialog[] }) =>
 /** Владелец сообщений: вектор `messages` контейнера втекает сюда, отсюда же
  *  разрешается `top_message` (решение Р11). */
 function fakeMessages() {
-  const byPeer = new Map<number, Map<number, Message>>()
+  const byPeer = new Map<number, Map<number, MyMessage>>()
   return {
-    async saveApiMessages(list?: RawMessage[]): Promise<Message[]> {
-      const out = (list ?? []).map(mapMessage)
+    async saveApiMessages(list?: RawMessage[]): Promise<MyMessage[]> {
+      const out = (list ?? []).map((r) => mapMyMessage(r as never))
       for (const m of out) {
         let c = byPeer.get(m.peerId)
         if (!c) { c = new Map(); byPeer.set(m.peerId, c) }
-        c.set(m.seq, m)
+        c.set(m.id, m)
       }
       return out
     },
-    getMessageByPeer: (peerId: number, seq: number) => (seq ? byPeer.get(peerId)?.get(seq) : undefined),
+    getMessageByPeer: (peerId: number, msgId: number) => (msgId ? byPeer.get(peerId)?.get(msgId) : undefined),
   }
 }
 

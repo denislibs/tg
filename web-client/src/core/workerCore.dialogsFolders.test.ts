@@ -25,7 +25,7 @@ import type { Folder } from './managers/foldersManager'
 
 const dialog = (peerId: number): Dialog => makeDialog({
   peerId,
-  lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: '2026-08-0' + peerId + 'T00:00:00Z' }),
+  lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: '2026-08-0' + peerId + 'T00:00:00Z' }),
 })
 
 // Папка «Контакты» — id 7, как у пользовательской папки из Postgres.

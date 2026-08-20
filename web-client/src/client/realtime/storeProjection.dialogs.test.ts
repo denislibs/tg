@@ -22,7 +22,7 @@ import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../../core/dialogs/
 /** «Навсегда» — не флаг, а далёкий срок (порт MUTE_UNTIL). */
 const MUTED: PeerNotifySettings = { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER }
 
-const dialog = (peerId: number, at = '2026-08-01T00:00:00Z'): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, seq: 1, senderId: 1, text: 'x', createdAt: at }) })
+const dialog = (peerId: number, at = '2026-08-01T00:00:00Z'): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
 /** onDialogOps — та же проводка, что в проде задаёт workerCore
  *  (broadcast(RT.dialogOp, {ops})); здесь вместо веера портов сразу локальный
