@@ -270,15 +270,21 @@ func TestApproveSuggestedPost_ToChannelWithDiscussion_CreatesMirror(t *testing.T
 		t.Fatalf("status=%q, want approved", approved.Status)
 	}
 
-	// ApproveSuggestedPost возвращает SuggestedPostInfo, а не id опубликованного
-	// сообщения — достаём msg_id из последнего опубликованного канального кадра
-	// (channelPostPayload кладёт его туда же, что и PostToChannel).
-	postID, ok := fpub.lastPayload(t)["msg_id"].(float64)
+	// ApproveSuggestedPost возвращает SuggestedPostInfo, а не адрес
+	// опубликованного сообщения — достаём его из последнего опубликованного
+	// канального кадра. Адрес там ОДИН: `id` со значением номера в канале
+	// (channelPostPayload кладёт его туда же, что и PostToChannel), поэтому
+	// внутренний ключ строки резолвим через слой адресации.
+	postSeq, ok := fpub.lastPayload(t)["id"].(float64)
 	if !ok {
-		t.Fatal("msg_id отсутствует в опубликованном кадре")
+		t.Fatal("адрес поста отсутствует в опубликованном кадре")
+	}
+	postID, err := in.msgs.IDBySeq(ctx, ch, int64(postSeq))
+	if err != nil {
+		t.Fatalf("номер %v не резолвится в канале: %v", postSeq, err)
 	}
 
-	id, err := in.msgs.MirrorByPost(ctx, ch, int64(postID))
+	id, err := in.msgs.MirrorByPost(ctx, ch, postID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,11 +304,11 @@ func TestAlbum_MirrorsAllElements_SingleThread(t *testing.T) {
 
 	m1 := int64(101)
 	m2 := int64(102)
-	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,11 +355,11 @@ func TestAlbum_MirrorsAllElements_SingleThread(t *testing.T) {
 	}
 
 	root, _ := i.msgs.GetByID(ctx, r1)
-	if root.GroupedID == nil || *root.GroupedID != "g1" {
+	if root.GroupedID == nil || *root.GroupedID != 111 {
 		t.Fatalf("зеркало потеряло grouped_id: %v", root.GroupedID)
 	}
 	second, _ := i.msgs.GetByID(ctx, own2)
-	if second.GroupedID == nil || *second.GroupedID != "g1" {
+	if second.GroupedID == nil || *second.GroupedID != 111 {
 		t.Fatalf("зеркало второго элемента альбома потеряло grouped_id: %v", second.GroupedID)
 	}
 }
@@ -377,11 +383,11 @@ func TestPostComment_AlbumLazyMirror_NonFirstFrame_SameThread(t *testing.T) {
 	// вставке был no-op (GetDiscussion возвращал 0), зеркал нет вовсе.
 	m1 := int64(101)
 	m2 := int64(102)
-	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,11 +427,11 @@ func TestPostComment_AlbumLazyMirror_NoOrphanedMirrors(t *testing.T) {
 
 	m1 := int64(101)
 	m2 := int64(102)
-	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: "g1"})
+	a1, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: "g1"})
+	a2, err := i.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: 111})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,15 +531,21 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	s.mu.Lock()
 	updates := append([]domain.Update(nil), s.updates[8]...)
 	s.mu.Unlock()
+	// Кадр адресует зеркало НОМЕРОМ в группе обсуждения — внутренний ключ
+	// строки наружу не выходит.
+	mirror, err := i.msgs.GetByID(ctx, mirrorID)
+	if err != nil {
+		t.Fatalf("зеркало %d не читается: %v", mirrorID, err)
+	}
 	foundUpdate := false
 	for _, u := range updates {
 		if u.Type != "new_message" {
 			continue
 		}
 		var d struct {
-			MsgID int64 `json:"msg_id"`
+			ID int64 `json:"id"`
 		}
-		if err := json.Unmarshal(u.Payload, &d); err == nil && d.MsgID == mirrorID {
+		if err := json.Unmarshal(u.Payload, &d); err == nil && d.ID == mirror.Seq {
 			foundUpdate = true
 		}
 	}
@@ -546,7 +558,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	var env struct {
 		T string `json:"t"`
 		D struct {
-			MsgID int64 `json:"msg_id"`
+			ID int64 `json:"id"`
 		} `json:"d"`
 	}
 	found := false
@@ -557,7 +569,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 		if err := json.Unmarshal(f.frame, &env); err != nil {
 			t.Fatalf("frame decode: %v", err)
 		}
-		if env.T == "new_message" && env.D.MsgID == mirrorID {
+		if env.T == "new_message" && env.D.ID == mirror.Seq {
 			found = true
 			break
 		}

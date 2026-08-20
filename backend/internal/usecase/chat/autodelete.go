@@ -72,7 +72,7 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	for _, msg := range expired {
 		var members []int64
 		ptsByUser := map[int64]int64{}
-		pp, err := i.newPeerPayloads(ctx, msg.ChatID, deleteUpdatePayload(msg.ID, msg.Seq, false))
+		pp, err := i.newPeerPayloads(ctx, msg.ChatID, deleteUpdatePayload(msg.Seq, false))
 		if err != nil {
 			return purged, err
 		}

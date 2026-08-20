@@ -113,7 +113,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 
 	var members []int64
 	ptsByUser := map[int64]int64{}
-	pp, err := i.newPeerPayloads(ctx, chatID, deleteUpdatePayload(msgID, cur.Seq, !revoke))
+	pp, err := i.newPeerPayloads(ctx, chatID, deleteUpdatePayload(cur.Seq, !revoke))
 	if err != nil {
 		return err
 	}

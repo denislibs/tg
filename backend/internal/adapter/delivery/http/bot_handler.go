@@ -80,9 +80,10 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		PeerID    domain.PeerID `json:"peer_id"`
-		MessageID int64         `json:"message_id"`
-		Data      []byte        `json:"data"` // bytes схемы → base64 на JSON-проводе
+		PeerID domain.PeerID `json:"peer_id"`
+		// id — НОМЕР сообщения у этого пира (адрес нажатой кнопки).
+		MessageSeq int64  `json:"id"`
+		Data       []byte `json:"data"` // bytes схемы → base64 на JSON-проводе
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.PeerID == domain.NullPeerID {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -92,7 +93,11 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ans, err := h.svc.BotCallback(r.Context(), chatID, h.meID(r), botID, b.MessageID, string(b.Data))
+	msgID, ok := resolveMsgSeq(w, r, h.svc, chatID, b.MessageSeq)
+	if !ok {
+		return
+	}
+	ans, err := h.svc.BotCallback(r.Context(), chatID, h.meID(r), botID, msgID, string(b.Data))
 	if errors.Is(err, domain.ErrForbidden) {
 		writeError(w, http.StatusForbidden, "not a member")
 		return

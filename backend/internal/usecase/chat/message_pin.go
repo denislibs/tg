@@ -16,15 +16,19 @@ const pinPreviewMaxRunes = 100
 
 // pinServiceText — JSON-экшен сервисного сообщения о закреплении (tweb
 // messageActionPinMessage). Помимо автора несёт разобранное превью закреплённого
-// (tweb messageForReply): id/seq цели для ссылки-перехода, тип сообщения и
+// (tweb messageForReply): адрес цели для ссылки-перехода, тип сообщения и
 // «имя» медиа с подписью — так клиент собирает фразу целиком, не заглядывая в
 // само сообщение (его может не быть в загруженном окне истории).
+//
+// Адрес цели — ОДНО число (msg_id = номер в чате). Пара {msg_id, msg_seq}
+// исчезла вместе с глобальным ключом строки; сам этот JSON внутри текста уйдёт
+// целиком вместе с решением Р3 (messageService.action: MessageAction), где у
+// messageActionPinMessage параметров нет вовсе — цель находится по reply_to.
 func pinServiceText(actorID int64, m domain.Message) string {
 	a := map[string]any{
 		"action":   "pin_message",
 		"actor_id": actorID,
-		"msg_id":   m.ID,
-		"msg_seq":  m.Seq,
+		"msg_id":   m.Seq,
 		"msg_type": m.Type,
 	}
 	if name := pinMediaName(m); name != "" {
@@ -109,7 +113,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		}
 		slices.Sort(mem)
 		members = mem
-		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"msg_id": msgID, "pinned": pin})
+		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"id": cur.Seq, "pinned": pin})
 		if e != nil {
 			return e
 		}

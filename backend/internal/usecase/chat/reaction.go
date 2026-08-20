@@ -85,7 +85,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		if e != nil {
 			return e
 		}
-		p = reactionPayload(messageID, userID, msg.SenderID, emoji, action, byMsg[messageID])
+		p = reactionPayload(msg.Seq, userID, msg.SenderID, emoji, action, byMsg[messageID])
 		// unread_reactions адресован автору сообщения (клиент применяет, только если
 		// author_id == me); для остальных получателей поле безвредно.
 		if unreadReactions >= 0 {

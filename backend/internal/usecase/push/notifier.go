@@ -19,7 +19,7 @@ func NewNotifier(online OnlineChecker, notify NotifyChecker, queue Queue) *Notif
 }
 
 // NotifyNewMessage gates on presence + notify settings, then enqueues a push job.
-func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string, peer domain.PeerID) {
+func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID) {
 	// Online (has an active socket)? The WS layer already delivered it live.
 	if online, _ := n.online.IsOnline(ctx, recipientID); online {
 		return
@@ -30,7 +30,7 @@ func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, ms
 		return
 	}
 	_ = n.queue.Enqueue(ctx, Job{
-		RecipientID: recipientID, ChatID: chatID, PeerID: peer, MsgID: msgID,
+		RecipientID: recipientID, ChatID: chatID, PeerID: peer,
 		Seq: seq, SenderID: senderID, Text: text, Preview: preview,
 	})
 }

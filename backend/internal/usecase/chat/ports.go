@@ -62,11 +62,11 @@ type ChatRepo interface {
 	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
 	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
 	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и
-	// возвращает оставшееся число. NextMention — seq/msgID ближайшего
+	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
-	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
+	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error)
 	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
 	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
 	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
@@ -202,6 +202,24 @@ type MessageRepo interface {
 	FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	GetByID(ctx context.Context, msgID int64) (domain.Message, error)
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
+	// ── Адресация: снаружи сообщение адресуется парой «пир + seq» ────────────
+	// messages.id остаётся ключом строки нашей базы (на него ссылаются
+	// message_reactions/message_mentions/pinned_messages) и наружу не выходит.
+	// Перевод в обе стороны — обычный поиск по UNIQUE (chat_id, seq), а не кэш
+	// и не переходник: seq, в отличие от ключа пира, от зрителя не зависит.
+	//
+	// IDBySeq — внешний адрес во внутренний ключ; domain.ErrNotFound, если
+	// такого номера в чате нет (в т.ч. когда сообщение удалено физически).
+	IDBySeq(ctx context.Context, chatID, seq int64) (int64, error)
+	// IDsBySeqs — батч IDBySeq для набора номеров одного чата: seq -> id.
+	// Отсутствующие в карту не попадают.
+	IDsBySeqs(ctx context.Context, chatID int64, seqs []int64) (map[int64]int64, error)
+	// SeqsByIDs — обратный батч (внутренний ключ → номер в чате) для ссылок,
+	// которые хранятся внутренним id: корень треда, корень форум-топика.
+	// Отсутствующие в карту не попадают.
+	SeqsByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
+	// GetBySeqs — сообщения чата по их номерам (превью ответов одним запросом).
+	GetBySeqs(ctx context.Context, chatID int64, seqs []int64) ([]domain.Message, error)
 	// ByPollID — сообщения, ссылающиеся на опрос (обычно одно).
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
@@ -286,7 +304,7 @@ type MessageRepo interface {
 	// для (возможно, удалённого) первого элемента, на который резолв
 	// продолжит указывать как на корень, — комментирование остальных
 	// элементов альбома снова сломается.
-	AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error)
+	AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error)
 	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
 	// сообщений (это могут быть id зеркал, обычных сообщений или корней
 	// форум-топиков вперемешку — вызывающий не обязан их различать) отдаёт
@@ -521,7 +539,7 @@ type ChannelPublisher interface {
 type PushNotifier interface {
 	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
 	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string, peer domain.PeerID)
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID)
 }
 
 // --- DTOs ---
@@ -530,7 +548,14 @@ type SendInput struct {
 	ChatID, SenderID int64
 	Type, Text       string
 	Entities         domain.MessageEntities
-	ReplyToID        *int64
+	// ReplyToID — НОМЕР отвечаемого сообщения в его чате (schema
+	// messageReplyHeader.reply_to_msg_id), а не глобальный ключ строки.
+	// Осмыслен только вместе с ReplyToPeerID: nil там значит «тот же пир».
+	ReplyToID *int64
+	// ReplyToPeerID — внутренний chatID ЧУЖОГО чата, когда отвечают на
+	// сообщение из другого разговора (schema reply_to_peer_id). Разрешается из
+	// ключа пира на границе (delivery), доступ отправителя проверяет Send.
+	ReplyToPeerID *int64
 	// Ответ с цитатой фрагмента (Telegram reply quote): выделенный кусок текста
 	// оригинала + его offset (UTF-16). Применяется только при ReplyToID != nil.
 	ReplyQuoteText   *string
@@ -538,7 +563,7 @@ type SendInput struct {
 	ClientMsgID      string
 	MediaID          *int64
 	ThreadRootID     *int64
-	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
+	GroupedID        int64  // альбом (Telegram grouped_id, схемный long); 0 — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
 	ChecklistID      *int64 // чек-лист (messages.checklist_id) — только из SendChecklist
 	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway

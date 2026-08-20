@@ -237,8 +237,8 @@ func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, i
 func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
-	return 0, 0, domain.ErrNotFound
+func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
+	return 0, domain.ErrNotFound
 }
 func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
 func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }

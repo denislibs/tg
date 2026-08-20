@@ -326,7 +326,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			})
 			c.Send(f)
 		}
-		// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+		replyPeer, rerr := replyPeerChatID(ctx, c.svc, c.userID, d.ReplyToPeerID)
+		if rerr != nil {
+			nack("not_found")
+			return
+		}
+		// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт); в discussion-группе
 		// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
 		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
 		// Ошибка (нет зеркала и дозавести нечего) — понятный NACK, а не запись
@@ -350,7 +355,8 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: chatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
-			ReplyToID: d.ReplyToID, ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
+			ReplyToID: d.ReplyToID, ReplyToPeerID: replyPeer,
+			ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
 			GeoTitle: d.GeoTitle, GeoAddress: d.GeoAddress,
@@ -381,7 +387,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		ack, _ := json.Marshal(map[string]any{
 			"t": "message_ack",
-			"d": map[string]any{"client_msg_id": d.ClientMsgID, "msg_id": msg.ID, "seq": msg.Seq, "created_at": msg.CreatedAt},
+			"d": map[string]any{"client_msg_id": d.ClientMsgID, "id": msg.Seq, "created_at": msg.CreatedAt},
 		})
 		c.Send(ack)
 	case "read":
@@ -398,7 +404,11 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
-			_ = c.svc.ReadMedia(ctx, chatID, c.userID, d.MsgID)
+			// Номер в чате — во внутренний ключ строки; нет такого номера —
+			// нечего и отмечать (кадр без ответа, как и раньше при промахе).
+			if msgID, e := c.svc.MessageIDBySeq(ctx, chatID, d.Seq); e == nil {
+				_ = c.svc.ReadMedia(ctx, chatID, c.userID, msgID)
+			}
 		}
 	case "typing":
 		var d typingData

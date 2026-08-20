@@ -74,7 +74,7 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": msg.ID, "peer_id": domain.ToPeerID(msg.ChatID, true), "seq": msg.Seq, "created_at": msg.CreatedAt,
+		"id": msg.Seq, "peer_id": domain.ToPeerID(msg.ChatID, true), "created_at": msg.CreatedAt,
 	})
 }
 
@@ -258,7 +258,7 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	postID, ok := pathInt(w, r, "postId")
+	postID, ok := msgSeqIDParam(w, r, h.uc, chatID, "postSeq")
 	if !ok {
 		return
 	}
@@ -272,7 +272,7 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	// thread_root_id наружу — id поста (messageJSONOut, единый чокпоинт,
+	// thread_root_id наружу — НОМЕР поста (messageJSONOut, единый чокпоинт,
 	// см. usecase/chat/discussion_mirror.go): внутри PostComment комментарий
 	// тредится на id зеркала поста в группе обсуждения, но клиент про
 	// зеркало ничего не знает и сверяет thread_root_id с постом, который открыл.
@@ -285,7 +285,7 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	postID, ok := pathInt(w, r, "postId")
+	postID, ok := msgSeqIDParam(w, r, h.uc, chatID, "postSeq")
 	if !ok {
 		return
 	}
@@ -318,25 +318,36 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	counts, recent, err := h.uc.CommentCounts(r.Context(), chatID, ids)
+	// В запросе едут НОМЕРА постов; счётчики внутри живут на ключах строк.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
+	counts, recent, err := h.uc.CommentCounts(r.Context(), chatID, postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	seqByID := make(map[int64]int64, len(bySeq))
+	for seq, id := range bySeq {
+		seqByID[id] = seq
+	}
 	out := make(map[string]int, len(counts))
 	for id, n := range counts {
-		out[strconv.FormatInt(id, 10)] = n
+		out[strconv.FormatInt(seqByID[id], 10)] = n
 	}
 	// Авторы последних комментариев — под стек аватаров в футере поста.
 	rec := make(map[string][]domain.UserReal, len(recent))
 	for id, users := range recent {
-		rec[strconv.FormatInt(id, 10)] = users
+		rec[strconv.FormatInt(seqByID[id], 10)] = users
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"counts": out, "recent_repliers": rec})
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
-	if _, ok := peerChatID(w, r, h.uc); !ok {
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
 		return
 	}
 	ids := make([]int64, 0)
@@ -352,14 +363,26 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	counts, err := h.uc.ViewCounts(r.Context(), ids)
+	// Как и у комментариев: снаружи посты адресуются НОМЕРАМИ этого канала.
+	// Раньше ключ пира из URL здесь не использовался вовсе, и по ключам строк
+	// счётчики просмотров отдавались для сообщений ЛЮБОГО чата.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
+	counts, err := h.uc.ViewCounts(r.Context(), postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	seqByID := make(map[int64]int64, len(bySeq))
+	for seq, id := range bySeq {
+		seqByID[id] = seq
+	}
 	out := make(map[string]int64, len(counts))
 	for id, n := range counts {
-		out[strconv.FormatInt(id, 10)] = n
+		out[strconv.FormatInt(seqByID[id], 10)] = n
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
 }

@@ -158,7 +158,7 @@ func (r *StatsRepo) PostViewsByDay(ctx context.Context, msgID int64) ([]domain.S
 
 func (r *StatsRepo) TopPosts(ctx context.Context, chatID int64, limit int) ([]domain.TopPost, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, `
-		SELECT id, seq, text, views, created_at
+		SELECT seq, text, views, created_at
 		FROM messages
 		WHERE chat_id=$1 AND deleted_at IS NULL
 		ORDER BY views DESC, id DESC
@@ -170,7 +170,7 @@ func (r *StatsRepo) TopPosts(ctx context.Context, chatID int64, limit int) ([]do
 	posts := make([]domain.TopPost, 0, limit)
 	for rows.Next() {
 		var p domain.TopPost
-		if err := rows.Scan(&p.MsgID, &p.Seq, &p.Text, &p.Views, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.Seq, &p.Text, &p.Views, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, p)

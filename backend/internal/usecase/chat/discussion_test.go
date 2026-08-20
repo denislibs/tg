@@ -428,7 +428,7 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 	var env struct {
 		T string `json:"t"`
 		D struct {
-			MsgID        int64  `json:"msg_id"`
+			ID           int64  `json:"id"`
 			ThreadRootID *int64 `json:"thread_root_id"`
 		} `json:"d"`
 	}
@@ -440,16 +440,17 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 		if err := json.Unmarshal(f.frame, &env); err != nil {
 			t.Fatalf("frame decode: %v", err)
 		}
-		if env.T == "new_message" && env.D.MsgID == comment.ID {
+		if env.T == "new_message" && env.D.ID == comment.Seq {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("не нашли new_message WS-кадр для комментария %d автору 8", comment.ID)
+		t.Fatalf("не нашли new_message WS-кадр для комментария %d автору 8", comment.Seq)
 	}
-	if env.D.ThreadRootID == nil || *env.D.ThreadRootID != post.ID {
-		t.Fatalf("WS thread_root_id = %v, want id поста %d (HTTP отдаёт именно его — см. TestChannelDiscussion_HTTP)",
-			env.D.ThreadRootID, post.ID)
+	// Корень треда наружу — НОМЕР поста в канале, а не ключ его строки.
+	if env.D.ThreadRootID == nil || *env.D.ThreadRootID != post.Seq {
+		t.Fatalf("WS thread_root_id = %v, want номер поста %d (HTTP отдаёт именно его — см. TestChannelDiscussion_HTTP)",
+			env.D.ThreadRootID, post.Seq)
 	}
 }

@@ -160,19 +160,19 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/saved/tags/{reaction}", ch.SetSavedTagName) // имя тега (updateSavedReactionTag)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{peerID}/messages", ch.Send)
-		pr.Patch("/chats/{peerID}/messages/{msgID}", ch.EditMessage)
-		pr.Delete("/chats/{peerID}/messages/{msgID}", ch.DeleteMessage)
+		pr.Patch("/chats/{peerID}/messages/{msgSeq}", ch.EditMessage)
+		pr.Delete("/chats/{peerID}/messages/{msgSeq}", ch.DeleteMessage)
 		pr.Post("/chats/{peerID}/forward", ch.Forward)
-		pr.Post("/chats/{peerID}/messages/{msgID}/geo_live", ch.UpdateGeoLive)
-		pr.Post("/chats/{peerID}/messages/{msgID}/pin", ch.Pin)
-		pr.Delete("/chats/{peerID}/messages/{msgID}/pin", ch.Unpin)
-		pr.Post("/chats/{peerID}/messages/{msgID}/factcheck", ch.SetFactCheck)
-		pr.Delete("/chats/{peerID}/messages/{msgID}/factcheck", ch.RemoveFactCheck)
-		pr.Post("/chats/{peerID}/messages/{msgID}/transcribe", ch.TranscribeMessage) // расшифровка голосового/кружка
-		pr.Get("/chats/{peerID}/send_as", ch.SendAs)                                 // «личности отправителя» (send_as)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/geo_live", ch.UpdateGeoLive)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/pin", ch.Pin)
+		pr.Delete("/chats/{peerID}/messages/{msgSeq}/pin", ch.Unpin)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/factcheck", ch.SetFactCheck)
+		pr.Delete("/chats/{peerID}/messages/{msgSeq}/factcheck", ch.RemoveFactCheck)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/transcribe", ch.TranscribeMessage) // расшифровка голосового/кружка
+		pr.Get("/chats/{peerID}/send_as", ch.SendAs)                                  // «личности отправителя» (send_as)
 		pr.Get("/chats/{peerID}/pins", ch.ListPins)
-		pr.Get("/chats/{peerID}/messages/{msgID}/viewers", ch.Viewers)
-		pr.Get("/chats/{peerID}/messages/{msgID}/read_date", ch.ReadDate)
+		pr.Get("/chats/{peerID}/messages/{msgSeq}/viewers", ch.Viewers)
+		pr.Get("/chats/{peerID}/messages/{msgSeq}/read_date", ch.ReadDate)
 		pr.Get("/chats/{peerID}/mentions/next", ch.NextMention)
 		pr.Get("/chats/{peerID}/history", ch.History)
 		pr.Get("/chats/{peerID}/search", ch.SearchMessages)
@@ -194,12 +194,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Patch("/chats/{peerID}/topics/{topicID}", ch.EditTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/hide", ch.HideTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/pin", ch.PinTopic)
-		// read/mute адресуют тему по root_msg_id (пара chat+root — ключ состояния);
-		// имя chi-параметра {topicID} общее с close/hide/pin, чтобы дерево роутов не
-		// конфликтовало — значение в этом слоте для read/mute передаётся root_msg_id.
+		// read/mute адресуют тему по НОМЕРУ корневого сообщения (пара chat+root —
+		// ключ состояния); имя chi-параметра {topicID} общее с close/hide/pin, чтобы
+		// дерево роутов не конфликтовало — значение в этом слоте для read/mute
+		// передаётся root_msg_id, то есть тот же номер, что едет наружу витриной тем.
 		pr.Post("/chats/{peerID}/topics/{topicID}/read", ch.ReadTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/mute", ch.MuteTopic)
-		pr.Get("/chats/{peerID}/threads/{rootID}", ch.ThreadMessages)
+		pr.Get("/chats/{peerID}/threads/{rootSeq}", ch.ThreadMessages)
 		pr.Post("/chats/{peerID}/scheduled", ch.ScheduleMessage)
 		pr.Get("/chats/{peerID}/scheduled", ch.ListScheduled)
 		pr.Patch("/chats/{peerID}/scheduled/{schedID}", ch.UpdateScheduled)
@@ -221,7 +222,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/stars/balance", ch.StarsBalance)
 		pr.Get("/stars/transactions", ch.StarsTransactions)
 		pr.Post("/stars/topup", ch.TopUpStars)
-		pr.Post("/messages/{msgID}/unlock", ch.UnlockPaidMedia)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/unlock", ch.UnlockPaidMedia)
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
@@ -242,12 +243,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{peerID}/read", ch.Read)
 		pr.Post("/chats/{peerID}/clear", ch.ClearHistory)
 		pr.Get("/sync", ch.Sync)
-		pr.Post("/chats/{peerID}/messages/{msgID}/reactions", ch.AddReaction)
-		pr.Delete("/chats/{peerID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
-		pr.Get("/chats/{peerID}/messages/{msgID}/reactions", ch.ListReactions)
-		pr.Get("/chats/{peerID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
-		pr.Post("/chats/{peerID}/messages/{msgID}/star_reaction", ch.SendStarReaction) // платная ⭐-реакция
-		pr.Get("/chats/{peerID}/messages/{msgID}/star_reaction", ch.GetStarReaction)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/reactions", ch.AddReaction)
+		pr.Delete("/chats/{peerID}/messages/{msgSeq}/reactions/{emoji}", ch.RemoveReaction)
+		pr.Get("/chats/{peerID}/messages/{msgSeq}/reactions", ch.ListReactions)
+		pr.Get("/chats/{peerID}/messages/{msgSeq}/reactions/users", ch.ReactionUsers)
+		pr.Post("/chats/{peerID}/messages/{msgSeq}/star_reaction", ch.SendStarReaction) // платная ⭐-реакция
+		pr.Get("/chats/{peerID}/messages/{msgSeq}/star_reaction", ch.GetStarReaction)
 		pr.Post("/chats/{peerID}/reactions/read", ch.ReadReactions) // T12: сброс бейджа непрочитанных реакций
 
 		// Стикеры и GIF
@@ -335,8 +336,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/channels/{peerID}/discussion", chh.UnlinkDiscussion)
 		pr.Get("/channels/{peerID}/discussion_candidates", chh.DiscussionCandidates)
 		pr.Put("/channels/{peerID}/sign_messages", chh.SetSignatures)
-		pr.Post("/channels/{peerID}/posts/{postId}/comments", chh.PostComment)
-		pr.Get("/channels/{peerID}/posts/{postId}/comments", chh.ListComments)
+		pr.Post("/channels/{peerID}/posts/{postSeq}/comments", chh.PostComment)
+		pr.Get("/channels/{peerID}/posts/{postSeq}/comments", chh.ListComments)
 		pr.Get("/channels/{peerID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{peerID}/view_counts", chh.ViewCounts)
 		pr.Get("/channels/{peerID}/similar", chh.Similar)
@@ -348,7 +349,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		if statsUC != nil {
 			sth := NewStatsHandler(statsUC, chatUC)
 			pr.Get("/channels/{peerID}/stats", sth.ChannelStats)
-			pr.Get("/chats/{peerID}/messages/{msgID}/stats", sth.PostStats)
+			pr.Get("/chats/{peerID}/messages/{msgSeq}/stats", sth.PostStats)
 		}
 		pr.Get("/search", chh.Search)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
@@ -406,7 +407,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Put("/contacts/{userID}/photo", cph.SetCustomPhoto)
 			pr.Delete("/contacts/{userID}/photo", cph.ClearCustomPhoto)
 			pr.Post("/contacts/{userID}/suggest_photo", cph.SuggestPhoto)
-			pr.Post("/photo_suggestions/{id}/accept", cph.AcceptSuggestion)
+			pr.Post("/chats/{peerID}/photo_suggestions/{msgSeq}/accept", cph.AcceptSuggestion)
 		}
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)

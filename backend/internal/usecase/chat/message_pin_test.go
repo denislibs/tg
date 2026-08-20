@@ -67,8 +67,13 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 	if _, ok := a["actor"]; ok {
 		t.Fatalf("имя актора уехало на провод: %v", a)
 	}
-	if int64(a["msg_id"].(float64)) != msg.ID || int64(a["msg_seq"].(float64)) != msg.Seq {
-		t.Fatalf("цель экшена = %v; want id=%d seq=%d", a, msg.ID, msg.Seq)
+	// Цель адресуется ОДНИМ числом — номером в чате (msg_seq исчез вместе с
+	// внутренним ключом строки).
+	if _, ok := a["msg_seq"]; ok {
+		t.Fatalf("в экшене осталось второе число: %v", a)
+	}
+	if int64(a["msg_id"].(float64)) != msg.Seq {
+		t.Fatalf("цель экшена = %v; want номер %d", a, msg.Seq)
 	}
 	if a["msg_type"] != "text" || a["msg_text"] != "закрепи меня" {
 		t.Fatalf("превью = %v", a)

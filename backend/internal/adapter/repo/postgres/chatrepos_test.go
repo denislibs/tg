@@ -374,9 +374,9 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 		t.Fatalf("unread mentions = %d, want 2", d[0].UnreadMentionsCount)
 	}
 
-	seq, msgID, err := repo.NextMention(ctx, chatID, b, 0)
-	if err != nil || seq != seqs[0] || msgID != mids[0] {
-		t.Fatalf("NextMention = seq %d msg %d err %v; want seq %d msg %d", seq, msgID, err, seqs[0], mids[0])
+	seq, err := repo.NextMention(ctx, chatID, b, 0)
+	if err != nil || seq != seqs[0] {
+		t.Fatalf("NextMention = %d err %v; want %d", seq, err, seqs[0])
 	}
 
 	// Read up to the first mention → one left, next is the second.
@@ -388,7 +388,7 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 	if d[0].UnreadMentionsCount != 1 {
 		t.Fatalf("unread mentions after partial read = %d, want 1", d[0].UnreadMentionsCount)
 	}
-	if seq, _, _ := repo.NextMention(ctx, chatID, b, seqs[0]); seq != seqs[1] {
+	if seq, _ := repo.NextMention(ctx, chatID, b, seqs[0]); seq != seqs[1] {
 		t.Fatalf("NextMention after read = %d, want %d", seq, seqs[1])
 	}
 
@@ -396,7 +396,7 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 	if rem, _ := repo.ClearMentions(ctx, chatID, b, seqs[1]); rem != 0 {
 		t.Fatalf("ClearMentions rest = %d, want 0", rem)
 	}
-	if _, _, err := repo.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := repo.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("NextMention when none: want ErrNotFound, got %v", err)
 	}
 }

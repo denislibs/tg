@@ -57,11 +57,6 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 			return DialogsPage{}, err
 		}
 	}
-	byID := make(map[int64]domain.Message, len(messages))
-	for _, m := range messages {
-		byID[m.ID] = m
-	}
-
 	// ── dialogs + chats ─────────────────────────────────────────────────────
 	dialogs := make([]domain.Dialog, 0, len(page.Dialogs))
 	chats := make([]domain.Chat, 0, len(page.Dialogs))
@@ -72,7 +67,11 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 		// Ссылка на пир и ТЕЛО пира — разные вещи: dialog.peer это ссылка, а
 		// тело едет вектором chats (у группы/канала) либо users (у приватного
 		// чата и «Избранного», где пир это человек).
-		dialogs = append(dialogs, d.ToDialog(domain.NewPeer(peerID), byID[d.TopMessageID].Seq))
+		// top_message берётся ИЗ ТОЙ ЖЕ строки выборки, что и TopMessageID
+		// (см. DialogRecord.TopMessageSeq), а не поиском по загруженным
+		// сообщениям: промах такого поиска отдавал бы 0, а 0 здесь значит
+		// «самое новое» — подмена, а не деградация.
+		dialogs = append(dialogs, d.ToDialog(domain.NewPeer(peerID), d.TopMessageSeq))
 		if peerID.IsAnyChat() {
 			chats = append(chats, d.ToChannel())
 		}

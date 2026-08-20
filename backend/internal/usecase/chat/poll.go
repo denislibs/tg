@@ -30,6 +30,7 @@ type SendPollInput struct {
 	// опрос — такое же сообщение, как остальные, и уезжает тем же Send.
 	// Effect в пакет не входит: sanitizeEffect снимает эффект с типа "poll".
 	ReplyToID        *int64
+	ReplyToPeerID    *int64
 	ReplyQuoteText   *string
 	ReplyQuoteOffset *int
 	ThreadRootID     *int64
@@ -87,7 +88,8 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "poll",
 		ClientMsgID: in.ClientMsgID, PollID: &p.ID,
-		ReplyToID: in.ReplyToID, ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
+		ReplyToID: in.ReplyToID, ReplyToPeerID: in.ReplyToPeerID,
+		ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
 	})
 	if err != nil {

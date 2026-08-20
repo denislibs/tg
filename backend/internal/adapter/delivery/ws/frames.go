@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -28,18 +29,22 @@ func helloFrame(st domain.UserState) []byte {
 // Входящие кадры адресуют ПИРА знаковым ключом (пользователь ≥ 0, чат < 0);
 // внутренний chatID достаёт слой разрешения (usecase/chat/peeraddr.go).
 type sendMessageData struct {
-	PeerID    domain.PeerID          `json:"peer_id"`
-	Type      string                 `json:"type"`
-	Text      string                 `json:"text"`
-	Entities  domain.MessageEntities `json:"entities"`
-	ReplyToID *int64                 `json:"reply_to_id"`
+	PeerID   domain.PeerID          `json:"peer_id"`
+	Type     string                 `json:"type"`
+	Text     string                 `json:"text"`
+	Entities domain.MessageEntities `json:"entities"`
+	// reply_to_id — НОМЕР отвечаемого сообщения (schema reply_to_msg_id);
+	// reply_to_peer_id — ключ пира, когда отвечают в ДРУГОЙ чат (его отсутствие
+	// значит «тот же пир»). Порознь они сообщение не адресуют.
+	ReplyToID     *int64         `json:"reply_to_id"`
+	ReplyToPeerID *domain.PeerID `json:"reply_to_peer_id"`
 	// Ответ с цитатой фрагмента (Telegram reply quote): текст выделенного куска
 	// оригинала + его offset (UTF-16). Применяются только вместе с reply_to_id.
 	ReplyQuoteText   *string `json:"reply_quote_text"`
 	ReplyQuoteOffset *int    `json:"reply_quote_offset"`
 	ClientMsgID      string  `json:"client_msg_id"`
 	MediaID          *int64  `json:"media_id"`
-	GroupedID        string  `json:"grouped_id"`
+	GroupedID        int64   `json:"grouped_id"`
 	// Гео-точка (type 'geo') / контакт (type 'contact').
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
@@ -48,7 +53,7 @@ type sendMessageData struct {
 	GeoLivePeriod *int     `json:"geo_live_period"`
 	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
-	// Сообщение в тред (форум-топик / комментарии): id корневого сообщения.
+	// Сообщение в тред (форум-топик / комментарии): НОМЕР корневого сообщения.
 	ThreadRootID *int64 `json:"thread_root_id"`
 	// E2E (type 'encrypted'): base64 iv||ciphertext + опциональный self-destruct TTL.
 	EncBody    string `json:"enc_body"` // base64 iv||ciphertext
@@ -71,14 +76,35 @@ type readData struct {
 	UpToSeq int64         `json:"up_to_seq"`
 }
 
+// readMediaData — «медиа прослушано». Сообщение адресуется парой «пир +
+// номер», как и везде: ключ `id` со значением seq.
 type readMediaData struct {
 	PeerID domain.PeerID `json:"peer_id"`
-	MsgID  int64         `json:"msg_id"`
+	Seq    int64         `json:"id"`
 }
 
 type typingData struct {
 	PeerID domain.PeerID `json:"peer_id"`
 	Action string        `json:"action"` // "typing" | "voice" | "video" (default typing)
+}
+
+// replyPeerChatID — reply_to_peer_id входящего кадра (ключ пира ЧУЖОГО чата)
+// во внутренний chatID. nil/0 — ответ в том же чате: в схеме отсутствие
+// reply_to_peer_id значит «тот же пир».
+func replyPeerChatID(ctx context.Context, svc peerResolver, viewerID int64, peer *domain.PeerID) (*int64, error) {
+	if peer == nil || *peer == domain.NullPeerID {
+		return nil, nil
+	}
+	chatID, err := svc.PeerToChatID(ctx, viewerID, *peer)
+	if err != nil {
+		return nil, err
+	}
+	return &chatID, nil
+}
+
+// peerResolver — та часть usecase, которой хватает разрешению чужого пира.
+type peerResolver interface {
+	PeerToChatID(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error)
 }
 
 // sendAsChatID — знаковый ключ «личности отправителя» во внутренний chatID.

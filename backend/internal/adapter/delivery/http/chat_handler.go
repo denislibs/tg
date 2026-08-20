@@ -193,7 +193,7 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -330,17 +330,21 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 type sendBody struct {
-	Type      string                 `json:"type"`
-	Text      string                 `json:"text"`
-	Entities  domain.MessageEntities `json:"entities"`
-	ReplyToID *int64                 `json:"reply_to_id"`
+	Type     string                 `json:"type"`
+	Text     string                 `json:"text"`
+	Entities domain.MessageEntities `json:"entities"`
+	// reply_to_id — НОМЕР отвечаемого сообщения (schema reply_to_msg_id);
+	// reply_to_peer_id — ключ пира, когда отвечают в ДРУГОЙ чат (его отсутствие
+	// значит «тот же пир»). Порознь они сообщение не адресуют.
+	ReplyToID     *int64         `json:"reply_to_id"`
+	ReplyToPeerID *domain.PeerID `json:"reply_to_peer_id"`
 	// ответ с цитатой фрагмента (Telegram reply quote): текст + offset (UTF-16)
 	ReplyQuoteText   *string `json:"reply_quote_text"`
 	ReplyQuoteOffset *int    `json:"reply_quote_offset"`
 	ClientMsgID      string  `json:"client_msg_id"`
 	MediaID          *int64  `json:"media_id"`
-	GroupedID        string  `json:"grouped_id"`
-	// сообщение в тред (форум-топик): id корневого сообщения топика
+	GroupedID        int64   `json:"grouped_id"`
+	// сообщение в тред (форум-топик/комментарии): НОМЕР корневого сообщения
 	ThreadRootID *int64 `json:"thread_root_id"`
 	// гео-точка (type 'geo') / контакт (type 'contact')
 	GeoLat        *float64 `json:"geo_lat"`
@@ -374,7 +378,11 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid type")
 		return
 	}
-	// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+	replyPeer, ok := replyPeerChatID(w, r, h.svc, body.ReplyToPeerID)
+	if !ok {
+		return
+	}
+	// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт); в discussion-группе
 	// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
 	// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
 	// Ошибка (нет зеркала и дозавести нечего) — понятный 404, а не запись
@@ -390,7 +398,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
+		ReplyToID: body.ReplyToID, ReplyToPeerID: replyPeer,
+		ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: threadRoot,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
@@ -433,7 +442,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := int(queryInt(r, "limit", 40))
-	// Тред (форум-топик / комментарии): ?thread_root=<msgID> ограничивает окно.
+	// Тред (форум-топик / комментарии): ?thread_root=<номер корня> ограничивает окно.
 	var threadRoot *int64
 	if tr := queryInt(r, "thread_root", 0); tr > 0 {
 		threadRoot = &tr
@@ -506,7 +515,7 @@ func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -576,7 +585,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -618,7 +627,7 @@ func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -657,7 +666,7 @@ func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -686,7 +695,7 @@ func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -715,7 +724,7 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -737,10 +746,12 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 type forwardBody struct {
-	FromPeerID  domain.PeerID `json:"from_peer_id"`
-	MsgIDs      []int64       `json:"msg_ids"`
-	DropAuthor  bool          `json:"drop_author"`
-	DropCaption bool          `json:"drop_caption"`
+	FromPeerID domain.PeerID `json:"from_peer_id"`
+	// ids — НОМЕРА пересылаемых сообщений у пира-источника (schema
+	// messages.forwardMessages: id:Vector<int> вместе с from_peer).
+	Seqs        []int64 `json:"ids"`
+	DropAuthor  bool    `json:"drop_author"`
+	DropCaption bool    `json:"drop_caption"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -749,16 +760,27 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body forwardBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FromPeerID == domain.NullPeerID || len(body.MsgIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "from_peer_id and msg_ids are required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FromPeerID == domain.NullPeerID || len(body.Seqs) == 0 {
+		writeError(w, http.StatusBadRequest, "from_peer_id and ids are required")
 		return
 	}
 	fromChatID, ok := resolveBodyPeer(w, r, h.svc, body.FromPeerID, false)
 	if !ok {
 		return
 	}
+	// Номера у пира-источника — во внутренние ключи строк. Номера, которых
+	// в том чате нет, отваливаются здесь, а не превращаются в чужие ключи.
+	msgIDs, _, err := msgSeqIDs(r.Context(), h.svc, fromChatID, body.Seqs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "forward failed")
+		return
+	}
+	if len(msgIDs) == 0 {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
-		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
+		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: msgIDs, SenderID: h.meID(r),
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
@@ -781,7 +803,7 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -820,7 +842,7 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -839,8 +861,8 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
 }
 
-// NextMention serves «jump to next @»: GET /chats/{chatID}/mentions/next?after_seq=
-// returns the seq/msg_id of the caller's earliest unread mention past after_seq
+// NextMention serves «jump to next @»: GET /chats/{peerID}/mentions/next?after_seq=
+// returns the id (номер в чате) of the caller's earliest unread mention past after_seq
 // (404 when there's none). Powers the floating mention button in the open chat.
 func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
@@ -848,7 +870,7 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	afterSeq := queryInt(r, "after_seq", 0)
-	seq, msgID, err := h.svc.NextMention(r.Context(), chatID, h.meID(r), afterSeq)
+	seq, err := h.svc.NextMention(r.Context(), chatID, h.meID(r), afterSeq)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "no unread mention")
 		return
@@ -857,7 +879,7 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load mention")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"seq": seq, "msg_id": msgID})
+	writeJSON(w, http.StatusOK, map[string]any{"id": seq})
 }
 
 // MediaHistory serves the profile's shared-media tabs:
@@ -927,7 +949,8 @@ func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"seq": seq})
+	// Ответ — АДРЕС сообщения этой даты, то есть его id (номер в чате).
+	writeJSON(w, http.StatusOK, map[string]any{"id": seq})
 }
 
 // Calendar — GET /chats/{chatID}/calendar?month=<unix>: по одному медиа-сообщению
@@ -954,8 +977,7 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	for _, d := range days {
 		out = append(out, map[string]any{
 			"day":       d.Day.Unix(),
-			"msg_id":    d.MsgID,
-			"seq":       d.Seq,
+			"id":        d.Seq,
 			"media_id":  d.MediaID,
 			"type":      d.Type,
 			"has_thumb": d.HasThumb,
@@ -1011,6 +1033,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ClientMsgID   string   `json:"client_msg_id"`
 		// Общий пакет параметров отправки — те же имена полей, что у sendBody.
 		ReplyToID        *int64         `json:"reply_to_id"`
+		ReplyToPeerID    *domain.PeerID `json:"reply_to_peer_id"`
 		ReplyQuoteText   *string        `json:"reply_quote_text"`
 		ReplyQuoteOffset *int           `json:"reply_quote_offset"`
 		ThreadRootID     *int64         `json:"thread_root_id"`
@@ -1021,7 +1044,11 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	// thread_root_id с клиента — id ПОСТА (внешний контракт), см. Send.
+	replyPeer, ok := replyPeerChatID(w, r, h.svc, b.ReplyToPeerID)
+	if !ok {
+		return
+	}
+	// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт), см. Send.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, b.ThreadRootID)
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
@@ -1036,7 +1063,8 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		Question: b.Question, Options: b.Options,
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
 		ClientMsgID: b.ClientMsgID,
-		ReplyToID:   b.ReplyToID, ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
+		ReplyToID:   b.ReplyToID, ReplyToPeerID: replyPeer,
+		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
 	})
 	if errors.Is(err, domain.ErrTooLong) {
@@ -1372,7 +1400,7 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow) map[string]any {
 	return map[string]any{
 		// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
-		"id": row.Topic.ID, "peer_id": domain.ToPeerID(row.Topic.ChatID, true), "root_msg_id": row.Topic.RootMsgID,
+		"id": row.Topic.ID, "peer_id": domain.ToPeerID(row.Topic.ChatID, true), "root_msg_id": row.Topic.RootMsgSeq,
 		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "icon_emoji": row.Topic.IconEmoji,
 		"closed": row.Topic.Closed, "hidden": row.Topic.Hidden, "pinned": row.Topic.Pinned,
 		"pos": row.Topic.Pos, "is_general": row.Topic.IsGeneral,
@@ -1518,13 +1546,14 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 
 // ReadTopic — POST /chats/{chatID}/topics/{topicID}/read {up_to_seq}.
 // Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
-// В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
+// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
+// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
 func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := pathInt(w, r, "topicID")
+	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
 	if !ok {
 		return
 	}
@@ -1544,13 +1573,14 @@ func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 
 // MuteTopic — POST /chats/{chatID}/topics/{topicID}/mute {muted}.
 // Включает/выключает уведомления темы для пользователя.
-// В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
+// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
+// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
 func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := pathInt(w, r, "topicID")
+	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
 	if !ok {
 		return
 	}
@@ -1568,13 +1598,14 @@ func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// ThreadMessages — GET /chats/{chatID}/threads/{rootID}: сообщения треда.
+// ThreadMessages — GET /chats/{peerID}/threads/{rootSeq}: сообщения треда.
+// В сегменте едет НОМЕР корня в этом чате (для комментариев — номер зеркала).
 func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootID, ok := pathInt(w, r, "rootID")
+	rootID, ok := msgSeqIDParam(w, r, h.svc, chatID, "rootSeq")
 	if !ok {
 		return
 	}
@@ -1703,7 +1734,7 @@ func (h *ChatHandler) AddReaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -1720,7 +1751,7 @@ func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -1754,7 +1785,7 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -1780,7 +1811,7 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -1897,7 +1928,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -1940,7 +1971,7 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}
@@ -2011,9 +2042,13 @@ func messageJSONOut(ctx context.Context, svc *usecasechat.Interactor, m domain.M
 	return messagesJSON(ctx, svc, []domain.Message{m})[0]
 }
 
+// messageJSON — витрина одного сообщения. Идентичность здесь ОДНО число: `id`
+// со значением seq (номер в чате) — в схеме message.id по-пирный, а пара
+// «пир + id» и есть адрес. Глобальный messages.id остаётся ключом строки нашей
+// базы и на провод не выходит (usecase/chat/msgaddr.go).
 func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
 	j := map[string]any{
-		"id": m.ID, "peer_id": peer, "seq": m.Seq, "sender_id": m.SenderID,
+		"id": m.Seq, "peer_id": peer, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
 		"created_at": m.CreatedAt, "deleted": m.Deleted,
@@ -2128,7 +2163,7 @@ func messageJSON(m domain.Message, peer domain.PeerID) map[string]any {
 	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{
-			"msg_id": m.ReplyTo.MsgID, "seq": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,
+			"id": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,
 			"text": m.ReplyTo.Text, "type": m.ReplyTo.Type,
 		}
 		if len(m.ReplyTo.Entities) > 0 {

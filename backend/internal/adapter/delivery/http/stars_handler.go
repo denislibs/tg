@@ -69,10 +69,18 @@ func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"transactions": txs})
 }
 
-// UnlockPaidMedia — POST /messages/{msgID}/unlock: разблокировать платное медиа
-// за звёзды. Списывает цену у покупателя, начисляет автору, отдаёт медиа.
+// UnlockPaidMedia — POST /chats/{peerID}/messages/{msgSeq}/unlock: разблокировать
+// платное медиа за звёзды. Списывает цену у покупателя, начисляет автору,
+// отдаёт медиа.
+//
+// Ключ пира в адресе обязателен: сообщение адресуется парой «пир + номер», и
+// без пира этот путь мог существовать только на внутреннем ключе строки.
 func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
-	msgID, ok := pathInt(w, r, "msgID")
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
 	if !ok {
 		return
 	}

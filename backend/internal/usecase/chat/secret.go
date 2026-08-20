@@ -35,7 +35,7 @@ func (i *Interactor) CreateSecretChat(ctx context.Context, userID, peerID int64,
 	// Push оффлайн-получателю: заявка на секретный чат — сообщений в чате ещё нет,
 	// поэтому msgID/seq = 0, тело — служебный текст (гейтинг online/notify внутри).
 	if i.notifier != nil {
-		i.notifier.NotifyNewMessage(ctx, sc.ResponderID, sc.ChatID, 0, 0, sc.InitiatorID, "🔒 Приглашение в секретный чат", domain.ToPeerID(sc.ChatID, true))
+		i.notifier.NotifyNewMessage(ctx, sc.ResponderID, sc.ChatID, 0, sc.InitiatorID, "🔒 Приглашение в секретный чат", domain.ToPeerID(sc.ChatID, true))
 	}
 	return sc, nil
 }

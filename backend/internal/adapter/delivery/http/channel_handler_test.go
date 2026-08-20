@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	}
 	cid := itoa(created.PeerID)
 
-	// Creator posts → 200 + seq.
+	// Creator posts → 200 + адрес поста (id = номер в канале).
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
 		"text": "hello world", "client_msg_id": "c1",
 	})
@@ -35,12 +36,15 @@ func TestChannelFlow_HTTP(t *testing.T) {
 		t.Fatalf("creator post: %d %s", rec.Code, rec.Body.String())
 	}
 	var post struct {
-		Seq    int64 `json:"seq"`
+		ID     int64 `json:"id"`
 		PeerID int64 `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &post)
-	if post.Seq == 0 {
-		t.Fatalf("expected non-zero seq, got %s", rec.Body.String())
+	if post.ID == 0 {
+		t.Fatalf("expected non-zero id, got %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"seq"`) {
+		t.Fatalf("в ответе осталось второе число: %s", rec.Body.String())
 	}
 	if post.PeerID != created.PeerID {
 		t.Fatalf("post chat_id = %d; want %d", post.PeerID, created.PeerID)

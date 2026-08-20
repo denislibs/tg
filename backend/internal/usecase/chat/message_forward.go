@@ -221,7 +221,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("new_message", uid, extra))
 				if i.notifier != nil && uid != in.SenderID {
 					notifyPeer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text, notifyPeer)
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, notifyPeer)
 				}
 			}
 		}

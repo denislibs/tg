@@ -62,10 +62,15 @@ func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
 
 // Payload-строители НЕ кладут ключ чата: он зависит от получателя и
 // приклеивается на выходе (withPeer / peerPayloads в updates_log.go).
+//
+// Сообщение адресуется ОДНИМ числом — ключ `id`, значение `seq` (номер в
+// чате). Пары {msg_id, seq} на проводе больше нет: глобальный messages.id —
+// ключ строки нашей базы, наружу он не выходит (см. usecase/chat/msgaddr.go).
+// Имя ключа взято из схемы: там идентификатор сообщения называется `id`.
 func (i *Interactor) messageUpdatePayload(ctx context.Context, m domain.Message) map[string]any {
 	i.hydrateMessagePeers(ctx, &m)
 	p := map[string]any{
-		"msg_id": m.ID, "seq": m.Seq,
+		"id":        m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
 		"entities": m.Entities,
 		"media_id": m.MediaID, "created_at": m.CreatedAt,
@@ -202,7 +207,7 @@ func geoJSON(m domain.Message) map[string]any {
 // трансляции): клиент правит гео открытого бабла без перезагрузки истории.
 func geoLiveUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
-		"msg_id": m.ID, "seq": m.Seq, "geo": geoJSON(m),
+		"id": m.Seq, "geo": geoJSON(m),
 	}
 }
 
@@ -237,7 +242,7 @@ func factCheckJSON(fc *domain.FactCheck) map[string]any {
 // блок проверки фактов в уже отрисованном бабле. factcheck==null — проверка снята.
 func factCheckUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
-		"msg_id": m.ID, "seq": m.Seq,
+		"id":        m.Seq,
 		"factcheck": factCheckJSON(m.FactCheck),
 	}
 }
@@ -246,7 +251,7 @@ func factCheckUpdatePayload(m domain.Message) map[string]any {
 // rides along so a bot editing a message's keyboard updates the bubble live.
 func editUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
-		"msg_id": m.ID, "seq": m.Seq,
+		"id":   m.Seq,
 		"text": m.Text, "entities": m.Entities, "edited_at": m.EditedAt,
 	}
 	p["reply_markup"] = m.ReplyMarkup // may be null → keyboard removed
@@ -255,9 +260,9 @@ func editUpdatePayload(m domain.Message) map[string]any {
 
 // deleteUpdatePayload is the body of a "delete_message" update/frame. `forMe`
 // flags a per-user "delete for me" (only that user's own tabs receive it).
-func deleteUpdatePayload(msgID, seq int64, forMe bool) map[string]any {
+func deleteUpdatePayload(seq int64, forMe bool) map[string]any {
 	return map[string]any{
-		"msg_id": msgID, "seq": seq, "for_me": forMe,
+		"id": seq, "for_me": forMe,
 	}
 }
 
@@ -267,12 +272,12 @@ func deleteUpdatePayload(msgID, seq int64, forMe bool) map[string]any {
 // посчитанное в той же транзакции после Add/Remove. Абсолютный агрегат делает
 // повтор из /sync идемпотентным по построению. counts viewer-agnostic (без mine):
 // один и тот же payload уходит всем получателям и в лог.
-func reactionPayload(messageID, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
+func reactionPayload(seq, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
 	if counts == nil {
 		counts = []domain.ReactionCount{}
 	}
 	return map[string]any{
-		"msg_id": messageID, "user_id": userID,
+		"id": seq, "user_id": userID,
 		"author_id": authorID, "emoji": emoji, "action": action,
 		"counts": counts,
 	}
@@ -282,9 +287,9 @@ func reactionPayload(messageID, userID, authorID int64, emoji, action string, co
 // сообщения (total) плюс отправитель этой порции (sender_id) с его суммарным
 // вкладом (mine). Получатели правят агрегат бабла; тот, чей id == sender_id,
 // обновляет ещё и свой личный вклад (mine).
-func starReactionPayload(messageID, senderID, total, mine int64) map[string]any {
+func starReactionPayload(seq, senderID, total, mine int64) map[string]any {
 	return map[string]any{
-		"msg_id": messageID, "sender_id": senderID,
+		"id": seq, "sender_id": senderID,
 		"total": total, "mine": mine,
 	}
 }

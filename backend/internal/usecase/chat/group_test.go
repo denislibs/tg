@@ -810,8 +810,8 @@ func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) erro
 func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
-	return 0, 0, domain.ErrNotFound
+func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
+	return 0, domain.ErrNotFound
 }
 func (c groupChats) MaxSeq(context.Context, int64) (int64, error)              { return 0, nil }
 func (c groupChats) ClearedSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }

@@ -43,10 +43,12 @@ func TestListDialogs_Container_HTTP(t *testing.T) {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 	var sent struct {
-		ID  int64 `json:"id"`
-		Seq int64 `json:"seq"`
+		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &sent)
+	if strings.Contains(rec.Body.String(), `"seq"`) {
+		t.Fatalf("в ответе осталось второе число: %s", rec.Body.String())
+	}
 
 	body := getChats(t, h, tokenA, "")
 	if len(body.Dialogs) != 1 {
@@ -61,9 +63,10 @@ func TestListDialogs_Container_HTTP(t *testing.T) {
 	if d.Peer.Underscore != "peerChannel" || -d.Peer.ChannelID != group.PeerID {
 		t.Errorf("peer = %+v; want peerChannel(%d)", d.Peer, -group.PeerID)
 	}
-	// top_message адресует последнее сообщение ЧИСЛОМ.
-	if d.TopMessage != sent.Seq {
-		t.Errorf("top_message = %d; want %d", d.TopMessage, sent.Seq)
+	// top_message адресует последнее сообщение ЧИСЛОМ — тем же, которым оно
+	// адресуется везде (номер в чате).
+	if d.TopMessage != sent.ID {
+		t.Errorf("top_message = %d; want %d", d.TopMessage, sent.ID)
 	}
 	// …а сам объект едет вектором messages.
 	if len(body.Messages) != 1 || int64(body.Messages[0]["id"].(float64)) != sent.ID {
@@ -273,8 +276,8 @@ func TestListDialogs_MessagesOnlyForPage_HTTP(t *testing.T) {
 	if len(page.Dialogs) != 1 || len(page.Messages) != 1 {
 		t.Fatalf("страница: dialogs=%d messages=%d, want 1 1", len(page.Dialogs), len(page.Messages))
 	}
-	if page.Messages[0]["seq"] == nil || int64(page.Messages[0]["seq"].(float64)) != page.Dialogs[0].TopMessage {
+	if page.Messages[0]["id"] == nil || int64(page.Messages[0]["id"].(float64)) != page.Dialogs[0].TopMessage {
 		t.Errorf("сообщение страницы не то, на которое ссылается её диалог: %v vs %d",
-			page.Messages[0]["seq"], page.Dialogs[0].TopMessage)
+			page.Messages[0]["id"], page.Dialogs[0].TopMessage)
 	}
 }

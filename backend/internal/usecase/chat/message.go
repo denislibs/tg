@@ -131,19 +131,25 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, domain.ErrTooLong
 	}
 	in.Entities = sanitizeEntities(in.Entities)
-	// Ответ на сообщение: источник истины — ФАКТИЧЕСКИЙ чат оригинала, а не
-	// присланный клиентом reply_to_peer_id (клиенту не доверяем). Резолвим
-	// оригинал по ReplyToID всегда, когда ответ есть.
-	//   • оригинал в ДРУГОМ чате → кросс-чат-ответ (Telegram reply_to_peer_id):
+	// Ответ на сообщение: адрес оригинала — пара «пир + номер»
+	// (messageReplyHeader: reply_to_msg_id осмыслен только вместе с
+	// reply_to_peer_id, отсутствие которого значит «тот же пир»). Резолвим
+	// оригинал всегда, когда ответ есть.
+	//   • пир указан и он ДРУГОЙ → кросс-чат-ответ (Telegram reply_to_peer_id):
 	//     проверяем членство отправителя в том чате (нет доступа → forbidden) и
 	//     собираем снимок превью (имя автора + текст/лейбл) прямо на ответе, т.к.
 	//     получатель может не иметь доступа к исходному чату;
-	//   • оригинал в текущем чате → обычный ответ (снимки пустые, peer nil);
-	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков нет.
+	//   • пира нет → обычный ответ в этом же чате (снимки пустые, peer nil);
+	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков
+	//     нет, ссылка на чужой пир сбрасывается (непроверенный чат наружу не едет).
 	var replyPeerID *int64
 	var snapName, snapText string
 	if in.ReplyToID != nil {
-		orig, err := i.msgs.GetByID(ctx, *in.ReplyToID)
+		srcChat := in.ChatID
+		if in.ReplyToPeerID != nil {
+			srcChat = *in.ReplyToPeerID
+		}
+		orig, err := i.messageBySeq(ctx, srcChat, *in.ReplyToID)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			// ненайденный оригинал — обычный reply без снимка (не ошибка)
@@ -159,8 +165,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if !ok {
 				return domain.Message{}, domain.ErrForbidden // нет доступа к исходному чату
 			}
-			srcChat := orig.ChatID
-			replyPeerID = &srcChat
+			src := orig.ChatID
+			replyPeerID = &src
 			snapName = i.replyAuthorName(ctx, orig)
 			snapText = replySnapshotText(orig)
 		}
@@ -364,8 +370,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.ClientMsgID != "" {
 			cmid = &in.ClientMsgID
 		}
-		var groupedID *string
-		if in.GroupedID != "" && len(in.GroupedID) <= 32 {
+		// grouped_id — схемный long: непрозрачный ключ медиагруппы, который
+		// генерирует отправитель. 0 значит «не в группе» (в схеме это
+		// отсутствие flags.17), поэтому отдельного «пустого» значения нет.
+		var groupedID *int64
+		if in.GroupedID != 0 {
 			groupedID = &in.GroupedID
 		}
 		msg, e = i.msgs.Insert(ctx, domain.Message{
@@ -477,7 +486,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			for _, uid := range recipients {
 				if uid != in.SenderID {
 					peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text, peer)
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer)
 				}
 			}
 		}
@@ -719,16 +728,16 @@ func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID
 	return at, nil
 }
 
-// NextMention returns the seq/message id of the caller's earliest unread mention
-// past afterSeq (Telegram getUnreadMentions / «jump to next @»). Not a member →
-// domain.ErrNotFound; also domain.ErrNotFound when there is no such mention.
-func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error) {
+// NextMention returns the id (номер в чате) of the caller's earliest unread
+// mention past afterSeq (Telegram getUnreadMentions / «jump to next @»). Not a
+// member → domain.ErrNotFound; also domain.ErrNotFound when there is none.
+func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	if !ok {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return i.chats.NextMention(ctx, chatID, userID, afterSeq)
 }
@@ -814,7 +823,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		}
 		slices.Sort(m)
 		members = m
-		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"msg_id": msgID})
+		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"id": msg.Seq})
 		if e != nil {
 			return e
 		}

@@ -243,7 +243,10 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 		// истории учитывается так же, как в SQL (seq > cleared_max_seq).
 		for i := len(r.s.messages[cid]) - 1; i >= 0; i-- {
 			if last := r.s.messages[cid][i]; last.Seq > mem.clearedSeq {
-				d.TopMessageID = last.ID
+				// Ключ строки и НОМЕР едут из одной строки выборки: собирать
+				// номер поиском по загруженным сообщениям нельзя — промах дал бы
+				// 0, то есть «самое новое».
+				d.TopMessageID, d.TopMessageSeq = last.ID, last.Seq
 				break
 			}
 		}
@@ -415,7 +418,7 @@ func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int6
 	return remaining, nil
 }
 
-func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var best *mentionRow
@@ -429,9 +432,9 @@ func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64
 		}
 	}
 	if best == nil {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
-	return best.seq, best.msgID, nil
+	return best.seq, nil
 }
 
 func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {
@@ -899,7 +902,7 @@ func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.T
 			continue
 		}
 		seen[key] = true
-		out = append(out, domain.CalendarDay{Day: day, MsgID: m.ID, Seq: m.Seq, MediaID: *m.MediaID, Type: m.Type})
+		out = append(out, domain.CalendarDay{Day: day, Seq: m.Seq, MediaID: *m.MediaID, Type: m.Type})
 	}
 	return out, nil
 }
@@ -927,6 +930,69 @@ func (r fakeMsgs) MessageSeqByDate(_ context.Context, chatID int64, from time.Ti
 		return newest, nil
 	}
 	return 0, domain.ErrNotFound
+}
+
+// IDBySeq/IDsBySeqs/SeqsByIDs/GetBySeqs — слой адресации: снаружи сообщение
+// адресуется парой «пир + номер», внутри живёт ключ строки (msgaddr.go).
+func (r fakeMsgs) IDBySeq(_ context.Context, chatID, seq int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.messages[chatID] {
+		if m.Seq == seq {
+			return m.ID, nil
+		}
+	}
+	return 0, domain.ErrNotFound
+}
+
+func (r fakeMsgs) IDsBySeqs(_ context.Context, chatID int64, seqs []int64) (map[int64]int64, error) {
+	want := map[int64]bool{}
+	for _, s := range seqs {
+		want[s] = true
+	}
+	out := map[int64]int64{}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.messages[chatID] {
+		if want[m.Seq] {
+			out[m.Seq] = m.ID
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) SeqsByIDs(_ context.Context, ids []int64) (map[int64]int64, error) {
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[int64]int64{}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if want[m.ID] {
+				out[m.ID] = m.Seq
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) GetBySeqs(_ context.Context, chatID int64, seqs []int64) ([]domain.Message, error) {
+	want := map[int64]bool{}
+	for _, s := range seqs {
+		want[s] = true
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if want[m.Seq] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {
@@ -1118,7 +1184,7 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 // не «переезжает», если первый элемент альбома потом удалили.
 // Вызывается уже под r.s.mu — своей блокировки не берёт.
 func (r fakeMsgs) resolveAlbumRoot(channelID, postID int64) int64 {
-	var grouped *string
+	var grouped *int64
 	for _, m := range r.s.messages[channelID] {
 		if m.ID == postID {
 			grouped = m.GroupedID
@@ -1221,7 +1287,7 @@ func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []i
 // r.s.messages[chatID] уже упорядочен по возрастанию ID (Insert только
 // добавляет в конец под общим счётчиком r.s.nextMsgID), досортировывать не
 // нужно.
-func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Message
@@ -1632,7 +1698,7 @@ type fakeNotifier struct {
 	recipients []int64
 }
 
-func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _, _ int64, _ string, _ domain.PeerID) {
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.recipients = append(n.recipients, recipientID)

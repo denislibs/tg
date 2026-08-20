@@ -14,13 +14,16 @@ type Job struct {
 	RecipientID int64 `json:"recipient_id"`
 	// ChatID — ВНУТРЕННИЙ чат: нужен только гейту уведомлений (ShouldNotify).
 	// Наружу, в тело пуша, уезжает PeerID — ключ пира глазами ПОЛУЧАТЕЛЯ.
-	ChatID   int64         `json:"chat_id"`
-	PeerID   domain.PeerID `json:"peer_id"`
-	MsgID    int64         `json:"msg_id"`
-	Seq      int64         `json:"seq"`
-	SenderID int64         `json:"sender_id"`
-	Text     string        `json:"text"`
-	Preview  bool          `json:"preview"` // Message Preview: включать ли текст в пуш
+	ChatID int64         `json:"chat_id"`
+	PeerID domain.PeerID `json:"peer_id"`
+	// Seq — НОМЕР сообщения в чате: то самое число, которым сообщение
+	// адресуется наружу (пара «пир + номер»). Глобального msg_id рядом больше
+	// нет — задание, застрявшее в очереди с прошлой версии, несло оба поля, так
+	// что старые задания читаются этим кодом без потерь.
+	Seq      int64  `json:"seq"`
+	SenderID int64  `json:"sender_id"`
+	Text     string `json:"text"`
+	Preview  bool   `json:"preview"` // Message Preview: включать ли текст в пуш
 }
 
 // QueuedJob is a Job plus its queue id (for ack).

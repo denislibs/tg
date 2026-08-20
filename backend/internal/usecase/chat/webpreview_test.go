@@ -101,14 +101,14 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if stored.WebPage == nil || stored.WebPage.Title != "Заголовок" {
 		t.Fatalf("web_page not stored: %+v", stored.WebPage)
 	}
-	// Кадр несёт peer_id/msg_id/seq/web_page. И peer_id у СТОРОН РАЗНЫЙ: для a
-	// это id b, для b — id a. Внутренний chatID не появляется ни в одном из них.
+	// Кадр несёт peer_id/id/web_page. И peer_id у СТОРОН РАЗНЫЙ: для a это id b,
+	// для b — id a. Внутренний chatID не появляется ни в одном из них, а
+	// сообщение адресуется ОДНИМ числом — номером в чате.
 	frameFor := func(userID int64) struct {
 		T string `json:"t"`
 		D struct {
 			PeerID  domain.PeerID         `json:"peer_id"`
-			MsgID   int64                 `json:"msg_id"`
-			Seq     int64                 `json:"seq"`
+			ID      int64                 `json:"id"`
 			WebPage domain.WebPagePreview `json:"web_page"`
 		} `json:"d"`
 	} {
@@ -124,9 +124,9 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 		var env struct {
 			T string `json:"t"`
 			D struct {
-				PeerID  domain.PeerID         `json:"peer_id"`
-				MsgID   int64                 `json:"msg_id"`
-				Seq     int64                 `json:"seq"`
+				PeerID domain.PeerID `json:"peer_id"`
+				// Адрес сообщения в кадре ОДИН: id со значением номера в чате.
+				ID      int64                 `json:"id"`
 				WebPage domain.WebPagePreview `json:"web_page"`
 			} `json:"d"`
 		}
@@ -142,8 +142,11 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if envB.D.PeerID != domain.PeerID(a) {
 		t.Fatalf("peer_id для b = %d; want %d (собеседник)", envB.D.PeerID, a)
 	}
-	if envA.D.MsgID != msg.ID || envA.D.Seq != msg.Seq || envA.D.WebPage.SiteName != "Example" {
+	if envA.D.ID != msg.Seq || envA.D.WebPage.SiteName != "Example" {
 		t.Fatalf("frame payload = %+v", envA.D)
+	}
+	if strings.Contains(string(mustFrame(t, pub, a, "web_page_update")), `"msg_id"`) {
+		t.Fatal("в кадре осталось второе число msg_id")
 	}
 	if strings.Contains(string(mustFrame(t, pub, a, "web_page_update")), `"chat_id"`) {
 		t.Fatal("в кадре остался chat_id")

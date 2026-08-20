@@ -23,15 +23,15 @@ func TestReplyCrossChat_SavesPeerAndSnapshot(t *testing.T) {
 
 	// Исходный чат: автор 2 + отправитель 1 (у отправителя есть доступ).
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
-	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, SenderID: 2, Type: "text", Text: "исходный текст"})
+	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, Seq: 1, SenderID: 2, Type: "text", Text: "исходный текст"})
 	// Целевой чат: отправитель 1 + пользователь 3.
 	dst, _ := fakeChats{s}.CreatePrivate(ctx, 1, 3)
 
-	// Клиент НЕ присылает reply_to_peer_id — сервер сам определяет кросс-чат по
-	// фактическому чату оригинала (источник истины — orig.ChatID, не клиент).
+	// Адрес оригинала — ПАРА: номер в чате + ключ пира этого чата. Один номер
+	// сообщение не адресует: тот же номер есть в каждом чате.
 	msg, err := in.Send(ctx, SendInput{
 		ChatID: dst, SenderID: 1, Type: "text", Text: "мой ответ",
-		ReplyToID: &orig.ID,
+		ReplyToID: &orig.Seq, ReplyToPeerID: &src,
 	})
 	if err != nil {
 		t.Fatalf("cross-chat reply: %v", err)
@@ -65,12 +65,12 @@ func TestReplyCrossChat_MediaSnapshotLabel(t *testing.T) {
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
 	mediaID := int64(50)
 	s.seedMedia(mediaID, 2)
-	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, SenderID: 2, Type: "photo", MediaID: &mediaID})
+	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, Seq: 1, SenderID: 2, Type: "photo", MediaID: &mediaID})
 	dst, _ := fakeChats{s}.CreatePrivate(ctx, 1, 3)
 
 	msg, err := in.Send(ctx, SendInput{
 		ChatID: dst, SenderID: 1, Type: "text", Text: "re",
-		ReplyToID: &orig.ID,
+		ReplyToID: &orig.Seq, ReplyToPeerID: &src,
 	})
 	if err != nil {
 		t.Fatalf("reply to media: %v", err)
@@ -87,18 +87,31 @@ func TestReplyCrossChat_NoAccessForbidden(t *testing.T) {
 
 	// Исходный чат между 2 и 4 — отправитель 1 НЕ участник.
 	src, _ := fakeChats{s}.CreatePrivate(ctx, 2, 4)
-	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, SenderID: 2, Type: "text", Text: "секрет"})
+	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: src, Seq: 1, SenderID: 2, Type: "text", Text: "секрет"})
 	dst, _ := fakeChats{s}.CreatePrivate(ctx, 1, 3)
 
-	// Дыра доступа: клиент шлёт reply_to_id на чужое сообщение и НЕ шлёт
-	// reply_to_peer_id (или шлёт равный текущему чату). Раньше проверка членства
-	// не срабатывала. Теперь кросс-чат детектится по orig.ChatID → forbidden.
+	// Клиент называет чужой чат явно (иначе номер разрешился бы в СВОЁМ чате и
+	// до чужого не дотянулся бы вовсе) — членство проверяется, доступа нет.
 	_, err := in.Send(ctx, SendInput{
 		ChatID: dst, SenderID: 1, Type: "text", Text: "подсмотрел",
-		ReplyToID: &orig.ID,
+		ReplyToID: &orig.Seq, ReplyToPeerID: &src,
 	})
 	if err != domain.ErrForbidden {
 		t.Fatalf("want ErrForbidden without source access, got %v", err)
+	}
+
+	// Без пира тот же номер адресует сообщение ЭТОГО чата, и утечь нечему:
+	// чужой чат из такого адреса недостижим в принципе.
+	sent, err := in.Send(ctx, SendInput{
+		ChatID: dst, SenderID: 1, Type: "text", Text: "без пира",
+		ReplyToID: &orig.Seq,
+	})
+	if err != nil {
+		t.Fatalf("reply without peer: %v", err)
+	}
+	if sent.ReplyToPeerID != nil || sent.ReplySnapshotText != "" {
+		t.Fatalf("номер без пира дотянулся до чужого чата: peer=%v snapshot=%q",
+			sent.ReplyToPeerID, sent.ReplySnapshotText)
 	}
 }
 
@@ -106,11 +119,11 @@ func TestReply_SameChatUnchanged(t *testing.T) {
 	in, s, _ := newReplyTestInteractor()
 	ctx := context.Background()
 	cid, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
-	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: cid, SenderID: 2, Type: "text", Text: "оригинал"})
+	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: cid, Seq: 1, SenderID: 2, Type: "text", Text: "оригинал"})
 
 	// Обычный reply (без peer id) — снимки пустые, peer id nil.
 	msg, err := in.Send(ctx, SendInput{
-		ChatID: cid, SenderID: 1, Type: "text", Text: "ответ", ReplyToID: &orig.ID,
+		ChatID: cid, SenderID: 1, Type: "text", Text: "ответ", ReplyToID: &orig.Seq,
 	})
 	if err != nil {
 		t.Fatalf("normal reply: %v", err)
@@ -130,21 +143,23 @@ func TestHydrateReplies_CrossChatNotLeaked(t *testing.T) {
 
 	// Чужой чат с секретным оригиналом (не должен утечь в ReplyTo).
 	foreign, _ := fakeChats{s}.CreatePrivate(ctx, 2, 4)
-	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: foreign, SenderID: 2, Type: "text", Text: "СЕКРЕТ ЧУЖОГО ЧАТА"})
+	orig, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: foreign, Seq: 1, SenderID: 2, Type: "text", Text: "СЕКРЕТ ЧУЖОГО ЧАТА"})
 	// Целевой чат с локальным оригиналом (обычный reply — должен гидрироваться).
 	dst, _ := fakeChats{s}.CreatePrivate(ctx, 1, 3)
-	local, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: dst, SenderID: 3, Type: "text", Text: "локальный"})
+	local, _ := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: dst, Seq: 1, SenderID: 3, Type: "text", Text: "локальный"})
 
 	peer := foreign
 	msgs := []domain.Message{
 		// (a) кросс-чат-ответ: снимок есть, ReplyToPeerID выставлен.
 		{ID: 100, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ1",
-			ReplyToID: &orig.ID, ReplyToPeerID: &peer,
+			ReplyToID: &orig.Seq, ReplyToPeerID: &peer,
 			ReplySnapshotName: "Автор", ReplySnapshotText: "снимок"},
-		// (b) defense-in-depth: peer id НЕ выставлен, но оригинал в чужом чате.
-		{ID: 101, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ2", ReplyToID: &orig.ID},
+		// (b) тот же номер БЕЗ пира: выборка идёт по (chat_id, seq) этого чата,
+		// поэтому оригинал чужого чата недостижим — в нашем чате под этим
+		// номером лежит своё сообщение (local).
+		{ID: 101, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ2", ReplyToID: &orig.Seq},
 		// (c) обычный локальный reply — обязан гидрироваться.
-		{ID: 102, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ3", ReplyToID: &local.ID},
+		{ID: 102, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ3", ReplyToID: &local.Seq},
 	}
 	if err := in.hydrateReplies(ctx, msgs); err != nil {
 		t.Fatalf("hydrateReplies: %v", err)
@@ -152,8 +167,8 @@ func TestHydrateReplies_CrossChatNotLeaked(t *testing.T) {
 	if msgs[0].ReplyTo != nil {
 		t.Fatalf("cross-chat reply must not hydrate ReplyTo, got %+v", msgs[0].ReplyTo)
 	}
-	if msgs[1].ReplyTo != nil {
-		t.Fatalf("foreign-chat original must not leak into ReplyTo, got %+v", msgs[1].ReplyTo)
+	if msgs[1].ReplyTo != nil && msgs[1].ReplyTo.Text == "СЕКРЕТ ЧУЖОГО ЧАТА" {
+		t.Fatalf("foreign-chat original leaked into ReplyTo: %+v", msgs[1].ReplyTo)
 	}
 	if msgs[2].ReplyTo == nil || msgs[2].ReplyTo.Text != "локальный" {
 		t.Fatalf("same-chat reply must hydrate ReplyTo, got %+v", msgs[2].ReplyTo)

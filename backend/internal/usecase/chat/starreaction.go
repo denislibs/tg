@@ -83,7 +83,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 			return e
 		}
 		members = m
-		pp, e = i.newPeerPayloads(ctx, chatID, starReactionPayload(messageID, userID, agg.Total, mine))
+		pp, e = i.newPeerPayloads(ctx, chatID, starReactionPayload(msg.Seq, userID, agg.Total, mine))
 		if e != nil {
 			return e
 		}

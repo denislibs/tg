@@ -13,21 +13,28 @@ import (
 // peers — слой разрешения peerId ↔ chatID: жалоба адресует пир, а не строку chats.
 type ReportHandler struct {
 	uc    *usecasereport.Interactor
-	peers PeerResolver
+	peers reportResolver
 }
 
 // NewReportHandler создаёт хендлер жалоб.
-func NewReportHandler(uc *usecasereport.Interactor, peers PeerResolver) *ReportHandler {
+func NewReportHandler(uc *usecasereport.Interactor, peers reportResolver) *ReportHandler {
 	return &ReportHandler{uc: uc, peers: peers}
 }
 
-// Report — POST /report {peer_id, msg_id?, reason, comment?}. msg_id опционален
-// (жалоба на чат целиком). Причина — из белого списка usecase.
+// reportResolver — оба слоя разрешения адресов, нужные жалобе.
+type reportResolver interface {
+	PeerResolver
+	MessageResolver
+}
+
+// Report — POST /report {peer_id, id?, reason, comment?}. id опционален
+// (жалоба на чат целиком) и означает НОМЕР сообщения у этого пира.
+// Причина — из белого списка usecase.
 func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {
 		PeerID  domain.PeerID `json:"peer_id"`
-		MsgID   *int64        `json:"msg_id"`
+		Seq     *int64        `json:"id"`
 		Reason  string        `json:"reason"`
 		Comment string        `json:"comment"`
 	}
@@ -39,7 +46,15 @@ func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := h.uc.Report(r.Context(), user.ID, chatID, b.MsgID, domain.ReportReason(b.Reason), b.Comment)
+	var msgID *int64
+	if b.Seq != nil {
+		id, ok := resolveMsgSeq(w, r, h.peers, chatID, *b.Seq)
+		if !ok {
+			return
+		}
+		msgID = &id
+	}
+	err := h.uc.Report(r.Context(), user.ID, chatID, msgID, domain.ReportReason(b.Reason), b.Comment)
 	if errors.Is(err, domain.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "invalid report")
 		return

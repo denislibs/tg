@@ -246,11 +246,11 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 	s.seedMediaDims(wide, MediaDims{Mime: "image/jpeg", Width: 1600, Height: 900, Size: 500000, Blur: []byte("w")})
 	s.seedMediaDims(tall, MediaDims{Mime: "image/jpeg", Width: 900, Height: 1600, Size: 600000, Blur: []byte("t")})
 
-	first, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &wide, GroupedID: "album-1"})
+	first, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &wide, GroupedID: 4242})
 	if err != nil {
 		t.Fatalf("Send first: %v", err)
 	}
-	second, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &tall, GroupedID: "album-1"})
+	second, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &tall, GroupedID: 4242})
 	if err != nil {
 		t.Fatalf("Send second: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 			if w, h := md.Dimensions(); w != tc.w || h != tc.h {
 				t.Fatalf("payload dims = %dx%d, want %dx%d", w, h, tc.w, tc.h)
 			}
-			if g, _ := p["grouped_id"].(*string); g == nil || *g != "album-1" {
+			if g, _ := p["grouped_id"].(*int64); g == nil || *g != 4242 {
 				t.Fatalf("payload grouped_id = %v", p["grouped_id"])
 			}
 			// stripped-превью тоже на КАЖДОМ элементе: без него элемент альбома

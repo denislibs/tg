@@ -24,18 +24,48 @@ import (
 // Message.ReplyToPeer) у каждого сообщения списка. Ошибка резолва не роняет
 // выдачу: у сообщения просто не будет ссылки — это лучше 500-й на всю историю.
 func (i *Interactor) HydrateMessagePeers(ctx context.Context, msgs []domain.Message) []domain.Message {
+	fwdSeq := i.fwdSourceSeqs(ctx, msgs)
 	for idx := range msgs {
-		i.hydrateMessagePeers(ctx, &msgs[idx])
+		i.hydrateOneMessagePeers(ctx, &msgs[idx], fwdSeq)
 	}
 	return msgs
 }
 
 func (i *Interactor) hydrateMessagePeers(ctx context.Context, m *domain.Message) {
-	m.FwdFrom = i.fwdHeader(ctx, *m)
+	i.hydrateOneMessagePeers(ctx, m, i.fwdSourceSeqs(ctx, []domain.Message{*m}))
+}
+
+func (i *Interactor) hydrateOneMessagePeers(ctx context.Context, m *domain.Message, fwdSeq map[int64]int64) {
+	m.FwdFrom = i.fwdHeader(ctx, *m, fwdSeq)
 	m.ReplyToPeer = nil
 	if m.ReplyToPeerID != nil {
 		m.ReplyToPeer = i.publicChatPeer(ctx, *m.ReplyToPeerID)
 	}
+}
+
+// fwdSourceSeqs — НОМЕРА исходных сообщений пересылок одним запросом на весь
+// список. Колонка fwd_from_msg_id хранит внутренний ключ строки (по нему же
+// резолвятся зеркала постов), а наружу «откуда именно» обязано ехать номером:
+// saved_from_msg_id и channel_post в схеме адресуют сообщение В ЕГО ПИРЕ.
+// N+1 здесь недопустим — история почти целиком может состоять из пересылок.
+func (i *Interactor) fwdSourceSeqs(ctx context.Context, msgs []domain.Message) map[int64]int64 {
+	ids := make([]int64, 0, len(msgs))
+	seen := map[int64]bool{}
+	for _, m := range msgs {
+		if m.FwdFromMsgID == nil || m.FwdFromChatID == nil || seen[*m.FwdFromMsgID] {
+			continue
+		}
+		seen[*m.FwdFromMsgID] = true
+		ids = append(ids, *m.FwdFromMsgID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	seqs, err := i.msgs.SeqsByIDs(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return seqs
 }
 
 // publicChatPeer — ссылка на чат, ОДИНАКОВАЯ для всех получателей: peerChannel
@@ -51,7 +81,7 @@ func (i *Interactor) publicChatPeer(ctx context.Context, chatID int64) domain.Pe
 }
 
 // fwdHeader собирает messageFwdHeader сообщения. nil — пересылки нет.
-func (i *Interactor) fwdHeader(ctx context.Context, m domain.Message) *domain.MessageFwdHeader {
+func (i *Interactor) fwdHeader(ctx context.Context, m domain.Message, fwdSeq map[int64]int64) *domain.MessageFwdHeader {
 	if m.FwdFromUserID == nil && m.FwdFromChatID == nil && m.FwdFromName == nil {
 		return nil
 	}
@@ -85,10 +115,14 @@ func (i *Interactor) fwdHeader(ctx context.Context, m domain.Message) *domain.Me
 	// источника публичного ключа нет, и подделывать его нечем.
 	if srcPeer != nil {
 		h.SavedFromPeer = srcPeer
+		// Номер оригинала в ЕГО чате; исходного сообщения уже нет — ссылки нет
+		// вовсе, внутренний ключ вместо номера не подставляется никогда.
 		if m.FwdFromMsgID != nil {
-			h.SavedFromMsgID = *m.FwdFromMsgID
-			if srcType == domain.ChatTypeChannel {
-				h.ChannelPost = *m.FwdFromMsgID
+			if seq, ok := fwdSeq[*m.FwdFromMsgID]; ok {
+				h.SavedFromMsgID = seq
+				if srcType == domain.ChatTypeChannel {
+					h.ChannelPost = seq
+				}
 			}
 		}
 	}

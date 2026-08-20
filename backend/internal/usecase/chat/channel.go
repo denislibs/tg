@@ -82,7 +82,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 // источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
 func channelPostPayload(m domain.Message, actorID int64) map[string]any {
 	p := map[string]any{
-		"peer_id": domain.ToPeerID(m.ChatID, true), "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
+		"peer_id": domain.ToPeerID(m.ChatID, true), "id": m.Seq, "sender_id": actorID,
 		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
 	}
 	// Форматирование поста. Без него подписчик получает живой кадр (и реплей

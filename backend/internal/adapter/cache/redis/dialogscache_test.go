@@ -41,6 +41,7 @@ func TestDialogsCache_RoundTrip(t *testing.T) {
 		NotifySettings: domain.NewPeerNotifySettings(until, &previews, domain.NewNotificationSoundNone()),
 		Folder:         domain.FolderArchive,
 		TopMessageID:   901,
+		TopMessageSeq:  7,
 		TTLPeriod:      86400,
 		Peer:           &peer,
 	}}
@@ -51,7 +52,9 @@ func TestDialogsCache_RoundTrip(t *testing.T) {
 		t.Fatalf("чтение кэша = %v, %v", got, ok)
 	}
 	d := got[0]
-	if d.TopMessageID != 901 || d.Folder != domain.FolderArchive || d.TTLPeriod != 86400 {
+	// Номер последнего сообщения обязан пережить круг: именно он уезжает в
+	// dialog.top_message, а 0 в этом пространстве значит «самое новое».
+	if d.TopMessageID != 901 || d.TopMessageSeq != 7 || d.Folder != domain.FolderArchive || d.TTLPeriod != 86400 {
 		t.Errorf("строка после круга = %+v", d)
 	}
 	if d.NotifySettings.MuteUntil == nil || *d.NotifySettings.MuteUntil != domain.MuteUntilForever {
@@ -67,10 +70,11 @@ func TestDialogsCache_RoundTrip(t *testing.T) {
 		t.Errorf("собеседник после круга = %+v", d.Peer)
 	}
 
-	// Префикс ключа — часть контракта развёртывания: форма строки изменилась на
-	// шаге B диалогов, и старые блобы обязаны перестать НАХОДИТЬСЯ, а не
-	// прочитаться нулями (см. докблок DialogsCache).
-	if _, err := mr.Get("dialogs3:1"); err != nil {
-		t.Errorf("ключ кэша не dialogs3: %v", mr.Keys())
+	// Префикс ключа — часть контракта развёртывания: форма строки менялась на
+	// шаге B диалогов и снова на шаге B сообщений (появился TopMessageSeq), и
+	// старые блобы обязаны перестать НАХОДИТЬСЯ, а не прочитаться нулями
+	// (см. докблок DialogsCache).
+	if _, err := mr.Get("dialogs4:1"); err != nil {
+		t.Errorf("ключ кэша не dialogs4: %v", mr.Keys())
 	}
 }

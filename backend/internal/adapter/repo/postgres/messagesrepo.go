@@ -64,6 +64,85 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 		`SELECT `+messageCols+` FROM messages WHERE id=$1`, msgID))
 }
 
+// IDBySeq — внешний адрес (пир + номер) во внутренний ключ строки. Обычный
+// поиск по UNIQUE (chat_id, seq) из миграции 0002 — ни кэша, ни переходника.
+// domain.ErrNotFound, если номера в чате нет.
+func (r *MessagesRepo) IDBySeq(ctx context.Context, chatID, seq int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx, `SELECT id FROM messages WHERE chat_id=$1 AND seq=$2`, chatID, seq).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
+}
+
+// IDsBySeqs — батч IDBySeq: seq -> id внутри одного чата.
+func (r *MessagesRepo) IDsBySeqs(ctx context.Context, chatID int64, seqs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(seqs))
+	if len(seqs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT seq, id FROM messages WHERE chat_id=$1 AND seq = ANY($2)`, chatID, seqs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var seq, id int64
+		if e := rows.Scan(&seq, &id); e != nil {
+			return nil, e
+		}
+		out[seq] = id
+	}
+	return out, rows.Err()
+}
+
+// SeqsByIDs — обратный батч: внутренний ключ → номер в чате. Отсутствующие в
+// карту не попадают (вызывающий сам решает, дыра это или ошибка).
+func (r *MessagesRepo) SeqsByIDs(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, `SELECT id, seq FROM messages WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, seq int64
+		if e := rows.Scan(&id, &seq); e != nil {
+			return nil, e
+		}
+		out[id] = seq
+	}
+	return out, rows.Err()
+}
+
+// GetBySeqs — сообщения чата по их номерам (одним запросом).
+func (r *MessagesRepo) GetBySeqs(ctx context.Context, chatID int64, seqs []int64) ([]domain.Message, error) {
+	if len(seqs) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq = ANY($2)`, chatID, seqs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // GetAround returns a window of messages centered on centerSeq (older + the
 // message + newer), ascending, excluding deleted/self-hidden, plus whether the
 // real top/bottom of history was reached. Used for jump-to-message.
@@ -230,7 +309,7 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT DISTINCT ON (date_trunc('day', m.created_at))
-		        date_trunc('day', m.created_at) AS day, m.id, m.seq, m.media_id, m.type,
+		        date_trunc('day', m.created_at) AS day, m.seq, m.media_id, m.type,
 		        COALESCE(md.thumb_key, '') <> '' AS has_thumb
 		 FROM messages m JOIN media md ON md.id = m.media_id
 		 WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.media_id IS NOT NULL
@@ -245,7 +324,7 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 	out := make([]domain.CalendarDay, 0, 31)
 	for rows.Next() {
 		var d domain.CalendarDay
-		if err := rows.Scan(&d.Day, &d.MsgID, &d.Seq, &d.MediaID, &d.Type, &d.HasThumb); err != nil {
+		if err := rows.Scan(&d.Day, &d.Seq, &d.MediaID, &d.Type, &d.HasThumb); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -315,7 +394,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 // messageActionPhoneCall, как в Telegram).
 func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, `+userRealCols("u.")+`
+		`SELECT m.seq, m.chat_id, m.sender_id, m.text, m.created_at, `+userRealCols("u.")+`
 		   FROM messages m
 		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
@@ -926,7 +1005,7 @@ func (r *MessagesRepo) MirrorsByPosts(ctx context.Context, channelID int64, post
 // продолжает считаться корнем, ленивое зеркалирование обязано суметь
 // создать зеркало и для него, иначе резолв треда для остальных элементов
 // альбома будет вечно указывать в никуда.
-func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND grouped_id=$2 ORDER BY id`, chatID, groupedID)
 	if err != nil {

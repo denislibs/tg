@@ -87,7 +87,7 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // остальные (свежие сверху).
 func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, `
-		SELECT t.id, t.chat_id, t.root_msg_id, t.title, t.icon_color, t.icon_emoji,
+		SELECT t.id, t.chat_id, t.root_msg_id, COALESCE(rm.seq, 0), t.title, t.icon_color, t.icon_emoji,
 		       t.closed, t.hidden, t.pinned, t.pos, t.is_general, t.created_by, t.created_at,
 		       COALESCE(cnt.n, 0),
 		       lm.text, lm.type, lm.created_at, lm.seq, lm.sender_id,
@@ -96,6 +96,9 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		       COALESCE(unr.n, 0),
 		       COALESCE(men.n, 0)
 		  FROM forum_topics t
+		  -- Номер корня темы: наружу тема адресует его так же, как любое
+		  -- сообщение (пара «пир + номер»); у General корня нет — 0.
+		  LEFT JOIN messages rm ON rm.id = t.root_msg_id
 		  LEFT JOIN topic_user_state st
 		    ON st.chat_id = t.chat_id AND st.root_msg_id = t.root_msg_id AND st.user_id = $2
 		  LEFT JOIN LATERAL (
@@ -139,7 +142,7 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		var text, typ, sender *string
 		var lastSeq *int64
 		var lastSender *int64
-		if err := rows.Scan(&row.Topic.ID, &row.Topic.ChatID, &row.Topic.RootMsgID, &row.Topic.Title,
+		if err := rows.Scan(&row.Topic.ID, &row.Topic.ChatID, &row.Topic.RootMsgID, &row.Topic.RootMsgSeq, &row.Topic.Title,
 			&row.Topic.IconColor, &row.Topic.IconEmoji, &row.Topic.Closed, &row.Topic.Hidden,
 			&row.Topic.Pinned, &row.Topic.Pos, &row.Topic.IsGeneral, &row.Topic.CreatedBy, &row.Topic.CreatedAt,
 			&row.MsgCount, &text, &typ, &row.LastAt, &lastSeq, &lastSender, &sender,

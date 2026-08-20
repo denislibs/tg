@@ -12,7 +12,7 @@ type StatPoint struct {
 
 // TopPost — пост канала в топе по числу просмотров.
 type TopPost struct {
-	MsgID     int64
+	// Seq — адрес поста (номер в канале); второго числа у поста нет.
 	Seq       int64
 	Text      string
 	Views     int64

@@ -28,17 +28,16 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text s
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return nil, domain.ErrTooLong
 	}
-	// reply_to_id валидируется мягко: сообщение должно существовать в этом же
-	// чате, иначе просто NULL (черновик сохраняется без reply, не ошибка).
+	// reply_to_id — НОМЕР сообщения в этом же чате (у черновика чужого пира
+	// нет: reply_to_peer_id в draftMessage схемы отсутствует). Валидируется
+	// мягко: нет такого номера — просто NULL (черновик сохраняется без reply).
 	if replyToID != nil {
-		m, err := i.msgs.GetByID(ctx, *replyToID)
+		_, err := i.messageBySeq(ctx, chatID, *replyToID)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			replyToID = nil
 		case err != nil:
 			return nil, err
-		case m.ChatID != chatID:
-			replyToID = nil
 		}
 	}
 	if text == "" && replyToID == nil {

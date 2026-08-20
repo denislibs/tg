@@ -64,7 +64,7 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	}
 	iconEmoji = sanitizeTopicEmoji(iconEmoji)
 	return i.topics.Create(ctx, domain.ForumTopic{
-		ChatID: chatID, RootMsgID: root.ID, Title: title, IconColor: iconColor,
+		ChatID: chatID, RootMsgID: root.ID, RootMsgSeq: root.Seq, Title: title, IconColor: iconColor,
 		IconEmoji: iconEmoji, CreatedBy: userID,
 	})
 }

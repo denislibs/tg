@@ -86,7 +86,7 @@ func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
 		text = ""
 	}
 	p := map[string]any{
-		"msg_id": job.MsgID, "seq": job.Seq,
+		"id":     job.Seq,
 		"sender": map[string]any{"name": senderName},
 		"text":   text, "badge": badge,
 	}

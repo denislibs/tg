@@ -159,8 +159,11 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	// Сверяем ТЕКСТ, а не число: адрес сообщения стал по-пирным, и один и тот
+	// же номер живёт в каждом чате — сравнение чисел из разных пиров больше
+	// ничего не значит. Утечка проявилась бы содержимым.
 	for _, m := range hist.Messages {
-		if m.ID == secret.ID || m.Text == secretText {
+		if m.Text == secretText {
 			t.Fatalf("секретное сообщение чужого чата утекло через thread_root: %s", rec.Body.String())
 		}
 	}

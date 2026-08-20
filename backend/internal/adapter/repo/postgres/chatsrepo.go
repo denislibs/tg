@@ -210,7 +210,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
-		        lm.id,
+		        lm.id, COALESCE(lm.seq, 0),
 		        -- LEFT JOIN LATERAL: у не-приватного чата собеседника нет, и ВСЕ
 		        -- колонки пира приходят NULL — обязательные приводим здесь.
 		        peer.id, COALESCE(peer.first_name,''), COALESCE(peer.last_name,''),
@@ -224,7 +224,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
 		 LEFT JOIN media pm ON pm.id = c.photo_media_id
 		 LEFT JOIN LATERAL (
-		   SELECT id, created_at
+		   SELECT id, seq, created_at
 		   FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL AND seq > m.cleared_max_seq
 		   ORDER BY seq DESC LIMIT 1
@@ -262,7 +262,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview,
 			&d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount,
 			&muteUntil, &d.Pinned, &archived, &d.IsForum, &notifyPreview, &notifySound, &d.PeerReadSeq,
-			&topMessageID,
+			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
 			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
 			&d.TTLPeriod); err != nil {
@@ -475,19 +475,19 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 	return remaining, err
 }
 
-// NextMention returns the seq/message id of the member's earliest unread mention
+// NextMention returns the number (seq) of the member's earliest unread mention
 // past afterSeq; domain.ErrNotFound when there is none.
-func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, error) {
 	q := querier(ctx, r.pool)
-	var seq, msgID int64
+	var seq int64
 	err := q.QueryRow(ctx,
-		`SELECT seq, message_id FROM message_mentions
+		`SELECT seq FROM message_mentions
 		 WHERE chat_id=$1 AND user_id=$2 AND seq>$3
-		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq, &msgID)
+		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
-	return seq, msgID, err
+	return seq, err
 }
 
 // MaxSeq returns the chat's current maximum sequence (chats.last_seq), i.e. the

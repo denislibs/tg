@@ -38,7 +38,9 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	_ = fg.AddMember(ctx, chatID, subscriber, domain.RoleSubscriber, 0)
 
 	// a channel post to attach the fact check to
-	post, err := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: chatID, SenderID: creator, Type: "text", Text: "post"})
+	// Номер в чате задан явно и заведомо НЕ равен ключу строки: на равных
+	// числах подмена адреса не видна вовсе.
+	post, err := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: chatID, Seq: 5, SenderID: creator, Type: "text", Text: "post"})
 	if err != nil {
 		t.Fatalf("insert: %v", err)
 	}
@@ -71,6 +73,19 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	fc, ok := p["factcheck"].(map[string]any)
 	if !ok || fc["text"] != "fact" || fc["country"] != "DE" {
 		t.Fatalf("payload factcheck = %v", p["factcheck"])
+	}
+	// Адрес сообщения в кадре ОДИН — номер в чате (внутренний ключ строки
+	// наружу не выходит; здесь они заведомо разные, см. фикстуру).
+	if msg.ID == msg.Seq {
+		t.Fatalf("фикстура вырождена: ключ строки %d совпал с номером %d", msg.ID, msg.Seq)
+	}
+	if p["id"] != msg.Seq {
+		t.Fatalf("адрес в кадре = %v, ждали номер %d (ключ строки %d)", p["id"], msg.Seq, msg.ID)
+	}
+	for _, banned := range []string{"msg_id", "seq"} {
+		if _, ok := p[banned]; ok {
+			t.Fatalf("в кадре осталось второе число %q: %v", banned, p)
+		}
 	}
 
 	// creator removes it → factcheck cleared, payload null

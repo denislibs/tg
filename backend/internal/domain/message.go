@@ -61,7 +61,9 @@ type Message struct {
 	ThreadRootID *int64
 	// GroupedID — идентификатор медиагруппы (Telegram grouped_id): сообщения
 	// одного альбома несут общий id, клиент рендерит их одним грид-баблом.
-	GroupedID *string
+	// В схеме это flags.17?long — число, а не строка: непрозрачный ключ группы
+	// генерирует отправитель (миграция 0105 перевела колонку и старые значения).
+	GroupedID *int64
 	// PollID — опрос сообщения типа 'poll' (messages.poll_id); Poll — его
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
 	PollID *int64
@@ -224,8 +226,11 @@ type Message struct {
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.
+//
+// Адресуется ОДНИМ числом — Seq, тем самым, что в схеме зовётся message.id
+// (пара «пир + id»). Глобального messages.id здесь больше нет: он ключ строки
+// нашей базы и наружу не выходит.
 type ReplyPreview struct {
-	MsgID    int64
 	Seq      int64
 	SenderID int64
 	Text     string
@@ -241,8 +246,9 @@ type ReplyPreview struct {
 // (tweb messages.getSearchResultsCalendar → миниатюра в ячейке дня).
 // Day — полночь этого дня (UTC), MediaID — что показать в кружке.
 type CalendarDay struct {
-	Day     time.Time
-	MsgID   int64
+	Day time.Time
+	// Seq — адрес сообщения дня (номер в чате): второго числа у него нет,
+	// внутренний ключ строки наружу не выходит.
 	Seq     int64
 	MediaID int64
 	Type    string // photo|video|... — клиенту, чтобы выбрать вид превью

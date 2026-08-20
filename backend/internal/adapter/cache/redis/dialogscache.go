@@ -36,14 +36,19 @@ import (
 //	           Last*) схлопнулась в один TopMessageID, Muted/NotifyPreview/
 //	           NotifySound — в NotifySettings, Archived — в Folder, а ThemeID
 //	           уехал в полную карточку. Старый блоб, прочитанный этим кодом,
-//	           отдал бы список чатов без единого последнего сообщения.
+//	           отдал бы список чатов без единого последнего сообщения;
+//	dialogs4: — шаг B сообщений: рядом с TopMessageID появился TopMessageSeq —
+//	           НОМЕР последнего сообщения, то самое число, которым его
+//	           адресует dialog.top_message. Старый блоб отдал бы его нулём, а
+//	           ноль в этом пространстве значит «самое новое»: список чатов
+//	           открывался бы не на том месте.
 type DialogsCache struct{ client *goredis.Client }
 
 func NewDialogsCache(client *goredis.Client) *DialogsCache { return &DialogsCache{client: client} }
 
 const dialogsTTL = 15 * time.Second
 
-func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs3:%d", userID) }
+func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs4:%d", userID) }
 
 func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool) {
 	b, err := s.client.Get(ctx, dialogsKey(userID)).Bytes()

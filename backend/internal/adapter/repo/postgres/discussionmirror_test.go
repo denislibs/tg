@@ -348,7 +348,7 @@ func TestMessages_MirrorByPost_Album(t *testing.T) {
 	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
 	_ = groups.SetDiscussion(ctx, ch, disc)
 
-	grouped := "g1"
+	grouped := int64(111)
 	seq1, _ := msgs.NextSeq(ctx, ch)
 	post1, err := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq1, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped})
 	if err != nil {
