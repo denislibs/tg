@@ -417,6 +417,10 @@
       {
         "name": "repayRequest",
         "type": "{id: number, messageCount: number}"
+      },
+      {
+        "name": "effect_name",
+        "type": "string"
       }
     ]
   },
@@ -730,6 +734,30 @@
       {
         "name": "users",
         "type": "Array<UserId>"
+      }
+    ],
+    "type": "MessageAction"
+  },
+  {
+    "predicate": "messageActionSuggestProfilePhoto",
+    "params": [
+      {
+        "name": "accepted",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "-783286271",
+    "predicate": "messageActionRestrict",
+    "params": [
+      {
+        "name": "user_id",
+        "type": "long"
+      },
+      {
+        "name": "banned_rights",
+        "type": "ChatBannedRights"
       }
     ],
     "type": "MessageAction"

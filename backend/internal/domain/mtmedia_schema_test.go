@@ -105,6 +105,37 @@ func loadAdditionalParams(t *testing.T) map[string]map[string]bool {
 	return out
 }
 
+// loadOwnConstructors — конструкторы, объявленные ЦЕЛИКОМ в надстройках
+// (запись с полем `type`), а не в schema.json. Их два вида, и различает их
+// наличие `id`: клиентские синтетические конструкторы оригинала
+// (messageActionChatLeave и десяток других — на провод не идут, id им не
+// нужен) и НАШИ собственные, у которых предмета в схеме нет вовсе
+// (messageActionRestrict). Сверщик обязан признавать и те и другие: иначе
+// собственный конструктор выглядел бы как «предиката нет в схеме», то есть
+// как ошибка.
+func loadOwnConstructors(t *testing.T) map[string]schemaConstructor {
+	t.Helper()
+
+	path := filepath.Join("..", "..", "..", "schema", "schema_additional_params.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("надстройки схемы не читаются (%s): %v", path, err)
+	}
+
+	var entries []schemaConstructor
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("надстройки схемы не разбираются: %v", err)
+	}
+
+	out := map[string]schemaConstructor{}
+	for _, e := range entries {
+		if e.Type != "" {
+			out[e.Predicate] = e
+		}
+	}
+	return out
+}
+
 // Булев флаг схемы: его место — только в pFlags, на верхнем уровне быть не должно.
 func isBooleanFlag(t string) bool { return strings.HasSuffix(t, "?true") }
 
@@ -116,6 +147,10 @@ func isRequiredParam(t string) bool { return !strings.Contains(t, "?") && !isFla
 type schemaChecker struct {
 	constructors map[string]schemaConstructor
 	additional   map[string]map[string]bool
+	// own — конструкторы, объявленные целиком в надстройках (loadOwnConstructors).
+	// Пустое значение допустимо: подсистема, у которой своих конструкторов нет,
+	// поле не заполняет, и незнакомый предикат остаётся расхождением.
+	own map[string]schemaConstructor
 	// omittedOK — обязательные параметры схемы, которых мы сознательно не
 	// производим (см. omittedWithoutSubject у медиа). Поле, а не глобальная
 	// карта: у каждой подсистемы свой список.
@@ -146,6 +181,9 @@ func (c *schemaChecker) walkObject(obj map[string]any, path string) {
 	}
 
 	ctor, ok := c.constructors[predicate]
+	if !ok {
+		ctor, ok = c.own[predicate]
+	}
 	if !ok {
 		c.unexpected = append(c.unexpected, fmt.Sprintf("%s: конструктора %q нет в схеме", path, predicate))
 		return
