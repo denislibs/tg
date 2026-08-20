@@ -166,11 +166,11 @@ func TestDialogPeerID_MatchesResolver(t *testing.T) {
 
 	cases := []struct {
 		name   string
-		dialog domain.Dialog
+		dialog domain.DialogRecord
 	}{
-		{"приватный", domain.Dialog{ChatID: privateID, Type: "private", Peer: &domain.UserReal{ID: b}}},
-		{"избранное", domain.Dialog{ChatID: savedID, Type: "saved"}},
-		{"группа", domain.Dialog{ChatID: groupID, Type: "group"}},
+		{"приватный", domain.DialogRecord{ChatID: privateID, Type: "private", Peer: &domain.UserReal{ID: b}}},
+		{"избранное", domain.DialogRecord{ChatID: savedID, Type: "saved"}},
+		{"группа", domain.DialogRecord{ChatID: groupID, Type: "group"}},
 	}
 	for _, c := range cases {
 		want, err := in.ChatIDToPeer(ctx, a, c.dialog.ChatID)

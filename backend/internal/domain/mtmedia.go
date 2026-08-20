@@ -152,7 +152,7 @@ type DocumentAttributeSticker struct {
 
 func (DocumentAttributeSticker) isDocumentAttribute() {}
 
-// documentAttributeVideo#17399fad flags:# round_message:flags.0?true
+// documentAttributeVideo#43c57c48 flags:# round_message:flags.0?true
 // supports_streaming:flags.1?true nosound:flags.3?true duration:double w:int
 // h:int … = DocumentAttribute;
 //

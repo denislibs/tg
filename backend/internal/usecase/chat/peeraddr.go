@@ -172,11 +172,11 @@ func (i *Interactor) peerToChatID(ctx context.Context, viewerID int64, peer doma
 // списка диалогов уже есть и тип чата, и собеседник приватного (Dialog.Peer).
 // Правило адресации при этом не раздваивается — оно по-прежнему одно,
 // chatAddress.forViewer; здесь лишь собирается тот же адрес из готовых данных.
-func (i *Interactor) DialogPeerID(d domain.Dialog, viewerID int64) domain.PeerID {
+func (i *Interactor) DialogPeerID(d domain.DialogRecord, viewerID int64) domain.PeerID {
 	return dialogAddress(d, viewerID).forViewer(viewerID)
 }
 
-func dialogAddress(d domain.Dialog, viewerID int64) chatAddress {
+func dialogAddress(d domain.DialogRecord, viewerID int64) chatAddress {
 	a := chatAddress{chatID: d.ChatID}
 	switch {
 	case d.Type == domain.ChatTypeSaved:

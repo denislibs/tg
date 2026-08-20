@@ -293,7 +293,7 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 // auth.ServiceNotifier). Called best-effort after a new device signs in.
 // ListDialogs returns the user's chat list. Аватар пира скрывается, когда его
 // privacy-правило profile_photo не разрешает показ этому пользователю.
-func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
+func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error) {
 	if i.dialogsCache != nil {
 		if cached, ok := i.dialogsCache.Get(ctx, userID); ok {
 			return cached, nil

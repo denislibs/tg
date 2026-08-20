@@ -183,7 +183,7 @@ func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, er
 }
 
 // ListDialogs returns a user's chats with read state and last message, newest first.
-func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
+func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
@@ -238,9 +238,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.Dialog
+	var out []domain.DialogRecord
 	for rows.Next() {
-		var d domain.Dialog
+		var d domain.DialogRecord
 		var seq *int64
 		var text *string
 		var senderID *int64

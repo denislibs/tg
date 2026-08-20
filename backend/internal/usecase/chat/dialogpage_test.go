@@ -8,15 +8,15 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-func pageFixture(ids ...int64) []domain.Dialog {
-	out := make([]domain.Dialog, 0, len(ids))
+func pageFixture(ids ...int64) []domain.DialogRecord {
+	out := make([]domain.DialogRecord, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, domain.Dialog{ChatID: id})
+		out = append(out, domain.DialogRecord{ChatID: id})
 	}
 	return out
 }
 
-func chatIDs(ds []domain.Dialog) []int64 {
+func chatIDs(ds []domain.DialogRecord) []int64 {
 	out := make([]int64, 0, len(ds))
 	for _, d := range ds {
 		out = append(out, d.ChatID)
@@ -122,8 +122,8 @@ func TestSliceDialogPage(t *testing.T) {
 }
 
 // archivedFixture — набор со смешанными архивными: 10,30,50 в архиве.
-func archivedFixture() []domain.Dialog {
-	return []domain.Dialog{
+func archivedFixture() []domain.DialogRecord {
+	return []domain.DialogRecord{
 		{ChatID: 10, Archived: true},
 		{ChatID: 20},
 		{ChatID: 30, Archived: true},
@@ -241,6 +241,6 @@ type errChatRepo struct {
 	err error
 }
 
-func (r errChatRepo) ListDialogs(_ context.Context, _ int64) ([]domain.Dialog, error) {
+func (r errChatRepo) ListDialogs(_ context.Context, _ int64) ([]domain.DialogRecord, error) {
 	return nil, r.err
 }

@@ -62,8 +62,19 @@ type ChatMember struct {
 	Muted               bool
 }
 
-// Dialog is a chat-list read model: a chat + the viewer's read state + last message.
-type Dialog struct {
+// DialogRecord — СТРОКА витрины списка чатов глазами зрителя, а не объект
+// провода. Наружу из неё собирается конструктор `dialog` вместе с векторами
+// контейнера messages.dialogs (см. mtdialog.go): сам dialog несёт только
+// состояние чтения и место в списке, а title/username/photo уезжают в `chats`,
+// собеседник — в `users`, последнее сообщение — в `messages` и адресуется
+// числом top_message.
+//
+// Имя с суффиксом Record — тот же приём и та же причина, что у
+// UserRecord/ChatRecord (шаг C пиров): `Dialog` это имя ОБЪЕДИНЕНИЯ схемы, а
+// плоская строка выборки объединением не является и никогда им не была.
+// Разбор полей (что куда уезжает) — docs/readiness/tl-dialogs-analysis.md,
+// исполняется шагом B.
+type DialogRecord struct {
 	ChatID      int64
 	Type        string
 	Title       string
@@ -133,25 +144,30 @@ type Dialog struct {
 
 // ChatPhoto — фото группы/канала как объединение схемы; «фото нет» это
 // состояние (chatPhotoEmpty), а не пустая строка URL.
-func (d Dialog) ChatPhoto() ChatPhoto {
+func (d DialogRecord) ChatPhoto() ChatPhoto {
 	if d.PhotoID == nil {
 		return NewChatPhotoEmpty()
 	}
 	return NewChatPhoto(*d.PhotoID, d.PhotoPreview, false)
 }
 
-// DialogFolder — РЕАЛЬНАЯ папка выборки диалогов. Порт tweb REAL_FOLDER_ID
+// FolderID — РЕАЛЬНАЯ папка выборки диалогов. Порт tweb REAL_FOLDER_ID
 // (lib/appManagers/constants.ts:37-39): на сервере существуют ровно две папки,
 // «все чаты» и «архив»; пользовательские папки — клиентский фильтр поверх них
 // и до бэкенда не доходят.
-type DialogFolder int
+//
+// Имя DialogFolder освобождено под конструктор схемы (решение Р2): dialogFolder
+// это СТРОКА-ПАПКА в списке чатов, а здесь перечислена ВЫБОРКА запроса, и
+// значения перечисления с проводным dialog.folder_id (0 — все чаты, 1 — архив)
+// намеренно не совпадают.
+type FolderID int
 
 const (
 	// FolderGlobal — запрос без папки: весь набор. Нулевое значение выбрано
 	// сознательно — уже существующие domain.DialogPage{} без явного поля
 	// обязаны означать «как раньше», а не «всё, кроме архива». Порт tweb
 	// GLOBAL_FOLDER_ID (dialogs.ts:68).
-	FolderGlobal DialogFolder = iota
+	FolderGlobal FolderID = iota
 	// FolderAll — всё, кроме архива (на проводе folder_id=0, tweb FOLDER_ID_ALL).
 	FolderAll
 	// FolderArchive — только архив (на проводе folder_id=1, tweb FOLDER_ID_ARCHIVE).
@@ -175,13 +191,13 @@ type DialogPage struct {
 	OffsetChatID int64
 	// Выборка, внутри которой считаются Count, IsEnd и курсор. FolderGlobal
 	// (нулевое значение) — весь набор.
-	Folder DialogFolder
+	Folder FolderID
 }
 
 // DialogPageResult — страница плюс метаданные для виртуального списка:
 // Count даёт высоту списка и число плейсхолдеров, IsEnd останавливает догрузку.
 type DialogPageResult struct {
-	Dialogs []Dialog
+	Dialogs []DialogRecord
 	// Размер ПОЛНОГО набора, не страницы; от Limit и курсора не зависит.
 	Count int
 	IsEnd bool

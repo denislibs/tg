@@ -254,7 +254,7 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // dialogRow — представление одного диалога в HTTP-контракте /chats.
-func dialogRow(d domain.Dialog, peer domain.PeerID) map[string]any {
+func dialogRow(d domain.DialogRecord, peer domain.PeerID) map[string]any {
 	row := map[string]any{
 		"peer_id": peer, "type": d.Type,
 		"title": d.Title, "photo": d.ChatPhoto(), "username": d.Username,
@@ -291,7 +291,7 @@ func dialogRow(d domain.Dialog, peer domain.PeerID) map[string]any {
 // значение означают «весь набор»: это прежнее поведение эндпоинта, и деградация
 // к нему безопаснее 400 — клиент с неизвестным номером папки увидит больше
 // диалогов, а не пустой список.
-func dialogFolder(r *http.Request) domain.DialogFolder {
+func dialogFolder(r *http.Request) domain.FolderID {
 	switch queryInt(r, "folder_id", -1) {
 	case 0:
 		return domain.FolderAll

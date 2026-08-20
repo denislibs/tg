@@ -23,7 +23,7 @@ import (
 // json-тегов: ключи в кэше это ИМЕНА ПОЛЕЙ Go. Любое переименование/удаление
 // поля молча ломает формат на живом деплое, и ни один тест этого не покажет
 // (промах кэша выглядит как валидный ответ из БД, а вот СТАРЫЙ блоб, прочитанный
-// НОВЫМ кодом, отдаёт нули). Шаг B (адресация) форму domain.Dialog не менял,
+// НОВЫМ кодом, отдаёт нули). Шаг B (адресация) форму domain.DialogRecord не менял,
 // поэтому bump'а префикса ключа он не требует — переводом занят HTTP-слой,
 // который считает peer_id из уже закэшированных Type/ChatID/Peer.
 //
@@ -41,19 +41,19 @@ const dialogsTTL = 15 * time.Second
 
 func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs2:%d", userID) }
 
-func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.Dialog, bool) {
+func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool) {
 	b, err := s.client.Get(ctx, dialogsKey(userID)).Bytes()
 	if err != nil {
 		return nil, false // miss or redis error — caller falls back to DB
 	}
-	var d []domain.Dialog
+	var d []domain.DialogRecord
 	if json.Unmarshal(b, &d) != nil {
 		return nil, false
 	}
 	return d, true
 }
 
-func (s *DialogsCache) Set(ctx context.Context, userID int64, dialogs []domain.Dialog) {
+func (s *DialogsCache) Set(ctx context.Context, userID int64, dialogs []domain.DialogRecord) {
 	b, err := json.Marshal(dialogs)
 	if err != nil {
 		return

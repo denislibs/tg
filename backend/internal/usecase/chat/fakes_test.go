@@ -215,16 +215,16 @@ func (r fakeChats) IsMember(_ context.Context, chatID, userID int64) (bool, erro
 	return r.s.members[chatID][userID] != nil, nil
 }
 
-func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog, error) {
+func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.DialogRecord, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.Dialog
+	var out []domain.DialogRecord
 	for cid, m := range r.s.members {
 		mem := m[userID]
 		if mem == nil {
 			continue
 		}
-		d := domain.Dialog{
+		d := domain.DialogRecord{
 			ChatID:               cid,
 			Type:                 r.s.chatType[cid],
 			LastReadSeq:          mem.lastReadSeq,

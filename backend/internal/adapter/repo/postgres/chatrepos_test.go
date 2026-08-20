@@ -228,7 +228,7 @@ func TestChatsRepo_ListDialogs_GroupTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDialogs: %v", err)
 	}
-	var found *domain.Dialog
+	var found *domain.DialogRecord
 	for i := range dialogs {
 		if dialogs[i].ChatID == groupID {
 			found = &dialogs[i]

@@ -38,7 +38,7 @@ type ChatRepo interface {
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
-	ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error)
+	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
 	// IncUnread bumps a member's unread counter by one and returns the new value
 	// (so the new_message frame can carry the recipient's authoritative unread).
@@ -466,8 +466,8 @@ type MediaDims struct {
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness
 // read-кэш поверх тяжёлого ListDialogs). Мягко деградирует при nil.
 type DialogsCache interface {
-	Get(ctx context.Context, userID int64) ([]domain.Dialog, bool)
-	Set(ctx context.Context, userID int64, dialogs []domain.Dialog)
+	Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool)
+	Set(ctx context.Context, userID int64, dialogs []domain.DialogRecord)
 	Invalidate(ctx context.Context, userIDs ...int64)
 }
 
