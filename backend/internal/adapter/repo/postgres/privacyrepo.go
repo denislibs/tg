@@ -242,3 +242,19 @@ func (r *PrivacyRepo) TTLPeriod(ctx context.Context, viewerID, targetID int64) (
 		          0)`, viewerID, targetID).Scan(&ttl)
 	return ttl, err
 }
+
+// ChatTheme — тема оформления переписки зрителя с этим пиром: chat_theme того
+// самого приватного чата. Чата ещё нет — темы тоже нет, и это "" , а не дефолт:
+// «тема не задана» у нас и означает дефолтное оформление.
+func (r *PrivacyRepo) ChatTheme(ctx context.Context, viewerID, targetID int64) (string, error) {
+	var theme string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(
+		          (SELECT ct.theme_id FROM chats c
+		             JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+		             JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+		             JOIN chat_theme ct ON ct.chat_id = c.id
+		            WHERE c.type = 'private' LIMIT 1),
+		          '')`, viewerID, targetID).Scan(&theme)
+	return theme, err
+}

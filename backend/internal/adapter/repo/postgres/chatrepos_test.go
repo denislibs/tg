@@ -102,7 +102,7 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	if len(dialogs) != 1 || dialogs[0].ChatID != chatID {
 		t.Fatalf("unexpected dialogs: %+v", dialogs)
 	}
-	if dialogs[0].HasLast {
+	if dialogs[0].TopMessageID != 0 {
 		t.Fatal("expected no last message in empty chat")
 	}
 	// A's dialog should carry the peer (B) for a private chat.

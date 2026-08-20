@@ -34,6 +34,11 @@ type Repo interface {
 	// чата, а пока чата нет — глобальный дефолт зрителя, которым такой чат
 	// заведётся. 0 — выключено.
 	TTLPeriod(ctx context.Context, viewerID, targetID int64) (int, error)
+	// ChatTheme — тема оформления переписки ЗРИТЕЛЯ с этим пиром
+	// (userFull.theme_emoticon, решение Р7); "" — тема не задана. Прежде она
+	// ехала полем КАЖДОЙ строки списка диалогов, хотя в схеме её место — полная
+	// карточка.
+	ChatTheme(ctx context.Context, viewerID, targetID int64) (string, error)
 }
 
 type Interactor struct {
@@ -187,6 +192,7 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (Pro
 		VideoCallsAvailable: calls,
 	})
 	full.TTLPeriod, _ = i.repo.TTLPeriod(ctx, viewerID, targetID)
+	full.ThemeEmoticon, _ = i.repo.ChatTheme(ctx, viewerID, targetID)
 	if check(domain.PrivacyAbout) {
 		full.About = u.Bio
 	}

@@ -280,20 +280,36 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 // логируется + шлётся dialog_mute на устройства владельца: раньше это был
 // клиентский fake-echo (groupsManager), теперь сервер эмитит его сам, так что
 // mute доезжает и на другие вкладки/устройства и через /sync (плотный pts).
+//
+// «Навсегда» ниже становится СРОКОМ (domain.MuteUntilForever), а не отдельным
+// флагом: в схеме мьют выражает peerNotifySettings.mute_until, и второй способ
+// сказать то же самое и был тем, из-за чего «на час» работало как «навсегда».
+//
+// Кадр несёт notify_settings ЦЕЛИКОМ и читает их обратно из базы, а не
+// пересобирает из аргументов: превью и звук мьют не менял, но в конструкторе
+// они есть, и собранный из аргументов огрызок сказал бы клиенту, что
+// переопределений нет.
 func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
-	if !muted {
-		until = nil
+	var muteUntil *time.Time
+	switch {
+	case !muted:
+		muteUntil = nil
+	case until != nil:
+		muteUntil = until
+	default:
+		forever := time.Unix(domain.MuteUntilForever, 0)
+		muteUntil = &forever
 	}
-	forever := muted && until == nil
-	if err := i.groups.SetMuted(ctx, chatID, userID, forever, until); err != nil {
+	if err := i.groups.SetMuted(ctx, chatID, userID, muteUntil); err != nil {
 		return err
 	}
-	payload := map[string]any{"muted": muted}
-	if until != nil {
-		payload["muted_until"] = until.Unix()
+	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
+	if err != nil {
+		return err
 	}
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublish(ctx, chatID, []int64{userID}, "dialog_mute", payload)
+	_ = i.logAndPublish(ctx, chatID, []int64{userID}, "dialog_mute",
+		map[string]any{"notify_settings": settings})
 	return nil
 }
 

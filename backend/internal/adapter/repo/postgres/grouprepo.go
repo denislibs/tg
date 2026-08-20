@@ -71,10 +71,9 @@ func (r *GroupRepo) GetMember(ctx context.Context, chatID, userID int64) (domain
 	var m domain.Member
 	var rights int
 	err := q.QueryRow(ctx,
-		`SELECT chat_id, user_id, role, rights,
-		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		`SELECT chat_id, user_id, role, rights
 		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted)
+		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Member{}, domain.ErrNotFound
 	}
@@ -92,11 +91,36 @@ func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role stri
 	return err
 }
 
-func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
+// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
+// «навсегда». Булева аргумента здесь больше нет — второй способ сказать то же
+// самое и был тем, из-за чего «заглушить на час» работало как «навсегда»
+// (решение Р4).
+func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET muted=$3, muted_until=$4 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID, muted, until)
+		`UPDATE chat_members SET muted_until=$3 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, until)
 	return err
+}
+
+// NotifySettings — пер-чатное переопределение уведомлений участника целиком.
+// Читается после мутации мьюта, чтобы кадр dialog_mute нёс НАСТОЯЩИЕ настройки,
+// а не пересобранный из аргументов огрызок: превью и звук мьют не менял, но в
+// конструкторе они есть, и «не знаю» от «переопределения нет» неотличимо.
+func (r *GroupRepo) NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	var muteUntil *time.Time
+	var preview *bool
+	var sound *string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT muted_until, notify_preview, notify_sound
+		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&muteUntil, &preview, &sound)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PeerNotifySettings{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.PeerNotifySettings{}, err
+	}
+	return peerNotifySettings(muteUntil, preview, sound, time.Now()), nil
 }
 
 // SetNotify обновляет per-chat настройки уведомлений; nil-поля не меняются
@@ -354,7 +378,9 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	c.ViewerID = viewerID
 	var rights *int
 	var role *string
-	var muted *bool
+	var muteUntil *time.Time
+	var notifyPreview *bool
+	var notifySound *string
 	var perms int
 	var allowed []byte
 	err := q.QueryRow(ctx,
@@ -367,9 +393,11 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		        COALESCE((SELECT p.msg_id FROM pinned_messages p WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
 		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
 		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
-		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
+		        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
+		        COALESCE(ct.theme_id,'')
 		   FROM chats c
 		   LEFT JOIN media pm ON pm.id = c.photo_media_id
+		   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
@@ -379,7 +407,7 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
 		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
 		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
-		&role, &rights, &muted)
+		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatRecord{}, domain.ErrNotFound
 	}
@@ -392,8 +420,13 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	if rights != nil {
 		c.MyRights = domain.Rights(*rights)
 	}
-	if muted != nil {
-		c.Muted = *muted
+	// notify_settings зритель-зависимы: без зрителя (снимок chat_update — один
+	// на всех участников) их нет вовсе, и пустой конструктор здесь был бы не
+	// «неизвестно», а «переопределения нет» — то есть чужой ответ, разосланный
+	// всем.
+	if viewerID != 0 && role != nil {
+		ns := peerNotifySettings(muteUntil, notifyPreview, notifySound, time.Now())
+		c.NotifySettings = &ns
 	}
 	c.Settings.DefaultPerms = domain.MemberPerms(perms)
 	if len(allowed) > 0 {
@@ -410,8 +443,7 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 		offset = 0
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, role, rights,
-		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		`SELECT chat_id, user_id, role, rights
 		   FROM chat_members
 		  WHERE chat_id=$1 ORDER BY role DESC, user_id LIMIT $2 OFFSET $3`,
 		chatID, limit, offset)
@@ -423,7 +455,7 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 	for rows.Next() {
 		var m domain.Member
 		var rights int
-		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted); err != nil {
+		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights); err != nil {
 			return nil, err
 		}
 		m.Rights = domain.Rights(rights)

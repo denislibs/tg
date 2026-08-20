@@ -23,23 +23,27 @@ import (
 // json-тегов: ключи в кэше это ИМЕНА ПОЛЕЙ Go. Любое переименование/удаление
 // поля молча ломает формат на живом деплое, и ни один тест этого не покажет
 // (промах кэша выглядит как валидный ответ из БД, а вот СТАРЫЙ блоб, прочитанный
-// НОВЫМ кодом, отдаёт нули). Шаг B (адресация) форму domain.DialogRecord не менял,
-// поэтому bump'а префикса ключа он не требует — переводом занят HTTP-слой,
-// который считает peer_id из уже закэшированных Type/ChatID/Peer.
+// НОВЫМ кодом, отдаёт нули).
 //
-// Шаг C форму ИЗМЕНИЛ: DialogPeer с display_name/avatar_url стал конструктором
-// `user`, а PhotoURL/PhotoPreview — парой PhotoID/PhotoPreview. Поэтому
-// префикс ключа поднят до «dialogs2:» — старые блобы просто перестают
-// находиться и дочитываются из БД. Именно bump, а не FLUSHDB: сброс всей базы
-// задел бы presence, очереди и QR-записи, не имеющие к форме диалога никакого
-// отношения.
+// Поэтому при каждой смене формы поднимается ПРЕФИКС КЛЮЧА — старые блобы
+// просто перестают находиться и дочитываются из БД. Именно bump, а не FLUSHDB:
+// сброс всей базы задел бы presence, очереди и QR-записи, не имеющие к форме
+// диалога никакого отношения.
+//
+//	dialogs2: — шаг C пиров: DialogPeer с display_name/avatar_url стал
+//	           конструктором `user`, PhotoURL/PhotoPreview — парой id+превью;
+//	dialogs3: — шаг B диалогов: выжимка последнего сообщения (девять полей
+//	           Last*) схлопнулась в один TopMessageID, Muted/NotifyPreview/
+//	           NotifySound — в NotifySettings, Archived — в Folder, а ThemeID
+//	           уехал в полную карточку. Старый блоб, прочитанный этим кодом,
+//	           отдал бы список чатов без единого последнего сообщения.
 type DialogsCache struct{ client *goredis.Client }
 
 func NewDialogsCache(client *goredis.Client) *DialogsCache { return &DialogsCache{client: client} }
 
 const dialogsTTL = 15 * time.Second
 
-func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs2:%d", userID) }
+func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs3:%d", userID) }
 
 func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool) {
 	b, err := s.client.Get(ctx, dialogsKey(userID)).Bytes()

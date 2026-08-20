@@ -82,22 +82,24 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	check("non-member", false, false)
 
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO chat_members (chat_id, user_id, muted) VALUES ($1,$2,false)`, chatID, userID); err != nil {
+		`INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, chatID, userID); err != nil {
 		t.Fatalf("seed member: %v", err)
 	}
 	// Member without saved settings → defaults: push with preview.
 	check("defaults", true, true)
 
-	// Per-chat mute «навсегда».
+	// Per-chat mute «навсегда» — это СРОК в далёком будущем, а не отдельный
+	// флаг: колонки muted больше нет вовсе (миграция 0104).
 	if _, err := pool.Exec(ctx,
-		`UPDATE chat_members SET muted=true WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
-		t.Fatalf("update muted: %v", err)
+		`UPDATE chat_members SET muted_until=to_timestamp($3) WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, domain.MuteUntilForever); err != nil {
+		t.Fatalf("update muted_until: %v", err)
 	}
 	check("muted forever", false, false)
 
 	// Временный mute в будущем / истёкший.
 	if _, err := pool.Exec(ctx,
-		`UPDATE chat_members SET muted=false, muted_until=now()+interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
+		`UPDATE chat_members SET muted_until=now()+interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
 		t.Fatalf("update muted_until: %v", err)
 	}
 	check("muted until future", false, false)

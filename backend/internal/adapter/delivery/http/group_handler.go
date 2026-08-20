@@ -592,9 +592,10 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"peer_id":   domain.ToPeerID(c.ID, true),
 		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
-		// Наше, вне схемы: заглушен ли чат зрителем (per-user настройка
-		// уведомлений — своя подсистема) и кто создал (пока есть потребители).
-		"muted":      c.Muted,
+		// Наше, вне схемы: кто создал чат (пока есть потребители). Плоское
+		// `muted` отсюда ушло — заглушённость зрителем это
+		// channelFull.notify_settings, параметр самой схемы, и мьют в нём
+		// выражен СРОКОМ, а не булевым.
 		"creator_id": c.CreatorID,
 	})
 }

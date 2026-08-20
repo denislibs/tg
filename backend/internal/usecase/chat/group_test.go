@@ -27,6 +27,7 @@ type fakeGroupRepo struct {
 	pinned       map[int64]map[int64]bool                     // userID -> chatID -> pinned
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
+	mutedUntil   map[int64]map[int64]*time.Time               // chatID -> userID -> срок мьюта (nil — не замьючен)
 	onCreate     func(id int64)                               // optional hook fired after a chat is created
 	// onSetDiscussion — опциональный хук, зеркалящий привязку группы обсуждения
 	// в общий store (store.discussionChat), которым пользуется fakeMsgs
@@ -381,16 +382,33 @@ func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role st
 	return nil
 }
 
-func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted bool, _ *time.Time) error {
+func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, until *time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	m, ok := r.members[chatID][userID]
-	if !ok {
+	if _, ok := r.members[chatID][userID]; !ok {
 		return domain.ErrNotFound
 	}
-	m.Muted = muted
-	r.members[chatID][userID] = m
+	if r.mutedUntil == nil {
+		r.mutedUntil = map[int64]map[int64]*time.Time{}
+	}
+	if r.mutedUntil[chatID] == nil {
+		r.mutedUntil[chatID] = map[int64]*time.Time{}
+	}
+	r.mutedUntil[chatID][userID] = until
 	return nil
+}
+
+func (r *fakeGroupRepo) NotifySettings(_ context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.members[chatID][userID]; !ok {
+		return domain.PeerNotifySettings{}, domain.ErrNotFound
+	}
+	var until time.Time
+	if u := r.mutedUntil[chatID][userID]; u != nil {
+		until = *u
+	}
+	return domain.NewPeerNotifySettings(until, nil, nil), nil
 }
 
 func (r *fakeGroupRepo) SetNotify(_ context.Context, _, _ int64, _ *bool, _ *string) error {
@@ -455,7 +473,16 @@ func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.
 	if m, ok := r.members[chatID][viewerID]; ok {
 		c.MyRole = m.Role
 		c.MyRights = m.Rights
-		c.Muted = m.Muted
+		// Настройки уведомлений зритель-зависимы: без зрителя (снимок
+		// chat_update) их нет вовсе, ровно как в SQL-витрине.
+		if viewerID != 0 {
+			var until time.Time
+			if u := r.mutedUntil[chatID][viewerID]; u != nil {
+				until = *u
+			}
+			ns := domain.NewPeerNotifySettings(until, nil, nil)
+			c.NotifySettings = &ns
+		}
 	}
 	return c, nil
 }

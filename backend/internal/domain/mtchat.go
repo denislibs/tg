@@ -812,6 +812,9 @@ type ChatFull struct {
 	About      string          `json:"about"`
 	// PinnedMsgID — flags.6?int; 0 — закреплённого нет.
 	PinnedMsgID int `json:"pinned_msg_id,omitempty"`
+	// ThemeEmoticon — flags.16?string: тема оформления (решение Р7). У нас не
+	// производится вместе со всем chatFull.
+	ThemeEmoticon string `json:"theme_emoticon,omitempty"`
 }
 
 func (f *ChatFull) UnmarshalJSON(b []byte) error {
@@ -874,6 +877,21 @@ type ChannelFull struct {
 	AvailableReactions ChatReactions `json:"available_reactions,omitempty"`
 	// SendPaidMessagesStars — flags2.21?long: chats.charge_stars; 0 — выключено.
 	SendPaidMessagesStars int64 `json:"send_paid_messages_stars,omitempty"`
+	// ThemeEmoticon — flags.27?string: тема оформления чата (решение Р7). Прежде
+	// ехала полем КАЖДОЙ строки списка диалогов; в схеме её место здесь, а в
+	// dialog поля нет вовсе.
+	//
+	// Названное отступление: в оригинале это эмодзи из набора серверных тем
+	// (обои и палитра приезжают с сервера), у нас — id пресета, который целиком
+	// живёт на клиенте. Предмет тот же (какое оформление у этого чата), форма
+	// наша; см. docs/readiness/port-divergences.md.
+	ThemeEmoticon string `json:"theme_emoticon,omitempty"`
+	// NotifySettings — ОБЯЗАТЕЛЬНЫЙ по схеме, но зритель-зависимый: это
+	// пер-чатное переопределение уведомлений того, кто карточку читает. nil —
+	// зрителя не спрашивали (снимок chat_update один на всех участников, см.
+	// ChatRecord.ViewerID); пустым конструктором такое не выражается — он
+	// означал бы «переопределения нет».
+	NotifySettings *PeerNotifySettings `json:"notify_settings,omitempty"`
 }
 
 // HiddenPrehistory — история чата скрыта от новых участников; наш

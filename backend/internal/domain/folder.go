@@ -11,11 +11,16 @@ const MaxFolderNameLength = 12
 // MaxFoldersPerUser — лимит числа папок (Telegram default limit).
 const MaxFoldersPerUser = 10
 
-// Folder — папка чатов (tweb DialogFilter): включённые типы чатов + точечные
+// DialogFilter — пользовательская папка чатов: включённые типы чатов + точечные
 // include/exclude списки chat_id. Диалог попадает в папку по алгоритму
 // testDialogForFilter (клиент): exclude-список → нет; include-список → да;
 // иначе по флагам типов с учётом exclude_muted/exclude_read.
-type Folder struct {
+//
+// Имя — из схемы: это конструктор `dialogFilter`, а `folder` в схеме принадлежит
+// ДРУГОЙ сущности (раскладка «все чаты»/«архив», domain.Folder в mtdialog.go).
+// Прежнее имя Folder называло здесь чужой объект и обязано было столкнуться с
+// ним при порте — столкновение снято переименованием, а не суффиксом.
+type DialogFilter struct {
 	ID           int64
 	Title        string
 	Pos          int
@@ -32,7 +37,7 @@ type Folder struct {
 
 // HasIncludes — есть ли хоть одно правило включения (tweb: папка без
 // включённых чатов/типов не сохраняется).
-func (f Folder) HasIncludes() bool {
+func (f DialogFilter) HasIncludes() bool {
 	return f.Contacts || f.NonContacts || f.Groups || f.Broadcasts || f.Bots || len(f.IncludeChats) > 0
 }
 

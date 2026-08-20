@@ -1976,7 +1976,8 @@ export namespace Dialog {
     index_31?: number,
     peerId?: PeerId,
     topMessage?: any,
-    migratedTo?: PeerId
+    migratedTo?: PeerId,
+    secret?: boolean
   };
 
   export type dialogFolder = {
@@ -2424,7 +2425,8 @@ export namespace UserFull {
     main_tab?: ProfileTab,
     saved_music?: Document,
     note?: TextWithEntities,
-    bot_manager_id?: string | number
+    bot_manager_id?: string | number,
+    theme_emoticon?: string
   };
 }
 

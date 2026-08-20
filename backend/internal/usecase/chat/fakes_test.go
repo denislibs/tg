@@ -29,7 +29,8 @@ type member struct {
 	unread      int
 	mentions    int
 	reactions   int
-	muted       bool
+	// mutedUntil — срок мьюта, а не булево: «навсегда» это domain.MuteUntilForever.
+	mutedUntil *time.Time
 }
 
 // mentionRow mirrors a message_mentions row in the fake store.
@@ -224,6 +225,10 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 		if mem == nil {
 			continue
 		}
+		var until time.Time
+		if mem.mutedUntil != nil {
+			until = *mem.mutedUntil
+		}
 		d := domain.DialogRecord{
 			ChatID:               cid,
 			Type:                 r.s.chatType[cid],
@@ -231,16 +236,16 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 			UnreadCount:          mem.unread,
 			UnreadMentionsCount:  mem.mentions,
 			UnreadReactionsCount: mem.reactions,
-			Muted:                mem.muted,
+			NotifySettings:       domain.NewPeerNotifySettings(until, nil, nil),
 		}
-		msgs := r.s.messages[cid]
-		if len(msgs) > 0 {
-			last := msgs[len(msgs)-1]
-			d.HasLast = true
-			d.LastSeq = last.Seq
-			d.LastText = last.Text
-			d.LastSenderID = last.SenderID
-			d.LastAt = last.CreatedAt
+		// Последнее сообщение адресуется ЧИСЛОМ: сам объект едет вектором
+		// messages контейнера, а не выжимкой внутри строки диалога. Очистка
+		// истории учитывается так же, как в SQL (seq > cleared_max_seq).
+		for i := len(r.s.messages[cid]) - 1; i >= 0; i-- {
+			if last := r.s.messages[cid][i]; last.Seq > mem.clearedSeq {
+				d.TopMessageID = last.ID
+				break
+			}
 		}
 		out = append(out, d)
 	}

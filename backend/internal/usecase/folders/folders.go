@@ -23,9 +23,9 @@ var (
 )
 
 type Repo interface {
-	List(ctx context.Context, ownerID int64) ([]domain.Folder, error)
-	Create(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error)
-	Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) // domain.ErrNotFound если не своя/нет
+	List(ctx context.Context, ownerID int64) ([]domain.DialogFilter, error)
+	Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error)
+	Update(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) // domain.ErrNotFound если не своя/нет
 	Delete(ctx context.Context, ownerID, folderID int64) error
 	Count(ctx context.Context, ownerID int64) (int, error)
 
@@ -134,7 +134,7 @@ func (i *Interactor) ChatIDsToPeers(ctx context.Context, ownerID int64, ids []in
 
 // folderJSON — абсолютный снимок папки для folder_update (клиент заменяет
 // определение целиком, порядок доставки апдейтов не важен — идемпотентно).
-func (i *Interactor) folderJSON(ctx context.Context, ownerID int64, f domain.Folder) map[string]any {
+func (i *Interactor) folderJSON(ctx context.Context, ownerID int64, f domain.DialogFilter) map[string]any {
 	return map[string]any{
 		"id": f.ID, "title": f.Title, "pos": f.Pos,
 		"contacts": f.Contacts, "non_contacts": f.NonContacts,
@@ -176,36 +176,36 @@ func (i *Interactor) emitFolderUpdate(ctx context.Context, ownerID int64, base m
 	_ = i.pub.PublishToUser(ctx, ownerID, frame)
 }
 
-func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Folder, error) {
+func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.DialogFilter, error) {
 	return i.repo.List(ctx, ownerID)
 }
 
-func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	if err := validate(&f); err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	n, err := i.repo.Count(ctx, ownerID)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	if n >= domain.MaxFoldersPerUser {
-		return domain.Folder{}, ErrTooMany
+		return domain.DialogFilter{}, ErrTooMany
 	}
 	created, err := i.repo.Create(ctx, ownerID, f)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, created)})
 	return created, nil
 }
 
-func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	if err := validate(&f); err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	updated, err := i.repo.Update(ctx, ownerID, f)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, updated)})
 	return updated, nil
@@ -298,7 +298,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		want = inv.ChatIDs
 	}
 	joined := make([]int64, 0, len(want))
-	var created domain.Folder
+	var created domain.DialogFilter
 	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, id := range want {
@@ -323,7 +323,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		if !domain.ValidFolderTitle(title) {
 			title = truncateTitle(title)
 		}
-		f, e := i.repo.Create(ctx, userID, domain.Folder{Title: title, IncludeChats: joined})
+		f, e := i.repo.Create(ctx, userID, domain.DialogFilter{Title: title, IncludeChats: joined})
 		if e != nil {
 			return e
 		}
@@ -342,17 +342,17 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 
 // ownedFolder возвращает папку folderID пользователя ownerID; domain.ErrNotFound
 // если папки нет или она чужая.
-func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (domain.Folder, error) {
+func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (domain.DialogFilter, error) {
 	list, err := i.repo.List(ctx, ownerID)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	for _, f := range list {
 		if f.ID == folderID {
 			return f, nil
 		}
 	}
-	return domain.Folder{}, domain.ErrNotFound
+	return domain.DialogFilter{}, domain.ErrNotFound
 }
 
 // shareableChats оставляет из ids только публичные группы/каналы.
@@ -373,7 +373,7 @@ func (i *Interactor) shareableChats(ctx context.Context, ids []int64) ([]int64, 
 	return out, nil
 }
 
-func validate(f *domain.Folder) error {
+func validate(f *domain.DialogFilter) error {
 	f.Title = strings.TrimSpace(f.Title)
 	if !domain.ValidFolderTitle(f.Title) {
 		return ErrBadTitle

@@ -79,28 +79,21 @@ func TestChatFlow_HTTP(t *testing.T) {
 		t.Fatalf("history = %+v", hist)
 	}
 
-	// GET /chats includes the private-chat peer (B) so the UI can show a name.
-	rec = authedReq(t, h, http.MethodGet, "/chats", tokenA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list chats: %d %s", rec.Code, rec.Body.String())
+	// GET /chats отдаёт собеседника приватного чата вектором users контейнера —
+	// внутри строки диалога его больше нет (решение Р1): пир один на все ссылки,
+	// а не копия в каждой строке.
+	body := getChats(t, h, tokenA, "")
+	if len(body.Dialogs) != 1 || body.Dialogs[0].Peer.Underscore != "peerUser" {
+		t.Fatalf("expected one dialog addressed by peerUser, got %+v", body.Dialogs)
 	}
-	var dialogs struct {
-		Chats []struct {
-			PeerID int64 `json:"peer_id"`
-			// Собеседник приватного чата — конструктор `user` целиком.
-			Peer *struct {
-				Underscore string `json:"_"`
-				ID         int64  `json:"id"`
-				FirstName  string `json:"first_name"`
-			} `json:"peer"`
-		} `json:"chats"`
+	var peer map[string]any
+	for _, u := range body.Users {
+		if int64(u["id"].(float64)) == idB {
+			peer = u
+		}
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &dialogs)
-	if len(dialogs.Chats) != 1 || dialogs.Chats[0].Peer == nil {
-		t.Fatalf("expected one chat with a peer, got %s", rec.Body.String())
-	}
-	if dialogs.Chats[0].Peer.ID != idB || dialogs.Chats[0].Peer.Underscore != "user" {
-		t.Fatalf("peer = %+v; want user(%d)", dialogs.Chats[0].Peer, idB)
+	if peer == nil || peer["_"] != "user" {
+		t.Fatalf("собеседника %d нет в users: %v", idB, body.Users)
 	}
 }
 
@@ -173,27 +166,54 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 	}
 }
 
-// getChats делает GET /chats(+query) с токеном и декодирует ответ в форму
-// {chats, count, is_end}; падает тестом, если код ответа не 200.
-func getChats(t *testing.T, h http.Handler, token, query string) struct {
-	Chats []struct {
-		PeerID int64 `json:"peer_id"`
-	} `json:"chats"`
-	Count int  `json:"count"`
-	IsEnd bool `json:"is_end"`
-} {
+// dialogsContainer — ответ /chats в форме контейнера схемы. Конструктор `_`
+// читается наравне с содержимым: именно он отвечает на вопрос «это всё?» —
+// messages.dialogs идёт БЕЗ count, messages.dialogsSlice — с ним.
+type dialogsContainer struct {
+	Underscore string `json:"_"`
+	Count      int    `json:"count"`
+	Dialogs    []struct {
+		Underscore string `json:"_"`
+		Peer       struct {
+			Underscore string `json:"_"`
+			UserID     int64  `json:"user_id"`
+			ChannelID  int64  `json:"channel_id"`
+		} `json:"peer"`
+		TopMessage     int64           `json:"top_message"`
+		FolderID       int             `json:"folder_id"`
+		UnreadCount    int             `json:"unread_count"`
+		NotifySettings map[string]any  `json:"notify_settings"`
+		PFlags         map[string]bool `json:"pFlags"`
+	} `json:"dialogs"`
+	Messages []map[string]any `json:"messages"`
+	Chats    []map[string]any `json:"chats"`
+	Users    []map[string]any `json:"users"`
+}
+
+// peerIDs — знаковые ключи пиров строк диалогов, в порядке выдачи. Ключ теперь
+// выводится из КОНСТРУКТОРА пира, а не едет плоским числом: peerUser — сам id,
+// peerChannel — он же со знаком минус (порт getPeerId).
+func (c dialogsContainer) peerIDs() []int64 {
+	out := make([]int64, 0, len(c.Dialogs))
+	for _, d := range c.Dialogs {
+		if d.Peer.Underscore == "peerUser" {
+			out = append(out, d.Peer.UserID)
+			continue
+		}
+		out = append(out, -d.Peer.ChannelID)
+	}
+	return out
+}
+
+// getChats делает GET /chats(+query) с токеном и декодирует контейнер;
+// падает тестом, если код ответа не 200.
+func getChats(t *testing.T, h http.Handler, token, query string) dialogsContainer {
 	t.Helper()
 	rec := authedReq(t, h, http.MethodGet, "/chats"+query, token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /chats%s: %d %s", query, rec.Code, rec.Body.String())
 	}
-	var out struct {
-		Chats []struct {
-			PeerID int64 `json:"peer_id"`
-		} `json:"chats"`
-		Count int  `json:"count"`
-		IsEnd bool `json:"is_end"`
-	}
+	var out dialogsContainer
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode /chats%s: %v", query, err)
 	}
@@ -216,13 +236,15 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 		}
 	}
 
-	// 1) выдача без параметров: прежняя форма + count/is_end
+	// 1) выдача без параметров: список отдан ЦЕЛИКОМ, и это выражает сам
+	// конструктор — count у messages.dialogs нет вовсе (tweb: isEnd = !count).
 	full := getChats(t, h, tokenA, "")
-	if full.Count != 3 || !full.IsEnd {
-		t.Fatalf("count=%d is_end=%v", full.Count, full.IsEnd)
+	if full.Underscore != "messages.dialogs" || full.Count != 0 {
+		t.Fatalf("весь список обязан ехать messages.dialogs без count: _=%q count=%d",
+			full.Underscore, full.Count)
 	}
-	if len(full.Chats) != 3 {
-		t.Fatalf("want 3 chats, got %d", len(full.Chats))
+	if len(full.Dialogs) != 3 {
+		t.Fatalf("want 3 dialogs, got %d", len(full.Dialogs))
 	}
 
 	// 2) проход курсором по одному
@@ -231,52 +253,37 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 	// Ограничитель итераций: без него регрессия курсора (напр. offset_peer_id
 	// игнорируется) не роняет тест, а вешает его — в CI это таймаут всего
 	// прогона вместо внятной ошибки.
-	maxIter := full.Count + 2
+	maxIter := len(full.Dialogs) + 2
 	for iter := 0; ; iter++ {
 		if iter >= maxIter {
 			t.Fatalf("курсор не сходится за %d шагов, собрано: %v", maxIter, walked)
 		}
 		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_peer_id=%d", cursor))
-		if p.Count != 3 {
-			t.Fatalf("count на странице=%d", p.Count)
+		// Кусок обязан нести размер набора: без него клиент решит, что видел
+		// весь список, и догрузка остановится на первой же странице.
+		if p.Underscore != "messages.dialogsSlice" || p.Count != 3 {
+			t.Fatalf("страница = %q count=%d; want messages.dialogsSlice 3", p.Underscore, p.Count)
 		}
-		if len(p.Chats) > 1 {
-			t.Fatalf("limit=1 нарушен: %d", len(p.Chats))
+		if len(p.Dialogs) > 1 {
+			t.Fatalf("limit=1 нарушен: %d", len(p.Dialogs))
 		}
-		for _, c := range p.Chats {
-			walked = append(walked, c.PeerID)
-		}
-		if p.IsEnd {
+		walked = append(walked, p.peerIDs()...)
+		// Конец выводит клиент — по размеру набора, как оригинал.
+		if len(walked) >= p.Count || len(p.Dialogs) == 0 {
 			break
 		}
 		cursor = walked[len(walked)-1]
 	}
 
 	// 3) совпадает с полной выдачей — порядок и состав
-	if len(walked) != len(full.Chats) {
-		t.Fatalf("прошли %v, полная выдача %v", walked, full.Chats)
+	want := full.peerIDs()
+	if len(walked) != len(want) {
+		t.Fatalf("прошли %v, полная выдача %v", walked, want)
 	}
 	for i := range walked {
-		if walked[i] != full.Chats[i].PeerID {
-			t.Fatalf("порядок разошёлся: %v vs %v", walked, full.Chats)
+		if walked[i] != want[i] {
+			t.Fatalf("порядок разошёлся: %v vs %v", walked, want)
 		}
-	}
-}
-
-// doGet делает GET /chats(+query) с токеном и декодирует ответ через body.
-func doGet(t *testing.T, h http.Handler, token, query string) *httptest.ResponseRecorder {
-	t.Helper()
-	rec := authedReq(t, h, http.MethodGet, query, token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET %s: %d %s", query, rec.Code, rec.Body.String())
-	}
-	return rec
-}
-
-func decode(t *testing.T, rr *httptest.ResponseRecorder, out any) {
-	t.Helper()
-	if err := json.Unmarshal(rr.Body.Bytes(), out); err != nil {
-		t.Fatalf("decode %s: %v", rr.Body.String(), err)
 	}
 }
 
@@ -308,44 +315,36 @@ func TestListDialogsFolderID(t *testing.T) {
 		t.Fatalf("archive: %d %s", rec.Code, rec.Body.String())
 	}
 
-	t.Run("folder_id=1 — только архив и его count", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats?folder_id=1")
-		var body struct {
-			Chats []map[string]any `json:"chats"`
-			Count int              `json:"count"`
-			IsEnd bool             `json:"is_end"`
+	t.Run("folder_id=1 — только архив", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "?folder_id=1")
+		if len(body.Dialogs) != 1 {
+			t.Fatalf("dialogs=%d, want 1", len(body.Dialogs))
 		}
-		decode(t, rr, &body)
-		if len(body.Chats) != 1 || body.Count != 1 || !body.IsEnd {
-			t.Fatalf("chats=%d count=%d isEnd=%v, want 1 1 true", len(body.Chats), body.Count, body.IsEnd)
-		}
-		if body.Chats[0]["archived"] != true {
-			t.Fatalf("отдан не архивный диалог: %v", body.Chats[0])
+		// Архив на проводе — folder_id=1, а не булево `archived`; общий список
+		// ключа не несёт вовсе (у оригинала folder_id это flags.4?int).
+		if body.Dialogs[0].FolderID != 1 {
+			t.Fatalf("отдан не архивный диалог: folder_id=%d", body.Dialogs[0].FolderID)
 		}
 	})
 
-	t.Run("folder_id=0 — всё, кроме архива", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats?folder_id=0")
-		var body struct {
-			Chats []map[string]any `json:"chats"`
-			Count int              `json:"count"`
+	t.Run("folder_id=0 — всё, кроме архива, и без ключа folder_id", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "?folder_id=0")
+		if len(body.Dialogs) != 2 {
+			t.Fatalf("dialogs=%d, want 2", len(body.Dialogs))
 		}
-		decode(t, rr, &body)
-		if len(body.Chats) != 2 || body.Count != 2 {
-			t.Fatalf("chats=%d count=%d, want 2 2", len(body.Chats), body.Count)
+		for _, d := range body.Dialogs {
+			if d.FolderID != 0 {
+				t.Fatalf("общий список отдал folder_id=%d", d.FolderID)
+			}
 		}
 	})
 
 	// Отсутствие параметра — прежний контракт: весь набор. Мутация «по
 	// умолчанию FolderAll» краснит здесь.
-	t.Run("без folder_id — весь набор", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats")
-		var body struct {
-			Count int `json:"count"`
-		}
-		decode(t, rr, &body)
-		if body.Count != 3 {
-			t.Fatalf("count=%d, want 3", body.Count)
+	t.Run("без folder_id — весь набор, архив вместе с остальными", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "")
+		if len(body.Dialogs) != 3 {
+			t.Fatalf("dialogs=%d, want 3", len(body.Dialogs))
 		}
 	})
 }

@@ -26,12 +26,12 @@ var _ usecasefolders.Repo = (*FoldersRepo)(nil)
 const folderCols = `id, title, pos, contacts, non_contacts, groups, broadcasts, bots,
 	exclude_muted, exclude_read, COALESCE(include_chats, '[]'::jsonb), COALESCE(exclude_chats, '[]'::jsonb)`
 
-func scanFolder(row pgx.Row) (domain.Folder, error) {
-	var f domain.Folder
+func scanFolder(row pgx.Row) (domain.DialogFilter, error) {
+	var f domain.DialogFilter
 	var inc, exc []byte
 	if err := row.Scan(&f.ID, &f.Title, &f.Pos, &f.Contacts, &f.NonContacts, &f.Groups,
 		&f.Broadcasts, &f.Bots, &f.ExcludeMuted, &f.ExcludeRead, &inc, &exc); err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	_ = json.Unmarshal(inc, &f.IncludeChats)
 	_ = json.Unmarshal(exc, &f.ExcludeChats)
@@ -46,14 +46,14 @@ func chatsJSON(ids []int64) any {
 	return string(b)
 }
 
-func (r *FoldersRepo) List(ctx context.Context, ownerID int64) ([]domain.Folder, error) {
+func (r *FoldersRepo) List(ctx context.Context, ownerID int64) ([]domain.DialogFilter, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+folderCols+` FROM folders WHERE owner_id=$1 ORDER BY pos, id`, ownerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.Folder, 0)
+	out := make([]domain.DialogFilter, 0)
 	for rows.Next() {
 		f, err := scanFolder(rows)
 		if err != nil {
@@ -64,7 +64,7 @@ func (r *FoldersRepo) List(ctx context.Context, ownerID int64) ([]domain.Folder,
 	return out, rows.Err()
 }
 
-func (r *FoldersRepo) Create(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (r *FoldersRepo) Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	// pos = в конец списка
 	row := querier(ctx, r.pool).QueryRow(ctx,
 		`INSERT INTO folders (owner_id, title, pos, contacts, non_contacts, groups, broadcasts, bots,
@@ -77,7 +77,7 @@ func (r *FoldersRepo) Create(ctx context.Context, ownerID int64, f domain.Folder
 	return scanFolder(row)
 }
 
-func (r *FoldersRepo) Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (r *FoldersRepo) Update(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	row := querier(ctx, r.pool).QueryRow(ctx,
 		`UPDATE folders SET title=$3, contacts=$4, non_contacts=$5, groups=$6, broadcasts=$7,
 		        bots=$8, exclude_muted=$9, exclude_read=$10, include_chats=$11, exclude_chats=$12
@@ -87,7 +87,7 @@ func (r *FoldersRepo) Update(ctx context.Context, ownerID int64, f domain.Folder
 		f.ExcludeMuted, f.ExcludeRead, chatsJSON(f.IncludeChats), chatsJSON(f.ExcludeChats))
 	out, err := scanFolder(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Folder{}, domain.ErrNotFound
+		return domain.DialogFilter{}, domain.ErrNotFound
 	}
 	return out, err
 }

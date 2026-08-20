@@ -55,7 +55,7 @@ func TestFolderUpdate_LoggedAndLive(t *testing.T) {
 	const owner int64 = 1
 
 	// Create.
-	f, err := uc.Create(ctx, owner, domain.Folder{Title: "Work", IncludeChats: []int64{10}})
+	f, err := uc.Create(ctx, owner, domain.DialogFilter{Title: "Work", IncludeChats: []int64{10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

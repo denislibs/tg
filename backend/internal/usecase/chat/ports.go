@@ -94,9 +94,13 @@ type GroupRepo interface {
 	RemoveMember(ctx context.Context, chatID, userID int64) error
 	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
 	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
-	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
-	// вычисляется как muted OR muted_until > now()).
-	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
+	// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
+	// «навсегда». Булева аргумента здесь нет: два способа сказать одно и то же и
+	// были дефектом, из-за которого «заглушить на час» работало как «навсегда».
+	SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error
+	// NotifySettings — пер-чатное переопределение уведомлений участника целиком
+	// (мьют сроком, превью, звук).
+	NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error)
 	// SetNotify обновляет per-chat уведомления (превью/звук); nil-поля не меняются.
 	SetNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error
 	// SetPinned/SetArchived — пер-юзерные флаги диалога (закрепление/архив);

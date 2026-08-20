@@ -232,6 +232,10 @@
       {
         "name": "migratedTo",
         "type": "PeerId"
+      },
+      {
+        "name": "secret",
+        "type": "boolean"
       }
     ]
   },
@@ -1314,6 +1318,15 @@
       {
         "name": "safe",
         "type": "boolean"
+      }
+    ]
+  },
+  {
+    "predicate": "userFull",
+    "params": [
+      {
+        "name": "theme_emoticon",
+        "type": "string"
       }
     ]
   }

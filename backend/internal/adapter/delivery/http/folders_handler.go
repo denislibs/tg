@@ -34,8 +34,8 @@ type folderBody struct {
 
 // toDomain — правила папки приезжают ключами пиров; внутрь домена они идут
 // внутренними chatID (слой разрешения, usecase/chat/peeraddr.go).
-func (b folderBody) toDomain(ctx context.Context, uc *usecasefolders.Interactor, ownerID, id int64) domain.Folder {
-	return domain.Folder{
+func (b folderBody) toDomain(ctx context.Context, uc *usecasefolders.Interactor, ownerID, id int64) domain.DialogFilter {
+	return domain.DialogFilter{
 		ID: id, Title: b.Title,
 		Contacts: b.Contacts, NonContacts: b.NonContacts, Groups: b.Groups,
 		Broadcasts: b.Broadcasts, Bots: b.Bots,
@@ -45,7 +45,7 @@ func (b folderBody) toDomain(ctx context.Context, uc *usecasefolders.Interactor,
 	}
 }
 
-func folderJSON(ctx context.Context, uc *usecasefolders.Interactor, ownerID int64, f domain.Folder) map[string]any {
+func folderJSON(ctx context.Context, uc *usecasefolders.Interactor, ownerID int64, f domain.DialogFilter) map[string]any {
 	return map[string]any{
 		"id": f.ID, "title": f.Title, "pos": f.Pos,
 		"contacts": f.Contacts, "non_contacts": f.NonContacts, "groups": f.Groups,

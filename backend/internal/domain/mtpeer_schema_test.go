@@ -33,9 +33,13 @@ var peerOmittedWithoutSubject = map[string][]string{
 	// settings:PeerSettings — набор «что зрителю предложить сделать с этим
 	// пиром» (заблокировать/пожаловаться/добавить в контакты); у нас такого
 	// объекта нет вовсе, кнопки решает клиент.
-	// notify_settings:PeerNotifySettings — предмет ЕСТЬ (chat_members.muted,
-	// notify_preview, notify_sound, domain.NotifySettings), но это отдельный
-	// конструктор и отдельная подсистема программы.
+	// notify_settings:PeerNotifySettings — конструктор появился (подсистема
+	// диалогов, mtdialog.go), и в channelFull он теперь производится. У userFull
+	// производителя ДВА: профиль чужого (зритель известен) и /me (зритель — сам
+	// владелец, и приватного чата с собой не существует — есть «Избранное»,
+	// другая строка). Положить настройки только в один из них значило бы
+	// раздать одну форму двумя разными ответами; предмет при этом никуда не
+	// делся и едет строкой диалога — dialog.notify_settings.
 	// common_chats_count — общих чатов мы не считаем нигде: ни ручки, ни запроса.
 	"userFull": {"settings", "notify_settings", "common_chats_count"},
 
@@ -51,12 +55,22 @@ var peerOmittedWithoutSubject = map[string][]string{
 	// participants:ChatParticipants — список участников отдельным объединением
 	// (chatParticipant/chatParticipantCreator/chatParticipantAdmin); у нас
 	// участники это своя ручка со страницами, а не поле карточки.
+	// notify_settings — сам chatFull не производится (решение №2: любая наша
+	// группа отдаёт channelFull), поэтому пропуск здесь не про предмет.
 	"chatFull": {"participants", "notify_settings"},
 
 	// bot_info:Vector<BotInfo> — карточки ботов чата отдельным конструктором
 	// (подсистема ботов).
 	// pts — счётчик кадров канала: реквизит синхронизации MTProto. У нас он
 	// живёт в channel_updates и едет своей ручкой difference, а не в карточке.
+	//
+	// notify_settings — предмет ЕСТЬ, и карточка чата его ПРОИЗВОДИТ: подсистема
+	// диалогов дала конструктор (mtdialog.go), и прежнее плоское `muted` рядом с
+	// ответом ушло. В списке параметр остался ради ОДНОГО случая: снимок
+	// chat_update — один на всех участников и зрителя не знает, а настройки
+	// уведомлений зритель-зависимы. Пустым конструктором такое не выражается —
+	// он означал бы «переопределения нет», то есть чужой ответ, разосланный
+	// всем; см. ChatRecord.NotifySettings.
 	"channelFull": {"notify_settings", "bot_info", "pts"},
 
 	// Вложенное Photo аватарки чата — тот же список реквизитов транспорта, что
@@ -117,6 +131,7 @@ func allPeerConstructors() []any {
 			f.TTLPeriod = 86400
 			b := NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC))
 			f.Birthday = &b
+			f.ThemeEmoticon = "night"
 			return f
 		}(),
 		NewUserFull(43, UserFullFlags{}),
@@ -207,7 +222,7 @@ func allPeerConstructors() []any {
 
 		// ── Full ─────────────────────────────────────────────────────────────
 		// Базовый chatFull: объявлен, не производится — поэтому литерал.
-		ChatFull{Underscore: ChatFullTag, ID: 7, About: "о группе", PinnedMsgID: 12},
+		ChatFull{Underscore: ChatFullTag, ID: 7, About: "о группе", PinnedMsgID: 12, ThemeEmoticon: "night"},
 		func() ChannelFull {
 			f := NewChannelFull(8, "о канале", NewPhoto(901, []PhotoSize{
 				NewPhotoStrippedSize([]byte{4, 5}),
@@ -223,6 +238,9 @@ func allPeerConstructors() []any {
 			f.TTLPeriod = 86400
 			f.AvailableReactions = NewChatReactionsSome([]string{"👍"})
 			f.SendPaidMessagesStars = 5
+			f.ThemeEmoticon = "night"
+			ns := NewPeerNotifySettings(time.Unix(MuteUntilForever, 0), nil, NewNotificationSoundNone())
+			f.NotifySettings = &ns
 			return f
 		}(),
 		// Пустая карточка: обязательные about/горизонты/unread едут нулями,

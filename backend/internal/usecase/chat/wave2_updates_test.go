@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -266,5 +267,60 @@ func TestLogAndPublish_NoUpdateLogNoOp(t *testing.T) {
 	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	if err := in.logAndPublish(context.Background(), 0, []int64{1, 2}, "draft_update", map[string]any{"x": 1}); err != nil {
 		t.Fatalf("logAndPublish with nil update log: %v", err)
+	}
+}
+
+// Кадр dialog_mute несёт notify_settings ЦЕЛИКОМ, а не пару {muted, muted_until}
+// (решение Р4). Дефект, который это чинит, был сквозным: UI предлагал «на час»,
+// клиент слал срок, база его хранила — а кадр отдавал булево, и «на час»
+// работало как «навсегда».
+func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
+	in, _, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+
+	settingsOf := func(t *testing.T) map[string]any {
+		t.Helper()
+		d := lastFrameFor(t, pub, owner)
+		ns, _ := d["notify_settings"].(map[string]any)
+		if ns == nil || ns["_"] != domain.PeerNotifySettingsTag {
+			t.Fatalf("кадр без конструктора notify_settings: %v", d)
+		}
+		if _, ok := d["muted"]; ok {
+			t.Errorf("булев мьют остался в кадре: %v", d)
+		}
+		return ns
+	}
+
+	// Временный мьют: срок обязан доехать своим числом.
+	until := time.Now().Add(time.Hour).Truncate(time.Second)
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, true, &until); err != nil {
+		t.Fatalf("SetMute(на час): %v", err)
+	}
+	if got := settingsOf(t)["mute_until"]; got == nil || int64(got.(float64)) != until.Unix() {
+		t.Fatalf("mute_until = %v; want %d", got, until.Unix())
+	}
+
+	// «Навсегда» — это тот же срок, только далёкий (порт MUTE_UNTIL tweb).
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatalf("SetMute(навсегда): %v", err)
+	}
+	if got := settingsOf(t)["mute_until"]; got == nil || int64(got.(float64)) != domain.MuteUntilForever {
+		t.Fatalf("«навсегда» = %v; want %d", got, domain.MuteUntilForever)
+	}
+
+	// Снятие — отсутствие переопределения, а не срок в прошлом.
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, false, &until); err != nil {
+		t.Fatalf("SetMute(снять): %v", err)
+	}
+	if got, ok := settingsOf(t)["mute_until"]; ok {
+		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", got)
 	}
 }

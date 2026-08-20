@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -61,29 +62,34 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 	return err
 }
 
-// ShouldNotify — гейт пуша одним запросом: per-chat mute (muted / muted_until)
-// приоритетнее, глобальные настройки по типу чата (notify_settings) — fallback;
-// у не сохранявших настройки действуют дефолты. Не участник → не пушим.
+// ShouldNotify — гейт пуша одним запросом: per-chat mute приоритетнее,
+// глобальные настройки по типу чата (notify_settings) — fallback; у не
+// сохранявших настройки действуют дефолты. Не участник → не пушим.
+//
+// Мьют чата читается СРОКОМ, а решает вопрос «замьючен ли сейчас» единственный
+// предикат домена (PeerNotifySettings.Muted) — той же копии условия в SQL здесь
+// больше нет.
 func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID int64) (bool, bool, error) {
-	var chatMuted bool
+	var muteUntil *time.Time
 	var chatType string
 	var pm, pp, gm, gp, cm, cp *bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())), c.type,
+		`SELECT m.muted_until, c.type,
 		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
 		        ns.channels_muted, ns.channels_preview
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
 		 WHERE m.chat_id=$1 AND m.user_id=$2`,
-		chatID, userID).Scan(&chatMuted, &chatType, &pm, &pp, &gm, &gp, &cm, &cp)
+		chatID, userID).Scan(&muteUntil, &chatType, &pm, &pp, &gm, &gp, &cm, &cp)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, false, nil // not a member → no push
 	}
 	if err != nil {
 		return false, false, err
 	}
-	if chatMuted {
+	now := time.Now()
+	if peerNotifySettings(muteUntil, nil, nil, now).Muted(now) {
 		return false, false, nil
 	}
 	ns := domain.DefaultNotifySettings()

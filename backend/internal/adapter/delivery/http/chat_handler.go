@@ -253,58 +253,41 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"dialogs": out})
 }
 
-// dialogRow — представление одного диалога в HTTP-контракте /chats.
-func dialogRow(d domain.DialogRecord, peer domain.PeerID) map[string]any {
-	row := map[string]any{
-		"peer_id": peer, "type": d.Type,
-		"title": d.Title, "photo": d.ChatPhoto(), "username": d.Username,
-		"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
-		"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
-		"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
-		"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
-		"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
-	}
-	if d.HasLast {
-		lastMsg := map[string]any{
-			"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
-			"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
-			"sender_name": d.LastSenderName,
-		}
-		// Секретный чат: отдаём шифр-блоб — клиент расшифрует его для превью
-		// (сервер plaintext не знает). У обычных чатов LastEncBody = nil.
-		if len(d.LastEncBody) > 0 {
-			lastMsg["enc_body"] = base64.StdEncoding.EncodeToString(d.LastEncBody)
-		}
-		row["last_message"] = lastMsg
-	}
-	if d.Peer != nil {
-		// Собеседник приватного чата — конструктор `user` целиком: имя,
-		// аватарка и флаги (verified/premium/bot) живут ВНУТРИ него, а не
-		// рассыпаны плоскими ключами рядом.
-		row["peer"] = *d.Peer
-	}
-	return row
-}
-
-// dialogFolder — реальная папка из query. Значения на проводе — как у tweb
+// queryFolder — реальная папка из query. Значения на проводе — как у tweb
 // (FOLDER_ID_ALL=0, FOLDER_ID_ARCHIVE=1); отсутствие параметра и любое другое
-// значение означают «весь набор»: это прежнее поведение эндпоинта, и деградация
-// к нему безопаснее 400 — клиент с неизвестным номером папки увидит больше
-// диалогов, а не пустой список.
-func dialogFolder(r *http.Request) domain.FolderID {
+// значение означают «папка не указана», то есть весь набор: у оригинала это
+// GLOBAL_FOLDER_ID = undefined (storages/dialogs.ts:68), и деградация к нему
+// безопаснее 400 — клиент с неизвестным номером папки увидит больше диалогов, а
+// не пустой список.
+//
+// Имя не dialogFolder: так называется КОНСТРУКТОР схемы (строка-папка в списке
+// чатов), и функция разбора query им называться не может.
+func queryFolder(r *http.Request) *domain.FolderID {
 	switch queryInt(r, "folder_id", -1) {
 	case 0:
-		return domain.FolderAll
+		f := domain.FolderAll
+		return &f
 	case 1:
-		return domain.FolderArchive
+		f := domain.FolderArchive
+		return &f
 	default:
-		return domain.FolderGlobal
+		return nil
 	}
 }
 
 // ListDialogs — GET /chats?limit=&offset_peer_id=&folder_id=: без параметров
-// отдаёт весь список (обратная совместимость), с ними — страницу по курсору
-// peer_id внутри реальной папки.
+// отдаёт весь список, с ними — страницу по курсору peer_id внутри реальной
+// папки.
+//
+// Ответ — КОНТЕЙНЕР схемы (решение Р1): messages.dialogs, когда список отдан
+// целиком, и messages.dialogsSlice{count, …}, когда отдан кусок. Булева is_end
+// больше нет: «это всё» выражает ОТСУТСТВИЕ count, как читает оригинал
+// (tweb appMessagesManager.ts:3614,3629 — `isEnd = !count || …`).
+//
+// Ключ `chats` при этом наконец начинает означать ЧАТЫ, а не строки диалогов:
+// строки едут в `dialogs`, тела групп и каналов — в `chats`, собеседники и
+// авторы последних сообщений — в `users`, сами последние сообщения — в
+// `messages`.
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 0)
 	if limit < 0 {
@@ -322,20 +305,28 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	page := domain.DialogPage{
 		Limit:        int(limit),
 		OffsetChatID: offsetChatID,
-		Folder:       dialogFolder(r),
+		Folder:       queryFolder(r),
 	}
-	res, err := h.svc.ListDialogsPage(r.Context(), h.meID(r), page)
+	res, err := h.svc.DialogsPage(r.Context(), h.meID(r), page)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list chats")
 		return
 	}
-	out := make([]map[string]any, 0, len(res.Dialogs))
-	for _, d := range res.Dialogs {
-		out = append(out, dialogRow(d, h.svc.DialogPeerID(d, h.meID(r))))
+	// Вектор messages наполняет СУЩЕСТВУЮЩИЙ проводной рендерер сообщения:
+	// конструктора `message` в домене ещё нет (своя подсистема программы), а
+	// domain.Message без json-тегов отдал бы наружу имена полей Go. Стык
+	// временный и назван в domain.MessagesDialogs.Messages.
+	messages := make([]any, 0, len(res.Messages))
+	for _, m := range messagesJSON(r.Context(), h.svc, res.Messages) {
+		messages = append(messages, m)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"chats": out, "count": res.Count, "is_end": res.IsEnd,
-	})
+	if res.Whole {
+		writeJSON(w, http.StatusOK,
+			domain.NewMessagesDialogs(res.Dialogs, messages, res.Chats, res.Users))
+		return
+	}
+	writeJSON(w, http.StatusOK,
+		domain.NewMessagesDialogsSlice(res.Count, res.Dialogs, messages, res.Chats, res.Users))
 }
 
 type sendBody struct {

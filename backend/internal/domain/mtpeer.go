@@ -789,6 +789,16 @@ type UserFull struct {
 	// Birthday — flags2.5?Birthday (users.birthday). Видимость решает правило
 	// PrivacyBirthday: не пускает — витрина просто не кладёт ключ.
 	Birthday *Birthday `json:"birthday,omitempty"`
+	// ThemeEmoticon — тема оформления переписки с этим пиром (решение Р7).
+	//
+	// НАЗВАННОЕ ОТСТУПЛЕНИЕ, и потому это НАШ параметр (объявлен в
+	// schema/schema_additional_params.json), а не поле схемы: в схеме у userFull
+	// стоит `theme: flags.15?ChatTheme` — объект с обоями и палитрой, которые
+	// приезжают С СЕРВЕРА. У нас тема это пресет НА КЛИЕНТЕ, и с сервера едет
+	// только его id, ровно как у групп (chatFull/channelFull.theme_emoticon).
+	// Класть id в поле, где на фазе 2 будет объект, значило бы сломать кодек
+	// молча. См. docs/readiness/port-divergences.md.
+	ThemeEmoticon string `json:"theme_emoticon,omitempty"`
 }
 
 // UserFullFlags — булевы флаги userFull в форме, удобной для вызова.

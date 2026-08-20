@@ -72,7 +72,11 @@ func allDialogConstructors() []any {
 	empty := NewDialog(NewPeerUser(42), 0, NewPeerNotifySettings(time.Time{}, nil, nil), false)
 
 	dialogs := []Dialog{full, empty}
-	messages := []Message{{ID: 1, ChatID: 8, Seq: 120}}
+	// Вектор messages наполняет проводной рендерер сообщения из delivery/http:
+	// конструктора `message` в домене нет (своя подсистема программы), и тип
+	// поля это ВРЕМЕННО признаёт. Здесь достаточно любого объекта — сверщик
+	// проверяет конструкторы по ключу `_`, а у сообщения его пока нет вовсе.
+	messages := []any{map[string]any{"id": 1, "seq": 120}}
 	chats := []Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), now, ChannelFlags{Megagroup: true})}
 	users := []UserReal{NewUser(42, UserFlags{})}
 
@@ -83,6 +87,14 @@ func allDialogConstructors() []any {
 		// Замьючен НАВСЕГДА: срок, а не отдельный флаг (решение Р4).
 		NewDialog(NewPeerUser(43), 7,
 			NewPeerNotifySettings(time.Unix(MuteUntilForever, 0), nil, NewNotificationSoundDefault()), false),
+		// Секретный чат: НАШ параметр вне схемы (решение Р9). Сверщик обязан
+		// признавать его штатным механизмом клиентских полей
+		// (schema_additional_params.json), а не молча пропускать.
+		func() DialogReal {
+			d := NewDialog(NewPeerChannel(11), 3, NewPeerNotifySettings(time.Time{}, nil, nil), false)
+			d.Secret = true
+			return d
+		}(),
 		// Мьют снят явно: MuteUntilNever — это НОЛЬ, а не отсутствие ключа.
 		func() DialogReal {
 			d := NewDialog(NewPeerUser(44), 9, PeerNotifySettings{Underscore: PeerNotifySettingsTag}, false)
@@ -94,7 +106,7 @@ func allDialogConstructors() []any {
 		DialogFolder{
 			Underscore: DialogFolderTag,
 			PFlags:     map[string]bool{"pinned": true},
-			Folder: FolderReal{
+			Folder: Folder{
 				Underscore: FolderTag,
 				PFlags:     map[string]bool{"autofill_new_broadcasts": true},
 				ID:         1,

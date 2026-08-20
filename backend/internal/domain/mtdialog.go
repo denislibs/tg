@@ -110,14 +110,25 @@ type DialogReal struct {
 	// конструктором (ни одного flags-параметра), а не отсутствием поля.
 	NotifySettings PeerNotifySettings `json:"notify_settings"`
 	// FolderID — flags.4?int: 0 — «все чаты», 1 — архив (решение Р5). Прежний
-	// `archived: bool` исчез. Тип — обычный int, а НЕ domain.FolderID: тот
-	// перечисляет ВЫБОРКУ запроса (Global/All/Archive) и его значения с
-	// проводными не совпадают. Ноль ключа не даёт: незаархивированный диалог у
-	// оригинала едет без folder_id вовсе.
+	// `archived: bool` исчез. Ноль ключа не даёт: незаархивированный диалог у
+	// оригинала едет без folder_id вовсе, и «папка не указана» это ОТСУТСТВИЕ
+	// значения, а не третий член перечисления (tweb GLOBAL_FOLDER_ID =
+	// undefined, storages/dialogs.ts:68). Значения совпадают с domain.FolderID
+	// ровно потому, что выдуманного третьего члена там больше нет.
 	FolderID int `json:"folder_id,omitempty"`
 	// TTLPeriod — flags.5?int: наш auto_delete_period в секундах (решение Р6);
 	// 0 — автоудаление выключено.
 	TTLPeriod int `json:"ttl_period,omitempty"`
+	// Secret — НАШ СОБСТВЕННЫЙ параметр вне схемы (решение Р9): секретный чат.
+	// Места в схеме у него нет и придумывать его не надо — секретные чаты это
+	// объединение EncryptedChat, отдельная подсистема ВНЕ периметра порта
+	// (решение от 2026-08-19). Признак остаётся потому, что живых гейтов по нему
+	// больше десятка (расшифровка превью, вычистка текста перед записью на диск,
+	// исключение из пересылки), и молча уронить их значит сломать работающую
+	// функцию. Объявлен штатным механизмом клиентских параметров —
+	// schema/schema_additional_params.json, предикат `dialog`, — а не подмешан в
+	// схемное поле: сверщик обязан видеть, что это НАШ ключ.
+	Secret bool `json:"secret,omitempty"`
 }
 
 func (DialogReal) isDialog()        {}
@@ -179,7 +190,7 @@ func (d *DialogReal) UnmarshalJSON(b []byte) error {
 type DialogFolder struct {
 	Underscore                 string          `json:"_"`
 	PFlags                     map[string]bool `json:"pFlags,omitempty"`
-	Folder                     FolderReal      `json:"folder"`
+	Folder                     Folder          `json:"folder"`
 	Peer                       Peer            `json:"peer"`
 	TopMessage                 int64           `json:"top_message"`
 	UnreadMutedPeersCount      int             `json:"unread_muted_peers_count"`
@@ -227,10 +238,7 @@ const FolderTag = "folder"
 // Ровно поэтому необязательные чужие конструкторы (notificationSoundLocal,
 // notificationSoundRingtone) мы, наоборот, не объявляем: у необязательного
 // параметра «нет предмета» бесплатно, у обязательного — нет.
-//
-// Имя с суффиксом Real: `Folder` в пакете занято НАШЕЙ папкой чатов, которая в
-// схеме называется иначе (dialogFilter), — см. domain/folder.go.
-type FolderReal struct {
+type Folder struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	ID         int             `json:"id"`
@@ -241,8 +249,8 @@ type FolderReal struct {
 // folderFlagNames — что keepPFlags пропускает в модель на разборе.
 var folderFlagNames = []string{"autofill_new_broadcasts", "autofill_public_groups", "autofill_new_correspondents"}
 
-func (f *FolderReal) UnmarshalJSON(b []byte) error {
-	type plain FolderReal
+func (f *Folder) UnmarshalJSON(b []byte) error {
+	type plain Folder
 	var v struct {
 		plain
 		Photo json.RawMessage `json:"photo"`
@@ -250,7 +258,7 @@ func (f *FolderReal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-	*f = FolderReal(v.plain)
+	*f = Folder(v.plain)
 	f.PFlags = keepPFlags(v.plain.PFlags, folderFlagNames...)
 
 	photo, err := UnmarshalChatPhoto(v.Photo)
@@ -487,13 +495,16 @@ const (
 type MessagesDialogs struct {
 	Underscore string   `json:"_"`
 	Dialogs    []Dialog `json:"dialogs"`
-	// Messages — ВРЕМЕННОЕ МЕСТО СТЫКА. По схеме это Vector<Message>, но
-	// проводного конструктора `message` у нас ещё нет: сообщение — своя
-	// подсистема программы, и domain.Message пока плоская внутренняя запись, а
-	// не объект провода (json-тегов у неё нет вовсе). Тип сменится вместе с
-	// портом сообщения; начинать его здесь нельзя — контейнер диалогов не место
+	// Messages — ВРЕМЕННОЕ МЕСТО СТЫКА, и тип назван так, чтобы это было видно.
+	// По схеме здесь Vector<Message>, но проводного конструктора `message` у нас
+	// ещё нет: сообщение — своя подсистема программы, domain.Message пока
+	// плоская внутренняя запись без единого json-тега, и положить её сюда
+	// значило бы отдать наружу ключи `ID`/`ChatID`/`SenderID`. Поэтому вектор
+	// наполняет СУЩЕСТВУЮЩИЙ проводной рендерер сообщения (delivery/http,
+	// messagesJSON) — уже готовые map'ы, — а тип поля остаётся безымянным ровно
+	// до порта сообщения. Начинать его здесь нельзя: контейнер диалогов не место
 	// для второй, наспех выдуманной формы сообщения.
-	Messages []Message  `json:"messages"`
+	Messages []any      `json:"messages"`
 	Chats    []Chat     `json:"chats"`
 	Users    []UserReal `json:"users"`
 }
@@ -509,14 +520,14 @@ type MessagesDialogsSlice struct {
 	Count      int      `json:"count"`
 	Dialogs    []Dialog `json:"dialogs"`
 	// Messages — то же временное место стыка, что у MessagesDialogs.
-	Messages []Message  `json:"messages"`
+	Messages []any      `json:"messages"`
 	Chats    []Chat     `json:"chats"`
 	Users    []UserReal `json:"users"`
 }
 
 // NewMessagesDialogs — весь список. Обязательные векторы едут пустыми ([], а не
 // null): «ничего не нашлось» это пустой вектор, а не отсутствие параметра.
-func NewMessagesDialogs(dialogs []Dialog, messages []Message, chats []Chat, users []UserReal) MessagesDialogs {
+func NewMessagesDialogs(dialogs []Dialog, messages []any, chats []Chat, users []UserReal) MessagesDialogs {
 	return MessagesDialogs{
 		Underscore: MessagesDialogsTag,
 		Dialogs:    orEmpty(dialogs),
@@ -528,7 +539,7 @@ func NewMessagesDialogs(dialogs []Dialog, messages []Message, chats []Chat, user
 
 // NewMessagesDialogsSlice — страница списка; count считается по ПОЛНОМУ набору,
 // а не по странице.
-func NewMessagesDialogsSlice(count int, dialogs []Dialog, messages []Message, chats []Chat, users []UserReal) MessagesDialogsSlice {
+func NewMessagesDialogsSlice(count int, dialogs []Dialog, messages []any, chats []Chat, users []UserReal) MessagesDialogsSlice {
 	return MessagesDialogsSlice{
 		Underscore: MessagesDialogsSliceTag,
 		Count:      count,
