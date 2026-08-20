@@ -171,6 +171,11 @@ func (m MessageEmpty) Tag() string { return m.Underscore }
 // Остальные булевы флаги схемы предмета не имеют либо принадлежат клиенту —
 // см. шапку файла.
 type MessageFlags struct {
+	// Out — сообщение отправил ЗРИТЕЛЬ. Производит СЕРВЕР (отмена решения Р7 —
+	// обоснование в докблоке MessageContext.Out): после порта у сообщения от
+	// лица канала автором на проводе становится сам канал, и прежней формулы
+	// клиента «автор это я» вывести стало не из чего.
+	Out         bool
 	Mentioned   bool
 	MediaUnread bool
 	Post        bool
@@ -335,6 +340,7 @@ func NewMessage(id int64, peer Peer, date time.Time, text string, f MessageFlags
 		Date:       unixSeconds(date),
 		Message:    text,
 	}
+	setPFlag(&m.PFlags, "out", f.Out)
 	setPFlag(&m.PFlags, "mentioned", f.Mentioned)
 	setPFlag(&m.PFlags, "media_unread", f.MediaUnread)
 	setPFlag(&m.PFlags, "post", f.Post)

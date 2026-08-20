@@ -200,8 +200,8 @@ func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.M
 // externalThreadRoot — удобная обёртка ExternalizeThreadRoots для одного
 // сообщения: WS/лог-пейлоад всегда строится по одному сообщению за раз
 // (Send/ForwardMessages/publishApprovedPost/paidmedia — не список), батчить
-// тут нечего. Сбой резолва — best-effort деградация до внутреннего id
-// Сбой резолва — деградация до «корня нет»: внутренний ключ наружу не уходит
+// тут нечего. Сбой резолва — деградация до «корня нет»: внутренний ключ наружу
+// не уходит
 // даже best-effort (он адресует не то сообщение в пространстве номеров).
 func (i *Interactor) externalThreadRoot(ctx context.Context, m domain.Message) *int64 {
 	if m.ThreadRootID == nil {

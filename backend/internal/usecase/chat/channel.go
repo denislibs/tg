@@ -72,7 +72,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", i.channelPostPayload(ctx, msg), pts))
 	}
 	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	return msg, nil
@@ -90,7 +90,11 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 // Ключ пира здесь ставится сразу, а не приклеивается на выходе: у канала он
 // один на всех подписчиков (peerChannel), от зрителя не зависит.
 func (i *Interactor) channelPostPayload(ctx context.Context, m domain.Message) map[string]any {
-	return withPeer(i.messageUpdatePayload(ctx, m), domain.ToPeerID(m.ChatID, true))
+	// out здесь НЕ ставится, и это осознанно: тело поста канала одно на всех
+	// подписчиков (в канале с миллионом их разворачивать по зрителям
+	// расточительно), а `out` — пер-зритель. Автор получает верный флаг из
+	// ответа на свою же публикацию и из истории.
+	return withPeer(i.messageUpdatePayload(ctx, m), domain.ToPeerID(m.ChatID, true), false)
 }
 
 // SetSignatures toggles channel post signatures (Telegram

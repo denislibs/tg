@@ -176,14 +176,14 @@ func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64
 				createErr = e
 			}
 			if md != nil {
-				i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+				i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
 			}
 		}
 	} else {
 		md, e := i.mirrorChannelPost(ctx, post)
 		createErr = e
 		if md != nil {
-			i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
 		}
 	}
 	// Гонка: два параллельных первых обращения к одному немигрированному

@@ -87,8 +87,10 @@ func TestMessagesWire_MatchesFramePayload(t *testing.T) {
 	}
 	fromShowcase, _ := json.Marshal(wire[0])
 
-	// Кадр: ключ пира приклеивается на выходе, глазами ТОГО ЖЕ получателя.
-	payload := withPeer(in.messageUpdatePayload(ctx, msg), domain.PeerID(a))
+	// Кадр: ключ пира и pFlags.out приклеиваются на выходе, глазами ТОГО ЖЕ
+	// получателя (b). Оба пер-зрительные, поэтому и там и там их ставит не
+	// общее тело, а развёртка по получателю.
+	payload := withPeer(in.messageUpdatePayload(ctx, msg), domain.PeerID(a), msg.SenderID == b)
 	fromFrame, _ := json.Marshal(payload["message"])
 
 	if !jsonEqual(t, fromShowcase, fromFrame) {
@@ -127,5 +129,114 @@ func TestEmptyMessages_ProducesHoles(t *testing.T) {
 	peer, _ := wire["peer_id"].(map[string]any)
 	if peer["_"] != domain.PeerChannelTag {
 		t.Fatalf("у дыры нет адреса пира: %s", raw)
+	}
+}
+
+// `pFlags.out` — ПЕР-ЗРИТЕЛЬ, и в группе это ловушка: ключ пира там один на
+// всех, а тело кадра мемоизируется. Мемоизация по одному лишь ключу пира
+// раздала бы всем участникам флаг того, кого обслужили первым, — то есть чужое
+// сообщение выглядело бы своим (или наоборот) у всех, кроме одного.
+//
+// Флаг производит СЕРВЕР (отмена решения Р7): после порта у сообщения от лица
+// канала автором на проводе становится сам канал, и прежней формулы клиента
+// «автор это я» стало не из чего вывести.
+func TestNewMessageFrame_OutIsPerViewer(t *testing.T) {
+	in, s := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+
+	const author, other, third int64 = 1, 2, 3
+	const chatID int64 = 70
+	s.seedChat(chatID, "group", author, other, third)
+
+	if _, err := in.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: author, Text: "привет", ClientMsgID: "c1",
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	outByUser := map[int64]bool{}
+	seen := map[int64]bool{}
+	for _, f := range pub.frames {
+		var env struct {
+			T string `json:"t"`
+			D struct {
+				Message struct {
+					PFlags map[string]bool `json:"pFlags"`
+				} `json:"message"`
+			} `json:"d"`
+		}
+		if err := json.Unmarshal(f.frame, &env); err != nil || env.T != "new_message" {
+			continue
+		}
+		seen[f.userID] = true
+		outByUser[f.userID] = env.D.Message.PFlags["out"]
+	}
+
+	for _, uid := range []int64{author, other, third} {
+		if !seen[uid] {
+			t.Fatalf("участник %d не получил кадр new_message", uid)
+		}
+	}
+	if !outByUser[author] {
+		t.Errorf("у автора out отсутствует — своё сообщение выглядит чужим")
+	}
+	if outByUser[other] || outByUser[third] {
+		t.Errorf("out утёк получателям: other=%v third=%v — чужое сообщение выглядит своим",
+			outByUser[other], outByUser[third])
+	}
+}
+
+// Тот же пер-зрительский `out`, но в ЖУРНАЛЕ, а не в живом кадре. Это разные
+// пути, и проверять надо оба: живой кадр строится по получателю, а журнальное
+// тело пишется БАТЧАМИ. Батч, ключованный одним лишь пиром, взял бы тело
+// первого в группе и раздал остальным — и клиент, догоняющий разрыв через
+// /sync, увидел бы своё сообщение чужим (или чужое своим).
+//
+// Первая версия теста выше (по живым кадрам) на этой мутации НЕ краснела —
+// потому и добавлен отдельный пин.
+func TestNewMessageJournal_OutIsPerViewer(t *testing.T) {
+	in, s := newInteractor()
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+
+	const author, other, third int64 = 1, 2, 3
+	const chatID int64 = 71
+	s.seedChat(chatID, "group", author, other, third)
+
+	if _, err := in.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: author, Text: "привет", ClientMsgID: "j1",
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	outOf := func(uid int64) bool {
+		t.Helper()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, u := range s.updates[uid] {
+			if u.Type != "new_message" {
+				continue
+			}
+			var body struct {
+				Message struct {
+					PFlags map[string]bool `json:"pFlags"`
+				} `json:"message"`
+			}
+			if err := json.Unmarshal(u.Payload, &body); err != nil {
+				t.Fatalf("журнал пользователя %d не разбирается: %v", uid, err)
+			}
+			return body.Message.PFlags["out"]
+		}
+		t.Fatalf("в журнале пользователя %d нет new_message", uid)
+		return false
+	}
+
+	if !outOf(author) {
+		t.Errorf("в журнале автора out отсутствует — при догоне через /sync своё сообщение станет чужим")
+	}
+	if outOf(other) || outOf(third) {
+		t.Errorf("out утёк в журналы получателей — при догоне чужое сообщение станет своим")
 	}
 }

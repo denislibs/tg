@@ -41,12 +41,17 @@ func (i *Interactor) fanOutNewMessage(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
+	// пер-зрительский pFlags.out и, что важнее, разложить журнальные батчи по
+	// паре «пир + свой ли отправитель», а не по одному ключу пира.
+	pp.sender = senderID
 	var ppLocked *peerPayloads
 	if outLocked != nil {
 		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		ppLocked.sender = senderID
 	}
 	ptsByUser = map[int64]int64{}
 	unreadByUser = map[int64]int64{}
@@ -109,11 +114,12 @@ func (i *Interactor) fanOutNewMessage(
 // опубликовать кадр раньше коммита нельзя (получатель может обогнать коммит
 // и не найти сообщение при последующем чтении, см. Send).
 //
-// extRoot — thread_root_id, каким его должен увидеть клиент (внешний
-// чокпоинт, см. externalThreadRoot); для зеркала — всегда nil (зеркало само
-// корень треда).
+// Корень треда отдельным аргументом больше не едет: он внутри сообщения —
+// reply_to.reply_to_top_id, и кладёт его туда messageUpdatePayload. Прежний
+// ключ на уровне кадра был вторым источником того же факта, и дописывал его
+// каждый вызывающий сам.
 func (i *Interactor) publishMessageDelivery(
-	ctx context.Context, msg domain.Message, extRoot *int64, senderID int64,
+	ctx context.Context, msg domain.Message, senderID int64,
 	recipients []int64, ptsByUser, unreadByUser map[int64]int64,
 ) {
 	if len(recipients) == 0 {
@@ -128,18 +134,20 @@ func (i *Interactor) publishMessageDelivery(
 		return
 	}
 	base := i.messageUpdatePayload(ctx, msg)
-	base["thread_root_id"] = extRoot
 	pp, err := i.newPeerPayloads(ctx, msg.ChatID, base)
 	if err != nil {
 		return
 	}
+	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
+	// пер-зрительский pFlags.out.
+	pp.sender = msg.SenderID
 	ppLocked := pp
 	if msg.PaidMediaPrice != nil {
 		baseLocked := i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
-		baseLocked["thread_root_id"] = extRoot
 		if ppLocked, err = i.newPeerPayloads(ctx, msg.ChatID, baseLocked); err != nil {
 			return
 		}
+		ppLocked.sender = msg.SenderID
 	}
 	// Realtime-кадры всем получателям — одним pipeline'ом (было бы M
 	// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative

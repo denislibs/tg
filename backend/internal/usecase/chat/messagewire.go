@@ -60,6 +60,10 @@ func (i *Interactor) MessagesWire(ctx context.Context, viewerID int64, msgs []do
 		out = append(out, m.ToWire(domain.MessageContext{
 			Peer: domain.NewPeer(peer),
 			Post: posts[m.ChatID],
+			// Автор строки — ЗРИТЕЛЬ. Именно строки, а не проводного from_id: у
+			// сообщения от лица канала автором на проводе становится канал, но
+			// отправил его всё равно человек.
+			Out: m.SenderID == viewerID,
 		}))
 	}
 	return out, nil

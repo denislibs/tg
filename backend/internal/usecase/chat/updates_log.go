@@ -68,15 +68,27 @@ func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients
 // одному на сторону. Разворачивать по получателям, а не по ключам, было бы
 // расточительно: в канале с тысячей подписчиков payload один и тот же.
 type peerPayloads struct {
-	addr   chatAddress
-	base   map[string]any
-	byPeer map[domain.PeerID]json.RawMessage
+	addr chatAddress
+	base map[string]any
+	// Ключ развёртки — ПАРА «ключ пира + свой ли это отправитель». Одного
+	// ключа пира мало: `pFlags.out` зависит от ЗРИТЕЛЯ, а не от чата, и в
+	// группе ключ у всех общий — мемоизация по одному пиру раздала бы всем
+	// участникам флаг того, кого обслужили первым.
+	byPeer map[payloadKey]json.RawMessage
+	// sender — автор строки сообщения; с ним сравнивается получатель. 0 — кадр
+	// не несёт сообщения (реакции, чтение, папки), тогда `out` не при чём.
+	sender int64
+}
+
+type payloadKey struct {
+	peer domain.PeerID
+	out  bool
 }
 
 // newPeerPayloads готовит развёртку. chatID == 0 — кадр без чата (баланс звёзд,
 // папки): ключа пира у него нет, payload один на всех.
 func (i *Interactor) newPeerPayloads(ctx context.Context, chatID int64, base map[string]any) (*peerPayloads, error) {
-	pp := &peerPayloads{base: base, byPeer: map[domain.PeerID]json.RawMessage{}}
+	pp := &peerPayloads{base: base, byPeer: map[payloadKey]json.RawMessage{}}
 	if chatID == 0 {
 		return pp, nil
 	}
@@ -98,40 +110,51 @@ func (p *peerPayloads) peer(viewerID int64) domain.PeerID {
 
 // payload — журнальное тело кадра для получателя; мемоизировано по ключу пира.
 func (p *peerPayloads) payload(viewerID int64) (json.RawMessage, error) {
-	peer := p.peer(viewerID)
-	if raw, ok := p.byPeer[peer]; ok {
+	key := payloadKey{peer: p.peer(viewerID), out: p.outFor(viewerID)}
+	if raw, ok := p.byPeer[key]; ok {
 		return raw, nil
 	}
 	d := p.base
-	if peer != domain.NullPeerID {
-		d = withPeer(p.base, peer)
+	if key.peer != domain.NullPeerID || key.out {
+		d = withPeer(p.base, key.peer, key.out)
 	}
 	raw, err := json.Marshal(d)
 	if err != nil {
 		return nil, err
 	}
-	p.byPeer[peer] = raw
+	p.byPeer[key] = raw
 	return raw, nil
+}
+
+// outFor — отправил ли кадр сам получатель (message.pFlags.out).
+func (p *peerPayloads) outFor(viewerID int64) bool {
+	return p.sender != 0 && p.sender == viewerID
 }
 
 // frame — живой кадр получателю: тело журнала плюс его пер-юзерные поля (pts,
 // unread). Форма кадра и записи журнала совпадают по построению.
 func (p *peerPayloads) frame(t string, viewerID int64, extra map[string]any) []byte {
-	if peer := p.peer(viewerID); peer != domain.NullPeerID {
-		return frameFields(t, withPeer(p.base, peer), extra)
+	peer := p.peer(viewerID)
+	out := p.outFor(viewerID)
+	if peer != domain.NullPeerID || out {
+		return frameFields(t, withPeer(p.base, peer, out), extra)
 	}
 	return frameFields(t, p.base, extra)
 }
 
-// appendByPeer пишет кадр в персональные журналы получателей БАТЧАМИ по ключу
-// пира: у группы и канала ключ один на всех, значит батч один — ровно как было
-// до перехода на peerId; у приватного диалога батчей два, по одному на сторону.
-// pts складывается в общий ptsByUser.
+// appendByPeer пишет кадр в персональные журналы получателей БАТЧАМИ.
+//
+// Ключ батча — ПАРА «ключ пира + свой ли отправитель», а не один ключ пира.
+// Ключа пира мало: `pFlags.out` зависит от зрителя, а в группе ключ у всех
+// общий — батч взял бы тело первого получателя и раздал его всем, то есть
+// своё сообщение выглядело бы чужим у автора (или чужое своим у остальных).
+// Автор при этом ровно один, поэтому батчей становится максимум на один
+// больше, а не по батчу на человека.
 func (i *Interactor) appendByPeer(ctx context.Context, pp *peerPayloads, users []int64, date int64, ptsByUser map[int64]int64) error {
-	byPeer := make(map[domain.PeerID][]int64, 2)
+	byPeer := make(map[payloadKey][]int64, 3)
 	for _, uid := range users {
-		p := pp.peer(uid)
-		byPeer[p] = append(byPeer[p], uid)
+		key := payloadKey{peer: pp.peer(uid), out: pp.outFor(uid)}
+		byPeer[key] = append(byPeer[key], uid)
 	}
 	for _, group := range byPeer {
 		payload, err := pp.payload(group[0])
@@ -183,7 +206,7 @@ func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, 
 	if i.channels == nil {
 		return nil
 	}
-	d := withPeer(base, domain.ToPeerID(channelID, true))
+	d := withPeer(base, domain.ToPeerID(channelID, true), false)
 	payload, err := json.Marshal(d)
 	if err != nil {
 		return err

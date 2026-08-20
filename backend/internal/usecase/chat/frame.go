@@ -55,7 +55,7 @@ func frameChannelPts(t string, base map[string]any, pts int64) []byte {
 // схемы), и peer_id там ПАРАМЕТР САМОГО СООБЩЕНИЯ, а не поле конверта. Поэтому
 // у такого кадра ключ пира кладётся внутрь сообщения: положить его рядом
 // значило бы завести на конструкторе поле, которого в схеме нет.
-func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
+func withPeer(base map[string]any, peer domain.PeerID, out bool) map[string]any {
 	d := make(map[string]any, len(base)+1)
 	for k, v := range base {
 		d[k] = v
@@ -65,12 +65,39 @@ func withPeer(base map[string]any, peer domain.PeerID) map[string]any {
 		for k, v := range msg {
 			withinMsg[k] = v
 		}
-		withinMsg["peer_id"] = domain.NewPeer(peer)
+		if peer != domain.NullPeerID {
+			withinMsg["peer_id"] = domain.NewPeer(peer)
+		}
+		// `out` — тоже пер-зритель, как и ключ пира, и по той же причине
+		// дописывается ЗДЕСЬ, а не в общем теле: тело одно на всех получателей.
+		// «Выключено» — отсутствие ключа в pFlags, а не false; пустой pFlags при
+		// этом не появляется вовсе — иначе кадр разошёлся бы с витриной, где у
+		// поля стоит omitempty.
+		if flags := pFlagsWithOut(msg["pFlags"], out); len(flags) > 0 {
+			withinMsg["pFlags"] = flags
+		}
 		d[frameMessageKey] = withinMsg
 		return d
 	}
-	d["peer_id"] = peer
+	if peer != domain.NullPeerID {
+		d["peer_id"] = peer
+	}
 	return d
+}
+
+// pFlagsWithOut — копия pFlags сообщения с добавленным (или НЕ добавленным)
+// флагом out. Копия, а не правка на месте: общее тело кадра делится между
+// получателями, и правка испортила бы его следующему.
+func pFlagsWithOut(base any, out bool) map[string]bool {
+	src, _ := base.(map[string]bool)
+	flags := make(map[string]bool, len(src)+1)
+	for k, v := range src {
+		flags[k] = v
+	}
+	if out {
+		flags["out"] = true
+	}
+	return flags
 }
 
 // frameMessageKey — ключ, под которым кадр несёт САМО СООБЩЕНИЕ. Форма взята у

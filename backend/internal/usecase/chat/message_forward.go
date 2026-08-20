@@ -226,7 +226,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		if md == nil {
 			continue
 		}
-		i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
 	}
 	return created, nil
 }

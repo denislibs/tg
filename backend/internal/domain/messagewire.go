@@ -38,6 +38,23 @@ type MessageContext struct {
 	// Post — сообщение в вещательном канале (message.pFlags.post). Строка
 	// messages этого не знает: признак у ЧАТА, а не у сообщения.
 	Post bool
+	// Out — сообщение отправил ЗРИТЕЛЬ (message.pFlags.out).
+	//
+	// Разбор изначально решал (Р7), что `out` считает клиент по
+	// `sender_id == meId`, и тогда это было верно. Порт сломал основание: у
+	// сообщения от лица канала (send-as) `from_id` на проводе — САМ КАНАЛ, а
+	// прежнее поле `send_as` с провода ушло. То есть у клиента не осталось
+	// источника, из которого прежняя формула выводилась.
+	//
+	// Поэтому Р7 отменено, и флаг производит сервер — как в схеме. Стоимости
+	// «ответ становится зависимым от зрителя» здесь нет: он и так зависим,
+	// `peer_id` считается тем же зрителем строкой выше.
+	//
+	// ВАЖНО про сторону бабла: `out` отвечает «я ли отправил», а НЕ «рисовать
+	// справа». Сообщение от лица канала остаётся `out`, но рисуется входящим —
+	// это решение клиента, и он принимает его по `from_id` (ссылка на чат, а не
+	// на человека), а не по отдельному полю.
+	Out bool
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -53,6 +70,7 @@ func (m Message) ToWire(ctx MessageContext) MTMessage {
 
 func (m Message) toService(ctx MessageContext) MessageService {
 	s := NewMessageService(m.Seq, ctx.Peer, m.CreatedAt, m.Action, ctx.Post)
+	setPFlag(&s.PFlags, "out", ctx.Out)
 	s.FromID = m.fromID()
 	s.ReplyTo = m.replyHeader()
 	if m.TTLSeconds != nil {
@@ -79,6 +97,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	r := NewMessage(m.Seq, ctx.Peer, m.CreatedAt, m.Text, MessageFlags{
 		MediaUnread: m.MediaUnread,
 		Post:        ctx.Post,
+		Out:         ctx.Out,
 	})
 	r.FromID = m.fromID()
 	r.FwdFrom = m.FwdFrom

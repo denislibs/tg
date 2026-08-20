@@ -243,7 +243,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 				msg = one[0]
 			}
 		}
-		spOut := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
+		spOut := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true), false)
 		payload, e := json.Marshal(spOut)
 		if e != nil {
 			return e
@@ -255,11 +255,11 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		base := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true))
+		base := withPeer(i.messageUpdatePayload(ctx, msg), domain.ToPeerID(sp.ChatID, true), false)
 		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
 	}
 	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	return msg, nil

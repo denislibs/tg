@@ -297,7 +297,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 
 	var msg domain.Message
-	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRoot
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
 	// Зеркало поста канала (если вставленное сообщение — пост в канал с
@@ -405,15 +404,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
 		mentioned := mentionedUserIDs(msg.Entities)
-		extRoot = i.externalThreadRoot(ctx, msg)
+		// Корень треда едет ВНУТРИ сообщения (reply_to.reply_to_top_id) —
+		// messageUpdatePayload его туда и кладёт. Отдельного ключа на уровне
+		// кадра больше нет: это был второй источник того же факта, и именно
+		// такие «каждый вызывающий дописывает сам» терялись поодиночке.
 		outMsg := i.messageUpdatePayload(ctx, msg)
-		outMsg["thread_root_id"] = extRoot
 		// Платное медиа: получателям (не автору) в персональный апдейт кладём
 		// заблокированный вариант — без ссылок на контент, только blur+цена.
 		var outLocked map[string]any
 		if msg.PaidMediaPrice != nil {
 			outLocked = i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
-			outLocked["thread_root_id"] = extRoot
 		}
 		// Веер по участникам чата (pts-лог + unread + упоминания), батчами: 3
 		// запроса вместо 3×M. Раньше на каждого участника шли AppendUpdate (2
@@ -437,7 +437,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
 		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
-		i.publishMessageDelivery(ctx, msg, extRoot, in.SenderID, recipients, ptsByUser, unreadByUser)
+		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser, unreadByUser)
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
@@ -455,7 +455,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// группы обсуждения ТЕМ ЖЕ путём, тоже после коммита. Отдельно от блока
 	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.
 	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
 	}
 	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
