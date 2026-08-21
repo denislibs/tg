@@ -1247,7 +1247,9 @@ func (h *ChatHandler) VotePoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not vote")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"poll": info})
+	// Опрос уезжает ТЕМ ЖЕ конструктором, что и внутри сообщения: второй формы
+	// опроса на проводе быть не должно.
+	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
 }
 
 // ClosePoll — POST /polls/{pollID}/close: остановить опрос (автор/админ).
@@ -1335,7 +1337,7 @@ func (h *ChatHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "could not toggle item")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
+	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
 }
 
 // AddChecklistItems — POST /checklists/{id}/items {items:[...]}: добавить пункты
@@ -1369,7 +1371,7 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not add items")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
+	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
 }
 
 // scheduledJSON — отложенное сообщение ТЕМ ЖЕ конструктором `message`

@@ -240,10 +240,18 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 		t.Error("draft.chat_id остался внутри кадра")
 	}
 
-	// Розыгрыш: вложенный снимок тоже адресует канал ключом пира.
+	// Розыгрыш: ключ пира несёт сам кадр.
+	//
+	// Вложенный снимок розыгрыша здесь БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ, и это не пробел:
+	// тест гонит базу до головы, а 0107 перевёл кадр в конструктор схемы
+	// (messageMediaGiveaway под ключом media), где ссылка на канал называется
+	// channels и знака не несёт — там же она и проверяется. Утверждение 0102
+	// осталось про то, за что 0102 и отвечает: адрес самого кадра.
 	var gwFrame struct {
-		PeerID   int64          `json:"peer_id"`
-		Giveaway map[string]any `json:"giveaway"`
+		PeerID   int64           `json:"peer_id"`
+		Giveaway map[string]any  `json:"giveaway"`
+		Media    map[string]any  `json:"media"`
+		ChatID   json.RawMessage `json:"chat_id"`
 	}
 	if err := json.Unmarshal(userFrame(t, pool, userA, 5), &gwFrame); err != nil {
 		t.Fatalf("разбор giveaway_update: %v", err)
@@ -251,8 +259,11 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 	if gwFrame.PeerID != -channelChat {
 		t.Errorf("giveaway_update peer_id = %d; want %d", gwFrame.PeerID, -channelChat)
 	}
-	if got := asFloat(t, gwFrame.Giveaway["peer_id"]); int64(got) != -channelChat {
-		t.Errorf("giveaway.peer_id = %v; want %d", got, -channelChat)
+	if gwFrame.ChatID != nil {
+		t.Errorf("chat_id остался в кадре розыгрыша: %s", gwFrame.ChatID)
+	}
+	if gwFrame.Giveaway != nil || gwFrame.Media == nil {
+		t.Errorf("кадр розыгрыша = %v / %v, ждали конструктор под ключом media", gwFrame.Giveaway, gwFrame.Media)
 	}
 
 	// Папка: списки правил тоже ПЕР-ЮЗЕРНЫЕ — приватный чат в них становится id

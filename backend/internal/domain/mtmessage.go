@@ -73,14 +73,13 @@ import "time"
 // from_id: серверная склейка имени — ровно то, что программа снимает с провода
 // с тех пор, как у пиров ушёл display_name.
 //
-// ── Медиа: объединение уже, чем наша витрина ───────────────────────────────
-// `media` типизировано существующим MessageMedia (mtmedia.go), и это по схеме
-// верно, но неполно: там объявлены messageMediaPhoto и messageMediaDocument, а
-// гео, контакт, опрос, чек-лист, розыгрыш, подарок и превью ссылки едут у нас
-// собственными полями строки витрины. В схеме все они — конструкторы того же
-// объединения (messageMediaGeo/GeoLive/Venue/Contact/Poll/ToDo/Giveaway/
-// WebPage). Довести объединение до них — работа шага, который переселяет
-// витрину; здесь это названо, чтобы не выглядело забытым.
+// ── Медиа: объединение доведено ────────────────────────────────────────────
+// `media` типизировано объединением MessageMedia (mtmedia.go), и собственных
+// полей вложения у сообщения больше нет ни одного: гео, место, контакт, опрос,
+// чек-лист, розыгрыш, превью ссылки и платное медиа — конструкторы ТОГО ЖЕ
+// объединения. Подарок в этот ряд не встал, и не по забывчивости: конструктора
+// messageMediaStarGift в схеме нет вовсе, подарок там приходит СЛУЖЕБНЫМ
+// сообщением с действием messageActionStarGift — разбор в mtgift.go.
 //
 // ── Разбора (UnmarshalJSON) в этом файле нет намеренно ──────────────────────
 // В отличие от mtdialog.go, но ровно как в mtmedia.go. Сообщение НЕСЁТ
@@ -221,9 +220,10 @@ type MessageReal struct {
 	// Message — текст. Обязательный по схеме и едет ВСЕГДА, даже пустой: у
 	// сообщения-картинки без подписи это пустая строка, а не отсутствие ключа.
 	Message string `json:"message"`
-	// Media — flags.9?MessageMedia (mtmedia.go). Про неполноту объединения см.
-	// шапку файла.
-	Media *MessageMedia `json:"media,omitempty"`
+	// Media — flags.9?MessageMedia (mtmedia.go): ЕДИНСТВЕННОЕ место, где у
+	// сообщения живёт вложение любого вида — фото, документ, гео, место,
+	// контакт, опрос, чек-лист, розыгрыш, превью ссылки, платное медиа.
+	Media MessageMedia `json:"media,omitempty"`
 	// ReplyMarkup — flags.6?ReplyMarkup (mtreplymarkup.go).
 	ReplyMarkup ReplyMarkup `json:"reply_markup,omitempty"`
 	// Entities — flags.7?Vector<MessageEntity> (mtentity.go).
@@ -285,28 +285,6 @@ type MessageReal struct {
 	// назывался client_msg_id и ехал только в кадре, из-за чего витрина и кадр
 	// расходились ещё в одном поле.
 	RandomID string `json:"random_id,omitempty"`
-
-	// ── ДОЛГ: объединение MessageMedia не доведено ──────────────────────────
-	// Гео, контакт, опрос, чек-лист, розыгрыш, подарок, превью ссылки и платное
-	// медиа — это КОНСТРУКТОРЫ ТОГО ЖЕ объединения MessageMedia
-	// (messageMediaGeo/GeoLive/Venue/Contact/Poll/ToDo/Giveaway/WebPage/
-	// PaidMedia), а у нас они по-прежнему собственные поля сообщения. Предмет в
-	// схеме ЕСТЬ — значит это не «названное отступление», а незакрытый долг, и
-	// он назван здесь и в сверке витрины со схемой (mediaUnionPending),
-	// а не спрятан объявлением клиентского параметра.
-	//
-	// Довести объединение до них — отдельный шаг: Poll, WebPage и Giveaway сами
-	// по себе конструкторы со своими вложенными объединениями (PollResults,
-	// PollAnswer, WebPage, TodoList), то есть работа масштаба подсистемы, а не
-	// перестановка полей.
-	Geo       map[string]any  `json:"geo,omitempty"`
-	Contact   map[string]any  `json:"contact,omitempty"`
-	Poll      *PollInfo       `json:"poll,omitempty"`
-	Checklist *ChecklistInfo  `json:"checklist,omitempty"`
-	Giveaway  *GiveawayInfo   `json:"giveaway,omitempty"`
-	Gift      *GiftInfo       `json:"gift,omitempty"`
-	WebPage   *WebPagePreview `json:"web_page,omitempty"`
-	PaidMedia map[string]any  `json:"paid_media,omitempty"`
 
 	// ── Секретные чаты: названное отступление от схемы ──────────────────────
 	// Шифрованное сообщение (EncryptedChat) в периметр порта не входит решением
@@ -451,7 +429,7 @@ type MessageReplyHeader struct {
 	// сам оригинал зрителю недоступен.
 	ReplyFrom *MessageFwdHeader `json:"reply_from,omitempty"`
 	// ReplyMedia — flags.8?MessageMedia: вложение недоступного оригинала.
-	ReplyMedia *MessageMedia `json:"reply_media,omitempty"`
+	ReplyMedia MessageMedia `json:"reply_media,omitempty"`
 	// ReplyToTopID — flags.1?int: корень треда (наш ThreadRootID).
 	ReplyToTopID int64 `json:"reply_to_top_id,omitempty"`
 	// QuoteText/QuoteEntities/QuoteOffset — выделенный фрагмент оригинала и

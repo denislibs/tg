@@ -224,6 +224,10 @@ type MessageRepo interface {
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
 	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
+	// ByGiveawayID — сообщения, ссылающиеся на розыгрыш (обычно одно). Нужен
+	// кадру giveaway_update: messageMediaGiveawayResults.launch_msg_id — это
+	// НОМЕР сообщения-запуска, а кадр рассылается сам по себе.
+	ByGiveawayID(ctx context.Context, giveawayID int64) ([]domain.Message, error)
 	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
 	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
 	// разрешён.

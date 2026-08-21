@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Механическая сверка модели медиа со схемой TL — со стороны ПРОИЗВОДИТЕЛЯ
@@ -41,14 +43,29 @@ type schemaConstructor struct {
 	Type      string        `json:"type"`
 }
 
-// Обязательные параметры схемы, которых мы сознательно не производим: реквизиты
-// MTProto-транспорта, у которых нет предмета в нашей схеме доступа. Список
-// обязан совпадать с тем, что перечислен в шапке mtmedia.go и в зеркальном
-// фронтовом тесте.
+// Обязательные параметры схемы, которых мы сознательно не производим. Каждая
+// строка — утверждение «предмета нет», а не забывчивость; развёрнутое основание
+// стоит в докблоке соответствующего конструктора.
 var omittedWithoutSubject = map[string][]string{
+	// Реквизиты MTProto-транспорта: файл адресуется числовым id через свой
+	// эндпоинт (шапка mtmedia.go).
 	"photo":                    {"access_hash", "file_reference", "date", "dc_id"},
 	"document":                 {"access_hash", "file_reference", "date", "dc_id"},
 	"documentAttributeSticker": {"stickerset"},
+	// Тот же транспортный токен, но у точки на карте: картинку карты оригинал
+	// просит у своего прокси с подписью, а у нас карту рисует клиент.
+	"geoPoint": {"access_hash"},
+	// Реквизиты СПРАВОЧНИКА мест (foursquare/gplaces): справочника у нас нет,
+	// точку с подписью присылает сам отправитель.
+	"messageMediaVenue": {"provider", "venue_id", "venue_type"},
+	// Хэш для кэширования запроса; хэш-кэширования запросов у нас нет вовсе.
+	"poll": {"hash"},
+	// Внешность подарка у нас — unicode-символ (наш параметр emoji), а не
+	// анимированный стикер: тот же случай, что emoji_status у пира.
+	"starGift": {"sticker"},
+	// Превью ссылки у нас — СНИМОК на сообщении, а не самостоятельный объект
+	// хранилища: адресовать его нечем, и хэша кэша у запросов нет.
+	"webPage": {"id", "hash"},
 }
 
 func loadSchemaConstructors(t *testing.T) map[string]schemaConstructor {
@@ -96,11 +113,14 @@ func loadAdditionalParams(t *testing.T) map[string]map[string]bool {
 
 	out := make(map[string]map[string]bool, len(entries))
 	for _, e := range entries {
-		names := make(map[string]bool, len(e.Params))
+		names := out[e.Predicate]
+		if names == nil {
+			names = map[string]bool{}
+			out[e.Predicate] = names
+		}
 		for _, p := range e.Params {
 			names[p.Name] = true
 		}
-		out[e.Predicate] = names
 	}
 	return out
 }
@@ -264,7 +284,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func checkAgainstSchema(t *testing.T, media *MessageMedia) (unexpected, omitted []string) {
+func checkAgainstSchema(t *testing.T, media any) (unexpected, omitted []string) {
 	t.Helper()
 
 	raw, err := json.Marshal(media)
@@ -277,7 +297,12 @@ func checkAgainstSchema(t *testing.T, media *MessageMedia) (unexpected, omitted 
 		t.Fatalf("вложение не разбирается обратно: %v", err)
 	}
 
-	c := &schemaChecker{constructors: loadSchemaConstructors(t), additional: loadAdditionalParams(t), omittedOK: omittedWithoutSubject}
+	c := &schemaChecker{
+		constructors: loadSchemaConstructors(t),
+		additional:   loadAdditionalParams(t),
+		own:          loadOwnConstructors(t),
+		omittedOK:    omittedWithoutSubject,
+	}
 	c.walk(decoded, "media")
 
 	sort.Strings(c.unexpected)
@@ -285,88 +310,173 @@ func checkAgainstSchema(t *testing.T, media *MessageMedia) (unexpected, omitted 
 	return c.unexpected, c.omitted
 }
 
-func TestMessageMedia_MatchesSchema(t *testing.T) {
-	cases := []struct {
+// mediaCases — по одному экземпляру КАЖДОГО конструктора объединения, который мы
+// производим, плюс вложенные в них структуры. Список продублирован проверкой
+// полноты ниже: конструктор без строки здесь просто не был бы сверен со схемой.
+func mediaCases() []struct {
+	name  string
+	media MessageMedia
+} {
+	return []struct {
 		name  string
-		media *MessageMedia
+		media MessageMedia
 	}{
 		{
 			name: "видео с превью и заслонкой",
-			media: &MessageMedia{
-				Underscore: MessageMediaDocumentTag,
-				PFlags:     map[string]bool{"spoiler": true},
-				Document: &Document{
-					Underscore: "document",
-					ID:         12,
-					MimeType:   "video/mp4",
-					Size:       1024,
-					Thumbs: []PhotoSize{
-						NewPhotoStrippedSize([]byte{1, 2, 3}),
-						NewPhotoSize(SizeTypeThumb, 320, 180, 4096),
-					},
-					Attributes: []DocumentAttribute{
-						DocumentAttributeVideo{Underscore: AttrVideo, Duration: 7, W: 1280, H: 720},
-						DocumentAttributeFilename{Underscore: AttrFilename, FileName: "clip.mp4"},
-					},
+			media: NewMessageMediaDocument(&Document{
+				Underscore: DocumentTag,
+				ID:         12,
+				MimeType:   "video/mp4",
+				Size:       1024,
+				Thumbs: []PhotoSize{
+					NewPhotoStrippedSize([]byte{1, 2, 3}),
+					NewPhotoSize(SizeTypeThumb, 320, 180, 4096),
 				},
-			},
+				Attributes: []DocumentAttribute{
+					DocumentAttributeVideo{Underscore: AttrVideo, Duration: 7, W: 1280, H: 720},
+					DocumentAttributeFilename{Underscore: AttrFilename, FileName: "clip.mp4"},
+				},
+			}, true),
 		},
 		{
 			name: "стикер с векторным контуром",
-			media: &MessageMedia{
-				Underscore: MessageMediaDocumentTag,
-				Document: &Document{
-					Underscore: "document",
-					ID:         48,
-					MimeType:   "image/webp",
-					Size:       30000,
-					Thumbs:     []PhotoSize{NewPhotoPathSize([]byte("M0 0"))},
-					Attributes: []DocumentAttribute{
-						DocumentAttributeSticker{Underscore: AttrSticker, Alt: "🔥"},
-						DocumentAttributeImageSize{Underscore: AttrImageSize, W: 512, H: 512},
-					},
+			media: NewMessageMediaDocument(&Document{
+				Underscore: DocumentTag,
+				ID:         48,
+				MimeType:   "image/webp",
+				Size:       30000,
+				Thumbs:     []PhotoSize{NewPhotoPathSize([]byte("M0 0"))},
+				Attributes: []DocumentAttribute{
+					DocumentAttributeSticker{Underscore: AttrSticker, Alt: "🔥"},
+					DocumentAttributeImageSize{Underscore: AttrImageSize, W: 512, H: 512},
 				},
-			},
+			}, false),
 		},
 		{
 			name: "голосовое",
-			media: &MessageMedia{
-				Underscore: MessageMediaDocumentTag,
-				Document: &Document{
-					Underscore: "document",
-					ID:         46,
-					MimeType:   "audio/ogg",
-					Size:       4200,
-					Attributes: []DocumentAttribute{
-						DocumentAttributeAudio{
-							Underscore: AttrAudio,
-							PFlags:     map[string]bool{"voice": true},
-							Duration:   7,
-							Waveform:   []byte{31, 0, 42},
-						},
-						DocumentAttributeFilename{Underscore: AttrFilename, FileName: "voice.ogg"},
+			media: NewMessageMediaDocument(&Document{
+				Underscore: DocumentTag,
+				ID:         46,
+				MimeType:   "audio/ogg",
+				Size:       4200,
+				Attributes: []DocumentAttribute{
+					DocumentAttributeAudio{
+						Underscore: AttrAudio,
+						PFlags:     map[string]bool{"voice": true},
+						Duration:   7,
+						Waveform:   []byte{31, 0, 42},
 					},
+					DocumentAttributeFilename{Underscore: AttrFilename, FileName: "voice.ogg"},
 				},
-			},
+			}, false),
 		},
 		{
 			name: "фотография с лестницей размеров",
-			media: &MessageMedia{
-				Underscore: MessageMediaPhotoTag,
-				Photo: NewPhoto(3, []PhotoSize{
-					NewPhotoStrippedSize([]byte{1, 2, 3}),
-					NewPhotoSize(SizeTypeThumb, 1280, 640, 90000),
-					NewPhotoSize(SizeTypeFull, 4000, 2000, 900000),
-				}),
-			},
+			media: NewMessageMediaPhoto(NewPhoto(3, []PhotoSize{
+				NewPhotoStrippedSize([]byte{1, 2, 3}),
+				NewPhotoSize(SizeTypeThumb, 1280, 640, 90000),
+				NewPhotoSize(SizeTypeFull, 4000, 2000, 900000),
+			}), false),
 		},
 		{
-			name:  "плейсхолдер неоплаченного платного медиа",
-			media: LockedPlaceholder(&MessageMedia{Underscore: MessageMediaPhotoTag, Photo: NewPhoto(9, []PhotoSize{NewPhotoStrippedSize([]byte{1, 2, 3}), NewPhotoSize(SizeTypeFull, 800, 600, 12345)})}),
+			name:  "точка на карте",
+			media: NewMessageMediaGeo(55.75, 37.61),
+		},
+		{
+			name:  "живая трансляция",
+			media: NewMessageMediaGeoLive(55.75, 37.61, 3600, 90),
+		},
+		{
+			// Остановленная трансляция: period укорочен до нуля, и это ЗНАЧЕНИЕ
+			// («истекла»), а не отсутствие параметра.
+			name:  "остановленная трансляция",
+			media: NewMessageMediaGeoLive(55.75, 37.61, 0, 0),
+		},
+		{
+			name:  "место с подписью",
+			media: NewMessageMediaVenue(55.75, 37.61, "Кремль", "Москва"),
+		},
+		{
+			// Контакт без фамилии и без vcard: обязательные параметры едут
+			// ПУСТЫМИ строками, а не исчезают.
+			name:  "визитка",
+			media: NewMessageMediaContact(43, "Боб", "+70000000000"),
+		},
+		{
+			name: "опрос-викторина с голосом зрителя",
+			media: PollInfo{
+				ID: 5, Question: "Столица?", Options: []string{"Москва", "Питер"},
+				Quiz: true, CorrectOption: ptr(0), Counts: []int{3, 1},
+				TotalVoters: 4, MyVotes: []int{0},
+			}.ToMedia(),
+		},
+		{
+			// Никто не голосовал: pFlags у вариантов исчезают целиком.
+			name: "опрос без голосов",
+			media: PollInfo{
+				ID: 6, Question: "?", Options: []string{"да", "нет"},
+				Anonymous: true, Counts: []int{0, 0},
+			}.ToMedia(),
+		},
+		{
+			name: "чек-лист с отметками",
+			media: ChecklistInfo{
+				ID: 7, Title: "дела", OthersCanAdd: true, OthersCanMark: true,
+				Items: []ChecklistItemInfo{
+					{ID: 1, Text: "купить хлеб", Marks: []ChecklistMark{{UserID: 42, At: testNow}}},
+					{ID: 2, Text: "выгулять кота"},
+				},
+			}.ToMedia(),
+		},
+		{
+			name: "идущий розыгрыш",
+			media: GiveawayInfo{
+				ID: 8, PeerID: ToPeerID(9, true), PrizeKind: "premium", Months: 3,
+				WinnersCount: 10, UntilDate: testNow.UnixMilli(), Status: "active",
+			}.ToMedia(120),
+		},
+		{
+			name: "состоявшийся розыгрыш звёзд",
+			media: GiveawayInfo{
+				ID: 8, PeerID: ToPeerID(9, true), PrizeKind: "stars", Stars: 500,
+				WinnersCount: 2, UntilDate: testNow.UnixMilli(), Status: "finished",
+				WinnerIDs: []int64{42, 43},
+			}.ToMedia(120),
+		},
+		{
+			name: "превью ссылки с картинкой",
+			media: (&WebPagePreview{
+				URL: "https://example.org/a", SiteName: "Example", Title: "Заголовок",
+				Description: "Описание", PhotoID: 77, PhotoW: 800, PhotoH: 600,
+				PhotoBlur: []byte{1, 2, 3}, PhotoHasThumb: true, HasIV: true,
+			}).ToMedia(),
+		},
+		{
+			name:  "превью ссылки без картинки",
+			media: (&WebPagePreview{URL: "https://example.org"}).ToMedia(),
+		},
+		{
+			name: "платное медиа: оплачено",
+			media: NewMessageMediaPaidMedia(50,
+				NewMessageMediaPhoto(NewPhoto(9, []PhotoSize{NewPhotoSize(SizeTypeFull, 800, 600, 12345)}), false),
+				false),
+		},
+		{
+			// Не оплачено: настоящего медиа в векторе нет вовсе — только
+			// коробка кадра и подложка.
+			name: "платное медиа: заблокировано",
+			media: NewMessageMediaPaidMedia(50,
+				StripLockedMedia(NewMessageMediaPhoto(NewPhoto(9, []PhotoSize{
+					NewPhotoStrippedSize([]byte{1, 2, 3}),
+					NewPhotoSize(SizeTypeFull, 800, 600, 12345),
+				}), true)),
+				true),
 		},
 	}
+}
 
-	for _, tc := range cases {
+func TestMessageMedia_MatchesSchema(t *testing.T) {
+	for _, tc := range mediaCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			unexpected, omitted := checkAgainstSchema(t, tc.media)
 			for _, v := range unexpected {
@@ -376,6 +486,124 @@ func TestMessageMedia_MatchesSchema(t *testing.T) {
 				t.Errorf("молчаливый пропуск: %s", v)
 			}
 		})
+	}
+}
+
+// mediaConstructorTags — все дискриминаторы, объявленные подсистемой медиа.
+func mediaConstructorTags() []string {
+	return []string{
+		MessageMediaPhotoTag, MessageMediaDocumentTag,
+		MessageMediaGeoTag, MessageMediaGeoLiveTag, MessageMediaVenueTag,
+		MessageMediaContactTag, MessageMediaPollTag, MessageMediaToDoTag,
+		MessageMediaGiveawayTag, MessageMediaGiveawayResultsTag,
+		MessageMediaWebPageTag, MessageMediaPaidMediaTag,
+		MessageExtendedMediaTag, MessageExtendedMediaPreviewTag,
+		GeoPointTag, PhotoTag, DocumentTag,
+		PhotoSizeTag, PhotoStrippedSizeTag, PhotoPathSizeTag,
+		AttrImageSize, AttrAnimated, AttrSticker, AttrVideo, AttrAudio, AttrFilename,
+		PollTag, PollAnswerTag, PollResultsTag, PollAnswerVotersTag,
+		TodoListTag, TodoItemTag, TodoCompletionTag,
+		WebPageTag,
+	}
+}
+
+// Полнота: каждый объявленный дискриминатор объединения реально есть в схеме И
+// реально участвует в сверке. Иначе конструктор можно было бы завести и забыть —
+// ровно так гео и опрос прожили порт медиа собственными ключами сообщения.
+func TestMessageMedia_EveryConstructorIsChecked(t *testing.T) {
+	seen := map[string]bool{}
+	var mark func(v any)
+	mark = func(v any) {
+		switch x := v.(type) {
+		case []any:
+			for _, item := range x {
+				mark(item)
+			}
+		case map[string]any:
+			if u, ok := x["_"].(string); ok {
+				seen[u] = true
+			}
+			for k, item := range x {
+				if k != "pFlags" {
+					mark(item)
+				}
+			}
+		}
+	}
+	cases := mediaCases()
+	all := make([]MessageMedia, 0, len(cases))
+	for _, tc := range cases {
+		all = append(all, tc.media)
+	}
+	// Атрибуты, которых нет ни в одном случае выше, но которые модель
+	// производит: собираются тем же BuildMessageMedia.
+	extra := BuildMessageMedia(MediaSource{Kind: "gif", MediaID: 1, Width: 10, Height: 10, Animated: true})
+
+	raw, err := json.Marshal([]any{all, extra})
+	if err != nil {
+		t.Fatalf("сериализация: %v", err)
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	mark(decoded)
+
+	ctors := loadSchemaConstructors(t)
+	for _, tag := range mediaConstructorTags() {
+		if !seen[tag] {
+			t.Errorf("конструктор %q не участвует в сверке со схемой", tag)
+		}
+		if _, ok := ctors[tag]; !ok {
+			t.Errorf("конструктора %q нет в схеме", tag)
+		}
+	}
+}
+
+// testNow — общая точка отсчёта для случаев подсистемы медиа.
+var testNow = time.Unix(1_700_000_000, 0)
+
+// Числовой id конструктора в докблоке — не украшение: на фазе 2 именно он
+// уходит в поток четырьмя байтами. Проверяется механически по всем файлам
+// подсистемы, потому что глазами не проверяется.
+//
+// Чем это отличается от общего пина `mtids_test.go`, который сканирует ВСЕ
+// файлы подсистемы: тот проверяет слабее — «если id написан, он совпадает со
+// схемой» (и однажды поймал устаревший `documentAttributeVideo`). Здесь
+// утверждение сильнее и посубсистемное: у КАЖДОГО объявленного конструктора
+// медиа докблок с id обязан быть. Именно полноты у медиа и не хватало —
+// конструктор можно было завести совсем без id, и общий пин молчал бы.
+func TestMessageMedia_ConstructorIDsMatchSchema(t *testing.T) {
+	want := map[string]string{}
+	for predicate, ctor := range loadSchemaConstructorIDs(t) {
+		want[predicate] = hexCtorID(t, predicate, ctor)
+	}
+
+	found := map[string]bool{}
+	re := regexp.MustCompile(`(?m)^//\s*([A-Za-z][A-Za-z0-9_.]*)#([0-9a-f]{8})\b`)
+	for _, file := range []string{"mtmedia.go", "mtpoll.go", "mttodo.go", "mtgiveaway.go", "mtwebpage.go"} {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("исходник подсистемы не читается (%s): %v", file, err)
+		}
+		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+			predicate, id := m[1], m[2]
+			schemaID, ok := want[predicate]
+			if !ok {
+				t.Errorf("%s: докблок ссылается на конструктор %q, которого нет в схеме", file, predicate)
+				continue
+			}
+			found[predicate] = true
+			if schemaID != id {
+				t.Errorf("%s: id в докблоке #%s, а в схеме #%s", predicate, id, schemaID)
+			}
+		}
+	}
+	// Иначе тест «проходил» бы и на файлах без единого докблока.
+	for _, tag := range mediaConstructorTags() {
+		if !found[tag] {
+			t.Errorf("у конструктора %q нет докблока с числовым id", tag)
+		}
 	}
 }
 
@@ -399,11 +627,27 @@ func TestMessageMedia_SchemaCheckerCatchesDrift(t *testing.T) {
 	t.Run("поле flags в объекте", func(t *testing.T) {
 		c := &schemaChecker{constructors: ctors, additional: add}
 		c.walk(map[string]any{
-			"_":     "document",
+			"_":     DocumentTag,
 			"flags": float64(1),
 		}, "media.document")
 		if len(c.unexpected) == 0 {
 			t.Fatal("маска flags не должна попадать в объект — она живёт только на проводе")
+		}
+	})
+
+	t.Run("пропущенный обязательный параметр", func(t *testing.T) {
+		c := &schemaChecker{constructors: ctors, additional: add}
+		// messageMediaContact без last_name: у оригинала это пустая СТРОКА, а не
+		// отсутствие ключа.
+		c.walk(map[string]any{
+			"_":            MessageMediaContactTag,
+			"phone_number": "+7",
+			"first_name":   "Боб",
+			"vcard":        "",
+			"user_id":      float64(43),
+		}, "media")
+		if len(c.omitted) == 0 {
+			t.Fatal("пропущенный обязательный параметр должен считаться расхождением")
 		}
 	})
 }

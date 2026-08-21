@@ -150,7 +150,7 @@ type Message struct {
 	// Плоского набора (media_w/media_h/media_mime/media_duration/…) здесь больше
 	// нет: тип документа выводится из атрибутов, как в appDocsManager, а не
 	// подделывается флагами витрины.
-	Media *MessageMedia
+	Media MessageMedia
 	// MediaSpoiler — медиа скрыто спойлером (telegram messageMedia.pFlags.spoiler,
 	// tweb makeMessageMediaInput.ts:13,24). В отличие от MediaAnimated это не
 	// свойство файла, а свойство вложения В ЭТОМ сообщении — ставит отправитель,

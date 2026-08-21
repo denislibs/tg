@@ -7,10 +7,10 @@ package domain
 // БУКВАЛЬНО (tweb/src/lib/mtproto/schema.ts), сериализация пока JSON. Поэтому
 // переход к бинарному TL станет заменой сериализатора, а не переделкой модели.
 //
-// Зачем вообще. Плоская форма (media_w/media_h/media_blur/media_mime/…)
-// отвечает ровно на те вопросы, которые мы догадались задать: лестницы превью
-// в ней нет, тип документа приходится подделывать флагами на стороне клиента,
-// а векторный контур стикера не помещается вовсе. Врапперы tweb
+// Зачем. Плоская форма (media_w/media_h/media_blur/media_mime/…) отвечает ровно
+// на те вопросы, которые мы догадались задать: лестницы превью в ней нет, тип
+// документа приходится подделывать флагами на стороне клиента, а векторный
+// контур стикера не помещается вовсе. Врапперы tweb
 // (wrapPhoto/wrapVideo/wrapSticker/wrapDocument/wrapAlbum) написаны против этой
 // модели — при совпадении формы они портируются буквально.
 //
@@ -30,16 +30,33 @@ package domain
 //     смог бы отличить «size обязателен и равен нулю» (photoSize) от «size
 //     здесь нет вовсе» (photoStrippedSize).
 //
+// ── MessageMedia — ОБЪЕДИНЕНИЕ, а не одна структура ─────────────────────────
+// До этого шага здесь жила ОДНА структура MessageMedia с полями photo и
+// document, и правило «у каждого конструктора своя структура» на неё не
+// распространялось: два конструктора умещались в один тип, потому что оба
+// несут ровно одно необязательное поле.
+//
+// Дотянуть тем же приёмом до гео, контакта, опроса, чек-листа, розыгрыша,
+// превью ссылки и платного медиа невозможно, и причина не в аккуратности:
+// у messageMediaContact ОБЯЗАТЕЛЬНЫ phone_number/first_name/last_name/vcard/
+// user_id, у messageMediaGiveaway — channels/quantity/until_date. Общая
+// структура с omitempty выкинула бы пустое обязательное поле (last_name у
+// контакта без фамилии, quantity=0), то есть выдала бы «параметра нет вовсе»
+// там, где схема требует «параметр есть и он пуст». На фазе 2 это разъехалось
+// бы побайтово. Поэтому объединение стало интерфейсом, как MTMessage,
+// MessageAction и ReplyMarkup.
+//
 // ── Чего в модели НЕТ и почему ───────────────────────────────────────────────
 // Реквизиты MTProto-транспорта: у них нет предмета в нашей схеме доступа —
 // файл адресуется одним числовым id через собственный медиа-эндпоинт:
 //   - dc_id                 — номер датацентра MTProto-хранилища;
-//   - access_hash           — токен доступа к файлу;
+//   - access_hash           — токен доступа к файлу (и к точке geoPoint);
 //   - file_reference        — протухающая ссылка, обновляемая getMessages;
 //   - date                  — дата файла (у нас — дата сообщения);
 //   - семейство Input*      — реквизиты того же транспорта (в т.ч.
 //     documentAttributeSticker.stickerset: InputStickerSet — набор у нас
 //     адресуется числовым set_id через свою ручку).
+//
 // Также не производятся (но объявлены, потому что кодек фазы 2 обязан их
 // понимать) варианты PhotoSize без предмета в нашем хранилище:
 // photoSizeProgressive (диапазоны байт), photoCachedSize (его роль целиком
@@ -75,7 +92,7 @@ func (PhotoSizeReal) isPhotoSize() {}
 
 // NewPhotoSize — photoSize с обязательными w/h/size (сериализуются и нулевыми).
 func NewPhotoSize(sizeType string, w, h int, size int64) PhotoSizeReal {
-	return PhotoSizeReal{Underscore: "photoSize", Type: sizeType, W: w, H: h, Size: size}
+	return PhotoSizeReal{Underscore: PhotoSizeTag, Type: sizeType, W: w, H: h, Size: size}
 }
 
 // photoStrippedSize#e0b0bc2e type:string bytes:bytes = PhotoSize;
@@ -89,7 +106,7 @@ func (PhotoStrippedSize) isPhotoSize() {}
 
 // NewPhotoStrippedSize — stripped-плейсхолдер (у нас — media.blur_preview).
 func NewPhotoStrippedSize(b []byte) PhotoStrippedSize {
-	return PhotoStrippedSize{Underscore: "photoStrippedSize", Type: SizeTypeStripped, Bytes: b}
+	return PhotoStrippedSize{Underscore: PhotoStrippedSizeTag, Type: SizeTypeStripped, Bytes: b}
 }
 
 // photoPathSize#d8214d41 type:string bytes:bytes = PhotoSize;
@@ -103,7 +120,7 @@ func (PhotoPathSize) isPhotoSize() {}
 
 // NewPhotoPathSize — векторный контур стикера (у нас — stickers.path_thumb).
 func NewPhotoPathSize(b []byte) PhotoPathSize {
-	return PhotoPathSize{Underscore: "photoPathSize", Type: SizeTypePath, Bytes: b}
+	return PhotoPathSize{Underscore: PhotoPathSizeTag, Type: SizeTypePath, Bytes: b}
 }
 
 // photo#fb197a65 flags:# has_stickers:flags.0?true id:long access_hash:long
@@ -117,7 +134,7 @@ type Photo struct {
 
 // NewPhoto — photo с обязательной лестницей размеров.
 func NewPhoto(id int64, sizes []PhotoSize) *Photo {
-	return &Photo{Underscore: "photo", ID: id, Sizes: sizes}
+	return &Photo{Underscore: PhotoTag, ID: id, Sizes: sizes}
 }
 
 // DocumentAttribute — объединение схемы (Video | Audio | Sticker | Filename |
@@ -211,37 +228,341 @@ type Document struct {
 	Attributes []DocumentAttribute `json:"attributes"`
 }
 
-// MessageMedia — вложение сообщения: messageMediaPhoto | messageMediaDocument.
-// Остальные варианты объединения (гео, контакт, опрос, …) у нас едут
-// собственными полями сообщения и в этой модели не участвуют.
-type MessageMedia struct {
-	Underscore string `json:"_"`
-	// PFlags.spoiler — messageMediaPhoto.spoiler:flags.3?true /
-	// messageMediaDocument.spoiler:flags.4?true.
-	//
-	// Биты-подсказки messageMediaDocument video/round/voice (flags.6/7/8) не
-	// выставляются: тип документа выводится из его атрибутов, как в
-	// appDocsManager. Дублировать вывод вторым источником — это и есть та
-	// подделка флага, которую модель устраняет.
-	PFlags   map[string]bool `json:"pFlags,omitempty"`
-	Photo    *Photo          `json:"photo,omitempty"`
-	Document *Document       `json:"document,omitempty"`
+// ── MessageMedia ────────────────────────────────────────────────────────────
+
+// MessageMedia — объединение схемы: вложение сообщения. Производим двенадцать
+// конструкторов из девятнадцати; не производим те, у которых нет предмета:
+// messageMediaEmpty и messageMediaUnsupported (двух степеней полноты объекта у
+// нас нет), messageMediaGame, messageMediaInvoice, messageMediaDice,
+// messageMediaStory, messageMediaVideoStream.
+type MessageMedia interface {
+	isMessageMedia()
+	// Tag — дискриминатор `_` (predicate схемы).
+	Tag() string
 }
 
 // Значения дискриминатора `_`.
 const (
-	MessageMediaPhotoTag    = "messageMediaPhoto"
-	MessageMediaDocumentTag = "messageMediaDocument"
-	PhotoSizeTag            = "photoSize"
-	PhotoStrippedSizeTag    = "photoStrippedSize"
-	PhotoPathSizeTag        = "photoPathSize"
-	AttrImageSize           = "documentAttributeImageSize"
-	AttrAnimated            = "documentAttributeAnimated"
-	AttrSticker             = "documentAttributeSticker"
-	AttrVideo               = "documentAttributeVideo"
-	AttrAudio               = "documentAttributeAudio"
-	AttrFilename            = "documentAttributeFilename"
+	MessageMediaPhotoTag           = "messageMediaPhoto"
+	MessageMediaDocumentTag        = "messageMediaDocument"
+	MessageMediaGeoTag             = "messageMediaGeo"
+	MessageMediaGeoLiveTag         = "messageMediaGeoLive"
+	MessageMediaVenueTag           = "messageMediaVenue"
+	MessageMediaContactTag         = "messageMediaContact"
+	MessageMediaPaidMediaTag       = "messageMediaPaidMedia"
+	MessageExtendedMediaTag        = "messageExtendedMedia"
+	MessageExtendedMediaPreviewTag = "messageExtendedMediaPreview"
+	GeoPointTag                    = "geoPoint"
+	PhotoTag                       = "photo"
+	DocumentTag                    = "document"
+	PhotoSizeTag                   = "photoSize"
+	PhotoStrippedSizeTag           = "photoStrippedSize"
+	PhotoPathSizeTag               = "photoPathSize"
+	AttrImageSize                  = "documentAttributeImageSize"
+	AttrAnimated                   = "documentAttributeAnimated"
+	AttrSticker                    = "documentAttributeSticker"
+	AttrVideo                      = "documentAttributeVideo"
+	AttrAudio                      = "documentAttributeAudio"
+	AttrFilename                   = "documentAttributeFilename"
 )
+
+// messageMediaPhoto#e216eb63 flags:# spoiler:flags.3?true live_photo:flags.4?true
+// photo:flags.0?Photo ttl_seconds:flags.2?int video:flags.4?Document
+// = MessageMedia;
+//
+// Картинка, снятая КАК ФОТОГРАФИЯ: лестница размеров, без mime и имени файла.
+//
+// ttl_seconds здесь не производится намеренно: срок самоуничтожения у нас на
+// СООБЩЕНИИ (messages.ttl_seconds → message.ttl_period), а не на вложении, и
+// второе место для того же значения — ровно тот второй источник истины, ради
+// которого делается переход. live_photo и video (живое фото iOS) предмета не
+// имеют.
+type MessageMediaPhoto struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Photo      *Photo          `json:"photo,omitempty"`
+}
+
+func (MessageMediaPhoto) isMessageMedia() {}
+func (m MessageMediaPhoto) Tag() string   { return m.Underscore }
+
+// NewMessageMediaPhoto — фотография; spoiler это свойство вложения В ЭТОМ
+// сообщении, а не файла.
+func NewMessageMediaPhoto(photo *Photo, spoiler bool) *MessageMediaPhoto {
+	m := &MessageMediaPhoto{Underscore: MessageMediaPhotoTag, Photo: photo}
+	setPFlag(&m.PFlags, "spoiler", spoiler)
+	return m
+}
+
+// messageMediaDocument#52d8ccd9 flags:# nopremium:flags.3?true
+// spoiler:flags.4?true video:flags.6?true round:flags.7?true voice:flags.8?true
+// document:flags.0?Document alt_documents:flags.5?Vector<Document>
+// video_cover:flags.9?Photo video_timestamp:flags.10?int
+// ttl_seconds:flags.2?int = MessageMedia;
+//
+// Биты-подсказки video/round/voice (flags.6/7/8) не выставляются: тип документа
+// выводится из его атрибутов, как в appDocsManager. Дублировать вывод вторым
+// источником — это и есть та подделка флага, которую модель устраняет.
+type MessageMediaDocument struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Document   *Document       `json:"document,omitempty"`
+}
+
+func (MessageMediaDocument) isMessageMedia() {}
+func (m MessageMediaDocument) Tag() string   { return m.Underscore }
+
+// NewMessageMediaDocument — документ (всё, что не снято как фотография).
+func NewMessageMediaDocument(doc *Document, spoiler bool) *MessageMediaDocument {
+	m := &MessageMediaDocument{Underscore: MessageMediaDocumentTag, Document: doc}
+	setPFlag(&m.PFlags, "spoiler", spoiler)
+	return m
+}
+
+// ── Гео ─────────────────────────────────────────────────────────────────────
+
+// geoPoint#b2a2f663 flags:# long:double lat:double access_hash:long
+// accuracy_radius:flags.0?int = GeoPoint;
+//
+// ТОЧКА, общая для трёх конструкторов гео. Параметр называется `long` (долгота),
+// а не `lng`: имя берётся из схемы буквально.
+//
+// access_hash (ОБЯЗАТЕЛЬНЫЙ) — реквизит MTProto-транспорта, которым оригинал
+// подписывает запрос картинки карты в своём прокси; у нас карту рисует клиент
+// по координатам, и предмета у токена нет. accuracy_radius (точность
+// геолокации) браузерного watchPosition мы не сохраняем.
+type GeoPoint struct {
+	Underscore string  `json:"_"`
+	Long       float64 `json:"long"`
+	Lat        float64 `json:"lat"`
+}
+
+// NewGeoPoint — точка на карте. Оба параметра обязательные и едут всегда.
+func NewGeoPoint(lat, lng float64) GeoPoint {
+	return GeoPoint{Underscore: GeoPointTag, Long: lng, Lat: lat}
+}
+
+// messageMediaGeo#56e0d474 geo:GeoPoint = MessageMedia;
+//
+// Обычная точка: ни названия места, ни трансляции.
+type MessageMediaGeo struct {
+	Underscore string   `json:"_"`
+	Geo        GeoPoint `json:"geo"`
+}
+
+func (MessageMediaGeo) isMessageMedia() {}
+func (m MessageMediaGeo) Tag() string   { return m.Underscore }
+
+func NewMessageMediaGeo(lat, lng float64) *MessageMediaGeo {
+	return &MessageMediaGeo{Underscore: MessageMediaGeoTag, Geo: NewGeoPoint(lat, lng)}
+}
+
+// messageMediaGeoLive#b940c666 flags:# geo:GeoPoint heading:flags.0?int
+// period:int proximity_notification_radius:flags.1?int = MessageMedia;
+//
+// ЖИВАЯ ТРАНСЛЯЦИЯ координат.
+//
+// ── «Остановлена» — это period, а не отдельный флаг ─────────────────────────
+// У нас в geo_meta лежит `stopped bool`, и на проводе он ехал собственным
+// ключом. В схеме такого параметра НЕТ, и подделывать его нечем: оригинал
+// выражает конец трансляции ИСТЕЧЕНИЕМ срока — клиент считает
+// `date + period <= now` и рисует «трансляция закончилась» (tweb geo.ts:178-179,
+// isLiveExpired). Досрочная остановка у оригинала правит сообщение так, что
+// срок истекает сразу.
+//
+// Поэтому досрочно остановленная трансляция едет с period, УКОРОЧЕННЫМ до
+// момента остановки (edit_date − date): смысл сохраняется целиком, а второго
+// способа ответить на вопрос «идёт ли трансляция» на проводе не появляется.
+//
+// proximity_notification_radius (уведомление о приближении) механики не имеет.
+type MessageMediaGeoLive struct {
+	Underscore string   `json:"_"`
+	Geo        GeoPoint `json:"geo"`
+	// Heading — flags.0?int: направление движения, 0..359.
+	Heading int `json:"heading,omitempty"`
+	// Period — обязательный: сколько секунд от даты сообщения трансляция живёт.
+	Period int `json:"period"`
+}
+
+func (MessageMediaGeoLive) isMessageMedia() {}
+func (m MessageMediaGeoLive) Tag() string   { return m.Underscore }
+
+// NewMessageMediaGeoLive — живая трансляция. heading == 0 значит «направления
+// нет» и ключа не даёт: строго на север браузерный watchPosition не сообщает,
+// а ноль в схеме — значение, а не отсутствие.
+func NewMessageMediaGeoLive(lat, lng float64, period, heading int) *MessageMediaGeoLive {
+	return &MessageMediaGeoLive{
+		Underscore: MessageMediaGeoLiveTag,
+		Geo:        NewGeoPoint(lat, lng),
+		Heading:    heading,
+		Period:     period,
+	}
+}
+
+// messageMediaVenue#2ec0533f geo:GeoPoint title:string address:string
+// provider:string venue_id:string venue_type:string = MessageMedia;
+//
+// МЕСТО (не просто точка): у нас это та же строка гео, но с title/address в
+// geo_meta. Отдельный конструктор, а не два лишних ключа у messageMediaGeo:
+// клиент рисует у места подпись и футер, а у точки — нет (tweb geo.ts:190).
+//
+// provider/venue_id/venue_type (все ОБЯЗАТЕЛЬНЫЕ) предмета не имеют: это
+// реквизиты СПРАВОЧНИКА мест (foursquare/gplaces) — идентификатор заведения в
+// чужой базе и его категория. Справочника мест у нас нет вовсе, точку с
+// подписью присылает сам отправитель.
+type MessageMediaVenue struct {
+	Underscore string   `json:"_"`
+	Geo        GeoPoint `json:"geo"`
+	Title      string   `json:"title"`
+	Address    string   `json:"address"`
+}
+
+func (MessageMediaVenue) isMessageMedia() {}
+func (m MessageMediaVenue) Tag() string   { return m.Underscore }
+
+func NewMessageMediaVenue(lat, lng float64, title, address string) *MessageMediaVenue {
+	return &MessageMediaVenue{
+		Underscore: MessageMediaVenueTag,
+		Geo:        NewGeoPoint(lat, lng),
+		Title:      title,
+		Address:    address,
+	}
+}
+
+// ── Контакт ─────────────────────────────────────────────────────────────────
+
+// messageMediaContact#70322949 phone_number:string first_name:string
+// last_name:string vcard:string user_id:long = MessageMedia;
+//
+// Присланная визитка: снимок имени и телефона на момент отправки плюс ссылка на
+// аккаунт.
+//
+// Все пять параметров ОБЯЗАТЕЛЬНЫЕ и едут всегда, в том числе пустыми:
+//   - last_name пуст, потому что мы храним имя визитки ОДНОЙ строкой
+//     (messages.contact_name) — ровно так же ведёт себя оригинал, когда у
+//     контакта нет фамилии. Разрезать нашу строку по первому пробелу значило бы
+//     выдумывать фамилию там, где её никто не вводил;
+//   - vcard пуст: карточки vCard мы не принимаем и не храним.
+//
+// Пустая строка здесь — ЗНАЧЕНИЕ («фамилии нет»), а не отсутствие параметра, и
+// разница видна на проводе.
+type MessageMediaContact struct {
+	Underscore  string `json:"_"`
+	PhoneNumber string `json:"phone_number"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Vcard       string `json:"vcard"`
+	UserID      int64  `json:"user_id"`
+}
+
+func (MessageMediaContact) isMessageMedia() {}
+func (m MessageMediaContact) Tag() string   { return m.Underscore }
+
+func NewMessageMediaContact(userID int64, name, phone string) *MessageMediaContact {
+	return &MessageMediaContact{
+		Underscore:  MessageMediaContactTag,
+		PhoneNumber: phone,
+		FirstName:   name,
+		UserID:      userID,
+	}
+}
+
+// ── Платное медиа ───────────────────────────────────────────────────────────
+
+// MessageExtendedMedia — объединение схемы: messageExtendedMediaPreview |
+// messageExtendedMedia. Одна позиция внутри платного вложения: либо ЗАГЛУШКА
+// для неоплатившего, либо настоящее медиа.
+type MessageExtendedMedia interface {
+	isMessageExtendedMedia()
+	// Tag — дискриминатор `_` (predicate схемы).
+	Tag() string
+}
+
+// messageExtendedMediaPreview#ad628cc8 flags:# w:flags.0?int h:flags.0?int
+// thumb:flags.1?PhotoSize video_duration:flags.2?int = MessageExtendedMedia;
+//
+// Что видит зритель, НЕ оплативший платное медиа: коробка кадра и
+// stripped-подложка — и больше ничего, по чему можно было бы получить байты.
+//
+// Прежде на этом месте у нас ехало ПСЕВДО-ФОТО без id (LockedPlaceholder):
+// конструктор messageMediaPhoto с единственной stripped-ступенью. Форма была
+// подсмотрена у клиента оригинала — это он собирает такое фото из превью
+// (generatePhotoForExtendedMediaPreview), чтобы отдать его в wrapPhoto. То есть
+// сервер отдавал результат КЛИЕНТСКОГО преобразования вместо самого предмета.
+//
+// video_duration не производится: длительность — это уже сведение о содержимом
+// неоплаченного медиа, и стирает её тот же stripLockedMedia, что стирает mime.
+type MessageExtendedMediaPreview struct {
+	Underscore string `json:"_"`
+	W          int    `json:"w,omitempty"`
+	H          int    `json:"h,omitempty"`
+	// Thumb — flags.1?PhotoSize: одна ступень, stripped-подложка.
+	Thumb PhotoSize `json:"thumb,omitempty"`
+}
+
+func (MessageExtendedMediaPreview) isMessageExtendedMedia() {}
+func (m MessageExtendedMediaPreview) Tag() string           { return m.Underscore }
+
+// messageExtendedMedia#ee479c64 media:MessageMedia = MessageExtendedMedia;
+//
+// Оплачено (или своё) — настоящее вложение целиком.
+type MessageExtendedMediaReal struct {
+	Underscore string       `json:"_"`
+	Media      MessageMedia `json:"media"`
+}
+
+func (MessageExtendedMediaReal) isMessageExtendedMedia() {}
+func (m MessageExtendedMediaReal) Tag() string           { return m.Underscore }
+
+// messageMediaPaidMedia#a8852491 stars_amount:long
+// extended_media:Vector<MessageExtendedMedia> = MessageMedia;
+//
+// Медиа, разблокируемое за звёзды. У нас цена ехала собственным ключом
+// paid_media:{price, locked} РЯДОМ с обычным media, то есть «платность» была
+// припиской к вложению, а не его видом. В схеме это ОБЁРТКА: платное вложение —
+// сам конструктор, а настоящее медиа лежит внутри вектора extended_media.
+//
+// Пер-зрительское «заблокировано» выражается ВЫБОРОМ конструктора элемента
+// вектора (preview или media), а не булевым ключом рядом: у оригинала зритель,
+// не оплативший медиа, физически не получает объекта, из которого можно достать
+// байты.
+type MessageMediaPaidMedia struct {
+	Underscore string `json:"_"`
+	// StarsAmount — обязательный: цена доступа в звёздах.
+	StarsAmount int64 `json:"stars_amount"`
+	// ExtendedMedia — обязательный вектор. У нас платное медиа всегда одно
+	// (альбомов платных вложений мы не собираем), но вектор едет вектором.
+	ExtendedMedia []MessageExtendedMedia `json:"extended_media"`
+}
+
+func (MessageMediaPaidMedia) isMessageMedia() {}
+func (m MessageMediaPaidMedia) Tag() string   { return m.Underscore }
+
+// NewMessageMediaPaidMedia — платное вложение. locked решает, каким
+// конструктором едет позиция вектора: заглушкой или настоящим медиа.
+func NewMessageMediaPaidMedia(stars int64, md MessageMedia, locked bool) *MessageMediaPaidMedia {
+	out := &MessageMediaPaidMedia{
+		Underscore:    MessageMediaPaidMediaTag,
+		StarsAmount:   stars,
+		ExtendedMedia: []MessageExtendedMedia{},
+	}
+	if locked {
+		w, h := MediaDimensions(md)
+		p := MessageExtendedMediaPreview{Underscore: MessageExtendedMediaPreviewTag, W: w, H: h}
+		if b := MediaStrippedThumb(md); len(b) > 0 {
+			p.Thumb = NewPhotoStrippedSize(b)
+		}
+		out.ExtendedMedia = append(out.ExtendedMedia, p)
+		return out
+	}
+	if md != nil {
+		out.ExtendedMedia = append(out.ExtendedMedia,
+			MessageExtendedMediaReal{Underscore: MessageExtendedMediaTag, Media: md})
+	}
+	return out
+}
+
+// ── Сборка вложения из строки media ─────────────────────────────────────────
 
 // fitThumb вписывает w×h в квадрат ThumbMaxSide с сохранением пропорции — та же
 // арифметика, что у генератора превью. Оригинал меньше квадрата — превью с ним
@@ -366,48 +687,48 @@ func (s MediaSource) attributes() []DocumentAttribute {
 // Развилка photo/document — та же, что у отправляющего клиента Telegram:
 // картинка, снятая как фотография, едет messageMediaPhoto (лестница размеров,
 // без mime и имени файла), всё остальное — messageMediaDocument.
-func BuildMessageMedia(s MediaSource) *MessageMedia {
+func BuildMessageMedia(s MediaSource) MessageMedia {
 	if s.MediaID == 0 && len(s.thumbs()) == 0 && (s.Width <= 0 || s.Height <= 0) {
 		return nil
 	}
-	var pFlags map[string]bool
-	if s.Spoiler {
-		pFlags = map[string]bool{"spoiler": true}
-	}
 	if s.Kind == "photo" {
-		return &MessageMedia{Underscore: MessageMediaPhotoTag, PFlags: pFlags, Photo: NewPhoto(s.MediaID, s.sizes())}
+		return NewMessageMediaPhoto(NewPhoto(s.MediaID, s.sizes()), s.Spoiler)
 	}
-	return &MessageMedia{
-		Underscore: MessageMediaDocumentTag,
-		PFlags:     pFlags,
-		Document: &Document{
-			Underscore: "document",
-			ID:         s.MediaID,
-			MimeType:   s.Mime,
-			Size:       s.Size,
-			Thumbs:     s.thumbs(),
-			Attributes: s.attributes(),
-		},
-	}
+	return NewMessageMediaDocument(&Document{
+		Underscore: DocumentTag,
+		ID:         s.MediaID,
+		MimeType:   s.Mime,
+		Size:       s.Size,
+		Thumbs:     s.thumbs(),
+		Attributes: s.attributes(),
+	}, s.Spoiler)
 }
 
-// sizeList — ступени вложения независимо от варианта (photo.sizes/document.thumbs).
-func (md *MessageMedia) sizeList() []PhotoSize {
-	if md == nil {
-		return nil
-	}
-	if md.Photo != nil {
-		return md.Photo.Sizes
-	}
-	if md.Document != nil {
-		return md.Document.Thumbs
+// ── Доступ к содержимому вложения ───────────────────────────────────────────
+//
+// Функции, а не методы: объединение стало интерфейсом (см. шапку), а у гео,
+// контакта и опроса ни ступеней превью, ни атрибутов документа нет вовсе —
+// объявлять им пустые методы значило бы утверждать обратное.
+
+// mediaSizes — ступени вложения независимо от варианта (photo.sizes /
+// document.thumbs); nil у вариантов без файла.
+func mediaSizes(md MessageMedia) []PhotoSize {
+	switch v := md.(type) {
+	case *MessageMediaPhoto:
+		if v.Photo != nil {
+			return v.Photo.Sizes
+		}
+	case *MessageMediaDocument:
+		if v.Document != nil {
+			return v.Document.Thumbs
+		}
 	}
 	return nil
 }
 
-// StrippedThumb — байты stripped-плейсхолдера; nil, если ступени нет.
-func (md *MessageMedia) StrippedThumb() []byte {
-	for _, s := range md.sizeList() {
+// MediaStrippedThumb — байты stripped-плейсхолдера; nil, если ступени нет.
+func MediaStrippedThumb(md MessageMedia) []byte {
+	for _, s := range mediaSizes(md) {
 		if v, ok := s.(PhotoStrippedSize); ok {
 			return v.Bytes
 		}
@@ -415,9 +736,9 @@ func (md *MessageMedia) StrippedThumb() []byte {
 	return nil
 }
 
-// PathThumb — байты векторного контура; nil, если ступени нет.
-func (md *MessageMedia) PathThumb() []byte {
-	for _, s := range md.sizeList() {
+// MediaPathThumb — байты векторного контура; nil, если ступени нет.
+func MediaPathThumb(md MessageMedia) []byte {
+	for _, s := range mediaSizes(md) {
 		if v, ok := s.(PhotoPathSize); ok {
 			return v.Bytes
 		}
@@ -425,36 +746,37 @@ func (md *MessageMedia) PathThumb() []byte {
 	return nil
 }
 
-// Dimensions — размеры кадра медиа. У фотографии это верхняя ступень лестницы,
-// у документа — его атрибут (video/imageSize), как в оригинале.
-func (md *MessageMedia) Dimensions() (int, int) {
-	if md == nil {
-		return 0, 0
-	}
-	if md.Photo != nil {
-		for _, s := range md.Photo.Sizes {
-			if v, ok := s.(PhotoSizeReal); ok && v.Type == SizeTypeFull {
-				return v.W, v.H
+// MediaDimensions — размеры кадра медиа. У фотографии это верхняя ступень
+// лестницы, у документа — его атрибут (video/imageSize), как в оригинале.
+func MediaDimensions(md MessageMedia) (int, int) {
+	if v, ok := md.(*MessageMediaPhoto); ok {
+		if v.Photo == nil {
+			return 0, 0
+		}
+		for _, s := range v.Photo.Sizes {
+			if size, ok := s.(PhotoSizeReal); ok && size.Type == SizeTypeFull {
+				return size.W, size.H
 			}
 		}
 		return 0, 0
 	}
-	if a, ok := md.Attribute(AttrVideo).(DocumentAttributeVideo); ok {
+	if a, ok := MediaVideoAttr(md); ok {
 		return a.W, a.H
 	}
-	if a, ok := md.Attribute(AttrImageSize).(DocumentAttributeImageSize); ok {
+	if a, ok := MediaAttribute(md, AttrImageSize).(DocumentAttributeImageSize); ok {
 		return a.W, a.H
 	}
 	return 0, 0
 }
 
-// Attribute — атрибут документа по значению дискриминатора; nil, если это не
-// документ или атрибута нет.
-func (md *MessageMedia) Attribute(tag string) DocumentAttribute {
-	if md == nil || md.Document == nil {
+// MediaAttribute — атрибут документа по значению дискриминатора; nil, если это
+// не документ или атрибута нет.
+func MediaAttribute(md MessageMedia, tag string) DocumentAttribute {
+	doc, ok := md.(*MessageMediaDocument)
+	if !ok || doc.Document == nil {
 		return nil
 	}
-	for _, a := range md.Document.Attributes {
+	for _, a := range doc.Document.Attributes {
 		if attributeTag(a) == tag {
 			return a
 		}
@@ -462,31 +784,41 @@ func (md *MessageMedia) Attribute(tag string) DocumentAttribute {
 	return nil
 }
 
-// Типизированные доступы к атрибутам — обёртки над Attribute, чтобы читающая
-// сторона не рассыпалась приведениями типа.
+// Типизированные доступы к атрибутам — обёртки над MediaAttribute, чтобы
+// читающая сторона не рассыпалась приведениями типа.
 
-// VideoAttr — documentAttributeVideo, если он есть.
-func (md *MessageMedia) VideoAttr() (DocumentAttributeVideo, bool) {
-	a, ok := md.Attribute(AttrVideo).(DocumentAttributeVideo)
+// MediaVideoAttr — documentAttributeVideo, если он есть.
+func MediaVideoAttr(md MessageMedia) (DocumentAttributeVideo, bool) {
+	a, ok := MediaAttribute(md, AttrVideo).(DocumentAttributeVideo)
 	return a, ok
 }
 
-// AudioAttr — documentAttributeAudio, если он есть.
-func (md *MessageMedia) AudioAttr() (DocumentAttributeAudio, bool) {
-	a, ok := md.Attribute(AttrAudio).(DocumentAttributeAudio)
+// MediaAudioAttr — documentAttributeAudio, если он есть.
+func MediaAudioAttr(md MessageMedia) (DocumentAttributeAudio, bool) {
+	a, ok := MediaAttribute(md, AttrAudio).(DocumentAttributeAudio)
 	return a, ok
 }
 
-// FileName — documentAttributeFilename.file_name; пусто, если атрибута нет.
-func (md *MessageMedia) FileName() string {
-	if a, ok := md.Attribute(AttrFilename).(DocumentAttributeFilename); ok {
+// MediaFileName — documentAttributeFilename.file_name; пусто, если атрибута нет.
+func MediaFileName(md MessageMedia) string {
+	if a, ok := MediaAttribute(md, AttrFilename).(DocumentAttributeFilename); ok {
 		return a.FileName
 	}
 	return ""
 }
 
-// HasAttribute — атрибут с таким дискриминатором присутствует.
-func (md *MessageMedia) HasAttribute(tag string) bool { return md.Attribute(tag) != nil }
+// MediaHasAttribute — атрибут с таким дискриминатором присутствует.
+func MediaHasAttribute(md MessageMedia, tag string) bool { return MediaAttribute(md, tag) != nil }
+
+// MediaPhoto — фотография вложения; nil, если это не messageMediaPhoto. Нужна
+// действиям (смена аватарки чата, предложенное фото), которые несут photo
+// внутри себя.
+func MediaPhoto(md MessageMedia) *Photo {
+	if v, ok := md.(*MessageMediaPhoto); ok {
+		return v.Photo
+	}
+	return nil
+}
 
 func attributeTag(a DocumentAttribute) string {
 	switch v := a.(type) {
@@ -506,19 +838,22 @@ func attributeTag(a DocumentAttribute) string {
 	return ""
 }
 
-// LockedPlaceholder — вложение в том виде, в каком его можно показать зрителю,
-// не оплатившему платное медиа: псевдо-фото без id (скачивать нечего) с одной
-// stripped-ступенью и размерами кадра. Та же форма, которую оригинал собирает
-// из messageExtendedMediaPreview (tweb generatePhotoForExtendedMediaPreview):
-// дальше она идёт в wrapPhoto как обычное фото, а «единственная ступень —
-// stripped» и есть тот случай, ради которого у wrapPhoto есть ранний выход.
-func LockedPlaceholder(md *MessageMedia) *MessageMedia {
+// StripLockedMedia — вложение в том виде, в каком его МОЖНО держать в строке
+// витрины для зрителя, не оплатившего платное медиа: остаются только размеры
+// кадра и stripped-подложка, всё остальное (id файла, mime, имя, длительность,
+// волна, атрибуты) исчезает вместе с любой возможностью получить байты.
+//
+// На провод это уходит конструктором messageExtendedMediaPreview внутри
+// messageMediaPaidMedia — см. NewMessageMediaPaidMedia. Здесь остаётся только
+// строка витрины, потому что стирать надо ДО того, как сообщение попадёт в
+// любую другую выдачу, а не на границе провода.
+func StripLockedMedia(md MessageMedia) MessageMedia {
 	if md == nil {
 		return nil
 	}
-	w, h := md.Dimensions()
+	w, h := MediaDimensions(md)
 	sizes := make([]PhotoSize, 0, 2)
-	if b := md.StrippedThumb(); len(b) > 0 {
+	if b := MediaStrippedThumb(md); len(b) > 0 {
 		sizes = append(sizes, NewPhotoStrippedSize(b))
 	}
 	if w > 0 && h > 0 {
@@ -528,8 +863,8 @@ func LockedPlaceholder(md *MessageMedia) *MessageMedia {
 		return nil
 	}
 	// Спойлер не переносим: заблокированное платное медиа И ТАК скрыто —
-	// плейсхолдер с blur и кнопкой «разблокировать за N ⭐». Заслонка спойлера
+	// заглушка с blur и кнопкой «разблокировать за N ⭐». Заслонка спойлера
 	// поверх него была бы второй крышкой и похоронила бы саму кнопку. Флаг живёт
 	// в строке messages и вернётся вместе с настоящим медиа после оплаты.
-	return &MessageMedia{Underscore: MessageMediaPhotoTag, Photo: NewPhoto(0, sizes)}
+	return NewMessageMediaPhoto(NewPhoto(0, sizes), false)
 }

@@ -182,7 +182,8 @@ func (i *Interactor) giveawayInfoFor(ctx context.Context, giveawayID, viewerID i
 	info := domain.GiveawayInfo{
 		ID: g.ID, PeerID: domain.ToPeerID(g.ChatID, true), PrizeKind: g.PrizeKind,
 		Months: g.Months, Stars: g.Stars, WinnersCount: g.WinnersCount,
-		UntilDate: g.UntilDate.UnixMilli(), Status: g.Status,
+		UntilDate: g.UntilDate.UnixMilli(), StartDate: g.CreatedAt.UnixMilli(),
+		Status:       g.Status,
 		Participants: cnt, WinnerIDs: g.WinnerIDs,
 	}
 	if viewerID != 0 {
@@ -216,8 +217,13 @@ func (i *Interactor) hydrateGiveaways(ctx context.Context, viewerID int64, msgs 
 }
 
 // publishGiveawayUpdate логирует и рассылает участникам чата состояние розыгрыша
-// (без per-viewer полей — их каждый клиент знает сам). Абсолютный снимок + плотный
-// pts-курсор делают catch-up через /sync идемпотентным.
+// ТЕМ ЖЕ конструктором, каким оно едет вложением сообщения. Абсолютный снимок +
+// плотный pts-курсор делают catch-up через /sync идемпотентным.
+//
+// Личного состояния зрителя (участвую ли, выиграл ли) в кадре нет и быть не
+// может: тело кадра одно на всех получателей, а ответ на этот вопрос у каждого
+// свой — его отдаёт ручка GET /giveaways/{id} конструктором
+// payments.giveawayInfo. Та же ловушка, что уже поймана у pFlags.out.
 func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveawayID int64) {
 	info, err := i.giveawayInfoFor(ctx, giveawayID, 0)
 	if err != nil {
@@ -227,5 +233,12 @@ func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveaway
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, chatID, members, "giveaway_update", map[string]any{"giveaway": info})
+	// Номер сообщения-запуска: он обязателен у messageMediaGiveawayResults, и
+	// взять его больше неоткуда — розыгрыш живёт ровно в одном сообщении.
+	var launchSeq int64
+	if msgs, e := i.msgs.ByGiveawayID(ctx, giveawayID); e == nil && len(msgs) > 0 {
+		launchSeq = msgs[0].Seq
+	}
+	_ = i.logAndPublish(ctx, chatID, members, "giveaway_update",
+		map[string]any{"media": info.ToMedia(launchSeq)})
 }

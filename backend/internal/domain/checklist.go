@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // ChecklistItem — пункт чек-листа (Telegram todoItem): стабильный id + текст.
 // id последовательные в рамках чек-листа (нужны для отметок и добавления).
 type ChecklistItem struct {
@@ -19,20 +21,33 @@ type Checklist struct {
 	OthersCanMark bool // другие участники могут отмечать выполненными
 }
 
-// ChecklistItemInfo — пункт в read-модели: текст + кто отметил выполненным.
+// ChecklistMark — одна отметка о выполнении: КТО и КОГДА. Время здесь не
+// украшение: в схеме отметка это todoCompletion{id, completed_by, date}, где
+// date ОБЯЗАТЕЛЕН. Колонка checklist_marks.marked_at существует с самого начала
+// (по ней идёт сортировка), но наружу не выходила — плоскому `marked_by []int64`
+// её некуда было положить.
+type ChecklistMark struct {
+	UserID int64
+	At     time.Time
+}
+
+// ChecklistItemInfo — пункт в read-модели: текст + отметки о выполнении.
 type ChecklistItemInfo struct {
-	ID       int     `json:"id"`
-	Text     string  `json:"text"`
-	MarkedBy []int64 `json:"marked_by"` // user id, отметившие пункт (пусто — не выполнен)
+	ID    int
+	Text  string
+	Marks []ChecklistMark // пусто — пункт не выполнен
 }
 
 // ChecklistInfo — представление чек-листа для зрителя (read-модель): сам
 // чек-лист + отметки по каждому пункту. Отметки одинаковы для всех (видно, кто
 // отметил), поэтому per-viewer различий нет.
+//
+// json-тегов здесь нет по той же причине, что у PollInfo: на провод уходят
+// конструкторы схемы (ChecklistInfo.ToMedia, mttodo.go).
 type ChecklistInfo struct {
-	ID            int64               `json:"id"`
-	Title         string              `json:"title"`
-	Items         []ChecklistItemInfo `json:"items"`
-	OthersCanAdd  bool                `json:"others_can_add"`
-	OthersCanMark bool                `json:"others_can_mark"`
+	ID            int64
+	Title         string
+	Items         []ChecklistItemInfo
+	OthersCanAdd  bool
+	OthersCanMark bool
 }

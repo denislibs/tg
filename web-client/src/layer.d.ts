@@ -1269,7 +1269,8 @@ export namespace MessageMedia {
     quantity: number,
     months?: number,
     stars?: string | number,
-    until_date: number
+    until_date: number,
+    id?: string | number
   };
 
   export type messageMediaGiveawayResults = {
@@ -1288,7 +1289,8 @@ export namespace MessageMedia {
     months?: number,
     stars?: string | number,
     prize_description?: string,
-    until_date: number
+    until_date: number,
+    id?: string | number
   };
 
   export type messageMediaPaidMedia = {
@@ -5139,7 +5141,8 @@ export namespace WebPage {
     cached_page?: Page,
     attributes?: Array<WebPageAttribute>,
     type?: 'document' | 'photo' | 'telegram_channel' | 'telegram_megagroup' | 'telegram_bot' | 'telegram_botapp' | 'telegram_user' | 'telegram_chatlist' | 'telegram_story' | 'telegram_channel_boost' | 'telegram_giftcode' | 'telegram_chat' | 'telegram_videochat' | 'telegram_voicechat' | 'telegram_livestream' | 'telegram_nft' | 'telegram_collection' | 'telegram_story_album' | 'telegram_megagroup_request' | 'telegram_stickerset' | 'telegram_call' | 'telegram_aicomposetone',
-    entities?: MessageEntity[]
+    entities?: MessageEntity[],
+    has_iv?: boolean
   };
 
   export type webPageNotModified = {
@@ -13473,7 +13476,8 @@ export namespace PaymentsGiveawayInfo {
     start_date: number,
     joined_too_early_date?: number,
     admin_disallowed_chat_id?: string | number,
-    disallowed_country?: string
+    disallowed_country?: string,
+    participants?: number
   };
 
   export type paymentsGiveawayInfoResults = {
@@ -13488,7 +13492,8 @@ export namespace PaymentsGiveawayInfo {
     stars_prize?: string | number,
     finish_date: number,
     winners_count: number,
-    activated_count?: number
+    activated_count?: number,
+    participants?: number
   };
 }
 
@@ -15168,7 +15173,8 @@ export namespace StarGift {
     gifts_per_round?: number,
     auction_start_date?: number,
     upgrade_variants?: number,
-    background?: StarGiftBackground
+    background?: StarGiftBackground,
+    emoji?: string
   };
 
   export type starGiftUnique = {
@@ -15887,7 +15893,8 @@ export namespace TodoList {
       others_can_complete?: true,
     }>,
     title: TextWithEntities,
-    list: Array<TodoItem>
+    list: Array<TodoItem>,
+    id?: string | number
   };
 }
 

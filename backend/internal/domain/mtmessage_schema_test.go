@@ -48,19 +48,19 @@ import (
 // ОБЯЗАТЕЛЬНЫЕ параметры. Они названы в шапке mtmessage.go, и это не
 // формальность: на фазе 2 «нет предмета» остаётся бесплатным ровно для них.
 // messagePendingSubject — ключи, у которых предмет в схеме ЕСТЬ, но
-// объединение MessageMedia у нас до него ещё не доведено: гео, контакт, опрос,
-// чек-лист, розыгрыш, подарок, превью ссылки и платное медиа — это
-// КОНСТРУКТОРЫ ТОГО ЖЕ объединения (messageMediaGeo/GeoLive/Venue/Contact/
-// Poll/ToDo/Giveaway/WebPage/PaidMedia), а у нас они пока собственные поля
-// сообщения.
+// объединение до него у нас ещё не доведено.
+//
+// СПИСОК ПУСТ, и это утверждение, а не забытая переменная: гео, место, контакт,
+// опрос, чек-лист, розыгрыш, превью ссылки и платное медиа стали конструкторами
+// объединения MessageMedia, подарок — служебным действием messageActionStarGift
+// (конструктора messageMediaStarGift в схеме нет вовсе, mtgift.go). Механизм
+// оставлен: он ловит следующий такой долг ровно там, где его попытаются
+// объявить «нашим параметром вне схемы».
 //
 // Список отдельный от additional СПЕЦИАЛЬНО: additional означает «предмета в
 // схеме нет вовсе» (effect_name, enc_body), и объявить долг им значило бы
-// закрыть его на бумаге. Каждая строка отсюда обязана однажды исчезнуть, а
-// новая — не появиться незаметно.
-var messagePendingSubject = map[string][]string{
-	"message": {"geo", "contact", "poll", "checklist", "giveaway", "gift", "web_page", "paid_media"},
-}
+// закрыть его на бумаге.
+var messagePendingSubject = map[string][]string{}
 
 var messageOmittedWithoutSubject = map[string][]string{
 	// Отдельного журнала апдейтов у треда нет: pts у нас на чат.
@@ -102,7 +102,7 @@ func allMessageConstructors() []any {
 		NewPhotoStrippedSize([]byte{1, 2, 3}),
 		NewPhotoSize(SizeTypeFull, 800, 600, 12345),
 	})
-	media := &MessageMedia{Underscore: MessageMediaPhotoTag, Photo: photo}
+	media := NewMessageMediaPhoto(photo, false)
 
 	// Ответ на сообщение из ДРУГОГО чата, с цитатой и недоступным оригиналом:
 	// тот самый случай, ради которого схема держит reply_from и reply_media, а
@@ -149,8 +149,6 @@ func allMessageConstructors() []any {
 	full.WhenOnline = true
 	full.EncBody = "AQID"
 	full.DestructAt = ptr(now.Add(time.Minute).Format(time.RFC3339))
-	full.Geo = map[string]any{"lat": 1.0, "lng": 2.0}
-	full.Contact = map[string]any{"user_id": int64(42)}
 	full.Effect = "fireworks"
 	full.FactCheck = ptr(NewFactCheck("RU", NewTextWithEntities("это не так",
 		MessageEntities{NewMessageEntityBold(0, 3)})))
@@ -209,6 +207,36 @@ func allMessageConstructors() []any {
 		// НАШ конструктор: сверщик обязан признавать его по записи с полем
 		// `type` в schema_additional_params.json, а не считать «предиката нет».
 		NewMessageActionRestrict(43, NewChatBannedRights(PermSendMessages, now.Add(time.Hour))),
+		// Подарок — ДЕЙСТВИЕ, а не вложение: конструктора messageMediaStarGift в
+		// схеме нет вовсе (mtgift.go). Ограниченный подарок с пожеланием и
+		// названным дарителем.
+		GiftInfo{
+			ID: 3, OwnerID: 43, Gift: StarGift{
+				ID: 11, Emoji: "\U0001F381", Title: "Мишка", PriceStars: 100, ConvertStars: 70,
+				Total: ptr(int64(1000)), Remains: ptr(int64(7)),
+			},
+			FromID: ptr(int64(42)), Message: "с днём рождения", ConvertStars: 70,
+			Date: now,
+		}.ToAction(),
+		// Анонимный, скрытый из профиля и уже обменянный: три флага, у которых
+		// смысл ОТРИЦАЕТСЯ схемой (saved) либо совпадает (name_hidden, converted).
+		GiftInfo{
+			ID: 4, OwnerID: 43, Gift: StarGift{ID: 12, Emoji: "\U0001F338", PriceStars: 50, ConvertStars: 40, SoldOut: true},
+			Anonymous: true, Hidden: true, Converted: true, ConvertStars: 40, Date: now,
+		}.ToAction(),
+		// Витрина профиля: тот же подарок другим конструктором.
+		GiftInfo{
+			ID: 3, OwnerID: 43, Gift: StarGift{ID: 11, Emoji: "\U0001F381", PriceStars: 100, ConvertStars: 70},
+			FromID: ptr(int64(42)), Message: "с днём рождения", ConvertStars: 70, Date: now,
+		}.ToSaved(),
+		GiftInfo{ID: 4, OwnerID: 43, Gift: StarGift{ID: 12, PriceStars: 50}, Hidden: true, Date: now}.ToSaved(),
+
+		// ── payments.GiveawayInfo: личное состояние зрителя ──────────────────
+		GiveawayInfo{Status: "active", StartDate: now.UnixMilli(), Participants: 12, Participating: true}.ToState(),
+		GiveawayInfo{
+			Status: "finished", PrizeKind: "stars", Stars: 500, StartDate: now.UnixMilli(),
+			UntilDate: now.Add(time.Hour).UnixMilli(), WinnersCount: 2, Participants: 12, IWon: true,
+		}.ToState(),
 
 		// ── PhoneCallDiscardReason ───────────────────────────────────────────
 		NewPhoneCallDiscardReasonMissed(),
@@ -291,6 +319,8 @@ func messageConstructorTags() []string {
 		MessageReactionsTag, ReactionCountTag, ReactionPaidTag, MessagePeerReactionTag,
 		MessageReactorTag,
 		FactCheckTag, TextWithEntitiesTag,
+		MessageActionStarGiftTag, StarGiftTag, SavedStarGiftTag,
+		GiveawayInfoTag, GiveawayInfoResultsTag,
 	}
 }
 
@@ -390,9 +420,16 @@ func TestMessages_PFlagsNeverFalse(t *testing.T) {
 // ЯВНО — правило «id = CRC32 канонической строки» воспроизводится не полностью
 // (tl-program.md), и вывести его из определения нельзя.
 func TestMessages_ConstructorIDsMatchSchema(t *testing.T) {
-	src, err := os.ReadFile("mtmessage.go")
-	if err != nil {
-		t.Fatalf("исходник подсистемы не читается: %v", err)
+	// Подсистема сообщения занимает ДВА файла: подарок вынесен в mtgift.go
+	// вместе со своим вложенным starGift. Перечисление файлов, а не одного
+	// имени, — иначе новый конструктор в новом файле остался бы без сверки id.
+	var src []byte
+	for _, file := range []string{"mtmessage.go", "mtgift.go", "mtgiveaway.go"} {
+		part, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("исходник подсистемы не читается (%s): %v", file, err)
+		}
+		src = append(src, part...)
 	}
 
 	want := map[string]string{}
@@ -406,7 +443,7 @@ func TestMessages_ConstructorIDsMatchSchema(t *testing.T) {
 		want[predicate] = hexCtorID(t, predicate, ctor)
 	}
 
-	found := 0
+	found := map[string]bool{}
 	re := regexp.MustCompile(`(?m)^//\s*([A-Za-z][A-Za-z0-9_.]*)#([0-9a-f]{8})\b`)
 	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
 		predicate, id := m[1], m[2]
@@ -415,14 +452,16 @@ func TestMessages_ConstructorIDsMatchSchema(t *testing.T) {
 			t.Errorf("докблок ссылается на конструктор %q, которого нет ни в схеме, ни в надстройках", predicate)
 			continue
 		}
-		found++
+		found[predicate] = true
 		if schemaID != id {
 			t.Errorf("%s: id в докблоке #%s, а в схеме #%s", predicate, id, schemaID)
 		}
 	}
 	// Иначе тест «проходил» бы и на файле без единого докблока.
-	if found != len(messageConstructorTags()) {
-		t.Errorf("докблоков с id найдено %d, а объявленных конструкторов %d", found, len(messageConstructorTags()))
+	for _, tag := range messageConstructorTags() {
+		if !found[tag] {
+			t.Errorf("у конструктора %q нет докблока с числовым id", tag)
+		}
 	}
 }
 

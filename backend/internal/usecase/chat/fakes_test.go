@@ -758,6 +758,20 @@ func (r fakeMsgs) ByChecklistID(_ context.Context, checklistID int64) ([]domain.
 	return out, nil
 }
 
+func (r fakeMsgs) ByGiveawayID(_ context.Context, giveawayID int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, all := range r.s.messages {
+		for _, m := range all {
+			if m.GiveawayID != nil && *m.GiveawayID == giveawayID && !m.Deleted {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

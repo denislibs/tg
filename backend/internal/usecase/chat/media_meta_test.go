@@ -14,7 +14,7 @@ import (
 // вложением live-кадра. Обе витрины проверяются одним вызовом намеренно: у
 // расхождения между историей и кадром своя история дефектов (send_as), поэтому
 // каждый тип медиа сверяется в обеих.
-func sendWithMedia(t *testing.T, kind string, mediaID int64, dims MediaDims, in SendInput) (domain.Message, *domain.MessageMedia) {
+func sendWithMedia(t *testing.T, kind string, mediaID int64, dims MediaDims, in SendInput) (domain.Message, domain.MessageMedia) {
 	t.Helper()
 	s := newStore()
 	i := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
@@ -75,7 +75,7 @@ func TestSend_AudioTagsInMessageAndFrame(t *testing.T) {
 		Mime: "audio/mpeg", Duration: 139, Size: 3300000,
 		FileName: "track.mp3", Title: "Track One", Performer: "denis1488",
 	}, SendInput{})
-	a, ok := md.AudioAttr()
+	a, ok := domain.MediaAudioAttr(md)
 	if !ok || a.Title != "Track One" || a.Performer != "denis1488" || a.Duration != 139 {
 		t.Fatalf("documentAttributeAudio = %#v", a)
 	}
@@ -87,12 +87,12 @@ func TestSend_NoAudioTagsNoKeys(t *testing.T) {
 	_, md := sendWithMedia(t, "audio", 78, MediaDims{
 		Mime: "audio/mpeg", Duration: 12, Size: 100500, FileName: "voice.ogg",
 	}, SendInput{})
-	a, ok := md.AudioAttr()
+	a, ok := domain.MediaAudioAttr(md)
 	if !ok || a.Title != "" || a.Performer != "" {
 		t.Fatalf("теги у файла без тегов: %#v", a)
 	}
-	if md.Document.Size != 100500 {
-		t.Fatalf("document.size = %d", md.Document.Size)
+	if doc := md.(*domain.MessageMediaDocument).Document; doc.Size != 100500 {
+		t.Fatalf("document.size = %d", doc.Size)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestSend_VoiceWaveformInMessageAndFrame(t *testing.T) {
 	_, md := sendWithMedia(t, "voice", 83, MediaDims{
 		Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks,
 	}, SendInput{})
-	a, ok := md.AudioAttr()
+	a, ok := domain.MediaAudioAttr(md)
 	if !ok || !a.PFlags["voice"] || string(a.Waveform) != string(peaks) {
 		t.Fatalf("documentAttributeAudio = %#v", a)
 	}
@@ -115,7 +115,7 @@ func TestSend_NoWaveformNoKey(t *testing.T) {
 	_, md := sendWithMedia(t, "voice", 84, MediaDims{
 		Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg",
 	}, SendInput{})
-	if a, ok := md.AudioAttr(); !ok || a.Waveform != nil {
+	if a, ok := domain.MediaAudioAttr(md); !ok || a.Waveform != nil {
 		t.Fatalf("waveform без пиков = %#v", a)
 	}
 }
@@ -128,8 +128,8 @@ func TestSend_AnimatedGifInMessageAndFrame(t *testing.T) {
 		Mime: "video/mp4", Width: 320, Height: 240, Duration: 3,
 		Size: 400000, FileName: "cat.mp4", Animated: true,
 	}, SendInput{})
-	if !md.HasAttribute(domain.AttrAnimated) {
-		t.Fatalf("гифка без documentAttributeAnimated: %#v", md.Document.Attributes)
+	if !domain.MediaHasAttribute(md, domain.AttrAnimated) {
+		t.Fatalf("гифка без documentAttributeAnimated: %#v", md)
 	}
 }
 
@@ -138,10 +138,10 @@ func TestSend_PlainVideoHasNoAnimatedKey(t *testing.T) {
 	_, md := sendWithMedia(t, "video", 80, MediaDims{
 		Mime: "video/mp4", Width: 1280, Height: 720, Duration: 61, Size: 9000000,
 	}, SendInput{})
-	if md.HasAttribute(domain.AttrAnimated) {
+	if domain.MediaHasAttribute(md, domain.AttrAnimated) {
 		t.Fatalf("documentAttributeAnimated у обычного видео")
 	}
-	if a, ok := md.VideoAttr(); !ok || a.W != 1280 || a.H != 720 || a.Duration != 61 {
+	if a, ok := domain.MediaVideoAttr(md); !ok || a.W != 1280 || a.H != 720 || a.Duration != 61 {
 		t.Fatalf("documentAttributeVideo = %#v", a)
 	}
 }
@@ -155,11 +155,11 @@ func TestSend_StickerPathThumbReachesMessage(t *testing.T) {
 	_, md := sendWithMedia(t, "sticker", 85, MediaDims{
 		Mime: "image/webp", Width: 512, Height: 512, Size: 30000, PathThumb: outline,
 	}, SendInput{})
-	if !md.HasAttribute(domain.AttrSticker) {
-		t.Fatalf("стикер без documentAttributeSticker: %#v", md.Document.Attributes)
+	if !domain.MediaHasAttribute(md, domain.AttrSticker) {
+		t.Fatalf("стикер без documentAttributeSticker: %#v", md)
 	}
-	if string(md.PathThumb()) != string(outline) {
-		t.Fatalf("контур не доехал: thumbs = %#v", md.Document.Thumbs)
+	if string(domain.MediaPathThumb(md)) != string(outline) {
+		t.Fatalf("контур не доехал: %#v", md)
 	}
 }
 
@@ -173,8 +173,8 @@ func TestSend_SpoilerInMessageAndFrame(t *testing.T) {
 	if !msg.MediaSpoiler {
 		t.Fatalf("MediaSpoiler = false, want true")
 	}
-	if !md.PFlags["spoiler"] {
-		t.Fatalf("media.pFlags = %#v", md.PFlags)
+	if !md.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+		t.Fatalf("media.pFlags = %#v", md)
 	}
 }
 
@@ -186,8 +186,8 @@ func TestSend_NoSpoilerNoKey(t *testing.T) {
 	if msg.MediaSpoiler {
 		t.Fatalf("MediaSpoiler = true without the flag")
 	}
-	if md.PFlags["spoiler"] {
-		t.Fatalf("media.pFlags = %#v", md.PFlags)
+	if md.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+		t.Fatalf("media.pFlags = %#v", md)
 	}
 }
 
@@ -236,26 +236,27 @@ func TestStripLockedMedia_LeavesOnlyPlaceholder(t *testing.T) {
 	if m.MediaSpoiler {
 		t.Fatalf("spoiler survived lock")
 	}
-	if m.Media == nil || m.Media.Underscore != domain.MessageMediaPhotoTag || m.Media.Document != nil {
+	locked, ok := m.Media.(*domain.MessageMediaPhoto)
+	if !ok {
 		t.Fatalf("под замком должно остаться псевдо-фото: %#v", m.Media)
 	}
-	if m.Media.Photo.ID != 0 {
-		t.Fatalf("photo.id = %d, скачивать нечего — должен быть 0", m.Media.Photo.ID)
+	if locked.Photo.ID != 0 {
+		t.Fatalf("photo.id = %d, скачивать нечего — должен быть 0", locked.Photo.ID)
 	}
-	if string(m.Media.StrippedThumb()) != "stripped" {
-		t.Fatalf("stripped-плейсхолдер потерян: %#v", m.Media.Photo.Sizes)
+	if string(domain.MediaStrippedThumb(m.Media)) != "stripped" {
+		t.Fatalf("stripped-плейсхолдер потерян: %#v", locked.Photo.Sizes)
 	}
-	if w, h := m.Media.Dimensions(); w != 1280 || h != 720 {
+	if w, h := domain.MediaDimensions(m.Media); w != 1280 || h != 720 {
 		t.Fatalf("размеры кадра = %dx%d, want 1280x720", w, h)
 	}
 	// Ступени, по которым можно получить байты, и любая мета контента — ушли.
-	for _, sz := range m.Media.Photo.Sizes {
+	for _, sz := range locked.Photo.Sizes {
 		if v, ok := sz.(domain.PhotoSizeReal); ok && v.Type == domain.SizeTypeThumb {
 			t.Fatalf("серверное превью осталось под замком: %#v", v)
 		}
 	}
-	if m.Media.HasAttribute(domain.AttrAudio) || m.Media.HasAttribute(domain.AttrAnimated) ||
-		m.Media.FileName() != "" {
+	if domain.MediaHasAttribute(m.Media, domain.AttrAudio) || domain.MediaHasAttribute(m.Media, domain.AttrAnimated) ||
+		domain.MediaFileName(m.Media) != "" {
 		t.Fatalf("атрибуты документа пережили замок: %#v", m.Media)
 	}
 }
@@ -294,7 +295,7 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 		{"второй элемент (вертикальный)", second, 900, 1600},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if w, h := tc.msg.Media.Dimensions(); w != tc.w || h != tc.h {
+			if w, h := domain.MediaDimensions(tc.msg.Media); w != tc.w || h != tc.h {
 				t.Fatalf("hydrated dims = %dx%d, want %dx%d", w, h, tc.w, tc.h)
 			}
 			p := in.messageUpdatePayload(ctx, tc.msg)
@@ -305,8 +306,8 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 			}
 			// stripped-превью тоже на КАЖДОМ элементе: без него элемент альбома
 			// открывается пустым прямоугольником до прихода байтов.
-			if len(tc.msg.Media.StrippedThumb()) == 0 {
-				t.Fatalf("stripped-ступень отсутствует: %#v", tc.msg.Media.Photo.Sizes)
+			if len(domain.MediaStrippedThumb(tc.msg.Media)) == 0 {
+				t.Fatalf("stripped-ступень отсутствует: %#v", tc.msg.Media)
 			}
 		})
 	}

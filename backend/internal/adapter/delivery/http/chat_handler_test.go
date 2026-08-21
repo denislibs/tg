@@ -447,7 +447,7 @@ func msgWithMedia(kind string, s domain.MediaSource) domain.Message {
 
 // mediaOf достаёт вложение из витрины истории — именно как объект модели
 // оригинала, а не как набор плоских ключей.
-func mediaOf(t *testing.T, m domain.Message) *domain.MessageMedia {
+func mediaOf(t *testing.T, m domain.Message) domain.MessageMedia {
 	t.Helper()
 	wire, ok := m.ToWire(domain.MessageContext{Peer: domain.NewPeer(domain.ToPeerID(m.ChatID, true))}).(domain.MessageReal)
 	if !ok {
@@ -483,15 +483,16 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 			Width: 1600, Height: 1200, Mime: "image/jpeg", Size: 900000,
 			Blur: []byte{1, 2, 3}, HasThumb: true, FileName: "pic.jpg",
 		}))
-		if md.Underscore != domain.MessageMediaPhotoTag || md.Photo == nil || md.Document != nil {
+		photo, ok := md.(*domain.MessageMediaPhoto)
+		if !ok || photo.Photo == nil {
 			t.Fatalf("photo → %#v", md)
 		}
-		if md.Photo.ID != 77 {
-			t.Fatalf("photo.id = %d, want 77", md.Photo.ID)
+		if photo.Photo.ID != 77 {
+			t.Fatalf("photo.id = %d, want 77", photo.Photo.ID)
 		}
 		// i (stripped) → y (серверное превью, вписано в 1280) → w (оригинал).
 		var got []string
-		for _, sz := range md.Photo.Sizes {
+		for _, sz := range photo.Photo.Sizes {
 			switch v := sz.(type) {
 			case domain.PhotoSizeReal:
 				got = append(got, v.Underscore+"/"+v.Type)
@@ -505,10 +506,10 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("лестница = %v, want %v", got, want)
 		}
-		if v := md.Photo.Sizes[1].(domain.PhotoSizeReal); v.W != 1280 || v.H != 960 {
+		if v := photo.Photo.Sizes[1].(domain.PhotoSizeReal); v.W != 1280 || v.H != 960 {
 			t.Fatalf("ступень 'y' = %dx%d, want 1280x960", v.W, v.H)
 		}
-		if v := md.Photo.Sizes[2].(domain.PhotoSizeReal); v.W != 1600 || v.H != 1200 || v.Size != 900000 {
+		if v := photo.Photo.Sizes[2].(domain.PhotoSizeReal); v.W != 1600 || v.H != 1200 || v.Size != 900000 {
 			t.Fatalf("ступень 'w' = %dx%d/%d", v.W, v.H, v.Size)
 		}
 	})
@@ -518,26 +519,27 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 			Duration: 139, Size: 3300000, FileName: "track.mp3",
 			Title: "Track One", Performer: "denis1488", Mime: "audio/mpeg",
 		}))
-		if md.Underscore != domain.MessageMediaDocumentTag || md.Document == nil {
+		doc, ok := md.(*domain.MessageMediaDocument)
+		if !ok || doc.Document == nil {
 			t.Fatalf("audio → %#v", md)
 		}
-		a, ok := md.AudioAttr()
+		a, ok := domain.MediaAudioAttr(md)
 		if !ok || a.Title != "Track One" || a.Performer != "denis1488" || a.Duration != 139 {
 			t.Fatalf("documentAttributeAudio = %#v", a)
 		}
 		if a.PFlags["voice"] {
 			t.Fatalf("музыка не должна быть voice: %#v", a.PFlags)
 		}
-		if md.FileName() != "track.mp3" {
-			t.Fatalf("documentAttributeFilename = %q", md.FileName())
+		if domain.MediaFileName(md) != "track.mp3" {
+			t.Fatalf("documentAttributeFilename = %q", domain.MediaFileName(md))
 		}
-		if md.Document.Size != 3300000 || md.Document.MimeType != "audio/mpeg" {
-			t.Fatalf("document = %#v", md.Document)
+		if doc.Document.Size != 3300000 || doc.Document.MimeType != "audio/mpeg" {
+			t.Fatalf("document = %#v", doc.Document)
 		}
 		// Файл без тегов: атрибут есть (длительность нужна), тегов в нём нет —
 		// клиент подписывает бабл размером файла (tweb audio.ts).
 		bare := mediaOf(t, msgWithMedia("audio", domain.MediaSource{Duration: 10, Size: 3300000}))
-		if a, ok := bare.AudioAttr(); !ok || a.Title != "" || a.Performer != "" {
+		if a, ok := domain.MediaAudioAttr(bare); !ok || a.Title != "" || a.Performer != "" {
 			t.Fatalf("теги без тегов: %#v", a)
 		}
 	})
@@ -547,13 +549,13 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		md := mediaOf(t, msgWithMedia("voice", domain.MediaSource{
 			Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks, Mime: "audio/ogg",
 		}))
-		a, ok := md.AudioAttr()
+		a, ok := domain.MediaAudioAttr(md)
 		if !ok || !a.PFlags["voice"] || string(a.Waveform) != string(peaks) {
 			t.Fatalf("documentAttributeAudio = %#v", a)
 		}
 		// Не голосовое — волны нет вовсе, клиент считает её из файла.
 		photo := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 100, Height: 100}))
-		if photo.HasAttribute(domain.AttrAudio) {
+		if domain.MediaHasAttribute(photo, domain.AttrAudio) {
 			t.Fatalf("у фото не должно быть аудио-атрибута")
 		}
 	})
@@ -562,19 +564,19 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		md := mediaOf(t, msgWithMedia("video", domain.MediaSource{
 			Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6, HasThumb: true,
 		}))
-		a, ok := md.VideoAttr()
+		a, ok := domain.MediaVideoAttr(md)
 		if !ok || a.W != 1280 || a.H != 720 || a.Duration != 61 {
 			t.Fatalf("documentAttributeVideo = %#v", a)
 		}
 		if a.PFlags["round_message"] {
 			t.Fatalf("обычное видео не кружок")
 		}
-		if md.HasAttribute(domain.AttrAnimated) {
+		if domain.MediaHasAttribute(md, domain.AttrAnimated) {
 			t.Fatalf("обычное видео не гифка — атрибута animated быть не должно")
 		}
 		// thumbs документа — только превью, без ступени оригинала: сам файл
 		// адресуется id документа, а кадр описан атрибутом.
-		for _, sz := range md.Document.Thumbs {
+		for _, sz := range md.(*domain.MessageMediaDocument).Document.Thumbs {
 			if v, ok := sz.(domain.PhotoSizeReal); ok && v.Type == domain.SizeTypeFull {
 				t.Fatalf("в thumbs документа не должно быть ступени оригинала: %#v", v)
 			}
@@ -586,10 +588,10 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 			Width: 320, Height: 240, Mime: "video/mp4", Duration: 3, Size: 400000,
 			FileName: "cat.mp4", Animated: true,
 		}))
-		if !md.HasAttribute(domain.AttrAnimated) {
-			t.Fatalf("гифка без documentAttributeAnimated: %#v", md.Document.Attributes)
+		if !domain.MediaHasAttribute(md, domain.AttrAnimated) {
+			t.Fatalf("гифка без documentAttributeAnimated: %#v", md)
 		}
-		if a, ok := md.VideoAttr(); !ok || a.Duration != 3 {
+		if a, ok := domain.MediaVideoAttr(md); !ok || a.Duration != 3 {
 			t.Fatalf("documentAttributeVideo = %#v", a)
 		}
 	})
@@ -598,8 +600,8 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		md := mediaOf(t, msgWithMedia("round", domain.MediaSource{
 			Width: 384, Height: 384, Mime: "video/mp4", Duration: 9,
 		}))
-		if a, ok := md.VideoAttr(); !ok || !a.PFlags["round_message"] {
-			t.Fatalf("кружок = %#v", md.Document.Attributes)
+		if a, ok := domain.MediaVideoAttr(md); !ok || !a.PFlags["round_message"] {
+			t.Fatalf("кружок = %#v", md)
 		}
 	})
 
@@ -608,16 +610,16 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		md := mediaOf(t, msgWithMedia("sticker", domain.MediaSource{
 			Width: 512, Height: 512, Mime: "image/webp", Size: 30000, PathThumb: outline,
 		}))
-		if !md.HasAttribute(domain.AttrSticker) {
-			t.Fatalf("стикер без documentAttributeSticker: %#v", md.Document.Attributes)
+		if !domain.MediaHasAttribute(md, domain.AttrSticker) {
+			t.Fatalf("стикер без documentAttributeSticker: %#v", md)
 		}
-		if string(md.PathThumb()) != string(outline) {
-			t.Fatalf("контур не доехал: thumbs = %#v", md.Document.Thumbs)
+		if string(domain.MediaPathThumb(md)) != string(outline) {
+			t.Fatalf("контур не доехал: %#v", md)
 		}
 		// У не-стикера контура нет.
 		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 10, Height: 10}))
-		if plain.PathThumb() != nil {
-			t.Fatalf("контур у обычного фото: %#v", plain.Photo.Sizes)
+		if domain.MediaPathThumb(plain) != nil {
+			t.Fatalf("контур у обычного фото: %#v", plain)
 		}
 	})
 
@@ -625,11 +627,11 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		md := mediaOf(t, msgWithMedia("document", domain.MediaSource{
 			Mime: "application/pdf", Size: 1024, FileName: "doc.pdf",
 		}))
-		if md.HasAttribute(domain.AttrImageSize) {
+		if domain.MediaHasAttribute(md, domain.AttrImageSize) {
 			t.Fatalf("у pdf нет кадра — imageSize быть не должно")
 		}
-		if md.FileName() != "doc.pdf" {
-			t.Fatalf("documentAttributeFilename = %q", md.FileName())
+		if domain.MediaFileName(md) != "doc.pdf" {
+			t.Fatalf("documentAttributeFilename = %q", domain.MediaFileName(md))
 		}
 	})
 
@@ -637,12 +639,12 @@ func TestMessageJSON_MediaShape(t *testing.T) {
 		hidden := mediaOf(t, msgWithMedia("photo", domain.MediaSource{
 			Width: 1280, Height: 960, Mime: "image/jpeg", Spoiler: true,
 		}))
-		if !hidden.PFlags["spoiler"] {
-			t.Fatalf("spoiler = %#v", hidden.PFlags)
+		if !hidden.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+			t.Fatalf("spoiler = %#v", hidden)
 		}
 		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 1280, Height: 960}))
-		if plain.PFlags["spoiler"] {
-			t.Fatalf("у обычного медиа заслонки быть не должно: %#v", plain.PFlags)
+		if plain.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+			t.Fatalf("у обычного медиа заслонки быть не должно: %#v", plain)
 		}
 	})
 }

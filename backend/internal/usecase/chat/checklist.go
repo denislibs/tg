@@ -229,5 +229,5 @@ func (i *Interactor) publishChecklistUpdate(ctx context.Context, chatID, checkli
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, chatID, members, "checklist_update", map[string]any{"checklist": info})
+	_ = i.logAndPublish(ctx, chatID, members, "checklist_update", map[string]any{"media": info.ToMedia()})
 }

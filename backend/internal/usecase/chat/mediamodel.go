@@ -7,7 +7,7 @@ import "github.com/messenger-denis/backend/internal/domain"
 // документ» и «какими атрибутами описан документ»: дальше по коду тип медиа
 // выводится из самой модели (атрибуты + mime), как в appDocsManager, а не из
 // подсказки витрины.
-func buildMedia(m domain.Message, d MediaDims) *domain.MessageMedia {
+func buildMedia(m domain.Message, d MediaDims) domain.MessageMedia {
 	var id int64
 	if m.MediaID != nil {
 		id = *m.MediaID

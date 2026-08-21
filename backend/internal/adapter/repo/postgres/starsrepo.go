@@ -96,31 +96,27 @@ func (r *StarsRepo) SaveGift(ctx context.Context, ownerID int64, fromID *int64, 
 }
 
 // giftInfoRow — общий SELECT для GiftInfo (подарок + каталог + отправитель).
+// Имени дарителя в выборке больше нет: на проводе даритель — ссылка на пир
+// (messageActionStarGift.from_id / savedStarGift.from_id), имя собирает клиент.
 const giftInfoCols = `sg.id, sg.owner_id, sg.from_id, sg.message, sg.anonymous, sg.hidden, sg.converted,
 	g.id, g.emoji, g.title, g.price_stars, g.convert_stars, g.total, g.remains,
 	(g.remains IS NOT NULL AND g.remains <= 0),
-	COALESCE(u.display_name, ''), sg.created_at`
+	sg.created_at`
 
 func scanGiftInfo(s scanner, viewerID int64) (domain.GiftInfo, int64, error) {
 	var gi domain.GiftInfo
-	var ownerID int64
-	var fromName string
-	var createdAt time.Time
-	err := s.Scan(&gi.ID, &ownerID, &gi.FromID, &gi.Message, &gi.Anonymous, &gi.Hidden, &gi.Converted,
+	err := s.Scan(&gi.ID, &gi.OwnerID, &gi.FromID, &gi.Message, &gi.Anonymous, &gi.Hidden, &gi.Converted,
 		&gi.Gift.ID, &gi.Gift.Emoji, &gi.Gift.Title, &gi.Gift.PriceStars, &gi.Gift.ConvertStars,
-		&gi.Gift.Total, &gi.Gift.Remains, &gi.Gift.SoldOut, &fromName, &createdAt)
+		&gi.Gift.Total, &gi.Gift.Remains, &gi.Gift.SoldOut, &gi.Date)
 	if err != nil {
 		return domain.GiftInfo{}, 0, err
 	}
 	gi.ConvertStars = gi.Gift.ConvertStars
-	gi.Date = createdAt.UTC().Format(time.RFC3339)
 	// Отправитель раскрывается только не-анонимного подарка, либо владельцу.
-	if gi.Anonymous && viewerID != ownerID {
+	if gi.Anonymous && viewerID != gi.OwnerID {
 		gi.FromID = nil
-	} else {
-		gi.FromName = fromName
 	}
-	return gi, ownerID, nil
+	return gi, gi.OwnerID, nil
 }
 
 func (r *StarsRepo) GiftInfo(ctx context.Context, savedID, viewerID int64) (domain.GiftInfo, error) {
@@ -128,7 +124,6 @@ func (r *StarsRepo) GiftInfo(ctx context.Context, savedID, viewerID int64) (doma
 		`SELECT `+giftInfoCols+`
 		   FROM saved_star_gifts sg
 		   JOIN star_gifts g ON g.id = sg.gift_id
-		   LEFT JOIN users u ON u.id = sg.from_id
 		  WHERE sg.id=$1`, savedID)
 	gi, _, err := scanGiftInfo(row, viewerID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -148,7 +143,6 @@ func (r *StarsRepo) ProfileGifts(ctx context.Context, ownerID, viewerID int64) (
 		`SELECT `+giftInfoCols+`
 		   FROM saved_star_gifts sg
 		   JOIN star_gifts g ON g.id = sg.gift_id
-		   LEFT JOIN users u ON u.id = sg.from_id
 		  WHERE `+where+`
 		  ORDER BY sg.created_at DESC`, ownerID)
 	if err != nil {

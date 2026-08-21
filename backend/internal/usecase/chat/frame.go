@@ -145,13 +145,18 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 }
 
 // geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат
-// трансляции): клиент правит гео открытого бабла без перезагрузки истории.
+// трансляции): клиент правит вложение открытого бабла без перезагрузки истории.
 //
-// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри geo: одно и то
-// же edited_at прежде значило и «время правки» на верхнем уровне, и «время
-// обновления координат» внутри гео — два смысла на одну колонку.
+// Координаты едут ТЕМ ЖЕ конструктором, что и в самом сообщении
+// (messageMediaGeoLive под ключом media): собственный ключ `geo` с плоской
+// точкой внутри был второй формой гео на проводе.
+//
+// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
+// и то же edited_at прежде значило и «время правки» на верхнем уровне, и «время
+// обновления координат» внутри гео — два смысла на одну колонку. Оно же решает,
+// каким уедет period остановленной трансляции, поэтому едут они парой.
 func geoLiveUpdatePayload(m domain.Message) map[string]any {
-	p := map[string]any{"id": m.Seq, "geo": m.ToWire(domain.MessageContext{}).(domain.MessageReal).Geo}
+	p := map[string]any{"id": m.Seq, "media": m.ToWire(domain.MessageContext{}).(domain.MessageReal).Media}
 	if m.EditedAt != nil {
 		p["edit_date"] = m.EditedAt.Unix()
 	}

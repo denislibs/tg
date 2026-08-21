@@ -50,10 +50,20 @@ type MessageContext struct {
 	// «ответ становится зависимым от зрителя» здесь нет: он и так зависим,
 	// `peer_id` считается тем же зрителем строкой выше.
 	//
-	// ВАЖНО про сторону бабла: `out` отвечает «я ли отправил», а НЕ «рисовать
-	// справа». Сообщение от лица канала остаётся `out`, но рисуется входящим —
-	// это решение клиента, и он принимает его по `from_id` (ссылка на чат, а не
-	// на человека), а не по отдельному полю.
+	// ВАЖНО про сторону бабла: `out` отвечает «я ли отправил», а сторону решает
+	// КЛИЕНТ — и решает он её иначе, чем сказано было здесь раньше.
+	//
+	// Прежняя формулировка («сообщение от лица канала рисуется входящим, клиент
+	// понимает это по `from_id`») смешивала два разных случая и оказалась
+	// ошибкой. В оригинале (tweb `chat.ts:1374-1390`) ветка МЕГАГРУППЫ берёт
+	// сырой `out` первой же строкой — значит своё сообщение от лица канала
+	// рисуется ИСХОДЯЩИМ. Входящим рисуется другое: автофорвард поста канала в
+	// группу обсуждения, у которого `out` не стоит вовсе, и собственный пост
+	// ВЕЩАТЕЛЬНОГО канала — его отсекает терм `!pFlags.post`.
+	//
+	// Серверу от этого не меняется ничего: он по-прежнему отвечает только на
+	// вопрос «отправил ли это зритель». Оговорка стоит здесь потому, что
+	// неверная её версия однажды уже уехала в постановку порта фронта.
 	Out bool
 }
 
@@ -62,14 +72,30 @@ type MessageContext struct {
 // поля type (решение Р2): вид вложения даёт объединение MessageMedia, а
 // строкового дискриминатора на проводе больше нет.
 func (m Message) ToWire(ctx MessageContext) MTMessage {
-	if m.Action != nil {
-		return m.toService(ctx)
+	if action := m.wireAction(); action != nil {
+		return m.toService(ctx, action)
 	}
 	return m.toReal(ctx)
 }
 
-func (m Message) toService(ctx MessageContext) MessageService {
-	s := NewMessageService(m.Seq, ctx.Peer, m.CreatedAt, m.Action, ctx.Post)
+// wireAction — служебное действие сообщения. Обычно это колонка messages.action,
+// но у ПОДАРКА действие собирается из read-модели, и это не поблажка: медиа
+// подарка в схеме не существует, там подарок — служебное сообщение с действием
+// messageActionStarGift (разбор в mtgift.go). Наше сообщение типа 'gift' и так
+// не несёт ни текста, ни медиа, ни разметки — то есть уже является пилюлей, и
+// выбор конструктора лишь называет это вслух.
+func (m Message) wireAction() MessageAction {
+	if m.Action != nil {
+		return m.Action
+	}
+	if m.Gift != nil {
+		return m.Gift.ToAction()
+	}
+	return nil
+}
+
+func (m Message) toService(ctx MessageContext, action MessageAction) MessageService {
+	s := NewMessageService(m.Seq, ctx.Peer, m.CreatedAt, action, ctx.Post)
 	setPFlag(&s.PFlags, "out", ctx.Out)
 	s.FromID = m.fromID()
 	s.ReplyTo = m.replyHeader()
@@ -80,13 +106,13 @@ func (m Message) toService(ctx MessageContext) MessageService {
 	// действия конструктором photo, а не полем media_id рядом: у messageService
 	// поля media в схеме нет вовсе. Строка при этом хранит его как обычное
 	// медиа сообщения, поэтому подставляется здесь, на границе.
-	if m.Media != nil && m.Media.Photo != nil {
+	if photo := MediaPhoto(m.Media); photo != nil {
 		switch a := s.Action.(type) {
 		case MessageActionChatEditPhoto:
-			a.Photo = m.Media.Photo
+			a.Photo = photo
 			s.Action = a
 		case MessageActionSuggestProfilePhoto:
-			a.Photo = m.Media.Photo
+			a.Photo = photo
 			s.Action = a
 		}
 	}
@@ -102,7 +128,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	r.FromID = m.fromID()
 	r.FwdFrom = m.FwdFrom
 	r.ReplyTo = m.replyHeader()
-	r.Media = m.Media
+	r.Media = m.mediaWire()
 	r.ReplyMarkup = m.ReplyMarkup
 	r.Entities = m.Entities
 	r.Views = m.Views
@@ -223,42 +249,88 @@ func (m Message) reactions() *MessageReactions {
 	return &out
 }
 
-// attachOurPayload переносит на конструктор то, чего объединение MessageMedia
-// у нас ещё не покрывает, плюс два наших параметра вне схемы (шифртекст
-// секретного чата и ключ сопоставления эха). Всё перечисленное названо в
-// MessageReal — здесь только перенос.
+// mediaWire — вложение сообщения ОДНИМ конструктором объединения MessageMedia.
+// Единственное место, где строка витрины отвечает на вопрос «что приложено»:
+// прежде гео, контакт, опрос, чек-лист, розыгрыш, превью ссылки и платное медиа
+// ехали СЕМЬЮ собственными ключами рядом с `media`, то есть вид вложения был
+// подделан наличием поля — ровно так же, как вид кнопки клавиатуры до порта
+// разметки.
+//
+// Порядок ветвей — не вкусовщина, а взаимоисключительность в схеме: вложение
+// ровно одно.
+//
+//   - ПЛАТНОЕ МЕДИА идёт первым, потому что оно ОБЁРТКА: настоящее фото или
+//     документ лежит внутри его вектора extended_media (либо не лежит вовсе,
+//     если зритель не оплатил);
+//   - гео/место/контакт/опрос/чек-лист/розыгрыш — виды сообщения, у которых
+//     файла нет вовсе (колонка media_id у них пуста);
+//   - фото/документ — обычное вложение;
+//   - ПРЕВЬЮ ССЫЛКИ идёт последним и только у сообщения без файла: у оригинала
+//     карточка ссылки — это messageMediaWebPage, то есть само вложение, а у
+//     сообщения-картинки со ссылкой в подписи превью не бывает вовсе.
+func (m Message) mediaWire() MessageMedia {
+	switch {
+	case m.PaidMediaPrice != nil:
+		return NewMessageMediaPaidMedia(*m.PaidMediaPrice, m.Media, m.PaidMediaLocked)
+	case m.GeoLat != nil && m.GeoLng != nil:
+		return m.geoWire()
+	case m.ContactUserID != nil:
+		return NewMessageMediaContact(*m.ContactUserID, deref(m.ContactName), deref(m.ContactPhone))
+	case m.Poll != nil:
+		return m.Poll.ToMedia()
+	case m.Checklist != nil:
+		return m.Checklist.ToMedia()
+	case m.Giveaway != nil:
+		return m.Giveaway.ToMedia(m.Seq)
+	case m.Media != nil:
+		return m.Media
+	case m.WebPage != nil:
+		return m.WebPage.ToMedia()
+	}
+	return nil
+}
+
+// geoWire — три конструктора гео, которые наши плоские поля смешивали в один
+// ключ: живая трансляция, место с подписью и просто точка.
+//
+// ── Про два смысла edited_at ────────────────────────────────────────────────
+// Времени обновления координат внутри гео НЕТ и быть не может: на верхнем
+// уровне это message.edit_date, и в схеме у гео своего времени не существует.
+// Прежде одно и то же edited_at ехало ДВАЖДЫ — временем правки снаружи и
+// временем обновления трансляции внутри geo.
+//
+// Зато edit_date участвует здесь иначе, и это не возврат склейки: досрочно
+// остановленная трансляция едет с УКОРОЧЕННЫМ period, потому что «остановлена»
+// в схеме выражается истечением срока (см. докблок MessageMediaGeoLive), а
+// момент остановки — это и есть время последней правки.
+func (m Message) geoWire() MessageMedia {
+	lat, lng := *m.GeoLat, *m.GeoLng
+	if m.GeoLivePeriod != nil {
+		period := *m.GeoLivePeriod
+		if m.GeoLiveStopped {
+			// Ноль — «истекла в момент отправки»: он остаётся, если времени
+			// остановки в строке почему-то нет. Подделать «идёт» нельзя.
+			period = 0
+			if m.EditedAt != nil {
+				if elapsed := int(m.EditedAt.Sub(m.CreatedAt).Seconds()); elapsed > 0 && elapsed < *m.GeoLivePeriod {
+					period = elapsed
+				}
+			}
+		}
+		return NewMessageMediaGeoLive(lat, lng, period, deref(m.GeoHeading))
+	}
+	if deref(m.GeoTitle) != "" || deref(m.GeoAddress) != "" {
+		return NewMessageMediaVenue(lat, lng, deref(m.GeoTitle), deref(m.GeoAddress))
+	}
+	return NewMessageMediaGeo(lat, lng)
+}
+
+// attachOurPayload переносит на конструктор наши параметры вне схемы: ключ
+// сопоставления эха и шифртекст секретного чата. Оба названы в MessageReal —
+// здесь только перенос.
 func (m Message) attachOurPayload(r *MessageReal) {
 	if m.ClientMsgID != nil {
 		r.RandomID = *m.ClientMsgID
-	}
-	if m.GeoLat != nil && m.GeoLng != nil {
-		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
-		putIfSet(g, "title", m.GeoTitle)
-		putIfSet(g, "address", m.GeoAddress)
-		if m.GeoLivePeriod != nil {
-			g["live_period"] = *m.GeoLivePeriod
-			g["live_stopped"] = m.GeoLiveStopped
-			putIfSet(g, "heading", m.GeoHeading)
-			// Времени последнего обновления трансляции здесь НЕТ: это
-			// message.edit_date, и второго смысла у него не бывает. Прежде одно
-			// и то же edited_at ехало и на верхнем уровне (время правки), и
-			// внутри geo (время обновления координат).
-		}
-		r.Geo = g
-	}
-	if m.ContactUserID != nil {
-		c := map[string]any{"user_id": *m.ContactUserID}
-		putIfSet(c, "name", m.ContactName)
-		putIfSet(c, "phone", m.ContactPhone)
-		r.Contact = c
-	}
-	r.Poll = m.Poll
-	r.Checklist = m.Checklist
-	r.Giveaway = m.Giveaway
-	r.Gift = m.Gift
-	r.WebPage = m.WebPage
-	if m.PaidMediaPrice != nil {
-		r.PaidMedia = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
 	if m.EncBody != nil {
 		r.EncBody = base64.StdEncoding.EncodeToString(m.EncBody)
@@ -269,10 +341,15 @@ func (m Message) attachOurPayload(r *MessageReal) {
 	}
 }
 
-func putIfSet[T any](dst map[string]any, key string, v *T) {
-	if v != nil {
-		dst[key] = *v
+// deref — значение необязательного поля строки витрины либо нулевое. Нужен
+// ровно там, где параметр схемы ОБЯЗАТЕЛЕН: пустая строка это «значения нет», а
+// не «ключа нет».
+func deref[T any](v *T) T {
+	if v == nil {
+		var zero T
+		return zero
 	}
+	return *v
 }
 
 // ToWireMap — тот же конструктор в виде карты. Нужен кадрам: ключ пира у них

@@ -174,10 +174,13 @@ func (h *ChatHandler) ProfileGifts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load gifts")
 		return
 	}
-	if gifts == nil {
-		gifts = []domain.GiftInfo{}
+	// Витрина профиля отдаёт savedStarGift — тот же подарок, что приходит в
+	// ленту действием messageActionStarGift, но в форме своего конструктора.
+	out := make([]domain.SavedStarGift, 0, len(gifts))
+	for _, g := range gifts {
+		out = append(out, g.ToSaved())
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"gifts": gifts})
+	writeJSON(w, http.StatusOK, map[string]any{"gifts": out})
 }
 
 // ConvertGift — POST /gifts/{giftID}/convert: обменять подарок на звёзды.

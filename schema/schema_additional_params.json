@@ -1158,6 +1158,10 @@
       {
         "name": "entities",
         "type": "MessageEntity[]"
+      },
+      {
+        "name": "has_iv",
+        "type": "boolean"
       }
     ]
   },
@@ -1379,6 +1383,60 @@
     "params": [
       {
         "name": "theme_emoticon",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "predicate": "todoList",
+    "params": [
+      {
+        "name": "id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "predicate": "messageMediaGiveaway",
+    "params": [
+      {
+        "name": "id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "predicate": "messageMediaGiveawayResults",
+    "params": [
+      {
+        "name": "id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "predicate": "payments.giveawayInfo",
+    "params": [
+      {
+        "name": "participants",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "predicate": "payments.giveawayInfoResults",
+    "params": [
+      {
+        "name": "participants",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "predicate": "starGift",
+    "params": [
+      {
+        "name": "emoji",
         "type": "string"
       }
     ]

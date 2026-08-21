@@ -247,5 +247,5 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 	}
 	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
 	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
-	_ = i.logAndPublish(ctx, chatID, members, "poll_update", map[string]any{"poll": info})
+	_ = i.logAndPublish(ctx, chatID, members, "poll_update", map[string]any{"media": info.ToMedia()})
 }

@@ -516,6 +516,25 @@ func (r *MessagesRepo) ByChecklistID(ctx context.Context, checklistID int64) ([]
 	return out, rows.Err()
 }
 
+// ByGiveawayID — сообщения, ссылающиеся на розыгрыш (обычно одно).
+func (r *MessagesRepo) ByGiveawayID(ctx context.Context, giveawayID int64) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE giveaway_id=$1 AND deleted_at IS NULL`, giveawayID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // GetByIDs returns messages for the given ids (order unspecified); missing ids
 // are simply absent. Empty input → empty result.
 func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error) {
