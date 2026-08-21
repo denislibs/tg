@@ -71,12 +71,6 @@ func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSetRe
 	return set, sts, err
 }
 
-// SetByMediaID — набор по файлу стикера (обратный поиск для клика по стикеру
-// в чате: сообщение несёт только media_id, а не set_id/slug).
-func (i *Interactor) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSetRecord, error) {
-	return i.repo.SetByMediaID(ctx, mediaID)
-}
-
 // Install добавляет набор пользователю (идемпотентно). Нет набора → ErrNotFound.
 func (i *Interactor) Install(ctx context.Context, userID, setID int64) error {
 	if _, err := i.repo.SetByID(ctx, setID); err != nil {
@@ -145,11 +139,15 @@ func (i *Interactor) ClearRecent(ctx context.Context, userID int64) error {
 
 // Use отмечает использование стикера (upsert used_at) и держит список в
 // пределах recentLimit — как tweb RECENT_STICKERS_COUNT.
-func (i *Interactor) Use(ctx context.Context, userID, stickerID int64) error {
-	if _, err := i.repo.StickerByID(ctx, stickerID); err != nil {
+//
+// Адресует ФАЙЛ (document.id схемы), а не строку набора: у оригинала
+// messages.saveRecentSticker принимает InputDocument. Побочно это снимает
+// дубль — тот же файл из двух наборов давал две записи (Р2).
+func (i *Interactor) Use(ctx context.Context, userID, mediaID int64) error {
+	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	return i.repo.TouchRecent(ctx, userID, stickerID, recentLimit)
+	return i.repo.TouchRecent(ctx, userID, mediaID, recentLimit)
 }
 
 // Faved — избранные стикеры, новые первыми.
@@ -158,16 +156,17 @@ func (i *Interactor) Faved(ctx context.Context, userID int64) ([]domain.Sticker,
 }
 
 // Fave добавляет стикер в избранное (лимит favedLimit — старые вытесняются).
-func (i *Interactor) Fave(ctx context.Context, userID, stickerID int64) error {
-	if _, err := i.repo.StickerByID(ctx, stickerID); err != nil {
+// Адресует ФАЙЛ — как messages.faveSticker(InputDocument) у оригинала.
+func (i *Interactor) Fave(ctx context.Context, userID, mediaID int64) error {
+	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	return i.repo.Fave(ctx, userID, stickerID, favedLimit)
+	return i.repo.Fave(ctx, userID, mediaID, favedLimit)
 }
 
 // Unfave убирает стикер из избранного (идемпотентно).
-func (i *Interactor) Unfave(ctx context.Context, userID, stickerID int64) error {
-	return i.repo.Unfave(ctx, userID, stickerID)
+func (i *Interactor) Unfave(ctx context.Context, userID, mediaID int64) error {
+	return i.repo.Unfave(ctx, userID, mediaID)
 }
 
 // SearchByEmoji — стикеры с данным эмодзи из установленных наборов

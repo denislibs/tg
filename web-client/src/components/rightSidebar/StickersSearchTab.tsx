@@ -297,7 +297,7 @@ export default function StickersSearchTab({
       </div>
       {openSlug && (
         <StickerSetModal
-          slug={openSlug}
+          address={{ shortName: openSlug }}
           onClose={() => setOpenSlug(null)}
           // Клик по стикеру внутри модалки шлёт его тем же путём, что и превью
           // строки набора (`pick` уже закрывает узкий экран после отправки) —

@@ -2,8 +2,8 @@
 // грузится один раз, лукап работает и с вариационным селектором, и без.
 import { describe, it, expect, vi } from 'vitest'
 
-const setBySlug = vi.fn(async (slug: string) => ({
-  set: { id: 1, slug, title: 'Animated Emoji', kind: 'emoji' as const, count: 2 },
+const getStickerSet = vi.fn(async (input: { shortName: string }) => ({
+  set: { id: 1, slug: input.shortName, title: 'Animated Emoji', kind: 'emoji' as const, count: 2 },
   stickers: [
     { id: 1, setId: 1, mediaId: 42, emoji: '❤️' }, // с FE0F — в кэше должен лежать без него
     { id: 2, setId: 1, mediaId: 43, emoji: '😂' },
@@ -11,7 +11,7 @@ const setBySlug = vi.fn(async (slug: string) => ({
 }))
 
 vi.mock('../client/bootstrap', () => ({
-  startClient: () => ({ managers: { stickers: { setBySlug } } }),
+  startClient: () => ({ managers: { stickers: { getStickerSet } } }),
 }))
 
 import { normalizeEmoji, buildEmojiMap, getAnimatedEmoji, peekAnimatedEmoji } from './animatedEmoji'
@@ -81,8 +81,8 @@ describe('getAnimatedEmoji / peekAnimatedEmoji', () => {
     expect(await getAnimatedEmoji('❤️')).toEqual({ mediaId: 42 })
     expect(await getAnimatedEmoji('😂')).toEqual({ mediaId: 43 })
     expect(await getAnimatedEmoji('🍕')).toBeNull()
-    expect(setBySlug).toHaveBeenCalledTimes(1)
-    expect(setBySlug).toHaveBeenCalledWith('animated_emoji')
+    expect(getStickerSet).toHaveBeenCalledTimes(1)
+    expect(getStickerSet).toHaveBeenCalledWith({ shortName: 'animated_emoji' })
   })
 
   it('sync-кэш после загрузки отдаёт то же самое', () => {

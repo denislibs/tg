@@ -39,7 +39,7 @@ function load(): Promise<Map<string, number>> {
         // Динамический импорт: не тянуть bootstrap (worker, rpc) в граф модуля —
         // чистые normalizeEmoji/buildEmojiMap импортируются без сайд-эффектов.
         const { startClient } = await import('../client/bootstrap')
-        const { stickers } = await startClient().managers.stickers.setBySlug(ANIMATED_EMOJI_SLUG)
+        const { stickers } = await startClient().managers.stickers.getStickerSet({ shortName: ANIMATED_EMOJI_SLUG })
         map = buildEmojiMap(stickers)
       } catch {
         // Набора может не быть (сид не накатан) — живём без анимированных

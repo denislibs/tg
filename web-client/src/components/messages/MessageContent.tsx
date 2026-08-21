@@ -32,8 +32,6 @@ import {
 import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
 import { openStickerSetModal } from '../stickers/StickerSetModal'
-import { useManagers } from '../../core/hooks/useManagers'
-import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
 import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
 import { useT } from '../../i18n'
@@ -147,8 +145,9 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // `noMinSize: true`), lottie-json играет через
 // lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
 // (различает StickerMedia). Бейдж времени — тот же, что у big-emoji. Клик
-// открывает попап набора (tweb wrapSticker → showStickersPopup): сообщение
-// несёт только mediaId, набор резолвит бэк (GET /stickers/by-media/{id}).
+// открывает попап набора (tweb wrapSticker → showStickersPopup): адрес набора
+// приезжает В САМОМ ДОКУМЕНТЕ (documentAttributeSticker.stickerset), поэтому
+// клик синхронный и в сеть не ходит.
 // Клик по стикеру ВНУТРИ попапа отправляет его в текущий чат и закрывает
 // попап (tweb PopupStickers.onStickersClick — тот же путь, без read-only
 // режима в зависимости от точки входа): feedFns.sendSticker пробрасывается
@@ -157,8 +156,6 @@ function BigEmojiBubble({ m, count, selecting, time }: {
 // рендерится потомком бабла — почему именно так, см. её докблок.
 function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: ReactNode; selecting: boolean; feedFns: FeedFns }) {
   const loopStickers = useSettings((st) => st.loopStickers)
-  const managers = useManagers()
-  const middlewareHelper = useMiddlewareHelper()
   const doc = getDocumentFromMessage(m)
   // tweb bubbles.ts:6106-6111: ступень бокса выбирает `doc.animated`, дальше —
   // обычный `setAttachmentSize` по натуральным размерам документа, без минимумов.
@@ -174,18 +171,21 @@ function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: 
   // В selecting клик занят выбором ряда, у error-бабла — меню переотправки
   // (тот же список условий, что у BigEmojiBubble выше).
   const clickable = !selecting && m.status !== 'error'
-  const onClick = clickable
+  // Набор берётся ИЗ ДОКУМЕНТА (`documentAttributeSticker.stickerset`, порт
+  // `saveDocument`), поэтому клик не ходит в сеть и не нуждается в middleware:
+  // открытие синхронно. Прежде здесь стоял запрос обратного поиска по
+  // media_id — ручка, которой у оригинала нет вовсе.
+  //
+  // Нет набора (стикер удалённого набора либо файл, присланный как стикер) —
+  // клика нет: открывать нечего.
+  const stickerSet = doc?.stickerSetInput
+  const onClick = clickable && stickerSet
     ? () => {
-        // .get() — в момент клика, не в теле компонента: ряд может уйти из
-        // окна (смена чата) до того, как ответ долетит.
-        const middleware = middlewareHelper.get()
-        void managers.stickers.setByMediaId(m.mediaId!).then((set) => {
-          // Попап открывается в ГЛОБАЛЬНОМ стеке попапов, а не рендерится
-          // потомком этого бабла: React-события портала всплывают по
-          // React-дереву, и попап-потомок отдавал бы свои клики обратно в
-          // onClick бабла и onContextMenu ряда — см. докблок openStickerSetModal.
-          if (middleware() && set) openStickerSetModal(set.slug, feedFns.sendSticker)
-        })
+        // Попап открывается в ГЛОБАЛЬНОМ стеке попапов, а не рендерится
+        // потомком этого бабла: React-события портала всплывают по
+        // React-дереву, и попап-потомок отдавал бы свои клики обратно в
+        // onClick бабла и onContextMenu ряда — см. докблок openStickerSetModal.
+        openStickerSetModal({ id: stickerSet.id }, feedFns.sendSticker)
       }
     : undefined
   return (

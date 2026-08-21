@@ -75,24 +75,33 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"set": set, "stickers": stickersJSON(sts)})
 }
 
-// SetByMediaID — GET /stickers/by-media/{mediaID}: набор, которому принадлежит
-// файл стикера. Нужен клику по стикеру в чате (tweb wrapSticker →
-// showStickersPopup): сообщение несёт только media_id.
-func (h *StickersHandler) SetByMediaID(w http.ResponseWriter, r *http.Request) {
-	mediaID, ok := pathInt(w, r, "mediaID")
+// SetByID — GET /sticker-sets/id/{setID}: тот же набор со стикерами, что и
+// SetBySlug, но адресованный ЧИСЛОМ.
+//
+// Два маршрута на один ответ — не дубль, а два конструктора одного объединения:
+// у оригинала метод `messages.getStickerSet` один и принимает `InputStickerSet`
+// (`inputStickerSetShortName` либо `inputStickerSetID`). У REST адрес живёт в
+// пути, поэтому конструктору соответствует маршрут; на фазе 3, когда тело
+// станет TL, эти два схлопнутся в один метод с объединением в параметре.
+//
+// Нужен он ровно с того момента, как документ понёс `stickerset` (Р3): клик по
+// стикеру в чате знает ЧИСЛО набора, а не его короткое имя, — и раньше ради
+// перевода одного в другое ходил в сеть за обратным поиском.
+func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "setID")
 	if !ok {
 		return
 	}
-	set, err := h.svc.SetByMediaID(r.Context(), mediaID)
+	set, sts, err := h.svc.SetByID(r.Context(), id)
 	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "media has no set")
+		writeError(w, http.StatusNotFound, "set not found")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load set")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"set": set})
+	writeJSON(w, http.StatusOK, map[string]any{"set": set, "stickers": stickersJSON(sts)})
 }
 
 // Install — POST /sticker-sets/{id}/install.
@@ -260,9 +269,14 @@ func (h *StickersHandler) Faved(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"stickers": stickersJSON(sts)})
 }
 
-// Fave — POST /stickers/{id}/fave.
+// Fave — POST /stickers/{docID}/fave.
+//
+// Сегмент — id ДОКУМЕНТА (document.id схемы), а не строки набора: у оригинала
+// messages.faveSticker принимает InputDocument. Суррогатный ключ строки наружу
+// больше не выходит (Р2), поэтому и имя сегмента другое — иначе клиент
+// продолжил бы слать в него старое число, и промах был бы молчаливым.
 func (h *StickersHandler) Fave(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "id")
+	id, ok := pathInt(w, r, "docID")
 	if !ok {
 		return
 	}
@@ -278,9 +292,9 @@ func (h *StickersHandler) Fave(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Unfave — DELETE /stickers/{id}/fave.
+// Unfave — DELETE /stickers/{docID}/fave.
 func (h *StickersHandler) Unfave(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "id")
+	id, ok := pathInt(w, r, "docID")
 	if !ok {
 		return
 	}
@@ -291,9 +305,9 @@ func (h *StickersHandler) Unfave(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Use — POST /stickers/{id}/use: отметить использование (recent).
+// Use — POST /stickers/{docID}/use: отметить использование (recent).
 func (h *StickersHandler) Use(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "id")
+	id, ok := pathInt(w, r, "docID")
 	if !ok {
 		return
 	}

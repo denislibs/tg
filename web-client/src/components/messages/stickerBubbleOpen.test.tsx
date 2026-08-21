@@ -1,25 +1,41 @@
 // Клик по стикеру в бабле открывает попап его набора (tweb wrapSticker →
-// showStickersPopup): ConvMsg несёт только mediaId, набор резолвит бэк (GET
-// /stickers/by-media/{mediaID}, StickerRealBubble в MessageContent.tsx).
+// showStickersPopup). Адрес набора приезжает В САМОМ ДОКУМЕНТЕ
+// (`documentAttributeSticker.stickerset` → `doc.stickerSetInput`), поэтому
+// открытие СИНХРОННО и в сеть не ходит; прежде на его месте стоял обратный
+// поиск `GET /stickers/by-media/{mediaID}`, которого у оригинала нет вовсе.
 // Мок менеджеров/StickerMedia — по образцу StickerSetModal.test.tsx.
 //
 // Попап живёт в глобальном стеке попапов, поэтому в рендер входит PopupHost —
-// ровно так же, как в приложении (App монтирует его один раз). `setByMediaId`
-// отвечает ВСЕГДА (mockResolvedValue, не …Once): одноразовый мок скрывал бы
-// повторное открытие — а именно им и проявлялась ошибка «попап-потомок бабла»
-// (клик по затемнению закрывал попап и тут же переоткрывал его через onClick
-// бабла, потому что React-события портала всплывают по React-дереву).
+// ровно так же, как в приложении (App монтирует его один раз).
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MessageRow, { type FeedFns, type MessageRowProps } from './MessageRow'
 import PopupHost from '../PopupHost'
 import { usePopupStore } from '../../stores/popupStore'
+import { saveDocument, type MessageMedia } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 
 const set = { id: 7, slug: 'utyaduck', title: 'Duck', kind: 'sticker' as const, count: 1 }
 // Один стикер в наборе — цель клика ВНУТРИ попапа (тест «отправляет и закрывает»).
 const setStickers = [{ id: 55, setId: 7, mediaId: 555, emoji: '🦆', position: 0, width: 100, height: 100, mime: 'image/webp', thumb: '' }]
-const setByMediaId = vi.fn()
+const getStickerSet = vi.fn()
+
+// Стикер приезжает документом; набор — в его атрибуте, как у оригинала.
+function stickerMedia(stickerset: { _: 'inputStickerSetID'; id: number } | { _: 'inputStickerSetEmpty' }): MessageMedia {
+  return {
+    _: 'messageMediaDocument',
+    document: saveDocument({
+      _: 'document',
+      id: 100,
+      mime_type: 'image/webp',
+      size: 1000,
+      attributes: [
+        { _: 'documentAttributeSticker', alt: '🦆', stickerset },
+        { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      ],
+    }),
+  }
+}
 
 vi.mock('../StickerMedia', () => ({
   default: ({ mediaId }: { mediaId: number }) => <div data-testid="sticker" data-media={mediaId} />,
@@ -27,15 +43,17 @@ vi.mock('../StickerMedia', () => ({
 vi.mock('../../core/hooks/useManagers', () => ({
   useManagers: () => ({
     stickers: {
-      setByMediaId,
-      // StickerSetModal, открывшись, сам грузит набор по slug.
-      setBySlug: async () => ({ set, stickers: setStickers }),
+      // StickerSetModal, открывшись, сам грузит набор по адресу из документа.
+      getStickerSet,
       mySets: async () => [],
     },
   }),
 }))
 
-const msg: ConvMsg = { id: 1, type: 'sticker', mediaId: 100, out: false } as ConvMsg
+const msg: ConvMsg = {
+  id: 1, type: 'sticker', mediaId: 100, out: false,
+  media: stickerMedia({ _: 'inputStickerSetID', id: 7 }),
+} as ConvMsg
 // toggleSelect — row-level onClick в режиме выделения (см. MessageRow.tsx):
 // клик по стикеру там не открывает попап, а бабблится и выбирает ряд.
 const feedFns = { toggleSelect: vi.fn() } as unknown as FeedFns
@@ -72,30 +90,32 @@ describe('клик по стикеру в бабле', () => {
     usePopupStore.getState().clear()
   })
   beforeEach(() => {
-    setByMediaId.mockReset()
-    setByMediaId.mockResolvedValue(set)
+    getStickerSet.mockReset()
+    getStickerSet.mockResolvedValue({ set, stickers: setStickers })
     ;(feedFns.toggleSelect as ReturnType<typeof vi.fn>).mockClear()
   })
 
-  it('зовёт setByMediaId с mediaId стикера и открывает попап с полученным слагом', async () => {
+  it('открывает попап набора по адресу ИЗ ДОКУМЕНТА, не спрашивая сеть', async () => {
     renderRow()
 
     fireEvent.click(screen.getByTestId('sticker'))
 
-    expect(setByMediaId).toHaveBeenCalledWith(100)
+    // Набор грузит уже сам попап — и адресует его ЧИСЛОМ из документа.
     await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
+    expect(getStickerSet).toHaveBeenCalledWith({ id: 7 })
   })
 
-  it('ответ null — попап не открывается', async () => {
-    setByMediaId.mockResolvedValue(null)
-    renderRow()
+  // Стикер без набора (набор удалён либо файл прислан как стикер, но в наборах
+  // не числится) — открывать нечего, клика нет вовсе. Прежде на это уходил
+  // запрос в сеть, отвечавший 404.
+  it('стикер без набора не кликабелен', async () => {
+    renderRow({ m: { ...msg, media: stickerMedia({ _: 'inputStickerSetEmpty' }) } as ConvMsg })
 
     fireEvent.click(screen.getByTestId('sticker'))
 
-    expect(setByMediaId).toHaveBeenCalledWith(100)
-    // ждём микротаск .then() в компоненте, после которого попап остался бы не открыт
     await new Promise((r) => setTimeout(r, 0))
     expect(screen.queryByText('Duck')).toBeNull()
+    expect(getStickerSet).not.toHaveBeenCalled()
   })
 
   it('в режиме выделения клик по стикеру не открывает попап, а бабблится и выбирает ряд', () => {
@@ -103,7 +123,7 @@ describe('клик по стикеру в бабле', () => {
 
     fireEvent.click(screen.getByTestId('sticker'))
 
-    expect(setByMediaId).not.toHaveBeenCalled()
+    expect(getStickerSet).not.toHaveBeenCalled()
     expect(feedFns.toggleSelect).toHaveBeenCalledWith(1)
   })
 
@@ -147,13 +167,13 @@ describe('клик по стикеру в бабле', () => {
 
     fireEvent.click(screen.getByTestId('sticker'))
     await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
-    expect(setByMediaId).toHaveBeenCalledTimes(1)
+    expect(getStickerSet).toHaveBeenCalledTimes(1)
 
     fireEvent.click(document.querySelector('.popup')!)
 
     await waitFor(() => expect(screen.queryByText('Duck')).toBeNull())
-    // бабл не получил клика по затемнению — второго запроса набора нет
-    expect(setByMediaId).toHaveBeenCalledTimes(1)
+    // бабл не получил клика по затемнению — попап не открылся заново
+    expect(getStickerSet).toHaveBeenCalledTimes(1)
   })
 
   // Тот же корень: правый клик где угодно внутри попапа проваливался в

@@ -261,20 +261,27 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/sticker-sets/search", stickersH.SearchSets)
 			// featured — до {slug}: статический сегмент, как search
 			pr.Get("/sticker-sets/featured", stickersH.Featured)
+			// id/{setID} — до {slug}: адрес набора ЧИСЛОМ (второй конструктор
+			// InputStickerSet, см. StickersHandler.SetByID). Статический сегмент
+			// «id» со слагом не сталкивается: slug не короче трёх символов.
+			pr.Get("/sticker-sets/id/{setID}", stickersH.SetByID)
 			pr.Get("/sticker-sets/{slug}", stickersH.SetBySlug)
 			pr.Post("/sticker-sets/{id}/install", stickersH.Install)
 			pr.Delete("/sticker-sets/{id}/install", stickersH.Uninstall)
 			pr.Post("/sticker-sets/{id}/stickers", stickersH.AddSticker)
-			// by-media — до {id}-веток остальных /stickers/*: обратный поиск набора
-			// по media_id (клик по стикеру в чате, ConvMsg несёт только его).
-			pr.Get("/stickers/by-media/{mediaID}", stickersH.SetByMediaID)
+			// Обратного поиска набора по файлу (`/stickers/by-media/{mediaID}`)
+			// здесь больше нет: набор приезжает В САМОМ документе
+			// (documentAttributeSticker.stickerset), как у оригинала, где такого
+			// метода не существует вовсе.
 			pr.Get("/stickers/recent", stickersH.Recent)
 			pr.Delete("/stickers/recent", stickersH.ClearRecent)
 			pr.Get("/stickers/faved", stickersH.Faved)
 			pr.Get("/stickers/search", stickersH.SearchByEmoji)
-			pr.Post("/stickers/{id}/fave", stickersH.Fave)
-			pr.Delete("/stickers/{id}/fave", stickersH.Unfave)
-			pr.Post("/stickers/{id}/use", stickersH.Use)
+			// {docID} — id ДОКУМЕНТА, а не строки набора (Р2): у оригинала
+			// faveSticker/saveRecentSticker принимают InputDocument.
+			pr.Post("/stickers/{docID}/fave", stickersH.Fave)
+			pr.Delete("/stickers/{docID}/fave", stickersH.Unfave)
+			pr.Post("/stickers/{docID}/use", stickersH.Use)
 			pr.Get("/gifs/saved", stickersH.SavedGifs)
 			pr.Post("/gifs/saved", stickersH.SaveGif)
 			pr.Delete("/gifs/saved/{mediaID}", stickersH.DeleteGif)

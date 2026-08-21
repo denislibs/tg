@@ -38,6 +38,14 @@ export interface Sticker {
   thumb: string
   pathThumb?: string
 }
+/**
+ * Адрес набора — наша форма схемного объединения `InputStickerSet`
+ * (`inputStickerSetShortName` | `inputStickerSetID`). Дискриминатор здесь —
+ * присутствие ключа, а не `_`: конструкторами это станет на фазе 3, когда
+ * адрес поедет в теле, а не в пути маршрута.
+ */
+export type InputStickerSetAddress = { shortName: string } | { id: number }
+
 /** Сохранённый GIF — media нашего сервера (лимит 200 LIFO на бэке). */
 export interface SavedGif { mediaId: number }
 /** Результат внешнего поиска (Tenor-прокси /gifs/search). */
@@ -107,16 +115,22 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ sets: RawStickerSet[] }>('/sticker-sets')
       return (r.sets ?? []).map(mapStickerSet)
     },
-    async setBySlug(slug: string): Promise<{ set: StickerSet; stickers: Sticker[] }> {
-      const r = await rest.get<{ set: RawStickerSet; stickers: RawSticker[] }>(`/sticker-sets/${encodeURIComponent(slug)}`)
+    /**
+     * Набор со стикерами по АДРЕСУ — порт `messages.getStickerSet(stickerset:
+     * InputStickerSet)`. Адрес это объединение: короткое имя набора либо его
+     * число; у REST каждому конструктору отвечает свой маршрут, на фазе 3 они
+     * схлопнутся в один метод с объединением в теле.
+     *
+     * Обратного поиска «набор по файлу» здесь больше нет и быть не должно:
+     * набор приезжает В САМОМ документе (`doc.stickerSetInput`, порт
+     * `saveDocument`), как у оригинала, где такого метода не существует вовсе.
+     */
+    async getStickerSet(input: InputStickerSetAddress): Promise<{ set: StickerSet; stickers: Sticker[] }> {
+      const path = 'shortName' in input
+        ? `/sticker-sets/${encodeURIComponent(input.shortName)}`
+        : `/sticker-sets/id/${input.id}`
+      const r = await rest.get<{ set: RawStickerSet; stickers: RawSticker[] }>(path)
       return { set: mapStickerSet(r.set), stickers: (r.stickers ?? []).map(mapSticker) }
-    },
-    /** Набор, которому принадлежит файл стикера. Нужен клику по стикеру в чате:
-     * сообщение несёт только mediaId (бэк: GET /stickers/by-media/{mediaID}).
-     * null — файл не из набора (стикер удалён или прислан как обычное медиа). */
-    async setByMediaId(mediaId: number): Promise<StickerSet | null> {
-      const r = await rest.get<{ set: RawStickerSet }>(`/stickers/by-media/${mediaId}`).catch(() => null)
-      return r?.set ? mapStickerSet(r.set) : null
     },
     /** covers — первые 5 стикеров каждого набора выдачи (одним запросом,
      * без похода за полным составом на каждую строку) — экран поиска рисует
@@ -144,9 +158,13 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ stickers: RawSticker[] }>('/stickers/faved')
       return (r.stickers ?? []).map(mapSticker)
     },
-    async fave(stickerId: number): Promise<void> { await rest.post(`/stickers/${stickerId}/fave`, {}) },
-    async unfave(stickerId: number): Promise<void> { await rest.del(`/stickers/${stickerId}/fave`) },
-    async use(stickerId: number): Promise<void> { await rest.post(`/stickers/${stickerId}/use`, {}) },
+    // Избранное и недавние адресуют ФАЙЛ (document.id схемы), а не строку
+    // набора: у оригинала messages.faveSticker/saveRecentSticker принимают
+    // InputDocument. Побочно это снимает дубль — тот же файл, добавленный из
+    // двух наборов, попадал в список дважды.
+    async fave(docId: number): Promise<void> { await rest.post(`/stickers/${docId}/fave`, {}) },
+    async unfave(docId: number): Promise<void> { await rest.del(`/stickers/${docId}/fave`) },
+    async use(docId: number): Promise<void> { await rest.post(`/stickers/${docId}/use`, {}) },
     async searchByEmoji(emoji: string): Promise<Sticker[]> {
       const r = await rest.get<{ stickers: RawSticker[] }>('/stickers/search', { emoji })
       return (r.stickers ?? []).map(mapSticker)

@@ -94,16 +94,27 @@ describe('StickersManager', () => {
     ])
   })
 
-  it('setBySlug returns the set and mapped stickers', async () => {
+  it('getStickerSet по короткому имени: набор и разобранные стикеры', async () => {
     const set = { id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 2 }
     const { rest, calls } = fakeRest({ set, stickers: [{ id: 1, set_id: 1, media_id: 10, emoji: '🦆' }] })
     const mgr = newStickersManager({ rest })
-    const r = await mgr.setBySlug('duck')
+    const r = await mgr.getStickerSet({ shortName: 'duck' })
     expect(calls[0].path).toBe('/sticker-sets/duck')
     expect(r.set).toEqual(set)
     expect(r.stickers).toEqual([
       { id: 1, setId: 1, mediaId: 10, emoji: '🦆', width: 0, height: 0, mime: '', thumb: '' },
     ])
+  })
+
+  // Второй конструктор того же адреса (InputStickerSet): им пользуется клик по
+  // стикеру в чате — документ несёт ЧИСЛО набора, а короткого имени в нём нет.
+  it('getStickerSet по числу набора бьёт в маршрут id', async () => {
+    const set = { id: 7, slug: 'duck', title: 'Duck', kind: 'sticker', count: 1 }
+    const { rest, calls } = fakeRest({ set, stickers: [] })
+    const mgr = newStickersManager({ rest })
+    const r = await mgr.getStickerSet({ id: 7 })
+    expect(calls[0].path).toBe('/sticker-sets/id/7')
+    expect(r.set.id).toBe(7)
   })
 
   // Task 2 covered sets: featured/search отдают наборы ВМЕСТЕ с превью

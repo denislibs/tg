@@ -25,24 +25,27 @@ func seedStickerMedia(t *testing.T, pool *pgxpool.Pool, ownerID int64, key strin
 	return id
 }
 
-// seedFullSet — набор из n стикеров, возвращает набор и id стикеров.
-func seedFullSet(t *testing.T, pool *pgxpool.Pool, r *StickersRepo, owner int64, slug string, n int) (domain.StickerSetRecord, []int64) {
+// seedFullSet — набор из n стикеров. Возвращает САМИ стикеры, а не их id:
+// после перехода избранного и недавних на ключ файла (Р2) тестам нужны оба
+// числа — суррогатный ключ строки для проверок содержимого набора и media_id
+// для всего, что адресует документ.
+func seedFullSet(t *testing.T, pool *pgxpool.Pool, r *StickersRepo, owner int64, slug string, n int) (domain.StickerSetRecord, []domain.Sticker) {
 	t.Helper()
 	ctx := context.Background()
 	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: "Набор " + slug, Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatalf("CreateSet(%s): %v", slug, err)
 	}
-	ids := make([]int64, 0, n)
+	sts := make([]domain.Sticker, 0, n)
 	for k := 0; k < n; k++ {
 		mediaID := seedStickerMedia(t, pool, owner, fmt.Sprintf("%s/%d", slug, k))
 		s, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "😀"})
 		if err != nil {
 			t.Fatalf("AddSticker: %v", err)
 		}
-		ids = append(ids, s.ID)
+		sts = append(sts, s)
 	}
-	return set, ids
+	return set, sts
 }
 
 func TestStickersRepo_SetsCRUD(t *testing.T) {
@@ -51,7 +54,7 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7801")
 
-	set, ids := seedFullSet(t, pool, r, owner, "duck", 3)
+	set, seeded := seedFullSet(t, pool, r, owner, "duck", 3)
 	if set.ID == 0 {
 		t.Fatalf("CreateSet: пустой id")
 	}
@@ -76,48 +79,18 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 		t.Fatalf("Stickers: %+v, %v", sts, err)
 	}
 	for k, s := range sts {
-		if s.Position != k || s.ID != ids[k] || s.Emoji != "😀" {
+		if s.Position != k || s.ID != seeded[k].ID || s.Emoji != "😀" {
 			t.Fatalf("Stickers[%d]: %+v", k, s)
 		}
 	}
-	if _, err := r.StickerByID(ctx, 999999); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("StickerByID missing: want ErrNotFound, got %v", err)
+	if _, err := r.StickerByMediaID(ctx, 999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("StickerByMediaID missing: want ErrNotFound, got %v", err)
 	}
 
 	// Поиск по title/slug, регистронезависимый.
 	found, err := r.SearchSets(ctx, "DUC", 10)
 	if err != nil || len(found) != 1 || found[0].ID != set.ID {
 		t.Fatalf("SearchSets: %+v, %v", found, err)
-	}
-}
-
-// SetByMediaID — обратный поиск: по файлу стикера найти набор. Нужен клику по
-// стикеру в чате: сообщение несёт только media_id.
-func TestSetByMediaID(t *testing.T) {
-	pool := storepostgres.NewTestDB(t)
-	r := NewStickersRepo(pool)
-	ctx := context.Background()
-	owner := seedUser(t, pool, "+7816")
-
-	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "utyaduck", Title: "Duck", Kind: "sticker", CreatedBy: owner})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mediaID := seedStickerMedia(t, pool, owner, "utyaduck/0")
-	if _, err := r.AddSticker(ctx, domain.Sticker{SetID: set.ID, MediaID: mediaID, Emoji: "🦆"}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := r.SetByMediaID(ctx, mediaID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Slug != "utyaduck" {
-		t.Errorf("slug = %q, ожидался utyaduck", got.Slug)
-	}
-
-	if _, err := r.SetByMediaID(ctx, mediaID+99999); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("для чужого медиа err = %v, ожидался ErrNotFound", err)
 	}
 }
 
@@ -162,26 +135,26 @@ func TestStickersRepo_RecentUpsertTrim(t *testing.T) {
 	owner := seedUser(t, pool, "+7804")
 	user := seedUser(t, pool, "+7805")
 
-	_, ids := seedFullSet(t, pool, r, owner, "recent_set", 6)
-	// keep=4: после 6 касаний остаются 4 последних.
-	for _, id := range ids {
-		if err := r.TouchRecent(ctx, user, id, 4); err != nil {
-			t.Fatalf("TouchRecent(%d): %v", id, err)
+	_, seeded := seedFullSet(t, pool, r, owner, "recent_set", 6)
+	// keep=4: после 6 касаний остаются 4 последних. Адресуем ФАЙЛ (Р2).
+	for _, s := range seeded {
+		if err := r.TouchRecent(ctx, user, s.MediaID, 4); err != nil {
+			t.Fatalf("TouchRecent(%d): %v", s.MediaID, err)
 		}
 	}
 	got, err := r.Recent(ctx, user, 10)
 	if err != nil || len(got) != 4 {
 		t.Fatalf("Recent: %+v, %v", got, err)
 	}
-	if got[0].ID != ids[5] {
-		t.Fatalf("Recent[0]: want %d, got %d", ids[5], got[0].ID)
+	if got[0].MediaID != seeded[5].MediaID {
+		t.Fatalf("Recent[0]: want %d, got %d", seeded[5].MediaID, got[0].MediaID)
 	}
 	// Upsert: повторное касание поднимает стикер наверх, не плодя строк.
-	if err := r.TouchRecent(ctx, user, ids[2], 4); err != nil {
+	if err := r.TouchRecent(ctx, user, seeded[2].MediaID, 4); err != nil {
 		t.Fatalf("TouchRecent повторно: %v", err)
 	}
 	got, _ = r.Recent(ctx, user, 10)
-	if len(got) != 4 || got[0].ID != ids[2] {
+	if len(got) != 4 || got[0].MediaID != seeded[2].MediaID {
 		t.Fatalf("Recent после upsert: %+v", got)
 	}
 }
@@ -193,17 +166,17 @@ func TestStickersRepo_FavedTrim(t *testing.T) {
 	owner := seedUser(t, pool, "+7806")
 	user := seedUser(t, pool, "+7807")
 
-	_, ids := seedFullSet(t, pool, r, owner, "faved_set", 4)
-	for _, id := range ids {
-		if err := r.Fave(ctx, user, id, 3); err != nil {
-			t.Fatalf("Fave(%d): %v", id, err)
+	_, seeded := seedFullSet(t, pool, r, owner, "faved_set", 4)
+	for _, s := range seeded {
+		if err := r.Fave(ctx, user, s.MediaID, 3); err != nil {
+			t.Fatalf("Fave(%d): %v", s.MediaID, err)
 		}
 	}
 	got, err := r.Faved(ctx, user, 10)
-	if err != nil || len(got) != 3 || got[0].ID != ids[3] {
+	if err != nil || len(got) != 3 || got[0].MediaID != seeded[3].MediaID {
 		t.Fatalf("Faved: %+v, %v", got, err)
 	}
-	if err := r.Unfave(ctx, user, ids[3]); err != nil {
+	if err := r.Unfave(ctx, user, seeded[3].MediaID); err != nil {
 		t.Fatalf("Unfave: %v", err)
 	}
 	if got, _ = r.Faved(ctx, user, 10); len(got) != 2 {
@@ -218,13 +191,13 @@ func TestStickersRepo_SearchByEmoji_InstalledOnly(t *testing.T) {
 	owner := seedUser(t, pool, "+7808")
 	user := seedUser(t, pool, "+7809")
 
-	installed, instIDs := seedFullSet(t, pool, r, owner, "inst_set", 2)
+	installed, instSts := seedFullSet(t, pool, r, owner, "inst_set", 2)
 	seedFullSet(t, pool, r, owner, "not_inst_set", 2) // тот же emoji, но не установлен
 	if err := r.Install(ctx, user, installed.ID); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	got, err := r.SearchByEmoji(ctx, user, "😀", 16)
-	if err != nil || len(got) != 2 || got[0].ID != instIDs[0] || got[1].ID != instIDs[1] {
+	if err != nil || len(got) != 2 || got[0].ID != instSts[0].ID || got[1].ID != instSts[1].ID {
 		t.Fatalf("SearchByEmoji: %+v, %v", got, err)
 	}
 	if got, _ = r.SearchByEmoji(ctx, user, "🐟", 16); len(got) != 0 {
@@ -322,10 +295,10 @@ func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
 	if err := r.Install(ctx, owner, set.ID); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	if err := r.TouchRecent(ctx, owner, added.ID, 20); err != nil {
+	if err := r.TouchRecent(ctx, owner, added.MediaID, 20); err != nil {
 		t.Fatalf("TouchRecent: %v", err)
 	}
-	if err := r.Fave(ctx, owner, added.ID, 10); err != nil {
+	if err := r.Fave(ctx, owner, added.MediaID, 10); err != nil {
 		t.Fatalf("Fave: %v", err)
 	}
 
@@ -344,11 +317,11 @@ func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
 
 	assertMeta("AddSticker", added)
 
-	byID, err := r.StickerByID(ctx, added.ID)
+	byMedia, err := r.StickerByMediaID(ctx, added.MediaID)
 	if err != nil {
-		t.Fatalf("StickerByID: %v", err)
+		t.Fatalf("StickerByMediaID: %v", err)
 	}
-	assertMeta("StickerByID", byID)
+	assertMeta("StickerByMediaID", byMedia)
 
 	lists := map[string]func() ([]domain.Sticker, error){
 		"Stickers":      func() ([]domain.Sticker, error) { return r.Stickers(ctx, set.ID) },
@@ -376,9 +349,9 @@ func TestStickersRepo_MediaWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7813")
 
-	set, ids := seedFullSet(t, pool, r, owner, "raw", 1)
+	set, seeded := seedFullSet(t, pool, r, owner, "raw", 1)
 	sts, err := r.Stickers(ctx, set.ID)
-	if err != nil || len(sts) != 1 || sts[0].ID != ids[0] {
+	if err != nil || len(sts) != 1 || sts[0].ID != seeded[0].ID {
 		t.Fatalf("Stickers: %+v, %v", sts, err)
 	}
 	if sts[0].Width != 0 || sts[0].Height != 0 || sts[0].Thumb != nil {
@@ -613,10 +586,10 @@ func TestBackfillPathThumbs(t *testing.T) {
 
 	// AddSticker (не At) — как уже залитые на стенде стикеры: без контура,
 	// позиция назначена автоматически.
-	set, ids := seedFullSet(t, pool, r, owner, "legacy", 3)
+	set, seeded := seedFullSet(t, pool, r, owner, "legacy", 3)
 
 	preset := []byte{9, 9, 9}
-	if _, err := pool.Exec(ctx, `UPDATE stickers SET path_thumb=$1 WHERE id=$2`, preset, ids[1]); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE stickers SET path_thumb=$1 WHERE id=$2`, preset, seeded[1].ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -696,8 +669,9 @@ func TestCoverStickers(t *testing.T) {
 
 // Индексы стикеров (миграция 0094). Тест пинит два решения, а не «схема как
 // написана»: (1) stickers.media_id обязан быть проиндексирован — по нему идут
-// SetByMediaID (клик по стикеру в чате) и IsStickerMedia (каждая отправка
-// стикера и каждая выдача его файла), а строк в таблице тысячи; (2) частичный
+// StickerByMediaID, резолв недавних и избранного (они ключуются файлом, Р2),
+// а также IsStickerMedia (каждая отправка стикера и каждая выдача его файла);
+// строк в таблице тысячи; (2) частичный
 // индекс sticker_sets_rank_idx снят как заведомо неиспользуемый — FeaturedSets
 // сортирует по выражению (s.rank = 0), которое btree по rank не обслуживает.
 func TestStickerIndexes(t *testing.T) {
@@ -711,7 +685,7 @@ func TestStickerIndexes(t *testing.T) {
 		t.Fatalf("pg_indexes stickers: %v", err)
 	}
 	if !mediaIdx {
-		t.Error("нет индекса по stickers(media_id) — SetByMediaID/IsStickerMedia уходят в seq scan")
+		t.Error("нет индекса по stickers(media_id) — резолв стикера по файлу уходит в seq scan")
 	}
 
 	var rankIdx bool

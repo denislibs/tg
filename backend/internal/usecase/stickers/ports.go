@@ -15,10 +15,6 @@ type Repo interface {
 	CreateSet(ctx context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error)
 	SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, error) // domain.ErrNotFound
 	SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, error)      // domain.ErrNotFound
-	// SetByMediaID — обратный поиск: набор по файлу стикера (клик по стикеру в
-	// чате, где сообщение несёт только media_id). domain.ErrNotFound, если
-	// медиа не принадлежит ни одному набору.
-	SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSetRecord, error)
 	Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error)
 	// AddSticker добавляет стикер в конец набора (position назначает хранилище).
 	AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error)
@@ -28,7 +24,9 @@ type Repo interface {
 	// при дыре в середине набора всегда аппендит в хвост, а не в дыру.
 	// pathThumb — контур стикера (domain.Sticker.PathThumb), едет со вставкой.
 	AddStickerAt(ctx context.Context, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error)
-	StickerByID(ctx context.Context, id int64) (domain.Sticker, error) // domain.ErrNotFound
+	// StickerByMediaID — стикер по КЛЮЧУ ФАЙЛА (document.id схемы). Поиска по
+	// суррогатному ключу строки больше нет: наружу он не выходит (Р2).
+	StickerByMediaID(ctx context.Context, mediaID int64) (domain.Sticker, error) // domain.ErrNotFound
 
 	Install(ctx context.Context, userID, setID int64) error   // идемпотентно
 	Uninstall(ctx context.Context, userID, setID int64) error // идемпотентно
@@ -58,13 +56,13 @@ type Repo interface {
 	BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
-	TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error
+	TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error
 	Recent(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error)
 	// ClearRecent — стереть весь список недавних пользователя; идемпотентно.
 	ClearRecent(ctx context.Context, userID int64) error
 	// Fave — upsert + обрезка до keep новейших; Unfave идемпотентен.
-	Fave(ctx context.Context, userID, stickerID int64, keep int) error
-	Unfave(ctx context.Context, userID, stickerID int64) error
+	Fave(ctx context.Context, userID, mediaID int64, keep int) error
+	Unfave(ctx context.Context, userID, mediaID int64) error
 	Faved(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error)
 	// SearchByEmoji — стикеры с данным эмодзи из установленных наборов userID.
 	SearchByEmoji(ctx context.Context, userID int64, emoji string, limit int) ([]domain.Sticker, error)
