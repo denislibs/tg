@@ -187,26 +187,13 @@ export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; media: MessageM
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
 //
-// ── НАЗВАННОЕ РАСХОЖДЕНИЕ: у этого кадра карточка ПЛОСКАЯ ───────────────────
-// В самом сообщении превью — конструктор `messageMediaWebPage` с обычной
-// лестницей ступеней у картинки, а здесь бэкенд по-прежнему шлёт снимок
-// read-модели (`domain.WebPagePreview`: `site_name`/`photo_id`/`photo_w`/…) —
-// `usecase/chat/webpreview.go:88` порт объединения не тронул. То есть на
-// проводе снова ДВЕ формы одного предмета, и вторую приходится переводить
-// здесь, на границе (`cacheWebPage`). Это долг БЭКЕНДА, а не наша модель.
-export interface WireWebPagePreview {
-  url?: string
-  site_name?: string
-  title?: string
-  description?: string
-  photo_id?: number
-  photo_w?: number
-  photo_h?: number
-  photo_blur?: string
-  photo_has_thumb?: boolean
-  has_iv?: boolean
-}
-export interface WebPageUpdateEvt { peer_id: PeerId; id: number; web_page: WireWebPagePreview }
+// Карточка приезжает ТЕМ ЖЕ конструктором, что и в самом сообщении
+// (`messageMediaWebPage` под ключом `media`) — ровно как у `geo_live_update`,
+// `poll_update` и остальных кадров с вложением. Собственного ключа `web_page`
+// с плоским снимком read-модели (`site_name`/`photo_id`/`photo_w`/`photo_blur`)
+// на проводе больше нет, а вместе с ним исчез и переходник на границе, который
+// ДУБЛИРОВАЛ арифметику ступеней `domain.fitThumb`.
+export interface WebPageUpdateEvt { peer_id: PeerId; id: number; media: MessageMedia }
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
 export interface FactCheckUpdateEvt { peer_id: PeerId; id: number; factcheck: import('../models').FactCheck | null }

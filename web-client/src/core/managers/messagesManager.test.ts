@@ -406,50 +406,49 @@ function restWithThreadOverlap(): RestClient {
   } as unknown as RestClient
 }
 
+/** Карточка ссылки в форме кадра: конструктор, а не плоский снимок. */
+function webPageMedia(title: string): MessageMedia {
+  return {
+    _: 'messageMediaWebPage',
+    webpage: { _: 'webPage', url: 'https://x/', display_url: 'x', title },
+  }
+}
+
 describe('MessagesManager.cacheWebPage', () => {
   it('returns a patch op carrying the mapped web page for an existing message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt: WebPageUpdateEvt = {
-      peer_id: 1, id: 2,
-      web_page: {
-        url: 'https://x/', site_name: 'X', title: 'Title',
-        photo_id: 7, photo_w: 2000, photo_h: 1000, photo_blur: 'Ymx1cg==', photo_has_thumb: true, has_iv: true,
-      },
-    }
-    const ops = mgr.cacheWebPage(evt)
-    // Номер в кадре СЕРВЕРНЫЙ, в операции — уже клиентский: иначе патч не нашёл
-    // бы сообщение в окне. Плоскую форму кадра (названное расхождение бэкенда)
-    // граница переводит в КОНСТРУКТОР с обычной лестницей ступеней — той же, по
-    // которой ступень выбирает фотография сообщения.
-    expect(ops).toEqual([{
-      op: 'patch', key: '1', msgId: cid(2),
-      fields: {
-        media: {
-          _: 'messageMediaWebPage',
-          webpage: {
-            _: 'webPage', url: 'https://x/', display_url: 'x',
-            site_name: 'X', title: 'Title', has_iv: true,
-            photo: {
-              _: 'photo', id: 7,
-              sizes: [
-                { _: 'photoStrippedSize', type: 'i', bytes: 'Ymx1cg==' },
-                { _: 'photoSize', type: 'y', w: 1280, h: 640, size: 0 },
-                { _: 'photoSize', type: 'w', w: 2000, h: 1000, size: 0 },
-              ],
-            },
-          },
+    // Кадр несёт КОНСТРУКТОР — тот же, что и в самом сообщении, с обычной
+    // лестницей ступеней у картинки. Плоской формы (`site_name`/`photo_w`/
+    // `photo_blur` россыпью) на проводе нет, поэтому и переводить нечего.
+    const media: MessageMedia = {
+      _: 'messageMediaWebPage',
+      webpage: {
+        _: 'webPage', url: 'https://x/', display_url: 'x',
+        site_name: 'X', title: 'Title', has_iv: true,
+        photo: {
+          _: 'photo', id: 7,
+          sizes: [
+            { _: 'photoStrippedSize', type: 'i', bytes: 'Ymx1cg==' },
+            { _: 'photoSize', type: 'y', w: 1280, h: 640, size: 0 },
+            { _: 'photoSize', type: 'w', w: 2000, h: 1000, size: 0 },
+          ],
         },
       },
-    }])
+    }
+    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, media }
+    const ops = mgr.cacheWebPage(evt)
+    // Номер в кадре СЕРВЕРНЫЙ, в операции — уже клиентский: иначе патч не нашёл
+    // бы сообщение в окне. Вложение доезжает как есть.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media } }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheWebPage({ peer_id: 1, id: 999, web_page: { title: 'Title' } })
+    const ops = mgr.cacheWebPage({ peer_id: 1, id: 999, media: webPageMedia('Title') })
     expect(ops).toEqual([])
   })
 
@@ -461,7 +460,7 @@ describe('MessagesManager.cacheWebPage', () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
-    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, web_page: { title: 'Title' } }
+    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, media: webPageMedia('Title') }
     const ops = mgr.cacheWebPage(evt)
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
@@ -847,6 +846,12 @@ describe('MessagesManager.cacheGiveaway', () => {
     const evt = { peer_id: 1, media: giveawayResultsMedia() }
     const ops = mgr.cacheGiveaway(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(4), fields: { media: evt.media } }])
+    // Номер сообщения-запуска — такой же адрес, как `message.id`, и на границе
+    // кадра он переводится тем же приведением, что и на границе разбора
+    // сообщения. Иначе «перейти к сообщению-запуску» промахнулось бы: кадр
+    // несёт СЕРВЕРНОЕ число, а окно живёт в клиентском пространстве.
+    const patched = ops[0].op === 'patch' ? ops[0].fields.media : undefined
+    expect(patched?._ === 'messageMediaGiveawayResults' && patched.launch_msg_id).toBe(cid(4))
   })
 
   it('produces no op when no message in the SSOT carries this giveaway id', async () => {

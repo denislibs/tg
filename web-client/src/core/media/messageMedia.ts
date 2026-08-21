@@ -32,6 +32,7 @@
 // отсутствующий элемент массива.
 
 import type { MessageEntity } from '@layer'
+import { generateMessageId } from '../history/messageId'
 import type { Peer } from '../peers/peerId'
 
 // ── PhotoSize: объединение схемы, конструктор за конструктором ─────────────
@@ -267,8 +268,18 @@ export interface PollAnswerVoters {
  *
  * ИТОГИ — пер-зрительская часть опроса. Обязательных параметров нет ни одного:
  * пустой `pollResults` это законная форма «опрос есть, никто не голосовал».
+ *
+ * `min` — «объект пришёл УРЕЗАННЫМ»: пер-зрительской части в нём нет. Его
+ * ставит кадр `poll_update`, чьё тело одно на всех получателей и потому собрано
+ * для «зрителя 0». По нему клиент СОХРАНЯЕТ свой выбор вместо того, чтобы
+ * затереть его отсутствием `chosen` (порт `appPollsManager.saveResults`).
  */
-export interface PollResults { _: 'pollResults'; results?: PollAnswerVoters[]; total_voters?: number }
+export interface PollResults {
+  _: 'pollResults'
+  pFlags?: Partial<{ min: true }>
+  results?: PollAnswerVoters[]
+  total_voters?: number
+}
 
 /**
  * messageMediaPoll#773f4e66 flags:# poll:Poll results:PollResults
@@ -554,10 +565,16 @@ export function saveDocument(doc: MyDocument): MyDocument {
 }
 
 /**
- * Нормализует вложение с провода: выводит поля документа из атрибутов. Заходит
+ * Нормализует вложение С ПРОВОДА: выводит поля документа из атрибутов и
+ * переводит вложенные номера сообщений в клиентское пространство. Заходит
  * ВНУТРЬ обёрток — платное медиа несёт настоящее вложение в своём векторе, а
  * карточка ссылки может нести документ, — иначе у вложенного документа не
  * оказалось бы выведенного типа.
+ *
+ * Зовётся РОВНО ОДИН РАЗ на каждый приехавший объект: на границе разбора
+ * сообщения (`mapMessage`) и на границе каждого кадра, несущего вложение
+ * (`cacheGeoLive`/`cachePoll`/`cacheChecklist`/`cacheGiveaway`/`cacheWebPage`).
+ * Перевод номера не идемпотентен, поэтому второго вызова быть не должно.
  */
 export function saveMessageMedia(media: MessageMedia | undefined): MessageMedia | undefined {
   if (!media) return undefined
@@ -566,6 +583,15 @@ export function saveMessageMedia(media: MessageMedia | undefined): MessageMedia 
     for (const item of media.extended_media) {
       if (item._ === 'messageExtendedMedia') saveMessageMedia(item.media)
     }
+  } else if (media._ === 'messageMediaGiveawayResults') {
+    // `launch_msg_id` — НОМЕР сообщения-запуска, то есть такой же адрес, как
+    // `message.id` и `reply_to.reply_to_msg_id`, и переводить его надо там же
+    // (порт `appMessagesManager.saveMessageMedia`, ветка
+    // `messageMediaGiveawayResults`). Верхний уровень маппер переводил, а этот
+    // номер оставался в СЕРВЕРНОМ пространстве — «перейти к сообщению-запуску»
+    // промахнулось бы мимо. Ноль и отрицательные пропускаем, как оригинал:
+    // это «сообщение неизвестно», а не адрес.
+    if (media.launch_msg_id > 0) media.launch_msg_id = generateMessageId(media.launch_msg_id)
   }
   return media
 }

@@ -2,18 +2,22 @@ package domain
 
 import "time"
 
-// StarGift — позиция каталога подарков (Telegram star gift): что можно
-// подарить за звёзды. Ограниченный подарок несёт остаток (Remains) и флаг
-// SoldOut. Total/Remains == nil у безлимитных.
+// StarGift — строка каталога подарков (таблица star_gifts): что можно подарить
+// за звёзды. Ограниченный подарок несёт остаток (Remains) и флаг SoldOut.
+// Total/Remains == nil у безлимитных.
+//
+// Read-модель, НА ПРОВОД НЕ ВЫХОДИТ: и лента, и витрина профиля, и каталог
+// отдают её конструктором схемы starGift (NewStarGift, mtgift.go), поэтому
+// json-тегов здесь нет — ровно как у GiftInfo ниже.
 type StarGift struct {
-	ID           int64  `json:"id"`
-	Emoji        string `json:"emoji"`
-	Title        string `json:"title"`
-	PriceStars   int64  `json:"price_stars"`
-	ConvertStars int64  `json:"convert_stars"`
-	Total        *int64 `json:"total,omitempty"`
-	Remains      *int64 `json:"remains,omitempty"`
-	SoldOut      bool   `json:"sold_out"`
+	ID           int64
+	Emoji        string
+	Title        string
+	PriceStars   int64
+	ConvertStars int64
+	Total        *int64
+	Remains      *int64
+	SoldOut      bool
 }
 
 // StarTransaction — движение баланса звёзд (Telegram Stars wallet history).

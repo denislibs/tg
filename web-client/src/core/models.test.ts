@@ -61,6 +61,36 @@ describe('mapMessage', () => {
     })
   })
 
+  // Третий номер сообщения на проводе живёт ВНУТРИ вложения: у состоявшегося
+  // розыгрыша `launch_msg_id` адресует сообщение-запуск. Пространство у него то
+  // же самое, что у `id` и `reply_to_msg_id`, — значит и приведение то же
+  // (порт `appMessagesManager.saveMessageMedia`). Пока перевода не было, первый
+  // же «перейти к сообщению-запуску» промахнулся бы мимо.
+  it('переводит launch_msg_id розыгрыша тем же приведением', () => {
+    const m = mapMessage(raw({
+      media: {
+        _: 'messageMediaGiveawayResults', id: 9, channel_id: 3, launch_msg_id: 42,
+        winners_count: 1, unclaimed_count: 0, winners: [7], months: 3, until_date: 0,
+      },
+    }))
+    const media = m._ === 'message' ? m.media : undefined
+    expect(media?._ === 'messageMediaGiveawayResults' && media.launch_msg_id).toBe(generateMessageId(42))
+  })
+
+  // Ноль — это «сообщение-запуск неизвестно», а не адрес: приведение его не
+  // трогает, ровно как оригинал (`generateMessageId` возвращает `messageId <= 0`
+  // как есть).
+  it('нулевой launch_msg_id остаётся нулём', () => {
+    const m = mapMessage(raw({
+      media: {
+        _: 'messageMediaGiveawayResults', id: 9, channel_id: 3, launch_msg_id: 0,
+        winners_count: 0, unclaimed_count: 0, winners: [], months: 3, until_date: 0,
+      },
+    }))
+    const media = m._ === 'message' ? m.media : undefined
+    expect(media?._ === 'messageMediaGiveawayResults' && media.launch_msg_id).toBe(0)
+  })
+
   it('дыра остаётся дырой: ни даты, ни автора у неё нет', () => {
     const m = mapMessage({ _: 'messageEmpty', id: 4, peer_id: { _: 'peerUser', user_id: 1 } })
     expect(m).toEqual({ _: 'messageEmpty', id: generateMessageId(4), peer_id: { _: 'peerUser', user_id: 1 }, peerId: 1 })

@@ -165,7 +165,12 @@ describe('applyOp', () => {
     voters,
     ...(chosen ? { pFlags: { chosen: true as const } } : {}),
   })
-  const pollMedia = (results: ReturnType<typeof answer>[], totalVoters: number): MessageMediaPoll => ({
+  // `min` — «итоги приехали УРЕЗАННЫМИ»: ровно это ставит кадр poll_update,
+  // тело которого одно на всех получателей. Слияние спрашивает ФЛАГ, а не
+  // подразумевает урезанность безусловно.
+  const pollMedia = (
+    results: ReturnType<typeof answer>[], totalVoters: number, min = false,
+  ): MessageMediaPoll => ({
     _: 'messageMediaPoll',
     poll: {
       _: 'poll',
@@ -177,13 +182,17 @@ describe('applyOp', () => {
         option: pollOptionKey(i),
       })),
     },
-    results: { _: 'pollResults', total_voters: totalVoters, results },
+    results: {
+      _: 'pollResults', total_voters: totalVoters, results,
+      ...(min ? { pFlags: { min: true as const } } : {}),
+    },
   })
 
-  it('patch итогов опроса → счётчики обновились, выбор ОКНА сохранён', () => {
+  it('patch УРЕЗАННЫХ итогов опроса → счётчики обновились, выбор ОКНА сохранён', () => {
     const base = [msg(1, { media: pollMedia([answer(0, 1, true), answer(1, 0)], 1) })]
-    // Кадр несёт новые счётчики (кто-то ещё проголосовал) и НИ ОДНОГО chosen.
-    const incoming = pollMedia([answer(0, 1), answer(1, 1)], 2)
+    // Кадр несёт новые счётчики (кто-то ещё проголосовал), НИ ОДНОГО chosen — и
+    // pFlags.min, которым сам называет себя урезанным.
+    const incoming = pollMedia([answer(0, 1), answer(1, 1)], 2, true)
     const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { media: incoming } })
     const media = real(next[0]).media
     expect(media?._ === 'messageMediaPoll' && media.results.total_voters).toBe(2)
@@ -193,9 +202,21 @@ describe('applyOp', () => {
     expect(media?._ === 'messageMediaPoll' && media.results.results?.[1].pFlags?.chosen).toBeUndefined()
   })
 
+  // Зеркало предыдущего и ГЛАВНЫЙ ПИН флага: итоги БЕЗ min персонализированы,
+  // то есть авторитетны целиком — включая отсутствие выбора. Так доезжает отзыв
+  // голоса с другого устройства; пока урезанность подразумевалась безусловно,
+  // такой ответ молча игнорировался.
+  it('patch ПОЛНЫХ итогов опроса → выбор берётся из операции, а не сохраняется', () => {
+    const base = [msg(1, { media: pollMedia([answer(0, 1, true), answer(1, 0)], 1) })]
+    const incoming = pollMedia([answer(0, 0), answer(1, 0)], 0)
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { media: incoming } })
+    const media = real(next[0]).media
+    expect(media?._ === 'messageMediaPoll' && media.results.results?.[0].pFlags?.chosen).toBeUndefined()
+  })
+
   it('окно ещё не знает выбора — берётся то, что пришло в операции', () => {
     const base = [msg(1, { media: pollMedia([answer(0, 1), answer(1, 0)], 1) })]
-    const incoming = pollMedia([answer(0, 1), answer(1, 1, true)], 2)
+    const incoming = pollMedia([answer(0, 1), answer(1, 1, true)], 2, true)
     const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { media: incoming } })
     const media = real(next[0]).media
     expect(media?._ === 'messageMediaPoll' && media.results.results?.[1].pFlags?.chosen).toBe(true)

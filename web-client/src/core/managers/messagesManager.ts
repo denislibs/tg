@@ -15,13 +15,13 @@ export interface CalendarDay {
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId } from '../peers/peerId'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, WireWebPagePreview, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
-import { saveMessageMedia, THUMB_TYPE_FULL, THUMB_TYPE_SERVER, THUMB_TYPE_STRIPPED, type MessageMedia, type PhotoSize } from '../media/messageMedia'
+import { saveMessageMedia } from '../media/messageMedia'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
@@ -31,63 +31,6 @@ import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
 export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
-
-/**
- * ГРАНИЦА одного названного расхождения бэкенда: в сообщении превью ссылки — это
- * конструктор `messageMediaWebPage` с обычной лестницей ступеней у картинки, а
- * догоняющий кадр `web_page_update` по-прежнему несёт снимок read-модели
- * плоскими полями (`usecase/chat/webpreview.go:88` порт объединения не тронул).
- * Пока это так, вторую форму надо переводить в первую ровно здесь — в одном
- * месте, а не в витрине: иначе плоские `photo_w`/`photo_blur` расползлись бы
- * обратно по рендеру, ради устранения чего порт и делался.
- *
- * Арифметика ступени `y` — та же, что у генератора превью на бэкенде
- * (`domain.fitThumb`, длинная сторона `ThumbMaxSide`): вписать кадр в квадрат с
- * сохранением пропорции. Дублирование её здесь — часть той же цены.
- */
-const THUMB_MAX_SIDE = 1280
-
-function fitThumb(w: number, h: number): [number, number] {
-  if (w <= 0 || h <= 0) return [0, 0]
-  if (w <= THUMB_MAX_SIDE && h <= THUMB_MAX_SIDE) return [w, h]
-  return w >= h
-    ? [THUMB_MAX_SIDE, Math.max(1, Math.round((h * THUMB_MAX_SIDE) / w))]
-    : [Math.max(1, Math.round((w * THUMB_MAX_SIDE) / h)), THUMB_MAX_SIDE]
-}
-
-/** Адрес без схемы — ровно то, что бэкенд кладёт в `webPage.display_url`. */
-function displayUrl(raw: string): string {
-  for (const scheme of ['https://', 'http://']) {
-    if (raw.startsWith(scheme)) return raw.slice(scheme.length).replace(/\/$/, '')
-  }
-  return raw.replace(/\/$/, '')
-}
-
-function webPageMedia(w: WireWebPagePreview): MessageMedia {
-  const sizes: PhotoSize[] = []
-  if (w.photo_blur) sizes.push({ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: w.photo_blur })
-  if (w.photo_has_thumb && w.photo_w && w.photo_h) {
-    const [tw, th] = fitThumb(w.photo_w, w.photo_h)
-    sizes.push({ _: 'photoSize', type: THUMB_TYPE_SERVER, w: tw, h: th, size: 0 })
-  }
-  if (w.photo_w && w.photo_h) {
-    sizes.push({ _: 'photoSize', type: THUMB_TYPE_FULL, w: w.photo_w, h: w.photo_h, size: 0 })
-  }
-  const url = w.url ?? ''
-  return {
-    _: 'messageMediaWebPage',
-    webpage: {
-      _: 'webPage',
-      url,
-      display_url: displayUrl(url),
-      ...(w.site_name ? { site_name: w.site_name } : {}),
-      ...(w.title ? { title: w.title } : {}),
-      ...(w.description ? { description: w.description } : {}),
-      ...(w.photo_id ? { photo: { _: 'photo' as const, id: w.photo_id, sizes } } : {}),
-      ...(w.has_iv ? { has_iv: true } : {}),
-    },
-  }
-}
 
 export interface HistoryArgs {
   peerId: number
@@ -783,14 +726,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       // Координаты приезжают ТЕМ ЖЕ конструктором, что и в сообщении, — кладём
       // вложение целиком. Время обновления едет рядом (edit_date) и ложится в
       // то же поле, что и у обычной правки: своего времени у гео в схеме нет.
+      const media = saveMessageMedia(evt.media)
       patchMsg(evt.peer_id, (m) => m.id === id,
-        (m) => (m._ !== 'message' ? m : { ...m, media: evt.media, edit_date: evt.edit_date }))
+        (m) => (m._ !== 'message' ? m : { ...m, media, edit_date: evt.edit_date }))
     },
 
     // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной
     // операции 'patch' на каждое окно чата, где сообщение видно (Stage 1B.3, Task 3).
+    //
+    // Карточка приезжает КОНСТРУКТОРОМ и кладётся как есть — переводить нечего:
+    // форма кадра и форма модели совпали. Через `saveMessageMedia` она всё
+    // равно проходит, как любое вложение с провода: это ОДНА граница разбора, а
+    // не «нормализация там, где сегодня нужна».
     cacheWebPage(evt: WebPageUpdateEvt): MessageOp[] {
-      const media = webPageMedia(evt.web_page)
+      const media = saveMessageMedia(evt.media)
       const id = generateMessageId(evt.id)
       patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, media }))
       return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { media } }))

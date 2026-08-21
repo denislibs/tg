@@ -125,12 +125,26 @@ func PollOption(index int) []byte { return []byte{byte(index)} }
 // Обязательных параметров нет ни одного: пустой pollResults — законная форма
 // («опрос есть, никто не голосовал»).
 //
-// Не производятся: min (объект пришёл урезанным — двух степеней полноты у нас
-// нет), has_unread_votes, can_view_stats (статистика опроса), recent_voters
-// (последних проголосовавших мы не храним), solution/solution_entities/
-// solution_media (пояснение к правильному ответу викторины — поля у опроса нет).
+// ── min: «объект пришёл УРЕЗАННЫМ» ──────────────────────────────────────────
+// Флаг долго числился в «нет предмета» — «двух степеней полноты у нас нет». Это
+// было неверно: степени две, и вторая производится ровно одним местом.
+// publishPollUpdate собирает итоги для «зрителя 0» (MyVotes пуст), потому что
+// тело кадра одно на всех получателей, — то есть шлёт заведомо урезанный
+// объект. Именно это min и означает, и именно по нему оригинал
+// (appPollsManager.saveResults) решает СОХРАНИТЬ свой выбор вместо того, чтобы
+// затереть его пустым.
+//
+// Пока флага не было, клиент подразумевал урезанность БЕЗУСЛОВНО — и
+// персонализированные итоги, начни мы их слать, молча игнорировались бы.
+// Ставится он единственным местом — PollResults.MarkMin.
+//
+// Не производятся: has_unread_votes, can_view_stats (статистика опроса),
+// recent_voters (последних проголосовавших мы не храним),
+// solution/solution_entities/solution_media (пояснение к правильному ответу
+// викторины — поля у опроса нет).
 type PollResults struct {
-	Underscore string `json:"_"`
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	// Results — flags.1?Vector<PollAnswerVoters>: числа по вариантам.
 	Results []PollAnswerVoters `json:"results,omitempty"`
 	// TotalVoters — flags.2?int: сколько РАЗНЫХ людей проголосовало (не сумма по
@@ -196,3 +210,9 @@ func (p PollInfo) ToMedia() *MessageMediaPoll {
 	}
 	return &MessageMediaPoll{Underscore: MessageMediaPollTag, Poll: poll, Results: results}
 }
+
+// MarkMin помечает итоги УРЕЗАННЫМИ (pollResults.pFlags.min): в них нет
+// пер-зрительской части, и клиенту следует сохранить свой выбор, а не затирать
+// его отсутствием chosen. Единственный производитель такого объекта — кадр
+// poll_update, тело которого одно на всех получателей.
+func (r *PollResults) MarkMin() { setPFlag(&r.PFlags, "min", true) }

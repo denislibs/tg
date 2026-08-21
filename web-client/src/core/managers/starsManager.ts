@@ -55,40 +55,6 @@ export function isGiftConverted(g: AnyStarGift): boolean {
   return g._ === 'messageActionStarGift' && !!g.pFlags?.converted
 }
 
-/**
- * ПОЗИЦИЯ КАТАЛОГА в плоской форме — `GET /gifts/catalog` отдаёт её как есть
- * (`domain.StarGift`), конструктором `starGift` каталог ещё не поехал. Названный
- * остаток: витрина каталога — не подсистема сообщения, и в этот шаг она не
- * входила.
- */
-export interface StarGiftCatalogItem {
-  id: number
-  emoji: string
-  title: string
-  priceStars: number
-  convertStars: number
-  total: number | null
-  remains: number | null
-  soldOut: boolean
-}
-
-interface RawGift {
-  id: number
-  emoji: string
-  title: string
-  price_stars: number
-  convert_stars: number
-  total: number | null
-  remains: number | null
-  sold_out: boolean
-}
-
-const mapGift = (g: RawGift): StarGiftCatalogItem => ({
-  id: g.id, emoji: g.emoji, title: g.title,
-  priceStars: g.price_stars, convertStars: g.convert_stars,
-  total: g.total, remains: g.remains, soldOut: g.sold_out,
-})
-
 // Транзакция звёзд (история кошелька). amount со знаком: + начисление, − списание.
 export interface StarTransaction {
   id: number
@@ -126,9 +92,13 @@ export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post
       const r = await rest.post<{ balance: number }>('/stars/topup', { amount })
       return r.balance
     },
-    async catalog(): Promise<StarGiftCatalogItem[]> {
-      const r = await rest.get<{ gifts: RawGift[] }>('/gifts/catalog')
-      return (r.gifts ?? []).map(mapGift)
+    // Каталог едет конструкторами схемы — маппера у него больше нет, как и у
+    // витрины профиля: позиция каталога это `starGift`, ТОТ ЖЕ объект, который
+    // лежит внутри `savedStarGift` и `messageActionStarGift`. Плоская вторая
+    // форма (`price_stars`/`sold_out`/`total`/`remains`) с провода ушла.
+    async catalog(): Promise<StarGift[]> {
+      const r = await rest.get<{ gifts: StarGift[] }>('/gifts/catalog')
+      return r.gifts ?? []
     },
     // Дарит подарок: возвращает новый баланс отправителя.
     async send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<{ balance: number }> {

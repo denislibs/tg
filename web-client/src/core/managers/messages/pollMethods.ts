@@ -10,7 +10,7 @@
 // адресуется не номером, а идентификатором внутри вложения — так его и находят
 // (`byPollId`/`byTodoId`/`byGiveawayId`).
 import { mapMyMessage, type MyMessage, type MessageReal, type RawMyMessage, type GiveawayState } from '../../models'
-import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '../../media/messageMedia'
+import { saveMessageMedia, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { MessagesCtx } from './ctx'
 import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
@@ -124,19 +124,26 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // операция несёт агрегат КАК ПРИШЁЛ, а окно вкладки сохраняет свой выбор при
     // слиянии патча (см. `patch()` в core/realtime/messageOps.ts).
     cachePoll(evt: { peer_id: number; media: MessageMediaPoll }): MessageOp[] {
-      return ops(evt.peer_id, setMedia(evt.peer_id, byPollId(evt.media.poll.id), evt.media), evt.media)
+      const media = saveMessageMedia(evt.media) as MessageMediaPoll
+      return ops(evt.peer_id, setMedia(evt.peer_id, byPollId(media.poll.id), media), media)
     },
     // Чек-лист: отметки глобальны — локального выбора нет, полная замена.
     cacheChecklist(evt: { peer_id: number; media: MessageMediaToDo }): MessageOp[] {
-      return ops(evt.peer_id, setMedia(evt.peer_id, byTodoId(evt.media.todo.id), evt.media), evt.media)
+      const media = saveMessageMedia(evt.media) as MessageMediaToDo
+      return ops(evt.peer_id, setMedia(evt.peer_id, byTodoId(media.todo.id), media), media)
     },
     // Розыгрыш: локального выбора у вложения БОЛЬШЕ НЕТ — участие уехало в
     // отдельную ручку, — поэтому исключения в `patch()` розыгрышу больше не
     // нужно, замена полная.
+    //
+    // `saveMessageMedia` здесь не формальность: у состоявшегося розыгрыша он
+    // переводит `launch_msg_id` в клиентское пространство номеров — кадр несёт
+    // его ровно так же, как витрина сообщения.
     cacheGiveaway(evt: { peer_id: number; media: MessageMedia }): MessageOp[] {
-      const id = giveawayIdOf(evt.media)
+      const media = saveMessageMedia(evt.media)!
+      const id = giveawayIdOf(media)
       if (id === undefined) return []
-      return ops(evt.peer_id, setMedia(evt.peer_id, byGiveawayId(id), evt.media), evt.media)
+      return ops(evt.peer_id, setMedia(evt.peer_id, byGiveawayId(id), media), media)
     },
   }
 }

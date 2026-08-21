@@ -85,8 +85,16 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 		}
 		// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает
 		// и через /sync (плотный pts-курсор), а не только живым кадром.
+		//
+		// Карточка едет ТЕМ ЖЕ конструктором, что и в самом сообщении
+		// (messageMediaWebPage под ключом media): собственный ключ web_page со
+		// снимком read-модели внутри (site_name/photo_id/photo_w/photo_blur/…)
+		// был второй формой превью на проводе — ровно той плоской, ради
+		// устранения которой делался порт объединения. Клиент переводил её в
+		// первую на границе, ДУБЛИРУЯ арифметику domain.fitThumb; переводить
+		// больше нечего.
 		_ = i.logAndPublish(wctx, msg.ChatID, recipients, "web_page_update", map[string]any{
-			"id": msg.Seq, "web_page": wp,
+			"id": msg.Seq, "media": wp.ToMedia(),
 		})
 	})
 }

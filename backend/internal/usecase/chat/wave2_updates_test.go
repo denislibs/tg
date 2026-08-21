@@ -188,6 +188,28 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 		assertLiveFramePts(t, pub, uid, "poll_update", pts)
 		assertInDifference(t, in, uid, "poll_update", pts)
 	}
+
+	// Итоги кадра собраны для «зрителя 0»: тело одно на всех получателей, а
+	// chosen/correct — пер-зрительские. В схеме это pollResults.pFlags.min, и
+	// именно по нему клиент СОХРАНЯЕТ свой выбор вместо того, чтобы затереть
+	// его отсутствием chosen. Голосовавший в кадре не отмечен — без флага его
+	// выбор пропал бы при первом же кадре.
+	var env struct {
+		D struct {
+			Media domain.MessageMediaPoll `json:"media"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(mustFrame(t, pub, voter, "poll_update"), &env); err != nil {
+		t.Fatalf("кадр poll_update не разбирается: %v", err)
+	}
+	if !env.D.Media.Results.PFlags["min"] {
+		t.Errorf("итоги кадра без pFlags.min: %+v", env.D.Media.Results)
+	}
+	for _, r := range env.D.Media.Results.Results {
+		if r.PFlags["chosen"] {
+			t.Errorf("кадр несёт пер-зрительский chosen: %+v", r)
+		}
+	}
 }
 
 // Toggling a checklist item logs + fans out checklist_update, dense pts, replay.

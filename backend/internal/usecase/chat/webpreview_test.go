@@ -101,17 +101,14 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if stored.WebPage == nil || stored.WebPage.Title != "Заголовок" {
 		t.Fatalf("web_page not stored: %+v", stored.WebPage)
 	}
-	// Кадр несёт peer_id/id/web_page. И peer_id у СТОРОН РАЗНЫЙ: для a это id b,
+	// Кадр несёт peer_id/id/media. И peer_id у СТОРОН РАЗНЫЙ: для a это id b,
 	// для b — id a. Внутренний chatID не появляется ни в одном из них, а
 	// сообщение адресуется ОДНИМ числом — номером в чате.
-	frameFor := func(userID int64) struct {
-		T string `json:"t"`
-		D struct {
-			PeerID  domain.PeerID         `json:"peer_id"`
-			ID      int64                 `json:"id"`
-			WebPage domain.WebPagePreview `json:"web_page"`
-		} `json:"d"`
-	} {
+	//
+	// Карточка едет КОНСТРУКТОРОМ messageMediaWebPage — тем же, что и в самом
+	// сообщении. Собственного ключа web_page с плоским снимком read-модели у
+	// кадра больше нет: это была вторая форма превью на проводе.
+	frameFor := func(userID int64) webPageFrame {
 		pub.mu.Lock()
 		var raw []byte
 		for _, f := range pub.frames {
@@ -121,15 +118,7 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 			}
 		}
 		pub.mu.Unlock()
-		var env struct {
-			T string `json:"t"`
-			D struct {
-				PeerID domain.PeerID `json:"peer_id"`
-				// Адрес сообщения в кадре ОДИН: id со значением номера в чате.
-				ID      int64                 `json:"id"`
-				WebPage domain.WebPagePreview `json:"web_page"`
-			} `json:"d"`
-		}
+		var env webPageFrame
 		if err := json.Unmarshal(raw, &env); err != nil {
 			t.Fatalf("frame json for %d: %v", userID, err)
 		}
@@ -142,16 +131,44 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if envB.D.PeerID != domain.PeerID(a) {
 		t.Fatalf("peer_id для b = %d; want %d (собеседник)", envB.D.PeerID, a)
 	}
-	if envA.D.ID != msg.Seq || envA.D.WebPage.SiteName != "Example" {
+	if envA.D.ID != msg.Seq {
 		t.Fatalf("frame payload = %+v", envA.D)
 	}
-	if strings.Contains(string(mustFrame(t, pub, a, "web_page_update")), `"msg_id"`) {
-		t.Fatal("в кадре осталось второе число msg_id")
+	if envA.D.Media.Underscore != domain.MessageMediaWebPageTag {
+		t.Fatalf("вложение кадра = %+v; ждали messageMediaWebPage", envA.D.Media)
 	}
-	if strings.Contains(string(mustFrame(t, pub, a, "web_page_update")), `"chat_id"`) {
-		t.Fatal("в кадре остался chat_id")
+	page := envA.D.Media.WebPage
+	if page == nil || page.Underscore != domain.WebPageTag {
+		t.Fatalf("карточка кадра = %+v", page)
+	}
+	if page.SiteName != "Example" || page.Title != "Заголовок" || page.Description != "Описание" {
+		t.Fatalf("карточка кадра = %+v", page)
+	}
+	// display_url — тот же адрес без схемы; он есть только у конструктора, в
+	// плоском снимке его не было вовсе.
+	if page.DisplayURL != "example.com/post" {
+		t.Fatalf("display_url = %q", page.DisplayURL)
+	}
+	raw := string(mustFrame(t, pub, a, "web_page_update"))
+	// Ни второй формы карточки, ни второго числа адреса.
+	for _, gone := range []string{`"web_page"`, `"photo_id"`, `"photo_w"`, `"photo_h"`, `"photo_blur"`, `"photo_has_thumb"`, `"msg_id"`, `"chat_id"`} {
+		if strings.Contains(raw, gone) {
+			t.Fatalf("в кадре осталось %s: %s", gone, raw)
+		}
 	}
 	_ = chatID
+}
+
+// webPageFrame — кадр web_page_update глазами клиента: конверт плюс вложение
+// конструктором схемы. Отдельный тип, потому что читают его два теста.
+type webPageFrame struct {
+	T string `json:"t"`
+	D struct {
+		PeerID domain.PeerID `json:"peer_id"`
+		// Адрес сообщения в кадре ОДИН: id со значением номера в чате.
+		ID    int64                      `json:"id"`
+		Media domain.MessageMediaWebPage `json:"media"`
+	} `json:"d"`
 }
 
 // mustFrame — сырой кадр типа t для получателя userID.

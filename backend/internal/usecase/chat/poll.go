@@ -245,7 +245,14 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 	if err != nil {
 		return
 	}
+	media := info.ToMedia()
+	// Итоги собраны для «зрителя 0», то есть заведомо УРЕЗАНЫ: тело кадра одно
+	// на всех получателей, а chosen/correct — пер-зрительские. В схеме ровно это
+	// и называется pollResults.pFlags.min, и клиент по нему сохраняет свой
+	// выбор. Без флага «урезанность» пришлось бы подразумевать безусловно — а
+	// значит персонализированные итоги были бы молча выброшены.
+	media.Results.MarkMin()
 	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
 	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
-	_ = i.logAndPublish(ctx, chatID, members, "poll_update", map[string]any{"media": info.ToMedia()})
+	_ = i.logAndPublish(ctx, chatID, members, "poll_update", map[string]any{"media": media})
 }

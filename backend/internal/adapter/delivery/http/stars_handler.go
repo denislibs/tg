@@ -106,6 +106,11 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 // GiftCatalog — GET /gifts/catalog: доступные подарки.
+//
+// Позиция каталога едет конструктором starGift — ТЕМ ЖЕ, каким она уже ехала
+// внутри savedStarGift и messageActionStarGift. Прежде та же позиция имела
+// вторую, плоскую форму (price_stars/sold_out/total/remains): каталог был
+// единственным местом, куда строка domain.StarGift выходила на провод как есть.
 func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 	gifts, err := h.svc.GiftCatalog(r.Context())
 	if errors.Is(err, domain.ErrNotFound) {
@@ -116,10 +121,11 @@ func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load catalog")
 		return
 	}
-	if gifts == nil {
-		gifts = []domain.StarGift{}
+	out := make([]domain.MTStarGift, 0, len(gifts))
+	for _, g := range gifts {
+		out = append(out, domain.NewStarGift(g))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"gifts": gifts})
+	writeJSON(w, http.StatusOK, map[string]any{"gifts": out})
 }
 
 // SendGift — POST /gifts/send {to_user_id, gift_id, message, anonymous}.
