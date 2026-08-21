@@ -450,17 +450,64 @@ export function getThreadRootId(m: MyMessage): number | undefined {
 }
 
 /**
- * Рисовать бабл СПРАВА. Это НЕ то же самое, что `pFlags.out`: `out` отвечает
- * «я ли отправил», а сторона бабла — вопрос витрины.
+ * Срез чата, от которого зависит ответ `isOurMessage`. В tweb это МЕТОД САМОГО
+ * ЧАТА (`Chat.isOurMessage`, chat.ts:1374), поэтому вид чата он читает у `this`,
+ * а свою личность — у глобального `rootScope.myId`. У нас ни того, ни другого
+ * внутри `core/models.ts` взять нельзя и не нужно:
  *
- * Сообщение от лица канала (send-as) и пост канала остаются `out` у своего
- * автора, но рисуются ВХОДЯЩИМИ — ровно как в оригинале, где такой пост
- * приходит автофорвардом от имени канала. Раньше это выражало отдельное поле
- * `send_as`; теперь — сам `from_id`: если автор не человек (или его нет вовсе,
- * что и значит «от самого пира»), бабл входящий.
+ *  • вид чата знает тот, кто чат открыл (`ChatContext` императивной ленты,
+ *    `Chat.tsx` у реактивной), а тянуть сюда `core/peerCache.ts` — значит
+ *    завести в ВОРКЕРЕ (модуль грузится и там) второе, пустое зеркало карточек;
+ *  • свою личность так же передаёт вызывающий — ровно как уже делает соседний
+ *    `messageToConvMsg(m, meId)`; `lib/rootScope.ts` — главнопоточная шина.
  */
-export function isOurMessage(m: MyMessage): boolean {
-  return !!m.pFlags.out && m.from_id?._ === 'peerUser'
+export interface OurMessageChat {
+  /** порт `rootScope.myId` (rootScope.ts:253); `null` — личность ещё не известна */
+  myId: number | null
+  /** порт `chat.isMegagroup` (chat.ts:141). Любая наша группа — это `channel`
+   *  с `pFlags.megagroup` (см. `core/peers/peer.ts:325`), то есть «открыт
+   *  групповой чат» и есть этот признак. */
+  isMegagroup?: boolean
+}
+
+/**
+ * Рисовать бабл СПРАВА. Порт `Chat.isOurMessage` (tweb chat.ts:1374-1390)
+ * ДОСЛОВНО. Это НЕ то же самое, что `pFlags.out`: `out` отвечает «я ли
+ * отправил», а сторона бабла — вопрос витрины (комментарий оригинала на месте
+ * вызова, bubbles.ts:6615: «can't use 'message.pFlags.out' here because this
+ * check will be used to define side of message»).
+ *
+ * Три ветки оригинала и что они значат у нас:
+ *
+ *  1. **Мегагруппа — сырой `pFlags.out`.** Сообщение от лица канала (send-as)
+ *     остаётся `out` у своего автора (бэкенд объявляет это прямо —
+ *     `MessageContext.Out`, `backend/internal/domain/messagewire.go`) и рисуется
+ *     ИСХОДЯЩИМ, с именем канала над баблом. Прежняя формулировка «send-as
+ *     рисуется входящим, как автофорвард поста» смешивала два разных случая:
+ *     автофорвард поста канала в группу обсуждения приходит БЕЗ `out` (это не
+ *     моё сообщение) и потому входящий сам собой, а send-as — моё.
+ *  2. **Я автор и это не пост канала.** `fromId` у нас отсутствует у поста «от
+ *     самого пира», а у tweb в этом случае равен `peerId` (appMessagesManager
+ *     .ts:5090) — отсюда `?? m.peerId`, иначе сравнение с `myId` спрашивало бы
+ *     про другой объект. `!pFlags.post` отсекает пост вещательного канала: он
+ *     `out` у выложившего его админа, но рисуется входящим у всех.
+ *  3. **`fwd_from.pFlags.saved_out`** (chat.ts:1383) — окно «Сохранённых
+ *     диалогов», где своя пересылка помечается исходящей самим сервером. НЕ
+ *     ПОРТИРОВАНА, и не потому что забыли: параметра нет ни на проводе
+ *     (`backend/internal/domain/mtfwd.go` перечисляет `pFlags.saved_out` среди
+ *     непроизводимых — «ни колонки, ни механики»), ни в нашем
+ *     `MessageFwdHeader` ниже. Ветка без предмета — это `if (false)`.
+ */
+export function isOurMessage(m: MyMessage, chat: OurMessageChat): boolean {
+  if (chat.isMegagroup) {
+    return !!m.pFlags.out
+  }
+
+  if ((m.fromId ?? m.peerId) === chat.myId && !m.pFlags.post) {
+    return true
+  }
+
+  return false
 }
 
 /**

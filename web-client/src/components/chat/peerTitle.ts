@@ -34,13 +34,16 @@
 //    `peerId` (обычный автор) и `fromName` (имя строкой, когда пира нет —
 //    порт того же поля tweb: скрытый форвард, а у нас send-as, где заголовок
 //    личности приезжает прямо в сообщении).
-//  • Имя кладётся ТЕКСТОМ. tweb прогоняет его через `wrapEmojiText`
-//    (эмодзи в имени → картинка); нашего `wrapEmojiText` не существует, а
-//    `wrapMessageText` сюда не годится — он ещё и автолинкует, превращая имя
-//    вида «t.me/x» в ссылку. Эмодзи в именах отрисуются системным шрифтом.
+//  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
+//    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
+//    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
+//    (peerTitle.ts:114). Наш `getPeerTitle` собирает СТРОКУ, поэтому обёртка
+//    живёт здесь — ровно как в `wrapEmojiText` оригинала, узлами.
 import type { Middleware } from '@helpers/middleware'
 import { cachedPeer, subscribePeerMirror } from '@core/peerCache'
 import { getPeerTitle } from '@core/peers/getPeerTitle'
+import { HIDDEN_PEER_ID } from '@core/peers/peerId'
+import { wrapEmojiText } from '@lib/richtext'
 
 /** Срез менеджеров, который нужен узлу имени: объявить пробел зеркала. */
 export interface PeerTitleManagers {
@@ -103,11 +106,21 @@ export default class PeerTitle {
     }
 
     if (fromName !== undefined) {
-      this.element.textContent = fromName
+      this.setTitle(fromName)
       return
     }
 
     if (peerId === undefined) {
+      return
+    }
+
+    // Скрытая атрибуция пересылки (правило приватности `forwards`) — НЕ пир, а
+    // sentinel-ключ: карточки для него не существует и появиться не может.
+    // Порядок оригинала (peerTitle.ts:149) — эта ветка стоит ДО обращения к
+    // хранилищу пиров; спросив зеркало, узел остался бы пустым навсегда и в
+    // придачу без конца объявлял бы пробел за пиром, которого нет.
+    if (peerId === HIDDEN_PEER_ID) {
+      this.setTitle(getPeerTitle({ peerId, peer: undefined }))
       return
     }
 
@@ -119,11 +132,23 @@ export default class PeerTitle {
         this.declaredGap = true
         managers.peers.fillMirror([peerId]).catch(() => { this.declaredGap = false })
       }
-      return
     }
 
     // Имя собирает клиент — `display_name` с провода убран (порт
     // `wrappers/getPeerTitle.ts`, у нас `core/peers/getPeerTitle.ts`).
-    this.element.textContent = getPeerTitle({ peerId, peer })
+    //
+    // Карточки может не быть — и это НЕ повод оставить узел пустым: у
+    // оригинала `!user` стоит первым термом того же фолбэка
+    // (`getPeerTitle.ts:62`), то есть промах кэша и удалённый аккаунт дают одну
+    // и ту же надпись. Иначе пир, которого владелец отдать не может (удалён,
+    // недоступен), остался бы пустым узлом навсегда.
+    this.setTitle(getPeerTitle({ peerId, peer }))
+  }
+
+  /** Порт `setInnerHTML(this.element, wrapEmojiText(title))` (peerTitle.ts:114,
+   *  :228): имя — УЗЛЫ, а не строка. Сырой HTML тут невозможен по построению —
+   *  `wrapEmojiText` собирает фрагмент из `createElement`/`createTextNode`. */
+  private setTitle(title: string) {
+    this.element.replaceChildren(wrapEmojiText(title))
   }
 }

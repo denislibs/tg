@@ -18,6 +18,7 @@ import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/
 import type { MessageReal, MyMessage } from '@core/models'
 import type { ReplyMarkup } from '@core/markup/replyMarkup'
 import { makeMessage, makeServiceMessage, type MessageFixture } from '@core/messages/testMessage'
+import rootScope from '@lib/rootScope'
 import { generateTempMessageId } from '@core/history/messageId'
 import BubbleGroups, {
   STICKY_OFFSET,
@@ -60,6 +61,11 @@ function svc(f: Over = {}): MyMessage {
  *  секция дня начинается с дата-бабла, его `is-fake`-дубля и sticky-sentinel'а,
  *  поэтому первая группа встаёт на позицию `STICKY_OFFSET`. */
 class TestHost implements BubbleGroupsHost {
+  /** Порт `chat.isMegagroup`: вид чата группам сообщает ХОЗЯИН (в tweb — `Chat`
+   *  через `chat.isOutMessage`). По умолчанию открыт групповой чат — именно в
+   *  нём живут все сценарии этого файла, кроме постов вещательного канала. */
+  constructor(public readonly isMegagroup = true) {}
+
   public chatInner = document.createElement('div')
   public dateMessages: Map<number, DateContainer> = new Map()
   public middlewareHelper: MiddlewareHelper = getMiddleware()
@@ -117,11 +123,17 @@ let host: TestHost
 let groups: BubbleGroups
 const bubbleOf: Map<number, HTMLElement> = new Map()
 
-beforeEach(() => {
-  nextSeq = 0
-  host = new TestHost()
+/** Пересобрать хост под другой вид чата (мегагруппа против вещательного
+ *  канала): от него зависит `isOurMessage`, а значит и терм направления. */
+function openChat(isMegagroup: boolean) {
+  host = new TestHost(isMegagroup)
   groups = new BubbleGroups(host)
   bubbleOf.clear()
+}
+
+beforeEach(() => {
+  nextSeq = 0
+  openChat(true)
 })
 
 /** Порт тела tweb `ChatBubbles.groupBubbles` (bubbles.ts:5973-6021) без ветки
@@ -236,6 +248,97 @@ describe('правила разрыва серии', () => {
     expect(layout()).toEqual([[1], [2]])
   })
 
+  // Порт tweb bubbleGroups.ts:595 «group anonymous sending». Отправка от лица
+  // канала (send-as) в МЕГАГРУППЕ: `pFlags.out` у сообщения стоит (отправил
+  // зритель), значит `isOurMessage` (сырой `out` при `isMegagroup`) считает его
+  // исходящим, а автор — ЧАТ, то есть не я. Каждое такое сообщение стоит СВОЕЙ
+  // серией — иначе имя канала покажется только у первого бабла (его прячет CSS
+  // у не-`is-group-first`).
+  it('отправка от лица канала (send-as) серии не образует', () => {
+    const sendAs = (id: number, time: string): MessageReal => ({
+      ...msg({ id, createdAt: at(time) }),
+      pFlags: { out: true },
+      from_id: { _: 'peerChannel', channel_id: 77 },
+      fromId: -77,
+    })
+
+    feed([sendAs(1, '12:00:00'), sendAs(2, '12:00:10'), sendAs(3, '12:00:20')])
+
+    expect(layout()).toEqual([[1], [2], [3]])
+  })
+
+  // Тот же автор-чат, но БЕЗ `out` — это входящее сообщение от лица канала
+  // (send-as чужого админа): его tweb группирует как обычное входящее
+  // (`!isOut1` в терме :595).
+  it('чужая отправка от лица канала группируется как обычное входящее', () => {
+    const theirSendAs = (id: number, time: string): MessageReal => ({
+      ...msg({ id, createdAt: at(time) }),
+      from_id: { _: 'peerChannel', channel_id: 77 },
+      fromId: -77,
+    })
+
+    feed([theirSendAs(1, '12:00:00'), theirSendAs(2, '12:00:10')])
+
+    expect(layout()).toEqual([[1, 2]])
+  })
+
+  // Пост вещательного канала тоже приходит с автором-каналом, но у tweb он в
+  // «исходящие» не попадает (`isOurMessage`, chat.ts:1379 — `&& !pFlags.post`),
+  // поэтому подряд идущие посты остаются ОДНОЙ серией. Чат здесь ВЕЩАТЕЛЬНЫЙ,
+  // а не мегагруппа: в мегагруппе тот же `out` дал бы исходящее и серии бы
+  // распались (см. пин выше) — вид чата решает всё.
+  it('подряд идущие посты канала остаются одной серией', () => {
+    openChat(false)
+    const post = (id: number, time: string): MessageReal => ({
+      ...msg({ id, createdAt: at(time) }),
+      pFlags: { out: true, post: true },
+      from_id: { _: 'peerChannel', channel_id: 50 },
+      fromId: -50,
+    })
+
+    feed([post(1, '12:00:00'), post(2, '12:00:10')])
+
+    expect(layout()).toEqual([[1, 2]])
+  })
+
+  // Порт tweb `Chat.isOutMessage` (chat.ts:1394): в «Избранном» (пир === зритель)
+  // ПЕРЕСЛАННОЕ сообщение исходящим не считается — оно рисуется от лица
+  // оригинального автора, поэтому в одну серию со своими не идёт.
+  it('в «Избранном» пересылка и своё сообщение — разные серии', () => {
+    const me = 9
+    rootScope.myId = me
+    try {
+      const own = makeMessage({ id: 1, peerId: me, fromId: me, out: true, createdAt: at('12:00:00'), text: 'own' })
+      const fwd: MessageReal = {
+        ...makeMessage({ id: 2, peerId: me, fromId: me, out: true, createdAt: at('12:00:10'), text: 'fwd' }),
+        fwd_from: { _: 'messageFwdHeader', date: 0, from_id: { _: 'peerUser', user_id: 3 } },
+      }
+
+      feed([own, fwd])
+
+      expect(layout()).toEqual([[1], [2]])
+    } finally {
+      rootScope.myId = 0
+    }
+  })
+
+  it('в обычном чате пересылка и своё сообщение остаются одной серией', () => {
+    rootScope.myId = 9
+    try {
+      const own = msg({ id: 1, fromId: 9, out: true, createdAt: at('12:00:00') })
+      const fwd: MessageReal = {
+        ...msg({ id: 2, fromId: 9, out: true, createdAt: at('12:00:10') }),
+        fwd_from: { _: 'messageFwdHeader', date: 0, from_id: { _: 'peerUser', user_id: 3 } },
+      }
+
+      feed([own, fwd])
+
+      expect(layout()).toEqual([[1, 2]])
+    } finally {
+      rootScope.myId = 0
+    }
+  })
+
   it('порядок в серии — по номеру, а не по порядку прихода баблов', () => {
     feed([
       msg({ id: 3, createdAt: at('12:00:20') }),
@@ -259,9 +362,7 @@ describe('инкрементальность', () => {
 
   /** Дописать одно сообщение в НИЖНЮЮ серию окна и вернуть цену вставки. */
   const appendOne = (groupCount: number) => {
-    host = new TestHost()
-    groups = new BubbleGroups(host)
-    bubbleOf.clear()
+    openChat(true)
     nextSeq = 0
 
     const messages = window5(groupCount)

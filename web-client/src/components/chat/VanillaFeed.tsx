@@ -15,7 +15,7 @@ import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
 import { useManagers } from '@core/hooks/useManagers'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -25,6 +25,10 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
   isLikeGroup?: boolean
   /** Порт tweb `chat.isBroadcast` — у канала своя (меньшая) страница истории. */
   isBroadcast?: boolean
+  /** Порт tweb `chat.isMegagroup` — от него зависит СТОРОНА бабла у отправки от
+   *  лица канала (`isOurMessage`, chat.ts:1375). Считает его тот же хост, что и
+   *  `isLikeGroup`: вид чата знает React-экран, а не лента. */
+  isMegagroup?: boolean
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
@@ -60,6 +64,7 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         messagesStorageKey: winKey(peerId, threadRootId),
         isLikeGroup,
         isBroadcast,
+        isMegagroup,
         container: chatColumn,
         bubblesViewport,
       },
@@ -78,7 +83,7 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
       bubbles.destroy()
       chatColumn.classList.remove('is-go-down-visible')
     }
-  }, [peerId, threadRootId, isLikeGroup, isBroadcast, managers])
+  }, [peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, managers])
 
   return <div ref={hostRef} style={{ display: 'contents' }} />
 }

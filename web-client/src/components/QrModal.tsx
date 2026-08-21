@@ -18,12 +18,15 @@ import { WALLPAPER_PRESETS } from '../wallpapers'
 import patternUrl from '../assets/pattern.svg'
 import logoUrl from '../assets/logo_padded.svg'
 import { usePortalContainer } from '../core/pip'
+import { hexToRgb, darkenToMaxLuminance } from '../shared/lib/color'
 import { usePopupTransition } from './settings/kit'
 import s from './QrModal.module.scss'
 
 // tweb ChatQrCodeScreen: QR 220, карта 300×330 r42, аватар 100 (+кольцо 4)
 const QR_SIZE = 220
-// tweb QR_INK_MAX_LUMINANCE: стопы затемняются, иначе QR не сканируется
+// tweb QR_INK_MAX_LUMINANCE (popups/myQrCode.tsx:64): порог местной политики
+// «чернила на белой карте» — ≥ ~4.5:1 контраста, иначе QR не сканируется.
+// Сама формула прижатия — общая, в `shared/lib/color` (tweb @helpers/color).
 const INK_MAX_LUMINANCE = 0.18
 
 // Темы карусели: наши пресеты обоев + эмодзи (tweb: облачные chat-темы)
@@ -38,22 +41,8 @@ const QR_THEMES: { emoji: string; presetId: string }[] = [
   { emoji: '🎄', presetId: 'mint' },
 ]
 
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '')
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
-}
 const rgbToHex = (r: number, g: number, b: number) =>
   '#' + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')
-
-// tweb darkenToMaxLuminance: масштабирует каналы так, чтобы относительная
-// яркость не превышала max — контраст QR на белой карте.
-function darkenToMaxLuminance(hex: string, max = INK_MAX_LUMINANCE): string {
-  const [r, g, b] = hexToRgb(hex)
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-  if (lum <= max) return hex
-  const k = max / lum
-  return rgbToHex(r * k, g * k, b * k)
-}
 
 // ночной вариант обоев: тот же градиент, смешанный с чёрным (tweb blend для tinted)
 function nightColor(hex: string): string {
@@ -94,7 +83,10 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
     [preset, night],
   )
   // чернила QR/подписи — затемнённые стопы обоев (tweb darkenInkStops)
-  const inkStops = useMemo(() => preset.colors.map((c) => darkenToMaxLuminance(c)), [preset])
+  const inkStops = useMemo(
+    () => preset.colors.map((c) => darkenToMaxLuminance(c, INK_MAX_LUMINANCE)),
+    [preset],
+  )
 
   // QR: solid-рендер qr-code-styling c диагональным градиентом чернил и
   // логотипом по центру (tweb paintQrCode: rounded + extra-rounded, ecc L).

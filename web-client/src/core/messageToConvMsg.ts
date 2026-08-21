@@ -57,9 +57,10 @@ export function messageForReply(m: MyMessage): string {
  * Backend Message → вью-модель бабла.
  *
  * `out` здесь — СТОРОНА бабла (`isOurMessage`), а не «я ли отправил»: пост
- * канала и сообщение от лица канала остаются `pFlags.out` у своего автора, но
- * рисуются входящими. Решает это `from_id`: если автор не человек (или его нет
- * вовсе), бабл входящий.
+ * ВЕЩАТЕЛЬНОГО канала остаётся `pFlags.out` у выложившего его админа, но
+ * рисуется входящим. А вот сообщение от лица канала (send-as) в МЕГАГРУППЕ —
+ * исходящее: там оригинал берёт сырой `pFlags.out` (chat.ts:1375-1377).
+ * Поэтому вид чата обязан приехать сюда параметром — см. `OurMessageChat`.
  *
  * `opts.replyToMessage` — РАЗРЕШЁННЫЙ оригинал ответа: с провода едет только
  * ссылка (`reply_to.reply_to_msg_id`), а сообщение берётся из окна тем, у кого
@@ -78,9 +79,12 @@ export function messageToConvMsg(
     replyToMessage?: MyMessage
     /** закреплённое сообщение (цель `messageActionPinMessage`), тоже разрешённое */
     pinnedTarget?: MyMessage
+    /** порт `chat.isMegagroup` — вид ОТКРЫТОГО чата; знает его вызывающий
+     *  (`useConvMessages` ← `Chat.tsx`, `ChatBubbles` ← `ChatContext`). */
+    isMegagroup?: boolean
   },
 ): ConvMsg {
-  const out = isOurMessage(m)
+  const out = isOurMessage(m, { myId: meId, isMegagroup: opts?.isMegagroup })
   const kind = getMessageKind(m)
   // Секретное медиа приходит шифртекстом (`enc_body`); вид ('photo'|'video'|
   // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType — он и

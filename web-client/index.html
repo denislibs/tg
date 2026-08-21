@@ -7,6 +7,11 @@
          противоречил бы содержимому. -->
     <link rel="icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Оба мета-тега ведёт рантайм темы (core/theme/themeController.ts::setTheme /
+         setThemeColor), как в tweb (public/index.html:16-17 + themeController.ts:254,324):
+         color-scheme красит нативный хром браузера (скроллбары, контролы),
+         theme-color — адресную строку/полосу статуса PWA. -->
+    <meta name="theme-color" content="#ffffff">
     <meta name="color-scheme" content="light">
     <title>Telegram</title>
     <!-- react-scan: версия запинена — npm-тег latest (0.5.7) несёт устаревший

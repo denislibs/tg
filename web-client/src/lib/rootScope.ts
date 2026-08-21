@@ -98,14 +98,17 @@ export type BroadcastEvents = {
   // оттуда — иначе получим два источника факта, ровно тот дубль, который
   // параллельно вычищает этап 1C.2.
   //
-  // Для RT.state эта pull-дисциплина 1:1 с tweb: `connectionStatus.ts:47-51` на
-  // `connection_status_change` игнорирует payload и пуллит getConnectionStatus()
-  // (:87-91) отдельным запросом. Для RT.stateSynchronizing/RT.stateSynchronized —
-  // НЕ порт: у tweb (:53-64) `this.updating` берётся из самого факта события
-  // (никакого pull), `updating` вообще не входит в getConnectionStatus()
-  // (`rootScope.ts:293` отдаёт только карту `connectionStatus`). Пуллить и здесь
-  // тоже — наше сознательное расширение той же дисциплины на вторую ось
-  // (обоснование — докблок getStatus в realtime.ts), не факт оригинала.
+  // Это ПРО RT.state, и там дисциплина 1:1 с tweb: `connectionStatus.ts:47-51`
+  // на `connection_status_change` игнорирует payload и пуллит
+  // getConnectionStatus() (:87-91) отдельным запросом.
+  //
+  // RT.stateSynchronizing/RT.stateSynchronized устроены ИНАЧЕ — тоже 1:1 с tweb
+  // (:53-64): значение `updating` берётся из самого ФАКТА события, без pull.
+  // Пулять и здесь тоже мы пробовали; получалось два наблюдаемых дефекта —
+  // короткая синхронизация не показывалась вовсе, а инверсия ответов оставляла
+  // залипший спиннер (разбор — `components/connectionStatus.ts::construct`).
+  // Из pull осталась ровно одна вещь: засев `updating`, пока ни одного события
+  // синхронизации ещё не видели (вкладка, поднявшаяся в середине догона).
   [RT.state]: [{ state: ConnState; retryAt?: number }]
   // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
   // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
@@ -192,8 +195,31 @@ export type BroadcastEventsListeners = {
 }
 
 /** Порт в воркер. Отдельным сеттером, а не импортом bootstrap: rootScope не
- *  должен тянуть за собой поднятие SharedWorker (его импортируют и тесты). */
+ *  должен тянуть за собой поднятие SharedWorker (его импортируют и тесты).
+ *
+ *  Слотов РОВНО два: кадр провода — `{kind:'event', event, payload, meta}`
+ *  (`rpc/superMessagePort.ts:19`), третьего места в нём нет. В tweb наружу
+ *  уходит весь список (`rootScope.ts:283-289`: `args` целиком), и это различие
+ *  не косметическое: третий элемент кортежа события ушёл бы соседним вкладкам
+ *  молча обрезанным. Поэтому «третьего элемента не бывает» — не соглашение, а
+ *  проверяемый компилятором инвариант: см. `AssertWireArgs` ниже. */
 interface RootScopePort { emit(event: string, payload: unknown, meta?: EventMeta): void }
+
+/**
+ * Пин ширины провода. Кортеж каждого события каталога обязан укладываться в два
+ * слота кадра — иначе `never` в отображённом типе краснит `tsc --noEmit` прямо
+ * на записи каталога, а не молча теряет аргумент на другой вкладке. Расширять
+ * этот тип нельзя: сначала третий слот должен появиться в самом кадре
+ * (`superMessagePort`), в воркерном веере (`core/realtime/workerScope.ts`) и в
+ * насосе вкладки (`client/realtimeBridge.ts`).
+ */
+type WireArgs<T> = T extends [] | [unknown] | [unknown, (EventMeta | undefined)?] ? T : never
+type AssertWireArgs = { [K in keyof BroadcastEvents]: WireArgs<BroadcastEvents[K]> }
+// Присваивание существует только ради того, чтобы отображение выше реально
+// инстанцировалось: сам по себе неиспользуемый type-alias компилятор проверяет
+// лениво и `never` внутри него не заметит. Здесь же каждое поле каталога
+// сверяется со своим `WireArgs<…>`, и трёхэлементный кортеж (=`never`) краснит.
+export const WIRE_ARGS_PIN: AssertWireArgs = undefined as unknown as BroadcastEvents
 
 export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
   /** Порт tweb `rootScope.myId` (rootScope.ts:253): id текущего пользователя
@@ -223,6 +249,10 @@ export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
     // Принятое из воркера ре-эмитится через dispatchEventSingle, иначе кольцо.
     this.dispatchEvent = (name, ...args) => {
       super.dispatchEvent(name, ...args)
+      // Двух слотов ХВАТАЕТ на весь каталог, и это держит компилятор
+      // (`AssertWireArgs` выше), а не соглашение: третий элемент кортежа
+      // краснит `tsc` на самой записи каталога — иначе он ушёл бы соседним
+      // вкладкам молча обрезанным.
       this.port?.emit(name as string, args[0], args[1] as EventMeta | undefined)
     }
   }

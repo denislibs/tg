@@ -40,7 +40,10 @@
 //  • Не портированы правила `canItemsBeGrouped`, у которых нет предмета в
 //    нашей модели: `channelAdminLogEvent`, `isMessageForVerificationBot`,
 //    `suggested_post`, `getGuestChatViaFromId`, форум/ботфорум/монофорум-треды
-//    и `post_author`. Разбор — в отчёте по задаче.
+//    и `post_author`. Разбор — в отчёте по задаче. Два терма, у которых предмет
+//    ЕСТЬ, портированы дословно: `isOutMessage` (самопересылка в «Избранное»,
+//    функция ниже) и «group anonymous sending» (отправка от лица канала —
+//    прямо в `canItemsBeGrouped`).
 //  • `addChatThreadSeparators` / `addContinueLastTopicReplyMarkup` (монофорум и
 //    ботфорум) не портированы по той же причине.
 //  • Вендорные хелперы tweb (`positionElementByIndex`, `whichChild`,
@@ -48,11 +51,12 @@
 //    `helpers/` их ещё нет, а заводить файлы на одного потребителя — вне
 //    периметра этой задачи. При появлении второго потребителя их место —
 //    `helpers/dom/` и `helpers/array/`.
+import rootScope from '@lib/rootScope'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import forEachReverse from '@helpers/array/forEachReverse'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
 import { startOfDayMs } from '@core/format/dayLabel'
-import { isOurMessage, type MyMessage } from '@core/models'
+import { isOurMessage, type MyMessage, type OurMessageChat } from '@core/models'
 import { isServicePill } from '@core/serviceMsg'
 import { messageDateISO } from '@core/messageToConvMsg'
 import { getInlineMarkupRows } from '@core/markup/replyMarkup'
@@ -84,6 +88,11 @@ export interface GroupAvatar {
 
 /** Срез `ChatBubbles`, которым пользуются группы (см. расхождения в шапке). */
 export interface BubbleGroupsHost {
+  /** Порт `chat.isMegagroup` (chat.ts:141). В tweb группы вида чата не знают —
+   *  они спрашивают его у чата (`this.chat.isOutMessage`, bubbleGroups.ts:583);
+   *  у нас роль чата играет хост ленты, и знание приезжает от него, а не
+   *  выводится внутри предиката (`core/models.ts::OurMessageChat`). */
+  readonly isMegagroup: boolean
   /** порт `chat.bubbles.getDateContainerByTimestamp` (bubbles.ts:4823);
    *  аргумент — СЕКУНДЫ, как в оригинале */
   getDateContainerByTimestamp(timestamp: number): DateContainer
@@ -197,6 +206,30 @@ function partition<T>(array: T[], predicate: (value: T) => boolean): [T[], T[]] 
     (predicate(value) ? yes : no).push(value)
   }
   return [yes, no]
+}
+
+/**
+ * Порт tweb `Chat.isOutMessage` (chat.ts:1392-1396) в применимом объёме.
+ *
+ *     isOut = isOurMessage(message) && (!fwdFrom || peerId !== myId || threadId)
+ *
+ * Второй множитель — это САМОПЕРЕСЫЛКА В «ИЗБРАННОЕ»: пересланное в чат с самим
+ * собой сообщение перестаёт быть исходящим, потому что рисуется от лица
+ * ОРИГИНАЛЬНОГО автора. Для группировки это значит, что пересылки и собственные
+ * сообщения «Избранного» лежат в РАЗНЫХ сериях, — без этого терма они
+ * склеиваются в одну.
+ *
+ * Терм `|| this.threadId` не портирован: он про окно сохранённого диалога
+ * (Saved Dialogs, `ChatType.Saved`), которого у нас нет — тред у нас бывает
+ * только у форум-топика и комментариев, а «Избранное» ни тем, ни другим не
+ * бывает.
+ *
+ * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и сама
+ * `canItemsBeGrouped` отдельным термом требует совпадения пиров.
+ */
+function isOutMessage(message: MyMessage, chat: OurMessageChat): boolean {
+  const fwdFrom = message._ === 'message' ? message.fwd_from : undefined
+  return isOurMessage(message, chat) && (!fwdFrom || message.peerId !== chat.myId)
 }
 
 /** Порт tweb `canHaveReplyMarkup` (bubbleGroups.ts:51): у аватара серии свой
@@ -490,15 +523,37 @@ export default class BubbleGroups {
     return message.fromId ?? message.peerId
   }
 
+  /** Срез чата для `isOurMessage`/`isOutMessage` — то, что в tweb лежит на самом
+   *  `Chat` (`this.isMegagroup`) и на глобальном `rootScope`. */
+  private get chatSide(): OurMessageChat {
+    return { myId: rootScope.myId, isMegagroup: this.host.isMegagroup }
+  }
+
   /** Порт tweb bubbleGroups.ts:573 — единственное место, где живут правила
-   *  разрыва серии. */
+   *  разрыва серии.
+   *
+   *  Терм «group anonymous sending» (:595) портирован ДОСЛОВНО:
+   *  `!isOut1 || item1.message.fromId === rootScope.myId`. Он про send-as —
+   *  отправку от лица канала в мегагруппе: `isOurMessage` там берёт сырой
+   *  `pFlags.out`, поэтому такое сообщение ИСХОДЯЩЕЕ, а автор у него не я, и
+   *  каждое стоит своей серией — иначе имя канала показалось бы только у
+   *  первого бабла (остальные прячет CSS у не-`is-group-first`). Пост
+   *  вещательного канала терма не касается: чат не мегагруппа, `pFlags.post`
+   *  уводит `isOurMessage` в `false`, и подряд идущие посты остаются одной
+   *  серией. `fromId` — тот же ключ автора, что у `getMessageFromId`
+   *  (у tweb `message.fromId` с фолбэком на `peerId`).
+   *
+   *  Терм `|| this.chat.isMonoforum` не портирован — монофорума у нас нет. */
   public canItemsBeGrouped(item1: GroupItem, item2: GroupItem): boolean {
+    const chat = this.chatSide
+    const isOut1 = isOutMessage(item1.message, chat)
     return item2.fromId === item1.fromId &&
       item1.dateTimestamp === item2.dateTimestamp &&
       Math.abs(item2.timestamp - item1.timestamp) <= NEW_GROUP_DIFF &&
       !item1.single &&
       !item2.single &&
-      isOurMessage(item1.message) === isOurMessage(item2.message) &&
+      isOut1 === isOutMessage(item2.message, chat) &&
+      (!isOut1 || this.getMessageFromId(item1.message) === chat.myId) && // * group anonymous sending
       item1.message.peerId === item2.message.peerId
   }
 

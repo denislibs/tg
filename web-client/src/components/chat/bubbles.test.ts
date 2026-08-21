@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { DELETED_ACCOUNT_TITLE } from '@core/peers/getPeerTitle'
 import type { UserReal } from '@core/peers/peer'
 import type { MyMessage } from '@core/models'
 import { generateTempMessageId } from '@core/history/messageId'
@@ -158,16 +159,16 @@ describe('ChatBubbles — дерево DOM 1:1 с tweb constructBubbles', () => 
   })
 })
 
-// Модификатор is-out/is-in бабла. Порт tweb: лента читает `message.pFlags.out`
-// (свойство самого сообщения) и `rootScope.myId` — своего вывода
-// «исходящее/входящее» у неё нет. У нас `pFlags.out` производит СЕРВЕР (решение
-// Р7 отменено), а `rootScope.myId` пишет проектор на rt:me. Пин ловит возврат к
-// выводу на вкладке: раньше лента лезла за meId в zustand
-// (`useChatsStore.getState().meId`) и сравнивала с автором — зависимость,
-// недопустимая для ленты (grep по components/chat/ на импорт стора).
-describe('ChatBubbles — классы бабла берут `out` из самого сообщения', () => {
-  it('out=true → is-out, out отсутствует → is-in (автор ни на что не влияет)', async () => {
-    rootScope.myId = 999 // «я» — заведомо не автор ни одного из сообщений ниже
+// Модификатор is-out/is-in бабла — порт `Chat.isOurMessage` (tweb chat.ts:1374),
+// у оригинала он же и решает сторону (bubbles.ts:6615: «can't use
+// 'message.pFlags.out' here because this check will be used to define side of
+// message»). Вид чата предикату приносит `ChatContext`, свою личность лента
+// берёт из `rootScope.myId` (его пишет проектор на rt:me) — за meId в zustand
+// лента не ходит, эта зависимость ей запрещена (grep по components/chat/ на
+// импорт стора).
+describe('ChatBubbles — сторона бабла: порт Chat.isOurMessage', () => {
+  it('вне мегагруппы решает АВТОР против rootScope.myId, а не pFlags.out', async () => {
+    rootScope.myId = 999
     bubbles = new ChatBubbles(chatContext(), managersWith([
       msg({ id: 1, fromId: 2, out: true }),
       msg({ id: 2, fromId: 999 }),
@@ -176,10 +177,40 @@ describe('ChatBubbles — классы бабла берут `out` из само
     await bubbles.loadFirstHistory()
 
     const [first, second] = rendered(bubbles)
-    expect(first.classList.contains('is-out')).toBe(true)
-    // senderId === rootScope.myId, но владелец флага не поставил — лента НЕ
-    // выводит его сама.
-    expect(second.classList.contains('is-in')).toBe(true)
+    // Чужой автор — входящий, сколько бы флагов на сообщении ни стояло.
+    expect(first.classList.contains('is-in')).toBe(true)
+    // Автор — я, и это не пост канала (chat.ts:1379) → исходящий.
+    expect(second.classList.contains('is-out')).toBe(true)
+  })
+
+  // Ветка `if(this.isMegagroup) return !!message.pFlags.out` (chat.ts:1375-1377).
+  // Отправка от лица канала (send-as) остаётся `out` у своего автора — бэкенд
+  // объявляет это прямо (`MessageContext.Out`), — и рисуется СПРАВА, с именем
+  // канала. Раньше такой бабл уезжал влево: предикат требовал автора-человека.
+  it('в мегагруппе send-as рисуется СПРАВА (сырой pFlags.out)', async () => {
+    rootScope.myId = 999
+    bubbles = new ChatBubbles({ ...chatContext(), isMegagroup: true }, managersWith([
+      msg({ id: 1, fromId: -7, out: true }),
+      msg({ id: 2, fromId: 2 }),
+    ]))
+
+    await bubbles.loadFirstHistory()
+
+    const [sendAs, incoming] = rendered(bubbles)
+    expect(sendAs.classList.contains('is-out')).toBe(true)
+    expect(incoming.classList.contains('is-in')).toBe(true)
+  })
+
+  // Тот же объект в чате, который мегагруппой не объявлен, — вторая ветка
+  // оригинала: автор-канал зрителем не является. Пин держит, что вид чата
+  // реально доезжает до предиката, а не подразумевается.
+  it('тот же send-as вне мегагруппы — входящий', async () => {
+    rootScope.myId = 999
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, fromId: -7, out: true })]))
+
+    await bubbles.loadFirstHistory()
+
+    expect(rendered(bubbles)[0].classList.contains('is-in')).toBe(true)
   })
 })
 
@@ -830,8 +861,11 @@ describe('ChatBubbles — очередь рендера', () => {
 // ─── Имя автора в бабле (порт tweb `PeerTitle` + `needName`) ────────────────
 describe('ChatBubbles — имя автора', () => {
   const AUTHOR = 42
+  // Групповой чат: `isLikeGroup` (гейт имени) и `isMegagroup` (вид чата для
+  // `isOurMessage`) — у нас это один и тот же признак, любая наша группа это
+  // `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
   const groupContext = (over: Partial<ChatContext> = {}): ChatContext =>
-    ({ ...chatContext(), isLikeGroup: true, ...over })
+    ({ ...chatContext(), isLikeGroup: true, isMegagroup: true, ...over })
 
   const nameOf = (b: ChatBubbles, mid: number) =>
     b.getBubble(makeFullMid(CHAT, mid))!.querySelector<HTMLElement>('.name')
@@ -894,16 +928,13 @@ describe('ChatBubbles — имя автора', () => {
     expect(nameDiv.firstElementChild!.textContent).toBe('Канал')
   })
 
-  // `colored-name` — «только для чужих» (docs/tweb/bubbles.md:535), и решает
-  // это `isOurMessage`, а не `pFlags.out`: пост от лица канала ОСТАЁТСЯ out, но
-  // рисуется входящим — значит имя у него цветное, как у любого чужого.
-  //
-  // Прежде вторая половина этого пина брала «своё» сообщение с `send_as` —
-  // единственную комбинацию, где имя было и при этом считалось своим. Снимка
-  // `send_as` больше нет, а у своего сообщения (out + автор-человек) имени НЕТ
-  // ВОВСЕ (`needName`, пин «своё исходящее в группе имени НЕ получает» выше),
-  // поэтому вторая половина проверяет теперь именно это — отсутствие узла.
-  it('имя чужого и имя поста от лица канала — цветные; у своего имени нет вовсе', async () => {
+  // `colored-name` — «только для чужих» (docs/tweb/bubbles.md:535), и решает это
+  // `our = chat.isOurMessage(message)` (tweb :6616, :9509). Три случая разом, и
+  // средний — та самая комбинация «имя ЕСТЬ и оно НАШЕ», которой у нас не
+  // существовало, пока предикат требовал автора-человека: своя отправка от лица
+  // канала в мегагруппе подписана (`iPostedAsSomeoneElse`, :9325), но своя
+  // (`isMegagroup` → сырой `pFlags.out`), значит имя НЕ цветное.
+  it('имя чужого цветное, имя своего send-as — нет, у своего от себя имени нет вовсе', async () => {
     bubbles = new ChatBubbles(groupContext(), managersWith([
       msg({ id: 1, fromId: AUTHOR }),
       msg({ id: 2, fromId: -7, out: true }),
@@ -912,8 +943,16 @@ describe('ChatBubbles — имя автора', () => {
     await bubbles.loadFirstHistory()
 
     expect(nameOf(bubbles, 1)!.classList.contains('colored-name')).toBe(true)
-    expect(nameOf(bubbles, 2)!.classList.contains('colored-name')).toBe(true)
+    expect(nameOf(bubbles, 2)!.classList.contains('colored-name')).toBe(false)
     expect(nameOf(bubbles, 3)).toBeNull()
+  })
+
+  // Тот же send-as, но чужой (флага `out` нет) — обычное входящее: имя цветное.
+  it('чужой send-as в группе — имя цветное', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([msg({ id: 1, fromId: -7 })]))
+    await bubbles.loadFirstHistory()
+
+    expect(nameOf(bubbles, 1)!.classList.contains('colored-name')).toBe(true)
   })
 
   // 1:1 с tweb: узел строится у КАЖДОГО бабла серии, лишние прячет CSS
@@ -940,7 +979,11 @@ describe('ChatBubbles — имя автора', () => {
     await bubbles.loadFirstHistory()
 
     const title = nameOf(bubbles, 1)!.firstElementChild!
-    expect(title.textContent).toBe('')
+    // Пока карточки нет — фолбэк оригинала, а не пустой узел: у tweb `!user`
+    // стоит первым термом того же условия (`getPeerTitle.ts:62`). Пустым узел
+    // оставаться не может — карточки может не быть и НИКОГДА (владелец не
+    // отдаёт удалённого пользователя).
+    expect(title.textContent).toBe(DELETED_ACCOUNT_TITLE)
     expect(managers.fillMirror).toHaveBeenCalledWith([AUTHOR])
 
     applyPeerOps([{ op: 'upsert', peers: [peerCard(AUTHOR, 'Пётр')] }])

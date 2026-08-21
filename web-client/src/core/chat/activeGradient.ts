@@ -17,16 +17,51 @@ import type ChatBackgroundGradientRenderer from './gradientRenderer'
  *  не крутился бесконечно, если пин так и не случился. */
 const SCROLL_TIMEOUT = 1000
 
+/**
+ * Мета активных обоев, которая нужна ЗЕРКАЛУ градиента (tweb
+ * `ActiveBackgroundMeta`, bubbles/chatBackground.tsx:60).
+ *
+ * `isDarkMaskPattern` — тёмный узор через маску (ночная тема): сам градиент при
+ * этом остаётся ярким, темноту даёт узор-маска поверх него. Зеркало узора не
+ * повторяет, поэтому потребитель обязан дотемнить свою подложку сам — иначе на
+ * тёмном чате колонка светится ярким градиентом (tweb chatBackground.tsx:528-533).
+ */
+export type ActiveBackgroundMeta = { isDarkMaskPattern: boolean }
+
+type RendererListener = (r: ChatBackgroundGradientRenderer | undefined, meta?: ActiveBackgroundMeta) => void
+
 let active: ChatBackgroundGradientRenderer | undefined
+let activeMeta: ActiveBackgroundMeta | undefined
+const listeners = new Set<RendererListener>()
 
 /** обои сообщают о своём рендерере (tweb `gradientRendererRef`) */
-export function setActiveGradientRenderer(renderer: ChatBackgroundGradientRenderer | undefined) {
+export function setActiveGradientRenderer(
+  renderer: ChatBackgroundGradientRenderer | undefined,
+  meta?: ActiveBackgroundMeta,
+) {
   active = renderer
+  activeMeta = meta
+  for (const listener of listeners) listener(active, activeMeta)
 }
 
 /** tweb `appChatBackground.getActiveGradientRenderer()` */
 export function getActiveGradientRenderer(): ChatBackgroundGradientRenderer | undefined {
   return active
+}
+
+/**
+ * Подписка на смену рендерера активных обоев (tweb
+ * `appChatBackground.onActiveGradientRendererChange`, chatBackground.tsx:762-775):
+ * слушатель зовётся текущим значением СРАЗУ при подписке, возвращается отписка.
+ * Потребитель — колонка папок: она зеркалит градиент в свой холст вместо
+ * дорогого `backdrop-filter: blur(40px)`.
+ */
+export function onActiveGradientRendererChange(listener: RendererListener): () => void {
+  listeners.add(listener)
+  listener(active, activeMeta)
+  return () => {
+    listeners.delete(listener)
+  }
 }
 
 /**

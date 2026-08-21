@@ -40,6 +40,16 @@ describe('Chat.tsx — монтирование императивной лен�
     expect(jsx).toContain('threadRootId={threadRootId}')
   })
 
+  // Вид чата ленте неоткуда взять самой (стор ей запрещён), а от него зависит
+  // СТОРОНА бабла у отправки от лица канала (`Chat.isOurMessage`,
+  // tweb chat.ts:1375-1377) и гейт имени автора. Оба признака — «открыт
+  // групповой чат»: любая наша группа это `channel` с `pFlags.megagroup`.
+  it('лента получает вид чата: isLikeGroup и isMegagroup', () => {
+    const jsx = CHAT_TSX.match(/<VanillaFeed[^/>]*\/>/)?.[0] ?? ''
+    expect(jsx).toContain('isLikeGroup={isGroup}')
+    expect(jsx).toContain('isMegagroup={isGroup}')
+  })
+
   it('React-лента — ровно ВТОРАЯ ветка той же развилки (обе не живут одновременно)', () => {
     // Один гейт на весь блок: два независимых условия рано или поздно разъедутся
     // и дали бы две ленты в одном .chat сразу.

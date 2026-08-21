@@ -7,7 +7,12 @@
 // сдвиг и обязательно с `getProgress`.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import ChatBackgroundGradientRenderer from './gradientRenderer'
-import { setActiveGradientRenderer, getActiveGradientRenderer, shiftGradientWithScroll } from './activeGradient'
+import {
+  setActiveGradientRenderer,
+  getActiveGradientRenderer,
+  onActiveGradientRendererChange,
+  shiftGradientWithScroll,
+} from './activeGradient'
 
 const toNextPosition = vi.fn()
 
@@ -62,5 +67,35 @@ describe('shiftGradientWithScroll', () => {
     expect(getActiveGradientRenderer()).toBeUndefined()
     expect(shiftGradientWithScroll(scroller({ scrollHeight: 1000, clientHeight: 400, scrollTop: 0 }))).toBe(false)
     expect(toNextPosition).not.toHaveBeenCalled()
+  })
+})
+
+// tweb appChatBackground.onActiveGradientRendererChange (chatBackground.tsx:762-775).
+// Потребитель — колонка папок: без подписки она не узнала бы про смену обоев и
+// осталась бы с зеркалом мёртвого рендерера.
+describe('onActiveGradientRendererChange', () => {
+  it('зовёт слушателя текущим значением сразу при подписке', () => {
+    const renderer = { toNextPosition } as unknown as ChatBackgroundGradientRenderer
+    setActiveGradientRenderer(renderer, { isDarkMaskPattern: true })
+
+    const seen: unknown[][] = []
+    onActiveGradientRendererChange((r, meta) => seen.push([r, meta]))
+
+    expect(seen).toEqual([[renderer, { isDarkMaskPattern: true }]])
+  })
+
+  it('смена обоев доезжает до подписчика вместе с метой; отписка её прекращает', () => {
+    setActiveGradientRenderer(undefined)
+    const seen: unknown[][] = []
+    const off = onActiveGradientRendererChange((r, meta) => seen.push([r, meta]))
+    seen.length = 0
+
+    const renderer = { toNextPosition } as unknown as ChatBackgroundGradientRenderer
+    setActiveGradientRenderer(renderer, { isDarkMaskPattern: false })
+    expect(seen).toEqual([[renderer, { isDarkMaskPattern: false }]])
+
+    off()
+    setActiveGradientRenderer(undefined)
+    expect(seen).toHaveLength(1)
   })
 })

@@ -1375,9 +1375,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
             (по умолчанию ВЫКЛЮЧЕН): под ним React-лента не рендерится вовсе, всё
             дерево `.bubbles` строит vanilla-порт `chat/bubbles.ts`. Пин на эту
             развилку — `Chat.vanillaFeed.test.ts` (Chat.tsx нельзя отрендерить в
-            тесте, см. «Тесты» в web-client/CLAUDE.md). */}
+            тесте, см. «Тесты» в web-client/CLAUDE.md).
+
+            `isMegagroup` — тот же признак «открыт групповой чат»: любая наша
+            группа это `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
+            Берётся из диалога, а не из карточки пира: карточка приезжает позже,
+            и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} />
         ) : (
         <div
           ref={bubblesRef}

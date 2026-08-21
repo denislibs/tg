@@ -22,6 +22,8 @@ import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
+import { isBroadcast } from './peers/predicates'
+import type { Chat } from './peers/peer'
 import { newDialogsManager } from './managers/dialogsManager'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
@@ -169,6 +171,11 @@ export function createWorkerCore() {
     rest,
     decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
     getMeId: () => me?.user.id ?? null,
+    // Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags`: бабл поста
+    // вещательного канала рождается с `pFlags.post` — иначе он стоял бы справа
+    // до эха и прыгал влево (см. `PendingCtx.isBroadcastChat`). Стрелка ленивая
+    // ровно как send/upload ниже: `peers` объявлен дальше по файлу.
+    isBroadcastChat: (peerId) => isBroadcast(peers.cachedPeer(peerId) as Chat | undefined),
     // Гейт вывода `out` (см. объявление meReady выше).
     meReady: () => meReady,
     broadcast: (event, payload) => broadcast(event, payload),

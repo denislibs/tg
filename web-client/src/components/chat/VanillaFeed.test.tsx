@@ -7,7 +7,9 @@
 //   `host.append(container)`    — вставить её дерево в React-хост;
 //   `void bubbles.loadFirstHistory()` — попросить у неё первую страницу;
 //   `bubbles.destroy()` в cleanup — снять подписки на размонтировании.
-// Каждая покрыта отдельным `it` ниже.
+// Каждая покрыта отдельным `it` ниже. Пятая — проброс `isMegagroup` в
+// `ChatContext`: без него сообщение от лица канала уезжает не на ту сторону
+// (порт `Chat.isOurMessage`, tweb chat.ts:1375-1377).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import rootScope from '@lib/rootScope'
@@ -41,7 +43,10 @@ function managersWith(messages: MyMessage[]) {
 /** Колонка чата (`.chat`) вокруг хоста — как в проде (`Chat.tsx`). Без неё
  *  эффект `VanillaFeed` не найдёт узел, которому лента вешает
  *  `is-go-down-visible` (порт tweb `chat.container`), и не поднимется. */
-function mount(messages: MyMessage[], props: { peerId: PeerId; threadRootId?: number } = { peerId: CHAT }) {
+function mount(
+  messages: MyMessage[],
+  props: { peerId: PeerId; threadRootId?: number; isMegagroup?: boolean } = { peerId: CHAT },
+) {
   const { managers, getHistory } = managersWith(messages)
   const view = render(
     <ManagersProvider managers={managers}>
@@ -112,6 +117,29 @@ describe('VanillaFeed — проводка императивной ленты �
     })
     // ...и это бабл ИМЕННО окна треда
     expect(container.querySelector('.bubble:not(.service)')!.getAttribute('data-mid')).toBe(String(cid(2)))
+  })
+
+  // Вид чата лента сама не знает (сторов ей нельзя) — он приезжает пропом и
+  // уходит в `ChatContext`. Пин смотрит на ИТОГ: сторону бабла у send-as
+  // (`pFlags.out` стоит, автор — канал). Без проброса он уехал бы влево.
+  it('`isMegagroup` доезжает до ленты: send-as рисуется СПРАВА', async () => {
+    const sendAs = msg(cid(1), { pFlags: { out: true }, from_id: { _: 'peerChannel', channel_id: 7 }, fromId: -7 })
+    const { container } = mount([sendAs], { peerId: CHAT, isMegagroup: true })
+
+    await vi.waitFor(() => {
+      expect(bubblesIn(container)).toHaveLength(1)
+    })
+    expect(bubblesIn(container)[0].classList.contains('is-out')).toBe(true)
+  })
+
+  it('без объявленного вида чата тот же send-as — входящий', async () => {
+    const sendAs = msg(cid(1), { pFlags: { out: true }, from_id: { _: 'peerChannel', channel_id: 7 }, fromId: -7 })
+    const { container } = mount([sendAs])
+
+    await vi.waitFor(() => {
+      expect(bubblesIn(container)).toHaveLength(1)
+    })
+    expect(bubblesIn(container)[0].classList.contains('is-in')).toBe(true)
   })
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {

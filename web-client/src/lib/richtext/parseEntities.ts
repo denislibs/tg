@@ -76,6 +76,21 @@ export const USERNAME_REG_EXP = '[a-zA-Z\\d_]{5,32}'
 // 10 префикс хэштега, 11 хэштег. Ветки bot_command/timestamp из tweb не портированы.
 export const FULL_REG_EXP = new RegExp('(^| )(@)(' + USERNAME_REG_EXP + ')|(' + URL_REG_EXP + ')|(\\n)|(' + emojiRegExp + ')|(^|[\\s\\(\\]])(#[' + ALPHA_NUMERIC_REG_EXP + ']{2,64})', 'i')
 export const EMAIL_REG_EXP = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+// Порт tweb `index.ts:67` — ОДИН регэксп разметки на весь разбор маркеров
+// (`core/richtext/markdown.ts::parseMarkdown`). Группы:
+//   1 пробел перед fence, 2 открывающий ``` или ````, 3 содержимое, 4 закрывающий,
+//   5 граница после fence | 6 граница перед инлайном, 7 маркер, 8 содержимое,
+//   9 граница после | 10 id упоминания, 11 его текст | 12 [текст](url) целиком,
+//   13 текст, 14 url.
+//
+// ГРАНИЦЫ (группы 1/5/6/9) — не украшение: маркер работает только на границе
+// слова, поэтому `a**b**c` в оригинале НЕ форматируется. `\x01` в группах 6/9 —
+// tweb'ский SELECTION_SEPARATOR (`getRichElementValue.ts:136`, метка каретки):
+// его ставит `getRichValueWithCaret` при `withCaret`, а на отправку текст идёт
+// без каретки (`input.ts:4057` — `withCaret = false`), и наш `serialize` его не
+// производит вовсе. Поэтому ветка `isSOH` из `parseMarkdown.ts:117,128,134` не
+// портирована — сам регэксп оставлен дословно.
+export const MARKDOWN_REG_EXP = /(^|\s|\n)(````?)([\s\S]+?)(````?)([\s\n\.,:?!;]|$)|(^|\s|\x01)(`|~~|\*\*|__|_-_|\|\|)([^\n]+?)\7([\x01\s\.,:?!;]|$)|@(\d+)\s*\((.+?)\)|(\[(.+?)\]\((.+?)\))/m
 export const SITE_HASHTAGS: { [siteName: string]: string } = {
   'Telegram': 'tg://search_hashtag?hashtag={1}',
   'Twitter': 'https://twitter.com/hashtag/{1}',

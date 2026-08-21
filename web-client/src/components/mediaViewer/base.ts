@@ -35,9 +35,11 @@
 //   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container)
 //     не портированы — RTMP-стримов нет (фичи не существует)
 //   • Esc в tweb закрывает вьювер не клавиатурным листенером, а
-//     `appNavigationController` (navigationItem в _openMedia :2429-2450) — у
-//     нас Esc/Back вешает контроллер openMediaViewer.ts (Task 16): pushEsc +
-//     pushLayer, close по обоим
+//     `appNavigationController` (navigationItem в _openMedia :2429-2450). Сам
+//     `navigationItem` (постановка, снятие, вето на снятие во время полёта
+//     мувера, пауза на время картинки-в-картинке) живёт ЗДЕСЬ, как в оригинале;
+//     наружу вынесена только механика стека — контроллер openMediaViewer.ts
+//     (Task 16) отдаёт её инъекцией `navigation` (pushEsc + pushLayer)
 //   • `getOverlayRoot()` в tweb (`helpers/appWindow.ts:33`) возвращает body
 //     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
 //     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
@@ -158,6 +160,30 @@ export type ViewerAuthor = {
   avatarPreview?: string
 }
 
+/**
+ * Слой Esc/Back вьювера — порт tweb `NavigationItem` (appNavigationController.ts:10-22)
+ * в объёме одного поля. `onPop` возвращает `false` — ВЕТО: слой отказывается
+ * сниматься (tweb base.ts:2434-2436 — пока летит мувер), и стек обязан вернуть
+ * его на место (tweb appNavigationController.ts:290-296).
+ *
+ * Не портированы поля `type`/`onEscape`/`noHistory`/`noBlurOnPop`: у нашего
+ * стека (`core/navigation/navigationStack.ts` + `core/hotkeys.ts`) нет ни типов
+ * слоёв, ни отдельного Esc-протокола, ни blur-на-pop.
+ */
+export type ViewerNavigationItem = { onPop: () => boolean | void }
+
+/**
+ * Механика стека, которую вьюверу отдаёт контроллер (`openMediaViewer.ts`) —
+ * в tweb это глобальный `appNavigationController` (pushItem/removeItem), у нас
+ * пара «Esc-стек + слой Back». Инъекция, а не импорт: у вьювера уже есть
+ * контроллер-владелец, и второй источник Esc/Back означал бы два слоя на один
+ * вьювер.
+ */
+export type ViewerNavigation = {
+  pushItem(item: ViewerNavigationItem): void
+  removeItem(item: ViewerNavigationItem): void
+}
+
 // tweb base.ts:107-111 — стопка зум/пан (живёт на moversContainer,
 // НЕЗАВИСИМО от transform'а полёта на самом мувере).
 type Transform = {
@@ -275,6 +301,13 @@ export default class AppMediaViewerBase<
   // как в tweb, её накрывает сам вьювер).
   public onAuthorClick?: (author: ViewerAuthor) => void
   public onClose?: () => void
+
+  // Слой Esc/Back (tweb `navigationItem`, base.ts:270 + :2432-2447). САМ стек
+  // вьювер не знает — его даёт контроллер (openMediaViewer.ts) через
+  // `navigation`; здесь живёт то, что в tweb лежит прямо в base: момент
+  // постановки/снятия слоя и ВЕТО на снятие.
+  public navigation?: ViewerNavigation
+  protected navigationItem?: ViewerNavigationItem
 
   // Промис полёта закрытия: повторный close() возвращает его же (tweb :984
   // отдаёт setMoverAnimationPromise — тот же deferred по часам; у нас
@@ -1051,8 +1084,6 @@ export default class AppMediaViewerBase<
   // Порт tweb base.ts:975-1024 в нашем объёме. Не портированы (каждое помечено):
   //   • disposeSolid (:976) — solid-островов нет, наши React-острова умирают в
   //     destroyIslands ниже;
-  //   • navigationItem (:992-994, appNavigationController) — Esc/Back-слои
-  //     снимает контроллер openMediaViewer.ts в onClose (см. шапку файла);
   //   • lazyLoadQueue.clear() (:996) — очереди нет (шапка файла, Task 14);
   //   • author.avatarMiddlewareHelper.destroy() (:997) — остров аватарки
   //     уничтожает destroyIslands в finally;
@@ -1081,6 +1112,13 @@ export default class AppMediaViewerBase<
 
     this.closing = true
     this.swipeHandler?.removeListeners()
+
+    // tweb :991-993 — слой снимается В НАЧАЛЕ закрытия, а не по концу полёта:
+    // Esc/Back во время улёта мувера уже ничего не закрывают.
+    if (this.navigationItem) {
+      this.navigation?.removeItem(this.navigationItem)
+      this.navigationItem = undefined
+    }
 
     const promise = this.closePromise =
       this.setMoverToTarget(this.target?.element, true).then(({ onAnimationEnd }) => onAnimationEnd)
@@ -2251,7 +2289,7 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:2320-3005 (фото + видео). Из веток tweb не портированы
   // (каждая помечена на месте): live-стрим RTMP (фичи нет), HLS/quality-меню
-  // (HLS-качеств нет), navigationItem (Task 16). Вход — наш дескриптор
+  // (HLS-качеств нет). Вход — наш дескриптор
   // ViewerMedia вместо MyPhoto/MyDocument: байты и URL живут в воркерном
   // конвейере downloadMediaURL (Task 6), стрим видео — resolveStreamUrl.
   protected async _openMedia({
@@ -2323,8 +2361,26 @@ export default class AppMediaViewerBase<
       this.moveTheMover(this.content.mover as MoverElement, fromRight === 1)
       this.setNewMover()
     } else {
-      // navigationItem + appNavigationController.pushItem (tweb :2437-2455) —
-      // Esc/Back вешает контроллер openMediaViewer.ts (см. шапку файла)
+      // tweb :2432-2447 — слой Esc/Back ставится ровно здесь, на ПЕРВОМ открытии
+      // (при листании соседей ветка `wasActive` его не трогает).
+      this.navigationItem = {
+        onPop: () => {
+          // tweb :2434-2436 — вето: пока летит мувер, слой не снимается.
+          // Без него Back в этот момент снимал слой навсегда, а вьювер
+          // оставался открытым: его `close()` во время полёта отклоняется.
+          if (this.setMoverAnimationPromise) {
+            return false
+          }
+
+          // tweb :2438-2440 (`!canAnimate && IS_MOBILE_SAFARI` → мгновенный снос
+          // wholeDiv) не портирован: `canAnimate` даёт appNavigationController
+          // из своего swipe-back-детектора Safari, которого у нас нет.
+          void this.close()
+        },
+      }
+
+      this.navigation?.pushItem(this.navigationItem)
+
       this.toggleOverlay(true)
       this.setGlobalListeners()
       this.mountToOverlay()
@@ -2427,7 +2483,7 @@ export default class AppMediaViewerBase<
       // обслуживает голос/музыку), mediaTimestamp (таймкоды сообщений — Task 14
       // их не собирает), storyboard, handleVideoLeak/shouldIgnoreVideoError
       // (фиксы crbug/утечек MTProto-стримов — наш стрим обычный HTTP-range),
-      // updateMediaSource (см. фото-ветку), navigationItem в onPip (Task 16).
+      // updateMediaSource (см. фото-ветку).
       const middleware = mover.middlewareHelper.get()
       const video = createVideo({ pip: !media.gif, middleware })
 
@@ -2502,6 +2558,14 @@ export default class AppMediaViewerBase<
               this.toggleWholeActive(!pip)
               this.toggleOverlay(!pip)
               this.toggleGlobalListeners(!pip)
+
+              // tweb :2682-2685 — на время картинки-в-картинке слой снимается:
+              // вьювера на экране нет, и Esc/Back обязаны уйти тому, кто под
+              // ним (закрыть чат/панель), а не «закрывать» невидимое окно.
+              if (this.navigationItem) {
+                if (pip) this.navigation?.removeItem(this.navigationItem)
+                else this.navigation?.pushItem(this.navigationItem)
+              }
             },
             onPipClose: () => {
               void this.close()

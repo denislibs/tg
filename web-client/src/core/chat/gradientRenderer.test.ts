@@ -11,18 +11,28 @@ import ChatBackgroundGradientRenderer from './gradientRenderer'
 
 // happy-dom отдаёт на getContext('2d') → null; рендереру нужен минимум:
 // createImageData/putImageData/drawImage/fillRect.
+type StubContext = ReturnType<typeof stubContext>
+
 const stubContext = () => ({
   createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
-  putImageData: () => {},
-  drawImage: () => {},
-  fillRect: () => {},
-  clearRect: () => {},
+  putImageData: vi.fn(),
+  drawImage: vi.fn(),
+  fillRect: vi.fn(),
+  clearRect: vi.fn(),
   fillStyle: '',
 })
 
+// Контекст кэшируется НА ХОЛСТ: настоящий getContext тоже возвращает один и тот
+// же объект, а тестам зеркал нужно смотреть в тот же ctx, что получил рендерер.
+const contexts = new WeakMap<HTMLCanvasElement, StubContext>()
+
 Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   configurable: true,
-  value: () => stubContext(),
+  value: function(this: HTMLCanvasElement) {
+    let ctx = contexts.get(this)
+    if (!ctx) contexts.set(this, ctx = stubContext())
+    return ctx
+  },
 })
 
 let frames: FrameRequestCallback[] = []
@@ -66,5 +76,55 @@ describe('gradientRenderer — один живой цикл анимации н�
     // и дальше остаётся ровно один — сколько бы кадров ни прошло
     flushFrame()
     expect(frames).toHaveLength(1)
+  })
+})
+
+// tweb gradientRenderer.ts:55,268-270,332-335,344-365 — зеркала градиента.
+// Живой потребитель: колонка папок (`components/folders/FoldersSidebar.tsx`,
+// порт tweb foldersSidebarContent/index.tsx:94-116) рисует тот же градиент в
+// своём холсте вместо дорогого `backdrop-filter: blur(40px)`.
+describe('gradientRenderer — зеркала', () => {
+  it('attachMirror приводит холст к разрешению градиента и рисует первый кадр сразу', () => {
+    const { gradientRenderer } = ChatBackgroundGradientRenderer.create('#111111,#222222')
+    const mirror = document.createElement('canvas')
+    mirror.width = 7
+    mirror.height = 9
+    const ctx = mirror.getContext('2d') as unknown as StubContext
+
+    gradientRenderer.attachMirror(mirror)
+
+    expect(mirror.width).toBe(50)
+    expect(mirror.height).toBe(50)
+    expect(ctx.drawImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('каждая перерисовка градиента перерисовывает зеркало, отписка это прекращает', () => {
+    const { gradientRenderer, canvas } = ChatBackgroundGradientRenderer.create('#111111,#222222')
+    const mirror = document.createElement('canvas')
+    const ctx = mirror.getContext('2d') as unknown as StubContext
+
+    const detach = gradientRenderer.attachMirror(mirror)
+    ctx.drawImage.mockClear()
+
+    gradientRenderer.init(canvas) // перерисовка (смена обоев/темы)
+    expect(ctx.drawImage).toHaveBeenCalledTimes(1)
+
+    detach()
+    gradientRenderer.init(canvas)
+    expect(ctx.drawImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('одноцветные обои — зеркало получает заливку (ветка без ImageData)', () => {
+    const { gradientRenderer } = ChatBackgroundGradientRenderer.create('#0a0b0c')
+    const mirror = document.createElement('canvas')
+    const ctx = mirror.getContext('2d') as unknown as StubContext
+
+    gradientRenderer.attachMirror(mirror)
+    expect(ctx.fillRect).toHaveBeenCalledTimes(1)
+    expect(ctx.drawImage).not.toHaveBeenCalled()
+
+    ctx.fillRect.mockClear()
+    gradientRenderer.init(ChatBackgroundGradientRenderer.createCanvas('#0a0b0c'))
+    expect(ctx.fillRect).toHaveBeenCalledTimes(1)
   })
 })

@@ -7,9 +7,11 @@
 //
 // Возвращается `DocumentFragment` — вставлять в бабл как есть.
 export { default as wrapRichText, MAX_ENTITIES, type WrapRichTextOptions } from './wrapRichText'
-export { default as parseEntities, wrapMessageEntities } from './parseEntities'
+export { default as parseEntities, wrapMessageEntities, MARKDOWN_REG_EXP } from './parseEntities'
+export { default as wrapEmojiText } from './wrapEmojiText'
 export {
   mergeEntities, sortEntities, findConflictingEntity, isEntityIntersecting, fixEmoji,
+  combineSameEntities, MARKDOWN_ENTITIES,
 } from './entities'
 export { emojiOnlyCount, encodeEmoji, isSafeEmojiUnicode, EMOJI_CDN_BASE } from './emoji'
 export { ANCHOR_ACTION_ATTRIBUTE, safeWrapUrl, wrapUrl, type AnchorAction } from './url'

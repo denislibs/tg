@@ -169,6 +169,12 @@ export interface ChatContext {
   /** Порт tweb `chat.isBroadcast` (chat.ts) — канал. Единственный потребитель
    *  здесь — размер страницы истории (tweb bubbles.ts:11389: у канала 20). */
   isBroadcast?: boolean
+  /** Порт tweb `chat.isMegagroup` (chat.ts:141). Читает его РОВНО одно место —
+   *  `isOurMessage` (chat.ts:1375), то есть сторона бабла: в мегагруппе она
+   *  берётся из сырого `pFlags.out`, и сообщение от лица канала (send-as)
+   *  рисуется исходящим. Вид чата знает `Chat`, а не лента, поэтому он
+   *  приезжает сюда — как `isLikeGroup` и `isBroadcast`. */
+  isMegagroup?: boolean
   /** Порт tweb `chat.container` (chat.ts:80) — узел `.chat`. Лента вешает на
    *  него класс `is-go-down-visible` (`updateGoDownVisibility`, tweb
    *  bubbles.ts:4907) и читает `is-toggling-helper` (`scrollToBubble`, :4677). */
@@ -329,6 +335,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return this.chat.peerId
   }
 
+  /** Порт `chat.isMegagroup` (chat.ts:141) для групп: в tweb `canItemsBeGrouped`
+   *  спрашивает вид чата через `this.chat.isOutMessage` (bubbleGroups.ts:583),
+   *  у нас хост групп — сама лента, и она пробрасывает то же знание дальше. */
+  public get isMegagroup(): boolean {
+    return !!this.chat.isMegagroup
+  }
+
+  /** Порт `Chat.isOurMessage` (chat.ts:1374) в применимой форме: вид чата и своя
+   *  личность у оригинала лежат на самом `Chat`/`rootScope`, у нас приезжают
+   *  сюда (`ChatContext`) и берутся из шины. */
+  public isOurMessage(message: MyMessage): boolean {
+    return isOurMessage(message, { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup })
+  }
+
   // Порт tweb bubbles.ts:1439-1458 — дерево дословно.
   private constructBubbles() {
     const container = this.container = document.createElement('div')
@@ -432,8 +452,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // rootScope.ts:253) нужен messageToConvMsg лишь для автора превью ответа
     // («Вы» vs имя собеседника) — 1:1 с оригиналом, где лента берёт свой id
     // оттуда же (bubbles.ts:740, 813, 928).
-    const conv = messageToConvMsg(message as MyMessage, rootScope.myId)
-    return bubbleClasses(conv, { ...STUB_CTX, out: isOurMessage(message), showName: this.needName(message) })
+    const conv = messageToConvMsg(message as MyMessage, rootScope.myId, { isMegagroup: this.chat.isMegagroup })
+    return bubbleClasses(conv, { ...STUB_CTX, out: this.isOurMessage(message), showName: this.needName(message) })
   }
 
   /**
@@ -462,7 +482,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    */
   private needName(message: MyMessage): boolean {
     const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
-    return (iPostedAsSomeoneElse || !isOurMessage(message)) && !!this.chat.isLikeGroup
+    return (iPostedAsSomeoneElse || !this.isOurMessage(message)) && !!this.chat.isLikeGroup
   }
 
   /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира
@@ -525,9 +545,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const nameDiv = document.createElement('div')
       nameDiv.append(this.createTitle(fromId).element)
       // tweb :9502-9513. `noColor` в оригинале не присваивается никогда, так что
-      // ветка всегда живая; `our` для группы — ровно `pFlags.out`
-      // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`).
-      if (!isOurMessage(message)) {
+      // ветка всегда живая; `our` для мегагруппы — ровно `pFlags.out`
+      // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`), поэтому у своей
+      // отправки от лица канала имя есть, но НЕ цветное.
+      if (!this.isOurMessage(message)) {
         nameDiv.classList.add('colored-name')
       }
       nameDiv.dataset.peerId = '' + fromId

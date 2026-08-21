@@ -46,6 +46,10 @@ export default class ChatBackgroundGradientRenderer {
   private _ctx!: CanvasRenderingContext2D
   private _hc!: HTMLCanvasElement
   private _hctx!: CanvasRenderingContext2D
+  // Дополнительные выходные холсты, зеркалящие основной: тот же градиент,
+  // отрисованный в другом месте (колонка папок — дешёвая замена
+  // `backdrop-filter: blur(40px)`). tweb gradientRenderer.ts:55.
+  private _mirrors = new Set<CanvasRenderingContext2D>()
 
   private _nextPositionTail?: number
   private _nextPositionTails?: number
@@ -225,6 +229,10 @@ export default class ChatBackgroundGradientRenderer {
   private drawImageData(id: ImageData): void {
     this._hctx.putImageData(id, 0, 0)
     this._ctx.drawImage(this._hc, 0, 0, this._width, this._height)
+    // tweb :268-270 — каждая перерисовка основного холста перерисовывает зеркала.
+    for (const ctx of this._mirrors) {
+      ctx.drawImage(this._hc, 0, 0, this._width, this._height)
+    }
   }
 
   private drawGradient(positions: Point[]): void {
@@ -257,9 +265,42 @@ export default class ChatBackgroundGradientRenderer {
       const fill = `rgb(${color.r}, ${color.g}, ${color.b})`
       this._ctx.fillStyle = fill
       this._ctx.fillRect(0, 0, this._width, this._height)
+      // tweb :332-335 — одноцветные обои зеркала тоже получают (заливкой,
+      // а не drawImage: ImageData в этой ветке не строится).
+      for (const ctx of this._mirrors) {
+        ctx.fillStyle = fill
+        ctx.fillRect(0, 0, this._width, this._height)
+      }
       return
     }
     this.drawGradient(this.curPosition(this._phase, this._tail))
+  }
+
+  /**
+   * Зарегистрировать дополнительный выходной холст, зеркалящий основной
+   * градиент: каждая перерисовка основного перерисовывает и зеркало. Возвращает
+   * функцию отписки. Холст ресайзится под внутреннее разрешение градиента
+   * (50×50) — растягивать его должен CSS хоста. Порт tweb :344-365.
+   */
+  public attachMirror(canvas: HTMLCanvasElement): () => void {
+    canvas.width = this._width
+    canvas.height = this._height
+    const ctx = canvas.getContext('2d', { alpha: false })!
+    this._mirrors.add(ctx)
+
+    // Первый кадр — сразу, не дожидаясь следующей перерисовки основного
+    // (та случится только при отправке сообщения или смене обоев).
+    if (this._colors.length >= 2 && this._hc) {
+      ctx.drawImage(this._hc, 0, 0, this._width, this._height)
+    } else if (this._colors.length) {
+      const color = this._colors[0]
+      ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
+      ctx.fillRect(0, 0, this._width, this._height)
+    }
+
+    return () => {
+      this._mirrors.delete(ctx)
+    }
   }
 
   /** Плавный сдвиг градиента на одну позицию — вызывается при отправке сообщения. */

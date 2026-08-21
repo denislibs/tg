@@ -43,8 +43,11 @@ function makeCtx() {
   const progress: { id: string; loaded: number; total: number; done?: boolean }[] = []
   const cancelled: string[] = []
   const order: string[] = []
+  /** Ключи чатов, которые стенд считает ВЕЩАТЕЛЬНЫМИ каналами (порт
+   *  `appPeersManager.isBroadcast`). По умолчанию пуст — обычный чат. */
+  const broadcasts = new Set<number>()
   const h = {
-    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order,
+    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order, broadcasts,
     /** подменяется в тестах аплоада (успех с другим id, отказ, «зависший» промис) */
     upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
     ctx: {
@@ -53,6 +56,7 @@ function makeCtx() {
       // владелец литералом (сообщение зрителя, ещё не ушедшее), а `me` нужен
       // сторонам, которые решают вопрос «чьё это» ниже по потоку.
       getMeId: () => 42,
+      isBroadcastChat: (peerId: number) => broadcasts.has(peerId),
       emit: (ops: MessageOp[]) => { if (ops.length) { order.push('emit'); emitted.push(ops) } },
       send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
       upload: (a: UploadArgs) => h.upload(a),
@@ -101,6 +105,31 @@ describe('pending: появление бабла', () => {
     // в SSOT воркера — та же копия (её увидит переоткрытие чата)
     expect(msgsFor(1).get(msg.id)).toEqual(msg)
     expect(slices.get('1')!.findSlice(msg.id)).toBeTruthy()
+  })
+
+  // Порт `generateFlags` (tweb appMessagesManager.ts:3128-3130). Флаг решает
+  // СТОРОНУ бабла (`isOurMessage`, chat.ts:1379 — `&& !message.pFlags.post`):
+  // пост вещательного канала рисуется входящим даже у своего автора. Поставить
+  // его только на эхе поздно — бабл стоял бы справа и прыгнул влево на ack.
+  it('в вещательном канале временный бабл рождается с pFlags.post', () => {
+    const { ctx, slices, broadcasts } = makeCtx()
+    broadcasts.add(1)
+    openWindow(slices, '1')
+    const p = newPendingMethods(ctx)
+
+    const msg = (p.beforeMessageSending(evt())[0] as { msg: MessageReal }).msg
+
+    expect(msg.pFlags).toEqual({ out: true, post: true })
+  })
+
+  it('в обычном чате флага post у бабла нет', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1')
+    const p = newPendingMethods(ctx)
+
+    const msg = (p.beforeMessageSending(evt())[0] as { msg: MessageReal }).msg
+
+    expect(msg.pFlags).toEqual({ out: true })
   })
 
   it('временный номер — ДРОБЬ поверх последнего занятого номером окна', () => {

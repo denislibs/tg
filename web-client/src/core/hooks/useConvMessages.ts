@@ -136,6 +136,13 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
         replyToName: replyToMessage?.fromId != null ? title(replyToMessage.fromId) : undefined,
         replyToMessage,
         pinnedTarget: m._ === 'messageService' && m.action._ === 'messageActionPinMessage' ? replyToMessage : undefined,
+        // Порт `chat.isMegagroup` (tweb chat.ts:141) — от него зависит СТОРОНА
+        // бабла у send-as (`isOurMessage`). Любая наша группа — `channel` с
+        // `pFlags.megagroup` (`core/peers/peer.ts:325`), поэтому «открыт
+        // групповой чат» и есть этот признак; берётся он из диалога
+        // (`chat.type === 'group'`), а не из карточки пира, — карточка приезжает
+        // позже, и до неё баблы успели бы моргнуть стороной.
+        isMegagroup: isGroup,
       })
       // Корневой пост канала в треде комментариев: всегда входящий, от имени
       // канала (даже если автор поста — я), без тиков.
@@ -162,7 +169,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
     })
     for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
     return next
-  }, [isRealChat, win.msgs, meId, resolveSenders, peers, peerReadSeq, foreignRootName, numericChatId, pinnedIds])
+  }, [isRealChat, win.msgs, meId, isGroup, resolveSenders, peers, peerReadSeq, foreignRootName, numericChatId, pinnedIds])
 
   return { msgs, peers }
 }

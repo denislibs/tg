@@ -490,7 +490,10 @@ describe('ChatBubbles — граница непрочитанных', () => {
   it('исходящие в кандидаты не идут', async () => {
     const managers = pagingManagers({
       first: {
-        messages: [msg(11), msg(12), msg(13, { out: true }), msg(14), msg(15)],
+        // Исходящее — это `fromId === rootScope.myId` (порт `Chat.isOurMessage`,
+        // chat.ts:1379): чат не мегагруппа, и сырой `pFlags.out` сторону здесь
+        // не решает — как и в оригинале.
+        messages: [msg(11), msg(12), msg(13, { fromId: 999, out: true }), msg(14), msg(15)],
         count: 5, reachedTop: true, reachedBottom: true,
       },
     })

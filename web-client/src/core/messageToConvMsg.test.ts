@@ -12,20 +12,25 @@ const base: MessageReal = makeMessage({ id: 1, peerId: 1, fromId: 2, text: 'hi',
 const mine = (over: Partial<MessageReal> = {}): MessageReal =>
   ({ ...makeMessage({ id: 1, peerId: 1, fromId: 7, text: 'hi', date: 1_750_000_000, out: true }), ...over })
 
-// `out` больше НЕ выводится витриной и НЕ выводится клиентом вовсе: это
-// `pFlags.out` от сервера (решение Р7 отменено). Витрине остался другой вопрос —
-// СТОРОНА бабла, и решает его `from_id`: сообщение от лица канала остаётся `out`
-// у автора, но рисуется входящим. Сам предикат пинится в core/models.test.ts.
+// `ConvMsg.out` — это СТОРОНА бабла (`isOurMessage`, порт `Chat.isOurMessage`),
+// а не «я ли отправил»: вопросы разные, и ответ на первый зависит от ВИДА ЧАТА.
+// Сам предикат пинится в core/models.test.ts; здесь — что вид чата доезжает до
+// него параметром, а не теряется по дороге.
 describe('messageToConvMsg', () => {
-  it('берёт сторону бабла из pFlags.out и автора-человека', () => {
-    // Автор совпал со зрителем, но флага нет — витрина СВОЕГО вывода не имеет.
-    expect(messageToConvMsg(makeMessage({ id: 1, peerId: 1, fromId: 7 }), 7).out).toBe(false)
-    // И наоборот: флаг сервера сильнее любого совпадения id.
-    expect(messageToConvMsg(makeMessage({ id: 1, peerId: 1, fromId: 2, out: true }), 7).out).toBe(true)
+  it('вне мегагруппы сторона — АВТОР против зрителя (chat.ts:1379), не pFlags.out', () => {
+    // Приватный чат: решает автор. Флага сервера при этом нет — фикстура умеет
+    // их развести, живой провод нет (`out` ставит сервер ровно автору).
+    expect(messageToConvMsg(makeMessage({ id: 1, peerId: 1, fromId: 7 }), 7).out).toBe(true)
+    // И наоборот: чужой автор — входящий, сколько бы флагов на нём ни стояло.
+    expect(messageToConvMsg(makeMessage({ id: 1, peerId: 1, fromId: 2, out: true }), 7).out).toBe(false)
   })
 
-  it('сообщение от лица КАНАЛА рисуется входящим, хотя оно out', () => {
-    expect(messageToConvMsg(makeMessage({ id: 1, peerId: -1, fromId: -9, out: true }), 7).out).toBe(false)
+  // Ветка `if(this.isMegagroup) return !!message.pFlags.out` (chat.ts:1375-1377).
+  it('в мегагруппе сторона — сырой pFlags.out: send-as рисуется ИСХОДЯЩИМ', () => {
+    const sendAs = makeMessage({ id: 1, peerId: -1, fromId: -9, out: true })
+    expect(messageToConvMsg(sendAs, 7, { isMegagroup: true }).out).toBe(true)
+    // Тот же объект без объявленного вида чата — вторая ветка: автор-канал не я.
+    expect(messageToConvMsg(sendAs, 7).out).toBe(false)
   })
 
   it('marks messages from me as out with sent status', () => {

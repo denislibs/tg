@@ -80,6 +80,11 @@ export interface MessagesDeps {
    *  формулировкой пилюли. Опционален: юнит-тесты кэш-методов собирают менеджер
    *  одним `rest` — без гейта маппинг идёт сразу. */
   meReady?: () => Promise<void>
+  /** Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags` (tweb
+   *  appMessagesManager.ts:3128-3130) — см. `PendingCtx.isBroadcastChat`.
+   *  Опционален по той же причине, что и остальные инъекции: юнит-тесты
+   *  кэш-методов собирают менеджер одним `rest`. */
+  isBroadcastChat?: (peerId: number) => boolean
   /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
    * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
    * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
@@ -100,7 +105,7 @@ export interface MessagesDeps {
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -235,6 +240,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, broa
   const pending = newPendingMethods({
     hkey, slices, msgsFor,
     getMeId: () => getMeId?.() ?? null,
+    isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
     emit: (ops) => { if (ops.length) broadcast?.(RT.messageOp, { ops }) },
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore

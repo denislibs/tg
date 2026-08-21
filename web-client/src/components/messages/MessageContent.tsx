@@ -471,7 +471,14 @@ export default function MessageContent({
                   localUrl={m.localUrl}
                   clientId={m.clientId}
                   onCancelUpload={feedFns.cancelUpload}
-                  hasMessageBlock={!!m.text || !!m.reply || !!m.webPage || !!m.factCheck}
+                  // Пятый терм оригинала (tweb setAttachmentSize.ts:80) —
+                  // `replies.pFlags.comments`: под постом канала с обсуждением
+                  // висит плашка «N комментариев», и узкое медиа расширяется до
+                  // 320, чтобы она была читаемой. У нас эта плашка приезжает
+                  // готовым слотом `footer` (`ChatFeed` строит её по
+                  // `discussionsEnabled`), и живого предмета у терма ровно один
+                  // — она.
+                  hasMessageBlock={!!m.text || !!m.reply || !!m.webPage || !!m.factCheck || !!footer}
                   paidMedia={m.paidMedia}
                   onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />

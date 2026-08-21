@@ -68,6 +68,7 @@ function owner() {
     slices,
     msgsFor,
     getMeId: () => ME,
+    isBroadcastChat: () => false,
     emit,
     send: () => {},
     upload: async () => 1,

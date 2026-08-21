@@ -4,6 +4,7 @@
 // appMediaViewer.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initHotkeys } from '@core/hotkeys'
+import { setBaseHandler } from '@core/navigation/navigationStack'
 import type { ViewerItem } from './appMediaViewer'
 import { closeMediaViewer, isMediaViewerOpen, openMediaViewer } from './openMediaViewer'
 
@@ -120,6 +121,39 @@ describe('Esc/Back закрывают вьювер с анимацией (про
     await settle()
     expect(onClosed).toHaveBeenCalledTimes(1)
     offHotkeys()
+  })
+})
+
+describe('навигация вьювера идёт через его navigationItem (tweb pushItem/removeItem)', () => {
+  it('слой ставится ОДИН на открытие и снимается на закрытии', async () => {
+    // Второй Back после закрытия уже никого не находит: слой снят, а не
+    // «просто перекрыт» — иначе он копился бы от открытия к открытию.
+    const onClosed = vi.fn()
+    await settle(openMediaViewer({ items: [item(1)], index: 0, onClosed }))
+
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await settle()
+    expect(wholeCount()).toBe(0)
+    expect(onClosed).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await settle()
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it('программное закрытие снимает слой: следующий Back уходит навигации чата', async () => {
+    // Мёртвый слой в стеке проглатывал бы чужой Back — выход из чата переставал
+    // работать после каждого закрытия вьювера крестиком.
+    const base = vi.fn()
+    setBaseHandler(base)
+    await settle(openMediaViewer({ items: [item(1)], index: 0 }))
+
+    closeMediaViewer()
+    await settle()
+    base.mockClear()
+
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(base).toHaveBeenCalledTimes(1)
   })
 })
 

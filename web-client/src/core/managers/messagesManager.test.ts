@@ -878,3 +878,34 @@ describe('MessagesManager: служебное действие уточняет 
     expect(actionsOf(r.messages)).toEqual(['messageActionChatJoinedYou', 'messageActionChatJoined'])
   })
 })
+
+// Вид ЧАТА (вещательный канал) владельцу временного бабла приносит workerCore
+// (`isBroadcastChat`, порт `appPeersManager.isBroadcast` в роли `generateFlags`,
+// tweb appMessagesManager.ts:3128-3130). Здесь пинится ПЕРЕДАЧА признака сквозь
+// менеджер: сама механика флага — в `messages/pending.test.ts`, соединение
+// стрелки с кэшем карточек — в `workerCore.pendingPost.test.ts`. Без передачи
+// бабл поста стоял бы СПРАВА до ответа сервера и прыгал влево на эхе
+// (`isOurMessage`, tweb chat.ts:1379 — `&& !message.pFlags.post`).
+describe('MessagesManager: вид чата доходит до временного бабла', () => {
+  const pendingOp = async (isBroadcastChat: (peerId: number) => boolean) => {
+    const { rest } = countingRest({ '0:0:40': rawPage([]) })
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({
+      rest,
+      isBroadcastChat,
+      broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) },
+    })
+    // Бабл вставляется только в окно, доведённое до НИЗА истории.
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.beforeMessageSending({ peer_id: 1, client_msg_id: 'c-1', sender_id: 42, text: 'пост', type: 'text' })
+    return ops.find((o) => o.op === 'insert') as { msg: MessageReal } | undefined
+  }
+
+  it('вещательный канал → у бабла pFlags.post', async () => {
+    expect((await pendingOp(() => true))!.msg.pFlags).toEqual({ out: true, post: true })
+  })
+
+  it('обычный чат → флага нет', async () => {
+    expect((await pendingOp(() => false))!.msg.pFlags).toEqual({ out: true })
+  })
+})

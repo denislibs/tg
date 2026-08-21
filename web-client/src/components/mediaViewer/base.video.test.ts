@@ -8,7 +8,7 @@
 // readyState/networkState/buffered стабятся на прототипе, события видео
 // диспатчатся руками.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import AppMediaViewerBase, { type ViewerMedia } from './base'
+import AppMediaViewerBase, { type ViewerMedia, type ViewerNavigationItem } from './base'
 import type VideoPlayer from '@lib/mediaPlayer'
 import ListLoader from './listLoader'
 import { resetMediaUrlMirror } from '@core/mediaCache'
@@ -49,6 +49,7 @@ class TestViewer extends AppMediaViewerBase<never, 'forward' | 'delete', Target>
 
   zoomIn() { this.addZoomStep(true) }
   zoomReset() { this.resetZoom() }
+  get navigationItemPub() { return this.navigationItem }
 }
 
 function makeViewer() {
@@ -314,5 +315,38 @@ describe('updateVideoControlsLock: зум запирает контролы (twe
 
     v.zoomReset()
     expect(wrapper.classList.contains('disable-hover')).toBe(false)
+  })
+})
+
+// Пауза слоя Esc/Back на время картинки-в-картинке — tweb :2682-2685.
+// Вьювера на экране нет (overlay снят, мувер прозрачный), и Esc/Back обязаны
+// уйти тому, кто под ним, а не «закрывать» невидимое окно.
+describe('_openMedia video: PiP снимает слой Esc/Back (tweb :2682-2685)', () => {
+  it('вход в PiP снимает слой, возврат — ставит обратно', async () => {
+    // Кнопка PiP (а с ней и слушатели enter/leave) создаётся только при
+    // поддержке видео-PiP браузером; в happy-dom её нет.
+    const saved = Object.getOwnPropertyDescriptor(Document.prototype, 'pictureInPictureEnabled')
+    Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
+
+    const pushItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    const removeItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    const v = makeViewer()
+    v.navigation = { pushItem, removeItem }
+
+    const video = await openWithPlayer(v, vid({ duration: 30 }))
+    expect(pushItem).toHaveBeenCalledTimes(1)
+    const item = v.navigationItemPub!
+
+    video.dispatchEvent(new Event('enterpictureinpicture'))
+    await vi.advanceTimersByTimeAsync(100) // debouncePipTime
+    expect(removeItem).toHaveBeenCalledWith(item)
+
+    video.dispatchEvent(new Event('leavepictureinpicture'))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(pushItem).toHaveBeenCalledTimes(2)
+    expect(pushItem.mock.calls[1][0]).toBe(item) // тот же слой, не новый
+
+    Reflect.deleteProperty(document, 'pictureInPictureEnabled')
+    if (saved) Object.defineProperty(Document.prototype, 'pictureInPictureEnabled', saved)
   })
 })

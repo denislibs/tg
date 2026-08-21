@@ -34,7 +34,7 @@
 //    подсистемы, здесь была бы заглушка.
 //  • `is-group-first`/`is-group-last` на бабл не вешаются: как и в tweb, их
 //    владелец — группировка (`components/chat/bubbleGroups.ts`).
-import { parseEntities, wrapRichText } from '@lib/richtext'
+import { wrapEmojiText } from '@lib/richtext'
 import { serviceMsgSegs, type ServiceSeg } from '@core/serviceMsg'
 import type { MessageService } from '@core/models'
 import PeerTitle, { type PeerTitleOptions } from './peerTitle'
@@ -43,21 +43,6 @@ import PeerTitle, { type PeerTitleOptions } from './peerTitle'
  *  `lib/richtext/wrapRichText.ts` у цитаты). */
 function setDirection(element: Element) {
   element.setAttribute('dir', 'auto')
-}
-
-/**
- * Порт tweb `lib/richTextProcessor/wrapEmojiText.ts`: текст, в котором из всех
- * сущностей ищутся только эмодзи, — ровно им tweb рисует и имя пира
- * (`PeerTitle.update`), и текстовые аргументы фразы (`wrapSomeText`). Автолинков
- * и @упоминаний в сервисной фразе оригинал не ищет, поэтому здесь не
- * `wrapMessageText` (полный конвейер), а тот же однопроходный рендер с
- * эмодзи-сущностями.
- *
- * Живёт здесь, а не в `lib/richtext/`, потому что это единственный потребитель;
- * появится второй — переезжает туда рядом с `wrapMessageText`.
- */
-function wrapEmojiText(text: string): DocumentFragment {
-  return wrapRichText(text, { entities: parseEntities(text).filter((entity) => entity._ === 'messageEntityEmoji') })
 }
 
 /** Имя пира в сервисной фразе — ТОТ ЖЕ узел `PeerTitle`, что у автора бабла.

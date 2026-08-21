@@ -13,6 +13,7 @@
 // (tweb/tsconfig.json:34), поэтому арифметика компилируется у него как есть.
 // У нас strict — читаем со значением по умолчанию, значения при этом те же.
 import type { MessageEntity } from '@layer'
+import deepEqual from '@helpers/object/deepEqual'
 
 /** Порт tweb `index.ts:75-83` — разметка → конструктор сущности. */
 export const MARKDOWN_ENTITIES: { [markdown: string]: MessageEntity['_'] } = {
@@ -142,6 +143,61 @@ export function mergeEntities(currentEntities: MessageEntity[], newEntities: Mes
   }
 
   return currentEntities
+}
+
+/** Порт tweb `combineSameEntities.ts:4-15` — конструкторы, две сущности которых
+ *  встык склеиваются в одну. `messageEntityBlockquote` в оригинале закомментирован
+ *  (две цитаты подряд — это две цитаты, а не одна). */
+const CAN_COMBINE_ENTITIES: Set<MessageEntity['_']> = new Set([
+  'messageEntityBold',
+  'messageEntityItalic',
+  'messageEntityCode',
+  'messageEntityPre',
+  'messageEntityUnderline',
+  'messageEntityStrike',
+  // 'messageEntityBlockquote',
+  'messageEntitySpoiler',
+  'messageEntityFormattedDate',
+  'messageEntityTextUrl',
+])
+
+/** Порт `combineMap` (:16-26): у конструктора с параметрами склейка законна,
+ *  только если параметры совпадают (язык у pre, адрес у ссылки). */
+const combineMap: { [entityType in MessageEntity['_']]?: (entity1: MessageEntity, entity2: MessageEntity) => boolean } = {
+  messageEntityFormattedDate: (entity1, entity2) => {
+    const a = entity1 as MessageEntity.messageEntityFormattedDate
+    const b = entity2 as MessageEntity.messageEntityFormattedDate
+    return a.date === b.date && deepEqual(a.pFlags, b.pFlags)
+  },
+  messageEntityPre: (entity1, entity2) =>
+    (entity1 as MessageEntity.messageEntityPre).language === (entity2 as MessageEntity.messageEntityPre).language,
+  messageEntityTextUrl: (entity1, entity2) =>
+    (entity1 as MessageEntity.messageEntityTextUrl).url === (entity2 as MessageEntity.messageEntityTextUrl).url,
+}
+
+/** Порт tweb `combineSameEntities.ts:27-51` 1:1. Мутирует массив, как оригинал. */
+export function combineSameEntities(entities: MessageEntity[]) {
+  for (let i = 0; i < entities.length; ++i) {
+    const entity = entities[i]
+
+    let nextEntityIdx = -1
+    do {
+      nextEntityIdx = entities.findIndex((e, _i) => {
+        const verifyFunc = combineMap[entity._]
+        return CAN_COMBINE_ENTITIES.has(e._) &&
+          _i !== i &&
+          e._ === entity._ &&
+          ((e.offset ?? 0) - (entity.length ?? 0)) === (entity.offset ?? 0) &&
+          (verifyFunc?.(entity, e) ?? true)
+      })
+
+      if (nextEntityIdx !== -1) {
+        const nextEntity = entities[nextEntityIdx]
+        entity.length = (entity.length ?? 0) + (nextEntity.length ?? 0)
+        entities.splice(nextEntityIdx, 1)
+      }
+    } while (nextEntityIdx !== -1)
+  }
 }
 
 /**

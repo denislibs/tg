@@ -9,6 +9,7 @@ import mediaSizes from '@core/dom/mediaSizes'
 import AppMediaViewerBase, {
   RESERVE_BOTTOM_DESKTOP, RESERVE_TOP_DESKTOP,
   type MoverElement, type ViewerAuthor, type ViewerMedia,
+  type ViewerNavigation, type ViewerNavigationItem,
 } from './base'
 import ListLoader from './listLoader'
 import { applyMediaUrl, resetMediaUrlMirror } from '@core/mediaCache'
@@ -45,6 +46,8 @@ class TestViewer extends AppMediaViewerBase<never, 'forward' | 'delete', Target>
   get rotationPub() { return this.rotation }
   set rotationPub(v: number) { this.rotation = v }
   get captionScrollablePub() { return this.captionScrollable }
+  get navigationItemPub() { return this.navigationItem }
+  get moverAnimationPub() { return this.setMoverAnimationPromise }
 
   callToggleGlobalListeners(active: boolean) { this.toggleGlobalListeners(active) }
 
@@ -437,5 +440,74 @@ describe('глобальные слушатели: ресайз приезжае
     } finally {
       v.callToggleGlobalListeners(false)
     }
+  })
+})
+
+// Слой Esc/Back вьювера — порт tweb navigationItem (base.ts:2432-2447, :991-993).
+// Механику стека вьюверу отдаёт контроллер; здесь она фейковая, проверяется
+// сам вьювер: КОГДА он слой ставит, когда снимает и когда ОТКАЗЫВАЕТСЯ снимать.
+describe('navigationItem: слой Esc/Back (tweb :2432-2447, :991-993)', () => {
+  function withNavigation(v: TestViewer) {
+    const pushItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    const removeItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    v.navigation = { pushItem, removeItem } satisfies ViewerNavigation
+    return { pushItem, removeItem }
+  }
+
+  it('первое открытие ставит слой; листание соседей — не ставит второй', async () => {
+    downloadMediaURL.mockResolvedValue('blob:nav-1')
+    const v = makeViewer()
+    const { pushItem } = withNavigation(v)
+
+    await settleOpen(v.callOpenMedia({ media: photo(), fromRight: 0 }))
+    expect(pushItem).toHaveBeenCalledTimes(1)
+    expect(pushItem.mock.calls[0][0]).toBe(v.navigationItemPub)
+
+    // fromRight !== 0 — ветка wasActive (tweb :2428-2431), слой уже стоит
+    await settleOpen(v.callOpenMedia({ media: photo({ mediaId: 8 }), fromRight: 1 }))
+    expect(pushItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('ВЕТО: пока летит мувер, onPop не снимает слой и вьювер остаётся открытым', async () => {
+    downloadMediaURL.mockResolvedValue('blob:nav-2')
+    const v = makeViewer()
+    const { removeItem } = withNavigation(v)
+
+    const p = v.callOpenMedia({ media: photo({ blurPreview: 'AAAA' }), fromRight: 0 })
+    // Середина полёта открытия (страховочный таймер 200+100 ещё не дожат) —
+    // предусловие вето объявляем явно, чтобы проверка не стала холостой.
+    await vi.advanceTimersByTimeAsync(100)
+    expect(v.moverAnimationPub).not.toBeNull()
+
+    const item = v.navigationItemPub!
+    expect(item.onPop()).toBe(false)
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(v.navigationItemPub).toBe(item) // слой на месте
+    expect(v.whole.isConnected || v.whole.parentElement === null).toBe(true)
+
+    await settleOpen(p)
+    // Полёт кончился — тот же onPop уже закрывает, слой снимается
+    expect(v.moverAnimationPub).toBeNull()
+    item.onPop()
+    expect(removeItem).toHaveBeenCalledWith(item)
+    expect(v.navigationItemPub).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(600) // дожать полёт закрытия
+  })
+
+  it('close() снимает слой в начале закрытия (tweb :991-993)', async () => {
+    downloadMediaURL.mockResolvedValue('blob:nav-3')
+    const v = makeViewer()
+    const { removeItem } = withNavigation(v)
+
+    await settleOpen(v.callOpenMedia({ media: photo({ blurPreview: 'AAAA' }), fromRight: 0 }))
+    const item = v.navigationItemPub!
+
+    const closePromise = v.close()
+    // Слой снят СРАЗУ, не по концу полёта закрытия.
+    expect(removeItem).toHaveBeenCalledWith(item)
+    expect(v.navigationItemPub).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(600)
+    await closePromise
   })
 })

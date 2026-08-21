@@ -289,28 +289,64 @@ describe('mapChecklist', () => {
 })
 
 /**
- * `pFlags.out` производит СЕРВЕР (решение Р7 отменено). Клиенту остался ДРУГОЙ
- * вопрос — сторона бабла, и она решается `from_id`: сообщение от лица канала
- * остаётся `out` у своего автора, но рисуется входящим, потому что автор на
- * проводе там САМ КАНАЛ.
+ * Порт `Chat.isOurMessage` (tweb chat.ts:1374-1390). `pFlags.out` производит
+ * СЕРВЕР (решение Р7 отменено) и отвечает «я ли отправил»; сторона бабла —
+ * ДРУГОЙ вопрос, и ответ на него зависит от ВИДА ЧАТА, который предикату
+ * приносит вызывающий.
  */
 describe('isOurMessage — сторона бабла', () => {
+  const ME = 7
   const withFrom = (out: boolean, fromId?: PeerId) =>
-    mapMessage(makeRawMessage({ id: 1, peerId: -10, fromId, out }))
+    mapMessage(makeRawMessage({ id: 1, peerId: -10, fromId, out })) as never
+
+  /** Пост вещательного канала: `pFlags.post` фикстура не умеет — ставим руками. */
+  const post = (fromId?: PeerId) => {
+    const m = mapMessage(makeRawMessage({ id: 1, peerId: -10, fromId, out: true })) as RawMessageReal
+    return { ...m, pFlags: { ...m.pFlags, post: true as const } } as never
+  }
+
+  const group = { myId: ME, isMegagroup: true }
+  const broadcast = { myId: ME, isMegagroup: false }
 
   it('моё сообщение от человека — справа', () => {
-    expect(isOurMessage(withFrom(true, 7) as never)).toBe(true)
+    expect(isOurMessage(withFrom(true, ME), group)).toBe(true)
+    expect(isOurMessage(withFrom(true, ME), broadcast)).toBe(true)
   })
 
   it('чужое сообщение — слева', () => {
-    expect(isOurMessage(withFrom(false, 2) as never)).toBe(false)
+    expect(isOurMessage(withFrom(false, 2), group)).toBe(false)
+    expect(isOurMessage(withFrom(false, 2), broadcast)).toBe(false)
   })
 
-  it('send-as: автор на проводе — КАНАЛ, значит бабл входящий даже при out', () => {
-    expect(isOurMessage(withFrom(true, -9) as never)).toBe(false)
+  // Ветка `if(this.isMegagroup) return !!message.pFlags.out` (chat.ts:1375-1377).
+  // Отправка от лица канала остаётся `out` у своего автора (бэкенд объявляет это
+  // прямо, `MessageContext.Out`) — значит бабл ИСХОДЯЩИЙ, с именем канала.
+  it('send-as в мегагруппе: автор — КАНАЛ, но бабл исходящий (сырой out)', () => {
+    expect(isOurMessage(withFrom(true, -9), group)).toBe(true)
   })
 
-  it('пост канала (автора нет вовсе) — входящий', () => {
-    expect(isOurMessage(withFrom(true) as never)).toBe(false)
+  // Вне мегагруппы работает вторая ветка (`fromId === myId`), и там автор-канал
+  // моим не является.
+  it('вне мегагруппы автор-канал своим не считается', () => {
+    expect(isOurMessage(withFrom(true, -9), broadcast)).toBe(false)
+  })
+
+  // `&& !message.pFlags.post` (chat.ts:1379): пост вещательного канала `out` у
+  // выложившего его админа, но рисуется входящим у всех.
+  it('пост канала — входящий даже у своего автора', () => {
+    expect(isOurMessage(post(ME), broadcast)).toBe(false)
+  })
+
+  // `fromId` у поста «от самого пира» у нас нет, а у tweb он равен `peerId`
+  // (appMessagesManager.ts:5090) — фолбэк держит сравнение осмысленным.
+  it('пост без автора вовсе — входящий', () => {
+    expect(isOurMessage(withFrom(true), broadcast)).toBe(false)
+  })
+
+  // Личность ещё не приехала (`myId === null`): своим не считается ничего, но
+  // мегагруппа продолжает читать сырой `out` — ветка от личности не зависит.
+  it('личность неизвестна: вне мегагруппы своих нет, в мегагруппе решает out', () => {
+    expect(isOurMessage(withFrom(true, ME), { myId: null })).toBe(false)
+    expect(isOurMessage(withFrom(true, ME), { myId: null, isMegagroup: true })).toBe(true)
   })
 })
