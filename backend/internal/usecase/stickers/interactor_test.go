@@ -18,7 +18,7 @@ type fakeRepo struct {
 	nextSet   int64
 	nextStick int64
 	clock     int64 // логическое время для used_at/faved_at/saved_at
-	sets      map[int64]domain.StickerSet
+	sets      map[int64]domain.StickerSetRecord
 	stickers  map[int64]domain.Sticker
 	installed map[int64]map[int64]int   // userID -> setID -> position
 	recent    map[int64]map[int64]int64 // userID -> stickerID -> usedAt
@@ -31,7 +31,7 @@ type fakeRepo struct {
 
 func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
-		sets:      map[int64]domain.StickerSet{},
+		sets:      map[int64]domain.StickerSetRecord{},
 		stickers:  map[int64]domain.Sticker{},
 		installed: map[int64]map[int64]int{},
 		recent:    map[int64]map[int64]int64{},
@@ -43,12 +43,12 @@ func newFakeRepo() *fakeRepo {
 
 func (f *fakeRepo) tick() int64 { f.clock++; return f.clock }
 
-func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSet) (domain.StickerSet, error) {
+func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.sets {
 		if s.Slug == set.Slug {
-			return domain.StickerSet{}, domain.ErrConflict
+			return domain.StickerSetRecord{}, domain.ErrConflict
 		}
 	}
 	f.nextSet++
@@ -57,7 +57,7 @@ func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSet) (domain.S
 	return set, nil
 }
 
-func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSet, error) {
+func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.sets {
@@ -65,20 +65,20 @@ func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSet,
 			return s, nil
 		}
 	}
-	return domain.StickerSet{}, domain.ErrNotFound
+	return domain.StickerSetRecord{}, domain.ErrNotFound
 }
 
-func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSet, error) {
+func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.sets[id]
 	if !ok {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return s, nil
 }
 
-func (f *fakeRepo) SetByMediaID(_ context.Context, mediaID int64) (domain.StickerSet, error) {
+func (f *fakeRepo) SetByMediaID(_ context.Context, mediaID int64) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, st := range f.stickers {
@@ -86,7 +86,7 @@ func (f *fakeRepo) SetByMediaID(_ context.Context, mediaID int64) (domain.Sticke
 			return f.sets[st.SetID], nil
 		}
 	}
-	return domain.StickerSet{}, domain.ErrNotFound
+	return domain.StickerSetRecord{}, domain.ErrNotFound
 }
 
 func (f *fakeRepo) Stickers(_ context.Context, setID int64) ([]domain.Sticker, error) {
@@ -158,11 +158,11 @@ func (f *fakeRepo) Uninstall(_ context.Context, userID, setID int64) error {
 	return nil
 }
 
-func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.StickerSet, error) {
+func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	type row struct {
-		set domain.StickerSet
+		set domain.StickerSetRecord
 		pos int
 	}
 	var rows []row
@@ -170,17 +170,17 @@ func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.Stic
 		rows = append(rows, row{f.sets[setID], pos})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].pos < rows[j].pos })
-	out := make([]domain.StickerSet, 0, len(rows))
+	out := make([]domain.StickerSetRecord, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, r.set)
 	}
 	return out, nil
 }
 
-func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSet, error) {
+func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for _, s := range f.sets {
 		if strings.Contains(strings.ToLower(s.Title), strings.ToLower(q)) ||
 			strings.Contains(strings.ToLower(s.Slug), strings.ToLower(q)) {
@@ -194,12 +194,12 @@ func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.
 	return out, nil
 }
 
-func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSet, error) {
+func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.featuredLimit = limit
 	// Новейшие первыми (id растёт с созданием), не больше limit — как SQL-реализация.
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for _, s := range f.sets {
 		out = append(out, s)
 	}
@@ -434,7 +434,7 @@ func (f *fakeRepo) IsStickerMedia(_ context.Context, mediaID int64) (bool, error
 }
 
 // seedSet — набор из n стикеров; возвращает набор и id стикеров.
-func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string, n int) (domain.StickerSet, []int64) {
+func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string, n int) (domain.StickerSetRecord, []int64) {
 	t.Helper()
 	set, err := in.CreateSet(context.Background(), owner, slug, "Набор "+slug, "sticker")
 	if err != nil {

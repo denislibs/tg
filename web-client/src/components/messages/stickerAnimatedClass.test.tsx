@@ -30,7 +30,7 @@ function stickerMedia(mime: string): MessageMedia {
       mime_type: mime,
       size: 1000,
       attributes: [
-        { _: 'documentAttributeSticker', alt: '🔥' },
+        { _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } },
         { _: 'documentAttributeImageSize', w: 512, h: 512 },
       ],
     }),

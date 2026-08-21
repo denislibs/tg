@@ -26,10 +26,10 @@ func seedStickerMedia(t *testing.T, pool *pgxpool.Pool, ownerID int64, key strin
 }
 
 // seedFullSet — набор из n стикеров, возвращает набор и id стикеров.
-func seedFullSet(t *testing.T, pool *pgxpool.Pool, r *StickersRepo, owner int64, slug string, n int) (domain.StickerSet, []int64) {
+func seedFullSet(t *testing.T, pool *pgxpool.Pool, r *StickersRepo, owner int64, slug string, n int) (domain.StickerSetRecord, []int64) {
 	t.Helper()
 	ctx := context.Background()
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: slug, Title: "Набор " + slug, Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: "Набор " + slug, Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatalf("CreateSet(%s): %v", slug, err)
 	}
@@ -56,7 +56,7 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 		t.Fatalf("CreateSet: пустой id")
 	}
 	// Занятый slug → ErrConflict.
-	if _, err := r.CreateSet(ctx, domain.StickerSet{Slug: "duck", Title: "Дубль", Kind: "sticker", CreatedBy: owner}); !errors.Is(err, domain.ErrConflict) {
+	if _, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "duck", Title: "Дубль", Kind: "sticker", CreatedBy: owner}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate slug: want ErrConflict, got %v", err)
 	}
 	got, err := r.SetBySlug(ctx, "duck")
@@ -99,7 +99,7 @@ func TestSetByMediaID(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7816")
 
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "utyaduck", Title: "Duck", Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "utyaduck", Title: "Duck", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7812")
 
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "meta", Title: "Мета", Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "meta", Title: "Мета", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatalf("CreateSet: %v", err)
 	}
@@ -427,15 +427,15 @@ func TestFeaturedSetsOrderByRank(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7815")
 
-	noRank, err := r.CreateSet(ctx, domain.StickerSet{Slug: "zzz-no-rank", Title: "Без ранга", Kind: "sticker", CreatedBy: owner})
+	noRank, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "zzz-no-rank", Title: "Без ранга", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := r.CreateSet(ctx, domain.StickerSet{Slug: "bbb", Title: "Второй", Kind: "sticker", CreatedBy: owner})
+	second, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "bbb", Title: "Второй", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := r.CreateSet(ctx, domain.StickerSet{Slug: "aaa", Title: "Первый", Kind: "sticker", CreatedBy: owner})
+	first, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "aaa", Title: "Первый", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +471,7 @@ func TestStickerPositions(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7817")
 
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "positions", Title: "P", Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "positions", Title: "P", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +521,7 @@ func TestAddStickerAt(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7818")
 
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "gap", Title: "G", Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "gap", Title: "G", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +562,7 @@ func TestStickerPathThumb(t *testing.T) {
 	ctx := context.Background()
 	owner := seedUser(t, pool, "+7819")
 
-	set, err := r.CreateSet(ctx, domain.StickerSet{Slug: "outline", Title: "O", Kind: "sticker", CreatedBy: owner})
+	set, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "outline", Title: "O", Kind: "sticker", CreatedBy: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +659,7 @@ func TestCoverStickers(t *testing.T) {
 
 	big, _ := seedFullSet(t, pool, r, owner, "cover_big", 7)
 	small, _ := seedFullSet(t, pool, r, owner, "cover_small", 2)
-	empty, err := r.CreateSet(ctx, domain.StickerSet{Slug: "cover_empty", Title: "Empty", Kind: "sticker"})
+	empty, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "cover_empty", Title: "Empty", Kind: "sticker"})
 	if err != nil {
 		t.Fatal(err)
 	}

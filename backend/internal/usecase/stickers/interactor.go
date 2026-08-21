@@ -47,25 +47,25 @@ func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
 func (i *Interactor) SetGifSearch(g GifSearcher) { i.gifs = g }
 
 // MySets — установленные наборы пользователя (по position установки).
-func (i *Interactor) MySets(ctx context.Context, userID int64) ([]domain.StickerSet, error) {
+func (i *Interactor) MySets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	return i.repo.InstalledSets(ctx, userID)
 }
 
 // SetBySlug — набор + его стикеры по slug.
-func (i *Interactor) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, []domain.Sticker, error) {
+func (i *Interactor) SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
 	set, err := i.repo.SetBySlug(ctx, slug)
 	if err != nil {
-		return domain.StickerSet{}, nil, err
+		return domain.StickerSetRecord{}, nil, err
 	}
 	sts, err := i.repo.Stickers(ctx, set.ID)
 	return set, sts, err
 }
 
 // SetByID — набор + его стикеры по id.
-func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSet, []domain.Sticker, error) {
+func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, []domain.Sticker, error) {
 	set, err := i.repo.SetByID(ctx, id)
 	if err != nil {
-		return domain.StickerSet{}, nil, err
+		return domain.StickerSetRecord{}, nil, err
 	}
 	sts, err := i.repo.Stickers(ctx, set.ID)
 	return set, sts, err
@@ -73,7 +73,7 @@ func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSet, 
 
 // SetByMediaID — набор по файлу стикера (обратный поиск для клика по стикеру
 // в чате: сообщение несёт только media_id, а не set_id/slug).
-func (i *Interactor) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+func (i *Interactor) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSetRecord, error) {
 	return i.repo.SetByMediaID(ctx, mediaID)
 }
 
@@ -94,10 +94,10 @@ func (i *Interactor) Uninstall(ctx context.Context, userID, setID int64) error {
 // (covered sets): без превью строка поиска пуста до похода за полным набором,
 // а по 338 наборам разом это N+1 запросов — CoverStickers берёт все одним.
 // Пустой запрос — пустая выдача.
-func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.StickerSet, map[int64][]domain.Sticker, error) {
+func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return []domain.StickerSet{}, map[int64][]domain.Sticker{}, nil
+		return []domain.StickerSetRecord{}, map[int64][]domain.Sticker{}, nil
 	}
 	sets, err := i.repo.SearchSets(ctx, q, setSearchLim)
 	if err != nil {
@@ -111,7 +111,7 @@ func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.Sticker
 // (аналог tweb messages.getFeaturedStickers): наборы публичны, порядок задаёт
 // rank из выгрузки. Вместе с наборами отдаёт превью (covered sets) — тем же
 // приёмом, что SearchSets.
-func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, map[int64][]domain.Sticker, error) {
+func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
 	sets, err := i.repo.FeaturedSets(ctx, featuredLim)
 	if err != nil {
 		return nil, nil, err
@@ -122,7 +122,7 @@ func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSet, map[int
 
 // covers — превью наборов одним запросом (covered sets): setIDs собираются из
 // уже полученной выдачи, а не гоняются циклом по одному набору за раз.
-func (i *Interactor) covers(ctx context.Context, sets []domain.StickerSet) (map[int64][]domain.Sticker, error) {
+func (i *Interactor) covers(ctx context.Context, sets []domain.StickerSetRecord) (map[int64][]domain.Sticker, error) {
 	if len(sets) == 0 {
 		return map[int64][]domain.Sticker{}, nil
 	}
@@ -182,21 +182,21 @@ func (i *Interactor) SearchByEmoji(ctx context.Context, userID int64, emoji stri
 
 // CreateSet создаёт набор. slug: [a-z0-9_]{3,64}; kind: sticker|emoji (пусто →
 // sticker); title непустой и не длиннее maxTitleRunes.
-func (i *Interactor) CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error) {
+func (i *Interactor) CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSetRecord, error) {
 	if !slugRe.MatchString(slug) {
-		return domain.StickerSet{}, domain.ErrInvalid
+		return domain.StickerSetRecord{}, domain.ErrInvalid
 	}
 	if kind == "" {
 		kind = "sticker"
 	}
 	if kind != "sticker" && kind != "emoji" {
-		return domain.StickerSet{}, domain.ErrInvalid
+		return domain.StickerSetRecord{}, domain.ErrInvalid
 	}
 	title = strings.TrimSpace(title)
 	if title == "" || utf8.RuneCountInString(title) > maxTitleRunes {
-		return domain.StickerSet{}, domain.ErrInvalid
+		return domain.StickerSetRecord{}, domain.ErrInvalid
 	}
-	return i.repo.CreateSet(ctx, domain.StickerSet{Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID})
+	return i.repo.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID})
 }
 
 // AddSticker пополняет набор: только владелец, media должно существовать.
@@ -284,7 +284,7 @@ func (i *Interactor) SearchGifs(ctx context.Context, q, pos string) (GifPage, er
 	return i.gifs.SearchGifs(ctx, strings.TrimSpace(q), pos, gifSearchLim)
 }
 
-// SetRank — позиция набора в трендах (см. domain.StickerSet.Rank).
+// SetRank — позиция набора в трендах (см. domain.StickerSetRecord.Rank).
 func (i *Interactor) SetRank(ctx context.Context, setID int64, rank int) error {
 	return i.repo.SetRank(ctx, setID, rank)
 }

@@ -2,10 +2,14 @@ package domain
 
 import "time"
 
-// StickerSet — набор стикеров или анимированных эмодзи (Kind 'sticker'|'emoji').
+// StickerSetRecord — СТРОКА таблицы наборов, внутренний тип. Наружу набор
+// выходит конструктором схемы `stickerSet` (mtstickerset.go), поэтому имя
+// `StickerSet` занято им, а не этой структурой — тот же ход, что у `chats`
+// (`ChatRecord` против `chat`).
+//
 // Наборы публичны: контент любого набора может смотреть и слать каждый;
 // CreatedBy нужен только для права пополнять набор и наружу не отдаётся.
-type StickerSet struct {
+type StickerSetRecord struct {
 	ID           int64  `json:"id"`
 	Slug         string `json:"slug"`
 	Title        string `json:"title"`

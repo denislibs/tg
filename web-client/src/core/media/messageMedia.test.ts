@@ -77,15 +77,32 @@ describe('saveDocument — вывод типа документа из атри�
   })
 
   it('sticker: webp → static, webm → video-стикер, tgs-mime → lottie', () => {
-    expect(saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥' }])).sticker).toBe(1)
-    const webm = saveDocument(doc('video/webm', [{ _: 'documentAttributeSticker', alt: '🔥' }]))
+    expect(saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }])).sticker).toBe(1)
+    const webm = saveDocument(doc('video/webm', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }]))
     expect([webm.type, webm.sticker, webm.animated]).toEqual(['sticker', 3, true])
-    const tgs = saveDocument(doc('application/x-tgsticker', [{ _: 'documentAttributeSticker', alt: '🔥' }]))
+    const tgs = saveDocument(doc('application/x-tgsticker', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }]))
     expect([tgs.type, tgs.sticker, tgs.animated]).toEqual(['sticker', 2, true])
   })
 
   it('эмодзи стикера доезжает из alt (doc.stickerEmojiRaw оригинала)', () => {
-    expect(saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥' }])).stickerEmojiRaw).toBe('🔥')
+    expect(saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }])).stickerEmojiRaw).toBe('🔥')
+  })
+
+  // Набор стикера теперь приезжает В САМОМ документе, и это то, ради чего
+  // отменено решение «stickerset не производим». Пока его не было, клик по
+  // стикеру в чате шёл в сеть за набором отдельной ручкой по media_id.
+  it('набор стикера доезжает из stickerset (doc.stickerSetInput оригинала)', () => {
+    const d = saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }]))
+    expect(d.stickerSetInput).toEqual({ _: 'inputStickerSetID', id: 9 })
+  })
+
+  // «Набора нет» — это ОТСУТСТВИЕ клиентского параметра, а не пустышка в нём
+  // (порт tweb saveDoc:180-187). Иначе потребитель, спрашивающий `if
+  // (doc.stickerSetInput)`, получил бы «набор есть» у стикера без набора и
+  // открыл бы пустую панель.
+  it('inputStickerSetEmpty не сохраняется вовсе', () => {
+    const d = saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetEmpty' } }]))
+    expect(d.stickerSetInput).toBeUndefined()
   })
 
   it('photo-документ: documentAttributeImageSize → type photo', () => {
@@ -106,7 +123,7 @@ describe('saveDocument — вывод типа документа из атри�
 describe('ступени лестницы', () => {
   const media: MessageMedia = {
     _: 'messageMediaDocument',
-    document: doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥' }], {
+    document: doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }], {
       thumbs: [
         { _: 'photoStrippedSize', type: 'i', bytes: 'STRIPPED' },
         { _: 'photoPathSize', type: 'j', bytes: 'M0 0' },

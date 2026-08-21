@@ -34,10 +34,10 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 	// (photoPathSize), и без джойна до сообщения не доезжает вовсе.
 	rows, err := q.Query(ctx, `SELECT m.id, COALESCE(m.width,0), COALESCE(m.height,0), COALESCE(m.mime,''),
 		m.blur_preview, COALESCE(m.thumb_key,''), COALESCE(m.duration,0), COALESCE(m.size,0), COALESCE(m.file_name,''),
-		COALESCE(m.title,''), COALESCE(m.performer,''), COALESCE(m.animated,FALSE), m.waveform, s.path_thumb, COALESCE(s.emoji,'')
+		COALESCE(m.title,''), COALESCE(m.performer,''), COALESCE(m.animated,FALSE), m.waveform, s.path_thumb, COALESCE(s.emoji,''), COALESCE(s.set_id,0)
 		FROM media m
 		LEFT JOIN LATERAL (
-			SELECT path_thumb, emoji FROM stickers WHERE media_id = m.id ORDER BY (path_thumb IS NULL), id LIMIT 1
+			SELECT path_thumb, emoji, set_id FROM stickers WHERE media_id = m.id ORDER BY (path_thumb IS NULL), id LIMIT 1
 		) s ON TRUE
 		WHERE m.id = ANY($1)`, ids)
 	if err != nil {
@@ -49,7 +49,7 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 		var d usecasechat.MediaDims
 		var thumbKey string
 		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName,
-			&d.Title, &d.Performer, &d.Animated, &d.Waveform, &d.PathThumb, &d.StickerAlt); e != nil {
+			&d.Title, &d.Performer, &d.Animated, &d.Waveform, &d.PathThumb, &d.StickerAlt, &d.StickerSetID); e != nil {
 			return nil, e
 		}
 		d.HasThumb = thumbKey != ""

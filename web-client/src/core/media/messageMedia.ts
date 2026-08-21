@@ -22,8 +22,7 @@
 //
 // ── Чего в модели НЕТ и почему ───────────────────────────────────────────────
 // Реквизиты MTProto-транспорта (`dc_id`, `access_hash`, `file_reference`,
-// `date`, семейство `Input*` — в т.ч. `documentAttributeSticker.stickerset`)
-// не воспроизводятся: у нас файл адресуется одним числовым id через
+// `date`) не воспроизводятся: у нас файл адресуется одним числовым id через
 // собственный медиа-эндпоинт, предмета у них нет. Варианты
 // `photoSizeProgressive`/`photoCachedSize`/`photoSizeEmpty` объявлены (кодек
 // фазы 2 обязан их понимать, и портируемый код на них ветвится), но сервером
@@ -72,10 +71,25 @@ export type PhotoSize =
 export interface DocumentAttributeImageSize { _: 'documentAttributeImageSize'; w: number; h: number }
 /** documentAttributeAnimated#11b58939 = DocumentAttribute; */
 export interface DocumentAttributeAnimated { _: 'documentAttributeAnimated' }
+/** inputStickerSetEmpty#ffb62b95 = InputStickerSet; — «набора нет». */
+export interface InputStickerSetEmpty { _: 'inputStickerSetEmpty' }
+/** inputStickerSetID#9de7a269 id:long access_hash:long = InputStickerSet;
+ *
+ * `access_hash` — токен доступа транспорта MTProto, сервер его не производит
+ * (см. шапку файла), поэтому в типе его нет вовсе. */
+export interface InputStickerSetID { _: 'inputStickerSetID'; id: number }
+/** InputStickerSet — объединение схемы (адрес набора). Производятся два
+ * конструктора из четырнадцати: остальные адресуют ВСТРОЕННЫЕ наборы Telegram
+ * (dice, premiumGifts, animatedEmoji), которых у нас нет как сущности. */
+export type InputStickerSet = InputStickerSetEmpty | InputStickerSetID
 /** documentAttributeSticker#6319d612 … alt:string stickerset:InputStickerSet …
- * `stickerset` не воспроизводится: семейство Input* транспорта, набор у нас
- * адресуется числовым set_id через свою ручку. */
-export interface DocumentAttributeSticker { _: 'documentAttributeSticker'; alt: string }
+ *
+ * `stickerset` приезжает. Здесь сначала было записано обратное — «семейство
+ * Input* транспорта, набор адресуется через свою ручку», — и это ровно то
+ * рассуждение, из-за которого клик по стикеру в чате ходил в сеть за набором
+ * (`GET /stickers/by-media/{id}`). У оригинала документ несёт набор в себе, а
+ * `saveDocument` кладёт его разобранным в `stickerSetInput`. */
+export interface DocumentAttributeSticker { _: 'documentAttributeSticker'; alt: string; stickerset: InputStickerSet }
 /** documentAttributeVideo#17399fad flags:# round_message:flags.0?true
  * supports_streaming:flags.1?true nosound:flags.3?true duration:double w:int h:int … */
 export interface DocumentAttributeVideo {
@@ -139,6 +153,16 @@ export interface MyDocument {
   sticker?: 1 | 2 | 3
   /** эмодзи стикера — `doc.stickerEmojiRaw` оригинала (из `alt`) */
   stickerEmojiRaw?: string
+  /**
+   * Набор, которому принадлежит стикер — `doc.stickerSetInput` оригинала
+   * (клиентский параметр из `schema_additional_params.json`, разобранный из
+   * `documentAttributeSticker.stickerset`).
+   *
+   * Отсутствует, когда набора нет: стикер удалённого набора либо файл,
+   * отправленный как стикер и в наборах не числящийся. Именно ОТСУТСТВИЕ, а не
+   * `inputStickerSetEmpty` — так же, как в `saveDoc` оригинала.
+   */
+  stickerSetInput?: InputStickerSetID
 }
 
 /** Фотография: лестница размеров вместе с оригиналом (файл выбирается ступенью). */
@@ -500,10 +524,9 @@ const MIME_TGS = 'application/x-tgsticker'
  * в оригинале, где `saveDoc` дописывает поля в сам объект.
  *
  * ── Отступления от оригинала ────────────────────────────────────────────────
- *  • ветки `documentAttributeCustomEmoji`, `stickerset`/`stickerEmojiRaw`,
- *    `supportsStreaming` и подстановки `file_name` для voice/round здесь нет:
- *    кастомных эмодзи как документов у нас нет, набор стикера приезжает своей
- *    ручкой, а стримингом владеет `resolveStreamUrl` (см. CLAUDE.md «Медиа»);
+ *  • ветки `documentAttributeCustomEmoji`, `supportsStreaming` и подстановки
+ *    `file_name` для voice/round здесь нет: кастомных эмодзи как документов у
+ *    нас нет, а стримингом владеет `resolveStreamUrl` (см. CLAUDE.md «Медиа»);
  *  • `IS_WEBP_SUPPORTED` из гейта стикера убран: наш бэкенд не конвертирует
  *    webp, и второй ветки рендера под неподдерживаемый webp у нас нет;
  *  • lottie распознаётся по одному mime (`application/x-tgsticker`), без
@@ -528,6 +551,14 @@ export function saveDocument(doc: MyDocument): MyDocument {
         break
       case 'documentAttributeSticker':
         doc.stickerEmojiRaw = attribute.alt
+        // Порт tweb `appDocsManager.saveDoc:180-187`: адрес набора кладётся в
+        // клиентский параметр `stickerSetInput` (объявлен в
+        // `schema_additional_params.json`), а `inputStickerSetEmpty` не
+        // сохраняется вовсе — «набора нет» это ОТСУТСТВИЕ параметра, а не
+        // конструктор-пустышка в нём.
+        if (attribute.stickerset?._ === 'inputStickerSetID') {
+          doc.stickerSetInput = attribute.stickerset
+        }
         if (doc.mime_type === MIME_WEBP) {
           doc.type = 'sticker'
           doc.sticker = 1

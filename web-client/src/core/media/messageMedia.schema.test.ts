@@ -50,13 +50,16 @@ const isRequired = (type: string) => !type.includes('?') && !isFlagsHolder(type)
 /**
  * Обязательные параметры схемы, которых мы сознательно не переносим: у них нет
  * предмета в нашей схеме доступа. Файл адресуется числовым id через собственный
- * эндпоинт, набор стикеров — числовым `set_id` своей ручкой, датацентров и
- * протухающих ссылок у нас нет вовсе.
+ * эндпоинт, датацентров и протухающих ссылок у нас нет вовсе. Набор стикера в
+ * этот список больше не входит: параметр `documentAttributeSticker.stickerset`
+ * предмет имеет (наш `set_id`) и производится — см. tl-stickers-analysis.md, Р3.
  */
 const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
   photo: ['access_hash', 'file_reference', 'date', 'dc_id'],
   document: ['access_hash', 'file_reference', 'date', 'dc_id'],
-  documentAttributeSticker: ['stickerset'],
+  // Адрес набора — тот же случай, что у файла: id предмет имеет и едет, а
+  // `access_hash` это токен доступа транспорта MTProto.
+  inputStickerSetID: ['access_hash'],
   // `access_hash` точки — токен, которым оригинал подписывает запрос картинки
   // карты в своём прокси; у нас карту рисует клиент по координатам.
   geoPoint: ['access_hash'],
@@ -163,7 +166,7 @@ const STICKER_WITH_PATH: MessageMedia = {
     size: 30000,
     thumbs: [{ _: 'photoPathSize', type: 'j', bytes: 'TTAgMA==' }],
     attributes: [
-      { _: 'documentAttributeSticker', alt: '🔥' },
+      { _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } },
       { _: 'documentAttributeImageSize', w: 512, h: 512 },
     ],
   },

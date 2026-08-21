@@ -481,6 +481,11 @@ type MediaDims struct {
 	// StickerAlt — эмодзи стикера (documentAttributeSticker.alt), из той же
 	// строки стикера, что и контур. Пусто у не-стикеров.
 	StickerAlt string
+	// StickerSetID — набор стикера (documentAttributeSticker.stickerset), из той
+	// же строки. 0 — файл в наборах не числится: не стикер либо стикер
+	// удалённого набора. Без него клиенту приходилось спрашивать набор
+	// отдельной ручкой по media_id — у оригинала документ несёт его в себе.
+	StickerSetID int64
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness

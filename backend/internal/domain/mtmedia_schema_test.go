@@ -49,9 +49,8 @@ type schemaConstructor struct {
 var omittedWithoutSubject = map[string][]string{
 	// Реквизиты MTProto-транспорта: файл адресуется числовым id через свой
 	// эндпоинт (шапка mtmedia.go).
-	"photo":                    {"access_hash", "file_reference", "date", "dc_id"},
-	"document":                 {"access_hash", "file_reference", "date", "dc_id"},
-	"documentAttributeSticker": {"stickerset"},
+	"photo":    {"access_hash", "file_reference", "date", "dc_id"},
+	"document": {"access_hash", "file_reference", "date", "dc_id"},
 	// Тот же транспортный токен, но у точки на карте: картинку карты оригинал
 	// просит у своего прокси с подписью, а у нас карту рисует клиент.
 	"geoPoint": {"access_hash"},

@@ -55,7 +55,7 @@ func (h *StickersHandler) MySets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sets == nil {
-		sets = []domain.StickerSet{}
+		sets = []domain.StickerSetRecord{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
 }
@@ -146,7 +146,7 @@ func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sets == nil {
-		sets = []domain.StickerSet{}
+		sets = []domain.StickerSetRecord{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
 }
@@ -163,7 +163,7 @@ func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sets == nil {
-		sets = []domain.StickerSet{}
+		sets = []domain.StickerSetRecord{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
 }

@@ -160,11 +160,24 @@ func (DocumentAttributeAnimated) isDocumentAttribute() {}
 // documentAttributeSticker#6319d612 flags:# mask:flags.1?true alt:string
 // stickerset:InputStickerSet mask_coords:flags.0?MaskCoords = DocumentAttribute;
 //
-// stickerset не воспроизводится: InputStickerSet — семейство Input* того же
-// транспорта, набор у нас адресуется числовым set_id через свою ручку.
+// stickerset производится. Здесь сначала было записано обратное — «семейство
+// Input* того же транспорта, набор адресуется числовым set_id через свою
+// ручку», — и вывод оказался неверным: транспортный в этом конструкторе
+// `access_hash`, а вопрос «какому набору принадлежит стикер» предмет имеет, это
+// наш `set_id`. Пока параметр не производился, ради того же ответа
+// существовала целая ручка обратного поиска (`GET /stickers/by-media/{id}`),
+// которой у оригинала нет вовсе: там документ несёт набор в себе, а tweb
+// держит его разобранным в клиентском параметре `stickerSetInput`
+// (schema_additional_params.json). Разбор — tl-stickers-analysis.md, Р3.
+//
+// Значение — `inputStickerSetID{id, access_hash}`; `access_hash` идёт нулём
+// (общее правило фазы 2: обязательный параметр без предмета — заглушка, и её
+// надо назвать). Набора нет — `inputStickerSetEmpty`, а не отсутствие ключа:
+// параметр в схеме обязательный.
 type DocumentAttributeSticker struct {
-	Underscore string `json:"_"`
-	Alt        string `json:"alt"`
+	Underscore string          `json:"_"`
+	Alt        string          `json:"alt"`
+	Stickerset InputStickerSet `json:"stickerset"`
 }
 
 func (DocumentAttributeSticker) isDocumentAttribute() {}
@@ -604,6 +617,11 @@ type MediaSource struct {
 	PathThumb []byte
 	// StickerAlt — эмодзи стикера (documentAttributeSticker.alt).
 	StickerAlt string
+	// StickerSetID — набор, которому принадлежит стикер
+	// (documentAttributeSticker.stickerset). 0 — набор неизвестен: стикер
+	// удалённого набора либо файл, отправленный как стикер, но в наборе не
+	// числящийся. Тогда едет inputStickerSetEmpty, а не подставленный ноль.
+	StickerSetID int64
 	// Spoiler — свойство вложения В ЭТОМ сообщении, а не файла.
 	Spoiler bool
 	// Kind — тип сообщения ('photo'|'video'|'round'|'voice'|'audio'|'sticker'|
@@ -660,7 +678,9 @@ func (s MediaSource) attributes() []DocumentAttribute {
 		}
 		attrs = append(attrs, a)
 	case "sticker":
-		attrs = append(attrs, DocumentAttributeSticker{Underscore: AttrSticker, Alt: s.StickerAlt})
+		attrs = append(attrs, DocumentAttributeSticker{
+			Underscore: AttrSticker, Alt: s.StickerAlt, Stickerset: stickerSetAddr(s.StickerSetID),
+		})
 		if s.Width > 0 && s.Height > 0 {
 			attrs = append(attrs, DocumentAttributeImageSize{Underscore: AttrImageSize, W: s.Width, H: s.Height})
 		}

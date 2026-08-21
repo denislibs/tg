@@ -50,7 +50,7 @@ describe('bubbleClasses', () => {
   })
 
   it('стикер: just-media + is-message-empty + has-floating-time, без хвоста', () => {
-    const cls = bubbleClasses(msg({ type: 'sticker', text: '', mediaId: 5, media: docMedia('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥' }]) }), ctx({ out: true, animatedSticker: true }))
+    const cls = bubbleClasses(msg({ type: 'sticker', text: '', mediaId: 5, media: docMedia('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }]) }), ctx({ out: true, animatedSticker: true }))
     expect(cls).toEqual(expect.arrayContaining(['sticker', 'sticker-animated', 'is-message-empty', 'has-floating-time', 'just-media']))
     expect(cls).not.toContain('can-have-tail')
   })

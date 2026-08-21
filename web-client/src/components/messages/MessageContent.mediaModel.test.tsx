@@ -91,7 +91,7 @@ describe('MessageContent: развилка бабла по doc.type', () => {
 describe('MessageContent: стикер читает свой документ', () => {
   const stickerMedia = (mime: string, w: number, h: number) => docMedia(
     mime,
-    [{ _: 'documentAttributeSticker', alt: '🔥' }, { _: 'documentAttributeImageSize', w, h }],
+    [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }, { _: 'documentAttributeImageSize', w, h }],
     [
       { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: 'c3RyaXBwZWQ=' },
       { _: 'photoPathSize', type: THUMB_TYPE_PATH, bytes: 'cGF0aA==' },

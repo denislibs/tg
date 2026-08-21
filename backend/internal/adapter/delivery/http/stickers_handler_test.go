@@ -83,11 +83,11 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 // остальные методы (встроенный nil-интерфейс) в этом хендлере не вызываются.
 type featuredRepoStub struct {
 	usecasestickers.Repo
-	sets   []domain.StickerSet
+	sets   []domain.StickerSetRecord
 	covers map[int64][]domain.Sticker
 }
 
-func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSet, error) {
+func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -106,7 +106,7 @@ func (s *featuredRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ in
 // поиска рисует силуэт стикеров, не дожидаясь отдельного похода за набором.
 func TestFeatured_ReturnsSets(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{
-		sets: []domain.StickerSet{
+		sets: []domain.StickerSetRecord{
 			{ID: 2, Slug: "newer", Title: "Newer", Kind: "sticker", StickerCount: 5},
 			{ID: 1, Slug: "older", Title: "Older", Kind: "sticker", StickerCount: 3},
 		},
@@ -121,7 +121,7 @@ func TestFeatured_ReturnsSets(t *testing.T) {
 		t.Fatalf("code = %d, want 200", w.Code)
 	}
 	var body struct {
-		Sets   []domain.StickerSet         `json:"sets"`
+		Sets   []domain.StickerSetRecord   `json:"sets"`
 		Covers map[string][]map[string]any `json:"covers"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -143,11 +143,11 @@ func TestFeatured_ReturnsSets(t *testing.T) {
 // (SearchSets зовёт оба, тем же приёмом, что Featured).
 type searchSetsRepoStub struct {
 	usecasestickers.Repo
-	sets   []domain.StickerSet
+	sets   []domain.StickerSetRecord
 	covers map[int64][]domain.Sticker
 }
 
-func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSet, error) {
+func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -165,7 +165,7 @@ func (s *searchSetsRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ 
 // строка поиска не пуста до отдельного похода за полным набором.
 func TestSearchSets_ReturnsCovers(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&searchSetsRepoStub{
-		sets: []domain.StickerSet{{ID: 5, Slug: "duck_pack", Title: "Duck", Kind: "sticker"}},
+		sets: []domain.StickerSetRecord{{ID: 5, Slug: "duck_pack", Title: "Duck", Kind: "sticker"}},
 		covers: map[int64][]domain.Sticker{
 			5: {{ID: 50, SetID: 5, MediaID: 500, Emoji: "🦆"}},
 		},
@@ -177,7 +177,7 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
 	}
 	var body struct {
-		Sets   []domain.StickerSet         `json:"sets"`
+		Sets   []domain.StickerSetRecord   `json:"sets"`
 		Covers map[string][]map[string]any `json:"covers"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -195,11 +195,11 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 // setByMediaIDRepoStub — стаб порта stickers.Repo только под SetByMediaID.
 type setByMediaIDRepoStub struct {
 	usecasestickers.Repo
-	set domain.StickerSet
+	set domain.StickerSetRecord
 	err error
 }
 
-func (s *setByMediaIDRepoStub) SetByMediaID(context.Context, int64) (domain.StickerSet, error) {
+func (s *setByMediaIDRepoStub) SetByMediaID(context.Context, int64) (domain.StickerSetRecord, error) {
 	return s.set, s.err
 }
 
@@ -216,7 +216,7 @@ func requestWithMediaID(mediaID string) *http.Request {
 // в конверте {"set": …} (клик по стикеру в чате, ConvMsg несёт только media_id).
 func TestSetByMediaID_Found(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{
-		set: domain.StickerSet{ID: 7, Slug: "utyaduck", Title: "Duck", Kind: "sticker"},
+		set: domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Title: "Duck", Kind: "sticker"},
 	}))
 
 	w := httptest.NewRecorder()
@@ -225,7 +225,7 @@ func TestSetByMediaID_Found(t *testing.T) {
 		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
 	}
 	var body struct {
-		Set domain.StickerSet `json:"set"`
+		Set domain.StickerSetRecord `json:"set"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v", err)

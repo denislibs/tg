@@ -23,14 +23,14 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
 	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
-func scanSet(s scanner) (domain.StickerSet, error) {
-	var set domain.StickerSet
+func scanSet(s scanner) (domain.StickerSetRecord, error) {
+	var set domain.StickerSetRecord
 	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
 		&set.Rank, &set.CoverMediaID)
 	return set, err
 }
 
-func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (domain.StickerSet, error) {
+func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error) {
 	// NULLIF(.., 0): CreatedBy — zero value доменной структуры для «набора без
 	// владельца» (created_by в схеме NULLABLE), а не ссылка на реального
 	// пользователя с id=0 — такого не существует, INSERT литерального 0 уронил
@@ -39,7 +39,7 @@ func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (do
 		`INSERT INTO sticker_sets (slug, title, kind, created_by) VALUES ($1,$2,$3,NULLIF($4,0)) RETURNING id`,
 		set.Slug, set.Title, set.Kind, set.CreatedBy).Scan(&set.ID)
 	if isUniqueViolation(err) {
-		return domain.StickerSet{}, domain.ErrConflict
+		return domain.StickerSetRecord{}, domain.ErrConflict
 	}
 	return set, err
 }
@@ -80,20 +80,20 @@ func (r *StickersRepo) StickerPositions(ctx context.Context, setID int64) (map[i
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) {
+func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+` FROM sticker_sets s WHERE s.slug=$1`, slug))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
 
-func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet, error) {
+func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+` FROM sticker_sets s WHERE s.id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
@@ -104,7 +104,7 @@ func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet
 // осознанный — один и тот же файл может числиться в двух наборах (Telegram
 // переиспользует документы), клику достаточно любого, как и в tweb, где набор
 // берётся из атрибута самого документа.
-func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
+func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
@@ -112,7 +112,7 @@ func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.
 		  WHERE st.media_id=$1
 		  LIMIT 1`, mediaID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
@@ -275,7 +275,7 @@ func (r *StickersRepo) Uninstall(ctx context.Context, userID, setID int64) error
 	return err
 }
 
-func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSet, error) {
+func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM user_sticker_sets uss
@@ -286,7 +286,7 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
 		set, e := scanSet(rows)
 		if e != nil {
@@ -297,7 +297,7 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSet, error) {
+func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
@@ -308,7 +308,7 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
 		set, e := scanSet(rows)
 		if e != nil {
@@ -322,7 +322,7 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 // FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
 // messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
 // новейшими первыми.
-func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
+func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
@@ -332,7 +332,7 @@ func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.St
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
 		set, e := scanSet(rows)
 		if e != nil {

@@ -188,8 +188,8 @@ func uploadFile(ctx context.Context, mediaUC *usecasemedia.Interactor, path stri
 // идемпотентности сида живёт в seedSet, и её надо проверять тестом без
 // Postgres и MinIO (cmd/seed-stickers/main_test.go).
 type setSeeder interface {
-	SetBySlug(ctx context.Context, slug string) (domain.StickerSet, []domain.Sticker, error)
-	CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error)
+	SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, []domain.Sticker, error)
+	CreateSet(ctx context.Context, ownerID int64, slug, title, kind string) (domain.StickerSetRecord, error)
 	// AddStickerAt заливает стикер на явную позицию — а не на «следующую
 	// свободную», как обычный AddSticker: позиция берётся из meta.json и
 	// обязана совпасть с БД буквально, иначе дыра в середине набора (стикер
