@@ -1,28 +1,25 @@
 // Порт tweb `src/lib/appManagers/utils/photos/generatePhotoForExtendedMediaPreview.ts`.
 //
 // Платное медиа ДО оплаты приезжает не медиа, а превью
-// (`messageExtendedMediaPreview`: размеры, длительность видео и stripped-байты
-// вместо файла). Показать его нечем — врапперы умеют работать только с медиа,
-// — поэтому оригинал собирает из превью ПСЕВДО-ФОТО: `id: 0` и единственный
-// размер `photoStrippedSize`. Дальше оно идёт в `wrapPhoto`/`wrapAlbum` как
-// обычное фото, а «единственный размер — stripped» и есть тот случай, ради
-// которого у `wrapPhoto` существует ранний выход (photo.ts:208): качать
-// нечего, превью показывается КАК медиа.
+// (`messageExtendedMediaPreview`: размеры и stripped-байты вместо файла).
+// Показать его нечем — врапперы умеют работать только с медиа, — поэтому
+// оригинал собирает из превью ПСЕВДО-ФОТО: `id: 0` и единственный размер
+// `photoStrippedSize`. Дальше оно идёт в `wrapPhoto`/`wrapAlbum` как обычное
+// фото, а «единственный размер — stripped» и есть тот случай, ради которого у
+// `wrapPhoto` существует ранний выход (photo.ts:208): качать нечего, превью
+// показывается КАК медиа.
 //
 // ── Отступления от оригинала ────────────────────────────────────────────────
-//  • вход — вложение сообщения (`messageMediaPhoto`/`messageMediaDocument`)
-//    вместо `messageExtendedMediaPreview`: конструктора «превью вместо медиа» у
-//    нас нет, заблокированное платное медиа приезжает обычным вложением, только
-//    без файла (`id: 0`). Спрашиваем у него ровно то же, что оригинал у превью,
-//    — геометрию и stripped-байты;
 //  • `access_hash`/`dc_id`/`file_reference`/`date` отпадают вместе с
 //    транспортом — это реквизиты MTProto-ссылки на файл, которого у
-//    неоплаченного медиа и нет.
+//    неоплаченного медиа и нет;
+//  • `video_duration` превью наш бэкенд не производит (длительность — уже
+//    сведение о содержимом неоплаченного медиа, его стирает тот же
+//    `stripLockedMedia`, что стирает mime), поэтому бейдж таймкода из превью
+//    не строится.
 import {
-  getMediaDimensions,
-  getStrippedThumb,
   THUMB_TYPE_STRIPPED,
-  type MyDocument,
+  type MessageExtendedMediaPreview,
   type MyPhoto,
   type PhotoStrippedSize,
 } from '@core/media/messageMedia'
@@ -57,17 +54,14 @@ const EMPTY_STRIPPED_THUMB =
 type StrippedSizeWithDimensions = PhotoStrippedSize & { w?: number, h?: number }
 
 export default function generatePhotoForExtendedMediaPreview(
-  media: MyPhoto | MyDocument | undefined,
+  preview: MessageExtendedMediaPreview,
 ): MyPhoto {
-  const { w, h } = getMediaDimensions(media)
-  const bytes = getStrippedThumb(media)
-
   const thumb: StrippedSizeWithDimensions = {
     _: 'photoStrippedSize',
     type: THUMB_TYPE_STRIPPED,
-    bytes: bytes || EMPTY_STRIPPED_THUMB,
-    w,
-    h,
+    bytes: preview.thumb?._ === 'photoStrippedSize' ? preview.thumb.bytes : EMPTY_STRIPPED_THUMB,
+    w: preview.w,
+    h: preview.h,
   }
 
   return { _: 'photo', id: 0, sizes: [thumb] }

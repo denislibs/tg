@@ -679,17 +679,20 @@ export function useMessageActions({
     // «Остановить опрос» (своё сообщение, не закрыт) — tweb contextMenu
     ...(() => {
       const raw = menuRawMsg()
-      const poll = raw?._ === 'message' ? raw.poll : undefined
-      if (!isRealChat || !poll) return []
+      const media = raw?._ === 'message' && raw.media?._ === 'messageMediaPoll' ? raw.media : undefined
+      if (!isRealChat || !media) return []
+      const poll = media.poll
       const items: MsgMenuItem[] = []
-      if (!poll.closed && !poll.quiz && poll.myVotes.length > 0) {
+      // «Мой голос» — флаг ВАРИАНТА в итогах, а не массив индексов рядом.
+      const voted = (media.results.results ?? []).some((r) => r.pFlags?.chosen)
+      if (!poll.pFlags?.closed && !poll.pFlags?.quiz && voted) {
         items.push({
           icon: <TgIcon name="checkretract" size={20} />,
           label: 'Retract Vote',
-          onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []).then((p) => useMessagesStore.getState().setPoll(numericChatId, p)) },
+          onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []).then((p) => useMessagesStore.getState().setPollMedia(numericChatId, p)) },
         })
       }
-      if (!poll.closed && raw!.fromId === meId) {
+      if (!poll.pFlags?.closed && raw!.fromId === meId) {
         items.push({
           icon: <TgIcon name="stop" size={20} />,
           label: 'Stop Poll',

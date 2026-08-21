@@ -68,8 +68,15 @@ const photo = ({ id = 7, w = 1600, h = 900, stripped = true, serverThumb = false
 })
 
 // Псевдо-фото неоплаченного платного медиа: единственная ступень — stripped
-// (её и производит `generatePhotoForExtendedMediaPreview` из превью).
-const previewPhoto = () => generatePhotoForExtendedMediaPreview(photo({ w: 600, h: 800 }))
+// (её и производит `generatePhotoForExtendedMediaPreview` из ПРЕВЬЮ — того
+// самого конструктора `messageExtendedMediaPreview`, которым платное медиа и
+// приезжает неоплатившему).
+const previewPhoto = () => generatePhotoForExtendedMediaPreview({
+  _: 'messageExtendedMediaPreview',
+  w: 600,
+  h: 800,
+  thumb: { _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: STRIPPED },
+})
 
 // Видео без серверного постера: подходящей ступени в `thumbs` нет вовсе —
 // у оригинала это `photoSizeEmpty`, у нас отсутствие ступени.

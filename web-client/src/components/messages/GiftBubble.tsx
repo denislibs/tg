@@ -4,12 +4,12 @@
 import { useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
-import type { GiftInfo } from '../../core/managers/starsManager'
+import type { MessageActionStarGift } from '../../core/messages/messageAction'
 import StarIcon from '../stars/StarIcon'
 import GiftInfoPopup from '../stars/GiftInfoPopup'
 import s from './GiftBubble.module.scss'
 
-export default function GiftBubble({ gift, out }: { gift: GiftInfo; out: boolean }) {
+export default function GiftBubble({ gift, date, out }: { gift: MessageActionStarGift; date: number; out: boolean }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   // Владелец подарка — получатель (входящее сообщение), не отправитель.
@@ -24,17 +24,17 @@ export default function GiftBubble({ gift, out }: { gift: GiftInfo; out: boolean
         </Text>
         <div className={s.price}>
           <StarIcon size={14} />
-          {gift.gift.priceStars}
+          {gift.gift.stars}
         </div>
         {gift.message && (
           <Text size={14} color="var(--primary-text-color)" style={{ textAlign: 'center', marginTop: 2 }}>
-            {gift.message}
+            {gift.message.text}
           </Text>
         )}
         <div className={s.viewBtn}>{isOwner ? t('View Gift') : t('Gift Sent')}</div>
       </div>
       {open && (
-        <GiftInfoPopup gift={gift} isOwner={isOwner} onClose={() => setOpen(false)} />
+        <GiftInfoPopup gift={gift} date={date} isOwner={isOwner} onClose={() => setOpen(false)} />
       )}
     </>
   )

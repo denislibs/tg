@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import type { SavedDialog } from '../managers/chatsManager'
 import type { PeerProfile } from '../managers/authManager'
-import type { GiftInfo } from '../managers/starsManager'
+import type { SavedStarGift } from '../managers/starsManager'
 
 // Read-хуки данных панели профиля (UserInfoPanel). Все — эфемерные серверные
 // данные экрана (не realtime-сущности стора), поэтому живут в ViewModel-хуках,
@@ -40,11 +40,11 @@ export function useUserProfile(peerId: PeerId | null | undefined, isSaved: boole
 // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
 // reload переиспользуется как onChanged попапа подарка.
 export function useProfileGifts(isUser: boolean, peerId: number | null | undefined): {
-  gifts: GiftInfo[]
+  gifts: SavedStarGift[]
   reload: () => void
 } {
   const managers = useManagers()
-  const [gifts, setGifts] = useState<GiftInfo[]>([])
+  const [gifts, setGifts] = useState<SavedStarGift[]>([])
   const reload = () => {
     if (!isUser || peerId == null) return
     void managers.stars.profileGifts(peerId).then(setGifts).catch(() => setGifts([]))

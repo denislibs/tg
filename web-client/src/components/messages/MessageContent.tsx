@@ -41,11 +41,14 @@ import { useSettings } from '../../settings'
 import mediaSizes, { setAttachmentSize } from '../../core/dom/mediaSizes'
 import {
   getDocumentFromMessage,
-  getMediaFromMessage,
+  getBubbleMedia,
+  getExtendedMediaPreview,
+  getPaidMedia,
   getPathThumb,
   getStrippedThumb,
   type MyDocument,
 } from '../../core/media/messageMedia'
+import generatePhotoForExtendedMediaPreview from '../../core/media/generatePhotoForExtendedMediaPreview'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
@@ -335,14 +338,30 @@ export default function MessageContent({
   // разные точки вставки).
   const renderTime: RenderTime = (mode, corner, justMedia) => timeNode(mode, corner, justMedia)
 
+  // Платное медиа: гейт «показывать ли контент» — это ВОПРОС «какой
+  // конструктор приехал», а не флаг. Неоплаченному зрителю вместо вложения
+  // приезжает `messageExtendedMediaPreview` (размеры + stripped-подложка), и
+  // оригинал собирает из него ПСЕВДО-ФОТО, чтобы дальше идти обычным путём
+  // враппера (bubbles.ts:8926-8931).
+  const paidMedia = getPaidMedia(m)
+  const paidPreview = getExtendedMediaPreview(m)
   // Вложение сообщения в форме оригинала: у фотографии `photo`, у файла —
   // `document` с выведенными saveDocument полями (tweb getMediaFromMessage).
-  const media = getMediaFromMessage(m)
+  // `getBubbleMedia`, а не `getMediaFromMessage`: у карточки ссылки картинка
+  // тоже файл вложения, но бабл у неё ТЕКСТОВЫЙ — иначе сообщение со ссылкой
+  // уехало бы в медиа-ветку и превратилось в картинку без текста.
+  const media = paidPreview ? generatePhotoForExtendedMediaPreview(paidPreview) : getBubbleMedia(m)
   const doc: MyDocument | undefined = media?._ === 'document' ? media : undefined
+  // Карточка превью ссылки — вложение `messageMediaWebPage`, а не поле рядом с
+  // текстом; бабл у неё при этом ТЕКСТОВЫЙ (tweb bubbles.ts:8112).
+  const webPage = m.media?._ === 'messageMediaWebPage' ? m.media.webpage : undefined
+  const contactMedia = m.media?._ === 'messageMediaContact' ? m.media : undefined
+  // Розыгрыш — ДВА конструктора одного вложения: идущий и состоявшийся.
+  const giveawayMedia = m.media?._ === 'messageMediaGiveaway' || m.media?._ === 'messageMediaGiveawayResults' ? m.media : undefined
   // Развилка дерева бабла — 1:1 tweb bubbles.ts:8510-8512: стикер и
   // video/gif/round идут медиа-контейнером, ВСЁ остальное (файл, музыка, pdf) —
   // строкой документа внутри тела сообщения (.document-container).
-  const isFileLike = !m.secretMedia && !m.paidMedia?.locked
+  const isFileLike = !m.secretMedia && !paidPreview
     && !!doc && !doc.sticker
     && doc.type !== 'video' && doc.type !== 'gif' && doc.type !== 'round'
 
@@ -418,7 +437,7 @@ export default function MessageContent({
           // reply/имя в группе не рисуются (как voice/round). Реакции — колонкой под
           // стикером, прижаты к его inline-концу (tweb is-message-empty).
           withReactionsOutside(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} selecting={selecting} feedFns={feedFns} />)
-        ) : media || m.localUrl || m.paidMedia?.locked ? (
+        ) : media || m.localUrl ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
           // Вложение есть — рисуем его (tweb: развилка по `message.media`);
@@ -478,9 +497,9 @@ export default function MessageContent({
                   // готовым слотом `footer` (`ChatFeed` строит её по
                   // `discussionsEnabled`), и живого предмета у терма ровно один
                   // — она.
-                  hasMessageBlock={!!m.text || !!m.reply || !!m.webPage || !!m.factCheck || !!footer}
-                  paidMedia={m.paidMedia}
-                  onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
+                  hasMessageBlock={!!m.text || !!m.reply || !!webPage || !!m.factCheck || !!footer}
+                  paidMedia={paidMedia}
+                  onUnlockPaid={paidPreview && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
               )}
               {/* подпись — тоже `.spoilers-container` (в tweb она лежит внутри
@@ -506,14 +525,14 @@ export default function MessageContent({
           withReactionsOutside(
             <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,
           )
-        ) : m.type === 'geo' && m.geo ? (
+        ) : m.type === 'geo' ? (
           withReactionsOutside(<GeoBubble m={m} out={out} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
-        ) : m.type === 'contact' && m.contact ? (
+        ) : m.media?._ === 'messageMediaContact' ? (
           <ContactBubble
             m={m}
             time={showReactions ? undefined : timeNode('corner')}
             reactions={reactionsInside}
-            onOpen={selecting ? undefined : () => feedFns.openSender(m.contact!.userId, m.contact!.name)}
+            onOpen={selecting ? undefined : () => feedFns.openSender(contactMedia!.user_id, contactMedia!.first_name)}
           />
         ) : m.type === 'call' ? (
           <CallBubble
@@ -525,19 +544,21 @@ export default function MessageContent({
           />
         ) : m.type === 'gift' && m.gift ? (
           <>
-            <GiftBubble gift={m.gift} out={out} />
+            {/* Подарок — СЛУЖЕБНОЕ сообщение с действием: дату несёт само
+                сообщение, у действия её нет вовсе. */}
+            <GiftBubble gift={m.gift} date={m.date ?? 0} out={out} />
             {showReactions
               ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
-        ) : m.type === 'giveaway' && m.giveaway ? (
+        ) : giveawayMedia ? (
           <>
-            <GiveawayBubble giveaway={m.giveaway} />
+            <GiveawayBubble media={giveawayMedia} />
             {showReactions
               ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
-        ) : m.type === 'poll' && m.poll ? (
+        ) : m.media?._ === 'messageMediaPoll' ? (
           <>
             <div className="attachment no-brb" />
             <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
@@ -546,11 +567,11 @@ export default function MessageContent({
                 {m.sender}
               </Text>
             )}
-            <div className="poll-message-content"><PollBubble poll={m.poll} out={out} /></div>
+            <div className="poll-message-content"><PollBubble media={m.media} out={out} /></div>
             {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
             </div>
           </>
-        ) : m.type === 'checklist' && m.checklist ? (
+        ) : m.media?._ === 'messageMediaToDo' ? (
           <>
             <div className="attachment no-brb" />
             <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
@@ -559,7 +580,7 @@ export default function MessageContent({
                 {m.sender}
               </Text>
             )}
-            <div className="poll-message-content"><ChecklistBubble checklist={m.checklist} out={out} /></div>
+            <div className="poll-message-content"><ChecklistBubble media={m.media} out={out} /></div>
             {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
             </div>
           </>
@@ -627,8 +648,8 @@ export default function MessageContent({
                 время, которое плавает (float:right) в последней строке текста. */}
             <div className={classNames(s.message, 'message', 'spoilers-container')}>
               <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
-              {m.webPage && (
-                <WebPagePreview wp={m.webPage} />
+              {webPage && (
+                <WebPagePreview wp={webPage} />
               )}
               {m.factCheck && (
                 <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
@@ -638,7 +659,7 @@ export default function MessageContent({
                   ВНУТРИ тела сообщения (tweb messageDiv.append, bubbles.ts:9869) */}
               {showReactions ? reactionsRow(timeNode('plain')) : (
                 <>
-                  {timeNode(m.webPage || m.factCheck ? 'nofloat' : hasBlock ? 'block' : 'inline')}
+                  {timeNode(webPage || m.factCheck ? 'nofloat' : hasBlock ? 'block' : 'inline')}
                   <TimeClearfix />
                 </>
               )}

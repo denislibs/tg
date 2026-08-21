@@ -1,5 +1,6 @@
-import type { MessageEntity, GeoData } from './core/models'
+import type { MessageEntity } from './core/models'
 import type { MessageMedia } from './core/media/messageMedia'
+import type { MessageActionStarGift } from './core/messages/messageAction'
 
 export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved' | 'secret'
 // sending → часики до message_ack; error → красный значок (send отвергнут/упал),
@@ -38,6 +39,15 @@ export interface ConvMsg {
   emoji?: string
   time?: string
   createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
+  /** дата сообщения, СЕКУНДЫ эпохи (`message.date`) — ею считается «трансляция
+   *  закончилась» (`date + period <= now`, порт tweb `isLiveExpired`) и дата
+   *  подарка. Не производная от `createdAt`: у схемы это и есть исходное
+   *  значение, а ISO — его представление. */
+  date?: number
+  /** время правки, СЕКУНДЫ эпохи (`message.edit_date`). У живой трансляции этим
+   *  же полем едет время последнего обновления координат — своего времени у гео
+   *  в схеме нет вовсе. */
+  editDate?: number
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
   // сообщение закреплено в чате (Telegram message.pFlags.pinned): в кластере
@@ -51,8 +61,6 @@ export interface ConvMsg {
   // мини-карточка (см. `core/models.ts::ReactionCount`).
   reactions?: { emoji: string; count: number; mine: boolean; recent?: PeerId[] }[]
   starReaction?: { total: number; mine: number } // платная ⭐-реакция (сумма звёзд + вклад зрителя)
-  geo?: GeoData // гео-точка (type 'geo') + venue/live location
-  contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
   // Предложение фото профиля (service-сообщение suggest_photo): у получателя под
@@ -65,24 +73,23 @@ export interface ConvMsg {
   replyToPeerId?: number
   // media (history read model — render the bubble fully, no per-media meta request)
   mediaId?: number
-  // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
-  paidMedia?: { price: number; locked: boolean }
-  /** Вложение в форме оригинала (`messageMediaPhoto`/`messageMediaDocument`) —
-   *  то же значение, что в `Message.media`. Бабл читает его так же, как врапперы
-   *  tweb: `doc.type`, `doc.w`/`doc.h`, `doc.attributes`, `photo.sizes`
+  /** Вложение ОДНИМ конструктором объединения `MessageMedia` — то же значение,
+   *  что в `Message.media`, и это ВСЕ виды вложения: файл, гео, визитка, опрос,
+   *  чек-лист, розыгрыш, карточка ссылки и платное медиа. Отдельных полей
+   *  `geo`/`contact`/`poll`/`checklist`/`giveaway`/`webPage`/`paidMedia` рядом
+   *  больше нет: они были копией того же значения, разложенной по восьми ключам.
+   *  Бабл читает вложение так же, как врапперы tweb: `media._`, `doc.type`,
+   *  `doc.w`/`doc.h`, `doc.attributes`, `photo.sizes`
    *  (см. `core/media/messageMedia.ts`). */
   media?: MessageMedia
   groupedId?: number // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
-  poll?: import('./core/models').Poll // опрос (type 'poll')
-  checklist?: import('./core/models').Checklist // чек-лист (type 'checklist')
-  giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
-  gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
+  /** ДЕЙСТВИЕ подарка (type 'gift'). Подарок — служебное сообщение, а не вид
+   *  вложения: конструктора `messageMediaStarGift` в схеме нет вовсе. Здесь
+   *  лежит ссылка на само действие, а не его пересборка. */
+  gift?: MessageActionStarGift
   replyMarkup?: import('./core/markup/replyMarkup').ReplyMarkup // клавиатура сообщения бота (TL-объединение ReplyMarkup)
-  // карточка превью ссылки под текстовым сообщением (сервер собирает её из
-  // og-тегов; картинка — наше медиа, см. WebPageData)
-  webPage?: import('./core/models').WebPageData
   // «проверка фактов» (Telegram factCheck): блок в бабле (текст + сущности + опц. страна)
   factCheck?: import('./core/models').FactCheck
   // расшифровка голосового/видео-кружка (Telegram transcribeAudio) — текст под баблом

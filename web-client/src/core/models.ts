@@ -1,8 +1,7 @@
 // src/core/models.ts
-import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
 import type { ReplyMarkup } from './markup/replyMarkup'
 import type { EmojiEffectKind } from './effects/emojiEffects'
-import { saveMessageMedia, type MessageMedia } from './media/messageMedia'
+import { saveMessageMedia, type MessageMedia, type TextWithEntities } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
 import { getPeerId, type Peer } from './peers/peerId'
 import type { PeerNotifySettings } from './dialogs/notifySettings'
@@ -24,42 +23,6 @@ import { refineMessageAction, type MessageAction } from './messages/messageActio
 // пришлось оставить рукописные типы, — то есть тип из схемы годится напрямую
 // (`docs/readiness/tl-program.md`, фаза 1).
 export type { MessageEntity }
-
-// GeoData — гео-точка сообщения. venue: title/address; live location: livePeriod
-// (сек, present → трансляция), heading, liveStopped, editedAt (время последнего
-// обновления координат — для «обновлено N мин назад»).
-export interface GeoData {
-  lat: number
-  lng: number
-  title?: string
-  address?: string
-  livePeriod?: number
-  heading?: number
-  liveStopped?: boolean
-  editedAt?: string
-}
-
-// RawGeo — гео на проводе (snake_case), как отдаёт бэк.
-export interface RawGeo {
-  lat: number
-  lng: number
-  title?: string
-  address?: string
-  live_period?: number
-  heading?: number
-  live_stopped?: boolean
-  edited_at?: string
-}
-
-// mapGeo нормализует проводной гео-объект в GeoData (camelCase).
-export function mapGeo(g: RawGeo): GeoData {
-  return {
-    lat: g.lat, lng: g.lng,
-    title: g.title, address: g.address,
-    livePeriod: g.live_period, heading: g.heading,
-    liveStopped: g.live_stopped, editedAt: g.edited_at,
-  }
-}
 
 /**
  * dialog#fc89f7f3 flags:# pinned:flags.2?true … peer:Peer top_message:int
@@ -144,57 +107,6 @@ export const WIRE_FOLDER_ARCHIVE = 1
  *  РЕАЛЬНАЯ папка, и вопрос задаётся её номером. */
 export function isDialogArchived(dialog: Pick<Dialog, 'folder_id'>): boolean {
   return dialog.folder_id === WIRE_FOLDER_ARCHIVE
-}
-
-// Серверное превью ссылки (Telegram webPage): снимок og-тегов первой ссылки
-// текстового сообщения. Приходит с историей (web_page) или догоняющим
-// realtime-кадром web_page_update (превью строится после отправки).
-export interface RawWebPage {
-  url?: string
-  site_name?: string
-  title?: string
-  description?: string
-  // Картинка превью — НАШЕ медиа: сервер скачивает og:image к себе и отдаёт
-  // media_id (usecase/chat/webpreview.go). Чужого адреса в payload больше нет:
-  // ходить за картинкой на сторонний хост значит сдавать ему IP читателя, да и
-  // наш CSP (`img-src 'self' data: blob:`) такой запрос режет.
-  photo_id?: number
-  photo_w?: number
-  photo_h?: number
-  photo_blur?: string
-  photo_has_thumb?: boolean
-  // Из страницы извлеклась статья Instant View. tweb рисует футер карточки
-  // только при `webPage.cached_page` (bubbles.ts:7990).
-  has_iv?: boolean
-}
-
-export interface WebPageData {
-  url?: string
-  siteName: string
-  title: string
-  description?: string
-  photoId?: number
-  photoW?: number
-  photoH?: number
-  /** stripped-подложка картинки (base64 JPEG) — как у медиа сообщения */
-  photoBlur?: string
-  photoHasThumb?: boolean
-  hasIV?: boolean
-}
-
-export function mapWebPage(w: RawWebPage): WebPageData {
-  return {
-    url: w.url || undefined,
-    siteName: w.site_name ?? '',
-    title: w.title ?? '',
-    description: w.description || undefined,
-    photoId: w.photo_id || undefined,
-    photoW: w.photo_w || undefined,
-    photoH: w.photo_h || undefined,
-    photoBlur: w.photo_blur || undefined,
-    photoHasThumb: w.photo_has_thumb || undefined,
-    hasIV: w.has_iv || undefined,
-  }
 }
 
 /**
@@ -326,8 +238,9 @@ export interface MessageReal extends MessageCommon {
   /** текст. Обязательный по схеме и едет ВСЕГДА, даже пустой: у картинки без
    *  подписи это пустая строка, а не отсутствие ключа. */
   message: string
-  /** Вложение в форме оригинала: `messageMediaPhoto`/`messageMediaDocument` со
-   *  ступенями `PhotoSize[]` и атрибутами. Тип документа выводит клиент
+  /** Вложение ОДНИМ конструктором объединения `MessageMedia` — и это все виды
+   *  вложения, а не только файл: гео, визитка, опрос, чек-лист, розыгрыш,
+   *  карточка ссылки и платное медиа тоже здесь. Тип документа выводит клиент
    *  (`saveDocument`), заслонка — `pFlags.spoiler`. Плоского `media_id` рядом
    *  БОЛЬШЕ НЕТ: адрес файла спрашивают у вложения
    *  (`getMediaFromMessage(m)?.id`). */
@@ -363,23 +276,6 @@ export interface MessageReal extends MessageCommon {
   /** расшифровка голосового/кружка (Telegram transcribeAudio) — КЛИЕНТСКИЙ кэш:
    *  с провода поле ушло, у схемы его на сообщении нет */
   transcription?: string
-
-  // ── ДОЛГ: объединение MessageMedia не доведено ────────────────────────────
-  // Гео, контакт, опрос, чек-лист, розыгрыш, подарок, превью ссылки и платное
-  // медиа — это КОНСТРУКТОРЫ ТОГО ЖЕ объединения (messageMediaGeo/Contact/Poll/
-  // ToDo/Giveaway/WebPage/PaidMedia), а едут собственными полями сообщения. То
-  // же самое названо долгом и на бэкенде (`mediaUnionPending`): предмет в схеме
-  // ЕСТЬ, значит это не «названное отступление», а незакрытый долг. Довести —
-  // отдельная работа: Poll, WebPage и Giveaway сами конструкторы со своими
-  // вложенными объединениями.
-  geo?: GeoData
-  contact?: { user_id: number; name?: string; phone?: string }
-  poll?: Poll
-  checklist?: Checklist
-  giveaway?: Giveaway
-  gift?: GiftInfo
-  web_page?: WebPageData
-  paid_media?: { price: number; locked: boolean }
 }
 
 /**
@@ -566,17 +462,11 @@ export interface MessageFwdHeader {
 }
 
 /**
- * textWithEntities#751f3146 text:string entities:Vector<MessageEntity> =
- * TextWithEntities;
- *
- * Строка вместе со своей разметкой ОДНИМ объектом, а не парой полей рядом: в
- * схеме эта связка именована, и она же лежит в цитатах, переводах и описаниях.
+ * textWithEntities#751f3146 — строка вместе со своей разметкой ОДНИМ объектом.
+ * Объявлена в `core/media/messageMedia.ts` (первыми её спрашивают конструкторы
+ * опроса и чек-листа), здесь только ре-экспорт для «проверки фактов».
  */
-export interface TextWithEntities {
-  _: 'textWithEntities'
-  text: string
-  entities: MessageEntity[]
-}
+export type { TextWithEntities }
 
 /**
  * factCheck#b89bfccf flags:# need_check:flags.0?true country:flags.1?string
@@ -619,138 +509,37 @@ export interface SecretMedia {
   /** вид медиа приложения ('photo'|'video'|'document') — как у обычной отправки */
   mediaType: string
 }
-// Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
-export interface RawPoll {
-  id: number
-  question: string
-  options: string[]
-  anonymous: boolean
-  multiple: boolean
-  quiz: boolean
-  closed: boolean
-  correct_option?: number | null
-  counts: number[]
-  total_voters: number
-  my_votes: number[]
-}
-
-export interface Poll {
-  id: number
-  question: string
-  options: string[]
-  anonymous: boolean
-  multiple: boolean
-  quiz: boolean
-  closed: boolean
-  correctOption?: number
-  counts: number[]
-  totalVoters: number
-  myVotes: number[]
-}
-
-export function mapPoll(r: RawPoll): Poll {
-  return {
-    id: r.id,
-    question: r.question,
-    options: r.options ?? [],
-    anonymous: r.anonymous,
-    multiple: r.multiple,
-    quiz: r.quiz,
-    closed: r.closed,
-    correctOption: r.correct_option ?? undefined,
-    counts: r.counts ?? [],
-    totalVoters: r.total_voters ?? 0,
-    myVotes: r.my_votes ?? [],
-  }
-}
-
-// Чек-лист (backend ChecklistInfo): заголовок + пункты с отметками «выполнено».
-export interface RawChecklistItem {
-  id: number
-  text: string
-  marked_by: number[] // user id, отметившие пункт выполненным
-}
-
-export interface RawChecklist {
-  id: number
-  title: string
-  items: RawChecklistItem[]
-  others_can_add: boolean
-  others_can_mark: boolean
-}
-
-export interface ChecklistItem {
-  id: number
-  text: string
-  markedBy: number[]
-}
-
-export interface Checklist {
-  id: number
-  title: string
-  items: ChecklistItem[]
-  othersCanAdd: boolean
-  othersCanMark: boolean
-}
-
-export function mapChecklist(r: RawChecklist): Checklist {
-  return {
-    id: r.id,
-    title: r.title,
-    items: (r.items ?? []).map((it) => ({ id: it.id, text: it.text, markedBy: it.marked_by ?? [] })),
-    othersCanAdd: !!r.others_can_add,
-    othersCanMark: !!r.others_can_mark,
-  }
-}
-
-// Розыгрыш (backend GiveawayInfo): приз + победители + участие зрителя.
-export interface RawGiveaway {
-  id: number
-  /** знаковый ключ канала розыгрыша (розыгрыши только в каналах) */
-  peer_id: PeerId
-  prize_kind: 'premium' | 'stars'
-  months: number
-  stars: number
-  winners_count: number
-  until_date: number // unix millis
-  status: 'active' | 'finished'
-  participants: number
-  participating: boolean
-  winner_ids?: number[] | null
-  i_won: boolean
-}
-
-export interface Giveaway {
-  id: number
-  peerId: PeerId
-  prizeKind: 'premium' | 'stars'
-  months: number
-  stars: number
-  winnersCount: number
-  untilDate: number
-  status: 'active' | 'finished'
-  participants: number
-  participating: boolean
-  winnerIds: number[]
-  iWon: boolean
-}
-
-export function mapGiveaway(r: RawGiveaway): Giveaway {
-  return {
-    id: r.id,
-    peerId: r.peer_id,
-    prizeKind: r.prize_kind,
-    months: r.months ?? 0,
-    stars: r.stars ?? 0,
-    winnersCount: r.winners_count ?? 0,
-    untilDate: r.until_date ?? 0,
-    status: r.status,
-    participants: r.participants ?? 0,
-    participating: !!r.participating,
-    winnerIds: r.winner_ids ?? [],
-    iWon: !!r.i_won,
-  }
-}
+/**
+ * payments.giveawayInfo#4367daa0 flags:# participating:flags.0?true … start_date:int …
+ * payments.giveawayInfoResults#e175e66f flags:# winner:flags.0?true … start_date:int
+ * stars_prize:flags.4?long finish_date:int winners_count:int … = payments.GiveawayInfo;
+ *
+ * ЛИЧНОЕ состояние зрителя: «участвую ли», «выиграл ли». В сообщении его нет и
+ * быть не может — тело кадра одно на всех получателей, а ответ на этот вопрос у
+ * каждого свой (та же ловушка, что уже поймана у `pFlags.out`). Приходит
+ * отдельным ответом `GET /giveaways/{id}`, как `payments.getGiveawayInfo` у
+ * оригинала (tweb `popupGiveaway`).
+ *
+ * `participants` — НАШ параметр вне схемы (`schema_additional_params.json`):
+ * оригинал числа участников не показывает вовсе (участие там = подписка на
+ * канал), у нас оно своё и живёт в попапе.
+ */
+export type GiveawayState =
+  | {
+      _: 'payments.giveawayInfo'
+      pFlags?: Partial<{ participating: true; preparing_results: true }>
+      start_date: number
+      participants: number
+    }
+  | {
+      _: 'payments.giveawayInfoResults'
+      pFlags?: Partial<{ winner: true; refunded: true }>
+      start_date: number
+      stars_prize?: number
+      finish_date: number
+      winners_count: number
+      participants: number
+    }
 
 // Состояние бустов канала (backend BoostStatus).
 export interface RawBoostStatus {
@@ -888,9 +677,7 @@ export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
 //     (`core/history/messageId.ts`).
 //  2. **Ссылки на пиров.** Знаковые ключи `peerId`/`fromId` выводит клиент.
 //  3. **Не пройденные программой подсистемы.** Реакции приезжают объединением
-//     `MessageReactions`, а модель держит плоскую проекцию; опрос, чек-лист,
-//     розыгрыш, подарок, гео и превью ссылки едут своими проводными формами
-//     (долг «объединение MessageMedia не доведено»).
+//     `MessageReactions`, а модель держит плоскую проекцию.
 //
 // Всё остальное совпало — поэтому маппер и усох до этих трёх пунктов.
 
@@ -975,15 +762,6 @@ export interface RawMessageReal extends RawMessageCommon {
   when_online?: boolean
   enc_body?: string
   destruct_at?: string
-  // долг «объединение MessageMedia не доведено» — проводные формы подсистем
-  geo?: RawGeo
-  contact?: { user_id: number; name?: string; phone?: string }
-  poll?: RawPoll
-  checklist?: RawChecklist
-  giveaway?: RawGiveaway
-  gift?: RawGiftInfo
-  web_page?: RawWebPage
-  paid_media?: { price: number; locked: boolean }
 }
 
 export interface RawMessageService extends RawMessageCommon {
@@ -1054,9 +832,8 @@ function mapReplyHeader(h: MessageReplyHeader | undefined): MessageReplyHeader |
 /**
  * Проводное сообщение → модель. Разбирать почти нечего: формы совпали, и
  * маппер остался ровно тем, чем должен, — ГРАНИЦЕЙ. Он переводит номера в
- * клиентское пространство, выводит знаковые ключи пиров и приводит те
- * подсистемы, которые программой TL ещё не пройдены (реакции, опрос, гео,
- * превью ссылки, подарок).
+ * клиентское пространство, выводит знаковые ключи пиров и приводит ту
+ * подсистему, которая программой TL ещё не пройдена, — реакции.
  *
  * `meId` нужен ровно одному: уточнению служебного действия до синтетического
  * конструктора («Вы присоединились» против «X присоединился»).
@@ -1114,14 +891,6 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     when_online: r.when_online,
     enc_body: r.enc_body,
     destruct_at: r.destruct_at,
-    geo: r.geo ? mapGeo(r.geo) : undefined,
-    contact: r.contact,
-    poll: r.poll ? mapPoll(r.poll) : undefined,
-    checklist: r.checklist ? mapChecklist(r.checklist) : undefined,
-    giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
-    gift: r.gift ? mapGiftInfo(r.gift) : undefined,
-    web_page: r.web_page ? mapWebPage(r.web_page) : undefined,
-    paid_media: r.paid_media,
   }
 }
 

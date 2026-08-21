@@ -14,11 +14,18 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { usePeers } from '../../core/hooks/usePeers'
 import { getPeerTitle } from '../../core/peers/getPeerTitle'
 import { getPeerPhoto, getPeerPhotoId } from '../../core/peers/peer'
-import type { Checklist } from '../../core/models'
+import { getPeerId } from '../../core/peers/peerId'
+import type { MessageMediaToDo } from '../../core/media/messageMedia'
 import { useT } from '../../i18n'
 import s from './ChecklistBubble.module.scss'
 
-export default function ChecklistBubble({ checklist, out }: { checklist: Checklist; out: boolean }) {
+/**
+ * Отметка «выполнено» лежит НЕ В ПУНКТЕ. В схеме пункт (`todoItem`) — только
+ * неизменяемый текст, а «кто и когда отметил» это `todoCompletion` в ОТДЕЛЬНОМ
+ * векторе. Прежний массив `markedBy` внутри пункта склеивал два предмета и
+ * терял время отметки, которого у него не было куда положить.
+ */
+export default function ChecklistBubble({ media, out }: { media: MessageMediaToDo; out: boolean }) {
   const t = useT()
   const managers = useManagers()
   // чек-лист рендерится только в открытом чате — его id и есть чат сообщения
@@ -27,14 +34,21 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
 
-  const canMark = out || checklist.othersCanMark
-  const canAdd = out || checklist.othersCanAdd
+  const { todo } = media
+  const completions = media.completions ?? []
+  const othersCanMark = !!todo.pFlags?.others_can_complete
+  const canMark = out || othersCanMark
+  const canAdd = out || !!todo.pFlags?.others_can_append
 
-  const done = checklist.items.filter((it) => it.markedBy.length > 0).length
-  const total = checklist.items.length
+  /** Отметки пункта — свежие первыми, как их отдаёт сервер (ORDER BY marked_at). */
+  const marksOf = (itemId: number) => completions.filter((c) => c.id === itemId)
 
-  // имена/аватары отметивших (для группового чек-листа показываем, кто отметил)
-  const markerIds = Array.from(new Set(checklist.items.flatMap((it) => it.markedBy)))
+  const done = todo.list.filter((it) => marksOf(it.id).length > 0).length
+  const total = todo.list.length
+
+  // имена/аватары отметивших. «Кто» — ССЫЛКА НА ПИР (отметить может и канал от
+  // своего лица), поэтому знаковый ключ, а не user_id.
+  const markerIds = Array.from(new Set(completions.map((c) => getPeerId(c.completed_by))))
   const peers = usePeers(markerIds)
 
   // Воркер пишет свой SSOT; main-стор обновляем результатом (отметки чек-листа
@@ -43,8 +57,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
     if (!canMark || busy) return
     setBusy(true)
     void managers.messages
-      .toggleChecklistItem(peerId, checklist.id, itemId)
-      .then((c) => useMessagesStore.getState().applyChecklistUpdate(peerId, c))
+      .toggleChecklistItem(peerId, todo.id, itemId)
+      .then((c) => useMessagesStore.getState().setChecklistMedia(peerId, c))
       .finally(() => setBusy(false))
   }
 
@@ -53,8 +67,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
     if (!text || busy) return
     setBusy(true)
     void managers.messages
-      .addChecklistItems(peerId, checklist.id, [text])
-      .then((c) => useMessagesStore.getState().applyChecklistUpdate(peerId, c))
+      .addChecklistItems(peerId, todo.id, [text])
+      .then((c) => useMessagesStore.getState().setChecklistMedia(peerId, c))
       .finally(() => {
         setBusy(false)
         setDraft('')
@@ -64,15 +78,16 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
 
   return (
     <div className={classNames(s.checklist, out ? s.out : '')}>
-      <div className={s.title}>{checklist.title}</div>
+      <div className={s.title}>{todo.title.text}</div>
       <Text size={13} color="var(--message-time-color)">
-        {checklist.othersCanMark ? t('Group Checklist') : t('Checklist')}
+        {othersCanMark ? t('Group Checklist') : t('Checklist')}
       </Text>
 
       <div className={s.items}>
-        {checklist.items.map((it) => {
-          const marked = it.markedBy.length > 0
-          const by = it.markedBy[0]
+        {todo.list.map((it) => {
+          const marks = marksOf(it.id)
+          const marked = marks.length > 0
+          const by = marks.length ? getPeerId(marks[0].completed_by) : undefined
           const peer = by != null ? peers.get(by) : undefined
           return (
             <div
@@ -88,9 +103,9 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
               </span>
               <div className={s.body}>
                 <Text size={15} color="var(--b-text)" className={marked ? s.textDone : undefined}>
-                  {it.text}
+                  {it.title.text}
                 </Text>
-                {checklist.othersCanMark && marked && by != null && (
+                {othersCanMark && marked && by != null && (
                   <span className={s.markedBy}>
                     <UserAvatar id={by} name={getPeerTitle({ peerId: by, peer })} photoId={getPeerPhotoId(getPeerPhoto(peer))} size={16} />
                     <Text size={12} color="var(--message-time-color)">{getPeerTitle({ peerId: by, peer })}</Text>

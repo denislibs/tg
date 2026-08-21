@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraft, mapGeo, mapBoostStatus, mapSuggestedPost } from '../../core/models'
+import { mapDraft, mapBoostStatus, mapSuggestedPost } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -158,7 +158,7 @@ const APPLY: Projector = {
   // Номер в кадре СЕРВЕРНЫЙ, в окне — клиентский: перевод на границе, как везде
   // (`core/history/messageId.ts`).
   [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, generateMessageId(e.id), e.message, e.edit_date, e.entities ?? undefined, e.reply_markup ?? null) },
-  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), mapGeo(e.geo)) },
+  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), e.media, e.edit_date) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },

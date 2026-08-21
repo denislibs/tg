@@ -26,6 +26,8 @@ import {
   getMediaDimensions,
   getStrippedThumb,
   hasServerThumb,
+  isPaidMediaLocked,
+  type MessageMediaPaidMedia,
   type MyDocument,
   type MyPhoto,
 } from '../../core/media/messageMedia'
@@ -78,8 +80,10 @@ interface Props {
   hasMessageBlock?: boolean
   /** элемент альбома — tweb запрещает инлайн-автоплей таким видео */
   isAlbumItem?: boolean
-  /** платное медиа (Telegram paid media): цена + заблокировано ли для зрителя */
-  paidMedia?: { price: number; locked: boolean }
+  /** платное медиа (Telegram paid media) — САМ конструктор: цена в
+   *  `stars_amount`, а «заблокировано ли» это выбор конструктора внутри вектора
+   *  (`isPaidMediaLocked`), а не булев ключ рядом */
+  paidMedia?: MessageMediaPaidMedia
   /** разблокировать платное медиа за звёзды (списывает у покупателя) */
   onUnlockPaid?: () => Promise<void>
 }
@@ -89,6 +93,7 @@ export default function RealMediaBubble({
   renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
   hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
+  const paidLocked = !!paidMedia && isPaidMediaLocked(paidMedia)
   // Вложение — фотография (лестница `sizes`) либо документ (`attributes` уже
   // сведены `saveDocument` в `type`/`w`/`h`/`duration`/`file_name`).
   const doc = media?._ === 'document' ? media : undefined
@@ -154,7 +159,7 @@ export default function RealMediaBubble({
   // не скачивал байты, которые никто не покажет; то же для localUrl и гейта
   // автозагрузки (blocked обязан НЕ ходить в сеть до клика).
   const needMediaUrl = (isImage || isVideo) && !(canAutoplay && !gifVideo)
-    && !localUrl && !blocked && !paidMedia?.locked && mediaId != null
+    && !localUrl && !blocked && !paidLocked && mediaId != null
   const mediaUrl = useMediaUrl(needMediaUrl ? mediaId! : null, { thumb: !isGif && !gifVideo && hasServerThumb(media) })
   // Канвас-превью (tweb-модель, Task 9): blur() → canvas-thumbnail prepend'ом в
   // контейнер медиа; НЕ монтируется, если полный URL известен уже на этом
@@ -163,11 +168,11 @@ export default function RealMediaBubble({
   // Ступень `photoStrippedSize` вложения (tweb getStrippedThumb).
   const strippedThumb = getStrippedThumb(media)
   const blurHostRef = useBlurThumb(
-    (isImage || isVideo) && !paidMedia?.locked ? strippedThumb : undefined,
+    (isImage || isVideo) && !paidLocked ? strippedThumb : undefined,
     !!localUrl || !!mediaUrl,
   )
   // Платное медиа: кроме stripped-ступени у нас ничего нет — превью монтируется всегда.
-  const paidBlurHostRef = useBlurThumb(paidMedia?.locked ? strippedThumb : undefined)
+  const paidBlurHostRef = useBlurThumb(paidLocked ? strippedThumb : undefined)
 
   // документ/музыка уже на дереве tweb — время позиционируют правила
   // `.document .time` / `.audio .time` из портированных партиалов
@@ -212,7 +217,7 @@ export default function RealMediaBubble({
     // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —
     // размытый плейсхолдер (канвас-превью) с оверлеем «Разблокировать за N ⭐».
     // media_id сервер не отдал, поэтому кроме blur/размеров у нас ничего нет.
-    if (paidMedia?.locked) {
+    if (paidLocked) {
       return (
         <div
           ref={paidBlurHostRef}
@@ -223,7 +228,7 @@ export default function RealMediaBubble({
             {unlocking ? (
               <><RadialProgress progress={0} size={20} /><span>{t('Unlocking…')}</span></>
             ) : (
-              <><span>{t('Unlock for')}</span><StarIcon size={16} /><span>{paidMedia.price}</span></>
+              <><span>{t('Unlock for')}</span><StarIcon size={16} /><span>{paidMedia.stars_amount}</span></>
             )}
           </button>
         </div>

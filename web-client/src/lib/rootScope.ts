@@ -17,7 +17,8 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState, UserUpdateEvt,
 } from '@core/realtime/events'
-import type { MyMessage, RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
+import type { MyMessage, RawBoostStatus } from '@core/models'
+import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '@core/media/messageMedia'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
@@ -65,10 +66,14 @@ export type BroadcastEvents = {
   [RT.dialogPin]: [{ peer_id: PeerId; pinned: boolean }, EventMeta?]
   [RT.dialogArchive]: [{ peer_id: PeerId; archived: boolean }, EventMeta?]
   [RT.dialogMute]: [{ peer_id: PeerId; muted: boolean }, EventMeta?]
-  [RT.pollUpdate]: [{ peer_id: PeerId; poll: RawPoll }, EventMeta?]
-  [RT.checklistUpdate]: [{ peer_id: PeerId; checklist: RawChecklist }, EventMeta?]
+  // Опрос/чек-лист/розыгрыш едут ТЕМ ЖЕ конструктором, что и внутри сообщения,
+  // под ключом `media`: собственных ключей `poll`/`checklist`/`giveaway` на
+  // проводе больше нет. Номера сообщения в кадре нет и не нужно — сообщение
+  // находят по идентификатору внутри вложения.
+  [RT.pollUpdate]: [{ peer_id: PeerId; media: MessageMediaPoll }, EventMeta?]
+  [RT.checklistUpdate]: [{ peer_id: PeerId; media: MessageMediaToDo }, EventMeta?]
   [RT.boostUpdate]: [{ peer_id: PeerId; status: RawBoostStatus }, EventMeta?]
-  [RT.giveawayUpdate]: [{ peer_id: PeerId; giveaway: RawGiveaway }, EventMeta?]
+  [RT.giveawayUpdate]: [{ peer_id: PeerId; media: MessageMedia }, EventMeta?]
   [RT.balanceUpdate]: [{ balance: number }, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]

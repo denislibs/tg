@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { WebPagePreview } from './richBubbles'
-import type { WebPageData } from '../../../core/models'
+import type { MyPhoto, WebPage } from '../../../core/media/messageMedia'
 
 // Медиа-конвейер и RPC-менеджеры к предмету теста отношения не имеют:
 // картинка нужна как факт наличия узла, а не как байты.
@@ -20,14 +20,23 @@ vi.mock('../useBlurThumb', () => ({ useBlurThumb: () => ({ current: null }) }))
 
 afterEach(cleanup)
 
-const base: WebPageData = {
+const base: WebPage = {
+  _: 'webPage',
   url: 'https://example.com/post',
-  siteName: 'Example',
+  display_url: 'example.com/post',
+  site_name: 'Example',
   title: 'Заголовок',
   description: 'Строка один\nСтрока два',
 }
 
-function renderCard(wp: Partial<WebPageData>) {
+/** Картинка карточки — ОБЫЧНАЯ лестница ступеней, та же, что у фотографии
+ *  сообщения: россыпи `photo_w`/`photo_h` рядом с карточкой больше нет. */
+const photo = (id: number, w: number, h: number): MyPhoto => ({
+  _: 'photo', id,
+  sizes: [{ _: 'photoSize', type: 'w', w, h, size: 0 }],
+})
+
+function renderCard(wp: Partial<WebPage>) {
   const { container } = render(<WebPagePreview wp={{ ...base, ...wp }} />)
   return container.querySelector('.webpage-content')!
 }
@@ -44,20 +53,20 @@ function indexOf(content: Element, selector: string) {
 
 describe('WebPagePreview', () => {
   it('обычная картинка идёт ПОД текстом', () => {
-    const content = renderCard({ photoId: 42, photoW: 1280, photoH: 720 })
+    const content = renderCard({ photo: photo(42, 1280, 720) })
 
     expect(indexOf(content, '.webpage-preview-resizer')).toBeGreaterThan(indexOf(content, '.webpage-text'))
   })
 
   it('квадратная картинка — врезка ПЕРЕД текстом', () => {
-    const content = renderCard({ photoId: 42, photoW: 320, photoH: 320 })
+    const content = renderCard({ photo: photo(42, 320, 320) })
 
     expect(indexOf(content, '.webpage-preview-resizer')).toBeLessThan(indexOf(content, '.webpage-name'))
     expect(content.closest('.webpage')!.classList.contains('has-square-photo')).toBe(true)
   })
 
   it('вертикальная картинка помечается своим классом и остаётся снизу', () => {
-    const content = renderCard({ photoId: 42, photoW: 400, photoH: 900 })
+    const content = renderCard({ photo: photo(42, 400, 900) })
 
     expect(indexOf(content, '.webpage-preview-resizer')).toBeGreaterThan(indexOf(content, '.webpage-text'))
     expect(content.closest('.webpage')!.classList.contains('has-vertical-photo')).toBe(true)
@@ -70,7 +79,7 @@ describe('WebPagePreview', () => {
   })
 
   it('картинка едет своим media_id, а не чужим адресом', () => {
-    const content = renderCard({ photoId: 42, photoW: 1280, photoH: 720 })
+    const content = renderCard({ photo: photo(42, 1280, 720) })
 
     expect(content.querySelector('img')!.getAttribute('src')).toBe('blob:media-42')
   })
@@ -82,7 +91,7 @@ describe('WebPagePreview', () => {
   })
 
   it('кнопка Instant View появляется по флагу сервера', () => {
-    const content = renderCard({ hasIV: true })
+    const content = renderCard({ has_iv: true })
 
     expect(content.querySelector('.webpage-footer')).not.toBeNull()
   })

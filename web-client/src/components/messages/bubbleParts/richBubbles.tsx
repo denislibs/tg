@@ -18,7 +18,10 @@ import { useManagers } from '../../../core/hooks/useManagers'
 import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
 import type { IVArticle } from '../../../core/managers/ivManager'
-import type { WebPageData } from '../../../core/models'
+import {
+  getGeoFromMedia, getMediaDimensions, getStrippedThumb, hasServerThumb, isLiveGeoExpired,
+  type MessageMediaGeoLive, type MyPhoto, type WebPage,
+} from '../../../core/media/messageMedia'
 import type { ConvMsg } from '../../../data'
 import s from '../MessageBubbles.module.scss'
 
@@ -32,12 +35,17 @@ import s from '../MessageBubbles.module.scss'
  * само медиа `.media-photo`. Размер бокса — `setAttachmentSize` по
  * `mediaSizes.webpage`, как у tweb (boxWidth/boxHeight оттуда же).
  */
-function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
-  const url = useMediaUrl(wp.photoId ?? null, { thumb: !!wp.photoHasThumb })
-  const hostRef = useBlurThumb(wp.photoBlur, !!url)
+function WebPagePhoto({ photo, square }: { photo: MyPhoto; square: boolean }) {
+  // Картинка карточки идёт ТЕМ ЖЕ путём, что фотография сообщения: ступень
+  // выбирается лестницей (`hasServerThumb`/`getStrippedThumb`/
+  // `getMediaDimensions`), а не пятью плоскими полями `photo_*` рядом с
+  // карточкой. Это и есть то, что порт медиа не доделал в прошлый раз.
+  const url = useMediaUrl(photo.id || null, { thumb: hasServerThumb(photo) })
+  const hostRef = useBlurThumb(getStrippedThumb(photo), !!url)
+  const dims = getMediaDimensions(photo)
   const { size } = setAttachmentSize({
-    width: wp.photoW || 0,
-    height: wp.photoH || 0,
+    width: dims.w || 0,
+    height: dims.h || 0,
     boxWidth: mediaSizes.active.webpage.width,
     boxHeight: mediaSizes.active.webpage.height,
     // tweb зовёт wrapPhoto карточки С сообщением (bubbles.ts:8221-8232), а
@@ -64,13 +72,13 @@ function WebPagePhoto({ wp, square }: { wp: WebPageData; square: boolean }) {
 const SQUARE_PHOTO = 48
 
 /** link preview card (rendered inside a text bubble) */
-export function WebPagePreview({ wp }: { wp: NonNullable<ConvMsg['webPage']> }) {
+export function WebPagePreview({ wp }: { wp: WebPage }) {
   const t = useT()
   const managers = useManagers()
   const [ivLoading, setIvLoading] = useState(false)
   const [ivArticle, setIvArticle] = useState<IVArticle | null>(null)
   // Клик → лоадер → статья; 422/сеть → просто открыть в новой вкладке. Кнопка
-  // при этом рисуется только при wp.hasIV — сервер проверил, что статья
+  // при этом рисуется только при wp.has_iv — сервер проверил, что статья
   // извлекается (tweb показывает футер лишь при webPage.cached_page).
   const openIV = async (e: ReactMouseEvent) => {
     e.stopPropagation()
@@ -84,16 +92,17 @@ export function WebPagePreview({ wp }: { wp: NonNullable<ConvMsg['webPage']> }) 
       setIvLoading(false)
     }
   }
-  const hasText = !!(wp.siteName || wp.title || wp.description)
+  const hasText = !!(wp.site_name || wp.title || wp.description)
+  const dims = wp.photo ? getMediaDimensions(wp.photo) : {}
   // tweb bubbles.ts:8188-8202: квадратная картинка при тексте рядом — 48px
   // врезкой (`has-square-photo`, float), вертикальная — своим классом;
   // остальные едут во всю ширину карточки.
-  const square = !!wp.photoId && !!wp.photoW && wp.photoW === wp.photoH && hasText
-  const vertical = !!wp.photoId && !!wp.photoH && !!wp.photoW && wp.photoH > wp.photoW && !square
+  const square = !!wp.photo && !!dims.w && dims.w === dims.h && hasText
+  const vertical = !!wp.photo && !!dims.h && !!dims.w && dims.h > dims.w && !square
   // tweb bubbles.ts:8341: `position = invertMedia || isSquare ? 'top' : 'bottom'`
   // — у обычной карточки картинка ПОД текстом, а не над ним. Флага invert_media
   // (Telegram «медиа сверху») у нас нет, поэтому решает только квадратность.
-  const photo = wp.photoId ? <WebPagePhoto wp={wp} square={square} /> : null
+  const photo = wp.photo ? <WebPagePhoto photo={wp.photo} square={square} /> : null
   // Разметка tweb (wrappers/webPage.tsx:105-142): .webpage.quote-like >
   // .webpage-quote.quote-like-border > .webpage-content > (.webpage-preview-resizer,
   // .webpage-name, .webpage-title, .webpage-text, .webpage-footer).
@@ -108,11 +117,11 @@ export function WebPagePreview({ wp }: { wp: NonNullable<ConvMsg['webPage']> }) 
       <div className={classNames('webpage-quote', 'quote-like-border')}>
         <div className="webpage-content">
           {square && photo}
-          <div className="webpage-name">{wp.siteName}</div>
+          <div className="webpage-name">{wp.site_name}</div>
           <div className="webpage-title">{wp.title}</div>
           {wp.description && <div className="webpage-text">{wp.description}</div>}
           {!square && photo}
-          {wp.hasIV && wp.url && (
+          {wp.has_iv && wp.url && (
             <button type="button" className={classNames('webpage-footer', 'is-button', s.ivButton)} onClick={openIV}>
               {ivLoading ? <Spinner size={16} thickness={2} /> : <>⚡ {t('Instant View')}</>}
             </button>
@@ -223,6 +232,17 @@ const GEO_W = 277
 const GEO_H = 195
 const GEO_ZOOM = 15
 
+/**
+ * Гео-бабл. Вложение — ОДИН из трёх конструкторов, и вопрос «место это или
+ * трансляция» задаётся конструктору, а не полям внутри одного объекта.
+ *
+ * ── «Трансляция закончилась» ────────────────────────────────────────────────
+ * Флага у неё НЕТ и на проводе не было бы чем его подделать: конец выражается
+ * ИСТЕЧЕНИЕМ СРОКА — `date + period <= now` (`isLiveGeoExpired`, порт tweb
+ * `geo.ts:178-179`). Досрочная остановка приезжает укороченным `period`, то
+ * есть тем же истечением. Прежний булев `geo.liveStopped` здесь был ВТОРЫМ
+ * ответом на тот же вопрос — и разъезжался с первым, когда срок истекал сам.
+ */
 export function GeoBubble({ m, out, radius, time }: {
   m: ConvMsg
   out: boolean
@@ -230,26 +250,32 @@ export function GeoBubble({ m, out, radius, time }: {
   time?: ReactNode
 }) {
   const managers = useManagers()
-  const geo = m.geo!
-  const { lat, lng } = geo
-  const isVenue = !!geo.title
-  const isLive = geo.livePeriod != null && geo.livePeriod > 0
-
+  const media = m.media
+  const geoPoint = getGeoFromMedia(media)
   // Тикающие «сейчас» — только для live-локации (отсчёт + «обновлено N назад»).
   const [now, setNow] = useState(() => Date.now())
+  const live: MessageMediaGeoLive | undefined = media?._ === 'messageMediaGeoLive' ? media : undefined
   useEffect(() => {
-    if (!isLive) return
+    if (!live) return
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [isLive])
-
-  const startMs = m.createdAt ? Date.parse(m.createdAt) : Date.now()
-  const expiry = startMs + (geo.livePeriod ?? 0) * 1000
-  const expired = isLive && (geo.liveStopped || now >= expiry)
+  }, [live])
   const activeShare = useLiveShareStore((st) => (m.peerId != null ? st.active[m.peerId] : undefined))
+  if (!geoPoint) return null
+
+  const lat = geoPoint.lat
+  const lng = geoPoint.long
+  const venue = media?._ === 'messageMediaVenue' ? media : undefined
+  const isVenue = !!venue
+  const isLive = !!live
+
+  const date = m.date ?? 0
+  const expired = !!live && isLiveGeoExpired(live, date, Math.floor(now / 1000))
   const sharingByMe = out && isLive && !expired && activeShare?.msgId === m.id
-  const remainMin = Math.max(0, Math.round((expiry - now) / 60000))
-  const updatedAgoMin = geo.editedAt ? Math.max(0, Math.floor((now - Date.parse(geo.editedAt)) / 60000)) : 0
+  const remainMin = Math.max(0, Math.round((date + (live?.period ?? 0) - now / 1000) / 60))
+  // «Обновлено N назад» — время последней правки сообщения: своего времени у
+  // гео в схеме нет вовсе, и второй колонки под него не заводится.
+  const updatedAgoMin = m.editDate ? Math.max(0, Math.floor((now / 1000 - m.editDate) / 60)) : 0
 
   const T = 256
   const n = 2 ** GEO_ZOOM
@@ -281,17 +307,17 @@ export function GeoBubble({ m, out, radius, time }: {
             loading="lazy"
           />
         ))}
-        <span className={s.geoPin} style={isLive && geo.heading != null ? { transform: `translate(-50%, -86%) rotate(${geo.heading}deg)` } : undefined}>
+        <span className={s.geoPin} style={live?.heading != null ? { transform: `translate(-50%, -86%) rotate(${live.heading}deg)` } : undefined}>
           <TgIcon name={isLive ? 'livelocation' : 'location'} size={38} color={expired ? '#9e9e9e' : '#e53935'} />
         </span>
         {isLive && !expired && <span className={s.geoLiveBadge}>LIVE</span>}
         {time}
       </a>
 
-      {isVenue && !isLive && (
+      {venue && (
         <div className={s.geoFooter}>
-          <Text size={15} weight={600} color="var(--b-primary)" noWrap>{geo.title}</Text>
-          {geo.address && <Text size={13.5} color="var(--b-secondary)" noWrap>{geo.address}</Text>}
+          <Text size={15} weight={600} color="var(--b-primary)" noWrap>{venue.title}</Text>
+          {venue.address && <Text size={13.5} color="var(--b-secondary)" noWrap>{venue.address}</Text>}
         </div>
       )}
 
@@ -331,19 +357,25 @@ export function ContactBubble({ m, time, reactions, onOpen }: {
   /** клик по контакту — открыть чат/профиль (tweb contactDiv.dataset.peerId) */
   onOpen?: () => void
 }) {
-  const c = m.contact!
-  const initials = (c.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+  if (m.media?._ !== 'messageMediaContact') return null
+  const c = m.media
+  // Имя визитки — СНИМОК на момент отправки, и в схеме он разложен на
+  // first_name/last_name; у нас фамилия всегда пуста (храним одной строкой), но
+  // пустая строка это ЗНАЧЕНИЕ, а не отсутствие параметра, — поэтому склейка, а
+  // не чтение одного поля.
+  const name = [c.first_name, c.last_name].filter(Boolean).join(' ')
+  const initials = (name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
   return (
     <div className={classNames('message', 'spoilers-container', s.contactBubble)}>
       {/* Дерево tweb (_chatBubble.scss:1319-1347): .contact > .contact-avatar +
           .contact-details > .contact-name + .contact-number */}
       <div className={classNames('contact', s.contactRow)} onClick={onOpen} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
         <div className="contact-avatar">
-          <Avatar background={peerColor(c.name || String(c.userId))} text={initials} size={54} />
+          <Avatar background={peerColor(name || String(c.user_id))} text={initials} size={54} />
         </div>
         <div className={classNames('contact-details', s.contactDetails)}>
-          <div className="contact-name">{c.name || `#${c.userId}`}</div>
-          <div className="contact-number">{c.phone ? `+${c.phone.replace(/^\+/, '')}` : ''}</div>
+          <div className="contact-name">{name || `#${c.user_id}`}</div>
+          <div className="contact-number">{c.phone_number ? `+${c.phone_number.replace(/^\+/, '')}` : ''}</div>
         </div>
       </div>
       {time}

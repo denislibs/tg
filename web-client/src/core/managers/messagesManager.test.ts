@@ -2,13 +2,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
-import { mapMyMessage, mapWebPage, mapPoll, mapChecklist, mapGiveaway, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal, type RawPoll, type RawChecklist, type RawGiveaway } from '../models'
+import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import { generateMessageId } from '../history/messageId'
 import { makeRawMessage } from '../messages/testMessage'
-import { getDocumentFromMessage, getMediaFromMessage, type MessageMedia } from '../media/messageMedia'
+import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
 
 /** Номер в КЛИЕНТСКОМ пространстве. Чисел стало ОДНО (решение Р1): у сообщения
  *  больше нет пары «адрес + порядок», а на проводе номера СЕРВЕРНЫЕ — граница
@@ -294,7 +294,6 @@ describe('MessagesManager.cacheLive — сообщение собирает ТО
     fwd_from: { _: 'messageFwdHeader', from_id: { _: 'peerUser', user_id: 11 }, date: 1754733600, channel_post: 13 },
     reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Click', data: 'Y2I=' }] }] },
     effect_name: 'confetti',
-    paid_media: { price: 10, locked: false },
     secretMedia: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
   } as RawMessageReal
 
@@ -412,11 +411,38 @@ describe('MessagesManager.cacheWebPage', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, web_page: { url: 'https://x', site_name: 'X', title: 'Title' } }
+    const evt: WebPageUpdateEvt = {
+      peer_id: 1, id: 2,
+      web_page: {
+        url: 'https://x/', site_name: 'X', title: 'Title',
+        photo_id: 7, photo_w: 2000, photo_h: 1000, photo_blur: 'Ymx1cg==', photo_has_thumb: true, has_iv: true,
+      },
+    }
     const ops = mgr.cacheWebPage(evt)
     // Номер в кадре СЕРВЕРНЫЙ, в операции — уже клиентский: иначе патч не нашёл
-    // бы сообщение в окне.
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { web_page: mapWebPage(evt.web_page) } }])
+    // бы сообщение в окне. Плоскую форму кадра (названное расхождение бэкенда)
+    // граница переводит в КОНСТРУКТОР с обычной лестницей ступеней — той же, по
+    // которой ступень выбирает фотография сообщения.
+    expect(ops).toEqual([{
+      op: 'patch', key: '1', msgId: cid(2),
+      fields: {
+        media: {
+          _: 'messageMediaWebPage',
+          webpage: {
+            _: 'webPage', url: 'https://x/', display_url: 'x',
+            site_name: 'X', title: 'Title', has_iv: true,
+            photo: {
+              _: 'photo', id: 7,
+              sizes: [
+                { _: 'photoStrippedSize', type: 'i', bytes: 'Ymx1cg==' },
+                { _: 'photoSize', type: 'y', w: 1280, h: 640, size: 0 },
+                { _: 'photoSize', type: 'w', w: 2000, h: 1000, size: 0 },
+              ],
+            },
+          },
+        },
+      },
+    }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
@@ -441,7 +467,10 @@ describe('MessagesManager.cacheWebPage', () => {
     expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
     for (const op of ops) {
       expect(op.op).toBe('patch')
-      if (op.op === 'patch') expect(op.fields).toEqual({ web_page: mapWebPage(evt.web_page) })
+      if (op.op === 'patch') {
+        expect(op.fields.media?._).toBe('messageMediaWebPage')
+        expect(op.fields.media?._ === 'messageMediaWebPage' && op.fields.media.webpage.title).toBe('Title')
+      }
     }
   })
 })
@@ -548,16 +577,20 @@ describe('MessagesManager.cachePaidUnlock', () => {
         ],
       },
     }
+    // Оплачено — позиция вектора становится `messageExtendedMedia` с настоящим
+    // вложением внутри; цена (`stars_amount`) при этом на месте, она свойство
+    // самого платного вложения.
+    const unlocked: MessageMedia = {
+      _: 'messageMediaPaidMedia',
+      stars_amount: 10,
+      extended_media: [{ _: 'messageExtendedMedia', media }],
+    }
     const evt = liveEvt({
-      ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z', media }),
-      paid_media: { price: 10, locked: false },
+      ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z', media: unlocked }),
     } as RawMessageReal)
     const ops = mgr.cachePaidUnlock(evt)
     // Плоского `media_id` рядом нет — адрес файла живёт ВНУТРИ вложения.
-    expect(ops).toEqual([{
-      op: 'patch', key: '1', msgId: cid(2),
-      fields: { media, paid_media: { price: 10, locked: false } },
-    }])
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media: unlocked } }])
     expect(getMediaFromMessage({ media: ops[0].op === 'patch' ? ops[0].fields.media : undefined })!.id).toBe(55)
   })
 
@@ -575,21 +608,29 @@ describe('MessagesManager.cachePaidUnlock', () => {
       ...makeRawMessage({
         id: 2, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z',
         media: {
-          _: 'messageMediaDocument',
-          document: {
-            _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
-            attributes: [
-              { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
-              { _: 'documentAttributeAnimated' },
-              { _: 'documentAttributeFilename', file_name: 'g.mp4' },
-            ],
-          },
+          _: 'messageMediaPaidMedia',
+          stars_amount: 10,
+          extended_media: [{
+            _: 'messageExtendedMedia',
+            media: {
+              _: 'messageMediaDocument',
+              document: {
+                _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
+                attributes: [
+                  { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
+                  { _: 'documentAttributeAnimated' },
+                  { _: 'documentAttributeFilename', file_name: 'g.mp4' },
+                ],
+              },
+            },
+          }],
         },
       }),
-      paid_media: { price: 10, locked: false },
     } as RawMessageReal))
     const patch = ops[0]
     const fields = patch?.op === 'patch' ? patch.fields : null
+    // Нормализация обязана зайти ВНУТРЬ обёртки платного медиа — иначе у
+    // оплаченного документа нет выведенного типа.
     const doc = getDocumentFromMessage({ media: fields?.media })
     expect(doc?.type).toBe('gif') // выведен из documentAttributeAnimated
     expect(doc?.file_name).toBe('g.mp4')
@@ -677,121 +718,150 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
   })
 })
 
-// Task 4 (Stage 1B.3): опросы / чек-листы / розыгрыши. cachePoll/cacheGiveaway
-// продолжают мутировать SSOT воркера как раньше (сохраняя myVotes/participating/
-// iWon из своей же копии — это отдельный, не связанный с операцией офлайн-кэш),
-// но операция несёт ГОЛЫЙ агрегат mapX(evt.x) — БЕЗ этого локального поля.
-// Слияние патча поверх окна (core/realtime/messageOps.ts) подставляет локальный
-// выбор ИЗ ОКНА — эти тесты проверяют именно op.fields, а сохранение проверяет
-// messageOps.test.ts (applyOp).
-const rawPoll = (overrides?: Partial<RawPoll>): RawPoll => ({
-  id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
-  quiz: false, closed: false, counts: [1, 0], total_voters: 1, my_votes: [],
-  ...overrides,
+// Task 4 (Stage 1B.3): опросы / чек-листы / розыгрыши. Все три едут ТЕМ ЖЕ
+// конструктором, что и внутри сообщения, под ключом `media`, и сообщение
+// находят не по номеру (его в кадре нет), а по идентификатору ВНУТРИ вложения.
+//
+// cachePoll обновляет SSOT воркера целиком — это его офлайн-кэш; операция же
+// несёт агрегат КАК ПРИШЁЛ, без `pFlags.chosen`, потому что общий кадр его и не
+// содержит (сервер собирает итоги для «зрителя 0»). Сохранение выбора ОКНА
+// проверяет messageOps.test.ts (applyOp).
+const pollMedia = (over?: { id?: number; voters?: number[]; chosen?: number; totalVoters?: number }): MessageMediaPoll => ({
+  _: 'messageMediaPoll',
+  poll: {
+    _: 'poll',
+    id: over?.id ?? 5,
+    question: { _: 'textWithEntities', text: 'q', entities: [] },
+    answers: [0, 1].map((i) => ({
+      _: 'pollAnswer' as const,
+      text: { _: 'textWithEntities' as const, text: i ? 'b' : 'a', entities: [] },
+      option: pollOptionKey(i),
+    })),
+  },
+  results: {
+    _: 'pollResults',
+    total_voters: over?.totalVoters ?? 1,
+    results: [0, 1].map((i) => ({
+      _: 'pollAnswerVoters' as const,
+      option: pollOptionKey(i),
+      voters: (over?.voters ?? [1, 0])[i],
+      ...(over?.chosen === i ? { pFlags: { chosen: true as const } } : {}),
+    })),
+  },
 })
 
-function pollPage(msgId: number, poll: RawPoll) {
+function mediaPage(msgId: number, media: MessageMedia) {
   return {
     messages: [{
       ...makeRawMessage({ id: msgId, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z' }),
-      poll,
+      media,
     } as RawMessage],
     count: 1,
   }
 }
 
 describe('MessagesManager.cachePoll', () => {
-  it('returns a patch op carrying the голый агрегат опроса (myVotes из события, не из SSOT)', async () => {
-    // SSOT уже держит МОЙ выбор (voted вариант 0) — live-кадр его не несёт.
-    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ my_votes: [0] })) })
+  it('операция несёт вложение КАК ПРИШЛО — без chosen из SSOT', async () => {
+    // SSOT уже держит МОЙ выбор (вариант 0) — live-кадр его не несёт.
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ chosen: 0 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt = { peer_id: 1, poll: rawPoll({ counts: [1, 1], total_voters: 2, my_votes: [] }) }
+    const evt = { peer_id: 1, media: pollMedia({ voters: [1, 1], totalVoters: 2 }) }
     const ops = mgr.cachePoll(evt)
-    // Операция несёт ровно mapPoll(evt.poll) — миллионном myVotes СВОЕГО события
-    // (пустой, как обычно шлёт сервер в общем broadcast), а НЕ [0] из SSOT.
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { poll: mapPoll(evt.poll) } }])
-    expect(ops[0].op === 'patch' && ops[0].fields.poll?.myVotes).toEqual([])
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media: evt.media } }])
+    const patched = ops[0].op === 'patch' ? ops[0].fields.media : undefined
+    expect(patched?._ === 'messageMediaPoll' && patched.results.results?.some((r) => r.pFlags?.chosen)).toBe(false)
   })
 
   it('produces no op when no message in the SSOT carries this poll id', async () => {
-    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ id: 5 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ id: 5 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePoll({ peer_id: 1, poll: rawPoll({ id: 999 }) })
+    const ops = mgr.cachePoll({ peer_id: 1, media: pollMedia({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
 
-const rawChecklist = (overrides?: Partial<RawChecklist>): RawChecklist => ({
-  id: 8, title: 't', items: [{ id: 1, text: 'i1', marked_by: [] }],
-  others_can_add: false, others_can_mark: true,
-  ...overrides,
+const todoMedia = (over?: { id?: number; marked?: boolean }): MessageMediaToDo => ({
+  _: 'messageMediaToDo',
+  todo: {
+    _: 'todoList',
+    id: over?.id ?? 8,
+    pFlags: { others_can_complete: true },
+    title: { _: 'textWithEntities', text: 't', entities: [] },
+    list: [{ _: 'todoItem', id: 1, title: { _: 'textWithEntities', text: 'i1', entities: [] } }],
+  },
+  ...(over?.marked
+    ? { completions: [{ _: 'todoCompletion' as const, id: 1, completed_by: { _: 'peerUser' as const, user_id: 1 }, date: 7 }] }
+    : {}),
 })
 
-function checklistPage(msgId: number, checklist: RawChecklist) {
-  return {
-    messages: [{
-      ...makeRawMessage({ id: msgId, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z' }),
-      checklist,
-    } as RawMessage],
-    count: 1,
-  }
-}
-
 describe('MessagesManager.cacheChecklist', () => {
-  it('returns a patch op carrying the mapped checklist (no local field — full replace is correct here)', async () => {
-    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist()) })
+  it('returns a patch op carrying the media (no local field — full replace is correct here)', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia()) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt = { peer_id: 1, checklist: rawChecklist({ items: [{ id: 1, text: 'i1', marked_by: [1] }] }) }
+    const evt = { peer_id: 1, media: todoMedia({ marked: true }) }
     const ops = mgr.cacheChecklist(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(3), fields: { checklist: mapChecklist(evt.checklist) } }])
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(3), fields: { media: evt.media } }])
   })
 
   it('produces no op when no message in the SSOT carries this checklist id', async () => {
-    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist({ id: 8 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia({ id: 8 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheChecklist({ peer_id: 1, checklist: rawChecklist({ id: 999 }) })
+    const ops = mgr.cacheChecklist({ peer_id: 1, media: todoMedia({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
 
-const rawGiveaway = (overrides?: Partial<RawGiveaway>): RawGiveaway => ({
-  id: 9, peer_id: 1, prize_kind: 'premium', months: 3, stars: 0, winners_count: 1,
-  until_date: 0, status: 'active', participants: 4, participating: false, i_won: false,
-  ...overrides,
+const giveawayMedia = (over?: { id?: number; participants?: number }): MessageMedia => ({
+  _: 'messageMediaGiveaway',
+  id: over?.id ?? 9,
+  pFlags: { winners_are_visible: true },
+  channels: [1],
+  quantity: 1,
+  months: 3,
+  until_date: 0,
 })
 
-function giveawayPage(msgId: number, giveaway: RawGiveaway) {
-  return {
-    messages: [{
-      ...makeRawMessage({ id: msgId, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z' }),
-      giveaway,
-    } as RawMessage],
-    count: 1,
-  }
-}
+/** Состоявшийся розыгрыш — ДРУГОЙ конструктор того же вложения. */
+const giveawayResultsMedia = (id = 9): MessageMedia => ({
+  _: 'messageMediaGiveawayResults',
+  id,
+  channel_id: 1,
+  launch_msg_id: 4,
+  winners_count: 1,
+  unclaimed_count: 0,
+  winners: [77],
+  months: 3,
+  until_date: 0,
+})
 
 describe('MessagesManager.cacheGiveaway', () => {
-  it('returns a patch op carrying the голый агрегат розыгрыша (participating/iWon из события, не из SSOT)', async () => {
-    // SSOT уже держит МОЁ участие — live-кадр его не несёт (обычный broadcast без персонализации).
-    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ participating: true, i_won: false })) })
+  it('находит сообщение по id ВНУТРИ вложения и заменяет вложение целиком', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia()) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt = { peer_id: 1, giveaway: rawGiveaway({ participants: 5, participating: false, i_won: false }) }
+    // Розыгрыш состоялся — приезжает ДРУГОЙ конструктор с тем же id.
+    const evt = { peer_id: 1, media: giveawayResultsMedia() }
     const ops = mgr.cacheGiveaway(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(4), fields: { giveaway: mapGiveaway(evt.giveaway) } }])
-    expect(ops[0].op === 'patch' && ops[0].fields.giveaway?.participating).toBe(false)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(4), fields: { media: evt.media } }])
   })
 
   it('produces no op when no message in the SSOT carries this giveaway id', async () => {
-    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ id: 9 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia({ id: 9 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheGiveaway({ peer_id: 1, giveaway: rawGiveaway({ id: 999 }) })
+    const ops = mgr.cacheGiveaway({ peer_id: 1, media: giveawayMedia({ id: 999 }) })
     expect(ops).toEqual([])
+  })
+
+  it('вложение не розыгрыш — операции нет вовсе', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia()) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.cacheGiveaway({ peer_id: 1, media: todoMedia() })).toEqual([])
   })
 })
 

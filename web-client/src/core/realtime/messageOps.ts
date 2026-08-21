@@ -8,6 +8,7 @@
 // только проектор. Исключение: обработчик RT.newMessage на главном потоке может
 // порождать `replace` для резолва превью ответа (storeProjection.ts:107-123).
 import type { MessageFields, MyMessage } from '../models'
+import type { MessageMedia, MessageMediaPoll } from '../media/messageMedia'
 import { isLocalMessageId } from '../history/messageId'
 
 export type MessageOp =
@@ -106,12 +107,43 @@ function sameFields(cur: MyMessage, fields: MessageFields): boolean {
   return Object.keys(next).every((k) => Object.is(seen[k], next[k]))
 }
 
+/**
+ * Слить итоги опроса, СОХРАНИВ выбор зрителя.
+ *
+ * Кадр `poll_update` собирается сервером для «зрителя 0» (`publishPollUpdate`,
+ * backend/internal/usecase/chat/poll.go), то есть без единого `pFlags.chosen` —
+ * поставить его туда нельзя, тело кадра одно на всех получателей. У схемы для
+ * ровно этого случая есть бит `pollResults.pFlags.min` («объект пришёл
+ * урезанным»), по которому оригинал и решает сохранить свой выбор
+ * (`appPollsManager.saveResults`); наш бэкенд его не производит — НАЗВАННОЕ
+ * расхождение, и до тех пор, пока оно так, «урезанность» здесь подразумевается
+ * безусловно.
+ *
+ * Розыгрышу такого слияния больше не нужно вовсе: участие уехало из вложения в
+ * отдельную ручку, локального состояния во вложении не осталось.
+ */
+function mergePollChoice(cur: MessageMedia, incoming: MessageMediaPoll): MessageMediaPoll {
+  if (cur._ !== 'messageMediaPoll') return incoming
+  const mine = new Set(
+    (cur.results.results ?? []).filter((r) => r.pFlags?.chosen).map((r) => r.option),
+  )
+  if (!mine.size) return incoming
+  return {
+    ...incoming,
+    results: {
+      ...incoming.results,
+      results: (incoming.results.results ?? []).map((r) =>
+        mine.has(r.option) ? { ...r, pFlags: { ...r.pFlags, chosen: true as const } } : r),
+    },
+  }
+}
+
 function patch(msgs: MyMessage[], msgId: number, fields: MessageFields): MyMessage[] {
   const idx = msgs.findIndex((x) => x.id === msgId)
   if (idx === -1) return msgs
   const cur = msgs[idx]
-  // Опрос и розыгрыш живут только у обычного сообщения — у пилюли их нет вовсе,
-  // и сохранять локальный выбор не из чего.
+  // Вложение живёт только у обычного сообщения — у пилюли поля `media` в схеме
+  // нет вовсе, и сохранять локальный выбор не из чего.
   if (cur._ !== 'message') {
     const untouched = sameFields(cur, fields)
     if (untouched) return msgs
@@ -119,28 +151,14 @@ function patch(msgs: MyMessage[], msgId: number, fields: MessageFields): MyMessa
     out[idx] = { ...cur, ...fields } as MyMessage
     return out
   }
-  // Опрос/розыгрыш несут вложенный локальный выбор (poll.myVotes,
-  // giveaway.participating/iWon), которого fields.poll/fields.giveaway
-  // сознательно НЕ несёт (cachePoll/cacheGiveaway строят операцию из голого
-  // агрегата — см. карту обогащений §3.1/3.2, docs/research/2026-08-10-message-
-  // enrichments.md). Это единственный случай, где patch трогает ключ верхнего
-  // уровня (poll/giveaway), внутри которого есть поле, требующее точечного
-  // сохранения — обычный shallow-merge {...cur, ...fields} заменил бы объект
-  // целиком и стёр бы локальный выбор ОКНА (в многовкладочном сценарии —
-  // не факт что совпадающий с тем, что успел насчитать воркер). Подставляем
-  // текущее значение окна, если оно уже есть; иначе (первая загрузка агрегата)
-  // используем то, что пришло в операции.
+  // Единственный случай, где patch заглядывает ВНУТРЬ значения поля: у опроса
+  // внутри `media` лежит пер-зрительский выбор, которого операция не несёт (см.
+  // mergePollChoice). Обычный shallow-merge заменил бы вложение целиком и стёр
+  // бы выбор ОКНА — в многовкладочном сценарии не факт что совпадающий с тем,
+  // что успел насчитать воркер.
   let f: MessageFields = fields
-  if (f.poll) f = { ...f, poll: { ...f.poll, myVotes: cur.poll ? cur.poll.myVotes : f.poll.myVotes } }
-  if (f.giveaway) {
-    f = {
-      ...f,
-      giveaway: {
-        ...f.giveaway,
-        participating: cur.giveaway ? cur.giveaway.participating : f.giveaway.participating,
-        iWon: cur.giveaway ? cur.giveaway.iWon : f.giveaway.iWon,
-      },
-    }
+  if (f.media?._ === 'messageMediaPoll' && cur.media) {
+    f = { ...f, media: mergePollChoice(cur.media, f.media) }
   }
   if (sameFields(cur, f)) return msgs
   const next = msgs.slice()

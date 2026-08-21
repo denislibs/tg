@@ -1,9 +1,10 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
 import {
-  isOurMessage, isOutMessage, mapChecklist, mapDraft, mapMessage, mapMyMessage,
-  type RawChecklist, type RawMessageReal, type RawMessageService,
+  isOurMessage, isOutMessage, mapDraft, mapMessage, mapMyMessage,
+  type RawMessageReal, type RawMessageService,
 } from './models'
+import { getMediaFromMessage, isMediaSpoiler } from './media/messageMedia'
 import { generateMessageId } from './history/messageId'
 import { makeRawMessage, makeRawServiceMessage } from './messages/testMessage'
 
@@ -46,14 +47,6 @@ describe('mapMessage', () => {
       when_online: undefined,
       enc_body: undefined,
       destruct_at: undefined,
-      geo: undefined,
-      contact: undefined,
-      poll: undefined,
-      checklist: undefined,
-      giveaway: undefined,
-      gift: undefined,
-      web_page: undefined,
-      paid_media: undefined,
     })
   })
 
@@ -85,18 +78,31 @@ describe('mapMessage', () => {
     expect(eff(undefined)).toBeUndefined()
   })
 
-  it('превью ссылки приводится из проводной формы (подсистема WebPage не пройдена)', () => {
-    const m = mapMessage(raw({
-      web_page: {
-        url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание',
-        photo_id: 42, photo_w: 1280, photo_h: 720, photo_blur: 'Ymx1cg==', photo_has_thumb: true, has_iv: true,
+  // Превью ссылки — КОНСТРУКТОР `messageMediaWebPage` в том же поле `media`, а
+  // не собственный ключ `web_page` рядом. Разбирать его нечем и незачем: форма
+  // провода и форма модели совпали, маппер обязан отдать объект как есть.
+  it('превью ссылки приезжает вложением и не разбирается', () => {
+    const media = {
+      _: 'messageMediaWebPage' as const,
+      webpage: {
+        _: 'webPage' as const,
+        url: 'https://example.com/', display_url: 'example.com',
+        site_name: 'Example', title: 'Заголовок', description: 'Описание', has_iv: true,
+        photo: {
+          _: 'photo' as const,
+          id: 42,
+          sizes: [
+            { _: 'photoStrippedSize' as const, type: 'i', bytes: 'Ymx1cg==' },
+            { _: 'photoSize' as const, type: 'y', w: 1280, h: 720, size: 0 },
+            { _: 'photoSize' as const, type: 'w', w: 1280, h: 720, size: 0 },
+          ],
+        },
       },
-    }))
-    expect(m._ === 'message' && m.web_page).toEqual({
-      url: 'https://example.com', siteName: 'Example', title: 'Заголовок', description: 'Описание',
-      photoId: 42, photoW: 1280, photoH: 720, photoBlur: 'Ymx1cg==', photoHasThumb: true, hasIV: true,
-    })
-    expect(mapMessage(raw())).toMatchObject({ web_page: undefined })
+    }
+    const m = mapMessage(raw({ media }))
+    expect(m._ === 'message' && m.media).toEqual(media)
+    // Картинка карточки идёт ТОЙ ЖЕ лестницей, что фотография сообщения.
+    expect(getMediaFromMessage(m._ === 'message' ? m : undefined)).toBe(media.webpage.photo)
   })
 
   // «Проверка фактов» — текст и его разметка ОДНИМ объектом `textWithEntities`,
@@ -149,9 +155,9 @@ describe('mapMessage', () => {
       photo: { _: 'photo' as const, id: 43, sizes: [{ _: 'photoStrippedSize' as const, type: 'i', bytes: 'AAECAw==' }] },
     }
     const m = mapMessage(raw({ media }))
-    expect(m._ === 'message' && m.media?.pFlags?.spoiler).toBe(true)
+    expect(isMediaSpoiler(m._ === 'message' ? m : undefined)).toBe(true)
     const bare = mapMessage(raw({ media: { ...media, pFlags: {} } }))
-    expect(bare._ === 'message' && bare.media?.pFlags?.spoiler).toBeUndefined()
+    expect(isMediaSpoiler(bare._ === 'message' ? bare : undefined)).toBe(false)
   })
 
   // Плоская проекция объединения `MessageReactions` — единственное, что маппер
@@ -257,34 +263,6 @@ describe('mapDraft', () => {
 
   it('drops an empty entities array', () => {
     expect(mapDraft({ peer_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
-  })
-})
-
-describe('mapChecklist', () => {
-  it('maps items with marks and permission flags (snake_case → camelCase)', () => {
-    const rawChecklist: RawChecklist = {
-      id: 7, title: 'todo',
-      items: [
-        { id: 1, text: 'a', marked_by: [10, 11] },
-        { id: 2, text: 'b', marked_by: [] },
-      ],
-      others_can_add: true, others_can_mark: false,
-    }
-    expect(mapChecklist(rawChecklist)).toEqual({
-      id: 7, title: 'todo',
-      items: [
-        { id: 1, text: 'a', markedBy: [10, 11] },
-        { id: 2, text: 'b', markedBy: [] },
-      ],
-      othersCanAdd: true, othersCanMark: false,
-    })
-  })
-
-  it('defaults absent items/marks to empty arrays', () => {
-    const c = mapChecklist({ id: 1, title: 't' } as unknown as RawChecklist)
-    expect(c.items).toEqual([])
-    expect(c.othersCanAdd).toBe(false)
-    expect(c.othersCanMark).toBe(false)
   })
 })
 

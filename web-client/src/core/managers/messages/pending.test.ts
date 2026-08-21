@@ -445,7 +445,13 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const msg = (h.emitted[0][0] as { msg: MessageReal }).msg
     expect(msg.random_id).toBe('c1')
     expect(msg.fromId).toBe(5)
-    expect(msg.contact).toEqual({ user_id: 42, name: 'Маша', phone: '' })
+    // Визитка бабла — КОНСТРУКТОР `messageMediaContact` в поле `media`, а не
+    // собственный ключ `contact` рядом. Все пять параметров обязательные и
+    // стоят всегда, в том числе пустыми: телефон гидрирует сервер.
+    expect(msg.media).toEqual({
+      _: 'messageMediaContact',
+      phone_number: '', first_name: 'Маша', last_name: '', vcard: '', user_id: 42,
+    })
     // на провод уходят только проводные поля — служебный optimistic отрезан
     // Пакет параметров (порт tweb MessageSendingParams) проставляет свои поля
     // ВСЕГДА — пусто = явный null/false, а не «поля нет»: так путь отправки не
@@ -457,6 +463,28 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
       replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
     }])
+  })
+
+  // Гео-бабл собирается ТЕМ ЖЕ правилом, что и на бэкенде (`geoWire`): три
+  // конструктора, выбор по наличию срока и подписи. Что ломается без этого:
+  // своя отправленная точка до эха сервера рисуется пустым текстовым баблом.
+  it.each([
+    ['точка', { lat: 55.7, lng: 37.6 }, { _: 'messageMediaGeo', geo: { _: 'geoPoint', long: 37.6, lat: 55.7 } }],
+    ['место с подписью', { lat: 55.7, lng: 37.6, title: 'Кафе', address: 'Пушкина, 1' },
+      { _: 'messageMediaVenue', geo: { _: 'geoPoint', long: 37.6, lat: 55.7 }, title: 'Кафе', address: 'Пушкина, 1' }],
+    ['живая трансляция', { lat: 55.7, lng: 37.6, livePeriod: 900, heading: 90 },
+      { _: 'messageMediaGeoLive', geo: { _: 'geoPoint', long: 37.6, lat: 55.7 }, period: 900, heading: 90 }],
+  ])('гео-бабл: %s едет своим конструктором', async (_name, geo, expected) => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({
+      peerId: 1, text: '', clientMsgId: 'c1', threadId: null, type: 'geo', geo,
+      optimistic: { senderId: 5 },
+    })
+
+    expect((h.emitted[0][0] as { msg: MessageReal }).msg.media).toEqual(expected)
   })
 
   // send-as: автор бабла — ССЫЛКА на канал, а не снимок `{title, photo_id}`.
@@ -657,7 +685,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     // спойлер живёт в pFlags вложения, литералом true (tweb :1600-1602)
     const bubble = (h.emitted[0][0] as { msg: MessageReal }).msg
     expect(isMediaSpoiler(bubble)).toBe(true)
-    expect(bubble.media?.pFlags).toEqual({ spoiler: true })
+    expect(bubble.media?._ === 'messageMediaPhoto' && bubble.media.pFlags).toEqual({ spoiler: true })
     expect(h.sends[0]).toMatchObject({ mediaSpoiler: true })
   })
 
@@ -674,7 +702,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     // «выключено» — это ОТСУТСТВИЕ ключа, не false
     const bubble = (h.emitted[0][0] as { msg: MessageReal }).msg
     expect(isMediaSpoiler(bubble)).toBe(false)
-    expect(bubble.media?.pFlags).toBeUndefined()
+    expect(bubble.media?._ === 'messageMediaPhoto' && bubble.media.pFlags).toBeUndefined()
     expect(h.sends[0].mediaSpoiler).toBeUndefined()
   })
 

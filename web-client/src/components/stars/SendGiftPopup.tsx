@@ -13,7 +13,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
-import type { StarGift } from '../../core/managers/starsManager'
+import type { StarGiftCatalogItem } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
 import { usePopupTransition } from '../settings/kit'
 import StarsPopup from './StarsPopup'
@@ -33,8 +33,8 @@ export default function SendGiftPopup({
   const t = useT()
   const managers = useManagers()
   const balance = useStarsBalance()
-  const [catalog, setCatalog] = useState<StarGift[]>([])
-  const [chosen, setChosen] = useState<StarGift | null>(null)
+  const [catalog, setCatalog] = useState<StarGiftCatalogItem[]>([])
+  const [chosen, setChosen] = useState<StarGiftCatalogItem | null>(null)
   const [message, setMessage] = useState('')
   const [anonymous, setAnonymous] = useState(false)
   const [busy, setBusy] = useState(false)

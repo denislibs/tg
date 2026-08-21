@@ -1,5 +1,6 @@
 // src/core/realtime/events.ts
-import type { GeoData, MessageEntity, RawGeo } from '../models'
+import type { MessageEntity } from '../models'
+import type { MessageMedia } from '../media/messageMedia'
 import type { ReplyMarkup } from '../markup/replyMarkup'
 import type { MessageAction } from '../messages/messageAction'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
@@ -173,13 +174,39 @@ export interface NewMessageEvt {
  *  `action` едет здесь потому, что правка служебного сообщения существует ровно
  *  одна — принятие предложенного фото, и меняется в ней только действие. */
 export interface EditMessageEvt { peer_id: PeerId; id: number; message: string; entities?: MessageEntity[] | null; edit_date?: number; reply_markup?: ReplyMarkup | null; action?: MessageAction }
-// Live-обновление координат гео-трансляции (geo_live_update). Время обновления
-// едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри geo: одно и то же поле прежде
-// значило и «время правки», и «время обновления координат».
-export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; geo: RawGeo; edit_date?: number }
+// Live-обновление координат гео-трансляции (geo_live_update). Координаты едут
+// ТЕМ ЖЕ конструктором, что и в самом сообщении (`messageMediaGeoLive` под
+// ключом `media`); собственный ключ `geo` с плоской точкой внутри был второй
+// формой гео на проводе.
+//
+// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
+// и то же поле прежде значило и «время правки», и «время обновления координат».
+// Оно же решает, каким приедет `period` остановленной трансляции, поэтому едут
+// они парой.
+export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; media: MessageMedia; edit_date?: number }
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
-export interface WebPageUpdateEvt { peer_id: PeerId; id: number; web_page: import('../models').RawWebPage }
+//
+// ── НАЗВАННОЕ РАСХОЖДЕНИЕ: у этого кадра карточка ПЛОСКАЯ ───────────────────
+// В самом сообщении превью — конструктор `messageMediaWebPage` с обычной
+// лестницей ступеней у картинки, а здесь бэкенд по-прежнему шлёт снимок
+// read-модели (`domain.WebPagePreview`: `site_name`/`photo_id`/`photo_w`/…) —
+// `usecase/chat/webpreview.go:88` порт объединения не тронул. То есть на
+// проводе снова ДВЕ формы одного предмета, и вторую приходится переводить
+// здесь, на границе (`cacheWebPage`). Это долг БЭКЕНДА, а не наша модель.
+export interface WireWebPagePreview {
+  url?: string
+  site_name?: string
+  title?: string
+  description?: string
+  photo_id?: number
+  photo_w?: number
+  photo_h?: number
+  photo_blur?: string
+  photo_has_thumb?: boolean
+  has_iv?: boolean
+}
+export interface WebPageUpdateEvt { peer_id: PeerId; id: number; web_page: WireWebPagePreview }
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
 export interface FactCheckUpdateEvt { peer_id: PeerId; id: number; factcheck: import('../models').FactCheck | null }
@@ -333,7 +360,10 @@ export interface PendingNewEvt {
   media?: PendingMedia
   /** blob-URL локального превью, сминченный воркером (см. выше) */
   local_url?: string
-  geo?: GeoData
+  /** АРГУМЕНТЫ сборки гео-вложения бабла (как и `media` выше — не само
+   *  вложение): три конструктора из них собирает `makeGeoMedia`. */
+  geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }
+  /** То же для визитки: телефон гидрирует сервер, до эха его нет. */
   contact?: { user_id: number; name?: string; phone?: string }
   secret?: boolean
   /** send-as: бабл сразу от лица канала/группы. Едет ССЫЛКА (знаковый ключ), а

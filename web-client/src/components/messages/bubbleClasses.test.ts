@@ -3,6 +3,14 @@ import { bubbleClasses, type BubbleCtx } from './bubbleClasses'
 import { saveDocument, type DocumentAttribute, type MessageMedia } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
 
+/** Вложение-фото. Ставится ВМЕСТО прежнего плоского `mediaId`: адрес файла
+ *  спрашивают у вложения (`getMediaId`), поэтому «медиа есть» без самого
+ *  вложения — форма, которой на проводе не существует. */
+const photoMedia = (id: number): MessageMedia => ({
+  _: 'messageMediaPhoto',
+  photo: { _: 'photo', id, sizes: [{ _: 'photoSize', type: 'w', w: 100, h: 100, size: 1 }] },
+})
+
 /** Вложение-документ: `doc.type` выводит `saveDocument` из атрибутов + mime. */
 const docMedia = (mime: string, attributes: DocumentAttribute[] = []): MessageMedia => ({
   _: 'messageMediaDocument',
@@ -34,7 +42,7 @@ describe('bubbleClasses', () => {
   })
 
   it('голосовое: min-content + is-single-document (живой tweb, mid 21397)', () => {
-    const cls = bubbleClasses(msg({ type: 'voice', text: '', mediaId: 7, status: 'read' }), ctx({ out: true, firstInGroup: false }))
+    const cls = bubbleClasses(msg({ type: 'voice', text: '', mediaId: 7, media: docMedia('audio/ogg', [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 3 }]), status: 'read' }), ctx({ out: true, firstInGroup: false }))
     expect(cls).toEqual(expect.arrayContaining(['voice-message', 'min-content', 'is-single-document', 'can-have-tail', 'is-group-last', 'is-read']))
     // у голосового тело сообщения есть (волна+время) — не is-message-empty
     expect(cls).not.toContain('is-message-empty')
@@ -42,9 +50,27 @@ describe('bubbleClasses', () => {
   })
 
   it('стикер: just-media + is-message-empty + has-floating-time, без хвоста', () => {
-    const cls = bubbleClasses(msg({ type: 'sticker', text: '', mediaId: 5 }), ctx({ out: true, animatedSticker: true }))
+    const cls = bubbleClasses(msg({ type: 'sticker', text: '', mediaId: 5, media: docMedia('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥' }]) }), ctx({ out: true, animatedSticker: true }))
     expect(cls).toEqual(expect.arrayContaining(['sticker', 'sticker-animated', 'is-message-empty', 'has-floating-time', 'just-media']))
     expect(cls).not.toContain('can-have-tail')
+  })
+
+  // Карточка ссылки — вложение, но бабл у неё ТЕКСТОВЫЙ: её картинка рисуется
+  // внутри тела сообщения (tweb bubbles.ts:8112). Пока превью ехало собственным
+  // ключом сообщения, спутать было не с чем; теперь `media` у такого сообщения
+  // есть, и бабл обязан остаться текстовым.
+  it('сообщение с карточкой ссылки остаётся текстовым баблом', () => {
+    const media: MessageMedia = {
+      _: 'messageMediaWebPage',
+      webpage: {
+        _: 'webPage', url: 'https://x/', display_url: 'x', title: 'T',
+        photo: { _: 'photo', id: 7, sizes: [{ _: 'photoSize', type: 'w', w: 10, h: 10, size: 1 }] },
+      },
+    }
+    const cls = bubbleClasses(msg({ type: 'text', text: 'https://x/', mediaId: 7, media }), ctx({ out: true }))
+    expect(cls).not.toContain('is-message-empty')
+    expect(cls).not.toContain('just-media')
+    expect(cls).toContain('can-have-tail')
   })
 
   it('big-emoji: emoji-big + can-have-big-emoji + sticker + just-media', () => {
@@ -53,18 +79,18 @@ describe('bubbleClasses', () => {
   })
 
   it('фото без подписи: has-plain-media-tail; с подписью — обычный бабл', () => {
-    const noCaption = bubbleClasses(msg({ type: 'photo', text: '', mediaId: 3 }), ctx({ out: true }))
+    const noCaption = bubbleClasses(msg({ type: 'photo', text: '', mediaId: 3, media: photoMedia(3) }), ctx({ out: true }))
     expect(noCaption).toEqual(expect.arrayContaining(['photo', 'is-message-empty', 'has-floating-time', 'can-have-tail', 'has-plain-media-tail']))
     expect(noCaption).not.toContain('just-media') // подложка бабла у фото остаётся
 
-    const captioned = bubbleClasses(msg({ type: 'photo', text: 'подпись', mediaId: 3 }), ctx({ out: true }))
+    const captioned = bubbleClasses(msg({ type: 'photo', text: 'подпись', mediaId: 3, media: photoMedia(3) }), ctx({ out: true }))
     expect(captioned).toContain('photo')
     expect(captioned).not.toContain('is-message-empty')
     expect(captioned).not.toContain('has-plain-media-tail')
   })
 
   it('кружок: round + just-media, хвоста нет никогда (bubbles.ts:9708)', () => {
-    const cls = bubbleClasses(msg({ type: 'roundVideo', text: '', mediaId: 9 }), ctx())
+    const cls = bubbleClasses(msg({ type: 'roundVideo', text: '', mediaId: 9, media: docMedia('video/mp4', [{ _: 'documentAttributeVideo', pFlags: { round_message: true }, duration: 5, w: 384, h: 384 }]) }), ctx())
     expect(cls).toEqual(expect.arrayContaining(['round', 'is-message-empty', 'has-floating-time', 'just-media']))
     expect(cls).not.toContain('can-have-tail')
   })

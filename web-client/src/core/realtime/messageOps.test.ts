@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyOp, type MessageOp } from './messageOps'
 import type { MessageReal, MyMessage } from '../models'
+import { pollOptionKey, type MessageMedia, type MessageMediaPoll } from '../media/messageMedia'
 import { makeMessage } from '../messages/testMessage'
 import { generateTempMessageId } from '../history/messageId'
 
@@ -149,41 +150,66 @@ describe('applyOp', () => {
     expect(real(next[0]).edit_date).toBe(1_750_000_300)
   })
 
-  // Task 4 (Stage 1B.3): опрос/розыгрыш несут вложенный локальный выбор
-  // (poll.myVotes, giveaway.participating/iWon), которого операция сознательно
-  // НЕ несёт (cachePoll/cacheGiveaway строят fields.poll/fields.giveaway из
-  // голого агрегата, см. pollMethods.ts) — patch обязан подставить его из
-  // ТЕКУЩЕГО сообщения окна. Это ГЛАВНЫЙ ПИН задачи: он обязан краснеть, если
-  // patch() (или вызывающий код) собирал бы операцию как replace всего
-  // сообщения — тогда локальный выбор окна стёрся бы вместе с остальным.
-  it('patch агрегата опроса → totalVoters/counts обновились, myVotes окна сохранён', () => {
-    const poll = {
-      id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
-      quiz: false, closed: false, counts: [1, 0], totalVoters: 1, myVotes: [0],
-    }
-    const base = [msg(1, { poll })]
-    // Операция несёт НОВЫЙ агрегат (кто-то ещё проголосовал), но БЕЗ myVotes
-    // окна (у операции своё значение myVotes — то, что успел насчитать воркер,
-    // не обязано совпадать с локальным выбором именно этой вкладки).
-    const incomingPoll = { ...poll, counts: [1, 1], totalVoters: 2, myVotes: [] }
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { poll: incomingPoll } })
-    expect(real(next[0]).poll?.totalVoters).toBe(2)
-    expect(real(next[0]).poll?.counts).toEqual([1, 1])
-    // локальный выбор ЭТОГО окна — на месте, а не затёрт значением из операции
-    expect(real(next[0]).poll?.myVotes).toEqual([0])
+  // Task 4 (Stage 1B.3): у ОПРОСА внутри вложения лежит пер-зрительский выбор
+  // (`pollAnswerVoters.pFlags.chosen`), которого общий кадр не несёт: сервер
+  // собирает итоги для «зрителя 0» (`publishPollUpdate`). Поэтому patch обязан
+  // подставить выбор из ТЕКУЩЕГО сообщения окна. Это ГЛАВНЫЙ ПИН задачи: он
+  // обязан краснеть, если patch стал бы обычным shallow-merge — вложение
+  // заменилось бы целиком и выбор окна стёрся.
+  //
+  // У РОЗЫГРЫША такого слияния больше нет вовсе: участие уехало из вложения в
+  // отдельную ручку, локального состояния во вложении не осталось.
+  const answer = (i: number, voters: number, chosen?: boolean) => ({
+    _: 'pollAnswerVoters' as const,
+    option: pollOptionKey(i),
+    voters,
+    ...(chosen ? { pFlags: { chosen: true as const } } : {}),
+  })
+  const pollMedia = (results: ReturnType<typeof answer>[], totalVoters: number): MessageMediaPoll => ({
+    _: 'messageMediaPoll',
+    poll: {
+      _: 'poll',
+      id: 5,
+      question: { _: 'textWithEntities', text: 'q', entities: [] },
+      answers: [0, 1].map((i) => ({
+        _: 'pollAnswer' as const,
+        text: { _: 'textWithEntities' as const, text: i ? 'b' : 'a', entities: [] },
+        option: pollOptionKey(i),
+      })),
+    },
+    results: { _: 'pollResults', total_voters: totalVoters, results },
   })
 
-  it('patch агрегата розыгрыша → participants обновился, participating/iWon окна сохранены', () => {
-    const giveaway = {
-      id: 9, peerId: CHAT, prizeKind: 'premium' as const, months: 3, stars: 0,
-      winnersCount: 1, untilDate: 0, status: 'active' as const, participants: 4,
-      participating: true, winnerIds: [], iWon: false,
+  it('patch итогов опроса → счётчики обновились, выбор ОКНА сохранён', () => {
+    const base = [msg(1, { media: pollMedia([answer(0, 1, true), answer(1, 0)], 1) })]
+    // Кадр несёт новые счётчики (кто-то ещё проголосовал) и НИ ОДНОГО chosen.
+    const incoming = pollMedia([answer(0, 1), answer(1, 1)], 2)
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { media: incoming } })
+    const media = real(next[0]).media
+    expect(media?._ === 'messageMediaPoll' && media.results.total_voters).toBe(2)
+    expect(media?._ === 'messageMediaPoll' && media.results.results?.map((r) => r.voters)).toEqual([1, 1])
+    // выбор ЭТОГО окна — на месте, а не затёрт значением из операции
+    expect(media?._ === 'messageMediaPoll' && media.results.results?.[0].pFlags?.chosen).toBe(true)
+    expect(media?._ === 'messageMediaPoll' && media.results.results?.[1].pFlags?.chosen).toBeUndefined()
+  })
+
+  it('окно ещё не знает выбора — берётся то, что пришло в операции', () => {
+    const base = [msg(1, { media: pollMedia([answer(0, 1), answer(1, 0)], 1) })]
+    const incoming = pollMedia([answer(0, 1), answer(1, 1, true)], 2)
+    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { media: incoming } })
+    const media = real(next[0]).media
+    expect(media?._ === 'messageMediaPoll' && media.results.results?.[1].pFlags?.chosen).toBe(true)
+  })
+
+  it('patch розыгрыша заменяет вложение ЦЕЛИКОМ — сохранять внутри нечего', () => {
+    const active: MessageMedia = {
+      _: 'messageMediaGiveaway', id: 9, channels: [CHAT], quantity: 1, months: 3, until_date: 0,
     }
-    const base = [msg(1, { giveaway })]
-    const incoming = { ...giveaway, participants: 5, participating: false, iWon: true }
-    const next = applyOp(base, { op: 'patch', key: KEY, msgId: 1, fields: { giveaway: incoming } })
-    expect(real(next[0]).giveaway?.participants).toBe(5)
-    expect(real(next[0]).giveaway?.participating).toBe(true) // окна, не из операции
-    expect(real(next[0]).giveaway?.iWon).toBe(false) // окна, не из операции
+    const results: MessageMedia = {
+      _: 'messageMediaGiveawayResults', id: 9, channel_id: CHAT, launch_msg_id: 1,
+      winners_count: 1, unclaimed_count: 0, winners: [77], months: 3, until_date: 0,
+    }
+    const next = applyOp([msg(1, { media: active })], { op: 'patch', key: KEY, msgId: 1, fields: { media: results } })
+    expect(real(next[0]).media).toEqual(results)
   })
 })

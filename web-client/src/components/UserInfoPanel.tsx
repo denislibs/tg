@@ -30,7 +30,7 @@ import { userStatusLabel } from '../core/presence'
 import { openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
-import type { GiftInfo } from '../core/managers/starsManager'
+import type { SavedStarGift } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
@@ -335,7 +335,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   const isSecret = chat.type === 'secret'
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
-  const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
+  const [selectedGift, setSelectedGift] = useState<SavedStarGift | null>(null)
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -741,6 +741,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           {selectedGift && (
             <GiftInfoPopup
               gift={selectedGift}
+              date={selectedGift.date}
               isOwner={peerId === meId}
               onClose={() => setSelectedGift(null)}
               onChanged={loadGifts}

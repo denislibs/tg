@@ -57,6 +57,19 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
   photo: ['access_hash', 'file_reference', 'date', 'dc_id'],
   document: ['access_hash', 'file_reference', 'date', 'dc_id'],
   documentAttributeSticker: ['stickerset'],
+  // `access_hash` точки — токен, которым оригинал подписывает запрос картинки
+  // карты в своём прокси; у нас карту рисует клиент по координатам.
+  geoPoint: ['access_hash'],
+  // Реквизиты СПРАВОЧНИКА мест (foursquare/gplaces): идентификатор заведения в
+  // чужой базе и его категория. Справочника у нас нет вовсе — точку с подписью
+  // присылает сам отправитель.
+  messageMediaVenue: ['provider', 'venue_id', 'venue_type'],
+  // Хэш для кэширования запроса; хэш-кэширования запросов у нас нет вовсе.
+  poll: ['hash'],
+  // `id` — идентификатор КЭШИРОВАННОЙ страницы на сервере оригинала (у нас
+  // превью это снимок на сообщении, отдельного объекта нет), `hash` — тот же
+  // случай, что у `poll.hash`.
+  webPage: ['id', 'hash'],
 }
 
 interface Violation { path: string; predicate: string; key: string }
@@ -183,12 +196,153 @@ const PHOTO: MessageMedia = {
   },
 }
 
+// ── Конструкторы, которыми объединение доведено до конца ────────────────────
+// Прежде каждый из них ехал собственным ключом СООБЩЕНИЯ (`geo`, `contact`,
+// `poll`, `checklist`, `giveaway`, `web_page`, `paid_media`), то есть вид
+// вложения подделывался наличием поля. Механическая сверка со схемой держит
+// именно это: придуманное поле не пройдёт, а обязательный пропуск обязан быть
+// назван выше.
+
+const GEO: MessageMedia = {
+  _: 'messageMediaGeo',
+  geo: { _: 'geoPoint', long: 37.6, lat: 55.7 },
+}
+
+const VENUE: MessageMedia = {
+  _: 'messageMediaVenue',
+  geo: { _: 'geoPoint', long: 37.6, lat: 55.7 },
+  title: 'Кафе',
+  address: 'ул. Пушкина, 1',
+}
+
+const GEO_LIVE: MessageMedia = {
+  _: 'messageMediaGeoLive',
+  geo: { _: 'geoPoint', long: 37.6, lat: 55.7 },
+  heading: 90,
+  period: 900,
+}
+
+const CONTACT: MessageMedia = {
+  _: 'messageMediaContact',
+  phone_number: '79990000000',
+  first_name: 'Маша',
+  // Пустая строка здесь — ЗНАЧЕНИЕ («фамилии нет»), а не отсутствие параметра.
+  last_name: '',
+  vcard: '',
+  user_id: 42,
+}
+
+const POLL: MessageMedia = {
+  _: 'messageMediaPoll',
+  poll: {
+    _: 'poll',
+    id: 5,
+    pFlags: { public_voters: true, quiz: true },
+    question: { _: 'textWithEntities', text: 'Сколько?', entities: [] },
+    answers: [
+      { _: 'pollAnswer', text: { _: 'textWithEntities', text: 'два', entities: [] }, option: 'AA==' },
+      { _: 'pollAnswer', text: { _: 'textWithEntities', text: 'три', entities: [] }, option: 'AQ==' },
+    ],
+  },
+  results: {
+    _: 'pollResults',
+    total_voters: 2,
+    results: [
+      { _: 'pollAnswerVoters', pFlags: { chosen: true }, option: 'AA==', voters: 1 },
+      { _: 'pollAnswerVoters', pFlags: { correct: true }, option: 'AQ==', voters: 1 },
+    ],
+  },
+}
+
+const TODO: MessageMedia = {
+  _: 'messageMediaToDo',
+  todo: {
+    _: 'todoList',
+    id: 8,
+    pFlags: { others_can_complete: true },
+    title: { _: 'textWithEntities', text: 'Список', entities: [] },
+    list: [{ _: 'todoItem', id: 1, title: { _: 'textWithEntities', text: 'Купить хлеб', entities: [] } }],
+  },
+  completions: [{ _: 'todoCompletion', id: 1, completed_by: { _: 'peerUser', user_id: 7 }, date: 1_750_000_000 }],
+}
+
+const GIVEAWAY: MessageMedia = {
+  _: 'messageMediaGiveaway',
+  id: 9,
+  pFlags: { winners_are_visible: true },
+  channels: [42],
+  quantity: 3,
+  months: 6,
+  until_date: 1_750_000_000,
+}
+
+const GIVEAWAY_RESULTS: MessageMedia = {
+  _: 'messageMediaGiveawayResults',
+  id: 9,
+  channel_id: 42,
+  launch_msg_id: 11,
+  winners_count: 3,
+  unclaimed_count: 0,
+  winners: [1, 2, 3],
+  stars: 500,
+  until_date: 1_750_000_000,
+}
+
+const WEB_PAGE: MessageMedia = {
+  _: 'messageMediaWebPage',
+  webpage: {
+    _: 'webPage',
+    url: 'https://example.com/post',
+    display_url: 'example.com/post',
+    site_name: 'Example',
+    title: 'Заголовок',
+    description: 'Описание',
+    has_iv: true,
+    photo: {
+      _: 'photo',
+      id: 7,
+      sizes: [
+        { _: 'photoStrippedSize', type: 'i', bytes: 'AQID' },
+        { _: 'photoSize', type: 'w', w: 1280, h: 720, size: 90000 },
+      ],
+    },
+  },
+}
+
+const PAID_LOCKED: MessageMedia = {
+  _: 'messageMediaPaidMedia',
+  stars_amount: 25,
+  extended_media: [{
+    _: 'messageExtendedMediaPreview',
+    w: 800,
+    h: 600,
+    thumb: { _: 'photoStrippedSize', type: 'i', bytes: 'AQID' },
+  }],
+}
+
+const PAID_UNLOCKED: MessageMedia = {
+  _: 'messageMediaPaidMedia',
+  stars_amount: 25,
+  extended_media: [{ _: 'messageExtendedMedia', media: PHOTO }],
+}
+
 describe('модель медиа сходится со схемой TL', () => {
   const cases: [string, MessageMedia][] = [
     ['видео с превью и заслонкой', VIDEO_WITH_THUMB],
     ['стикер с векторным контуром', STICKER_WITH_PATH],
     ['голосовое', VOICE],
     ['фотография с лестницей размеров', PHOTO],
+    ['точка на карте', GEO],
+    ['место с подписью', VENUE],
+    ['живая трансляция', GEO_LIVE],
+    ['визитка', CONTACT],
+    ['опрос с итогами', POLL],
+    ['чек-лист с отметкой', TODO],
+    ['идущий розыгрыш', GIVEAWAY],
+    ['состоявшийся розыгрыш', GIVEAWAY_RESULTS],
+    ['превью ссылки с лестницей ступеней', WEB_PAGE],
+    ['платное медиа — не оплачено', PAID_LOCKED],
+    ['платное медиа — оплачено', PAID_UNLOCKED],
   ]
 
   it.each(cases)('%s: лишних полей нет', (_name, media) => {
@@ -213,6 +367,49 @@ describe('модель медиа сходится со схемой TL', () => 
 
     expect(check(withFlags as unknown as MessageMedia).unexpected).toEqual([
       { path: 'media.document', predicate: 'document', key: 'flags' },
+    ])
+  })
+
+  // Прежние формы, каждая — «предмет был, а на провод выходил подделанным».
+  // Тест обязан краснеть на их возвращении.
+  it('ловит прежний булев флаг «трансляция остановлена»', () => {
+    const stopped = { ...structuredClone(GEO_LIVE), live_stopped: true }
+    expect(check(stopped as unknown as MessageMedia).unexpected).toEqual([
+      { path: 'media', predicate: 'messageMediaGeoLive', key: 'live_stopped' },
+    ])
+  })
+
+  it('ловит прежние плоские поля картинки превью ссылки', () => {
+    const flat = structuredClone(WEB_PAGE) as unknown as Record<string, unknown>
+    const page = (flat.webpage as Record<string, unknown>)
+    delete page.photo
+    page.photo_id = 7
+    page.photo_w = 1280
+    expect(check(flat as unknown as MessageMedia).unexpected).toEqual([
+      { path: 'media.webpage', predicate: 'webPage', key: 'photo_id' },
+      { path: 'media.webpage', predicate: 'webPage', key: 'photo_w' },
+    ])
+  })
+
+  it('ловит прежний булев ключ «заблокировано» рядом с ценой', () => {
+    const flat = { ...structuredClone(PAID_LOCKED), locked: true }
+    expect(check(flat as unknown as MessageMedia).unexpected).toEqual([
+      { path: 'media', predicate: 'messageMediaPaidMedia', key: 'locked' },
+    ])
+  })
+
+  it('ловит прежний массив «мой выбор» рядом со счётчиками', () => {
+    const flat = structuredClone(POLL) as unknown as Record<string, unknown>
+    ;(flat.results as Record<string, unknown>).my_votes = [0]
+    expect(check(flat as unknown as MessageMedia).unexpected).toEqual([
+      { path: 'media.results', predicate: 'pollResults', key: 'my_votes' },
+    ])
+  })
+
+  it('ловит прежнее «участвую ли» внутри розыгрыша (место ему — в ответе ручки)', () => {
+    const flat = { ...structuredClone(GIVEAWAY), pFlags: { participating: true } }
+    expect(check(flat as unknown as MessageMedia).unexpected).toEqual([
+      { path: 'media.pFlags', predicate: 'messageMediaGiveaway', key: 'participating' },
     ])
   })
 

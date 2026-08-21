@@ -6,15 +6,15 @@
 // `"poll"` и `"encrypted"`: одно поле отвечало на три разных вопроса — «это
 // служебное?», «какое вложение?», «это шифрованное сообщение секретного чата?».
 // Первый вопрос теперь решает ВЫБОР КОНСТРУКТОРА (`message` против
-// `messageService`), второй — объединение `MessageMedia` вместе с выведенным из
-// атрибутов `doc.type` (`saveDocument`, порт `appDocsManager.saveDoc`), третий —
-// наш параметр вне схемы `enc_body`.
+// `messageService`, а у пилюли — её действие), второй — объединение
+// `MessageMedia` вместе с выведенным из атрибутов `doc.type` (`saveDocument`,
+// порт `appDocsManager.saveDoc`), третий — наш параметр вне схемы `enc_body`.
 //
 // Ровно так ветвится и оригинал: `wrapMessageContent` смотрит на `media._`, а
 // внутри документа — на `doc.type`. Здесь этот же вывод собран в ОДНУ функцию,
 // потому что спрашивают его трое (бабл, превью списка чатов, цитата ответа), и
 // три копии вывода — это ровно то, чем было снятое поле.
-import { getDocumentFromMessage, type MessageMedia } from '../media/messageMedia'
+import { getDocumentFromMessage, getExtendedMedia, getMediaFromMessage, type MessageMedia } from '../media/messageMedia'
 import type { MyMessage } from '../models'
 
 /**
@@ -42,51 +42,77 @@ export type MessageKind =
   | 'service'
   | 'encrypted'
 
-/** Вид ВЛОЖЕНИЯ — только по объединению `MessageMedia` и атрибутам документа. */
+/**
+ * Вид ВЛОЖЕНИЯ — по КОНСТРУКТОРУ объединения `MessageMedia`, а внутри документа
+ * по выведенному из атрибутов `doc.type`. Ровно так ветвится оригинал
+ * (`wrapMessageContent` смотрит на `media._`).
+ *
+ * Платное медиа своего вида НЕ даёт: это обёртка, и вид берётся у того, что
+ * лежит внутри вектора. Неоплаченная позиция (`messageExtendedMediaPreview`)
+ * файла не несёт вовсе, и вид у неё картиночный — псевдо-фото из превью
+ * (`generatePhotoForExtendedMediaPreview`), как в оригинале.
+ */
 export function mediaKind(media: MessageMedia | undefined): MessageKind | undefined {
-  if (!media) return undefined
-  if (media._ === 'messageMediaPhoto') return 'photo'
-  switch (media.document.type) {
-    case 'sticker': return 'sticker'
-    case 'gif': return 'gif'
-    case 'video': return 'video'
-    case 'round': return 'roundVideo'
-    case 'voice': return 'voice'
-    case 'audio': return 'audio'
-    // Картинка, отправленная ФАЙЛОМ, у оригинала тоже `photo` (документ с
-    // `documentAttributeImageSize`) — бабл у неё картиночный.
-    case 'photo': return 'photo'
-    default: return 'document'
+  switch (media?._) {
+    case undefined: return undefined
+    case 'messageMediaPhoto': return 'photo'
+    case 'messageMediaGeo':
+    case 'messageMediaVenue':
+    case 'messageMediaGeoLive': return 'geo'
+    case 'messageMediaContact': return 'contact'
+    case 'messageMediaPoll': return 'poll'
+    case 'messageMediaToDo': return 'checklist'
+    case 'messageMediaGiveaway':
+    case 'messageMediaGiveawayResults': return 'giveaway'
+    // Карточка ссылки — вложение, но бабл у неё ТЕКСТОВЫЙ: карточка рисуется
+    // внутри тела сообщения (tweb bubbles.ts:8112), а не вместо него.
+    case 'messageMediaWebPage': return 'text'
+    case 'messageMediaPaidMedia': {
+      const item = getExtendedMedia(media)
+      return item?._ === 'messageExtendedMedia' ? mediaKind(item.media) ?? 'photo' : 'photo'
+    }
+    case 'messageMediaDocument':
+      switch (media.document.type) {
+        case 'sticker': return 'sticker'
+        case 'gif': return 'gif'
+        case 'video': return 'video'
+        case 'round': return 'roundVideo'
+        case 'voice': return 'voice'
+        case 'audio': return 'audio'
+        // Картинка, отправленная ФАЙЛОМ, у оригинала тоже `photo` (документ с
+        // `documentAttributeImageSize`) — бабл у неё картиночный.
+        case 'photo': return 'photo'
+        default: return 'document'
+      }
   }
 }
 
 /** Вид сообщения целиком. */
 export function getMessageKind(m: MyMessage): MessageKind {
   if (m._ === 'messageService') {
-    // Лог звонка — служебное сообщение с `messageActionPhoneCall`; прежде это
-    // был `type === 'call'` с JSON `{video, reason, duration}` внутри текста.
-    return m.action._ === 'messageActionPhoneCall' ? 'call' : 'service'
+    switch (m.action._) {
+      // Лог звонка — служебное сообщение с `messageActionPhoneCall`; прежде это
+      // был `type === 'call'` с JSON `{video, reason, duration}` внутри текста.
+      case 'messageActionPhoneCall': return 'call'
+      // Подарок — ТОЖЕ служебное сообщение, а не вид вложения: конструктора
+      // `messageMediaStarGift` в схеме нет вовсе, есть действие
+      // `messageActionStarGift`. Прежде это было поле `gift` у обычного
+      // сообщения — то есть вид бабла подделывался наличием поля.
+      case 'messageActionStarGift': return 'gift'
+      default: return 'service'
+    }
   }
   // Секретный чат — подсистема вне периметра порта: у шифрованного сообщения
   // тела нет вовсе, на проводе едет блоб `iv||ciphertext`.
   if (m.enc_body) return 'encrypted'
-  // Долг «объединение MessageMedia не доведено»: опрос, чек-лист, розыгрыш,
-  // подарок, гео и контакт — конструкторы ТОГО ЖЕ объединения, но у нас пока
-  // собственные поля сообщения (см. `MessageReal`).
-  if (m.poll) return 'poll'
-  if (m.checklist) return 'checklist'
-  if (m.giveaway) return 'giveaway'
-  if (m.gift) return 'gift'
-  if (m.geo) return 'geo'
-  if (m.contact) return 'contact'
   return mediaKind(m.media) ?? 'text'
 }
 
-/** Адрес файла вложения; `undefined` — вложения нет. Прежде это было плоское
+/** Адрес файла вложения; `undefined` — файла нет (или вложение файла не несёт
+ *  вовсе: гео, визитка, опрос, чек-лист, розыгрыш). Прежде это было плоское
  *  поле `media_id` рядом с самим вложением — два места на одно значение. */
 export function getMediaId(m: MyMessage): number | undefined {
-  if (m._ !== 'message' || !m.media) return undefined
-  return m.media._ === 'messageMediaDocument' ? m.media.document.id : m.media.photo.id
+  return getMediaFromMessage(m._ === 'message' ? m : undefined)?.id
 }
 
 /** Имя файла документа — для превью и лейблов. */

@@ -41,7 +41,9 @@ import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import generatePhotoForExtendedMediaPreview from '@core/media/generatePhotoForExtendedMediaPreview'
 import {
   choosePhotoSize,
+  getExtendedMediaPreview,
   getMediaFromMessage,
+  isMediaSpoiler,
   type MyDocument,
 } from '@core/media/messageMedia'
 import type { MessageReal } from '@core/models'
@@ -96,14 +98,14 @@ export default function wrapAlbum({
   // ! lowest msgID will be the FIRST in album (комментарий tweb album.ts:37)
   const items = messages.map((message) => {
     // tweb album.ts:40 `getMediaFromMessage(message, true)`. Платное медиа до
-    // оплаты приезжает без файла — у вложения осталась одна stripped-ступень;
-    // оригинал подставляет вместо него ПСЕВДО-ФОТО из превью и отдаёт альбому
-    // параметром `media` (bubbles.ts:8926-8931), а мы эту ветку не портировали
-    // (см. шапку) — поэтому подстановка стоит здесь. У псевдо-фото ступень
-    // одна и она же stripped, поэтому `wrapPhoto` покажет её КАК медиа и
-    // ничего не скачает (ранний выход photo.ts:207).
-    const attachment = getMediaFromMessage(message)
-    const media = message.paid_media?.locked ? generatePhotoForExtendedMediaPreview(attachment) : attachment
+    // оплаты приезжает не медиа, а ПРЕВЬЮ (`messageExtendedMediaPreview`);
+    // оригинал подставляет вместо него псевдо-фото и отдаёт альбому параметром
+    // `media` (bubbles.ts:8926-8931), а мы эту ветку не портировали (см. шапку)
+    // — поэтому подстановка стоит здесь. У псевдо-фото ступень одна и она же
+    // stripped, поэтому `wrapPhoto` покажет её КАК медиа и ничего не скачает
+    // (ранний выход photo.ts:207).
+    const preview = getExtendedMediaPreview(message)
+    const media = preview ? generatePhotoForExtendedMediaPreview(preview) : getMediaFromMessage(message)
 
     // tweb album.ts:42-44 — пропорции ячейки: у фотографии их даёт ступень,
     // выбранная под 480×480, у документа — его собственная геометрия.
@@ -130,7 +132,7 @@ export default function wrapAlbum({
 
   items.forEach(({ message, media, size }, idx) => {
     // tweb album.ts:70-71 (без ветки `sensitive`, см. шапку)
-    const hasSpoiler = spoilered || message.media?.pFlags?.spoiler === true
+    const hasSpoiler = spoilered || isMediaSpoiler(message)
 
     const div = attachmentDiv.children[idx] as HTMLElement
     div.dataset.mid = '' + message.id

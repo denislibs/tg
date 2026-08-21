@@ -171,11 +171,24 @@ afterEach(() => {
 })
 
 /**
- * Неоплаченное платное медиа: бэк снял файл (`media_id`), оставив плейсхолдер —
- * размеры и stripped-ступень (`stripLockedMedia`, backend paidmedia.go:63).
+ * Неоплаченное платное медиа: вместо вложения приезжает ПРЕВЬЮ
+ * (`messageExtendedMediaPreview`) — коробка кадра и stripped-подложка, файла
+ * нет вовсе. «Заблокировано» это и есть выбор ЭТОГО конструктора позиции
+ * вектора, а не булев ключ рядом с ценой.
  */
+const paidPreviewMedia = ({ stripped = true, w = 1600, h = 900 } = {}): MessageMedia => ({
+  _: 'messageMediaPaidMedia',
+  stars_amount: 5,
+  extended_media: [{
+    _: 'messageExtendedMediaPreview',
+    w,
+    h,
+    ...(stripped ? { thumb: { _: 'photoStrippedSize' as const, type: THUMB_TYPE_STRIPPED, bytes: STRIPPED } } : {}),
+  }],
+})
+
 const paid = ({ stripped = true }: { stripped?: boolean } = {}) =>
-  msg({ paid_media: { price: 5, locked: true } }, (id) => photoMedia(id, { stripped }))
+  msg({}, () => paidPreviewMedia({ stripped }))
 
 const attachment = () => {
   const div = document.createElement('div')
@@ -433,9 +446,10 @@ describe('wrapAlbum: неоплаченное платное медиа', () => 
     const attachmentDiv = attachment()
 
     wrapAlbum({
-      // вложение приехало документом, но подстановка делает из него ФОТО —
-      // как `generatePhotoForExtendedMediaPreview` у оригинала
-      messages: [msg({ paid_media: { price: 5, locked: true } }, (id) => videoMedia(id))],
+      // неоплаченное видео приезжает тем же превью: длительности в нём нет
+      // (её стирает `stripLockedMedia`), поэтому ячейку рисует не wrapVideo, а
+      // псевдо-фото — как `generatePhotoForExtendedMediaPreview` у оригинала
+      messages: [msg({}, () => paidPreviewMedia({ w: 900, h: 1600 }))],
       attachmentDiv,
     })
     await flush()

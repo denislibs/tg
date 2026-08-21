@@ -74,8 +74,18 @@ describe('RealMediaBubble: канвас-превью из blurPreview', () => {
   })
 
   it('платное заблокированное медиа: канвас-превью монтируется всегда (кроме blur у нас ничего нет)', () => {
+    // «Заблокировано» — ВЫБОР конструктора позиции вектора, а не флаг рядом с
+    // ценой: неоплативший получает превью, а не объект.
     const { container } = render(withManagers(
-      <RealMediaBubble type="photo" media={photo(800, 600, 'QUJD')} paidMedia={{ price: 5, locked: true }} />,
+      <RealMediaBubble
+        type="photo"
+        media={photo(800, 600, 'QUJD')}
+        paidMedia={{
+          _: 'messageMediaPaidMedia',
+          stars_amount: 5,
+          extended_media: [{ _: 'messageExtendedMediaPreview', w: 800, h: 600, thumb: { _: 'photoStrippedSize', type: 'i', bytes: 'QUJD' } }],
+        }}
+      />,
     ))
     expect(container.querySelector('canvas.canvas-thumbnail')).toBeTruthy()
   })

@@ -11,15 +11,30 @@ import { setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { fmtWhen } from '../../core/dialogToChat'
 import { useT } from '../../i18n'
-import type { GiftInfo } from '../../core/managers/starsManager'
+import { isGiftConverted, isGiftHidden, type AnyStarGift } from '../../core/managers/starsManager'
+import { usePeers } from '../../core/hooks/usePeers'
+import { getPeerTitle } from '../../core/peers/getPeerTitle'
+import { getPeerId } from '../../core/peers/peerId'
 import StarIcon from './StarIcon'
 import { usePopupTransition } from '../settings/kit'
 import s from './stars.module.scss'
 
+/**
+ * Подарок приходит ДВУМЯ конструкторами одного предмета: в ленте это действие
+ * пилюли (`messageActionStarGift`), в витрине профиля — `savedStarGift`. Попап
+ * рисует оба, поэтому берёт объединение и спрашивает у него через
+ * `isGiftHidden`/`isGiftConverted` — «скрыт» в двух конструкторах выражен
+ * противоположными флагами (`unsaved` против `saved`), и это форма схемы.
+ *
+ * `date` приходит параметром: у витрины профиля дата — параметр конструктора, а
+ * у пилюли её несёт САМО СООБЩЕНИЕ, и второй колонки под неё не заводится.
+ */
 export default function GiftInfoPopup({
-  gift, isOwner, onClose, onChanged,
+  gift, date, isOwner, onClose, onChanged,
 }: {
-  gift: GiftInfo
+  gift: AnyStarGift
+  /** когда подарен, СЕКУНДЫ эпохи */
+  date: number
   isOwner: boolean
   onClose: () => void
   onChanged?: () => void
@@ -27,15 +42,20 @@ export default function GiftInfoPopup({
   const t = useT()
   const managers = useManagers()
   const [busy, setBusy] = useState(false)
-  const [hidden, setHidden] = useState(gift.hidden)
+  const [hidden, setHidden] = useState(isGiftHidden(gift))
   const portalContainer = usePortalContainer()
   const { cls } = usePopupTransition(true)
+  // Даритель — ССЫЛКА на пир; имя собирает клиент. Анонимный подарок ссылки не
+  // несёт вовсе — это и есть `pFlags.name_hidden`.
+  const fromId = gift.from_id ? getPeerId(gift.from_id) : undefined
+  const senders = usePeers(fromId != null ? [fromId] : [])
+  const savedId = gift.saved_id ?? 0
 
   const toggleHidden = async () => {
     if (busy) return
     setBusy(true)
     try {
-      await managers.stars.setHidden(gift.id, !hidden)
+      await managers.stars.setHidden(savedId, !hidden)
       setHidden(!hidden)
       onChanged?.()
     } finally { setBusy(false) }
@@ -45,17 +65,17 @@ export default function GiftInfoPopup({
     if (busy) return
     setBusy(true)
     try {
-      const bal = await managers.stars.convert(gift.id)
+      const bal = await managers.stars.convert(savedId)
       setStarsBalance(bal)
       onChanged?.()
       onClose()
     } finally { setBusy(false) }
   }
 
-  const fromLabel = gift.anonymous && !isOwner
-    ? t('Anonymous')
-    : gift.fromName || t('Anonymous')
-  const dateLabel = fmtWhen(gift.date)
+  const fromLabel = fromId != null
+    ? getPeerTitle({ peerId: fromId, peer: senders.get(fromId) })
+    : t('Anonymous')
+  const dateLabel = fmtWhen(new Date(date * 1000).toISOString())
 
   return createPortal(
     <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
@@ -76,25 +96,25 @@ export default function GiftInfoPopup({
             <Text size={14} color="var(--secondary-text-color)">
               {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
             </Text>
-            {isOwner && gift.hidden && (
+            {isOwner && hidden && (
               <Text size={13} color="var(--secondary-text-color)">{t('Hidden from your profile')}</Text>
             )}
             {gift.message && (
-              <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message}</Text>
+              <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message.text}</Text>
             )}
             <div className={s.giftPrice} style={{ marginTop: 6 }}>
               <StarIcon size={14} />
-              {gift.gift.priceStars}
+              {gift.gift.stars}
             </div>
           </div>
 
-          {isOwner && !gift.converted && (
+          {isOwner && !isGiftConverted(gift) && (
             <div className={s.giftInfoActions}>
               <button type="button" className={s.secondaryBtn} disabled={busy} onClick={() => void toggleHidden()}>
                 {hidden ? t('Show in Profile') : t('Hide from Profile')}
               </button>
               <button type="button" className={s.payBtn} disabled={busy} onClick={() => void convert()}>
-                {t('Convert to')} <StarIcon size={16} /> {gift.convertStars}
+                {t('Convert to')} <StarIcon size={16} /> {gift.convert_stars ?? 0}
               </button>
             </div>
           )}

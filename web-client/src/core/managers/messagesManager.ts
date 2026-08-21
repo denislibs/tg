@@ -12,16 +12,16 @@ export interface CalendarDay {
   /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
   has_thumb: boolean
 }
-import { getThreadRootId, mapMyMessage, mapGeo, mapWebPage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
+import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId } from '../peers/peerId'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, WireWebPagePreview, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
-import { saveMessageMedia } from '../media/messageMedia'
+import { saveMessageMedia, THUMB_TYPE_FULL, THUMB_TYPE_SERVER, THUMB_TYPE_STRIPPED, type MessageMedia, type PhotoSize } from '../media/messageMedia'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
@@ -31,6 +31,63 @@ import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
 export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
+
+/**
+ * ГРАНИЦА одного названного расхождения бэкенда: в сообщении превью ссылки — это
+ * конструктор `messageMediaWebPage` с обычной лестницей ступеней у картинки, а
+ * догоняющий кадр `web_page_update` по-прежнему несёт снимок read-модели
+ * плоскими полями (`usecase/chat/webpreview.go:88` порт объединения не тронул).
+ * Пока это так, вторую форму надо переводить в первую ровно здесь — в одном
+ * месте, а не в витрине: иначе плоские `photo_w`/`photo_blur` расползлись бы
+ * обратно по рендеру, ради устранения чего порт и делался.
+ *
+ * Арифметика ступени `y` — та же, что у генератора превью на бэкенде
+ * (`domain.fitThumb`, длинная сторона `ThumbMaxSide`): вписать кадр в квадрат с
+ * сохранением пропорции. Дублирование её здесь — часть той же цены.
+ */
+const THUMB_MAX_SIDE = 1280
+
+function fitThumb(w: number, h: number): [number, number] {
+  if (w <= 0 || h <= 0) return [0, 0]
+  if (w <= THUMB_MAX_SIDE && h <= THUMB_MAX_SIDE) return [w, h]
+  return w >= h
+    ? [THUMB_MAX_SIDE, Math.max(1, Math.round((h * THUMB_MAX_SIDE) / w))]
+    : [Math.max(1, Math.round((w * THUMB_MAX_SIDE) / h)), THUMB_MAX_SIDE]
+}
+
+/** Адрес без схемы — ровно то, что бэкенд кладёт в `webPage.display_url`. */
+function displayUrl(raw: string): string {
+  for (const scheme of ['https://', 'http://']) {
+    if (raw.startsWith(scheme)) return raw.slice(scheme.length).replace(/\/$/, '')
+  }
+  return raw.replace(/\/$/, '')
+}
+
+function webPageMedia(w: WireWebPagePreview): MessageMedia {
+  const sizes: PhotoSize[] = []
+  if (w.photo_blur) sizes.push({ _: 'photoStrippedSize', type: THUMB_TYPE_STRIPPED, bytes: w.photo_blur })
+  if (w.photo_has_thumb && w.photo_w && w.photo_h) {
+    const [tw, th] = fitThumb(w.photo_w, w.photo_h)
+    sizes.push({ _: 'photoSize', type: THUMB_TYPE_SERVER, w: tw, h: th, size: 0 })
+  }
+  if (w.photo_w && w.photo_h) {
+    sizes.push({ _: 'photoSize', type: THUMB_TYPE_FULL, w: w.photo_w, h: w.photo_h, size: 0 })
+  }
+  const url = w.url ?? ''
+  return {
+    _: 'messageMediaWebPage',
+    webpage: {
+      _: 'webPage',
+      url,
+      display_url: displayUrl(url),
+      ...(w.site_name ? { site_name: w.site_name } : {}),
+      ...(w.title ? { title: w.title } : {}),
+      ...(w.description ? { description: w.description } : {}),
+      ...(w.photo_id ? { photo: { _: 'photo' as const, id: w.photo_id, sizes } } : {}),
+      ...(w.has_iv ? { has_iv: true } : {}),
+    },
+  }
+}
 
 export interface HistoryArgs {
   peerId: number
@@ -722,18 +779,21 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // задачи (переклассифицировать тип в 'logged', завести pts на бэке) — оставлено
     // как есть; и cache, и проекция не тронуты.
     cacheGeoLive(evt: GeoLiveUpdateEvt): void {
-      const geo = mapGeo(evt.geo)
       const id = generateMessageId(evt.id)
-      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, geo }))
+      // Координаты приезжают ТЕМ ЖЕ конструктором, что и в сообщении, — кладём
+      // вложение целиком. Время обновления едет рядом (edit_date) и ложится в
+      // то же поле, что и у обычной правки: своего времени у гео в схеме нет.
+      patchMsg(evt.peer_id, (m) => m.id === id,
+        (m) => (m._ !== 'message' ? m : { ...m, media: evt.media, edit_date: evt.edit_date }))
     },
 
     // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной
     // операции 'patch' на каждое окно чата, где сообщение видно (Stage 1B.3, Task 3).
     cacheWebPage(evt: WebPageUpdateEvt): MessageOp[] {
-      const web_page = mapWebPage(evt.web_page)
+      const media = webPageMedia(evt.web_page)
       const id = generateMessageId(evt.id)
-      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, web_page }))
-      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { web_page } }))
+      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, media }))
+      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { media } }))
     },
 
     // «Проверка фактов» прикреплена/изменена/снята → SSOT + операции по всем окнам.
@@ -753,20 +813,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       if (unlocked._ !== 'message') return []
       const id = generateMessageId(unlocked.id)
       const fields: Partial<MessageReal> = {
-        // Вложение целиком — то же, что у обычного сообщения: у заблокированного
-        // сервер отдавал псевдо-фото из одной stripped-ступени (`LockedPlaceholder`),
-        // кадр разблокировки приносит настоящее медиа со ступенями и атрибутами.
-        // Нормализуем тем же `saveMessageMedia`, что и на границе маппинга —
-        // иначе у документа не было бы выведенного типа.
+        // Вложение целиком, ОДНИМ полем. Разблокировка меняет не «флаг рядом», а
+        // содержимое вектора платного медиа: до оплаты там
+        // `messageExtendedMediaPreview` (размеры и stripped-подложка), после —
+        // `messageExtendedMedia` с настоящим вложением внутри. Цена
+        // (`stars_amount`) при этом на месте — она свойство самого платного
+        // вложения, а не приписка к сообщению.
         //
-        // Вся мета, которую бэк вычищает у заблокированного медиа
-        // (`stripLockedMedia`) и возвращает в кадре разблокировки, теперь едет
-        // ВНУТРИ вложения: пики волны — в `documentAttributeAudio`, теги трека
-        // там же, признак гифки — `documentAttributeAnimated`, размеры и
-        // превью — в ступенях. Раньше каждое из этих полей приходилось
-        // перекладывать отдельной строкой и легко было потерять поштучно.
+        // Нормализуем тем же `saveMessageMedia`, что и на границе маппинга: он
+        // заходит внутрь обёртки, иначе у вложенного документа не было бы
+        // выведенного типа.
         media: saveMessageMedia(unlocked.media),
-        paid_media: unlocked.paid_media,
       }
       const peerId = getPeerId(unlocked.peer_id)
       patchMsg(peerId, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, ...fields }))

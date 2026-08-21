@@ -1,6 +1,6 @@
 import type { CallLog, ConvMsg } from '../data'
 import { getMessageText, isOutMessage, type MyMessage } from './models'
-import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
+import { getMediaId, getMessageKind, mediaKind, type MessageKind } from './messages/messageKind'
 import { serviceMsgText } from './serviceMsg'
 import { isLocalMessageId } from './history/messageId'
 import { getPeerId } from './peers/peerId'
@@ -126,6 +126,8 @@ export function messageToConvMsg(
     entities: real?.entities,
     time: hhmm(m.date),
     createdAt: messageDateISO(m.date),
+    date: m.date,
+    editDate: real?.edit_date,
     // sending → до message_ack (номер назначен клиентом, значит дробный);
     // error → send отвергнут; после ack номер становится серверным и статус сам
     // «дорастает» до sent/read.
@@ -139,24 +141,21 @@ export function messageToConvMsg(
             : 'sent'
       : undefined,
     call: action?._ === 'messageActionPhoneCall' ? callLog(action) : undefined,
-    webPage: real?.web_page,
+    // Подарок — САМО действие пилюли, а не его пересборка: вид бабла выбран по
+    // конструктору сообщения (`getMessageKind`), рисовать надо ровно то, что в
+    // нём лежит.
+    gift: action?._ === 'messageActionStarGift' ? action : undefined,
     factCheck: real?.factcheck,
     transcription: real?.transcription,
     effect: real?.effect_name,
-    poll: real?.poll,
-    checklist: real?.checklist,
-    giveaway: real?.giveaway,
-    gift: real?.gift,
     replyMarkup: real?.reply_markup,
     reactions: m.reactions,
     starReaction: m.starReaction,
-    geo: real?.geo,
-    contact: real?.contact
-      ? { userId: real.contact.user_id, name: real.contact.name ?? '', phone: real.contact.phone ?? '' }
-      : undefined,
     mediaId: getMediaId(m),
+    // Вложение целиком, ОДНИМ полем — и гео, и визитка, и опрос, и чек-лист, и
+    // розыгрыш, и карточка ссылки, и платное медиа лежат ЗДЕСЬ. Восьми копий
+    // того же значения рядом больше нет.
     media: real?.media,
-    paidMedia: real?.paid_media,
     groupedId: real?.grouped_id,
     localUrl: real?.localUrl,
     // Автор бабла — `from_id`: у сообщения от лица канала там сам канал, и имя
@@ -207,11 +206,11 @@ export function messageToConvMsg(
   }
 }
 
-/** Вид вложения НЕДОСТУПНОГО оригинала — из `reply_to.reply_media`. */
+/** Вид вложения НЕДОСТУПНОГО оригинала — из `reply_to.reply_media`. Тем же
+ *  выводом, что и у обычного вложения: объединение одно, значит и ответ на
+ *  «какой это вид» должен быть один. */
 function mediaKindOfReply(m: MyMessage): MessageKind | undefined {
-  const media = m.reply_to?.reply_media
-  if (!media) return undefined
-  return media._ === 'messageMediaPhoto' ? 'photo' : 'document'
+  return mediaKind(m.reply_to?.reply_media)
 }
 
 /** `MessageKind` → ветка рендера бабла. Виды, у которых своей ветки нет

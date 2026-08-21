@@ -1,8 +1,8 @@
 import type { RestClient } from '../net/restClient'
 import {
-  mapBoostStatus, mapGiveaway, mapMyMessage,
+  mapBoostStatus, mapMyMessage,
   type BoostStatus, type RawBoostStatus,
-  type Giveaway, type RawGiveaway,
+  type GiveawayState,
   type MyMessage, type RawMyMessage,
 } from '../models'
 
@@ -50,11 +50,14 @@ export function newBoostsManager({ rest, getMeId }: {
       // уточнение действия — их делает сам маппер.
       return mapMyMessage(r, getMeId?.() ?? null)
     },
-    // participateGiveaway перенесён в messagesManager (single-writer: пуш в SSOT
-    // сообщений + broadcast → storeProjection). Здесь остаётся только чтение статуса.
-    async getGiveaway(id: number): Promise<Giveaway> {
-      const r = await rest.get<{ giveaway: RawGiveaway }>(`/giveaways/${id}`)
-      return mapGiveaway(r.giveaway)
+    // ЛИЧНОЕ состояние зрителя (`payments.giveawayInfo`): «участвую ли»,
+    // «выиграл ли», сколько участников. Сами условия розыгрыша едут вложением
+    // сообщения и здесь не повторяются — второй формы розыгрыша на проводе нет.
+    // Участие (`participateGiveaway`) живёт в messagesManager и возвращает ЭТО
+    // ЖЕ состояние: сообщение оно больше не трогает.
+    async getGiveaway(id: number): Promise<GiveawayState> {
+      const r = await rest.get<{ giveaway_info: GiveawayState }>(`/giveaways/${id}`)
+      return r.giveaway_info
     },
   }
 }

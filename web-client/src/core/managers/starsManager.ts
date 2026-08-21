@@ -1,10 +1,67 @@
 import type { RestClient } from '../net/restClient'
+import type { TextWithEntities } from '../media/messageMedia'
+import type { MessageActionStarGift, StarGift } from '../messages/messageAction'
 import { mapMessage, type Message, type RawMessage } from '../models'
+import type { Peer } from '../peers/peerId'
 
 // Telegram Stars + Star Gifts. Реального провайдера нет: пополнение (topUp) —
-// dev-операция. Подарок за звёзды приходит получателю сообщением типа 'gift'.
+// dev-операция.
+//
+// ── Подарок — ДЕЙСТВИЕ, а не вложение ───────────────────────────────────────
+// Конструктора `messageMediaStarGift` в схеме нет: подарок приходит получателю
+// СЛУЖЕБНЫМ сообщением с действием `messageActionStarGift` (объявлено в
+// `core/messages/messageAction.ts` вместе с самой позицией каталога `starGift`).
+// Здесь остаётся только витрина ПРОФИЛЯ — `savedStarGift`, отдельный
+// конструктор: у неё есть дата подарка (в ленте её несёт само сообщение) и нет
+// привязки к сообщению.
 
-export interface StarGift {
+/**
+ * savedStarGift#41df43fc flags:# name_hidden:flags.0?true unsaved:flags.5?true
+ * … from_id:flags.1?Peer date:int gift:StarGift message:flags.2?TextWithEntities
+ * … saved_id:flags.11?long convert_stars:flags.4?long = SavedStarGift;
+ *
+ * ТОТ ЖЕ подарок, но в ВИТРИНЕ ПРОФИЛЯ. Наш прежний `hidden` здесь зовётся
+ * `unsaved` и знака НЕ меняет — в отличие от `messageActionStarGift.saved`, где
+ * тот же смысл выражен отрицанием. Это форма схемы, а не наша вольность.
+ */
+export interface SavedStarGift {
+  _: 'savedStarGift'
+  pFlags?: Partial<{ name_hidden: true; unsaved: true }>
+  from_id?: Peer
+  /** когда подарен, секунды эпохи */
+  date: number
+  gift: StarGift
+  message?: TextWithEntities
+  saved_id?: number
+  convert_stars?: number
+}
+
+/** Подарок глазами попапа: пилюля ленты и строка витрины профиля — РАЗНЫЕ
+ *  конструкторы одного предмета, и попап рисует оба. */
+export type AnyStarGift = MessageActionStarGift | SavedStarGift
+
+/**
+ * Подарок скрыт из профиля. Один вопрос — два разных параметра схемы:
+ * `savedStarGift.unsaved` (прямой) и `messageActionStarGift.saved` (обратный).
+ * Ветвление живёт здесь, чтобы витрина не выводила «скрыт» дважды.
+ */
+export function isGiftHidden(g: AnyStarGift): boolean {
+  return g._ === 'savedStarGift' ? !!g.pFlags?.unsaved : !g.pFlags?.saved
+}
+
+/** Подарок обменян на звёзды. У витрины профиля обменянных нет вовсе — строка
+ *  исчезает вместе с подарком, поэтому вопрос осмыслен только у пилюли. */
+export function isGiftConverted(g: AnyStarGift): boolean {
+  return g._ === 'messageActionStarGift' && !!g.pFlags?.converted
+}
+
+/**
+ * ПОЗИЦИЯ КАТАЛОГА в плоской форме — `GET /gifts/catalog` отдаёт её как есть
+ * (`domain.StarGift`), конструктором `starGift` каталог ещё не поехал. Названный
+ * остаток: витрина каталога — не подсистема сообщения, и в этот шаг она не
+ * входила.
+ */
+export interface StarGiftCatalogItem {
   id: number
   emoji: string
   title: string
@@ -13,20 +70,6 @@ export interface StarGift {
   total: number | null
   remains: number | null
   soldOut: boolean
-}
-
-export interface GiftInfo {
-  id: number
-  gift: StarGift
-  fromId: number | null
-  fromName: string
-  message: string
-  anonymous: boolean
-  hidden: boolean
-  converted: boolean
-  convertStars: number
-  /** когда подарен (ISO), '' если бэкенд не прислал */
-  date: string
 }
 
 interface RawGift {
@@ -39,30 +82,11 @@ interface RawGift {
   remains: number | null
   sold_out: boolean
 }
-export interface RawGiftInfo {
-  id: number
-  gift: RawGift
-  from_id?: number | null
-  from_name?: string
-  message?: string
-  anonymous: boolean
-  hidden: boolean
-  converted: boolean
-  convert_stars: number
-  date?: string
-}
 
-const mapGift = (g: RawGift): StarGift => ({
+const mapGift = (g: RawGift): StarGiftCatalogItem => ({
   id: g.id, emoji: g.emoji, title: g.title,
   priceStars: g.price_stars, convertStars: g.convert_stars,
   total: g.total, remains: g.remains, soldOut: g.sold_out,
-})
-export const mapGiftInfo = (g: RawGiftInfo): GiftInfo => ({
-  id: g.id, gift: mapGift(g.gift),
-  fromId: g.from_id ?? null, fromName: g.from_name ?? '',
-  message: g.message ?? '', anonymous: g.anonymous,
-  hidden: g.hidden, converted: g.converted, convertStars: g.convert_stars,
-  date: g.date ?? '',
 })
 
 // Транзакция звёзд (история кошелька). amount со знаком: + начисление, − списание.
@@ -102,7 +126,7 @@ export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post
       const r = await rest.post<{ balance: number }>('/stars/topup', { amount })
       return r.balance
     },
-    async catalog(): Promise<StarGift[]> {
+    async catalog(): Promise<StarGiftCatalogItem[]> {
       const r = await rest.get<{ gifts: RawGift[] }>('/gifts/catalog')
       return (r.gifts ?? []).map(mapGift)
     },
@@ -113,9 +137,12 @@ export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post
       })
       return { balance: r.balance }
     },
-    async profileGifts(userId: number): Promise<GiftInfo[]> {
-      const r = await rest.get<{ gifts: RawGiftInfo[] }>(`/users/${userId}/gifts`)
-      return (r.gifts ?? []).map(mapGiftInfo)
+    // Витрина профиля едет конструкторами схемы — маппера у неё больше нет
+    // вовсе: форма провода и форма модели совпали (тот же исход, что у `peer`,
+    // `dialog` и `reply_markup`).
+    async profileGifts(userId: number): Promise<SavedStarGift[]> {
+      const r = await rest.get<{ gifts: SavedStarGift[] }>(`/users/${userId}/gifts`)
+      return r.gifts ?? []
     },
     async convert(giftId: number): Promise<number> {
       const r = await rest.post<{ balance: number }>(`/gifts/${giftId}/convert`, {})

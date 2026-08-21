@@ -10,7 +10,8 @@
 // с peer_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type Poll, type Checklist, type Giveaway, type GeoData, type FactCheck, type ReactionCount } from '../core/models'
+import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type FactCheck, type ReactionCount } from '../core/models'
+import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '../core/media/messageMedia'
 import type { ReplyMarkup } from '../core/markup/replyMarkup'
 import { reactionDelta } from '../core/reactionDelta'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
@@ -96,24 +97,27 @@ interface MessagesState {
    * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
   applyOps: (ops: MessageOp[]) => void
   applyEdit: (peerId: number, msgId: number, message: string, editDate: number | undefined, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
-  applyGeoLive: (peerId: number, msgId: number, geo: GeoData) => void
+  /** Живая трансляция подвинулась: вложение целиком (`messageMediaGeoLive`) плюс
+   *  время обновления — оно же `edit_date` сообщения, своего времени у гео в
+   *  схеме нет. */
+  applyGeoLive: (peerId: number, msgId: number, media: MessageMedia, editDate: number | undefined) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
   applyFactCheck: (peerId: number, msgId: number, factcheck: FactCheck | undefined) => void
   applyDelete: (peerId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (peerId: number, views: Map<number, number>) => void
-  /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). Live-
-   * агрегат (poll_update) больше сюда не идёт — окно правит операция patch
-   * (Stage 1B.3, Task 4: cachePoll → RT.messageOp → applyOps), myVotes
-   * сохраняется слиянием патча (core/realtime/messageOps.ts). */
-  setPoll: (peerId: number, poll: Poll) => void
-  /** Обновление чек-листа (ответ на toggle/add): отметки глобальны (видно, кто
-   * отметил) — локального состояния нет, полная замена. Live-агрегат
-   * (checklist_update) идёт через операцию patch (см. setPoll выше). */
-  applyChecklistUpdate: (peerId: number, checklist: Checklist) => void
-  /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon).
-   * Live-агрегат (giveaway_update) — операцией patch, см. setPoll выше. */
-  setGiveaway: (peerId: number, giveaway: Giveaway) => void
+  /** Полная замена вложения-опроса (ответ на свой голос — он несёт мой
+   * `pFlags.chosen`, которого нет в общем кадре poll_update). Live-агрегат сюда
+   * не идёт — окно правит операция patch (cachePoll → RT.messageOp → applyOps),
+   * а выбор сохраняется слиянием патча (core/realtime/messageOps.ts).
+   *
+   * Розыгрышу такой пары БОЛЬШЕ НЕТ: участие уехало из вложения в отдельную
+   * ручку, и локального состояния, ради которого стоял `setGiveaway`, не
+   * осталось. */
+  setPollMedia: (peerId: number, media: MessageMediaPoll) => void
+  /** Обновление вложения-чек-листа (ответ на toggle/add): отметки глобальны
+   * (видно, кто отметил) — локального состояния нет, полная замена. */
+  setChecklistMedia: (peerId: number, media: MessageMediaToDo) => void
   /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction c counts / catch-up): ставим counts
    * verbatim. `mine` деривим — сохраняем для не затронутых emoji; для emoji своего
    * действия ставим (add) / снимаем (remove). myEmoji/myAction заданы только когда
@@ -168,6 +172,22 @@ function patchChat(
     next[key] = { ...w, msgs }
   }
   return next ? { byKey: next } : {}
+}
+
+/**
+ * Заменить ВЛОЖЕНИЕ у сообщений, чьё вложение опознал предикат. Ответ ручки
+ * опроса и чек-листа адресует сообщение не номером, а идентификатором внутри
+ * вложения — номера в ответе нет вовсе, как и в кадре.
+ */
+function setMediaWhere(
+  state: MessagesState,
+  peerId: number,
+  match: (m: MessageReal) => boolean,
+  media: MessageMedia,
+): Pick<MessagesState, 'byKey'> | Record<string, never> {
+  const hit = (m: MyMessage): boolean => isReal(m) && match(m)
+  return patchChat(state, peerId, (w) =>
+    w.msgs.some(hit) ? w.msgs.map((m) => (hit(m) ? { ...m, media } as MessageReal : m)) : null)
 }
 
 export const useMessagesStore = create<MessagesState>((set) => ({
@@ -236,29 +256,11 @@ export const useMessagesStore = create<MessagesState>((set) => ({
       return out
     }),
 
-  setPoll: (peerId, poll) =>
-    set((s) =>
-      patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => isReal(m) && m.poll?.id === poll.id)
-          ? w.msgs.map((m) => (isReal(m) && m.poll?.id === poll.id ? { ...m, poll } : m))
-          : null,
-      )),
+  setPollMedia: (peerId, media) =>
+    set((s) => setMediaWhere(s, peerId, (m) => m.media?._ === 'messageMediaPoll' && m.media.poll.id === media.poll.id, media)),
 
-  applyChecklistUpdate: (peerId, checklist) =>
-    set((s) =>
-      patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => isReal(m) && m.checklist?.id === checklist.id)
-          ? w.msgs.map((m) => (isReal(m) && m.checklist?.id === checklist.id ? { ...m, checklist } : m))
-          : null,
-      )),
-
-  setGiveaway: (peerId, giveaway) =>
-    set((s) =>
-      patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => isReal(m) && m.giveaway?.id === giveaway.id)
-          ? w.msgs.map((m) => (isReal(m) && m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
-          : null,
-      )),
+  setChecklistMedia: (peerId, media) =>
+    set((s) => setMediaWhere(s, peerId, (m) => m.media?._ === 'messageMediaToDo' && m.media.todo.id === media.todo.id, media)),
 
   applyEdit: (peerId, msgId, message, editDate, entities, replyMarkup) =>
     set((s) =>
@@ -272,11 +274,11 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyGeoLive: (peerId, msgId, geo) =>
+  applyGeoLive: (peerId, msgId, media, editDate) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
         w.msgs.some((m) => isReal(m) && m.id === msgId)
-          ? w.msgs.map((m) => (isReal(m) && m.id === msgId ? { ...m, geo } : m))
+          ? w.msgs.map((m) => (isReal(m) && m.id === msgId ? { ...m, media, edit_date: editDate } : m))
           : null,
       )),
 

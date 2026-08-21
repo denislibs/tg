@@ -47,6 +47,10 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
   // `core/media/messageMedia.schema.test.ts`).
   photo: ['access_hash', 'file_reference', 'date', 'dc_id'],
   document: ['access_hash', 'file_reference', 'date', 'dc_id'],
+  // Внешность подарка в схеме — АНИМИРОВАННЫЙ СТИКЕР, у нас unicode-символ;
+  // класть символ в поле документа нельзя, он едет клиентским `emoji`
+  // (`schema_additional_params.json`, предикат `starGift`).
+  starGift: ['sticker'],
 }
 
 /**
@@ -56,21 +60,17 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
  * отправки, локальное превью, кэш расшифровки голосового): предмета в схеме у
  * них нет, механизм объявления штатный.
  *
- * Вторая — ДОЛГ «объединение MessageMedia не доведено»: гео, контакт, опрос,
- * чек-лист, розыгрыш, подарок, превью ссылки и платное медиа это КОНСТРУКТОРЫ
- * ТОГО ЖЕ объединения (`messageMediaGeo`/`Contact`/`Poll`/`ToDo`/`Giveaway`/
- * `WebPage`/`PaidMedia`), а у нас они по-прежнему собственные поля сообщения.
- * То же самое названо долгом и на бэкенде (`mediaUnionPending`).
+ * Второй группы (ДОЛГ «объединение MessageMedia не доведено») здесь БОЛЬШЕ НЕТ:
+ * гео, визитка, опрос, чек-лист, розыгрыш, превью ссылки и платное медиа стали
+ * конструкторами того же `media`, а подарок — служебным сообщением с действием
+ * `messageActionStarGift` (конструктора `messageMediaStarGift` в схеме нет
+ * вовсе). Восемь строк allow-list'а ушли вместе с восемью полями.
  *
- * Третья — плоская проекция агрегатов реакций: подсистема реакций программой TL
+ * Остаётся плоская проекция агрегатов реакций: подсистема реакций программой TL
  * ещё не пройдена, кадры `reaction`/`star_reaction` по-прежнему плоские.
  */
 const OURS: Record<string, string[]> = {
-  message: [
-    'failed', 'secret', 'secretMedia', 'localUrl', 'transcription',
-    'geo', 'contact', 'poll', 'checklist', 'giveaway', 'gift', 'web_page', 'paid_media',
-    'starReaction',
-  ],
+  message: ['failed', 'secret', 'secretMedia', 'localUrl', 'transcription', 'starReaction'],
   messageService: ['failed', 'secret', 'secretMedia', 'starReaction'],
 }
 
@@ -153,6 +153,31 @@ describe('модель сообщения совпадает со схемой T
     ['messageService (добавление участников)', makeServiceMessage({
       id: 8, peerId: -42, fromId: 7, action: { _: 'messageActionChatAddUser', users: [1, 2] },
     }) as unknown],
+    // ПОДАРОК — служебное сообщение с действием, а не вид вложения:
+    // конструктора `messageMediaStarGift` в схеме нет вовсе.
+    ['messageService (подарок за звёзды)', makeServiceMessage({
+      id: 9, peerId: 7, fromId: 7,
+      action: {
+        _: 'messageActionStarGift',
+        pFlags: { saved: true },
+        gift: {
+          _: 'starGift',
+          pFlags: { limited: true },
+          id: 3,
+          emoji: '🎁',
+          stars: 100,
+          availability_remains: 5,
+          availability_total: 10,
+          convert_stars: 50,
+          title: 'Подарок',
+        },
+        message: { _: 'textWithEntities', text: 'с днём рождения', entities: [] },
+        convert_stars: 50,
+        from_id: { _: 'peerUser', user_id: 7 },
+        peer: { _: 'peerUser', user_id: 1 },
+        saved_id: 77,
+      },
+    }) as unknown],
   ])('%s: лишних ключей нет и обязательные на месте', (_name, value) => {
     const { unexpected, omitted } = check(value, 'message')
     expect(unexpected).toEqual([])
@@ -184,6 +209,38 @@ describe('модель сообщения совпадает со схемой T
     delete m.peer_id
     const { omitted } = check(m, 'message')
     expect(omitted).toEqual([{ path: 'message', predicate: 'message', key: 'peer_id' }])
+  })
+
+  // Подарка КАК МЕДИА в схеме нет: `messageMediaStarGift` не существует, и
+  // конструктор, названный так, обязан краснеть — вместе с прежним полем `gift`
+  // у обычного сообщения.
+  it('ловит подарок, положенный вложением вместо действия', () => {
+    const asMedia = { ...makeMessage({ id: 1, peerId: 1 }), media: { _: 'messageMediaStarGift', gift: { _: 'starGift' } } }
+    const { unexpected } = check(asMedia, 'message')
+    expect(unexpected).toEqual([
+      { path: 'message.media', predicate: 'messageMediaStarGift', key: '<конструктора нет в схеме>' },
+    ])
+  })
+
+  it('ловит прежнее поле `gift` рядом с текстом сообщения', () => {
+    const { unexpected } = check({ ...makeMessage({ id: 1, peerId: 1 }), gift: { id: 1 } }, 'message')
+    expect(unexpected).toEqual([{ path: 'message', predicate: 'message', key: 'gift' }])
+  })
+
+  it('ловит прежние собственные ключи вложения рядом с `media`', () => {
+    const flat = { ...makeMessage({ id: 1, peerId: 1 }), geo: {}, poll: {}, web_page: {}, paid_media: {} }
+    const { unexpected } = check(flat, 'message')
+    expect(unexpected.map((v) => v.key)).toEqual(['geo', 'poll', 'web_page', 'paid_media'])
+  })
+
+  it('ловит серверную склейку имени дарителя (имя собирает клиент)', () => {
+    const svc = makeServiceMessage({
+      id: 1, peerId: 1, fromId: 1,
+      action: { _: 'messageActionStarGift', gift: { _: 'starGift', id: 1, stars: 1, convert_stars: 1 } },
+    }) as unknown as { action: Record<string, unknown> }
+    svc.action = { ...svc.action, from_name: 'Маша' }
+    const { unexpected } = check(svc, 'message')
+    expect(unexpected).toEqual([{ path: 'message.action', predicate: 'messageActionStarGift', key: 'from_name' }])
   })
 
   it('ловит служебное действие, подделанное JSON-строкой внутри текста', () => {

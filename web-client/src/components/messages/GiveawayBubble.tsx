@@ -1,14 +1,23 @@
 // Баббл розыгрыша (по мотивам tweb chat/giveaway.tsx): трофей + приз +
-// участники + дата/обратный отсчёт + кнопка участия. Розыгрыш создаётся как
-// сообщение типа 'giveaway'; участие и статус приходят live через
-// giveaway_update. В отличие от tweb добавлены живой счётчик участников и
-// обратный отсчёт до окончания (по требованию к фиче).
+// участники + дата/обратный отсчёт + кнопка участия.
+//
+// ── Что во вложении, а что нет ──────────────────────────────────────────────
+// Вложение (`messageMediaGiveaway` до розыгрыша, `messageMediaGiveawayResults`
+// после — РАЗНЫЕ конструкторы, а не поле `status`) несёт то, что одинаково у
+// всех: приз, число победителей, срок, список победителей.
+//
+// ЛИЧНОЕ («участвую ли», «выиграл ли», сколько участников) во вложении не едет
+// и не может: тело кадра одно на всех получателей. Его отдаёт отдельная ручка
+// `GET /giveaways/{id}` — ровно как `payments.getGiveawayInfo` у оригинала,
+// который дёргает попап розыгрыша (tweb `popupGiveaway`). «Выиграл ли я» при
+// этом можно было бы вывести и из вектора `winners`, но у ответа ручки это
+// готовый флаг — и он же единственный источник «участвую ли».
 import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useMessagesStore } from '../../stores/messagesStore'
-import { useChatsStore } from '../../stores/chatsStore'
-import type { Giveaway } from '../../core/models'
+import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
+import type { GiveawayState } from '../../core/models'
+import type { MessageMediaGiveaway, MessageMediaGiveawayResults } from '../../core/media/messageMedia'
 import { useT } from '../../i18n'
 import s from './GiveawayBubble.module.scss'
 
@@ -26,15 +35,18 @@ function formatCountdown(ms: number, t: (k: string) => string): string {
   return `${ss}${t('s')}`
 }
 
-export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
+export default function GiveawayBubble({ media }: { media: MessageMediaGiveaway | MessageMediaGiveawayResults }) {
   const t = useT()
   const managers = useManagers()
-  const peerId = useChatsStore((st) => st.activePeerId) ?? 0
+  const middlewareHelper = useMiddlewareHelper()
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const [state, setState] = useState<GiveawayState | null>(null)
 
-  const active = giveaway.status === 'active'
-  const remaining = giveaway.untilDate - now
+  const active = media._ === 'messageMediaGiveaway'
+  const untilMs = media.until_date * 1000
+  const remaining = untilMs - now
+  const winnersCount = media._ === 'messageMediaGiveaway' ? media.quantity : media.winners_count
 
   // Тикер обратного отсчёта — только пока розыгрыш активен.
   useEffect(() => {
@@ -43,18 +55,34 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
     return () => clearInterval(id)
   }, [active])
 
-  const prizeText = giveaway.prizeKind === 'stars'
-    ? `${giveaway.stars} ${t('Stars')}`
-    : `${t('Telegram Premium')} · ${giveaway.months} ${t('mo')}`
+  // Личное состояние зрителя — отдельным запросом (см. шапку). Актуальность —
+  // штатным middleware: поздний ответ снесённого бабла в стейт не пишет.
+  useEffect(() => {
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
+    void managers.boosts.getGiveaway(media.id)
+      .then((info) => { if (middleware()) setState(info) })
+      .catch(() => {})
+    return () => { scope.destroy() }
+  }, [media.id, managers, middlewareHelper])
+
+  // Вид приза выражен тем, КАКОЙ параметр присутствует: `months` (подписка) или
+  // `stars` (звёзды победителю). Строкового `prize_kind` в схеме нет.
+  const prizeText = media.stars
+    ? `${media.stars} ${t('Stars')}`
+    : `${t('Telegram Premium')} · ${media.months ?? 0} ${t('mo')}`
+
+  const participating = state?._ === 'payments.giveawayInfo' && !!state.pFlags?.participating
+  const iWon = state?._ === 'payments.giveawayInfoResults' && !!state.pFlags?.winner
 
   const onParticipate = () => {
     if (busy) return
     setBusy(true)
-    // Ответ несёт МОЁ participating/iWon, которого нет в общем WS giveaway_update →
-    // ставим результат в стор здесь (не merge); WS затем реконсилит агрегат.
+    // Ответ — то же ЛИЧНОЕ состояние, что отдаёт `GET /giveaways/{id}`;
+    // сообщение он не трогает вовсе.
     void managers.messages
-      .participateGiveaway(peerId, giveaway.id)
-      .then((g) => useMessagesStore.getState().setGiveaway(peerId, g))
+      .participateGiveaway(media.id)
+      .then(setState)
       .finally(() => setBusy(false))
   }
 
@@ -62,19 +90,19 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
     <div className={s.giveaway}>
       <div className={s.sticker}>
         <span className={s.trophy}>🏆</span>
-        <span className={s.counter}>x{giveaway.winnersCount}</span>
+        <span className={s.counter}>x{winnersCount}</span>
       </div>
 
       <div className={s.row}>
         <div className={s.rowTitle}>{t('Giveaway Prizes')}</div>
         <Text size={14} color="var(--b-text)" style={{ textAlign: 'center' }}>
-          <b>{giveaway.winnersCount}</b> {prizeText}
+          <b>{winnersCount}</b> {prizeText}
         </Text>
       </div>
 
       <div className={s.row}>
         <div className={s.rowTitle}>{t('Participants')}</div>
-        <Text size={14} color="var(--b-text)">{giveaway.participants}</Text>
+        <Text size={14} color="var(--b-text)">{state?.participants ?? 0}</Text>
       </div>
 
       <div className={s.row}>
@@ -84,12 +112,12 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
         </Text>
       </div>
 
-      {!active && giveaway.iWon && (
+      {!active && iWon && (
         <div className={s.won}>🎉 {t('You won the giveaway!')}</div>
       )}
 
       {active && (
-        giveaway.participating ? (
+        participating ? (
           <div className={s.participating}>✓ {t('You are participating')}</div>
         ) : (
           <button className={s.btn} disabled={busy} onClick={onParticipate}>

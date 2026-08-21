@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { boostProgress, mapBoostStatus, mapGiveaway } from './models'
+import { boostProgress, mapBoostStatus } from './models'
 
 describe('boostProgress', () => {
   it('доля до следующего уровня и остаток бустов', () => {
@@ -33,18 +33,3 @@ describe('mapBoostStatus', () => {
   })
 })
 
-describe('mapGiveaway', () => {
-  it('маппит приз/победителей/участие', () => {
-    const g = mapGiveaway({
-      id: 7, peer_id: 5, prize_kind: 'premium', months: 3, stars: 0,
-      winners_count: 10, until_date: 123, status: 'active',
-      participants: 4, participating: true, winner_ids: null, i_won: false,
-    })
-    expect(g.id).toBe(7)
-    expect(g.prizeKind).toBe('premium')
-    expect(g.winnersCount).toBe(10)
-    expect(g.participating).toBe(true)
-    expect(g.winnerIds).toEqual([])
-    expect(g.iWon).toBe(false)
-  })
-})

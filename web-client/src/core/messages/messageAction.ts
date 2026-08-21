@@ -32,7 +32,8 @@
 // тянет схемный `Photo` вместо нашего `MyPhoto` (`core/media/messageMedia.ts`),
 // у которого `bytes` ступеней — base64-строка, а не `Uint8Array`.
 import type { ChatBannedRights } from '../peers/peer'
-import type { MyPhoto } from '../media/messageMedia'
+import type { MyPhoto, TextWithEntities } from '../media/messageMedia'
+import type { Peer } from '../peers/peerId'
 
 /** messageActionChatCreate#bd47cbad title:string users:Vector<long> = MessageAction; */
 export interface MessageActionChatCreate {
@@ -145,6 +146,64 @@ export interface MessageActionPhoneCall {
   duration?: number
 }
 
+/**
+ * starGift#313a9547 flags:# limited:flags.0?true sold_out:flags.1?true …
+ * id:long sticker:Document stars:long availability_remains:flags.0?int
+ * availability_total:flags.0?int convert_stars:long title:flags.5?string …
+ * = StarGift;
+ *
+ * ПОЗИЦИЯ КАТАЛОГА: что именно подарено.
+ *
+ * `sticker` (обязательный) не производится: в схеме внешность подарка — это
+ * АНИМИРОВАННЫЙ СТИКЕР, у нас — unicode-символ, и класть символ в поле
+ * документа нельзя (тот же случай, что `emoji_status` у пира). Символ едет
+ * объявленным клиентским параметром `emoji`
+ * (`schema_additional_params.json`, предикат `starGift`).
+ *
+ * `limited` и пара `availability_remains`/`availability_total` делят ОДИН бит
+ * (flags.0) — едут вместе или не едут вовсе.
+ */
+export interface StarGift {
+  _: 'starGift'
+  pFlags?: Partial<{ limited: true; sold_out: true }>
+  id: number
+  /** НАШ параметр: внешность подарка (см. докблок) */
+  emoji?: string
+  stars: number
+  availability_remains?: number
+  availability_total?: number
+  convert_stars: number
+  title?: string
+}
+
+/**
+ * messageActionStarGift#ea2c31d3 flags:# name_hidden:flags.0?true
+ * saved:flags.2?true converted:flags.3?true … gift:StarGift
+ * message:flags.1?TextWithEntities convert_stars:flags.4?long
+ * from_id:flags.11?Peer peer:flags.12?Peer saved_id:flags.12?long
+ * = MessageAction;
+ *
+ * ПИЛЮЛЯ «вам подарили». Конструктора `messageMediaStarGift` в схеме нет вовсе —
+ * подарок это ДЕЙСТВИЕ, а не вложение, и потому ветка рендера выбирается по
+ * конструктору сообщения, а не по виду медиа.
+ *
+ * `saved` — «сохранён в профиле», то есть ОТРИЦАНИЕ нашего прежнего `hidden`.
+ * У анонимного подарка `from_id` нет ВОВСЕ — это и есть `pFlags.name_hidden`, а
+ * не пустая карточка рядом с флагом; имя дарителя строкой (`from_name`) с
+ * провода ушло, его собирает клиент из `from_id`, как везде после порта пиров.
+ */
+export interface MessageActionStarGift {
+  _: 'messageActionStarGift'
+  pFlags?: Partial<{ name_hidden: true; saved: true; converted: true }>
+  gift: StarGift
+  message?: TextWithEntities
+  convert_stars?: number
+  from_id?: Peer
+  /** чей профиль; делит бит с `saved_id` и потому едет вместе с ним */
+  peer?: Peer
+  saved_id?: number
+}
+
 /** messageActionRestrict#d1500001 user_id:long banned_rights:ChatBannedRights
  *
  *  НАШ СОБСТВЕННЫЙ конструктор в своём пространстве id: у оригинала
@@ -196,7 +255,7 @@ export interface MessageActionDiscussionStarted {
 }
 
 /**
- * Объединение `MessageAction`: тринадцать конструкторов схемы, которые
+ * Объединение `MessageAction`: четырнадцать конструкторов схемы, которые
  * производит наш сервер, плюс четыре СИНТЕТИЧЕСКИХ, которые производит только
  * клиент (`refineMessageAction`).
  *
@@ -218,6 +277,7 @@ export type MessageAction =
   | MessageActionSuggestProfilePhoto
   | MessageActionSuggestedPostApproval
   | MessageActionPhoneCall
+  | MessageActionStarGift
   | MessageActionRestrict
   | MessageActionChatLeave
   | MessageActionChatJoined

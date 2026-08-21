@@ -13,7 +13,7 @@
 //   кружок      → bubble round has-floating-time is-message-empty just-media (без can-have-tail)
 //   альбом      → bubble is-album is-grouped photo
 //   опрос       → bubble poll-message
-import { getDocumentFromMessage, type MyDocument } from '../../core/media/messageMedia'
+import { getBubbleMedia, getDocumentFromMessage, getExtendedMediaPreview, type MyDocument } from '../../core/media/messageMedia'
 import { getInlineMarkupRows } from '../../core/markup/replyMarkup'
 import type { ConvMsg } from '../../data'
 
@@ -98,10 +98,13 @@ function typeClasses(m: ConvMsg): string[] {
 
 /**
  * Есть ли у сообщения медиа-вложение (для решения is-message-empty/just-media).
- * Аплоад считается медиа: у оптимистичного бабла ещё нет mediaId, но есть localUrl.
+ * Аплоад считается медиа: у оптимистичного бабла ещё нет вложения, но есть localUrl.
+ *
+ * Спрашиваем `getBubbleMedia`, а не `mediaId`: картинка карточки ссылки — тоже
+ * файл вложения, но рисует её тело сообщения, а не сам бабл.
  */
 function hasMedia(m: ConvMsg): boolean {
-  return m.mediaId != null || !!m.localUrl || m.type === 'album' || m.type === 'geo' || !!m.paidMedia?.locked
+  return !!getBubbleMedia(m) || !!m.localUrl || m.type === 'album' || m.type === 'geo' || !!getExtendedMediaPreview(m)
 }
 
 export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {

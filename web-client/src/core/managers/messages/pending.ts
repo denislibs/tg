@@ -303,11 +303,48 @@ function makeDocumentAndMetaForSendingFile(o: PendingMedia & {
 }
 
 /** Тот же документ/фото, но под настоящим id медиа: аплоад завершился, и файл,
- *  живший под временным id (tweb `mediaTempId`), получил адрес на сервере. */
+ *  живший под временным id (tweb `mediaTempId`), получил адрес на сервере.
+ *  Остальные конструкторы объединения файла не несут вовсе — им нечего
+ *  переадресовывать. */
 function withMediaId(media: MessageMedia, id: number): MessageMedia {
-  return media._ === 'messageMediaDocument'
-    ? { ...media, document: { ...media.document, id } }
-    : { ...media, photo: { ...media.photo, id } }
+  if (media._ === 'messageMediaDocument') return { ...media, document: { ...media.document, id } }
+  if (media._ === 'messageMediaPhoto') return { ...media, photo: { ...media.photo, id } }
+  return media
+}
+
+/**
+ * Вложение бабла гео-сообщения. Три конструктора, ровно как на проводе: живая
+ * трансляция, место с подписью и просто точка — выбор тот же, что делает
+ * `geoWire` бэкенда, потому что это ОДНО правило, а не два.
+ *
+ * У свежей трансляции `period` едет полным: она только что началась, и
+ * «остановлена» (истёкший срок) до эха сервера быть не может.
+ */
+function makeGeoMedia(geo: NonNullable<PendingNewEvt['geo']>): MessageMedia {
+  const point = { _: 'geoPoint' as const, long: geo.lng, lat: geo.lat }
+  if (geo.livePeriod) {
+    return { _: 'messageMediaGeoLive', geo: point, period: geo.livePeriod, ...(geo.heading ? { heading: geo.heading } : {}) }
+  }
+  if (geo.title || geo.address) {
+    return { _: 'messageMediaVenue', geo: point, title: geo.title ?? '', address: geo.address ?? '' }
+  }
+  return { _: 'messageMediaGeo', geo: point }
+}
+
+/**
+ * Вложение бабла визитки. Все пять параметров схемы ОБЯЗАТЕЛЬНЫЕ и стоят
+ * всегда, в том числе пустыми: телефон гидрирует сервер (приедет с эхом), и до
+ * эха это пустая СТРОКА-значение, а не отсутствие параметра.
+ */
+function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): MessageMedia {
+  return {
+    _: 'messageMediaContact',
+    phone_number: contact.phone ?? '',
+    first_name: contact.name ?? '',
+    last_name: '',
+    vcard: '',
+    user_id: contact.user_id,
+  }
 }
 
 export function newPendingMethods(ctx: PendingCtx) {
@@ -475,11 +512,15 @@ export function newPendingMethods(ctx: PendingCtx) {
       // `media_id` — это ветка `isDocument` оригинала, :1538-1541, где в бабл
       // кладётся УЖЕ сохранённый документ), иначе временный — id самого бабла,
       // ровно как tweb `mediaTempId = message.id` (:1554).
+      //
+      // Гео и визитка собираются здесь же и тем же приёмом: они КОНСТРУКТОРЫ
+      // того же объединения, а не собственные поля сообщения рядом с медиа, —
+      // значит и у бабла им место ровно одно.
       media: e.media
         ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? id, attachType: e.type ?? 'document' })
+        : e.geo ? makeGeoMedia(e.geo)
+        : e.contact ? makeContactMedia(e.contact)
         : undefined,
-      geo: e.geo,
-      contact: e.contact,
       secret: e.secret,
     }
     const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempId: id, keys, sequential: e.sequential }

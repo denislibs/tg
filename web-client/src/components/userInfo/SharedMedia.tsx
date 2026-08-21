@@ -27,7 +27,8 @@ import MediaGridThumb from '../MediaGridThumb'
 import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
-import type { GiftInfo } from '../../core/managers/starsManager'
+import { isGiftHidden, type SavedStarGift } from '../../core/managers/starsManager'
+import { getPeerId } from '../../core/peers/peerId'
 import { getMessageText, type MyMessage } from '../../core/models'
 import { getMediaId, getMessageKind, type MessageKind } from '../../core/messages/messageKind'
 import { messageDateISO } from '../../core/messageToConvMsg'
@@ -35,7 +36,8 @@ import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
 import type { Chat as PeerChat, User } from '../../core/peers/peer'
 import { isUserStatusOnline } from '../../core/peers/peer'
-import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { getPeerTitle, getUserTitle } from '../../core/peers/getPeerTitle'
+import { usePeers } from '../../core/hooks/usePeers'
 import { userStatusLabel } from '../../core/presence'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
@@ -92,8 +94,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   /** «Избранное»: сохранённые диалоги для первого таба «Чаты» */
   savedDialogs?: SavedDialog[]
   /** подарки профиля пользователя (таб «Подарки») */
-  gifts?: GiftInfo[]
-  onOpenGift?: (g: GiftInfo) => void
+  gifts?: SavedStarGift[]
+  onOpenGift?: (g: SavedStarGift) => void
   /** открыть попап отправки подарка из пустого состояния (только чужой профиль) */
   onSendGift?: () => void
   isChannel?: boolean
@@ -110,6 +112,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  // Имена дарителей собирает КЛИЕНТ из ссылок на пиры: серверной склейки
+  // `from_name` на проводе больше нет.
+  const giftSenders = usePeers((gifts ?? []).map((g) => (g.from_id ? getPeerId(g.from_id) : 0)).filter(Boolean))
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
@@ -414,21 +419,26 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         ) : (
           <div className={classNames(giftsGrid.grid, giftsGrid.viewProfile)}>
             {gifts.map((g) => {
-              const anon = g.anonymous || (!g.fromName && g.fromId == null)
+              // Аноним — это ОТСУТСТВИЕ `from_id` (флаг `name_hidden` и значит
+              // «дарителя не показываем»), а не пустая карточка рядом с флагом.
+              const fromId = g.from_id ? getPeerId(g.from_id) : undefined
+              const anon = !!g.pFlags?.name_hidden || fromId == null
               return (
-                <div key={g.id} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
-                  {g.hidden && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
-                  {g.gift.total != null && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                <div key={g.saved_id ?? g.date} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
+                  {isGiftHidden(g) && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
+                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
                   <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
                   <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
-                    {g.gift.priceStars}
+                    {g.gift.stars}
                   </span>
                   <div className={giftsGrid.itemFrom}>
                     {anon ? (
                       <span className={giftsGrid.itemFromAnonymous}>?</span>
                     ) : (
-                      <UserAvatar id={g.fromId ?? undefined} name={g.fromName} size={18} />
+                      // Имя дарителя собирает КЛИЕНТ из ссылки на пир: серверной
+                      // склейки `from_name` на проводе больше нет.
+                      <UserAvatar id={fromId} name={getPeerTitle({ peerId: fromId, peer: giftSenders.get(fromId) })} size={18} />
                     )}
                   </div>
                 </div>
