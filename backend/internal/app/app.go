@@ -35,6 +35,8 @@ var Module = fx.Options(
 		provideGeoIP,
 	),
 	fx.Invoke(registerServer),
+	// Строго после registerServer: сиду нужен уже дособранный интерактор чата.
+	fx.Invoke(registerDemoSeed),
 	// Keep our own log.Printf lines as the signal; silence fx's event log.
 	fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
 )
