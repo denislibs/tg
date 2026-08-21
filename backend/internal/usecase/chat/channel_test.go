@@ -254,9 +254,27 @@ func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) 
 func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
 func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
 func (c groupMembershipChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
-func (c groupMembershipChats) ChatType(context.Context, int64) (string, error)          { return "channel", nil }
-func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error    { return nil }
-func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error         { return nil }
+
+// ChatType отвечает из ОБЩЕГО store — того же, куда onCreate кладёт тип
+// созданного чата. Прежде здесь стояло безусловное "channel": группа
+// обсуждения, заведённая EnableDiscussion типом "group", для usecase выглядела
+// каналом. Пока по типу решался только вопрос «зеркалить ли пост» (там гейтом
+// работала привязка обсуждения), ложь не проявлялась; с появлением развилки
+// доставки она сделала бы непокрасневшим целый класс тестов.
+func (c groupMembershipChats) ChatType(_ context.Context, chatID int64) (string, error) {
+	if c.s == nil {
+		return domain.ChatTypeChannel, nil
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	if typ, ok := c.s.chatType[chatID]; ok {
+		return typ, nil
+	}
+	return domain.ChatTypeChannel, nil
+}
+
+func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error { return nil }
+func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error      { return nil }
 func (c groupMembershipChats) ListPins(context.Context, int64) ([]domain.Message, error) {
 	return nil, nil
 }
@@ -294,9 +312,9 @@ func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (
 	s.seedMedia(102, 7)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "channel"
+		s.chatType[id] = typ
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}

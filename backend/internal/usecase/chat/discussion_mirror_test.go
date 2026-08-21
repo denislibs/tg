@@ -494,9 +494,9 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s},
 		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	i.SetChannelPublisher(&fakeChannelPublisher{})
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "channel"
+		s.chatType[id] = typ
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}

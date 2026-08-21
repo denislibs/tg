@@ -17,9 +17,9 @@ import (
 func newLoggedGroupInteractor() (*Interactor, *store, *fakeGroupRepo, *fakePublisher) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())

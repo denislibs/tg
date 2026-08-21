@@ -17,9 +17,9 @@ func sendAsTestSetup(t *testing.T) (*Interactor, *store, *fakeGroupRepo, int64, 
 	t.Helper()
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())

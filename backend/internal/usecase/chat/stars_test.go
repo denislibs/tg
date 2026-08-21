@@ -216,9 +216,9 @@ func TestPaidMessages_ChargeCreditAndOwnerFree(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
 	// fakeMsgs.NextSeq знает только чаты из store — регистрируем созданные группы.
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())

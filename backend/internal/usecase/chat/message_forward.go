@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"time"
 
@@ -41,6 +42,23 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		}
 	}
 
+	// Пересылка В КАНАЛ — это тот же пост канала, поэтому у неё та же развилка
+	// по виду пира, что у Send: право постинга вместо простого членства и одна
+	// запись в журнал канала вместо веера по подписчикам. Пока развилки не
+	// было, пересылка оставалась третьей веткой доставки — и повторяла оба
+	// дефекта отправки: подписчик мог опубликовать в канал что угодно, а
+	// доехавшее не попадало в догон разрыва.
+	toType, err := i.chats.ChatType(ctx, in.ToChatID)
+	if err != nil {
+		return nil, err
+	}
+	broadcast := toType == domain.ChatTypeChannel
+	if broadcast {
+		if err := i.requireRight(ctx, in.ToChatID, in.SenderID, domain.RightPostMessages); err != nil {
+			return nil, err
+		}
+	}
+
 	// Правило автора «кто может ссылаться на мой аккаунт при пересылке»:
 	// при запрете вместо ссылки (fwd_from_user_id) сохраняется только имя
 	// текстом (fwd_from_name), как tweb fwd_from.from_name. Кэш на автора.
@@ -65,12 +83,17 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	// a forward fans out one new_message per copy, each with its own cursor.
 	var ptsMaps []map[int64]int64
 	var unreadMaps []map[int64]int64
+	// Канал-приёмник: тела и курсоры журнала (parallel to created) вместо
+	// пер-получательских карт выше. Живой кадр строится из ТОГО ЖЕ тела, что
+	// легло в журнал, — иначе догон разрыва и live разъедутся.
+	var channelPayloads []map[string]any
+	var channelPtsList []int64
 	// Зеркала постов канала (parallel to created; nil entry — не было
 	// зеркала для этой копии) — доставляются участникам групп обсуждения
 	// ПОСЛЕ коммита, тем же publishMessageDelivery (см. mirrorChannelPost/
 	// fanout.go).
 	var mirrorDelivs []*mirrorDelivery
-	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		mem, e := i.chats.MemberIDs(ctx, in.ToChatID)
 		if e != nil {
 			return e
@@ -165,6 +188,23 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 					msg = one[0]
 				}
 			}
+			// Канал: одна запись журнала на копию, без веера и без счётчиков
+			// непрочитанного — ровно как у поста в Send.
+			if broadcast {
+				body := i.channelPostPayload(ctx, msg)
+				raw, e := json.Marshal(body)
+				if e != nil {
+					return e
+				}
+				pts, e := i.channels.AppendUpdate(ctx, in.ToChatID, "new_message", raw)
+				if e != nil {
+					return e
+				}
+				created = append(created, msg)
+				channelPayloads = append(channelPayloads, body)
+				channelPtsList = append(channelPtsList, pts)
+				continue
+			}
 			fwdOut := i.messageUpdatePayload(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
 			if e != nil {
@@ -199,7 +239,16 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	if err != nil {
 		return nil, err
 	}
-	if i.publisher != nil {
+	if broadcast {
+		// Канал: по одной публикации в топик на копию, тем же телом, что легло
+		// в журнал. Пуш-уведомлений у постов канала нет — их нет и у Send.
+		if i.chPub != nil {
+			for idx := range created {
+				_ = i.chPub.PublishToChannel(ctx, in.ToChatID,
+					frameChannelPts("new_message", channelPayloads[idx], channelPtsList[idx]))
+			}
+		}
+	} else if i.publisher != nil {
 		for idx, msg := range created {
 			base := i.messageUpdatePayload(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, base)

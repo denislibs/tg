@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -83,6 +84,18 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}
+	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
+	// (messages.sendMessage/sendMedia), а «пост канала» получается из того, что
+	// получатель — broadcast: сервер отвечает updateNewChannelMessage, а не
+	// веером по подписчикам. У нас развилка стояла в ДРУГОМ месте — в выборе
+	// ручки (PostToChannel против Send), — и потому обходилась: ручка постинга
+	// принимает только текст, так что пост С КАРТИНКОЙ уезжал обычной
+	// отправкой, мимо журнала канала и мимо гейта прав.
+	chatType, err := i.chats.ChatType(ctx, in.ChatID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	broadcast := chatType == domain.ChatTypeChannel
 	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
 	// это выбор конструктора, и клиент его назначить не может (у него в теле
 	// запроса действия нет вовсе). Лог звонка при этом остаётся отдельным видом
@@ -233,13 +246,28 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
-		if err := i.checkSendAllowed(ctx, in); err != nil {
-			return domain.Message{}, err
-		}
-		// Приватный чат: настройки получателя «кто может отправлять мне
-		// сообщения / голосовые» + чёрный список.
-		if err := i.checkPrivateSendPrivacy(ctx, in); err != nil {
-			return domain.Message{}, err
+		switch {
+		case broadcast:
+			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника
+			// группы здесь не годится: подписчик — read-only роль
+			// (domain/rights.go), а маска чата по умолчанию (31) отправку
+			// разрешает — и checkSendAllowed, у которого ветки для подписчика
+			// нет вовсе, пропускал его. То есть подписчик мог опубликовать в
+			// канал что угодно, послав обычное сообщение вместо вызова ручки
+			// постинга. Слоумод и приватность получателя предмета у broadcast
+			// не имеют.
+			if err := i.requireRight(ctx, in.ChatID, in.SenderID, domain.RightPostMessages); err != nil {
+				return domain.Message{}, err
+			}
+		default:
+			if err := i.checkSendAllowed(ctx, in); err != nil {
+				return domain.Message{}, err
+			}
+			// Приватный чат: настройки получателя «кто может отправлять мне
+			// сообщения / голосовые» + чёрный список.
+			if err := i.checkPrivateSendPrivacy(ctx, in); err != nil {
+				return domain.Message{}, err
+			}
 		}
 	}
 
@@ -298,7 +326,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
-	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
+	// channelPts — курсор журнала канала, полученный при записи поста; 0 значит
+	// «в журнал ничего не легло» (не канал либо дедуп по client_msg_id).
+	// channelPayload — ТО ЖЕ тело, что легло в журнал: живой кадр строится из
+	// него, а не собирается заново, иначе догон разрыва и live разъедутся.
+	var channelPts int64
+	var channelPayload map[string]any
+	var charge paidCharge // платная группа: списание/начисление (публикуем после коммита)
 	// Зеркало поста канала (если вставленное сообщение — пост в канал с
 	// обсуждением, см. mirrorChannelPost): доставка публикуется ПОСЛЕ коммита
 	// этой же transaction, тем же publishMessageDelivery, что и msg ниже.
@@ -400,6 +434,21 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 			msg.PaidMediaPrice = &price
 		}
+		// Канал: ОДНА запись в журнал канала вместо веера по подписчикам —
+		// O(1) на пост независимо от числа читателей, и ровно эта запись
+		// отдаётся догоном разрыва (/difference). Тело кадра одно на всех, оно
+		// же уходит живьём (см. публикацию после коммита), поэтому
+		// пер-зрительских вариантов — out, locked у платного медиа, счётчиков
+		// непрочитанного и упоминаний — здесь нет вовсе: см. channelPostPayload.
+		if broadcast {
+			channelPayload = i.channelPostPayload(ctx, msg)
+			payload, err := json.Marshal(channelPayload)
+			if err != nil {
+				return err
+			}
+			channelPts, err = i.channels.AppendUpdate(ctx, in.ChatID, "new_message", payload)
+			return err
+		}
 		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
@@ -433,6 +482,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if charge.creatorID != 0 {
 			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
 		}
+	}
+	// Канал: одна публикация в топик канала вместо веера. Кадр несёт
+	// channel_pts — тот же конверт, который переигрывает /difference, поэтому
+	// клиент гейтит его по пер-канальному курсору и не получает дубля.
+	if channelPts != 0 && i.chPub != nil {
+		_ = i.chPub.PublishToChannel(ctx, in.ChatID, frameChannelPts("new_message", channelPayload, channelPts))
 	}
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой

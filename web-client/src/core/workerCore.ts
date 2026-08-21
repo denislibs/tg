@@ -547,11 +547,21 @@ export function createWorkerCore() {
       // channel_pts + peer_id → per-channel funnel (свой курсор, difference-catch-up).
       // Раньше new_message-ветки: посты канала приходят как new_message, но с
       // channel_pts и без E2E (каналы — публичный broadcast, enc_body не бывает).
+      // Пир у кадра лежит в РАЗНЫХ местах, и это не небрежность: кадр с
+      // сообщением несёт его ВНУТРИ конструктора (message.peer_id —
+      // объединение Peer), потому что там это параметр самого сообщения;
+      // кадр метаданных канала сообщения не несёт и держит ключ пира наверху
+      // числом. Читать надо оба: пока читался только верхний, посты канала
+      // молча проезжали мимо своей воронки — курсор канала от живых кадров не
+      // двигался, и каждый догон разрыва приносил их заново.
       {
-        const cf = payload as { channel_pts?: number; peer_id?: number }
-        if (typeof cf?.channel_pts === 'number' && typeof cf?.peer_id === 'number') {
-          channelFunnel.applyLive(cf.peer_id, type, cf.channel_pts, payload)
-          return
+        const cf = payload as { channel_pts?: number; peer_id?: number; message?: { peer_id?: Parameters<typeof getPeerId>[0] } }
+        if (typeof cf?.channel_pts === 'number') {
+          const peerId = cf.message?.peer_id !== undefined ? getPeerId(cf.message.peer_id) : cf.peer_id
+          if (typeof peerId === 'number') {
+            channelFunnel.applyLive(peerId, type, cf.channel_pts, payload)
+            return
+          }
         }
       }
       // message_ack / message_error: кадры эфемерные (без pts — идут мимо funnel,

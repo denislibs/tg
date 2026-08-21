@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -21,61 +20,22 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 	return chatID, err
 }
 
-// PostToChannel inserts a channel message and delivers it O(1): bump channel_pts,
-// append a channel_update, then PUBLISH once to channel:{id}. No per-subscriber fan-out.
+// PostToChannel публикует ТЕКСТОВЫЙ пост в канал.
+//
+// Своей реализации у неё больше нет: доставка постом канала (channel_pts +
+// запись журнала + одна публикация в топик, без веера по подписчикам) — это
+// ветка обычной отправки, выбранная по виду ПИРА, как в оригинале, где метод
+// отправки один на все виды получателей. Пока веток было две, ручка постинга
+// принимала только текст, и всё, что несёт вложение — пост с картинкой,
+// опрос, чек-лист, розыгрыш, — уходило второй веткой: мимо журнала канала (то
+// есть мимо догона разрыва) и мимо гейта прав.
+//
+// Ручка остаётся как имя действия «опубликовать в канал» — у неё своя проверка
+// на границе HTTP и своя форма ответа.
 func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error) {
-	if err := i.requireRight(ctx, channelID, actorID, domain.RightPostMessages); err != nil {
-		return domain.Message{}, err
-	}
-	// Форматирование поста проходит ту же санитизацию, что и обычная отправка
-	// (message.go:132) — клиентским offset/length не доверяем.
-	entities = sanitizeEntities(entities)
-	var cmid *string
-	if clientMsgID != "" {
-		cmid = &clientMsgID
-	}
-	var msg domain.Message
-	var pts int64
-	// Зеркало поста (если у канала есть обсуждение) — доставляется участникам
-	// группы обсуждения ПОСЛЕ коммита, тем же publishMessageDelivery, что и
-	// обычная отправка (см. mirrorChannelPost/fanout.go).
-	var mirrorDeliv *mirrorDelivery
-	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		seq, e := i.msgs.NextSeq(ctx, channelID)
-		if e != nil {
-			return e
-		}
-		m, e := i.msgs.Insert(ctx, domain.Message{
-			ChatID: channelID, Seq: seq, SenderID: actorID, Type: "text", Text: text, Entities: entities, ClientMsgID: cmid,
-		})
-		if e != nil {
-			return e
-		}
-		msg = m
-		// Зеркало поста в группе обсуждения — в той же транзакции: пост без
-		// зеркала остался бы без треда комментариев.
-		md, e := i.mirrorChannelPost(ctx, m)
-		if e != nil {
-			return e
-		}
-		mirrorDeliv = md
-		payload, _ := json.Marshal(i.channelPostPayload(ctx, m))
-		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
-		return e
+	return i.Send(ctx, SendInput{
+		ChatID: channelID, SenderID: actorID, Text: text, Entities: entities, ClientMsgID: clientMsgID,
 	})
-	if err != nil {
-		return domain.Message{}, err
-	}
-	// publish once after commit — the live frame carries channel_pts so the client
-	// gates it against the per-channel cursor (same envelope /difference replays).
-	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", i.channelPostPayload(ctx, msg), pts))
-	}
-	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
-	}
-	return msg, nil
 }
 
 // channelPostPayload — тело кадра поста канала для channel-лога и живого кадра

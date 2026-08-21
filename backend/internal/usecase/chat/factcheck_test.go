@@ -16,9 +16,9 @@ import (
 func newFactCheckInteractor() (*Interactor, *fakeGroupRepo, *store) {
 	s := newStore()
 	fg := newFakeGroupRepo()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "channel"
+		s.chatType[id] = typ
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}

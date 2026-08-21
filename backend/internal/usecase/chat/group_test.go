@@ -28,7 +28,12 @@ type fakeGroupRepo struct {
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
 	mutedUntil   map[int64]map[int64]*time.Time               // chatID -> userID -> срок мьюта (nil — не замьючен)
-	onCreate     func(id int64)                               // optional hook fired after a chat is created
+	// onCreate — хук «чат создан», зеркалящий строку в общий store. Тип чата
+	// едет ПАРАМЕТРОМ, а не подставляется хуком из головы: доставка сообщения
+	// зависит от вида пира (канал — журнал канала, остальное — веер по
+	// участникам), и хук, объявлявший ЛЮБОЙ созданный чат каналом, не давал
+	// покраснеть ни одному тесту на эту развилку.
+	onCreate func(id int64, typ string)
 	// onSetDiscussion — опциональный хук, зеркалящий привязку группы обсуждения
 	// в общий store (store.discussionChat), которым пользуется fakeMsgs
 	// (MirrorByPost/MirrorsByPosts). В реальной БД оба репозитория читают одну
@@ -324,7 +329,7 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 	}
 	r.members[id] = map[int64]domain.Member{}
 	if r.onCreate != nil {
-		r.onCreate(id)
+		r.onCreate(id, typ)
 	}
 	return id, nil
 }
@@ -896,9 +901,9 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
 	// fakeMsgs.NextSeq знает только чаты из store — регистрируем созданные группы.
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
@@ -1094,9 +1099,9 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	prev := tokenGen
@@ -1359,9 +1364,9 @@ func TestApproveJoinRequest(t *testing.T) {
 func TestGroupSettings_Enforcement(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	fi := newFakeInviteRepo()
@@ -1480,9 +1485,9 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 func TestMemberRestrictions(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	fi := newFakeInviteRepo()
