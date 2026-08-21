@@ -41,9 +41,10 @@
 //    нашей модели: `channelAdminLogEvent`, `isMessageForVerificationBot`,
 //    `suggested_post`, `getGuestChatViaFromId`, форум/ботфорум/монофорум-треды
 //    и `post_author`. Разбор — в отчёте по задаче. Два терма, у которых предмет
-//    ЕСТЬ, портированы дословно: `isOutMessage` (самопересылка в «Избранное»,
-//    функция ниже) и «group anonymous sending» (отправка от лица канала —
-//    прямо в `canItemsBeGrouped`).
+//    ЕСТЬ, портированы дословно: `isOutMessage` (самопересылка в «Избранное»;
+//    живёт в `core/models.ts` рядом с `isOurMessage` — у него появился второй
+//    потребитель, сторона бабла) и «group anonymous sending» (отправка от лица
+//    канала — прямо в `canItemsBeGrouped`).
 //  • `addChatThreadSeparators` / `addContinueLastTopicReplyMarkup` (монофорум и
 //    ботфорум) не портированы по той же причине.
 //  • Вендорные хелперы tweb (`positionElementByIndex`, `whichChild`,
@@ -56,7 +57,7 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import forEachReverse from '@helpers/array/forEachReverse'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
 import { startOfDayMs } from '@core/format/dayLabel'
-import { isOurMessage, type MyMessage, type OurMessageChat } from '@core/models'
+import { isOutMessage, type MyMessage, type OurMessageChat } from '@core/models'
 import { isServicePill } from '@core/serviceMsg'
 import { messageDateISO } from '@core/messageToConvMsg'
 import { getInlineMarkupRows } from '@core/markup/replyMarkup'
@@ -206,30 +207,6 @@ function partition<T>(array: T[], predicate: (value: T) => boolean): [T[], T[]] 
     (predicate(value) ? yes : no).push(value)
   }
   return [yes, no]
-}
-
-/**
- * Порт tweb `Chat.isOutMessage` (chat.ts:1392-1396) в применимом объёме.
- *
- *     isOut = isOurMessage(message) && (!fwdFrom || peerId !== myId || threadId)
- *
- * Второй множитель — это САМОПЕРЕСЫЛКА В «ИЗБРАННОЕ»: пересланное в чат с самим
- * собой сообщение перестаёт быть исходящим, потому что рисуется от лица
- * ОРИГИНАЛЬНОГО автора. Для группировки это значит, что пересылки и собственные
- * сообщения «Избранного» лежат в РАЗНЫХ сериях, — без этого терма они
- * склеиваются в одну.
- *
- * Терм `|| this.threadId` не портирован: он про окно сохранённого диалога
- * (Saved Dialogs, `ChatType.Saved`), которого у нас нет — тред у нас бывает
- * только у форум-топика и комментариев, а «Избранное» ни тем, ни другим не
- * бывает.
- *
- * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и сама
- * `canItemsBeGrouped` отдельным термом требует совпадения пиров.
- */
-function isOutMessage(message: MyMessage, chat: OurMessageChat): boolean {
-  const fwdFrom = message._ === 'message' ? message.fwd_from : undefined
-  return isOurMessage(message, chat) && (!fwdFrom || message.peerId !== chat.myId)
 }
 
 /** Порт tweb `canHaveReplyMarkup` (bubbleGroups.ts:51): у аватара серии свой

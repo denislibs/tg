@@ -102,6 +102,7 @@ import animationIntersector, { type AnimationItemGroup } from '@components/anima
 import Icon from '@components/icon'
 import ProgressivePreloader from '@components/preloader'
 import { createProgressRing, getProgressRingRadius } from '@components/progressRing'
+import { findMediaTargets, type MediaTargetElement } from '@components/audio'
 import wrapPhoto, { type WrappedPhoto } from '@components/wrappers/photo'
 import { mediaPlayback } from '@core/audio/mediaPlaybackController'
 import mediaSizesInstance, { ScreenSize } from '@core/dom/mediaSizes'
@@ -245,7 +246,9 @@ export interface WrapVideoOptions {
 type ContainerWithPreloader = HTMLElement & { preloader?: ProgressivePreloader }
 
 /** tweb `(divRound as any as AudioElement).onLoad` (video.ts:401) — отложенный старт кружка. */
-type RoundElement = HTMLElement & { onLoad?: () => void, message?: WrapVideoMessage }
+/** Кружок как узел плейлиста: `track` читает `findMediaTargets` (`components/audio.ts`),
+ *  ровно как у `audio-element` — очередь у нашего контроллера идёт значением. */
+type RoundElement = MediaTargetElement & { onLoad?: () => void, message?: WrapVideoMessage }
 
 export interface WrappedVideo {
   /** tweb `res.thumb` */
@@ -607,11 +610,15 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         }
 
         if (group) {
+          // tweb video.ts:649-655 — `controlled` сюда НЕ передаётся: у видео
+          // владелец учёта — сам DOM. С `controlled` элемент перестаёт
+          // сниматься с учёта, когда уехал из документа (`checkAnimation`
+          // снимает только `!player.controlled`), и реестр копит мёртвые
+          // `<video>` до чистки middleware.
           animationIntersector.addAnimation({
             animation: video,
             group,
             observeElement: video,
-            controlled: middleware,
             type: 'video',
             // tweb video.ts:654 — видео под наблюдателем звука играет по его
             // команде, а не по видимости: пауза остаётся за наблюдателем
@@ -690,8 +697,13 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
     res.loadPromise = (await load()).render
     void res.loadPromise.catch(noop)
   } else {
-    // очередь реджектит снятые задачи (`clear()`) — гасим, чтобы не всплывало
-    void lazyLoadQueue.push(() => load().then(({ download }) => download), isVisible).catch(noop)
+    // tweb video.ts:715-717 — в очередь идёт РЕНДЕР (`load().then(({render}) =>
+    // render)`), а не загрузка: слот очереди обязан держаться, пока кадр не
+    // встал в `<video>`. На `download` слот освобождался мгновенно (у нас
+    // «загрузка» это резолв адреса стрима, то есть почти синхронно), и
+    // ограничение параллелизма переставало ограничивать хоть что-нибудь.
+    // Очередь реджектит снятые задачи (`clear()`) — гасим, чтобы не всплывало.
+    void lazyLoadQueue.push(() => load().then(({ render }) => render), isVisible).catch(noop)
   }
 
   if (res.thumb) {
@@ -761,22 +773,27 @@ function wrapRound({
 
   const ctx = canvas.getContext('2d')
 
-  const roundElement = divRound as RoundElement
+  // `track` дописывается ниже, в `onLoad` — как tweb дописывает `onLoad` в тот
+  // же узел (`(divRound as any as AudioElement).onLoad`, video.ts:401).
+  const roundElement = divRound as unknown as RoundElement
   roundElement.message = message
 
   const onLoad = () => {
     // tweb video.ts:264-265 — сообщение перечитывается с самого узла (у отложенного
     // старта оно уже с серверными id), элемент сообщения заводит КОНТРОЛЛЕР, а не бабл.
     const message = roundElement.message
+    // Трек лежит НА УЗЛЕ: отсюда его берёт плейлист соседей (`findMediaTargets`),
+    // которому доступен только DOM, — как `audio-element.track` у голосового.
+    const track = roundElement.track = {
+      mediaId: doc.id,
+      title: '',
+      subtitle: '',
+      peerId: message?.peerId,
+      msgId: message?.mid,
+      type: 'round' as const,
+    }
     const globalVideo = mediaPlayback.addMedia({
-      track: {
-        mediaId: doc.id,
-        title: '',
-        subtitle: '',
-        peerId: message?.peerId,
-        msgId: message?.mid,
-        type: 'round',
-      },
+      track,
       autoload: !noAutoDownload,
     }) as HTMLVideoElement
 
@@ -863,6 +880,13 @@ function wrapRound({
       }
 
       if (globalVideo.paused) {
+        // tweb video.ts:370-378 — ПЕРЕД запуском кружок объявляет плейлист
+        // вокруг себя (`findMediaTargets` + `setTargets`), ровно как это делает
+        // голосовое (`AudioElement.setTargets`): очередь «голосовые и кружки»
+        // одна, и без объявления кружок играл бы в одиночку — после него
+        // следующее голосовое не начиналось бы.
+        const { queue, index } = findMediaTargets(roundElement)
+        mediaPlayback.setTargets(queue, index)
         // Запуск идёт через контроллер коллекции: он остановит чужой трек,
         // дождётся src (`willBePlayed`) и объявит очередь — `safePlay` мимо него
         // сделал бы кружок вторым одновременно играющим звуком.

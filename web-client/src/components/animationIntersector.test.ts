@@ -18,6 +18,7 @@ class IntersectionObserverStub {
 vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
 
 const { default: animationIntersector } = await import('./animationIntersector')
+const { default: idleController } = await import('../helpers/idleController')
 const { dispatchHeavyAnimationEvent, interruptHeavyAnimation } = await import('../core/dom/heavyAnimation')
 
 type FakePlayer = {
@@ -72,6 +73,10 @@ function register(group: 'chat' | 'emoticons-dropdown' = 'chat') {
 beforeEach(() => {
   players = []
   interruptHeavyAnimation()
+  // Стартовое состояние окна — ПРОСТОЙ (tweb idleController: `_isIdle = true`
+  // до первого взаимодействия), поэтому остальные сценарии начинают с «окно
+  // разбудили»; сам старт пинится отдельным тестом ниже.
+  window.dispatchEvent(new Event('focus'))
 })
 
 afterEach(() => {
@@ -149,19 +154,64 @@ describe('animationIntersector', () => {
     expect(animationIntersector.getOnlyOnePlayableGroup()).toBe('')
   })
 
-  it('вкладка ушла в фон — пауза, вернулась — играем', () => {
+  // Порт tweb idleController: idle — это ОКНО без пользователя (blur/focus),
+  // а не скрытая вкладка (`document.hidden`).
+  it('окно ушло в blur — пауза, focus — играем', () => {
     const { el, animation } = register()
     intersect(el, true)
     expect(animation.paused).toBe(false)
 
-    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
-    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('blur'))
+    expect(idleController.isIdle).toBe(true)
     expect(animation.paused).toBe(true)
 
-    hidden.mockReturnValue(false)
-    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('focus'))
+    expect(idleController.isIdle).toBe(false)
     expect(animation.paused).toBe(false)
-    hidden.mockRestore()
+  })
+
+  // tweb idleController :28 `_isIdle = !DO_NOT_IDLE` — после загрузки страницы
+  // окно считается простаивающим, и стикеры НЕ играют до первого
+  // взаимодействия (иначе вкладка, открытая в фоне, крутит всю ленту).
+  it('до первого взаимодействия с окном анимации не играют', () => {
+    window.dispatchEvent(new Event('blur')) // вернуть стартовое состояние
+    const { el, animation } = register()
+    intersect(el, true)
+    expect(animation.play).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event('focus'))
+    animationIntersector.checkAnimations2(false)
+    expect(animation.play).toHaveBeenCalledTimes(1)
+  })
+
+  // Порт tweb :167-184. Правая колонка прячется ТРАНСФОРМОМ: узел остаётся в
+  // DOM, наблюдатель пересечение не перечитывает, поэтому видео внутри неё
+  // останавливает явная команда, а не «уехало за кадр».
+  it('toggleVideosUnder глушит видео под узлом и лочит их от наблюдателя', () => {
+    const column = makeElement()
+    const videoEl = document.createElement('div')
+    column.append(videoEl)
+    const video = makePlayer()
+    players.push(video)
+    animationIntersector.addAnimation({ animation: video, group: 'chat', observeElement: videoEl, type: 'video' })
+
+    const lottie = register('chat')
+    intersect(videoEl, true)
+    intersect(lottie.el, true)
+    expect(video.paused).toBe(false)
+
+    animationIntersector.toggleVideosUnder(column, true)
+    expect(video.paused).toBe(true)
+    // lottie под тем же узлом не лежит и типа не того — его не трогаем
+    expect(lottie.animation.paused).toBe(false)
+
+    // наблюдатель не должен отыграть состояние обратно, пока колонка закрыта
+    intersect(videoEl, true)
+    animationIntersector.checkAnimations2(false)
+    expect(video.paused).toBe(true)
+
+    animationIntersector.toggleVideosUnder(column, false)
+    expect(video.paused).toBe(false)
   })
 
   it('элемент выпал из DOM — анимация снимается и уничтожается', () => {

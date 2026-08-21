@@ -80,7 +80,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@li
 import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
-import { getMessageText, isOurMessage, type MyMessage } from '@core/models'
+import { getMessageText, isOurMessage, isOutMessage, type MyMessage, type OurMessageChat } from '@core/models'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -342,11 +342,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return !!this.chat.isMegagroup
   }
 
-  /** Порт `Chat.isOurMessage` (chat.ts:1374) в применимой форме: вид чата и своя
-   *  личность у оригинала лежат на самом `Chat`/`rootScope`, у нас приезжают
-   *  сюда (`ChatContext`) и берутся из шины. */
+  /** Срез чата для обоих предикатов стороны — то, что в tweb лежит на самом
+   *  `Chat`/`rootScope`, а у нас приезжает сюда (`ChatContext`) и берётся из шины. */
+  private get ourChat(): OurMessageChat {
+    return { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup }
+  }
+
+  /** Порт `Chat.isOurMessage` (chat.ts:1374) — «моё ли это сообщение».
+   *  СТОРОНУ бабла решает не он, а `isOutMessage` (см. ниже). */
   public isOurMessage(message: MyMessage): boolean {
-    return isOurMessage(message, { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup })
+    return isOurMessage(message, this.ourChat)
+  }
+
+  /** Порт `Chat.isOutMessage` (chat.ts:1392) — СТОРОНА бабла (bubbles.ts:7613).
+   *  Отличается от `isOurMessage` ровно самопересылкой в «Избранное». */
+  public isOutMessage(message: MyMessage): boolean {
+    return isOutMessage(message, this.ourChat)
   }
 
   // Порт tweb bubbles.ts:1439-1458 — дерево дословно.
@@ -453,7 +464,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // («Вы» vs имя собеседника) — 1:1 с оригиналом, где лента берёт свой id
     // оттуда же (bubbles.ts:740, 813, 928).
     const conv = messageToConvMsg(message as MyMessage, rootScope.myId, { isMegagroup: this.chat.isMegagroup })
-    return bubbleClasses(conv, { ...STUB_CTX, out: this.isOurMessage(message), showName: this.needName(message) })
+    // tweb bubbles.ts:7613 → :9669 — сторона бабла это `isOutMessage`,
+    // а не `isOurMessage`: пересылка в «Избранное» рисуется СЛЕВА.
+    return bubbleClasses(conv, { ...STUB_CTX, out: this.isOutMessage(message), showName: this.needName(message) })
   }
 
   /**
@@ -482,7 +495,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    */
   private needName(message: MyMessage): boolean {
     const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
-    return (iPostedAsSomeoneElse || !this.isOurMessage(message)) && !!this.chat.isLikeGroup
+    // tweb :9331 берёт здесь `isOut` (сторону бабла), а не `our`
+    return (iPostedAsSomeoneElse || !this.isOutMessage(message)) && !!this.chat.isLikeGroup
   }
 
   /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира

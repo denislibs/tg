@@ -38,8 +38,38 @@ import RightsEditor from './userInfo/RightsEditor'
 import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
+import animationIntersector from './animationIntersector'
 import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
 import { formatBirthday } from '../core/format/birthday'
+
+/**
+ * Видео-аватарка профиля — порт tweb `loadAvatarVideoOverlay` (avatarNew.tsx:150-190)
+ * в части УЧЁТА: зацикленный muted-клип отдаётся общему `animationIntersector`
+ * (`type: 'video'`, наблюдается сам `<video>`), а не крутится сам по себе.
+ * Без учёта его нечем остановить: правая колонка закрывается ТРАНСФОРМОМ,
+ * узел остаётся в DOM, и наблюдатель считает его видимым — клип декодируется
+ * в закрытой панели (см. `animationIntersector.toggleVideosUnder`).
+ * Снятие с учёта на размонтировании — та же `middleware.onDestroy`-ветка
+ * оригинала (:182-188): залоченный элемент сам из реестра не уходит.
+ */
+function AvatarVideo({ src, poster }: { src: string; poster: string }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const video = ref.current
+    if (!video) return
+    animationIntersector.addAnimation({ animation: video, observeElement: video, type: 'video' })
+    return () => {
+      animationIntersector.removeAnimationByPlayer(video)
+      video.pause()
+      video.src = ''
+      video.load()
+    }
+  }, [src])
+
+  // tweb `createLoopingMutedVideo(url, 'avatar-photo avatar-video')` — класс
+  // `avatar-video` адресуемый: по нему оригинал находит клипы аватарок в DOM.
+  return <video ref={ref} className="avatar-photo avatar-video" src={src} poster={poster} autoPlay muted loop playsInline />
+}
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -62,6 +92,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     if (!columnEl) return
     return installColumnResize({ columnEl, side: 'right' })
   }, [])
+  // tweb `appSidebarRight.hide()`/`toggleSidebar()` (sidebarRight/index.ts:98,132):
+  // закрытая колонка уезжает ТРАНСФОРМОМ и остаётся смонтированной, поэтому
+  // видео внутри неё останавливает не наблюдатель, а явная команда.
+  useEffect(() => {
+    animationIntersector.toggleVideosUnder(columnRef.current, !open)
+  }, [open])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
@@ -444,7 +480,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                         оттуда и круг в collapsed, и object-fit у `.avatar-photo`. */}
                     <div className="avatar avatar-like avatar-full avatar-gradient profile-avatars-avatar-first">
                       {expanded && p.isVideo && p.videoSrc && i === curIndex ? (
-                        <video className="avatar-photo" src={p.videoSrc} poster={p.src} autoPlay muted loop playsInline />
+                        <AvatarVideo src={p.videoSrc} poster={p.src} />
                       ) : (
                         <img className="avatar-photo" src={p.src} alt="" draggable={false} />
                       )}

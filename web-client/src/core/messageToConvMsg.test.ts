@@ -33,6 +33,25 @@ describe('messageToConvMsg', () => {
     expect(messageToConvMsg(sendAs, 7).out).toBe(false)
   })
 
+  // Порт `Chat.isOutMessage` (chat.ts:1392): сторона бабла ≠ «моё сообщение».
+  // Самопересылка в «Избранное» рисуется СЛЕВА, от лица оригинального автора,
+  // и тиков у неё нет (tweb :9714 в «Избранном» вырождается в `isOut`).
+  it('пересылка в «Избранное» — входящая и без тиков', () => {
+    const ME = 7
+    const fwd: MessageReal = {
+      ...makeMessage({ id: 1, peerId: ME, fromId: ME, out: true }),
+      fwd_from: { _: 'messageFwdHeader', date: 1_750_000_000, from_id: { _: 'peerUser', user_id: 42 } },
+    }
+    const conv = messageToConvMsg(fwd, ME)
+    expect(conv.out).toBe(false)
+    expect(conv.status).toBeUndefined()
+
+    // своё НЕпересланное сообщение в том же «Избранном» — исходящее, с тиками
+    const own = messageToConvMsg(makeMessage({ id: 2, peerId: ME, fromId: ME, out: true }), ME)
+    expect(own.out).toBe(true)
+    expect(own.status).toBe('sent')
+  })
+
   it('marks messages from me as out with sent status', () => {
     const c = messageToConvMsg(mine(), 7)
     expect(c.out).toBe(true)

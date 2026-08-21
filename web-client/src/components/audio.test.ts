@@ -43,6 +43,7 @@ let resetPlayback: typeof import('@core/audio/mediaPlaybackController').resetPla
 let rootScope: typeof import('@lib/rootScope').default
 let RT: typeof import('@core/realtime/events').RT
 let getMiddleware: typeof import('@helpers/middleware').getMiddleware
+let useAudioStore: typeof import('@stores/audioStore').useAudioStore
 
 /** СВОЙ медиа-элемент сообщения — тот же, что взял узел (tweb `this.audio`). */
 const media = (mediaId: number) => mediaPlayback.getMedia(mediaId) as FakeMedia
@@ -79,6 +80,7 @@ beforeAll(async () => {
   rootScope = (await import('@lib/rootScope')).default
   RT = (await import('@core/realtime/events')).RT
   getMiddleware = (await import('@helpers/middleware')).getMiddleware
+  useAudioStore = (await import('@stores/audioStore')).useAudioStore
 })
 
 /** 63 байта пиков — тот же формат, что кладёт запись (5 бит на значение). */
@@ -129,6 +131,45 @@ function wrap(doc: MyDocument, message: Record<string, unknown> = {}) {
 
 /** Дать движку дожевать асинхронный load() (резолв URL + play). */
 const settle = () => new Promise((r) => setTimeout(r, 0))
+
+/** Волна двигается ДРОССЕЛЕМ ПО КАДРУ (tweb `throttleWithRaf`, audio.ts:270-272):
+ *  `timeupdate` приходит чаще кадра, и обновление ширины ждёт rAF.
+ *  Ждём ДВА кадра и хвост микро/макрозадач: `fastRaf` копит колбэки в общую
+ *  пачку, и свой rAF теста может встать в очередь раньше неё. */
+const frame = async () => {
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  await new Promise((r) => setTimeout(r, 0))
+}
+
+/** Контейнер ленты — от него `findMediaTargets` начинает скан (tweb :462). */
+function bubblesInner() {
+  const inner = document.createElement('div')
+  inner.className = 'bubbles-inner'
+  document.body.append(inner)
+  return inner
+}
+
+/** Бабл вокруг узла: селектор плейлиста требует `.bubble:not(.webpage)`. */
+function bubble(child: HTMLElement, extra = '') {
+  const b = document.createElement('div')
+  b.className = ('bubble ' + extra).trim()
+  b.append(child)
+  return b
+}
+
+/** Узел кружка — то, что строит `wrappers/video.ts::wrapRound`: `.media-round`
+ *  с треком на самом узле. */
+function roundNode(mediaId: number, mid: number, peerId: number) {
+  const node = document.createElement('div')
+  node.className = 'media-round'
+  node.dataset.mid = '' + mid
+  node.dataset.peerId = '' + peerId
+  ;(node as unknown as { track: unknown }).track = {
+    mediaId, title: '', subtitle: '', peerId, msgId: mid, type: 'round',
+  }
+  return node
+}
 
 beforeEach(() => {
   document.body.textContent = ''
@@ -245,11 +286,20 @@ describe('AudioElement — голосовое (tweb wrapVoiceMessage)', () => {
     expect(m.currentTime).toBeCloseTo(9.99, 5)
   })
 
-  it('пиков нет — волны нет и файл ради неё не качается (tweb 1:1)', async () => {
+  // tweb audio.ts:239-244 + :325-329: пиков нет → вместо волны в её же
+  // контейнере рисуется обычная полоса прогресса. Без этой ветки узел оставался
+  // с ПУСТЫМ контейнером — по такому голосовому нечем ни следить, ни перематывать.
+  it('пиков нет — вместо волны полоса прогресса; файл ради волны не качается', async () => {
     const { element } = wrap(voiceDoc({ noWaveform: true }))
 
     // tweb: пустой waveform → createWaveformBars не отдаёт контейнер, svg нет
     expect(element.querySelector('.audio-waveform')).toBeNull()
+
+    const container = element.querySelector('.audio-waveform-container') as HTMLElement
+    const line = container.querySelector('.progress-line') as HTMLElement
+    expect(line).not.toBeNull()
+    // `streamable` — подложка «сколько буферизовано» (tweb `doc.supportsStreaming`)
+    expect(line.querySelector('.progress-line__loaded')).not.toBeNull()
 
     await settle()
 
@@ -293,6 +343,9 @@ describe('AudioElement — воспроизведение', () => {
     media(100).dispatchEvent(new Event('timeupdate'))
 
     const fake = element.querySelector('.audio-waveform-fake') as HTMLElement
+    // до кадра ширина не двигается — обновление под `throttleWithRaf`
+    expect(fake.style.width).toBe('')
+    await frame()
     expect(fake.style.width).toBe('50%')
     expect(element.querySelector('.audio-time')?.textContent).toBe('0:05 / 0:10')
   })
@@ -315,13 +368,11 @@ describe('AudioElement — воспроизведение', () => {
   })
 
   it('плейлист — соседи по ленте, в порядке узлов (tweb findMediaTargets)', async () => {
-    const inner = document.createElement('div')
-    inner.className = 'bubbles-inner'
-    document.body.append(inner)
+    const inner = bubblesInner()
 
     const first = wrap(voiceDoc({ id: 101 }), { mid: 1, peerId: 42 })
     const second = wrap(voiceDoc({ id: 102 }), { mid: 2, peerId: 42 })
-    inner.append(first.element, second.element)
+    inner.append(bubble(first.element), bubble(second.element))
 
     const toggle = second.element.querySelector('.audio-toggle') as HTMLElement
     toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -338,6 +389,39 @@ describe('AudioElement — воспроизведение', () => {
     expect(second.element.querySelector('.audio-toggle')?.classList.contains('playing')).toBe(false)
   })
 
+  // Порт терма `.media-round` (tweb audio.ts:469): голосовые и кружки —
+  // ОДНА очередь (`inputMessagesFilterRoundVoice`). Без него очередь голосовых
+  // обрывалась на первом же кружке ленты.
+  it('кружок ленты стоит в одной очереди с голосовыми', async () => {
+    const inner = bubblesInner()
+
+    const voice = wrap(voiceDoc({ id: 101 }), { mid: 1, peerId: 42 })
+    const round = roundNode(102, 2, 42)
+    inner.append(bubble(voice.element), bubble(round))
+
+    const toggle = voice.element.querySelector('.audio-toggle') as HTMLElement
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    expect(useAudioStore.getState().queue.map((t) => t.mediaId)).toEqual([101, 102])
+  })
+
+  // Порт префикса `.bubble:not(.webpage)` (tweb audio.ts:473-476): голосовое из
+  // карточки превью ссылки — не «следующий трек» ленты.
+  it('голосовое внутри превью ссылки в очередь не попадает', async () => {
+    const inner = bubblesInner()
+
+    const own = wrap(voiceDoc({ id: 101 }), { mid: 1, peerId: 42 })
+    const inWebpage = wrap(voiceDoc({ id: 103 }), { mid: 3, peerId: 42 })
+    inner.append(bubble(own.element), bubble(inWebpage.element, 'webpage'))
+
+    const toggle = own.element.querySelector('.audio-toggle') as HTMLElement
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    expect(useAudioStore.getState().queue.map((t) => t.mediaId)).toEqual([101])
+  })
+
   it('заиграло другое — волна остаётся на месте, чужой прогресс в неё не течёт', async () => {
     const { element } = wrap(voiceDoc({ id: 111 }))
     const toggle = element.querySelector('.audio-toggle') as HTMLElement
@@ -347,6 +431,7 @@ describe('AudioElement — воспроизведение', () => {
     media(111)._dur = 10
     media(111)._time = 5
     media(111).dispatchEvent(new Event('timeupdate'))
+    await frame()
     expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('50%')
 
     // плеер уехал на чужой трек
@@ -401,6 +486,52 @@ describe('AudioElement — воспроизведение', () => {
 
     expect(toggle.classList.contains('playing')).toBe(false)
     expect(element.classList.contains('downloading')).toBe(false)
+  })
+
+  // tweb audio.ts:688-702: крестик кольца зовёт `promise.cancel()`, и этот
+  // метод определяет ТОТ, КТО кольцо завёл — у `deferredPromise` его нет.
+  // Без определения крестик был пустышкой.
+  it('крестик кольца ожидания реально отменяет ожидание и останавливает трек', async () => {
+    const { element } = wrap(voiceDoc())
+    const toggle = element.querySelector('.audio-toggle') as HTMLElement
+
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    expect(media(100).paused).toBe(false)
+
+    const download = element.querySelector('.audio-download') as HTMLElement
+    const preloader = download.querySelector('.preloader-container') as HTMLElement
+    preloader.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    expect(media(100).paused).toBe(true)
+  })
+
+  // tweb audio.ts:700-702 — пауза во время ожидания потока снимает кольцо сама.
+  it('пауза во время ожидания потока отменяет кольцо', async () => {
+    const { element } = wrap(voiceDoc())
+    const toggle = element.querySelector('.audio-toggle') as HTMLElement
+
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    await frame()
+    const download = element.querySelector('.audio-download') as HTMLElement
+    const preloader = download.querySelector('.preloader-container') as HTMLElement
+    // кольцо привешено и НЕ уходит (обратного перехода нет)
+    expect(preloader.classList.contains('backwards')).toBe(false)
+
+    media(100).pause()
+    await settle()
+    await frame()
+    await frame()
+
+    // Отменённое ожидание уводит кольцо (tweb: реджект дефера → preloader.detach).
+    // Снятие идёт переходом tweb, поэтому наблюдаемых состояний ДВА и какое
+    // застанет тест — вопрос таймингов rAF/таймера: либо идёт обратный переход
+    // (`backwards`), либо он уже кончился и узла нет. Оба — «кольцо ушло»;
+    // «кольцо на месте и видимо» (что и было без `deferred.cancel`) — не они.
+    const gone = !preloader.parentElement || preloader.classList.contains('backwards')
+    expect(gone).toBe(true)
   })
 
   it('кольцо ожидания потока появляется и снимается по canplay', async () => {
@@ -473,6 +604,9 @@ describe('AudioElement — музыка (tweb wrapAudio)', () => {
     expect(element.classList.contains('audio-show-progress')).toBe(true)
     const subtitle = element.querySelector('.audio-subtitle') as HTMLElement
     expect(subtitle.lastElementChild?.className).toContain('progress-line')
+    // tweb audio.ts:405-409 `streamable: doc.supportsStreaming` — вторая полоса
+    // «сколько буферизовано» под основной; у нас стримится любое медиа
+    expect(subtitle.lastElementChild?.querySelector('.progress-line__loaded')).not.toBeNull()
 
     media(200).dispatchEvent(new Event('ended'))
 

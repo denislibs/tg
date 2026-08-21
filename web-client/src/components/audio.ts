@@ -56,7 +56,10 @@ import MediaProgressLine from '@components/mediaProgressLine'
 import { MiddleEllipsisElement } from '@components/middleEllipsis'
 import { formatVideoTime } from '@components/messages/videoPlayback'
 import { animateSingle } from '@helpers/animation'
+import throttleWithRaf from '@helpers/schedulers/throttleWithRaf'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
+import makeError from '@helpers/makeError'
+import noop from '@helpers/noop'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
@@ -199,6 +202,16 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
     audioEl.listenerSetter.add(svg)('click', onScrub as EventListener)
   }
 
+  // tweb audio.ts:239-244 — ПИКОВ НЕТ (голосовое из старого клиента, запись без
+  // волны): вместо волны рисуется обычная полоса прогресса прямо в контейнере
+  // волны. Без этой ветки узел оставался с пустым контейнером — ни волны, ни
+  // полосы, и по голосовому нечем было ни следить, ни перематывать.
+  let progressLine: MediaProgressLine | undefined
+  if(!svg) {
+    progressLine = new MediaProgressLine()
+    waveformContainer.append(progressLine.container)
+  }
+
   const onLoad = () => {
     const media = audioEl.media
 
@@ -221,12 +234,21 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
       onTimeUpdate()
     }
 
-    audioEl.addAudioListener('timeupdate', onTimeUpdate)
-    audioEl.addAudioListener('ended', onTimeUpdate)
+    // tweb audio.ts:270-272 — `timeupdate` прилетает чаще кадра, и каждый его
+    // приход двигает ширину клона волны, то есть заставляет браузер считать
+    // раскладку. Дросселем служит сам кадр (`throttleWithRaf`), а не таймер.
+    const throttledTimeUpdate = throttleWithRaf(onTimeUpdate)
+    audioEl.addAudioListener('timeupdate', throttledTimeUpdate)
+    audioEl.addAudioListener('ended', throttledTimeUpdate)
     audioEl.addAudioListener('play', setAnimation)
+
+    // tweb audio.ts:325-329 — полоса-заменитель волны узнаёт своё медиа только
+    // здесь: до `addMedia` элемента ещё нет. `streamable` — см. `wireStreamPreloader`.
+    progressLine?.setMedia({ media, streamable: true, duration: doc.duration })
 
     // tweb audio.ts:332-336 — отключение бывает ровно один раз, при смерти узла.
     return () => {
+      progressLine?.removeListeners()
       waveformContainer.textContent = ''
       fakeSvgContainer = undefined
     }
@@ -279,7 +301,12 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
 
     let launched = false
     const progressLine = new MediaProgressLine()
-    progressLine.setMedia({ media, duration: doc.duration })
+    // tweb audio.ts:405-409 `streamable: doc.supportsStreaming` — под полосой
+    // прогресса рисуется вторая, «сколько уже буферизовано», и она же вешает
+    // слушатель `progress`. У нас стримится ЛЮБОЕ медиа (медиа-эндпоинт отдаёт
+    // файл через `http.ServeContent`, разбор — в шапке `wrappers/video.ts`),
+    // поэтому терм вырождается в константу, а не пропадает.
+    progressLine.setMedia({ media, streamable: true, duration: doc.duration })
 
     // tweb audio.ts:412-434: описание и полоса меняются местами через
     // `subtitleDiv.lastChild` — на конце трека (в т.ч. на симулированном
@@ -331,24 +358,53 @@ function constructDownloadPreloader(tryAgainOnFail = true) {
   return preloader
 }
 
+/** Узел ленты, который умеет отдать свой трек плееру: `audio-element` и кружок
+ *  (`.media-round`, его заводит `wrappers/video.ts`). В tweb очередь — это пары
+ *  `{peerId, mid}`, и трек по ним догружает сам контроллер; наш контроллер
+ *  принимает очередь ЗНАЧЕНИЕМ, поэтому трек несёт узел. */
+export interface MediaTargetElement extends HTMLElement {
+  track: AudioTrack
+}
+
 /**
  * Плейлист соседей — порт tweb `findMediaTargets` (audio.ts:458-498): «следующее
  * голосовое» определяется ПОРЯДКОМ УЗЛОВ в ленте, а не заранее собранным
- * массивом. Отличие от оригинала: tweb отдаёт контроллеру пары `{peerId, mid}` и
- * тот сам догружает документы, а наш контроллер принимает очередь значением —
- * поэтому каждый узел несёт свой трек, и очередь собирается из них.
+ * массивом.
+ *
+ * Селектор — дословный (tweb :464-478), с двумя термами, которых у нас не было:
+ *   • `.media-round` — КРУЖКИ идут в ту же очередь, что голосовые
+ *     (`inputMessagesFilterRoundVoice`): после голосового автоматически играет
+ *     следующий кружок и наоборот. Без него очередь обрывалась на первом же
+ *     кружке;
+ *   • префикс `.bubble:not(.webpage)` — узел внутри превью ссылки в очередь не
+ *     идёт (голосовое/кружок из карточки чужого поста не «следующий трек»).
+ * `:not([data-is-outgoing="1"])` — тоже из оригинала: у ещё не отправленного
+ * сообщения нет серверного `mid`, ему в очереди делать нечего (наш кружок этот
+ * атрибут ставит, `wrappers/video.ts::wrapRound`).
+ *
+ * Отличия от оригинала: нет ветки `search-super-item` (панели shared media,
+ * играющей звук, у нас нет — контейнер всегда `bubbles-inner`), нет фильтра
+ * `data-to-be-skipped` (его ставит транскрибация, не портированная) и нет
+ * разворота пары `prev/next` для ленты, идущей в обратном порядке: очередь у
+ * нас — один массив в порядке узлов плюс индекс якоря, а не две половины.
  */
-export function findMediaTargets(anchor: AudioElement): { queue: AudioTrack[], index: number } {
+export function findMediaTargets(anchor: MediaTargetElement): { queue: AudioTrack[], index: number } {
   const container = findUpClassName(anchor, 'bubbles-inner')
   if(!container) {
     return { queue: [anchor.track], index: 0 }
   }
 
-  const isVoice = anchor.classList.contains('is-voice')
-  // Голосовые и кружки — одна очередь (tweb inputMessagesFilterRoundVoice),
-  // музыка — своя (inputMessagesFilterMusic).
-  const selector = isVoice ? 'audio-element.audio.is-voice' : 'audio-element.audio:not(.is-voice)'
-  const elements = Array.from(container.querySelectorAll<AudioElement>(selector))
+  const attr = ':not([data-is-outgoing="1"])'
+  const justAudioSelector = `audio-element.audio:not(.is-voice)${attr}`
+  // Голосовые и кружки — одна очередь; музыка — своя (tweb :467-471).
+  const selectors = anchor.matches(justAudioSelector) ?
+    [justAudioSelector] :
+    [`audio-element.audio.is-voice${attr}`, `.media-round${attr}`]
+
+  const prefix = '.bubble:not(.webpage) '
+  const selector = selectors.map((s) => prefix + s).join(', ')
+
+  const elements = Array.from(container.querySelectorAll<MediaTargetElement>(selector))
   const index = elements.indexOf(anchor)
   if(index === -1) {
     return { queue: [anchor.track], index: 0 }
@@ -509,7 +565,25 @@ export default class AudioElement extends HTMLElement {
       const preloader = this.preloader ??= constructDownloadPreloader(false)
       const deferred = deferredPromise<void>()
       deferred.notifyAll?.({ done: 75, total: 100 })
+      // tweb audio.ts:688-698. Крестик кольца зовёт `promise.cancel()`
+      // (`components/preloader.ts`), а у `deferredPromise` этого метода НЕТ —
+      // его определяет тот, кто кольцо завёл. Без определения крестик был
+      // пустышкой: нажатие не делало ничего. Отмена = реджект дефера, а его
+      // `catch` останавливает само воспроизведение (ждать больше нечего).
+      void deferred.catch(() => {
+        this.media.pause()
+      })
+      deferred.cancel = () => {
+        deferred.cancel = noop
+        deferred.reject?.(makeError('CANCELED'))
+      }
       preloader.attach(this.downloadDiv, false, deferred)
+
+      // tweb audio.ts:700-702 — пауза во время ожидания потока тоже снимает
+      // кольцо: пользователь передумал ждать.
+      pauseListener = this.addAudioListener('pause', () => {
+        deferred.cancel?.()
+      }, { once: true }) as unknown as Listener
 
       void readyPromise.then(() => {
         deferred.resolve?.()
@@ -524,8 +598,12 @@ export default class AudioElement extends HTMLElement {
 
     // tweb audio.ts:708 — `const playListener: any = this.addAudioListener(...)`:
     // тип-хелпер объявлен как `addEventListener` (void), сам сеттер возвращает Listener.
+    let pauseListener: Listener | undefined
     const playListener = this.addAudioListener('play', attach) as unknown as Listener
-    void readyPromise.then(() => this.listenerSetter.remove(playListener), () => {})
+    void readyPromise.then(() => {
+      this.listenerSetter.remove(playListener)
+      if(pauseListener) this.listenerSetter.remove(pauseListener)
+    }, () => {})
   }
 
   /** tweb audio.ts:804-813 */

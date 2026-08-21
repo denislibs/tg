@@ -40,6 +40,21 @@ vi.mock('../../client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { downloadMediaURL, contentUrl, streamUrl, tokenInfo } } }),
 }))
 
+// happy-dom шлёт `<video>` событие `canplay` СРАЗУ на присвоении `src`, поэтому
+// настоящий `onMediaLoad` резолвится мгновенно и разницу «адрес доехал» vs
+// «кадр встал» в тесте не увидеть. `frame.enabled` включает управляемый гейт
+// кадра ровно в тех кейсах, где эта разница и есть предмет проверки.
+const { frame } = vi.hoisted(() => ({ frame: { enabled: false, resolve: null as null | (() => void) } }))
+vi.mock('@helpers/onMediaLoad', async () => {
+  const actual = await vi.importActual<typeof import('@helpers/onMediaLoad')>('@helpers/onMediaLoad')
+  return {
+    ...actual,
+    default: (media: HTMLMediaElement, ...rest: unknown[]) => frame.enabled ?
+      new Promise<void>((r) => { frame.resolve = r }) :
+      (actual.default as (m: HTMLMediaElement, ...r: unknown[]) => Promise<void>)(media, ...rest),
+  }
+})
+
 // blur грузит Image из data:-URI — happy-dom onload не гарантирует; мок держит
 // контракт (канвас .canvas-thumbnail + промис готовности).
 vi.mock('@helpers/blur', () => ({
@@ -58,6 +73,8 @@ let USE_VIDEO_OBSERVER: boolean
 let mediaUrl: typeof import('@core/mediaUrl')
 let mediaCache: typeof import('@core/mediaCache')
 let playback: typeof import('@core/audio/mediaPlaybackController')
+let audioStore: typeof import('@stores/audioStore')
+let animationIntersector: typeof import('@components/animationIntersector').default
 let getMiddleware: typeof import('@helpers/middleware').getMiddleware
 let settings: typeof import('@/settings')
 
@@ -85,6 +102,8 @@ async function setup(opts: { dnp?: boolean } = {}) {
   mediaUrl = await import('@core/mediaUrl')
   mediaCache = await import('@core/mediaCache')
   playback = await import('@core/audio/mediaPlaybackController')
+  audioStore = await import('@stores/audioStore')
+  animationIntersector = (await import('@components/animationIntersector')).default
   getMiddleware = (await import('@helpers/middleware')).getMiddleware
   settings = await import('@/settings')
 }
@@ -136,6 +155,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  frame.enabled = false
+  frame.resolve = null
   document.body.replaceChildren()
 })
 
@@ -419,6 +440,71 @@ describe('wrapVideo: стриминг и токен', () => {
   })
 })
 
+describe('wrapVideo: очередь ленивой загрузки', () => {
+  // Порт tweb video.ts:715-717 — в очередь пушится РЕНДЕР
+  // (`load().then(({render}) => render)`), а не загрузка. Слот очереди обязан
+  // держаться, пока кадр не встал в `<video>`: на `download` он освобождался
+  // мгновенно (у нас «загрузка» — резолв адреса стрима, почти синхронный), и
+  // ограничение параллелизма переставало ограничивать что-либо.
+  it('слот очереди держится до КАДРА, а не до адреса', async () => {
+    frame.enabled = true
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    const tasks: Array<() => Promise<unknown>> = []
+    const queue = {
+      push: <T,>(task: () => Promise<T>) => { tasks.push(task); return Promise.resolve() as Promise<T> },
+      clear: () => {},
+    }
+
+    const res = await wrapVideo({
+      doc: videoDoc(), container, message: { mid: 1, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(), lazyLoadQueue: queue,
+    })
+    await flush()
+
+    // две задачи: постер (`wrapPhoto`) и само видео — проверяем ВТОРУЮ
+    expect(tasks).toHaveLength(2)
+
+    let done = false
+    void tasks[1]().then(() => { done = true })
+    await flush()
+
+    // адрес стрима уже проставлен, но кадра ещё нет — слот занят
+    expect(res.video!.src).toBeTruthy()
+    expect(container.querySelector('video.media-video')).toBeNull()
+    expect(done).toBe(false)
+
+    frame.resolve!()
+    await flush()
+    expect(done).toBe(true)
+    frame.enabled = false
+  })
+
+  // tweb video.ts:649-655 — `controlled` видео НЕ получает: снятие с учёта у
+  // него держит DOM (`checkAnimation` снимает только `!player.controlled`).
+  it('видео регистрируется в интерсекторе без controlled', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    await wrapVideo({
+      doc: videoDoc({ animated: true, serverThumb: false }), container, message: { mid: 1, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(), group: 'chat',
+    })
+    await flush()
+
+    const video = container.querySelector('video.media-video') as HTMLVideoElement
+    video.dispatchEvent(new Event('canplay'))
+    await flush()
+
+    const [item] = animationIntersector.getAnimations(video)
+    expect(item).toBeTruthy()
+    expect(item.controlled).toBeUndefined()
+
+    animationIntersector.removeAnimationByPlayer(video)
+  })
+})
+
 describe('wrapVideo: кружок', () => {
   const roundDoc = () => videoDoc({ round: true, w: 240, h: 240, duration: 8, serverThumb: false })
 
@@ -487,6 +573,49 @@ describe('wrapVideo: кружок', () => {
     await flush()
     expect(globalVideo.paused).toBe(true)
     expect(divRound.classList.contains('is-paused')).toBe(true)
+
+    playback.resetPlayback()
+  })
+
+  // Порт tweb video.ts:370-378: ПЕРЕД запуском кружок объявляет контроллеру
+  // плейлист вокруг себя (`findMediaTargets` + `setTargets`) — очередь
+  // «голосовые и кружки» одна (`inputMessagesFilterRoundVoice`). Без объявления
+  // кружок играл бы в одиночку: следующий за ним трек не начинался бы.
+  it('перед запуском объявляет соседей по ленте (плейлист кружков)', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+
+    const inner = document.createElement('div')
+    inner.className = 'bubbles-inner'
+    document.body.append(inner)
+
+    const makeRound = async (id: number, mid: number) => {
+      const bubble = document.createElement('div')
+      bubble.className = 'bubble'
+      const container = document.createElement('div')
+      container.classList.add('attachment')
+      bubble.append(container)
+      inner.append(bubble)
+      await wrapVideo({
+        doc: videoDoc({ id, round: true, w: 240, h: 240, duration: 8, serverThumb: false }),
+        container,
+        message: { mid, peerId: -42 },
+        ...REGULAR,
+        middleware: getMiddleware().get(),
+      })
+      return container
+    }
+
+    const first = await makeRound(71, 5)
+    await makeRound(72, 6)
+    await flush()
+
+    const canvas = first.querySelector('canvas.video-round-canvas') as HTMLElement
+    canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    const { queue, index } = audioStore.useAudioStore.getState()
+    expect(queue.map((t) => t.mediaId)).toEqual([71, 72])
+    expect(index).toBe(0)
 
     playback.resetPlayback()
   })

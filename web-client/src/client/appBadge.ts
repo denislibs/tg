@@ -13,7 +13,7 @@ import { isDialogArchived, type Dialog } from '../core/models'
 import { isPeerMuted } from '../core/dialogs/notifySettings'
 import { useI18nStore, type Lang } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
-import IS_TOUCH_SUPPORTED from '../environment/touchSupport'
+import idleController from '../helpers/idleController'
 
 // tweb config/font.ts:2 (FontFamily) — шрифт числа на фавиконке.
 const FONT_FAMILY =
@@ -141,7 +141,7 @@ function resetTitle(): void {
   setFavicon()
 }
 
-function toggleToggler(enable = idle): void {
+function toggleToggler(enable = idleController.isIdle): void {
   if (IS_MOBILE) return
 
   if (titleInterval) {
@@ -156,16 +156,13 @@ function toggleToggler(enable = idle): void {
   else titleInterval = setInterval(onTitleInterval, 1000)
 }
 
-// ── idle (порт helpers/idleController в объёме, нужном уведомлениям) ─────────
-// idle = вкладка/окно без пользователя: blur → idle, focus или первое движение
-// мыши (на тач-устройствах — тач) → активен. Возврат пользователя обнуляет
-// счётчик уведомлений (tweb :541-556: clear() → setNotificationCount(0)).
-let idle = true
-
-function setIdle(value: boolean): void {
-  if (idle === value) return
-  idle = value
-  if (!idle) notificationsCount = 0
+// ── idle ─────────────────────────────────────────────────────────────────────
+// Факт «окно без пользователя» держит ОДИН владелец — `helpers/idleController`
+// (порт tweb, там его читает и `animationIntersector`). Возврат пользователя
+// обнуляет счётчик уведомлений (tweb uiNotificationsManager :541-556:
+// idle→false → clear() → setNotificationCount(0)).
+function onIdleChange(value: boolean): void {
+  if (!value) notificationsCount = 0
   toggleToggler()
 }
 
@@ -211,12 +208,7 @@ export function initAppBadge(): void {
   titleBackup = document.title
   void setAppBadge?.(0)
 
-  window.addEventListener('blur', () => setIdle(true))
-  window.addEventListener('focus', () => setIdle(false))
-  window.addEventListener(IS_TOUCH_SUPPORTED ? 'touchstart' : 'mousemove', () => setIdle(false), {
-    once: true,
-    passive: true,
-  })
+  idleController.addEventListener('change', onIdleChange)
 
   // отступление от tweb: события folder_unread у нас нет — пересчитываем по
   // подписке на стор с trailing-троттлом 500мс (стор дёргается и на печать/презенс).

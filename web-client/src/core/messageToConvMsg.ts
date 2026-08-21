@@ -1,5 +1,5 @@
 import type { CallLog, ConvMsg } from '../data'
-import { getMessageText, isOurMessage, type MyMessage } from './models'
+import { getMessageText, isOutMessage, type MyMessage } from './models'
 import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
 import { serviceMsgText } from './serviceMsg'
 import { isLocalMessageId } from './history/messageId'
@@ -56,11 +56,18 @@ export function messageForReply(m: MyMessage): string {
 /**
  * Backend Message → вью-модель бабла.
  *
- * `out` здесь — СТОРОНА бабла (`isOurMessage`), а не «я ли отправил»: пост
- * ВЕЩАТЕЛЬНОГО канала остаётся `pFlags.out` у выложившего его админа, но
- * рисуется входящим. А вот сообщение от лица канала (send-as) в МЕГАГРУППЕ —
- * исходящее: там оригинал берёт сырой `pFlags.out` (chat.ts:1375-1377).
- * Поэтому вид чата обязан приехать сюда параметром — см. `OurMessageChat`.
+ * `out` здесь — СТОРОНА бабла (`isOutMessage`, порт `Chat.isOutMessage`,
+ * chat.ts:1392 — именно он решает `is-out`/`is-in`, bubbles.ts:7613 → :9669),
+ * а не «я ли отправил»: пост ВЕЩАТЕЛЬНОГО канала остаётся `pFlags.out` у
+ * выложившего его админа, но рисуется входящим; пересылка в «Избранное» —
+ * тоже входящим, от лица оригинального автора. А вот сообщение от лица канала
+ * (send-as) в МЕГАГРУППЕ — исходящее: там оригинал берёт сырой `pFlags.out`
+ * (chat.ts:1375-1377). Поэтому вид чата обязан приехать сюда параметром — см.
+ * `OurMessageChat`.
+ *
+ * Тем же значением ведутся ТИКИ, и это тоже 1:1: у tweb они стоят под
+ * `our && (peerId !== myId || isOut)` (bubbles.ts:9714), что вне «Избранного»
+ * равно `our` (= `isOut`), а в «Избранном» — ровно `isOut`.
  *
  * `opts.replyToMessage` — РАЗРЕШЁННЫЙ оригинал ответа: с провода едет только
  * ссылка (`reply_to.reply_to_msg_id`), а сообщение берётся из окна тем, у кого
@@ -84,7 +91,7 @@ export function messageToConvMsg(
     isMegagroup?: boolean
   },
 ): ConvMsg {
-  const out = isOurMessage(m, { myId: meId, isMegagroup: opts?.isMegagroup })
+  const out = isOutMessage(m, { myId: meId, isMegagroup: opts?.isMegagroup })
   const kind = getMessageKind(m)
   // Секретное медиа приходит шифртекстом (`enc_body`); вид ('photo'|'video'|
   // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType — он и

@@ -150,6 +150,12 @@ const DECL_RE = /(?:function|const)\s+throttle(?:[A-Z_]\w*)?\s*[<(=]/g
 const ALLOWED: Record<string, number> = {
   // Сам порт.
   'helpers/schedulers/throttle.ts': 1,
+  // Второй троттлинг САМОГО tweb — не копия первого, а другая механика:
+  // дросселем служит не таймер, а произвольный планировщик
+  // (`helpers/schedulers/throttleWith.ts` + `throttleWithRaf.ts`, оба вендорные
+  // 1:1). Потребитель — волна голосового (`components/audio.ts`).
+  'helpers/schedulers/throttleWith.ts': 1,
+  'helpers/schedulers/throttleWithRaf.ts': 1,
   // `throttleMeasurement` — ЛОКАЛЬНЫЙ хелпер самого tweb, а не копия общего
   // троттлинга: он ставит одиночный `setTimeout` на измерение скролла и живёт
   // прямо в файле скроллера. В tweb он тоже продублирован в двух скроллерах

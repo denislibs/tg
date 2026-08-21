@@ -20,7 +20,7 @@ import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { DELETED_ACCOUNT_TITLE } from '@core/peers/getPeerTitle'
 import type { UserReal } from '@core/peers/peer'
-import type { MyMessage } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
 import { generateTempMessageId } from '@core/history/messageId'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
@@ -159,14 +159,16 @@ describe('ChatBubbles — дерево DOM 1:1 с tweb constructBubbles', () => 
   })
 })
 
-// Модификатор is-out/is-in бабла — порт `Chat.isOurMessage` (tweb chat.ts:1374),
-// у оригинала он же и решает сторону (bubbles.ts:6615: «can't use
-// 'message.pFlags.out' here because this check will be used to define side of
-// message»). Вид чата предикату приносит `ChatContext`, свою личность лента
-// берёт из `rootScope.myId` (его пишет проектор на rt:me) — за meId в zustand
-// лента не ходит, эта зависимость ей запрещена (grep по components/chat/ на
-// импорт стора).
-describe('ChatBubbles — сторона бабла: порт Chat.isOurMessage', () => {
+// Модификатор is-out/is-in бабла — порт `Chat.isOutMessage` (tweb chat.ts:1392):
+// у оригинала сторону решает ИМЕННО он (bubbles.ts:7613 `const isOut =
+// context.isOut = this.chat.isOutMessage(message)` → :9669 `bubble.classList
+// .add(isOut ? 'is-out' : 'is-in')`), а не `isOurMessage` — тот отвечает лишь
+// «моё ли сообщение» (bubbles.ts:6615: «can't use 'message.pFlags.out' here
+// because this check will be used to define side of message»). Вид чата
+// предикату приносит `ChatContext`, свою личность лента берёт из
+// `rootScope.myId` (его пишет проектор на rt:me) — за meId в zustand лента не
+// ходит, эта зависимость ей запрещена (grep по components/chat/ на импорт стора).
+describe('ChatBubbles — сторона бабла: порт Chat.isOutMessage', () => {
   it('вне мегагруппы решает АВТОР против rootScope.myId, а не pFlags.out', async () => {
     rootScope.myId = 999
     bubbles = new ChatBubbles(chatContext(), managersWith([
@@ -211,6 +213,27 @@ describe('ChatBubbles — сторона бабла: порт Chat.isOurMessage'
     await bubbles.loadFirstHistory()
 
     expect(rendered(bubbles)[0].classList.contains('is-in')).toBe(true)
+  })
+
+  // Второй множитель `isOutMessage` (chat.ts:1393) — самопересылка в
+  // «Избранное»: чат с самим собой (`peerId === myId`), у сообщения есть
+  // `fwd_from` → бабл рисуется СЛЕВА, от лица оригинального автора, и имя
+  // автора над ним показывается. Соседнее СВОЁ сообщение того же окна остаётся
+  // справа — разница именно в пересылке, а не в чате.
+  it('самопересылка в «Избранном» — СЛЕВА, своё сообщение рядом — справа', async () => {
+    rootScope.myId = 999
+    const own = msg({ id: 2, peerId: 999, fromId: 999, out: true })
+    const forwarded = {
+      ...(msg({ id: 1, peerId: 999, fromId: 999, out: true }) as MessageReal),
+      fwd_from: { _: 'messageFwdHeader' as const, date: 1_750_000_000, from_id: { _: 'peerUser' as const, user_id: 42 } },
+    } satisfies MessageReal as MyMessage
+    bubbles = new ChatBubbles(chatContext(999), managersWith([forwarded, own]))
+
+    await bubbles.loadFirstHistory()
+
+    const [fwd, mine] = rendered(bubbles)
+    expect(fwd.classList.contains('is-in')).toBe(true)
+    expect(mine.classList.contains('is-out')).toBe(true)
   })
 })
 

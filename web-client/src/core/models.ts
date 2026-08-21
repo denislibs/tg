@@ -511,6 +511,38 @@ export function isOurMessage(m: MyMessage, chat: OurMessageChat): boolean {
 }
 
 /**
+ * Сторона бабла. Порт `Chat.isOutMessage` (tweb chat.ts:1392-1396):
+ *
+ *     isOut = isOurMessage(message) && (!fwdFrom || peerId !== myId || threadId)
+ *
+ * Именно ЭТОТ предикат, а не `isOurMessage`, решает `is-out`/`is-in`
+ * (bubbles.ts:7613 `const isOut = context.isOut = this.chat.isOutMessage(message)`
+ * → :9669 `bubble.classList.add(isOut ? 'is-out' : 'is-in')`), а с ним —
+ * показ имени автора (:9331) и тики (:9714 `our && (peerId !== myId || isOut)`,
+ * что в «Избранном» вырождается ровно в `isOut`).
+ *
+ * Второй множитель — САМОПЕРЕСЫЛКА В «ИЗБРАННОЕ»: пересылка в чат с самим собой
+ * исходящей не считается и рисуется СЛЕВА, от лица оригинального автора. Вне
+ * «Избранного» множитель тождественно истинен, поэтому там предикат совпадает
+ * с `isOurMessage`.
+ *
+ * Терм `|| this.threadId` НЕ портирован — предмета нет, и это перепроверено:
+ * тред у нас бывает только у форум-топика и у комментариев канала, а
+ * «Избранное» (единственный чат, где `peerId === myId`) ни тем, ни другим не
+ * бывает. Окна сохранённого диалога (tweb `ChatType.Saved`, где `threadId` —
+ * это `savedPeerId`) у нас нет вовсе: строка списка «Избранного» открывает
+ * ОРИГИНАЛЬНЫЙ чат пира (`SharedMedia.tsx::SavedDialogRow` → `onOpenPeer`), а
+ * не под-окно «Избранного».
+ *
+ * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и все его
+ * сообщения принадлежат ему же.
+ */
+export function isOutMessage(m: MyMessage, chat: OurMessageChat): boolean {
+  const fwdFrom = m._ === 'message' ? m.fwd_from : undefined
+  return isOurMessage(m, chat) && (!fwdFrom || m.peerId !== chat.myId)
+}
+
+/**
  * messageFwdHeader#4e4df4bb flags:# … from_id:flags.0?Peer
  * from_name:flags.5?string date:int channel_post:flags.2?int
  * saved_from_peer:flags.4?Peer saved_from_msg_id:flags.4?int = MessageFwdHeader;

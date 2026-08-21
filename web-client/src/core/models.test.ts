@@ -1,7 +1,7 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
 import {
-  isOurMessage, mapChecklist, mapDraft, mapMessage, mapMyMessage,
+  isOurMessage, isOutMessage, mapChecklist, mapDraft, mapMessage, mapMyMessage,
   type RawChecklist, type RawMessageReal, type RawMessageService,
 } from './models'
 import { generateMessageId } from './history/messageId'
@@ -348,5 +348,43 @@ describe('isOurMessage — сторона бабла', () => {
   it('личность неизвестна: вне мегагруппы своих нет, в мегагруппе решает out', () => {
     expect(isOurMessage(withFrom(true, ME), { myId: null })).toBe(false)
     expect(isOurMessage(withFrom(true, ME), { myId: null, isMegagroup: true })).toBe(true)
+  })
+})
+
+/**
+ * Порт `Chat.isOutMessage` (tweb chat.ts:1392-1396) — именно ЭТОТ предикат
+ * решает `is-out`/`is-in` (bubbles.ts:7613 → :9669), а не `isOurMessage`.
+ * Разница ровно одна: самопересылка в «Избранное».
+ */
+describe('isOutMessage — сторона бабла', () => {
+  const ME = 7
+  const chat = { myId: ME }
+
+  /** сообщение В «ИЗБРАННОМ» (`peerId === myId`) */
+  const saved = (over: Partial<RawMessageReal> = {}) =>
+    ({ ...mapMessage(makeRawMessage({ id: 1, peerId: ME, fromId: ME, out: true })), ...over }) as never
+
+  const FWD = { _: 'messageFwdHeader' as const, date: 1_750_000_000, from_id: { _: 'peerUser' as const, user_id: 42 } }
+
+  it('своё сообщение в «Избранном» — справа', () => {
+    expect(isOutMessage(saved(), chat)).toBe(true)
+  })
+
+  // Пересылка в чат с самим собой рисуется СЛЕВА, от лица оригинального автора.
+  it('пересылка в «Избранное» — слева, хотя сообщение своё', () => {
+    const m = saved({ fwd_from: FWD })
+    expect(isOurMessage(m, chat)).toBe(true) // «моё» — да
+    expect(isOutMessage(m, chat)).toBe(false) // но бабл входящий
+  })
+
+  // Вне «Избранного» второй множитель тождественно истинен.
+  it('пересылка в обычный чат остаётся исходящей', () => {
+    const m = { ...mapMessage(makeRawMessage({ id: 1, peerId: 42, fromId: ME, out: true })), fwd_from: FWD } as never
+    expect(isOutMessage(m, chat)).toBe(true)
+  })
+
+  it('чужое сообщение остаётся входящим и здесь', () => {
+    const m = mapMessage(makeRawMessage({ id: 1, peerId: 42, fromId: 42 })) as never
+    expect(isOutMessage(m, chat)).toBe(false)
   })
 })
