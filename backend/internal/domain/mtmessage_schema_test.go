@@ -75,12 +75,12 @@ var messageOmittedWithoutSubject = map[string][]string{
 // messageOmittedOK — список подсистемы ПЛЮС уже названные пропуски вложенных
 // конструкторов медиа. Медиа приезжает внутрь сообщения целиком (media,
 // reply_media, photo действий), и его «нет предмета» уже названо один раз в
-// omittedWithoutSubject; переписать те же строки сюда значило бы завести
+// OmittedWithoutSubject; переписать те же строки сюда значило бы завести
 // второй источник истины ровно того сорта, ради устранения которого программа
 // и существует.
 func messageOmittedOK() map[string][]string {
 	out := map[string][]string{}
-	for k, v := range omittedWithoutSubject {
+	for k, v := range OmittedWithoutSubject {
 		out[k] = v
 	}
 	for k, v := range messageOmittedWithoutSubject {

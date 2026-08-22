@@ -19,23 +19,6 @@ import (
 // сверяет `mtmedia_schema_test.go`. Здесь проверяются контейнеры и то, что
 // документ лежит в них тем же конструктором.
 
-// Обязательные параметры схемы, которых мы сознательно не производим у
-// наборов. Основания развёрнуты в шапке mtstickerset.go.
-var stickerSetOmittedWithoutSubject = map[string][]string{
-	// Токен доступа транспорта MTProto: набор адресуется числовым id.
-	"stickerSet":        {"access_hash", "hash"},
-	"inputStickerSetID": {"access_hash"},
-	// «Не менялось» у REST выражают заголовки (ETag/304), а не поле тела (Р7).
-	"messages.allStickers":      {"hash"},
-	"messages.stickerSet":       {"hash"},
-	"messages.recentStickers":   {"hash"},
-	"messages.favedStickers":    {"hash"},
-	"messages.featuredStickers": {"hash"},
-	"messages.foundStickerSets": {"hash"},
-	"messages.stickers":         {"hash"},
-	"messages.savedGifs":        {"hash"},
-}
-
 // stickerSetCases — по одному экземпляру КАЖДОГО конструктора, который мы
 // производим. Полнота списка проверяется отдельным тестом ниже: конструктор
 // без строки здесь просто не был бы сверен со схемой — ровно тот способ, каким
@@ -131,27 +114,13 @@ func checkStickerSetsAgainstSchema(t *testing.T, value any) (unexpected, omitted
 		constructors: loadSchemaConstructors(t),
 		additional:   loadAdditionalParams(t),
 		own:          loadOwnConstructors(t),
-		omittedOK:    mergeOmitted(omittedWithoutSubject, stickerSetOmittedWithoutSubject),
+		omittedOK:    OmittedWithoutSubject,
 	}
 	c.walk(decoded, "stickers")
 
 	sort.Strings(c.unexpected)
 	sort.Strings(c.omitted)
 	return c.unexpected, c.omitted
-}
-
-// mergeOmitted — списки медиа И наборов сразу: контейнеры несут документы, а у
-// документа свои объявленные пропуски (access_hash и остальной транспорт).
-// Слить их обязательно, иначе сверка контейнера краснела бы на документе.
-func mergeOmitted(a, b map[string][]string) map[string][]string {
-	out := make(map[string][]string, len(a)+len(b))
-	for k, v := range a {
-		out[k] = append([]string(nil), v...)
-	}
-	for k, v := range b {
-		out[k] = append(out[k], v...)
-	}
-	return out
 }
 
 // Полнота: каждый конструктор, объявленный в mtstickerset.go, обязан иметь

@@ -131,6 +131,50 @@ describe.skipIf(!hasTweb)('байты нашего кодека читает н�
     expect(row.buttons[1].text).toBe('go')
     expect(row.buttons[1].url).toBe('https://a.io')
   })
+
+  // Целый документ — первый вектор, собранный не литералом, а НАШЕЙ МОДЕЛЬЮ
+  // (backend `BuildDocument`). Проверяет он поэтому не формат вообще, а нашу
+  // витрину: то же самое приедет клиенту в сообщении.
+  //
+  // Отдельно ценны две вещи, которых в прежних векторах не было:
+  //
+  //  1. Заглушки. `access_hash`/`file_reference`/`date`/`dc_id` предмета у нас
+  //     не имеют, но параметры ОБЯЗАТЕЛЬНЫЕ: не записать их — значит сдвинуть
+  //     всё, что идёт следом. Разбор дойдёт до конца только если места заняты.
+  //  2. Порядок атрибутов. `documentAttributeImageSize` безусловно ставит
+  //     `type = 'photo'` (appDocsManager), поэтому imageSize обязан идти ПЕРВЫМ,
+  //     а sticker — вторым, иначе стикер приедет картинкой.
+  it('document — заглушки транспорта и порядок атрибутов стикера', async () => {
+    const {TLDeserialization} = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('documentSticker')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('document')
+    expect(+result.id).toBe(77)
+    expect(result.mime_type).toBe('application/x-tgsticker')
+    expect(+result.size).toBe(4096)
+
+    // Заглушки доехали пустыми — и именно поэтому всё, что за ними, на месте.
+    expect(+result.access_hash).toBe(0)
+    expect(result.date).toBe(0)
+    expect(result.dc_id).toBe(0)
+    expect(Array.from(result.file_reference as Uint8Array)).toEqual([])
+
+    expect(result.thumbs).toHaveLength(1)
+    expect(result.thumbs[0]._).toBe('photoStrippedSize')
+    expect(Array.from(result.thumbs[0].bytes as Uint8Array)).toEqual([1, 2, 3])
+
+    expect(result.attributes.map((a: {_: string}) => a._)).toEqual([
+      'documentAttributeImageSize',
+      'documentAttributeSticker',
+    ])
+    expect(result.attributes[0].w).toBe(512)
+    expect(result.attributes[0].h).toBe(512)
+    expect(result.attributes[1].alt).toBe('😀')
+    expect(result.attributes[1].stickerset._).toBe('inputStickerSetID')
+    expect(+result.attributes[1].stickerset.id).toBe(5)
+  })
 })
 
 // Пропуск обязан быть ЗАМЕТНЫМ: молча зелёный прогон без предмета проверки —

@@ -41,6 +41,12 @@
       "type": "ReplyMarkup",
       "hex": "5402a34815c4b51c01000000838b607715c4b51c02000000ff0c177d00000000026f6b00ec250cd80000000002676f000c68747470733a2f2f612e696f000000",
       "note": "replyInlineMarkup#48a30254 rows:Vector<KeyboardButtonRow>; один ряд из двух кнопок — keyboardButton{text=ok} и keyboardButtonUrl{text=go,url=https://a.io}. Вложенные векторы: Vector<KeyboardButtonRow> внутри которого Vector<KeyboardButton>."
+    },
+    {
+      "name": "documentSticker",
+      "type": "Document",
+      "hex": "d8c4d48f010000004d0000000000000000000000000000000000000000000000176170706c69636174696f6e2f782d7467737469636b6572001000000000000015c4b51c010000002ebcb0e001690000030102030000000015c4b51c020000005cc1376c000200000002000012d619630000000004f09f988000000069a2e79d05000000000000000000000000000000",
+      "note": "document#8fd4c4d8 — целый документ-стикер из нашей модели: id=77, mime=application/x-tgsticker, size=4096, ступень photoStrippedSize, атрибуты documentAttributeImageSize(512x512) и documentAttributeSticker{alt=😀, stickerset=inputStickerSetID{id=5}}. Реквизиты транспорта MTProto (access_hash, file_reference, date, dc_id) — НАЗВАННЫЕ заглушки: предмета у них нет, но место в потоке они занимают, иначе все последующие поля уехали бы. Порядок атрибутов не косметика: documentAttributeImageSize безусловно ставит type='photo', поэтому imageSize идёт ПЕРВЫМ, а sticker — вторым."
     }
   ]
 }

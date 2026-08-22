@@ -75,7 +75,7 @@ var peerOmittedWithoutSubject = map[string][]string{
 
 	// Вложенное Photo аватарки чата — тот же список реквизитов транспорта, что
 	// у медиа: ссылаемся на него, чтобы источник остался единственным.
-	"photo": omittedWithoutSubject["photo"],
+	"photo": OmittedWithoutSubject["photo"],
 }
 
 // allPeerConstructors — по одному экземпляру КАЖДОГО объявленного конструктора

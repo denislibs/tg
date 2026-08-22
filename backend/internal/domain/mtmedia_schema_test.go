@@ -43,30 +43,6 @@ type schemaConstructor struct {
 	Type      string        `json:"type"`
 }
 
-// Обязательные параметры схемы, которых мы сознательно не производим. Каждая
-// строка — утверждение «предмета нет», а не забывчивость; развёрнутое основание
-// стоит в докблоке соответствующего конструктора.
-var omittedWithoutSubject = map[string][]string{
-	// Реквизиты MTProto-транспорта: файл адресуется числовым id через свой
-	// эндпоинт (шапка mtmedia.go).
-	"photo":    {"access_hash", "file_reference", "date", "dc_id"},
-	"document": {"access_hash", "file_reference", "date", "dc_id"},
-	// Тот же транспортный токен, но у точки на карте: картинку карты оригинал
-	// просит у своего прокси с подписью, а у нас карту рисует клиент.
-	"geoPoint": {"access_hash"},
-	// Реквизиты СПРАВОЧНИКА мест (foursquare/gplaces): справочника у нас нет,
-	// точку с подписью присылает сам отправитель.
-	"messageMediaVenue": {"provider", "venue_id", "venue_type"},
-	// Хэш для кэширования запроса; хэш-кэширования запросов у нас нет вовсе.
-	"poll": {"hash"},
-	// Внешность подарка у нас — unicode-символ (наш параметр emoji), а не
-	// анимированный стикер: тот же случай, что emoji_status у пира.
-	"starGift": {"sticker"},
-	// Превью ссылки у нас — СНИМОК на сообщении, а не самостоятельный объект
-	// хранилища: адресовать его нечем, и хэша кэша у запросов нет.
-	"webPage": {"id", "hash"},
-}
-
 func loadSchemaConstructors(t *testing.T) map[string]schemaConstructor {
 	t.Helper()
 
@@ -171,7 +147,7 @@ type schemaChecker struct {
 	// поле не заполняет, и незнакомый предикат остаётся расхождением.
 	own map[string]schemaConstructor
 	// omittedOK — обязательные параметры схемы, которых мы сознательно не
-	// производим (см. omittedWithoutSubject у медиа). Поле, а не глобальная
+	// производим (см. OmittedWithoutSubject у медиа). Поле, а не глобальная
 	// карта: у каждой подсистемы свой список.
 	omittedOK map[string][]string
 	// pendingSubject — ключи, у которых предмет в схеме ЕСТЬ, но объединение до
@@ -300,7 +276,7 @@ func checkAgainstSchema(t *testing.T, media any) (unexpected, omitted []string) 
 		constructors: loadSchemaConstructors(t),
 		additional:   loadAdditionalParams(t),
 		own:          loadOwnConstructors(t),
-		omittedOK:    omittedWithoutSubject,
+		omittedOK:    OmittedWithoutSubject,
 	}
 	c.walk(decoded, "media")
 
