@@ -81,6 +81,7 @@ const (
 	UpdateChatFullSnapshotTag         = "updateChatFullSnapshot"
 	UpdateChannelBoostStatusTag       = "updateChannelBoostStatus"
 	UpdateStarsBalanceTag             = "updateStarsBalance"
+	UpdateBotCallbackAnswerTag        = "updateBotCallbackAnswer"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -945,6 +946,31 @@ func (u UpdateStarsBalance) Tag() string { return u.Underscore }
 
 func NewUpdateStarsBalance(balance int64) UpdateStarsBalance {
 	return UpdateStarsBalance{Underscore: UpdateStarsBalanceTag, Balance: NewStarsAmount(balance)}
+}
+
+// updateBotCallbackAnswer#7b984754 flags:# alert:flags.0?true message:string
+// = Update; — НАШ конструктор.
+//
+// У оригинала это не апдейт вовсе, а ОТВЕТ метода
+// messages.getBotCallbackAnswer. Кадр существует, потому что у нас ответ бота
+// может прийти уже после таймаута синхронного ожидания, и показать его тогда
+// можно только пушем.
+//
+// «Показать модалкой» — БИТ, а не поле `alert: false`: то же правило, что у
+// закрепления. Текст назван `message` — тем же именем, что у самого сообщения.
+type UpdateBotCallbackAnswer struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Message    string          `json:"message"`
+}
+
+func (UpdateBotCallbackAnswer) isUpdate()     {}
+func (u UpdateBotCallbackAnswer) Tag() string { return u.Underscore }
+
+func NewUpdateBotCallbackAnswer(message string, alert bool) UpdateBotCallbackAnswer {
+	u := UpdateBotCallbackAnswer{Underscore: UpdateBotCallbackAnswerTag, Message: message}
+	setPFlag(&u.PFlags, "alert", alert)
+	return u
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

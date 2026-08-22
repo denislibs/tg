@@ -240,7 +240,16 @@ export interface PaidMediaUnlockEvt {
   extended_media: import('../media/messageMedia').MessageMediaPaidMedia['extended_media']
 }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
-export interface BotCallbackAnswerEvt { text: string; alert: boolean }
+/** Поздний ответ бота на callback — НАШ конструктор: у оригинала это ОТВЕТ
+ *  метода `messages.getBotCallbackAnswer`, а не апдейт. Кадр существует потому,
+ *  что ответ может прийти уже после таймаута синхронного ожидания.
+ *
+ *  «Показать модалкой» — БИТ (`pFlags.alert`), а не поле `alert: false`. */
+export interface BotCallbackAnswerEvt {
+  _: 'updateBotCallbackAnswer'
+  pFlags?: { alert?: true }
+  message: string
+}
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
 // маппит snake_case-кадр в этот camelCase-вид; воркер бродкастит сырой payload.
 export interface SecretHandshakeEvt {

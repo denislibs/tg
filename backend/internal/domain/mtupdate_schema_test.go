@@ -100,6 +100,8 @@ func updateCases() []struct {
 		{"бусты канала", NewUpdateChannelBoostStatus(NewPeerChannel(5),
 			BoostStatus{Level: 2, BoostsCount: 5, CurrentLevelBoosts: 3, NextLevelBoosts: 6}.ToWire(false), 8)},
 		{"баланс звёзд", NewUpdateStarsBalance(42)},
+		{"ответ бота", NewUpdateBotCallbackAnswer("готово", false)},
+		{"ответ бота модалкой", NewUpdateBotCallbackAnswer("ошибка", true)},
 	}
 }
 
@@ -191,6 +193,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateChatFullSnapshotTag,
 		UpdateChannelBoostStatusTag,
 		UpdateStarsBalanceTag,
+		UpdateBotCallbackAnswerTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

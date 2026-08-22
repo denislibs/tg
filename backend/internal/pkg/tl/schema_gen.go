@@ -8406,6 +8406,10 @@ var schemaConstructors = []Constructor{
 		{Name: "pts", Type: "int"},
 		{Name: "pts_count", Type: "int"},
 	}},
+	{ID: 2073577300, Predicate: "updateBotCallbackAnswer", Type: "Update", Params: []Param{
+		{Name: "alert", Type: "true", Flags: "flags", Bit: 0},
+		{Name: "message", Type: "string"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

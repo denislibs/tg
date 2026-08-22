@@ -283,7 +283,7 @@ export function registerStoreProjection(managers: Managers): void {
   // Поздний ответ бота на callback (после таймаута синхронного ожидания) — тост.
   rootScope.addEventListener(RT.botCallbackAnswer, (raw) => {
     const a = raw as BotCallbackAnswerEvt
-    if (a.text) rootScope.dispatchEvent('ui:toast', a.text)
+    if (a.message) rootScope.dispatchEvent('ui:toast', a.message)
   })
   // Секретный чат: handshake-события из воркера → secretChatStore.
   rootScope.addEventListener(RT.secretRequest, (raw) => {

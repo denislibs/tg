@@ -213,7 +213,7 @@ func (i *Interactor) BotAnswerCallback(ctx context.Context, id, text string, ale
 	}
 	// Клиент уже не ждёт синхронно → доставляем toast по WS (если знаем адресата).
 	if userID != 0 && text != "" && i.publisher != nil {
-		f := frame("bot_callback_answer", map[string]any{"text": text, "alert": alert})
+		f := frame("bot_callback_answer", domain.NewUpdateBotCallbackAnswer(text, alert))
 		_ = i.publisher.PublishToUser(ctx, userID, f)
 	}
 }

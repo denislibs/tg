@@ -985,6 +985,21 @@
     "type": "Update"
   },
   {
+    "id": "2073577300",
+    "predicate": "updateBotCallbackAnswer",
+    "params": [
+      {
+        "name": "alert",
+        "type": "flags.0?true"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "predicate": "langPackDifference",
     "params": [
       {
