@@ -76,6 +76,26 @@ func TestWire_StickerDocumentGolden(t *testing.T) {
 	}
 }
 
+// Целый КАДР реального времени — то, ради чего кодек и писался: провод WS
+// переводится на TL первым.
+//
+// Кадр у нас был конвертом `{t: "new_message", d: {…}}` с типом СТРОКОЙ и
+// курсором, дописанным рядом с телом. Здесь тип — четыре байта id конструктора,
+// а `pts` — обычный параметр, как в схеме. Ту же строку эталона разбирает
+// неизменённый десериализатор tweb.
+func TestWire_UpdateNewMessageGolden(t *testing.T) {
+	msg := MessageReal{Underscore: MessageTag, ID: 12, PeerID: NewPeerUser(7),
+		Date: 1787334148, Message: "привет"}
+
+	body, err := WireCodec.Marshal(NewUpdateNewMessage(msg, 41))
+	if err != nil {
+		t.Fatalf("кодек не собрал кадр: %v", err)
+	}
+	if got, want := hex.EncodeToString(body), goldenHex(t, "updateNewMessage"); got != want {
+		t.Fatalf("байты кадра разошлись с общим эталоном\n получили %s\n ожидали  %s", got, want)
+	}
+}
+
 // Круг «модель → байты → модель» на настоящих значениях.
 //
 // Проверка сильнее любой сверки имён: она отвечает не на вопрос «то ли поле», а
@@ -105,6 +125,14 @@ func TestWire_RoundTripKeepsModel(t *testing.T) {
 			Size: 4096, Width: 512, Height: 512, StickerAlt: "😀", StickerSetID: 5,
 			Blur: []byte{1, 2, 3},
 		})},
+		{"updateNewMessage", NewUpdateNewMessage(MessageReal{Underscore: MessageTag, ID: 12,
+			PeerID: NewPeerUser(7), Date: 1787334148, Message: "привет"}, 41)},
+		// Закрепление в круге отдельно: у него бит маски, вектор номеров и пир
+		// — то есть все три механизма формата сразу.
+		{"updatePinnedMessages", NewUpdatePinnedMessages(NewPeerUser(7), []int64{12, 13}, true, 47)},
+		// Оно же без бита: длина записи меняется только на этом, и круг обязан
+		// отличать «нет ключа» от «false».
+		{"updatePinnedMessagesPlain", NewUpdatePinnedMessages(NewPeerUser(7), []int64{12}, false, 48)},
 	}
 
 	for _, c := range values {

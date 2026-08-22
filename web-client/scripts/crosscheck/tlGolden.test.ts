@@ -175,6 +175,31 @@ describe.skipIf(!hasTweb)('байты нашего кодека читает н�
     expect(result.attributes[1].stickerset._).toBe('inputStickerSetID')
     expect(+result.attributes[1].stickerset.id).toBe(5)
   })
+
+  // Кадр реального времени целиком — то, ради чего кодек и писался: провод WS
+  // переводится на TL первым.
+  //
+  // У нас кадр был конвертом `{t: "new_message", d: {…}}`: вид кадра выражен
+  // СТРОКОЙ рядом с телом, курсор дописан туда же на выходе. Здесь вид — четыре
+  // байта id конструктора, а `pts` — обычный параметр, и чужой разбор достаёт
+  // и то и другое сам.
+  it('updateNewMessage — кадр это конструктор, а не конверт со строкой', async () => {
+    const {TLDeserialization} = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('updateNewMessage')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('updateNewMessage')
+    expect(result.pts).toBe(41)
+    expect(result.pts_count).toBe(1)
+
+    // Сообщение внутри кадра — тот же конструктор, что приезжает историей.
+    expect(result.message._).toBe('message')
+    expect(result.message.id).toBe(12)
+    expect(result.message.message).toBe('привет')
+    expect(result.message.peer_id._).toBe('peerUser')
+    expect(+result.message.peer_id.user_id).toBe(7)
+  })
 })
 
 // Пропуск обязан быть ЗАМЕТНЫМ: молча зелёный прогон без предмета проверки —

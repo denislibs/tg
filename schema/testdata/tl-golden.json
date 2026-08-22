@@ -47,6 +47,12 @@
       "type": "Document",
       "hex": "d8c4d48f010000004d0000000000000000000000000000000000000000000000176170706c69636174696f6e2f782d7467737469636b6572001000000000000015c4b51c010000002ebcb0e001690000030102030000000015c4b51c020000005cc1376c000200000002000012d619630000000004f09f988000000069a2e79d05000000000000000000000000000000",
       "note": "document#8fd4c4d8 — целый документ-стикер из нашей модели: id=77, mime=application/x-tgsticker, size=4096, ступень photoStrippedSize, атрибуты documentAttributeImageSize(512x512) и documentAttributeSticker{alt=😀, stickerset=inputStickerSetID{id=5}}. Реквизиты транспорта MTProto (access_hash, file_reference, date, dc_id) — НАЗВАННЫЕ заглушки: предмета у них нет, но место в потоке они занимают, иначе все последующие поля уехали бы. Порядок атрибутов не косметика: documentAttributeImageSize безусловно ставит type='photo', поэтому imageSize идёт ПЕРВЫМ, а sticker — вторым."
+    },
+    {
+      "name": "updateNewMessage",
+      "type": "Update",
+      "hex": "fd0a2b1fd3b9007600000000000000000c000000221751590700000000000000048e886a0cd0bfd180d0b8d0b2d0b5d1820000002900000001000000",
+      "note": "updateNewMessage#1f2b0afd message:Message pts:int pts_count:int — целый КАДР реального времени из нашей модели: сообщение id=12 в личном чате с peerUser{user_id=7}, текст 'привет' (UTF-8, выравнивание), курсор pts=41. Кадр у нас был конвертом {t: \"new_message\", d: {…}} с типом СТРОКОЙ и курсором, дописанным рядом с телом; здесь тип — четыре байта id конструктора, а pts — обычный параметр."
     }
   ]
 }

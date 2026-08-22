@@ -74,7 +74,7 @@ type store struct {
 	// per-user update log
 	pts     map[int64]int64
 	date    map[int64]int64
-	updates map[int64][]domain.Update // userID -> updates (pts asc)
+	updates map[int64][]domain.UpdateRecord // userID -> updates (pts asc)
 
 	// self-destruct: аргументы каждого вызова SetDestructOnRead (для проверки,
 	// что MarkRead запускает таймер).
@@ -95,7 +95,7 @@ func newStore() *store {
 		viewed:         map[int64]map[int64]bool{},
 		pts:            map[int64]int64{},
 		date:           map[int64]int64{},
-		updates:        map[int64][]domain.Update{},
+		updates:        map[int64][]domain.UpdateRecord{},
 		discussionChat: map[int64]int64{},
 	}
 }
@@ -1474,7 +1474,7 @@ func (r fakeUpdates) AppendUpdate(_ context.Context, userID int64, ptsCount int,
 	r.s.pts[userID] += int64(ptsCount)
 	r.s.date[userID] = date
 	newPts := r.s.pts[userID]
-	r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+	r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
 		Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
 	})
 	return newPts, nil
@@ -1488,7 +1488,7 @@ func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCou
 		r.s.pts[userID] += int64(ptsCount)
 		r.s.date[userID] = date
 		newPts := r.s.pts[userID]
-		r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+		r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
 			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
 		})
 		out[userID] = newPts
@@ -1521,10 +1521,10 @@ func (r fakeUpdates) GetUserState(_ context.Context, userID int64) (domain.UserS
 	return domain.UserState{Pts: r.s.pts[userID], Date: r.s.date[userID]}, nil
 }
 
-func (r fakeUpdates) UpdatesSince(_ context.Context, userID, sincePts int64, limit int) ([]domain.Update, error) {
+func (r fakeUpdates) UpdatesSince(_ context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.Update
+	var out []domain.UpdateRecord
 	for _, u := range r.s.updates[userID] {
 		if u.Pts > sincePts {
 			out = append(out, u)

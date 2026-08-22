@@ -169,7 +169,7 @@ func TestWirePayloads_AddressMessageBySeqOnly(t *testing.T) {
 		}
 		for _, uid := range []int64{a, b} {
 			s.mu.Lock()
-			ups := append([]domain.Update(nil), s.updates[uid]...)
+			ups := append([]domain.UpdateRecord(nil), s.updates[uid]...)
 			s.mu.Unlock()
 			for _, u := range ups[logSeen[uid]:] {
 				var p map[string]any

@@ -530,7 +530,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 	// pts-лог участника группы обязан вырасти — иначе зеркала не будет в /sync
 	// (см. UpdateRepo.AppendUpdateBulk/GetUserState/UpdatesSince).
 	s.mu.Lock()
-	updates := append([]domain.Update(nil), s.updates[8]...)
+	updates := append([]domain.UpdateRecord(nil), s.updates[8]...)
 	s.mu.Unlock()
 	// Кадр адресует зеркало НОМЕРОМ в группе обсуждения — внутренний ключ
 	// строки наружу не выходит.
