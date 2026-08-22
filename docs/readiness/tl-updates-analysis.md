@@ -76,9 +76,9 @@ pts_count}`. У части конструкторов его нет вовсе (
 | наш кадр | конструктор схемы |
 |---|---|
 | `new_message` | `updateNewMessage` / `updateNewChannelMessage` |
-| `delete_message` | `updateDeleteMessages` / `updateDeleteChannelMessages` |
+| `delete_message` | наш `updateDeletePeerMessages` (см. Р5) |
 | `read` | `updateReadHistoryInbox` / `updateReadHistoryOutbox` / `updateReadChannelInbox` / `updateReadChannelOutbox` |
-| `media_read` | `updateReadMessagesContents` / `updateChannelReadMessagesContents` |
+| `media_read` | наш `updateReadPeerMessagesContents` (см. Р5) |
 | `pin_message` | `updatePinnedMessages` / `updatePinnedChannelMessages` |
 | `typing` | `updateUserTyping` / `updateChatUserTyping` / `updateChannelUserTyping` |
 | `presence` | `updateUserStatus` |
@@ -143,7 +143,35 @@ Id им назначается вручную и проверяется на з�
 шапке программы, а столкновение теперь ловит `panic` при загрузке таблицы
 кодека.
 
-### Р5. Транспортные кадры остаются транспортными
+### Р5. Наша нумерация требует пира там, где оригиналу он не нужен
+
+Открылось при переводе удаления, и это самое содержательное расхождение
+подсистемы. В схеме `updateDeleteMessages{messages, pts, pts_count}` и
+`updateReadMessagesContents{messages, pts, pts_count}` пира не несут ВОВСЕ — у
+оригинала номер сообщения уникален в «ящике» получателя, поэтому вектора
+номеров достаточно.
+
+У нас номер ПЕР-ЧАТНЫЙ: порт сообщения решил, что наружу выходит номер в чате,
+а не ключ строки. Значит один и тот же номер живёт в каждом чате, и кадр без
+пира означал бы «удалить сообщение №12 везде».
+
+Поэтому два конструктора объявлены СВОИМИ (`updateDeletePeerMessages`,
+`updateReadPeerMessagesContents`) — штатным механизмом оригинала, с явно
+назначенными id, а не подмешаны параметром в схемные. Это тот же класс
+отступления, что уже назван в `port-divergences.md`: предмет есть, но другой
+природы.
+
+Побочно исчез `for_me` («удалить у себя»): в схеме его нет, а у нас он не имел
+ни одного потребителя — «удалено у меня» это тот же кадр, просто разосланный
+одному получателю, и множество получателей уже несёт этот смысл.
+
+Канальные варианты схемы (`updateDeleteChannelMessages`,
+`updateChannelReadMessagesContents`) в модели не объявлены: удаление и прочтение
+вложений идут пер-юзерным веером, а не через журнал канала. Это долг ДОСТАВКИ,
+а не формы, и объявлять конструктор, которого мы не производим, значило бы
+завести мёртвый код.
+
+### Р6. Транспортные кадры остаются транспортными
 
 `hello`, `pong`, `message_ack`, `message_error`, `rpc_resp`, `file_up_ok`,
 `file_up_err`, `file_err` — не апдейты вовсе. У оригинала их роль играют слои
@@ -156,7 +184,7 @@ MTProto (`rpc_result`, `pong`, контейнеры), которых мы не �
 сообщения, назначенный сервером, а у нас — своё соответствие «клиентский id →
 номер». Решается вместе с Р6.
 
-### Р6. Контейнер `updates` и пачки
+### Р7. Контейнер `updates` и пачки
 
 У нас кадры уходят по одному, а `/sync` и `/difference` отдают массив записей
 журнала. В схеме и то и другое — `updates{updates: Vector<Update>, users, chats,
@@ -167,7 +195,7 @@ date, seq}`, причём векторы `users`/`chats` решают ту же 
 Это же снимает вопрос «а откуда клиент возьмёт пира, которого он ещё не знает»,
 который сейчас закрыт тем, что каждый кадр тащит пира внутри себя.
 
-### Р7. Журналы остаются в форме МОДЕЛИ
+### Р8. Журналы остаются в форме МОДЕЛИ
 
 `updates.payload` и `channel_updates.payload` — замороженные кадры в jsonb.
 Переводить их в бинарь нельзя и не нужно: это форма МОДЕЛИ, а не провода.

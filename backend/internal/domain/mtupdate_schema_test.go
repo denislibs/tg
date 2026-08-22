@@ -45,14 +45,12 @@ func updateCases() []struct {
 		{"пост канала", NewUpdateNewChannelMessage(msg, 7)},
 		{"правка", NewUpdateEditMessage(msg, 42)},
 		{"правка поста канала", NewUpdateEditChannelMessage(msg, 8)},
-		{"удаление", NewUpdateDeleteMessages([]int64{12, 13}, 43)},
-		{"удаление в канале", NewUpdateDeleteChannelMessages(5, []int64{12}, 9)},
+		{"удаление", NewUpdateDeletePeerMessages(peer, []int64{12, 13}, 43)},
 		{"прочитал я", NewUpdateReadHistoryInbox(peer, 12, 3, 44)},
 		{"прочитали меня", NewUpdateReadHistoryOutbox(peer, 12, 45)},
 		{"прочитал я в канале", NewUpdateReadChannelInbox(5, 12, 3, 10)},
 		{"прочитали меня в канале", NewUpdateReadChannelOutbox(5, 12)},
-		{"прочитано вложение", NewUpdateReadMessagesContents([]int64{12}, 46)},
-		{"прочитано вложение в канале", NewUpdateChannelReadMessagesContents(5, []int64{12})},
+		{"прочитано вложение", NewUpdateReadPeerMessagesContents(peer, []int64{12}, 46)},
 		{"закрепили", NewUpdatePinnedMessages(peer, []int64{12}, true, 47)},
 		{"открепили", NewUpdatePinnedMessages(peer, []int64{12}, false, 48)},
 		{"закрепили в канале", NewUpdatePinnedChannelMessages(5, []int64{12}, true, 11)},
@@ -114,14 +112,12 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateNewChannelMessageTag,
 		UpdateEditMessageTag,
 		UpdateEditChannelMessageTag,
-		UpdateDeleteMessagesTag,
-		UpdateDeleteChannelMessagesTag,
+		UpdateDeletePeerMessagesTag,
 		UpdateReadHistoryInboxTag,
 		UpdateReadHistoryOutboxTag,
 		UpdateReadChannelInboxTag,
 		UpdateReadChannelOutboxTag,
-		UpdateReadMessagesContentsTag,
-		UpdateChannelReadMessagesContentTag,
+		UpdateReadPeerMessagesContentsTag,
 		UpdatePinnedMessagesTag,
 		UpdatePinnedChannelMessagesTag,
 		UpdateMessageReactionsTag,
@@ -165,7 +161,7 @@ func TestUpdates_PinnedFlagIsAbsentWhenUnpinned(t *testing.T) {
 // Пустой вектор остаётся вектором: на проводе TL у него есть шапка со
 // счётчиком, и «нет значения» для него невыразимо вовсе.
 func TestUpdates_EmptyVectorStaysVector(t *testing.T) {
-	obj, _ := roundTripJSON(t, NewUpdateDeleteMessages(nil, 1)).(map[string]any)
+	obj, _ := roundTripJSON(t, NewUpdateDeletePeerMessages(NewPeerUser(7), nil, 1)).(map[string]any)
 	if _, ok := obj["messages"].([]any); !ok {
 		t.Fatalf("messages = %#v, а обязан быть вектором", obj["messages"])
 	}

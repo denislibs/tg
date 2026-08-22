@@ -337,5 +337,6 @@ func loadSchemaConstructorIDs(t *testing.T) map[string]string {
 	for _, c := range doc.API.Constructors {
 		out[c.Predicate] = c.ID
 	}
+
 	return out
 }

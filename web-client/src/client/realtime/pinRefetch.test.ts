@@ -17,7 +17,6 @@ const listPins = vi.fn().mockResolvedValue([])
 describe('refetchSubscriber: закрепление перечитывает пины по ключу из конструктора', () => {
   beforeEach(() => {
     listPins.mockClear()
-    rootScope.removeEventListener(RT.pinMessage as never, () => {})
   })
 
   it('пир из peerChannel → отрицательный ключ', async () => {
@@ -29,7 +28,7 @@ describe('refetchSubscriber: закрепление перечитывает п�
       messages: [7],
       pFlags: { pinned: true },
     }
-    rootScope.dispatchEventSingle(RT.pinMessage as never, frame as never)
+    rootScope.dispatchEventSingle(RT.pinMessage, frame)
     await Promise.resolve()
 
     expect(listPins).toHaveBeenCalledWith(-42)

@@ -788,6 +788,52 @@
     "type": "MessageAction"
   },
   {
+    "id": "1610266670",
+    "predicate": "updateDeletePeerMessages",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "messages",
+        "type": "Vector<int>"
+      },
+      {
+        "name": "pts",
+        "type": "int"
+      },
+      {
+        "name": "pts_count",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "879371791",
+    "predicate": "updateReadPeerMessagesContents",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "messages",
+        "type": "Vector<int>"
+      },
+      {
+        "name": "pts",
+        "type": "int"
+      },
+      {
+        "name": "pts_count",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "predicate": "langPackDifference",
     "params": [
       {

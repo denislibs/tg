@@ -49,21 +49,19 @@ package domain
 
 // Значения дискриминатора `_` объединения Update.
 const (
-	UpdateNewMessageTag                 = "updateNewMessage"
-	UpdateNewChannelMessageTag          = "updateNewChannelMessage"
-	UpdateEditMessageTag                = "updateEditMessage"
-	UpdateEditChannelMessageTag         = "updateEditChannelMessage"
-	UpdateDeleteMessagesTag             = "updateDeleteMessages"
-	UpdateDeleteChannelMessagesTag      = "updateDeleteChannelMessages"
-	UpdateReadHistoryInboxTag           = "updateReadHistoryInbox"
-	UpdateReadHistoryOutboxTag          = "updateReadHistoryOutbox"
-	UpdateReadChannelInboxTag           = "updateReadChannelInbox"
-	UpdateReadChannelOutboxTag          = "updateReadChannelOutbox"
-	UpdateReadMessagesContentsTag       = "updateReadMessagesContents"
-	UpdateChannelReadMessagesContentTag = "updateChannelReadMessagesContents"
-	UpdatePinnedMessagesTag             = "updatePinnedMessages"
-	UpdatePinnedChannelMessagesTag      = "updatePinnedChannelMessages"
-	UpdateMessageReactionsTag           = "updateMessageReactions"
+	UpdateNewMessageTag               = "updateNewMessage"
+	UpdateNewChannelMessageTag        = "updateNewChannelMessage"
+	UpdateEditMessageTag              = "updateEditMessage"
+	UpdateEditChannelMessageTag       = "updateEditChannelMessage"
+	UpdateDeletePeerMessagesTag       = "updateDeletePeerMessages"
+	UpdateReadHistoryInboxTag         = "updateReadHistoryInbox"
+	UpdateReadHistoryOutboxTag        = "updateReadHistoryOutbox"
+	UpdateReadChannelInboxTag         = "updateReadChannelInbox"
+	UpdateReadChannelOutboxTag        = "updateReadChannelOutbox"
+	UpdateReadPeerMessagesContentsTag = "updateReadPeerMessagesContents"
+	UpdatePinnedMessagesTag           = "updatePinnedMessages"
+	UpdatePinnedChannelMessagesTag    = "updatePinnedChannelMessages"
+	UpdateMessageReactionsTag         = "updateMessageReactions"
 )
 
 // PtsCountOne — на сколько кадр двигает курсор.
@@ -161,44 +159,43 @@ func NewUpdateEditChannelMessage(m MTMessage, channelPts int64) UpdateEditChanne
 
 // ── Удаление ────────────────────────────────────────────────────────────────
 
-// updateDeleteMessages#a20db0e5 messages:Vector<int> pts:int pts_count:int
-// = Update;
+// updateDeletePeerMessages#5ffab82e peer:Peer messages:Vector<int> pts:int
+// pts_count:int = Update;
 //
-// Номера ВЕКТОРОМ: у оригинала одно удаление снимает сразу пачку. Наш кадр нёс
-// ровно один номер плюс собственный признак `for_me` («удалить у себя»), а в
-// схеме предмета у него нет: «удалено у меня» — это тот же кадр, просто
-// разосланный одному получателю.
-type UpdateDeleteMessages struct {
+// НАШ конструктор (schema_additional_params.json), и причина не в удобстве.
+// В схеме удаление адресуется `updateDeleteMessages{messages, pts, pts_count}`
+// — БЕЗ пира, потому что у оригинала номер сообщения уникален в пределах
+// «ящика» получателя. У нас номер пер-чатный (решение порта сообщения: наружу
+// выходит номер в чате, а не ключ строки), поэтому один и тот же номер живёт в
+// каждом чате, и кадр без пира невыразим — он бы означал «удалить сообщение
+// №12 везде».
+//
+// То же самое у прочтения вложений (updateReadPeerMessagesContents ниже) — оба
+// расхождения одного корня, и оба объявлены штатным механизмом оригинала, а не
+// подмешаны в схемные конструкторы.
+//
+// Канальные варианты схемы (updateDeleteChannelMessages) нам сейчас не нужны:
+// удаление и прочтение вложений идут ПЕР-ЮЗЕРНЫМ веером, а не через журнал
+// канала, — и это отдельный долг доставки, а не формы.
+//
+// Номера ВЕКТОРОМ: у оригинала одно действие снимает сразу пачку. Наш кадр нёс
+// один номер плюс собственный признак `for_me` («удалить у себя»), которого в
+// схеме нет вовсе: «удалено у меня» это тот же кадр, просто разосланный одному
+// получателю.
+type UpdateDeletePeerMessages struct {
 	Underscore string  `json:"_"`
+	Peer       Peer    `json:"peer"`
 	Messages   []int64 `json:"messages"`
 	Pts        int64   `json:"pts"`
 	PtsCount   int     `json:"pts_count"`
 }
 
-func (UpdateDeleteMessages) isUpdate()     {}
-func (u UpdateDeleteMessages) Tag() string { return u.Underscore }
+func (UpdateDeletePeerMessages) isUpdate()     {}
+func (u UpdateDeletePeerMessages) Tag() string { return u.Underscore }
 
-func NewUpdateDeleteMessages(ids []int64, pts int64) UpdateDeleteMessages {
-	return UpdateDeleteMessages{Underscore: UpdateDeleteMessagesTag, Messages: nonNilIDs(ids),
-		Pts: pts, PtsCount: PtsCountOne}
-}
-
-// updateDeleteChannelMessages#c32d5b12 channel_id:long messages:Vector<int>
-// pts:int pts_count:int = Update;
-type UpdateDeleteChannelMessages struct {
-	Underscore string  `json:"_"`
-	ChannelID  int64   `json:"channel_id"`
-	Messages   []int64 `json:"messages"`
-	Pts        int64   `json:"pts"`
-	PtsCount   int     `json:"pts_count"`
-}
-
-func (UpdateDeleteChannelMessages) isUpdate()     {}
-func (u UpdateDeleteChannelMessages) Tag() string { return u.Underscore }
-
-func NewUpdateDeleteChannelMessages(channelID int64, ids []int64, channelPts int64) UpdateDeleteChannelMessages {
-	return UpdateDeleteChannelMessages{Underscore: UpdateDeleteChannelMessagesTag, ChannelID: channelID,
-		Messages: nonNilIDs(ids), Pts: channelPts, PtsCount: PtsCountOne}
+func NewUpdateDeletePeerMessages(peer Peer, ids []int64, pts int64) UpdateDeletePeerMessages {
+	return UpdateDeletePeerMessages{Underscore: UpdateDeletePeerMessagesTag, Peer: peer,
+		Messages: nonNilIDs(ids), Pts: pts, PtsCount: PtsCountOne}
 }
 
 // ── Прочтение истории ───────────────────────────────────────────────────────
@@ -282,38 +279,25 @@ func NewUpdateReadChannelOutbox(channelID, maxID int64) UpdateReadChannelOutbox 
 
 // ── Прочтение вложений (голосовое, кружок) ──────────────────────────────────
 
-// updateReadMessagesContents#f8227181 flags:# messages:Vector<int> pts:int
-// pts_count:int date:flags.0?int = Update;
-type UpdateReadMessagesContents struct {
+// updateReadPeerMessagesContents#346a260f peer:Peer messages:Vector<int>
+// pts:int pts_count:int = Update;
+//
+// НАШ конструктор по той же причине, что и удаление выше: схемный
+// updateReadMessagesContents пира не несёт, а наша нумерация пер-чатная.
+type UpdateReadPeerMessagesContents struct {
 	Underscore string  `json:"_"`
+	Peer       Peer    `json:"peer"`
 	Messages   []int64 `json:"messages"`
 	Pts        int64   `json:"pts"`
 	PtsCount   int     `json:"pts_count"`
 }
 
-func (UpdateReadMessagesContents) isUpdate()     {}
-func (u UpdateReadMessagesContents) Tag() string { return u.Underscore }
+func (UpdateReadPeerMessagesContents) isUpdate()     {}
+func (u UpdateReadPeerMessagesContents) Tag() string { return u.Underscore }
 
-func NewUpdateReadMessagesContents(ids []int64, pts int64) UpdateReadMessagesContents {
-	return UpdateReadMessagesContents{Underscore: UpdateReadMessagesContentsTag, Messages: nonNilIDs(ids),
-		Pts: pts, PtsCount: PtsCountOne}
-}
-
-// updateChannelReadMessagesContents#25f324f7 flags:# channel_id:long
-// top_msg_id:flags.0?int saved_peer_id:flags.1?Peer messages:Vector<int>
-// = Update;
-type UpdateChannelReadMessagesContents struct {
-	Underscore string  `json:"_"`
-	ChannelID  int64   `json:"channel_id"`
-	Messages   []int64 `json:"messages"`
-}
-
-func (UpdateChannelReadMessagesContents) isUpdate()     {}
-func (u UpdateChannelReadMessagesContents) Tag() string { return u.Underscore }
-
-func NewUpdateChannelReadMessagesContents(channelID int64, ids []int64) UpdateChannelReadMessagesContents {
-	return UpdateChannelReadMessagesContents{Underscore: UpdateChannelReadMessagesContentTag,
-		ChannelID: channelID, Messages: nonNilIDs(ids)}
+func NewUpdateReadPeerMessagesContents(peer Peer, ids []int64, pts int64) UpdateReadPeerMessagesContents {
+	return UpdateReadPeerMessagesContents{Underscore: UpdateReadPeerMessagesContentsTag, Peer: peer,
+		Messages: nonNilIDs(ids), Pts: pts, PtsCount: PtsCountOne}
 }
 
 // ── Закрепление ─────────────────────────────────────────────────────────────

@@ -51,6 +51,7 @@ import { decodeTransmittedPeaks, buildWaveformBars, WAVEFORM_BAR_WIDTH, WAVEFORM
 import { markMediaPlayed } from '@core/mediaRead'
 import { RT } from '@core/realtime/events'
 import rootScope from '@lib/rootScope'
+import { getPeerId } from '@core/peers/peerId'
 import ProgressivePreloader from '@components/preloader'
 import MediaProgressLine from '@components/mediaProgressLine'
 import { MiddleEllipsisElement } from '@components/middleEllipsis'
@@ -77,7 +78,12 @@ const UNMOUNT_PRELOADER = true
  * Держит `components/audio.test.ts`.
  */
 rootScope.addEventListener(RT.mediaRead, (evt) => {
-  const selector = `audio-element.is-unread[data-mid="${evt.id}"][data-peer-id="${evt.peer_id}"]`
+  // Кадр — конструктор: пир внутри него объединением `Peer`, номера вектором.
+  const peerId = getPeerId(evt.peer)
+  const selector = evt.messages
+    .map((mid) => `audio-element.is-unread[data-mid="${mid}"][data-peer-id="${peerId}"]`)
+    .join(',')
+  if (!selector) return
   document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
     element.classList.remove('is-unread')
   })

@@ -300,11 +300,31 @@ func editUpdatePayload(m domain.Message) map[string]any {
 	return p
 }
 
-// deleteUpdatePayload is the body of a "delete_message" update/frame. `forMe`
-// flags a per-user "delete for me" (only that user's own tabs receive it).
-func deleteUpdatePayload(seq int64, forMe bool) map[string]any {
+// deletePayload — тело кадра удаления.
+//
+// Конструктор НАШ (updateDeletePeerMessages), и причина названа в его докблоке:
+// схемный updateDeleteMessages пира не несёт вовсе — у оригинала номер
+// сообщения уникален в «ящике» получателя, а у нас он пер-чатный.
+//
+// Признака `for_me` («удалить у себя») здесь больше нет: в схеме его нет, и
+// предмета у него не было — «удалено у меня» это тот же кадр, просто
+// разосланный ОДНОМУ получателю. Потребителей у поля не нашлось ни одного.
+func deletePayload(peer domain.PeerID, seq int64) map[string]any {
 	return map[string]any{
-		"id": seq, "for_me": forMe,
+		"_":         domain.UpdateDeletePeerMessagesTag,
+		"peer":      domain.NewPeer(peer),
+		"messages":  []int64{seq},
+		"pts_count": domain.PtsCountOne,
+	}
+}
+
+// mediaReadPayload — тело кадра «вложение прослушано» (голосовое, кружок).
+func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
+	return map[string]any{
+		"_":         domain.UpdateReadPeerMessagesContentsTag,
+		"peer":      domain.NewPeer(peer),
+		"messages":  []int64{seq},
+		"pts_count": domain.PtsCountOne,
 	}
 }
 

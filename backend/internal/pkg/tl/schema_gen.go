@@ -8354,6 +8354,18 @@ var schemaConstructors = []Constructor{
 		{Name: "user_id", Type: "long"},
 		{Name: "banned_rights", Type: "ChatBannedRights"},
 	}},
+	{ID: 1610266670, Predicate: "updateDeletePeerMessages", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "messages", Type: "Vector<int>"},
+		{Name: "pts", Type: "int"},
+		{Name: "pts_count", Type: "int"},
+	}},
+	{ID: 879371791, Predicate: "updateReadPeerMessagesContents", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "messages", Type: "Vector<int>"},
+		{Name: "pts", Type: "int"},
+		{Name: "pts_count", Type: "int"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

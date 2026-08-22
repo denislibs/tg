@@ -31,7 +31,22 @@ import (
 // генератор кодека фазы 2 будет сверяться с ним же.
 func TestDomain_ConstructorIDDocblocksMatchSchema(t *testing.T) {
 	schemaIDs := map[string]string{}
+	// Свои конструкторы (schema_additional_params.json) — тоже проводные и тоже
+	// с назначенным id, поэтому сверяются наравне со схемными. Прежде здесь
+	// стояло «в схеме их нет по построению», и это было верно ровно до того,
+	// как у нас появился первый собственный конструктор на проводе: его
+	// докблок мог разойтись с объявленным числом молча.
+	ids := map[string]string{}
 	for predicate, ctor := range loadSchemaConstructorIDs(t) {
+		ids[predicate] = ctor
+	}
+	// Свои конструкторы объявлены в schema_additional_params.json и отличаются
+	// от клиентских полей наличием id: он есть — значит конструктор идёт на
+	// провод, и его докблок сверяется наравне со схемными.
+	for predicate, ctor := range loadOwnConstructorIDs(t) {
+		ids[predicate] = ctor
+	}
+	for predicate, ctor := range ids {
 		n, err := strconv.ParseInt(ctor, 10, 64)
 		if err != nil {
 			t.Fatalf("id конструктора %q не число: %v", predicate, err)
@@ -59,9 +74,9 @@ func TestDomain_ConstructorIDDocblocksMatchSchema(t *testing.T) {
 			predicate, id := m[1], m[2]
 			schemaID, ok := schemaIDs[predicate]
 			if !ok {
-				// Собственные конструкторы (секретные чаты, DNP, health) в
-				// схеме отсутствуют по построению — у них свой namespace, и
-				// сверять их не с чем.
+				// Конструкторы, которых нет ни в схеме, ни среди объявленных
+				// нами (секретные чаты, DNP, health — они на провод TL пока не
+				// идут вовсе): сверять не с чем.
 				continue
 			}
 			checked++

@@ -17,7 +17,8 @@
 
 import type { newConnectionManager } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
-import { RT, type TypingAction } from './events'
+import { getOutputPeer } from '../peers/peerId'
+import { RT, type MediaReadEvt, type TypingAction } from './events'
 import type { MessageOp } from './messageOps'
 import { getServerMessageId } from '../history/messageId'
 
@@ -36,7 +37,7 @@ export interface RealtimeDeps {
   // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
   // выбрасывал результат.
   messages: {
-    cacheMediaRead(p: { peer_id: number; id: number }): MessageOp[]
+    cacheMediaRead(p: MediaReadEvt): MessageOp[]
   }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
@@ -100,9 +101,17 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
       // ГРАНИЦА: наружу (кадр серверу и его же форма в broadcast) уходит
       // СЕРВЕРНЫЙ номер, внутрь SSOT — клиентский.
       const serverId = getServerMessageId(args.msgId)
-      const ops = messages.cacheMediaRead({ peer_id: args.peerId, id: serverId })
+      // Своя оптимистика лепит кадр ТОЙ ЖЕ формы, что придёт с сервера, —
+      // конструктором: иначе у одного факта было бы две формы, и разбор
+      // разъехался бы ровно там, где его труднее всего заметить.
+      const frame: MediaReadEvt = {
+        _: 'updateReadPeerMessagesContents',
+        peer: getOutputPeer(args.peerId),
+        messages: [serverId],
+      }
+      const ops = messages.cacheMediaRead(frame)
       if (ops.length) broadcast(RT.messageOp, { ops })
-      broadcast(RT.mediaRead, { peer_id: args.peerId, id: serverId })
+      broadcast(RT.mediaRead, frame)
       conn.markMediaRead(args.peerId, serverId)
       return { ok: true }
     },

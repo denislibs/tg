@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -68,7 +69,7 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	for _, msg := range expired {
 		var members []int64
 		ptsByUser := map[int64]int64{}
-		pp, err := i.newPeerPayloads(ctx, msg.ChatID, deleteUpdatePayload(msg.Seq, false))
+		addr, err := i.peerAddress(ctx, msg.ChatID)
 		if err != nil {
 			return purged, err
 		}
@@ -84,7 +85,7 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			members = m
 			date := nowMillis()
 			for _, uid := range members {
-				payload, e := pp.payload(uid)
+				payload, e := json.Marshal(deletePayload(addr.forViewer(uid), msg.Seq))
 				if e != nil {
 					return e
 				}
@@ -102,7 +103,8 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		purged++
 		if i.publisher != nil {
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("delete_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+				body := deletePayload(addr.forViewer(uid), msg.Seq)
+				_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, ptsByUser[uid]))
 			}
 		}
 	}

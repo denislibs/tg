@@ -779,8 +779,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
     },
 
+    // Номера едут ВЕКТОРОМ: у оригинала одно действие снимает сразу пачку, и
+    // форма кадра это допускает, даже когда сервер пока шлёт по одному.
     cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
-      return evictAndBuildRemoveOps(evt.peer_id, generateMessageId(evt.id))
+      const peerId = getPeerId(evt.peer)
+      return evt.messages.flatMap((id) => evictAndBuildRemoveOps(peerId, generateMessageId(id)))
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие
@@ -788,7 +791,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // (уже прочитанное сообщение не патчим и операцию на него не порождаем).
     cacheMediaRead(evt: MediaReadEvt): MessageOp[] {
       let matched = false
-      const id = generateMessageId(evt.id)
+      const peerId = getPeerId(evt.peer)
+      const id = generateMessageId(evt.messages[0])
       // «Ещё не прослушано» — булев флаг СХЕМЫ (`pFlags.media_unread`), а не
       // отдельное поле рядом; «прослушано» значит ОТСУТСТВИЕ ключа.
       const pFlags = (m: MyMessage): MyMessage['pFlags'] => {
@@ -796,11 +800,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
         delete next.media_unread
         return next
       }
-      patchMsg(evt.peer_id, (m) => m.id === id && !!m.pFlags.media_unread, (m) => { matched = true; return { ...m, pFlags: pFlags(m) } })
+      patchMsg(peerId, (m) => m.id === id && !!m.pFlags.media_unread, (m) => { matched = true; return { ...m, pFlags: pFlags(m) } })
       if (!matched) return []
-      const cur = msgsByChat.get(evt.peer_id)?.get(id)
+      const cur = msgsByChat.get(peerId)?.get(id)
       const fields = cur ? { pFlags: cur.pFlags } : {}
-      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,

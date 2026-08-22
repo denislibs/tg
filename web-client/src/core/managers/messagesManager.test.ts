@@ -530,7 +530,7 @@ describe('MessagesManager.cacheMediaRead', () => {
     const { rest } = countingRest({ '0:0:40': voicePage(true) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt: MediaReadEvt = { peer_id: 1, id: 7 }
+    const evt: MediaReadEvt = { _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [7] }
     const ops = mgr.cacheMediaRead(evt)
     // «Прочитано» — ОТСУТСТВИЕ флага схемы, а не `false`: пустой `pFlags`
     // и есть снятая точка.
@@ -544,7 +544,7 @@ describe('MessagesManager.cacheMediaRead', () => {
     const { rest } = countingRest({ '0:0:40': voicePage(false) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ peer_id: 1, id: 7 })
+    const ops = mgr.cacheMediaRead({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [7] })
     expect(ops).toEqual([])
   })
 
@@ -552,7 +552,7 @@ describe('MessagesManager.cacheMediaRead', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ peer_id: 1, id: 999 })
+    const ops = mgr.cacheMediaRead({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [999] })
     expect(ops).toEqual([])
   })
 })
@@ -650,7 +650,7 @@ describe('MessagesManager.cacheDelete', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt: DeleteMessageEvt = { peer_id: 1, id: 2, for_me: false }
+    const evt: DeleteMessageEvt = { _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2] }
     const ops = mgr.cacheDelete(evt)
     expect(ops).toEqual([{ op: 'remove', key: '1', msgId: cid(2) }])
   })
@@ -659,7 +659,7 @@ describe('MessagesManager.cacheDelete', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheDelete({ peer_id: 1, id: 999, for_me: false })
+    const ops = mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [999] })
     expect(ops).toEqual([])
   })
 
@@ -670,7 +670,7 @@ describe('MessagesManager.cacheDelete', () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
-    const ops = mgr.cacheDelete({ peer_id: 1, id: 2, for_me: false })
+    const ops = mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2] })
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
     for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: cid(2) })

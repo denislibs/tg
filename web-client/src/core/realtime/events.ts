@@ -223,7 +223,21 @@ export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').R
 // Аватарка гасится ПОКАЖДОМУ получателю: `photo` живёт внутри `user`, и
 // правило `profile_photo` применяется на бэкенде при сборке кадра.
 export interface UserUpdateEvt { user: UserReal; pts?: number }
-export interface DeleteMessageEvt { peer_id: PeerId; id: number; for_me: boolean }
+/**
+ * Удаление — НАШ конструктор `updateDeletePeerMessages`. Схемный
+ * `updateDeleteMessages` пира не несёт вовсе: у оригинала номер сообщения
+ * уникален в «ящике» получателя, а у нас он пер-чатный, и кадр без пира
+ * означал бы «удалить №12 везде».
+ *
+ * Признака `for_me` больше нет: «удалено у меня» — тот же кадр, просто
+ * разосланный одному получателю. Потребителей у поля не было ни одного.
+ */
+export interface DeleteMessageEvt {
+  _: 'updateDeletePeerMessages'
+  peer: Peer
+  messages: number[]
+  pts?: number
+}
 /**
  * Закрепление — `updatePinnedMessages`. «Открепили» это ТОТ ЖЕ конструктор с
  * опущенным битом: `pFlags.pinned` отсутствует, а не равен `false`. Номера
@@ -263,7 +277,14 @@ export interface ReadHistoryOutboxEvt {
 }
 export type ReadEvt = ReadHistoryInboxEvt | ReadHistoryOutboxEvt
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
-export interface MediaReadEvt { peer_id: PeerId; id: number }
+/** Вложение прослушано (голосовое, кружок) — наш `updateReadPeerMessagesContents`
+ * по той же причине, что и удаление: схемный конструктор пира не несёт. */
+export interface MediaReadEvt {
+  _: 'updateReadPeerMessagesContents'
+  peer: Peer
+  messages: number[]
+  pts?: number
+}
 // Меня удалили из группы / я вышел — диалог убирается из списка.
 export interface ChatRemovedEvt { peer_id: PeerId; removed: true }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит

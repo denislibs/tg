@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"unicode/utf8"
 
@@ -113,9 +114,12 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 
 	var members []int64
 	ptsByUser := map[int64]int64{}
-	pp, err := i.newPeerPayloads(ctx, chatID, deleteUpdatePayload(cur.Seq, !revoke))
+	addr, err := i.peerAddress(ctx, chatID)
 	if err != nil {
 		return err
+	}
+	payloadFor := func(uid int64) ([]byte, error) {
+		return json.Marshal(deletePayload(addr.forViewer(uid), cur.Seq))
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
@@ -130,7 +134,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			slices.Sort(mem)
 			members = mem
 			for _, uid := range members {
-				payload, e := pp.payload(uid)
+				payload, e := payloadFor(uid)
 				if e != nil {
 					return e
 				}
@@ -147,7 +151,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			return e
 		}
 		members = []int64{userID}
-		payload, e := pp.payload(userID)
+		payload, e := payloadFor(userID)
 		if e != nil {
 			return e
 		}
@@ -163,7 +167,8 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("delete_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := deletePayload(addr.forViewer(uid), cur.Seq)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, ptsByUser[uid]))
 		}
 	}
 	return nil

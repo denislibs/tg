@@ -820,7 +820,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	}
 	var members []int64
 	var cleared bool
-	var pp *peerPayloads
+	var mediaReadAddr chatAddress
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
@@ -834,13 +834,14 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		}
 		slices.Sort(m)
 		members = m
-		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"id": msg.Seq})
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		mediaReadAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := json.Marshal(mediaReadPayload(addr.forViewer(uid), msg.Seq))
 			if e != nil {
 				return e
 			}
@@ -857,7 +858,8 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	}
 	if cleared && i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("media_read", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := mediaReadPayload(mediaReadAddr.forViewer(uid), msg.Seq)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", body, ptsByUser[uid]))
 		}
 	}
 	return nil
