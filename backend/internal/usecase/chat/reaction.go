@@ -193,8 +193,17 @@ func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) 
 		}
 		return true, nil
 	}
+	// Публичные справочники: наборы стикеров и каталог реакций. Оба принадлежат
+	// сервисному аккаунту и ни в одном чате не лежат, поэтому проверка выше их
+	// не пропускает — а рисовать их должен каждый.
 	if i.stickers != nil {
-		return i.stickers.IsStickerMedia(ctx, mediaID)
+		ok, err := i.stickers.IsStickerMedia(ctx, mediaID)
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	if i.reactionCat != nil {
+		return i.reactionCat.IsReactionMedia(ctx, mediaID)
 	}
 	return false, nil
 }

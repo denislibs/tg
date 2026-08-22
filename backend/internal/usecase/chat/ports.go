@@ -511,6 +511,17 @@ type StickerAccess interface {
 	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
 }
 
+// ReactionCatalogAccess отвечает, принадлежит ли media КАТАЛОГУ доступных
+// реакций (available_reactions, Telegram messages.getAvailableReactions).
+//
+// Каталог публичен ровно как наборы стикеров: иконку реакции рисует каждый,
+// кто открыл чат. Файлы при этом принадлежат сервисному аккаунту, поэтому
+// проверка «владелец либо участник чата» их не пропускает и нужно такое же
+// исключение, как у стикеров.
+type ReactionCatalogAccess interface {
+	IsReactionMedia(ctx context.Context, mediaID int64) (bool, error)
+}
+
 // SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
 type SecretRepo interface {
 	Create(ctx context.Context, sc domain.SecretChat) error

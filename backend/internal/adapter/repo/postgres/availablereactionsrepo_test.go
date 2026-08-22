@@ -90,3 +90,47 @@ func TestReactionsPartialRolesAndClearOnUpsert(t *testing.T) {
 		t.Fatalf("роли после сброса: %+v, ожидались нули", list[0])
 	}
 }
+
+// Каталог реакций ПУБЛИЧЕН: гейт доступа к медиа спрашивает у него, «наш ли
+// это файл», и по ответу пускает любого. Проверка ходит по ВСЕМ ролям — новая
+// роль, забытая в запросе, сделает свой файл молча недоступным.
+//
+// Найдено на стенде: пока каталог был пуст, путь не проверялся; залили — и
+// каждая иконка реакции стала отдавать 404 всем, кроме сервисного аккаунта.
+func TestReactionsIsReactionMediaCoversEveryRole(t *testing.T) {
+	ctx := context.Background()
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAvailableReactionsRepo(pool)
+	owner := seedUser(t, pool, "+79990001101")
+
+	// По файлу на каждую роль — иначе тест прошёл бы и при запросе по одной.
+	roles := map[string]int64{}
+	for _, role := range []string{"static", "appear", "select", "activate", "effect", "around", "center"} {
+		roles[role] = seedStickerMedia(t, pool, owner, "reaction/"+role)
+	}
+	if err := repo.Upsert(ctx, domain.AvailableReaction{
+		Emoji: "👍", Title: "Thumbs Up", Position: 1,
+		StaticMediaID: roles["static"], AppearMediaID: roles["appear"], SelectMediaID: roles["select"],
+		ActivateMediaID: roles["activate"], EffectMediaID: roles["effect"], AroundMediaID: roles["around"],
+		CenterMediaID: roles["center"],
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for role, mediaID := range roles {
+		ok, err := repo.IsReactionMedia(ctx, mediaID)
+		if err != nil {
+			t.Fatalf("IsReactionMedia(%s): %v", role, err)
+		}
+		if !ok {
+			t.Errorf("роль %s не опознана каталогом — её файл отдаётся 404", role)
+		}
+	}
+
+	// Посторонний файл каталогу не принадлежит: проверка отвечает про
+	// конкретный media, а не «раз каталог непуст — можно всё».
+	stranger := seedStickerMedia(t, pool, owner, "reaction/stranger")
+	if ok, _ := repo.IsReactionMedia(ctx, stranger); ok {
+		t.Error("каталог признал своим посторонний файл")
+	}
+}

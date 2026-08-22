@@ -47,6 +47,7 @@ type Interactor struct {
 	translator   Translator
 	secret       SecretRepo
 	stickers     StickerAccess
+	reactionCat  ReactionCatalogAccess
 	preview      LinkPreviewer
 	ivProbe      IVProber
 	boosts       BoostRepo
@@ -165,6 +166,10 @@ func (i *Interactor) SetSecret(s SecretRepo) { i.secret = s }
 // SetStickerAccess подключает проверку стикер-медиа (optional; без неё стикеры
 // нельзя слать чужим media и читать не-владельцу).
 func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
+
+// SetReactionCatalog подключает проверку медиа каталога реакций (optional; без
+// неё иконки реакций доступны только сервисному аккаунту-владельцу).
+func (i *Interactor) SetReactionCatalog(c ReactionCatalogAccess) { i.reactionCat = c }
 
 // SetLinkPreviewer подключает построитель превью ссылок (optional; без него
 // карточек web page под сообщениями нет).

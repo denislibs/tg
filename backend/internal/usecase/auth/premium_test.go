@@ -10,7 +10,9 @@ import (
 )
 
 // fakePremiumRepo is an in-memory PremiumRepo keyed by user id.
-type fakePremiumRepo struct{ byUser map[int64]domain.PremiumSubscription }
+type fakePremiumRepo struct {
+	byUser map[int64]domain.PremiumSubscription
+}
 
 func newFakePremiumRepo() *fakePremiumRepo {
 	return &fakePremiumRepo{byUser: map[int64]domain.PremiumSubscription{}}

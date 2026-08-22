@@ -138,7 +138,13 @@ func registerServer(p serverParams) {
 
 	// Каталог доступных реакций (available_reactions, заливается cmd/seed-reactions):
 	// без usecase-слоя — чистое чтение справочника, бизнес-логики нет.
-	reactionsH := httptransport.NewReactionsHandler(pgadapter.NewAvailableReactionsRepo(p.Pool))
+	//
+	// Его медиа ПУБЛИЧНО ровно как медиа стикеров: файлы принадлежат сервисному
+	// аккаунту и ни в одном чате не лежат, поэтому без этой проводки каждая
+	// иконка реакции отдавалась 404 всем, кроме владельца.
+	availableReactionsRepo := pgadapter.NewAvailableReactionsRepo(p.Pool)
+	p.ChatUC.SetReactionCatalog(availableReactionsRepo)
+	reactionsH := httptransport.NewReactionsHandler(availableReactionsRepo)
 
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
