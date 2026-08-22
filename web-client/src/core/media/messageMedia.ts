@@ -32,6 +32,7 @@
 
 import type { MessageEntity } from '@layer'
 import { generateMessageId } from '../history/messageId'
+import { isLottieMime } from '../stickers/tgs'
 import type { Peer } from '../peers/peerId'
 
 // ── PhotoSize: объединение схемы, конструктор за конструктором ─────────────
@@ -515,8 +516,16 @@ const MIME_GIF = 'image/gif'
 const MIME_MP4 = 'video/mp4'
 const MIME_OGG = 'audio/ogg'
 const MIME_PDF = 'application/pdf'
-/** lottie-стикер: наш бэкенд отдаёт его под этим mime (seed-stickers/main.go) */
-const MIME_TGS = 'application/x-tgsticker'
+// lottie-стикер приезжает в ДВУХ видах, и это наше отступление от оригинала:
+// Telegram всегда шлёт .tgs (json под gzip), а у нас часть сид-наборов залита
+// НЕСЖАТЫМ json. Оба вида — стикер, поэтому проверка одна на всех и живёт
+// рядом с разбором самого файла (`core/stickers/tgs.ts::isLottieMime`).
+//
+// Пока предикатов было два — `saveDocument` знал только `.tgs`, а рендерер
+// знал оба, — несжатый lottie не опознавался как стикер вовсе: атрибут
+// `documentAttributeSticker` тип не ставил (mime не webp и не webm), а
+// `documentAttributeImageSize` перебивал его на 'photo'. В ленте такой стикер
+// рисовался ФАЙЛОМ с именем «8.json».
 
 /**
  * Порт `appDocsManager.saveDoc` (tweb :150-260) в части вывода типа документа:
@@ -585,7 +594,7 @@ export function saveDocument(doc: MyDocument): MyDocument {
 
   if (doc.mime_type === MIME_PDF) doc.type = 'pdf'
   else if (doc.mime_type === MIME_GIF) doc.type = 'gif'
-  else if (doc.mime_type === MIME_TGS) {
+  else if (isLottieMime(doc.mime_type)) {
     doc.type = 'sticker'
     doc.animated = true
     doc.sticker = 2

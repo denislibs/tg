@@ -84,6 +84,34 @@ describe('saveDocument — вывод типа документа из атри�
     expect([tgs.type, tgs.sticker, tgs.animated]).toEqual(['sticker', 2, true])
   })
 
+  // Наше отступление от оригинала: Telegram всегда шлёт .tgs (json под gzip), а
+  // у нас часть сид-наборов залита НЕСЖАТЫМ json. Оба вида — стикер.
+  //
+  // Воспроизведено на стенде: стикер из такого набора приезжал в ленту
+  // ФАЙЛОМ с именем «8.json». Предикатов было два — здесь знали только .tgs, а
+  // рендерер знал оба, — поэтому атрибут стикера тип не ставил (mime не webp и
+  // не webm), а documentAttributeImageSize перебивал его на 'photo'.
+  //
+  // ПОРЯДОК атрибутов здесь тот же, что у сервера и у Telegram: размер кадра
+  // первым. Именно он и делал дефект незаметным в тестах с одним атрибутом.
+  it('несжатый lottie (application/json) — тоже стикер, даже когда размер кадра идёт первым', () => {
+    const d = saveDocument(doc('application/json', [
+      { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      { _: 'documentAttributeSticker', alt: '🗂', stickerset: { _: 'inputStickerSetID', id: 2 } },
+      { _: 'documentAttributeFilename', file_name: '8.json' },
+    ]))
+    expect([d.type, d.sticker, d.animated]).toEqual(['sticker', 2, true])
+  })
+
+  // Тот же порядок у .tgs: размер кадра не должен перебивать тип.
+  it('порядок атрибутов не решает: размер кадра перед стикером не делает его фотографией', () => {
+    const d = saveDocument(doc('image/webp', [
+      { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      { _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } },
+    ]))
+    expect(d.type).toBe('sticker')
+  })
+
   it('эмодзи стикера доезжает из alt (doc.stickerEmojiRaw оригинала)', () => {
     expect(saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🔥', stickerset: { _: 'inputStickerSetID', id: 9 } }])).stickerEmojiRaw).toBe('🔥')
   })
