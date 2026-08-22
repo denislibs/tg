@@ -534,7 +534,7 @@ export function createWorkerCore() {
     // при реконнекте (connectionManager.ts) — здесь он просто прокидывается дальше в
     // payload. Проверено workerCore.connectionStatus.test.ts.
     onState: (s, retryAt) => broadcast(RT.state, { state: s, retryAt }),
-    onFrame: (type, payload) => {
+    onFrame: (type, payload, envPts) => {
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
       if (type === 'hello') {
@@ -619,7 +619,15 @@ export function createWorkerCore() {
         return
       }
       // Логируемый кадр (несёт pts) → единый funnel: дедуп/gap/cache/broadcast.
-      if (APPLY[type as LoggedWsType]) { funnel.applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
+      //
+      // Курсор лежит либо В ТЕЛЕ (конструктор объявляет параметр pts), либо в
+      // КОНВЕРТЕ (не объявляет — тогда у оригинала кадр едет в контейнере
+      // updates и порядок ему задаёт seq контейнера). Воронке безразлично,
+      // откуда он: она гейтит по числу, а место выбирает схема.
+      if (APPLY[type as LoggedWsType]) {
+        funnel.applyUpdate(type, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        return
+      }
       // Секретный handshake: криптообработка в воркере до/вместо трансляции.
       if (type === 'secret_chat_request') {
         const p = payload as { peer_id?: number; initiator_pub?: string }

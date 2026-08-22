@@ -691,7 +691,20 @@ Delete the caller's own story.
 on WS, so the token goes in the query string. Invalid/missing token → 401 (no upgrade).
 
 ### Frame envelope
-Every frame is JSON: `{ "t": "<type>", "d": { … } }`.
+Every frame is JSON: `{ "t": "<type>", "d": { … }, "pts": <int>? }`.
+
+`pts` в конверте — плотный пер-юзерный курсор кадра, и он появляется там ТОЛЬКО
+у кадров, чей конструктор схемы своего параметра `pts` не объявляет
+(`updateMessageReactions` и далее кадры диалогов). У оригинала такие апдейты
+едут в контейнере `updates`, и порядок им задаёт `seq` контейнера; наш конверт —
+тот же контейнер. У кадров с параметром `pts` (`updateNewMessage`,
+`updateReadHistoryInbox`, …) курсор лежит ВНУТРИ `d`, и в конверте его нет —
+одно число в двух местах не дублируется.
+
+> Таблицы кадров ниже отстали от порта на TL (тела кадров стали конструкторами
+> схемы: `updateNewMessage`, `updateReadHistoryInbox/Outbox`,
+> `updatePinnedMessages`, `updateMessageReactions`, …). Долг назван отдельной
+> задачей и снимается вместе с остальной документацией провода.
 
 ### Client → server
 | `t` | `d` | Effect |

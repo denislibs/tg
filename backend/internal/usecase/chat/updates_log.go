@@ -55,7 +55,7 @@ func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients
 	}
 	if i.publisher != nil {
 		for _, uid := range recipients {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame(typ, uid, map[string]any{"pts": ptsByUser[uid]}))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts(typ, uid, ptsByUser[uid]))
 		}
 	}
 	return nil
@@ -134,12 +134,23 @@ func (p *peerPayloads) outFor(viewerID int64) bool {
 // frame — живой кадр получателю: тело журнала плюс его пер-юзерные поля (pts,
 // unread). Форма кадра и записи журнала совпадают по построению.
 func (p *peerPayloads) frame(t string, viewerID int64, extra map[string]any) []byte {
+	return frameFields(t, p.bodyFor(viewerID), extra)
+}
+
+// framePts — то же, но с одним лишь курсором, и кладёт его туда, куда велит
+// схема кадра (внутрь конструктора либо в конверт) — см. framePts в frame.go.
+func (p *peerPayloads) framePts(t string, viewerID int64, pts int64) []byte {
+	return framePts(t, p.bodyFor(viewerID), pts)
+}
+
+// bodyFor — тело кадра ГЛАЗАМИ получателя (ключ пира и `out` — пер-зрительские).
+func (p *peerPayloads) bodyFor(viewerID int64) map[string]any {
 	peer := p.peer(viewerID)
 	out := p.outFor(viewerID)
 	if peer != domain.NullPeerID || out {
-		return frameFields(t, withPeer(p.base, peer, out), extra)
+		return withPeer(p.base, peer, out)
 	}
-	return frameFields(t, p.base, extra)
+	return p.base
 }
 
 // appendByPeer пишет кадр в персональные журналы получателей БАТЧАМИ.

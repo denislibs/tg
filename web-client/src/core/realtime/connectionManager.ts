@@ -19,7 +19,10 @@ export interface CMDeps {
   // Передаётся вторым аргументом ТОЛЬКО когда есть (scheduleReconnect); остальные
   // переходы состояния зовут onState одним аргументом — так же, как раньше.
   onState: (s: ConnState, retryAt?: number) => void
-  onFrame: (type: string, payload: unknown) => void // new_message/read/typing/presence/reaction/message_ack
+  // new_message/read/typing/presence/reaction/message_ack. envPts — курсор из
+  // КОНВЕРТА: он приезжает у кадров, чей конструктор схемы своего `pts` не
+  // объявляет (см. Frame.pts).
+  onFrame: (type: string, payload: unknown, envPts?: number) => void
   /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
    * page reload and are resent on the next connect. */
   outboxStore?: { load: () => Promise<SendArgs[] | undefined>; save: (list: SendArgs[]) => void }
@@ -103,13 +106,13 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     ws.onClose(() => { stopHeartbeat(); if (state !== 'offline') scheduleReconnect() })
     ws.onError(() => { /* onClose will follow */ })
     for (const t of FRAME_TYPES) {
-      ws.on(t, (d) => {
+      ws.on(t, (d, envPts) => {
         if (t === 'pong') { missedPongs = 0; return }
         if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
         // A rejected send (e.g. too long): drop it from the outbox so it isn't
         // resent forever on every reconnect; the UI marks the bubble failed.
         if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-        onFrame(t, d)
+        onFrame(t, d, envPts)
       })
     }
   }

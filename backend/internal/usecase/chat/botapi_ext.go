@@ -91,7 +91,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts("edit_message", uid, ptsByUser[uid]))
 		}
 	}
 	return msg, nil

@@ -63,7 +63,7 @@ describe('DnpTransport', () => {
     const presenceJson = new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 5, online: true } }))
     const frame = sealFrame(serverSend, withKind(0x00, presenceJson))
     ws.message(frame)
-    expect(got).toHaveBeenCalledWith({ user_id: 5, online: true })
+    expect(got).toHaveBeenCalledWith({ user_id: 5, online: true }, undefined)
   })
 
   it('доставляет kind 0x01 в onBinary, не трогая JSON-подписчиков', () => {
@@ -92,7 +92,7 @@ describe('DnpTransport', () => {
     const presenceJson = new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 7, online: false } }))
     const jsonFrame = sealFrame(serverSend, withKind(0x00, presenceJson))
     ws.message(jsonFrame)
-    expect(got).toHaveBeenCalledWith({ user_id: 7, online: false })
+    expect(got).toHaveBeenCalledWith({ user_id: 7, online: false }, undefined)
   })
 
   it('sendBinary отправляет sealed-кадр с kind 0x02', () => {

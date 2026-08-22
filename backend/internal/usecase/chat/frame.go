@@ -31,11 +31,30 @@ func frameFields(t string, base map[string]any, extra map[string]any) []byte {
 	return frame(t, d)
 }
 
-// framePts encodes {t, d} with the recipient's per-user pts (dense monotonic
-// cursor) injected into d, so a live frame advances the client's cursor exactly
-// like the matching /sync update row does.
+// framePts — живой кадр с плотным курсором ПОЛУЧАТЕЛЯ: кадр двигает курсор
+// клиента ровно так же, как соответствующая строка /sync.
+//
+// Куда именно ложится курсор, решает СХЕМА, а не вкус. У updateNewMessage `pts`
+// — обычный параметр конструктора, и он едет ВНУТРИ тела. У
+// updateMessageReactions (как и у кадров диалогов) параметра pts нет вовсе: у
+// оригинала такие кадры едут в контейнере updates, и порядок им задаёт seq
+// контейнера. Дописать pts в такое тело значило бы завести на конструкторе
+// поле, которого в схеме нет, — поэтому курсор едет в КОНВЕРТЕ, нашем аналоге
+// контейнера.
 func framePts(t string, base map[string]any, pts int64) []byte {
+	if tag, ok := base["_"].(string); ok && !domain.UpdateDeclaresPts(tag) {
+		return frameEnvelopePts(t, base, pts)
+	}
 	return frameFields(t, base, map[string]any{"pts": pts})
+}
+
+// frameEnvelopePts — {t, d, pts}: курсор рядом с телом, а не в нём.
+func frameEnvelopePts(t string, d map[string]any, pts int64) []byte {
+	b, err := json.Marshal(map[string]any{"t": t, "d": d, "pts": pts})
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // frameChannelMessage — кадр ПОСТА КАНАЛА: пер-канальный курсор кладётся в

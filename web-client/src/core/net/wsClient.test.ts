@@ -32,7 +32,11 @@ describe('WsClient', () => {
     expect(opened).toHaveBeenCalled()
     expect(c.isOpen()).toBe(true)
     ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 5 } }))
-    expect(got).toHaveBeenCalledWith({ msg_id: 5 })
+    expect(got).toHaveBeenCalledWith({ msg_id: 5 }, undefined)
+    // Курсор ИЗ КОНВЕРТА доезжает до подписчика: у кадров, чей конструктор
+    // схемы своего `pts` не объявляет, он едет только здесь.
+    ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 6 }, pts: 42 }))
+    expect(got).toHaveBeenCalledWith({ msg_id: 6 }, 42)
   })
 
   it('fires onClose and reports not open', () => {

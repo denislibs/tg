@@ -368,7 +368,6 @@ export interface ReactionEvt {
   peer: Peer
   msg_id: number
   reactions: WireMessageReactions
-  pts?: number
 }
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
 export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }

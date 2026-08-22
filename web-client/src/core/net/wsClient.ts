@@ -7,7 +7,7 @@ import type { Transport } from './transport'
 // Сервер эхает 'bearer' в ответе рукопожатия; токен hex → валидный subprotocol.
 export class WsClient implements Transport {
   private ws: WebSocket | null = null
-  private listeners = new Map<string, Array<(d: unknown) => void>>()
+  private listeners = new Map<string, Array<(d: unknown, pts?: number) => void>>()
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
   private errorCbs: Array<() => void> = []
@@ -22,11 +22,11 @@ export class WsClient implements Transport {
     ws.onerror = () => { for (const cb of this.errorCbs) cb() }
     ws.onmessage = (ev) => {
       const f: Frame = decodeFrame(typeof ev.data === 'string' ? ev.data : '')
-      for (const cb of this.listeners.get(f.t) ?? []) cb(f.d)
+      for (const cb of this.listeners.get(f.t) ?? []) cb(f.d, f.pts)
     }
   }
 
-  on(type: string, cb: (d: unknown) => void): void {
+  on(type: string, cb: (d: unknown, pts?: number) => void): void {
     const arr = this.listeners.get(type) ?? []
     arr.push(cb)
     this.listeners.set(type, arr)

@@ -221,6 +221,33 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 1 } }])
   })
 
+  // Курсор кадра реакций едет в КОНВЕРТЕ: у конструктора updateMessageReactions
+  // параметра pts в схеме нет вовсе. Воронка обязана его увидеть — иначе кадр
+  // пройдёт как «беспцовый», курсор не сдвинется, и следующий кадр окажется
+  // дырой.
+  //
+  // Виден он здесь по гейту гидратации: курсор из IDB не поднят (core.start()
+  // тут не зовут), поэтому кадр С курсором воронка НЕ применяет, а уходит в
+  // догон. Тот же кадр без курсора применяется — это соседний тест выше.
+  it('курсор из КОНВЕРТА доходит до воронки: кадр гейтится, а не проходит насквозь', async () => {
+    const { dialogOps, core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('reaction', {
+      _: 'updateMessageReactions',
+      peer: { _: 'peerUser', user_id: 1 },
+      msg_id: 5,
+      reactions: {
+        _: 'messageReactions',
+        pFlags: { min: true },
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+      },
+    }, 7)
+
+    expect(dialogOps).toEqual([])
+  })
+
   // Повторный кадр с ТЕМ ЖЕ агрегатом (реплей из догона) не бампит: агрегат
   // абсолютный, а бейдж считается по РОСТУ. Этой же арифметикой гасится и
   // собственный клик — он уже применён оптимистично, и кадр его не «добавляет».

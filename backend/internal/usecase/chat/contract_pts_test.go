@@ -8,11 +8,44 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// lastFrameFor decodes the payload (d) of the most recent frame published to
-// userID. Fails if no frame was captured for that user.
 // lastFrameOfType — последний кадр ЗАДАННОГО типа для получателя. Нужен там,
 // где действие рассылает несколько кадров подряд (платная реакция шлёт ещё и
 // баланс звёзд), и «последний вообще» отвечает не на тот вопрос.
+// frameCursor — курсор последнего кадра получателя, ГДЕ БЫ ОН НИ ЕХАЛ.
+//
+// Мест ровно два, и выбирает между ними схема: конструктор с параметром pts
+// несёт курсор в теле, конструктор без него — в конверте (см. framePts). Пин на
+// само это правило — TestFramePts_LivesWhereSchemaSaysIt; здесь важно лишь то,
+// что курсор у кадра есть и равен строке журнала.
+func frameCursor(t *testing.T, pub *fakePublisher, userID int64) (int64, bool) {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i := len(pub.frames) - 1; i >= 0; i-- {
+		if pub.frames[i].userID != userID {
+			continue
+		}
+		var env struct {
+			Pts *int64 `json:"pts"`
+			D   struct {
+				Pts *int64 `json:"pts"`
+			} `json:"d"`
+		}
+		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
+			t.Fatalf("unmarshal frame: %v", err)
+		}
+		if env.Pts != nil {
+			return *env.Pts, true
+		}
+		if env.D.Pts != nil {
+			return *env.D.Pts, true
+		}
+		return 0, false
+	}
+	t.Fatalf("no frame captured for user %d", userID)
+	return 0, false
+}
+
 func lastFrameOfType(t *testing.T, pub *fakePublisher, userID int64, typ string) map[string]any {
 	t.Helper()
 	pub.mu.Lock()
@@ -41,6 +74,8 @@ func lastFrameOfType(t *testing.T, pub *fakePublisher, userID int64, typ string)
 	return nil
 }
 
+// lastFrameFor decodes the payload (d) of the most recent frame published to
+// userID. Fails if no frame was captured for that user.
 func lastFrameFor(t *testing.T, pub *fakePublisher, userID int64) map[string]any {
 	t.Helper()
 	pub.mu.Lock()
@@ -116,11 +151,11 @@ func TestFramePts_MatchesUpdateRow(t *testing.T) {
 		t.Fatalf("React: %v", err)
 	}
 	for _, uid := range []int64{a, b} {
-		d := lastFrameFor(t, pub, uid)
-		if d["pts"] == nil {
+		got, ok := frameCursor(t, pub, uid)
+		if !ok {
 			t.Fatalf("reaction frame for %d missing pts", uid)
 		}
-		if got, want := asInt64(t, d["pts"]), rowPts(t, s, uid); got != want {
+		if want := rowPts(t, s, uid); got != want {
 			t.Fatalf("reaction pts for %d = %d; want row pts %d", uid, got, want)
 		}
 	}
@@ -298,4 +333,86 @@ func TestNewMessageEcho_CarriesClientMsgID(t *testing.T) {
 	if got, _ := msg["random_id"].(string); got != "opt-42" {
 		t.Fatalf("echo random_id = %q; want opt-42", got)
 	}
+}
+
+// (a2) Курсор живого кадра лежит там, где велит СХЕМА, — и это не вкусовщина.
+//
+// У updateNewMessage `pts` — параметр конструктора, значит он внутри тела. У
+// updateMessageReactions параметра pts нет вовсе: у оригинала такие кадры едут
+// в контейнере updates, и порядок им задаёт seq КОНТЕЙНЕРА. Дописать pts в
+// такое тело значило бы завести на конструкторе поле, которого в схеме нет, —
+// на проводе TL оно сдвинуло бы разбор всех последующих полей.
+func TestFramePts_LivesWhereSchemaSaysIt(t *testing.T) {
+	in, s := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// Конструктор С параметром pts: курсор ВНУТРИ тела, конверт его не дублирует.
+	// Прочтение взято потому, что оно идёт тем же строителем кадра, что и
+	// реакция, — разводит их именно схема, а не разные пути публикации.
+	pub.reset()
+	if err := in.MarkRead(ctx, chatID, b, msg.Seq); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	body := lastFrameOfType(t, pub, b, "read")
+	if body["pts"] == nil {
+		t.Fatalf("у кадра прочтения курсор не в теле: %#v", body)
+	}
+	if env := envelopePts(t, pub, b); env != nil {
+		t.Fatalf("курсор кадра прочтения продублирован в конверте: %d", *env)
+	}
+
+	// Конструктор БЕЗ параметра pts: курсор в КОНВЕРТЕ, тела он не касается.
+	pub.reset()
+	if err := in.React(ctx, chatID, msg.ID, b, "🔥", true); err != nil {
+		t.Fatalf("React: %v", err)
+	}
+	body = lastFrameOfType(t, pub, a, "reaction")
+	if _, stray := body["pts"]; stray {
+		t.Fatalf("курсор попал в тело конструктора без параметра pts: %#v", body)
+	}
+	env := envelopePts(t, pub, a)
+	if env == nil {
+		t.Fatal("курсор кадра реакций не поехал вовсе: клиент не сдвинет курсор и уйдёт в догон")
+	}
+	if want := rowPts(t, s, a); *env != want {
+		t.Fatalf("курсор в конверте = %d; строка журнала = %d", *env, want)
+	}
+
+	// Само правило читается из схемы, а не из списка имён рядом с ней.
+	if !domain.UpdateDeclaresPts(domain.UpdateNewMessageTag) {
+		t.Error("updateNewMessage объявляет pts параметром — схема говорит иначе")
+	}
+	if domain.UpdateDeclaresPts(domain.UpdateMessageReactionsTag) {
+		t.Error("у updateMessageReactions параметра pts в схеме нет")
+	}
+}
+
+// envelopePts — курсор из КОНВЕРТА последнего кадра получателя (nil — его там нет).
+func envelopePts(t *testing.T, pub *fakePublisher, userID int64) *int64 {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i := len(pub.frames) - 1; i >= 0; i-- {
+		if pub.frames[i].userID != userID {
+			continue
+		}
+		var env struct {
+			Pts *int64 `json:"pts"`
+		}
+		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
+			t.Fatalf("unmarshal frame: %v", err)
+		}
+		return env.Pts
+	}
+	t.Fatalf("no frame captured for user %d", userID)
+	return nil
 }

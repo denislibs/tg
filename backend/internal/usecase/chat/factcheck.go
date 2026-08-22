@@ -115,7 +115,7 @@ func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("factcheck_update", uid, map[string]any{"pts": ptsByUser[uid]}))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts("factcheck_update", uid, ptsByUser[uid]))
 		}
 	}
 	return msg, nil
