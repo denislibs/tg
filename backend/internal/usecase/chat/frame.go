@@ -109,21 +109,46 @@ const frameMessageKey = "message"
 // Payload-строители НЕ кладут ключ чата: он зависит от получателя и
 // приклеивается на выходе (withPeer / peerPayloads в updates_log.go).
 
-// messageUpdatePayload — тело кадра с сообщением: ОДИН конструктор схемы под
-// ключом `message` (решение Р5). Витрина HTTP отдаёт ровно его же —
-// Message.ToWire, второго сериализатора у сообщения больше нет.
+// messageUpdatePayload — тело кадра с сообщением: КОНСТРУКТОР
+// `updateNewMessage{message, pts, pts_count}`, а не словарь под ключом
+// `message`. Само сообщение внутри — тот же конструктор, что отдаёт витрина
+// HTTP (Message.ToWire), второго сериализатора у сообщения нет.
 //
 // Прежде здесь жила ВТОРАЯ форма, и расходилась она с витриной в обе стороны:
 // тут были sender_name, client_msg_id и reply_quote_*, там — views, forwards,
 // deleted, edited_at, reactions, star_reaction, web_page и reply_to.
+//
+// `pts` тела здесь НЕТ: он пер-получательский (у каждого свой плотный курсор) и
+// дописывается на выходе — framePts живому кадру, колонка журнала записи. Это
+// не отступление от схемы, а её же деление: тело кадра одно на всех, курсор —
+// у каждого свой.
 func (i *Interactor) messageUpdatePayload(ctx context.Context, m domain.Message) map[string]any {
+	return i.newMessagePayload(ctx, m, domain.UpdateNewMessageTag)
+}
+
+// channelMessagePayload — то же тело, но конструктором ПОСТА КАНАЛА.
+//
+// Разные конструкторы, а не флаг: у канала свой курсор, и различает их схема
+// именно конструктором (updateNewChannelMessage), а не именем ключа. Развилка
+// стоит там же, где она уже стоит у самой доставки, — по типу пира.
+func (i *Interactor) channelMessagePayload(ctx context.Context, m domain.Message) map[string]any {
+	return i.newMessagePayload(ctx, m, domain.UpdateNewChannelMessageTag)
+}
+
+func (i *Interactor) newMessagePayload(ctx context.Context, m domain.Message, tag string) map[string]any {
 	i.hydrateMessagePeers(ctx, &m)
 	// Корень треда наружу — НОМЕР в том же пире (ЕДИНАЯ точка перевода, см.
 	// ExternalizeThreadRoots). Прежде каждый вызывающий дописывал ключ
 	// thread_root_id в готовый payload сам, и забыть его было нечем не
 	// прикрыто.
 	m.ThreadRootID = i.externalThreadRoot(ctx, m)
-	return map[string]any{frameMessageKey: m.ToWireMap(i.messageContext(ctx, m, domain.NullPeerID))}
+	return map[string]any{
+		"_":             tag,
+		frameMessageKey: m.ToWireMap(i.messageContext(ctx, m, domain.NullPeerID)),
+		// Курсор двигается на единицу: он у нас плотный, и прежде клиент
+		// подразумевал этот шаг молча.
+		"pts_count": domain.PtsCountOne,
+	}
 }
 
 // messageContext — то, чего строка messages не знает о себе сама. Ключ пира у

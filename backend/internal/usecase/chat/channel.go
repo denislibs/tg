@@ -54,7 +54,7 @@ func (i *Interactor) channelPostPayload(ctx context.Context, m domain.Message) m
 	// подписчиков (в канале с миллионом их разворачивать по зрителям
 	// расточительно), а `out` — пер-зритель. Автор получает верный флаг из
 	// ответа на свою же публикацию и из истории.
-	return withPeer(i.messageUpdatePayload(ctx, m), domain.ToPeerID(m.ChatID, true), false)
+	return withPeer(i.channelMessagePayload(ctx, m), domain.ToPeerID(m.ChatID, true), false)
 }
 
 // SetSignatures toggles channel post signatures (Telegram
