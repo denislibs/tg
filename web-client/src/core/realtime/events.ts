@@ -1,5 +1,5 @@
 // src/core/realtime/events.ts
-import type { MessageEntity, RawMyMessage } from '../models'
+import type { MessageEntity, RawMyMessage, WireMessageReactions } from '../models'
 import type { MessageMedia } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
@@ -351,7 +351,26 @@ export interface PresenceEvt { user_id: number; status: UserStatus }
 // чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
 // клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
 // наличию counts. pts — для funnel-дедупа/гейта.
-export interface ReactionEvt { peer_id: PeerId; id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
+/**
+ * Реакции — `updateMessageReactions{peer, msg_id, reactions}`: АБСОЛЮТНОЕ
+ * состояние агрегата, тем же конструктором, что едет внутри сообщения.
+ *
+ * Диффа (кто, какой эмодзи, добавил или снял) в кадре больше нет: он был второй
+ * формой того же факта, и при гонке двух реакций клиент верил разным полям
+ * по-разному. Разницу выводит сам клиент — из состояния, которое у него уже
+ * есть.
+ *
+ * Агрегат помечен `pFlags.min`: тело кадра одно на всех получателей, значит
+ * моего `chosen_order` в нём нет и быть не может, — свой выбор клиент
+ * сохраняет, а не затирает отсутствием.
+ */
+export interface ReactionEvt {
+  _: 'updateMessageReactions'
+  peer: Peer
+  msg_id: number
+  reactions: WireMessageReactions
+  pts?: number
+}
 // Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
 // отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
 export interface StarReactionEvt { peer_id: PeerId; id: number; sender_id: number; total: number; mine: number }

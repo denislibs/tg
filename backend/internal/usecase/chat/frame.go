@@ -322,20 +322,27 @@ func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
 	}
 }
 
-// reactionPayload — тело фрейма/апдейта reaction. Помимо диффа (user_id + emoji +
-// action, нужного для анимации и вычисления mine на клиенте) несёт АБСОЛЮТНЫЙ
-// агрегат counts: [{emoji, count}] — полное текущее состояние реакций сообщения,
-// посчитанное в той же транзакции после Add/Remove. Абсолютный агрегат делает
-// повтор из /sync идемпотентным по построению. counts viewer-agnostic (без mine):
-// один и тот же payload уходит всем получателям и в лог.
-func reactionPayload(seq, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
-	if counts == nil {
-		counts = []domain.ReactionCount{}
-	}
+// reactionsPayload — тело кадра реакций: конструктор updateMessageReactions с
+// АБСОЛЮТНЫМ агрегатом сообщения.
+//
+// Диффа (кто, какой эмодзи, добавил или снял) здесь больше нет. Кадр вёз ДВЕ
+// формы одного факта сразу: авторитетный агрегат и дифф «для анимации», и при
+// гонке двух реакций клиент верил разным полям по-разному. У оригинала дифф
+// выводит КЛИЕНТ — из разницы с тем состоянием, которое у него уже есть.
+//
+// Агрегат помечен `min`: тело кадра одно на всех получателей, значит
+// пер-зрительской части (мой chosen_order) в нём нет и быть не может. Без флага
+// клиент не отличил бы «я не ставил» от «сервер этого не сообщил» и стёр бы
+// собственный выбор при первом же чужом клике — ровно тот дефект, который порт
+// опроса уже закрыл флагом pollResults.min.
+func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageReactions) map[string]any {
+	reactions.MarkMin()
 	return map[string]any{
-		"id": seq, "user_id": userID,
-		"author_id": authorID, "emoji": emoji, "action": action,
-		"counts": counts,
+		"_":         domain.UpdateMessageReactionsTag,
+		"peer":      domain.NewPeer(peer),
+		"msg_id":    seq,
+		"reactions": reactions,
+		"pts_count": domain.PtsCountOne,
 	}
 }
 

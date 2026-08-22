@@ -412,6 +412,11 @@ export function createWorkerCore() {
     if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, meta); return }
     const h = APPLY[t as LoggedWsType]
     if (!h) return
+    // Вопрос «выросло ли число реакций на МОЁМ сообщении» задаётся ДО того, как
+    // кадр ляжет в SSOT: после применения агрегата сравнивать было бы не с чем —
+    // окно уже содержало бы новое состояние. Порядок здесь и есть ответ.
+    const reactionsGrew = t === 'reaction'
+      && messages.reactionsGrewOnMyMessage(getPeerId((d as ReactionEvt).peer), (d as ReactionEvt).msg_id, (d as ReactionEvt).reactions)
     const ops = h.cache?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
     // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
@@ -449,13 +454,14 @@ export function createWorkerCore() {
     else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).peer_id, (d as DialogArchiveEvt).archived)
     else if (t === 'reaction') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
-      // реакций диалога (перенесено из storeProjection.ts вместе с телом
-      // bumpUnreadReactions — окно сообщений эта ветка не трогает, applyReaction
-      // остаётся на main, см. CLAUDE.md «реакции в окне сообщений»).
-      const r = d as ReactionEvt
-      if (r.action === 'add' && r.author_id === me?.user.id && r.user_id !== me?.user.id) {
-        dialogs.bumpUnreadReactions(r.peer_id, r.unread_reactions)
-      }
+      // реакций диалога.
+      //
+      // Кадр больше не несёт ни диффа, ни авторитетного счётчика: и «кто
+      // поставил», и «сколько теперь непрочитанных» — пер-зрительские, а тело
+      // кадра одно на всех получателей. Ответ дал владелец SSOT ВЫШЕ, до
+      // применения агрегата; авторитетное значение счётчика приезжает со
+      // строкой диалога, как и раньше.
+      if (reactionsGrew) dialogs.bumpUnreadReactions(getPeerId((d as ReactionEvt).peer))
     }
     broadcast(h.rt, d, meta)
   }

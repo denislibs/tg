@@ -17,4 +17,8 @@ export interface MessagesCtx {
   /** Ключи ВСЕХ окон чата, где сообщение сейчас видно (см. messagesManager.opWindowsFor) —
    * нужно под-модулям, которые сами порождают операции patch/remove (Stage 1B.3, Task 4). */
   opWindowsFor: (peerId: number, msgId: number) => string[]
+  /** Чтение одного сообщения из SSOT: для решений, зависящих от уже известного
+   *  состояния (кадр реакций несёт абсолютный агрегат без «моего» и без
+   *  счётчиков — сравнивать есть с чем только владельцу окна). */
+  readMsg: (peerId: number, msgId: number) => MyMessage | undefined
 }

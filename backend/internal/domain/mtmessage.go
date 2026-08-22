@@ -934,11 +934,17 @@ const (
 // «кто именно поставил» вынесено отдельным вектором messagePeerReaction, и
 // потому не дублируется в каждом чипе.
 //
-// Не производятся: min (объект пришёл урезанным — двух степеней полноты у нас
-// нет), can_see_list (список реагировавших у нас виден всегда), reactions_as_tags
-// (теги сохранённых сообщений), top_reactors (доска платных реакций).
+// Не производятся: can_see_list (список реагировавших у нас виден всегда) и
+// reactions_as_tags (теги сохранённых сообщений).
+//
+// `min` производится — и это не формальность, а тот же случай, что у
+// pollResults.min: тело кадра реакций одно на ВСЕХ получателей, значит
+// пер-зрительская часть (мой chosen_order) в нём заведомо отсутствует. Без
+// флага клиент не отличил бы «я не ставил» от «сервер этого не сообщил» и стёр
+// бы собственный выбор при первом же чужом клике.
 type MessageReactions struct {
-	Underscore string `json:"_"`
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	// Results — обязательный: чипы с числами. Едет пустым вектором, а не null.
 	Results []MTReactionCount `json:"results"`
 	// RecentReactions — flags.1?Vector<MessagePeerReaction>: кто поставил, до
@@ -951,6 +957,12 @@ type MessageReactions struct {
 	// рядом с обычными чипами.
 	TopReactors []MessageReactor `json:"top_reactors,omitempty"`
 }
+
+// MarkMin помечает агрегат УРЕЗАННЫМ (messageReactions.pFlags.min): в нём нет
+// пер-зрительской части, и клиенту следует сохранить свой выбор, а не затирать
+// его отсутствием chosen_order. Единственный производитель такого объекта —
+// кадр реакций, тело которого одно на всех получателей.
+func (r *MessageReactions) MarkMin() { setPFlag(&r.PFlags, "min", true) }
 
 // NewMessageReactions — агрегаты реакций сообщения.
 func NewMessageReactions(results []MTReactionCount, recent []MessagePeerReaction) MessageReactions {

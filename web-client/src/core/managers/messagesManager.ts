@@ -234,7 +234,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
   // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши, перевод/транскрипция и
   // реакции/теги/⭐ выделены в отдельные файлы, спредятся сюда — публичный API
   // messages.* не меняется.
-  const ctx = { rest, patchMsg, getMeId, opWindowsFor }
+  // readMsg — чтение одного сообщения из SSOT. Нужно там, где решение зависит
+  // от УЖЕ ИЗВЕСТНОГО состояния, а не от содержимого кадра: кадр реакций несёт
+  // абсолютный агрегат без пер-зрительской части, и «выросло ли число реакций
+  // на МОЁМ сообщении» отвечает только владелец окна.
+  const readMsg = (peerId: number, msgId: number): MyMessage | undefined => msgsByChat.get(peerId)?.get(msgId)
+  const ctx = { rest, patchMsg, getMeId, opWindowsFor, readMsg }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({

@@ -117,17 +117,28 @@ func TestReactionPayload_AbsoluteAndIdempotent(t *testing.T) {
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"})
 
-	// countsOf reads the absolute aggregate from the latest reaction frame for a.
+	// countsOf читает АБСОЛЮТНЫЙ агрегат из последнего кадра реакций для a.
+	// Агрегат едет конструктором messageReactions — тем же, что внутри самого
+	// сообщения; чип — reactionCount с объединением Reaction внутри.
 	countsOf := func() map[string]int64 {
 		d := lastFrameFor(t, pub, a)
-		raw, ok := d["counts"].([]any)
+		reactions, ok := d["reactions"].(map[string]any)
 		if !ok {
-			t.Fatalf("reaction payload missing counts array: %#v", d["counts"])
+			t.Fatalf("в кадре нет агрегата: %#v", d)
+		}
+		// Агрегат помечен min: пер-зрительской части в общем теле нет.
+		if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] != true {
+			t.Fatalf("агрегат кадра не помечен min: %#v", reactions["pFlags"])
+		}
+		raw, ok := reactions["results"].([]any)
+		if !ok {
+			t.Fatalf("в агрегате нет вектора results: %#v", reactions)
 		}
 		out := map[string]int64{}
 		for _, e := range raw {
 			m := e.(map[string]any)
-			out[m["emoji"].(string)] = asInt64(t, m["count"])
+			r := m["reaction"].(map[string]any)
+			out[r["emoticon"].(string)] = asInt64(t, m["count"])
 		}
 		return out
 	}
@@ -170,12 +181,15 @@ func TestReactionPayload_AbsoluteAndIdempotent(t *testing.T) {
 	if err := json.Unmarshal(last.Payload, &logPayload); err != nil {
 		t.Fatalf("unmarshal log payload: %v", err)
 	}
-	logCounts, ok := logPayload["counts"].([]any)
+	reactions, _ := logPayload["reactions"].(map[string]any)
+	logCounts, ok := reactions["results"].([]any)
 	if !ok || len(logCounts) != 1 {
-		t.Fatalf("log payload counts = %#v; want one entry", logPayload["counts"])
+		t.Fatalf("в записи журнала агрегат = %#v; ждали один чип", logPayload["reactions"])
 	}
-	if m := logCounts[0].(map[string]any); m["emoji"].(string) != "👍" || asInt64(t, m["count"]) != 1 {
-		t.Fatalf("log payload counts entry = %#v; want 👍:1", m)
+	m := logCounts[0].(map[string]any)
+	r := m["reaction"].(map[string]any)
+	if r["emoticon"].(string) != "👍" || asInt64(t, m["count"]) != 1 {
+		t.Fatalf("чип записи журнала = %#v; ждали 👍:1", m)
 	}
 }
 

@@ -65,13 +65,28 @@ func scanForInternalID(t *testing.T, where string, v any, internalID int64) {
 	}
 }
 
-// assertNoSecondNumber — ключей второго числа не бывает ни у одного кадра.
+// assertNoSecondNumber — второго числа на одно сообщение не бывает ни у одного
+// кадра.
+//
+// Проверяется ДВА утверждения. Первое: наших прежних имён внутреннего ключа
+// (seq, message_id) нет вовсе. Второе: адресных полей схемы (`id`, `msg_id`,
+// `messages`) в одном теле не больше одного — имя выбирает конструктор, и два
+// имени сразу значили бы, что рядом с адресом едет второе число.
 func assertNoSecondNumber(t *testing.T, where string, p map[string]any) {
 	t.Helper()
-	for _, banned := range []string{"msg_id", "seq", "message_id"} {
+	for _, banned := range []string{"seq", "message_id"} {
 		if _, ok := p[banned]; ok {
 			t.Errorf("%s: остался ключ %q — на одно сообщение должно быть одно число", where, banned)
 		}
+	}
+	addr := 0
+	for _, name := range []string{"id", "msg_id", "messages"} {
+		if _, ok := p[name]; ok {
+			addr++
+		}
+	}
+	if addr > 1 {
+		t.Errorf("%s: в теле %d адресных поля сразу — адрес у конструктора один", where, addr)
 	}
 }
 
@@ -91,11 +106,17 @@ func dropForeign(pub *fakePublisher, users ...int64) {
 	pub.frames = keep
 }
 
-// assertSingleNumber — у payload ровно одно поле идентичности: `id`, и это
-// номер в чате.
+// assertSingleNumber — у payload ровно одно поле идентичности, и это НОМЕР В
+// ЧАТЕ. Имя поля диктует схема: `id` у самого сообщения, `messages` вектором у
+// кадров, работающих с пачкой, `msg_id` у updateMessageReactions.
+//
+// Запрет распространяется на ВТОРОЕ число (наш прежний ключ строки под именем
+// seq/message_id), а не на схемное имя адреса: `msg_id` был в этом списке ровно
+// потому, что раньше означал внутренний ключ, — теперь он означает тот же
+// номер в чате, и проверяется его ЗНАЧЕНИЕ, а не отсутствие.
 func assertSingleNumber(t *testing.T, where string, p map[string]any, wantSeq int64) {
 	t.Helper()
-	for _, banned := range []string{"msg_id", "seq", "message_id"} {
+	for _, banned := range []string{"seq", "message_id"} {
 		if _, ok := p[banned]; ok {
 			t.Errorf("%s: остался второй ключ %q — на одно сообщение должно быть одно число", where, banned)
 		}
@@ -109,6 +130,12 @@ func assertSingleNumber(t *testing.T, where string, p map[string]any, wantSeq in
 	// вложений), адресуют вектором `messages` — так их объявляет схема. Правило
 	// «одно сообщение — одно число» от этого не меняется: числа в векторе те же
 	// номера в чате.
+	if addr, ok := p["msg_id"]; ok {
+		if got := asInt64(t, addr); got != wantSeq {
+			t.Errorf("%s: msg_id = %d, ждали номер в чате %d", where, got, wantSeq)
+		}
+		return
+	}
 	if list, ok := p["messages"].([]any); ok {
 		if len(list) == 0 {
 			t.Fatalf("%s: вектор messages пуст", where)

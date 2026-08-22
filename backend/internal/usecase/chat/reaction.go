@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"unicode/utf8"
 
@@ -44,34 +45,27 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		}
 	}
 
-	action := "remove"
-	if add {
-		action = "add"
-	}
-
-	// Build the payload once so the pts log and the live frame can never diverge.
-	// It carries the diff (user_id/emoji/action) AND the absolute aggregate (counts),
-	// computed in the tx after Add/Remove — the same payload goes to the log, so a
-	// /sync replay is idempotent by construction. Per-recipient pts is injected on
-	// top of this shared base at publish time.
+	// Тело кадра собирается один раз, чтобы журнал и живой кадр не разъехались:
+	// абсолютный агрегат, посчитанный в транзакции после Add/Remove. Реплей из
+	// /sync идемпотентен по построению — состояние абсолютное, а не дельта.
 	var members []int64
-	var p map[string]any
-	var pp *peerPayloads
+	var aggregate *domain.MessageReactions
+	var reactionAddr chatAddress
 	ptsByUser := map[int64]int64{} // per-recipient pts на каждый live-кадр реакции
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		unreadReactions := int64(-1)
 		if add {
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
 				return e
 			}
 			// Реакция на ЧУЖОЕ сообщение бампит счётчик непрочитанных реакций его
-			// автора (Telegram unread_reactions_count) — свои реакции не считаются.
+			// автора (Telegram unread_reactions_count) — свои реакции не
+			// считаются. Значение остаётся в базе и приезжает клиенту со
+			// строкой диалога: в кадр оно не идёт, потому что пер-зрительское,
+			// а тело кадра одно на всех получателей.
 			if userID != msg.SenderID {
-				n, e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID)
-				if e != nil {
+				if _, e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID); e != nil {
 					return e
 				}
-				unreadReactions = int64(n)
 			}
 		} else {
 			if e := i.reactions.Remove(ctx, messageID, userID, emoji); e != nil {
@@ -85,24 +79,32 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		if e != nil {
 			return e
 		}
-		p = reactionPayload(msg.Seq, userID, msg.SenderID, emoji, action, byMsg[messageID])
-		// unread_reactions адресован автору сообщения (клиент применяет, только если
-		// author_id == me); для остальных получателей поле безвредно.
-		if unreadReactions >= 0 {
-			p["unread_reactions"] = unreadReactions
+		// Агрегат сообщения в форме схемы: тот же конструктор, что едет внутри
+		// самого сообщения (Message.reactions), — второй формы у реакций больше
+		// нет. Счётчик непрочитанных реакций в кадре не едет вовсе: он
+		// пер-зрительский, а тело кадра одно на всех; клиент выводит бейдж сам
+		// из того, что реакция появилась на ЕГО сообщении (порт tweb).
+		aggregate = domain.Message{Reactions: byMsg[messageID]}.WireReactions()
+		if aggregate == nil {
+			// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
+			// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций
+			// нет» — такое же состояние, как «есть три», и едет пустым вектором.
+			empty := domain.NewMessageReactions(nil, nil)
+			aggregate = &empty
 		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
 		}
 		members = m
-		pp, e = i.newPeerPayloads(ctx, chatID, p)
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		reactionAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := json.Marshal(reactionsPayload(addr.forViewer(uid), msg.Seq, *aggregate))
 			if e != nil {
 				return e
 			}
@@ -121,7 +123,8 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		// Кадр с per-recipient pts (клиент двигает по нему курсор); payload несёт
 		// абсолютные counts, так что catch-up-реплей идемпотентен by construction.
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("reaction", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := reactionsPayload(reactionAddr.forViewer(uid), msg.Seq, *aggregate)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", body, ptsByUser[uid]))
 		}
 	}
 	return nil

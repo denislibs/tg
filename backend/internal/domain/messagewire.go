@@ -223,6 +223,10 @@ func (m Message) replyHeader() *MessageReplyHeader {
 // reactions — агрегаты реакций конструктором messageReactions. Платная
 // ⭐-реакция — ТОТ ЖЕ вектор results, но с конструктором reactionPaid: пары
 // {star_reaction:{total,mine}} рядом с обычными чипами в схеме нет.
+// WireReactions — тот же агрегат, что едет внутри сообщения. Экспортирован для
+// кадра реакций: второй сборки у этого объекта быть не должно.
+func (m Message) WireReactions() *MessageReactions { return m.reactions() }
+
 func (m Message) reactions() *MessageReactions {
 	if len(m.Reactions) == 0 && m.StarReactionTotal == 0 {
 		return nil

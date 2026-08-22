@@ -6,6 +6,8 @@
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
 import { reactionDelta } from '../../reactionDelta'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
+import { mapReactions } from '../../models'
+import { getPeerId } from '../../peers/peerId'
 import type { MyMessage } from '../../models'
 import type { ReactionEvt, StarReactionEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
@@ -92,33 +94,39 @@ function mapStarSenders(rows: StarSender[] | undefined): StarSender[] {
 // Эталон семантики — messagesStore.reactions.test.ts (не менять, только
 // сверяться). Если решение по poll/giveaway (Task 4) когда-нибудь расширят на
 // массивы через отдельный тип операции — тогда стоит вернуться и сюда.
-export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
-  // Дельта реакции (count±1 по emoji) → SSOT. `mine` = моё ли действие
-  // (user_id === meId). null из дельты — эхо своего уже применённого действия, no-op.
-  const applyReactionToCache = (evt: ReactionEvt): void => {
-    const mine = evt.user_id === (getMeId?.() ?? null)
-    const id = generateMessageId(evt.id)
-    patchMsg(evt.peer_id, (m) => m.id === id, (m: MyMessage) => {
-      const next = reactionDelta(m.reactions, evt.emoji, evt.action, mine)
+export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: MessagesCtx) {
+  // Дельта СВОЕГО клика (count±1 по emoji) → SSOT: оптимистика до сети.
+  //
+  // Кадром это больше не притворяется. Прежде функция принимала ReactionEvt и
+  // вызывающие лепили фальшивый кадр со своим user_id — форма провода служила
+  // внутренним протоколом менеджера. Кадр теперь несёт абсолютное состояние без
+  // диффа, и собственный клик — единственное место, где дельта вообще
+  // осмысленна.
+  const applyLocalDelta = (peerId: number, msgId: number, emoji: string, action: 'add' | 'remove'): void => {
+    const id = generateMessageId(msgId)
+    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
+      const next = reactionDelta(m.reactions, emoji, action, true)
       return next === null ? null : { ...m, reactions: next }
     })
   }
-  // АБСОЛЮТНЫЙ агрегат (серверное эхо с counts) → SSOT verbatim; `mine` деривим.
+  // АБСОЛЮТНЫЙ агрегат кадра → SSOT. Свой выбор (`mine`) СОХРАНЯЕТСЯ: тело
+  // кадра одно на всех получателей и потому помечено `pFlags.min` — моего
+  // chosen_order в нём нет и быть не может. Прежде «моё» вычислялось из двух
+  // внешних сигналов (свой ли user_id, add или remove), которых в самом
+  // агрегате нет, — вместе с диффом они из кадра ушли.
+  //
   // Идемпотентно на реплей (catch-up), поэтому дедуп по pts тут не нужен.
   const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
-    const counts = evt.counts ?? []
-    const isMine = evt.user_id === (getMeId?.() ?? null)
-    const id = generateMessageId(evt.id)
-    patchMsg(evt.peer_id, (m) => m.id === id, (m: MyMessage) => {
+    const peerId = getPeerId(evt.peer)
+    const id = generateMessageId(evt.msg_id)
+    const { reactions } = mapReactions(evt.reactions)
+    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
       const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
-      const next = counts.map((c) => {
-        let mine = prevMine.has(c.emoji)
-        if (isMine && c.emoji === evt.emoji) mine = evt.action === 'add'
-        return { emoji: c.emoji, count: c.count, mine }
-      })
+      const next = (reactions ?? []).map((r) => ({ ...r, mine: prevMine.has(r.emoji) }))
       return { ...m, reactions: next.length ? next : undefined }
     })
   }
+
   // Платная ⭐-реакция → SSOT: total авторитетен, свой вклад (mine) — только для
   // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
   const applyStarToCache = (evt: StarReactionEvt): void => {
@@ -133,11 +141,22 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
     // С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без counts (оптимистичный
     // клик до эха) — дельта.
     cacheReaction(evt: ReactionEvt): void {
-      if (evt.counts) applyAbsoluteReactionToCache(evt)
-      else applyReactionToCache(evt)
+      applyAbsoluteReactionToCache(evt)
     },
     cacheStarReaction(evt: StarReactionEvt): void {
       applyStarToCache(evt)
+    },
+
+    // Выросло ли число реакций на МОЁМ сообщении — вопрос, на который отвечает
+    // только владелец окна: кадр несёт абсолютный агрегат без «кто поставил» и
+    // без пер-зрительских счётчиков, потому что тело одно на всех получателей.
+    // Бейдж непрочитанных реакций бампится по этому ответу (порт tweb: дифф
+    // выводит клиент), а авторитетное значение приезжает со строкой диалога.
+    reactionsGrewOnMyMessage(peerId: number, serverMsgId: number, wire: ReactionEvt['reactions']): boolean {
+      const m = readMsg(peerId, generateMessageId(serverMsgId))
+      if (!m || m._ !== 'message' || !m.pFlags.out) return false
+      const total = (list: { count: number }[] | undefined) => (list ?? []).reduce((sum, r) => sum + r.count, 0)
+      return total(mapReactions(wire).reactions) > total(m.reactions)
     },
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)
@@ -145,22 +164,22 @@ export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
     // обязателен для верной деривации `mine`; пока не разрешён (старт) — ждём эхо.
     async react(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'add' })
+      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add')
       try {
         await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions`, { emoji })
       } catch (e) {
-        if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'remove' })
+        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove')
         throw e
       }
     },
 
     async unreact(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'remove' })
+      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove')
       try {
         await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/${encodeURIComponent(emoji)}`)
       } catch (e) {
-        if (me != null) applyReactionToCache({ peer_id: peerId, id: getServerMessageId(msgId), user_id: me, emoji, action: 'add' })
+        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add')
         throw e
       }
     },

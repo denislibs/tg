@@ -54,18 +54,16 @@ export const EMPTY_WINDOW: ChatWindow = {
 // (counts безличный) → деривим: сохраняем прежний mine для не затронутых emoji,
 // а для emoji своего действия ставим (add) / снимаем (remove). myEmoji/myAction
 // заданы только когда реагировал я — иначе весь прежний mine переносится as-is.
+// Абсолютный агрегат сервера поверх окна. `mine` берётся ИЗ ОКНА: кадр помечен
+// `pFlags.min` — пер-зрительской части в общем теле нет, и «сервер не сообщил»
+// это не «я не ставил». Прежде сюда ехали ещё два внешних сигнала (мой эмодзи и
+// действие), которых в самом агрегате не было вовсе, — они ушли вместе с диффом.
 function setReactions(
   prev: ReactionCount[] | undefined,
-  counts: { emoji: string; count: number }[],
-  myEmoji: string | null,
-  myAction: 'add' | 'remove' | null,
+  counts: ReactionCount[],
 ): ReactionCount[] | undefined {
   const prevMine = new Set((prev ?? []).filter((r) => r.mine).map((r) => r.emoji))
-  const next = counts.map((c) => {
-    let mine = prevMine.has(c.emoji)
-    if (myEmoji === c.emoji && myAction) mine = myAction === 'add'
-    return { emoji: c.emoji, count: c.count, mine }
-  })
+  const next = counts.map((c) => ({ ...c, mine: prevMine.has(c.emoji) }))
   return next.length ? next : undefined
 }
 function sameReactions(a: ReactionCount[] | undefined, b: ReactionCount[] | undefined): boolean {
@@ -123,7 +121,7 @@ interface MessagesState {
    * действия ставим (add) / снимаем (remove). myEmoji/myAction заданы только когда
    * реагировал я (user_id===meId), иначе null → mine целиком сохраняется. Идемпотентно
    * на реплей (тот же агрегат → no-op). */
-  applyReaction: (peerId: number, msgId: number, counts: { emoji: string; count: number }[], myEmoji: string | null, myAction: 'add' | 'remove' | null) => void
+  applyReaction: (peerId: number, msgId: number, counts: ReactionCount[]) => void
   /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
    * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
   applyReactionOptimistic: (
@@ -306,14 +304,14 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyReaction: (peerId, msgId, counts, myEmoji, myAction) =>
+  applyReaction: (peerId, msgId, counts) =>
     set((s) =>
       patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
           if (m.id !== msgId) return m
-          const next = setReactions(m.reactions, counts, myEmoji, myAction)
+          const next = setReactions(m.reactions, counts)
           if (sameReactions(m.reactions, next)) return m
           changed = true
           return { ...m, reactions: next }

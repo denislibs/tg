@@ -69,7 +69,7 @@ beforeEach(() => {
 })
 
 /** Поднимает воркер с диалогом peerId=1 уже в кэше dialogsManager (через fillMirror). */
-async function bootWithSeededDialog(): Promise<{ dialogOps: DialogOp[] }> {
+async function bootWithSeededDialog(): Promise<{ dialogOps: DialogOp[]; core: ReturnType<typeof createWorkerCore> }> {
   await saveDialogs([dialog(1, '2026-08-01T00:00:00Z')])
   const core = createWorkerCore()
   const [epWorker, epTab] = pair()
@@ -80,7 +80,24 @@ async function bootWithSeededDialog(): Promise<{ dialogOps: DialogOp[] }> {
   await tab.invoke('manager', { name: 'dialogs', method: 'fillMirror', args: [] })
   dialogOps.length = 0 // интересуют только операции от самого кадра, не reset из fillMirror
   expect(capturedConnDeps).not.toBeNull()
-  return { dialogOps }
+  return { dialogOps, core }
+}
+
+/** История чата в SSOT воркера: бейдж непрочитанных реакций считает владелец
+ *  окна, поэтому сообщение должно быть ему известно.
+ *
+ *  `core.start()` здесь обязателен: историю менеджер отдаёт только после
+ *  гидрации личности (гейт `meReady`), а без неё промис не резолвится вовсе —
+ *  тот же приём, что в workerCore.meHydration.test.ts. */
+async function seedHistory(core: ReturnType<typeof createWorkerCore>, messages: unknown[]): Promise<void> {
+  vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+    if (String(url).includes('/chats/1/history')) {
+      return new Response(JSON.stringify({ messages, count: messages.length }), { status: 200 })
+    }
+    throw new Error('unexpected fetch ' + String(url))
+  }))
+  core.start()
+  await core.registry.messages.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
 }
 
 describe('createWorkerCore(): realtime-кадры применяет владелец (Task 3)', () => {
@@ -180,26 +197,50 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'remove', peerId: 1 }])
   })
 
-  // author_id/user_id в payload сверяются с me?.id — в этом стенде core.start() не
-  // звался (только bind()), поэтому `me` остаётся null: author_id тоже не задаём
-  // (undefined === undefined), реагирующий (user_id) — любой другой id.
-  it('reaction на моё сообщение от чужого (без pts) → dialogs.bumpUnreadReactions → rt:dialog_op patch', async () => {
-    const { dialogOps } = await bootWithSeededDialog()
+  // Кадр реакций несёт ТОЛЬКО абсолютный агрегат: ни «кто поставил», ни
+  // пер-зрительского счётчика в нём нет — тело одно на всех получателей.
+  // Поэтому бейдж бампится по ответу владельца SSOT: моё ли это сообщение и
+  // выросло ли общее число реакций. Сообщение сюда кладём живым кадром — тем
+  // же путём, каким его получил бы воркер в жизни.
+  it('реакция выросла на МОЁМ сообщении → dialogs.bumpUnreadReactions', async () => {
+    const { dialogOps, core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
+    dialogOps.length = 0
 
     capturedConnDeps!.onFrame('reaction', {
-      peer_id: 1, msg_id: 5, user_id: 9, emoji: '👍', action: 'add', unread_reactions: 3,
+      _: 'updateMessageReactions',
+      peer: { _: 'peerUser', user_id: 1 },
+      msg_id: 5,
+      reactions: {
+        _: 'messageReactions',
+        pFlags: { min: true },
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+      },
     })
 
-    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 3 } }])
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 1 } }])
   })
 
-  it('reaction от меня самого — bumpUnreadReactions НЕ зовётся (isMine)', async () => {
-    const { dialogOps } = await bootWithSeededDialog()
+  // Повторный кадр с ТЕМ ЖЕ агрегатом (реплей из догона) не бампит: агрегат
+  // абсолютный, а бейдж считается по РОСТУ. Этой же арифметикой гасится и
+  // собственный клик — он уже применён оптимистично, и кадр его не «добавляет».
+  it('повтор того же агрегата — bumpUnreadReactions НЕ зовётся', async () => {
+    const { dialogOps, core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
+    const frame = {
+      _: 'updateMessageReactions',
+      peer: { _: 'peerUser', user_id: 1 },
+      msg_id: 5,
+      reactions: {
+        _: 'messageReactions',
+        pFlags: { min: true },
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+      },
+    }
+    capturedConnDeps!.onFrame('reaction', frame)
+    dialogOps.length = 0
 
-    // user_id не задан → тоже undefined === me?.id, т.е. «это моя реакция» — гасим бампинг.
-    capturedConnDeps!.onFrame('reaction', {
-      peer_id: 1, msg_id: 5, action: 'add', emoji: '👍', unread_reactions: 3,
-    })
+    capturedConnDeps!.onFrame('reaction', frame)
 
     expect(dialogOps).toEqual([])
   })

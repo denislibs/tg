@@ -792,7 +792,7 @@ export type RawMyMessage = RawMessageReal | RawMessageService
  * `reaction`/`star_reaction` по-прежнему несут плоские `counts`, и держать обе
  * формы одновременно в полёте значило бы развести их.
  */
-function mapReactions(r: WireMessageReactions | undefined): { reactions?: ReactionCount[]; starReaction?: { total: number; mine: number } } {
+export function mapReactions(r: WireMessageReactions | undefined): { reactions?: ReactionCount[]; starReaction?: { total: number; mine: number } } {
   if (!r) return {}
   const flat: ReactionCount[] = []
   let starTotal = 0

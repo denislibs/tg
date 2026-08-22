@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraft, mapBoostStatus, mapSuggestedPost, mapMessage } from '../../core/models'
+import { mapDraft, mapBoostStatus, mapSuggestedPost, mapMessage, mapReactions } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -240,21 +240,15 @@ export function registerStoreProjection(managers: Managers): void {
       }, TYPING_TTL),
     )
   })
-  // Реакция → окно сообщений. Серверное эхо (live/catch-up) несёт АБСОЛЮТНЫЙ агрегат
-  // (counts) → set verbatim; поверх оптимистичного клика (хук) даёт тот же результат.
+  // Реакция → окно сообщений. Кадр несёт АБСОЛЮТНОЕ состояние агрегата тем же
+  // конструктором, что едет внутри сообщения, и помечен `pFlags.min`: моего
+  // выбора в общем теле нет и быть не может, поэтому `mine` сохраняется из
+  // окна, а не берётся из кадра. Оптимистику клика двигает хук
+  // (applyReactionOptimistic) — здесь только серверное состояние.
   rootScope.addEventListener(RT.reaction, (raw) => {
     const e = raw as ReactionEvt
-    const meId = useChatsStore.getState().meId
-    const isMine = e.user_id === meId
-    // Серверное эхо реакции несёт АБСОЛЮТНЫЙ агрегат (counts) → ставим verbatim.
-    // Оптимистику клика теперь двигает хук (applyReactionOptimistic), не воркер-эхо.
-    if (e.counts) {
-      useMessagesStore.getState().applyReaction(e.peer_id, generateMessageId(e.id), e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
-    }
-    // Task 3: бейдж непрочитанных реакций диалога (Telegram unread_reactions_count)
-    // теперь бампит владелец (workerCore.ts::dispatch → dialogs.bumpUnreadReactions →
-    // rt:dialog_op) — строка store.bumpUnreadReactions здесь была вторым, main-side
-    // выводом того же факта. Окно сообщений (applyReaction выше) не трогаем.
+    const { reactions } = mapReactions(e.reactions)
+    useMessagesStore.getState().applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), reactions ?? [])
   })
   // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
   // обновляем только у самого отправителя (эхо своего действия), иначе не трогаем.
