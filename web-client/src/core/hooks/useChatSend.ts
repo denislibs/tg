@@ -22,6 +22,7 @@ import { useManagers } from './useManagers'
 import { startLiveShare } from '../liveShareEngine'
 import { scaleImageForSend } from '../media/scaleImageForSend'
 import type { MessageSendingParams } from '../managers/messages/sendingParams'
+import type { SendMessageAction } from '../realtime/events'
 import type { Sticker } from '../managers/stickersManager'
 
 /**
@@ -160,7 +161,7 @@ export function useChatSend({
 
   // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
   // do with a finished clip: upload + send (creating the private chat first on a draft).
-  const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ peerId: numericChatId, action: 'voice' }) }
+  const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ peerId: numericChatId, action: { _: 'sendMessageRecordAudioAction' } }) }
   const rec = useVoiceRecorder({
     onStart: pingVoiceTyping,
     onSecond: pingVoiceTyping,
@@ -390,10 +391,10 @@ export function useChatSend({
     // «Отправляет файл/фото/видео/аудио» у собеседника на время аплоада
     // (tweb sendMessageUpload*Action). Сам пинг крутит владелец аплоада —
     // messages.sendFile в воркере; здесь только выбор действия по типу.
-    const uploadAction = type === 'photo' ? 'upload_photo' as const
-      : type === 'video' ? 'upload_video' as const
-      : type === 'audio' ? 'upload_audio' as const
-      : 'upload_file' as const
+    const uploadAction: SendMessageAction = type === 'photo' ? { _: 'sendMessageUploadPhotoAction' }
+      : type === 'video' ? { _: 'sendMessageUploadVideoAction' }
+      : type === 'audio' ? { _: 'sendMessageUploadAudioAction' }
+      : { _: 'sendMessageUploadDocumentAction' }
     // Фото/видео как медиа (tweb isMedia): бабл появляется СРАЗУ с локальным
     // превью и кольцом прогресса (tweb is_outgoing + ProgressivePreloader).
     const isVisual = (type === 'photo' || type === 'video') && !asFile

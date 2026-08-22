@@ -341,6 +341,32 @@ func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
 	}
 }
 
+// typingPayload — тело кадра «печатает».
+//
+// Конструктора два, и выбирает между ними ТИП ЧАТА, а не флаг: в личном чате
+// пир — это сам печатающий (updateUserTyping ключа пира не несёт вовсе), а в
+// группе адрес чата и автор — разные параметры, потому что это разные вопросы.
+//
+// Отсюда и упрощение рассылки: тело одно на всех получателей, потому что
+// пер-зрительского в нём ничего нет. Прежде ключ пира приклеивался снаружи
+// каждому — как у кадров, где он и правда зависит от зрителя.
+func typingPayload(addr chatAddress, userID int64, act domain.SendMessageAction) map[string]any {
+	// members != nil — личный чат или «Избранное»: у них пир это человек.
+	if addr.members != nil {
+		return map[string]any{
+			"_":       domain.UpdateUserTypingTag,
+			"user_id": userID,
+			"action":  act,
+		}
+	}
+	return map[string]any{
+		"_":          domain.UpdateChannelUserTypingTag,
+		"channel_id": addr.chatID,
+		"from_id":    domain.NewPeerUser(userID),
+		"action":     act,
+	}
+}
+
 // draftPayload — тело кадра черновика.
 //
 // «Черновик снят» — КОНСТРУКТОР draftMessageEmpty, а не `draft: null`. Прежде

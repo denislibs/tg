@@ -1,6 +1,6 @@
 // src/core/realtime/connectionManager.ts
 import type { Transport } from '../net/transport'
-import type { ConnState, TypingAction } from './events'
+import type { ConnState, SendMessageAction } from './events'
 import type { MessageEntity } from '../models'
 import { FRAME_TYPES } from './eventCatalog'
 
@@ -184,7 +184,11 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     },
     // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
     markMediaRead(peerId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { peer_id: peerId, msg_id: msgId }) },
-    sendTyping(peerId: number, action: TypingAction = 'typing') { if (ws.isOpen()) ws.send('typing', { peer_id: peerId, action }) },
+    // Действие едет КОНСТРУКТОРОМ (у оригинала это messages.setTyping{peer,
+    // action}) — одна форма на обе стороны провода.
+    sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }) {
+      if (ws.isOpen()) ws.send('typing', { peer_id: peerId, action })
+    },
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.
     sendCallFrame(type: string, data: Record<string, unknown>) { if (ws.isOpen()) ws.send(type, data) },

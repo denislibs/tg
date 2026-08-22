@@ -95,9 +95,14 @@ type readMediaData struct {
 	Seq    int64         `json:"id"`
 }
 
+// typingData — «печатает» от клиента. Действие едет КОНСТРУКТОРОМ объединения
+// SendMessageAction (у оригинала это messages.setTyping{peer, action}), а не
+// строкой из шести значений: одна форма на обе стороны провода.
 type typingData struct {
 	PeerID domain.PeerID `json:"peer_id"`
-	Action string        `json:"action"` // "typing" | "voice" | "video" (default typing)
+	Action struct {
+		Underscore string `json:"_"`
+	} `json:"action"`
 }
 
 // replyPeerChatID — reply_to_peer_id входящего кадра (ключ пира ЧУЖОГО чата)

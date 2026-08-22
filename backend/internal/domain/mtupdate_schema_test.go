@@ -67,6 +67,15 @@ func updateCases() []struct {
 			return NewDraftMessage("набросок", nil, &id, time.Unix(1787334148, 0))
 		}())},
 		{"черновик снят", NewUpdateDraftMessage(peer, NewDraftMessageEmpty())},
+		{"печатает в личке", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageTypingActionTag))},
+		{"записывает голосовое", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageRecordAudioActionTag))},
+		{"записывает видео", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageRecordVideoActionTag))},
+		{"отправляет файл", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageUploadDocumentActionTag))},
+		{"отправляет фото", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageUploadPhotoActionTag))},
+		{"отправляет видео", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageUploadVideoActionTag))},
+		{"отправляет аудио", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageUploadAudioActionTag))},
+		{"печатает в группе", NewUpdateChannelUserTyping(5, peer, SendMessageActionByTag(SendMessageTypingActionTag))},
+		{"присутствие", NewUpdateUserStatus(7, NewUserStatusOnline(time.Unix(1787334148, 0)))},
 	}
 }
 
@@ -137,6 +146,16 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateFolderPeersTag,
 		UpdateNotifySettingsTag,
 		UpdateDraftMessageTag,
+		UpdateUserTypingTag,
+		UpdateChannelUserTypingTag,
+		UpdateUserStatusTag,
+		SendMessageTypingActionTag,
+		SendMessageRecordAudioActionTag,
+		SendMessageRecordVideoActionTag,
+		SendMessageUploadDocumentActionTag,
+		SendMessageUploadPhotoActionTag,
+		SendMessageUploadVideoActionTag,
+		SendMessageUploadAudioActionTag,
 	}
 
 	covered := map[string]bool{}

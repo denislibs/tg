@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import type { Dialog } from '../core/models'
 import type { PeerProfile } from '../core/managers/authManager'
-import type { PresenceEvt, TypingAction } from '../core/realtime/events'
+import type { PresenceEvt, SendMessageAction } from '../core/realtime/events'
 import { reconcileById } from '../core/store/reconcile'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { UserStatus } from '../core/peers/peer'
@@ -11,7 +11,7 @@ import { isUser } from '../core/peers/peerId'
 // Per-chat typing state: peerId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
 // cleared on a timer / when the user sends a message.
-export interface TypingEntry { action: TypingAction; at: number }
+export interface TypingEntry { action: SendMessageAction; at: number }
 export type ChatTyping = Record<number, TypingEntry>
 
 interface ChatsState {
@@ -62,7 +62,7 @@ interface ChatsState {
   // успешного REST-ответа; вызывавшая их витрина (ChatListItem/Chat/
   // useMuteToggle/useAppHotkeys/ChatThemesPicker) больше их не трогает.
   setPresence: (p: PresenceEvt) => void
-  setTyping: (peerId: number, userId: number, action: TypingAction, at: number) => void
+  setTyping: (peerId: number, userId: number, action: SendMessageAction, at: number) => void
   clearTyping: (peerId: number, userId: number) => void
 }
 

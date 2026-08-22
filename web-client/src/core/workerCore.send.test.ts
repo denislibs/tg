@@ -107,7 +107,7 @@ describe('createWorkerCore(): отправка соединена с транс�
 
     const r = await core.registry.messages.sendFile({
       peerId: 1, clientMsgId: 'c2', senderId: 5, file: new Blob(['x'], { type: 'image/jpeg' }),
-      type: 'photo', fileName: 'p.jpg', width: 10, height: 20, isMedia: true, uploadAction: 'upload_photo',
+      type: 'photo', fileName: 'p.jpg', width: 10, height: 20, isMedia: true, uploadAction: { _: 'sendMessageUploadPhotoAction' } as const,
     })
 
     expect(r).toEqual({ mediaId: 909 })
@@ -123,10 +123,11 @@ describe('createWorkerCore(): отправка соединена с транс�
     const { core } = boot()
 
     await core.registry.messages.sendFile({
-      peerId: 7, clientMsgId: 'c3', senderId: 5, file: new Blob(['x']), type: 'document', uploadAction: 'upload_file',
+      peerId: 7, clientMsgId: 'c3', senderId: 5, file: new Blob(['x']), type: 'document', uploadAction: { _: 'sendMessageUploadDocumentAction' } as const,
     })
 
-    expect(typings[0]).toEqual({ peerId: 7, action: 'upload_file' })
+    // Действие — КОНСТРУКТОР объединения SendMessageAction, а не наш код строкой.
+    expect(typings[0]).toEqual({ peerId: 7, action: { _: 'sendMessageUploadDocumentAction' } })
   })
 
   // Что ломается: без стрелки `uploadProgress` кольцо загрузки на бабле не

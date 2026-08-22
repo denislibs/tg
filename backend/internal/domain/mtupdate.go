@@ -66,6 +66,20 @@ const (
 	UpdateFolderPeersTag              = "updateFolderPeers"
 	UpdateNotifySettingsTag           = "updateNotifySettings"
 	UpdateDraftMessageTag             = "updateDraftMessage"
+	UpdateUserTypingTag               = "updateUserTyping"
+	UpdateChannelUserTypingTag        = "updateChannelUserTyping"
+	UpdateUserStatusTag               = "updateUserStatus"
+)
+
+// Значения дискриминатора `_` объединения SendMessageAction.
+const (
+	SendMessageTypingActionTag         = "sendMessageTypingAction"
+	SendMessageRecordAudioActionTag    = "sendMessageRecordAudioAction"
+	SendMessageRecordVideoActionTag    = "sendMessageRecordVideoAction"
+	SendMessageUploadDocumentActionTag = "sendMessageUploadDocumentAction"
+	SendMessageUploadPhotoActionTag    = "sendMessageUploadPhotoAction"
+	SendMessageUploadVideoActionTag    = "sendMessageUploadVideoAction"
+	SendMessageUploadAudioActionTag    = "sendMessageUploadAudioAction"
 )
 
 // PtsCountOne — на сколько кадр двигает курсор.
@@ -496,6 +510,144 @@ func (u UpdateDraftMessage) Tag() string { return u.Underscore }
 
 func NewUpdateDraftMessage(peer Peer, draft DraftMessage) UpdateDraftMessage {
 	return UpdateDraftMessage{Underscore: UpdateDraftMessageTag, Peer: peer, Draft: draft}
+}
+
+// ── Печатает: SendMessageAction ─────────────────────────────────────────────
+//
+// Что именно делает собеседник — ОБЪЕДИНЕНИЕ из 21 конструктора, а у нас это
+// была строка из шести значений с дефолтом «typing». Седьмое место в программе,
+// где вид сущности подделан строкой.
+//
+// Разница не в форме: у конструкторов sendMessageUpload*Action есть параметр
+// `progress`, то есть у оригинала полоска «отправляет фото 40%» ВЫРАЗИМА, а у
+// строки её выразить нечем. Мы его пока не производим (клиент не шлёт прогресс
+// аплоада на пинге печати) — пропуск назван в OmittedWithoutSubject, и теперь
+// это отсутствующее ЗНАЧЕНИЕ, а не отсутствующая возможность.
+//
+// Не производятся: sendMessageCancelAction («перестал печатать» у нас гасит
+// TTL на клиенте, отдельного кадра нет), геолокация, выбор контакта, игра,
+// кружок (record/upload Round), выступление в звонке, импорт истории, выбор
+// стикера и эмодзи-интеракции — предмета нет ни у одного.
+type SendMessageAction interface {
+	isSendMessageAction()
+	Tag() string
+}
+
+// sendMessageTypingAction#16bf744e = SendMessageAction;
+type SendMessageTypingAction struct {
+	Underscore string `json:"_"`
+}
+
+func (SendMessageTypingAction) isSendMessageAction() {}
+func (a SendMessageTypingAction) Tag() string        { return a.Underscore }
+
+// sendMessageRecordAudioAction#d52f73f7 = SendMessageAction; — наш «voice».
+type SendMessageRecordAudioAction struct {
+	Underscore string `json:"_"`
+}
+
+func (SendMessageRecordAudioAction) isSendMessageAction() {}
+func (a SendMessageRecordAudioAction) Tag() string        { return a.Underscore }
+
+// sendMessageRecordVideoAction#a187d66f = SendMessageAction; — наш «video».
+type SendMessageRecordVideoAction struct {
+	Underscore string `json:"_"`
+}
+
+func (SendMessageRecordVideoAction) isSendMessageAction() {}
+func (a SendMessageRecordVideoAction) Tag() string        { return a.Underscore }
+
+// sendMessageUploadDocumentAction#aa0cd9e4 progress:int = SendMessageAction;
+// sendMessageUploadPhotoAction#d1d34a26 progress:int = SendMessageAction;
+// sendMessageUploadVideoAction#e9763aec progress:int = SendMessageAction;
+// sendMessageUploadAudioAction#f351d7ab progress:int = SendMessageAction;
+//
+// Четыре конструктора одной формы — «отправляет файл/фото/видео/аудио».
+// `progress` обязателен и не производится (см. шапку раздела).
+type SendMessageUploadAction struct {
+	Underscore string `json:"_"`
+}
+
+func (SendMessageUploadAction) isSendMessageAction() {}
+func (a SendMessageUploadAction) Tag() string        { return a.Underscore }
+
+// SendMessageActionByTag — действие по ДИСКРИМИНАТОРУ с провода.
+//
+// Разбор здесь, а не в транспорте, ровно по той же причине, по какой сущности
+// разбирает mtentity.go: список произведённых конструкторов один, и жить он
+// обязан рядом с их объявлением. Неизвестный (или чужой из будущего) —
+// обычная печать: индикатор существует, чтобы показывать активность, и
+// молчание из-за незнакомого кода было бы хуже приблизительного ответа.
+func SendMessageActionByTag(predicate string) SendMessageAction {
+	switch predicate {
+	case SendMessageRecordAudioActionTag:
+		return SendMessageRecordAudioAction{Underscore: SendMessageRecordAudioActionTag}
+	case SendMessageRecordVideoActionTag:
+		return SendMessageRecordVideoAction{Underscore: SendMessageRecordVideoActionTag}
+	case SendMessageUploadDocumentActionTag, SendMessageUploadPhotoActionTag,
+		SendMessageUploadVideoActionTag, SendMessageUploadAudioActionTag:
+		return SendMessageUploadAction{Underscore: predicate}
+	}
+	return SendMessageTypingAction{Underscore: SendMessageTypingActionTag}
+}
+
+// updateUserTyping#2a17bf5c flags:# user_id:long top_msg_id:flags.0?int
+// action:SendMessageAction = Update;
+//
+// Печатают В ЛИЧНОМ чате. Ключа пира у кадра нет и не нужно: пир ЭТО и есть
+// печатающий — у нас же ключ приклеивался снаружи, как у всех прочих кадров.
+//
+// top_msg_id (печатают в треде) не производится: тредового индикатора у нас нет.
+type UpdateUserTyping struct {
+	Underscore string            `json:"_"`
+	UserID     int64             `json:"user_id"`
+	Action     SendMessageAction `json:"action"`
+}
+
+func (UpdateUserTyping) isUpdate()     {}
+func (u UpdateUserTyping) Tag() string { return u.Underscore }
+
+func NewUpdateUserTyping(userID int64, action SendMessageAction) UpdateUserTyping {
+	return UpdateUserTyping{Underscore: UpdateUserTypingTag, UserID: userID, Action: action}
+}
+
+// updateChannelUserTyping#8c88c923 flags:# channel_id:long top_msg_id:flags.0?int
+// from_id:Peer action:SendMessageAction = Update;
+//
+// Печатают в ГРУППЕ или канале: адрес чата и автор — разные параметры, потому
+// что это разные вопросы. Базового updateChatUserTyping мы не производим по той
+// же причине, что и базового `chat`: любая наша группа — channel.
+type UpdateChannelUserTyping struct {
+	Underscore string            `json:"_"`
+	ChannelID  int64             `json:"channel_id"`
+	FromID     Peer              `json:"from_id"`
+	Action     SendMessageAction `json:"action"`
+}
+
+func (UpdateChannelUserTyping) isUpdate()     {}
+func (u UpdateChannelUserTyping) Tag() string { return u.Underscore }
+
+func NewUpdateChannelUserTyping(channelID int64, from Peer, action SendMessageAction) UpdateChannelUserTyping {
+	return UpdateChannelUserTyping{Underscore: UpdateChannelUserTypingTag, ChannelID: channelID,
+		FromID: from, Action: action}
+}
+
+// updateUserStatus#e5bdf8de user_id:long status:UserStatus = Update;
+//
+// Присутствие. Сам статус объединением уже ехал (порт пиров: «онлайн» это
+// userStatusOnline СО СРОКОМ, а скрытое приватностью — другой конструктор), а
+// вот кадр вокруг него оставался словарём.
+type UpdateUserStatus struct {
+	Underscore string     `json:"_"`
+	UserID     int64      `json:"user_id"`
+	Status     UserStatus `json:"status"`
+}
+
+func (UpdateUserStatus) isUpdate()     {}
+func (u UpdateUserStatus) Tag() string { return u.Underscore }
+
+func NewUpdateUserStatus(userID int64, status UserStatus) UpdateUserStatus {
+	return UpdateUserStatus{Underscore: UpdateUserStatusTag, UserID: userID, Status: status}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

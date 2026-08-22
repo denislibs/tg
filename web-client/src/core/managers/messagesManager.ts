@@ -15,7 +15,7 @@ export interface CalendarDay {
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId } from '../peers/peerId'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, TypingAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -100,7 +100,7 @@ export interface MessagesDeps {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload?: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping?: (peerId: number, action: TypingAction) => void
+  sendTyping?: (peerId: number, action: SendMessageAction) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). */
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }

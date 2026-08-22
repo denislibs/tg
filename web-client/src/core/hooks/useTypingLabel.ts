@@ -1,32 +1,27 @@
 import { useChatsStore } from '../../stores/chatsStore'
 import { usePeers } from './usePeers'
 import { useLang } from '../../i18n'
-import type { TypingAction } from '../realtime/events'
+import type { SendMessageAction } from '../realtime/events'
 import { getPeerTitle } from '../peers/getPeerTitle'
 
 const TTL = 6000
 
 // Per-language verb phrases + connectors. Kept local (like BirthdayModal) because
 // grammatical singular/plural forms don't fit the flat key→string dictionary.
-type Phrases = {
-  typing: [string, string]
-  voice: [string, string]
-  video: [string, string]
-  // На время аплоада медиа (tweb sendMessageUpload*Action)
-  upload_file: [string, string]
-  upload_photo: [string, string]
-  upload_video: [string, string]
-  upload_audio: [string, string]
+// Ключи — ДИСКРИМИНАТОРЫ конструкторов `SendMessageAction`: вид действия
+// приезжает конструктором, и таблица фраз ключуется им же, без промежуточного
+// словаря наших кодов.
+type Phrases = Record<SendMessageAction['_'], [string, string]> & {
   and: string
   more: string // "<name> <more> <n> <verb-plural>"
 }
 const L: Record<string, Phrases> = {
-  ru: { typing: ['печатает', 'печатают'], voice: ['записывает голосовое', 'записывают голосовое'], video: ['записывает видео', 'записывают видео'], upload_file: ['отправляет файл', 'отправляют файл'], upload_photo: ['отправляет фото', 'отправляют фото'], upload_video: ['отправляет видео', 'отправляют видео'], upload_audio: ['отправляет аудио', 'отправляют аудио'], and: 'и', more: 'и ещё' },
-  uk: { typing: ['друкує', 'друкують'], voice: ['записує голосове', 'записують голосове'], video: ['записує відео', 'записують відео'], upload_file: ['надсилає файл', 'надсилають файл'], upload_photo: ['надсилає фото', 'надсилають фото'], upload_video: ['надсилає відео', 'надсилають відео'], upload_audio: ['надсилає аудіо', 'надсилають аудіо'], and: 'і', more: 'і ще' },
-  en: { typing: ['is typing', 'are typing'], voice: ['is recording voice', 'are recording voice'], video: ['is recording video', 'are recording video'], upload_file: ['is sending a file', 'are sending a file'], upload_photo: ['is sending a photo', 'are sending a photo'], upload_video: ['is sending a video', 'are sending a video'], upload_audio: ['is sending an audio', 'are sending an audio'], and: 'and', more: 'and' },
-  es: { typing: ['está escribiendo', 'están escribiendo'], voice: ['está grabando audio', 'están grabando audio'], video: ['está grabando vídeo', 'están grabando vídeo'], upload_file: ['está enviando un archivo', 'están enviando un archivo'], upload_photo: ['está enviando una foto', 'están enviando una foto'], upload_video: ['está enviando un vídeo', 'están enviando un vídeo'], upload_audio: ['está enviando un audio', 'están enviando un audio'], and: 'y', more: 'y' },
-  de: { typing: ['tippt', 'tippen'], voice: ['nimmt Sprachnachricht auf', 'nehmen Sprachnachricht auf'], video: ['nimmt Video auf', 'nehmen Video auf'], upload_file: ['sendet eine Datei', 'senden eine Datei'], upload_photo: ['sendet ein Foto', 'senden ein Foto'], upload_video: ['sendet ein Video', 'senden ein Video'], upload_audio: ['sendet eine Audiodatei', 'senden eine Audiodatei'], and: 'und', more: 'und' },
-  fr: { typing: ['écrit', 'écrivent'], voice: ['enregistre un audio', 'enregistrent un audio'], video: ['enregistre une vidéo', 'enregistrent une vidéo'], upload_file: ['envoie un fichier', 'envoient un fichier'], upload_photo: ['envoie une photo', 'envoient une photo'], upload_video: ['envoie une vidéo', 'envoient une vidéo'], upload_audio: ['envoie un audio', 'envoient un audio'], and: 'et', more: 'et' },
+  ru: { sendMessageTypingAction: ['печатает', 'печатают'], sendMessageRecordAudioAction: ['записывает голосовое', 'записывают голосовое'], sendMessageRecordVideoAction: ['записывает видео', 'записывают видео'], sendMessageUploadDocumentAction: ['отправляет файл', 'отправляют файл'], sendMessageUploadPhotoAction: ['отправляет фото', 'отправляют фото'], sendMessageUploadVideoAction: ['отправляет видео', 'отправляют видео'], sendMessageUploadAudioAction: ['отправляет аудио', 'отправляют аудио'], and: 'и', more: 'и ещё' },
+  uk: { sendMessageTypingAction: ['друкує', 'друкують'], sendMessageRecordAudioAction: ['записує голосове', 'записують голосове'], sendMessageRecordVideoAction: ['записує відео', 'записують відео'], sendMessageUploadDocumentAction: ['надсилає файл', 'надсилають файл'], sendMessageUploadPhotoAction: ['надсилає фото', 'надсилають фото'], sendMessageUploadVideoAction: ['надсилає відео', 'надсилають відео'], sendMessageUploadAudioAction: ['надсилає аудіо', 'надсилають аудіо'], and: 'і', more: 'і ще' },
+  en: { sendMessageTypingAction: ['is typing', 'are typing'], sendMessageRecordAudioAction: ['is recording voice', 'are recording voice'], sendMessageRecordVideoAction: ['is recording video', 'are recording video'], sendMessageUploadDocumentAction: ['is sending a file', 'are sending a file'], sendMessageUploadPhotoAction: ['is sending a photo', 'are sending a photo'], sendMessageUploadVideoAction: ['is sending a video', 'are sending a video'], sendMessageUploadAudioAction: ['is sending an audio', 'are sending an audio'], and: 'and', more: 'and' },
+  es: { sendMessageTypingAction: ['está escribiendo', 'están escribiendo'], sendMessageRecordAudioAction: ['está grabando audio', 'están grabando audio'], sendMessageRecordVideoAction: ['está grabando vídeo', 'están grabando vídeo'], sendMessageUploadDocumentAction: ['está enviando un archivo', 'están enviando un archivo'], sendMessageUploadPhotoAction: ['está enviando una foto', 'están enviando una foto'], sendMessageUploadVideoAction: ['está enviando un vídeo', 'están enviando un vídeo'], sendMessageUploadAudioAction: ['está enviando un audio', 'están enviando un audio'], and: 'y', more: 'y' },
+  de: { sendMessageTypingAction: ['tippt', 'tippen'], sendMessageRecordAudioAction: ['nimmt Sprachnachricht auf', 'nehmen Sprachnachricht auf'], sendMessageRecordVideoAction: ['nimmt Video auf', 'nehmen Video auf'], sendMessageUploadDocumentAction: ['sendet eine Datei', 'senden eine Datei'], sendMessageUploadPhotoAction: ['sendet ein Foto', 'senden ein Foto'], sendMessageUploadVideoAction: ['sendet ein Video', 'senden ein Video'], sendMessageUploadAudioAction: ['sendet eine Audiodatei', 'senden eine Audiodatei'], and: 'und', more: 'und' },
+  fr: { sendMessageTypingAction: ['écrit', 'écrivent'], sendMessageRecordAudioAction: ['enregistre un audio', 'enregistrent un audio'], sendMessageRecordVideoAction: ['enregistre une vidéo', 'enregistrent une vidéo'], sendMessageUploadDocumentAction: ['envoie un fichier', 'envoient un fichier'], sendMessageUploadPhotoAction: ['envoie une photo', 'envoient une photo'], sendMessageUploadVideoAction: ['envoie une vidéo', 'envoient une vidéo'], sendMessageUploadAudioAction: ['envoie un audio', 'envoient un audio'], and: 'et', more: 'et' },
 }
 
 // 'text' → three bouncing dots (typing); 'record' → one blinking dot (recording
@@ -60,11 +55,13 @@ export function useTypingLabel(chatId: number, isGroup: boolean): TypingLabel {
   if (!entries.length) return { active: false, label: '', kind: 'text' }
 
   // Pick a verb: the shared action when everyone does the same, else plain typing.
-  const allSame = entries.every((e) => e.action === entries[0].action)
-  const action: TypingAction = allSame ? entries[0].action : 'typing'
+  const allSame = entries.every((e) => e.action._ === entries[0].action._)
+  const action: SendMessageAction['_'] = allSame ? entries[0].action._ : 'sendMessageTypingAction'
   const verb = phrases[action]
-  // voice/video share the blinking-dot indicator; typing/upload get the three dots.
-  const kind: TypingKind = action === 'voice' || action === 'video' ? 'record' : 'text'
+  // Запись голосового/видео — мигающая точка; печать и аплоад — три точки.
+  const kind: TypingKind = action === 'sendMessageRecordAudioAction' || action === 'sendMessageRecordVideoAction'
+    ? 'record'
+    : 'text'
 
   if (!isGroup) {
     return { active: true, label: verb[0], kind }

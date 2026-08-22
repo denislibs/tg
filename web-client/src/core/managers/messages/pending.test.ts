@@ -12,6 +12,7 @@
 // структурное — в ctx pending-механики персиста нет вовсе (см. pending.ts,
 // «ЧЕГО НЕ ДЕЛАЕМ»), подделать его вызов неоткуда.
 import { describe, it, expect, vi } from 'vitest'
+import type { SendMessageAction } from '../../realtime/events'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { newPendingMethods } from './pending'
 import { getDocumentFromMessage, getMediaDimensions, getMediaFromMessage, isMediaSpoiler } from '../../media/messageMedia'
@@ -39,7 +40,7 @@ function makeCtx() {
   const emitted: MessageOp[][] = []
   const sends: WireSendArgs[] = []
   const uploads: UploadArgs[] = []
-  const typings: { peerId: number; action: string }[] = []
+  const typings: { peerId: number; action: SendMessageAction }[] = []
   const progress: { id: string; loaded: number; total: number; done?: boolean }[] = []
   const cancelled: string[] = []
   const order: string[] = []
@@ -61,7 +62,7 @@ function makeCtx() {
       send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
       upload: (a: UploadArgs) => h.upload(a),
       cancelUpload: (id: string) => { cancelled.push(id) },
-      sendTyping: (peerId: number, action: string) => { typings.push({ peerId, action }) },
+      sendTyping: (peerId: number, action: SendMessageAction) => { typings.push({ peerId, action }) },
       uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => { progress.push({ id, loaded, total, done }) },
     },
   }
@@ -547,7 +548,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     const r = await p.sendFile({
       peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo',
       fileName: 'photo.jpg', caption: 'подпись', width: 640, height: 480, isMedia: true,
-      uploadAction: 'upload_photo',
+      uploadAction: { _: 'sendMessageUploadPhotoAction' },
     })
 
     expect(r).toEqual({ mediaId: 909 })
@@ -605,9 +606,10 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     openWindow(h.slices, '1', [cid(10)])
     const p = newPendingMethods(h.ctx)
 
-    await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true, uploadAction: 'upload_photo' })
+    await p.sendFile({ peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true, uploadAction: { _: 'sendMessageUploadPhotoAction' } })
 
-    expect(h.typings[0]).toEqual({ peerId: 1, action: 'upload_photo' })
+    // Вид действия — КОНСТРУКТОР объединения, а не строка нашего словаря.
+    expect(h.typings[0]).toEqual({ peerId: 1, action: { _: 'sendMessageUploadPhotoAction' } })
     expect(h.progress[0]).toEqual({ id: 'c1', loaded: 0, total: 1, done: undefined })
     expect(h.progress[h.progress.length - 1]).toEqual({ id: 'c1', loaded: 0, total: 0, done: true })
   })

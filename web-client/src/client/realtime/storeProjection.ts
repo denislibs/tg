@@ -229,16 +229,20 @@ export function registerStoreProjection(managers: Managers): void {
   rootScope.addEventListener(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   rootScope.addEventListener(RT.typing, (raw) => {
     const t = raw as TypingEvt
-    const action = t.action ?? 'typing'
-    store.setTyping(t.peer_id, t.user_id, action, Date.now())
-    const key = `${t.peer_id}:${t.user_id}`
+    // Ключ чата и автор берутся из КОНСТРУКТОРА: в личном чате пир это сам
+    // печатающий, в группе адрес и автор — разные параметры.
+    const peerId = t._ === 'updateUserTyping' ? t.user_id : getPeerId({ _: 'peerChannel', channel_id: t.channel_id })
+    const userId = t._ === 'updateUserTyping' ? t.user_id : getPeerId(t.from_id)
+    const action = t.action
+    store.setTyping(peerId, userId, action, Date.now())
+    const key = `${peerId}:${userId}`
     const prev = typingTimers.get(key)
     if (prev) clearTimeout(prev)
     typingTimers.set(
       key,
       setTimeout(() => {
         typingTimers.delete(key)
-        store.clearTyping(t.peer_id, t.user_id)
+        store.clearTyping(peerId, userId)
       }, TYPING_TTL),
     )
   })

@@ -366,9 +366,47 @@ export interface DraftUpdateEvt {
   peer: Peer
   draft: import('../models').DraftMessage
 }
-// upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)
-export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
-export interface TypingEvt { peer_id: PeerId; user_id: number; action?: TypingAction }
+/**
+ * Что именно делает собеседник — ОБЪЕДИНЕНИЕ `SendMessageAction`, а не строка
+ * из шести значений с дефолтом «печатает».
+ *
+ * Разница не в форме: у `sendMessageUpload*Action` есть параметр `progress`, то
+ * есть полоска «отправляет фото 40%» у оригинала ВЫРАЗИМА, а строкой её
+ * выразить нечем. Мы его пока не производим (прогресс живёт у отправителя и
+ * наружу не выходит) — отсутствует значение, а не возможность.
+ *
+ * Объявлены ровно те конструкторы, что производит наш клиент; остальные
+ * пятнадцать (геолокация, выбор контакта, игра, кружок, эмодзи-интеракции, …)
+ * предмета у нас не имеют.
+ */
+export type SendMessageAction =
+  | { _: 'sendMessageTypingAction' }
+  | { _: 'sendMessageRecordAudioAction' }
+  | { _: 'sendMessageRecordVideoAction' }
+  | { _: 'sendMessageUploadDocumentAction'; progress?: number }
+  | { _: 'sendMessageUploadPhotoAction'; progress?: number }
+  | { _: 'sendMessageUploadVideoAction'; progress?: number }
+  | { _: 'sendMessageUploadAudioAction'; progress?: number }
+
+/**
+ * «Печатает» — ДВА конструктора, и выбирает между ними тип чата.
+ *
+ * В личном чате ключа пира у кадра нет вовсе: пир — это сам печатающий
+ * (`updateUserTyping.user_id`). В группе адрес чата и автор — разные параметры,
+ * потому что это разные вопросы (`updateChannelUserTyping`).
+ */
+export interface UserTypingEvt {
+  _: 'updateUserTyping'
+  user_id: number
+  action: SendMessageAction
+}
+export interface ChannelUserTypingEvt {
+  _: 'updateChannelUserTyping'
+  channel_id: number
+  from_id: Peer
+  action: SendMessageAction
+}
+export type TypingEvt = UserTypingEvt | ChannelUserTypingEvt
 /**
  * Присутствие — объединение `UserStatus` схемы, а не пара `{online, last_seen}`.
  *
@@ -382,7 +420,11 @@ export interface TypingEvt { peer_id: PeerId; user_id: number; action?: TypingAc
  * (`userStatusRecently`), а не флаг `last_seen_visible` рядом с обнулённым
  * временем.
  */
-export interface PresenceEvt { user_id: number; status: UserStatus }
+export interface PresenceEvt {
+  _: 'updateUserStatus'
+  user_id: number
+  status: UserStatus
+}
 /**
  * Реакции — `updateMessageReactions{peer, msg_id, reactions}`: АБСОЛЮТНОЕ
  * состояние агрегата, тем же конструктором, что едет внутри сообщения.

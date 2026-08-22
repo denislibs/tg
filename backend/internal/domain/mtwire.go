@@ -30,6 +30,15 @@ var OmittedWithoutSubject = map[string][]string{
 	"messageMediaVenue": {"provider", "venue_id", "venue_type"},
 	// Хэш для кэширования запроса; хэш-кэширования запросов у нас нет вовсе.
 	"poll": {"hash"},
+	// Прогресс аплоада на пинге печати: у оригинала полоска «отправляет фото
+	// 40%» собирается из этого числа, а наш клиент шлёт только ВИД действия —
+	// прогресс живёт у отправителя и наружу не выходит. Отсутствует значение, а
+	// не возможность: конструктор его объявляет, и завести производителя можно
+	// не трогая форму.
+	"sendMessageUploadDocumentAction": {"progress"},
+	"sendMessageUploadPhotoAction":    {"progress"},
+	"sendMessageUploadVideoAction":    {"progress"},
+	"sendMessageUploadAudioAction":    {"progress"},
 	// Внешность подарка у нас — unicode-символ (наш параметр emoji), а не
 	// анимированный стикер: тот же случай, что emoji_status у пира.
 	"starGift": {"sticker"},

@@ -143,7 +143,7 @@ export function useChatInfoCard(args: {
           // его с уже лежащим («сохранить прежний lastSeen») теперь не нужно и
           // нечем — вариант приходит целиком. Статуса нет в ответе (правило
           // приватности не пустило) — не трогаем лежащее вовсе.
-          for (const m of mem) if (m.status) setPresence({ user_id: m.userId, status: m.status })
+          for (const m of mem) if (m.status) setPresence({ _: 'updateUserStatus', user_id: m.userId, status: m.status })
         })
       }
     })

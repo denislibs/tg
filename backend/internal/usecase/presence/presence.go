@@ -147,7 +147,7 @@ func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSee
 	}
 	frame, _ := json.Marshal(map[string]any{
 		"t": "presence",
-		"d": map[string]any{"user_id": userID, "status": domain.PresenceStatus(online, expires, lastSeen)},
+		"d": domain.NewUpdateUserStatus(userID, domain.PresenceStatus(online, expires, lastSeen)),
 	})
 	var hidden []byte
 	for _, p := range partners {
@@ -157,7 +157,7 @@ func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSee
 				if hidden == nil {
 					hidden, _ = json.Marshal(map[string]any{
 						"t": "presence",
-						"d": map[string]any{"user_id": userID, "status": domain.NewUserStatusRecently(false)},
+						"d": domain.NewUpdateUserStatus(userID, domain.NewUserStatusRecently(false)),
 					})
 				}
 				f = hidden

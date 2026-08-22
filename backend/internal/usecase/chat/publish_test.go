@@ -126,12 +126,56 @@ func TestTyping_PublishesToOthers(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	if err := in.Typing(ctx, chatID, a, "voice"); err != nil {
+	act := domain.SendMessageActionByTag(domain.SendMessageRecordAudioActionTag)
+	if err := in.Typing(ctx, chatID, a, act); err != nil {
 		t.Fatalf("Typing: %v", err)
 	}
 	if pub.countFor(b) != 1 || pub.countFor(a) != 0 {
 		t.Fatalf("typing should go to others only: a=%d b=%d", pub.countFor(a), pub.countFor(b))
 	}
+
+	// Личный чат — updateUserTyping: ключа пира у кадра нет ВОВСЕ, потому что
+	// пир это сам печатающий. Вид действия — конструктор, а не строка.
+	d := lastFrameOfType(t, pub, b, "typing")
+	if d["_"] != domain.UpdateUserTypingTag {
+		t.Fatalf("кадр печати = %v", d["_"])
+	}
+	if _, stray := d["peer_id"]; stray {
+		t.Fatalf("у кадра личной печати появился ключ пира: %#v", d)
+	}
+	if act, _ := d["action"].(map[string]any); act["_"] != domain.SendMessageRecordAudioActionTag {
+		t.Fatalf("действие = %#v; ждали конструктор записи голосового", d["action"])
+	}
+	assertEncodesAsTL(t, d)
+}
+
+// В ГРУППЕ адрес чата и автор — разные параметры, потому что это разные
+// вопросы: updateChannelUserTyping{channel_id, from_id, action}.
+func TestTyping_GroupCarriesChannelAndAuthor(t *testing.T) {
+	in, _, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner, member int64 = 7, 8
+	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, []int64{member})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	pub.reset()
+
+	if err := in.Typing(ctx, chatID, owner, domain.SendMessageActionByTag(domain.SendMessageTypingActionTag)); err != nil {
+		t.Fatalf("Typing: %v", err)
+	}
+
+	d := lastFrameOfType(t, pub, member, "typing")
+	if d["_"] != domain.UpdateChannelUserTypingTag {
+		t.Fatalf("кадр печати в группе = %v", d["_"])
+	}
+	if asInt64(t, d["channel_id"]) != chatID {
+		t.Fatalf("channel_id = %v; ждали %d", d["channel_id"], chatID)
+	}
+	if from, _ := d["from_id"].(map[string]any); from["_"] != "peerUser" || asInt64(t, from["user_id"]) != owner {
+		t.Fatalf("автор = %#v; ждали ссылку на пользователя %d", d["from_id"], owner)
+	}
+	assertEncodesAsTL(t, d)
 }
 
 func TestReact_FanoutAndAggregate(t *testing.T) {

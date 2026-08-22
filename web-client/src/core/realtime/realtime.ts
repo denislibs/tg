@@ -18,7 +18,7 @@
 import type { newConnectionManager } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
 import { getOutputPeer } from '../peers/peerId'
-import { RT, type MediaReadEvt, type TypingAction } from './events'
+import { RT, type MediaReadEvt, type SendMessageAction } from './events'
 import type { MessageOp } from './messageOps'
 import { getServerMessageId } from '../history/messageId'
 
@@ -115,7 +115,7 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
       conn.markMediaRead(args.peerId, serverId)
       return { ok: true }
     },
-    async sendTyping(args: { peerId: number; action?: TypingAction }) { conn.sendTyping(args.peerId, args.action ?? 'typing'); return { ok: true } },
+    async sendTyping(args: { peerId: number; action?: SendMessageAction }) { conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
     // кадры) + open (сид курсора из IDB и добор пропущенного через difference).

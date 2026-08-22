@@ -420,7 +420,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
-			_ = c.svc.Typing(ctx, chatID, c.userID, d.Action)
+			_ = c.svc.Typing(ctx, chatID, c.userID, domain.SendMessageActionByTag(d.Action.Underscore))
 		}
 	case "subscribe_channel":
 		var d peerData

@@ -939,15 +939,13 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 
 // Typing publishes an ephemeral typing indicator to the other chat members.
 // No DB write. No-op if the user isn't a member or no publisher is attached.
-func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action string) error {
+//
+// Действие приходит КОНСТРУКТОРОМ объединения SendMessageAction: белый список
+// значений здесь больше не нужен — разбор с провода и есть единственное место,
+// где неизвестное сводится к обычной печати (domain.SendMessageActionByTag).
+func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action domain.SendMessageAction) error {
 	if i.publisher == nil {
 		return nil
-	}
-	switch action {
-	case "voice", "video", "upload_file", "upload_photo", "upload_video", "upload_audio":
-		// keep (upload_* — «отправляет файл/фото/…» на время аплоада, tweb sendMessageUpload*Action)
-	default:
-		action = "typing"
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil || !ok {
@@ -957,6 +955,18 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action st
 	if err != nil {
 		return err
 	}
-	i.publishPeerFrame(ctx, chatID, members, userID, "typing", map[string]any{"user_id": userID, "action": action})
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	// Тело одно на всех: адрес кадр несёт САМ (конструктором), пер-зрительского
+	// в нём ничего нет — поэтому и развёртки по ключам пира здесь больше нет.
+	body := frame("typing", typingPayload(addr, userID, action))
+	for _, uid := range members {
+		if uid == userID {
+			continue
+		}
+		_ = i.publisher.PublishToUser(ctx, uid, body)
+	}
 	return nil
 }

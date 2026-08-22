@@ -67,7 +67,7 @@ import {
   type DocumentAttribute, type MessageMedia, type MyDocument,
 } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
-import type { AckEvt, PendingMedia, PendingNewEvt, TypingAction } from '../../realtime/events'
+import type { AckEvt, PendingMedia, PendingNewEvt, SendMessageAction } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
 import { b64FromBytes } from '../../secret/crypto'
@@ -141,7 +141,7 @@ export interface SendFileArgs extends MessageSendingParams {
    * медиа под спойлером — признак едет и в кадр, и в оптимистичный бабл */
   spoiler?: boolean
   /** «отправляет фото/файл…» у собеседника на время аплоада (tweb sendMessageUpload*Action) */
-  uploadAction?: TypingAction
+  uploadAction?: SendMessageAction
 }
 
 /** Регистрация неотправленного сообщения — аналог tweb PendingMessageDetails. */
@@ -195,7 +195,7 @@ export interface PendingCtx {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping: (peerId: number, action: TypingAction) => void
+  sendTyping: (peerId: number, action: SendMessageAction) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). `done` — аплоад
    *  закончился (успехом, ошибкой или отменой): кольцо на бабле снимается. */
   uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => void
