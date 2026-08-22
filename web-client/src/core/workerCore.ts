@@ -363,9 +363,9 @@ export function createWorkerCore() {
   // checklist_update/giveaway_update — по образцу cacheLive, см. dispatch ниже) —
   // тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как routeNewMessage.
   // edit_message/geo_live_update оставлены на прежнем пути (сырой кадр) — см.
-  // комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction/
-  // star_reaction — тоже НЕ переведены (Task 5), см. комментарий у
-  // newReactionMethods в messages/reactionMethods.ts.
+  // комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction —
+  // тоже НЕ переведена (Task 5), см. комментарий у newReactionMethods в
+  // messages/reactionMethods.ts.
   const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => MessageOp[] | void }> = {
     read:              { rt: RT.read },
     media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
@@ -373,7 +373,6 @@ export function createWorkerCore() {
     delete_message:    { rt: RT.deleteMessage,   cache: (p) => messages.cacheDelete(p) },
     pin_message:       { rt: RT.pinMessage },
     reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
-    star_reaction:     { rt: RT.starReaction,    cache: (p) => messages.cacheStarReaction(p) },
     factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
     chat_removed:      { rt: RT.chatRemoved },
     draft_update:      { rt: RT.draftUpdate },

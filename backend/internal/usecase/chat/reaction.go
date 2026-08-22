@@ -72,26 +72,15 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 				return e
 			}
 		}
-		// Абсолютный агрегат сообщения ПОСЛЕ Add/Remove; viewerID=0 — без mine
-		// (payload общий для всех получателей и лога; mine клиент выводит из
-		// user_id/action локально).
-		byMsg, e := i.reactions.ReactionsFor(ctx, []int64{messageID}, 0)
+		// Абсолютный агрегат сообщения ПОСЛЕ Add/Remove — целиком, обеими
+		// половинами сразу. Счётчик непрочитанных реакций в кадр не идёт вовсе:
+		// он пер-зрительский, а тело кадра одно на всех; клиент выводит бейдж
+		// сам из того, что реакция появилась на ЕГО сообщении (порт tweb).
+		agg, e := i.messageReactionsAggregate(ctx, messageID)
 		if e != nil {
 			return e
 		}
-		// Агрегат сообщения в форме схемы: тот же конструктор, что едет внутри
-		// самого сообщения (Message.reactions), — второй формы у реакций больше
-		// нет. Счётчик непрочитанных реакций в кадре не едет вовсе: он
-		// пер-зрительский, а тело кадра одно на всех; клиент выводит бейдж сам
-		// из того, что реакция появилась на ЕГО сообщении (порт tweb).
-		aggregate = domain.Message{Reactions: byMsg[messageID]}.WireReactions()
-		if aggregate == nil {
-			// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
-			// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций
-			// нет» — такое же состояние, как «есть три», и едет пустым вектором.
-			empty := domain.NewMessageReactions(nil, nil)
-			aggregate = &empty
-		}
+		aggregate = &agg
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
@@ -128,6 +117,41 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		}
 	}
 	return nil
+}
+
+// messageReactionsAggregate — АБСОЛЮТНЫЙ агрегат реакций сообщения в форме
+// схемы: тот же конструктор messageReactions, что едет внутри самого сообщения
+// (Message.reactions). Второй сборки у этого объекта нет.
+//
+// Собирается ЦЕЛИКОМ, обеими половинами сразу: эмодзи-чипы и платная
+// ⭐-реакция (reactionPaid в том же векторе results). Половины у абсолютного
+// агрегата быть не может — кадр, принёсший только свою часть, УТВЕРЖДАЕТ, что
+// другой не существует, и стёр бы её у получателя. Прежде половин было ровно
+// две: кадр `reaction` вёз только эмодзи, кадр `star_reaction` — только звёзды.
+//
+// Зрителя здесь нет намеренно: тело кадра одно на всех получателей, значит
+// пер-зрительского (мой chosen_order, мой вклад звёздами) в нём нет — витрина
+// кадра помечает агрегат `min` ровно поэтому.
+func (i *Interactor) messageReactionsAggregate(ctx context.Context, messageID int64) (domain.MessageReactions, error) {
+	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, 0)
+	if err != nil {
+		return domain.MessageReactions{}, err
+	}
+	m := domain.Message{Reactions: byMsg[messageID]}
+	if i.starReaction != nil {
+		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, 0)
+		if e != nil {
+			return domain.MessageReactions{}, e
+		}
+		m.StarReactionTotal = stars[messageID].Total
+	}
+	if r := m.WireReactions(); r != nil {
+		return *r, nil
+	}
+	// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
+	// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций нет» —
+	// такое же состояние, как «есть три», и едет пустым вектором.
+	return domain.NewMessageReactions(nil, nil), nil
 }
 
 // ReactionsOf returns aggregated reaction counts for a message the user can see.

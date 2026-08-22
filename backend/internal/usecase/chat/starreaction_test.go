@@ -71,14 +71,15 @@ func (f *fakeStarReactions) TopSenders(_ context.Context, messageID int64, limit
 	return out, nil
 }
 
-func newStarReactionInteractor() (*Interactor, *store, *fakeStars, *fakeStarReactions) {
+func newStarReactionInteractor() (*Interactor, *store, *fakeStars, *fakeStarReactions, *fakePublisher) {
 	in, s := newInteractor()
 	fs := newFakeStars()
 	sr := newFakeStarReactions()
+	pub := &fakePublisher{}
 	in.SetStars(fs)
 	in.SetStarReactions(sr)
-	in.SetPublisher(&fakePublisher{})
-	return in, s, fs, sr
+	in.SetPublisher(pub)
+	return in, s, fs, sr, pub
 }
 
 // seedStarReactionMsg: user 1 отправляет текст в приватный чат с user 2.
@@ -97,7 +98,7 @@ func seedStarReactionMsg(t *testing.T, in *Interactor) (chatID, msgID int64) {
 }
 
 func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
-	in, _, fs, _ := newStarReactionInteractor()
+	in, _, fs, _, _ := newStarReactionInteractor()
 	ctx := context.Background()
 	chatID, msgID := seedStarReactionMsg(t, in)
 
@@ -146,7 +147,7 @@ func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
 }
 
 func TestStarReaction_AnonymousHidesSender(t *testing.T) {
-	in, _, _, _ := newStarReactionInteractor()
+	in, _, _, _, _ := newStarReactionInteractor()
 	ctx := context.Background()
 	chatID, msgID := seedStarReactionMsg(t, in)
 	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
@@ -165,7 +166,7 @@ func TestStarReaction_AnonymousHidesSender(t *testing.T) {
 }
 
 func TestStarReaction_BadCountAndDisabled(t *testing.T) {
-	in, _, _, _ := newStarReactionInteractor()
+	in, _, _, _, _ := newStarReactionInteractor()
 	ctx := context.Background()
 	chatID, msgID := seedStarReactionMsg(t, in)
 	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
@@ -180,5 +181,88 @@ func TestStarReaction_BadCountAndDisabled(t *testing.T) {
 	// Не член чата (user 3) — ErrNotFound.
 	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 3, 5, false); err != domain.ErrNotFound {
 		t.Fatalf("non-member = %v; want ErrNotFound", err)
+	}
+}
+
+// Платная ⭐-реакция едет ТЕМ ЖЕ кадром, что и обычная: своего конструктора у
+// неё в схеме нет — она второй конструктор объединения Reaction (reactionPaid)
+// в том же векторе results. Значит кадр обязан нести агрегат ЦЕЛИКОМ: половина
+// («только звёзды») утверждала бы, что эмодзи-чипов не существует, и стёрла бы
+// их получателю.
+func TestStarReaction_FrameIsMessageReactionsWithPaidChip(t *testing.T) {
+	in, s, _, _, pub := newStarReactionInteractor()
+	ctx := context.Background()
+	chatID, msgID := seedStarReactionMsg(t, in)
+	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
+		t.Fatal(err)
+	}
+	// Обычная реакция ДО платной: именно её платный кадр не имеет права стереть.
+	if err := in.React(ctx, chatID, msgID, 2, "🔥", true); err != nil {
+		t.Fatalf("React: %v", err)
+	}
+
+	pub.reset()
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false); err != nil {
+		t.Fatalf("SendStarReaction: %v", err)
+	}
+
+	d := lastFrameOfType(t, pub, 1, "reaction")
+	if d["_"] != domain.UpdateMessageReactionsTag {
+		t.Fatalf("кадр = %v; ждали %s", d["_"], domain.UpdateMessageReactionsTag)
+	}
+	reactions, ok := d["reactions"].(map[string]any)
+	if !ok {
+		t.Fatalf("в кадре нет агрегата: %#v", d)
+	}
+	// Агрегат помечен min: пер-зрительской части (мой вклад звёздами) в общем
+	// теле нет и быть не может — тело одно на всех получателей.
+	if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] != true {
+		t.Fatalf("агрегат не помечен min: %#v", reactions["pFlags"])
+	}
+	if _, ok := reactions["top_reactors"]; ok {
+		t.Fatal("в общем теле кадра поехала доска вкладов: она пер-зрительская")
+	}
+	var paid, emoji float64
+	for _, e := range reactions["results"].([]any) {
+		chip := e.(map[string]any)
+		switch r := chip["reaction"].(map[string]any); r["_"] {
+		case domain.ReactionPaidTag:
+			paid = chip["count"].(float64)
+		case domain.ReactionEmojiTag:
+			if r["emoticon"] == "🔥" {
+				emoji = chip["count"].(float64)
+			}
+		}
+	}
+	if paid != 10 || emoji != 1 {
+		t.Fatalf("агрегат = платных %v, 🔥 %v; ждали 10 и 1 (обе половины сразу)", paid, emoji)
+	}
+	// Диффа платной реакции в кадре нет: «кто отправил» и «сколько отдал он» —
+	// это ответ ручки отправителю, а не общее тело.
+	for _, k := range []string{"sender_id", "total", "mine", "id"} {
+		if _, ok := d[k]; ok {
+			t.Fatalf("в кадре остался ключ старой формы %q: %#v", k, d)
+		}
+	}
+
+	// Записи журнала своего типа у платной реакции больше нет: тип кадра не
+	// различает платную и эмодзи, их различает конструктор ВНУТРИ агрегата.
+	s.mu.Lock()
+	ups := append([]domain.UpdateRecord(nil), s.updates[1]...)
+	s.mu.Unlock()
+	for _, u := range ups {
+		if u.Type == "star_reaction" {
+			t.Fatal("в журнале осталась запись типа star_reaction")
+		}
+	}
+	var logged int
+	for _, u := range ups {
+		if u.Type == "reaction" {
+			logged++
+		}
+	}
+	// Две: эмодзи-реакция и платная — обе одним типом.
+	if logged != 2 {
+		t.Fatalf("записей типа reaction = %d; ждали 2", logged)
 	}
 }

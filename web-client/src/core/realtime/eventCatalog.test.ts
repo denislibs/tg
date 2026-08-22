@@ -7,15 +7,20 @@ describe('eventCatalog', () => {
     expect(FRAME_TYPES.slice().sort()).toEqual(Object.keys(EVENT_CATALOG).sort())
   })
 
-  it('includes the 13 types that FRAME_TYPES historically dropped', () => {
+  it('includes the types that FRAME_TYPES historically dropped', () => {
     // Регресс-гвард: раньше эти кадры молча дропались (не были в FRAME_TYPES),
     // logged-часть держалась на кросс-таб fake-эхо, снятом в Волне 4.
+    //
+    // `star_reaction` из списка ушёл вместе с самим типом: платная ⭐-реакция
+    // приезжает кадром обычной (чип `reactionPaid` того же агрегата), своего
+    // конструктора у неё в схеме нет.
     const previouslyDropped = [
-      'star_reaction', 'dialog_mute', 'checklist_update', 'chat_update', 'folder_update',
+      'dialog_mute', 'checklist_update', 'chat_update', 'folder_update',
       'paid_media_unlock', 'balance_update', 'geo_live_update', 'suggested_post_update',
       'bot_callback_answer', 'story_new', 'story_deleted', 'story_reaction',
     ]
     for (const t of previouslyDropped) expect(FRAME_TYPES).toContain(t)
+    expect(FRAME_TYPES).not.toContain('star_reaction')
   })
 
   it('PASS_THROUGH = ровно эфемерные типы, каждый с rt', () => {

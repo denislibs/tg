@@ -9,7 +9,7 @@ import { generateMessageId, getServerMessageId } from '../../history/messageId'
 import { mapReactions } from '../../models'
 import { getPeerId } from '../../peers/peerId'
 import type { MyMessage } from '../../models'
-import type { ReactionEvt, StarReactionEvt } from '../../realtime/events'
+import type { ReactionEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
 import type { UserReal } from '../../peers/peer'
 
@@ -62,11 +62,10 @@ function mapStarSenders(rows: StarSender[] | undefined): StarSender[] {
   return rows ?? []
 }
 
-// Stage 1B.3 (Task 5): cacheReaction/cacheStarReaction ниже СОЗНАТЕЛЬНО НЕ
-// переведены на операцию patch (workerCore.ts: типы reaction/star_reaction остаются
-// без cache в APPLY-реестре, окно правит storeProjection.ts из сырого кадра —
-// RT.reaction/RT.starReaction → applyReaction/applyReactionOptimistic/
-// applyStarReaction). Карта обогащений (docs/research/2026-08-10-message-
+// Stage 1B.3 (Task 5): cacheReaction ниже СОЗНАТЕЛЬНО НЕ переведена на операцию
+// patch (workerCore.ts: тип reaction остаётся без cache в APPLY-реестре, окно
+// правит storeProjection.ts из сырого кадра — RT.reaction → applyReaction/
+// applyReactionOptimistic). Карта обогащений (docs/research/2026-08-10-message-
 // enrichments.md, §3.3) формально относит оба к «patch» — но «воркер знает
 // mine» и «операция может это безопасно нести» оказались РАЗНЫМИ вопросами:
 //
@@ -119,21 +118,27 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
   const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
     const peerId = getPeerId(evt.peer)
     const id = generateMessageId(evt.msg_id)
-    const { reactions } = mapReactions(evt.reactions)
+    const { reactions, starReaction } = mapReactions(evt.reactions)
     patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
       const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
       const next = (reactions ?? []).map((r) => ({ ...r, mine: prevMine.has(r.emoji) }))
-      return { ...m, reactions: next.length ? next : undefined }
+      return {
+        ...m,
+        reactions: next.length ? next : undefined,
+        // Платная ⭐-реакция — чип ТОГО ЖЕ агрегата (reactionPaid), поэтому и
+        // применяется здесь же: отдельного кадра у неё нет. Свой вклад
+        // звёздами сохраняется из окна по той же причине, что и `mine` у
+        // эмодзи-чипа, — он пер-зрительский, а тело кадра одно на всех.
+        starReaction: starReaction && { total: starReaction.total, mine: m.starReaction?.mine ?? 0 },
+      }
     })
   }
 
-  // Платная ⭐-реакция → SSOT: total авторитетен, свой вклад (mine) — только для
-  // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
-  const applyStarToCache = (evt: StarReactionEvt): void => {
-    const isMine = evt.sender_id === (getMeId?.() ?? null)
-    const id = generateMessageId(evt.id)
-    patchMsg(evt.peer_id, (m) => m.id === id,
-      (m: MyMessage) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
+  // Платная ⭐-реакция → SSOT из ОТВЕТА ручки: там и агрегат, и свой вклад
+  // (кадр несёт только агрегат — свой вклад в общем теле не поедет никогда).
+  const applyStarToCache = (peerId: number, serverMsgId: number, total: number, mine: number): void => {
+    const id = generateMessageId(serverMsgId)
+    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => ({ ...m, starReaction: { total, mine } }))
   }
 
   return {
@@ -142,9 +147,6 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
     // клик до эха) — дельта.
     cacheReaction(evt: ReactionEvt): void {
       applyAbsoluteReactionToCache(evt)
-    },
-    cacheStarReaction(evt: StarReactionEvt): void {
-      applyStarToCache(evt)
     },
 
     // Выросло ли число реакций на МОЁМ сообщении — вопрос, на который отвечает
@@ -202,12 +204,13 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
     },
 
     // Платная ⭐-реакция: списать count звёзд, начислить автору, накопить вклад.
-    // Возвращает агрегат + топ-отправителей + мой баланс. Live-эхо star_reaction
-    // тоже придёт (идемпотентно правит total в сторе).
+    // Возвращает агрегат + топ-отправителей + мой баланс. Живое эхо придёт тем
+    // же кадром, что у обычной реакции (updateMessageReactions с чипом
+    // reactionPaid), и своего вклада не тронет: в общем теле его нет.
     async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
       const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: StarSender[]; balance: number }>(
         `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`, { count, anonymous })
-      applyStarToCache({ peer_id: peerId, id: getServerMessageId(msgId), sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
+      applyStarToCache(peerId, getServerMessageId(msgId), r.star_reaction.total, r.star_reaction.mine)
       return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
     },
     // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).

@@ -42,6 +42,32 @@ func framePeer(t *testing.T, raw []byte) (peer int64, hasPeer bool, hasChat bool
 			t.Fatalf("peer_id в кадре %s: %v", raw, err)
 		}
 	}
+	// Ключ пира у портированных кадров — КОНСТРУКТОР `peer` объединения Peer, а
+	// не плоское число: миграции порта кадров (0111–0117) перевели туда прочтение,
+	// закрепление, удаление, реакции. Знаковый ключ выводится из конструктора —
+	// ровно так же, как его выводит клиент.
+	if v, ok := p["peer"]; ok {
+		hasPeer = true
+		var c struct {
+			Underscore string `json:"_"`
+			UserID     int64  `json:"user_id"`
+			ChannelID  int64  `json:"channel_id"`
+			ChatID     int64  `json:"chat_id"`
+		}
+		if err := json.Unmarshal(v, &c); err != nil {
+			t.Fatalf("peer в кадре %s: %v", raw, err)
+		}
+		switch c.Underscore {
+		case "peerUser":
+			peer = c.UserID
+		case "peerChannel":
+			peer = -c.ChannelID
+		case "peerChat":
+			peer = -c.ChatID
+		default:
+			t.Fatalf("неизвестный конструктор пира в кадре %s", raw)
+		}
+	}
 	_, hasChat = p["chat_id"]
 	return peer, hasPeer, hasChat
 }

@@ -50,10 +50,6 @@ export const EMPTY_WINDOW: ChatWindow = {
 // dedupAsc/dedupKey вынесены в core/realtime/messageOps.ts (Stage 1B.2, Task 2) —
 // та же семантика нужна чистой applyOp над окном без стора; см. комментарий там.
 
-// Абсолютный агрегат реакций из серверного counts. `mine` не приходит с сервера
-// (counts безличный) → деривим: сохраняем прежний mine для не затронутых emoji,
-// а для emoji своего действия ставим (add) / снимаем (remove). myEmoji/myAction
-// заданы только когда реагировал я — иначе весь прежний mine переносится as-is.
 // Абсолютный агрегат сервера поверх окна. `mine` берётся ИЗ ОКНА: кадр помечен
 // `pFlags.min` — пер-зрительской части в общем теле нет, и «сервер не сообщил»
 // это не «я не ставил». Прежде сюда ехали ещё два внешних сигнала (мой эмодзи и
@@ -116,12 +112,15 @@ interface MessagesState {
   /** Обновление вложения-чек-листа (ответ на toggle/add): отметки глобальны
    * (видно, кто отметил) — локального состояния нет, полная замена. */
   setChecklistMedia: (peerId: number, media: MessageMediaToDo) => void
-  /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction c counts / catch-up): ставим counts
-   * verbatim. `mine` деривим — сохраняем для не затронутых emoji; для emoji своего
-   * действия ставим (add) / снимаем (remove). myEmoji/myAction заданы только когда
-   * реагировал я (user_id===meId), иначе null → mine целиком сохраняется. Идемпотентно
-   * на реплей (тот же агрегат → no-op). */
-  applyReaction: (peerId: number, msgId: number, counts: ReactionCount[]) => void
+  /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction / catch-up): ставим counts verbatim,
+   * `mine` сохраняем из окна — кадр помечен `pFlags.min`, пер-зрительской части
+   * в нём нет. Идемпотентно на реплей (тот же агрегат → no-op).
+   *
+   * starTotal — платная ⭐-реакция ТОГО ЖЕ агрегата (чип reactionPaid), 0 значит
+   * «платных нет». Отдельного кадра у неё не существует, поэтому и отдельного
+   * применения быть не должно: половина агрегата утверждала бы, что другой
+   * половины нет. Свой вклад звёздами сохраняется по той же причине, что `mine`. */
+  applyReaction: (peerId: number, msgId: number, counts: ReactionCount[], starTotal: number) => void
   /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
    * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
   applyReactionOptimistic: (
@@ -133,8 +132,8 @@ interface MessagesState {
      *  (имя и фото чип берёт из зеркала пиров) */
     me?: PeerId,
   ) => void
-  /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
-   * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
+  /** Платная ⭐-реакция ИЗ ОТВЕТА ручки: там известен и агрегат, и свой вклад.
+   * Живое эхо приходит не сюда, а в applyReaction — кадром общей реакции. */
   applyStarReaction: (peerId: number, msgId: number, total: number, mine?: number) => void
 }
 
@@ -304,7 +303,7 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyReaction: (peerId, msgId, counts) =>
+  applyReaction: (peerId, msgId, counts, starTotal) =>
     set((s) =>
       patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
@@ -312,9 +311,10 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         const msgs = w.msgs.map((m) => {
           if (m.id !== msgId) return m
           const next = setReactions(m.reactions, counts)
-          if (sameReactions(m.reactions, next)) return m
+          const star = starTotal > 0 ? { total: starTotal, mine: m.starReaction?.mine ?? 0 } : undefined
+          if (sameReactions(m.reactions, next) && (m.starReaction?.total ?? 0) === starTotal) return m
           changed = true
-          return { ...m, reactions: next }
+          return { ...m, reactions: next, starReaction: star }
         })
         return changed ? msgs : null
       })),

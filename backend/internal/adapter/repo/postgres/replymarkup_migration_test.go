@@ -161,7 +161,17 @@ func TestMigration0101_ConvertsStoredReplyMarkup(t *testing.T) {
 		domain.NewReplyInlineMarkup([]domain.KeyboardButtonRow{
 			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonCallback("эхо", []byte("echo"))),
 		}))
-	assertFrameMarkup(t, pool, `SELECT payload FROM updates WHERE user_id=$1 AND pts=2`, user, nil)
+	// Кадра правки с pts=2 больше нет: миграция 0115 удалила замороженные патчи
+	// правки — конструктор updateEditMessage несёт сообщение целиком, а достроить
+	// его из патча нечем. Клавиатура «снята» (reply_markup: null) уезжает вместе
+	// с ним, и это ровно то, что миграция объявляет ценой.
+	var editFrames int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM updates WHERE user_id=$1 AND pts=2`, user).Scan(&editFrames); err != nil {
+		t.Fatalf("подсчёт кадров правки: %v", err)
+	}
+	if editFrames != 0 {
+		t.Error("патч правки пережил миграцию 0115")
+	}
 	assertFrameMarkup(t, pool, `SELECT payload FROM channel_updates WHERE channel_id=$1 AND pts=1`, chatID,
 		domain.NewReplyKeyboardMarkup([]domain.KeyboardButtonRow{
 			domain.NewKeyboardButtonRow(domain.NewKeyboardButton("A")),

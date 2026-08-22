@@ -20,7 +20,6 @@ export const RT = {
   typing: 'rt:typing',
   presence: 'rt:presence',
   reaction: 'rt:reaction',
-  starReaction: 'rt:star_reaction',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
   // Пяти событий rt:pending_* больше нет: жизненный цикл неотправленного
@@ -345,12 +344,6 @@ export interface TypingEvt { peer_id: PeerId; user_id: number; action?: TypingAc
  * временем.
  */
 export interface PresenceEvt { user_id: number; status: UserStatus }
-// Реакция (Wave 3, АБСОЛЮТНАЯ): counts — полный агрегат сообщения (набор
-// {emoji,count}); `mine` не приходит с сервера и деривится клиентом (см.
-// applyReaction). emoji/action/user_id описывают конкретное действие → нужны только
-// чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
-// клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
-// наличию counts. pts — для funnel-дедупа/гейта.
 /**
  * Реакции — `updateMessageReactions{peer, msg_id, reactions}`: АБСОЛЮТНОЕ
  * состояние агрегата, тем же конструктором, что едет внутри сообщения.
@@ -362,7 +355,13 @@ export interface PresenceEvt { user_id: number; status: UserStatus }
  *
  * Агрегат помечен `pFlags.min`: тело кадра одно на всех получателей, значит
  * моего `chosen_order` в нём нет и быть не может, — свой выбор клиент
- * сохраняет, а не затирает отсутствием.
+ * сохраняет, а не затирает отсутствием. По той же причине в нём нет и моего
+ * вклада ЗВЁЗДАМИ (`top_reactors`).
+ *
+ * Платная ⭐-реакция своего кадра не имеет: она приезжает ЗДЕСЬ же — вторым
+ * конструктором объединения `Reaction` (`reactionPaid`) в том же векторе
+ * `results`. Прежде их было два, и каждый вёз ПОЛОВИНУ агрегата, то есть
+ * утверждал, что другой половины не существует.
  */
 export interface ReactionEvt {
   _: 'updateMessageReactions'
@@ -371,9 +370,6 @@ export interface ReactionEvt {
   reactions: WireMessageReactions
   pts?: number
 }
-// Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
-// отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
-export interface StarReactionEvt { peer_id: PeerId; id: number; sender_id: number; total: number; mine: number }
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
 export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
 export interface StoryDeletedEvt { story_id: number; author_id: number }

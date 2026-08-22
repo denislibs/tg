@@ -21,7 +21,7 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -247,15 +247,11 @@ export function registerStoreProjection(managers: Managers): void {
   // (applyReactionOptimistic) — здесь только серверное состояние.
   rootScope.addEventListener(RT.reaction, (raw) => {
     const e = raw as ReactionEvt
-    const { reactions } = mapReactions(e.reactions)
-    useMessagesStore.getState().applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), reactions ?? [])
-  })
-  // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
-  // обновляем только у самого отправителя (эхо своего действия), иначе не трогаем.
-  rootScope.addEventListener(RT.starReaction, (raw) => {
-    const e = raw as StarReactionEvt
-    const meId = useChatsStore.getState().meId
-    useMessagesStore.getState().applyStarReaction(e.peer_id, generateMessageId(e.id), e.total, e.sender_id === meId ? e.mine : undefined)
+    // Платная ⭐-реакция приезжает ЭТИМ ЖЕ кадром — чипом reactionPaid того же
+    // агрегата, а не своим типом: своего конструктора у неё в схеме нет.
+    const { reactions, starReaction } = mapReactions(e.reactions)
+    useMessagesStore.getState()
+      .applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), reactions ?? [], starReaction?.total ?? 0)
   })
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его

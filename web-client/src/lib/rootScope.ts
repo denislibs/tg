@@ -12,7 +12,7 @@ import EventListenerBase from '@helpers/eventListenerBase'
 import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
-  TypingEvt, PresenceEvt, ReactionEvt, StarReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
+  TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState, UserUpdateEvt,
@@ -49,7 +49,6 @@ export type BroadcastEvents = {
   [RT.read]: [ReadEvt, EventMeta?]
   [RT.mediaRead]: [MediaReadEvt, EventMeta?]
   [RT.reaction]: [ReactionEvt, EventMeta?]
-  [RT.starReaction]: [StarReactionEvt, EventMeta?]
   [RT.chatRemoved]: [ChatRemovedEvt, EventMeta?]
   [RT.draftUpdate]: [DraftUpdateEvt, EventMeta?]
   [RT.chatThemeUpdate]: [ChatThemeUpdateEvt, EventMeta?]

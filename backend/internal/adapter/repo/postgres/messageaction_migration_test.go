@@ -337,18 +337,25 @@ func TestMigration0106_ConvertsServiceActions(t *testing.T) {
 		t.Error("кадр с неопознанным действием остался в старой форме")
 	}
 
-	// Кадр-патч не становится конструктором: сообщением он не является.
-	if v, ok := frameKey(t, pool, frameByPts, int64(4), "emoji"); !ok || string(v) != `"👍"` {
-		t.Errorf("кадр-патч изменён миграцией: %s", v)
+	// Кадр-патч СООБЩЕНИЕМ не становится — это и проверяет 0106. Своей формы у
+	// него с тех пор не осталось: реакции стали конструктором кадра (0116), и
+	// проверяется теперь именно это — что патч не превратился в сообщение, а
+	// получил СВОЙ конструктор.
+	if v, ok := frameKey(t, pool, frameByPts, int64(4), "_"); !ok || string(v) != `"updateMessageReactions"` {
+		t.Errorf("кадр реакции = %s; ждали конструктор кадра, а не сообщения", v)
 	}
-	if _, ok := frameKey(t, pool, frameByPts, int64(5), "message"); !ok {
-		t.Error("патч правки не переименовал text в message")
+	if _, ok := frameKey(t, pool, frameByPts, int64(4), "message"); ok {
+		t.Error("кадр реакции получил ключ message: патч приняли за сообщение")
 	}
-	if _, ok := frameKey(t, pool, frameByPts, int64(5), "text"); ok {
-		t.Error("в патче правки остался ключ text")
+	// Кадр правки СТАРОЙ формы (патч) удалён миграцией 0115: достроить из него
+	// целое сообщение нечем, а конструктор updateEditMessage несёт сообщение
+	// целиком. Проверяем ровно это — строки больше нет.
+	var edits int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM updates WHERE pts=5`).Scan(&edits); err != nil {
+		t.Fatalf("подсчёт кадров правки: %v", err)
 	}
-	if v, ok := frameKey(t, pool, frameByPts, int64(5), "edit_date"); !ok || string(v) != "1767323045" {
-		t.Errorf("edit_date патча = %s, ждали секунды эпохи", v)
+	if edits != 0 {
+		t.Error("патч правки пережил миграцию 0115")
 	}
 
 	// ── Круг Down → Up ──────────────────────────────────────────────────────

@@ -345,14 +345,3 @@ func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageRea
 		"pts_count": domain.PtsCountOne,
 	}
 }
-
-// starReactionPayload — тело фрейма/апдейта star_reaction: новый агрегат звёзд
-// сообщения (total) плюс отправитель этой порции (sender_id) с его суммарным
-// вкладом (mine). Получатели правят агрегат бабла; тот, чей id == sender_id,
-// обновляет ещё и свой личный вклад (mine).
-func starReactionPayload(seq, senderID, total, mine int64) map[string]any {
-	return map[string]any{
-		"id": seq, "sender_id": senderID,
-		"total": total, "mine": mine,
-	}
-}

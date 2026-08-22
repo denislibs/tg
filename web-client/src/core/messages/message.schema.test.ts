@@ -66,8 +66,9 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
  * `messageActionStarGift` (конструктора `messageMediaStarGift` в схеме нет
  * вовсе). Восемь строк allow-list'а ушли вместе с восемью полями.
  *
- * Остаётся плоская проекция агрегатов реакций: подсистема реакций программой TL
- * ещё не пройдена, кадры `reaction`/`star_reaction` по-прежнему плоские.
+ * Остаётся плоская проекция агрегатов реакций: с провода объединение
+ * `MessageReactions` приезжает и в сообщении, и в кадре, но чипы витрины читают
+ * плоский срез — снимет его порт самой подсистемы реакций.
  */
 const OURS: Record<string, string[]> = {
   message: ['failed', 'secret', 'secretMedia', 'localUrl', 'transcription', 'starReaction'],

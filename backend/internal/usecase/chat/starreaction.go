@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -47,7 +48,11 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		authorCredit bool
 	)
 	ptsByUser := map[int64]int64{}
-	var pp *peerPayloads
+	// Кадром платной реакции служит ТОТ ЖЕ конструктор, что у обычной:
+	// updateMessageReactions с абсолютным агрегатом сообщения. Тело собирается
+	// один раз в транзакции, чтобы журнал и живой кадр не разъехались.
+	var aggregate domain.MessageReactions
+	var reactionAddr chatAddress
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
 		if e == domain.ErrForbidden {
@@ -78,22 +83,31 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		}
 		agg = byMsg[messageID]
 		agg.Mine = mine // страховка: mine точно равен вкладу этого пользователя
+		// Агрегат сообщения ЦЕЛИКОМ: платный чип плюс эмодзи-чипы. Отдельного
+		// кадра у платной реакции нет ни в схеме, ни здесь — она второй
+		// конструктор объединения Reaction в том же векторе results, и кадр,
+		// принёсший только её, стёр бы у получателя обычные чипы.
+		aggregate, e = i.messageReactionsAggregate(ctx, messageID)
+		if e != nil {
+			return e
+		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
 		}
 		members = m
-		pp, e = i.newPeerPayloads(ctx, chatID, starReactionPayload(msg.Seq, userID, agg.Total, mine))
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		reactionAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := json.Marshal(reactionsPayload(addr.forViewer(uid), msg.Seq, aggregate))
 			if e != nil {
 				return e
 			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "star_reaction", payload)
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
 			if e != nil {
 				return e
 			}
@@ -106,8 +120,12 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	}
 
 	if i.publisher != nil {
+		// Свой вклад звёздами (mine) в кадре не едет: он пер-зрительский, а тело
+		// одно на всех получателей. Отправитель узнаёт его из ОТВЕТА этой же
+		// ручки, остальные сохраняют собственный — агрегат помечен `min`.
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("star_reaction", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := reactionsPayload(reactionAddr.forViewer(uid), msg.Seq, aggregate)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", body, ptsByUser[uid]))
 		}
 	}
 	i.publishBalance(ctx, userID, senderBal)

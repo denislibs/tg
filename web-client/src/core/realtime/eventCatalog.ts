@@ -5,7 +5,7 @@
 //   • FRAME_TYPES (connectionManager) — на что подписываться;
 //   • PASS_THROUGH (worker) — эфемерные wsType → RT;
 //   • APPLY (worker) — логируемые wsType (через funnel курсора).
-// FRAME_TYPES отстал на 13 типов (star_reaction/dialog_mute/checklist_update/
+// FRAME_TYPES отстал на 13 типов (dialog_mute/checklist_update/
 // chat_update/folder_update/paid_media_unlock/balance_update + geo_live_update/
 // suggested_post_update/bot_callback_answer/story_new/story_deleted/story_reaction) —
 // а WsClient шлёт кадр ТОЛЬКО слушателям своего типа, поэтому эти кадры молча
@@ -33,7 +33,6 @@ export const EVENT_CATALOG = {
   delete_message:    { kind: 'logged' },
   pin_message:       { kind: 'logged' },
   reaction:          { kind: 'logged' },
-  star_reaction:     { kind: 'logged' },
   factcheck_update:  { kind: 'logged' },
   chat_removed:      { kind: 'logged' },
   draft_update:      { kind: 'logged' },

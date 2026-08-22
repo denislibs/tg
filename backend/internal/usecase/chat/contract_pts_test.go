@@ -10,6 +10,37 @@ import (
 
 // lastFrameFor decodes the payload (d) of the most recent frame published to
 // userID. Fails if no frame was captured for that user.
+// lastFrameOfType — последний кадр ЗАДАННОГО типа для получателя. Нужен там,
+// где действие рассылает несколько кадров подряд (платная реакция шлёт ещё и
+// баланс звёзд), и «последний вообще» отвечает не на тот вопрос.
+func lastFrameOfType(t *testing.T, pub *fakePublisher, userID int64, typ string) map[string]any {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i := len(pub.frames) - 1; i >= 0; i-- {
+		if pub.frames[i].userID != userID {
+			continue
+		}
+		var env struct {
+			T string          `json:"t"`
+			D json.RawMessage `json:"d"`
+		}
+		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
+			t.Fatalf("unmarshal frame: %v", err)
+		}
+		if env.T != typ {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(env.D, &d); err != nil {
+			t.Fatalf("unmarshal d: %v", err)
+		}
+		return d
+	}
+	t.Fatalf("кадра %q для пользователя %d не было", typ, userID)
+	return nil
+}
+
 func lastFrameFor(t *testing.T, pub *fakePublisher, userID int64) map[string]any {
 	t.Helper()
 	pub.mu.Lock()
