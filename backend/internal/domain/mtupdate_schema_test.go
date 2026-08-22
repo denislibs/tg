@@ -62,6 +62,11 @@ func updateCases() []struct {
 		{"диалог из архива", NewUpdateFolderPeers([]FolderPeer{NewFolderPeer(peer, FolderAll)}, 50)},
 		{"настройки уведомлений", NewUpdateNotifySettings(peer,
 			NewPeerNotifySettings(time.Unix(1787334148, 0), nil, NewNotificationSoundNone()))},
+		{"черновик", NewUpdateDraftMessage(peer, func() DraftMessageReal {
+			id := int64(12)
+			return NewDraftMessage("набросок", nil, &id, time.Unix(1787334148, 0))
+		}())},
+		{"черновик снят", NewUpdateDraftMessage(peer, NewDraftMessageEmpty())},
 	}
 }
 
@@ -131,6 +136,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateDialogPinnedTag,
 		UpdateFolderPeersTag,
 		UpdateNotifySettingsTag,
+		UpdateDraftMessageTag,
 	}
 
 	covered := map[string]bool{}

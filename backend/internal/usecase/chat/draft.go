@@ -109,31 +109,9 @@ func (i *Interactor) deleteDraft(ctx context.Context, userID, chatID int64) erro
 }
 
 // publishDraft логирует и шлёт draft_update на все устройства владельца (d nil —
-// удалён): запись в апдейт-лог даёт плотный pts-курсор, так что смена черновика
-// доезжает и через /sync (updateDraftMessage). Recipients — владелец (свои устройства).
+// черновик снят): запись в апдейт-лог даёт плотный курсор, так что смена
+// черновика доезжает и через /sync.
 func (i *Interactor) publishDraft(ctx context.Context, userID, chatID int64, d *domain.Draft) {
-	payload := map[string]any{"draft": nil}
-	if d != nil {
-		payload["draft"] = draftJSON(*d)
-	}
-	_ = i.logAndPublish(ctx, chatID, []int64{userID}, "draft_update", payload)
-}
-
-// draftJSON — тело черновика БЕЗ ключа чата: в кадре draft_update его несёт
-// сам кадр (peer_id получателя), в витрине /drafts — DraftJSON ниже.
-func draftJSON(d domain.Draft) map[string]any {
-	return map[string]any{
-		"text": d.Text, "entities": d.Entities,
-		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
-	}
-}
-
-// DraftJSON — витринное представление черновика для владельца: тело плюс ключ
-// пира ГЛАЗАМИ владельца (у приватного диалога он у сторон разный).
-func (i *Interactor) DraftJSON(ctx context.Context, viewerID int64, d domain.Draft) map[string]any {
-	j := draftJSON(d)
-	if peer, err := i.ChatIDToPeer(ctx, viewerID, d.ChatID); err == nil {
-		j["peer_id"] = peer
-	}
-	return j
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "draft_update",
+		func(peer domain.PeerID) map[string]any { return draftPayload(peer, d) })
 }

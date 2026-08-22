@@ -2264,11 +2264,18 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"theme_id": b.ThemeID})
 }
 
-// draftJSON — wire-представление черновика; ключ пира ГЛАЗАМИ владельца.
+// draftJSON — черновик витрины: КОНСТРУКТОР кадра updateDraftMessage с ключом
+// пира ГЛАЗАМИ владельца.
+//
+// Форма взята у оригинала буквально: `messages.getAllDrafts` отвечает
+// контейнером `Updates`, то есть списком тех же кадров, что приезжают живыми.
+// Прежде витрина и кадр несли РАЗНЫЕ формы одного черновика (тут `text` и
+// `peer_id` плоско, там вложенный словарь), и расходились они сами по себе.
 func draftJSON(d domain.Draft, peer domain.PeerID) map[string]any {
 	return map[string]any{
-		"peer_id": peer, "text": d.Text, "entities": d.Entities,
-		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
+		"_":     "updateDraftMessage",
+		"peer":  domain.NewPeer(peer),
+		"draft": d.Wire(),
 	}
 }
 
@@ -2326,11 +2333,13 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
+	// «Черновик снят» — КОНСТРУКТОР draftMessageEmpty, а не null: отсутствие
+	// выражается выбором конструктора, как у любого объединения схемы.
 	if d == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"draft": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"draft": domain.NewDraftMessageEmpty()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"draft": draftJSON(*d, peerOf(r, h.svc, d.ChatID))})
+	writeJSON(w, http.StatusOK, map[string]any{"draft": d.Wire()})
 }
 
 // DeleteDraft — DELETE /chats/{chatID}/draft.

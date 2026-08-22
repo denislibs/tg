@@ -650,13 +650,38 @@ export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
   }
 }
 
-// Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
+/**
+ * Облачный черновик НА ПРОВОДЕ — объединение `DraftMessage` схемы.
+ *
+ * Второй конструктор здесь главный: «черновика нет» это `draftMessageEmpty`, а
+ * не `null` под тем же ключом. Прежде отсутствие выражалось ЗНАЧЕНИЕМ, и каждый
+ * читатель заводил свою ветку `if (draft)`; выбор конструктора делает это
+ * ветвление тем же, что у любого другого объединения.
+ *
+ * Текст лежит в `message` — том же имени, что у самого сообщения (у нас он
+ * звался `text`, то есть был вторым именем одного поля), а дата — `date` в
+ * секундах эпохи, как у сообщения, а не ISO-строкой своей ручки.
+ */
+export interface InputReplyToMessage { _: 'inputReplyToMessage'; reply_to_msg_id: number }
+/** draftMessage#60fe3294 … message:string entities:flags.3?Vector<MessageEntity> date:int */
+export interface DraftMessageReal {
+  _: 'draftMessage'
+  message: string
+  entities?: MessageEntity[]
+  reply_to?: InputReplyToMessage
+  date: number
+}
+/** draftMessageEmpty#1b0c841a — «черновик снят». */
+export interface DraftMessageEmpty { _: 'draftMessageEmpty' }
+export type DraftMessage = DraftMessageReal | DraftMessageEmpty
+
+/** Кадр черновика — он же элемент витрины `/drafts`: у оригинала
+ *  `messages.getAllDrafts` отвечает контейнером `Updates`, то есть теми же
+ *  кадрами. */
 export interface RawDraft {
-  peer_id: PeerId
-  text: string
-  entities?: MessageEntity[] | null
-  reply_to_id?: number | null
-  updated_at: string
+  _: 'updateDraftMessage'
+  peer: Peer
+  draft: DraftMessage
 }
 
 export interface Draft {
@@ -664,16 +689,23 @@ export interface Draft {
   text: string
   entities?: MessageEntity[]
   replyToId: number | null
-  updatedAt: string
+  /** секунды эпохи (`date:int` схемы) — те же единицы, что у сообщения */
+  date: number
 }
 
-export function mapDraft(r: RawDraft): Draft {
+/** Кадр/строка витрины → модель. `draftMessageEmpty` — не черновик: `null`. */
+export function mapDraft(r: RawDraft): Draft | null {
+  return mapDraftMessage(getPeerId(r.peer), r.draft)
+}
+
+export function mapDraftMessage(peerId: PeerId, d: DraftMessage): Draft | null {
+  if (d._ === 'draftMessageEmpty') return null
   return {
-    peerId: r.peer_id,
-    text: r.text,
-    entities: r.entities?.length ? r.entities : undefined,
-    replyToId: r.reply_to_id ?? null,
-    updatedAt: r.updated_at,
+    peerId,
+    text: d.message,
+    entities: d.entities?.length ? d.entities : undefined,
+    replyToId: d.reply_to?.reply_to_msg_id ?? null,
+    date: d.date,
   }
 }
 

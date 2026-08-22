@@ -252,15 +252,20 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 	}
 
 	// Черновик: ключ несёт сам кадр, дублирующий chat_id внутри draft снят.
+	//
+	// Ключ читается тем же framePeer, что и у остальных кадров: тест гонит базу
+	// до головы, а 0119 перевёл кадр в конструктор updateDraftMessage, где пир
+	// это Peer, а не число. Утверждение 0102 осталось про то, за что 0102 и
+	// отвечает, — АДРЕС самого кадра.
+	draftRaw := userFrame(t, pool, userA, 3)
+	if peer, ok, _ := framePeer(t, draftRaw); !ok || peer != userB {
+		t.Errorf("draft_update peer = %d (ok=%v); want %d", peer, ok, userB)
+	}
 	var draftFrame struct {
-		PeerID int64          `json:"peer_id"`
-		Draft  map[string]any `json:"draft"`
+		Draft map[string]any `json:"draft"`
 	}
-	if err := json.Unmarshal(userFrame(t, pool, userA, 3), &draftFrame); err != nil {
+	if err := json.Unmarshal(draftRaw, &draftFrame); err != nil {
 		t.Fatalf("разбор draft_update: %v", err)
-	}
-	if draftFrame.PeerID != userB {
-		t.Errorf("draft_update peer_id = %d; want %d", draftFrame.PeerID, userB)
 	}
 	if _, has := draftFrame.Draft["chat_id"]; has {
 		t.Error("draft.chat_id остался внутри кадра")

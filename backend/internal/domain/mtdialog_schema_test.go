@@ -89,6 +89,14 @@ func allDialogConstructors() []any {
 		NewFolderPeer(NewPeerUser(42), FolderArchive),
 		// «Вернуть из архива» — тот же конструктор с нулевой папкой, а не второй.
 		NewFolderPeer(NewPeerUser(42), FolderAll),
+		// ── Черновик ─────────────────────────────────────────────────────────
+		// «Черновика нет» — ВТОРОЙ конструктор, а не null под тем же ключом.
+		func() DraftMessageReal {
+			id := int64(12)
+			return NewDraftMessage("набросок", nil, &id, now)
+		}(),
+		NewDraftMessage("без ответа", nil, nil, now),
+		NewDraftMessageEmpty(),
 		// ── Dialog ───────────────────────────────────────────────────────────
 		full,
 		empty,
@@ -190,6 +198,7 @@ func dialogConstructorTags() []string {
 	return []string{
 		DialogTag, DialogFolderTag, FolderTag,
 		DialogPeerTag, NotifyPeerTag, FolderPeerTag,
+		DraftMessageTag, DraftMessageEmptyTag, InputReplyToMessageTag,
 		PeerNotifySettingsTag,
 		NotificationSoundDefaultTag, NotificationSoundNoneTag,
 		MessagesDialogsTag, MessagesDialogsSliceTag,

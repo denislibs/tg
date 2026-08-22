@@ -34,7 +34,7 @@ export function useComposerDraft(peerId: PeerId | null, replyToId: number | null
     savedRef.current = sig
     // Оптимистично — превью «Черновик:» в списке чатов обновляется сразу;
     // rt:draft_update с бэка сверит остальные вкладки/устройства.
-    if (text.trim() || replyToId != null) setDraft({ peerId, text, replyToId, updatedAt: new Date().toISOString() })
+    if (text.trim() || replyToId != null) setDraft({ peerId, text, replyToId, date: Math.floor(Date.now() / 1000) })
     else removeDraft(peerId)
     void managers.drafts.save(peerId, text, replyToId).catch(() => {})
   })

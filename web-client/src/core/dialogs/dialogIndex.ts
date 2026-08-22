@@ -17,13 +17,6 @@ import type { Dialog, Draft } from '../models'
 /** tweb `generateDialogPinnedDateByIndex` (dialogs.ts:924-926): заведомо больше любой реальной даты. */
 export const PINNED_BASE = 0x7fff0000
 
-/** ISO-строка (`lastMessage.createdAt`, `Draft.updatedAt`) → unix-секунды; 0 при отсутствии/битой дате. */
-const secs = (iso: string | undefined): number => {
-  if (!iso) return 0
-  const ms = Date.parse(iso)
-  return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000)
-}
-
 /**
  * Числовой индекс диалога: больше — выше в списке.
  *
@@ -35,7 +28,7 @@ const secs = (iso: string | undefined): number => {
 export function dialogIndex(
   dialog: Dialog,
   pinnedOrder: readonly number[],
-  draft?: Pick<Draft, 'updatedAt'>,
+  draft?: Pick<Draft, 'date'>,
 ): number {
   const pinned = !!dialog.pFlags?.pinned
   const date = pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog, draft)
@@ -54,7 +47,7 @@ function pinnedDate(dialog: Dialog, order: readonly number[]): number {
 }
 
 /** tweb `generateIndexForDialog` (dialogs.ts:869-922): дата последней активности. */
-function activityDate(dialog: Dialog, draft?: Pick<Draft, 'updatedAt'>): number {
+function activityDate(dialog: Dialog, draft?: Pick<Draft, 'date'>): number {
   // `date:int` на проводе, но JSON может привезти что угодно; NaN здесь отравил
   // бы СОРТИРОВКУ ЦЕЛИКОМ (сравнения с NaN ложны в обе стороны — порядок
   // становится непредсказуемым, а не «этот диалог внизу»). Поэтому непригодное
@@ -62,7 +55,10 @@ function activityDate(dialog: Dialog, draft?: Pick<Draft, 'updatedAt'>): number 
   const date = dialog.lastMessage?.date
   const top = Number.isFinite(date) ? (date as number) : 0
   // Черновик свежее последнего сообщения поднимает диалог (dialogs.ts:904-910).
-  const draftDate = secs(draft?.updatedAt)
+  // Единицы у обоих одни — секунды эпохи (`date:int` схемы), поэтому
+  // перевода из ISO здесь больше нет: черновик приезжает конструктором
+  // draftMessage со своим `date`, как и сообщение.
+  const draftDate = Number.isFinite(draft?.date) ? (draft?.date as number) : 0
   // Осознанное отступление от tweb: там пустой диалог получает `topDate ||= tsNow()`
   // (dialogs.ts:913) — текущее время, разное на каждом вызове. Это ровно та
   // недетерминированность, от которой мы уходим, поэтому оставляем 0: диалог без

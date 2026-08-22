@@ -17,7 +17,7 @@ import type { Draft } from '../models'
 const dialog = (peerId: number, at: string, pinned = false): Dialog =>
   makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
-const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, updatedAt })
+const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, date: Math.floor(Date.parse(updatedAt) / 1000) })
 const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)
 
 const isMuted = (d: Dialog): boolean => isPeerMuted(d.notify_settings, Math.floor(Date.now() / 1000))

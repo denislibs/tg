@@ -49,7 +49,7 @@ describe('persist (normalized offline store)', () => {
 
   it('round-trips folders and drafts', async () => {
     const folder: Folder = { id: 1, title: 'Work', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [5], excludeChats: [] }
-    const draft: Draft = { peerId: 9, text: 'wip', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }
+    const draft: Draft = { peerId: 9, text: 'wip', replyToId: null, date: 1767225600 }
     await saveFolders([folder])
     await saveDrafts([draft])
     expect((await loadFolders()).map((f) => f.title)).toEqual(['Work'])
@@ -59,7 +59,7 @@ describe('persist (normalized offline store)', () => {
   it('clears folders + drafts on account switch', async () => {
     await persistScope('A')
     await saveFolders([{ id: 1, title: 'X', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }])
-    await saveDrafts([{ peerId: 1, text: 't', replyToId: null, updatedAt: '2026-01-01T00:00:00Z' }])
+    await saveDrafts([{ peerId: 1, text: 't', replyToId: null, date: 1767225600 }])
     await persistScope('B') // смена аккаунта
     expect(await loadFolders()).toEqual([])
     expect(await loadDrafts()).toEqual([])

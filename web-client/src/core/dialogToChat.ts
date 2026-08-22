@@ -204,9 +204,12 @@ export function dialogToChat(
     verified: user?.pFlags?.verified || undefined,
     premium: user?.pFlags?.premium || undefined,
     emojiStatus: user?.emoji_status_emoticon || undefined,
-    // `date` сообщения — секунды эпохи (в схеме `date:int`), у черновика — ISO
-    // своей ручки: сравниваем и форматируем в одних единицах.
-    date: hasDraft && (!lm || draft!.updatedAt > messageDateISO(lm.date)) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm ? messageDateISO(lm.date) : undefined),
+    // Секунды эпохи у обоих (`date:int` схемы): черновик приезжает
+    // конструктором draftMessage со своим `date`, и переводить из ISO больше
+    // нечего — сравниваем числа, форматируем один раз.
+    date: hasDraft && (!lm || draft!.date > lm.date)
+      ? fmtWhen(messageDateISO(draft!.date))
+      : fmtWhen(lm ? messageDateISO(lm.date) : undefined),
     preview,
     draftPreview: hasDraft ? draft!.text : undefined,
     type,

@@ -40,10 +40,12 @@ import (
 // Пропуски названы, а не забыты — молчаливый пропуск и есть тот способ, каким
 // поля уходили из модели:
 //
-//   - draft (flags.1?DraftMessage) — предмет ЕСТЬ, но живёт своей ручкой
-//     /drafts и своим стором, уже участвующим в сортировке списка. Внести поле,
-//     не объединив хранилища, значит завести второй источник истины — ровно то,
-//     ради устранения чего программа и существует. Объединение — отдельный шаг;
+//   - draft (flags.1?DraftMessage) — сам КОНСТРУКТОР теперь объявлен здесь же
+//     (порт кадра draft_update), но полем диалога не едет: черновики живут
+//     своей ручкой /drafts и своим стором, уже участвующим в сортировке списка.
+//     Внести поле, не объединив хранилища, значит завести второй источник
+//     истины — ровно то, ради устранения чего программа и существует.
+//     Объединение — отдельный шаг;
 //   - pts (flags.0?int) — предмет есть (domain.UpdateRecord.Pts), но живёт в журнале
 //     апдейтов, а не в диалоге;
 //   - pFlags.unread_mark — «отметить непрочитанным» не реализовано ни на одной
@@ -286,6 +288,108 @@ func UnmarshalDialog(raw []byte) (Dialog, error) {
 		return v, err
 	}
 	return nil, nil
+}
+
+// ── DraftMessage: draftMessage | draftMessageEmpty ──────────────────────────
+//
+// Облачный черновик. Ключевое здесь — ВТОРОЙ конструктор: «черновика нет» у
+// оригинала выражает draftMessageEmpty, а у нас на этом месте ехал `null` под
+// ключом `draft`. Это тот же класс, что «вид сущности строкой»: отсутствие
+// выражено ЗНАЧЕНИЕМ, а не выбором конструктора, и потому у каждого читателя
+// своя ветка `if (draft)`.
+//
+// Чего нет и почему:
+//   - no_webpage / invert_media — управление превью ссылки в черновике; у
+//     композера такой настройки нет вовсе;
+//   - media (flags.5?InputMedia) — черновик с вложением: у нас черновик это
+//     только текст с разметкой и ответом;
+//   - effect / suggested_post / rich_message — предмета нет;
+//   - date у draftMessageEmpty — момент удаления мы не храним, а параметр
+//     необязательный.
+
+// DraftMessageTag — дискриминатор `_` конструктора draftMessage.
+const DraftMessageTag = "draftMessage"
+
+// DraftMessageEmptyTag — дискриминатор `_` конструктора draftMessageEmpty.
+const DraftMessageEmptyTag = "draftMessageEmpty"
+
+// DraftMessage — объединение: черновик либо ЕГО ОТСУТСТВИЕ.
+type DraftMessage interface {
+	isDraftMessage()
+	Tag() string
+}
+
+// draftMessageEmpty#1b0c841a flags:# date:flags.0?int = DraftMessage;
+//
+// «Черновика нет» — КОНСТРУКТОР, а не null. Разница видна на переигрывании:
+// null это «поле не заполнено», а draftMessageEmpty — утверждение «черновик
+// снят», и спутать их нельзя.
+type DraftMessageEmpty struct {
+	Underscore string `json:"_"`
+}
+
+func (DraftMessageEmpty) isDraftMessage() {}
+func (d DraftMessageEmpty) Tag() string   { return d.Underscore }
+func NewDraftMessageEmpty() DraftMessageEmpty {
+	return DraftMessageEmpty{Underscore: DraftMessageEmptyTag}
+}
+
+// draftMessage#60fe3294 flags:# no_webpage:flags.1?true invert_media:flags.6?true
+// reply_to:flags.4?InputReplyTo message:string entities:flags.3?Vector<MessageEntity>
+// media:flags.5?InputMedia date:int effect:flags.7?long
+// suggested_post:flags.8?SuggestedPost rich_message:flags.9?RichMessage = DraftMessage;
+//
+// Текст лежит в `message` — том же имени, что у самого сообщения: у нас он звался
+// `text`, и это было второе имя одного поля на проводе.
+type DraftMessageReal struct {
+	Underscore string `json:"_"`
+	// ReplyTo — flags.4?InputReplyTo: на что отвечает черновик. Объединение
+	// ВХОДЯЩЕЕ (Input*), потому что черновик — заготовка ОТПРАВКИ, а не
+	// сохранённое сообщение.
+	ReplyTo  *InputReplyToMessage `json:"reply_to,omitempty"`
+	Message  string               `json:"message"`
+	Entities MessageEntities      `json:"entities,omitempty"`
+	// Date — когда черновик последний раз менялся (unix-секунды). Обязателен:
+	// по нему клиент решает, чей черновик свежее при гонке двух устройств.
+	Date int `json:"date"`
+}
+
+func (DraftMessageReal) isDraftMessage() {}
+func (d DraftMessageReal) Tag() string   { return d.Underscore }
+
+func NewDraftMessage(text string, entities MessageEntities, replyToMsgID *int64, updatedAt time.Time) DraftMessageReal {
+	d := DraftMessageReal{Underscore: DraftMessageTag, Message: text, Entities: entities,
+		Date: unixSeconds(updatedAt)}
+	if replyToMsgID != nil {
+		r := NewInputReplyToMessage(*replyToMsgID)
+		d.ReplyTo = &r
+	}
+	return d
+}
+
+// InputReplyToMessageTag — дискриминатор `_` конструктора inputReplyToMessage.
+const InputReplyToMessageTag = "inputReplyToMessage"
+
+// inputReplyToMessage#3bd4b7c2 flags:# reply_to_msg_id:int top_msg_id:flags.0?int
+// reply_to_peer_id:flags.1?InputPeer quote_text:flags.2?string
+// quote_entities:flags.3?Vector<MessageEntity> quote_offset:flags.4?int
+// monoforum_peer_id:flags.5?InputPeer todo_item_id:flags.6?int
+// poll_option:flags.7?bytes = InputReplyTo;
+//
+// Ответ ЗАГОТОВКИ: у черновика на месте ссылки стоит входное объединение, а не
+// messageReplyHeader самого сообщения. Второй конструктор объединения
+// (inputReplyToStory) не объявляется: ответить историей из композера у нас
+// нельзя.
+//
+// Цитаты и тред здесь не производятся: черновик хранит только номер, на который
+// отвечают, — остальное собирается на отправке.
+type InputReplyToMessage struct {
+	Underscore   string `json:"_"`
+	ReplyToMsgID int64  `json:"reply_to_msg_id"`
+}
+
+func NewInputReplyToMessage(msgID int64) InputReplyToMessage {
+	return InputReplyToMessage{Underscore: InputReplyToMessageTag, ReplyToMsgID: msgID}
 }
 
 // ── Ссылки на диалог: DialogPeer, NotifyPeer, FolderPeer ────────────────────

@@ -65,6 +65,7 @@ const (
 	UpdateDialogPinnedTag             = "updateDialogPinned"
 	UpdateFolderPeersTag              = "updateFolderPeers"
 	UpdateNotifySettingsTag           = "updateNotifySettings"
+	UpdateDraftMessageTag             = "updateDraftMessage"
 )
 
 // PtsCountOne — на сколько кадр двигает курсор.
@@ -471,6 +472,30 @@ func (u UpdateNotifySettings) Tag() string { return u.Underscore }
 func NewUpdateNotifySettings(peer Peer, settings PeerNotifySettings) UpdateNotifySettings {
 	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
 		Peer: NewNotifyPeer(peer), NotifySettings: settings}
+}
+
+// updateDraftMessage#edfc111e flags:# peer:Peer top_msg_id:flags.0?int
+// saved_peer_id:flags.1?Peer draft:DraftMessage = Update;
+//
+// Черновик изменился на другом устройстве. «Черновик снят» — не `draft: null`,
+// а КОНСТРУКТОР draftMessageEmpty внутри того же параметра: отсутствие выражено
+// выбором конструктора, а не значением.
+//
+// top_msg_id не производится: черновик у нас один на чат, тредового черновика
+// нет ни в хранилище, ни в композере.
+//
+// Своего pts у конструктора нет — курсор такого кадра едет в конверте.
+type UpdateDraftMessage struct {
+	Underscore string       `json:"_"`
+	Peer       Peer         `json:"peer"`
+	Draft      DraftMessage `json:"draft"`
+}
+
+func (UpdateDraftMessage) isUpdate()     {}
+func (u UpdateDraftMessage) Tag() string { return u.Underscore }
+
+func NewUpdateDraftMessage(peer Peer, draft DraftMessage) UpdateDraftMessage {
+	return UpdateDraftMessage{Underscore: UpdateDraftMessageTag, Peer: peer, Draft: draft}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

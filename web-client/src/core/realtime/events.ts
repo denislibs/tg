@@ -353,8 +353,19 @@ export interface ChatUpdateEvt {
   chat_full: MessagesChatFull
   pts?: number
 }
-// Черновик изменён на другом устройстве/вкладке (draft null — удалён).
-export interface DraftUpdateEvt { peer_id: PeerId; draft: import('../models').RawDraft | null }
+/**
+ * Черновик изменён на другом устройстве/вкладке — `updateDraftMessage`.
+ *
+ * «Снят» выражает КОНСТРУКТОР `draftMessageEmpty` внутри того же параметра, а
+ * не `draft: null`: отсутствие — выбор конструктора, как у любого объединения.
+ *
+ * Своего `pts` у конструктора нет — курсор едет в КОНВЕРТЕ (`Frame.pts`).
+ */
+export interface DraftUpdateEvt {
+  _: 'updateDraftMessage'
+  peer: Peer
+  draft: import('../models').DraftMessage
+}
 // upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)
 export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
 export interface TypingEvt { peer_id: PeerId; user_id: number; action?: TypingAction }

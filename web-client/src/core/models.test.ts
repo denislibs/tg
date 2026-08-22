@@ -269,30 +269,40 @@ describe('mapMessage — уточнение служебного действи�
 })
 
 describe('mapDraft', () => {
-  it('maps entities and reply_to_id (draft_update frame / GET /drafts)', () => {
+  const peer = { _: 'peerUser' as const, user_id: 3 }
+
+  it('разбирает разметку и ссылку на ответ (кадр draft_update / GET /drafts)', () => {
     const d = mapDraft({
-      peer_id: 3, text: '**жирный**',
-      entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
-      reply_to_id: 42, updated_at: '2026-07-21T10:00:00Z',
+      _: 'updateDraftMessage', peer,
+      draft: {
+        _: 'draftMessage', message: '**жирный**',
+        entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
+        reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 42 },
+        date: 1784628000,
+      },
     })
     expect(d).toEqual({
       peerId: 3, text: '**жирный**',
       entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
-      replyToId: 42, updatedAt: '2026-07-21T10:00:00Z',
+      replyToId: 42, date: 1784628000,
     })
   })
 
-  it('defaults absent/null entities and reply_to_id', () => {
-    const d = mapDraft({ peer_id: 3, text: 'x', entities: null, reply_to_id: null, updated_at: 't' })
-    expect(d.entities).toBeUndefined()
-    expect(d.replyToId).toBeNull()
-    const d2 = mapDraft({ peer_id: 3, text: 'x', updated_at: 't' })
-    expect(d2.entities).toBeUndefined()
-    expect(d2.replyToId).toBeNull()
+  // «Черновика нет» — ВТОРОЙ КОНСТРУКТОР, а не null под тем же ключом: именно
+  // это различие и было портировано.
+  it('draftMessageEmpty — не черновик', () => {
+    expect(mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessageEmpty' } })).toBeNull()
   })
 
-  it('drops an empty entities array', () => {
-    expect(mapDraft({ peer_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
+  it('отсутствующие разметка и ответ — undefined/null', () => {
+    const d = mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessage', message: 'x', date: 1 } })
+    expect(d?.entities).toBeUndefined()
+    expect(d?.replyToId).toBeNull()
+  })
+
+  it('пустой вектор разметки выбрасывается', () => {
+    const d = mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessage', message: 'x', entities: [], date: 1 } })
+    expect(d?.entities).toBeUndefined()
   })
 })
 

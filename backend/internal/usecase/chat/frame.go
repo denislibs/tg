@@ -341,6 +341,24 @@ func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
 	}
 }
 
+// draftPayload — тело кадра черновика.
+//
+// «Черновик снят» — КОНСТРУКТОР draftMessageEmpty, а не `draft: null`. Прежде
+// отсутствие выражалось значением, и каждый читатель заводил свою ветку
+// `if (draft)`; выбор конструктора делает это ветвление тем же, что у любого
+// другого объединения схемы.
+func draftPayload(peer domain.PeerID, d *domain.Draft) map[string]any {
+	var draft domain.DraftMessage = domain.NewDraftMessageEmpty()
+	if d != nil {
+		draft = d.Wire()
+	}
+	return map[string]any{
+		"_":     domain.UpdateDraftMessageTag,
+		"peer":  domain.NewPeer(peer),
+		"draft": draft,
+	}
+}
+
 // dialogPinPayload — тело кадра закрепления ДИАЛОГА.
 //
 // Конструктор один на оба действия: «открепили» — это опущенный бит

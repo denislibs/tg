@@ -1237,7 +1237,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
       loadCache: async () => [dialog(1, 9), dialog(2, 7), dialog(7, 1)],
       loadState: async () => ({
         pinnedOrders: {},
-        drafts: [{ peerId: 7, text: 'ч', replyToId: null, updatedAt: at(8) }] as Draft[],
+        drafts: [{ peerId: 7, text: 'ч', replyToId: null, date: Math.floor(Date.parse(at(8)) / 1000) }] as Draft[],
       }),
     })
 

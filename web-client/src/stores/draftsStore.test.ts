@@ -5,7 +5,7 @@ import { setDraft, removeDraft, setAllDrafts, draftFor, loadDrafts } from './dra
 import type { Draft } from '../core/models'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)
-const draft: Draft = { peerId: 3, text: 'привет', replyToId: null, updatedAt: '2026-08-09T00:00:00Z' }
+const draft: Draft = { peerId: 3, text: 'привет', replyToId: null, date: 1786233600 }
 
 beforeEach(() => {
   useAppStateStore.setState({ ...STATE_INIT }, true)

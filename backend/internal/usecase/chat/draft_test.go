@@ -119,9 +119,14 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 	if list, _ := in.MyDrafts(ctx, a); len(list) != 0 {
 		t.Fatalf("draft must be deleted: %+v", list)
 	}
+	// «Черновик снят» — КОНСТРУКТОР draftMessageEmpty, а не null под тем же
+	// ключом: отсутствие выражено выбором конструктора.
 	frames := draftFramesFor(pub, a)
-	if len(frames) != 2 || frames[1]["draft"] != nil {
-		t.Fatalf("expected null draft_update: %+v", frames)
+	if len(frames) != 2 {
+		t.Fatalf("ждали два кадра черновика: %+v", frames)
+	}
+	if empty, _ := frames[1]["draft"].(map[string]any); empty["_"] != domain.DraftMessageEmptyTag {
+		t.Fatalf("снятый черновик = %+v; ждали %s", frames[1]["draft"], domain.DraftMessageEmptyTag)
 	}
 
 	// Отправка сообщения снимает черновик.
@@ -190,11 +195,16 @@ func TestDrafts_EntitiesAndReply(t *testing.T) {
 		t.Fatalf("MyDrafts must carry entities+reply: %+v", list)
 	}
 
-	// draft_update-кадр несёт entities и reply_to_id.
+	// Кадр несёт разметку и ссылку на ответ — ссылку КОНСТРУКТОРОМ входного
+	// объединения (inputReplyToMessage), а не числом `reply_to_id` рядом.
 	frames := draftFramesFor(pub, a)
 	last, _ := frames[len(frames)-1]["draft"].(map[string]any)
-	if last == nil || last["reply_to_id"] == nil || last["entities"] == nil {
-		t.Fatalf("draft_update must carry entities+reply_to_id: %+v", last)
+	if last == nil || last["entities"] == nil {
+		t.Fatalf("в кадре черновика нет разметки: %+v", last)
+	}
+	replyTo, _ := last["reply_to"].(map[string]any)
+	if replyTo["_"] != domain.InputReplyToMessageTag || asInt64(t, replyTo["reply_to_msg_id"]) != msg.Seq {
+		t.Fatalf("ссылка на ответ = %+v; ждали %s с номером %d", last["reply_to"], domain.InputReplyToMessageTag, msg.Seq)
 	}
 
 	// Reply на сообщение из другого чата → NULL (черновик сохраняется).
@@ -213,4 +223,57 @@ func TestDrafts_EntitiesAndReply(t *testing.T) {
 	if list, _ := in.MyDrafts(ctx, a); len(list) != 0 {
 		t.Fatalf("draft must be gone: %+v", list)
 	}
+}
+
+// Кадр черновика — конструктор схемы, и проверяет это КОДЕК: он отвергает и
+// лишний ключ, и пропущенный обязательный параметр, то есть сверяет тело с
+// конструктором целиком, а не по вспомненным полям.
+//
+// Отдельно пинится ВТОРОЙ конструктор: «черновик снят» это draftMessageEmpty, а
+// не null под тем же ключом, — ради этого различия порт и делался.
+func TestDrafts_FrameIsSchemaConstructor(t *testing.T) {
+	in, _ := newInteractor()
+	pub := &fakePublisher{}
+	in.SetDrafts(newFakeDrafts())
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, err := in.CreatePrivateChat(ctx, a, b)
+	if err != nil {
+		t.Fatalf("CreatePrivateChat: %v", err)
+	}
+
+	if _, err := in.SaveDraft(ctx, a, chatID, "набросок", nil, nil); err != nil {
+		t.Fatalf("SaveDraft: %v", err)
+	}
+	frames := draftFramesFor(pub, a)
+	if len(frames) != 1 {
+		t.Fatalf("кадров черновика: %d", len(frames))
+	}
+	d := frames[0]
+	if d["_"] != domain.UpdateDraftMessageTag {
+		t.Fatalf("кадр = %v", d["_"])
+	}
+	if peer, _ := d["peer"].(map[string]any); peer["_"] != "peerUser" {
+		t.Fatalf("ключ пира = %#v", d["peer"])
+	}
+	draft, _ := d["draft"].(map[string]any)
+	if draft["_"] != domain.DraftMessageTag || draft["message"] != "набросок" {
+		t.Fatalf("черновик = %#v", d["draft"])
+	}
+	if _, stray := draft["text"]; stray {
+		t.Fatalf("в черновике осталось имя старой формы `text`: %#v", draft)
+	}
+	assertEncodesAsTL(t, d)
+
+	// Снятие: тот же кадр, ВТОРОЙ конструктор внутри.
+	if _, err := in.SaveDraft(ctx, a, chatID, "", nil, nil); err != nil {
+		t.Fatalf("SaveDraft(empty): %v", err)
+	}
+	frames = draftFramesFor(pub, a)
+	empty, _ := frames[len(frames)-1]["draft"].(map[string]any)
+	if empty["_"] != domain.DraftMessageEmptyTag {
+		t.Fatalf("снятый черновик = %#v; ждали %s", frames[len(frames)-1]["draft"], domain.DraftMessageEmptyTag)
+	}
+	assertEncodesAsTL(t, frames[len(frames)-1])
 }

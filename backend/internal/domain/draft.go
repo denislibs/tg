@@ -12,3 +12,14 @@ type Draft struct {
 	ReplyToID *int64
 	UpdatedAt time.Time
 }
+
+// Wire — черновик в форме схемы (draftMessage). ЕДИНСТВЕННАЯ сборка: её берут
+// и кадр draft_update, и витрина /drafts, поэтому второй формы у черновика на
+// проводе нет.
+//
+// «Черновика нет» здесь не выражается — это ДРУГОЙ конструктор
+// (draftMessageEmpty), и выбирает между ними тот, у кого есть ответ на вопрос
+// «есть ли черновик»: строка есть — draftMessage, строки нет — пустой.
+func (d Draft) Wire() DraftMessageReal {
+	return NewDraftMessage(d.Text, d.Entities, d.ReplyToID, d.UpdatedAt)
+}

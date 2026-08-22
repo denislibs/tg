@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraft, mapBoostStatus, mapSuggestedPost, mapMessage, mapReactions } from '../../core/models'
+import { mapDraftMessage, mapBoostStatus, mapSuggestedPost, mapMessage, mapReactions } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -221,8 +221,10 @@ export function registerStoreProjection(managers: Managers): void {
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
   rootScope.addEventListener(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
-    if (e.draft) setDraft(mapDraft(e.draft))
-    else removeDraft(e.peer_id)
+    const peerId = getPeerId(e.peer)
+    const draft = mapDraftMessage(peerId, e.draft)
+    if (draft) setDraft(draft)
+    else removeDraft(peerId)
   })
   rootScope.addEventListener(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   rootScope.addEventListener(RT.typing, (raw) => {
