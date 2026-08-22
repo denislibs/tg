@@ -38,7 +38,7 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	}
 	// Строка журнала одна на всех — в ней фото нет: журнал переигрывается при
 	// /sync, а к тому моменту правило приватности может стать другим.
-	logged := u.ToUser(domain.UserFlags{}, nil, false)
+	logged := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{}, nil, false))
 	payload, err := json.Marshal(logged)
 	if err != nil {
 		return
@@ -55,11 +55,14 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	}
 	date := time.Now().UnixMilli()
 	for _, uid := range recipients {
-		live := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, i.photoVisible(ctx, u.ID, uid))
-		d := map[string]any{"user": live}
+		live := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, i.photoVisible(ctx, u.ID, uid)))
+		env := map[string]any{"t": "user_update", "d": live}
 		if i.updates != nil {
 			if pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "user_update", payload); e == nil {
-				d["pts"] = pts // live frame advances the client's cursor like the /sync row
+				// Курсор едет в КОНВЕРТЕ: своего параметра pts у этого
+				// конструктора нет (см. domain.UpdateDeclaresPts), а дописать
+				// его в тело значило бы завести поле, которого в схеме нет.
+				env["pts"] = pts
 			} else {
 				i.logf("[user_update] append for %d: %v", uid, e)
 			}
@@ -67,7 +70,7 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 		if i.pub == nil {
 			continue
 		}
-		b, e := json.Marshal(map[string]any{"t": "user_update", "d": d})
+		b, e := json.Marshal(env)
 		if e != nil {
 			continue
 		}

@@ -8366,6 +8366,9 @@ var schemaConstructors = []Constructor{
 		{Name: "pts", Type: "int"},
 		{Name: "pts_count", Type: "int"},
 	}},
+	{ID: 1207664294, Predicate: "updateUserSnapshot", Type: "Update", Params: []Param{
+		{Name: "user", Type: "User"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

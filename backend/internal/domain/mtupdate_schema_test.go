@@ -76,6 +76,7 @@ func updateCases() []struct {
 		{"отправляет аудио", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageUploadAudioActionTag))},
 		{"печатает в группе", NewUpdateChannelUserTyping(5, peer, SendMessageActionByTag(SendMessageTypingActionTag))},
 		{"присутствие", NewUpdateUserStatus(7, NewUserStatusOnline(time.Unix(1787334148, 0)))},
+		{"карточка пользователя", NewUpdateUserSnapshot(NewUser(7, UserFlags{}))},
 	}
 }
 
@@ -149,6 +150,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateUserTypingTag,
 		UpdateChannelUserTypingTag,
 		UpdateUserStatusTag,
+		UpdateUserSnapshotTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

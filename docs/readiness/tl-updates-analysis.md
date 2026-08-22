@@ -106,7 +106,7 @@ pts_count}`. У части конструкторов его нет вовсе (
 | `balance_update` | `updateStarsBalance` |
 | `story_new`, `story_deleted` | `updateStory` (удаление — `storyItemDeleted` внутри) |
 | `story_reaction` | `updateNewStoryReaction` / `updateSentStoryReaction` |
-| `user_update` | `updateUser` / `updateUserName` / `updateUserEmojiStatus` / `updateUserPhone` |
+| `user_update` | наш `updateUserSnapshot` (по тому же основанию, что `chat_update`) |
 
 Три места из таблицы стоит назвать отдельно.
 
@@ -131,6 +131,15 @@ pts_count}`. У части конструкторов его нет вовсе (
 | `geo_live_update` | `updateEditMessage` | у нас патч вложения (`id` + `media` + `edit_date`); у оригинала движение точки — обычная ПРАВКА сообщения, отдельного кадра нет вовсе. Отдельный кадр `updateGeoLiveViewed` в схеме про другое: «трансляцию посмотрели» |
 | `chat_update` | `updateChat` / `updateChannel` | в схеме кадр несёт ТОЛЬКО id — «перечитай карточку»; у нас он несёт снимок `messages.chatFull` целиком |
 | `chat_removed` | `updateChannel` / `updateDialogFilter` | предмета «чат исчез» в схеме нет: у оригинала выход выражается сообщением-действием и перечитыванием |
+
+**`user_update` решается так же, как `chat_update`, и по той же причине.** В
+схеме это `updateUser{user_id}` — «перечитай карточку», а сама карточка едет
+вектором `users` КОНТЕЙНЕРА `updates` (Р7). Контейнера у нас нет, и отдать один
+id значит получить шторм запросов карточки на каждую смену аватарки у
+популярного собеседника: дедупликации запросов (`appUsersManager` у оригинала) у
+нас тоже нет. Поэтому объявлен свой конструктор `updateUserSnapshot{user}` с
+явным id — он ВРЕМЕННЫЙ по построению и уступит место паре
+`updateUser{user_id}` + `users:[user]`, как только появится контейнер.
 
 По `chat_update` расхождение решается НЕ в пользу схемы, и основание должно быть
 записано до порта: у оригинала за кадром-«перечитай» стоит целый механизм

@@ -69,6 +69,7 @@ const (
 	UpdateUserTypingTag               = "updateUserTyping"
 	UpdateChannelUserTypingTag        = "updateChannelUserTyping"
 	UpdateUserStatusTag               = "updateUserStatus"
+	UpdateUserSnapshotTag             = "updateUserSnapshot"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -648,6 +649,34 @@ func (u UpdateUserStatus) Tag() string { return u.Underscore }
 
 func NewUpdateUserStatus(userID int64, status UserStatus) UpdateUserStatus {
 	return UpdateUserStatus{Underscore: UpdateUserStatusTag, UserID: userID, Status: status}
+}
+
+// updateUserSnapshot#47fb7ea6 user:User = Update; — НАШ конструктор.
+//
+// В схеме на этом месте updateUser{user_id}: кадр говорит «перечитай карточку»,
+// а сама карточка едет рядом — вектором `users` КОНТЕЙНЕРА updates. Контейнера
+// у нас пока нет (решение Р7 разбора), значит выбор такой: либо отдать один id
+// и получить шторм запросов карточки на каждую смену аватарки у популярного
+// собеседника (механизма дедупликации запросов, который у оригинала стоит в
+// appUsersManager, у нас нет), либо везти карточку в самом кадре.
+//
+// Выбрано второе — тем же решением, что уже принято по chat_update. Это
+// отступление уровня «предмет есть, но другой природы», и потому оно объявлено
+// СВОИМ конструктором с явным id, а не подмешано параметром в схемный: чужой
+// разбор увидит незнакомый id и остановится, а не прочитает мусор.
+//
+// Конструктор ВРЕМЕННЫЙ по построению: когда появится контейнер updates с
+// вектором users, он уступит место паре updateUser{user_id} + users:[user].
+type UpdateUserSnapshot struct {
+	Underscore string   `json:"_"`
+	User       UserReal `json:"user"`
+}
+
+func (UpdateUserSnapshot) isUpdate()     {}
+func (u UpdateUserSnapshot) Tag() string { return u.Underscore }
+
+func NewUpdateUserSnapshot(user UserReal) UpdateUserSnapshot {
+	return UpdateUserSnapshot{Underscore: UpdateUserSnapshotTag, User: user}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

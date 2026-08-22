@@ -203,10 +203,13 @@ func TestMigration0103_PeerModel(t *testing.T) {
 		t.Errorf("ответ из приватного: снимок превью потерян вместе со ссылкой")
 	}
 
-	var userUpd map[string]any
-	_ = json.Unmarshal(userFrame(t, pool, userA, 5), &userUpd)
+	// Карточка к моменту головы лежит ВНУТРИ кадра (0120), поэтому утверждение
+	// 0103 — про саму карточку — задаётся её конструктору, а не телу кадра.
+	var userFrameBody map[string]any
+	_ = json.Unmarshal(userFrame(t, pool, userA, 5), &userFrameBody)
+	userUpd, _ := userFrameBody["user"].(map[string]any)
 	if userUpd["_"] != "user" || userUpd["username"] != "bob" {
-		t.Errorf("user_update = %v; want конструктор user", userUpd)
+		t.Errorf("карточка в user_update = %v; want конструктор user", userFrameBody)
 	}
 	if _, ok := userUpd["display_name"]; ok {
 		t.Errorf("user_update: display_name остался на проводе: %v", userUpd)

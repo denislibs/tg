@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"github.com/messenger-denis/backend/internal/domain"
 	"testing"
 )
 
@@ -59,8 +60,9 @@ func TestUserUpdate_LoggedToOwnAndPeers(t *testing.T) {
 			t.Fatalf("frames for %d = %d; want 1", uid, len(frames))
 		}
 		var env struct {
-			T string         `json:"t"`
-			D map[string]any `json:"d"`
+			T   string         `json:"t"`
+			D   map[string]any `json:"d"`
+			Pts *float64       `json:"pts"`
 		}
 		if err := json.Unmarshal(frames[0], &env); err != nil {
 			t.Fatalf("unmarshal frame: %v", err)
@@ -68,9 +70,16 @@ func TestUserUpdate_LoggedToOwnAndPeers(t *testing.T) {
 		if env.T != "user_update" {
 			t.Fatalf("frame type for %d = %q; want user_update", uid, env.T)
 		}
-		pts, ok := env.D["pts"].(float64)
-		if !ok || int64(pts) != log.pts[uid] {
-			t.Fatalf("frame pts for %d = %v; want logged pts %d", uid, env.D["pts"], log.pts[uid])
+		// Тело — КОНСТРУКТОР с карточкой внутри; своего pts у него нет, поэтому
+		// курсор едет в КОНВЕРТЕ (см. domain.UpdateDeclaresPts).
+		if env.D["_"] != domain.UpdateUserSnapshotTag {
+			t.Fatalf("frame body for %d = %v; want %s", uid, env.D["_"], domain.UpdateUserSnapshotTag)
+		}
+		if _, stray := env.D["pts"]; stray {
+			t.Fatalf("курсор попал в тело конструктора без параметра pts: %#v", env.D)
+		}
+		if env.Pts == nil || int64(*env.Pts) != log.pts[uid] {
+			t.Fatalf("frame pts for %d = %v; want logged pts %d", uid, env.Pts, log.pts[uid])
 		}
 	}
 }

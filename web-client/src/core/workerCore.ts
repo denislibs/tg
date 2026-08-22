@@ -50,7 +50,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type UserUpdateEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { getPeerId } from './peers/peerId'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
@@ -394,7 +394,7 @@ export function createWorkerCore() {
     // сырой rt:user_update не разбирает; кадр рассылается дальше как есть, чтобы
     // не заводить исключение в общей проводке логируемых типов (потребителей у
     // него на витрине сейчас нет).
-    user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate(p) },
+    user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate((p as UserUpdateEvt).user) },
   }
   // Эфемерные кадры (PASS_THROUGH) и логируемые (APPLY) выводятся из eventCatalog —
   // единого реестра WS-типов. Bespoke-кадры (hello/секрет-handshake/обёртки звонков)

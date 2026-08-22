@@ -322,16 +322,21 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 		t.Errorf("folder.exclude_peers = %v; want [%d] («Избранное» — сам владелец)", folderFrame.Folder.ExcludePeers, userA)
 	}
 
-	// user_update миграция не трогает: ключа чата в нём нет.
+	// user_update ключа ЧАТА не получает: у карточки пользователя его нет вовсе.
+	// Сама карточка к моменту головы лежит ВНУТРИ кадра (0120 завела свой
+	// конструктор updateUserSnapshot), и утверждение 0102 остаётся тем же — что
+	// ключ пира здесь не появился.
 	var uu struct {
-		ID     int64  `json:"id"`
+		User struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
 		PeerID *int64 `json:"peer_id"`
 	}
 	if err := json.Unmarshal(userFrame(t, pool, userA, 7), &uu); err != nil {
 		t.Fatalf("разбор user_update: %v", err)
 	}
-	if uu.ID != userB || uu.PeerID != nil {
-		t.Errorf("user_update изменён миграцией: id=%d peer_id=%v", uu.ID, uu.PeerID)
+	if uu.User.ID != userB || uu.PeerID != nil {
+		t.Errorf("user_update изменён миграцией: id=%d peer_id=%v", uu.User.ID, uu.PeerID)
 	}
 
 	// Журнал канала: ключ один на всех подписчиков.

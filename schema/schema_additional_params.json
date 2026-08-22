@@ -834,6 +834,17 @@
     "type": "Update"
   },
   {
+    "id": "1207664294",
+    "predicate": "updateUserSnapshot",
+    "params": [
+      {
+        "name": "user",
+        "type": "User"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "predicate": "langPackDifference",
     "params": [
       {

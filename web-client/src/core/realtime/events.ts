@@ -228,7 +228,17 @@ export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').R
 //
 // Аватарка гасится ПОКАЖДОМУ получателю: `photo` живёт внутри `user`, и
 // правило `profile_photo` применяется на бэкенде при сборке кадра.
-export interface UserUpdateEvt { user: UserReal; pts?: number }
+/**
+ * Карточка пользователя изменилась — НАШ конструктор `updateUserSnapshot`.
+ *
+ * В схеме на этом месте `updateUser{user_id}` («перечитай карточку»), а сама
+ * карточка едет вектором `users` КОНТЕЙНЕРА `updates`. Контейнера у нас пока
+ * нет, а один id дал бы шторм запросов карточки — поэтому карточка едет внутри
+ * кадра, и конструктор объявлен своим, с явным id (`schema_additional_params`).
+ *
+ * Своего `pts` у него нет — курсор едет в КОНВЕРТЕ (`Frame.pts`).
+ */
+export interface UserUpdateEvt { _: 'updateUserSnapshot'; user: UserReal }
 /**
  * Удаление — НАШ конструктор `updateDeletePeerMessages`. Схемный
  * `updateDeleteMessages` пира не несёт вовсе: у оригинала номер сообщения
