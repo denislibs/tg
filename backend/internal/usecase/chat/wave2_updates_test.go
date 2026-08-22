@@ -201,18 +201,25 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 	// именно по нему клиент СОХРАНЯЕТ свой выбор вместо того, чтобы затереть
 	// его отсутствием chosen. Голосовавший в кадре не отмечен — без флага его
 	// выбор пропал бы при первом же кадре.
+	// Кадр — конструктор схемы: опрос адресуется СВОИМ id, итоги лежат
+	// отдельным параметром (не внутри вложения, как было у нас).
 	var env struct {
 		D struct {
-			Media domain.MessageMediaPoll `json:"media"`
+			Underscore string             `json:"_"`
+			PollID     int64              `json:"poll_id"`
+			Results    domain.PollResults `json:"results"`
 		} `json:"d"`
 	}
 	if err := json.Unmarshal(mustFrame(t, pub, voter, "poll_update"), &env); err != nil {
 		t.Fatalf("кадр poll_update не разбирается: %v", err)
 	}
-	if !env.D.Media.Results.PFlags["min"] {
-		t.Errorf("итоги кадра без pFlags.min: %+v", env.D.Media.Results)
+	if env.D.Underscore != domain.UpdateMessagePollTag || env.D.PollID == 0 {
+		t.Errorf("кадр = %q, poll_id = %d", env.D.Underscore, env.D.PollID)
 	}
-	for _, r := range env.D.Media.Results.Results {
+	if !env.D.Results.PFlags["min"] {
+		t.Errorf("итоги кадра без pFlags.min: %+v", env.D.Results)
+	}
+	for _, r := range env.D.Results.Results {
 		if r.PFlags["chosen"] {
 			t.Errorf("кадр несёт пер-зрительский chosen: %+v", r)
 		}

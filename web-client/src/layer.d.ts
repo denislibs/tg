@@ -1317,17 +1317,17 @@ export namespace MessageMedia {
 
   export type messageMediaCall = {
     _: 'messageMediaCall',
-    action?: MessageAction.messageActionPhoneCall
+    action: MessageAction.messageActionPhoneCall
   };
 
   export type messageMediaPhotoExternal = {
     _: 'messageMediaPhotoExternal',
-    photo?: WebDocument
+    photo: WebDocument
   };
 
   export type messageMediaDocumentExternal = {
     _: 'messageMediaDocumentExternal',
-    document?: WebDocument
+    document: WebDocument
   };
 }
 
@@ -1871,7 +1871,7 @@ export namespace MessageAction {
 
   export type messageActionChatLeave = {
     _: 'messageActionChatLeave',
-    user_id?: UserId
+    user_id: UserId
   };
 
   export type messageActionChannelDeletePhoto = {
@@ -1880,53 +1880,53 @@ export namespace MessageAction {
 
   export type messageActionChannelEditTitle = {
     _: 'messageActionChannelEditTitle',
-    title?: string
+    title: string
   };
 
   export type messageActionChannelEditPhoto = {
     _: 'messageActionChannelEditPhoto',
-    photo?: Photo
+    photo: Photo
   };
 
   export type messageActionChannelEditVideo = {
     _: 'messageActionChannelEditVideo',
-    photo?: Photo
+    photo: Photo
   };
 
   export type messageActionChatEditVideo = {
     _: 'messageActionChatEditVideo',
-    photo?: Photo
+    photo: Photo
   };
 
   export type messageActionChatAddUsers = {
     _: 'messageActionChatAddUsers',
-    users?: Array<UserId>
+    users: Array<UserId>
   };
 
   export type messageActionChatJoined = {
     _: 'messageActionChatJoined',
-    users?: Array<UserId>
+    users: Array<UserId>
   };
 
   export type messageActionChatReturn = {
     _: 'messageActionChatReturn',
-    users?: Array<UserId>
+    users: Array<UserId>
   };
 
   export type messageActionChatJoinedYou = {
     _: 'messageActionChatJoinedYou',
-    users?: Array<UserId>
+    users: Array<UserId>
   };
 
   export type messageActionChatReturnYou = {
     _: 'messageActionChatReturnYou',
-    users?: Array<UserId>
+    users: Array<UserId>
   };
 
   export type messageActionRestrict = {
     _: 'messageActionRestrict',
-    user_id?: string | number,
-    banned_rights?: ChatBannedRights
+    user_id: string | number,
+    banned_rights: ChatBannedRights
   };
 }
 
@@ -2751,7 +2751,7 @@ export namespace MessagesFilter {
 /**
  * @link https://core.telegram.org/type/Update
  */
-export type Update = Update.updateNewMessage | Update.updateMessageID | Update.updateDeleteMessages | Update.updateUserTyping | Update.updateChatUserTyping | Update.updateChatParticipants | Update.updateUserStatus | Update.updateUserName | Update.updateNewAuthorization | Update.updateNewEncryptedMessage | Update.updateEncryptedChatTyping | Update.updateEncryption | Update.updateEncryptedMessagesRead | Update.updateChatParticipantAdd | Update.updateChatParticipantDelete | Update.updateDcOptions | Update.updateNotifySettings | Update.updateServiceNotification | Update.updatePrivacy | Update.updateUserPhone | Update.updateReadHistoryInbox | Update.updateReadHistoryOutbox | Update.updateWebPage | Update.updateReadMessagesContents | Update.updateChannelTooLong | Update.updateChannel | Update.updateNewChannelMessage | Update.updateReadChannelInbox | Update.updateDeleteChannelMessages | Update.updateChannelMessageViews | Update.updateChatParticipantAdmin | Update.updateNewStickerSet | Update.updateStickerSetsOrder | Update.updateStickerSets | Update.updateSavedGifs | Update.updateBotInlineQuery | Update.updateBotInlineSend | Update.updateEditChannelMessage | Update.updateBotCallbackQuery | Update.updateEditMessage | Update.updateInlineBotCallbackQuery | Update.updateReadChannelOutbox | Update.updateDraftMessage | Update.updateReadFeaturedStickers | Update.updateRecentStickers | Update.updateConfig | Update.updatePtsChanged | Update.updateChannelWebPage | Update.updateDialogPinned | Update.updatePinnedDialogs | Update.updateBotWebhookJSON | Update.updateBotWebhookJSONQuery | Update.updateBotShippingQuery | Update.updateBotPrecheckoutQuery | Update.updatePhoneCall | Update.updateLangPackTooLong | Update.updateLangPack | Update.updateFavedStickers | Update.updateChannelReadMessagesContents | Update.updateContactsReset | Update.updateChannelAvailableMessages | Update.updateDialogUnreadMark | Update.updateMessagePoll | Update.updateChatDefaultBannedRights | Update.updateFolderPeers | Update.updatePeerSettings | Update.updatePeerLocated | Update.updateNewScheduledMessage | Update.updateDeleteScheduledMessages | Update.updateTheme | Update.updateGeoLiveViewed | Update.updateLoginToken | Update.updateMessagePollVote | Update.updateDialogFilter | Update.updateDialogFilterOrder | Update.updateDialogFilters | Update.updatePhoneCallSignalingData | Update.updateChannelMessageForwards | Update.updateReadChannelDiscussionInbox | Update.updateReadChannelDiscussionOutbox | Update.updatePeerBlocked | Update.updateChannelUserTyping | Update.updatePinnedMessages | Update.updatePinnedChannelMessages | Update.updateChat | Update.updateGroupCallParticipants | Update.updateGroupCall | Update.updatePeerHistoryTTL | Update.updateChatParticipant | Update.updateChannelParticipant | Update.updateBotStopped | Update.updateGroupCallConnection | Update.updateBotCommands | Update.updatePendingJoinRequests | Update.updateBotChatInviteRequester | Update.updateMessageReactions | Update.updateAttachMenuBots | Update.updateWebViewResultSent | Update.updateBotMenuButton | Update.updateSavedRingtones | Update.updateTranscribedAudio | Update.updateReadFeaturedEmojiStickers | Update.updateUserEmojiStatus | Update.updateRecentEmojiStatuses | Update.updateRecentReactions | Update.updateMoveStickerSetToTop | Update.updateMessageExtendedMedia | Update.updateUser | Update.updateAutoSaveSettings | Update.updateStory | Update.updateReadStories | Update.updateStoryID | Update.updateStoriesStealthMode | Update.updateSentStoryReaction | Update.updateBotChatBoost | Update.updateChannelViewForumAsMessages | Update.updatePeerWallpaper | Update.updateBotMessageReaction | Update.updateBotMessageReactions | Update.updateSavedDialogPinned | Update.updatePinnedSavedDialogs | Update.updateSavedReactionTags | Update.updateSmsJob | Update.updateQuickReplies | Update.updateNewQuickReply | Update.updateDeleteQuickReply | Update.updateQuickReplyMessage | Update.updateDeleteQuickReplyMessages | Update.updateBotBusinessConnect | Update.updateBotNewBusinessMessage | Update.updateBotEditBusinessMessage | Update.updateBotDeleteBusinessMessage | Update.updateNewStoryReaction | Update.updateStarsBalance | Update.updateBusinessBotCallbackQuery | Update.updateStarsRevenueStatus | Update.updateBotPurchasedPaidMedia | Update.updatePaidReactionPrivacy | Update.updateSentPhoneCode | Update.updateGroupCallChainBlocks | Update.updateReadMonoForumInbox | Update.updateReadMonoForumOutbox | Update.updateMonoForumNoPaidException | Update.updateGroupCallMessage | Update.updateGroupCallEncryptedMessage | Update.updatePinnedForumTopic | Update.updatePinnedForumTopics | Update.updateDeleteGroupCallMessages | Update.updateStarGiftAuctionState | Update.updateStarGiftAuctionUserState | Update.updateEmojiGameInfo | Update.updateStarGiftCraftFail | Update.updateChatParticipantRank | Update.updateManagedBot | Update.updateBotGuestChatQuery | Update.updateAiComposeTones | Update.updateJoinChatWebViewDecision | Update.updateNewBotConnection | Update.updateWebBrowserSettings | Update.updateWebBrowserException | Update.updateDeletePeerMessages | Update.updateReadPeerMessagesContents | Update.updateUserSnapshot | Update.updateNewDiscussionMessage | Update.updateDeleteDiscussionMessages | Update.updateChannelReload | Update.updatePts;
+export type Update = Update.updateNewMessage | Update.updateMessageID | Update.updateDeleteMessages | Update.updateUserTyping | Update.updateChatUserTyping | Update.updateChatParticipants | Update.updateUserStatus | Update.updateUserName | Update.updateNewAuthorization | Update.updateNewEncryptedMessage | Update.updateEncryptedChatTyping | Update.updateEncryption | Update.updateEncryptedMessagesRead | Update.updateChatParticipantAdd | Update.updateChatParticipantDelete | Update.updateDcOptions | Update.updateNotifySettings | Update.updateServiceNotification | Update.updatePrivacy | Update.updateUserPhone | Update.updateReadHistoryInbox | Update.updateReadHistoryOutbox | Update.updateWebPage | Update.updateReadMessagesContents | Update.updateChannelTooLong | Update.updateChannel | Update.updateNewChannelMessage | Update.updateReadChannelInbox | Update.updateDeleteChannelMessages | Update.updateChannelMessageViews | Update.updateChatParticipantAdmin | Update.updateNewStickerSet | Update.updateStickerSetsOrder | Update.updateStickerSets | Update.updateSavedGifs | Update.updateBotInlineQuery | Update.updateBotInlineSend | Update.updateEditChannelMessage | Update.updateBotCallbackQuery | Update.updateEditMessage | Update.updateInlineBotCallbackQuery | Update.updateReadChannelOutbox | Update.updateDraftMessage | Update.updateReadFeaturedStickers | Update.updateRecentStickers | Update.updateConfig | Update.updatePtsChanged | Update.updateChannelWebPage | Update.updateDialogPinned | Update.updatePinnedDialogs | Update.updateBotWebhookJSON | Update.updateBotWebhookJSONQuery | Update.updateBotShippingQuery | Update.updateBotPrecheckoutQuery | Update.updatePhoneCall | Update.updateLangPackTooLong | Update.updateLangPack | Update.updateFavedStickers | Update.updateChannelReadMessagesContents | Update.updateContactsReset | Update.updateChannelAvailableMessages | Update.updateDialogUnreadMark | Update.updateMessagePoll | Update.updateChatDefaultBannedRights | Update.updateFolderPeers | Update.updatePeerSettings | Update.updatePeerLocated | Update.updateNewScheduledMessage | Update.updateDeleteScheduledMessages | Update.updateTheme | Update.updateGeoLiveViewed | Update.updateLoginToken | Update.updateMessagePollVote | Update.updateDialogFilter | Update.updateDialogFilterOrder | Update.updateDialogFilters | Update.updatePhoneCallSignalingData | Update.updateChannelMessageForwards | Update.updateReadChannelDiscussionInbox | Update.updateReadChannelDiscussionOutbox | Update.updatePeerBlocked | Update.updateChannelUserTyping | Update.updatePinnedMessages | Update.updatePinnedChannelMessages | Update.updateChat | Update.updateGroupCallParticipants | Update.updateGroupCall | Update.updatePeerHistoryTTL | Update.updateChatParticipant | Update.updateChannelParticipant | Update.updateBotStopped | Update.updateGroupCallConnection | Update.updateBotCommands | Update.updatePendingJoinRequests | Update.updateBotChatInviteRequester | Update.updateMessageReactions | Update.updateAttachMenuBots | Update.updateWebViewResultSent | Update.updateBotMenuButton | Update.updateSavedRingtones | Update.updateTranscribedAudio | Update.updateReadFeaturedEmojiStickers | Update.updateUserEmojiStatus | Update.updateRecentEmojiStatuses | Update.updateRecentReactions | Update.updateMoveStickerSetToTop | Update.updateMessageExtendedMedia | Update.updateUser | Update.updateAutoSaveSettings | Update.updateStory | Update.updateReadStories | Update.updateStoryID | Update.updateStoriesStealthMode | Update.updateSentStoryReaction | Update.updateBotChatBoost | Update.updateChannelViewForumAsMessages | Update.updatePeerWallpaper | Update.updateBotMessageReaction | Update.updateBotMessageReactions | Update.updateSavedDialogPinned | Update.updatePinnedSavedDialogs | Update.updateSavedReactionTags | Update.updateSmsJob | Update.updateQuickReplies | Update.updateNewQuickReply | Update.updateDeleteQuickReply | Update.updateQuickReplyMessage | Update.updateDeleteQuickReplyMessages | Update.updateBotBusinessConnect | Update.updateBotNewBusinessMessage | Update.updateBotEditBusinessMessage | Update.updateBotDeleteBusinessMessage | Update.updateNewStoryReaction | Update.updateStarsBalance | Update.updateBusinessBotCallbackQuery | Update.updateStarsRevenueStatus | Update.updateBotPurchasedPaidMedia | Update.updatePaidReactionPrivacy | Update.updateSentPhoneCode | Update.updateGroupCallChainBlocks | Update.updateReadMonoForumInbox | Update.updateReadMonoForumOutbox | Update.updateMonoForumNoPaidException | Update.updateGroupCallMessage | Update.updateGroupCallEncryptedMessage | Update.updatePinnedForumTopic | Update.updatePinnedForumTopics | Update.updateDeleteGroupCallMessages | Update.updateStarGiftAuctionState | Update.updateStarGiftAuctionUserState | Update.updateEmojiGameInfo | Update.updateStarGiftCraftFail | Update.updateChatParticipantRank | Update.updateManagedBot | Update.updateBotGuestChatQuery | Update.updateAiComposeTones | Update.updateJoinChatWebViewDecision | Update.updateNewBotConnection | Update.updateWebBrowserSettings | Update.updateWebBrowserException | Update.updateDeletePeerMessages | Update.updateReadPeerMessagesContents | Update.updateUserSnapshot | Update.updateMessageWebPage | Update.updateMessageFactCheck | Update.updateMessageToDo | Update.updateMessageGiveaway | Update.updateNewDiscussionMessage | Update.updateDeleteDiscussionMessages | Update.updateChannelReload | Update.updatePts;
 
 export namespace Update {
   export type updateNewMessage = {
@@ -3921,45 +3921,71 @@ export namespace Update {
 
   export type updateDeletePeerMessages = {
     _: 'updateDeletePeerMessages',
-    peer?: Peer,
-    messages?: Array<number>,
-    pts?: number,
-    pts_count?: number
+    peer: Peer,
+    messages: Array<number>,
+    pts: number,
+    pts_count: number
   };
 
   export type updateReadPeerMessagesContents = {
     _: 'updateReadPeerMessagesContents',
-    peer?: Peer,
-    messages?: Array<number>,
-    pts?: number,
-    pts_count?: number
+    peer: Peer,
+    messages: Array<number>,
+    pts: number,
+    pts_count: number
   };
 
   export type updateUserSnapshot = {
     _: 'updateUserSnapshot',
-    user?: User
+    user: User
+  };
+
+  export type updateMessageWebPage = {
+    _: 'updateMessageWebPage',
+    peer: Peer,
+    msg_id: number,
+    media: MessageMedia
+  };
+
+  export type updateMessageFactCheck = {
+    _: 'updateMessageFactCheck',
+    peer: Peer,
+    msg_id: number,
+    factcheck?: FactCheck
+  };
+
+  export type updateMessageToDo = {
+    _: 'updateMessageToDo',
+    peer: Peer,
+    media: MessageMedia
+  };
+
+  export type updateMessageGiveaway = {
+    _: 'updateMessageGiveaway',
+    peer: Peer,
+    media: MessageMedia
   };
 
   export type updateNewDiscussionMessage = {
     _: 'updateNewDiscussionMessage',
-    message?: Message
+    message: Message
   };
 
   export type updateDeleteDiscussionMessages = {
     _: 'updateDeleteDiscussionMessages',
-    messages?: number[],
-    channel_id?: ChatId
+    messages: number[],
+    channel_id: ChatId
   };
 
   export type updateChannelReload = {
     _: 'updateChannelReload',
-    channel_id?: ChatId
+    channel_id: ChatId
   };
 
   export type updatePts = {
     _: 'updatePts',
-    pts?: number,
-    pts_count?: number
+    pts: number,
+    pts_count: number
   };
 }
 
@@ -5938,61 +5964,61 @@ export namespace MessageEntity {
 
   export type messageEntityEmoji = {
     _: 'messageEntityEmoji',
-    offset?: number,
-    length?: number,
-    unicode?: string
+    offset: number,
+    length: number,
+    unicode: string
   };
 
   export type messageEntityHighlight = {
     _: 'messageEntityHighlight',
-    offset?: number,
-    length?: number
+    offset: number,
+    length: number
   };
 
   export type messageEntityLinebreak = {
     _: 'messageEntityLinebreak',
-    offset?: number,
-    length?: number
+    offset: number,
+    length: number
   };
 
   export type messageEntityCaret = {
     _: 'messageEntityCaret',
-    offset?: number,
-    length?: number
+    offset: number,
+    length: number
   };
 
   export type messageEntityTimestamp = {
     _: 'messageEntityTimestamp',
-    offset?: number,
-    length?: number,
-    time?: number,
-    raw?: string
+    offset: number,
+    length: number,
+    time: number,
+    raw: string
   };
 
   export type messageEntityImage = {
     _: 'messageEntityImage',
-    offset?: number,
-    length?: number,
-    document_id?: Long
+    offset: number,
+    length: number,
+    document_id: Long
   };
 
   export type messageEntitySubscript = {
     _: 'messageEntitySubscript',
-    offset?: number,
-    length?: number
+    offset: number,
+    length: number
   };
 
   export type messageEntitySuperscript = {
     _: 'messageEntitySuperscript',
-    offset?: number,
-    length?: number
+    offset: number,
+    length: number
   };
 
   export type messageEntityAnchor = {
     _: 'messageEntityAnchor',
-    offset?: number,
-    length?: number,
-    name?: string
+    offset: number,
+    length: number,
+    name: string
   };
 }
 
@@ -18635,6 +18661,10 @@ export interface ConstructorDeclMap {
   'updateDeletePeerMessages': Update.updateDeletePeerMessages,
   'updateReadPeerMessagesContents': Update.updateReadPeerMessagesContents,
   'updateUserSnapshot': Update.updateUserSnapshot,
+  'updateMessageWebPage': Update.updateMessageWebPage,
+  'updateMessageFactCheck': Update.updateMessageFactCheck,
+  'updateMessageToDo': Update.updateMessageToDo,
+  'updateMessageGiveaway': Update.updateMessageGiveaway,
   'updateNewDiscussionMessage': Update.updateNewDiscussionMessage,
   'updateDeleteDiscussionMessages': Update.updateDeleteDiscussionMessages,
   'updateChannelReload': Update.updateChannelReload,

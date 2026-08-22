@@ -165,9 +165,29 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	msg.PaidMediaPrice = &price
 	msg.PaidMediaLocked = false
 	// Realtime: раскрываем баббл только на устройствах покупателя (медиа не должно
-	// утечь другим участникам) — кадром paid_media_unlock с полным медиа. Логируем
-	// в его же апдейт-лог, чтобы разблокировка доехала и через /sync (плотный pts).
-	unlockOut := i.messageUpdatePayload(ctx, msg)
-	_ = i.logAndPublish(ctx, msg.ChatID, []int64{userID}, "paid_media_unlock", unlockOut)
+	// утечь другим участникам). Логируем в его же апдейт-лог, чтобы разблокировка
+	// доехала и через /sync (плотный pts).
+	//
+	// Кадр несёт РОВНО ПРЕДМЕТ — вектор позиций, ставших настоящими вместо
+	// заглушек. Прежде на разблокировку одного вложения приезжала вторая копия
+	// ВСЕГО сообщения (тот же payload, что у нового сообщения).
+	unlocked := unlockedExtendedMedia(msg)
+	_ = i.logAndPublishPerPeer(ctx, msg.ChatID, []int64{userID}, "paid_media_unlock",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessageExtendedMediaTag, "peer": domain.NewPeer(peer),
+				"msg_id": msg.Seq, "extended_media": unlocked,
+			}
+		})
 	return msg, bal, nil
+}
+
+// unlockedExtendedMedia — позиции платного вложения ПОСЛЕ разблокировки. Их
+// собирает та же сборка, что и внутри сообщения (Message.ToWire): второй формы
+// у платного медиа нет.
+func unlockedExtendedMedia(m domain.Message) []domain.MessageExtendedMedia {
+	if paid, ok := m.WireMedia().(*domain.MessageMediaPaidMedia); ok {
+		return paid.ExtendedMedia
+	}
+	return []domain.MessageExtendedMedia{}
 }

@@ -289,11 +289,17 @@ func factCheckJSON(fc *domain.FactCheck) map[string]any {
 
 // factCheckUpdatePayload — тело фрейма/апдейта factcheck_update: клиент патчит
 // блок проверки фактов в уже отрисованном бабле. factcheck==null — проверка снята.
-func factCheckUpdatePayload(m domain.Message) map[string]any {
-	return map[string]any{
-		"id":        m.Seq,
-		"factcheck": factCheckJSON(m.FactCheck),
+func factCheckUpdatePayload(peer domain.PeerID, m domain.Message) map[string]any {
+	body := map[string]any{
+		"_":      domain.UpdateMessageFactCheckTag,
+		"peer":   domain.NewPeer(peer),
+		"msg_id": m.Seq,
 	}
+	// «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null под тем же ключом.
+	if fc := factCheckJSON(m.FactCheck); fc != nil {
+		body["factcheck"] = fc
+	}
+	return body
 }
 
 // editMessagePayload — тело кадра правки: КОНСТРУКТОР updateEditMessage,

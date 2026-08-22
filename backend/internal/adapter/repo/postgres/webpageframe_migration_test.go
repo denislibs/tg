@@ -123,8 +123,10 @@ func TestMigration0108_WebPageFrameAndPollMin(t *testing.T) {
 			t.Errorf("плоский ключ %q пережил перевод", key)
 		}
 	}
-	// Верх кадра не тронут: адрес сообщения и ключ пира на месте.
-	if withPhoto["id"] != float64(6) || withPhoto["peer_id"] != float64(2) {
+	// Верх кадра не тронут: адрес сообщения и ключ пира на месте. К моменту
+	// головы их имена задаёт конструктор (0121): msg_id и peer.
+	peerOfFrame, _ := withPhoto["peer"].(map[string]any)
+	if withPhoto["msg_id"] != float64(6) || peerOfFrame["_"] != "peerUser" || peerOfFrame["user_id"] != float64(2) {
 		t.Errorf("конверт кадра изменён: %v", withPhoto)
 	}
 
@@ -137,7 +139,9 @@ func TestMigration0108_WebPageFrameAndPollMin(t *testing.T) {
 	}
 
 	// ── 2. poll_update ──────────────────────────────────────────────────────
-	results, _ := mediaOfFrame(t, framePayload(t, pool, 3))["results"].(map[string]any)
+	// Итоги к моменту головы лежат ОТДЕЛЬНЫМ параметром кадра, а не внутри
+	// вложения (0121): у оригинала updateMessagePoll устроен именно так.
+	results, _ := framePayload(t, pool, 3)["results"].(map[string]any)
 	flags, _ := results["pFlags"].(map[string]any)
 	if flags["min"] != true {
 		t.Errorf("итоги кадра без pFlags.min = %v; кадр собран для «зрителя 0», то есть урезан", results)

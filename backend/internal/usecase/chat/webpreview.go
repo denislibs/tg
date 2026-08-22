@@ -93,9 +93,14 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 		// устранения которой делался порт объединения. Клиент переводил её в
 		// первую на границе, ДУБЛИРУЯ арифметику domain.fitThumb; переводить
 		// больше нечего.
-		_ = i.logAndPublish(wctx, msg.ChatID, recipients, "web_page_update", map[string]any{
-			"id": msg.Seq, "media": wp.ToMedia(),
-		})
+		media := wp.ToMedia()
+		_ = i.logAndPublishPerPeer(wctx, msg.ChatID, recipients, "web_page_update",
+			func(peer domain.PeerID) map[string]any {
+				return map[string]any{
+					"_": domain.UpdateMessageWebPageTag, "peer": domain.NewPeer(peer),
+					"msg_id": msg.Seq, "media": media,
+				}
+			})
 	})
 }
 

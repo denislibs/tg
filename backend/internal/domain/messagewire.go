@@ -272,6 +272,11 @@ func (m Message) reactions() *MessageReactions {
 //   - ПРЕВЬЮ ССЫЛКИ идёт последним и только у сообщения без файла: у оригинала
 //     карточка ссылки — это messageMediaWebPage, то есть само вложение, а у
 //     сообщения-картинки со ссылкой в подписи превью не бывает вовсе.
+//
+// WireMedia — то же вложение, что едет внутри сообщения. Экспортировано для
+// кадра разблокировки платного медиа: второй сборки у вложения быть не должно.
+func (m Message) WireMedia() MessageMedia { return m.mediaWire() }
+
 func (m Message) mediaWire() MessageMedia {
 	switch {
 	case m.PaidMediaPrice != nil:

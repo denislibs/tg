@@ -254,5 +254,11 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 	media.Results.MarkMin()
 	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
 	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
-	_ = i.logAndPublish(ctx, chatID, members, "poll_update", map[string]any{"media": media})
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "poll_update",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessagePollTag, "peer": domain.NewPeer(peer),
+				"poll_id": media.Poll.ID, "poll": media.Poll, "results": media.Results,
+			}
+		})
 }

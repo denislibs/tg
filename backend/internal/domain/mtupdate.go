@@ -70,6 +70,12 @@ const (
 	UpdateChannelUserTypingTag        = "updateChannelUserTyping"
 	UpdateUserStatusTag               = "updateUserStatus"
 	UpdateUserSnapshotTag             = "updateUserSnapshot"
+	UpdateMessagePollTag              = "updateMessagePoll"
+	UpdateMessageExtendedMediaTag     = "updateMessageExtendedMedia"
+	UpdateMessageWebPageTag           = "updateMessageWebPage"
+	UpdateMessageFactCheckTag         = "updateMessageFactCheck"
+	UpdateMessageToDoTag              = "updateMessageToDo"
+	UpdateMessageGiveawayTag          = "updateMessageGiveaway"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -677,6 +683,152 @@ func (u UpdateUserSnapshot) Tag() string { return u.Underscore }
 
 func NewUpdateUserSnapshot(user UserReal) UpdateUserSnapshot {
 	return UpdateUserSnapshot{Underscore: UpdateUserSnapshotTag, User: user}
+}
+
+// ── Вложения, меняющиеся после отправки ─────────────────────────────────────
+//
+// Опрос, чек-лист, розыгрыш, превью ссылки, проверка факта и платное медиа
+// живут ВНУТРИ сообщения и меняются уже после его отправки. У всех шести кадр
+// вёз объект под нашим ключом (`media`, `factcheck`) без дискриминатора самого
+// кадра — то есть вид кадра снова выражала строка `t`.
+//
+// Адресация у них разная, и это не небрежность, а свойство предмета:
+//   - опрос, чек-лист, розыгрыш адресуются СВОИМ id ВНУТРИ объекта (у
+//     оригинала updateMessagePoll именно так и устроен: poll_id снаружи,
+//     сообщение — необязательная подсказка);
+//   - превью ссылки, проверка факта и платное медиа — парой «пир + номер»,
+//     потому что своего id у них нет вовсе.
+
+// updateMessagePoll#d64c522b flags:# peer:flags.1?Peer msg_id:flags.1?int
+// top_msg_id:flags.2?int poll_id:long poll:flags.0?Poll results:PollResults
+// = Update;
+//
+// Итоги опроса. Кадр несёт их АБСОЛЮТНО и помечен pollResults.min: тело одно на
+// всех получателей, а мой выбор — пер-зрительский.
+//
+// peer производится, хотя у оригинала он лишь подсказка: наши окна сообщений
+// разложены ПО ЧАТАМ, и без ключа пира клиенту пришлось бы искать опрос во всех
+// сразу. Схема это допускает штатно — параметр за битом flags.1.
+//
+// msg_id не производится: у нас опрос ищется по своему id внутри окна пира, и
+// второе число адреса ничего не добавит.
+type UpdateMessagePoll struct {
+	Underscore string      `json:"_"`
+	Peer       Peer        `json:"peer,omitempty"`
+	PollID     int64       `json:"poll_id"`
+	Poll       *MTPoll     `json:"poll,omitempty"`
+	Results    PollResults `json:"results"`
+}
+
+func (UpdateMessagePoll) isUpdate()     {}
+func (u UpdateMessagePoll) Tag() string { return u.Underscore }
+
+func NewUpdateMessagePoll(peer Peer, poll MTPoll, results PollResults) UpdateMessagePoll {
+	return UpdateMessagePoll{Underscore: UpdateMessagePollTag, Peer: peer, PollID: poll.ID,
+		Poll: &poll, Results: results}
+}
+
+// updateMessageExtendedMedia#d5a41724 peer:Peer msg_id:int
+// extended_media:Vector<MessageExtendedMedia> = Update;
+//
+// Платное вложение РАЗБЛОКИРОВАНО. Прежде кадр вёз сообщение ЦЕЛИКОМ (тот же
+// payload, что у нового сообщения) — то есть на разблокировку одного вложения
+// приезжала вторая копия всего сообщения. В схеме едет ровно предмет: вектор
+// позиций, ставших настоящими вместо заглушек.
+type UpdateMessageExtendedMedia struct {
+	Underscore    string                 `json:"_"`
+	Peer          Peer                   `json:"peer"`
+	MsgID         int64                  `json:"msg_id"`
+	ExtendedMedia []MessageExtendedMedia `json:"extended_media"`
+}
+
+func (UpdateMessageExtendedMedia) isUpdate()     {}
+func (u UpdateMessageExtendedMedia) Tag() string { return u.Underscore }
+
+func NewUpdateMessageExtendedMedia(peer Peer, msgID int64, media []MessageExtendedMedia) UpdateMessageExtendedMedia {
+	if media == nil {
+		media = []MessageExtendedMedia{}
+	}
+	return UpdateMessageExtendedMedia{Underscore: UpdateMessageExtendedMediaTag, Peer: peer,
+		MsgID: msgID, ExtendedMedia: media}
+}
+
+// updateMessageWebPage#5b9dbaaf peer:Peer msg_id:int media:MessageMedia
+// = Update; — НАШ конструктор.
+//
+// В схеме это updateWebPage{webpage, pts, pts_count}: превью адресуется СВОИМ
+// id, потому что у оригинала webPage — самостоятельный объект хранилища. У нас
+// превью это СНИМОК на сообщении (см. OmittedWithoutSubject: у webPage не
+// производятся ни id, ни hash), и адресовать его нечем, кроме пары «пир +
+// номер». Тот же класс отступления, что у удаления и прочтения вложений.
+type UpdateMessageWebPage struct {
+	Underscore string       `json:"_"`
+	Peer       Peer         `json:"peer"`
+	MsgID      int64        `json:"msg_id"`
+	Media      MessageMedia `json:"media"`
+}
+
+func (UpdateMessageWebPage) isUpdate()     {}
+func (u UpdateMessageWebPage) Tag() string { return u.Underscore }
+
+func NewUpdateMessageWebPage(peer Peer, msgID int64, media MessageMedia) UpdateMessageWebPage {
+	return UpdateMessageWebPage{Underscore: UpdateMessageWebPageTag, Peer: peer, MsgID: msgID, Media: media}
+}
+
+// updateMessageFactCheck#a3438564 flags:# peer:Peer msg_id:int
+// factcheck:flags.0?FactCheck = Update; — НАШ конструктор.
+//
+// Проверки факта апдейтом в схеме нет вовсе (сам factCheck есть — он приезжает
+// внутри сообщения). «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null: то же
+// правило, по которому «черновика нет» стало вторым конструктором.
+type UpdateMessageFactCheck struct {
+	Underscore string     `json:"_"`
+	Peer       Peer       `json:"peer"`
+	MsgID      int64      `json:"msg_id"`
+	FactCheck  *FactCheck `json:"factcheck,omitempty"`
+}
+
+func (UpdateMessageFactCheck) isUpdate()     {}
+func (u UpdateMessageFactCheck) Tag() string { return u.Underscore }
+
+func NewUpdateMessageFactCheck(peer Peer, msgID int64, fc *FactCheck) UpdateMessageFactCheck {
+	return UpdateMessageFactCheck{Underscore: UpdateMessageFactCheckTag, Peer: peer, MsgID: msgID, FactCheck: fc}
+}
+
+// updateMessageToDo#0c0ae846 peer:Peer media:MessageMedia = Update; — НАШ
+// конструктор.
+//
+// Чек-лист (todoList в схеме) апдейта не имеет. Внутри окна пира адресуется
+// своим id — как опрос, и по той же причине: объект самостоятельный.
+type UpdateMessageToDo struct {
+	Underscore string       `json:"_"`
+	Peer       Peer         `json:"peer"`
+	Media      MessageMedia `json:"media"`
+}
+
+func (UpdateMessageToDo) isUpdate()     {}
+func (u UpdateMessageToDo) Tag() string { return u.Underscore }
+
+func NewUpdateMessageToDo(peer Peer, media MessageMedia) UpdateMessageToDo {
+	return UpdateMessageToDo{Underscore: UpdateMessageToDoTag, Peer: peer, Media: media}
+}
+
+// updateMessageGiveaway#9d6f7d8e peer:Peer media:MessageMedia = Update; — НАШ
+// конструктор.
+//
+// Розыгрыш меняется (участники, итоги) — апдейта в схеме нет. Внутри окна пира
+// адресуется своим id, как опрос и чек-лист.
+type UpdateMessageGiveaway struct {
+	Underscore string       `json:"_"`
+	Peer       Peer         `json:"peer"`
+	Media      MessageMedia `json:"media"`
+}
+
+func (UpdateMessageGiveaway) isUpdate()     {}
+func (u UpdateMessageGiveaway) Tag() string { return u.Underscore }
+
+func NewUpdateMessageGiveaway(peer Peer, media MessageMedia) UpdateMessageGiveaway {
+	return UpdateMessageGiveaway{Underscore: UpdateMessageGiveawayTag, Peer: peer, Media: media}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

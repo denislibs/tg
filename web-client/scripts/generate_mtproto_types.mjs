@@ -15,6 +15,9 @@
 //     чего они попадают в тип наравне с настоящими. Так у оригинала в `message`
 //     живут `mid`/`peerId`/`storageKey`, а в `pFlags` — `is_outgoing`/`local`.
 //     Сюда же добавляются НАШИ собственные поля — отдельного места не заводим.
+//     Записи с `id` и `type` — это НАШИ СОБСТВЕННЫЕ КОНСТРУКТОРЫ (кадры,
+//     предмета которых в схеме нет): их параметры настоящие, сентинел им не
+//     ставится.
 //   `schema_replace_types.json` — точечная замена типа по имени параметра.
 import {readFileSync, writeFileSync} from 'fs';
 import {dirname, join} from 'path';
@@ -39,9 +42,15 @@ const FLAGS_KEYS = new Set(['flags', 'flags2']);
 
 for(const constructor of additional) {
   const additionalParams = constructor.params || (constructor.params = []);
-  additionalParams.forEach(param => {
-    param.type = 'flags.-1?' + param.type;
-  });
+  // Сентинел «клиентское поле» ставится ТОЛЬКО дописанным параметрам чужого
+  // конструктора. У НАШИХ собственных конструкторов (запись с `id` и `type`)
+  // параметры настоящие: их необязательность выражают обычные флаги схемы
+  // (`flags.0?FactCheck`), и второй префикс поверх сломал бы разбор типа.
+  if(!constructor.type) {
+    additionalParams.forEach(param => {
+      param.type = 'flags.-1?' + param.type;
+    });
+  }
 
   if(constructor.properties) {
     additionalParams.push(...constructor.properties);

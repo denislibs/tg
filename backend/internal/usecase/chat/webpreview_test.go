@@ -125,13 +125,16 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 		return env
 	}
 	envA, envB := frameFor(a), frameFor(b)
-	if envA.D.PeerID != domain.PeerID(b) {
-		t.Fatalf("peer_id для a = %d; want %d (собеседник)", envA.D.PeerID, b)
+	if envA.D.Underscore != domain.UpdateMessageWebPageTag {
+		t.Fatalf("кадр = %q", envA.D.Underscore)
 	}
-	if envB.D.PeerID != domain.PeerID(a) {
-		t.Fatalf("peer_id для b = %d; want %d (собеседник)", envB.D.PeerID, a)
+	if got := framePeerID(t, envA.D.Peer); got != domain.PeerID(b) {
+		t.Fatalf("пир для a = %d; want %d (собеседник)", got, b)
 	}
-	if envA.D.ID != msg.Seq {
+	if got := framePeerID(t, envB.D.Peer); got != domain.PeerID(a) {
+		t.Fatalf("пир для b = %d; want %d (собеседник)", got, a)
+	}
+	if envA.D.MsgID != msg.Seq {
 		t.Fatalf("frame payload = %+v", envA.D)
 	}
 	if envA.D.Media.Underscore != domain.MessageMediaWebPageTag {
@@ -150,8 +153,10 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 		t.Fatalf("display_url = %q", page.DisplayURL)
 	}
 	raw := string(mustFrame(t, pub, a, "web_page_update"))
-	// Ни второй формы карточки, ни второго числа адреса.
-	for _, gone := range []string{`"web_page"`, `"photo_id"`, `"photo_w"`, `"photo_h"`, `"photo_blur"`, `"photo_has_thumb"`, `"msg_id"`, `"chat_id"`} {
+	// Ни второй формы карточки, ни второго числа адреса. `msg_id` из этого
+	// списка ушёл: это ИМЯ АДРЕСА у конструктора схемы, а запрет был на наши
+	// прежние имена внутреннего ключа.
+	for _, gone := range []string{`"web_page"`, `"photo_id"`, `"photo_w"`, `"photo_h"`, `"photo_blur"`, `"photo_has_thumb"`, `"chat_id"`, `"peer_id"`} {
 		if strings.Contains(raw, gone) {
 			t.Fatalf("в кадре осталось %s: %s", gone, raw)
 		}
@@ -164,11 +169,34 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 type webPageFrame struct {
 	T string `json:"t"`
 	D struct {
-		PeerID domain.PeerID `json:"peer_id"`
-		// Адрес сообщения в кадре ОДИН: id со значением номера в чате.
-		ID    int64                      `json:"id"`
+		Underscore string    `json:"_"`
+		Peer       framePeer `json:"peer"`
+		// Адрес сообщения в кадре ОДИН, и имя ему даёт схема: msg_id со
+		// значением номера в чате.
+		MsgID int64                      `json:"msg_id"`
 		Media domain.MessageMediaWebPage `json:"media"`
 	} `json:"d"`
+}
+
+// framePeer — ссылка на пир, прочитанная ГЛАЗАМИ КЛИЕНТА: разбор по
+// дискриминатору, а не по типу Go.
+type framePeer struct {
+	Underscore string `json:"_"`
+	UserID     int64  `json:"user_id"`
+	ChannelID  int64  `json:"channel_id"`
+}
+
+// framePeerID — знаковый ключ пира: тот же вывод, что делает клиент.
+func framePeerID(t *testing.T, p framePeer) domain.PeerID {
+	t.Helper()
+	switch p.Underscore {
+	case "peerUser":
+		return domain.PeerID(p.UserID)
+	case "peerChannel":
+		return domain.PeerID(-p.ChannelID)
+	}
+	t.Fatalf("неизвестный конструктор пира: %#v", p)
+	return 0
 }
 
 // mustFrame — сырой кадр типа t для получателя userID.

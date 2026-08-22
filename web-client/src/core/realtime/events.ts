@@ -200,10 +200,45 @@ export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; media: MessageM
 // с плоским снимком read-модели (`site_name`/`photo_id`/`photo_w`/`photo_blur`)
 // на проводе больше нет, а вместе с ним исчез и переходник на границе, который
 // ДУБЛИРОВАЛ арифметику ступеней `domain.fitThumb`.
-export interface WebPageUpdateEvt { peer_id: PeerId; id: number; media: MessageMedia }
+export interface WebPageUpdateEvt {
+  _: 'updateMessageWebPage'
+  peer: Peer
+  msg_id: number
+  media: MessageMedia
+}
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
-export interface FactCheckUpdateEvt { peer_id: PeerId; id: number; factcheck: import('../models').FactCheck | null }
+export interface FactCheckUpdateEvt {
+  _: 'updateMessageFactCheck'
+  peer: Peer
+  msg_id: number
+  /** «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null под тем же ключом. */
+  factcheck?: import('../models').FactCheck
+}
+/** Опрос: адресуется СВОИМ id — как у оригинала (updateMessagePoll), где
+ *  сообщение лишь необязательная подсказка. */
+export interface PollUpdateEvt {
+  _: 'updateMessagePoll'
+  /** Пир — необязательный параметр схемы, и мы его ПРОИЗВОДИМ: окна разложены
+   *  по чатам, без него пришлось бы искать опрос во всех сразу. */
+  peer: Peer
+  poll_id: number
+  poll?: import('../media/messageMedia').MessageMediaPoll['poll']
+  results: import('../media/messageMedia').MessageMediaPoll['results']
+}
+/** Чек-лист и розыгрыш адресуются своим id внутри вложения — по той же причине,
+ *  что и опрос: объект самостоятельный. Конструкторы НАШИ (апдейтов у них в
+ *  схеме нет вовсе). */
+export interface ChecklistUpdateEvt { _: 'updateMessageToDo'; peer: Peer; media: MessageMedia }
+export interface GiveawayUpdateEvt { _: 'updateMessageGiveaway'; peer: Peer; media: MessageMedia }
+/** Платное вложение разблокировано: кадр несёт РОВНО предмет — вектор позиций,
+ *  ставших настоящими вместо заглушек, а не копию всего сообщения. */
+export interface PaidMediaUnlockEvt {
+  _: 'updateMessageExtendedMedia'
+  peer: Peer
+  msg_id: number
+  extended_media: import('../media/messageMedia').MessageMediaPaidMedia['extended_media']
+}
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge

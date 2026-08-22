@@ -229,5 +229,11 @@ func (i *Interactor) publishChecklistUpdate(ctx context.Context, chatID, checkli
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, chatID, members, "checklist_update", map[string]any{"media": info.ToMedia()})
+	media := info.ToMedia()
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "checklist_update",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessageToDoTag, "peer": domain.NewPeer(peer), "media": media,
+			}
+		})
 }

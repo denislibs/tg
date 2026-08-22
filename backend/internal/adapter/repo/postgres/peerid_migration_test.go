@@ -284,11 +284,14 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 		Media    map[string]any  `json:"media"`
 		ChatID   json.RawMessage `json:"chat_id"`
 	}
-	if err := json.Unmarshal(userFrame(t, pool, userA, 5), &gwFrame); err != nil {
+	gwRaw := userFrame(t, pool, userA, 5)
+	if err := json.Unmarshal(gwRaw, &gwFrame); err != nil {
 		t.Fatalf("разбор giveaway_update: %v", err)
 	}
-	if gwFrame.PeerID != -channelChat {
-		t.Errorf("giveaway_update peer_id = %d; want %d", gwFrame.PeerID, -channelChat)
+	// Ключ пира к моменту головы — КОНСТРУКТОР (0121 перевела кадр розыгрыша),
+	// поэтому читаем его тем же framePeer, что и у остальных кадров.
+	if peer, ok, _ := framePeer(t, gwRaw); !ok || peer != -channelChat {
+		t.Errorf("giveaway_update пир = %d (ok=%v); want %d", peer, ok, -channelChat)
 	}
 	if gwFrame.ChatID != nil {
 		t.Errorf("chat_id остался в кадре розыгрыша: %s", gwFrame.ChatID)

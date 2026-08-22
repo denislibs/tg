@@ -77,6 +77,20 @@ func updateCases() []struct {
 		{"печатает в группе", NewUpdateChannelUserTyping(5, peer, SendMessageActionByTag(SendMessageTypingActionTag))},
 		{"присутствие", NewUpdateUserStatus(7, NewUserStatusOnline(time.Unix(1787334148, 0)))},
 		{"карточка пользователя", NewUpdateUserSnapshot(NewUser(7, UserFlags{}))},
+		{"итоги опроса", func() any {
+			media := PollInfo{ID: 5, Question: "Вопрос", Options: []string{"А", "Б"}, Counts: []int{1, 0}}.ToMedia()
+			return NewUpdateMessagePoll(peer, media.Poll, media.Results)
+		}()},
+		{"платное медиа разблокировано", NewUpdateMessageExtendedMedia(peer, 12,
+			[]MessageExtendedMedia{MessageExtendedMediaPreview{Underscore: MessageExtendedMediaPreviewTag}})},
+		{"превью ссылки", func() any {
+			wp := WebPagePreview{URL: "https://example.com", SiteName: "Example"}
+			return NewUpdateMessageWebPage(peer, 12, wp.ToMedia())
+		}()},
+		{"проверка факта", NewUpdateMessageFactCheck(peer, 12, &FactCheck{Text: "проверено"})},
+		{"проверка факта снята", NewUpdateMessageFactCheck(peer, 12, nil)},
+		{"чек-лист", NewUpdateMessageToDo(peer, ChecklistInfo{ID: 3, Title: "Список"}.ToMedia())},
+		{"розыгрыш", NewUpdateMessageGiveaway(peer, GiveawayInfo{ID: 4, PeerID: PeerID(-5), WinnersCount: 1}.ToMedia(12))},
 	}
 }
 
@@ -151,6 +165,12 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateChannelUserTypingTag,
 		UpdateUserStatusTag,
 		UpdateUserSnapshotTag,
+		UpdateMessagePollTag,
+		UpdateMessageExtendedMediaTag,
+		UpdateMessageWebPageTag,
+		UpdateMessageFactCheckTag,
+		UpdateMessageToDoTag,
+		UpdateMessageGiveawayTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

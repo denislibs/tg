@@ -12,6 +12,8 @@
 import { mapMyMessage, type MyMessage, type MessageReal, type RawMyMessage, type GiveawayState } from '../../models'
 import { saveMessageMedia, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
+import { getPeerId } from '../../peers/peerId'
+import type { ChecklistUpdateEvt, GiveawayUpdateEvt, PollUpdateEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
 import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
 
@@ -123,14 +125,21 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // всё равно обновляем целиком — это офлайн-кэш воркера, а не операция; сама
     // операция несёт агрегат КАК ПРИШЁЛ, а окно вкладки сохраняет свой выбор при
     // слиянии патча (см. `patch()` в core/realtime/messageOps.ts).
-    cachePoll(evt: { peer_id: number; media: MessageMediaPoll }): MessageOp[] {
-      const media = saveMessageMedia(evt.media) as MessageMediaPoll
-      return ops(evt.peer_id, setMedia(evt.peer_id, byPollId(media.poll.id), media), media)
+    //
+    // Кадр адресуется СВОИМ id (updateMessagePoll.poll_id) и несёт опрос с
+    // итогами ОТДЕЛЬНЫМИ параметрами, а не внутри вложения: у оригинала
+    // сообщение здесь лишь подсказка для поиска. Вложение собираем обратно —
+    // окно хранит опрос именно вложением сообщения.
+    cachePoll(evt: PollUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const media = saveMessageMedia({ _: 'messageMediaPoll', poll: evt.poll!, results: evt.results }) as MessageMediaPoll
+      return ops(peerId, setMedia(peerId, byPollId(media.poll.id), media), media)
     },
     // Чек-лист: отметки глобальны — локального выбора нет, полная замена.
-    cacheChecklist(evt: { peer_id: number; media: MessageMediaToDo }): MessageOp[] {
+    cacheChecklist(evt: ChecklistUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
       const media = saveMessageMedia(evt.media) as MessageMediaToDo
-      return ops(evt.peer_id, setMedia(evt.peer_id, byTodoId(media.todo.id), media), media)
+      return ops(peerId, setMedia(peerId, byTodoId(media.todo.id), media), media)
     },
     // Розыгрыш: локального выбора у вложения БОЛЬШЕ НЕТ — участие уехало в
     // отдельную ручку, — поэтому исключения в `patch()` розыгрышу больше не
@@ -139,11 +148,12 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // `saveMessageMedia` здесь не формальность: у состоявшегося розыгрыша он
     // переводит `launch_msg_id` в клиентское пространство номеров — кадр несёт
     // его ровно так же, как витрина сообщения.
-    cacheGiveaway(evt: { peer_id: number; media: MessageMedia }): MessageOp[] {
+    cacheGiveaway(evt: GiveawayUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
       const media = saveMessageMedia(evt.media)!
       const id = giveawayIdOf(media)
       if (id === undefined) return []
-      return ops(evt.peer_id, setMedia(evt.peer_id, byGiveawayId(id), media), media)
+      return ops(peerId, setMedia(peerId, byGiveawayId(id), media), media)
     },
   }
 }

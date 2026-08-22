@@ -444,7 +444,7 @@ describe('MessagesManager.cacheWebPage', () => {
         },
       },
     }
-    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, media }
+    const evt: WebPageUpdateEvt = { _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2, media }
     const ops = mgr.cacheWebPage(evt)
     // Номер в кадре СЕРВЕРНЫЙ, в операции — уже клиентский: иначе патч не нашёл
     // бы сообщение в окне. Вложение доезжает как есть.
@@ -455,7 +455,7 @@ describe('MessagesManager.cacheWebPage', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheWebPage({ peer_id: 1, id: 999, media: webPageMedia('Title') })
+    const ops = mgr.cacheWebPage({ _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 999, media: webPageMedia('Title') })
     expect(ops).toEqual([])
   })
 
@@ -467,7 +467,7 @@ describe('MessagesManager.cacheWebPage', () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
-    const evt: WebPageUpdateEvt = { peer_id: 1, id: 2, media: webPageMedia('Title') }
+    const evt: WebPageUpdateEvt = { _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2, media: webPageMedia('Title') }
     const ops = mgr.cacheWebPage(evt)
     expect(ops).toHaveLength(2)
     expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
@@ -489,20 +489,20 @@ describe('MessagesManager.cacheFactCheck', () => {
     // `factCheck` — КОНСТРУКТОР схемы, приезжающий целиком (текст внутри —
     // `textWithEntities`), поэтому маппера у него нет и быть не должно.
     const evt: FactCheckUpdateEvt = {
-      peer_id: 1, id: 2,
+      _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
       factcheck: { _: 'factCheck', country: 'RU', text: { _: 'textWithEntities', text: 'проверено', entities: [] } },
     }
     const ops = mgr.cacheFactCheck(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: evt.factcheck } }])
   })
 
-  // factcheck: null — проверка снята, fields.factcheck обязан быть undefined
-  // (а не отсутствовать/null), как и cacheX/applyX в сторе (см. карту обогащений).
+  // «Сняли» — ОТСУТСТВИЕ параметра в кадре (а не null под тем же ключом);
+  // fields.factcheck при этом обязан быть undefined, как и у остальных cacheX.
   it('returns fields.factcheck: undefined when the fact-check is removed', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ peer_id: 1, id: 2, factcheck: null })
+    const ops = mgr.cacheFactCheck({ _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2 })
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: undefined } }])
   })
 
@@ -510,7 +510,7 @@ describe('MessagesManager.cacheFactCheck', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ peer_id: 1, id: 999, factcheck: null })
+    const ops = mgr.cacheFactCheck({ _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 999 })
     expect(ops).toEqual([])
   })
 })
@@ -564,9 +564,17 @@ describe('MessagesManager.cacheMediaRead', () => {
   })
 })
 
+const lockedPaid: MessageMedia = {
+  _: 'messageMediaPaidMedia',
+  stars_amount: 10,
+  extended_media: [{ _: 'messageExtendedMediaPreview', w: 640, h: 480 }],
+}
+
 describe('MessagesManager.cachePaidUnlock', () => {
   it('returns a patch op carrying the media fields + paidMedia (not a whole-message replace)', async () => {
-    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    // Сообщение в SSOT — ЗАБЛОКИРОВАННОЕ платное: цену кадр не везёт (она
+    // свойство самого вложения), поэтому обёртку берём у сообщения.
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, lockedPaid) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     // Кадр разблокировки несёт ВЛОЖЕНИЕ целиком: у заблокированного сервер
@@ -591,10 +599,12 @@ describe('MessagesManager.cachePaidUnlock', () => {
       stars_amount: 10,
       extended_media: [{ _: 'messageExtendedMedia', media }],
     }
-    const evt = liveEvt({
-      ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z', media: unlocked }),
-    } as RawMessageReal)
-    const ops = mgr.cachePaidUnlock(evt)
+    // Кадр несёт РОВНО предмет — вектор позиций; цена берётся у сообщения,
+    // потому что она свойство самого платного вложения, а не приписка кадра.
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
+      extended_media: unlocked.extended_media,
+    })
     // Плоского `media_id` рядом нет — адрес файла живёт ВНУТРИ вложения.
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media: unlocked } }])
     expect(getMediaFromMessage({ media: ops[0].op === 'patch' ? ops[0].fields.media : undefined })!.id).toBe(55)
@@ -607,32 +617,26 @@ describe('MessagesManager.cachePaidUnlock', () => {
   // оплаченное аудио остаётся без подписи, а оплаченная гифка рисуется
   // видео-баблом до перезагрузки истории.
   it('переносит вложение целиком, с выведенным типом документа', async () => {
-    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, lockedPaid) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePaidUnlock(liveEvt({
-      ...makeRawMessage({
-        id: 2, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z',
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
+      extended_media: [{
+        _: 'messageExtendedMedia',
         media: {
-          _: 'messageMediaPaidMedia',
-          stars_amount: 10,
-          extended_media: [{
-            _: 'messageExtendedMedia',
-            media: {
-              _: 'messageMediaDocument',
-              document: {
-                _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
-                attributes: [
-                  { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
-                  { _: 'documentAttributeAnimated' },
-                  { _: 'documentAttributeFilename', file_name: 'g.mp4' },
-                ],
-              },
-            },
-          }],
+          _: 'messageMediaDocument',
+          document: {
+            _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
+            attributes: [
+              { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
+              { _: 'documentAttributeAnimated' },
+              { _: 'documentAttributeFilename', file_name: 'g.mp4' },
+            ],
+          },
         },
-      }),
-    } as RawMessageReal))
+      }],
+    })
     const patch = ops[0]
     const fields = patch?.op === 'patch' ? patch.fields : null
     // Нормализация обязана зайти ВНУТРЬ обёртки платного медиа — иначе у
@@ -647,7 +651,10 @@ describe('MessagesManager.cachePaidUnlock', () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePaidUnlock(liveEvt(makeRawMessage({ id: 999, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z' })))
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser', user_id: 1 }, msg_id: 999,
+      extended_media: [{ _: 'messageExtendedMedia', media: { _: 'messageMediaPhoto', photo: { _: 'photo', id: 1, sizes: [] } } }],
+    })
     expect(ops).toEqual([])
   })
 })
@@ -772,9 +779,14 @@ describe('MessagesManager.cachePoll', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ chosen: 0 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt = { peer_id: 1, media: pollMedia({ voters: [1, 1], totalVoters: 2 }) }
-    const ops = mgr.cachePoll(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media: evt.media } }])
+    // Кадр несёт опрос и итоги ОТДЕЛЬНЫМИ параметрами: вложение собирается
+    // обратно на границе разбора, окно хранит его вложением сообщения.
+    const media = pollMedia({ voters: [1, 1], totalVoters: 2 })
+    const ops = mgr.cachePoll({
+      _: 'updateMessagePoll', peer: { _: 'peerUser', user_id: 1 },
+      poll_id: media.poll.id, poll: media.poll, results: media.results,
+    })
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media } }])
     const patched = ops[0].op === 'patch' ? ops[0].fields.media : undefined
     expect(patched?._ === 'messageMediaPoll' && patched.results.results?.some((r) => r.pFlags?.chosen)).toBe(false)
   })
@@ -783,7 +795,7 @@ describe('MessagesManager.cachePoll', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ id: 5 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePoll({ peer_id: 1, media: pollMedia({ id: 999 }) })
+    const ops = mgr.cachePoll({ _: 'updateMessagePoll' as const, peer: { _: 'peerUser' as const, user_id: 1 }, poll_id: (pollMedia({ id: 999 })).poll.id, poll: (pollMedia({ id: 999 })).poll, results: (pollMedia({ id: 999 })).results })
     expect(ops).toEqual([])
   })
 })
@@ -807,7 +819,7 @@ describe('MessagesManager.cacheChecklist', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia()) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const evt = { peer_id: 1, media: todoMedia({ marked: true }) }
+    const evt = { _: 'updateMessageToDo' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia({ marked: true }) }
     const ops = mgr.cacheChecklist(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(3), fields: { media: evt.media } }])
   })
@@ -816,7 +828,7 @@ describe('MessagesManager.cacheChecklist', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia({ id: 8 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheChecklist({ peer_id: 1, media: todoMedia({ id: 999 }) })
+    const ops = mgr.cacheChecklist({ _: 'updateMessageToDo' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
@@ -850,7 +862,7 @@ describe('MessagesManager.cacheGiveaway', () => {
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     // Розыгрыш состоялся — приезжает ДРУГОЙ конструктор с тем же id.
-    const evt = { peer_id: 1, media: giveawayResultsMedia() }
+    const evt = { _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: giveawayResultsMedia() }
     const ops = mgr.cacheGiveaway(evt)
     expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(4), fields: { media: evt.media } }])
     // Номер сообщения-запуска — такой же адрес, как `message.id`, и на границе
@@ -865,7 +877,7 @@ describe('MessagesManager.cacheGiveaway', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia({ id: 9 })) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheGiveaway({ peer_id: 1, media: giveawayMedia({ id: 999 }) })
+    const ops = mgr.cacheGiveaway({ _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: giveawayMedia({ id: 999 }) })
     expect(ops).toEqual([])
   })
 
@@ -873,7 +885,7 @@ describe('MessagesManager.cacheGiveaway', () => {
     const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia()) })
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    expect(mgr.cacheGiveaway({ peer_id: 1, media: todoMedia() })).toEqual([])
+    expect(mgr.cacheGiveaway({ _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia() })).toEqual([])
   })
 })
 

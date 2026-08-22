@@ -239,6 +239,11 @@ func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveaway
 	if msgs, e := i.msgs.ByGiveawayID(ctx, giveawayID); e == nil && len(msgs) > 0 {
 		launchSeq = msgs[0].Seq
 	}
-	_ = i.logAndPublish(ctx, chatID, members, "giveaway_update",
-		map[string]any{"media": info.ToMedia(launchSeq)})
+	media := info.ToMedia(launchSeq)
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "giveaway_update",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessageGiveawayTag, "peer": domain.NewPeer(peer), "media": media,
+			}
+		})
 }

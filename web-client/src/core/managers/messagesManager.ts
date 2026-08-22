@@ -15,7 +15,7 @@ export interface CalendarDay {
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId } from '../peers/peerId'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, SendMessageAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -744,43 +744,49 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // не «нормализация там, где сегодня нужна».
     cacheWebPage(evt: WebPageUpdateEvt): MessageOp[] {
       const media = saveMessageMedia(evt.media)
-      const id = generateMessageId(evt.id)
-      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, media }))
-      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { media } }))
+      const peerId = getPeerId(evt.peer)
+      const id = generateMessageId(evt.msg_id)
+      patchMsg(peerId, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, media }))
+      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { media } }))
     },
 
     // «Проверка фактов» прикреплена/изменена/снята → SSOT + операции по всем окнам.
     cacheFactCheck(evt: FactCheckUpdateEvt): MessageOp[] {
-      const factcheck = evt.factcheck ?? undefined
-      const id = generateMessageId(evt.id)
-      patchMsg(evt.peer_id, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
-      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { factcheck } }))
+      // «Сняли» — ОТСУТСТВИЕ параметра в кадре; в модели окна это undefined.
+      const factcheck = evt.factcheck
+      const peerId = getPeerId(evt.peer)
+      const id = generateMessageId(evt.msg_id)
+      patchMsg(peerId, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
+      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { factcheck } }))
     },
 
     // Платное медиа разблокировано: раскрываем баббл в SSOT — возвращаем ссылку на
     // контент + метаданные и снимаем флаг locked. Операции несут только эти поля
     // (не полный объект — см. карту обогащений); сторный applyPaidUnlock, резавший
     // те же поля вручную, стал недостижим и удалён (Task 6).
-    cachePaidUnlock(evt: NewMessageEvt): MessageOp[] {
-      const unlocked = evt.message
-      if (unlocked._ !== 'message') return []
-      const id = generateMessageId(unlocked.id)
-      const fields: Partial<MessageReal> = {
-        // Вложение целиком, ОДНИМ полем. Разблокировка меняет не «флаг рядом», а
-        // содержимое вектора платного медиа: до оплаты там
-        // `messageExtendedMediaPreview` (размеры и stripped-подложка), после —
-        // `messageExtendedMedia` с настоящим вложением внутри. Цена
-        // (`stars_amount`) при этом на месте — она свойство самого платного
-        // вложения, а не приписка к сообщению.
-        //
+    cachePaidUnlock(evt: PaidMediaUnlockEvt): MessageOp[] {
+      const id = generateMessageId(evt.msg_id)
+      const peerId = getPeerId(evt.peer)
+      // Кадр несёт РОВНО предмет — вектор позиций, ставших настоящими вместо
+      // заглушек. Прежде на разблокировку одного вложения приезжала вторая
+      // копия ВСЕГО сообщения, и вложение доставали из неё.
+      //
+      // Цену (`stars_amount`) кадр не несёт и не должен: она свойство самого
+      // платного вложения, которое у сообщения уже есть, — меняется только
+      // содержимое вектора. Поэтому обёртку собираем из ТЕКУЩЕЙ у сообщения, а
+      // не подменяем целиком.
+      let fields: Partial<MessageReal> | null = null
+      patchMsg(peerId, (m) => m.id === id, (m) => {
+        if (m._ !== 'message' || m.media?._ !== 'messageMediaPaidMedia') return m
         // Нормализуем тем же `saveMessageMedia`, что и на границе маппинга: он
         // заходит внутрь обёртки, иначе у вложенного документа не было бы
         // выведенного типа.
-        media: saveMessageMedia(unlocked.media),
-      }
-      const peerId = getPeerId(unlocked.peer_id)
-      patchMsg(peerId, (m) => m.id === id, (m) => (m._ !== 'message' ? m : { ...m, ...fields }))
-      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+        fields = { media: saveMessageMedia({ ...m.media, extended_media: evt.extended_media }) }
+        return { ...m, ...fields }
+      })
+      if (!fields) return []
+      const patched = fields as Partial<MessageReal>
+      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: patched }))
     },
 
     // Номера едут ВЕКТОРОМ: у оригинала одно действие снимает сразу пачку, и

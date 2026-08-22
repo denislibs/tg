@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -69,20 +68,24 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	}
 
 	// serialization: frame payload carries the factcheck block
-	p := factCheckUpdatePayload(msg)
+	p := factCheckUpdatePayload(domain.PeerID(7), msg)
+	if p["_"] != domain.UpdateMessageFactCheckTag {
+		t.Fatalf("кадр = %v", p["_"])
+	}
 	fc, ok := p["factcheck"].(map[string]any)
 	if !ok || fc["text"] != "fact" || fc["country"] != "DE" {
 		t.Fatalf("payload factcheck = %v", p["factcheck"])
 	}
 	// Адрес сообщения в кадре ОДИН — номер в чате (внутренний ключ строки
-	// наружу не выходит; здесь они заведомо разные, см. фикстуру).
+	// наружу не выходит; здесь они заведомо разные, см. фикстуру), и имя ему
+	// даёт схема: msg_id.
 	if msg.ID == msg.Seq {
 		t.Fatalf("фикстура вырождена: ключ строки %d совпал с номером %d", msg.ID, msg.Seq)
 	}
-	if p["id"] != msg.Seq {
-		t.Fatalf("адрес в кадре = %v, ждали номер %d (ключ строки %d)", p["id"], msg.Seq, msg.ID)
+	if p["msg_id"] != msg.Seq {
+		t.Fatalf("адрес в кадре = %v, ждали номер %d (ключ строки %d)", p["msg_id"], msg.Seq, msg.ID)
 	}
-	for _, banned := range []string{"msg_id", "seq"} {
+	for _, banned := range []string{"id", "seq"} {
 		if _, ok := p[banned]; ok {
 			t.Fatalf("в кадре осталось второе число %q: %v", banned, p)
 		}
@@ -96,8 +99,11 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	if got.FactCheck != nil {
 		t.Fatalf("factcheck not cleared: %+v", got.FactCheck)
 	}
-	b, _ := json.Marshal(factCheckUpdatePayload(got))
-	if !strings.Contains(string(b), `"factcheck":null`) {
-		t.Fatalf("payload should carry factcheck:null after remove; got %s", b)
+	// «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null под тем же ключом: то
+	// же правило, по которому «черновика нет» стало вторым конструктором.
+	cleared := factCheckUpdatePayload(domain.PeerID(7), got)
+	if _, present := cleared["factcheck"]; present {
+		b, _ := json.Marshal(cleared)
+		t.Fatalf("после снятия параметр обязан отсутствовать, а не быть null; got %s", b)
 	}
 }

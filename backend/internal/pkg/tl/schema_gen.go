@@ -8369,6 +8369,24 @@ var schemaConstructors = []Constructor{
 	{ID: 1207664294, Predicate: "updateUserSnapshot", Type: "Update", Params: []Param{
 		{Name: "user", Type: "User"},
 	}},
+	{ID: 1537063599, Predicate: "updateMessageWebPage", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "msg_id", Type: "int"},
+		{Name: "media", Type: "MessageMedia"},
+	}},
+	{ID: -1555856028, Predicate: "updateMessageFactCheck", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "msg_id", Type: "int"},
+		{Name: "factcheck", Type: "FactCheck", Flags: "flags", Bit: 0},
+	}},
+	{ID: 202041414, Predicate: "updateMessageToDo", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "media", Type: "MessageMedia"},
+	}},
+	{ID: -1653637746, Predicate: "updateMessageGiveaway", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "media", Type: "MessageMedia"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

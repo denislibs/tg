@@ -845,6 +845,74 @@
     "type": "Update"
   },
   {
+    "id": "1537063599",
+    "predicate": "updateMessageWebPage",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "msg_id",
+        "type": "int"
+      },
+      {
+        "name": "media",
+        "type": "MessageMedia"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "2739111268",
+    "predicate": "updateMessageFactCheck",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "msg_id",
+        "type": "int"
+      },
+      {
+        "name": "factcheck",
+        "type": "flags.0?FactCheck"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "202041414",
+    "predicate": "updateMessageToDo",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "media",
+        "type": "MessageMedia"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "2641329550",
+    "predicate": "updateMessageGiveaway",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "media",
+        "type": "MessageMedia"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "predicate": "langPackDifference",
     "params": [
       {
