@@ -341,6 +341,59 @@ func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
 	}
 }
 
+// dialogPinPayload — тело кадра закрепления ДИАЛОГА.
+//
+// Конструктор один на оба действия: «открепили» — это опущенный бит
+// `pFlags.pinned`, а не поле `pinned: false` и не второй кадр. То же правило,
+// что у закрепления сообщения, и та же причина: у оригинала «выключено» это
+// отсутствие, а кодек TL держит `false` ошибкой.
+//
+// Ключ пира здесь обёрнут в dialogPeer: список диалогов адресуется своим
+// пространством, а не голым пиром.
+func dialogPinPayload(peer domain.PeerID, pinned bool) map[string]any {
+	body := map[string]any{
+		"_":    domain.UpdateDialogPinnedTag,
+		"peer": domain.NewDialogPeer(domain.NewPeer(peer)),
+	}
+	if pinned {
+		body["pFlags"] = map[string]bool{"pinned": true}
+	}
+	return body
+}
+
+// dialogFolderPayload — тело кадра ПЕРЕЕЗДА диалога между папками.
+//
+// АРХИВ — ЭТО ПАПКА. У нас кадр вёз `archived: bool`, то есть значение (номер
+// папки) было подделано признаком — тот же дефект, что у мьюта булевым. В схеме
+// пир едет ВМЕСТЕ с номером папки, и «вернуть из архива» это folder_id = 0, тем
+// же кадром. Появись третья папка — кадр не изменится вовсе.
+//
+// Вектор, а не один пир: у оригинала одно действие переносит сразу пачку. Мы
+// переносим по одному, и это видно по длине — но форма остаётся вектором,
+// потому что на проводе TL у него есть шапка со счётчиком.
+//
+// Курсор здесь ВНУТРИ тела: у updateFolderPeers параметр pts есть (в отличие от
+// соседних кадров диалогов), и дописывает его framePts на выходе.
+func dialogFolderPayload(peer domain.PeerID, folder domain.FolderID) map[string]any {
+	return map[string]any{
+		"_":            domain.UpdateFolderPeersTag,
+		"folder_peers": []domain.FolderPeer{domain.NewFolderPeer(domain.NewPeer(peer), folder)},
+		"pts_count":    domain.PtsCountOne,
+	}
+}
+
+// notifySettingsPayload — тело кадра настроек уведомлений чата.
+//
+// Настройки едут ЦЕЛИКОМ и абсолютно — тем же конструктором, что внутри
+// диалога: второй формы у них нет. Мьют внутри — СРОК, а не признак.
+func notifySettingsPayload(peer domain.PeerID, settings domain.PeerNotifySettings) map[string]any {
+	return map[string]any{
+		"_":               domain.UpdateNotifySettingsTag,
+		"peer":            domain.NewNotifyPeer(domain.NewPeer(peer)),
+		"notify_settings": settings,
+	}
+}
+
 // reactionsPayload — тело кадра реакций: конструктор updateMessageReactions с
 // АБСОЛЮТНЫМ агрегатом сообщения.
 //

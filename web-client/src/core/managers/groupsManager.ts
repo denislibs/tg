@@ -4,6 +4,7 @@ import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
 import type { Channel, ChannelFull, MessagesChatFull, UserStatus } from '../peers/peer'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
+import { WIRE_FOLDER_ARCHIVE } from '../models'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
@@ -154,7 +155,7 @@ export function newGroupsManager({ rest, dialogs, peers }: {
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
   // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
   // invokeApi(...).then(saveUpdate)).
-  dialogs: Pick<DialogsManager, 'applyNotifySettings' | 'applyPinned' | 'applyArchived' | 'applyRemoved'>
+  dialogs: Pick<DialogsManager, 'applyNotifySettings' | 'applyPinned' | 'applyFolder' | 'applyRemoved'>
   // Владелец карточек пиров: ответ карточки чата несёт векторы `chats`/`users`,
   // и они обязаны доехать до зеркала — порт `appProfileManager.getChannelFull`
   // → `saveFullPeerResult` → `appPeersManager.saveApiPeers(result)`
@@ -237,7 +238,7 @@ export function newGroupsManager({ rest, dialogs, peers }: {
     // Убрать диалог в архив / вернуть из архива.
     async setArchive(peerId: number, archived: boolean): Promise<void> {
       await rest.post(`/chats/${peerId}/archive`, { archived })
-      dialogs.applyArchived(peerId, archived)
+      dialogs.applyFolder(peerId, archived ? WIRE_FOLDER_ARCHIVE : 0)
     },
     /**
      * Карточка чата. Порт `appProfileManager.getChannelFull` →

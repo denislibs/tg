@@ -45,15 +45,17 @@ describe('rootScope', () => {
   it('второй аргумент (meta) доезжает до подписчика логируемого события', () => {
     const cb = vi.fn()
     rootScope.addEventListener(RT.dialogPin, cb)
-    rootScope.dispatchEventSingle(RT.dialogPin, { peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
-    expect(cb).toHaveBeenCalledWith({ peer_id: 1, pinned: true }, { pts: 9, catchUp: true })
+    const pinned = { _: 'updateDialogPinned' as const, peer: { _: 'dialogPeer' as const, peer: { _: 'peerUser' as const, user_id: 1 } }, pFlags: { pinned: true as const } }
+    rootScope.dispatchEventSingle(RT.dialogPin, pinned, { pts: 9, catchUp: true })
+    expect(cb).toHaveBeenCalledWith(pinned, { pts: 9, catchUp: true })
     rootScope.removeEventListener(RT.dialogPin, cb)
   })
 
   it('dispatchEvent прокидывает meta в порт вторым payload-соседом', () => {
     const sent: unknown[][] = []
     rootScope.setPort({ emit: (e, p, m) => sent.push([e, p, m]) })
-    rootScope.dispatchEvent(RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 })
-    expect(sent).toEqual([[RT.dialogPin, { peer_id: 2, pinned: false }, { pts: 11 }]])
+    const unpinned = { _: 'updateDialogPinned' as const, peer: { _: 'dialogPeer' as const, peer: { _: 'peerUser' as const, user_id: 2 } } }
+    rootScope.dispatchEvent(RT.dialogPin, unpinned, { pts: 11 })
+    expect(sent).toEqual([[RT.dialogPin, unpinned, { pts: 11 }]])
   })
 })

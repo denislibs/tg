@@ -448,9 +448,23 @@ export function createWorkerCore() {
     // Кадр несёт КОНСТРУКТОР настроек целиком — срок мьюта больше не
     // выбрасывается на границе (это и был последний участок цепочки, из-за
     // которого «заглушить на час» работало как «навсегда»).
-    else if (t === 'dialog_mute') dialogs.applyNotifySettings((d as DialogMuteEvt).peer_id, (d as DialogMuteEvt).notify_settings)
-    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).peer_id, (d as DialogPinEvt).pinned)
-    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).peer_id, (d as DialogArchiveEvt).archived)
+    //
+    // Ключ пира у каждого кадра лежит в СВОЁЙ обёртке — dialogPeer, notifyPeer,
+    // folderPeer, — потому что это разные пространства адресации: у folderPeer
+    // рядом с пиром едет номер папки, а «вернуть из архива» это ноль, а не
+    // второй кадр.
+    else if (t === 'dialog_mute') {
+      const e = d as DialogMuteEvt
+      dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+    } else if (t === 'dialog_pin') {
+      const e = d as DialogPinEvt
+      // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.
+      dialogs.applyPinned(getPeerId(e.peer.peer), !!e.pFlags?.pinned)
+    } else if (t === 'dialog_archive') {
+      for (const fp of (d as DialogArchiveEvt).folder_peers ?? []) {
+        dialogs.applyFolder(getPeerId(fp.peer), fp.folder_id)
+      }
+    }
     else if (t === 'reaction') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
       // реакций диалога.

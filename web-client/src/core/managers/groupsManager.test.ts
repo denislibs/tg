@@ -19,7 +19,7 @@ type PostCall = { path: string; body: unknown }
 const fakeDialogs = () => ({
   applyNotifySettings: vi.fn(),
   applyPinned: vi.fn(),
-  applyArchived: vi.fn(),
+  applyFolder: vi.fn(),
   applyRemoved: vi.fn(),
 })
 
@@ -374,20 +374,21 @@ describe('GroupsManager: действия без оптимистики (Task 4)
     expect(dialogs.applyPinned).not.toHaveBeenCalled()
   })
 
-  it('setArchive: успех — dialogs.applyArchived зовётся с итоговым archived', async () => {
+  it('setArchive: успех — dialogs.applyFolder зовётся с НОМЕРОМ ПАПКИ', async () => {
     const { rest } = fakeRest({})
     const dialogs = fakeDialogs()
     const mgr = newGroupsManager({ rest, dialogs, peers: fakePeers() })
     await mgr.setArchive(9, true)
-    expect(dialogs.applyArchived).toHaveBeenCalledWith(9, true)
+    // Номер ПАПКИ, а не признак: архив это папка №1 (WIRE_FOLDER_ARCHIVE).
+    expect(dialogs.applyFolder).toHaveBeenCalledWith(9, 1)
   })
 
-  it('setArchive: RPC упал — dialogs.applyArchived не зовётся', async () => {
+  it('setArchive: RPC упал — dialogs.applyFolder не зовётся', async () => {
     const rest = { post: vi.fn(async () => { throw new Error('offline') }) } as unknown as RestClient
     const dialogs = fakeDialogs()
     const mgr = newGroupsManager({ rest, dialogs, peers: fakePeers() })
     await expect(mgr.setArchive(9, true)).rejects.toThrow('offline')
-    expect(dialogs.applyArchived).not.toHaveBeenCalled()
+    expect(dialogs.applyFolder).not.toHaveBeenCalled()
   })
 
   it('deleteGroup: DELETEs /chats/{id}, затем зовёт dialogs.applyRemoved', async () => {

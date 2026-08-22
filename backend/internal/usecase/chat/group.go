@@ -311,8 +311,8 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 		return err
 	}
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublish(ctx, chatID, []int64{userID}, "dialog_mute",
-		map[string]any{"notify_settings": settings})
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
+		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
 	return nil
 }
 

@@ -290,7 +290,8 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
     const until = Math.floor(Date.now() / 1000) + 3600
 
     capturedConnDeps!.onFrame('dialog_mute', {
-      peer_id: 1,
+      _: 'updateNotifySettings',
+      peer: { _: 'notifyPeer', peer: { _: 'peerUser', user_id: 1 } },
       notify_settings: { _: 'peerNotifySettings', mute_until: until },
     })
 
@@ -299,12 +300,36 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
     ])
   })
 
-  it('dialog_archive (без pts) → dialogs.applyArchived → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {
+  // Архив — ПАПКА: кадр несёт вектор пиров с НОМЕРОМ папки, а не признак
+  // `archived`. «Вернуть из архива» — тот же кадр с folder_id = 0.
+  it('dialog_archive (без pts) → dialogs.applyFolder → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('dialog_archive', { peer_id: 1, archived: true })
+    capturedConnDeps!.onFrame('dialog_archive', {
+      _: 'updateFolderPeers',
+      folder_peers: [{ _: 'folderPeer', peer: { _: 'peerUser', user_id: 1 }, folder_id: 1 }],
+      pts_count: 1,
+    })
 
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { folder_id: 1, pFlags: undefined } }])
+  })
+
+  it('dialog_archive с папкой 0 → возврат в общий список', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+    capturedConnDeps!.onFrame('dialog_archive', {
+      _: 'updateFolderPeers',
+      folder_peers: [{ _: 'folderPeer', peer: { _: 'peerUser', user_id: 1 }, folder_id: 1 }],
+      pts_count: 1,
+    })
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('dialog_archive', {
+      _: 'updateFolderPeers',
+      folder_peers: [{ _: 'folderPeer', peer: { _: 'peerUser', user_id: 1 }, folder_id: 0 }],
+      pts_count: 1,
+    })
+
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { folder_id: undefined, pFlags: undefined } }])
   })
 
   // `chat_theme_update` строку диалога больше не трогает: тема живёт в ПОЛНОЙ
@@ -322,12 +347,35 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
   it('dialog_pin (без pts) → dialogs.applyPinned → ровно один патч + reindex, не двойное применение', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('dialog_pin', { peer_id: 1, pinned: true })
+    capturedConnDeps!.onFrame('dialog_pin', {
+      _: 'updateDialogPinned',
+      peer: { _: 'dialogPeer', peer: { _: 'peerUser', user_id: 1 } },
+      pFlags: { pinned: true },
+    })
 
     // patch (поле pinned) + reindex (порядок закреплённых) — обе от ОДНОГО
     // вызова applyPinned, не два независимых применения одного и того же факта.
     expect(dialogOps).toHaveLength(2)
     expect(dialogOps[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { pFlags: { pinned: true } } })
     expect(dialogOps[1]).toMatchObject({ op: 'reindex' })
+  })
+
+  // «Открепили» — ТОТ ЖЕ конструктор с опущенным битом: поля `pinned: false` в
+  // кадре нет и быть не может.
+  it('dialog_pin без бита pinned → открепление', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+    capturedConnDeps!.onFrame('dialog_pin', {
+      _: 'updateDialogPinned',
+      peer: { _: 'dialogPeer', peer: { _: 'peerUser', user_id: 1 } },
+      pFlags: { pinned: true },
+    })
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('dialog_pin', {
+      _: 'updateDialogPinned',
+      peer: { _: 'dialogPeer', peer: { _: 'peerUser', user_id: 1 } },
+    })
+
+    expect(dialogOps[0]).toMatchObject({ op: 'patch', peerId: 1, fields: { pFlags: {} } })
   })
 })

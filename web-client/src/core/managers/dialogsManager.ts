@@ -1349,10 +1349,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       scheduleMuteCheck()
     },
 
-    /** В архив / из архива — пин сбрасывается (как на бэке, group_settings.go). */
-    applyArchived(peerId: number, archived: boolean): void {
+    /**
+     * Переезд диалога В ПАПКУ (`updateFolderPeers`): архив это папка №1, общий
+     * список — ноль. Прежняя сигнатура принимала `archived: boolean` и тем
+     * подделывала значение признаком — на проводе номер папки был всегда, а до
+     * менеджера доезжало «да/нет».
+     *
+     * Пин при переезде сбрасывается — как на бэке (grouprepo.SetArchived
+     * обнуляет pinned_at): наборы закреплённых у папок раздельные.
+     */
+    applyFolder(peerId: number, folderId: number): void {
       patchDialog(peerId, {
-        folder_id: archived ? WIRE_FOLDER_ARCHIVE : undefined,
+        folder_id: folderId === WIRE_FOLDER_ARCHIVE ? WIRE_FOLDER_ARCHIVE : undefined,
         pFlags: undefined,
       })
     },

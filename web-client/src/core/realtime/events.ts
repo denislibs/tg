@@ -299,8 +299,32 @@ export interface ChatThemeUpdateEvt { peer_id: PeerId; theme_id: string }
 // Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
 // dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/
 // applyNotifySettings).
-export interface DialogPinEvt { peer_id: PeerId; pinned: boolean }
-export interface DialogArchiveEvt { peer_id: PeerId; archived: boolean }
+/**
+ * Закрепление диалога — `updateDialogPinned{peer: DialogPeer}`. «Открепили» это
+ * ТОТ ЖЕ конструктор с опущенным битом `pFlags.pinned`, а не поле
+ * `pinned: false` и не второй кадр: то же правило, что у закрепления сообщения.
+ *
+ * Своего `pts` у конструктора нет — курсор такого кадра едет в КОНВЕРТЕ
+ * (`Frame.pts`), а не в теле.
+ */
+export interface DialogPinEvt {
+  _: 'updateDialogPinned'
+  peer: import('../models').DialogPeer
+  pFlags?: { pinned?: true }
+}
+/**
+ * Переезд диалога МЕЖДУ ПАПКАМИ — `updateFolderPeers{folder_peers, pts}`.
+ *
+ * Архив это ПАПКА, а не признак: прежний `archived: boolean` подделывал
+ * значение (номер папки) признаком — тот же дефект, что был у мьюта булевым.
+ * «Вернуть из архива» — тот же кадр с `folder_id = 0`. Вектор потому, что у
+ * оригинала одно действие переносит сразу пачку.
+ */
+export interface DialogArchiveEvt {
+  _: 'updateFolderPeers'
+  folder_peers: import('../models').FolderPeer[]
+  pts?: number
+}
 /**
  * Мьют чата сменился. Кадр несёт КОНСТРУКТОР настроек ЦЕЛИКОМ, а не пару
  * `{muted, muted_until}`: мьют это СРОК (`notify_settings.mute_until`), и
@@ -308,7 +332,11 @@ export interface DialogArchiveEvt { peer_id: PeerId; archived: boolean }
  * «навсегда». Бэкенд читает настройки обратно из базы, поэтому в кадре едут и
  * превью со звуком, которых мьют не менял (usecase/chat/group.go::SetMute).
  */
-export interface DialogMuteEvt { peer_id: PeerId; notify_settings: PeerNotifySettings }
+export interface DialogMuteEvt {
+  _: 'updateNotifySettings'
+  peer: import('../models').NotifyPeer
+  notify_settings: PeerNotifySettings
+}
 // АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
 // участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
 // функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:

@@ -15,7 +15,7 @@ import type {
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
-  StoryReactionEvt, ConnState, UserUpdateEvt,
+  StoryReactionEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
 } from '@core/realtime/events'
 import type { MyMessage, RawBoostStatus } from '@core/models'
 import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '@core/media/messageMedia'
@@ -62,9 +62,13 @@ export type BroadcastEvents = {
   // Stage «владение диалогами» (этап 1) — публикует dialogsManager воркера. Без
   // EventMeta по той же причине, что и rt:peer_op: не funnel курсора.
   [RT.dialogOp]: [{ ops: DialogOp[] }]
-  [RT.dialogPin]: [{ peer_id: PeerId; pinned: boolean }, EventMeta?]
-  [RT.dialogArchive]: [{ peer_id: PeerId; archived: boolean }, EventMeta?]
-  [RT.dialogMute]: [{ peer_id: PeerId; muted: boolean }, EventMeta?]
+  // Кадры диалогов — конструкторы схемы, а не пары «ключ пира + признак»:
+  // закрепление это БИТ, архив это НОМЕР ПАПКИ, мьют это СРОК внутри настроек.
+  // Прежние типы здесь описывали форму, которой на проводе не существовало уже
+  // у мьюта (кадр вёз конструктор настроек, а тип обещал `muted: boolean`).
+  [RT.dialogPin]: [DialogPinEvt, EventMeta?]
+  [RT.dialogArchive]: [DialogArchiveEvt, EventMeta?]
+  [RT.dialogMute]: [DialogMuteEvt, EventMeta?]
   // Опрос/чек-лист/розыгрыш едут ТЕМ ЖЕ конструктором, что и внутри сообщения,
   // под ключом `media`: собственных ключей `poll`/`checklist`/`giveaway` на
   // проводе больше нет. Номера сообщения в кадре нет и не нужно — сообщение

@@ -81,6 +81,14 @@ func allDialogConstructors() []any {
 	users := []UserReal{NewUser(42, UserFlags{})}
 
 	return []any{
+		// ── Ссылки на диалог ─────────────────────────────────────────────────
+		// Производят их КАДРЫ диалогов (mtupdate.go), но объявлены они здесь, и
+		// сверяться обязаны там же, где объявлены.
+		NewDialogPeer(NewPeerUser(42)),
+		NewNotifyPeer(NewPeerChannel(8)),
+		NewFolderPeer(NewPeerUser(42), FolderArchive),
+		// «Вернуть из архива» — тот же конструктор с нулевой папкой, а не второй.
+		NewFolderPeer(NewPeerUser(42), FolderAll),
 		// ── Dialog ───────────────────────────────────────────────────────────
 		full,
 		empty,
@@ -181,6 +189,7 @@ func TestDialogs_MatchesSchema(t *testing.T) {
 func dialogConstructorTags() []string {
 	return []string{
 		DialogTag, DialogFolderTag, FolderTag,
+		DialogPeerTag, NotifyPeerTag, FolderPeerTag,
 		PeerNotifySettingsTag,
 		NotificationSoundDefaultTag, NotificationSoundNoneTag,
 		MessagesDialogsTag, MessagesDialogsSliceTag,

@@ -1155,7 +1155,7 @@ describe('курсор пагинации — свой у каждой выбо�
     })
 
     await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 2 }) // курсор архива встал на чате 30
-    mgr.applyArchived(30, false) // ...и тут же ушёл из архивной выборки
+    mgr.applyFolder(30, 0) // ...и тут же ушёл из архивной выборки
     rest.get.mockClear()
 
     await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 5 })

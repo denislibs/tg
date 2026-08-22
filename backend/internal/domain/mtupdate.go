@@ -62,6 +62,9 @@ const (
 	UpdatePinnedMessagesTag           = "updatePinnedMessages"
 	UpdatePinnedChannelMessagesTag    = "updatePinnedChannelMessages"
 	UpdateMessageReactionsTag         = "updateMessageReactions"
+	UpdateDialogPinnedTag             = "updateDialogPinned"
+	UpdateFolderPeersTag              = "updateFolderPeers"
+	UpdateNotifySettingsTag           = "updateNotifySettings"
 )
 
 // PtsCountOne — на сколько кадр двигает курсор.
@@ -385,6 +388,89 @@ func (u UpdateMessageReactions) Tag() string { return u.Underscore }
 func NewUpdateMessageReactions(peer Peer, msgID int64, reactions MessageReactions) UpdateMessageReactions {
 	return UpdateMessageReactions{Underscore: UpdateMessageReactionsTag, Peer: peer, MsgID: msgID,
 		Reactions: reactions}
+}
+
+// ── Диалоги ─────────────────────────────────────────────────────────────────
+
+// updateDialogPinned#6e6fe51c flags:# pinned:flags.0?true folder_id:flags.1?int
+// peer:DialogPeer = Update;
+//
+// «Открепили» — тот же конструктор с опущенным битом, как и у закрепления
+// сообщения: поля `pinned: false` в схеме нет.
+//
+// folder_id не производится: закрепление у нас общее на весь список (лимит
+// считается по пользователю, а не по папке), а «не указано» у оригинала и
+// значит основной список.
+//
+// Своего pts у конструктора нет — курсор такого кадра едет в конверте
+// (UpdateDeclaresPts, mtwire.go).
+type UpdateDialogPinned struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Peer       DialogPeer      `json:"peer"`
+}
+
+func (UpdateDialogPinned) isUpdate()     {}
+func (u UpdateDialogPinned) Tag() string { return u.Underscore }
+
+// Pinned — закрепили (иначе открепили).
+func (u UpdateDialogPinned) Pinned() bool { return u.PFlags["pinned"] }
+
+func NewUpdateDialogPinned(peer Peer, pinned bool) UpdateDialogPinned {
+	u := UpdateDialogPinned{Underscore: UpdateDialogPinnedTag, Peer: NewDialogPeer(peer)}
+	if pinned {
+		u.PFlags = map[string]bool{"pinned": true}
+	}
+	return u
+}
+
+// updateFolderPeers#19360dc0 folder_peers:Vector<FolderPeer> pts:int
+// pts_count:int = Update;
+//
+// АРХИВ — ЭТО ПАПКА, а не признак. У нас кадр вёз `archived: bool`, и это тот же
+// дефект, что мьют булевым: значение подделано признаком. В схеме диалог
+// переезжает МЕЖДУ папками, номер папки едет рядом с пиром, и «вернуть из
+// архива» это folder_id=0 — тем же кадром, а не вторым.
+//
+// Вектор, а не один пир: у оригинала одно действие переносит сразу пачку.
+type UpdateFolderPeers struct {
+	Underscore  string       `json:"_"`
+	FolderPeers []FolderPeer `json:"folder_peers"`
+	Pts         int64        `json:"pts"`
+	PtsCount    int          `json:"pts_count"`
+}
+
+func (UpdateFolderPeers) isUpdate()     {}
+func (u UpdateFolderPeers) Tag() string { return u.Underscore }
+
+func NewUpdateFolderPeers(peers []FolderPeer, pts int64) UpdateFolderPeers {
+	if peers == nil {
+		peers = []FolderPeer{}
+	}
+	return UpdateFolderPeers{Underscore: UpdateFolderPeersTag, FolderPeers: peers,
+		Pts: pts, PtsCount: PtsCountOne}
+}
+
+// updateNotifySettings#bec268ef peer:NotifyPeer notify_settings:PeerNotifySettings
+// = Update;
+//
+// Настройки едут ЦЕЛИКОМ и абсолютно — тем же конструктором, что внутри
+// диалога. Мьют здесь СРОК (mute_until), и порт разбора уже назвал, чего стоило
+// булево: «заглушить на час» работало как «навсегда».
+//
+// Своего pts у конструктора нет — курсор едет в конверте.
+type UpdateNotifySettings struct {
+	Underscore     string             `json:"_"`
+	Peer           NotifyPeer         `json:"peer"`
+	NotifySettings PeerNotifySettings `json:"notify_settings"`
+}
+
+func (UpdateNotifySettings) isUpdate()     {}
+func (u UpdateNotifySettings) Tag() string { return u.Underscore }
+
+func NewUpdateNotifySettings(peer Peer, settings PeerNotifySettings) UpdateNotifySettings {
+	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
+		Peer: NewNotifyPeer(peer), NotifySettings: settings}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

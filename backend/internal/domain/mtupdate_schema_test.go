@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Механическая сверка модели кадров со схемой TL — зеркало
@@ -55,6 +56,12 @@ func updateCases() []struct {
 		{"открепили", NewUpdatePinnedMessages(peer, []int64{12}, false, 48)},
 		{"закрепили в канале", NewUpdatePinnedChannelMessages(5, []int64{12}, true, 11)},
 		{"реакции", NewUpdateMessageReactions(peer, 12, reactions)},
+		{"закрепили диалог", NewUpdateDialogPinned(peer, true)},
+		{"открепили диалог", NewUpdateDialogPinned(peer, false)},
+		{"диалог в архив", NewUpdateFolderPeers([]FolderPeer{NewFolderPeer(peer, FolderArchive)}, 49)},
+		{"диалог из архива", NewUpdateFolderPeers([]FolderPeer{NewFolderPeer(peer, FolderAll)}, 50)},
+		{"настройки уведомлений", NewUpdateNotifySettings(peer,
+			NewPeerNotifySettings(time.Unix(1787334148, 0), nil, NewNotificationSoundNone()))},
 	}
 }
 
@@ -121,6 +128,9 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdatePinnedMessagesTag,
 		UpdatePinnedChannelMessagesTag,
 		UpdateMessageReactionsTag,
+		UpdateDialogPinnedTag,
+		UpdateFolderPeersTag,
+		UpdateNotifySettingsTag,
 	}
 
 	covered := map[string]bool{}

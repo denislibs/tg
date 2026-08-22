@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { newGroupsManager } from './groupsManager'
-import { isDialogArchived, mapMyMessage, type Dialog, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
+import { isDialogArchived, mapMyMessage, WIRE_FOLDER_ARCHIVE, type Dialog, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
 import { makeRawMessage } from '../messages/testMessage'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
@@ -430,7 +430,7 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(isPinned(mgr.getSnapshot()[0].dialog)).toBe(true)
     ops.length = 0
 
-    mgr.applyArchived(1, true)
+    mgr.applyFolder(1, WIRE_FOLDER_ARCHIVE)
 
     // Диалог был закреплён — сброс пина выкидывает его из «закреплённого» блока
     // индекса в обычный (по дате активности), поэтому index в патче ТОЖЕ
@@ -442,7 +442,7 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(isPinned(d)).toBe(false)
 
     // Обратно — «папка не указана» это ОТСУТСТВИЕ значения, а не третий член.
-    mgr.applyArchived(1, false)
+    mgr.applyFolder(1, 0)
     expect(isDialogArchived(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(false)
   })
 
@@ -488,7 +488,7 @@ describe('dialogsManager: действия без оптимистики — п�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyArchived(1, false) // диалог и так не в архиве
+    mgr.applyFolder(1, 0) // диалог и так не в архиве
 
     expect(ops).toEqual([])
     expect(isDialogArchived(mgr.getSnapshot()[0].dialog)).toBe(false)

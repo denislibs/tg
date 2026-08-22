@@ -61,6 +61,65 @@ func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients
 	return nil
 }
 
+// logAndPublishPerPeer — то же, что logAndPublish, но тело кадра СТРОИТСЯ по
+// ключу пира, а не дополняется им снаружи.
+//
+// Разница не косметическая. logAndPublish дописывает ключ пира отдельным полем
+// `peer_id` в готовый словарь — это форма ДО порта. У конструктора схемы место
+// пира своё и у каждого кадра разное: updateDialogPinned требует dialogPeer,
+// updateNotifySettings — notifyPeer, а updateFolderPeers пира наверху не несёт
+// вовсе, потому что тот лежит внутри вектора рядом с номером папки. Приклеить
+// такое одной общей функцией нельзя — его знает только сам строитель тела.
+//
+// Тело мемоизируется по ключу пира: у приватного диалога ключей ровно два, в
+// группе и канале — один на всех.
+func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, recipients []int64,
+	typ string, build func(peer domain.PeerID) map[string]any) error {
+	if i.updates == nil || len(recipients) == 0 {
+		return nil
+	}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	bodies := map[domain.PeerID]map[string]any{}
+	bodyFor := func(uid int64) map[string]any {
+		peer := addr.forViewer(uid)
+		if b, ok := bodies[peer]; ok {
+			return b
+		}
+		b := build(peer)
+		bodies[peer] = b
+		return b
+	}
+
+	ptsByUser := make(map[int64]int64, len(recipients))
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		date := nowMillis()
+		for _, uid := range recipients {
+			payload, e := json.Marshal(bodyFor(uid))
+			if e != nil {
+				return e
+			}
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, typ, payload)
+			if e != nil {
+				return e
+			}
+			ptsByUser[uid] = pts
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if i.publisher != nil {
+		for _, uid := range recipients {
+			_ = i.publisher.PublishToUser(ctx, uid, framePts(typ, bodyFor(uid), ptsByUser[uid]))
+		}
+	}
+	return nil
+}
+
 // peerPayloads — общий payload кадра, развёрнутый по КЛЮЧАМ ПИРА получателей.
 //
 // Это рабочее место асимметрии приватного диалога: в группе и канале ключ один

@@ -75,8 +75,9 @@ func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ stri
 			continue
 		}
 		var env struct {
-			T string         `json:"t"`
-			D map[string]any `json:"d"`
+			T   string         `json:"t"`
+			D   map[string]any `json:"d"`
+			Pts *float64       `json:"pts"`
 		}
 		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
 			continue
@@ -84,7 +85,13 @@ func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ stri
 		if env.T != typ {
 			continue
 		}
+		// Курсор лежит в теле либо в конверте — выбирает СХЕМА кадра
+		// (TestFramePts_LivesWhereSchemaSaysIt). Здесь важно лишь, что он есть
+		// и совпадает со строкой журнала.
 		pts, ok := env.D["pts"].(float64)
+		if !ok && env.Pts != nil {
+			pts, ok = *env.Pts, true
+		}
 		if !ok {
 			t.Fatalf("%q frame for %d missing pts: %v", typ, userID, env.D)
 		}

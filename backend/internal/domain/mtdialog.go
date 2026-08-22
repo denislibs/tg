@@ -288,6 +288,65 @@ func UnmarshalDialog(raw []byte) (Dialog, error) {
 	return nil, nil
 }
 
+// ── Ссылки на диалог: DialogPeer, NotifyPeer, FolderPeer ────────────────────
+//
+// Три ОБЪЕДИНЕНИЯ, каждое про свой вопрос, и все три — не «пир с довеском», а
+// адрес В СВОЁМ ПРОСТРАНСТВЕ: список диалогов адресуется dialogPeer, настройки
+// уведомлений — notifyPeer (у него есть варианты «все личные», «все группы»,
+// «все каналы», которые пиром не выражаются вовсе), папки — folderPeer, который
+// НЕСЁТ НОМЕР ПАПКИ рядом с пиром.
+//
+// Мы производим по одному конструктору каждого объединения, и это названо:
+//   - dialogPeerFolder (строка «Архив» как элемент списка) — у нас архив это
+//     не строка списка, а фильтр;
+//   - notifyUsers/notifyChats/notifyBroadcasts/notifyForumTopic — глобальных
+//     настроек по ТИПУ пира у нас нет, только пер-чатовые.
+
+// DialogPeerTag — дискриминатор `_` конструктора dialogPeer.
+const DialogPeerTag = "dialogPeer"
+
+// dialogPeer#e56dbf05 peer:Peer = DialogPeer;
+type DialogPeer struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+}
+
+func NewDialogPeer(peer Peer) DialogPeer {
+	return DialogPeer{Underscore: DialogPeerTag, Peer: peer}
+}
+
+// NotifyPeerTag — дискриминатор `_` конструктора notifyPeer.
+const NotifyPeerTag = "notifyPeer"
+
+// notifyPeer#9fd40bd8 peer:Peer = NotifyPeer;
+type NotifyPeer struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+}
+
+func NewNotifyPeer(peer Peer) NotifyPeer {
+	return NotifyPeer{Underscore: NotifyPeerTag, Peer: peer}
+}
+
+// FolderPeerTag — дискриминатор `_` конструктора folderPeer.
+const FolderPeerTag = "folderPeer"
+
+// folderPeer#e9baa668 peer:Peer folder_id:int = FolderPeer;
+//
+// Здесь и видно, почему архив — не булево: пир едет вместе с НОМЕРОМ ПАПКИ, и
+// «вернуть из архива» это folder_id=0, а не `archived: false`. Пространство
+// папок у оригинала открытое (folder_id — обычный int), поэтому третья папка не
+// потребует нового кадра.
+type FolderPeer struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	FolderID   int    `json:"folder_id"`
+}
+
+func NewFolderPeer(peer Peer, folder FolderID) FolderPeer {
+	return FolderPeer{Underscore: FolderPeerTag, Peer: peer, FolderID: int(folder)}
+}
+
 // ── PeerNotifySettings ──────────────────────────────────────────────────────
 
 // PeerNotifySettingsTag — дискриминатор `_` конструктора peerNotifySettings.

@@ -103,6 +103,21 @@ export interface Dialog extends RawDialog {
  *  `core/folderIds.ts`) с ней не совпадает сознательно — см. докблок там. */
 export const WIRE_FOLDER_ARCHIVE = 1
 
+/**
+ * Ссылки на диалог: `dialogPeer` (список диалогов), `notifyPeer` (настройки
+ * уведомлений), `folderPeer` (папки). Три РАЗНЫХ пространства адресации, а не
+ * «пир с довеском»: у `folderPeer` рядом с пиром лежит номер папки, а у
+ * `notifyPeer` в схеме есть варианты «все личные»/«все группы»/«все каналы»,
+ * которые пиром не выражаются вовсе.
+ *
+ * Производятся по одному конструктору каждого объединения — зеркало
+ * `backend/internal/domain/mtdialog.go`, там же названо, чего нет.
+ */
+export interface DialogPeer { _: 'dialogPeer'; peer: Peer }
+export interface NotifyPeer { _: 'notifyPeer'; peer: Peer }
+/** folderPeer#e9baa668 peer:Peer folder_id:int = FolderPeer; */
+export interface FolderPeer { _: 'folderPeer'; peer: Peer; folder_id: number }
+
 /** Диалог убран в «Архив». Прежде это было булево поле строки; в схеме архив —
  *  РЕАЛЬНАЯ папка, и вопрос задаётся её номером. */
 export function isDialogArchived(dialog: Pick<Dialog, 'folder_id'>): boolean {
