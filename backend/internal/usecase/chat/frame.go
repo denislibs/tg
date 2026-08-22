@@ -197,6 +197,25 @@ func readPayload(peer domain.PeerID, maxID int64, unread int, inbox bool) map[st
 	}
 }
 
+// pinPayload — тело кадра закрепления.
+//
+// «Открепили» — ТОТ ЖЕ конструктор с опущенным битом, а не поле `pinned: false`
+// и не второй тип кадра. Номера едут ВЕКТОРОМ: у оригинала одно действие
+// закрепляет сразу пачку, и форма кадра это допускает, даже когда у нас пока
+// всегда один номер.
+func pinPayload(peer domain.PeerID, seq int64, pinned bool) map[string]any {
+	p := map[string]any{
+		"_":         domain.UpdatePinnedMessagesTag,
+		"peer":      domain.NewPeer(peer),
+		"messages":  []int64{seq},
+		"pts_count": domain.PtsCountOne,
+	}
+	if pinned {
+		p["pFlags"] = map[string]bool{"pinned": true}
+	}
+	return p
+}
+
 // messageContext — то, чего строка messages не знает о себе сама. Ключ пира у
 // кадра приклеивается позже (withPeer), поэтому здесь допустим NullPeerID.
 //

@@ -105,6 +105,21 @@ func assertSingleNumber(t *testing.T, where string, p map[string]any, wantSeq in
 	if msg, ok := p["message"].(map[string]any); ok {
 		p = msg
 	}
+	// Кадры, работающие с ПАЧКОЙ сообщений (закрепление, удаление, прочтение
+	// вложений), адресуют вектором `messages` — так их объявляет схема. Правило
+	// «одно сообщение — одно число» от этого не меняется: числа в векторе те же
+	// номера в чате.
+	if list, ok := p["messages"].([]any); ok {
+		if len(list) == 0 {
+			t.Fatalf("%s: вектор messages пуст", where)
+		}
+		for _, item := range list {
+			if got := asInt64(t, item); got != wantSeq {
+				t.Errorf("%s: messages несёт %d, ждали номер в чате %d", where, got, wantSeq)
+			}
+		}
+		return
+	}
 	id, ok := p["id"]
 	if !ok {
 		t.Fatalf("%s: нет ключа id (%v)", where, p)

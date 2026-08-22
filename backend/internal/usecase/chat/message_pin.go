@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -32,7 +33,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	}
 
 	var members []int64
-	var pp *peerPayloads
+	var pinAddr chatAddress
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if pin {
@@ -48,13 +49,14 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		}
 		slices.Sort(mem)
 		members = mem
-		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{"id": cur.Seq, "pinned": pin})
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		pinAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := json.Marshal(pinPayload(addr.forViewer(uid), cur.Seq, pin))
 			if e != nil {
 				return e
 			}
@@ -71,7 +73,8 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("pin_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := pinPayload(pinAddr.forViewer(uid), cur.Seq, pin)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("pin_message", body, ptsByUser[uid]))
 		}
 	}
 	// Закрепление оставляет след в ленте (tweb messageActionPinMessage). У

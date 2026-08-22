@@ -224,7 +224,18 @@ export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').R
 // правило `profile_photo` применяется на бэкенде при сборке кадра.
 export interface UserUpdateEvt { user: UserReal; pts?: number }
 export interface DeleteMessageEvt { peer_id: PeerId; id: number; for_me: boolean }
-export interface PinMessageEvt { peer_id: PeerId; id: number; pinned: boolean }
+/**
+ * Закрепление — `updatePinnedMessages`. «Открепили» это ТОТ ЖЕ конструктор с
+ * опущенным битом: `pFlags.pinned` отсутствует, а не равен `false`. Номера
+ * едут вектором — у оригинала одно действие закрепляет сразу пачку.
+ */
+export interface PinMessageEvt {
+  _: 'updatePinnedMessages'
+  peer: Peer
+  messages: number[]
+  pFlags?: { pinned?: true }
+  pts?: number
+}
 /**
  * Прочтение — ДВА конструктора, а не один кадр с `user_id` внутри.
  *

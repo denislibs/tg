@@ -93,6 +93,57 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 		}
 	})
 
+	// «Открепили» — тот же конструктор с ОПУЩЕННЫМ битом, а не поле
+	// `pinned: false` и не второй тип кадра. На JSON-проводе разница
+	// косметическая, на проводе TL — принципиальная: голый флаг не занимает
+	// ничего, и материализуйся он значением, чужой разбор поехал бы дальше по
+	// полю, которого нет.
+	t.Run("закрепление и открепление — один конструктор", func(t *testing.T) {
+		in, _ := newInteractor()
+		pub := &fakePublisher{}
+		in.SetPublisher(pub)
+		ctx := context.Background()
+		const a, b int64 = 1, 2
+		chatID, _ := in.CreatePrivateChat(ctx, a, b)
+		msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "закрепить"})
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+
+		pub.reset()
+		if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+			t.Fatalf("SetPin: %v", err)
+		}
+		// Именно кадр закрепления: следом за ним летит ещё и служебное
+		// сообщение-пилюля («закрепил сообщение»), и оно новее.
+		pinned := frameOfType(t, pub, b, "pin_message")
+		if pinned["_"] != domain.UpdatePinnedMessagesTag {
+			t.Fatalf("закрепление = %v, want %s", pinned["_"], domain.UpdatePinnedMessagesTag)
+		}
+		flags, _ := pinned["pFlags"].(map[string]any)
+		if flags["pinned"] != true {
+			t.Fatalf("у закрепления нет бита pinned: %#v", pinned)
+		}
+		if ids, ok := pinned["messages"].([]any); !ok || len(ids) != 1 {
+			t.Fatalf("номера едут не вектором: %#v", pinned["messages"])
+		}
+
+		pub.reset()
+		if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+			t.Fatalf("SetPin(false): %v", err)
+		}
+		unpinned := frameOfType(t, pub, b, "pin_message")
+		if unpinned["_"] != domain.UpdatePinnedMessagesTag {
+			t.Fatalf("открепление = %v, want тот же конструктор", unpinned["_"])
+		}
+		if _, present := unpinned["pFlags"]; present {
+			t.Fatalf("у открепления появился pFlags: %#v", unpinned)
+		}
+		if _, stale := unpinned["pinned"]; stale {
+			t.Fatalf("открепление везёт поле pinned вместо ОТСУТСТВИЯ бита: %#v", unpinned)
+		}
+	})
+
 	// Журнал канала хранит ТО ЖЕ тело, что уходит живым кадром: догон разрыва
 	// и live обязаны совпадать, иначе клиент разбирает их двумя путями.
 	t.Run("журнал канала", func(t *testing.T) {
@@ -117,4 +168,30 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 			t.Fatalf("дискриминатор записи журнала = %v, want %s", body["_"], domain.UpdateNewChannelMessageTag)
 		}
 	})
+}
+
+// frameOfType — последний кадр ЗАДАННОГО типа для получателя. Нужен там, где
+// одно действие порождает несколько кадров (закрепление шлёт ещё и служебное
+// сообщение), и «последний» отвечает не про то.
+func frameOfType(t *testing.T, pub *fakePublisher, userID int64, typ string) map[string]any {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i := len(pub.frames) - 1; i >= 0; i-- {
+		if pub.frames[i].userID != userID {
+			continue
+		}
+		var env struct {
+			T string         `json:"t"`
+			D map[string]any `json:"d"`
+		}
+		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
+			t.Fatalf("разбор кадра: %v", err)
+		}
+		if env.T == typ {
+			return env.D
+		}
+	}
+	t.Fatalf("кадра %q для пользователя %d не было", typ, userID)
+	return nil
 }
