@@ -49,6 +49,50 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 		}
 	})
 
+	// «Прочитал я» и «прочитали меня» — РАЗНЫЕ конструкторы, а не один кадр с
+	// user_id внутри, из которого каждый получатель выводит «чьё это» сам.
+	// Счётчик оставшегося непрочитанного есть только у первого: чужой
+	// непрочитанный меня не касается.
+	t.Run("прочтение раздваивается по получателю", func(t *testing.T) {
+		in, _ := newInteractor()
+		pub := &fakePublisher{}
+		in.SetPublisher(pub)
+		ctx := context.Background()
+		const author, reader int64 = 1, 2
+		chatID, _ := in.CreatePrivateChat(ctx, author, reader)
+		msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: author, Text: "привет"})
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+
+		pub.reset()
+		if err := in.MarkRead(ctx, chatID, reader, msg.Seq); err != nil {
+			t.Fatalf("MarkRead: %v", err)
+		}
+
+		inbox := lastFrameFor(t, pub, reader)
+		if inbox["_"] != domain.UpdateReadHistoryInboxTag {
+			t.Fatalf("читателю = %v, want %s", inbox["_"], domain.UpdateReadHistoryInboxTag)
+		}
+		if _, ok := inbox["still_unread_count"]; !ok {
+			t.Fatalf("у кадра читателя нет счётчика непрочитанного: %#v", inbox)
+		}
+
+		outbox := lastFrameFor(t, pub, author)
+		if outbox["_"] != domain.UpdateReadHistoryOutboxTag {
+			t.Fatalf("автору = %v, want %s", outbox["_"], domain.UpdateReadHistoryOutboxTag)
+		}
+		if _, stale := outbox["still_unread_count"]; stale {
+			t.Fatalf("кадр «прочитали меня» несёт ЧУЖОЙ счётчик непрочитанного: %#v", outbox)
+		}
+		// Ключ пира — конструктор Peer, а не число: в схеме у прочтения
+		// параметр `peer:Peer`.
+		peer, ok := outbox["peer"].(map[string]any)
+		if !ok || peer["_"] == nil {
+			t.Fatalf("пир кадра не конструктор: %#v", outbox["peer"])
+		}
+	})
+
 	// Журнал канала хранит ТО ЖЕ тело, что уходит живым кадром: догон разрыва
 	// и live обязаны совпадать, иначе клиент разбирает их двумя путями.
 	t.Run("журнал канала", func(t *testing.T) {

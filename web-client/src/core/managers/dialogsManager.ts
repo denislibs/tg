@@ -1278,20 +1278,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     /** `read` — моё прочтение гасит unread/горизонт, чужое двигает peerReadSeq (✓✓). */
-    applyRead(e: ReadEvt, meId: number | null): void {
-      const cur = findDialog(e.peer_id)
+    applyRead(e: ReadEvt): void {
+      const peerId = getPeerId(e.peer)
+      const cur = findDialog(peerId)
       if (!cur) return
       // Горизонт из кадра — СЕРВЕРНЫЙ номер; в модели он клиентский (см. toDialog).
-      const upTo = generateMessageId(e.up_to_seq)
-      if (e.user_id === meId) {
-        // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
-        const unread = e.unread ?? 0
+      const upTo = generateMessageId(e.max_id)
+      // Ветвление по КОНСТРУКТОРУ, а не сравнением `user_id` с собой: «прочитал
+      // я» и «прочитали меня» — разные кадры схемы, и решает это сервер, на
+      // рассылке. Прежде тот же вывод повторялся здесь, в проекторе и в ленте.
+      if (e._ === 'updateReadHistoryInbox') {
+        // Авторитетный счётчик из кадра verbatim (обычно 0).
+        const unread = e.still_unread_count
         const readInbox = Math.max(cur.read_inbox_max_id, upTo)
         // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
         // unread уже 0) НЕ публикует операцию — иначе на зеркале перезапустится
         // mark-read-эффект (деп win.msgs) и получится бесконечный цикл ре-рендера.
         if (unread === cur.unread_count && cur.unread_mentions_count === 0 && cur.unread_reactions_count === 0 && readInbox === cur.read_inbox_max_id) return
-        patchDialog(e.peer_id, {
+        patchDialog(peerId, {
           unread_count: unread,
           unread_mentions_count: 0,
           unread_reactions_count: 0,
@@ -1301,7 +1305,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
         const readOutbox = Math.max(cur.read_outbox_max_id, upTo)
         if (readOutbox === cur.read_outbox_max_id) return // no advance → no-op (без операции)
-        patchDialog(e.peer_id, { read_outbox_max_id: readOutbox })
+        patchDialog(peerId, { read_outbox_max_id: readOutbox })
       }
     },
 

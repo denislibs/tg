@@ -563,7 +563,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	var effective int64
 	var advanced bool
 	var unread int
-	var pp *peerPayloads
+	var readAddr chatAddress
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		cur, e := i.chats.CurrentReadSeq(ctx, chatID, userID)
@@ -611,18 +611,17 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		}
 		slices.Sort(m)
 		members = m
-		// Один и тот же base для лога и live-кадра: authoritative unread — это unread
-		// самого читателя (единое значение); клиент применяет его, только если
-		// user_id == me (у остальных участников это read-receipt по up_to_seq).
-		pp, e = i.newPeerPayloads(ctx, chatID, map[string]any{
-			"user_id": userID, "up_to_seq": effective, "unread": unread,
-		})
+		// Тело кадра — КОНСТРУКТОР, и он разный у читателя и у остальных:
+		// updateReadHistoryInbox несёт мой счётчик непрочитанного,
+		// updateReadHistoryOutbox — только горизонт (см. readPayload).
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		readAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == userID))
 			if e != nil {
 				return e
 			}
@@ -645,7 +644,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	// must not spam every member with a redundant read frame.
 	if i.publisher != nil && advanced {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.frame("read", uid, map[string]any{"pts": ptsByUser[uid]}))
+			body := readPayload(readAddr.forViewer(uid), effective, unread, uid == userID)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
 		}
 	}
 	// Channel posts track a per-viewer view count: register this reader's view of

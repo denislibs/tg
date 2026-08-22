@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // lastFrameFor decodes the payload (d) of the most recent frame published to
@@ -219,8 +221,13 @@ func TestUnread_AuthoritativeInFrames(t *testing.T) {
 	if err := in.MarkRead(ctx, chatID, b, last); err != nil {
 		t.Fatalf("MarkRead: %v", err)
 	}
+	// Читателю уходит updateReadHistoryInbox — единственный из двух
+	// конструкторов прочтения, который несёт счётчик: непрочитанное МОЁ.
 	db := lastFrameFor(t, pub, b)
-	if got := asInt64(t, db["unread"]); got != 0 {
+	if db["_"] != domain.UpdateReadHistoryInboxTag {
+		t.Fatalf("кадр читателю = %v; want %s", db["_"], domain.UpdateReadHistoryInboxTag)
+	}
+	if got := asInt64(t, db["still_unread_count"]); got != 0 {
 		t.Fatalf("read unread for b = %d; want 0", got)
 	}
 	if got := memberUnread(b); got != 0 {

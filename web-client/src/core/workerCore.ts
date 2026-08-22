@@ -418,7 +418,7 @@ export function createWorkerCore() {
     // влияющие на список диалогов, применяет dialogsManager — публикует свой
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
-    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.user.id ?? null)
+    if (t === 'read') dialogs.applyRead(d as ReadEvt)
     else if (t === 'chat_update') {
       // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
       // приехавшие ВМЕСТЕ с апдейтом, сохраняются ПЕРВЫМИ — до того, как

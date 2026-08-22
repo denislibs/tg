@@ -167,6 +167,36 @@ func (i *Interactor) newMessagePayload(ctx context.Context, m domain.Message, ta
 	}
 }
 
+// readPayload — тело кадра прочтения ГЛАЗАМИ получателя.
+//
+// Конструкторов два, и выбор между ними — не украшение. «Прочитал я» и
+// «прочитали меня» в схеме разные кадры: у первого есть счётчик оставшегося
+// непрочитанного (он мой), у второго его нет вовсе — чужой непрочитанный меня
+// не касается. У нас же ехал ОДИН кадр с `user_id` внутри, и каждый получатель
+// выводил «чьё это» сам, сравнивая с собой; тот же вывод повторялся на клиенте
+// в трёх местах разбора.
+//
+// Тот же класс, что pFlags.out у сообщения: тело кадра одно на всех
+// получателей, а ответ на вопрос «чьё» — разный, и разводится он здесь, на
+// рассылке.
+func readPayload(peer domain.PeerID, maxID int64, unread int, inbox bool) map[string]any {
+	if !inbox {
+		return map[string]any{
+			"_":         domain.UpdateReadHistoryOutboxTag,
+			"peer":      domain.NewPeer(peer),
+			"max_id":    maxID,
+			"pts_count": domain.PtsCountOne,
+		}
+	}
+	return map[string]any{
+		"_":                  domain.UpdateReadHistoryInboxTag,
+		"peer":               domain.NewPeer(peer),
+		"max_id":             maxID,
+		"still_unread_count": unread,
+		"pts_count":          domain.PtsCountOne,
+	}
+}
+
 // messageContext — то, чего строка messages не знает о себе сама. Ключ пира у
 // кадра приклеивается позже (withPeer), поэтому здесь допустим NullPeerID.
 //

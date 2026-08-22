@@ -11,7 +11,6 @@ import { makeRawMessage } from '../messages/testMessage'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
-import type { ReadEvt } from '../realtime/events'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Draft } from '../models'
 
@@ -225,7 +224,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     mgr.applyNewMessage({ message: makeRawMessage({ id: 1, peerId: 99, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
-    mgr.applyRead({ peer_id: 99, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
+    mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 99 }, max_id: 1, still_unread_count: 0 })
     mgr.bumpUnreadReactions(99)
 
     expect(ops).toHaveLength(0)
@@ -298,7 +297,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(op.index).toBeUndefined() // индекс внутри блока закреплённых не сдвинулся
   })
 
-  it('applyRead: fallback unread=0 без поля в кадре; чужое прочтение двигает peerReadSeq, не мой unread; устаревший peer-read не регрессирует и не публикует операцию', async () => {
+  it('applyRead: Inbox несёт мой счётчик; Outbox двигает горизонт собеседника, не мой unread; устаревший Outbox не регрессирует и не публикует операцию', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
@@ -310,17 +309,17 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
     ops.length = 0
 
-    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 2 } as ReadEvt, 7)
+    mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 2, still_unread_count: 0 })
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
 
     ops.length = 0
-    mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 9 } as ReadEvt, 7)
+    mgr.applyRead({ _: 'updateReadHistoryOutbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 9 })
     const opPeer = ops[0] as Extract<DialogOp, { op: 'patch' }>
     expect(opPeer.fields.read_outbox_max_id).toBe(generateMessageId(9))
     expect(opPeer.fields.unread_count).toBeUndefined() // чужое прочтение мой unread не трогает
 
     ops.length = 0
-    mgr.applyRead({ peer_id: 1, user_id: 5, up_to_seq: 4 } as ReadEvt, 7)
+    mgr.applyRead({ _: 'updateReadHistoryOutbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 4 })
     expect(ops).toHaveLength(0)
   })
 
@@ -336,7 +335,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     mgr.bumpUnreadReactions(1, 2)
     ops.length = 0
 
-    mgr.applyRead({ peer_id: 1, user_id: 7, up_to_seq: 1 } as ReadEvt, 7)
+    mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 1, still_unread_count: 0 })
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(0)
   })

@@ -106,7 +106,13 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
   it('read (без pts) → dialogs.applyRead → rt:dialog_op patch', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('read', { peer_id: 1, user_id: 7, up_to_seq: 1 })
+    // «Прочитали меня» — отдельный конструктор: горизонт собеседника без
+    // моего счётчика непрочитанного.
+    capturedConnDeps!.onFrame('read', {
+      _: 'updateReadHistoryOutbox',
+      peer: { _: 'peerUser', user_id: 1 },
+      max_id: 1,
+    })
 
     // Горизонт на проводе СЕРВЕРНЫЙ, в строке диалога — уже клиентский.
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { read_outbox_max_id: generateMessageId(1) } }])

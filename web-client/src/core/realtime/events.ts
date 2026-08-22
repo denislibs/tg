@@ -5,6 +5,7 @@ import type { ReplyMarkup } from '../markup/replyMarkup'
 import type { MessageAction } from '../messages/messageAction'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
+import type { Peer } from '../peers/peerId'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -224,10 +225,32 @@ export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').R
 export interface UserUpdateEvt { user: UserReal; pts?: number }
 export interface DeleteMessageEvt { peer_id: PeerId; id: number; for_me: boolean }
 export interface PinMessageEvt { peer_id: PeerId; id: number; pinned: boolean }
-export interface ReadEvt { peer_id: PeerId; user_id: number; up_to_seq: number;
-  /** авторитетный счётчик непрочитанных диалога после этого read (Wave 3): стор
-   * берёт его verbatim вместо локального =0. Отсутствует у старого бэка → fallback. */
-  unread?: number; pts?: number }
+/**
+ * Прочтение — ДВА конструктора, а не один кадр с `user_id` внутри.
+ *
+ * `updateReadHistoryInbox` — прочитал Я: несёт мой горизонт и авторитетный
+ * счётчик оставшегося непрочитанного. `updateReadHistoryOutbox` — прочитали
+ * МЕНЯ: только горизонт собеседника (чужой непрочитанный меня не касается,
+ * поэтому счётчика у конструктора нет вовсе).
+ *
+ * Прежде кадр был один, и «чьё это» каждый получатель выводил сам, сравнивая
+ * `user_id` с собой, — тот же вывод повторялся в трёх местах разбора.
+ */
+export interface ReadHistoryInboxEvt {
+  _: 'updateReadHistoryInbox'
+  peer: Peer
+  /** Горизонт в СЕРВЕРНЫХ номерах (клиентский получается через generateMessageId). */
+  max_id: number
+  still_unread_count: number
+  pts?: number
+}
+export interface ReadHistoryOutboxEvt {
+  _: 'updateReadHistoryOutbox'
+  peer: Peer
+  max_id: number
+  pts?: number
+}
+export type ReadEvt = ReadHistoryInboxEvt | ReadHistoryOutboxEvt
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
 export interface MediaReadEvt { peer_id: PeerId; id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
