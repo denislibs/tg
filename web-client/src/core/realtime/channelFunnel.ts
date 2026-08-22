@@ -1,8 +1,10 @@
 // src/core/realtime/channelFunnel.ts
 //
 // Per-channel pts-конверт (Волна 5). Каналы не делят общий пер-юзерный курсор
-// (cursor.ts): у каждого канала свой плотный монотонный channel_pts, который
-// сервер шлёт и в живом кадре (d.channel_pts), и в типизированном
+// (cursor.ts): у каждого канала свой плотный монотонный курсор, который сервер
+// шлёт и в живом кадре (у поста — параметром `pts` конструктора
+// updateNewChannelMessage; у кадров метаданных канала пока ключом channel_pts,
+// их порт на конструкторы — следующий шаг), и в типизированном
 // GET /channels/{id}/difference. Этот модуль — тот же funnel, что глобальный
 // applyUpdate (dup/next/gap + буфер придержанных кадров), но по ключу peerId:
 // живые кадры канала гейтятся против его курсора, а дыра добирается через
@@ -116,7 +118,8 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
   }
 
   return {
-    // Живой канальный кадр (несёт channel_pts). Та же арифметика dup/next/gap, что
+    // Живой канальный кадр (курсор канала выбран вызывающим по дискриминатору).
+    // Та же арифметика dup/next/gap, что
     // и глобальный funnel, но против per-channel курсора.
     applyLive(peerId: number, t: string, pts: number, d: unknown): void {
       const st = state(peerId)

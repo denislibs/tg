@@ -487,7 +487,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// channel_pts — тот же конверт, который переигрывает /difference, поэтому
 	// клиент гейтит его по пер-канальному курсору и не получает дубля.
 	if channelPts != 0 && i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, in.ChatID, frameChannelPts("new_message", channelPayload, channelPts))
+		_ = i.chPub.PublishToChannel(ctx, in.ChatID, frameChannelMessage("new_message", channelPayload, channelPts))
 	}
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой

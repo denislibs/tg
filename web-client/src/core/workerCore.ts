@@ -555,11 +555,23 @@ export function createWorkerCore() {
       // молча проезжали мимо своей воронки — курсор канала от живых кадров не
       // двигался, и каждый догон разрыва приносил их заново.
       {
-        const cf = payload as { channel_pts?: number; peer_id?: number; message?: { peer_id?: Parameters<typeof getPeerId>[0] } }
-        if (typeof cf?.channel_pts === 'number') {
+        const cf = payload as {
+          _?: string
+          pts?: number
+          channel_pts?: number
+          peer_id?: number
+          message?: { peer_id?: Parameters<typeof getPeerId>[0] }
+        }
+        // Пост канала опознаётся ДИСКРИМИНАТОРОМ: updateNewChannelMessage — и
+        // есть ответ «курсор канальный», потому что своего имени у канального
+        // курсора в схеме нет, `pts` там обычный. Прежде вид кадра решало имя
+        // ключа (`channel_pts` против `pts`) — второе имя одного и того же поля.
+        const isChannelMessage = cf?._ === 'updateNewChannelMessage'
+        const channelPts = isChannelMessage ? cf.pts : cf?.channel_pts
+        if (typeof channelPts === 'number') {
           const peerId = cf.message?.peer_id !== undefined ? getPeerId(cf.message.peer_id) : cf.peer_id
           if (typeof peerId === 'number') {
-            channelFunnel.applyLive(peerId, type, cf.channel_pts, payload)
+            channelFunnel.applyLive(peerId, type, channelPts, payload)
             return
           }
         }

@@ -245,7 +245,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		if i.chPub != nil {
 			for idx := range created {
 				_ = i.chPub.PublishToChannel(ctx, in.ToChatID,
-					frameChannelPts("new_message", channelPayloads[idx], channelPtsList[idx]))
+					frameChannelMessage("new_message", channelPayloads[idx], channelPtsList[idx]))
 			}
 		}
 	} else if i.publisher != nil {
