@@ -27,14 +27,17 @@ export function newBoostsManager({ rest, getMeId }: {
   getMeId?: () => number | null
 }) {
   return {
+    // Ответ ручки — КОНСТРУКТОР схемы плюс наше число свободных слотов рядом:
+    // в схеме на этом месте `my_boost_slots` — вектор идентификаторов ЗАНЯТЫХ
+    // слотов, то есть другой предмет под похожим именем.
     async status(peerId: number): Promise<BoostStatus> {
-      const r = await rest.get<RawBoostStatus>(`/channels/${peerId}/boosts`)
-      return mapBoostStatus(r)
+      const r = await rest.get<{ status: RawBoostStatus; slots: number }>(`/channels/${peerId}/boosts`)
+      return mapBoostStatus(r.status, r.slots)
     },
     // Бустит канал (расходует слот premium): возвращает обновлённый статус.
     async boost(peerId: number): Promise<BoostStatus> {
-      const r = await rest.post<RawBoostStatus>(`/channels/${peerId}/boost`, {})
-      return mapBoostStatus(r)
+      const r = await rest.post<{ status: RawBoostStatus; slots: number }>(`/channels/${peerId}/boost`, {})
+      return mapBoostStatus(r.status, r.slots)
     },
     // Создаёт розыгрыш; возвращает сообщение-баббл розыгрыша.
     async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<MyMessage> {

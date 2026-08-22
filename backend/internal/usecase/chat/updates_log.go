@@ -291,7 +291,7 @@ func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, 
 		return err
 	}
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts(typ, d, pts))
+		_ = i.chPub.PublishToChannel(ctx, channelID, framePts(typ, d, pts))
 	}
 	return nil
 }

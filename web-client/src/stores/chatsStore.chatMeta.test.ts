@@ -40,7 +40,8 @@ beforeEach(() => {
 // `GET /chats/{peerID}/card`.
 function chatUpdate(peerId: number, title = '', username?: string): ChatUpdateEvt {
   return {
-    peer_id: peerId,
+    _: 'updateChatFullSnapshot',
+    peer: peerId < 0 ? { _: 'peerChannel', channel_id: -peerId } : { _: 'peerUser', user_id: peerId },
     chat_full: {
       _: 'messages.chatFull',
       full_chat: { _: 'channelFull', id: Math.abs(peerId), about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },

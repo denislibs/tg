@@ -20,8 +20,13 @@ import (
 // объекте: флагов членства нет вовсе (см. ChatRecord.ViewerID), а обязательные
 // горизонты чтения channelFull едут нулями. Их зритель-зависимые значения
 // приезжают ручкой карточки, которую клиент и без того открывает поимённо.
-func chatUpdatePayload(c domain.ChatRecord) map[string]any {
-	return map[string]any{"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel())}
+func chatUpdatePayload(peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return map[string]any{
+		"_":         domain.UpdateChatFullSnapshotTag,
+		"peer":      domain.NewPeer(peer),
+		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
+		"pts_count": domain.PtsCountOne,
+	}
 }
 
 // publishChatUpdate логирует и рассылает участникам chat_update — абсолютный
@@ -37,18 +42,20 @@ func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
 	if err != nil {
 		return
 	}
-	payload := chatUpdatePayload(card)
 	// Канал: один channel-broadcast (O(1)) по channel-конверту вместо N+1 fan-out
 	// в per-user лог каждого подписчика. Подписчики получают кадр живым, остальные
 	// добирают снимок при открытии через /channels/{id}/difference. Группа —
-	// прежний per-user путь (у групп нет channel_pts/топика).
+	// прежний per-user путь (у групп нет канального курсора/топика).
 	if card.Type == domain.ChatTypeChannel {
-		_ = i.logAndPublishChannel(ctx, chatID, "chat_update", payload)
+		// Ключ канала один на всех подписчиков — пер-зрительского в нём нет.
+		_ = i.logAndPublishChannel(ctx, chatID, "chat_update",
+			chatUpdatePayload(domain.ToPeerID(chatID, true), card))
 		return
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, chatID, members, "chat_update", payload)
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "chat_update",
+		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, card) })
 }

@@ -68,7 +68,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
   // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === evt.peer_id)) {
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === getPeerId(evt.peer))) {
       scheduleChatsReload(managers)
     }
   })

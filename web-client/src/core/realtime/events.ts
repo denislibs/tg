@@ -336,11 +336,16 @@ export interface MediaReadEvt {
   messages: number[]
   pts?: number
 }
-// Меня удалили из группы / я вышел — диалог убирается из списка.
-export interface ChatRemovedEvt { peer_id: PeerId; removed: true }
+/** Меня удалили из группы / я вышел — диалог убирается из списка. НАШ
+ *  конструктор: предмета «чат исчез» в схеме нет вовсе (у оригинала выход
+ *  выражается сообщением-действием и перечитыванием карточки).
+ *
+ *  Поле `removed: true` ушло — оно было константой: «кадр удаления сообщает об
+ *  удалении». Вид кадра несёт дискриминатор. */
+export interface ChatRemovedEvt { _: 'updateChatRemoved'; peer: Peer }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
-export interface ChatThemeUpdateEvt { peer_id: PeerId; theme_id: string }
+export interface ChatThemeUpdateEvt { _: 'updateChatTheme'; peer: Peer; theme_id: string }
 // Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
 // dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/
 // applyNotifySettings).
@@ -390,7 +395,8 @@ export interface DialogMuteEvt {
 // (core/models.ts:88-118); остальные (`about`, `is_public`, `settings`,
 // `signatures`, …) живут в карточке чата, которую грузит useChatInfoCard.
 export interface ChatUpdateEvt {
-  peer_id: PeerId
+  _: 'updateChatFullSnapshot'
+  peer: Peer
   /** ТОТ ЖЕ объект, что отдаёт `GET /chats/{peerID}/card` — `messages.chatFull`
    *  с краткой формой чата внутри (`chats[0]`). Прежде одна карточка ехала
    *  двумя разными формами: плоско с `id` у ручки и вложенно в кадре, из-за

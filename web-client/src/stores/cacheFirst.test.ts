@@ -83,7 +83,7 @@ describe('звёзды: cache-first', () => {
     // Managers обработчику balanceUpdate не нужны (нужны только рефетчу чатов).
     registerStoreProjection({} as unknown as Managers)
 
-    rootScope.dispatchEventSingle(RT.balanceUpdate, { balance: 15 })
+    rootScope.dispatchEventSingle(RT.balanceUpdate, { _: 'updateStarsBalance', balance: { _: 'starsAmount', amount: 15, nanos: 0 } })
 
     expect(useAppStateStore.getState().starsBalance).toBe(15)
   })

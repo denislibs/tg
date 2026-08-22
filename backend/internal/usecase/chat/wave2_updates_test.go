@@ -290,8 +290,15 @@ func TestBalanceUpdate_Logged(t *testing.T) {
 	pts := assertLoggedRow(t, s, uid, "balance_update")
 	assertLiveFramePts(t, pub, uid, "balance_update", pts)
 	assertInDifference(t, in, uid, "balance_update", pts)
-	if d := lastFrameFor(t, pub, uid); asInt64(t, d["balance"]) != 42 {
-		t.Fatalf("balance_update balance = %v; want 42", d["balance"])
+	// Баланс едет КОНСТРУКТОРОМ starsAmount, а не голым числом: у оригинала
+	// звёзды дробные (nanos), и «целое» — частный случай, а не форма.
+	d := lastFrameFor(t, pub, uid)
+	if d["_"] != domain.UpdateStarsBalanceTag {
+		t.Fatalf("кадр баланса = %v", d["_"])
+	}
+	balance, _ := d["balance"].(map[string]any)
+	if balance["_"] != domain.StarsAmountTag || asInt64(t, balance["amount"]) != 42 {
+		t.Fatalf("balance_update balance = %v; want starsAmount 42", d["balance"])
 	}
 }
 

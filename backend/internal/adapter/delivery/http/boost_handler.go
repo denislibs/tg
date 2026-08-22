@@ -23,7 +23,7 @@ func (h *ChatHandler) ChannelBoosts(w http.ResponseWriter, r *http.Request) {
 	if h.boostErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, boostStatusJSON(st))
 }
 
 // BoostChannel — POST /channels/{chatID}/boost: буст канала (только premium).
@@ -36,7 +36,18 @@ func (h *ChatHandler) BoostChannel(w http.ResponseWriter, r *http.Request) {
 	if h.boostErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, boostStatusJSON(st))
+}
+
+// boostStatusJSON — статус бустов ЗРИТЕЛЮ: конструктор схемы плюс наше число
+// свободных слотов рядом.
+//
+// Слоты лежат СНАРУЖИ конструктора намеренно: в схеме на этом месте
+// my_boost_slots — вектор ИДЕНТИФИКАТОРОВ занятых слотов, а у нас это счётчик
+// свободных. Разные предметы под похожим именем, и класть счётчик в вектор
+// значило бы подделать одно другим; поле ответа — наше, там ему и место.
+func boostStatusJSON(st domain.BoostStatus) map[string]any {
+	return map[string]any{"status": st.ToWire(true), "slots": st.Slots}
 }
 
 func (h *ChatHandler) boostErr(w http.ResponseWriter, err error) bool {

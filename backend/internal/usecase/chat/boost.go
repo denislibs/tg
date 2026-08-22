@@ -110,6 +110,16 @@ func (i *Interactor) publishBoostUpdate(ctx context.Context, chatID int64) {
 		return
 	}
 	// Бусты — всегда канал: один channel-broadcast вместо fan-out счётчика в лог
-	// каждого подписчика. Абсолютный статус + channel_pts делают catch-up идемпотентным.
-	_ = i.logAndPublishChannel(ctx, chatID, "boost_update", map[string]any{"status": st})
+	// каждого подписчика. Абсолютный статус + курсор канала делают catch-up
+	// идемпотентным.
+	//
+	// Статус едет БЕЗ пер-зрительской части (мой буст, мои слоты): тело одно на
+	// всех подписчиков, а «бустнул ли я» каждый знает сам — ручка статуса
+	// отвечает зрителю поимённо.
+	_ = i.logAndPublishChannel(ctx, chatID, "boost_update", map[string]any{
+		"_":         domain.UpdateChannelBoostStatusTag,
+		"peer":      domain.NewPeer(domain.ToPeerID(chatID, true)),
+		"status":    st.ToWire(false),
+		"pts_count": domain.PtsCountOne,
+	})
 }

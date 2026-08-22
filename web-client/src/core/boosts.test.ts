@@ -22,10 +22,13 @@ describe('boostProgress', () => {
 
 describe('mapBoostStatus', () => {
   it('snake_case → camelCase', () => {
+    // Число свободных слотов зрителя лежит СНАРУЖИ конструктора — это наше
+    // поле ответа, а `my_boost_slots` схемы про другой предмет.
     const st = mapBoostStatus({
-      level: 2, boosts_count: 4, current_level_boosts: 3, next_level_boosts: 6,
-      boosted_by_me: true, slots: 3,
-    })
+      _: 'premium.boostsStatus',
+      level: 2, boosts: 4, current_level_boosts: 3, next_level_boosts: 6,
+      pFlags: { my_boost: true },
+    }, 3)
     expect(st).toEqual({
       level: 2, boostsCount: 4, currentLevelBoosts: 3, nextLevelBoosts: 6,
       boostedByMe: true, slots: 3,

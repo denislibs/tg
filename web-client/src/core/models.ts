@@ -558,13 +558,25 @@ export type GiveawayState =
     }
 
 // Состояние бустов канала (backend BoostStatus).
+/**
+ * premium.boostsStatus#4959427a … level:int current_level_boosts:int boosts:int
+ * next_level_boosts:flags.0?int … = premium.BoostsStatus;
+ *
+ * Статус бустов канала — КОНСТРУКТОР схемы. «Бустнул ли я» здесь `pFlags.my_boost`
+ * и приезжает только в ответе ручки: в общем кадре канала пер-зрительского нет,
+ * тело одно на всех подписчиков.
+ *
+ * Число СВОБОДНЫХ слотов зрителя лежит СНАРУЖИ конструктора (поле ответа
+ * `slots`): в схеме на этом месте `my_boost_slots` — вектор идентификаторов
+ * занятых слотов, то есть другой предмет под похожим именем.
+ */
 export interface RawBoostStatus {
+  _: 'premium.boostsStatus'
+  pFlags?: { my_boost?: true }
   level: number
-  boosts_count: number
+  boosts: number
   current_level_boosts: number
-  next_level_boosts: number
-  boosted_by_me: boolean
-  slots: number
+  next_level_boosts?: number
 }
 
 export interface BoostStatus {
@@ -576,14 +588,15 @@ export interface BoostStatus {
   slots: number
 }
 
-export function mapBoostStatus(r: RawBoostStatus): BoostStatus {
+export function mapBoostStatus(r: RawBoostStatus, slots = 0): BoostStatus {
   return {
     level: r.level ?? 0,
-    boostsCount: r.boosts_count ?? 0,
+    boostsCount: r.boosts ?? 0,
     currentLevelBoosts: r.current_level_boosts ?? 0,
+    // «Последний уровень» — ОТСУТСТВИЕ следующего порога, а не ноль рядом.
     nextLevelBoosts: r.next_level_boosts ?? 0,
-    boostedByMe: !!r.boosted_by_me,
-    slots: r.slots ?? 0,
+    boostedByMe: !!r.pFlags?.my_boost,
+    slots,
   }
 }
 

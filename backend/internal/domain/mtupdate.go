@@ -76,6 +76,11 @@ const (
 	UpdateMessageFactCheckTag         = "updateMessageFactCheck"
 	UpdateMessageToDoTag              = "updateMessageToDo"
 	UpdateMessageGiveawayTag          = "updateMessageGiveaway"
+	UpdateChatRemovedTag              = "updateChatRemoved"
+	UpdateChatThemeTag                = "updateChatTheme"
+	UpdateChatFullSnapshotTag         = "updateChatFullSnapshot"
+	UpdateChannelBoostStatusTag       = "updateChannelBoostStatus"
+	UpdateStarsBalanceTag             = "updateStarsBalance"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -829,6 +834,117 @@ func (u UpdateMessageGiveaway) Tag() string { return u.Underscore }
 
 func NewUpdateMessageGiveaway(peer Peer, media MessageMedia) UpdateMessageGiveaway {
 	return UpdateMessageGiveaway{Underscore: UpdateMessageGiveawayTag, Peer: peer, Media: media}
+}
+
+// ── Чат и профиль ───────────────────────────────────────────────────────────
+
+// updateChatRemoved#8ffbdcd5 peer:Peer = Update; — НАШ конструктор.
+//
+// «Чат исчез» предмета в схеме не имеет вовсе (разбор Р4): у оригинала выход
+// выражается сообщением-действием и перечитыванием карточки. Наш кадр
+// существует, потому что список чатов у нас владелец правит операцией, а не
+// перечитывает целиком.
+//
+// Поле `removed: true` из тела ушло: оно было константой — «кадр удаления
+// сообщает об удалении». Вид кадра теперь несёт дискриминатор.
+type UpdateChatRemoved struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+}
+
+func (UpdateChatRemoved) isUpdate()     {}
+func (u UpdateChatRemoved) Tag() string { return u.Underscore }
+
+func NewUpdateChatRemoved(peer Peer) UpdateChatRemoved {
+	return UpdateChatRemoved{Underscore: UpdateChatRemovedTag, Peer: peer}
+}
+
+// updateChatTheme#88ce5c7f peer:Peer theme_id:string = Update; — НАШ конструктор.
+//
+// В схеме есть updateTheme, но он про ГЛОБАЛЬНУЮ тему оформления приложения, а
+// не про тему конкретного чата; сама тема чата у нас уже объявлена расхождением
+// со схемой (у оригинала это emoticon набора, у нас — свой идентификатор).
+type UpdateChatTheme struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	ThemeID    string `json:"theme_id"`
+}
+
+func (UpdateChatTheme) isUpdate()     {}
+func (u UpdateChatTheme) Tag() string { return u.Underscore }
+
+func NewUpdateChatTheme(peer Peer, themeID string) UpdateChatTheme {
+	return UpdateChatTheme{Underscore: UpdateChatThemeTag, Peer: peer, ThemeID: themeID}
+}
+
+// updateChatFullSnapshot#e4718e56 peer:Peer chat_full:messages.ChatFull pts:int
+// pts_count:int = Update; — НАШ конструктор.
+//
+// В схеме на этом месте updateChat/updateChannel: кадр несёт ТОЛЬКО id —
+// «перечитай карточку». Основание не идти за схемой записано до порта (разбор
+// Р4): за кадром-«перечитай» у оригинала стоит дедупликация запросов
+// (appChatsManager), которой у нас нет, и на каждое переименование в большой
+// группе мы получили бы шторм запросов карточки. Тот же выбор, что у
+// updateUserSnapshot, и такой же временный: с приходом контейнера updates
+// карточка уедет в вектор chats.
+//
+// Курсор ВНУТРИ конструктора, потому что он у этого кадра пер-КАНАЛЬНЫЙ, а
+// своего имени у канального курсора в схеме нет: `pts` у updateNewChannelMessage
+// — обычный pts, канальный он потому, что таков КОНСТРУКТОР. Ключ `channel_pts`
+// был вторым именем того же поля.
+type UpdateChatFullSnapshot struct {
+	Underscore string           `json:"_"`
+	Peer       Peer             `json:"peer"`
+	ChatFull   MessagesChatFull `json:"chat_full"`
+	Pts        int64            `json:"pts"`
+	PtsCount   int              `json:"pts_count"`
+}
+
+func (UpdateChatFullSnapshot) isUpdate()     {}
+func (u UpdateChatFullSnapshot) Tag() string { return u.Underscore }
+
+func NewUpdateChatFullSnapshot(peer Peer, full MessagesChatFull, pts int64) UpdateChatFullSnapshot {
+	return UpdateChatFullSnapshot{Underscore: UpdateChatFullSnapshotTag, Peer: peer,
+		ChatFull: full, Pts: pts, PtsCount: PtsCountOne}
+}
+
+// updateChannelBoostStatus#a92ed48e peer:Peer status:premium.BoostsStatus
+// pts:int pts_count:int = Update; — НАШ конструктор.
+//
+// Кадр бустов зрителю в схеме отсутствует: updateBotChatBoost — апдейт БОТА,
+// который следит за бустами чужого канала, а не зрителя. Сам статус при этом
+// предмет схемный (premium.boostsStatus), и едет он им.
+type UpdateChannelBoostStatus struct {
+	Underscore string              `json:"_"`
+	Peer       Peer                `json:"peer"`
+	Status     PremiumBoostsStatus `json:"status"`
+	Pts        int64               `json:"pts"`
+	PtsCount   int                 `json:"pts_count"`
+}
+
+func (UpdateChannelBoostStatus) isUpdate()     {}
+func (u UpdateChannelBoostStatus) Tag() string { return u.Underscore }
+
+func NewUpdateChannelBoostStatus(peer Peer, status PremiumBoostsStatus, pts int64) UpdateChannelBoostStatus {
+	return UpdateChannelBoostStatus{Underscore: UpdateChannelBoostStatusTag, Peer: peer,
+		Status: status, Pts: pts, PtsCount: PtsCountOne}
+}
+
+// updateStarsBalance#4e80a379 balance:StarsAmount = Update;
+//
+// Баланс звёзд. Само число едет конструктором starsAmount: у оригинала звёзды
+// дробные (nanos — девять знаков после запятой), и «целое число звёзд» это
+// частный случай, а не форма.
+type UpdateStarsBalance struct {
+	Underscore string      `json:"_"`
+	Balance    StarsAmount `json:"balance"`
+}
+
+func (UpdateStarsBalance) isUpdate()     {}
+func (u UpdateStarsBalance) Tag() string { return u.Underscore }
+
+func NewUpdateStarsBalance(balance int64) UpdateStarsBalance {
+	return UpdateStarsBalance{Underscore: UpdateStarsBalanceTag, Balance: NewStarsAmount(balance)}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

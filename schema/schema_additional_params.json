@@ -913,6 +913,78 @@
     "type": "Update"
   },
   {
+    "id": "2415647957",
+    "predicate": "updateChatRemoved",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "2295225471",
+    "predicate": "updateChatTheme",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "theme_id",
+        "type": "string"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "3832647254",
+    "predicate": "updateChatFullSnapshot",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "chat_full",
+        "type": "messages.ChatFull"
+      },
+      {
+        "name": "pts",
+        "type": "int"
+      },
+      {
+        "name": "pts_count",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
+    "id": "2838418574",
+    "predicate": "updateChannelBoostStatus",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "status",
+        "type": "premium.BoostsStatus"
+      },
+      {
+        "name": "pts",
+        "type": "int"
+      },
+      {
+        "name": "pts_count",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "predicate": "langPackDifference",
     "params": [
       {

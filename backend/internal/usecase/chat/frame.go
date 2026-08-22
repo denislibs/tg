@@ -63,23 +63,11 @@ func frameEnvelopePts(t string, d map[string]any, pts int64) []byte {
 // Своего имени у канального курсора в схеме нет: `updateNewChannelMessage.pts`
 // — обычный pts, а «канальный» он потому, что таков КОНСТРУКТОР. Наш ключ
 // `channel_pts` был вторым именем того же поля, и клиенту приходилось решать
-// вид кадра по имени ключа вместо дискриминатора.
+// вид кадра по имени ключа вместо дискриминатора. Второго имени больше нет
+// нигде: метаданные канала (chat_update, boost_update) тоже несут курсор
+// параметром своего конструктора.
 func frameChannelMessage(t string, base map[string]any, pts int64) []byte {
 	return frameFields(t, base, map[string]any{"pts": pts})
-}
-
-// frameChannelPts encodes {t, d} with the channel's pts injected into d as
-// channel_pts (a per-channel dense cursor, distinct from the per-user pts). The
-// client routes any frame carrying channel_pts + peer_id through its per-channel
-// funnel and gates it against the channel cursor — the same envelope the typed
-// GET /channels/{id}/difference replays for catch-up.
-//
-// Остаётся у кадров МЕТАДАННЫХ канала (chat_update, boost_update): их порт на
-// конструкторы — следующий шаг, и пока вид кадра у них выражает по-прежнему
-// строка `t`, определить «канальный ли курсор» клиент может только по имени
-// ключа. Долг назван, а не размазан: у кадра с сообщением его уже нет.
-func frameChannelPts(t string, base map[string]any, pts int64) []byte {
-	return frameFields(t, base, map[string]any{"channel_pts": pts})
 }
 
 // withPeer — копия базового payload с ключом пира ПОЛУЧАТЕЛЯ. base общий для

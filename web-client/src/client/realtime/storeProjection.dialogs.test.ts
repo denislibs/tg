@@ -161,7 +161,7 @@ describe('storeProjection — тема чата живёт в карточке, 
     resetChatFullMirror()
     saveChatFull(-9, { _: 'channelFull', id: 9, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null })
 
-    rootScope.dispatchEventSingle(RT.chatThemeUpdate, { peer_id: -9, theme_id: 'sunset' })
+    rootScope.dispatchEventSingle(RT.chatThemeUpdate, { _: 'updateChatTheme', peer: { _: 'peerChannel', channel_id: 9 }, theme_id: 'sunset' })
 
     expect(cachedPeerTheme(-9)).toBe('sunset')
   })

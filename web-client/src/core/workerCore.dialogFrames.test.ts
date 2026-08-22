@@ -192,7 +192,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
   it('chat_removed (без pts) → dialogs.applyRemoved → rt:dialog_op remove', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('chat_removed', { peer_id: 1, removed: true })
+    // Поле `removed: true` было константой и ушло: вид кадра несёт дискриминатор.
+    capturedConnDeps!.onFrame('chat_removed', { _: 'updateChatRemoved', peer: { _: 'peerUser', user_id: 1 } })
 
     expect(dialogOps).toEqual([{ op: 'remove', peerId: 1 }])
   })

@@ -174,7 +174,8 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatDeleteUser(userID))
 	// chat_removed бывает только у группы/канала — приватный диалог не
 	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
-	payload := map[string]any{"peer_id": domain.ToPeerID(chatID, true), "removed": true}
+	payload := map[string]any{"_": domain.UpdateChatRemovedTag,
+		"peer": domain.NewPeer(domain.ToPeerID(chatID, true))}
 	var pts int64
 	var havePts bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {

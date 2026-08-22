@@ -323,7 +323,8 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	slices.Sort(members)
 	// chat_removed бывает только у группы/канала — приватный диалог не
 	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
-	payload := map[string]any{"peer_id": domain.ToPeerID(chatID, true), "removed": true}
+	payload := map[string]any{"_": domain.UpdateChatRemovedTag,
+		"peer": domain.NewPeer(domain.ToPeerID(chatID, true))}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if i.updates != nil {

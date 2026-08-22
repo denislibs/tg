@@ -437,7 +437,7 @@ export function createWorkerCore() {
       // ровно то второе зеркало одного факта, которого этот шаг и лишает.
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
-    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).peer_id)
+    else if (t === 'chat_removed') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз

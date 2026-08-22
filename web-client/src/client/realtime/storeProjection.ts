@@ -138,7 +138,10 @@ const APPLY: Projector = {
   // remove), применённая ДО этого сырого кадра в workerCore.ts::dispatch —
   // строка [RT.chatRemoved] здесь была вторым, main-side выводом того же факта.
   // Live-статус бустов / предложки поста (окно сообщений сюда не входит).
-  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(e.peer_id, mapBoostStatus(e.status)) },
+  // Кадр канала пер-зрительского не несёт (тело одно на всех подписчиков), и
+  // число свободных слотов зрителя в нём тоже отсутствует — оно приезжает
+  // ответом ручки статуса.
+  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(getPeerId(e.peer), mapBoostStatus(e.status)) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.peer_id, mapSuggestedPost(e.post)) },
   // Task 4 (действия без оптимистики): пин / архив / mute диалога (с другого
   // устройства/вкладки) применяет владелец (workerCore.ts::dispatch →
@@ -152,7 +155,7 @@ const APPLY: Projector = {
   // владельца-в-воркере у карточек нет, а единственное её зеркало —
   // `core/chatFullCache.ts` здесь, на главном потоке. Патчим ту же карточку, а
   // не заводим рядом второе хранилище тем.
-  [RT.chatThemeUpdate]: (e) => { applyChatTheme(e.peer_id, e.theme_id) },
+  [RT.chatThemeUpdate]: (e) => { applyChatTheme(getPeerId(e.peer), e.theme_id) },
   // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
   // выше), окно правят из сырого кадра, как раньше.
   // Номер в кадре СЕРВЕРНЫЙ, в окне — клиентский: перевод на границе, как везде
@@ -166,7 +169,10 @@ const APPLY: Projector = {
   },
   [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), e.media, e.edit_date) },
   // Новый баланс звёзд; удаление истории.
-  [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
+  // Баланс едет КОНСТРУКТОРОМ starsAmount: у оригинала звёзды дробные (nanos),
+  // и «целое число звёзд» — частный случай, а не форма. Дробную часть витрина
+  // пока не показывает — предмета нет, суммы у нас целые.
+  [RT.balanceUpdate]: (e) => { if (typeof e.balance?.amount === 'number') setStarsBalance(e.balance.amount) },
   [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
 }
 

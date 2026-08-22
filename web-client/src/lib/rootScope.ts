@@ -18,6 +18,7 @@ import type {
   StoryReactionEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
 } from '@core/realtime/events'
 import type { MyMessage, RawBoostStatus } from '@core/models'
+import type { Peer } from '@core/peers/peerId'
 import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '@core/media/messageMedia'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
@@ -75,9 +76,9 @@ export type BroadcastEvents = {
   // находят по идентификатору внутри вложения.
   [RT.pollUpdate]: [{ peer_id: PeerId; media: MessageMediaPoll }, EventMeta?]
   [RT.checklistUpdate]: [{ peer_id: PeerId; media: MessageMediaToDo }, EventMeta?]
-  [RT.boostUpdate]: [{ peer_id: PeerId; status: RawBoostStatus }, EventMeta?]
+  [RT.boostUpdate]: [{ _: 'updateChannelBoostStatus'; peer: Peer; status: RawBoostStatus }, EventMeta?]
   [RT.giveawayUpdate]: [{ peer_id: PeerId; media: MessageMedia }, EventMeta?]
-  [RT.balanceUpdate]: [{ balance: number }, EventMeta?]
+  [RT.balanceUpdate]: [{ _: 'updateStarsBalance'; balance: { _: 'starsAmount'; amount: number; nanos: number } }, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]

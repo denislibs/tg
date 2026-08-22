@@ -35,6 +35,11 @@ func (i *Interactor) SetChatTheme(ctx context.Context, chatID, actorID int64, th
 	// поэтому одно и то же поле пока зовётся по-разному на двух путях.
 	// Лог/публикация — best-effort: мутация уже закоммичена, её сбой не должен
 	// возвращаться как ошибка запроса (иначе клиент увидит 500 при успешной смене).
-	_ = i.logAndPublish(ctx, chatID, members, "chat_theme_update", map[string]any{"theme_id": themeID})
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "chat_theme_update",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateChatThemeTag, "peer": domain.NewPeer(peer), "theme_id": themeID,
+			}
+		})
 	return nil
 }

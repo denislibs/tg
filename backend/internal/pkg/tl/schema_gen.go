@@ -8387,6 +8387,25 @@ var schemaConstructors = []Constructor{
 		{Name: "peer", Type: "Peer"},
 		{Name: "media", Type: "MessageMedia"},
 	}},
+	{ID: -1879319339, Predicate: "updateChatRemoved", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+	}},
+	{ID: -1999741825, Predicate: "updateChatTheme", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "theme_id", Type: "string"},
+	}},
+	{ID: -462320042, Predicate: "updateChatFullSnapshot", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "chat_full", Type: "messages.ChatFull"},
+		{Name: "pts", Type: "int"},
+		{Name: "pts_count", Type: "int"},
+	}},
+	{ID: -1456548722, Predicate: "updateChannelBoostStatus", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "status", Type: "premium.BoostsStatus"},
+		{Name: "pts", Type: "int"},
+		{Name: "pts_count", Type: "int"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

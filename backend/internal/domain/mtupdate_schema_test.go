@@ -91,6 +91,15 @@ func updateCases() []struct {
 		{"проверка факта снята", NewUpdateMessageFactCheck(peer, 12, nil)},
 		{"чек-лист", NewUpdateMessageToDo(peer, ChecklistInfo{ID: 3, Title: "Список"}.ToMedia())},
 		{"розыгрыш", NewUpdateMessageGiveaway(peer, GiveawayInfo{ID: 4, PeerID: PeerID(-5), WinnersCount: 1}.ToMedia(12))},
+		{"чат исчез", NewUpdateChatRemoved(NewPeerChannel(5))},
+		{"тема чата", NewUpdateChatTheme(peer, "sunset")},
+		{"снимок карточки чата", func() any {
+			c := ChatRecord{ID: 5, Type: ChatTypeChannel, Title: "Канал"}
+			return NewUpdateChatFullSnapshot(NewPeerChannel(5), NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()), 7)
+		}()},
+		{"бусты канала", NewUpdateChannelBoostStatus(NewPeerChannel(5),
+			BoostStatus{Level: 2, BoostsCount: 5, CurrentLevelBoosts: 3, NextLevelBoosts: 6}.ToWire(false), 8)},
+		{"баланс звёзд", NewUpdateStarsBalance(42)},
 	}
 }
 
@@ -123,6 +132,12 @@ func checkUpdatesAgainstSchema(t *testing.T, value any) (unexpected, omitted []s
 		merged[k] = append(append([]string{}, merged[k]...), v...)
 	}
 	for k, v := range updateOmittedWithoutSubject {
+		merged[k] = append(append([]string{}, merged[k]...), v...)
+	}
+	// Кадр снимка карточки несёт chatFull/channelFull целиком, а их пропуски
+	// названы один раз — подсистемой ПИРОВ. Копировать их сюда значило бы
+	// завести второй список того же.
+	for k, v := range peerOmittedWithoutSubject {
 		merged[k] = append(append([]string{}, merged[k]...), v...)
 	}
 
@@ -171,6 +186,11 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateMessageFactCheckTag,
 		UpdateMessageToDoTag,
 		UpdateMessageGiveawayTag,
+		UpdateChatRemovedTag,
+		UpdateChatThemeTag,
+		UpdateChatFullSnapshotTag,
+		UpdateChannelBoostStatusTag,
+		UpdateStarsBalanceTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,
