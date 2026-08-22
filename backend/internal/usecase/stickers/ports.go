@@ -57,7 +57,9 @@ type Repo interface {
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
 	TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error
-	Recent(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error)
+	// Recent — недавние ВМЕСТЕ со временем использования: на проводе это
+	// параллельный вектор dates контейнера messages.recentStickers.
+	Recent(ctx context.Context, userID int64, limit int) ([]domain.RecentSticker, error)
 	// ClearRecent — стереть весь список недавних пользователя; идемпотентно.
 	ClearRecent(ctx context.Context, userID int64) error
 	// Fave — upsert + обрезка до keep новейших; Unfave идемпотентен.

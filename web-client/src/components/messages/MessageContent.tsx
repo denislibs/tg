@@ -42,8 +42,6 @@ import {
   getBubbleMedia,
   getExtendedMediaPreview,
   getPaidMedia,
-  getPathThumb,
-  getStrippedThumb,
   type MyDocument,
 } from '../../core/media/messageMedia'
 import generatePhotoForExtendedMediaPreview from '../../core/media/generatePhotoForExtendedMediaPreview'
@@ -128,7 +126,7 @@ function BigEmojiBubble({ m, count, selecting, time }: {
   return (
     <div ref={boxRef} className={s.sticker} onClick={onClick} style={boxStyle}>
       {animated ? (
-        <StickerMedia mediaId={animated.mediaId} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
+        <StickerMedia doc={animated} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
       ) : (
         <div className={s.stickerGlyph} style={{ padding: '2px 0' }}>
           {m.text}
@@ -193,17 +191,7 @@ function StickerRealBubble({ m, time, selecting, feedFns }: { m: ConvMsg; time: 
       {/* Ступени документа (tweb wrapSticker:259 `doc.thumbs`): stripped-JPEG —
           нижний слой, пока файл стикера летит; векторный контур (photoPathSize)
           — самый нижний, встаёт ещё до декода превью. */}
-      <StickerMedia
-        mediaId={m.mediaId!}
-        width={size.width}
-        height={size.height}
-        autoplay
-        loop={loopStickers}
-        thumb={getStrippedThumb(doc)}
-        pathThumb={getPathThumb(doc)}
-        docWidth={doc?.w}
-        docHeight={doc?.h}
-      />
+      <StickerMedia doc={doc!} width={size.width} height={size.height} autoplay loop={loopStickers} />
       {time}
     </div>
   )

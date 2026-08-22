@@ -26,6 +26,7 @@ import { useSettings } from '../../settings'
 import { useSetTransition } from '../../core/hooks/useSetTransition'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
+import type { Sticker } from '../../core/managers/stickersManager'
 import { getDocumentFromMessage } from '../../core/media/messageMedia'
 import { getInlineMarkupRows } from '../../core/markup/replyMarkup'
 import s from './MessageRow.module.scss'
@@ -81,7 +82,7 @@ export interface FeedFns {
    *  undefined там, где отправка недоступна (тот же гейт, что у кнопки стикеров
    *  композера: !canType/!canSendMedia/канал/секретный чат) — тогда сетка попапа
    *  read-only (см. StickerSetModal is-read-only). */
-  sendSticker?: (st: { id: number; mediaId: number; emoji: string }) => void
+  sendSticker?: (st: Sticker) => void
 }
 
 export interface MessageRowProps {

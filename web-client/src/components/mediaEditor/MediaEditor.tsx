@@ -730,11 +730,11 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     if (!crop) return
     const id = nextIdRef.current++
     const layer: StickerLayer = {
-      id, mediaId: st.mediaId,
+      id, mediaId: st.id,
       x: crop.x + crop.w / 2, y: crop.y + crop.h / 2,
       scale: 1, rotation: -rotation,
     }
-    stickerAssetsRef.current?.ensure(st.mediaId)
+    stickerAssetsRef.current?.ensure(st.id)
     setStickers((prev) => [...prev, layer])
     setSelectedSticker(id)
     setHistory((h) => pushHistory(h, { type: 'sticker-add', id }))

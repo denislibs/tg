@@ -13,13 +13,11 @@ import { ManagersProvider } from '../hooks/useManagers'
 import StickersSearchTab from '../../components/rightSidebar/StickersSearchTab'
 import type { Managers } from '../../client/bootstrap'
 import type { StickerSet } from '../managers/stickersManager'
+import { makeSticker, makeStickerSet } from './testSticker'
 
-const duck: StickerSet = { id: 1, slug: 'utyaduck', title: 'Duck', kind: 'sticker', count: 2 }
-const croco: StickerSet = { id: 2, slug: 'mrcroco', title: 'Croco', kind: 'sticker', count: 2 }
-const stickersOf = (setId: number) => [1, 2].map((i) => ({
-  id: setId * 10 + i, setId, mediaId: setId * 100 + i, emoji: '🦆',
-  width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '',
-}))
+const duck: StickerSet = makeStickerSet({ id: 1, shortName: 'utyaduck', title: 'Duck', count: 2 })
+const croco: StickerSet = makeStickerSet({ id: 2, shortName: 'mrcroco', title: 'Croco', count: 2 })
+const stickersOf = (setId: number) => [1, 2].map((i) => makeSticker({ id: setId * 100 + i, setId }))
 
 // happy-dom не реализует IntersectionObserver — нужен ленивой сетке попапа.
 beforeAll(() => {
@@ -41,7 +39,7 @@ function makeManagers(mine: StickerSet[] = []) {
     featuredSets: vi.fn().mockResolvedValue({ sets: [duck], covers: new Map() }),
     searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     getStickerSet: vi.fn(async (input: { shortName?: string }) => {
-      const set = input.shortName === duck.slug ? duck : croco
+      const set = input.shortName === duck.short_name ? duck : croco
       return { set, stickers: stickersOf(set.id) }
     }),
     install: vi.fn().mockResolvedValue(undefined),

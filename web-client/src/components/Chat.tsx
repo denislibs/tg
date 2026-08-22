@@ -108,6 +108,7 @@ import classNames from '../shared/lib/classNames'
 import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
+import type { Sticker } from '../core/managers/stickersManager'
 
 // Инфо-панель — не первый кадр; ленивый чанк.
 const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
@@ -1092,7 +1093,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const onComposerPickInline = useEvent((r: InlineResult) => { send(r.messageText); slowmodeMarkSent() })
   // Стикер из пикера/саджестов; каналы постят через REST (стикеры не шлём),
   // секретные чаты — E2E-путь без обычного медиа.
-  const onComposerPickSticker = useEvent((st: { id: number; mediaId: number; emoji: string }) => { sendSticker(st); slowmodeMarkSent() })
+  const onComposerPickSticker = useEvent((st: Sticker) => { sendSticker(st); slowmodeMarkSent() })
   // Тот же гейт, что у кнопки стикеров композера (JSX ниже,
   // onPickSticker={canSendStickers ? onComposerPickSticker : undefined}):
   // держим оба входа (композер/поиск и клик по стикеру в бабле — попап

@@ -14,29 +14,21 @@ import EmojiDropdown from './EmojiDropdown'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { makeSticker } from '../../core/stickers/testSticker'
 
 // дампы сняты на macOS — рендер нативный (tweb IS_EMOJI_SUPPORTED)
 vi.mock('@environment/emojiSupport', () => ({ default: true }))
 // стикеры-медиа не относятся к структуре дропдауна
 vi.mock('../StickerMedia', () => ({ default: () => null }))
 
-const stk = (id: number): Sticker => ({
-  id,
-  setId: 1,
-  mediaId: 100 + id,
-  emoji: '😀',
-  width: 512,
-  height: 512,
-  mime: 'image/webp',
-  thumb: '',
-})
+const stk = (id: number): Sticker => makeSticker({ id, setId: 1, emoji: '😀', mime: 'image/webp' })
 
 function makeManagers(recent: Sticker[] = []) {
   const stickers = {
     recent: vi.fn(async () => recent),
     faved: vi.fn(async (): Promise<Sticker[]> => []),
     mySets: vi.fn(async () => []),
-    setBySlug: vi.fn(async () => Promise.reject(new Error('no set'))),
+    getStickerSet: vi.fn(async () => Promise.reject(new Error('no set'))),
     clearRecent: vi.fn(async () => {}),
     fave: vi.fn(async () => {}),
     unfave: vi.fn(async () => {}),

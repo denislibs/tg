@@ -18,6 +18,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import type { Chat } from '../../data'
 import { ManagersProvider } from './useManagers'
 import { useChatSend } from './useChatSend'
+import { makeSticker } from '../stickers/testSticker'
 
 // Голос/кружок приходят из useVoiceRecorder колбэком onComplete — подменяем
 // модуль, чтобы дёрнуть колбэк напрямую (микрофона в тестовой среде нет).
@@ -97,7 +98,7 @@ describe('useChatSend: пакет параметров доезжает КАЖД
   it('стикер уходит ответом', async () => {
     const { managers, result } = setup()
     openReply(result)
-    act(() => { result.current.sendSticker({ id: 1, mediaId: 500, emoji: '😀' }) })
+    act(() => { result.current.sendSticker(makeSticker({ id: 500, emoji: '😀' })) })
     await waitFor(() => expect(managers.messages.sendText).toHaveBeenCalled())
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ type: 'sticker', replyToMsgId: ORIG })
   })
@@ -178,7 +179,7 @@ describe('useChatSend: пакет параметров доезжает КАЖД
 
   it('тред: threadId едет пакетом, а не отдельным аргументом каждого пути', async () => {
     const { managers, result } = setup({ threadRootId: 3 })
-    act(() => { result.current.sendSticker({ id: 1, mediaId: 500, emoji: '😀' }) })
+    act(() => { result.current.sendSticker(makeSticker({ id: 500, emoji: '😀' })) })
     await waitFor(() => expect(managers.messages.sendText).toHaveBeenCalled())
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ threadId: 3 })
   })
@@ -197,7 +198,7 @@ describe('useChatSend: цитата', () => {
   it('цитата доезжает и не-текстовым путём (стикер): пакет один на все пути', async () => {
     const { managers, result } = setup()
     openReply(result, { quote: { text: 'вет', offset: 4 } })
-    act(() => { result.current.sendSticker({ id: 1, mediaId: 500, emoji: '😀' }) })
+    act(() => { result.current.sendSticker(makeSticker({ id: 500, emoji: '😀' })) })
     await waitFor(() => expect(managers.messages.sendText).toHaveBeenCalled())
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ replyToQuote: { text: 'вет', offset: 4 } })
   })
@@ -222,7 +223,7 @@ describe('useChatSend: цитата', () => {
 describe('useChatSend: плашка ответа гаснет после отправки ЛЮБЫМ путём', () => {
   const paths: [string, (r: { current: ReturnType<typeof useChatSend> }) => void | Promise<void>][] = [
     ['текст', (r) => { r.current.send('привет') }],
-    ['стикер', (r) => { r.current.sendSticker({ id: 1, mediaId: 500, emoji: '😀' }) }],
+    ['стикер', (r) => { r.current.sendSticker(makeSticker({ id: 500, emoji: '😀' })) }],
     ['гиф', (r) => { r.current.sendGif({ id: 'g', mediaId: 501, width: 1, height: 1 } as never) }],
     ['гео', (r) => { r.current.sendGeo(1, 2) }],
     ['live-гео', (r) => { r.current.sendGeo(1, 2, { livePeriod: 900 }) }],

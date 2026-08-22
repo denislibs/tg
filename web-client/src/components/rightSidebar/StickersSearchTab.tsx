@@ -109,7 +109,7 @@ function StickerSetRow({
   // ref стабилен: инлайновая стрелка меняла бы идентичность на каждый рендер,
   // React отцеплял бы и прицеплял узел заново на каждый чих — тот же приём,
   // что и у StickerCell в StickerSetModal.
-  const rowRef = useCallback((el: HTMLDivElement | null) => register(set.slug, el), [register, set.slug])
+  const rowRef = useCallback((el: HTMLDivElement | null) => register(set.short_name, el), [register, set.short_name])
 
   return (
     <div ref={rowRef} className="sticker-set" data-sticker-set={set.id} data-title={set.title} onClick={onOpen}>
@@ -145,7 +145,7 @@ function StickerSetRow({
               key={i}
               data-testid="sticker-set-cell"
               className="sticker-set-sticker media-sticker-wrapper"
-              data-doc-id={st?.mediaId}
+              data-doc-id={st?.id}
               onClick={(e) => {
                 // Гасим клик ВСЕГДА, а не только когда контент уже приехал — tweb
                 // (findUpClassName(target, 'sticker-set-sticker') в attachClickEvent)
@@ -176,16 +176,12 @@ function StickerSetRow({
                   первого попадания в вид, а не переключает его туда-обратно. */}
               {st && everVisible && (
                 <StickerMedia
-                  mediaId={st.mediaId}
+                  doc={st}
                   width={PREVIEW_SIZE}
                   height={PREVIEW_SIZE}
                   autoplay
                   loop
                   group="STICKERS-SEARCH"
-                  thumb={st.thumb}
-                  pathThumb={st.pathThumb}
-                  docWidth={st.width}
-                  docHeight={st.height}
                   loadQueue={queue}
                   isVisible={isRowVisible}
                 />
@@ -240,7 +236,7 @@ export default function StickersSearchTab({
   // `st.id`: у превью нет доступа к полному составу набора, только к covers.
   const coversByMediaId = useMemo(() => {
     const map = new Map<number, Sticker>()
-    for (const arr of covers.values()) for (const st of arr) map.set(st.mediaId, st)
+    for (const arr of covers.values()) for (const st of arr) map.set(st.id, st)
     return map
   }, [covers])
 
@@ -286,12 +282,12 @@ export default function StickersSearchTab({
                 covers={covers.get(set.id) ?? []}
                 installed={installedIds.has(set.id)}
                 busy={busyIds.has(set.id)}
-                visible={visible.has(set.slug)}
+                visible={visible.has(set.short_name)}
                 register={register}
                 queue={queue}
                 onToggle={() => toggle(set)}
                 onPickSticker={pick}
-                onOpen={() => setOpenSlug(set.slug)}
+                onOpen={() => setOpenSlug(set.short_name)}
               />
             ))}
       </div>

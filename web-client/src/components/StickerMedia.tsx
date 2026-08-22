@@ -38,6 +38,7 @@ import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useEvent } from '../core/hooks/useEvent'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
 import type { LazyLoadQueue } from '../core/lazyLoadQueue'
+import { getPathThumb, getStrippedThumb, type MyDocument } from '../core/media/messageMedia'
 
 export type StickerContent =
   | { kind: 'lottie'; data: unknown }
@@ -96,7 +97,8 @@ export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue, i
 let hoverPlaying: LottiePlayer | null = null
 
 const StickerMedia = memo(function StickerMedia({
-  mediaId,
+  doc,
+  mediaId: bareMediaId,
   width,
   height,
   loop = false,
@@ -104,15 +106,33 @@ const StickerMedia = memo(function StickerMedia({
   playOnHover = false,
   replayToken = 0,
   group = 'chat',
-  thumb,
-  pathThumb,
-  docWidth,
-  docHeight,
   loadQueue,
   isVisible,
   onComplete,
 }: {
-  mediaId: number
+  /**
+   * САМ ДОКУМЕНТ, а не россыпь снятых с него полей.
+   *
+   * Прежде сюда шли `mediaId` + `thumb` + `pathThumb` + `docWidth` + `docHeight`
+   * пятью пропсами, и каждое место вызова снимало их само — сорок с лишним
+   * копий одного и того же чтения. У tweb на этом месте `wrapSticker({doc})`,
+   * который читает `doc.thumbs` и `doc.w`/`doc.h` сам; после порта стикер стал
+   * тем же `document`, что и вложение сообщения, и разница исчезла.
+   */
+  doc?: MyDocument
+  /**
+   * ГОЛЫЙ id файла — для подсистем, которые до документов ещё не доведены и
+   * знают о файле только его номер:
+   *   • каталог реакций (`ReactionIcon`, `ReactionAroundEffect`);
+   *   • обложка набора в панели (`stickerSet.thumb_document_id`);
+   *   • кастомное эмодзи в тексте (`RichText`).
+   *
+   * Ни ступеней превью, ни натуральных размеров у такого вызова нет: нижнего
+   * слоя не будет, силуэт не построится, viewBox уедет в дефолт 512×512. Это
+   * не второй способ сделать то же самое, а честно названный ДОЛГ — те
+   * подсистемы портируются отдельно, и тогда ветка исчезнет.
+   */
+  mediaId?: number
   width: number
   height: number
   /** зацикливать lottie (бабл в чате — из настроек; hover в пикере — пока курсор внутри) */
@@ -125,21 +145,6 @@ const StickerMedia = memo(function StickerMedia({
   replayToken?: number
   /** группа animationIntersector (tweb `group`): ею гасят/будят пачку анимаций разом */
   group?: AnimationItemGroup
-  /** stripped-превью файла (base64 JPEG) — нижний слой, пока медиа грузится */
-  thumb?: string
-  /** base64 векторного контура (Telegram photoPathSize) — самый нижний слой,
-   * SVG-силуэт мгновенно на месте пустой ячейки, пока не декодировался даже
-   * `thumb` (см. `core/stickers/getPathFromBytes`, tweb wrapSticker:268) */
-  pathThumb?: string
-  /** натуральные пиксели стикера (`Sticker.width/height`, tweb `doc.w`/`doc.h`) —
-   * система координат, в которой заданы точки контура `pathThumb`. НЕ путать
-   * с `width`/`height` выше (те — размер ячейки на экране): контур почти
-   * всегда авторится в каноничном канвасе Telegram-документа (масштаб точек
-   * доходит до ~500), а не в пикселях конкретного рендера, поэтому viewBox
-   * силуэта обязан браться отсюда — иначе путь съезжает/обрезается вьюпортом
-   * SVG. 0/undefined — метаданные неизвестны, откат на дефолт tweb 512×512. */
-  docWidth?: number
-  docHeight?: number
   /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
    * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
    * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
@@ -154,6 +159,17 @@ const StickerMedia = memo(function StickerMedia({
    * анимации (эффект вокруг реакции — ReactionAroundEffect). */
   onComplete?: () => void
 }) {
+  // Ступени и натуральные размеры читаются ЗДЕСЬ — ровно как wrapSticker
+  // читает их с документа. `docWidth`/`docHeight` это система координат, в
+  // которой заданы точки векторного контура: контур авторится в каноничном
+  // канвасе Telegram-документа, а не в пикселях конкретного рендера, поэтому
+  // viewBox силуэта обязан браться отсюда, а не из `width`/`height` (размер
+  // ячейки на экране). Неизвестны — откат на дефолт tweb 512×512.
+  const mediaId = doc ? doc.id : bareMediaId!
+  const thumb = doc && getStrippedThumb(doc)
+  const pathThumb = doc && getPathThumb(doc)
+  const docWidth = doc?.w
+  const docHeight = doc?.h
   const boxRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<LottiePlayer | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)

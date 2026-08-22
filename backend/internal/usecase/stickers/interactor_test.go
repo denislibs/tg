@@ -349,10 +349,17 @@ func (f *fakeRepo) ClearRecent(_ context.Context, userID int64) error {
 	return nil
 }
 
-func (f *fakeRepo) Recent(_ context.Context, userID int64, limit int) ([]domain.Sticker, error) {
+func (f *fakeRepo) Recent(_ context.Context, userID int64, limit int) ([]domain.RecentSticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return newestFirst(f, f.recent[userID], limit), nil
+	sts := newestFirst(f, f.recent[userID], limit)
+	out := make([]domain.RecentSticker, 0, len(sts))
+	for _, st := range sts {
+		// Логическое время фейка (tick) — в момент времени: важен ПОРЯДОК, а
+		// не абсолютное значение, и параллельность векторов на проводе.
+		out = append(out, domain.RecentSticker{Sticker: st, UsedAt: time.Unix(f.recent[userID][st.MediaID], 0)})
+	}
+	return out, nil
 }
 
 func (f *fakeRepo) Fave(_ context.Context, userID, mediaID int64, keep int) error {

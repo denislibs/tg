@@ -31,16 +31,19 @@ vi.mock('../StickerMedia', () => ({
 }))
 vi.mock('../../core/hooks/useManagers', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  useManagers: () => ({ stickers: { setByMediaId: vi.fn().mockResolvedValue(null) } }),
+  useManagers: () => ({ stickers: { getStickerSet: vi.fn().mockResolvedValue(null) } }),
 }))
 
 import MessageContent from './MessageContent'
 import {
+  getPathThumb,
+  getStrippedThumb,
   saveDocument,
   THUMB_TYPE_PATH,
   THUMB_TYPE_STRIPPED,
   type DocumentAttribute,
   type MessageMedia,
+  type MyDocument,
   type PhotoSize,
 } from '../../core/media/messageMedia'
 import type { ConvMsg } from '../../data'
@@ -100,16 +103,15 @@ describe('MessageContent: стикер читает свой документ', 
 
   it('бокс — вписанные doc.w/doc.h, ступени thumbs едут нижними слоями', () => {
     render(show({ type: 'sticker', mediaId: 9, media: stickerMedia('image/webp', 512, 256) }))
-    expect(stickerProps.mock.calls[0][0]).toMatchObject({
-      // staticSticker 200×200 (desktop), аспект 2:1 → 200×100
-      width: 200,
-      height: 100,
-      thumb: 'c3RyaXBwZWQ=',
-      pathThumb: 'cGF0aA==',
-      // система координат контура — натуральные пиксели документа
-      docWidth: 512,
-      docHeight: 256,
-    })
+    // Рендереру уходит САМ ДОКУМЕНТ: ступени и натуральные размеры он читает
+    // с него сам (порт wrapSticker), а не получает пятью пропсами.
+    const props = stickerProps.mock.calls[0][0] as { width: number; height: number; doc: MyDocument }
+    // staticSticker 200×200 (desktop), аспект 2:1 → 200×100
+    expect([props.width, props.height]).toEqual([200, 100])
+    expect(getStrippedThumb(props.doc)).toBe('c3RyaXBwZWQ=')
+    expect(getPathThumb(props.doc)).toBe('cGF0aA==')
+    // система координат контура — натуральные пиксели документа
+    expect([props.doc.w, props.doc.h]).toEqual([512, 256])
   })
 
   it('lottie (.tgs) идёт в ступень animatedSticker — тот же 200×200 бокс', () => {

@@ -324,8 +324,15 @@ func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
 	assertMeta("StickerByMediaID", byMedia)
 
 	lists := map[string]func() ([]domain.Sticker, error){
-		"Stickers":      func() ([]domain.Sticker, error) { return r.Stickers(ctx, set.ID) },
-		"Recent":        func() ([]domain.Sticker, error) { return r.Recent(ctx, owner, 20) },
+		"Stickers": func() ([]domain.Sticker, error) { return r.Stickers(ctx, set.ID) },
+		"Recent": func() ([]domain.Sticker, error) {
+			rs, e := r.Recent(ctx, owner, 20)
+			out := make([]domain.Sticker, 0, len(rs))
+			for _, rec := range rs {
+				out = append(out, rec.Sticker)
+			}
+			return out, e
+		},
 		"Faved":         func() ([]domain.Sticker, error) { return r.Faved(ctx, owner, 10) },
 		"SearchByEmoji": func() ([]domain.Sticker, error) { return r.SearchByEmoji(ctx, owner, "😀", 20) },
 	}

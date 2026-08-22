@@ -23,10 +23,24 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
 	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
+// setColsInstalled — те же колонки плюс СРОК УСТАНОВКИ: на проводе это
+// `stickerSet.installed_date`, параметр самого набора (Р2 разбора стикеров).
+// Отдельная константа, а не подзапрос в setCols: «установлен ли» — вопрос про
+// пару «пользователь + набор», и выборки без пользователя (тренды, поиск) на
+// него не отвечают вовсе.
+const setColsInstalled = setCols + `, uss.added_at`
+
 func scanSet(s scanner) (domain.StickerSetRecord, error) {
 	var set domain.StickerSetRecord
 	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
 		&set.Rank, &set.CoverMediaID)
+	return set, err
+}
+
+func scanSetInstalled(s scanner) (domain.StickerSetRecord, error) {
+	var set domain.StickerSetRecord
+	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
+		&set.Rank, &set.CoverMediaID, &set.InstalledAt)
 	return set, err
 }
 
@@ -102,7 +116,8 @@ func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet
 // stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
 // рендерера, нижний слой показа) — см. domain.Sticker.
 const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position,
-	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview, st.path_thumb`
+	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), COALESCE(m.size, 0),
+	m.blur_preview, st.path_thumb`
 
 // stickerRowCols — те же колонки СТРОКИ стикера без префикса таблицы: нужны
 // подзапросу stickerByMediaJoin, где таблица ещё не получила псевдоним st.
@@ -115,7 +130,7 @@ const stickerMediaJoin = ` JOIN media m ON m.id = st.media_id`
 func scanSticker(s scanner) (domain.Sticker, error) {
 	var st domain.Sticker
 	err := s.Scan(&st.ID, &st.SetID, &st.MediaID, &st.Emoji, &st.Position,
-		&st.Width, &st.Height, &st.Mime, &st.Thumb, &st.PathThumb)
+		&st.Width, &st.Height, &st.Mime, &st.Size, &st.Thumb, &st.PathThumb)
 	return st, err
 }
 
@@ -279,7 +294,7 @@ func (r *StickersRepo) Uninstall(ctx context.Context, userID, setID int64) error
 
 func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setCols+`
+		`SELECT `+setColsInstalled+`
 		   FROM user_sticker_sets uss
 		   JOIN sticker_sets s ON s.id = uss.set_id
 		  WHERE uss.user_id=$1
@@ -290,7 +305,7 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 	defer rows.Close()
 	var out []domain.StickerSetRecord
 	for rows.Next() {
-		set, e := scanSet(rows)
+		set, e := scanSetInstalled(rows)
 		if e != nil {
 			return nil, e
 		}
@@ -369,9 +384,9 @@ func (r *StickersRepo) ClearRecent(ctx context.Context, userID int64) error {
 	return err
 }
 
-func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error) {
+func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]domain.RecentSticker, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+stickerCols+`
+		`SELECT `+stickerCols+`, f.used_at
 		   FROM recent_stickers f`+stickerByMediaJoin+stickerMediaJoin+`
 		  WHERE f.user_id=$1
 		  ORDER BY f.used_at DESC, f.media_id DESC
@@ -379,7 +394,17 @@ func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]d
 	if err != nil {
 		return nil, err
 	}
-	return scanStickers(rows)
+	defer rows.Close()
+	var out []domain.RecentSticker
+	for rows.Next() {
+		var rec domain.RecentSticker
+		if e := rows.Scan(&rec.ID, &rec.SetID, &rec.MediaID, &rec.Emoji, &rec.Position,
+			&rec.Width, &rec.Height, &rec.Mime, &rec.Size, &rec.Thumb, &rec.PathThumb, &rec.UsedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
 }
 
 func (r *StickersRepo) Fave(ctx context.Context, userID, mediaID int64, keep int) error {
@@ -432,7 +457,10 @@ func (r *StickersRepo) SearchByEmoji(ctx context.Context, userID int64, emoji st
 
 func (r *StickersRepo) SavedGifs(ctx context.Context, userID int64) ([]domain.SavedGif, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT media_id, saved_at FROM saved_gifs WHERE user_id=$1 ORDER BY saved_at DESC, media_id DESC`, userID)
+		`SELECT g.media_id, g.saved_at, COALESCE(m.width,0), COALESCE(m.height,0),
+		        COALESCE(m.mime,''), COALESCE(m.size,0), m.blur_preview, COALESCE(m.animated,FALSE)
+		   FROM saved_gifs g JOIN media m ON m.id = g.media_id
+		  WHERE g.user_id=$1 ORDER BY g.saved_at DESC, g.media_id DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +468,8 @@ func (r *StickersRepo) SavedGifs(ctx context.Context, userID int64) ([]domain.Sa
 	var out []domain.SavedGif
 	for rows.Next() {
 		var g domain.SavedGif
-		if e := rows.Scan(&g.MediaID, &g.SavedAt); e != nil {
+		if e := rows.Scan(&g.MediaID, &g.SavedAt, &g.Width, &g.Height,
+			&g.Mime, &g.Size, &g.Blur, &g.Animated); e != nil {
 			return nil, e
 		}
 		out = append(out, g)

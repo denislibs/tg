@@ -678,12 +678,18 @@ func (s MediaSource) attributes() []DocumentAttribute {
 		}
 		attrs = append(attrs, a)
 	case "sticker":
-		attrs = append(attrs, DocumentAttributeSticker{
-			Underscore: AttrSticker, Alt: s.StickerAlt, Stickerset: stickerSetAddr(s.StickerSetID),
-		})
+		// ПОРЯДОК ЗНАЧИМ, и это не стиль. Разбор документа идёт по атрибутам
+		// подряд (`saveDoc` оригинала), и `documentAttributeImageSize`
+		// БЕЗУСЛОВНО ставит `type = 'photo'` — то есть, стоя после атрибута
+		// стикера, затирает его. У Telegram размер идёт первым, стикер вторым,
+		// поэтому побеждает стикер; у нас порядок был обратный, и разобранный
+		// стикер оказывался документом-фотографией.
 		if s.Width > 0 && s.Height > 0 {
 			attrs = append(attrs, DocumentAttributeImageSize{Underscore: AttrImageSize, W: s.Width, H: s.Height})
 		}
+		attrs = append(attrs, DocumentAttributeSticker{
+			Underscore: AttrSticker, Alt: s.StickerAlt, Stickerset: stickerSetAddr(s.StickerSetID),
+		})
 	default:
 		// Обычный файл: кадр описывается documentAttributeImageSize только если
 		// это картинка — у оригинала ровно тот же смысл, из него выводится
@@ -714,14 +720,24 @@ func BuildMessageMedia(s MediaSource) MessageMedia {
 	if s.Kind == "photo" {
 		return NewMessageMediaPhoto(NewPhoto(s.MediaID, s.sizes()), s.Spoiler)
 	}
-	return NewMessageMediaDocument(&Document{
+	return NewMessageMediaDocument(BuildDocument(s), s.Spoiler)
+}
+
+// BuildDocument собирает САМ документ — без обёртки вложения сообщения.
+//
+// Нужен там, где документ едет не в сообщении: наборы стикеров, недавние,
+// избранное, сохранённые GIF. Сборка одна на всех, и это главное: пока витрина
+// стикеров строила «свою» карточку, у неё разъезжались с сообщением и ступени
+// превью, и атрибуты — ровно та болезнь, ради которой делается переход.
+func BuildDocument(s MediaSource) *Document {
+	return &Document{
 		Underscore: DocumentTag,
 		ID:         s.MediaID,
 		MimeType:   s.Mime,
 		Size:       s.Size,
 		Thumbs:     s.thumbs(),
 		Attributes: s.attributes(),
-	}, s.Spoiler)
+	}
 }
 
 // ── Доступ к содержимому вложения ───────────────────────────────────────────

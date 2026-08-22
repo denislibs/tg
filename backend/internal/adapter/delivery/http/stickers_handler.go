@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -24,40 +23,38 @@ func (h *StickersHandler) meID(r *http.Request) int64 {
 	return u.ID
 }
 
-// stickersJSON — представление стикера для клиента. Кроме идентификаторов едут
-// метаданные файла (см. domain.Sticker): по width/height клиент вписывает стикер
-// в бокс по пропорции, по mime заранее знает рендерер, thumb (base64 JPEG, как
-// blur_preview у медиа) показывает нижним слоем, пока файл летит. path_thumb
-// (векторный контур photoPathSize) отдаём во ВСЕХ ручках, а не только в наборе:
-// одна и та же карточка стикера у клиента приходит то из набора, то из Recent/
-// Faved/поиска и складывается в общий кэш по media_id — расхождение по составу
-// полей между источниками там неуместно. Байтовый оверхед по размеру мал даже
-// там, где список короткий (Recent — 20 записей, Faved — ~10), а там, где список
-// большой (набор до 120 стикеров, до +50 КБ base64), силуэт нужнее всего — это
-// холодный первый показ набора целиком.
-func stickersJSON(sts []domain.Sticker) []map[string]any {
-	out := make([]map[string]any, 0, len(sts))
-	for _, s := range sts {
-		out = append(out, map[string]any{
-			"id": s.ID, "set_id": s.SetID, "media_id": s.MediaID, "emoji": s.Emoji,
-			"width": s.Width, "height": s.Height, "mime": s.Mime, "thumb": s.Thumb,
-			"path_thumb": s.PathThumb,
+// coveredSets — наборы с превью как вектор `StickerSetCovered` схемы: строка
+// выдачи (тренды, поиск) показывает первые стикеры набора, не дожидаясь
+// отдельного запроса за полным составом.
+//
+// Конструктор — `stickerSetFullCovered` (набор + документы + обратный индекс),
+// а не `stickerSetCovered` с ОДНОЙ обложкой: у нас превью несколько, и
+// одноообложечный вариант выбросил бы остальные. Порядок наборов — тот, в
+// котором их отдал usecase: на проводе позиция вектора и есть порядок (Р8).
+func coveredSets(sets []domain.StickerSetRecord, covers map[int64][]domain.Sticker) []domain.StickerSetCovered {
+	out := make([]domain.StickerSetCovered, 0, len(sets))
+	for _, set := range sets {
+		sts := covers[set.ID]
+		out = append(out, domain.StickerSetFullCovered{
+			Underscore: domain.StickerSetFullCoveredTag,
+			Set:        domain.StickerSetWire(set),
+			Packs:      domain.StickerPacks(sts),
+			Keywords:   []domain.StickerKeyword{},
+			Documents:  domain.StickerDocuments(sts),
 		})
 	}
 	return out
 }
 
-// MySets — GET /sticker-sets: установленные наборы пользователя.
+// MySets — GET /sticker-sets: установленные наборы пользователя
+// (messages.allStickers схемы).
 func (h *StickersHandler) MySets(w http.ResponseWriter, r *http.Request) {
 	sets, err := h.svc.MySets(r.Context(), h.meID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load sets")
 		return
 	}
-	if sets == nil {
-		sets = []domain.StickerSetRecord{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"sets": sets})
+	writeJSON(w, http.StatusOK, domain.NewMessagesAllStickers(domain.StickerSetsWire(sets)))
 }
 
 // SetBySlug — GET /sticker-sets/{slug}: набор со стикерами.
@@ -72,7 +69,8 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load set")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"set": set, "stickers": stickersJSON(sts)})
+	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
+		domain.StickerSetWire(set), domain.StickerPacks(sts), domain.StickerDocuments(sts)))
 }
 
 // SetByID — GET /sticker-sets/id/{setID}: тот же набор со стикерами, что и
@@ -101,7 +99,8 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load set")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"set": set, "stickers": stickersJSON(sts)})
+	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
+		domain.StickerSetWire(set), domain.StickerPacks(sts), domain.StickerDocuments(sts)))
 }
 
 // Install — POST /sticker-sets/{id}/install.
@@ -135,29 +134,14 @@ func (h *StickersHandler) Uninstall(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// coversJSON — превью наборов (covered sets) в конверте ответа: карта
-// setID → []стикер, сериализованная той же stickersJSON, что и остальные
-// выборки стикеров (path_thumb едет и здесь). nil-карта — это {}, а не null,
-// тем же приёмом, что sets — [] вместо null.
-func coversJSON(covers map[int64][]domain.Sticker) map[string]any {
-	out := make(map[string]any, len(covers))
-	for setID, sts := range covers {
-		out[strconv.FormatInt(setID, 10)] = stickersJSON(sts)
-	}
-	return out
-}
-
-// SearchSets — GET /sticker-sets/search?q=.
+// SearchSets — GET /sticker-sets/search?q= (messages.foundStickerSets схемы).
 func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 	sets, covers, err := h.svc.SearchSets(r.Context(), r.URL.Query().Get("q"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	if sets == nil {
-		sets = []domain.StickerSetRecord{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
+	writeJSON(w, http.StatusOK, domain.NewMessagesFoundStickerSets(coveredSets(sets, covers)))
 }
 
 // Featured — GET /sticker-sets/featured: трендовые наборы (новые первыми) —
@@ -171,10 +155,9 @@ func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load featured")
 		return
 	}
-	if sets == nil {
-		sets = []domain.StickerSetRecord{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"sets": sets, "covers": coversJSON(covers)})
+	// `count` — сколько наборов в выдаче. Отдельного «всего в каталоге» у нас
+	// нет: потолок featuredLim выше полного каталога, поэтому выдача и есть всё.
+	writeJSON(w, http.StatusOK, domain.NewMessagesFeaturedStickers(len(sets), coveredSets(sets, covers)))
 }
 
 // CreateSet — POST /sticker-sets {slug,title,kind}.
@@ -201,7 +184,8 @@ func (h *StickersHandler) CreateSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create set")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"set": set})
+	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
+		domain.StickerSetWire(set), []domain.StickerPack{}, nil))
 }
 
 // AddSticker — POST /sticker-sets/{id}/stickers {media_id,emoji}.
@@ -235,9 +219,10 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not add sticker")
 		return
 	}
-	// Тем же представлением, что и выборки набора: добавленный стикер клиент
-	// показывает сразу, метаданные файла ему нужны те же.
-	writeJSON(w, http.StatusOK, map[string]any{"sticker": stickersJSON([]domain.Sticker{s})[0]})
+	// Тем же конструктором, что и выборки набора: добавленный стикер клиент
+	// показывает сразу, и это ТОТ ЖЕ документ, что приедет при следующей
+	// загрузке набора.
+	writeJSON(w, http.StatusOK, map[string]any{"document": domain.StickerDocument(s)})
 }
 
 // Recent — GET /stickers/recent.
@@ -247,7 +232,8 @@ func (h *StickersHandler) Recent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load recent")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stickers": stickersJSON(sts)})
+	docs, dates := domain.RecentDocuments(sts)
+	writeJSON(w, http.StatusOK, domain.NewMessagesRecentStickers(docs, dates))
 }
 
 // ClearRecent — DELETE /stickers/recent: очистить список недавних.
@@ -266,7 +252,8 @@ func (h *StickersHandler) Faved(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load faved")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stickers": stickersJSON(sts)})
+	writeJSON(w, http.StatusOK, domain.NewMessagesFavedStickers(
+		domain.StickerDocuments(sts), domain.StickerPacks(sts)))
 }
 
 // Fave — POST /stickers/{docID}/fave.
@@ -334,7 +321,7 @@ func (h *StickersHandler) SearchByEmoji(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stickers": stickersJSON(sts)})
+	writeJSON(w, http.StatusOK, domain.NewMessagesStickers(domain.StickerDocuments(sts)))
 }
 
 // SavedGifs — GET /gifs/saved.
@@ -344,10 +331,7 @@ func (h *StickersHandler) SavedGifs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load gifs")
 		return
 	}
-	if gifs == nil {
-		gifs = []domain.SavedGif{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"gifs": gifs})
+	writeJSON(w, http.StatusOK, domain.NewMessagesSavedGifs(domain.GifDocuments(gifs)))
 }
 
 // SaveGif — POST /gifs/saved {media_id}.

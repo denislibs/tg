@@ -39,6 +39,7 @@ const (
 	MessagesRecentStickersTag   = "messages.recentStickers"
 	MessagesFavedStickersTag    = "messages.favedStickers"
 	MessagesFeaturedStickersTag = "messages.featuredStickers"
+	MessagesFoundStickerSetsTag = "messages.foundStickerSets"
 	MessagesStickersTag         = "messages.stickers"
 	MessagesSavedGifsTag        = "messages.savedGifs"
 )
@@ -306,6 +307,27 @@ func NewMessagesFeaturedStickers(count int, sets []StickerSetCovered) MessagesFe
 		Sets:       sets,
 		Unread:     []int64{},
 	}
+}
+
+// messages.foundStickerSets#8af09dd2 hash:long sets:Vector<StickerSetCovered> =
+// messages.FoundStickerSets;
+//
+// Поиск НАБОРОВ по строке. Отдельный конструктор, а не messages.featuredStickers:
+// у трендов есть `count` (сколько всего в каталоге) и `unread` (какие карточки
+// пользователь ещё не открывал), а у выдачи поиска ни того, ни другого нет —
+// общий тип с omitempty сказал бы «ноль наборов в каталоге» там, где вопрос не
+// задавался.
+type MessagesFoundStickerSets struct {
+	Underscore string              `json:"_"`
+	Sets       []StickerSetCovered `json:"sets"`
+}
+
+// NewMessagesFoundStickerSets — контейнер найденных наборов.
+func NewMessagesFoundStickerSets(sets []StickerSetCovered) MessagesFoundStickerSets {
+	if sets == nil {
+		sets = []StickerSetCovered{}
+	}
+	return MessagesFoundStickerSets{Underscore: MessagesFoundStickerSetsTag, Sets: sets}
 }
 
 // messages.stickers#30a6ec7e hash:long stickers:Vector<Document> =

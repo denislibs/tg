@@ -31,6 +31,7 @@ var stickerSetOmittedWithoutSubject = map[string][]string{
 	"messages.recentStickers":   {"hash"},
 	"messages.favedStickers":    {"hash"},
 	"messages.featuredStickers": {"hash"},
+	"messages.foundStickerSets": {"hash"},
 	"messages.stickers":         {"hash"},
 	"messages.savedGifs":        {"hash"},
 }
@@ -95,6 +96,9 @@ func stickerSetCases() []struct {
 		{"недавние", NewMessagesRecentStickers([]*Document{doc}, []int64{1787334148})},
 		{"избранные", NewMessagesFavedStickers([]*Document{doc}, packs)},
 		{"тренды", NewMessagesFeaturedStickers(1, []StickerSetCovered{
+			StickerSetCoveredOne{Underscore: StickerSetCoveredTag, Set: set, Cover: doc},
+		})},
+		{"поиск наборов", NewMessagesFoundStickerSets([]StickerSetCovered{
 			StickerSetCoveredOne{Underscore: StickerSetCoveredTag, Set: set, Cover: doc},
 		})},
 		{"поиск по эмодзи", NewMessagesStickers([]*Document{doc})},
@@ -168,6 +172,7 @@ func TestStickerSets_EveryConstructorIsCovered(t *testing.T) {
 		MessagesRecentStickersTag:   true,
 		MessagesFavedStickersTag:    true,
 		MessagesFeaturedStickersTag: true,
+		MessagesFoundStickerSetsTag: true,
 		MessagesStickersTag:         true,
 		MessagesSavedGifsTag:        true,
 	}

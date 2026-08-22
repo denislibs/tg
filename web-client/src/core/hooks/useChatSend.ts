@@ -22,6 +22,7 @@ import { useManagers } from './useManagers'
 import { startLiveShare } from '../liveShareEngine'
 import { scaleImageForSend } from '../media/scaleImageForSend'
 import type { MessageSendingParams } from '../managers/messages/sendingParams'
+import type { Sticker } from '../managers/stickersManager'
 
 /**
  * Длительность аудио/видео файла до аплоада — порт tweb (popups/newMedia.ts:1562-1579:
@@ -257,7 +258,7 @@ export function useChatSend({
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
   // обычный send_message {type:'sticker', mediaId}; POST /use ведёт recent на бэке.
   // В черновике сначала создаётся приватный чат (как voice/файлы).
-  const sendSticker = (st: { id: number; mediaId: number; emoji: string }) => {
+  const sendSticker = (st: Sticker) => {
     if (!canType || secretLocked || chat.type === 'secret') return
     const clientMsgId = mkClientMsgId()
     // Порт tweb `sendMessageWithDocument` (input.ts:4341-4355): пакет снимается
@@ -268,7 +269,9 @@ export function useChatSend({
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
+      // Ключ один — id ДОКУМЕНТА: и в сообщении, и в отметке использования.
+      // Прежде их было два (media_id и суррогатный ключ строки набора).
+      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.id, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()

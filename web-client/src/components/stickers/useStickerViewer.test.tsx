@@ -19,17 +19,18 @@ import { useRef } from 'react'
 import { useStickerViewer } from './useStickerViewer'
 import animationIntersector from '../animationIntersector'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { makeSticker } from '../../core/stickers/testSticker'
 
 vi.mock('../StickerMedia', () => ({
-  default: ({ mediaId }: { mediaId: number }) => <div data-testid="sticker-media" data-media={mediaId} />,
+  default: ({ doc }: { doc: { id: number } }) => <div data-testid="sticker-media" data-media={doc.id} />,
 }))
 
 const PAST_THRESHOLD_MS = 130
 
 const stickers: Sticker[] = [
-  { id: 1, setId: 1, mediaId: 101, emoji: '🦆', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
-  { id: 2, setId: 1, mediaId: 102, emoji: '🐸', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
-  { id: 3, setId: 1, mediaId: 103, emoji: '🐱', width: 512, height: 512, mime: 'application/x-tgsticker', thumb: '' },
+  makeSticker({ id: 1, setId: 1, emoji: '🦆', mime: 'application/x-tgsticker' }),
+  makeSticker({ id: 2, setId: 1, emoji: '🐸', mime: 'application/x-tgsticker' }),
+  makeSticker({ id: 3, setId: 1, emoji: '🐱', mime: 'application/x-tgsticker' }),
 ]
 
 /** Тестовый хост — список из трёх ячеек с `data-sticker-id`. */
@@ -50,7 +51,7 @@ function TestHost({ onPick }: { onPick: (st: Sticker) => void }) {
       <div ref={rootRef}>
         {stickers.map((st) => (
           <div key={st.id} data-testid={`cell-${st.id}`} data-sticker-id={st.id} onClick={() => onPick(st)}>
-            {st.emoji}
+            {st.stickerEmojiRaw}
           </div>
         ))}
       </div>
@@ -82,7 +83,7 @@ describe('useStickerViewer', () => {
 
     const viewer = queryByTestId('sticker-viewer')
     expect(viewer).not.toBeNull()
-    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('101')
+    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('1')
   })
 
   // tweb stickerViewer.ts:243 — показ ОТЛОЖЕН порогом, а не мгновенный: это и
@@ -192,7 +193,7 @@ describe('useStickerViewer', () => {
 
     const viewer = queryByTestId('sticker-viewer')
     expect(viewer).not.toBeNull()
-    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('103')
+    expect(viewer!.querySelector('[data-testid="sticker-media"]')?.getAttribute('data-media')).toBe('3')
   })
 
   // tweb stickerViewer.ts:198-201,372-373 — на время предпросмотра играет

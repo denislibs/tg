@@ -12,6 +12,7 @@ import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
+import { makeSticker as makeStickerDoc, makeStickerSet } from '../../core/stickers/testSticker'
 
 const noop = () => {}
 
@@ -37,8 +38,8 @@ beforeAll(() => {
 vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
 
 let slugSeq = 0
-const makeSet = (id: number, title: string, count: number): StickerSet => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker', count })
-const makeSticker = (setId: number, id: number): Sticker => ({ id, setId, mediaId: setId * 1000 + id, emoji: '🦆', width: 512, height: 512, mime: 'image/webp', thumb: '' })
+const makeSet = (id: number, title: string, count: number): StickerSet => makeStickerSet({ id, shortName: `set_${++slugSeq}`, title, count })
+const makeSticker = (setId: number, id: number): Sticker => makeStickerDoc({ id: setId * 1000 + id, setId, emoji: '🦆' })
 
 function makeManagers(over: Record<string, unknown> = {}) {
   const fns = {

@@ -23,6 +23,7 @@ import PopupHost from '../PopupHost'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import { usePopupStore } from '../../stores/popupStore'
 import type { Managers } from '../../client/bootstrap'
+import { makeStickerSet } from '../../core/stickers/testSticker'
 
 const noop = () => {}
 
@@ -55,7 +56,7 @@ vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-med
 let slugSeq = 0
 // slug уникален на тест: StickerSetModal, открытый кликом по строке, кэширует
 // свой запрос по slug на модуль.
-const makeSet = (id: number, title: string, count = 40) => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker' as const, count })
+const makeSet = (id: number, title: string, count = 40) => makeStickerSet({ id, shortName: `set_${++slugSeq}`, title, count })
 const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '🦆', width: 512, height: 512, mime: 'application/json', thumb: '' })
 
 function makeManagers(over: Record<string, unknown> = {}) {

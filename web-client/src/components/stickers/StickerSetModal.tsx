@@ -103,18 +103,7 @@ function StickerCell({ st, visible, register, onPick }: {
       onClick={onPick}
     >
       {visible && (
-        <StickerMedia
-          mediaId={st.mediaId}
-          width={ITEM_SIZE}
-          height={ITEM_SIZE}
-          autoplay
-          loop
-          group={ANIMATION_GROUP}
-          thumb={st.thumb}
-          pathThumb={st.pathThumb}
-          docWidth={st.width}
-          docHeight={st.height}
-        />
+        <StickerMedia doc={st} width={ITEM_SIZE} height={ITEM_SIZE} autoplay loop group={ANIMATION_GROUP} />
       )}
     </div>
   )
@@ -279,7 +268,7 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
   const [menuOpen, setMenuOpen] = useState(false)
   const copyLink = () => {
     if (!set) return
-    void navigator.clipboard.writeText(`https://t.me/addstickers/${set.slug}`)
+    void navigator.clipboard.writeText(`https://t.me/addstickers/${set.short_name}`)
     rootScope.dispatchEvent('ui:toast', 'Ссылка на набор скопирована')
     setMenuOpen(false)
   }

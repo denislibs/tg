@@ -1,12 +1,13 @@
 // src/core/hooks/useAnimatedEmoji.ts
-// ViewModel-хук big-emoji бабла: для РОВНО одного эмодзи отдаёт mediaId
+// ViewModel-хук big-emoji бабла: для РОВНО одного эмодзи отдаёт ДОКУМЕНТ
 // лотти-стикера из сид-набора animated_emoji (tweb bubbles.ts: bigEmojis === 1 →
 // getAnimatedEmojiSticker → сообщение рендерится стикером, не глифом).
 // emoji=null — хук выключен (2-3 эмодзи остаются шрифтовыми).
 import { useEffect, useState } from 'react'
 import { getAnimatedEmoji, peekAnimatedEmoji } from '../animatedEmoji'
+import type { Sticker } from '../managers/stickersManager'
 
-export function useAnimatedEmoji(emoji: string | null): { mediaId: number } | null {
+export function useAnimatedEmoji(emoji: string | null): Sticker | null {
   // Синхронный peek избегает мигания «глиф → стикер» у уже прогретого кэша.
   const [found, setFound] = useState(() => (emoji ? peekAnimatedEmoji(emoji) : null))
   useEffect(() => {

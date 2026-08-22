@@ -128,7 +128,7 @@ func (i *Interactor) covers(ctx context.Context, sets []domain.StickerSetRecord)
 }
 
 // Recent — недавно использованные стикеры, новые первыми.
-func (i *Interactor) Recent(ctx context.Context, userID int64) ([]domain.Sticker, error) {
+func (i *Interactor) Recent(ctx context.Context, userID int64) ([]domain.RecentSticker, error) {
 	return i.repo.Recent(ctx, userID, recentLimit)
 }
 

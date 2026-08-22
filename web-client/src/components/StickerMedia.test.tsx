@@ -24,6 +24,7 @@ vi.mock('../core/mediaUrl', () => ({
 
 import StickerMedia, { loadStickerContent } from './StickerMedia'
 import { createLazyLoadQueue } from '../core/lazyLoadQueue'
+import { makeSticker } from '../core/stickers/testSticker'
 
 function stubFetch(contentType: string) {
   const fetchMock = vi.fn(async () => ({
@@ -68,7 +69,7 @@ beforeEach(() => {
 describe('StickerMedia', () => {
   it('webp: рендерит <img> c object-URL содержимого', async () => {
     const fetchMock = stubFetch('image/webp')
-    const { container } = render(<StickerMedia mediaId={101} width={72} height={72} />)
+    const { container } = render(<StickerMedia doc={makeSticker({ id: 101 })} width={72} height={72} />)
     await waitFor(() => {
       const img = container.querySelector('img')
       expect(img).not.toBeNull()
@@ -85,7 +86,7 @@ describe('StickerMedia', () => {
   // квадраты вместо стикеров.
   it('tgs (application/x-tgsticker): снимает gzip и отдаёт разобранный lottie движку', async () => {
     const fetchMock = stubFetchTgs(tgsOf(LOTTIE), 'application/x-tgsticker')
-    const { container } = render(<StickerMedia mediaId={107} width={200} height={200} autoplay loop />)
+    const { container } = render(<StickerMedia doc={makeSticker({ id: 107 })} width={200} height={200} autoplay loop />)
 
     await waitFor(() => expect(loadAnimationWorker).toHaveBeenCalledTimes(1))
     expect(fetchMock).toHaveBeenCalledWith('/api/media/107/content?token=t')
@@ -101,7 +102,7 @@ describe('StickerMedia', () => {
 
   it('несжатый lottie-json тоже уходит в движок (сид-наборы времён ручной сборки)', async () => {
     stubFetch('application/json')
-    render(<StickerMedia mediaId={108} width={72} height={72} playOnHover />)
+    render(<StickerMedia doc={makeSticker({ id: 108 })} width={72} height={72} playOnHover />)
 
     await waitFor(() => expect(loadAnimationWorker).toHaveBeenCalledTimes(1))
     const opts = loadAnimationWorker.mock.calls[0][0]
@@ -113,7 +114,7 @@ describe('StickerMedia', () => {
   it('thumb: stripped-превью встаёт нижним слоем до загрузки файла', async () => {
     // Загрузка «зависает» — проверяем именно состояние до прихода медиа.
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = render(<StickerMedia mediaId={105} width={72} height={72} thumb="/9j/" />)
+    const { container } = render(<StickerMedia doc={makeSticker({ id: 105, thumb: '/9j/' })} width={72} height={72} />)
 
     await waitFor(() => {
       const img = container.querySelector('img.media-sticker.thumbnail')
@@ -125,7 +126,7 @@ describe('StickerMedia', () => {
 
   it('без thumb нижнего слоя нет (пустых <img> в контейнере не появляется)', async () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = render(<StickerMedia mediaId={106} width={72} height={72} />)
+    const { container } = render(<StickerMedia doc={makeSticker({ id: 106 })} width={72} height={72} />)
 
     await Promise.resolve()
     expect(container.querySelector('img')).toBeNull()
@@ -133,7 +134,7 @@ describe('StickerMedia', () => {
 
   it('video/webm: рендерит <video> c object-URL содержимого (видео-стикер)', async () => {
     const fetchMock = stubFetch('video/webm')
-    const { container } = render(<StickerMedia mediaId={104} width={200} height={200} autoplay loop />)
+    const { container } = render(<StickerMedia doc={makeSticker({ id: 104 })} width={200} height={200} autoplay loop />)
     await waitFor(() => {
       const video = container.querySelector('video')
       expect(video).not.toBeNull()

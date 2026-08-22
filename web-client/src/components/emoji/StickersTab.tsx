@@ -48,7 +48,7 @@ const StickerCell = memo(function StickerCell({
       }}
     >
       {/* tweb mediaSizes.active.esgSticker = 72×72 — стикер занимает всю ячейку */}
-      <StickerMedia mediaId={st.mediaId} width={CELL} height={CELL} playOnHover loop thumb={st.thumb} />
+      <StickerMedia doc={st} width={CELL} height={CELL} playOnHover loop />
     </div>
   )
 })
@@ -97,7 +97,7 @@ export default function StickersTab({
     if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
     if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
-      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
+      if (stickers.length) list.push({ key: `set-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
     return list
   }, [panel.recent, panel.faved, panel.sets, t])
@@ -115,7 +115,7 @@ export default function StickersTab({
       const byTitle = sec.title.toLowerCase().includes(q)
       for (const st of sec.stickers) {
         if (seen.has(st.id)) continue
-        if (byTitle || st.emoji?.includes(q)) {
+        if (byTitle || st.stickerEmojiRaw?.includes(q)) {
           seen.add(st.id)
           out.push(st)
         }

@@ -36,7 +36,7 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
     if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
     if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
-      if (stickers.length) list.push({ key: `set-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
+      if (stickers.length) list.push({ key: `set-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
     return list
   }, [panel.recent, panel.faved, panel.sets, t])
@@ -96,17 +96,7 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
             <div className={s.stickerGrid}>
               {c.stickers.map((st) => (
                 <span key={st.id} className={s.stickerCell} onClick={() => pick(st)}>
-                  <StickerMedia
-                    mediaId={st.mediaId}
-                    width={64}
-                    height={64}
-                    playOnHover
-                    loop
-                    thumb={st.thumb}
-                    pathThumb={st.pathThumb}
-                    docWidth={st.width}
-                    docHeight={st.height}
-                  />
+                  <StickerMedia doc={st} width={64} height={64} playOnHover loop />
                 </span>
               ))}
             </div>
