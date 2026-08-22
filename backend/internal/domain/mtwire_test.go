@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -73,6 +74,79 @@ func TestWire_StickerDocumentGolden(t *testing.T) {
 	if got, want := hex.EncodeToString(body), goldenHex(t, "documentSticker"); got != want {
 		t.Fatalf("байты документа разошлись с общим эталоном\n получили %s\n ожидали  %s", got, want)
 	}
+}
+
+// Круг «модель → байты → модель» на настоящих значениях.
+//
+// Проверка сильнее любой сверки имён: она отвечает не на вопрос «то ли поле», а
+// на вопрос «доедет ли значение целиком». Разойдись раскладка — расхождение
+// видно сразу и целиком, а не всплывёт потом кривой геометрией у узкого видео.
+//
+// Заглушки транспорта в круге НЕ участвуют намеренно: место в потоке они
+// занимают, а предмета у них нет, и вернись они в модель — круг показывал бы
+// поля, которых мы не производим.
+func TestWire_RoundTripKeepsModel(t *testing.T) {
+	values := []struct {
+		name  string
+		value any
+	}{
+		{"photoStrippedSize", NewPhotoStrippedSize([]byte{1, 2, 3})},
+		{"messageEntityTextUrl", NewMessageEntityTextURL(0, 4, "https://example.org")},
+		{"blockquoteCollapsed", NewMessageEntityBlockquote(2, 30, true)},
+		{"blockquotePlain", NewMessageEntityBlockquote(2, 30, false)},
+		{"replyInlineMarkup", NewReplyInlineMarkup([]KeyboardButtonRow{
+			NewKeyboardButtonRow(
+				NewKeyboardButton("ok"),
+				NewKeyboardButtonURL("go", "https://a.io"),
+			),
+		})},
+		{"documentSticker", BuildDocument(MediaSource{
+			MediaID: 77, Kind: "sticker", Mime: "application/x-tgsticker",
+			Size: 4096, Width: 512, Height: 512, StickerAlt: "😀", StickerSetID: 5,
+			Blur: []byte{1, 2, 3},
+		})},
+	}
+
+	for _, c := range values {
+		t.Run(c.name, func(t *testing.T) {
+			body, err := WireCodec.Marshal(c.value)
+			if err != nil {
+				t.Fatalf("кодек не собрал значение: %v", err)
+			}
+			back, err := WireCodec.UnmarshalTree(body)
+			if err != nil {
+				t.Fatalf("кодек не разобрал собственные байты: %v", err)
+			}
+			if got, want := canonicalJSON(t, back), canonicalJSON(t, c.value); got != want {
+				t.Fatalf("круг не сошёлся\n получили %s\n ожидали  %s", got, want)
+			}
+		})
+	}
+}
+
+// canonicalJSON — представление значения, не зависящее от порядка полей:
+// структура печатает поля в порядке объявления, карта — по алфавиту, а сравнить
+// надо содержимое. Числа держатся строками (UseNumber), иначе long больше 2^53
+// сравнивался бы после потери разрядов — то есть проверка молча ослабла бы
+// ровно там, где она нужнее всего.
+func canonicalJSON(t *testing.T, v any) string {
+	t.Helper()
+
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("значение не сериализуется: %v", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var node any
+	if err := dec.Decode(&node); err != nil {
+		t.Fatalf("значение не читается обратно: %v", err)
+	}
+	out, err := json.Marshal(node)
+	if err != nil {
+		t.Fatalf("значение не печатается канонически: %v", err)
+	}
+	return string(out)
 }
 
 // goldenHex достаёт эталонные байты вектора из общего файла.

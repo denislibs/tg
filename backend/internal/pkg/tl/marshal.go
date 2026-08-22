@@ -329,9 +329,9 @@ func (codec *Codec) encodeValue(w *Writer, typ string, val any) error {
 		w.Bool(b)
 		return nil
 	case "true":
-		return errors.New("тип true выражается битом маски и вне её невыразим")
+		return errNakedTrue
 	case "#":
-		return errors.New("маска не является значением")
+		return errMaskAsValue
 	}
 
 	if inner, ok := vectorElem(typ); ok {
