@@ -93,7 +93,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 		}
 		slices.Sort(mem)
 		members = mem
-		pp, e = i.newPeerPayloads(ctx, m.ChatID, editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, m.ChatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
 		}
@@ -117,7 +117,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if i.publisher != nil {
 		fresh, e := i.msgs.GetByID(ctx, msgID)
 		if e == nil {
-			fp, e := i.newPeerPayloads(ctx, m.ChatID, editUpdatePayload(fresh))
+			fp, e := i.newPeerPayloads(ctx, m.ChatID, i.editMessagePayload(ctx, fresh))
 			if e == nil {
 				for _, uid := range members {
 					_ = i.publisher.PublishToUser(ctx, uid, fp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))

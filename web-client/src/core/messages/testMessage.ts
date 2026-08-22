@@ -10,6 +10,7 @@
 // Форму задаёт ОДНО место, и она же механически сверяется со схемой
 // (`core/messages/message.schema.test.ts`).
 import type { MessageMedia } from '../media/messageMedia'
+import type { ReplyMarkup } from '../markup/replyMarkup'
 import type { MessageAction } from './messageAction'
 import type { MessageEntity, MessageReal, MessageReplyHeader, MessageService, MyMessage, RawMessageReal, RawMessageService } from '../models'
 import { getOutputPeer } from '../peers/peerId'
@@ -38,6 +39,9 @@ export interface MessageFixture {
   failed?: boolean
   editDate?: number
   mediaUnread?: boolean
+  /** Клавиатура сообщения. Нужна кадру правки: он несёт сообщение ЦЕЛИКОМ, а
+   *  значит и разметку — прежде она ехала отдельным ключом конверта. */
+  replyMarkup?: ReplyMarkup
 }
 
 /** Обычное сообщение — минимальный валидный `message`. */
@@ -70,6 +74,7 @@ export function makeMessage(f: MessageFixture): MessageReal {
     ...(f.randomId ? { random_id: f.randomId } : {}),
     ...(f.failed ? { failed: true } : {}),
     ...(f.editDate != null ? { edit_date: f.editDate } : {}),
+    ...(f.replyMarkup ? { reply_markup: f.replyMarkup } : {}),
   }
 }
 

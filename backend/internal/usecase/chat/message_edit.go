@@ -51,7 +51,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 		slices.Sort(mem)
 		members = mem
-		pp, e = i.newPeerPayloads(ctx, chatID, editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
 		}

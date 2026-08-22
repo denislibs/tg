@@ -358,9 +358,13 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
     const mgr = newMessagesManager({ rest })
     const before = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     expect(real(before.messages.find((m) => m.id === cid(2)))?.reply_markup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
+    // Кадр несёт сообщение ЦЕЛИКОМ — той же формы, что приходит историей.
     mgr.cacheEdit({
-      peer_id: 1, id: 2, message: 'edited', edit_date: 1_786_536_000,
-      reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] },
+      _: 'updateEditMessage',
+      message: makeRawMessage({
+        id: 2, peerId: 1, fromId: 1, text: 'edited', editDate: 1_786_536_000,
+        replyMarkup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] },
+      }),
     })
     const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     const edited = real(r.messages.find((m) => m.id === cid(2)))
@@ -372,7 +376,10 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
     const mgr = newMessagesManager({ rest })
     const before = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     expect(real(before.messages.find((m) => m.id === cid(2)))?.reply_markup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
-    mgr.cacheEdit({ peer_id: 1, id: 2, message: 'edited', edit_date: 1_786_536_000 })
+    mgr.cacheEdit({
+      _: 'updateEditMessage',
+      message: makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'edited', editDate: 1_786_536_000 }),
+    })
     const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     expect(real(r.messages.find((m) => m.id === cid(2)))?.reply_markup).toBeUndefined()
   })

@@ -1,8 +1,6 @@
 // src/core/realtime/events.ts
-import type { MessageEntity } from '../models'
+import type { MessageEntity, RawMyMessage } from '../models'
 import type { MessageMedia } from '../media/messageMedia'
-import type { ReplyMarkup } from '../markup/replyMarkup'
-import type { MessageAction } from '../messages/messageAction'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { Peer } from '../peers/peerId'
@@ -174,7 +172,16 @@ export interface NewMessageEvt {
  *
  *  `action` едет здесь потому, что правка служебного сообщения существует ровно
  *  одна — принятие предложенного фото, и меняется в ней только действие. */
-export interface EditMessageEvt { peer_id: PeerId; id: number; message: string; entities?: MessageEntity[] | null; edit_date?: number; reply_markup?: ReplyMarkup | null; action?: MessageAction }
+/**
+ * Правка — `updateEditMessage{message, pts, pts_count}`: сообщение ЦЕЛИКОМ, а
+ * не патч полей. Прежде кадр вёз собственный набор (id + текст + сущности +
+ * дата + разметка) — вторую проводную форму сообщения.
+ */
+export interface EditMessageEvt {
+  _: 'updateEditMessage'
+  message: RawMyMessage
+  pts?: number
+}
 // Live-обновление координат гео-трансляции (geo_live_update). Координаты едут
 // ТЕМ ЖЕ конструктором, что и в самом сообщении (`messageMediaGeoLive` под
 // ключом `media`); собственный ключ `geo` с плоской точкой внутри был второй

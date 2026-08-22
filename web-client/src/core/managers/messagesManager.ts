@@ -700,16 +700,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // шлёт поле абсолютным значением). Других обогащений у edit_message нет, так что
     // структурных препятствий к переводу на patch не осталось — перевод остаётся
     // отдельной задачей (вне объёма этой), а не решением проблемы с данными.
+    // Кадр несёт сообщение ЦЕЛИКОМ (форма updateEditMessage), поэтому и в SSOT
+    // кладётся целое — тем же маппером, что и у живого кадра с новым
+    // сообщением. Прежде здесь собирался патч из россыпи полей конверта, и
+    // список этих полей был вторым описанием того, что вообще может меняться
+    // правкой.
     cacheEdit(evt: EditMessageEvt): void {
-      const id = generateMessageId(evt.id)
-      patchMsg(evt.peer_id, (m) => m.id === id,
-        (m) => (m._ !== 'message' ? m : {
-          ...m,
-          message: evt.message,
-          entities: evt.entities ?? undefined,
-          edit_date: evt.edit_date,
-          reply_markup: evt.reply_markup ?? undefined,
-        }))
+      const mapped = mapOne(evt.message)
+      const peerId = getPeerId(evt.message.peer_id)
+      patchMsg(peerId, (m) => m.id === mapped.id, () => mapped)
     },
 
     // Live-обновление координат гео-трансляции → SSOT.

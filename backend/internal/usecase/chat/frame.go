@@ -277,27 +277,21 @@ func factCheckUpdatePayload(m domain.Message) map[string]any {
 	}
 }
 
-// editUpdatePayload — тело кадра edit_message: ПАТЧ уже нарисованного бабла, а
-// не сообщение целиком. Имена ключей здесь схемные (message/edit_date), но сам
-// кадр конструктором Message не является — в схеме это updateEditMessage,
-// несущий сообщение целиком, и приведение кадров-патчей к нему принадлежит
-// подсистеме ОБНОВЛЕНИЙ, а не сообщения. Названный остаток шага.
+// editMessagePayload — тело кадра правки: КОНСТРУКТОР updateEditMessage,
+// несущий сообщение ЦЕЛИКОМ.
 //
-// action едет здесь потому, что правка служебного сообщения существует ровно
-// одна — принятие предложенного фото, и меняется в ней только действие.
-func editUpdatePayload(m domain.Message) map[string]any {
-	p := map[string]any{
-		"id":      m.Seq,
-		"message": m.Text, "entities": m.Entities,
-	}
-	if m.EditedAt != nil {
-		p["edit_date"] = m.EditedAt.Unix()
-	}
-	p["reply_markup"] = m.ReplyMarkup // may be null → keyboard removed
-	if m.Action != nil {
-		p["action"] = m.Action
-	}
-	return p
+// Прежде здесь ехал ПАТЧ (id + текст + сущности + дата правки + разметка +
+// иногда действие) — вторая проводная форма сообщения, долг, названный ещё
+// портом самого сообщения. Теперь форма одна: то же тело, что у new_message,
+// отличается только конструктор.
+//
+// Канальная правка едет ТЕМ ЖЕ конструктором, а не updateEditChannelMessage, и
+// это не упрощение: у канального конструктора `pts` — ПЕР-КАНАЛЬНЫЙ, а правка
+// у нас доставляется пер-юзерным веером со своим курсором. Приклеить канальный
+// конструктор к пер-юзерному курсору значило бы соврать о том, какой курсор
+// двигать. Перевод правки на журнал канала — долг ДОСТАВКИ, назван в разборе.
+func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) map[string]any {
+	return i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
 }
 
 // deletePayload — тело кадра удаления.

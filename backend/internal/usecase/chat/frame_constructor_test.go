@@ -144,6 +144,51 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 		}
 	})
 
+	// Правка несёт сообщение ЦЕЛИКОМ, а не патч полей. Прежде кадр вёз
+	// собственный набор (id + текст + сущности + дата + разметка) — вторую
+	// проводную форму сообщения; теперь форма одна, и отличается только
+	// конструктор.
+	t.Run("правка несёт сообщение целиком", func(t *testing.T) {
+		in, _ := newInteractor()
+		pub := &fakePublisher{}
+		in.SetPublisher(pub)
+		ctx := context.Background()
+		const a, b int64 = 1, 2
+		chatID, _ := in.CreatePrivateChat(ctx, a, b)
+		msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "было"})
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+
+		pub.reset()
+		if _, err := in.EditMessage(ctx, chatID, msg.ID, a, "стало", nil); err != nil {
+			t.Fatalf("EditMessage: %v", err)
+		}
+
+		body := frameOfType(t, pub, b, "edit_message")
+		if body["_"] != domain.UpdateEditMessageTag {
+			t.Fatalf("правка = %v, want %s", body["_"], domain.UpdateEditMessageTag)
+		}
+		inner, ok := body["message"].(map[string]any)
+		if !ok || inner["_"] != domain.MessageTag {
+			t.Fatalf("внутри кадра не сообщение: %#v", body["message"])
+		}
+		if inner["message"] != "стало" {
+			t.Fatalf("текст правки = %v", inner["message"])
+		}
+		// Патч-поля верхнего уровня исчезли вместе со второй формой.
+		for _, stale := range []string{"id", "entities", "edit_date", "reply_markup"} {
+			if _, present := body[stale]; present {
+				t.Fatalf("кадр правки везёт поле патча %q: %#v", stale, body)
+			}
+		}
+		// Пир — внутри сообщения, как у new_message: это параметр самого
+		// сообщения, а не поле конверта.
+		if _, ok := inner["peer_id"].(map[string]any); !ok {
+			t.Fatalf("у сообщения в кадре нет ключа пира: %#v", inner)
+		}
+	})
+
 	// Журнал канала хранит ТО ЖЕ тело, что уходит живым кадром: догон разрыва
 	// и live обязаны совпадать, иначе клиент разбирает их двумя путями.
 	t.Run("журнал канала", func(t *testing.T) {

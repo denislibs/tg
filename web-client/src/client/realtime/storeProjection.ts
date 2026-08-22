@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraft, mapBoostStatus, mapSuggestedPost } from '../../core/models'
+import { mapDraft, mapBoostStatus, mapSuggestedPost, mapMessage } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -157,7 +157,13 @@ const APPLY: Projector = {
   // выше), окно правят из сырого кадра, как раньше.
   // Номер в кадре СЕРВЕРНЫЙ, в окне — клиентский: перевод на границе, как везде
   // (`core/history/messageId.ts`).
-  [RT.editMessage]: (e) => { useMessagesStore.getState().applyEdit(e.peer_id, generateMessageId(e.id), e.message, e.edit_date, e.entities ?? undefined, e.reply_markup ?? null) },
+  // Правка приезжает сообщением ЦЕЛИКОМ — разбирает его тот же маппер, что и
+  // историю; стор получает уже значения полей, а не россыпь ключей конверта.
+  [RT.editMessage]: (e) => {
+    const m = mapMessage(e.message, useChatsStore.getState().me?.user.id ?? null)
+    if (m._ !== 'message') return
+    useMessagesStore.getState().applyEdit(getPeerId(e.message.peer_id), m.id, m.message ?? '', m.edit_date, m.entities, m.reply_markup ?? null)
+  },
   [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), e.media, e.edit_date) },
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance === 'number') setStarsBalance(e.balance) },
