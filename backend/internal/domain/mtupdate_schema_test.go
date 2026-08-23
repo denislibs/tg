@@ -96,6 +96,7 @@ func updateCases() []struct {
 		})},
 		{"историю удалили", NewUpdateStory(peer, NewStoryItemDeleted(3))},
 		{"моя реакция на историю", NewUpdateSentStoryReaction(peer, 3, NewReactionEmoji("👍"))},
+		{"горизонт историй сдвинулся", NewUpdateReadStories(peer, 7)},
 		{"тема чата", NewUpdateChatTheme(peer, "sunset")},
 		{"снимок карточки чата", func() any {
 			c := ChatRecord{ID: 5, Type: ChatTypeChannel, Title: "Канал"}
@@ -201,6 +202,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateBotCallbackAnswerTag,
 		UpdateStoryTag,
 		UpdateSentStoryReactionTag,
+		UpdateReadStoriesTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

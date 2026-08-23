@@ -724,7 +724,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// A 'contacts' story: visible to any chat partner, not to strangers.
 	contactsMedia := seedMedia(t, pool, author, "story-contacts")
-	_, err := stories.Create(ctx, domain.Story{
+	_, _, err := stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: contactsMedia, Privacy: "contacts",
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
 	}, nil)
@@ -743,7 +743,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// A 'selected' story: only the allowlisted partner may view; another partner may not.
 	selMedia := seedMedia(t, pool, author, "story-selected")
-	_, err = stories.Create(ctx, domain.Story{
+	_, _, err = stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: selMedia, Privacy: "selected",
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
 	}, []int64{selected})
@@ -759,7 +759,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// An expired story's media is not accessible to viewers (only the owner).
 	expMedia := seedMedia(t, pool, author, "story-expired")
-	_, err = stories.Create(ctx, domain.Story{
+	_, _, err = stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: expMedia, Privacy: "contacts",
 		CreatedAt: time.Now().Add(-48 * time.Hour), ExpiresAt: time.Now().Add(-24 * time.Hour),
 	}, nil)

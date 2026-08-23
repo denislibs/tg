@@ -18,6 +18,11 @@ type fakeRepo struct {
 	createStory   domain.Story
 	createAllow   []int64
 	createID      int64
+	createSeq     int64
+	idBySeq       map[int64]int64
+	readHorizon   map[int64]int64
+	readCalled    bool
+	readErr       error
 	createErr     error
 	feedArgView   int64
 	feedArgAuthor []int64
@@ -70,10 +75,39 @@ type fakeRepo struct {
 	purgeErr        error
 }
 
-func (f *fakeRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error) {
+func (f *fakeRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, int64, error) {
 	f.createStory = s
 	f.createAllow = allowIDs
-	return f.createID, f.createErr
+	// Номер внутри автора у фейка по умолчанию совпадает с ключом строки —
+	// тестам важно, что наружу возвращается ИМЕННО номер, а не ключ; там, где
+	// разница существенна, номер задаётся отдельно (`createSeq`).
+	seq := f.createSeq
+	if seq == 0 {
+		seq = f.createID
+	}
+	return f.createID, seq, f.createErr
+}
+
+func (f *fakeRepo) IDBySeq(ctx context.Context, authorID, seq int64) (int64, error) {
+	if id, ok := f.idBySeq[seq]; ok {
+		return id, nil
+	}
+	return seq, nil
+}
+
+func (f *fakeRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error) {
+	if f.readHorizon == nil {
+		f.readHorizon = map[int64]int64{}
+	}
+	if maxID > f.readHorizon[authorID] {
+		f.readHorizon[authorID] = maxID
+	}
+	f.readCalled = true
+	return f.readHorizon[authorID], f.readErr
+}
+
+func (f *fakeRepo) ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error) {
+	return f.readHorizon, nil
 }
 func (f *fakeRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error) {
 	f.feedArgView = viewerID
@@ -313,7 +347,7 @@ func TestFeed_AuthorIDsIncludeViewer(t *testing.T) {
 func TestView_NotVisible_Forbidden(t *testing.T) {
 	repo := &fakeRepo{visible: false}
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	err := svc.View(context.Background(), 5, 1)
+	err := svc.View(context.Background(), 10, 5, 1)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -325,7 +359,7 @@ func TestView_NotVisible_Forbidden(t *testing.T) {
 func TestView_Visible_MarksViewed(t *testing.T) {
 	repo := &fakeRepo{visible: true}
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	if err := svc.View(context.Background(), 5, 1); err != nil {
+	if err := svc.View(context.Background(), 10, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.marked {
@@ -336,7 +370,7 @@ func TestView_Visible_MarksViewed(t *testing.T) {
 func TestViewers_NonAuthor_Forbidden(t *testing.T) {
 	repo := &fakeRepo{author: 99}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	_, err := svc.Viewers(context.Background(), 5, 1)
+	_, err := svc.Viewers(context.Background(), 1, 5, 1)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -348,7 +382,7 @@ func TestViewers_Author_ReturnsList(t *testing.T) {
 		Users: []domain.UserReal{{ID: 2}},
 	}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	got, err := svc.Viewers(context.Background(), 5, 1)
+	got, err := svc.Viewers(context.Background(), 1, 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -364,7 +398,7 @@ func TestViewers_Author_ReturnsList(t *testing.T) {
 func TestStats_NonAuthor_Forbidden(t *testing.T) {
 	repo := &fakeRepo{author: 99}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	_, err := svc.Stats(context.Background(), 5, 1)
+	_, err := svc.Stats(context.Background(), 1, 5, 1)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -373,7 +407,7 @@ func TestStats_NonAuthor_Forbidden(t *testing.T) {
 func TestStats_Author_ReturnsStats(t *testing.T) {
 	repo := &fakeRepo{author: 1, stats: domain.StoryStats{Views: 7}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	got, err := svc.Stats(context.Background(), 5, 1)
+	got, err := svc.Stats(context.Background(), 1, 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -412,7 +446,7 @@ func TestPost_PeriodToExpiry(t *testing.T) {
 // seedStory кладёт историю, которую кадр `updateStory` читает через ByID:
 // кадр несёт историю ЦЕЛИКОМ, а не плоские поля, поэтому без неё он не уедет.
 func seedStory(f *fakeRepo, id int64, over ...func(*domain.StoryRecord)) {
-	rec := domain.StoryRecord{ID: id, MediaID: 7, Caption: "hi", Privacy: "contacts"}
+	rec := domain.StoryRecord{ID: id, Seq: id, MediaID: 7, Caption: "hi", Privacy: "contacts"}
 	for _, fn := range over {
 		fn(&rec)
 	}
@@ -458,12 +492,12 @@ func TestPost_BroadcastsStoryUpdate(t *testing.T) {
 }
 
 // Тело кадра одно на ВСЕХ получателей, поэтому пер-зрительских частей в нём
-// быть не может: `viewed` у каждого своё, а `privacy` адресован только автору.
-// Та же ловушка уже ловилась у pFlags.out и у `unread`.
+// быть не может: реакция и аудитория у каждого свои. Та же ловушка уже ловилась
+// у pFlags.out и у `unread`. Прочитанность сюда не попадает по построению — она
+// больше не свойство истории, а горизонт группы.
 func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
 	repo := &fakeRepo{createID: 42}
 	seedStory(repo, 42, func(r *domain.StoryRecord) {
-		r.Viewed = true
 		r.MyReaction = "👍"
 		r.Privacy = "selected"
 		r.AllowIDs = []int64{2}
@@ -482,7 +516,7 @@ func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
 	if err := json.Unmarshal(pub.frames[2][0], &env); err != nil {
 		t.Fatalf("кадр не разбирается: %v", err)
 	}
-	for _, key := range []string{"viewed", "sent_reaction", "privacy"} {
+	for _, key := range []string{"sent_reaction", "privacy"} {
 		if _, exists := env.D.Story[key]; exists {
 			t.Errorf("в общем теле кадра пер-зрительская часть: %s", key)
 		}
@@ -510,7 +544,7 @@ func TestPost_SelectedBroadcastsToAllowlist(t *testing.T) {
 func TestSetReaction_NotVisible_Forbidden(t *testing.T) {
 	repo := &fakeRepo{visible: false}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	err := svc.SetReaction(context.Background(), 5, 1, "👍")
+	err := svc.SetReaction(context.Background(), 10, 5, 1, "👍")
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -522,7 +556,7 @@ func TestSetReaction_NotVisible_Forbidden(t *testing.T) {
 func TestSetReaction_InvalidEmoji_BadReaction(t *testing.T) {
 	repo := &fakeRepo{visible: true}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if err := svc.SetReaction(context.Background(), 5, 1, ""); !errors.Is(err, domain.ErrBadReaction) {
+	if err := svc.SetReaction(context.Background(), 10, 5, 1, ""); !errors.Is(err, domain.ErrBadReaction) {
 		t.Fatalf("want ErrBadReaction, got %v", err)
 	}
 }
@@ -536,7 +570,7 @@ func TestSetReaction_OK_UpsertsAndNotifiesBothSides(t *testing.T) {
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
-	if err := svc.SetReaction(context.Background(), 5, 1, "👍"); err != nil {
+	if err := svc.SetReaction(context.Background(), 10, 5, 1, "👍"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.setCalled || repo.setReaction != "👍" {
@@ -556,7 +590,7 @@ func TestRemoveReaction_OK_NotifiesBothSides(t *testing.T) {
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
-	if err := svc.RemoveReaction(context.Background(), 5, 1); err != nil {
+	if err := svc.RemoveReaction(context.Background(), 10, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.removeCalled {
@@ -573,7 +607,7 @@ func TestRemoveReaction_OK_NotifiesBothSides(t *testing.T) {
 func TestRemoveReaction_NotVisible_Forbidden(t *testing.T) {
 	repo := &fakeRepo{visible: false}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if err := svc.RemoveReaction(context.Background(), 5, 1); !errors.Is(err, domain.ErrForbidden) {
+	if err := svc.RemoveReaction(context.Background(), 10, 5, 1); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if repo.removeCalled {
@@ -710,7 +744,7 @@ func TestView_StealthActive_DoesNotRecord(t *testing.T) {
 	st.mode[1] = domain.StealthMode{ActiveUntil: time.Now().Add(10 * time.Minute)}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetStealthStore(st)
-	if err := svc.View(context.Background(), 5, 1); err != nil {
+	if err := svc.View(context.Background(), 10, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.marked {
@@ -724,7 +758,7 @@ func TestView_StealthExpired_Records(t *testing.T) {
 	st.mode[1] = domain.StealthMode{ActiveUntil: time.Now().Add(-time.Minute)} // expired
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetStealthStore(st)
-	if err := svc.View(context.Background(), 5, 1); err != nil {
+	if err := svc.View(context.Background(), 10, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.marked {
@@ -944,7 +978,7 @@ func TestRepost_OK(t *testing.T) {
 	}
 	tx := &fakeTx{}
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, tx)
-	id, err := svc.Repost(context.Background(), 1, 42, "look", "everyone", nil, 0)
+	id, err := svc.Repost(context.Background(), 1, 9, 42, "look", "everyone", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -968,7 +1002,7 @@ func TestRepost_OK(t *testing.T) {
 func TestRepost_ForbiddenWhenSourceNotVisible(t *testing.T) {
 	repo := &fakeRepo{visible: false, origin: domain.StoryOrigin{MediaID: 500}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if _, err := svc.Repost(context.Background(), 1, 42, "", "", nil, 0); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := svc.Repost(context.Background(), 1, 9, 42, "", "", nil, 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if repo.createStory.MediaID != 0 {
@@ -981,7 +1015,7 @@ func TestShare_OK(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{}
 	svc.SetMessageSender(sender)
-	sent, err := svc.Share(context.Background(), 42, 1, []int64{10, 20, 30})
+	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1004,7 +1038,7 @@ func TestShare_ForbiddenWhenNotVisible(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{}
 	svc.SetMessageSender(sender)
-	if _, err := svc.Share(context.Background(), 42, 1, []int64{10}); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if len(sender.calls) != 0 {
@@ -1015,7 +1049,7 @@ func TestShare_ForbiddenWhenNotVisible(t *testing.T) {
 func TestShare_UnavailableWithoutSender(t *testing.T) {
 	repo := &fakeRepo{visible: true}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if _, err := svc.Share(context.Background(), 42, 1, []int64{10}); !errors.Is(err, domain.ErrUnavailable) {
+	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}); !errors.Is(err, domain.ErrUnavailable) {
 		t.Fatalf("want ErrUnavailable, got %v", err)
 	}
 }
@@ -1025,7 +1059,7 @@ func TestShare_SkipsNonMemberChats(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{failFor: map[int64]error{20: domain.ErrNotFound}}
 	svc.SetMessageSender(sender)
-	sent, err := svc.Share(context.Background(), 42, 1, []int64{10, 20, 30})
+	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

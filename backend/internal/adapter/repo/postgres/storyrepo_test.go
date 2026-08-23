@@ -16,7 +16,7 @@ import (
 func createStory(t *testing.T, pool *pgxpool.Pool, authorID int64, privacy string, expiresAt time.Time, allowIDs []int64) int64 {
 	t.Helper()
 	repo := NewStoryRepo(pool)
-	id, err := repo.Create(context.Background(), domain.Story{
+	id, _, err := repo.Create(context.Background(), domain.Story{
 		AuthorID:  authorID,
 		MediaID:   42,
 		Caption:   "hi",
@@ -50,20 +50,34 @@ func TestStoryRepo_FeedViewViewersDelete(t *testing.T) {
 	if groups[0].Author.ID != u1 {
 		t.Fatalf("group author = %d; want %d", groups[0].Author.ID, u1)
 	}
-	if groups[0].Stories[0].ID != storyID || groups[0].Stories[0].Viewed {
-		t.Fatalf("story = %+v; want id %d viewed=false", groups[0].Stories[0], storyID)
+	if groups[0].Stories[0].ID != storyID || groups[0].MaxReadID != 0 {
+		t.Fatalf("story = %+v; want id %d, горизонт 0", groups[0].Stories[0], storyID)
+	}
+	// Наружу история адресуется НОМЕРОМ внутри автора, а не ключом строки.
+	seq := groups[0].Stories[0].Seq
+	if seq == 0 {
+		t.Fatalf("номер внутри автора не выехал: %+v", groups[0].Stories[0])
 	}
 
-	// Mark viewed -> feed reflects Viewed=true.
+	// Просмотр пишется в story_views (кто посмотрел) и двигает ГОРИЗОНТ
+	// прочтения — это два разных факта и две разные записи.
 	if err := repo.MarkViewed(ctx, storyID, u2); err != nil {
 		t.Fatalf("MarkViewed: %v", err)
 	}
 	if err := repo.MarkViewed(ctx, storyID, u2); err != nil {
 		t.Fatalf("MarkViewed (idempotent): %v", err)
 	}
+	if got, err := repo.SetRead(ctx, u2, u1, seq); err != nil || got != seq {
+		t.Fatalf("SetRead = %d, %v; want %d", got, err, seq)
+	}
+	// Горизонт двигается только вперёд: повторное чтение старой истории его не
+	// откатывает.
+	if got, _ := repo.SetRead(ctx, u2, u1, seq-1); got != seq {
+		t.Fatalf("горизонт откатился назад: %d", got)
+	}
 	groups, _ = repo.ActiveFeed(ctx, u2, []int64{u1})
-	if len(groups) != 1 || !groups[0].Stories[0].Viewed {
-		t.Fatalf("feed after view = %+v; want viewed=true", groups)
+	if len(groups) != 1 || groups[0].MaxReadID != seq {
+		t.Fatalf("feed after view = %+v; want горизонт %d", groups, seq)
 	}
 
 	// Viewers lists u2.
@@ -467,7 +481,7 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 		domain.NewMediaAreaSuggestedReaction(domain.NewMediaAreaCoordinates(50, 50, 10, 10, 5), "👍", false, false),
 		domain.NewMediaAreaGeoPoint(domain.NewMediaAreaCoordinates(1, 2, 0, 0, 0), lat, long),
 	}
-	srcID, err := repo.Create(ctx, domain.Story{
+	srcID, _, err := repo.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: 500, Caption: "orig", Privacy: "everyone",
 		ExpiresAt: future, MediaAreas: areas,
 	}, nil)
@@ -523,7 +537,7 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 	}
 
 	// Repost: a new story referencing the source keeps fwd_from and the media.
-	repostID, err := repo.Create(ctx, domain.Story{
+	repostID, _, err := repo.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: origin.MediaID, Caption: "repost", Privacy: "everyone",
 		ExpiresAt: future, FwdFrom: &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcID},
 	}, nil)

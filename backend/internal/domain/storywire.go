@@ -21,14 +21,14 @@ func (r StoryRecord) ToStoryItem(owner bool) StoryItemReal {
 	item := StoryItemReal{
 		Underscore: StoryItemTag,
 		PFlags:     StoryPrivacyPFlags(r.Privacy),
-		ID:         int(r.ID),
+		// Наружу едет НОМЕР ВНУТРИ АВТОРА: ключ строки остаётся внутренним.
+		ID:         int(r.Seq),
 		Date:       r.CreatedAt.Unix(),
 		ExpireDate: r.ExpiresAt.Unix(),
 		Caption:    r.Caption,
 		Media:      r.Media,
 		MediaAreas: r.MediaAreas,
 		Views:      storyViewsOf(r),
-		Viewed:     r.Viewed,
 	}
 	setPFlag(&item.PFlags, "pinned", r.Pinned)
 	setPFlag(&item.PFlags, "edited", r.Edited)

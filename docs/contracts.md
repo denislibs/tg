@@ -777,19 +777,27 @@ The viewer's active story feed (own group first). Ответ — КОНТЕЙН�
 - **«моя реакция» — `sent_reaction`**, отдельный параметр самой истории:
   счётчики и разбивка общие на всех получателей и лежат в `views`;
 - **даты — секунды эпохи** (`date`/`expire_date`), как у сообщения;
-- `viewed` — НАШ параметр вне схемы (объявлен в
-  `schema/schema_additional_params.json`): у оригинала прочитанность историй
-  выражена горизонтом `peerStories.max_read_id`, а он требует пер-авторской
-  нумерации историй. Временная форма, разбор — `docs/readiness/tl-stories-analysis.md`.
+- **`id` — НОМЕР ВНУТРИ АВТОРА**, а не глобальный ключ: им история адресуется
+  (`/stories/{peerID}/{storySeq}/…`) и по нему же считается горизонт прочтения.
+  У разных авторов номера совпадают — сам по себе номер историю не адресует;
+- **прочитанность — ГОРИЗОНТ группы** (`peerStories.max_read_id`), один номер на
+  автора: «непрочитанная» это `story.id > max_read_id`, ровно как непрочитанность
+  сообщения по `read_inbox_max_id`. Признака на самой истории нет.
 
 Архив и закреплённые (`GET /stories/archive`, `GET /stories/pinned`) отвечают
 контейнером `stories.stories` теми же конструкторами.
 
-### POST /stories/{storyID}/view  · auth
-Mark a story as seen. Idempotent.
+### POST /stories/{peerID}/{storySeq}/view  · auth
+Отметить историю просмотренной. Идемпотентно. Делает ДВА разных дела, потому что
+это два разных факта: пишет просмотр (`кто посмотрел` — витрина
+`/viewers`) и двигает ГОРИЗОНТ прочтения (только вперёд). У оригинала это два
+метода (`stories.incrementStoryViews` и `stories.readStories`); одна ручка —
+названное упрощение: интерфейс всё равно зовёт их вместе.
+
+Сдвиг горизонта уезжает кадром `updateReadStories` на ДРУГИЕ устройства зрителя.
 - 200: `{ "ok": true }` · 403 story not visible to caller
 
-### GET /stories/{storyID}/viewers  · auth · author only
+### GET /stories/{peerID}/{storySeq}/viewers  · auth · author only
 Who has seen the story (author-gated). Ответ — контейнер
 `stories.storyViewsList`: сам просмотр и карточка зрителя едут РАЗНЫМИ
 векторами, поэтому дата просмотра и реакция зрителя больше не теряются.
@@ -803,7 +811,7 @@ Who has seen the story (author-gated). Ответ — контейнер
 ```
 - 403 caller is not the author
 
-### DELETE /stories/{storyID}  · auth · author only
+### DELETE /stories/{peerID}/{storySeq}  · auth · author only
 Delete the caller's own story.
 - 200: `{ "ok": true }`
 
@@ -915,6 +923,7 @@ Delete the caller's own story.
 | `bot_callback_answer` | `updateBotCallbackAnswer` | наш конструктор; «модалкой» — бит `pFlags.alert` |
 | `story_update` | `updateStory` | история ЦЕЛИКОМ — тем же конструктором, что на витрине; «её удалили» это `storyItemDeleted` внутри, а не отдельный кадр |
 | `story_reaction` | `updateSentStoryReaction` | МОЙ выбор, эхо на другие устройства зрителя; общий агрегат едет внутри истории |
+| `story_read` | `updateReadStories` | ГОРИЗОНТ прочтения историй автора сдвинулся — на другие устройства зрителя |
 
 ### Server → client: кадры БЕЗ конструктора
 Эти уезжают JSON-текстом всегда, и причин ровно две.

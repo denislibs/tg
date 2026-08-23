@@ -58,34 +58,94 @@ var _ storyusecase.StoryRepo = (*StoryRepo)(nil)
 
 func NewStoryRepo(pool *pgxpool.Pool) *StoryRepo { return &StoryRepo{pool: pool} }
 
-func (r *StoryRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error) {
+// Create возвращает внутренний ключ строки И номер внутри автора: первый нужен
+// связанным таблицам (просмотры, реакции, allow-лист), второй — проводу.
+func (r *StoryRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, int64, error) {
 	q := querier(ctx, r.pool)
 	areas, err := marshalMediaAreas(s.MediaAreas)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var fwdAuthor, fwdStory *int64
 	if s.FwdFrom != nil {
 		fwdAuthor, fwdStory = &s.FwdFrom.AuthorID, &s.FwdFrom.StoryID
 	}
-	var id int64
+	// Номер внутри автора выдаёт его счётчик — тем же приёмом, каким `seq`
+	// сообщения выдаёт `chats.last_seq`: инкремент и вставка идут одним
+	// запросом, поэтому двух историй с одним номером не бывает.
+	var id, seq int64
+	if err = q.QueryRow(ctx,
+		`UPDATE users SET last_story_seq = last_story_seq + 1 WHERE id=$1 RETURNING last_story_seq`,
+		s.AuthorID).Scan(&seq); err != nil {
+		return 0, 0, err
+	}
 	err = q.QueryRow(ctx,
-		`INSERT INTO stories (author_id, media_id, caption, privacy, expires_at, media_areas, fwd_from_author_id, fwd_from_story_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-		s.AuthorID, s.MediaID, s.Caption, s.Privacy, s.ExpiresAt, areas, fwdAuthor, fwdStory).Scan(&id)
+		`INSERT INTO stories (author_id, seq, media_id, caption, privacy, expires_at, media_areas, fwd_from_author_id, fwd_from_story_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+		s.AuthorID, seq, s.MediaID, s.Caption, s.Privacy, s.ExpiresAt, areas, fwdAuthor, fwdStory).Scan(&id)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if s.Privacy == "selected" {
 		for _, uid := range allowIDs {
 			if _, err := q.Exec(ctx,
 				`INSERT INTO story_allow (story_id, user_id) VALUES ($1,$2)
 				 ON CONFLICT DO NOTHING`, id, uid); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 	}
-	return id, nil
+	return id, seq, nil
+}
+
+// IDBySeq — внешний адрес (автор + номер) во внутренний ключ строки. Обычный
+// поиск по UNIQUE (author_id, seq) из миграции 0126 — ни кэша, ни переходника;
+// тот же приём, что у сообщения (`MessagesRepo.IDBySeq`).
+func (r *StoryRepo) IDBySeq(ctx context.Context, authorID, seq int64) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT id FROM stories WHERE author_id=$1 AND seq=$2`, authorID, seq).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
+}
+
+// SetRead двигает ГОРИЗОНТ прочтения зрителя у автора: только вперёд, как
+// `read_inbox_max_id` у диалога. Возвращает горизонт ПОСЛЕ применения — кадру
+// нужно ровно это число, а не то, что прислал клиент.
+func (r *StoryRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error) {
+	var out int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`INSERT INTO story_read (viewer_id, author_id, max_read_id) VALUES ($1,$2,$3)
+		 ON CONFLICT (viewer_id, author_id)
+		 DO UPDATE SET max_read_id = GREATEST(story_read.max_read_id, EXCLUDED.max_read_id)
+		 RETURNING max_read_id`, viewerID, authorID, maxID).Scan(&out)
+	return out, err
+}
+
+// ReadHorizons — горизонты зрителя у перечисленных авторов. Отсутствие строки
+// значит «не читал ни одной» и в карту не попадает.
+func (r *StoryRepo) ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(authorIDs))
+	if len(authorIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT author_id, max_read_id FROM story_read WHERE viewer_id=$1 AND author_id = ANY($2)`,
+		viewerID, authorIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var author, maxID int64
+		if e := rows.Scan(&author, &maxID); e != nil {
+			return nil, e
+		}
+		out[author] = maxID
+	}
+	return out, rows.Err()
 }
 
 func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error) {
@@ -93,16 +153,15 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		return []domain.StoryGroup{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT s.id, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
+		`SELECT s.id, s.seq, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 		        s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id,
 		        s.created_at, s.expires_at,
 		        `+userRealCols("u.")+`,
-		        (sv.viewer_id IS NOT NULL) AS viewed,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
-		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction
+		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction,
+		        COALESCE((SELECT rd.max_read_id FROM story_read rd WHERE rd.viewer_id = $1 AND rd.author_id = s.author_id), 0) AS max_read_id
 		   FROM stories s
 		   JOIN users u ON u.id = s.author_id
-		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
 		  WHERE s.expires_at > now()
 		    -- author set: own + chat partners ($2), плюс авторы, у которых зритель в
 		    -- close_friends (их 'close'-истории) или в allow-листе (их 'selected'), даже
@@ -136,10 +195,11 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
-		dest := []any{&item.ID, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
+		var maxRead int64
+		dest := []any{&item.ID, &item.Seq, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
 			&areasRaw, &fwdAuthor, &fwdStory, &item.CreatedAt, &item.ExpiresAt}
 		dest = append(dest, au.dest()...)
-		dest = append(dest, &item.Viewed, &item.ReactionsCount, &item.MyReaction)
+		dest = append(dest, &item.ReactionsCount, &item.MyReaction, &maxRead)
 		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
@@ -152,7 +212,8 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		item.FwdFrom = fwdFrom(fwdAuthor, fwdStory)
 		_ = discard
 		if idx < 0 || author.ID != curAuthor {
-			out = append(out, domain.StoryGroup{Author: author, Stories: []domain.StoryRecord{}})
+			// Горизонт — свойство ГРУППЫ, а не истории: один номер на автора.
+			out = append(out, domain.StoryGroup{Author: author, MaxReadID: maxRead, Stories: []domain.StoryRecord{}})
 			idx++
 			curAuthor = author.ID
 		}
@@ -380,9 +441,8 @@ func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64, partne
 
 // storyItemCols is the column list + reaction subqueries shared by Archive and
 // Pinned (flat single-peer lists, no author grouping). $1 is the viewer.
-const storyItemCols = `s.id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
+const storyItemCols = `s.id, s.seq, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 	s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id, s.created_at, s.expires_at,
-	(sv.viewer_id IS NOT NULL) AS viewed,
 	(SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
 	COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction`
 
@@ -397,9 +457,9 @@ func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID 
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
-		if err := rows.Scan(&it.ID, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
+		if err := rows.Scan(&it.ID, &it.Seq, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
 			&areasRaw, &fwdAuthor, &fwdStory, &it.CreatedAt, &it.ExpiresAt,
-			&it.Viewed, &it.ReactionsCount, &it.MyReaction); err != nil {
+			&it.ReactionsCount, &it.MyReaction); err != nil {
 			return nil, err
 		}
 		areas, err := unmarshalMediaAreas(areasRaw)
@@ -561,9 +621,10 @@ func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domai
 	return r.scanStoryItems(ctx, rows, viewerID)
 }
 
-// ByID — ОДНА история глазами зрителя. Нужна кадру `updateStory`: история едет
-// в нём целиком, тем же конструктором, что и на витрине, — плоский кадр прошлой
-// формы историю построить не мог (в нём был только номер файла).
+// ByID — ОДНА история глазами зрителя по ВНУТРЕННЕМУ ключу. Нужна кадру
+// `updateStory`: история едет в нём целиком, тем же конструктором, что и на
+// витрине, — плоский кадр прошлой формы историю построить не мог (в нём был
+// только номер файла).
 //
 // Видимость здесь НЕ проверяется: кадр адресуется тому, кто историю и так
 // видит (автору либо получателю рассылки), а проверка живёт в usecase.

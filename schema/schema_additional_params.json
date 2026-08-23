@@ -1506,10 +1506,6 @@
       {
         "name": "pinnedIndex",
         "type": "number"
-      },
-      {
-        "name": "viewed",
-        "type": "boolean"
       }
     ]
   },

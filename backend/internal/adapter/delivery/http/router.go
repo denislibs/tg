@@ -388,15 +388,18 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/stories/pinned", storyH.Pinned)
 			pr.Get("/stories/stealth", storyH.StealthState)
 			pr.Post("/stories/stealth/activate", storyH.ActivateStealth)
-			pr.Post("/stories/{storyID}/view", storyH.View)
-			pr.Post("/stories/{storyID}/reaction", storyH.SetReaction)
-			pr.Delete("/stories/{storyID}/reaction", storyH.RemoveReaction)
-			pr.Post("/stories/{storyID}/pin", storyH.Pin)
-			pr.Post("/stories/{storyID}/share", storyH.Share)
-			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
-			pr.Get("/stories/{storyID}/stats", storyH.Stats)
-			pr.Patch("/stories/{storyID}", storyH.Edit)
-			pr.Delete("/stories/{storyID}", storyH.Delete)
+			// История адресуется ПАРОЙ «пир автора + номер внутри него» — тот же
+			// приём, что у сообщения (`/chats/{peerID}/messages/{msgSeq}`):
+			// глобального ключа наружу больше не выходит.
+			pr.Post("/stories/{peerID}/{storySeq}/view", storyH.View)
+			pr.Post("/stories/{peerID}/{storySeq}/reaction", storyH.SetReaction)
+			pr.Delete("/stories/{peerID}/{storySeq}/reaction", storyH.RemoveReaction)
+			pr.Post("/stories/{peerID}/{storySeq}/pin", storyH.Pin)
+			pr.Post("/stories/{peerID}/{storySeq}/share", storyH.Share)
+			pr.Get("/stories/{peerID}/{storySeq}/viewers", storyH.Viewers)
+			pr.Get("/stories/{peerID}/{storySeq}/stats", storyH.Stats)
+			pr.Patch("/stories/{peerID}/{storySeq}", storyH.Edit)
+			pr.Delete("/stories/{peerID}/{storySeq}", storyH.Delete)
 			pr.Get("/me/close_friends", storyH.CloseFriends)
 			pr.Put("/me/close_friends", storyH.SetCloseFriends)
 		}

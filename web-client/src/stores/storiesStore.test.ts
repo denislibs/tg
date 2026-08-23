@@ -9,7 +9,7 @@ import { useStoriesStore, loadStories } from './storiesStore'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { ReactionCount } from '../core/models'
 import type { StoryItem, StoryItemReal } from '../core/stories/story'
-import { isStoryEdited, isStoryPinned, storyCaption, storyMyReaction, storyPrivacy, storyReactionsCount } from '../core/stories/story'
+import { isStoryEdited, isStoryPinned, isStoryRead, storyCaption, storyMyReaction, storyPrivacy, storyReactionsCount } from '../core/stories/story'
 
 const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
 
@@ -27,7 +27,7 @@ const chip = (emoticon: string, count: number, mine = false): ReactionCount => (
 })
 
 const groups: StoryGroup[] = [
-  { author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory()] },
+  { author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory()], maxReadId: 0 },
 ]
 
 function fakeManagers(over: Partial<{ groups: StoryGroup[] }> = {}) {
@@ -58,8 +58,22 @@ describe('storiesStore', () => {
     expect(s.loaded).toBe(true)
   })
 
+  it('markRead двигает ГОРИЗОНТ группы и только вперёд', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 3 })], maxReadId: 0 }])
+    // Прочитанность — свойство ГРУППЫ: у самой истории признака больше нет.
+    useStoriesStore.getState().markRead(2, 3)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+    expect(isStoryRead(first(), useStoriesStore.getState().groups[0].maxReadId)).toBe(true)
+    // Повторное чтение старой истории горизонт не откатывает.
+    useStoriesStore.getState().markRead(2, 1)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+    // Чужой автор не задет.
+    useStoriesStore.getState().markRead(999, 9)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+  })
+
   it('addStory appends to the author group, skipping duplicates and unknown authors', () => {
-    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })] }])
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
     useStoriesStore.getState().addStory(2, mkStory({ id: 2 }))
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1, 2])
     // duplicate id → no-op
@@ -71,7 +85,7 @@ describe('storiesStore', () => {
   })
 
   it('removeStory drops the story and empties out the group', () => {
-    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })] }])
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })], maxReadId: 0 }])
     useStoriesStore.getState().removeStory(2, 1)
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([2])
     useStoriesStore.getState().removeStory(2, 2)
@@ -82,6 +96,7 @@ describe('storiesStore', () => {
     useStoriesStore.getState().setGroups([{
       author: bob,
       stories: [mkStory({ id: 5, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1) })],
+      maxReadId: 0,
     }])
     // событие про ЧУЖОЕ действие → счётчик обновился, своя реакция не тронута
     useStoriesStore.getState().applyStoryReaction(5, 4)
@@ -97,6 +112,7 @@ describe('storiesStore', () => {
     useStoriesStore.getState().setGroups([{
       author: bob,
       stories: [mkStory({ id: 5, views: views(1, [chip('🔥', 1)]) })],
+      maxReadId: 0,
     }])
     // add ❤
     useStoriesStore.getState().setMyReaction(5, '❤')
@@ -119,7 +135,7 @@ describe('storiesStore', () => {
   })
 
   it('setStoryPinned переключает ФЛАГ истории, а снятый флаг исчезает', () => {
-    useStoriesStore.getState().setGroups([{ author: me, stories: [mkStory({ id: 5 })] }])
+    useStoriesStore.getState().setGroups([{ author: me, stories: [mkStory({ id: 5 })], maxReadId: 0 }])
     useStoriesStore.getState().setStoryPinned(5, true)
     expect(isStoryPinned(first())).toBe(true)
     useStoriesStore.getState().setStoryPinned(5, false)
@@ -131,6 +147,7 @@ describe('storiesStore', () => {
     useStoriesStore.getState().setGroups([{
       author: me,
       stories: [mkStory({ id: 5, caption: 'old', pFlags: { contacts: true } })],
+      maxReadId: 0,
     }])
     useStoriesStore.getState().applyStoryEdit(5, { caption: 'new', privacy: 'close' })
     expect(storyCaption(first())).toBe('new')

@@ -5,8 +5,12 @@ import "time"
 // Story is a full stories row.
 type Story struct {
 	ID, AuthorID, MediaID int64
-	Caption, Privacy      string
-	CreatedAt, ExpiresAt  time.Time
+	// Seq — номер истории ВНУТРИ автора: то, чем она адресуется снаружи.
+	// Внутренний ключ строки (`ID`) наружу не выходит — приём и причина те же,
+	// что у сообщения (`messages.seq` против `messages.id`).
+	Seq                  int64
+	Caption, Privacy     string
+	CreatedAt, ExpiresAt time.Time
 	// Pinned — история закреплена в профиле (показывается всегда, в т.ч. истёкшая).
 	// Edited — история редактировалась после публикации (флаг edited в tweb).
 	Pinned, Edited bool
@@ -16,8 +20,9 @@ type Story struct {
 	FwdFrom *StoryFwd
 }
 
-// StoryFwd — ссылка репоста на исходную историю (tweb fwd_from): автор и id
-// оригинала.
+// StoryFwd — ссылка репоста на исходную историю (tweb fwd_from): автор и НОМЕР
+// оригинала внутри него. Глобального ключа здесь нет: на проводе
+// `storyFwdHeader{from, story_id}` адресует пиром плюс номером.
 type StoryFwd struct {
 	AuthorID int64
 	StoryID  int64
@@ -40,12 +45,13 @@ type StoryOrigin struct {
 // docs/readiness/tl-stories-analysis.md, исполняется шагом B.
 type StoryRecord struct {
 	ID, MediaID int64
-	Caption     string
+	// Seq — номер внутри автора; наружу едет он, а не ключ строки.
+	Seq     int64
+	Caption string
 	// Privacy отдаётся как есть, чтобы фронт показал иконку (close friends и т.п.).
 	Privacy   string
 	CreatedAt time.Time
 	ExpiresAt time.Time
-	Viewed    bool
 	// Pinned/Edited — состояние жизненного цикла истории (закреп в профиле / правка).
 	Pinned, Edited bool
 	// ReactionsCount — всего реакций на историю; MyReaction — эмодзи текущего
@@ -83,6 +89,11 @@ type StoryViewers struct {
 type StoryGroup struct {
 	Author  UserReal
 	Stories []StoryRecord
+	// MaxReadID — ГОРИЗОНТ прочтения зрителя у этого автора
+	// (`peerStories.max_read_id`). Один номер на автора вместо признака на
+	// каждой истории: «непрочитанная» это `story.id > MaxReadID`, и выводит это
+	// клиент — ровно как непрочитанность сообщения по `read_inbox_max_id`.
+	MaxReadID int64
 }
 
 // StealthMode — эфемерное состояние «невидимого просмотра» историй пользователя

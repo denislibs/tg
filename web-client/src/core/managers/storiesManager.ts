@@ -29,7 +29,13 @@ export interface StealthState {
  * каким строка списка чатов получает карточку пира: менеджер знает контейнер
  * целиком, а витрине нужен готовый автор.
  */
-export interface StoryGroup { author: UserReal; stories: StoryItem[] }
+export interface StoryGroup {
+  author: UserReal
+  stories: StoryItem[]
+  /** Горизонт прочтения зрителя у этого автора (`peerStories.max_read_id`):
+   *  один номер вместо признака на каждой истории. */
+  maxReadId: number
+}
 
 // Период жизни истории в секундах (tweb story period). Дефолт — 24ч.
 export type StoryPeriod = 21600 | 43200 | 86400 | 172800
@@ -49,7 +55,12 @@ export interface StoryStats {
 
 /** stories.allStories — контейнер ленты. */
 interface AllStories {
-  peer_stories?: { _: 'peerStories'; peer: Parameters<typeof getPeerId>[0]; stories: StoryItem[] }[]
+  peer_stories?: {
+    _: 'peerStories'
+    peer: Parameters<typeof getPeerId>[0]
+    max_read_id?: number
+    stories: StoryItem[]
+  }[]
   users?: UserReal[]
   chats?: Chat[]
   stealth_mode?: StealthState
@@ -76,7 +87,7 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       const out: StoryGroup[] = []
       for (const g of r.peer_stories ?? []) {
         const author = byId.get(Number(getPeerId(g.peer)))
-        if (author) out.push({ author, stories: g.stories ?? [] })
+        if (author) out.push({ author, stories: g.stories ?? [], maxReadId: g.max_read_id ?? 0 })
       }
       return out
     },
@@ -106,11 +117,13 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     },
     // Поделиться историей в чаты: в каждый чат уходит медиа-сообщение с
     // атрибуцией. Возвращает число успешно отправленных.
-    async share(id: number, peerIds: number[]): Promise<number> {
-      const r = await rest.post<{ sent: number }>(`/stories/${id}/share`, { peer_ids: peerIds })
+    // История адресуется ПАРОЙ «пир автора + номер внутри него»: сам по себе
+    // номер историю не адресует — у разных авторов они совпадают.
+    async share(authorId: number, id: number, peerIds: number[]): Promise<number> {
+      const r = await rest.post<{ sent: number }>(`/stories/${authorId}/${id}/share`, { peer_ids: peerIds })
       return r.sent ?? 0
     },
-    async view(id: number): Promise<void> { await rest.post(`/stories/${id}/view`, {}) },
+    async view(authorId: number, id: number): Promise<void> { await rest.post(`/stories/${authorId}/${id}/view`, {}) },
     // Close friends: список id близких друзей + его полная замена.
     async closeFriends(): Promise<number[]> {
       const r = await rest.get<{ user_ids: number[] }>('/me/close_friends')
@@ -135,31 +148,37 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       return r.stories ?? []
     },
     // Закреп в профиле: pin/unpin своей истории.
-    async pin(id: number, pinned: boolean): Promise<void> { await rest.post(`/stories/${id}/pin`, { pinned }) },
+    async pin(authorId: number, id: number, pinned: boolean): Promise<void> {
+      await rest.post(`/stories/${authorId}/${id}/pin`, { pinned })
+    },
     async pinnedStories(peer: number): Promise<StoryItem[]> {
       const r = await rest.get<Stories>(`/stories/pinned?peer=${peer}`)
       return r.stories ?? []
     },
     // Редактирование: подпись/приватность (+allow-лист для selected).
-    async editStory(id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<void> {
+    async editStory(authorId: number, id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<void> {
       const body: Record<string, unknown> = {}
       if (patch.caption != null) body.caption = patch.caption
       if (patch.privacy != null) body.privacy = patch.privacy
       if (patch.allowIds != null) body.allow_user_ids = patch.allowIds
       if (patch.mediaAreas != null) body.media_areas = patch.mediaAreas
-      await rest.patch(`/stories/${id}`, body)
+      await rest.patch(`/stories/${authorId}/${id}`, body)
     },
     // Реакция на историю: POST ставит/меняет, DELETE снимает.
-    async setReaction(id: number, reaction: string): Promise<void> { await rest.post(`/stories/${id}/reaction`, { reaction }) },
-    async removeReaction(id: number): Promise<void> { await rest.del(`/stories/${id}/reaction`) },
+    async setReaction(authorId: number, id: number, reaction: string): Promise<void> {
+      await rest.post(`/stories/${authorId}/${id}/reaction`, { reaction })
+    },
+    async removeReaction(authorId: number, id: number): Promise<void> {
+      await rest.del(`/stories/${authorId}/${id}/reaction`)
+    },
     // Просмотры: контейнер `stories.storyViewsList` — сам просмотр (кто, когда,
     // чем отреагировал) и карточки зрителей РАЗНЫМИ векторами.
-    async viewers(id: number): Promise<StoryViewsList> {
-      const r = await rest.get<Partial<StoryViewsList>>(`/stories/${id}/viewers`)
+    async viewers(authorId: number, id: number): Promise<StoryViewsList> {
+      const r = await rest.get<Partial<StoryViewsList>>(`/stories/${authorId}/${id}/viewers`)
       return { count: r.count ?? 0, views: r.views ?? [], users: r.users ?? [] }
     },
-    async stats(id: number): Promise<StoryStats> {
-      const r = await rest.get<{ views: number; views_by_day: StoryStatPoint[]; reactions_total?: number; reactions?: { emoji: string; count: number }[] }>(`/stories/${id}/stats`)
+    async stats(authorId: number, id: number): Promise<StoryStats> {
+      const r = await rest.get<{ views: number; views_by_day: StoryStatPoint[]; reactions_total?: number; reactions?: { emoji: string; count: number }[] }>(`/stories/${authorId}/${id}/stats`)
       return {
         views: r.views,
         viewsByDay: r.views_by_day ?? [],
@@ -167,7 +186,7 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
         reactions: r.reactions ?? [],
       }
     },
-    async del(id: number): Promise<void> { await rest.del(`/stories/${id}`) },
+    async del(authorId: number, id: number): Promise<void> { await rest.del(`/stories/${authorId}/${id}`) },
   }
 }
 export type StoriesManager = ReturnType<typeof newStoriesManager>

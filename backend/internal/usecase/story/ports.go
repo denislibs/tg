@@ -12,7 +12,19 @@ import (
 // tracking, viewers list, author lookup, deletion, and a single-story
 // visibility check.
 type StoryRepo interface {
-	Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error)
+	// Create возвращает внутренний ключ строки И номер внутри автора: первый
+	// нужен связанным таблицам, второй — проводу.
+	Create(ctx context.Context, s domain.Story, allowIDs []int64) (id, seq int64, err error)
+
+	// IDBySeq — внешний адрес (автор + номер) во внутренний ключ строки.
+	// domain.ErrNotFound, если номера у автора нет.
+	IDBySeq(ctx context.Context, authorID, seq int64) (int64, error)
+
+	// SetRead двигает ГОРИЗОНТ прочтения зрителя у автора (только вперёд) и
+	// возвращает горизонт ПОСЛЕ применения. ReadHorizons отдаёт горизонты у
+	// перечисленных авторов; отсутствие автора в карте значит «не читал».
+	SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error)
+	ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error)
 	ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error)
 	MarkViewed(ctx context.Context, storyID, viewerID int64) error
 	Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error)

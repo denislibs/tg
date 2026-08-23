@@ -50,7 +50,8 @@ describe('StoriesManager', () => {
       _: 'stories.allStories',
       peer_stories: [
         { _: 'peerStories', peer: peerUser(7), stories: [story(1, { caption: 'hi' })] },
-        { _: 'peerStories', peer: peerUser(2), stories: [story(2, { viewed: true })] },
+        // Горизонт — свойство ГРУППЫ: один номер на автора.
+        { _: 'peerStories', peer: peerUser(2), max_read_id: 3, stories: [story(2)] },
       ],
       users: [ME, BOB],
       chats: [],
@@ -60,8 +61,8 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories' })
     // Истории кладутся ВЕРБАТИМ: маппера у менеджера нет.
     expect(groups).toEqual([
-      { author: ME, stories: [story(1, { caption: 'hi' })] },
-      { author: BOB, stories: [story(2, { viewed: true })] },
+      { author: ME, stories: [story(1, { caption: 'hi' })], maxReadId: 0 },
+      { author: BOB, stories: [story(2)], maxReadId: 3 },
     ])
   })
 
@@ -107,25 +108,25 @@ describe('StoriesManager', () => {
   it('setReaction POSTs /stories/:id/reaction and removeReaction DELETEs it', async () => {
     const { rest, calls } = fakeRest({}, { ok: true })
     const mgr = newStoriesManager({ rest })
-    await mgr.setReaction(7, '🔥')
-    await mgr.removeReaction(7)
-    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/reaction', body: { reaction: '🔥' } })
-    expect(calls[1]).toEqual({ method: 'DELETE', path: '/stories/7/reaction' })
+    await mgr.setReaction(2, 7, '🔥')
+    await mgr.removeReaction(2, 7)
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/2/7/reaction', body: { reaction: '🔥' } })
+    expect(calls[1]).toEqual({ method: 'DELETE', path: '/stories/2/7/reaction' })
   })
 
   it('view POSTs /stories/:id/view', async () => {
     const { rest, calls } = fakeRest({})
     const mgr = newStoriesManager({ rest })
-    await mgr.view(42)
-    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/42/view', body: {} })
+    await mgr.view(2, 42)
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/2/42/view', body: {} })
   })
 
   it('viewers отдаёт контейнер: просмотр и карточка — РАЗНЫМИ векторами', async () => {
     const view = { _: 'storyView' as const, user_id: 2, date: 1787334148, reaction: { _: 'reactionEmoji' as const, emoticon: '❤' } }
     const { rest, calls } = fakeRest({ _: 'stories.storyViewsList', count: 1, views: [view], users: [BOB] })
     const mgr = newStoriesManager({ rest })
-    const list = await mgr.viewers(42)
-    expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/viewers' })
+    const list = await mgr.viewers(2, 42)
+    expect(calls[0]).toEqual({ method: 'GET', path: '/stories/2/42/viewers' })
     // Дата просмотра и реакция зрителя до порта терялись — витрина отдавала
     // голые карточки.
     expect(list).toEqual({ count: 1, views: [view], users: [BOB] })
@@ -134,8 +135,8 @@ describe('StoriesManager', () => {
   it('del DELETEs /stories/:id', async () => {
     const { rest, calls } = fakeRest({})
     const mgr = newStoriesManager({ rest })
-    await mgr.del(42)
-    expect(calls[0]).toEqual({ method: 'DELETE', path: '/stories/42' })
+    await mgr.del(2, 42)
+    expect(calls[0]).toEqual({ method: 'DELETE', path: '/stories/2/42' })
   })
 
   it('stats GETs /stories/:id/stats and maps snake->camel (incl. reactions)', async () => {
@@ -144,8 +145,8 @@ describe('StoriesManager', () => {
       reactions_total: 4, reactions: [{ emoji: '❤', count: 3 }, { emoji: '🔥', count: 1 }],
     })
     const mgr = newStoriesManager({ rest })
-    const stats = await mgr.stats(42)
-    expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/stats' })
+    const stats = await mgr.stats(2, 42)
+    expect(calls[0]).toEqual({ method: 'GET', path: '/stories/2/42/stats' })
     expect(stats).toEqual({
       views: 12, viewsByDay: [{ date: '2026-01-02', value: 12 }],
       reactionsTotal: 4, reactions: [{ emoji: '❤', count: 3 }, { emoji: '🔥', count: 1 }],
@@ -155,7 +156,7 @@ describe('StoriesManager', () => {
   it('stats tolerates missing series/reaction arrays', async () => {
     const { rest } = fakeRest({ views: 0 })
     const mgr = newStoriesManager({ rest })
-    expect(await mgr.stats(1)).toEqual({ views: 0, viewsByDay: [], reactionsTotal: 0, reactions: [] })
+    expect(await mgr.stats(2, 1)).toEqual({ views: 0, viewsByDay: [], reactionsTotal: 0, reactions: [] })
   })
 
   it('closeFriends GETs /me/close_friends → ids; setCloseFriends PUTs body', async () => {
@@ -194,8 +195,8 @@ describe('StoriesManager', () => {
   it('pin POSTs /stories/:id/pin; pinnedStories GETs by peer', async () => {
     const { rest, calls } = fakeRest({ stories: [] }, { ok: true })
     const mgr = newStoriesManager({ rest })
-    await mgr.pin(7, true)
-    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/pin', body: { pinned: true } })
+    await mgr.pin(2, 7, true)
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/2/7/pin', body: { pinned: true } })
     await mgr.pinnedStories(42)
     expect(calls[1]).toEqual({ method: 'GET', path: '/stories/pinned?peer=42' })
   })
@@ -203,10 +204,10 @@ describe('StoriesManager', () => {
   it('editStory PATCHes /stories/:id with only provided fields', async () => {
     const { rest, calls } = fakeRest({}, { ok: true })
     const mgr = newStoriesManager({ rest })
-    await mgr.editStory(7, { caption: 'x', privacy: 'selected', allowIds: [2] })
-    expect(calls[0]).toEqual({ method: 'PATCH', path: '/stories/7', body: { caption: 'x', privacy: 'selected', allow_user_ids: [2] } })
+    await mgr.editStory(2, 7, { caption: 'x', privacy: 'selected', allowIds: [2] })
+    expect(calls[0]).toEqual({ method: 'PATCH', path: '/stories/2/7', body: { caption: 'x', privacy: 'selected', allow_user_ids: [2] } })
     // omitted fields absent from body
-    await mgr.editStory(7, { caption: 'only' })
+    await mgr.editStory(2, 7, { caption: 'only' })
     expect(calls[1].body).toEqual({ caption: 'only' })
   })
 
@@ -233,11 +234,11 @@ describe('StoriesManager', () => {
     })
   })
 
-  it('share POSTs /stories/:id/share and returns sent count', async () => {
+  it('share POSTs /stories/{peer}/{id}/share and returns sent count', async () => {
     const { rest, calls } = fakeRest({}, { sent: 2 })
     const mgr = newStoriesManager({ rest })
-    const n = await mgr.share(7, [10, 11])
+    const n = await mgr.share(2, 7, [10, 11])
     expect(n).toBe(2)
-    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/share', body: { peer_ids: [10, 11] } })
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/2/7/share', body: { peer_ids: [10, 11] } })
   })
 })

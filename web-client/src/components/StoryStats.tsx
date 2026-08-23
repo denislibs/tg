@@ -11,9 +11,9 @@ import StatChart from './StatChart'
 
 const nf = new Intl.NumberFormat(undefined)
 
-export default function StoryStats({ storyId, onClose }: { storyId: number; onClose: () => void }) {
+export default function StoryStats({ authorId, storyId, onClose }: { authorId: number; storyId: number; onClose: () => void }) {
   const t = useT()
-  const { stats, loading, error } = useStoryStats(storyId)
+  const { stats, loading, error } = useStoryStats(authorId, storyId)
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>

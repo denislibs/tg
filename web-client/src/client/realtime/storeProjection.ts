@@ -20,7 +20,7 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -325,6 +325,13 @@ export function registerStoreProjection(managers: Managers): void {
     // группа без автора смысла не имеет.
     if (st.groups.some((g) => g.author.id === authorId)) st.addStory(authorId, e.story)
     else void loadStories(managers)
+  })
+  rootScope.addEventListener(RT.storyRead, (raw) => {
+    // Горизонт прочтения сдвинулся на ДРУГОМ устройстве зрителя: кольцо
+    // непрочитанного гаснет и здесь. Один номер на автора вместо признака на
+    // каждой истории — та же форма, что у прочтения сообщений.
+    const e = raw as ReadStoriesEvt
+    useStoriesStore.getState().markRead(Number(getPeerId(e.peer)), e.max_id)
   })
   rootScope.addEventListener(RT.storyReaction, (raw) => {
     const e = raw as SentStoryReactionEvt

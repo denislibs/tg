@@ -15,7 +15,9 @@ interface StoriesState {
   groups: StoryGroup[]
   loaded: boolean
   setGroups: (g: StoryGroup[]) => void
-  markViewed: (authorId: number, storyId: number) => void
+  // Подвинуть ГОРИЗОНТ прочтения у автора (только вперёд): признака на самой
+  // истории больше нет.
+  markRead: (authorId: number, maxReadId: number) => void
   // realtime (story_new): добавить историю в группу автора. No-op, если группы
   // автора нет (её подтянет полный рефетч ленты) или история уже есть.
   addStory: (authorId: number, story: StoryItem) => void
@@ -79,12 +81,10 @@ export const useStoriesStore = create<StoriesState>((set) => ({
   groups: [],
   loaded: false,
   setGroups: (groups) => set({ groups, loaded: true }),
-  markViewed: (authorId, storyId) =>
+  markRead: (authorId, maxReadId) =>
     set((state) => ({
       groups: state.groups.map((g) =>
-        g.author.id === authorId
-          ? { ...g, stories: g.stories.map((s) => (s.id === storyId && realStory(s) ? { ...(s as StoryItemReal), viewed: true } : s)) }
-          : g,
+        g.author.id === authorId && maxReadId > g.maxReadId ? { ...g, maxReadId } : g,
       ),
     })),
   addStory: (authorId, story) =>

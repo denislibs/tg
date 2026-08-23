@@ -13,7 +13,7 @@ import rootScope from '@lib/rootScope'
 import type { StoryGroup } from '../managers/storiesManager'
 import type { MediaArea, StoryItem } from '../stories/story'
 import {
-  isStoryEdited, isStoryPinned, isStoryViewed, storyFwdAuthorId, storyFwdStoryId,
+  isStoryEdited, isStoryPinned, isStoryRead, storyFwdAuthorId, storyFwdStoryId,
   storyMediaAreas, storyMyReaction, storyReactionsCount,
 } from '../stories/story'
 import type { UserReal } from '../peers/peer'
@@ -38,7 +38,9 @@ interface UseStoryViewerArgs {
 // пира, иначе первая.
 export function initialStoryIndex(group: StoryGroup | undefined): number {
   if (!group) return 0
-  return Math.max(0, group.stories.findIndex((s) => !isStoryViewed(s)))
+  // «Непрочитанная» — та, чей номер ВЫШЕ горизонта группы: признака на самой
+  // истории больше нет (см. `isStoryRead`).
+  return Math.max(0, group.stories.findIndex((s) => !isStoryRead(s, group.maxReadId)))
 }
 
 export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: UseStoryViewerArgs): {
@@ -79,7 +81,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
-  const markViewed = useStoriesStore((s) => s.markViewed)
+  const markRead = useStoriesStore((s) => s.markRead)
   const setMyReaction = useStoriesStore((s) => s.setMyReaction)
   const removeStory = useStoriesStore((s) => s.removeStory)
   const setStoryPinned = useStoriesStore((s) => s.setStoryPinned)
@@ -152,13 +154,13 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     if (group == null || stories.length === 0) onClose()
   }, [group, stories.length, onClose])
 
-  // Mark the shown story viewed (once per story shown) and reflect it in the
-  // store so the unseen ring clears. Skip own stories — the author isn't counted
-  // among their own viewers.
+  // Отметить показанную историю прочитанной (один раз на историю) и подвинуть
+  // ГОРИЗОНТ в сторе, чтобы кольцо непрочитанного погасло. Свои истории
+  // пропускаем — автор среди своих зрителей не числится.
   useEffect(() => {
-    if (!story || isMe || isStoryViewed(story)) return
-    void managers.stories.view(story.id)
-    markViewed(group!.author.id, story.id)
+    if (!story || isMe || group == null || isStoryRead(story, group.maxReadId)) return
+    void managers.stories.view(group.author.id, story.id)
+    markRead(group.author.id, story.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id])
 
@@ -181,7 +183,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     // зрителей. Список рисует пока только карточки — дата и реакция приехали
     // впервые (до порта их теряла витрина) и ждут своей вёрстки: у оригинала
     // они в строке зрителя есть.
-    void managers.stories.viewers(story.id).then((list) => setViewers(list.users))
+    void managers.stories.viewers(group!.author.id, story.id).then((list) => setViewers(list.users))
   }
 
   // Статистика ставит авто-прогресс на паузу через сам showStats (итоговый paused
@@ -200,8 +202,8 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     if (!story) return
     const next = storyMyReaction(story) === emoji ? null : emoji
     setMyReaction(story.id, next)
-    if (next) void managers.stories.setReaction(story.id, next)
-    else void managers.stories.removeReaction(story.id)
+    if (next) void managers.stories.setReaction(group!.author.id, story.id, next)
+    else void managers.stories.removeReaction(group!.author.id, story.id)
   }
 
   // Ответ на историю = обычный DM автору (явной ссылки «ответ на историю» на бэке
@@ -222,7 +224,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   const del = async () => {
     if (!story || !group) return
     try {
-      await managers.stories.del(story.id)
+      await managers.stories.del(group.author.id, story.id)
       removeStory(group.author.id, story.id)
     } catch {
       rootScope.dispatchEvent('ui:toast', 'Не удалось удалить историю')
@@ -235,7 +237,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     if (!story) return
     const next = !isStoryPinned(story)
     setStoryPinned(story.id, next)
-    void managers.stories.pin(story.id, next).catch(() => {
+    void managers.stories.pin(group!.author.id, story.id, next).catch(() => {
       setStoryPinned(story.id, !next)
       rootScope.dispatchEvent('ui:toast', 'Не удалось обновить закрепление')
     })

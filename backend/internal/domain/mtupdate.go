@@ -89,6 +89,7 @@ const (
 	UpdateBotCallbackAnswerTag        = "updateBotCallbackAnswer"
 	UpdateStoryTag                    = "updateStory"
 	UpdateSentStoryReactionTag        = "updateSentStoryReaction"
+	UpdateReadStoriesTag              = "updateReadStories"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -813,6 +814,27 @@ func (u UpdateStory) Tag() string { return u.Underscore }
 
 func NewUpdateStory(peer Peer, story StoryItem) UpdateStory {
 	return UpdateStory{Underscore: UpdateStoryTag, Peer: peer, Story: story}
+}
+
+// updateReadStories#f74e932b peer:Peer max_id:int = Update;
+//
+// ГОРИЗОНТ прочтения историй автора сдвинулся — один номер вместо признака на
+// каждой истории, ровно как `updateReadHistoryInbox` у сообщений. Кадр уезжает
+// на ДРУГИЕ устройства зрителя: кольцо непрочитанного должно гаснуть везде, а
+// не только там, где историю открыли.
+//
+// Прежде прочтение не рассылалось вовсе — вторая вкладка о нём не узнавала.
+type UpdateReadStories struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	MaxID      int    `json:"max_id"`
+}
+
+func (UpdateReadStories) isUpdate()     {}
+func (u UpdateReadStories) Tag() string { return u.Underscore }
+
+func NewUpdateReadStories(peer Peer, maxID int) UpdateReadStories {
+	return UpdateReadStories{Underscore: UpdateReadStoriesTag, Peer: peer, MaxID: maxID}
 }
 
 // updateSentStoryReaction#7d627683 peer:Peer story_id:int reaction:Reaction = Update;

@@ -59,6 +59,7 @@ export default function EditStorySheet({
   const [privacy, setPrivacy] = useState<StoryPrivacy>(storyPrivacy(story))
   const [allow, setAllow] = useState<Set<number>>(() => new Set(storyAllowIds(story)))
   const [busy, setBusy] = useState(false)
+  const meId = useChatsStore((st) => st.meId)
 
   const toggleContact = (id: number) =>
     setAllow((prev) => {
@@ -82,7 +83,8 @@ export default function EditStorySheet({
     const sendPrivacy = privacyChanged || allowChanged
     const sendAllow = privacy === 'selected' && sendPrivacy
     try {
-      await managers.stories.editStory(story.id, {
+      // Своя история, поэтому автор — сам зритель; адрес всё равно пара.
+      await managers.stories.editStory(meId ?? 0, story.id, {
         caption: caption.trim(),
         privacy: sendPrivacy ? privacy : undefined,
         allowIds: sendAllow ? [...allow] : undefined,

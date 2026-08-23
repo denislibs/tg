@@ -32,7 +32,7 @@ describe('storeProjection — кадры историй', () => {
 
   beforeEach(() => {
     feed.mockClear()
-    useStoriesStore.setState({ groups: [{ author: bob, stories: [story(1)] }], loaded: true })
+    useStoriesStore.setState({ groups: [{ author: bob, stories: [story(1)], maxReadId: 0 }], loaded: true })
   })
 
   it('storyItem известного автора применяется ТОЧЕЧНО, без рефетча ленты', () => {
@@ -66,6 +66,17 @@ describe('storeProjection — кадры историй', () => {
 
     expect(feed).toHaveBeenCalledTimes(1)
     expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
+  })
+
+  it('updateReadStories двигает ГОРИЗОНТ группы', () => {
+    rootScope.dispatchEventSingle(RT.storyRead, {
+      _: 'updateReadStories',
+      peer: { _: 'peerUser', user_id: 2 },
+      max_id: 5,
+    })
+
+    // Прочтение приехало с ДРУГОГО устройства зрителя — кольцо гаснет и здесь.
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(5)
   })
 
   it('updateSentStoryReaction ставит МОЮ реакцию', () => {

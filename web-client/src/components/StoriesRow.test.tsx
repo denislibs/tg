@@ -45,7 +45,9 @@ beforeEach(() => {
   useStoriesStore.setState({
     groups: [{
       author: { _: 'user', id: 2, first_name: 'Алиса' },
-      stories: [{ id: 10, viewed: false }] as never,
+      // «Непрочитанная» — номер ВЫШЕ горизонта группы; признака на истории нет.
+      stories: [{ _: 'storyItem', id: 10 }] as never,
+      maxReadId: 0,
     }],
   })
 })

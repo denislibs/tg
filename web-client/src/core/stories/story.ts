@@ -6,6 +6,7 @@
 //  • медиа было НОМЕРОМ (`mediaId`), поэтому вьювер спрашивал mime, размеры и
 //    длительность ОТДЕЛЬНЫМ запросом на каждую историю;
 //  • вид аудитории и вид области были строками (`privacy`, `mediaArea.type`);
+//  • прочитанность была признаком на КАЖДОЙ истории, а не горизонтом группы;
 //  • реакции лежали тремя ключами верхнего уровня, из которых один
 //    (`myReaction`) пер-зрительский, а два общие.
 //
@@ -99,6 +100,8 @@ export interface StoryItemReal {
     selected_contacts: true
     edited: true
   }>
+  /** Номер ВНУТРИ автора: им история и адресуется, и по нему считается
+   *  горизонт прочтения. Глобального ключа наружу не выходит. */
   id: number
   date: number
   fwd_from?: StoryFwdHeader
@@ -113,12 +116,6 @@ export interface StoryItemReal {
   views?: StoryViews
   /** Реакция ЗРИТЕЛЯ — единственная пер-зрительская часть агрегата. */
   sent_reaction?: Reaction
-  /**
-   * НАШ параметр вне схемы (`schema/schema_additional_params.json`): у оригинала
-   * прочитанность историй выражена горизонтом `peerStories.max_read_id`, а он
-   * требует пер-авторской нумерации. Временная форма, шаг E разбора.
-   */
-  viewed?: boolean
 }
 
 /** storyItemDeleted#51e6ee4f — «историю удалили». */
@@ -154,8 +151,17 @@ export function storyExpireDate(s: StoryItem | undefined): number {
   return realStory(s)?.expire_date ?? 0
 }
 
-export function isStoryViewed(s: StoryItem | undefined): boolean {
-  return realStory(s)?.viewed === true
+/**
+ * Прочитана ли история — СРАВНЕНИЕ с горизонтом, а не признак на самой истории.
+ *
+ * У оригинала прочитанность историй выражена одним номером на автора
+ * (`peerStories.max_read_id`), ровно как непрочитанность сообщения выводится из
+ * `read_inbox_max_id`. Признак на каждой истории был временной формой и ушёл
+ * вместе с пер-авторской нумерацией (миграция 0126).
+ */
+export function isStoryRead(s: StoryItem | undefined, maxReadId: number): boolean {
+  const story = realStory(s)
+  return story != null && story.id <= maxReadId
 }
 
 export function isStoryPinned(s: StoryItem | undefined): boolean {

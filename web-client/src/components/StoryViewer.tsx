@@ -569,7 +569,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
 
       {/* Статистика своей истории (full-screen оверлей над просмотрщиком) */}
       <Suspense fallback={null}>
-        {vm.showStats && <StoryStats storyId={vm.story.id} onClose={vm.closeStats} />}
+        {vm.showStats && <StoryStats authorId={vm.group!.author.id} storyId={vm.story.id} onClose={vm.closeStats} />}
       </Suspense>
 
       {/* Подтверждение удаления (tweb DeleteStoryTitle / DeleteStorySubtitle) */}
@@ -601,7 +601,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           onPick={(chatIds) => {
             setShareOpen(false)
             if (!chatIds.length) return
-            void managers.stories.share(vm.story!.id, chatIds).then((n) => {
+            void managers.stories.share(vm.group!.author.id, vm.story!.id, chatIds).then((n) => {
               rootScope.dispatchEvent('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
             }).catch(() => rootScope.dispatchEvent('ui:toast', 'Не удалось отправить'))
           }}

@@ -54,7 +54,6 @@ func storyCases() []struct {
 		Privacy:      StoryPrivacyRules("selected", []int64{5, 6}),
 		Views:        ptrOf(NewStoryViews(12, []MTReactionCount{NewReactionCount(NewReactionEmoji("👍"), 3, true)}, 3)),
 		SentReaction: NewReactionEmoji("👍"),
-		Viewed:       true,
 	}
 
 	return []struct {
@@ -66,10 +65,10 @@ func storyCases() []struct {
 		{"аудитория: все", StoryPrivacyRules("everyone", nil)},
 		{"аудитория: контакты", StoryPrivacyRules("contacts", nil)},
 		{"аудитория: близкие друзья", StoryPrivacyRules("close", nil)},
-		{"группа автора", NewPeerStories(NewPeer(5), []StoryItem{story})},
+		{"группа автора", NewPeerStories(NewPeer(5), 3, []StoryItem{story})},
 		{"stealth-окно", NewStoriesStealthMode(1787334148, 1787420548)},
 		{"лента историй", NewStoriesAllStories(
-			[]PeerStories{NewPeerStories(NewPeer(5), []StoryItem{story})},
+			[]PeerStories{NewPeerStories(NewPeer(5), 3, []StoryItem{story})},
 			[]User{&UserReal{Underscore: UserTag, ID: 5, FirstName: "Аня"}},
 			NewStoriesStealthMode(0, 0),
 		)},

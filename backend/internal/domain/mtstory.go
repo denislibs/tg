@@ -16,7 +16,7 @@ import "encoding/json"
 //
 // Здесь объявлена МОДЕЛЬ (шаг A). Витрины и журнал переводит шаг B, клиент —
 // шаг C, кадры — шаг D; горизонт прочтения (`peerStories.max_read_id`) требует
-// пер-авторской нумерации историй и вынесен в шаг E.
+// пер-авторской нумерации историй — она сделана миграцией 0126.
 
 // Значения дискриминатора `_` подсистемы историй.
 const (
@@ -89,6 +89,9 @@ type StoryItem interface {
 // Не производятся (предмета нет, назван в разборе): `min`, `noforwards`, `out`,
 // `albums`, `music`, `from_id` (автора несёт группа `peerStories.peer`, а у
 // плоских списков — пир запроса, ровно как у оригинала).
+//
+// `id` — НОМЕР ВНУТРИ АВТОРА, а не ключ строки: им история и адресуется
+// снаружи, и по нему же считается горизонт прочтения.
 type StoryItemReal struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -116,16 +119,6 @@ type StoryItemReal struct {
 	// SentReaction — flags.15?Reaction: реакция ЗРИТЕЛЯ. «Не реагировал» —
 	// отсутствие параметра.
 	SentReaction Reaction `json:"sent_reaction,omitempty"`
-	// Viewed — НАШ параметр вне схемы (schema_additional_params.json).
-	//
-	// У оригинала прочитанность историй выражена ГОРИЗОНТОМ
-	// `peerStories.max_read_id` — одним номером на автора, как read_inbox_max_id
-	// у диалога. Горизонт требует ПЕР-АВТОРСКОЙ нумерации историй, а stories.id
-	// у нас глобальный BIGSERIAL (миграция 0009), поэтому пока едет признак.
-	//
-	// Это временная форма, а не решение: заменяет её шаг E (Р3). Объявлена
-	// явно — молчаливым пропуском не остаётся ни дня.
-	Viewed bool `json:"viewed,omitempty"`
 }
 
 func (StoryItemReal) isStoryItem()  {}
@@ -559,14 +552,19 @@ func StoryPrivacyPFlags(privacy string) map[string]bool {
 // каждой истории. Пока пер-авторской нумерации нет, параметр не производится
 // (шаг E, Р3).
 type PeerStories struct {
-	Underscore string      `json:"_"`
-	Peer       Peer        `json:"peer"`
-	Stories    []StoryItem `json:"stories"`
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	// MaxReadID — flags.0?int: ГОРИЗОНТ прочтения. Один номер на автора вместо
+	// признака на каждой истории; «непрочитанная» выводит клиент сравнением, как
+	// у сообщения с `read_inbox_max_id`. Ноль — не читал ни одной, и тогда
+	// параметр не едет вовсе.
+	MaxReadID int64       `json:"max_read_id,omitempty"`
+	Stories   []StoryItem `json:"stories"`
 }
 
-// NewPeerStories — группа историй автора.
-func NewPeerStories(peer Peer, stories []StoryItem) PeerStories {
-	return PeerStories{Underscore: PeerStoriesTag, Peer: peer, Stories: orEmpty(stories)}
+// NewPeerStories — группа историй автора вместе с горизонтом прочтения зрителя.
+func NewPeerStories(peer Peer, maxReadID int64, stories []StoryItem) PeerStories {
+	return PeerStories{Underscore: PeerStoriesTag, Peer: peer, MaxReadID: maxReadID, Stories: orEmpty(stories)}
 }
 
 // storiesStealthMode#712e27fd flags:# active_until_date:flags.0?int

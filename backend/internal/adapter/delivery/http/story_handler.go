@@ -23,6 +23,24 @@ func NewStoryHandler(svc *storyusecase.Service, peers PeerResolver) *StoryHandle
 	return &StoryHandler{svc: svc, peers: peers}
 }
 
+// storyAddr разбирает ВНЕШНИЙ адрес истории из пути: пир автора плюс номер
+// внутри него. Глобального ключа снаружи больше нет — приём и причина те же,
+// что у сообщения (`/chats/{peerID}/messages/{msgSeq}`).
+//
+// Автор истории у нас всегда пользователь (каналы историй не публикуют),
+// поэтому ключ пира и есть его id; отдельного разрешения он не требует.
+func storyAddr(w http.ResponseWriter, r *http.Request) (authorID, seq int64, ok bool) {
+	authorID, ok = pathInt(w, r, "peerID")
+	if !ok {
+		return 0, 0, false
+	}
+	seq, ok = pathInt(w, r, "storySeq")
+	if !ok {
+		return 0, 0, false
+	}
+	return authorID, seq, true
+}
+
 func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrBadReaction):
@@ -98,6 +116,8 @@ func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 // like Post.
 func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	// Источник адресуется ПАРОЙ «автор + номер»: `source_author_id` перестал
+	// быть справочным полем и стал половиной адреса.
 	var b struct {
 		SourceAuthorID int64   `json:"source_author_id"`
 		SourceStoryID  int64   `json:"source_story_id"`
@@ -106,11 +126,11 @@ func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 		AllowUserIDs   []int64 `json:"allow_user_ids"`
 		Period         int64   `json:"period"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceStoryID == 0 {
-		writeError(w, http.StatusBadRequest, "source_story_id required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceStoryID == 0 || b.SourceAuthorID == 0 {
+		writeError(w, http.StatusBadRequest, "source_author_id and source_story_id required")
 		return
 	}
-	id, err := h.svc.Repost(r.Context(), user.ID, b.SourceStoryID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
+	id, err := h.svc.Repost(r.Context(), user.ID, b.SourceAuthorID, b.SourceStoryID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -122,7 +142,7 @@ func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 // chats as a regular media message with an attribution caption. Body: {peer_ids}.
 func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -141,7 +161,7 @@ func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 		}
 		chatIDs = append(chatIDs, id)
 	}
-	sent, err := h.svc.Share(r.Context(), storyID, user.ID, chatIDs)
+	sent, err := h.svc.Share(r.Context(), authorID, seq, user.ID, chatIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -165,6 +185,7 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		author := &groups[i].Author
 		peerStories = append(peerStories, domain.NewPeerStories(
 			domain.NewPeer(domain.PeerID(author.ID)),
+			groups[i].MaxReadID,
 			storyItems(groups[i].Stories, author.ID == user.ID),
 		))
 		users = append(users, author)
@@ -177,11 +198,11 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 
 func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.View(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.View(r.Context(), authorID, seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -190,11 +211,11 @@ func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 
 func (h *StoryHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	viewers, err := h.svc.Viewers(r.Context(), storyID, user.ID)
+	viewers, err := h.svc.Viewers(r.Context(), authorID, seq, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -228,11 +249,11 @@ func reactedCount(views []domain.StoryView) int {
 // own story (tweb stats.getStoryStats): total views + a per-day views series.
 func (h *StoryHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	st, err := h.svc.Stats(r.Context(), storyID, user.ID)
+	st, err := h.svc.Stats(r.Context(), authorID, seq, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -249,7 +270,7 @@ func (h *StoryHandler) Stats(w http.ResponseWriter, r *http.Request) {
 // caller's reaction on a story they can see (tweb stories.sendReaction).
 func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -260,7 +281,7 @@ func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "reaction required")
 		return
 	}
-	if err := h.svc.SetReaction(r.Context(), storyID, user.ID, b.Reaction); err != nil {
+	if err := h.svc.SetReaction(r.Context(), authorID, seq, user.ID, b.Reaction); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -271,11 +292,11 @@ func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 // reaction on a story they can see.
 func (h *StoryHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.RemoveReaction(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.RemoveReaction(r.Context(), authorID, seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -284,11 +305,11 @@ func (h *StoryHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.Delete(r.Context(), seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -396,7 +417,7 @@ func (h *StoryHandler) Pinned(w http.ResponseWriter, r *http.Request) {
 // profile-pin of a story.
 func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -407,7 +428,7 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.SetPinned(r.Context(), storyID, user.ID, b.Pinned); err != nil {
+	if err := h.svc.SetPinned(r.Context(), seq, user.ID, b.Pinned); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -419,7 +440,7 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 // left unchanged.
 func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -433,7 +454,7 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.EditStory(r.Context(), storyID, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
+	if err := h.svc.EditStory(r.Context(), seq, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
 		h.mapErr(w, err)
 		return
 	}

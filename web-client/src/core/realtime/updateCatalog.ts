@@ -65,6 +65,7 @@ export const UPDATE_RT = {
   // ВНУТРИ кадра, а не имя кадра, как было у пары story_new/story_deleted.
   updateStory: RT.story,
   updateSentStoryReaction: RT.storyReaction,
+  updateReadStories: RT.storyRead,
 } as const satisfies Record<UpdatePredicate, string>
 
 /**

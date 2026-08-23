@@ -81,6 +81,7 @@ export const RT = {
   // внутри кадра (`storyItem` против `storyItemDeleted`), а не имя кадра.
   story: 'rt:story',
   storyReaction: 'rt:story_reaction',
+  storyRead: 'rt:story_read',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -548,6 +549,12 @@ export interface StoryUpdateEvt { _: 'updateStory'; peer: Peer; story: StoryItem
  *  МОЙ выбор — эхо на другие устройства зрителя. Общий агрегат сюда не входит:
  *  он одинаков для всех и едет внутри самой истории (`storyViews`). */
 export interface SentStoryReactionEvt { _: 'updateSentStoryReaction'; peer: Peer; story_id: number; reaction?: Reaction }
+/** updateReadStories#f74e932b peer:Peer max_id:int = Update;
+ *
+ *  ГОРИЗОНТ прочтения историй автора сдвинулся — один номер вместо признака на
+ *  каждой истории, ровно как `updateReadHistoryInbox` у сообщений. Кадр уезжает
+ *  на ДРУГИЕ устройства зрителя: кольцо непрочитанного гаснет везде. */
+export interface ReadStoriesEvt { _: 'updateReadStories'; peer: Peer; max_id: number }
 /**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
@@ -586,6 +593,7 @@ export type Update =
   | BotCallbackAnswerEvt
   | StoryUpdateEvt
   | SentStoryReactionEvt
+  | ReadStoriesEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']
