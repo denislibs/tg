@@ -61,6 +61,10 @@ export const UPDATE_RT = {
   updateChannelUserTyping: RT.typing,
   updateUserStatus: RT.presence,
   updateBotCallbackAnswer: RT.botCallbackAnswer,
+  // История: один конструктор на «появилась» и «исчезла» — различает их выбор
+  // ВНУТРИ кадра, а не имя кадра, как было у пары story_new/story_deleted.
+  updateStory: RT.story,
+  updateSentStoryReaction: RT.storyReaction,
 } as const satisfies Record<UpdatePredicate, string>
 
 /**

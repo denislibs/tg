@@ -201,10 +201,7 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 		return 0, err
 	}
 	story.ID = id
-	s.broadcast(ctx, s.recipients(ctx, authorID, privacy, allowIDs), frame("story_new", map[string]any{
-		"id": id, "author_id": authorID, "media_id": mediaID,
-		"caption": caption, "expires_at": story.ExpiresAt,
-	}))
+	s.publishStory(ctx, s.recipients(ctx, authorID, privacy, allowIDs), authorID, id)
 	return id, nil
 }
 
@@ -250,11 +247,7 @@ func (s *Service) Repost(ctx context.Context, authorID, srcStoryID int64, captio
 	if err != nil {
 		return 0, err
 	}
-	s.broadcast(ctx, s.recipients(ctx, authorID, privacy, allowIDs), frame("story_new", map[string]any{
-		"id": id, "author_id": authorID, "media_id": origin.MediaID,
-		"caption": caption, "expires_at": story.ExpiresAt,
-		"fwd_from": map[string]any{"author_id": origin.AuthorID, "story_id": srcStoryID},
-	}))
+	s.publishStory(ctx, s.recipients(ctx, authorID, privacy, allowIDs), authorID, id)
 	return id, nil
 }
 
@@ -449,9 +442,11 @@ func (s *Service) Delete(ctx context.Context, storyID, authorID int64) error {
 	if err != nil {
 		return nil // deletion succeeded; skip fan-out if partners can't be resolved
 	}
-	s.broadcast(ctx, append(partners, authorID), frame("story_deleted", map[string]any{
-		"story_id": storyID, "author_id": authorID,
-	}))
+	// «Историю удалили» — тот же конструктор кадра, что и «вот она»: различает
+	// их выбор ВНУТРИ (`storyItemDeleted` против `storyItem`), а не имя кадра.
+	s.broadcast(ctx, append(partners, authorID), frame("story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), domain.NewStoryItemDeleted(int(storyID)),
+	)))
 	return nil
 }
 
@@ -624,8 +619,16 @@ func (s *Service) recipients(ctx context.Context, authorID int64, privacy string
 	return append(partners, authorID)
 }
 
-// notifyReaction publishes a story_reaction frame (with the fresh total) to the
-// story's author. reaction=="" means the viewer removed their reaction.
+// notifyReaction рассылает изменение реакции ДВУМЯ разными кадрами, потому что
+// это два разных факта:
+//
+//   - АВТОРУ уезжает `updateStory` со свежей историей: агрегат реакций живёт
+//     внутри неё (`storyViews`) и одинаков для всех получателей;
+//   - САМОМУ ЗРИТЕЛЮ — `updateSentStoryReaction`: это его личный выбор, и на
+//     другие его устройства он попадает отдельным каналом.
+//
+// Прежний кадр `story_reaction` смешивал оба: нёс общий счётчик вместе с
+// `user_id`, и получатель решал «моё ли это» сравнением с собой.
 func (s *Service) notifyReaction(ctx context.Context, storyID, userID int64, reaction string) {
 	if s.publisher == nil {
 		return
@@ -634,18 +637,39 @@ func (s *Service) notifyReaction(ctx context.Context, storyID, userID int64, rea
 	if err != nil {
 		return
 	}
-	count, err := s.repo.ReactionsCount(ctx, storyID)
+	s.publishStory(ctx, []int64{author}, author, storyID)
+
+	// «Снял реакцию» — тоже событие, и в схеме оно выражается пустым
+	// конструктором объединения (`reactionEmpty` у оригинала нет, поэтому едет
+	// эмодзи-конструктор с пустым значением: клиент читает его как «нет»).
+	var r domain.Reaction = domain.NewReactionEmoji(reaction)
+	_ = s.publisher.PublishToUser(ctx, userID, frame("story_reaction", domain.NewUpdateSentStoryReaction(
+		domain.NewPeer(domain.PeerID(author)), int(storyID), r,
+	)))
+}
+
+// publishStory рассылает кадр `updateStory` — историю ЦЕЛИКОМ, тем же
+// конструктором, что и витрина.
+//
+// Тело кадра одно на всех получателей, поэтому пер-зрительских частей в нём
+// нет: история читается глазами АВТОРА (`viewerID = authorID`), а `privacy` —
+// аудитория, адресованная только ему, — в кадр не кладётся.
+func (s *Service) publishStory(ctx context.Context, recipients []int64, authorID, storyID int64) {
+	if s.publisher == nil {
+		return
+	}
+	rec, err := s.repo.ByID(ctx, storyID, authorID)
 	if err != nil {
 		return
 	}
-	var r any
-	if reaction != "" {
-		r = reaction
+	rec.Viewed = false
+	rec.MyReaction = ""
+	if err := s.attachMedia(ctx, []*domain.StoryRecord{&rec}); err != nil {
+		return
 	}
-	_ = s.publisher.PublishToUser(ctx, author, frame("story_reaction", map[string]any{
-		"story_id": storyID, "user_id": userID,
-		"reaction": r, "reactions_count": count,
-	}))
+	s.broadcast(ctx, recipients, frame("story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), rec.ToStoryItem(false),
+	)))
 }
 
 // broadcast sends frame to each recipient (deduplicated) when a publisher is set.

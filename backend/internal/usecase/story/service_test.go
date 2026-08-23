@@ -2,6 +2,7 @@ package story
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -63,6 +64,7 @@ type fakeRepo struct {
 	archiveErr      error
 	pinnedItems     []domain.StoryRecord
 	pinnedItemsErr  error
+	byID            map[int64]domain.StoryRecord
 	purgedSince     time.Time
 	purgeCalled     bool
 	purgeErr        error
@@ -141,6 +143,19 @@ func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) 
 }
 func (f *fakeRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	return f.pinnedItems, f.pinnedItemsErr
+}
+
+// ByID — одна история для кадра `updateStory`. По умолчанию отдаёт «нет такой»:
+// тестам, которых кадр не касается, историю сеять незачем.
+func (f *fakeRepo) ByID(ctx context.Context, storyID, viewerID int64) (domain.StoryRecord, error) {
+	if f.byID == nil {
+		return domain.StoryRecord{}, domain.ErrNotFound
+	}
+	rec, ok := f.byID[storyID]
+	if !ok {
+		return domain.StoryRecord{}, domain.ErrNotFound
+	}
+	return rec, nil
 }
 func (f *fakeRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {
 	f.purgeCalled = true
@@ -394,8 +409,37 @@ func TestPost_PeriodToExpiry(t *testing.T) {
 	}
 }
 
-func TestPost_BroadcastsStoryNew(t *testing.T) {
+// seedStory кладёт историю, которую кадр `updateStory` читает через ByID:
+// кадр несёт историю ЦЕЛИКОМ, а не плоские поля, поэтому без неё он не уедет.
+func seedStory(f *fakeRepo, id int64, over ...func(*domain.StoryRecord)) {
+	rec := domain.StoryRecord{ID: id, MediaID: 7, Caption: "hi", Privacy: "contacts"}
+	for _, fn := range over {
+		fn(&rec)
+	}
+	if f.byID == nil {
+		f.byID = map[int64]domain.StoryRecord{}
+	}
+	f.byID[id] = rec
+}
+
+// frameTag — дискриминатор кадра: маршрутизация идёт по нему, а не по имени
+// конверта.
+func frameTag(t *testing.T, raw []byte) string {
+	t.Helper()
+	var env struct {
+		D struct {
+			Underscore string `json:"_"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("кадр не разбирается: %v", err)
+	}
+	return env.D.Underscore
+}
+
+func TestPost_BroadcastsStoryUpdate(t *testing.T) {
 	repo := &fakeRepo{createID: 42}
+	seedStory(repo, 42)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
 	svc.SetPublisher(pub)
@@ -405,7 +449,42 @@ func TestPost_BroadcastsStoryNew(t *testing.T) {
 	// contacts/everyone -> partners (2,3) + author (1).
 	for _, uid := range []int64{1, 2, 3} {
 		if len(pub.frames[uid]) != 1 {
-			t.Fatalf("user %d: want 1 story_new frame, got %d", uid, len(pub.frames[uid]))
+			t.Fatalf("user %d: want 1 updateStory frame, got %d", uid, len(pub.frames[uid]))
+		}
+		if tag := frameTag(t, pub.frames[uid][0]); tag != domain.UpdateStoryTag {
+			t.Fatalf("user %d: кадр = %q, ожидался %q", uid, tag, domain.UpdateStoryTag)
+		}
+	}
+}
+
+// Тело кадра одно на ВСЕХ получателей, поэтому пер-зрительских частей в нём
+// быть не может: `viewed` у каждого своё, а `privacy` адресован только автору.
+// Та же ловушка уже ловилась у pFlags.out и у `unread`.
+func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
+	repo := &fakeRepo{createID: 42}
+	seedStory(repo, 42, func(r *domain.StoryRecord) {
+		r.Viewed = true
+		r.MyReaction = "👍"
+		r.Privacy = "selected"
+		r.AllowIDs = []int64{2}
+	})
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{owner: 1}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, nil, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env struct {
+		D struct {
+			Story map[string]any `json:"story"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(pub.frames[2][0], &env); err != nil {
+		t.Fatalf("кадр не разбирается: %v", err)
+	}
+	for _, key := range []string{"viewed", "sent_reaction", "privacy"} {
+		if _, exists := env.D.Story[key]; exists {
+			t.Errorf("в общем теле кадра пер-зрительская часть: %s", key)
 		}
 	}
 }
@@ -414,13 +493,14 @@ func TestPost_SelectedBroadcastsToAllowlist(t *testing.T) {
 	repo := &fakeRepo{createID: 42}
 	pub := newFakePublisher()
 	// Partners would be 9, but selected must target the allowlist only (+author).
+	seedStory(repo, 42)
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
 	svc.SetPublisher(pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
-		t.Fatalf("want story_new to allowlisted 2 and author 1")
+		t.Fatalf("want updateStory to allowlisted 2 and author 1")
 	}
 	if len(pub.frames[9]) != 0 {
 		t.Fatalf("selected story must not reach non-allowlisted partner 9")
@@ -447,8 +527,12 @@ func TestSetReaction_InvalidEmoji_BadReaction(t *testing.T) {
 	}
 }
 
-func TestSetReaction_OK_UpsertsAndNotifiesAuthor(t *testing.T) {
+// Реакция рассылается ДВУМЯ разными кадрами, потому что это два разных факта:
+// автору — свежая история (`updateStory`, агрегат внутри неё), самому зрителю —
+// его личный выбор (`updateSentStoryReaction`) для других его устройств.
+func TestSetReaction_OK_UpsertsAndNotifiesBothSides(t *testing.T) {
 	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 3}
+	seedStory(repo, 5)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
@@ -458,13 +542,17 @@ func TestSetReaction_OK_UpsertsAndNotifiesAuthor(t *testing.T) {
 	if !repo.setCalled || repo.setReaction != "👍" {
 		t.Fatalf("expected SetReaction with 👍, got called=%v r=%q", repo.setCalled, repo.setReaction)
 	}
-	if len(pub.frames[10]) != 1 {
-		t.Fatalf("expected story_reaction to author 10, got %d", len(pub.frames[10]))
+	if len(pub.frames[10]) != 1 || frameTag(t, pub.frames[10][0]) != domain.UpdateStoryTag {
+		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(pub.frames[10]))
+	}
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
+		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
 	}
 }
 
-func TestRemoveReaction_OK_NotifiesAuthor(t *testing.T) {
+func TestRemoveReaction_OK_NotifiesBothSides(t *testing.T) {
 	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 0}
+	seedStory(repo, 5)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
@@ -474,8 +562,11 @@ func TestRemoveReaction_OK_NotifiesAuthor(t *testing.T) {
 	if !repo.removeCalled {
 		t.Fatal("expected RemoveReaction to be called")
 	}
-	if len(pub.frames[10]) != 1 {
-		t.Fatalf("expected story_reaction to author 10, got %d", len(pub.frames[10]))
+	if len(pub.frames[10]) != 1 || frameTag(t, pub.frames[10][0]) != domain.UpdateStoryTag {
+		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(pub.frames[10]))
+	}
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
+		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
 	}
 }
 
@@ -549,6 +640,7 @@ func TestPost_InvalidPrivacy(t *testing.T) {
 
 func TestPost_CloseBroadcastsToCloseFriendsOnly(t *testing.T) {
 	repo := &fakeRepo{createID: 42, closeFriends: []int64{2}}
+	seedStory(repo, 42)
 	pub := newFakePublisher()
 	// Partners would be 9, but close must target the close-friends list only (+author).
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
@@ -557,7 +649,7 @@ func TestPost_CloseBroadcastsToCloseFriendsOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
-		t.Fatalf("want story_new to close friend 2 and author 1")
+		t.Fatalf("want updateStory to close friend 2 and author 1")
 	}
 	if len(pub.frames[9]) != 0 {
 		t.Fatalf("close story must not reach non-close partner 9")

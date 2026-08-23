@@ -20,7 +20,7 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -171,7 +171,6 @@ const APPLY: Projector = {
   // и «целое число звёзд» — частный случай, а не форма. Дробную часть витрина
   // пока не показывает — предмета нет, суммы у нас целые.
   [RT.balanceUpdate]: (e) => { if (typeof e.balance?.amount === 'number') setStarsBalance(e.balance.amount) },
-  [RT.storyDeleted]: (e) => { useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
 }
 
 // Регистрирует все стор-подписки на rootScope. Вызывается один раз из realtimeBridge.
@@ -311,23 +310,28 @@ export function registerStoreProjection(managers: Managers): void {
   // Истории (Stories realtime) → storiesStore. Новая история известного автора
   // добавляется в его группу; для нового автора (группы ещё нет) — полный рефетч
   // ленты (нужны имя/аватар автора). Удаление и реакции правят стор точечно.
-  rootScope.addEventListener(RT.storyNew, () => {
-    // Кадр несёт ПЛОСКИЕ поля ({id, author_id, media_id, caption, expires_at}) и
-    // построить из них `storyItem` нельзя: у истории обязательна СТУПЕНЬ медиа,
-    // а в кадре только номер файла. Собрать её на витрине означало бы положить в
-    // зеркало историю с `media: null` — то есть завести вторую, урезанную форму
-    // того же предмета. Поэтому лента перечитывается целиком.
-    //
-    // Чинит это шаг D разбора (docs/readiness/tl-stories-analysis.md, Р9): кадр
-    // становится `updateStory{peer, story}` и несёт историю ЦЕЛИКОМ — тем же
-    // конструктором, что и витрина, — после чего точечное применение вернётся.
-    void loadStories(managers)
+  rootScope.addEventListener(RT.story, (raw) => {
+    const e = raw as StoryUpdateEvt
+    const authorId = Number(getPeerId(e.peer))
+    const st = useStoriesStore.getState()
+    // «Появилась» и «исчезла» — ВЫБОР конструктора внутри кадра, а не два
+    // разных кадра: имя конверта тут ничего не решает.
+    if (e.story._ === 'storyItemDeleted') {
+      st.removeStory(authorId, e.story.id)
+      return
+    }
+    // История приезжает ЦЕЛИКОМ, поэтому применяется точечно. Полный рефетч
+    // остаётся ровно для нового автора: его карточки в зеркале ещё нет, а
+    // группа без автора смысла не имеет.
+    if (st.groups.some((g) => g.author.id === authorId)) st.addStory(authorId, e.story)
+    else void loadStories(managers)
   })
   rootScope.addEventListener(RT.storyReaction, (raw) => {
-    const e = raw as StoryReactionEvt
-    const meId = useChatsStore.getState().meId
-    // myReaction обновляем только для эха собственного действия (user_id === me).
-    useStoriesStore.getState().applyStoryReaction(e.story_id, e.reactions_count, e.user_id === meId ? e.reaction : undefined)
+    const e = raw as SentStoryReactionEvt
+    // Кадр несёт МОЙ выбор и только его: общий агрегат приезжает внутри самой
+    // истории (`updateStory` выше), поэтому счётчик отсюда не берётся.
+    const emoticon = e.reaction?._ === 'reactionEmoji' ? e.reaction.emoticon : ''
+    useStoriesStore.getState().setMyReaction(e.story_id, emoticon || null)
   })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле). Владелец — воркер:
   // и сами байты, и границы аплоада теперь его (messages.sendFile), поэтому

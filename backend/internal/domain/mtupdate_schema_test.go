@@ -88,6 +88,14 @@ func updateCases() []struct {
 		{"чек-лист", NewUpdateMessageToDo(peer, ChecklistInfo{ID: 3, Title: "Список"}.ToMedia())},
 		{"розыгрыш", NewUpdateMessageGiveaway(peer, GiveawayInfo{ID: 4, PeerID: PeerID(-5), WinnersCount: 1}.ToMedia(12))},
 		{"чат исчез", NewUpdateChatRemoved(NewPeerChannel(5))},
+		// История ЦЕЛИКОМ и «её удалили» — один конструктор кадра, различает их
+		// выбор внутри.
+		{"история", NewUpdateStory(peer, StoryItemReal{
+			Underscore: StoryItemTag, ID: 3, Date: 1787334148, ExpireDate: 1787420548,
+			Media: MessageMediaPhoto{Underscore: MessageMediaPhotoTag},
+		})},
+		{"историю удалили", NewUpdateStory(peer, NewStoryItemDeleted(3))},
+		{"моя реакция на историю", NewUpdateSentStoryReaction(peer, 3, NewReactionEmoji("👍"))},
 		{"тема чата", NewUpdateChatTheme(peer, "sunset")},
 		{"снимок карточки чата", func() any {
 			c := ChatRecord{ID: 5, Type: ChatTypeChannel, Title: "Канал"}
@@ -191,6 +199,8 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateChannelBoostStatusTag,
 		UpdateStarsBalanceTag,
 		UpdateBotCallbackAnswerTag,
+		UpdateStoryTag,
+		UpdateSentStoryReactionTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

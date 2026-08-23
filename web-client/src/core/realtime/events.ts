@@ -1,8 +1,9 @@
 // src/core/realtime/events.ts
-import type { MessageEntity, RawMyMessage, MessageReactions } from '../models'
+import type { MessageEntity, RawMyMessage, MessageReactions, Reaction } from '../models'
 import type { MessageMedia } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
+import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
@@ -76,8 +77,9 @@ export const RT = {
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
-  storyNew: 'rt:story_new',
-  storyDeleted: 'rt:story_deleted',
+  // История появилась ЛИБО исчезла — ОДНО событие: различает их конструктор
+  // внутри кадра (`storyItem` против `storyItemDeleted`), а не имя кадра.
+  story: 'rt:story',
   storyReaction: 'rt:story_reaction',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
@@ -535,9 +537,17 @@ export interface BalanceUpdateEvt {
   balance: { _: 'starsAmount'; amount: number; nanos: number }
 }
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
-export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
-export interface StoryDeletedEvt { story_id: number; author_id: number }
-export interface StoryReactionEvt { story_id: number; user_id: number; reaction: string | null; reactions_count: number }
+/** updateStory#75b3b798 peer:Peer story:StoryItem = Update;
+ *
+ *  История едет ЦЕЛИКОМ — тем же конструктором, что и на витрине, вместе со
+ *  ступенью медиа. Плоский кадр прошлой формы историю построить не мог: в нём
+ *  был только номер файла, и витрине приходилось перечитывать ленту. */
+export interface StoryUpdateEvt { _: 'updateStory'; peer: Peer; story: StoryItem }
+/** updateSentStoryReaction#7d627683 peer:Peer story_id:int reaction:Reaction;
+ *
+ *  МОЙ выбор — эхо на другие устройства зрителя. Общий агрегат сюда не входит:
+ *  он одинаков для всех и едет внутри самой истории (`storyViews`). */
+export interface SentStoryReactionEvt { _: 'updateSentStoryReaction'; peer: Peer; story_id: number; reaction?: Reaction }
 /**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
@@ -574,6 +584,8 @@ export type Update =
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | BotCallbackAnswerEvt
+  | StoryUpdateEvt
+  | SentStoryReactionEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']

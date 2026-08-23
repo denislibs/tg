@@ -561,6 +561,32 @@ func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domai
 	return r.scanStoryItems(ctx, rows, viewerID)
 }
 
+// ByID — ОДНА история глазами зрителя. Нужна кадру `updateStory`: история едет
+// в нём целиком, тем же конструктором, что и на витрине, — плоский кадр прошлой
+// формы историю построить не мог (в нём был только номер файла).
+//
+// Видимость здесь НЕ проверяется: кадр адресуется тому, кто историю и так
+// видит (автору либо получателю рассылки), а проверка живёт в usecase.
+func (r *StoryRepo) ByID(ctx context.Context, storyID, viewerID int64) (domain.StoryRecord, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+storyItemCols+`
+		   FROM stories s
+		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
+		  WHERE s.id = $2`,
+		viewerID, storyID)
+	if err != nil {
+		return domain.StoryRecord{}, err
+	}
+	items, err := r.scanStoryItems(ctx, rows, viewerID)
+	if err != nil {
+		return domain.StoryRecord{}, err
+	}
+	if len(items) == 0 {
+		return domain.StoryRecord{}, domain.ErrNotFound
+	}
+	return items[0], nil
+}
+
 func (r *StoryRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`DELETE FROM story_views WHERE viewer_id=$1 AND viewed_at >= $2`, viewerID, since)

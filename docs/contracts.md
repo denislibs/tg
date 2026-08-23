@@ -913,6 +913,8 @@ Delete the caller's own story.
 | `boost_update` | `updateChannelBoostStatus` | `premium.boostsStatus` без пер-зрительской части |
 | `balance_update` | `updateStarsBalance` | `starsAmount{amount, nanos}` — звёзды дробные |
 | `bot_callback_answer` | `updateBotCallbackAnswer` | наш конструктор; «модалкой» — бит `pFlags.alert` |
+| `story_update` | `updateStory` | история ЦЕЛИКОМ — тем же конструктором, что на витрине; «её удалили» это `storyItemDeleted` внутри, а не отдельный кадр |
+| `story_reaction` | `updateSentStoryReaction` | МОЙ выбор, эхо на другие устройства зрителя; общий агрегат едет внутри истории |
 
 ### Server → client: кадры БЕЗ конструктора
 Эти уезжают JSON-текстом всегда, и причин ровно две.
@@ -935,7 +937,6 @@ MTProto, которых мы не портируем):
 |-----|-----|
 | `folder_update` | порта самой папки (`dialogFilter` несёт `TextWithEntities` и `Vector<InputPeer>`). Курсор кадр НЕСЁТ — это единственный логируемый кадр без конструктора |
 | `geo_live_update` | у оригинала кадра нет вовсе: движение точки это ПРАВКА сообщения |
-| `story_new` · `story_deleted` · `story_reaction` | порта `storyItem` |
 | `suggested_post_update` | порта `SuggestedPostInfo` |
 
 ### Delivery guarantees

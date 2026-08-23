@@ -34,9 +34,6 @@ export const TRANSPORT_FRAMES = {
   // ── предмет не портирован, курсора нет (#52) ──
   geo_live_update:       { kind: 'ephemeral', rt: RT.geoLiveUpdate },
   suggested_post_update: { kind: 'ephemeral', rt: RT.suggestedPost },
-  story_new:             { kind: 'ephemeral', rt: RT.storyNew },
-  story_deleted:         { kind: 'ephemeral', rt: RT.storyDeleted },
-  story_reaction:        { kind: 'ephemeral', rt: RT.storyReaction },
   // ── транспорт (решение Р6) ──
   message_ack:         { kind: 'ephemeral', rt: RT.ack },
   message_error:       { kind: 'ephemeral', rt: RT.messageError },

@@ -87,6 +87,8 @@ const (
 	UpdateChannelBoostStatusTag       = "updateChannelBoostStatus"
 	UpdateStarsBalanceTag             = "updateStarsBalance"
 	UpdateBotCallbackAnswerTag        = "updateBotCallbackAnswer"
+	UpdateStoryTag                    = "updateStory"
+	UpdateSentStoryReactionTag        = "updateSentStoryReaction"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -786,6 +788,54 @@ func (u UpdateChatRemoved) Tag() string { return u.Underscore }
 
 func NewUpdateChatRemoved(peer Peer) UpdateChatRemoved {
 	return UpdateChatRemoved{Underscore: UpdateChatRemovedTag, Peer: peer}
+}
+
+// updateStory#75b3b798 peer:Peer story:StoryItem = Update;
+//
+// История появилась ЛИБО исчезла — различает это конструктор ВНУТРИ: `storyItem`
+// значит «вот она», `storyItemDeleted` — «её больше нет». Прежде это были два
+// собственных типа кадра (`story_new` и `story_deleted`), причём второй нёс
+// только номер: получатель отличал их по имени конверта, а не по предмету.
+//
+// История едет ЦЕЛИКОМ — тем же конструктором, что и на витрине, вместе со
+// ступенью медиа. Плоский кадр прошлой формы построить историю не мог (в нём был
+// только номер файла), и витрине приходилось перечитывать ленту.
+//
+// Своего pts у конструктора нет: кадр эфемерный.
+type UpdateStory struct {
+	Underscore string    `json:"_"`
+	Peer       Peer      `json:"peer"`
+	Story      StoryItem `json:"story"`
+}
+
+func (UpdateStory) isUpdate()     {}
+func (u UpdateStory) Tag() string { return u.Underscore }
+
+func NewUpdateStory(peer Peer, story StoryItem) UpdateStory {
+	return UpdateStory{Underscore: UpdateStoryTag, Peer: peer, Story: story}
+}
+
+// updateSentStoryReaction#7d627683 peer:Peer story_id:int reaction:Reaction = Update;
+//
+// «Я поставил реакцию на историю» — эхо СВОЕГО действия на другие устройства
+// зрителя. Общий агрегат сюда не входит и входить не может: он одинаков для
+// всех получателей и едет внутри самой истории (`storyViews`), а здесь живёт
+// ровно пер-зрительская часть — та же граница, что у `sent_reaction`.
+//
+// Прежний кадр `story_reaction` смешивал оба: нёс `reactions_count` вместе с
+// `user_id`, и получатель решал «моё ли это» сравнением с собой.
+type UpdateSentStoryReaction struct {
+	Underscore string   `json:"_"`
+	Peer       Peer     `json:"peer"`
+	StoryID    int      `json:"story_id"`
+	Reaction   Reaction `json:"reaction"`
+}
+
+func (UpdateSentStoryReaction) isUpdate()     {}
+func (u UpdateSentStoryReaction) Tag() string { return u.Underscore }
+
+func NewUpdateSentStoryReaction(peer Peer, storyID int, reaction Reaction) UpdateSentStoryReaction {
+	return UpdateSentStoryReaction{Underscore: UpdateSentStoryReactionTag, Peer: peer, StoryID: storyID, Reaction: reaction}
 }
 
 // updateChatTheme#88ce5c7f peer:Peer theme_id:string = Update; — НАШ конструктор.

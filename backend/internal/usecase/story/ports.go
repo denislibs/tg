@@ -53,6 +53,10 @@ type StoryRepo interface {
 	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error)
 	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error)
 
+	// ByID — одна история глазами зрителя (для кадра `updateStory`, который
+	// несёт историю целиком). domain.ErrNotFound, если её нет.
+	ByID(ctx context.Context, storyID, viewerID int64) (domain.StoryRecord, error)
+
 	// PurgeRecentViews удаляет просмотры зрителя за окно [since, now] — ретро-эффект
 	// stealth-режима (past): скрыть недавние просмотры при активации.
 	PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error

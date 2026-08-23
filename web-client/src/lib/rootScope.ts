@@ -14,8 +14,8 @@ import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
-  GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
-  StoryReactionEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
+  GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
+  SentStoryReactionEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
 } from '@core/realtime/events'
 import type { MyMessage } from '@core/models'
@@ -96,9 +96,8 @@ export type BroadcastEvents = {
   [RT.secretRequest]: [{ peer_id: PeerId; initiator_id: number; responder_id: number }]
   [RT.secretAccept]: [{ peer_id: PeerId; state?: string; fingerprint?: string[] }]
   [RT.secretReject]: [{ peer_id: PeerId }]
-  [RT.storyNew]: [StoryNewEvt]
-  [RT.storyDeleted]: [StoryDeletedEvt]
-  [RT.storyReaction]: [StoryReactionEvt]
+  [RT.story]: [StoryUpdateEvt]
+  [RT.storyReaction]: [SentStoryReactionEvt]
   // ВНИМАНИЕ читающему payload любого из трёх событий ниже: он НЕ источник правды
   // (см. events.ts:RT.state и докблок realtime.ts:getStatus — там же точная
   // граница, что тут 1:1 с tweb, а что нет). Автомат (Задача 3) обязан на
