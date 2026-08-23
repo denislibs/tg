@@ -48,19 +48,23 @@ package domain
 // — следующие шаги, перечисленные в разборе. Пропуск назван, а не забыт.
 
 // Значения дискриминатора `_` объединения Update.
+//
+// Объявлено ровно то, что ПРОИЗВОДИТСЯ. Канальных близнецов правки, прочтения
+// и закрепления (updateEditChannelMessage, updateReadChannelInbox/Outbox,
+// updatePinnedChannelMessages) здесь нет намеренно: эти кадры у нас
+// доставляются пер-юзерным веером со своим курсором, и канальный конструктор
+// на пер-юзерном курсоре соврал бы о том, какой курсор двигать (то же
+// основание записано у editMessagePayload). Они вернутся вместе с переводом
+// этих кадров на журнал канала — долг ДОСТАВКИ, названный в разборе.
 const (
 	UpdateNewMessageTag               = "updateNewMessage"
 	UpdateNewChannelMessageTag        = "updateNewChannelMessage"
 	UpdateEditMessageTag              = "updateEditMessage"
-	UpdateEditChannelMessageTag       = "updateEditChannelMessage"
 	UpdateDeletePeerMessagesTag       = "updateDeletePeerMessages"
 	UpdateReadHistoryInboxTag         = "updateReadHistoryInbox"
 	UpdateReadHistoryOutboxTag        = "updateReadHistoryOutbox"
-	UpdateReadChannelInboxTag         = "updateReadChannelInbox"
-	UpdateReadChannelOutboxTag        = "updateReadChannelOutbox"
 	UpdateReadPeerMessagesContentsTag = "updateReadPeerMessagesContents"
 	UpdatePinnedMessagesTag           = "updatePinnedMessages"
-	UpdatePinnedChannelMessagesTag    = "updatePinnedChannelMessages"
 	UpdateMessageReactionsTag         = "updateMessageReactions"
 	UpdateDialogPinnedTag             = "updateDialogPinned"
 	UpdateFolderPeersTag              = "updateFolderPeers"
@@ -172,23 +176,6 @@ func NewUpdateEditMessage(m MTMessage, pts int64) UpdateEditMessage {
 	return UpdateEditMessage{Underscore: UpdateEditMessageTag, Message: m, Pts: pts, PtsCount: PtsCountOne}
 }
 
-// updateEditChannelMessage#1b3f4df7 message:Message pts:int pts_count:int
-// = Update;
-type UpdateEditChannelMessage struct {
-	Underscore string    `json:"_"`
-	Message    MTMessage `json:"message"`
-	Pts        int64     `json:"pts"`
-	PtsCount   int       `json:"pts_count"`
-}
-
-func (UpdateEditChannelMessage) isUpdate()     {}
-func (u UpdateEditChannelMessage) Tag() string { return u.Underscore }
-
-func NewUpdateEditChannelMessage(m MTMessage, channelPts int64) UpdateEditChannelMessage {
-	return UpdateEditChannelMessage{Underscore: UpdateEditChannelMessageTag, Message: m,
-		Pts: channelPts, PtsCount: PtsCountOne}
-}
-
 // ── Удаление ────────────────────────────────────────────────────────────────
 
 // updateDeletePeerMessages#5ffab82e peer:Peer messages:Vector<int> pts:int
@@ -274,41 +261,6 @@ func NewUpdateReadHistoryOutbox(peer Peer, maxID int64, pts int64) UpdateReadHis
 		Pts: pts, PtsCount: PtsCountOne}
 }
 
-// updateReadChannelInbox#922e6e10 flags:# folder_id:flags.0?int channel_id:long
-// max_id:int still_unread_count:int pts:int = Update;
-//
-// pts_count у канального прочтения нет — и это не пропуск схемы, а её ответ:
-// пер-канальный курсор двигают только сообщения.
-type UpdateReadChannelInbox struct {
-	Underscore       string `json:"_"`
-	ChannelID        int64  `json:"channel_id"`
-	MaxID            int64  `json:"max_id"`
-	StillUnreadCount int    `json:"still_unread_count"`
-	Pts              int64  `json:"pts"`
-}
-
-func (UpdateReadChannelInbox) isUpdate()     {}
-func (u UpdateReadChannelInbox) Tag() string { return u.Underscore }
-
-func NewUpdateReadChannelInbox(channelID, maxID int64, stillUnread int, pts int64) UpdateReadChannelInbox {
-	return UpdateReadChannelInbox{Underscore: UpdateReadChannelInboxTag, ChannelID: channelID,
-		MaxID: maxID, StillUnreadCount: stillUnread, Pts: pts}
-}
-
-// updateReadChannelOutbox#b75f99a9 channel_id:long max_id:int = Update;
-type UpdateReadChannelOutbox struct {
-	Underscore string `json:"_"`
-	ChannelID  int64  `json:"channel_id"`
-	MaxID      int64  `json:"max_id"`
-}
-
-func (UpdateReadChannelOutbox) isUpdate()     {}
-func (u UpdateReadChannelOutbox) Tag() string { return u.Underscore }
-
-func NewUpdateReadChannelOutbox(channelID, maxID int64) UpdateReadChannelOutbox {
-	return UpdateReadChannelOutbox{Underscore: UpdateReadChannelOutboxTag, ChannelID: channelID, MaxID: maxID}
-}
-
 // ── Прочтение вложений (голосовое, кружок) ──────────────────────────────────
 
 // updateReadPeerMessagesContents#346a260f peer:Peer messages:Vector<int>
@@ -358,31 +310,6 @@ func (u UpdatePinnedMessages) Pinned() bool { return u.PFlags["pinned"] }
 func NewUpdatePinnedMessages(peer Peer, ids []int64, pinned bool, pts int64) UpdatePinnedMessages {
 	u := UpdatePinnedMessages{Underscore: UpdatePinnedMessagesTag, Peer: peer, Messages: nonNilIDs(ids),
 		Pts: pts, PtsCount: PtsCountOne}
-	if pinned {
-		u.PFlags = map[string]bool{"pinned": true}
-	}
-	return u
-}
-
-// updatePinnedChannelMessages#5bb98608 flags:# pinned:flags.0?true
-// channel_id:long messages:Vector<int> pts:int pts_count:int = Update;
-type UpdatePinnedChannelMessages struct {
-	Underscore string          `json:"_"`
-	PFlags     map[string]bool `json:"pFlags,omitempty"`
-	ChannelID  int64           `json:"channel_id"`
-	Messages   []int64         `json:"messages"`
-	Pts        int64           `json:"pts"`
-	PtsCount   int             `json:"pts_count"`
-}
-
-func (UpdatePinnedChannelMessages) isUpdate()     {}
-func (u UpdatePinnedChannelMessages) Tag() string { return u.Underscore }
-
-func (u UpdatePinnedChannelMessages) Pinned() bool { return u.PFlags["pinned"] }
-
-func NewUpdatePinnedChannelMessages(channelID int64, ids []int64, pinned bool, channelPts int64) UpdatePinnedChannelMessages {
-	u := UpdatePinnedChannelMessages{Underscore: UpdatePinnedChannelMessagesTag, ChannelID: channelID,
-		Messages: nonNilIDs(ids), Pts: channelPts, PtsCount: PtsCountOne}
 	if pinned {
 		u.PFlags = map[string]bool{"pinned": true}
 	}
