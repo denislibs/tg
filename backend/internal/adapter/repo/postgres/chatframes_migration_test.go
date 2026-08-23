@@ -92,7 +92,11 @@ func TestMigration0122_ChatAndProfileFrames(t *testing.T) {
 		`SELECT payload->>'_', payload->'peer'->>'_' FROM channel_updates WHERE pts = 1`).Scan(&chTag, &chPeer); err != nil {
 		t.Fatalf("кадр карточки канала: %v", err)
 	}
-	if chTag != "updateChatFullSnapshot" || chPeer != "peerChannel" {
+	// Ожидание — конструктор КАНАЛЬНОГО журнала: 0122 записал сюда
+	// updateChatFullSnapshot, а 0123 развёл два журнала по конструкторам
+	// (курсор у них разный). Накат идёт до последней миграции, поэтому здесь
+	// видно состояние после обеих.
+	if chTag != "updateChannelFullSnapshot" || chPeer != "peerChannel" {
 		t.Fatalf("кадр карточки канала = %s/%s", chTag, chPeer)
 	}
 	var boostTag, statusTag string

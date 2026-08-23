@@ -79,6 +79,7 @@ const (
 	UpdateChatRemovedTag              = "updateChatRemoved"
 	UpdateChatThemeTag                = "updateChatTheme"
 	UpdateChatFullSnapshotTag         = "updateChatFullSnapshot"
+	UpdateChannelFullSnapshotTag      = "updateChannelFullSnapshot"
 	UpdateChannelBoostStatusTag       = "updateChannelBoostStatus"
 	UpdateStarsBalanceTag             = "updateStarsBalance"
 	UpdateBotCallbackAnswerTag        = "updateBotCallbackAnswer"
@@ -906,6 +907,40 @@ func (u UpdateChatFullSnapshot) Tag() string { return u.Underscore }
 
 func NewUpdateChatFullSnapshot(peer Peer, full MessagesChatFull, pts int64) UpdateChatFullSnapshot {
 	return UpdateChatFullSnapshot{Underscore: UpdateChatFullSnapshotTag, Peer: peer,
+		ChatFull: full, Pts: pts, PtsCount: PtsCountOne}
+}
+
+// updateChannelFullSnapshot#572874a4 peer:Peer chat_full:messages.ChatFull
+// pts:int pts_count:int = Update; — НАШ конструктор.
+//
+// Тот же снимок, что updateChatFullSnapshot, и отличается ровно КУРСОРОМ:
+// этот кадр едет журналом КАНАЛА (пер-канальный плотный pts), а тот —
+// пер-юзерным веером участников группы.
+//
+// Второй конструктор здесь не дубль, а ответ схемы на этот самый вопрос:
+// updateNewMessage/updateNewChannelMessage, updateEditMessage/
+// updateEditChannelMessage, updatePinnedMessages/updatePinnedChannelMessages —
+// везде предмет один, а курсоров два, и различает их КОНСТРУКТОР. Одного
+// конструктора на оба журнала не хватает буквально: получатель обязан решить,
+// какой курсор двигать, а по снимку карточки этого не видно — наша группа в
+// модели тоже channel (решение №2 порта пиров), и «канальность» здесь свойство
+// доставки, а не предмета.
+//
+// Временный ровно настолько же, насколько updateChatFullSnapshot: с приходом
+// контейнера updates карточка уедет в вектор chats.
+type UpdateChannelFullSnapshot struct {
+	Underscore string           `json:"_"`
+	Peer       Peer             `json:"peer"`
+	ChatFull   MessagesChatFull `json:"chat_full"`
+	Pts        int64            `json:"pts"`
+	PtsCount   int              `json:"pts_count"`
+}
+
+func (UpdateChannelFullSnapshot) isUpdate()     {}
+func (u UpdateChannelFullSnapshot) Tag() string { return u.Underscore }
+
+func NewUpdateChannelFullSnapshot(peer Peer, full MessagesChatFull, pts int64) UpdateChannelFullSnapshot {
+	return UpdateChannelFullSnapshot{Underscore: UpdateChannelFullSnapshotTag, Peer: peer,
 		ChatFull: full, Pts: pts, PtsCount: PtsCountOne}
 }
 

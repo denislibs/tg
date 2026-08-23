@@ -21,8 +21,23 @@ import (
 // горизонты чтения channelFull едут нулями. Их зритель-зависимые значения
 // приезжают ручкой карточки, которую клиент и без того открывает поимённо.
 func chatUpdatePayload(peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return chatFullSnapshotPayload(domain.UpdateChatFullSnapshotTag, peer, c)
+}
+
+// channelUpdatePayload — тот же снимок, но кадром КАНАЛЬНОГО журнала.
+//
+// Конструктор второй, и это не дубль: он и есть ответ на вопрос «какой курсор
+// двигать». Схема отвечает на него ровно так же — updateNewMessage против
+// updateNewChannelMessage, — потому что предмет один, а журнала два. По самому
+// снимку различить журналы нельзя: наша группа в модели тоже channel (решение
+// №2 порта пиров), так что «канальность» здесь свойство ДОСТАВКИ.
+func channelUpdatePayload(peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return chatFullSnapshotPayload(domain.UpdateChannelFullSnapshotTag, peer, c)
+}
+
+func chatFullSnapshotPayload(tag string, peer domain.PeerID, c domain.ChatRecord) map[string]any {
 	return map[string]any{
-		"_":         domain.UpdateChatFullSnapshotTag,
+		"_":         tag,
 		"peer":      domain.NewPeer(peer),
 		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
 		"pts_count": domain.PtsCountOne,
@@ -49,7 +64,7 @@ func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
 	if card.Type == domain.ChatTypeChannel {
 		// Ключ канала один на всех подписчиков — пер-зрительского в нём нет.
 		_ = i.logAndPublishChannel(ctx, chatID, "chat_update",
-			chatUpdatePayload(domain.ToPeerID(chatID, true), card))
+			channelUpdatePayload(domain.ToPeerID(chatID, true), card))
 		return
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)

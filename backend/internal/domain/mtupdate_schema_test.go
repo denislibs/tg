@@ -97,6 +97,10 @@ func updateCases() []struct {
 			c := ChatRecord{ID: 5, Type: ChatTypeChannel, Title: "Канал"}
 			return NewUpdateChatFullSnapshot(NewPeerChannel(5), NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()), 7)
 		}()},
+		{"снимок карточки канала", func() any {
+			c := ChatRecord{ID: 5, Type: ChatTypeChannel, Title: "Канал"}
+			return NewUpdateChannelFullSnapshot(NewPeerChannel(5), NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()), 7)
+		}()},
 		{"бусты канала", NewUpdateChannelBoostStatus(NewPeerChannel(5),
 			BoostStatus{Level: 2, BoostsCount: 5, CurrentLevelBoosts: 3, NextLevelBoosts: 6}.ToWire(false), 8)},
 		{"баланс звёзд", NewUpdateStarsBalance(42)},
@@ -191,6 +195,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateChatRemovedTag,
 		UpdateChatThemeTag,
 		UpdateChatFullSnapshotTag,
+		UpdateChannelFullSnapshotTag,
 		UpdateChannelBoostStatusTag,
 		UpdateStarsBalanceTag,
 		UpdateBotCallbackAnswerTag,

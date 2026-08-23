@@ -962,6 +962,29 @@
     "type": "Update"
   },
   {
+    "id": "1462269092",
+    "predicate": "updateChannelFullSnapshot",
+    "params": [
+      {
+        "name": "peer",
+        "type": "Peer"
+      },
+      {
+        "name": "chat_full",
+        "type": "messages.ChatFull"
+      },
+      {
+        "name": "pts",
+        "type": "int"
+      },
+      {
+        "name": "pts_count",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "id": "2838418574",
     "predicate": "updateChannelBoostStatus",
     "params": [

@@ -8400,6 +8400,12 @@ var schemaConstructors = []Constructor{
 		{Name: "pts", Type: "int"},
 		{Name: "pts_count", Type: "int"},
 	}},
+	{ID: 1462269092, Predicate: "updateChannelFullSnapshot", Type: "Update", Params: []Param{
+		{Name: "peer", Type: "Peer"},
+		{Name: "chat_full", Type: "messages.ChatFull"},
+		{Name: "pts", Type: "int"},
+		{Name: "pts_count", Type: "int"},
+	}},
 	{ID: -1456548722, Predicate: "updateChannelBoostStatus", Type: "Update", Params: []Param{
 		{Name: "peer", Type: "Peer"},
 		{Name: "status", Type: "premium.BoostsStatus"},
