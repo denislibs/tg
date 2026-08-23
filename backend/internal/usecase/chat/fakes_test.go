@@ -658,7 +658,7 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if limit <= 0 {
@@ -677,15 +677,17 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 			newer = append(newer, m)
 		}
 	}
-	reachedTop := len(older) <= half+1
-	reachedBottom := len(newer) <= half
-	if len(older) > half+1 {
-		older = older[len(older)-(half+1):]
+	// Раскладка окна — та же, что у настоящего репозитория: верхняя половина
+	// ВКЛЮЧАЕТ центр, нижняя добирает остаток до limit. Фейк держал снизу `half`
+	// и отдавал окно на элемент шире, чем production.
+	wantOlder := half + 1
+	if len(older) > wantOlder {
+		older = older[len(older)-wantOlder:]
 	}
-	if len(newer) > half {
-		newer = newer[:half]
+	if wantNewer := limit - wantOlder; len(newer) > wantNewer {
+		newer = newer[:wantNewer]
 	}
-	return append(older, newer...), reachedTop, reachedBottom, nil
+	return append(older, newer...), nil
 }
 
 func (r fakeMsgs) CallLog(context.Context, int64, int, int) ([]domain.CallLogEntry, error) {

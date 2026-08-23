@@ -260,6 +260,13 @@ func allMessageConstructors() []any {
 		// ── FactCheck ────────────────────────────────────────────────────────
 		NewFactCheck("RU", NewTextWithEntities("это не так", nil)),
 		NewTextWithEntities("текст", MessageEntities{NewMessageEntityBold(0, 5)}),
+
+		// ── messages.Messages: контейнер списка ──────────────────────────────
+		// Обе формы: «отдано всё» и «отдан кусок». Разница между ними —
+		// ВЫБОР КОНСТРУКТОРА, а не булево поле, поэтому сверены обе.
+		NewMessagesMessages([]MTMessage{MessageEmpty{Underscore: MessageEmptyTag, ID: 7}}, nil, nil),
+		NewMessagesMessagesSlice(120, []MTMessage{MessageEmpty{Underscore: MessageEmptyTag, ID: 7}},
+			[]Chat{}, []UserReal{{Underscore: UserTag, ID: 42, FirstName: "Аня"}}),
 	}
 }
 
@@ -321,6 +328,7 @@ func messageConstructorTags() []string {
 		FactCheckTag, TextWithEntitiesTag,
 		MessageActionStarGiftTag, StarGiftTag, SavedStarGiftTag,
 		GiveawayInfoTag, GiveawayInfoResultsTag,
+		MessagesMessagesTag, MessagesMessagesSliceTag,
 	}
 }
 

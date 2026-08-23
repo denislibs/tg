@@ -14,6 +14,7 @@ export interface CalendarDay {
 }
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId } from '../peers/peerId'
+import type { UserReal, Chat } from '../peers/peer'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
@@ -31,6 +32,25 @@ import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
 export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
+
+/**
+ * messages.Messages — контейнер списка сообщений (обе формы объединения).
+ *
+ * `_` различает «отдано ВСЁ» (`messages.messages`) и «отдан кусок»
+ * (`messages.messagesSlice`, у него есть `count`). Признаков «дошли до
+ * верха/низа» у контейнера нет вовсе: их выводит клиент из самого окна —
+ * порт `appMessagesManager.ts:9512-9518`.
+ *
+ * `users` — карточки авторов пачки: получатель списка обязан уметь нарисовать
+ * подпись, ни о ком не спрашивая отдельно.
+ */
+export interface MessagesContainer {
+  _: 'messages.messages' | 'messages.messagesSlice'
+  messages: RawMyMessage[]
+  users: UserReal[]
+  chats: Chat[]
+  count?: number
+}
 
 export interface HistoryArgs {
   peerId: number
@@ -80,6 +100,10 @@ export interface MessagesDeps {
    *  формулировкой пилюли. Опционален: юнит-тесты кэш-методов собирают менеджер
    *  одним `rest` — без гейта маппинг идёт сразу. */
   meReady?: () => Promise<void>
+  /** Приёмник пиров, приехавших ПОПУТНО со списком сообщений (`users` контейнера
+   *  messages.Messages) — тот же `saveApiPeers`, которым питаются диалоги и
+   *  журнал звонков. Опционален по той же причине, что остальные инъекции. */
+  peers?: { saveApiPeers(o: { users?: UserReal[]; chats?: Chat[] }): void }
   /** Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags` (tweb
    *  appMessagesManager.ts:3128-3130) — см. `PendingCtx.isBroadcastChat`.
    *  Опционален по той же причине, что и остальные инъекции: юнит-тесты
@@ -105,7 +129,7 @@ export interface MessagesDeps {
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -122,6 +146,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
   const mapPage = async (list: RawMyMessage[] | undefined): Promise<MyMessage[]> => {
     await whenMeReady()
     return (list ?? []).map(mapOne)
+  }
+  /**
+   * Контейнер messages.Messages → страница сообщений.
+   *
+   * Пиры, приехавшие ПОПУТНО, публикуются ДО отдачи страницы: подпись автора
+   * рисуется из карточки, и вкладка, получившая сообщения раньше карточек,
+   * показала бы бабл без имени. Порядок тот же, что у диалогов.
+   */
+  const mapContainer = async (c: MessagesContainer): Promise<MyMessage[]> => {
+    if (c.users?.length || c.chats?.length) peers?.saveApiPeers({ users: c.users, chats: c.chats })
+    return mapPage(c.messages)
   }
   const mapNet = async (r: RawMyMessage): Promise<MyMessage> => {
     await whenMeReady()
@@ -343,9 +378,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       }
 
       // --- network fetch ---
-      let r: { messages: RawMyMessage[]; count: number }
+      let r: MessagesContainer
       try {
-        r = await rest.get<{ messages: RawMyMessage[]; count: number }>(
+        r = await rest.get<MessagesContainer>(
           `/chats/${peerId}/history`,
           // ГРАНИЦА: наружу уходят СЕРВЕРНЫЕ номера. Ноль означает «самое новое»
           // и остаётся нулём — приведение идемпотентно.
@@ -382,7 +417,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
         }
         throw e
       }
-      const fetched = await decryptPage(await mapPage(r.messages))
+      const fetched = await decryptPage(await mapContainer(r))
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
@@ -412,7 +447,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       let asc = fetched.slice().sort((a, b) => a.id - b.id)
       if (pagingOlder) asc = asc.filter((m) => m.id < offsetId)
 
-      return { messages: asc, count: r.count, reachedTop, reachedBottom, cached: false }
+      // `count` есть только у страницы (messages.messagesSlice). Пришёл полный
+      // набор — считать нечего: его размер и есть длина вектора.
+      return { messages: asc, count: r.count ?? fetched.length, reachedTop, reachedBottom, cached: false }
     },
 
     async sendMessage(args: SendArgs): Promise<MyMessage> {
@@ -496,13 +533,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       msgIds: number[],
       opts?: { dropAuthor?: boolean; dropCaption?: boolean },
     ): Promise<MyMessage[]> {
-      const r = await rest.post<{ messages: RawMyMessage[] }>(`/chats/${toPeerId}/forward`, {
+      const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
         msg_ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
       })
-      const msgs = await mapPage(r.messages)
+      const msgs = await mapContainer(r)
       put(hkey(toPeerId), msgs)
       return msgs
     },
@@ -516,17 +553,27 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     },
 
     async listPins(peerId: number): Promise<MyMessage[]> {
-      const r = await rest.get<{ messages: RawMyMessage[] }>(`/chats/${peerId}/pins`)
-      return decryptPage(await mapPage(r.messages))
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
+      return decryptPage(await mapContainer(r))
     },
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
     // slice/cache to it (so loadOlder/loadNewer continue from the jumped spot).
     async getAround(peerId: number, centerId: number, limit = 40, threadRoot?: number): Promise<{ messages: MyMessage[]; reachedTop: boolean; reachedBottom: boolean }> {
-      const r = await rest.get<{ messages: RawMyMessage[]; reached_top: boolean; reached_bottom: boolean }>(
+      const r = await rest.get<MessagesContainer>(
         `/chats/${peerId}/history`, { around: getServerMessageId(centerId), limit, ...(threadRoot ? { thread_root: getServerMessageId(threadRoot) } : {}) },
       )
-      const asc = await decryptPage(await mapPage(r.messages))
+      const asc = await decryptPage(await mapContainer(r))
+      // Концы окна выводит КЛИЕНТ — их в ответе нет вовсе. Правило оригинала для
+      // случая без `offset_id_offset` (appMessagesManager.ts:9512-9518): сторона
+      // короче запрошенной значит, что за ней ничего нет.
+      //
+      // Сколько просили с каждой стороны — та же арифметика, что у сервера при
+      // сборке окна: верхняя половина ВКЛЮЧАЕТ центр.
+      const wantOlder = Math.floor(limit / 2) + 1
+      const olderLoaded = asc.filter((m) => m.id <= centerId).length
+      const reachedTop = olderLoaded < wantOlder
+      const reachedBottom = asc.length - olderLoaded < limit - wantOlder
       const key = hkey(peerId, threadRoot)
       const sa = new SlicedArray<number>()
       slices.set(key, sa)
@@ -536,18 +583,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       const seqsDesc = asc.map((m) => m.id).sort((a, b) => b - a)
       const inserted = seqsDesc.length ? sa.insertSlice(seqsDesc) : sa.first
       if (inserted) {
-        if (r.reached_top) inserted.setEnd(SliceEnd.Top)
-        if (r.reached_bottom) inserted.setEnd(SliceEnd.Bottom)
+        if (reachedTop) inserted.setEnd(SliceEnd.Top)
+        if (reachedBottom) inserted.setEnd(SliceEnd.Bottom)
       }
-      return { messages: asc, reachedTop: !!r.reached_top, reachedBottom: !!r.reached_bottom }
+      return { messages: asc, reachedTop, reachedBottom }
     },
 
     // Search messages in a chat by text (newest first) + total match count.
     // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
     // одного типа, новые сверху (tweb inputMessagesFilter*).
     async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/media`, { filter, offset, limit })
-      return { messages: await mapPage(r.messages), count: r.count }
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, { filter, offset, limit })
+      return { messages: await mapContainer(r), count: r.count ?? 0 }
     },
 
     // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —
@@ -562,8 +609,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       if (opts.senderId) query.sender_id = opts.senderId
       if (opts.mediaType) query.media_type = opts.mediaType
       if (opts.reaction) query.reaction = opts.reaction
-      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/search`, query)
-      return { messages: await mapPage(r.messages), count: r.count }
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/search`, query)
+      return { messages: await mapContainer(r), count: r.count ?? 0 }
     },
 
     // Jump-to-date: НОМЕР ближайшего сообщения на/после даты (unix, сек). null,
@@ -591,14 +638,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
     // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
     async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
-      return { messages: await mapPage(r.messages), count: r.count }
+      const r = await rest.get<MessagesContainer>('/search/messages', { q, filter, offset, limit })
+      return { messages: await mapContainer(r), count: r.count ?? 0 }
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(peerId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/chats/${peerId}/threads/${getServerMessageId(rootId)}`, { offset, limit })
-      return { messages: await decryptPage(await mapPage(r.messages)), count: r.count }
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/threads/${getServerMessageId(rootId)}`, { offset, limit })
+      return { messages: await decryptPage(await mapContainer(r)), count: r.count ?? 0 }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──

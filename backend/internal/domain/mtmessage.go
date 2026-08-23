@@ -1142,3 +1142,105 @@ func NewTextWithEntities(text string, entities MessageEntities) *TextWithEntitie
 	}
 	return &TextWithEntities{Underscore: TextWithEntitiesTag, Text: text, Entities: entities}
 }
+
+// ── messages.Messages: контейнер списка сообщений ──────────────────────────
+
+// Дискриминаторы `_` контейнеров списка сообщений.
+const (
+	MessagesMessagesTag      = "messages.messages"
+	MessagesMessagesSliceTag = "messages.messagesSlice"
+)
+
+// MessagesMessages — объединение messages.Messages: история, поиск,
+// закреплённые, тред, журнал звонков, отложенные.
+//
+// Форм две, и выбор между ними — это ответ на вопрос «есть ли ещё»:
+// `messages.messages` значит «отдано ВСЁ», `messages.messagesSlice` — «отдан
+// кусок, а всего их count». Тот же приём, что у диалогов (решение Р1 разбора
+// диалогов): конец набора выражен ВЫБОРОМ КОНСТРУКТОРА, а не булевым полем.
+type MessagesMessages interface {
+	isMessagesMessages()
+	// Tag — дискриминатор `_` (predicate схемы).
+	Tag() string
+}
+
+// messages.messages#1d73e7ea messages:Vector<Message> topics:Vector<ForumTopic>
+// chats:Vector<Chat> users:Vector<User> = messages.Messages;
+//
+// Набор отдан ЦЕЛИКОМ: параметра `count` у конструктора нет, потому что он и
+// есть длина вектора.
+//
+// `topics` едет пустым вектором, и это не пропуск: темы форума оригинал кладёт
+// сюда только когда запрашивали их (`messages.getReplies` у форума), а у нас
+// список тем — своя ручка. Пустой обязательный вектор это `[]`, а не
+// отсутствие параметра.
+type MessagesMessagesReal struct {
+	Underscore string      `json:"_"`
+	Messages   []MTMessage `json:"messages"`
+	Topics     []any       `json:"topics"`
+	Chats      []Chat      `json:"chats"`
+	Users      []UserReal  `json:"users"`
+}
+
+func (MessagesMessagesReal) isMessagesMessages() {}
+func (m MessagesMessagesReal) Tag() string       { return m.Underscore }
+
+// messages.messagesSlice#5f206716 flags:# inexact:flags.1?true count:int
+// next_rate:flags.0?int offset_id_offset:flags.2?int
+// search_flood:flags.3?SearchPostsFlood messages:Vector<Message>
+// topics:Vector<ForumTopic> chats:Vector<Chat> users:Vector<User> =
+// messages.Messages;
+//
+// Отдан КУСОК: `count` — размер полного набора.
+//
+// Чего здесь НЕТ и почему это важно: параметров «дошли до верха» и «дошли до
+// низа» у конструктора нет вовсе. Их считает КЛИЕНТ — из `count`,
+// `offset_id_offset` и запрошенного окна (порт
+// `appMessagesManager.ts:9508-9510`). Наши `reached_top`/`reached_bottom` были
+// сервером, делающим арифметику клиента, — и вторым ответом на тот же вопрос:
+// для обычной страницы клиент уже выводил концы сам, по короткой странице.
+//
+// `inexact` живёт в pFlags: «count приблизительный». У нас он точный, поэтому
+// флага нет — «выключено» это отсутствие ключа.
+type MessagesMessagesSlice struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Count      int             `json:"count"`
+	// OffsetIDOffset — flags.2?int: позиция сообщения-смещения в ПОЛНОМ наборе.
+	// Именно он даёт клиенту посчитать концы точно; без него оригинал идёт
+	// веткой «страница короче запрошенной» (там же, :9512-9518), и наш клиент
+	// сейчас идёт ровно ею. Предмет есть, производителя нет — считать позицию
+	// значит спросить у базы `count(*)` до смещения; названо задачей.
+	OffsetIDOffset *int        `json:"offset_id_offset,omitempty"`
+	Messages       []MTMessage `json:"messages"`
+	Topics         []any       `json:"topics"`
+	Chats          []Chat      `json:"chats"`
+	Users          []UserReal  `json:"users"`
+}
+
+func (MessagesMessagesSlice) isMessagesMessages() {}
+func (m MessagesMessagesSlice) Tag() string       { return m.Underscore }
+
+// NewMessagesMessages — набор отдан целиком. Обязательные векторы едут пустыми
+// ([], а не null).
+func NewMessagesMessages(messages []MTMessage, chats []Chat, users []UserReal) MessagesMessagesReal {
+	return MessagesMessagesReal{
+		Underscore: MessagesMessagesTag,
+		Messages:   orEmpty(messages),
+		Topics:     []any{},
+		Chats:      orEmpty(chats),
+		Users:      orEmpty(users),
+	}
+}
+
+// NewMessagesMessagesSlice — отдан кусок; count считается по ПОЛНОМУ набору.
+func NewMessagesMessagesSlice(count int, messages []MTMessage, chats []Chat, users []UserReal) MessagesMessagesSlice {
+	return MessagesMessagesSlice{
+		Underscore: MessagesMessagesSliceTag,
+		Count:      count,
+		Messages:   orEmpty(messages),
+		Topics:     []any{},
+		Chats:      orEmpty(chats),
+		Users:      orEmpty(users),
+	}
+}

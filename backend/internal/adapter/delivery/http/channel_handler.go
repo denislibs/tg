@@ -296,12 +296,7 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.uc, msgs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
+	writeMessagesSlice(w, r, h.uc, count, msgs)
 }
 
 func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {

@@ -25,6 +25,12 @@ machine-readable source of truth is the OpenAPI spec:
   конструктора параметров ровно два.
 - **«Получилось»** — конструктор `Bool` (`boolTrue`/`boolFalse`), а не ключ
   `ok`. Так отвечают 212 из 790 методов оригинала.
+- **Список сообщений** — контейнер `messages.Messages`: `messages.messages`
+  («отдано ВСЁ», параметра `count` нет — он и есть длина вектора) либо
+  `messages.messagesSlice` («отдан кусок», `count` — размер полного набора).
+  Признаков «дошли до верха/низа» у контейнера нет: их выводит КЛИЕНТ из
+  полноты окна (порт `appMessagesManager.ts:9512-9518`). Карточки авторов едут
+  рядом, вектором `users`.
 - `seq` — monotonic per-chat message sequence. `pts` — per-user update cursor
   (each update carries `pts` and `pts_count`; the client tracks the latest `pts`).
 - IDs are int64.
@@ -424,7 +430,7 @@ to the discussion group.
 List the comment thread (ascending by `seq`) for a channel post, plus the total
 count.
 - Query: `offset` (default 0), `limit` (default 50, max 100).
-- 200: `{ "messages": [ <message>, … ], "count": 1 }` — те же конструкторы.
+- 200: контейнер `messages.messagesSlice` — те же конструкторы внутри.
 - 404: `{ "_": "error", "code": 404, "text": "not found" }` (discussions not enabled)
 
 ### GET /channels/{chatID}/comment_counts?ids=  · auth
@@ -505,7 +511,8 @@ and `msg_count`, freshest first. → `{ "topics": [ … ] }`
 Close/reopen a topic (topic author or chat admin). `{ "closed": true }` → `{ "_": "boolTrue" }`.
 
 ### GET /chats/{chatID}/threads/{rootID}  · auth
-Messages of a thread (forum topic) ascending: `?offset&limit` → `{ "messages": [...], "count": N }`.
+Messages of a thread (forum topic) ascending: `?offset&limit` → контейнер
+`messages.messagesSlice`.
 
 ### POST /chats/{chatID}/scheduled  · auth
 Schedule a message (Telegram scheduled messages): it sits in a per-user queue
@@ -554,7 +561,7 @@ are excluded. Newest first.
 - Query: `q` — substring (optional when `filter` set); `filter` — one of
   `media|links|files|music|voice` (empty = any type; empty `q` AND empty
   `filter` yields empty results); `offset` (default 0); `limit` (default 20, max 50).
-- 200: `{ "messages": [ Message… ], "count": 123 }` (`count` = total matches)
+- 200: контейнер `messages.messagesSlice` (`count` = total matches)
 
 ---
 
@@ -599,7 +606,7 @@ Paginated window, like Telegram `messages.getHistory`.
   Работает и с `around`. Тред discussion-группы канала читается и НЕ-членом
   (комментарии доступны без вступления, как `GET /channels/... /comments`);
   отправка в такой тред (`thread_root_id` в send) авто-вступает в группу.
-- 200: `{ "messages": [ <Message>, … ], "count": 5 }`  (messages newest-first when paging from the end)
+- 200: контейнер `messages.messagesSlice` (messages newest-first when paging from the end)
 - 403: `{ "_": "error", "code": 403, "text": "not a member of this chat" }`
 
 ### POST /chats/{chatID}/read  · auth

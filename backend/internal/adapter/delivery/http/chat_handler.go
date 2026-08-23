@@ -490,12 +490,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "history failed")
 			return
 		}
-		out, err := messagesJSON(r.Context(), h.svc, a.Messages)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "could not render messages")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": a.Count, "reached_top": a.ReachedTop, "reached_bottom": a.ReachedBottom})
+		writeMessagesSlice(w, r, h.svc, a.Count, a.Messages)
 		return
 	}
 	offsetSeq := queryInt(r, "offset_id", 0)
@@ -512,12 +507,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
 }
 
 // MessagesByIDs — GET /chats/{peerID}/messages?ids=1,2,3: сообщения по их
@@ -551,7 +541,7 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"messages": []domain.MTMessage{}})
+		writeJSON(w, http.StatusOK, domain.NewMessagesMessages(nil, nil, nil))
 		return
 	}
 	found, err := h.svc.MessagesBySeqs(r.Context(), chatID, h.meID(r), ids)
@@ -563,7 +553,7 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	wire, err := messagesJSON(r.Context(), h.svc, found)
+	wire, users, err := h.svc.MessagesContainer(r.Context(), h.meID(r), found)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
@@ -581,7 +571,7 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, usecasechat.EmptyMessages(peer, []int64{id})[0])
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, users))
 }
 
 type readBody struct {
@@ -895,12 +885,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "forward failed")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, msgs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+	writeMessagesAll(w, r, h.svc, msgs)
 }
 
 func (h *ChatHandler) Pin(w http.ResponseWriter, r *http.Request)   { h.setPin(w, r, true) }
@@ -941,12 +926,7 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list pins")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, msgs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+	writeMessagesAll(w, r, h.svc, msgs)
 }
 
 func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
@@ -1013,12 +993,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "media history failed")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
 }
 
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
@@ -1044,12 +1019,7 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
 }
 
 // MessageByDate — GET /chats/{chatID}/message_by_date?date=<unix>: seq
@@ -1118,12 +1088,7 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, res.Messages)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
 }
 
 // CallLog — GET /calls?offset=&limit=: журнал звонков (вкладка «Звонки»).
@@ -1153,7 +1118,9 @@ func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load calls")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": wire, "users": users})
+	// Собеседники собраны выше по самим звонкам, поэтому общий сборщик авторов
+	// здесь не нужен: `users` уже полон.
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(wire, nil, users))
 }
 
 // SendPoll — POST /chats/{chatID}/polls: отправить опрос (сообщение типа 'poll').
@@ -1751,12 +1718,7 @@ func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	out, err := messagesJSON(r.Context(), h.svc, msgs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
+	writeMessagesSlice(w, r, h.svc, count, msgs)
 }
 
 // GroupCallParticipants — GET /chats/{chatID}/group_call: кто сейчас в видеочате.
@@ -2148,6 +2110,34 @@ func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
 func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domain.Message) ([]domain.MTMessage, error) {
 	me, _ := UserFromContext(ctx)
 	return svc.MessagesWire(ctx, me.ID, msgs)
+}
+
+// writeMessagesSlice — витрина СТРАНИЦЫ списка сообщений: конструктор
+// messages.messagesSlice, где count — размер полного набора.
+//
+// Параметров «дошли до верха/низа» у конструктора нет: их считает клиент из
+// count и запрошенного окна (порт appMessagesManager.ts:9508-9518). Наши
+// reached_top/reached_bottom были сервером, делавшим арифметику клиента.
+func writeMessagesSlice(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message) {
+	me, _ := UserFromContext(r.Context())
+	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users))
+}
+
+// writeMessagesAll — витрина ПОЛНОГО набора: конструктор messages.messages.
+// Параметра count у него нет — «это всё» сказано выбором конструктора.
+func writeMessagesAll(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, msgs []domain.Message) {
+	me, _ := UserFromContext(r.Context())
+	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, users))
 }
 
 // writeMessage — ответ одним сообщением (Send/EditMessage/SetFactCheck/

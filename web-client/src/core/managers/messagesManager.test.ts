@@ -939,11 +939,45 @@ describe('MessagesManager: служебное действие уточняет 
 
   it('getAround (jump-to-message) идёт мимо put — и всё равно уточняет', async () => {
     const rest = {
-      get: async () => ({ messages: pillsPage().messages, reached_top: true, reached_bottom: true }),
+      get: async () => ({ _: 'messages.messagesSlice', ...pillsPage(), users: [], chats: [] }),
     } as unknown as RestClient
     const mgr = newMessagesManager({ rest, getMeId: () => ME })
     const r = await mgr.getAround(-1, cid(2), 40)
     expect(actionsOf(r.messages)).toEqual(['messageActionChatJoined', 'messageActionChatJoinedYou'])
+  })
+
+  // Концы окна ВЫВОДЯТСЯ клиентом: признаков в ответе нет вовсе (порт
+  // appMessagesManager.ts:9512-9518). Окно короче запрошенного с обеих сторон —
+  // значит за ним ничего нет; полное окно — значит края не достигнуты.
+  it('getAround выводит концы окна из его полноты, а не из полей ответа', async () => {
+    const page = (n: number) => ({
+      _: 'messages.messagesSlice',
+      count: 100,
+      users: [], chats: [],
+      messages: Array.from({ length: n }, (_, i) => ({
+        _: 'message', id: i + 1, peer_id: { _: 'peerChat', chat_id: 1 },
+        from_id: { _: 'peerUser', user_id: ME }, date: 1, message: 'm',
+      })),
+    })
+    const short = { get: async () => page(3) } as unknown as RestClient
+    const tiny = await newMessagesManager({ rest: short, getMeId: () => ME }).getAround(-1, cid(2), 40)
+    expect(tiny).toMatchObject({ reachedTop: true, reachedBottom: true })
+
+    const full = { get: async () => page(40) } as unknown as RestClient
+    const mid = await newMessagesManager({ rest: full, getMeId: () => ME }).getAround(-1, cid(21), 40)
+    expect(mid).toMatchObject({ reachedTop: false, reachedBottom: false })
+  })
+
+  // Карточки авторов приезжают ПОПУТНО со списком (`users` контейнера) и
+  // публикуются в общий приёмник пиров — тот же, которым питаются диалоги.
+  // Без этого бабл рисовался бы без имени до отдельного запроса о пире.
+  it('авторы из контейнера уходят в приёмник пиров', async () => {
+    const users = [{ _: 'user', id: 77, first_name: 'Аня' }]
+    const rest = { get: async () => ({ _: 'messages.messages', ...pillsPage(), users, chats: [] }) } as unknown as RestClient
+    const saveApiPeers = vi.fn()
+    const mgr = newMessagesManager({ rest, getMeId: () => ME, peers: { saveApiPeers } })
+    await mgr.listPins(-1)
+    expect(saveApiPeers).toHaveBeenCalledWith({ users, chats: [] })
   })
 
   it('поиск по чату (в SSOT не пишет вовсе) — тоже уточняет', async () => {

@@ -251,7 +251,7 @@ type MessageRepo interface {
 	// с этим thread_root_id + само корневое сообщение.
 	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
 	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.

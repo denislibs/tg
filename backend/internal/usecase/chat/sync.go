@@ -234,12 +234,11 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 	return nil
 }
 
-// AroundResult is a jump-to-message window: messages around a seq + end flags.
+// AroundResult — окно «перейти к сообщению»: сообщения вокруг seq плюс размер
+// полного набора. Концы окна выводит клиент (см. MessagesRepo.GetAround).
 type AroundResult struct {
-	Messages      []domain.Message
-	ReachedTop    bool
-	ReachedBottom bool
-	Count         int
+	Messages []domain.Message
+	Count    int
 }
 
 // GetHistoryAround returns a window centered on centerSeq (for jump-to-message),
@@ -257,7 +256,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	}
 	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
+	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
 	}
@@ -283,7 +282,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	return AroundResult{Messages: msgs, ReachedTop: top, ReachedBottom: bottom, Count: count}, nil
+	return AroundResult{Messages: msgs, Count: count}, nil
 }
 
 // SearchMessages returns messages in a chat matching q (newest first) + total count.

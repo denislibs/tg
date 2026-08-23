@@ -191,6 +191,10 @@ export function createWorkerCore() {
     cancelUpload: (id) => { void media.cancelUpload(id) },
     sendTyping: (peerId, action) => conn.sendTyping(peerId, action),
     uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
+    // Пиры, приехавшие ПОПУТНО со списком сообщений (`users` контейнера
+    // messages.Messages), — тем же приёмником, что у диалогов и звонков.
+    // Стрелка ленивая: `peers` объявлен ниже по файлу.
+    peers: { saveApiPeers: (o) => peers.saveApiPeers(o) },
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
   // beforeMessageSending), наружу это обычные операции над окном (публикует их

@@ -617,7 +617,11 @@ func TestGetHistoryAround(t *testing.T) {
 	if !hasCenter {
 		t.Fatalf("center seq 10 missing: %+v", res.Messages)
 	}
-	if res.ReachedTop || res.ReachedBottom {
-		t.Fatalf("mid-history window should not report ends: top=%v bottom=%v", res.ReachedTop, res.ReachedBottom)
+	// Концов окна в ответе НЕТ вовсе: их выводит клиент из самого окна (порт
+	// appMessagesManager.ts:9512-9518). Здесь проверяется, что середина истории
+	// отдаёт полное окно — именно по его полноте клиент и видит, что края не
+	// достигнуты.
+	if len(res.Messages) != 6 {
+		t.Fatalf("окно середины истории должно быть полным: %d из 6", len(res.Messages))
 	}
 }

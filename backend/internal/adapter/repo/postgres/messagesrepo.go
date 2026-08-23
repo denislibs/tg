@@ -148,7 +148,15 @@ func (r *MessagesRepo) GetBySeqs(ctx context.Context, chatID int64, seqs []int64
 // real top/bottom of history was reached. Used for jump-to-message.
 // clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
 // скрыты для этого читателя (0 — ничего не очищено).
-func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
+// GetAround возвращает окно вокруг centerSeq.
+//
+// Концов окна («дошли до верха/низа») здесь больше НЕТ, и это не потеря
+// знания: их выводит КЛИЕНТ из самого окна — сколько сообщений пришло выше
+// центра против того, сколько он просил (порт appMessagesManager.ts:9512-9518,
+// ветка, которой оригинал идёт без offset_id_offset). Сервер, считавший это за
+// клиента, был вторым ответом на тот же вопрос: для обычных страниц истории
+// клиент уже выводил концы сам.
+func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error) {
 	if limit <= 0 {
 		limit = 40
 	}
@@ -180,13 +188,13 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
 		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
 	if err != nil {
-		return nil, false, false, err
+		return nil, err
 	}
 	newer, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
 		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
 	if err != nil {
-		return nil, false, false, err
+		return nil, err
 	}
 	wantOlder := half + 1          // older includes the centered message
 	wantNewer := limit - wantOlder // the rest below it
@@ -198,17 +206,13 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	if d := wantNewer - takeNewer; d > 0 { // short on bottom → take more above
 		takeOlder = min(len(older), takeOlder+d)
 	}
-	// We hit the real top/bottom when we took everything that side returned AND
-	// that query wasn't capped at `limit` (so nothing more exists beyond it).
-	reachedTop := takeOlder == len(older) && len(older) < limit
-	reachedBottom := takeNewer == len(newer) && len(newer) < limit
 	// older is DESC → reverse the taken slice to ASC, then append the taken newer.
 	out := make([]domain.Message, 0, takeOlder+takeNewer)
 	for i := takeOlder - 1; i >= 0; i-- {
 		out = append(out, older[i])
 	}
 	out = append(out, newer[:takeNewer]...)
-	return out, reachedTop, reachedBottom, nil
+	return out, nil
 }
 
 // SearchMessages returns messages in a chat whose text OR attached media filename
