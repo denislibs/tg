@@ -52,22 +52,27 @@ export function briefProfile(user: UserReal): PeerProfile {
 }
 
 /** Проводная форма ответа профиля: конструктор + поля рядом с ним. */
-export interface RawPeerProfile {
-  user_full: UsersUserFull
-  can_message?: boolean
-}
+/**
+ * Ответ профиля — конструктор `users.userFull` В КОРНЕ, без обёртки.
+ *
+ * `can_message` лежит ВНУТРИ него: это наш клиентский параметр, объявленный в
+ * `schema/schema_additional_params.json` — тем же механизмом, которым у
+ * оригинала в `message` живут `mid`/`peerId`. Прежняя безымянная пара
+ * `{user_full, can_message}` конструктора не имела, и записать её на проводе TL
+ * было нечем.
+ */
+export type RawPeerProfile = UsersUserFull & { can_message?: boolean }
 
 /**
  * Разбор ответа профиля. Маппера полей здесь нет и быть не может: форма провода
- * и форма модели совпали, разбирать нечего — раскладываем только ответ на пару
- * конструкторов (`full_user` + первый элемент `users`) и своё поле рядом.
+ * и форма модели совпали, разбирать нечего — раскладываем только пару
+ * конструкторов (`full_user` + первый элемент `users`).
  */
-export function mapPeerProfile(r: RawPeerProfile): PeerProfile {
-  const full = r.user_full
+export function mapPeerProfile(full: RawPeerProfile): PeerProfile {
   return {
     user: full.users?.[0] ?? { _: 'user', id: full.full_user.id },
     fullUser: full.full_user,
-    canMessage: !!r.can_message,
+    canMessage: !!full.can_message,
   }
 }
 

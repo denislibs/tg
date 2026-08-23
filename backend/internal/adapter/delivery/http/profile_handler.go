@@ -26,7 +26,7 @@ func NewProfileHandler(uc *usecaseauth.Interactor) *ProfileHandler { return &Pro
 // тот же человек, и Check для такой пары всегда пропускает. Форма ответа при
 // этом совпадает с чужим профилем (privacy.Profile) буква в букву: клиенту
 // нечего разбирать двумя путями.
-func userJSON(u domain.UserRecord) map[string]any {
+func userJSON(u domain.UserRecord) domain.UsersUserFull {
 	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
 		PhoneCallsAvailable: true,
 		VideoCallsAvailable: true,
@@ -41,10 +41,10 @@ func userJSON(u domain.UserRecord) map[string]any {
 	}
 	brief := u.ToUser(domain.UserFlags{Self: true}, nil, true)
 	brief.Phone = u.Phone
-	// can_message — наше поле РЯДОМ с конструктором, а не внутри: схемного
-	// места у него нет (см. privacy.ProfileResult). Себе написать можно всегда
-	// — это «Избранное».
-	return map[string]any{"user_full": domain.NewUsersUserFull(full, brief), "can_message": true}
+	// can_message — НАШ параметр, объявленный клиентским у `users.userFull`
+	// (schema_additional_params.json). Себе написать можно всегда — это
+	// «Избранное».
+	return domain.NewUsersUserFull(full, brief, true)
 }
 
 type birthdayBody struct {
@@ -212,14 +212,18 @@ func (h *ProfileHandler) CheckUsername(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	available, err := h.uc.CheckUsername(r.Context(), raw, u.ID)
 	if errors.Is(err, domain.ErrUsernameFormat) {
-		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": "format"})
+		// Негодная форма имени — ОТКАЗ, а не успешный ответ «занято». Так же у
+		// оригинала: `account.checkUsername` отвечает `Bool`, а неверный формат
+		// приезжает ошибкой USERNAME_INVALID. Прежняя пара {available, reason}
+		// была отказом, одетым в успех, и `reason` не читал никто.
+		writeError(w, http.StatusBadRequest, "USERNAME_INVALID")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"available": available})
+	writeJSON(w, http.StatusOK, domain.NewBool(available))
 }
 
 type avatarBody struct {

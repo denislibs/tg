@@ -137,7 +137,9 @@ func allPeerConstructors() []any {
 		NewUserFull(43, UserFullFlags{}),
 
 		// ── Списочные ответы ─────────────────────────────────────────────────
-		NewUsersUserFull(NewUserFull(42, UserFullFlags{}), NewUser(42, UserFlags{})),
+		// can_message — НАШ клиентский параметр конструктора; сверщик обязан его
+		// признать по надстройкам, а не счесть лишним ключом.
+		NewUsersUserFull(NewUserFull(42, UserFullFlags{}), NewUser(42, UserFlags{}), true),
 		NewPeerBlocked(NewPeerUser(42), date),
 		NewContactsBlockedSlice(1, []PeerBlocked{NewPeerBlocked(NewPeerUser(42), date)},
 			[]UserReal{NewUser(42, UserFlags{})}),

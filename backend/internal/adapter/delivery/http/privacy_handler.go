@@ -161,5 +161,5 @@ func (h *PrivacyHandler) Profile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user_full": p.Full, "can_message": p.CanMessage})
+	writeJSON(w, http.StatusOK, p)
 }

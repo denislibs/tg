@@ -66,8 +66,8 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
     }
     setUnameState('checking')
     const id = window.setTimeout(() => {
-      void managers.profile.checkUsername(uname).then((r) => {
-        setUnameState(r.available ? 'available' : 'taken')
+      void managers.profile.checkUsername(uname).then((free) => {
+        setUnameState(free ? 'available' : 'taken')
       })
     }, 400)
     return () => window.clearTimeout(id)

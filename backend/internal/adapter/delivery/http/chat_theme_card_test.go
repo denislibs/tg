@@ -85,13 +85,11 @@ func TestChatTheme_LivesInFullCard_HTTP(t *testing.T) {
 		t.Fatalf("profile: %d %s", rec.Code, rec.Body.String())
 	}
 	var profile struct {
-		UserFull struct {
-			FullUser map[string]any `json:"full_user"`
-		} `json:"user_full"`
+		FullUser map[string]any `json:"full_user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &profile)
-	if profile.UserFull.FullUser["theme_emoticon"] != "day" {
-		t.Errorf("userFull.theme_emoticon = %v; want day", profile.UserFull.FullUser["theme_emoticon"])
+	if profile.FullUser["theme_emoticon"] != "day" {
+		t.Errorf("userFull.theme_emoticon = %v; want day", profile.FullUser["theme_emoticon"])
 	}
 
 	// И главное: в СТРОКЕ ДИАЛОГА темы больше нет ни у группы, ни у привата.

@@ -1687,5 +1687,14 @@
     "predicate": "privacyKeyReadTime",
     "params": [],
     "type": "PrivacyKey"
+  },
+  {
+    "predicate": "users.userFull",
+    "params": [
+      {
+        "name": "can_message",
+        "type": "boolean"
+      }
+    ]
   }
 ]

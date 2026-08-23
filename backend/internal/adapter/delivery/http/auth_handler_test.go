@@ -30,18 +30,16 @@ func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 // конструкторов схемы (users.userFull), где краткая карточка `user` лежит в
 // векторе users. Третьей формы «плоский пользователь» на проводе больше нет.
 type signedInUser struct {
-	UserFull struct {
-		Users []struct {
-			ID int64 `json:"id"`
-		} `json:"users"`
-	} `json:"user_full"`
+	Users []struct {
+		ID int64 `json:"id"`
+	} `json:"users"`
 }
 
 func (u signedInUser) id() int64 {
-	if len(u.UserFull.Users) == 0 {
+	if len(u.Users) == 0 {
 		return 0
 	}
-	return u.UserFull.Users[0].ID
+	return u.Users[0].ID
 }
 
 // loginViaHTTP проходит по HTTP полный вход: request_code → sign_in, а для
@@ -78,18 +76,16 @@ func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
 	var out struct {
 		Token string `json:"token"`
 		User  struct {
-			UserFull struct {
-				Users []struct {
-					ID int64 `json:"id"`
-				} `json:"users"`
-			} `json:"user_full"`
+			Users []struct {
+				ID int64 `json:"id"`
+			} `json:"users"`
 		} `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.Token == "" || len(out.User.UserFull.Users) != 1 || out.User.UserFull.Users[0].ID == 0 {
+	if out.Token == "" || len(out.User.Users) != 1 || out.User.Users[0].ID == 0 {
 		t.Fatalf("вход не выдал сессию: %s", rec.Body.String())
 	}
-	return out.Token, out.User.UserFull.Users[0].ID
+	return out.Token, out.User.Users[0].ID
 }
 
 // newChatUC builds the chat usecase from the postgres adapters for delivery tests.
@@ -340,16 +336,14 @@ func TestSignUp_HTTP(t *testing.T) {
 	var out struct {
 		Token string `json:"token"`
 		User  struct {
-			UserFull struct {
-				Users []struct {
-					FirstName string `json:"first_name"`
-					LastName  string `json:"last_name"`
-				} `json:"users"`
-			} `json:"user_full"`
+			Users []struct {
+				FirstName string `json:"first_name"`
+				LastName  string `json:"last_name"`
+			} `json:"users"`
 		} `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	users := out.User.UserFull.Users
+	users := out.User.Users
 	if out.Token == "" || len(users) != 1 || users[0].FirstName != "Денис" || users[0].LastName != "У" {
 		t.Fatalf("sign_up ответ = %s", rec.Body.String())
 	}

@@ -868,15 +868,29 @@ type UsersUserFull struct {
 	FullUser   UserFull   `json:"full_user"`
 	Chats      []Chat     `json:"chats"`
 	Users      []UserReal `json:"users"`
+	// CanMessage — НАШ параметр, объявленный в schema_additional_params.json.
+	//
+	// Прежде он ехал ключом РЯДОМ с конструктором, в безымянной обёртке
+	// `{user_full, can_message}`. На проводе TL «рядом» не бывает: у обёртки нет
+	// конструктора, и записать её нечем. Механизм для своих полей у оригинала
+	// уже есть — тот же, которым в `message` живут `mid`/`peerId`; им и
+	// пользуемся.
+	//
+	// Предмета в схеме у поля нет: оригинал выражает «можно ли писать» иначе —
+	// `user.pFlags.deleted` плюс премиум-гейт `contact_require_premium`
+	// (tweb `canSendToUser.ts`, `appUsersManager.ts:1250`), — а у нас это ответ
+	// ПРАВИЛА приватности, которое считает сервер.
+	CanMessage bool `json:"can_message,omitempty"`
 }
 
 // NewUsersUserFull собирает ответ из пары. Краткая форма — того же пользователя.
-func NewUsersUserFull(full UserFull, user UserReal) UsersUserFull {
+func NewUsersUserFull(full UserFull, user UserReal, canMessage bool) UsersUserFull {
 	return UsersUserFull{
 		Underscore: UsersUserFullTag,
 		FullUser:   full,
 		Chats:      []Chat{},
 		Users:      []UserReal{user},
+		CanMessage: canMessage,
 	}
 }
 

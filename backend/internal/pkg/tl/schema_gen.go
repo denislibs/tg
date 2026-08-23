@@ -8510,4 +8510,5 @@ var clientParams = map[string][]string{
 	"payments.giveawayInfo":              {"participants"},
 	"payments.giveawayInfoResults":       {"participants"},
 	"starGift":                           {"emoji"},
+	"users.userFull":                     {"can_message"},
 }

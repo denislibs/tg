@@ -57,12 +57,10 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
 // шаги входа отдают один и тот же объект.
 function profileWire(id: number, phone: string) {
   return {
-    user_full: {
-      _: 'users.userFull',
-      full_user: { _: 'userFull', id },
-      chats: [],
-      users: [{ _: 'user', pFlags: { self: true }, id, phone }],
-    },
+    _: 'users.userFull',
+    full_user: { _: 'userFull', id },
+    chats: [],
+    users: [{ _: 'user', pFlags: { self: true }, id, phone }],
     can_message: true,
   }
 }

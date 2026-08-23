@@ -7,17 +7,17 @@ import { getUserTitle } from '../peers/getPeerTitle'
 
 // Проводная форма профиля после шага C: пара конструкторов `users.userFull`
 // плюс наше поле `can_message` рядом. Трёх витрин пользователя больше нет.
+// Ответ профиля — конструктор `users.userFull` В КОРНЕ; `can_message` лежит
+// внутри него (наш клиентский параметр конструктора, не обёртка снаружи).
 const RAW = {
-  user_full: {
-    _: 'users.userFull' as const,
-    full_user: { _: 'userFull' as const, id: 1, about: 'hi', birthday: { _: 'birthday' as const, day: 15, month: 3, year: 2000 } },
-    chats: [],
-    users: [{
-      _: 'user' as const, pFlags: { self: true as const }, id: 1, phone: '+79990000001',
-      username: 'denis_m', first_name: 'Denis', last_name: 'M',
-      photo: { _: 'userProfilePhoto' as const, photo_id: 42 },
-    }],
-  },
+  _: 'users.userFull' as const,
+  full_user: { _: 'userFull' as const, id: 1, about: 'hi', birthday: { _: 'birthday' as const, day: 15, month: 3, year: 2000 } },
+  chats: [],
+  users: [{
+    _: 'user' as const, pFlags: { self: true as const }, id: 1, phone: '+79990000001',
+    username: 'denis_m', first_name: 'Denis', last_name: 'M',
+    photo: { _: 'userProfilePhoto' as const, photo_id: 42 },
+  }],
   can_message: true,
 }
 

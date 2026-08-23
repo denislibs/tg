@@ -189,10 +189,10 @@ func (i *Interactor) Blocked(ctx context.Context, userID int64, offset, limit in
 //
 // Флаги `self`/`contact`/`mutual_contact` кладёт вызывающий: чтобы посчитать
 // их, нужны обе стороны адресной книги, а Profile отвечает за приватность.
-func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (ProfileResult, error) {
+func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (domain.UsersUserFull, error) {
 	u, err := i.repo.GetUser(ctx, targetID)
 	if err != nil {
-		return ProfileResult{}, err
+		return domain.UsersUserFull{}, err
 	}
 	check := func(key domain.PrivacyKey) bool {
 		ok, err := i.Check(ctx, targetID, viewerID, key)
@@ -227,27 +227,7 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (Pro
 	if check(domain.PrivacyPhoneNumber) {
 		brief.Phone = u.Phone
 	}
-	return ProfileResult{
-		Full:       domain.NewUsersUserFull(full, brief),
-		CanMessage: check(domain.PrivacyMessages),
-	}, nil
-}
-
-// ProfileResult — ответ профиля: КОНСТРУКТОР схемы плюс наши поля РЯДОМ с ним,
-// а не внутри.
-//
-// CanMessage («пройдёт ли отправка сообщения этому пиру») предмет у нас имеет —
-// правило приватности PrivacyMessages, — но схемного поля под него нет вовсе:
-// в оригинале «нельзя писать» выражается другими механизмами
-// (contact_require_premium, settings:PeerSettings), которых у нас не
-// существует. Класть своё поле ВНУТРЬ userFull означало бы подделать чужой
-// конструктор; штатный механизм для клиентских параметров
-// (schema/schema_additional_params.json) требует перегенерации типов на
-// фронте, а фронт — шаг D. Поэтому поле живёт на уровне ответа, как muted и
-// creator_id у карточки чата.
-type ProfileResult struct {
-	Full       domain.UsersUserFull
-	CanMessage bool
+	return domain.NewUsersUserFull(full, brief, check(domain.PrivacyMessages)), nil
 }
 
 // PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого

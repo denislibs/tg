@@ -77,7 +77,7 @@ beforeEach(() => {
     if (u.endsWith('/auth/sign_in')) {
       return new Response(JSON.stringify({
         token: 'session-b',
-        user: { user_full: { _: 'users.userFull', full_user: { _: 'userFull', id: 5 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' }] }, can_message: true },
+        user: { _: 'users.userFull', full_user: { _: 'userFull', id: 5 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' }], can_message: true },
       }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u + ' ' + String(init?.method ?? 'GET'))

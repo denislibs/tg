@@ -53,16 +53,16 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	// Своя витрина — ТА ЖЕ пара конструкторов, что и чужая (users.userFull):
 	// краткая карточка `user` с именем, полная `userFull` с bio и днём рождения.
 	me := decodeMe(t, rec)
-	if me.UserFull.Underscore != "users.userFull" {
+	if me.Underscore != "users.userFull" {
 		t.Fatalf("GET /me отдал не users.userFull: %s", rec.Body.String())
 	}
-	if len(me.UserFull.Users) != 1 || me.UserFull.Users[0].FirstName != "Denis" || me.UserFull.Users[0].LastName != "M" {
+	if len(me.Users) != 1 || me.Users[0].FirstName != "Denis" || me.Users[0].LastName != "M" {
 		t.Fatalf("краткая карточка: %s", rec.Body.String())
 	}
-	if me.UserFull.FullUser.Underscore != "userFull" || me.UserFull.FullUser.About != "designer" {
+	if me.FullUser.Underscore != "userFull" || me.FullUser.About != "designer" {
 		t.Fatalf("полная карточка: %s", rec.Body.String())
 	}
-	b := me.UserFull.FullUser.Birthday
+	b := me.FullUser.Birthday
 	if b == nil || b.Underscore != "birthday" || b.Day != 15 || b.Month != 3 || b.Year != 2000 {
 		t.Fatalf("день рождения: %s", rec.Body.String())
 	}
@@ -79,8 +79,9 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	}
 
 	// Username availability + set.
+	// Ответ проверки имени — конструктор Bool, как у account.checkUsername.
 	rec = reqJSONAuth(t, h, http.MethodGet, "/username/available?u=Denis_M", nil, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"available":true`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"boolTrue"`)) {
 		t.Fatalf("check username: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/username", map[string]string{"username": "Denis_M"}, token)
@@ -91,7 +92,7 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	// A second user can't take the same username (case-insensitive) → 409.
 	token2, _ := signInToken(t, h, "+79990000002")
 	rec = reqJSONAuth(t, h, http.MethodGet, "/username/available?u=DENIS_M", nil, token2)
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"available":false`)) {
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"boolFalse"`)) {
 		t.Fatalf("expected taken, got %s", rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/username", map[string]string{"username": "DENIS_M"}, token2)
@@ -115,28 +116,26 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	}
 }
 
-// meResponse — форма ответа /me: конструктор users.userFull плюс наше
-// can_message рядом с ним (схемного места у него нет).
+// meResponse — форма ответа /me: конструктор users.userFull В КОРНЕ, а
+// can_message — наш клиентский параметр ВНУТРИ него.
 type meResponse struct {
-	CanMessage bool `json:"can_message"`
-	UserFull   struct {
+	Underscore string `json:"_"`
+	CanMessage bool   `json:"can_message"`
+	FullUser   struct {
 		Underscore string `json:"_"`
-		FullUser   struct {
+		About      string `json:"about"`
+		Birthday   *struct {
 			Underscore string `json:"_"`
-			About      string `json:"about"`
-			Birthday   *struct {
-				Underscore string `json:"_"`
-				Day        int    `json:"day"`
-				Month      int    `json:"month"`
-				Year       int    `json:"year"`
-			} `json:"birthday"`
-		} `json:"full_user"`
-		Users []struct {
-			Underscore string `json:"_"`
-			FirstName  string `json:"first_name"`
-			LastName   string `json:"last_name"`
-		} `json:"users"`
-	} `json:"user_full"`
+			Day        int    `json:"day"`
+			Month      int    `json:"month"`
+			Year       int    `json:"year"`
+		} `json:"birthday"`
+	} `json:"full_user"`
+	Users []struct {
+		Underscore string `json:"_"`
+		FirstName  string `json:"first_name"`
+		LastName   string `json:"last_name"`
+	} `json:"users"`
 }
 
 func decodeMe(t *testing.T, rec *httptest.ResponseRecorder) meResponse {

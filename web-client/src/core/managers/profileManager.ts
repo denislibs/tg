@@ -49,8 +49,23 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
       return mapped
     },
 
-    async checkUsername(username: string): Promise<{ available: boolean; reason?: string }> {
-      return rest.get<{ available: boolean; reason?: string }>('/username/available', { u: username })
+    /**
+     * Свободно ли имя. Ответ — конструктор `Bool`, как у
+     * `account.checkUsername` оригинала.
+     *
+     * Негодная форма имени приезжает ОТКАЗОМ (400 `USERNAME_INVALID`), а не
+     * успешным «занято»: прежняя пара `{available, reason}` была отказом,
+     * одетым в успех. Форму имени экран и так проверяет сам, до запроса, — так
+     * что отказ здесь означает только гонку с чужим правилом.
+     */
+    async checkUsername(username: string): Promise<boolean> {
+      try {
+        const res = await rest.get<{ _: string }>('/username/available', { u: username })
+        return res._ === 'boolTrue'
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 400) return false
+        throw e
+      }
     },
 
     async setUsername(username: string): Promise<SetUsernameResult> {

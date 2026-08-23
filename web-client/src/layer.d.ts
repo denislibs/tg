@@ -11660,7 +11660,8 @@ export namespace UsersUserFull {
     _: 'users.userFull',
     full_user: UserFull,
     chats: Array<Chat>,
-    users: Array<User>
+    users: Array<User>,
+    can_message?: boolean
   };
 }
 

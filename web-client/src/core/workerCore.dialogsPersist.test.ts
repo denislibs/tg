@@ -135,7 +135,7 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).endsWith('/auth/sign_in')) {
         return new Response(JSON.stringify({
-          token: 'TOK', user: { user_full: { _: 'users.userFull', full_user: { _: 'userFull', id: 42 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 42, phone: '+7' }] }, can_message: true },
+          token: 'TOK', user: { _: 'users.userFull', full_user: { _: 'userFull', id: 42 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 42, phone: '+7' }], can_message: true },
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))

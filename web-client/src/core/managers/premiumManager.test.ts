@@ -2,15 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { newPremiumManager } from './premiumManager'
 import type { RestClient } from '../net/restClient'
 
-// Проводная форма профиля после шага C: пара конструкторов + `can_message`
-// рядом. Премиум — `pFlags.premium` внутри краткого `user`, а не поле витрины.
+// Проводная форма профиля: конструктор `users.userFull` В КОРНЕ, `can_message`
+// ВНУТРИ него (наш клиентский параметр конструктора, не обёртка снаружи).
+// Премиум — `pFlags.premium` внутри краткого `user`, а не поле витрины.
 const RAW_USER = {
-  user_full: {
-    _: 'users.userFull' as const,
-    full_user: { _: 'userFull' as const, id: 1 },
-    chats: [],
-    users: [{ _: 'user' as const, pFlags: { self: true as const, premium: true as const }, id: 1, phone: '+79990000001', username: 'denis_m' }],
-  },
+  _: 'users.userFull' as const,
+  full_user: { _: 'userFull' as const, id: 1 },
+  chats: [],
+  users: [{ _: 'user' as const, pFlags: { self: true as const, premium: true as const }, id: 1, phone: '+79990000001', username: 'denis_m' }],
   can_message: true,
 }
 
