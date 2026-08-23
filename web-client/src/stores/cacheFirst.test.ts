@@ -1,43 +1,21 @@
-// Cache-first для черновиков и баланса звёзд: оба события логируются с плотным
-// pts и попадают в /difference (backend wave2_updates_test.go:221-224,243-245),
-// поэтому пропуски после оффлайна догоняются апдейт-логом и опрашивать сеть на
-// каждом старте незачем (порт намерения tweb `getDialogFilters`, filters.ts:475-484).
+// Cache-first для баланса звёзд: событие логируется с плотным pts и попадает в
+// /difference (backend wave2_updates_test.go:243-245), поэтому пропуски после
+// оффлайна догоняются апдейт-логом и опрашивать сеть на каждом старте незачем
+// (порт намерения tweb `getDialogFilters`, filters.ts:475-484). Черновики из
+// этого файла ушли вместе со своим стором: они — параметр диалога
+// (`dialog.draft`) и едут тем же ответом, что и он.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
-import { loadDrafts } from './draftsStore'
 import { loadStars } from './starsStore'
 import { registerStoreProjection } from '../client/realtime/storeProjection'
 import rootScope from '@lib/rootScope'
 import { RT } from '../core/realtime/events'
 import type { Managers } from '../client/bootstrap'
-import type { Draft } from '../core/models'
-
-const draft: Draft = { peerId: 3, text: 'привет', replyToId: null, date: 1786233600 }
 
 beforeEach(() => {
   useAppStateStore.setState({ ...STATE_INIT }, true)
   setStateWriter({ stateKey: vi.fn().mockResolvedValue(undefined) })
-})
-
-describe('черновики: cache-first', () => {
-  it('черновики есть в State — в сеть не идём', async () => {
-    useAppStateStore.setState({ drafts: [draft] })
-    const list = vi.fn()
-
-    await loadDrafts({ drafts: { list } })
-
-    expect(list).not.toHaveBeenCalled()
-  })
-
-  it('черновиков нет — запрашиваем', async () => {
-    const list = vi.fn().mockResolvedValue([draft])
-
-    await loadDrafts({ drafts: { list } })
-
-    expect(list).toHaveBeenCalledTimes(1)
-    expect(useAppStateStore.getState().drafts).toEqual([draft])
-  })
 })
 
 describe('звёзды: cache-first', () => {

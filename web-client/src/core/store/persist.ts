@@ -23,7 +23,7 @@
 //
 // Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БД origin).
 import { idbGet } from './idbKv'
-import type { Dialog, MyMessage, Draft } from '../models'
+import type { Dialog, MyMessage } from '../models'
 import type { Chat, UserReal } from '../peers/peer'
 import type { PeerProfile } from '../managers/authManager'
 import type { Folder } from '../managers/foldersManager'
@@ -374,16 +374,6 @@ export async function saveFolders(folders: Folder[]): Promise<void> {
 export async function loadFolders(): Promise<Folder[]> {
   if (await locked()) return []
   try { return (await read<Folder[] | undefined>(S_META, (s) => s.get('folders'))) ?? [] } catch { return [] }
-}
-
-export async function saveDrafts(drafts: Draft[]): Promise<void> {
-  if (await locked()) return
-  try { await enqueue(S_META, { kind: 'put', value: drafts, key: 'drafts' }) } catch { /* idb недоступен */ }
-}
-
-export async function loadDrafts(): Promise<Draft[]> {
-  if (await locked()) return []
-  try { return (await read<Draft[] | undefined>(S_META, (s) => s.get('drafts'))) ?? [] } catch { return [] }
 }
 
 // ── Юзеры (пишет peersManager воркера) ─────────────────────────────────────────

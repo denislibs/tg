@@ -10,7 +10,6 @@ import { loadStories } from '../../stores/storiesStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
 import { loadFolders } from '../../stores/foldersStore'
 import { loadPrivacy } from '../../stores/privacyStore'
-import { loadDrafts } from '../../stores/draftsStore'
 import { loadStars } from '../../stores/starsStore'
 import { runWhenUnlocked } from '../../stores/lockStore'
 import { primeMediaToken } from '../mediaUrl'
@@ -82,7 +81,6 @@ export function useAppBootstrap(): void {
       void loadNotifySettings(managers)
       void loadFolders(managers)
       void loadPrivacy(managers)
-      void loadDrafts(managers)
       void loadStars(managers)
       void primeMediaToken() // cache the media token so media bubbles build URLs sync
       // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)

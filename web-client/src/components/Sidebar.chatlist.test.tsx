@@ -73,7 +73,7 @@ beforeEach(() => {
     items: Array.from({ length: DIALOGS }, (_, i) => ({ dialog: dialog(i + 1), index: DIALOGS - i })),
   }])
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
-  useAppStateStore.setState({ folders: [FOLDER], drafts: [] })
+  useAppStateStore.setState({ folders: [FOLDER] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   if (!sizeStubbed) {

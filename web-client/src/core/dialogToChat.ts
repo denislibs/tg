@@ -17,7 +17,8 @@
 //  • заглушённость считается по СРОКУ (`notify_settings.mute_until`), а не по
 //    булеву полю строки.
 import type { Chat, ChatType } from '../data'
-import { getMessageText, isDialogArchived, type Dialog, type Draft, type MyMessage } from './models'
+import { getMessageText, isDialogArchived, type Dialog, type MyMessage } from './models'
+import { draftDate, draftText, hasDraft as dialogHasDraft } from './dialogs/draft'
 import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
 import { messageDateISO } from './messageToConvMsg'
 import { serviceMsgText } from './serviceMsg'
@@ -142,7 +143,6 @@ function previewOf(lm: MyMessage | undefined): { text: string; isService: boolea
 export function dialogToChat(
   d: Dialog,
   meId?: number | null,
-  draft?: Draft,
   lookup: PeerLookup = cachedPeer,
   now = Math.floor(Date.now() / 1000),
 ): Chat {
@@ -180,7 +180,8 @@ export function dialogToChat(
   }
   // Черновик заменяет превью последнего сообщения (tweb getLastMessageForDialog:
   // красный «Черновик: » + текст; тики/стрелка пересылки не показываются).
-  const hasDraft = !!draft?.text.trim()
+  // Черновик лежит В САМОМ диалоге — отдельным аргументом он больше не едет.
+  const hasDraft = dialogHasDraft(d.draft)
   const photo = user ? user.photo : getChatPhoto(chatPeer)
   return {
     id: String(d.peerId),
@@ -207,11 +208,11 @@ export function dialogToChat(
     // Секунды эпохи у обоих (`date:int` схемы): черновик приезжает
     // конструктором draftMessage со своим `date`, и переводить из ISO больше
     // нечего — сравниваем числа, форматируем один раз.
-    date: hasDraft && (!lm || draft!.date > lm.date)
-      ? fmtWhen(messageDateISO(draft!.date))
+    date: hasDraft && (!lm || draftDate(d.draft) > lm.date)
+      ? fmtWhen(messageDateISO(draftDate(d.draft)))
       : fmtWhen(lm ? messageDateISO(lm.date) : undefined),
     preview,
-    draftPreview: hasDraft ? draft!.text : undefined,
+    draftPreview: hasDraft ? draftText(d.draft) : undefined,
     type,
     // Мьют это СРОК: «замьючен» ВЫЧИСЛЯЕТСЯ, а не приезжает признаком (порт
     // `appNotificationsManager.isMuted`). Глобально выключенный ТИП чатов

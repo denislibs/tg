@@ -68,7 +68,6 @@ import { AppConfig } from '../config/app'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import SimilarChannels from './messages/SimilarChannels'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
-import { useDrafts } from '../stores/draftsStore'
 import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
@@ -105,6 +104,7 @@ import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
 import { hasReactionEmoticon } from '../core/reactions/messageReactions'
+import { draftReplyToId as draftReplyOf } from '../core/dialogs/draft'
 import classNames from '../shared/lib/classNames'
 import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -609,8 +609,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null, reply?.msgId ?? null)
   // Восстановление reply-бара из черновика (draft.reply_to_id): один раз после
   // загрузки окна; сообщение ищем в окне, вне окна — скип (getById у бэка нет).
-  const drafts = useDrafts()
-  const draftReplyToId = isRealChat && !thread ? drafts[numericChatId]?.replyToId ?? null : null
+  // Ответ черновика — поле САМОГО диалога (`draft.reply_to`), а не запись в
+  // отдельном сторе рядом.
+  const draftReplyToId = useChatsStore((st) => (isRealChat && !thread
+    ? draftReplyOf(st.dialogs.find((d) => d.peerId === numericChatId)?.draft)
+    : null))
   const replyRestoredRef = useRef(false)
   useEffect(() => {
     if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return

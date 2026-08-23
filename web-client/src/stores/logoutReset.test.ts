@@ -2,13 +2,13 @@
 // `boot.ts` второй раз не отработает, а он единственное место, где State
 // поднимается с диска в память. Без сброса конфиг прошлого аккаунта доживал бы
 // до входа под следующим — и, что хуже, cache-first ОТМЕНЯЕТ запрос к сети при
-// непустой памяти, то есть чужие папки/черновики/баланс были бы показаны и
-// записаны под скоуп нового аккаунта.
+// непустой памяти, то есть чужие папки/баланс были бы показаны и записаны под
+// скоуп нового аккаунта. Черновиков в этом списке нет: они — параметр диалога
+// (`dialog.draft`), приезжают вместе с ним и чистятся сбросом диалогов.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStateStore, setAppState, setStateWriter, resetAppState } from './appState'
 import { initialState } from '../core/state/state'
 import { loadFolders } from './foldersStore'
-import { loadDrafts } from './draftsStore'
 import { loadStars } from './starsStore'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)
@@ -28,7 +28,6 @@ beforeEach(() => {
 describe('resetAppState', () => {
   it('стирает конфиг прошлого аккаунта из памяти', () => {
     setAppState('folders', [folder])
-    setAppState('drafts', [{ peerId: 1, text: 'чужой черновик', replyToId: null, date: 1786233600 }])
     setAppState('starsBalance', 500)
     setAppState('recentSearch', ['1', '2', '3'])
 
@@ -70,16 +69,6 @@ describe('после сброса cache-first снова запрашивает 
       contacts: { list: vi.fn().mockResolvedValue([]) },
       dialogs: { setContactIds: vi.fn().mockResolvedValue(undefined) },
     })
-
-    expect(list).toHaveBeenCalledTimes(1)
-  })
-
-  it('черновики', async () => {
-    setAppState('drafts', [{ peerId: 1, text: 'x', replyToId: null, date: 1786233600 }])
-    resetAppState()
-    const list = vi.fn().mockResolvedValue([])
-
-    await loadDrafts({ drafts: { list } })
 
     expect(list).toHaveBeenCalledTimes(1)
   })

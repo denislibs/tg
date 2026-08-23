@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import { ARCHIVE_FOLDER_ID } from '../folderIds'
-import { mapMyMessage, type Dialog, type Draft, type MyMessage, type RawDialog, type RawMessage, type RawMessageReal } from '../models'
+import { mapMyMessage, type Dialog, type MyMessage, type RawDialog, type RawMessage, type RawMessageReal } from '../models'
 import { generateMessageId } from '../history/messageId'
 import { makeDialog } from '../dialogs/testDialog'
 import { makeRawMessage } from '../messages/testMessage'
@@ -121,7 +121,7 @@ async function loadedAllManager(days: number[]) {
     rest: rest as never,
     onDialogOps: (o) => ops.push(...o),
     loadCache: async () => [],
-    loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+    loadState: async () => ({ pinnedOrders: {} }),
   })
   await mgr.refresh()
   rest.get.mockClear()
@@ -185,7 +185,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       onDialogOps: () => {},
       // офлайн-кэш прошлой сессии: два диалога, сеть их не покрывала (loadedAll=false)
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 4 })
@@ -206,7 +206,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: restStub({ chats: [raw(3, 3)], count: 3, is_end: false }) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -225,7 +225,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 5 })
@@ -246,7 +246,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       onDialogOps: (o) => ops.push(...o),
       // офлайн-кэш — РОВНО то же, что принесёт страница
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
     await mgr.fillMirror()
@@ -269,7 +269,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 3 })
@@ -292,7 +292,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     expect((await mgr.getDialogs({ limit: 3 })).isEnd).toBe(true)
@@ -318,7 +318,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 3 })
@@ -339,7 +339,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: restStub({ chats: [raw(5, 5), raw(4, 4), raw(3, 3)], count: 9, is_end: true }) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 3 })
@@ -374,7 +374,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 3 })
@@ -411,7 +411,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       onDialogOps: () => {},
       // держим три ГЛОБАЛЬНЫХ диалога, из которых в папку 7 не попадает ни один
       loadCache: async () => [dialog(1, 8), dialog(2, 7), dialog(3, 6)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     const page = await mgr.getDialogs({ limit: 5, filterId: 7 })
@@ -440,7 +440,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.getDialogs({ limit: 3 }) // страница запомнила serverCount = 137
 
@@ -455,7 +455,7 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
       rest: { get: vi.fn(async () => { throw new Error('offline') }) } as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 5 })
@@ -479,7 +479,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
     rest: restStub({ chats: [] }) as never,
     onDialogOps: () => {},
     loadCache: async () => [contactDialog, strangerDialog, dialog(3, 3, { archived: true })],
-    loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders }),
+    loadState: async () => ({ pinnedOrders: {}, folders }),
   })
 
   it('в страницу папки попадают только прошедшие matchesFolder', async () => {
@@ -548,7 +548,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       // Папка 8 — близнец седьмой по правилу: в сеть она не сходит ни разу,
       // значит и `count` у неё может взяться только с чужой оценки.
       loadState: async () => ({
-        pinnedOrders: {}, drafts: [] as Draft[],
+        pinnedOrders: {},
         folders: [folder({ id: 7, nonContacts: true }), folder({ id: 8, nonContacts: true })],
       }),
     })
@@ -579,7 +579,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.refresh()
     rest.get.mockClear()
@@ -601,7 +601,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [contactDialog, strangerDialog],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, nonContacts: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, nonContacts: true })] }),
     })
 
     // Контактов ещё не было: без гварда сюда попали БЫ оба чата (каждый
@@ -627,7 +627,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       rest: restStub({ chats: [] }) as never,
       onDialogOps: () => {},
       loadCache: async () => [contactDialog, dialog(-4, 4)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     expect((await mgr.getDialogs({ filterId: 7, limit: 10 })).dialogs.map((d) => d.peerId)).toEqual([-4])
@@ -640,7 +640,7 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [contactDialog, strangerDialog],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [] }),
     })
 
     const page = await mgr.getDialogs({ filterId: 42, limit: 10 })
@@ -649,13 +649,13 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
     expect(rest.get).not.toHaveBeenCalled()
   })
 
-  it('определения папок приезжают State-ключом folders (тем же каналом, что pinnedOrders/drafts)', async () => {
+  it('определения папок приезжают State-ключом folders (тем же каналом, что pinnedOrders)', async () => {
     const mgr = newDialogsManager({
     messages: fakeMessages(),
       rest: restStub({ chats: [] }) as never,
       onDialogOps: () => {},
       loadCache: async () => [contactDialog, strangerDialog],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     mgr.setContactIds([7])
@@ -680,7 +680,7 @@ describe('dialogsManager.getDialogs: слияние страницы не тро
       rest: restStub({ chats: [raw(3, 3, { pinned: true }), raw(4, 4, { pinned: true })], count: 10, is_end: false }) as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       savePinnedOrders: async (v) => { saved.push(v) },
     })
 
@@ -696,7 +696,7 @@ describe('dialogsManager.getDialogs: слияние страницы не тро
       rest: restStub({ chats: [raw(2, 2, { pinned: true }), raw(9, 9)], count: 10, is_end: false }) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1, { pinned: true }), dialog(2, 2, { pinned: true })],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       savePinnedOrders: async (v) => { saved.push(v) },
     })
     await mgr.fillMirror() // засеял pinnedOrders = {0: [1, 2]}
@@ -722,7 +722,7 @@ describe('dialogsManager.getDialogs: поколение сессии гасит 
       rest: { get: vi.fn(() => new Promise((res) => { resolveGet = res as never })) } as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, 1)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -749,7 +749,7 @@ describe('dialogsManager.getDialogs: поколение сессии гасит 
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, contacts: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, contacts: true })] }),
     })
     await mgr.refresh() // is_end без курсора → loadedAll
     mgr.setContactIds([1])
@@ -776,7 +776,7 @@ describe('dialogsManager.getDialogs: поколение сессии гасит 
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.refresh() // is_end без курсора → загружены и «Все чаты», и архив
     rest.get.mockClear()
@@ -798,7 +798,7 @@ describe('dialogsManager.getDialogs: поколение сессии гасит 
       rest: rest as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.getDialogs({ limit: 5 }) // кэша (2) не хватает — сеть отдала count=137
     rest.get.mockClear()
@@ -825,11 +825,11 @@ describe('размер набора по выборке (порт dialogs.ts:170
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     mgr.setContactIds([])
     // У менеджера нет отдельного `setFolders` — папки заводятся State-ключом
-    // `folders` (тем же каналом, что и `pinnedOrders`/`drafts`, см. тест
+    // `folders` (тем же каналом, что и `pinnedOrders`, см. тест
     // «определения папок приезжают State-ключом folders» выше). Гидратация
     // ДО setStateKey обязательна: doHydrate() безусловно перечитывает `folders`
     // из loadState() и молча стёр бы значение, заданное раньше неё.
@@ -853,7 +853,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const page = await mgr.getDialogs({ limit: 1, filterId: ARCHIVE_FOLDER_ID })
@@ -877,7 +877,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
       // `setFolders`; здесь тест владеет `loadState`, поэтому определение
       // отдаётся сразу гидратацией (тот же приём, что в тестах фильтра папки
       // выше), а не досылается `setStateKey` после `fillMirror`.
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
     mgr.setContactIds([])
 
@@ -905,7 +905,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID }) // архив загружен целиком
@@ -926,7 +926,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
       // Хвост АРХИВА (peer_id 3) и хвост всего кэша (peer_id 1) обязаны
       // РАЗЛИЧАТЬСЯ: иначе тест не отличит курсор выборки от курсора кэша.
       loadCache: async () => [dialog(1, 1), dialog(3, 3, { archived: true }), dialog(5, 5, { archived: true })],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
@@ -945,7 +945,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [dialog(1, 1), dialog(2, 2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
     mgr.setContactIds([])
 
@@ -973,7 +973,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
       // (5), но самой архивной выборки в нём — один диалог до страницы и два
       // после.
       loadCache: async () => [dialog(1, 1), dialog(2, 2), dialog(4, 4), dialog(3, 3, { archived: true })],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 2, filterId: ARCHIVE_FOLDER_ID }) // держим 2 архивных из 5
@@ -993,7 +993,7 @@ describe('размер набора по выборке (порт dialogs.ts:170
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 5, filterId: ARCHIVE_FOLDER_ID })
@@ -1021,7 +1021,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     await mgr.refresh() // глобальная выборка вычерпана до чата 2
@@ -1045,7 +1045,7 @@ describe('курсор пагинации — свой у каждой выбо�
       // В кэше прошлой сессии — САМЫЙ СТАРЫЙ диалог: после слияния страницы он
       // остаётся в хвосте, то есть хвост кэша и хвост страницы РАЗЪЕЗЖАЮТСЯ.
       loadCache: async () => [dialog(1, 1)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ limit: 2 }) // первая страница: курсор встал на чате 4
@@ -1074,7 +1074,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[], folders: [folder({ id: 7, groups: true })] }),
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     await mgr.refresh() // курсор глобальной выборки: чат 2
@@ -1099,7 +1099,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh() // курсор: чат 2 (низ потока)
@@ -1126,7 +1126,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1151,7 +1151,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [dialog(5, 5, { archived: true })],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: 2 }) // курсор архива встал на чате 30
@@ -1169,7 +1169,7 @@ describe('курсор пагинации — свой у каждой выбо�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.getDialogs({ limit: 2 }) // курсор выборки «Все чаты» встал на чате 2
     rest.get.mockClear()
@@ -1196,7 +1196,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => cachedTail(),
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1215,7 +1215,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
       rest: rest as never,
       // Чат 2 лежит между 1 и 3 по времени — сервер обязан был бы его вернуть.
       loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(3, 7), dialog(50, 1)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1234,11 +1234,9 @@ describe('refresh сливает окно с кэшем, а не подменя�
       // Черновик ВНУТРИ окна по времени (8-е между 9-м и 7-м), а само последнее
       // сообщение чата 7 — глубоко под окном: по `dialogIndex` он попал бы в
       // окно и был бы снят, по серверному ключу — нет.
-      loadCache: async () => [dialog(1, 9), dialog(2, 7), dialog(7, 1)],
-      loadState: async () => ({
-        pinnedOrders: {},
-        drafts: [{ peerId: 7, text: 'ч', replyToId: null, date: Math.floor(Date.parse(at(8)) / 1000) }] as Draft[],
-      }),
+      loadCache: async () => [dialog(1, 9), dialog(2, 7),
+        { ...dialog(7, 1), draft: { _: 'draftMessage' as const, message: 'ч', date: Math.floor(Date.parse(at(8)) / 1000) } }],
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1254,7 +1252,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [dialog(9, 9), dialog(1, 8), dialog(2, 7)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1280,7 +1278,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
       rest: rest as never,
       // 50 и 51 лежат ПОД окном (дни 5 и 4) — их принесла догрузка папки/архива.
       loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(50, 5), dialog(51, 4)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1303,7 +1301,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(50, 5), dialog(51, 4)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1321,7 +1319,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
       rest: rest as never,
       // У чата 3 РОВНО то же время, что у нижнего диалога окна (день 8).
       loadCache: async () => [dialog(1, 9), dialog(2, 8), dialog(3, 8)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1344,7 +1342,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
         dialog(70, 8, { pinned: true }), // закреплённый СТРОГО внутри окна (9 > 8 > 7)
         dialog(71, 8, { noMessage: true }), // и очищенный
       ],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1371,7 +1369,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
       rest: rest as never,
       // Чат 1 уже в кэше (ответ принесёт его свежую версию), 50 и 51 — ниже.
       loadCache: async () => [dialog(1, 9, { pinned: true }), dialog(50, 5), dialog(51, 4)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1386,7 +1384,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => cachedTail(),
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1404,7 +1402,7 @@ describe('refresh сливает окно с кэшем, а не подменя�
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1426,7 +1424,7 @@ describe('refresh перечитывает удерживаемое окно, а
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1441,7 +1439,7 @@ describe('refresh перечитывает удерживаемое окно, а
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => cached,
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()
@@ -1457,7 +1455,7 @@ describe('refresh перечитывает удерживаемое окно, а
     messages: fakeMessages(),
       rest: rest as never,
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] as Draft[] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     await mgr.refresh()

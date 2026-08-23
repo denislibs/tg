@@ -14,7 +14,6 @@ import type { Managers } from '../../client/bootstrap'
 import { useChatList } from './useChatList'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNotifyStore } from '../../stores/notifyStore'
-import { useAppStateStore } from '../../stores/appState'
 import type { NotifySettings } from '../managers/notifyManager'
 import { makeDialog } from '../dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '../peerCache'
@@ -43,7 +42,6 @@ beforeEach(() => {
   applyPeerOps([{ op: 'upsert', peers: [groupCard] }])
   useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: false, meId: null })
   useChatsStore.getState().applyDialogOps([{ op: 'reset', items: [{ dialog: makeDialog({ peerId: GROUP_PEER_ID }), index: 30 }] }])
-  useAppStateStore.setState({ drafts: [] })
   useNotifyStore.setState({ settings: settings() })
 })
 

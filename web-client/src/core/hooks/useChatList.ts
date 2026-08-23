@@ -6,7 +6,6 @@
 import { useMemo, useRef, useSyncExternalStore } from 'react'
 import type { Chat } from '../../data'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useDrafts } from '../../stores/draftsStore'
 import { useNotifyStore, isDialogMuted } from '../../stores/notifyStore'
 import { dialogToChat } from '../dialogToChat'
 import { cachedChat, cachedPeer, peerMirrorVersion, subscribePeerMirror } from '../peerCache'
@@ -16,7 +15,6 @@ export function useChatList(): Chat[] {
   const dialogs = useChatsStore((s) => s.dialogs)
   const meId = useChatsStore((s) => s.meId)
   const notifySettings = useNotifyStore((s) => s.settings)
-  const draftsByChat = useDrafts()
   const chatCacheRef = useRef<Map<number, { json: string; chat: Chat }>>(new Map())
   // Имя, аватарка и вид чата приехали в КАРТОЧКУ ПИРА (векторы chats/users
   // контейнера `/chats`), а не в строку диалога. Значит строка списка зависит
@@ -30,7 +28,7 @@ export function useChatList(): Chat[] {
     const cache = chatCacheRef.current
     const seen = new Set<number>()
     const next = dialogs.map((d) => {
-      let chat = dialogToChat(d, meId, draftsByChat[d.peerId], cachedPeer)
+      let chat = dialogToChat(d, meId, cachedPeer)
       // Глобально выключенный тип чатов показывается как muted (tweb
       // isPeerLocalMuted с respectType): иконка + серый badge у всех таких чатов.
       // Само правило — одно на всё приложение (stores/notifyStore.ts::isDialogMuted,
@@ -46,5 +44,5 @@ export function useChatList(): Chat[] {
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k)
     return next
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogs, meId, notifySettings, draftsByChat, peersVersion])
+  }, [dialogs, meId, notifySettings, peersVersion])
 }

@@ -153,7 +153,7 @@ async function coldStart() {
     rest,
     onDialogOps: (ops) => rootScope.dispatchEventSingle(RT.dialogOp, { ops }),
     loadCache: async () => [], // первый вход: офлайн-кэша прошлой сессии нет
-    loadState: async () => ({ pinnedOrders: {}, drafts: [], folders: [FOLDER] }),
+    loadState: async () => ({ pinnedOrders: {}, folders: [FOLDER] }),
     // Владелец сообщений: вектор `messages` контейнера втекает сюда, отсюда же
     // разрешается `top_message` (решение Р11). Без него у строки списка не
     // будет ни превью, ни ДАТЫ — а по дате считается и порядок, и курсор.
@@ -208,7 +208,7 @@ beforeEach(() => {
   useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: false })
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
-  useAppStateStore.setState({ folders: [FOLDER], drafts: [] })
+  useAppStateStore.setState({ folders: [FOLDER] })
   useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 

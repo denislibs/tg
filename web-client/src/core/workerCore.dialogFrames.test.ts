@@ -201,6 +201,63 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'remove', peerId: 1 }])
   })
 
+  // Черновик — ПОЛЕ диалога, поэтому кадр применяет тот же владелец, что и
+  // остальные: от даты черновика зависит МЕСТО строки в списке, и второй
+  // (main-side) вывод того же факта держал бы порядок в двух местах. Раньше
+  // кадр слушала витрина (`storeProjection` → свой `draftsStore`) — этой
+  // подписки больше нет, и удаление ветки в `dispatch` красит этот кейс.
+  it('draft_update (без pts) → dialogs.applyDraft → rt:dialog_op patch', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('draft_update', {
+      _: 'updateDraftMessage',
+      peer: { _: 'peerUser', user_id: 1 },
+      draft: { _: 'draftMessage', message: 'набросок', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 3 }, date: 1785578400 },
+    })
+
+    // Номер, на который отвечает черновик, приезжает СЕРВЕРНЫЙ, а в строке
+    // диалога он уже клиентский — тем же переводом, что и горизонты чтения.
+    expect(dialogOps).toEqual([{
+      op: 'patch',
+      peerId: 1,
+      fields: {
+        draft: {
+          _: 'draftMessage',
+          message: 'набросок',
+          reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: generateMessageId(3) },
+          date: 1785578400,
+        },
+      },
+      // Черновик СВЕЖЕЕ последнего сообщения, поэтому дата активности строки —
+      // его: индекс считается по ней (`dialogIndex`, младшие 16 бит — peerId).
+      index: 1785578400 * 0x10000 + 1,
+    }])
+  })
+
+  // «Черновик сняли» приезжает ДРУГИМ конструктором (`draftMessageEmpty`), и
+  // владелец обязан СНЯТЬ ключ, а не положить его со значением: у конструктора
+  // схемы «выключено» — это отсутствие параметра.
+  it('draftMessageEmpty снимает черновик со строки', async () => {
+    const { dialogOps } = await bootWithSeededDialog()
+
+    capturedConnDeps!.onFrame('draft_update', {
+      _: 'updateDraftMessage',
+      peer: { _: 'peerUser', user_id: 1 },
+      draft: { _: 'draftMessage', message: 'набросок', date: 1785578400 },
+    })
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('draft_update', {
+      _: 'updateDraftMessage',
+      peer: { _: 'peerUser', user_id: 1 },
+      draft: { _: 'draftMessageEmpty' },
+    })
+
+    expect(dialogOps).toHaveLength(1)
+    const op = dialogOps[0] as Extract<DialogOp, { op: 'patch' }>
+    expect(op.fields.draft).toBeUndefined()
+  })
+
   // Кадр реакций несёт ТОЛЬКО абсолютный агрегат: ни «кто поставил», ни
   // пер-зрительского счётчика в нём нет — тело одно на всех получателей.
   // Поэтому бейдж бампится по ответу владельца SSOT: моё ли это сообщение и

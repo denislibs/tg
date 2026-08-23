@@ -50,7 +50,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type UserUpdateEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { getPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
@@ -240,7 +240,7 @@ export function createWorkerCore() {
       // (core/state/loadState.ts — при несовпадении STATE_VERSION он отдаёт
       // чистые дефолты, а не склеивает половинки схемы прошлой сборки). Без него
       // после ближайшего бампа версии main жил бы на дефолтах, а владелец
-      // сортировал бы по СТАРОМУ pinnedOrders/drafts — два разных ответа на один
+      // сортировал бы по СТАРОМУ pinnedOrders/folders — два разных ответа на один
       // вопрос. Через `loadStateOnce()` не идём сознательно: он мемоизирует
       // промис на модуль, а воркер перечитывает State заново после
       // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
@@ -249,7 +249,7 @@ export function createWorkerCore() {
       // `getDialogs({filterId})`. Читаются С ДИСКА, а не ждут `setStateKey`:
       // на холодном старте State никто не ПИШЕТ (boot.ts поднимает его
       // `setAppStateSilent`), значит канал зеркала ключа в этом кадре молчит.
-      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [], folders: gated.folders ?? [] }
+      return { pinnedOrders: gated.pinnedOrders ?? {}, folders: gated.folders ?? [] }
     },
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
@@ -326,7 +326,7 @@ export function createWorkerCore() {
   // указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
   const persist = newPersistManager(
     mirrorStateKey,
-    // Task 1: порядок диалогов зависит от State-ключей pinnedOrders/drafts —
+    // Task 1: порядок диалогов зависит от State-ключа pinnedOrders —
     // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
     (key, value) => dialogs.setStateKey(key, value),
   )
@@ -436,6 +436,13 @@ export function createWorkerCore() {
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    // Черновик — ПОЛЕ диалога, поэтому его применяет владелец списка: от даты
+    // черновика зависит место строки, и считать её на витрине значило бы
+    // держать порядок в двух местах.
+    else if (pred === 'updateDraftMessage') {
+      const e = d as DraftUpdateEvt
+      dialogs.applyDraft(getPeerId(e.peer), e.draft)
+    }
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз

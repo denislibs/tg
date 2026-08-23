@@ -6,7 +6,8 @@
 import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
 import { useEvent } from './useEvent'
-import { draftFor, removeDraft, setDraft, useDrafts } from '../../stores/draftsStore'
+import { useChatsStore } from '../../stores/chatsStore'
+import { draftReplyToId as replyOfDraft, draftText } from '../dialogs/draft'
 
 const SAVE_DEBOUNCE_MS = 2500 // tweb saveDraftDebounced
 
@@ -18,8 +19,9 @@ export function useComposerDraft(peerId: PeerId | null, replyToId: number | null
   onDraftChange: (text: string) => void
 } {
   const managers = useManagers()
-  const drafts = useDrafts()
-  const initialDraft = (peerId != null ? drafts[peerId]?.text : undefined) ?? ''
+  // Черновик читается из САМОГО диалога — своего стора у него больше нет.
+  const initialDraft = useChatsStore((st) =>
+    draftText(peerId == null ? undefined : st.dialogs.find((d) => d.peerId === peerId)?.draft))
   const textRef = useRef(initialDraft)
   const savedRef = useRef(sigOf(initialDraft, null))
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -32,10 +34,10 @@ export function useComposerDraft(peerId: PeerId | null, replyToId: number | null
     const sig = sigOf(text, replyToId)
     if (sig === savedRef.current) return
     savedRef.current = sig
-    // Оптимистично — превью «Черновик:» в списке чатов обновляется сразу;
-    // rt:draft_update с бэка сверит остальные вкладки/устройства.
-    if (text.trim() || replyToId != null) setDraft({ peerId, text, replyToId, date: Math.floor(Date.now() / 1000) })
-    else removeDraft(peerId)
+    // Оптимистики на витрине больше нет: черновик — поле диалога, а диалогами
+    // владеет воркер. Ответ ручки и кадр `rt:draft_update` (одно устройство их
+    // получает первым) применяет тот же владелец, и превью «Черновик:» вместе
+    // с местом строки в списке обновляется ровно один раз.
     void managers.drafts.save(peerId, text, replyToId).catch(() => {})
   })
 
@@ -47,9 +49,11 @@ export function useComposerDraft(peerId: PeerId | null, replyToId: number | null
 
   // Смена чата: сбросить refs под новый чат; при уходе — немедленный сейв.
   useEffect(() => {
-    const d = peerId != null ? draftFor(peerId) : undefined
-    textRef.current = d?.text ?? ''
-    savedRef.current = sigOf(d?.text ?? '', d?.replyToId ?? null)
+    const draft = peerId == null
+      ? undefined
+      : useChatsStore.getState().dialogs.find((d) => d.peerId === peerId)?.draft
+    textRef.current = draftText(draft)
+    savedRef.current = sigOf(draftText(draft), replyOfDraft(draft))
     skipReplyEffect.current = true
     return () => {
       if (timer.current) clearTimeout(timer.current)

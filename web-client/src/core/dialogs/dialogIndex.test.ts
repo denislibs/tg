@@ -49,19 +49,23 @@ describe('dialogIndex', () => {
     expect(unknown).toBeGreaterThan(known)
   })
 
-  // Черновик в нашем репозитории живёт не в Dialog, а в отдельном сторе
-  // (AppState.drafts → Draft.date), поэтому дата приезжает третьим
-  // аргументом — модуль остаётся чистым.
+  // Черновик лежит В САМОМ диалоге (`dialog.draft`), как у оригинала: третьим
+  // аргументом он больше не приезжает, и дата активности собирается из одного
+  // источника, а не из двух.
+  const draftAt = (date: number) => ({ _: 'draftMessage' as const, message: 'ч', date })
+
   it('черновик свежее последнего сообщения — поднимает диалог', () => {
     const withoutDraft = dialogIndex(dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), [])
-    const withDraft = dialogIndex(dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), [], { date: 1786276800 })
+    const withDraft = dialogIndex(
+      { ...dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), draft: draftAt(1786276800) }, [])
 
     expect(withDraft).toBeGreaterThan(withoutDraft)
   })
 
   it('черновик старше последнего сообщения — индекс не меняется', () => {
     const base = dialogIndex(dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), [])
-    const stale = dialogIndex(dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), [], { date: 1786266000 })
+    const stale = dialogIndex(
+      { ...dlg({ lastMessage: at('2026-08-09T10:00:00Z') }), draft: draftAt(1786266000) }, [])
 
     expect(stale).toBe(base)
   })

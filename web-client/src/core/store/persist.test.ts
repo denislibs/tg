@@ -8,10 +8,10 @@ import {
   saveDialogs, loadDialogs, saveMe, loadMe,
   saveUsers, loadUsers,
   saveMessages, loadMessages, deletePersistedMessage, clearPersistedChat,
-  saveFolders, loadFolders, saveDrafts, loadDrafts,
+  saveFolders, loadFolders,
   DB_VERSION,
 } from './persist'
-import type { Dialog, MessageReal, MyMessage, Draft } from '../models'
+import type { Dialog, MessageReal, MyMessage } from '../models'
 import type { Folder } from '../managers/foldersManager'
 import type { PeerProfile } from '../managers/authManager'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
@@ -47,22 +47,24 @@ describe('persist (normalized offline store)', () => {
     expect((await loadMe())?.user.id).toBe(7)
   })
 
-  it('round-trips folders and drafts', async () => {
+  it('round-trips folders', async () => {
     const folder: Folder = { id: 1, title: 'Work', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [5], excludeChats: [] }
-    const draft: Draft = { peerId: 9, text: 'wip', replyToId: null, date: 1767225600 }
     await saveFolders([folder])
-    await saveDrafts([draft])
     expect((await loadFolders()).map((f) => f.title)).toEqual(['Work'])
-    expect((await loadDrafts()).map((d) => d.peerId)).toEqual([9])
   })
 
-  it('clears folders + drafts on account switch', async () => {
+  // Своей корзины у черновиков нет: `draft` — параметр самого `dialog`, и на
+  // диск он едет вместе с ним, одной записью.
+  it('черновик лежит на диске в диалоге, а не отдельной корзиной', async () => {
+    await saveDialogs([{ ...dialog(9), draft: { _: 'draftMessage', message: 'wip', date: 1767225600 } }])
+    expect((await loadDialogs())[0].draft).toEqual({ _: 'draftMessage', message: 'wip', date: 1767225600 })
+  })
+
+  it('clears folders on account switch', async () => {
     await persistScope('A')
     await saveFolders([{ id: 1, title: 'X', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }])
-    await saveDrafts([{ peerId: 1, text: 't', replyToId: null, date: 1767225600 }])
     await persistScope('B') // смена аккаунта
     expect(await loadFolders()).toEqual([])
-    expect(await loadDrafts()).toEqual([])
   })
 
   it('round-trips users (merge by id)', async () => {

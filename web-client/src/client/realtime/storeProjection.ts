@@ -9,19 +9,18 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraftMessage, mapSuggestedPost, mapMessage } from '../../core/models'
+import { mapSuggestedPost, mapMessage } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
-import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -224,14 +223,11 @@ export function registerStoreProjection(managers: Managers): void {
   // dialogs.applyRead → rt:dialog_op) — строка store.applyRead здесь была
   // вторым, main-side выводом того же факта. Кадр rt:read на main больше не
   // нужен (единственным потребителем и был этот обработчик).
-  // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
-  rootScope.addEventListener(RT.draftUpdate, (raw) => {
-    const e = raw as DraftUpdateEvt
-    const peerId = getPeerId(e.peer)
-    const draft = mapDraftMessage(peerId, e.draft)
-    if (draft) setDraft(draft)
-    else removeDraft(peerId)
-  })
+  // Кадр черновика (`rt:draft_update`) здесь больше не слушается: черновик это
+  // ПОЛЕ диалога, и применяет его владелец списка (dialogsManager.applyDraft →
+  // rt:dialog_op). Второй, main-side вывод того же факта убран вместе со своим
+  // стором — от даты черновика зависит порядок списка, и считать её на витрине
+  // значило бы держать порядок в двух местах.
   rootScope.addEventListener(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   rootScope.addEventListener(RT.typing, (raw) => {
     const t = raw as TypingEvt

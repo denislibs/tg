@@ -142,7 +142,7 @@ function setWindowHeight(height: number) {
 beforeEach(() => {
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
-  useAppStateStore.setState({ folders: [], drafts: [] })
+  useAppStateStore.setState({ folders: [] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 })
 

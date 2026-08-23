@@ -675,7 +675,7 @@ JS — единственный владелец ширин; SCSS только �
 
 | Аспект | tweb | у нас |
 |---|---|---|
-| Шина состояния UI | `rootScope`-события + императивный DOM (+ solid-сторы в форке) | **Zustand-сторы** (`stores/*`: `chatsStore, messagesStore, peersStore, foldersStore, draftsStore, navigationStore, appState, …` — ~29 шт.) + React; событий-шины нет, компоненты подписаны на срезы сторов |
+| Шина состояния UI | `rootScope`-события + императивный DOM (+ solid-сторы в форке) | **Zustand-сторы** (`stores/*`: `chatsStore, messagesStore, peersStore, foldersStore, navigationStore, appState, …` — ~29 шт.) + React; событий-шины нет, компоненты подписаны на срезы сторов |
 | Доставка realtime | воркер применяет update → mirror + rootScope-событие во все вкладки | воркер применяет WS-кадр к окну сообщений **один раз**, UI переигрывает типизированные операции: `client/realtimeBridge.ts` → `realtime/storeProjection` (проекция в сторы), звук/нотификации — отдельные подписчики |
 | Владение данными | воркер владеет всем, вкладка — только mirrors | воркер владеет сетью+окном сообщений; часть данных живёт прямо в Zustand-сторах вкладки |
 | Мульти-аккаунт | 4 аккаунта в одном воркере, `accountNumber` в каждом RPC | один аккаунт |

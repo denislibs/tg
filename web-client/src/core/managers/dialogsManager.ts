@@ -8,7 +8,7 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { mapMessage, isDialogArchived, type Dialog, type Draft, type RawDialog, type RawMyMessage } from '../models'
+import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type RawDialog, type RawMyMessage } from '../models'
 import { generateMessageId } from '../history/messageId'
 import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
@@ -69,7 +69,7 @@ export interface DialogsDeps {
    * приёму, что `getMeId`/`savePinnedOrders`: тесты, которых папки не
    * касаются, его не задают.
    */
-  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; drafts: Draft[]; folders?: Folder[] }>
+  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; folders?: Folder[] }>
   /** id текущего пользователя — нужен applyNewMessage (не бампить бейдж на своё же
    * эхо). Разрешается лениво (воркер узнаёт `me` асинхронно), поэтому геттер, а не
    * значение — тот же приём, что у `newMessagesManager` (messagesManager.ts). */
@@ -137,7 +137,6 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   // ТЕКУЩЕЙ (единственной) папки, ей пользуется dialogIndex().
   let pinnedOrders: Record<number, number[]> = {}
   let pinnedOrder: number[] = []
-  let drafts: Draft[] = []
   // Этап 2 (пагинация): входы фильтра папок. Определения — State-ключ `folders`
   // (диск при гидрации + `setStateKey` на изменение), контакты — отдельный
   // сеттер `setContactIds` (владения контактами этот этап не заводит, см. спеку
@@ -270,7 +269,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *  - `fillMirror()` — данные только что прочитаны с ТОГО ЖЕ диска, планировать
    *    обратную запись нечего;
    *  - `reindex` из `setStateKey()` — меняется порядок (производная от
-   *    State-ключей `pinnedOrders`/`drafts`), а на диск идут только значения
+   *    State-ключа `pinnedOrders`), а на диск идут только значения
    *    диалогов (`items.map(i => i.dialog)`), они те же.
    */
   const announce = (ops: DialogOp[]) => { onDialogOps?.(ops) }
@@ -363,12 +362,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     }
     armMuteTimer(closestMuteUntil(now), now)
   }
-  const draftFor = (peerId: number) => drafts.find((d) => d.peerId === peerId)
-
   /** Порядок — производная от данных (tweb generateDialogIndex, dialogs.ts:605-608). */
   const sort = (dialogs: Dialog[]): DialogItem[] =>
     dialogs
-      .map((dialog) => ({ dialog, index: dialogIndex(dialog, pinnedOrder, draftFor(dialog.peerId)) }))
+      .map((dialog) => ({ dialog, index: dialogIndex(dialog, pinnedOrder) }))
       .sort((a, b) => b.index - a.index)
 
   /**
@@ -496,7 +493,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const prev = items[idx].dialog
     const dialog = merge(prev, fields)
     if (equal(prev, dialog)) return
-    const index = dialogIndex(dialog, pinnedOrder, draftFor(peerId))
+    const index = dialogIndex(dialog, pinnedOrder)
     const moved = index !== items[idx].index
     items[idx] = { dialog, index }
     if (moved) items = [...items].sort((a, b) => b.index - a.index)
@@ -537,13 +534,30 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   function toDialog(raw: RawDialog): Dialog {
     const peerId = getPeerId(raw.peer)
     const top_message = generateMessageId(raw.top_message)
-    return {
+    const dialog: Dialog = {
       ...raw,
       top_message,
       read_inbox_max_id: generateMessageId(raw.read_inbox_max_id),
       read_outbox_max_id: generateMessageId(raw.read_outbox_max_id),
       peerId,
       lastMessage: messages?.getMessageByPeer(peerId, top_message),
+    }
+    // Номер, на который отвечает черновик, — из ТОГО ЖЕ пространства, что и
+    // остальные три: композер восстанавливает по нему reply, а сравнивается он
+    // с `message.id`. Ключ ставится ТОЛЬКО когда черновик есть: «черновика нет»
+    // — отсутствие параметра (правило фазы 0), и заведённый впустую ключ
+    // разошёлся бы с кэшем при структурной сверке (`equal` считает ключи).
+    const draft = toClientDraft(raw.draft)
+    if (draft) dialog.draft = draft
+    return dialog
+  }
+
+  /** Перевод номера ответа черновика в клиентское пространство. */
+  function toClientDraft(draft: DraftMessage | undefined): DraftMessage | undefined {
+    if (draft?._ !== 'draftMessage' || draft.reply_to === undefined) return draft
+    return {
+      ...draft,
+      reply_to: { ...draft.reply_to, reply_to_msg_id: generateMessageId(draft.reply_to.reply_to_msg_id) },
     }
   }
 
@@ -557,7 +571,6 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     if (gen !== sessionGen) return
     pinnedOrders = state.pinnedOrders
     pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
-    drafts = state.drafts
     folders = state.folders ?? []
     if (!items.length) {
       // Карточки пиров с диска поднимаются ВМЕСТЕ с диалогами: имя и аватарка
@@ -691,7 +704,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const prev = byId.get(dialog.peerId)?.dialog
       if (!prev) added++
       else if (equal(prev, dialog)) continue // тот же диалог теми же значениями — не операция
-      const item: DialogItem = { dialog, index: dialogIndex(dialog, pinnedOrder, draftFor(dialog.peerId)) }
+      const item: DialogItem = { dialog, index: dialogIndex(dialog, pinnedOrder) }
       byId.set(dialog.peerId, item)
       changed.push(item)
     }
@@ -1175,7 +1188,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * `items = []` обязателен, а не только `hydrated = false`: `doHydrate()`
      * перечитывает кэш с диска ТОЛЬКО когда `!items.length` (см. выше) — при
      * непустом `items` он молча оставил бы старые данные, даже сбросив флаг.
-     * `pinnedOrders`/`pinnedOrder`/`drafts` тоже перезапишет ближайший
+     * `pinnedOrders`/`pinnedOrder` тоже перезапишет ближайший
      * `doHydrate()` (он их читает безусловно), но обнуляем и здесь — с момента
      * `resetForLogout()` до следующего `fillMirror()`/`refresh()` кэш обязан
      * быть честно пуст, а не хранить обрывки прошлой сессии на случай, если
@@ -1193,7 +1206,6 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       items = []
       pinnedOrders = {}
       pinnedOrder = []
-      drafts = []
       // Этап 2: папки и признаки загруженности — тоже про ПРОШЛЫЙ аккаунт.
       // `dialogsLoaded` пережил бы логаут и заставил `getDialogs` нового
       // пользователя отвечать «всё уже загружено» из пустого кэша, не сходив в
@@ -1225,15 +1237,13 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * новый порядок целиком выводится из State-ключей, у которых свой писатель.
      */
     setStateKey(key: string, value: unknown): void {
-      // Этап 2: определения папок — тот же канал, что pinnedOrders/drafts
+      // Этап 2: определения папок — тот же канал, что pinnedOrders
       // (persistManager.stateKey → сюда). Порядок от них НЕ зависит, поэтому
       // ни пересортировки, ни reindex — только фильтр `getDialogs({filterId})`.
       if (key === 'folders') { folders = value as Folder[]; return }
-      if (key === 'pinnedOrders') {
-        pinnedOrders = value as Record<number, number[]>
-        pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
-      } else if (key === 'drafts') drafts = value as Draft[]
-      else return
+      if (key !== 'pinnedOrders') return
+      pinnedOrders = value as Record<number, number[]>
+      pinnedOrder = pinnedOrders[ALL_FOLDER_ID] ?? []
       items = sort(items.map((i) => i.dialog))
       announce([{ op: 'reindex', items: items.map((i) => ({ peerId: i.dialog.peerId, index: i.index })) }])
     },
@@ -1347,6 +1357,22 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * им. Прежняя сигнатура `(peerId, muted: boolean)` срок теряла — ровно на
      * ней и ломалась вся уже построенная цепочка.
      */
+    /**
+     * Черновик изменён (`updateDraftMessage`) — своим устройством или чужим.
+     *
+     * Применяет ВЛАДЕЛЕЦ диалогов, потому что черновик это поле диалога, и от
+     * его даты зависит место строки в списке: patchDialog пересчитает индекс и
+     * при сдвиге опубликует его вместе с патчем. Пока черновик жил отдельным
+     * стором на главном потоке, порядок и превью строки собирались из двух
+     * источников.
+     *
+     * «Черновик сняли» — `draftMessageEmpty`: в строке он не хранится, поле
+     * просто исчезает.
+     */
+    applyDraft(peerId: number, draft: DraftMessage): void {
+      patchDialog(peerId, { draft: draft._ === 'draftMessage' ? toClientDraft(draft) : undefined })
+    },
+
     applyNotifySettings(peerId: number, settings: PeerNotifySettings): void {
       patchDialog(peerId, { notify_settings: settings })
       // Новый срок может оказаться ближайшим — пересчитываем расписание.

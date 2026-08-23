@@ -57,6 +57,22 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 			return DialogsPage{}, err
 		}
 	}
+	// ── drafts: черновики зрителя ───────────────────────────────────────────
+	// ОДИН запрос на страницу, не N: черновиков у пользователя единицы, и
+	// хранятся они парой (чат, владелец). Место черновика — сам диалог: пока
+	// он ехал отдельным списком, дата последней активности чата собиралась из
+	// двух источников, а от неё зависит порядок списка.
+	drafts := map[int64]domain.DraftMessage{}
+	if i.drafts != nil {
+		list, err := i.drafts.ListByUser(ctx, viewerID)
+		if err != nil {
+			return DialogsPage{}, err
+		}
+		for _, d := range list {
+			drafts[d.ChatID] = d.Wire()
+		}
+	}
+
 	// ── dialogs + chats ─────────────────────────────────────────────────────
 	dialogs := make([]domain.Dialog, 0, len(page.Dialogs))
 	chats := make([]domain.Chat, 0, len(page.Dialogs))
@@ -71,7 +87,13 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 		// (см. DialogRecord.TopMessageSeq), а не поиском по загруженным
 		// сообщениям: промах такого поиска отдавал бы 0, а 0 здесь значит
 		// «самое новое» — подмена, а не деградация.
-		dialogs = append(dialogs, d.ToDialog(domain.NewPeer(peerID), d.TopMessageSeq))
+		dialog := d.ToDialog(domain.NewPeer(peerID), d.TopMessageSeq)
+		// «Черновика нет» — отсутствие параметра, а не draftMessageEmpty:
+		// пустой конструктор значит «сняли», и это событие, а не состояние.
+		if draft, ok := drafts[d.ChatID]; ok {
+			dialog.Draft = draft
+		}
+		dialogs = append(dialogs, dialog)
 		if peerID.IsAnyChat() {
 			chats = append(chats, d.ToChannel())
 		}

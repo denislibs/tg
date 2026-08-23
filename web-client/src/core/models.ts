@@ -64,6 +64,14 @@ export interface RawDialog {
   unread_mentions_count: number
   unread_reactions_count: number
   notify_settings: PeerNotifySettings
+  /** Черновик ЭТОГО диалога (flags.1?DraftMessage). Место черновика — сам
+   *  диалог: от его даты зависит порядок списка, и собирать активность чата из
+   *  двух источников значило бы держать две правды об одном факте.
+   *
+   *  «Черновика нет» — ОТСУТСТВИЕ параметра; `draftMessageEmpty` значит
+   *  «черновик СНЯЛИ» и приезжает КАДРОМ, а в строке списка не хранится.
+   *  Операции — `core/dialogs/draft.ts`. */
+  draft?: DraftMessage
   /** 0 — «все чаты», 1 — архив; ключа нет — папка не указана (решение Р5) */
   folder_id?: 0 | 1
   /** период автоудаления сообщений чата, сек (прежний `auto_delete_period`) */
@@ -651,31 +659,6 @@ export interface RawDraft {
   _: 'updateDraftMessage'
   peer: Peer
   draft: DraftMessage
-}
-
-export interface Draft {
-  peerId: PeerId
-  text: string
-  entities?: MessageEntity[]
-  replyToId: number | null
-  /** секунды эпохи (`date:int` схемы) — те же единицы, что у сообщения */
-  date: number
-}
-
-/** Кадр/строка витрины → модель. `draftMessageEmpty` — не черновик: `null`. */
-export function mapDraft(r: RawDraft): Draft | null {
-  return mapDraftMessage(getPeerId(r.peer), r.draft)
-}
-
-export function mapDraftMessage(peerId: PeerId, d: DraftMessage): Draft | null {
-  if (d._ === 'draftMessageEmpty') return null
-  return {
-    peerId,
-    text: d.message,
-    entities: d.entities?.length ? d.entities : undefined,
-    replyToId: d.reply_to?.reply_to_msg_id ?? null,
-    date: d.date,
-  }
 }
 
 // Валидные виды эффектов сообщения (бэк уже санитизирует по whitelist; здесь —

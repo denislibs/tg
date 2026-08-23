@@ -12,7 +12,8 @@
 // Берём вместо него peerId: так же разводит ничьи, но одинаково при любом порядке.
 //
 // Модуль чистый: никаких обращений к сторам, всё приходит аргументами.
-import type { Dialog, Draft } from '../models'
+import type { Dialog } from '../models'
+import { draftDate } from './draft'
 
 /** tweb `generateDialogPinnedDateByIndex` (dialogs.ts:924-926): заведомо больше любой реальной даты. */
 export const PINNED_BASE = 0x7fff0000
@@ -21,17 +22,15 @@ export const PINNED_BASE = 0x7fff0000
  * Числовой индекс диалога: больше — выше в списке.
  *
  * @param pinnedOrder порядок закреплённых в текущей папке (State `pinnedOrders`)
- * @param draft черновик чата, если есть. В tweb черновик лежит внутри `dialog.draft`
- *   (dialogs.ts:904-910), у нас — в отдельном сторе (`AppState.drafts`), поэтому
- *   передаётся аргументом, чтобы модуль остался чистым.
+ *
+ * Черновик отдельным аргументом больше НЕ передаётся: он лежит внутри самого
+ * диалога (`dialog.draft`), как у оригинала (dialogs.ts:904-910). Пока он жил
+ * рядом, дата активности собиралась из двух источников — а именно она и решает
+ * место строки в списке.
  */
-export function dialogIndex(
-  dialog: Dialog,
-  pinnedOrder: readonly number[],
-  draft?: Pick<Draft, 'date'>,
-): number {
+export function dialogIndex(dialog: Dialog, pinnedOrder: readonly number[]): number {
   const pinned = !!dialog.pFlags?.pinned
-  const date = pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog, draft)
+  const date = pinned ? pinnedDate(dialog, pinnedOrder) : activityDate(dialog)
   // Младшие 16 бит — разрешитель ничьей (tweb: ++dialogsNum, у нас peerId).
   return date * 0x10000 + (pinned ? 0 : dialog.peerId & 0xffff)
 }
@@ -47,7 +46,7 @@ function pinnedDate(dialog: Dialog, order: readonly number[]): number {
 }
 
 /** tweb `generateIndexForDialog` (dialogs.ts:869-922): дата последней активности. */
-function activityDate(dialog: Dialog, draft?: Pick<Draft, 'date'>): number {
+function activityDate(dialog: Dialog): number {
   // `date:int` на проводе, но JSON может привезти что угодно; NaN здесь отравил
   // бы СОРТИРОВКУ ЦЕЛИКОМ (сравнения с NaN ложны в обе стороны — порядок
   // становится непредсказуемым, а не «этот диалог внизу»). Поэтому непригодное
@@ -58,10 +57,10 @@ function activityDate(dialog: Dialog, draft?: Pick<Draft, 'date'>): number {
   // Единицы у обоих одни — секунды эпохи (`date:int` схемы), поэтому
   // перевода из ISO здесь больше нет: черновик приезжает конструктором
   // draftMessage со своим `date`, как и сообщение.
-  const draftDate = Number.isFinite(draft?.date) ? (draft?.date as number) : 0
+  const draft = draftDate(dialog.draft)
   // Осознанное отступление от tweb: там пустой диалог получает `topDate ||= tsNow()`
   // (dialogs.ts:913) — текущее время, разное на каждом вызове. Это ровно та
   // недетерминированность, от которой мы уходим, поэтому оставляем 0: диалог без
   // активности стабильно оказывается внизу.
-  return Math.max(top, draftDate)
+  return Math.max(top, draft)
 }

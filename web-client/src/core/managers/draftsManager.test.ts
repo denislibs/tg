@@ -7,53 +7,52 @@
 //
 // Витрина `/drafts` при этом отвечает ТЕМИ ЖЕ кадрами, что приезжают живыми
 // (у оригинала `messages.getAllDrafts` — контейнер `Updates`), поэтому разбор
-// у списка и у кадра один.
+// у списка и у кадра один — и своей проекции у менеджера НЕТ: форма провода и
+// форма модели совпали, черновик едет в диалог как есть.
 import { describe, it, expect, vi } from 'vitest'
 import { newDraftsManager } from './draftsManager'
 import type { RestClient } from '../net/restClient'
 
+const FRAME = {
+  _: 'updateDraftMessage',
+  peer: { _: 'peerUser', user_id: 7 },
+  draft: {
+    _: 'draftMessage',
+    message: 'набросок',
+    entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }],
+    reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 12 },
+    date: 1785578400,
+  },
+}
+
 describe('DraftsManager', () => {
-  it('list разбирает кадры витрины: пир из конструктора, текст из message', async () => {
-    const rest = {
-      get: vi.fn(async () => ({
-        drafts: [{
-          _: 'updateDraftMessage',
-          peer: { _: 'peerUser', user_id: 7 },
-          draft: {
-            _: 'draftMessage',
-            message: 'набросок',
-            entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }],
-            reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 12 },
-            date: 1785578400,
-          },
-        }],
-      })),
-    } as unknown as RestClient
+  it('list отдаёт кадры витрины как есть — своего маппера у менеджера нет', async () => {
+    const rest = { get: vi.fn(async () => ({ drafts: [FRAME] })) } as unknown as RestClient
 
-    expect(await newDraftsManager({ rest }).list()).toEqual([{
-      peerId: 7,
-      text: 'набросок',
-      entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }],
-      replyToId: 12,
-      date: 1785578400,
-    }])
+    expect(await newDraftsManager({ rest }).list()).toEqual([FRAME])
   })
 
-  it('save с пустым текстом получает draftMessageEmpty — и это НЕ черновик', async () => {
-    const rest = {
-      put: vi.fn(async () => ({ draft: { _: 'draftMessageEmpty' } })),
-    } as unknown as RestClient
+  it('пустая витрина — пустой список, а не падение на отсутствующем поле', async () => {
+    const rest = { get: vi.fn(async () => ({})) } as unknown as RestClient
 
-    expect(await newDraftsManager({ rest }).save(7, '')).toBeNull()
+    expect(await newDraftsManager({ rest }).list()).toEqual([])
   })
 
-  it('save возвращает черновик с датой в СЕКУНДАХ — тех же единицах, что у сообщения', async () => {
+  it('save с пустым текстом получает draftMessageEmpty — «снят», а не null', async () => {
+    const put = vi.fn(async () => ({ draft: { _: 'draftMessageEmpty' } }))
+    const rest = { put } as unknown as RestClient
+
+    expect(await newDraftsManager({ rest }).save(7, '')).toEqual({ _: 'draftMessageEmpty' })
+    expect(put).toHaveBeenCalledWith('/chats/7/draft', { text: '', entities: null, reply_to_id: null })
+  })
+
+  it('save возвращает конструктор черновика с датой в СЕКУНДАХ — тех же единицах, что у сообщения', async () => {
     const rest = {
       put: vi.fn(async () => ({ draft: { _: 'draftMessage', message: 'x', date: 1785578400 } })),
     } as unknown as RestClient
 
     expect(await newDraftsManager({ rest }).save(7, 'x')).toEqual({
-      peerId: 7, text: 'x', entities: undefined, replyToId: null, date: 1785578400,
+      _: 'draftMessage', message: 'x', date: 1785578400,
     })
   })
 })

@@ -212,7 +212,7 @@ beforeEach(() => {
   listRenderItems.length = 0
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
-  useAppStateStore.setState({ folders: [], drafts: [] })
+  useAppStateStore.setState({ folders: [] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   if (!sizeStubbed) {
@@ -301,7 +301,6 @@ describe('ChatList — ul виртуального списка', () => {
     seedDialogs(3)
     useAppStateStore.setState({
       folders: [{ id: 7, title: 'Папка', pos: 0, contacts: false, nonContacts: false, groups: false, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }],
-      drafts: [],
     })
     // Папка 7 у владельца пуста — иначе её `count` породил бы «дырки», и каждая
     // из них попросила бы свою страницу сверх запроса самой смены папки.
@@ -534,7 +533,7 @@ describe('ChatList — свой скроллер и свой ul на кажду�
 
   async function renderTwoFolders(props: HarnessProps = {}) {
     seedDialogs(500)
-    useAppStateStore.setState({ folders: [WORK], drafts: [] })
+    useAppStateStore.setState({ folders: [WORK] })
     const { managers, getDialogs } = fakeManagers(page({ count: 500 }))
     const view = await renderList(managers, { folderOrder: ORDER, ...props })
     return { ...view, getDialogs }

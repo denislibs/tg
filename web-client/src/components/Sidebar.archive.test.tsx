@@ -175,7 +175,7 @@ beforeEach(() => {
   seed(ARCHIVED)
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
-  useAppStateStore.setState({ folders: [], drafts: [] })
+  useAppStateStore.setState({ folders: [] })
   useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 

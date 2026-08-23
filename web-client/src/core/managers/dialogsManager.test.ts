@@ -12,12 +12,13 @@ import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { DialogOp } from '../dialogs/dialogOps'
-import type { Draft } from '../models'
 
 const dialog = (peerId: number, at: string, pinned = false): Dialog =>
   makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
-const draft = (peerId: number, updatedAt: string): Draft => ({ peerId, text: 'чер', replyToId: null, date: Math.floor(Date.parse(updatedAt) / 1000) })
+/** Черновик — ПОЛЕ диалога: своего списка в State у него больше нет. */
+const withDraft = (d: Dialog, updatedAt: string): Dialog =>
+  ({ ...d, draft: { _: 'draftMessage', message: 'чер', date: Math.floor(Date.parse(updatedAt) / 1000) } })
 const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)
 
 const isMuted = (d: Dialog): boolean => isPeerMuted(d.notify_settings, Math.floor(Date.now() / 1000))
@@ -94,7 +95,7 @@ describe('dialogsManager: владелец порядка', () => {
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z'), dialog(2, '2026-08-02T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -110,7 +111,7 @@ describe('dialogsManager: владелец порядка', () => {
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2020-01-01T00:00:00Z', true), dialog(2, '2026-08-02T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -129,7 +130,7 @@ describe('dialogsManager: владелец порядка', () => {
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => { await sleep(5); return [dialog(1, '2026-08-01T00:00:00Z')] },
-      loadState: async () => { await sleep(5); return { pinnedOrders: {}, drafts: [] } },
+      loadState: async () => { await sleep(5); return { pinnedOrders: {} } },
     })
 
     const [op1, op2] = await Promise.all([mgr.fillMirror(), mgr.fillMirror()])
@@ -149,7 +150,7 @@ describe('dialogsManager: владелец порядка', () => {
       loadState: async () => {
         attempt++
         if (attempt === 1) throw new Error('IDB недоступен')
-        return { pinnedOrders: {}, drafts: [] }
+        return { pinnedOrders: {} }
       },
     })
 
@@ -176,7 +177,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -199,7 +200,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -218,7 +219,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -238,7 +239,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       getMeId: () => 7,
     })
     await mgr.fillMirror()
@@ -255,7 +256,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       getMeId: () => 7,
     })
     await mgr.fillMirror()
@@ -304,7 +305,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
@@ -330,7 +331,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     mgr.bumpUnreadReactions(1, 2)
@@ -354,7 +355,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await dialogs.fillMirror()
     ops.length = 0
@@ -372,7 +373,7 @@ describe('dialogsManager × groupsManager: действия без оптими�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await dialogs.fillMirror()
     ops.length = 0
@@ -606,7 +607,7 @@ describe('dialogsManager: персист списка переезжает к в
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
     await mgr.fillMirror()
@@ -626,7 +627,7 @@ describe('dialogsManager: персист списка переезжает к в
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
     await mgr.fillMirror()
@@ -655,7 +656,7 @@ describe('dialogsManager: персист списка переезжает к в
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
     await mgr.fillMirror()
@@ -685,7 +686,7 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
       })) } as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       peers, messages,
     })
 
@@ -706,7 +707,7 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
       })) } as never,
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       peers: fakePeers(), messages,
     })
 
@@ -723,7 +724,7 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
       rest: restStub([rawDialog(-9, 7)]) as never, // messages.dialogs — без count
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       peers: fakePeers(), messages: fakeMessages(),
     })
     await whole.refresh()
@@ -734,7 +735,7 @@ describe('dialogsManager: контейнер /chats (шаг C)', () => {
       rest: restStub([rawDialog(-9, 7)], 50) as never, // messages.dialogsSlice{count:50}
       onDialogOps: () => {},
       loadCache: async () => [],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       peers: fakePeers(), messages: fakeMessages(),
     })
     await slice.refresh()
@@ -760,7 +761,7 @@ describe('dialogsManager: сброс кэша владельца при лога
         ? [dialog(1, '2026-08-01T00:00:00Z')]
         : [dialog(2, '2026-08-02T00:00:00Z')]),
       loadState: async () => (stateGen === 1
-        ? { pinnedOrders: {}, drafts: [] }
+        ? { pinnedOrders: {} }
         : { pinnedOrders: { 0: [2] } as Record<number, number[]>, drafts: [] }),
     })
 
@@ -785,7 +786,7 @@ describe('dialogsManager: сброс кэша владельца при лога
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     mgr.resetForLogout()
@@ -798,16 +799,15 @@ describe('dialogsManager: сброс кэша владельца при лога
 
 // Task 6 (снос старого пути): порт `chatsStore: черновик поднимает диалог`
 // (chatsStore.order.test.ts, снесён этой же задачей вместе с applyDialogs) —
-// сценарии не менялись, только вход (fillMirror вместо setDialogs) и State
-// (loadState().drafts вместо AppState напрямую). `sort()` владельца читает
-// draftFor() из тех же `drafts`, что тут сеются.
+// сценарии не менялись, только вход. Черновик теперь ПОЛЕ диалога, поэтому и
+// сеется он в сам диалог: дата активности собирается из одного источника.
 describe('dialogsManager: черновик поднимает диалог (Task 6, порт chatsStore.order.test.ts)', () => {
   it('свежий черновик перевешивает более старое последнее сообщение', async () => {
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: () => {},
-      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [draft(1, '2026-08-09T13:00:00Z')] }),
+      loadCache: async () => [withDraft(dialog(1, '2026-08-09T10:00:00Z'), '2026-08-09T13:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -820,7 +820,7 @@ describe('dialogsManager: черновик поднимает диалог (Task
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -832,8 +832,8 @@ describe('dialogsManager: черновик поднимает диалог (Task
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: () => {},
-      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [draft(1, '2026-08-09T09:00:00Z')] }),
+      loadCache: async () => [withDraft(dialog(1, '2026-08-09T10:00:00Z'), '2026-08-09T09:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -863,7 +863,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
         dialog(2, '2026-08-09T11:00:00Z', true),
         dialog(3, '2026-08-09T12:00:00Z'),
       ],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const before = await mgr.fillMirror() // кэш: закреплённые [1, 2] — засеивает pinnedOrders=[1,2]
@@ -888,7 +888,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
         dialog(1, '2026-08-09T12:00:00Z', true),
         dialog(3, '2026-08-09T13:00:00Z'),
       ],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const op = await mgr.fillMirror()
@@ -913,7 +913,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
         dialog(2, '2020-01-01T00:00:00Z', true),
         dialog(3, '2020-01-01T00:00:00Z', true), // bottommost pinned
       ],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
@@ -963,7 +963,7 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
       rest: { get: vi.fn(async () => container([raw(1), raw(2)], undefined, { messages: [msg(1), msg(2)] })) } as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [cached(1), cached(2)],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
       messages: fakeMessages(),
     })
@@ -990,7 +990,7 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
       rest: { get: vi.fn(async () => container([raw(1), raw(2)], undefined, { messages: [msg(1), msg(2)] })) } as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
       messages: fakeMessages(),
     })
@@ -1016,7 +1016,7 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
 
@@ -1035,19 +1035,22 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z'), dialog(2, '2026-08-09T12:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
       saveCache: save,
     })
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.setStateKey('drafts', [draft(1, '2026-08-09T13:00:00Z')])
+    // Черновик приезжает КАДРОМ (updateDraftMessage) и применяется владельцем:
+    // patchDialog пересчитает индекс и опубликует сдвиг вместе с патчем.
+    mgr.applyDraft(1, { _: 'draftMessage', message: 'чер', date: Math.floor(Date.parse('2026-08-09T13:00:00Z') / 1000) })
 
     expect(ops).toHaveLength(1)
-    expect(ops[0].op).toBe('reindex')
+    expect(ops[0].op).toBe('patch')
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2]) // черновик поднял диалог
     await vi.advanceTimersByTimeAsync(5000)
-    expect(save).not.toHaveBeenCalled()
+    // Значение диалога изменилось — владелец кладёт его на диск, как любой патч.
+    expect(save).toHaveBeenCalled()
     vi.useRealTimers()
   })
 })
@@ -1070,7 +1073,7 @@ describe('dialogsManager: поколение сессии гасит ответ�
       rest: { get: vi.fn(() => new Promise((res) => { resolveGet = res as never })) } as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
     ops.length = 0
@@ -1095,7 +1098,7 @@ describe('dialogsManager: поколение сессии гасит ответ�
       loadCache: () => (gen === 1
         ? new Promise<Dialog[]>((res) => { resolveCache = res })
         : Promise.resolve([dialog(2, '2026-08-02T00:00:00Z')])),
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const inflight = mgr.fillMirror()
@@ -1133,7 +1136,7 @@ describe('dialogsManager: finally прошлой гидратации не сб�
       rest: restStub([]) as never,
       onDialogOps: () => {},
       loadCache: () => new Promise<Dialog[]>((res) => { cacheCalls.push({ resolve: res }) }),
-      loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
+      loadState: async () => ({ pinnedOrders: {} }),
     })
 
     const p1 = mgr.fillMirror() // гидратация СТАРОЙ сессии начата

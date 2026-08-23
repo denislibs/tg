@@ -1,7 +1,7 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
 import {
-  isOurMessage, isOutMessage, mapDraft, mapMessage, mapMyMessage,
+  isOurMessage, isOutMessage, mapMessage, mapMyMessage,
   type RawMessageReal, type RawMessageService,
 } from './models'
 import { getMediaFromMessage, isMediaSpoiler } from './media/messageMedia'
@@ -243,44 +243,6 @@ describe('mapMessage — уточнение служебного действи�
   it('добавление ОДНОГО ДРУГОГО конструктор не меняет', () => {
     const m = svc({ _: 'messageActionChatAddUser', users: [8] }, 7)
     expect(m._ === 'messageService' && m.action._).toBe('messageActionChatAddUser')
-  })
-})
-
-describe('mapDraft', () => {
-  const peer = { _: 'peerUser' as const, user_id: 3 }
-
-  it('разбирает разметку и ссылку на ответ (кадр draft_update / GET /drafts)', () => {
-    const d = mapDraft({
-      _: 'updateDraftMessage', peer,
-      draft: {
-        _: 'draftMessage', message: '**жирный**',
-        entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
-        reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 42 },
-        date: 1784628000,
-      },
-    })
-    expect(d).toEqual({
-      peerId: 3, text: '**жирный**',
-      entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
-      replyToId: 42, date: 1784628000,
-    })
-  })
-
-  // «Черновика нет» — ВТОРОЙ КОНСТРУКТОР, а не null под тем же ключом: именно
-  // это различие и было портировано.
-  it('draftMessageEmpty — не черновик', () => {
-    expect(mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessageEmpty' } })).toBeNull()
-  })
-
-  it('отсутствующие разметка и ответ — undefined/null', () => {
-    const d = mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessage', message: 'x', date: 1 } })
-    expect(d?.entities).toBeUndefined()
-    expect(d?.replyToId).toBeNull()
-  })
-
-  it('пустой вектор разметки выбрасывается', () => {
-    const d = mapDraft({ _: 'updateDraftMessage', peer, draft: { _: 'draftMessage', message: 'x', entities: [], date: 1 } })
-    expect(d?.entities).toBeUndefined()
   })
 })
 
