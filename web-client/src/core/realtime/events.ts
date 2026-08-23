@@ -167,9 +167,6 @@ export interface NewMessageEvt {
   message: import('../models').RawMessage
   /** плотный монотонный pts (funnel-дедуп/гейт/gap). */
   pts?: number
-  /** авторитетный счётчик непрочитанных диалога (только получателям): владелец
-   *  берёт его verbatim вместо локального +1. */
-  unread?: number
 }
 /** Патч уже нарисованного бабла: правка текста/разметки/клавиатуры. Кадром-
  *  конструктором `Message` он НЕ является — в схеме это `updateEditMessage`,

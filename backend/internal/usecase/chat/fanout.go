@@ -31,15 +31,15 @@ import (
 func (i *Interactor) fanOutNewMessage(
 	ctx context.Context, chatID, senderID, msgID, msgSeq int64,
 	out, outLocked map[string]any, mentioned map[int64]bool,
-) (recipients []int64, ptsByUser, unreadByUser map[int64]int64, err error) {
+) (recipients []int64, ptsByUser map[int64]int64, err error) {
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	slices.Sort(members)
 	pp, err := i.newPeerPayloads(ctx, chatID, out)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
 	// пер-зрительский pFlags.out и, что важнее, разложить журнальные батчи по
@@ -49,12 +49,11 @@ func (i *Interactor) fanOutNewMessage(
 	if outLocked != nil {
 		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		ppLocked.sender = senderID
 	}
 	ptsByUser = map[int64]int64{}
-	unreadByUser = map[int64]int64{}
 	others := make([]int64, 0, len(members))
 	senderIn := false
 	for _, uid := range members {
@@ -73,43 +72,45 @@ func (i *Interactor) fanOutNewMessage(
 	case ppLocked != nil:
 		if senderIn {
 			if e := i.appendByPeer(ctx, pp, []int64{senderID}, date, ptsByUser); e != nil {
-				return nil, nil, nil, e
+				return nil, nil, e
 			}
 		}
 		if len(others) > 0 {
 			if e := i.appendByPeer(ctx, ppLocked, others, date, ptsByUser); e != nil {
-				return nil, nil, nil, e
+				return nil, nil, e
 			}
 		}
 	case len(members) > 0:
 		if e := i.appendByPeer(ctx, pp, members, date, ptsByUser); e != nil {
-			return nil, nil, nil, e
+			return nil, nil, e
 		}
 	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
+	//
+	// Счётчик РАСТЁТ в базе, но в кадр не едет: у конструктора updateNewMessage
+	// такого параметра нет, а поле рядом с ним было последним, что осталось
+	// вне конструктора. Клиент считает +1 сам — ровно как оригинал
+	// (appMessagesManager), а авторитетное значение приезжает со строкой
+	// диалога и с кадром прочтения (updateReadHistoryInbox.still_unread_count).
 	if len(others) > 0 {
-		um, e := i.chats.IncUnreadBulk(ctx, chatID, others)
-		if e != nil {
-			return nil, nil, nil, e
-		}
-		for u, n := range um {
-			unreadByUser[u] = n
+		if _, e := i.chats.IncUnreadBulk(ctx, chatID, others); e != nil {
+			return nil, nil, e
 		}
 		// Упоминания редки — точечно (по остатку text_mention).
 		for _, uid := range others {
 			if mentioned[uid] {
 				if e := i.chats.AddMention(ctx, chatID, msgID, msgSeq, uid); e != nil {
-					return nil, nil, nil, e
+					return nil, nil, e
 				}
 			}
 		}
 	}
-	return members, ptsByUser, unreadByUser, nil
+	return members, ptsByUser, nil
 }
 
 // publishMessageDelivery — пост-коммитная половина доставки, парная
 // fanOutNewMessage: инвалидация кэша диалогов получателей + realtime-кадры
-// (pts всем, unread — получателям кроме автора). Звать СТРОГО ПОСЛЕ того,
+// (у каждого получателя свой pts). Звать СТРОГО ПОСЛЕ того,
 // как закоммитилась транзакция, в которой бежал fanOutNewMessage —
 // опубликовать кадр раньше коммита нельзя (получатель может обогнать коммит
 // и не найти сообщение при последующем чтении, см. Send).
@@ -120,7 +121,7 @@ func (i *Interactor) fanOutNewMessage(
 // каждый вызывающий сам.
 func (i *Interactor) publishMessageDelivery(
 	ctx context.Context, msg domain.Message, senderID int64,
-	recipients []int64, ptsByUser, unreadByUser map[int64]int64,
+	recipients []int64, ptsByUser map[int64]int64,
 ) {
 	if len(recipients) == 0 {
 		return
@@ -150,8 +151,7 @@ func (i *Interactor) publishMessageDelivery(
 		ppLocked.sender = msg.SenderID
 	}
 	// Realtime-кадры всем получателям — одним pipeline'ом (было бы M
-	// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
-	// unread — только у получателей, не автора).
+	// последовательных PUBLISH). У каждого свой кадр: курсор пер-юзерный.
 	uids := make([]int64, 0, len(recipients))
 	frames := make([][]byte, 0, len(recipients))
 	for _, uid := range recipients {
@@ -159,12 +159,8 @@ func (i *Interactor) publishMessageDelivery(
 		if uid != senderID {
 			b = ppLocked
 		}
-		extra := map[string]any{"pts": ptsByUser[uid]}
-		if uid != senderID {
-			extra["unread"] = unreadByUser[uid]
-		}
 		uids = append(uids, uid)
-		frames = append(frames, b.frame("new_message", uid, extra))
+		frames = append(frames, b.frame("new_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 	}
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
 }

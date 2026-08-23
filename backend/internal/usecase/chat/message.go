@@ -337,10 +337,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// обсуждением, см. mirrorChannelPost): доставка публикуется ПОСЛЕ коммита
 	// этой же transaction, тем же publishMessageDelivery, что и msg ниже.
 	var mirrorDeliv *mirrorDelivery
-	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
-	// tx so the live frame carries exactly the values persisted for each member.
+	// Per-recipient pts (dense cursor), captured INSIDE the tx so the live frame
+	// carries exactly the value persisted for each member.
 	ptsByUser := map[int64]int64{}
-	unreadByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -469,7 +468,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// запроса) + IncUnread — под локом строки chats это O(M) запросов в
 		// одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс). Общий с
 		// доставкой зеркала поста канала — см. fanOutNewMessage.
-		recipients, ptsByUser, unreadByUser, e = i.fanOutNewMessage(
+		recipients, ptsByUser, e = i.fanOutNewMessage(
 			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, outMsg, outLocked, mentioned)
 		return e
 	})
@@ -492,7 +491,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
 		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
-		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser, unreadByUser)
+		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser)
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
@@ -511,7 +510,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser)
 	}
 	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —

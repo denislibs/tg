@@ -1252,10 +1252,14 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const cur = findDialog(m.peerId)
       if (!cur) return // unknown chat (приедет на следующей reset-загрузке)
       const meId = getMeId?.() ?? null
-      // Wave 3: сервер шлёт авторитетный unread получателям — берём verbatim; локальный
-      // +1 остаётся fallback (старый бэк без поля). Своё же эхо (sender_id===meId,
-      // включая другие вкладки/устройства) бейдж не бампит — у отправителя поле
-      // `unread` в кадре и не приходит (backend message.go: `if uid != in.SenderID`).
+      // Счётчик считается ЗДЕСЬ, +1 на входящее, — ровно как у оригинала
+      // (appMessagesManager). Авторитетного значения кадр больше не несёт: у
+      // конструктора updateNewMessage такого параметра нет, а поле рядом с ним
+      // было последним, что осталось вне конструктора. Авторитет приезжает
+      // строкой диалога и кадром прочтения (still_unread_count).
+      //
+      // Своё же эхо (sender_id===meId, включая другие вкладки/устройства)
+      // бейдж не бампит.
       //
       // Отступление от прежнего main-кода (chatsStore.applyNewMessage): там ещё
       // проверялся `activePeerId`, чтобы не бампить бейдж для открытого на ЭТОЙ
@@ -1265,7 +1269,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
       const incoming = m.fromId !== meId
-      const nextUnread = incoming ? (e.unread ?? cur.unread_count + 1) : cur.unread_count
+      const nextUnread = incoming ? cur.unread_count + 1 : cur.unread_count
       // Превью строится из ЦЕЛОГО сообщения — тем же единственным маппером
       // живого кадра, что и вставка в окно (`messages.cacheLive` зовёт его же).
       // Прежняя девятиполевая выжимка (`senderName` от сервера, `mediaType`

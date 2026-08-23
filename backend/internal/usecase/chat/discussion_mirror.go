@@ -12,10 +12,9 @@ import (
 // в fanout.go). nil, если зеркала не было (обсуждения нет / уже зеркалировано
 // / чат-получатель — не канал) — вызывающий тогда просто ничего не публикует.
 type mirrorDelivery struct {
-	msg          domain.Message
-	recipients   []int64
-	ptsByUser    map[int64]int64
-	unreadByUser map[int64]int64
+	msg        domain.Message
+	recipients []int64
+	ptsByUser  map[int64]int64
 }
 
 // mirrorChannelPost кладёт зеркало поста канала в его группу обсуждения.
@@ -133,12 +132,12 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// зеркало САМО корень треда, i.messageUpdatePayload(ctx, mirror) уже несёт
 	// thread_root_id=nil.
 	mentioned := mentionedUserIDs(mirror.Entities)
-	recipients, ptsByUser, unreadByUser, err := i.fanOutNewMessage(
+	recipients, ptsByUser, err := i.fanOutNewMessage(
 		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), nil, mentioned)
 	if err != nil {
 		return nil, err
 	}
-	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser, unreadByUser: unreadByUser}, nil
+	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser}, nil
 }
 
 // ExternalizeThreadRoots переводит thread_root_id из внутреннего ключа строки в

@@ -275,23 +275,28 @@ func TestUnread_AuthoritativeInFrames(t *testing.T) {
 		return int64(s.members[chatID][uid].unread)
 	}
 
-	// Two messages from a → b's unread climbs to 1 then 2; the sender never gets
-	// an unread field (they authored the message).
+	// Два сообщения от a → счётчик b растёт в БАЗЕ до 1, потом до 2.
+	//
+	// В КАДРЕ его нет ни у кого, включая получателя: у конструктора
+	// updateNewMessage такого параметра в схеме нет, а поле рядом с ним было
+	// последним, что осталось вне конструктора. Клиент считает +1 сам — ровно
+	// как оригинал; авторитетное значение приезжает строкой диалога и кадром
+	// прочтения (см. ниже, там still_unread_count проверяется).
 	for want := int64(1); want <= 2; want++ {
 		pub.reset()
 		if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"}); err != nil {
 			t.Fatalf("Send: %v", err)
 		}
-		db := lastFrameFor(t, pub, b)
-		if got := asInt64(t, db["unread"]); got != want {
-			t.Fatalf("new_message unread for b = %d; want %d", got, want)
-		}
 		if got := memberUnread(b); got != want {
 			t.Fatalf("db unread for b = %d; want %d", got, want)
 		}
+		db := lastFrameFor(t, pub, b)
+		if _, ok := db["unread"]; ok {
+			t.Fatalf("кадр не должен нести unread; получили %v", db["unread"])
+		}
 		da := lastFrameFor(t, pub, a)
 		if _, ok := da["unread"]; ok {
-			t.Fatalf("sender frame must not carry unread; got %v", da["unread"])
+			t.Fatalf("кадр не должен нести unread; получили %v", da["unread"])
 		}
 	}
 

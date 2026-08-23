@@ -38,7 +38,7 @@ func chatWithSplitIDs(t *testing.T, in *Interactor, a, b int64) int64 {
 // nonAddressKeys — числовые поля кадра, которые сообщение не адресуют вовсе
 // (курсоры и счётчики). Их значение может случайно совпасть с любым числом.
 var nonAddressKeys = map[string]bool{
-	"pts": true, "channel_pts": true, "unread": true, "date": true,
+	"pts": true, "date": true,
 	"unread_reactions": true, "count": true, "total": true, "mine": true,
 }
 

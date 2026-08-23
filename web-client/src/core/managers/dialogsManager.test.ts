@@ -261,14 +261,15 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    // server-authoritative unread=5 выигрывает у локального +1
-    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(5)
+    // Счётчик считает КЛИЕНТ: +1 на каждое входящее, как у оригинала.
+    // Авторитетного значения кадр не несёт — у конструктора updateNewMessage
+    // такого параметра нет.
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }) })
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(1)
 
     ops.length = 0
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'b', createdAt: '2026-08-01T00:00:02Z' }) })
-    // поля unread в кадре нет — fallback: текущий unread(5) + 1
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(6)
+    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(2)
   })
 
   it('новое сообщение в закреплённом диалоге не двигает блок закреплённых', async () => {
@@ -306,7 +307,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
     ops.length = 0
 
     mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 2, still_unread_count: 0 })

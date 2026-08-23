@@ -1,6 +1,6 @@
 import { decodeFrame, encodeFrame, type Frame } from '../../protocol/frames'
 import type { Transport } from './transport'
-import { decodeTLFrame } from './tlFrames'
+import type { decodeTLFrame } from './tlFrames'
 
 // Thin WS wrapper: frame + lifecycle listeners.
 // Аутентификация — токеном в WebSocket-subprotocol (Sec-WebSocket-Protocol:
@@ -15,33 +15,52 @@ import { decodeTLFrame } from './tlFrames'
 // конверт `{t, d, pts}` кадра, у которого конструктора нет (транспорт по
 // решению Р6 и непортированные предметы #51/#52), БИНАРНОЕ — контейнер
 // `Updates` с апдейтами внутри.
+//
+// Кодек подгружается ОТДЕЛЬНЫМ чанком и только при включённом флаге: таблица
+// конструкторов это вся схема (полмегабайта до сжатия), и выключенный флаг
+// платить за неё не должен. Пока чанк едет, кадры копятся в очереди — ВСЕ, а
+// не только бинарные: пропусти текстовые вперёд, и порядок кадров разъехался
+// бы с порядком курсора.
 export class WsClient implements Transport {
   private ws: WebSocket | null = null
   private frameCbs: Array<(type: string, d: unknown, pts?: number) => void> = []
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
   private errorCbs: Array<() => void> = []
+  private decodeTL: typeof decodeTLFrame | null = null
+  private queued: Array<string | ArrayBuffer> = []
 
   constructor(private url: string, private tlWire = false) {}
 
   connect(token: string): void {
+    if (this.tlWire && !this.decodeTL) {
+      void import('./tlFrames').then((m) => {
+        this.decodeTL = m.decodeTLFrame
+        const pending = this.queued
+        this.queued = []
+        for (const data of pending) this.receive(data)
+      })
+    }
     const ws = new WebSocket(this.url, this.tlWire ? ['tl.1', 'bearer', token] : ['bearer', token])
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     ws.onopen = () => { for (const cb of this.openCbs) cb() }
     ws.onclose = () => { for (const cb of this.closeCbs) cb() }
     ws.onerror = () => { for (const cb of this.errorCbs) cb() }
-    ws.onmessage = (ev) => {
-      if (typeof ev.data !== 'string') { this.receiveTL(ev.data as ArrayBuffer); return }
-      const f: Frame = decodeFrame(ev.data)
-      for (const cb of this.frameCbs) cb(f.t, f.d, f.pts)
-    }
+    ws.onmessage = (ev) => this.receive(ev.data as string | ArrayBuffer)
+  }
+
+  private receive(data: string | ArrayBuffer): void {
+    if (this.tlWire && !this.decodeTL) { this.queued.push(data); return }
+    if (typeof data !== 'string') { this.receiveTL(data); return }
+    const f: Frame = decodeFrame(data)
+    for (const cb of this.frameCbs) cb(f.t, f.d, f.pts)
   }
 
   // Тип кадра на проводе TL — это его КОНСТРУКТОР, поэтому наружу он и уезжает
   // дискриминатором: маршрутизация у воркера с шага C идёт по нему же.
   private receiveTL(buffer: ArrayBuffer): void {
-    for (const { update, seq } of decodeTLFrame(new Uint8Array(buffer))) {
+    for (const { update, seq } of this.decodeTL!(new Uint8Array(buffer))) {
       for (const cb of this.frameCbs) cb(update._, update, seq)
     }
   }

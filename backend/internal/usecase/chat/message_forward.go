@@ -82,7 +82,6 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	// Per-message, per-recipient pts + authoritative unread (parallel to created):
 	// a forward fans out one new_message per copy, each with its own cursor.
 	var ptsMaps []map[int64]int64
-	var unreadMaps []map[int64]int64
 	// Канал-приёмник: тела и курсоры журнала (parallel to created) вместо
 	// пер-получательских карт выше. Живой кадр строится из ТОГО ЖЕ тела, что
 	// легло в журнал, — иначе догон разрыва и live разъедутся.
@@ -211,7 +210,6 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			ptsByUser := make(map[int64]int64, len(members))
-			unreadByUser := make(map[int64]int64, len(members))
 			for _, uid := range members {
 				payload, e := pp.payload(uid)
 				if e != nil {
@@ -222,17 +220,16 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 					return e
 				}
 				ptsByUser[uid] = pts
+				// Счётчик растёт в базе, но в кадр не едет: клиент считает +1
+				// сам (см. fanOutNewMessage).
 				if uid != in.SenderID {
-					n, e := i.chats.IncUnread(ctx, in.ToChatID, uid)
-					if e != nil {
+					if _, e := i.chats.IncUnread(ctx, in.ToChatID, uid); e != nil {
 						return e
 					}
-					unreadByUser[uid] = int64(n)
 				}
 			}
 			created = append(created, msg)
 			ptsMaps = append(ptsMaps, ptsByUser)
-			unreadMaps = append(unreadMaps, unreadByUser)
 		}
 		return nil
 	})
@@ -257,9 +254,6 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			}
 			for _, uid := range members {
 				extra := map[string]any{"pts": ptsMaps[idx][uid]}
-				if uid != in.SenderID {
-					extra["unread"] = unreadMaps[idx][uid]
-				}
 				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("new_message", uid, extra))
 				if i.notifier != nil && uid != in.SenderID {
 					notifyPeer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
@@ -275,7 +269,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		if md == nil {
 			continue
 		}
-		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser)
 	}
 	return created, nil
 }

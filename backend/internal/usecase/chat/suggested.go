@@ -260,7 +260,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	}
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser)
 	}
 	return msg, nil
 }

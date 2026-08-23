@@ -67,7 +67,12 @@ describe('WsClient', () => {
   // Бинарное сообщение — контейнер Updates: тип кадра это его КОНСТРУКТОР,
   // поэтому наружу он и уезжает дискриминатором. Курсор приезжает из `seq`
   // контейнера — у кадров без своего `pts` другого места у него нет.
-  it('бинарный кадр разбирается как контейнер Updates', () => {
+  //
+  // Кадры здесь приходят ДО того, как догрузился чанк кодека (он подтягивается
+  // динамическим import'ом — выключенный флаг не должен платить за таблицу
+  // конструкторов). Проверяется поэтому не только разбор, но и очередь: ни
+  // один кадр не потерян и порядок не переставлен — иначе курсор поехал бы.
+  it('кадры, пришедшие до загрузки кодека, разбираются по порядку', async () => {
     const c = new WsClient('/ws', true)
     const got = vi.fn(); c.onFrame(got)
     c.connect('tok')
@@ -75,16 +80,32 @@ describe('WsClient', () => {
     ws.open()
     expect(ws.binaryType).toBe('arraybuffer')
 
+    // Транспортный кадр (текстом) и апдейт (бинарём) — вперемешку.
+    ws.message(JSON.stringify({ t: 'hello', d: { pts: 7 } }))
     // Тот же эталонный вектор, что читает неизменённый десериализатор tweb.
     const hex = '4042ae7415c4b51c010000001ce56f6e0100000005bf6de522175159070000000000000015c4b51c0000000015c4b51c00000000048e886a2a000000'
     const bytes = new Uint8Array(hex.length / 2)
     for (let i = 0; i < bytes.length; ++i) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
     ws.binary(bytes)
 
+    // До загрузки чанка наружу не ушло ничего.
+    expect(got).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(got).toHaveBeenCalledTimes(2))
+
+    expect(got.mock.calls[0][0]).toBe('hello')
+    expect(got.mock.calls[1][0]).toBe('updateDialogPinned')
+    expect((got.mock.calls[1][1] as { _: string })._).toBe('updateDialogPinned')
+    expect(got.mock.calls[1][2]).toBe(42)
+  })
+
+  // Выключенный флаг очередь не заводит: кадр уходит наружу в том же тике.
+  it('без флага TL кадр доезжает синхронно', () => {
+    const c = new WsClient('/ws')
+    const got = vi.fn(); c.onFrame(got)
+    c.connect('tok')
+    const ws = FakeWS.instances[0]; ws.open()
+    ws.message(JSON.stringify({ t: 'hello', d: { pts: 7 } }))
     expect(got).toHaveBeenCalledTimes(1)
-    expect(got.mock.calls[0][0]).toBe('updateDialogPinned')
-    expect((got.mock.calls[0][1] as { _: string })._).toBe('updateDialogPinned')
-    expect(got.mock.calls[0][2]).toBe(42)
   })
 
   it('fires onClose and reports not open', () => {
