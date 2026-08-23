@@ -6,13 +6,14 @@ import { useT } from '../i18n'
 import { useStoriesArchive } from '../core/hooks/useStoriesArchive'
 import { useMediaThumb } from '../core/hooks/useMediaThumb'
 import StoryReadOnlyPreview from './StoryReadOnlyPreview'
-import type { StoryItem } from '../core/managers/storiesManager'
+import type { StoryItem } from '../core/stories/story'
+import { isStoryPinned, storyMediaId } from '../core/stories/story'
 import s from './AddStorySheet.module.scss'
 
 // Плитка архива: грузит превью медиа истории (useMediaThumb) и показывает бейджи
 // pinned/edited поверх.
 function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
-  const url = useMediaThumb(story.mediaId)
+  const url = useMediaThumb(storyMediaId(story))
   return (
     <div
       onClick={onClick}
@@ -20,7 +21,7 @@ function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void
       style={{ position: 'relative', aspectRatio: '9 / 16', borderRadius: 10, overflow: 'hidden', background: 'var(--input-search-background-color)', cursor: 'pointer' }}
     >
       {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-      {story.pinned && (
+      {isStoryPinned(story) && (
         <div style={{ position: 'absolute', top: 4, right: 4, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.5))' }}>
           <TgIcon name="pinnedchat" size={16} />
         </div>

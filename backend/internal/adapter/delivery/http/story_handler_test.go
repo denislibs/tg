@@ -32,6 +32,56 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
+// ── форма ответа: контейнеры схемы ──────────────────────────────────────────
+//
+// GET /stories отвечает `stories.allStories`: группы — `peerStories` со
+// ССЫЛКОЙ на автора, карточки авторов — ОДИН раз вектором `users`. Плоского
+// `{groups:[{author, stories}]}` больше нет.
+
+type wireStory struct {
+	ID         int64            `json:"id"`
+	Caption    string           `json:"caption"`
+	PFlags     map[string]bool  `json:"pFlags"`
+	Media      map[string]any   `json:"media"`
+	MediaAreas []map[string]any `json:"media_areas"`
+	Privacy    []map[string]any `json:"privacy"`
+	Views      map[string]any   `json:"views"`
+	Viewed     bool             `json:"viewed"`
+	FwdFrom    map[string]any   `json:"fwd_from"`
+}
+
+type wireFeed struct {
+	PeerStories []struct {
+		Peer    map[string]any `json:"peer"`
+		Stories []wireStory    `json:"stories"`
+	} `json:"peer_stories"`
+	Users []struct {
+		ID int64 `json:"id"`
+	} `json:"users"`
+	StealthMode map[string]any `json:"stealth_mode"`
+}
+
+// decodeFeed разбирает контейнер ленты.
+func decodeFeed(t *testing.T, body string) wireFeed {
+	t.Helper()
+	var f wireFeed
+	if err := json.Unmarshal([]byte(body), &f); err != nil {
+		t.Fatalf("feed не разбирается: %v (%s)", err, body)
+	}
+	return f
+}
+
+// onlyStory требует ровно одну группу с одной историей — форма, в которой ленту
+// проверяет большинство сценариев.
+func onlyStory(t *testing.T, body string) wireStory {
+	t.Helper()
+	f := decodeFeed(t, body)
+	if len(f.PeerStories) != 1 || len(f.PeerStories[0].Stories) != 1 {
+		t.Fatalf("feed shape: %s", body)
+	}
+	return f.PeerStories[0].Stories[0]
+}
+
 func TestStories_Lifecycle_HTTP(t *testing.T) {
 	h, pool := newStoryRouter(t)
 	tokenA, idA := signUp(t, h, pool, "+79990000070")
@@ -98,24 +148,15 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 
 	// A's own feed reflects edited=true, privacy=everyone, new caption.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenA, nil)
-	var feed struct {
-		Groups []struct {
-			Stories []struct {
-				ID      int64  `json:"id"`
-				Caption string `json:"caption"`
-				Privacy string `json:"privacy"`
-				Pinned  bool   `json:"pinned"`
-				Edited  bool   `json:"edited"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
-	if len(feed.Groups) != 1 || len(feed.Groups[0].Stories) != 1 {
-		t.Fatalf("A feed shape: %s", rec.Body.String())
-	}
-	st := feed.Groups[0].Stories[0]
-	if !st.Edited || st.Privacy != "everyone" || st.Caption != "edited" {
+	st := onlyStory(t, rec.Body.String())
+	// «Отредактирована» и аудитория — ФЛАГИ истории, а не поля-строки: строки
+	// `privacy: "everyone"` на проводе больше нет вовсе.
+	if !st.PFlags["edited"] || !st.PFlags["public"] || st.Caption != "edited" {
 		t.Fatalf("edited story payload = %+v", st)
+	}
+	// Аудитория автору едет вектором ПРАВИЛ.
+	if len(st.Privacy) != 1 || st.Privacy[0]["_"] != "privacyValueAllowAll" {
+		t.Fatalf("privacy = %+v", st.Privacy)
 	}
 
 	// A pins the story; non-owner C cannot.
@@ -130,15 +171,17 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 
 	// Pinned list for A returns the story with pinned=true.
 	rec = authedReq(t, h, http.MethodGet, "/stories/pinned?peer="+itoa(idA), tokenA, nil)
+	// Плоский список — контейнер `stories.stories`; «закреплена» это ФЛАГ.
 	var pinned struct {
-		Stories []struct {
-			ID     int64 `json:"id"`
-			Pinned bool  `json:"pinned"`
-		} `json:"stories"`
+		Count   int         `json:"count"`
+		Stories []wireStory `json:"stories"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &pinned)
-	if len(pinned.Stories) != 1 || pinned.Stories[0].ID != posted.ID || !pinned.Stories[0].Pinned {
+	if pinned.Count != 1 || len(pinned.Stories) != 1 || pinned.Stories[0].ID != posted.ID {
 		t.Fatalf("pinned = %s", rec.Body.String())
+	}
+	if !pinned.Stories[0].PFlags["pinned"] {
+		t.Fatalf("pinned флаг не выехал: %s", rec.Body.String())
 	}
 
 	// Stealth store is not configured in this router → 503.
@@ -169,34 +212,25 @@ func TestStories_SelectedAllowlist_HTTP(t *testing.T) {
 		t.Fatalf("post selected story: %d %s", rec.Code, rec.Body.String())
 	}
 
-	type feedResp struct {
-		Groups []struct {
-			Stories []struct {
-				ID           int64   `json:"id"`
-				AllowUserIDs []int64 `json:"allow_user_ids"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
-
-	// A (author) sees allow_user_ids=[idB] on their own selected story.
+	// A (автор) видит аудиторию своей selected-истории — вектором правил
+	// (`privacyValueAllowUsers`), а не отдельным ключом allow_user_ids.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenA, nil)
-	var fa feedResp
-	_ = json.Unmarshal(rec.Body.Bytes(), &fa)
-	if len(fa.Groups) != 1 || len(fa.Groups[0].Stories) != 1 {
-		t.Fatalf("A feed shape: %s", rec.Body.String())
+	st := onlyStory(t, rec.Body.String())
+	if len(st.Privacy) != 1 || st.Privacy[0]["_"] != "privacyValueAllowUsers" {
+		t.Fatalf("A own selected story privacy = %+v", st.Privacy)
 	}
-	if got := fa.Groups[0].Stories[0].AllowUserIDs; len(got) != 1 || got[0] != idB {
-		t.Fatalf("A own selected story allow = %v; want [%d]", got, idB)
+	users, _ := st.Privacy[0]["users"].([]any)
+	if len(users) != 1 || int64(users[0].(float64)) != idB {
+		t.Fatalf("A own selected story allow = %v; want [%d]", users, idB)
 	}
 
-	// B (allowlisted, non-author) sees the story but WITHOUT allow_user_ids —
-	// the field must be entirely absent from the payload.
+	// B (в allow-листе, но не автор) историю видит, а аудиторию — нет: параметр
+	// `privacy` до чужого зрителя не доезжает вовсе.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
 	body := rec.Body.String()
-	var fb feedResp
-	_ = json.Unmarshal([]byte(body), &fb)
-	if len(fb.Groups) != 1 || len(fb.Groups[0].Stories) != 1 {
-		t.Fatalf("B feed shape: %s", body)
+	stB := onlyStory(t, body)
+	if len(stB.Privacy) != 0 {
+		t.Fatalf("аудитория утекла не-автору: %s", body)
 	}
 	if strings.Contains(body, "allow_user_ids") {
 		t.Fatalf("allow_user_ids leaked to non-owner: %s", body)
@@ -247,22 +281,23 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("feed: %d %s", rec.Code, rec.Body.String())
 	}
-	var feed struct {
-		Groups []struct {
-			Author struct {
-				ID int64 `json:"id"`
-			} `json:"author"`
-			Stories []struct {
-				ID     int64 `json:"id"`
-				Viewed bool  `json:"viewed"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
-	if len(feed.Groups) != 1 || len(feed.Groups[0].Stories) != 1 {
+	feed := decodeFeed(t, rec.Body.String())
+	if len(feed.PeerStories) != 1 || len(feed.PeerStories[0].Stories) != 1 {
 		t.Fatalf("expected 1 group/1 story, got %s", rec.Body.String())
 	}
-	if feed.Groups[0].Stories[0].ID != posted.ID || feed.Groups[0].Stories[0].Viewed {
+	// Автор группы — ССЫЛКА `peer`, а его карточка едет вектором `users`.
+	if got := feed.PeerStories[0].Peer["_"]; got != "peerUser" {
+		t.Fatalf("группа адресует автора не ссылкой: %+v", feed.PeerStories[0].Peer)
+	}
+	if len(feed.Users) != 1 {
+		t.Fatalf("карточка автора не выехала вектором users: %s", rec.Body.String())
+	}
+	// Вложение — СТУПЕНЬ: плоского media_id рядом с историей больше нет.
+	story := feed.PeerStories[0].Stories[0]
+	if story.Media == nil || story.Media["_"] == nil {
+		t.Fatalf("медиа истории не ступень: %+v", story.Media)
+	}
+	if story.ID != posted.ID || story.Viewed {
 		t.Fatalf("unexpected feed: %s", rec.Body.String())
 	}
 
@@ -277,15 +312,27 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("viewers: %d %s", rec.Code, rec.Body.String())
 	}
+	// Контейнер `stories.storyViewsList`: сам просмотр (с ДАТОЙ) и карточка
+	// зрителя — разными векторами.
 	var viewers struct {
-		Viewers []struct {
-			ID int64 `json:"id"`
-		} `json:"viewers"`
 		Count int `json:"count"`
+		Views []struct {
+			UserID int64 `json:"user_id"`
+			Date   int64 `json:"date"`
+		} `json:"views"`
+		Users []struct {
+			ID int64 `json:"id"`
+		} `json:"users"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &viewers)
-	if viewers.Count != 1 || len(viewers.Viewers) != 1 || viewers.Viewers[0].ID != idB {
-		t.Fatalf("expected viewers=[B], got %s", rec.Body.String())
+	if viewers.Count != 1 || len(viewers.Views) != 1 || viewers.Views[0].UserID != idB {
+		t.Fatalf("expected views=[B], got %s", rec.Body.String())
+	}
+	if viewers.Views[0].Date == 0 {
+		t.Fatalf("дата просмотра не выехала: %s", rec.Body.String())
+	}
+	if len(viewers.Users) != 1 || viewers.Users[0].ID != idB {
+		t.Fatalf("expected users=[B], got %s", rec.Body.String())
 	}
 
 	// B (non-author) is forbidden from the viewers list.
@@ -322,30 +369,43 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("react: %d %s", rec.Code, rec.Body.String())
 	}
-	var reactFeed struct {
-		Groups []struct {
-			Stories []struct {
-				ReactionsCount int     `json:"reactions_count"`
-				MyReaction     *string `json:"my_reaction"`
-				Reactions      []struct {
-					Emoji string `json:"emoji"`
-					Count int    `json:"count"`
-					Mine  bool   `json:"mine"`
-				} `json:"reactions"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
+	// Агрегат реакций живёт ВНУТРИ `views`, а личная реакция — отдельным
+	// параметром самой истории (`sent_reaction`): тело истории одно на всех
+	// получателей, личное в нём выделено. Разбивка — чипы `reactionCount`,
+	// «моя» в них выражена `chosen_order`, а не булевым `mine`.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &reactFeed)
-	if len(reactFeed.Groups) != 1 || len(reactFeed.Groups[0].Stories) != 1 {
-		t.Fatalf("react feed shape: %s", rec.Body.String())
+	body := rec.Body.String()
+	st := onlyStory(t, body)
+	if st.Views == nil || int(st.Views["reactions_count"].(float64)) != 1 {
+		t.Fatalf("expected views.reactions_count=1, got %s", body)
 	}
-	st := reactFeed.Groups[0].Stories[0]
-	if st.ReactionsCount != 1 || st.MyReaction == nil || *st.MyReaction != "👍" {
-		t.Fatalf("expected my_reaction=👍 count=1, got %s", rec.Body.String())
+	results, _ := st.Views["reactions"].([]any)
+	if len(results) != 1 {
+		t.Fatalf("unexpected reactions breakdown: %s", body)
 	}
-	if len(st.Reactions) != 1 || st.Reactions[0].Emoji != "👍" || st.Reactions[0].Count != 1 || !st.Reactions[0].Mine {
-		t.Fatalf("unexpected reactions breakdown: %s", rec.Body.String())
+	chip, _ := results[0].(map[string]any)
+	if r, _ := chip["reaction"].(map[string]any); r == nil || r["emoticon"] != "👍" {
+		t.Fatalf("чип реакции = %+v", chip)
+	}
+	if int(chip["count"].(float64)) != 1 {
+		t.Fatalf("счётчик чипа = %+v", chip)
+	}
+	if _, mine := chip["chosen_order"]; !mine {
+		t.Fatalf("своя реакция не помечена chosen_order: %+v", chip)
+	}
+	var sent map[string]any
+	_ = json.Unmarshal([]byte(body), &struct{}{})
+	var withSent struct {
+		PeerStories []struct {
+			Stories []struct {
+				SentReaction map[string]any `json:"sent_reaction"`
+			} `json:"stories"`
+		} `json:"peer_stories"`
+	}
+	_ = json.Unmarshal([]byte(body), &withSent)
+	sent = withSent.PeerStories[0].Stories[0].SentReaction
+	if sent == nil || sent["emoticon"] != "👍" {
+		t.Fatalf("личная реакция не выехала параметром истории: %s", body)
 	}
 
 	// A's stats include the reaction.
@@ -368,8 +428,10 @@ func TestStories_Flow_HTTP(t *testing.T) {
 		t.Fatalf("unreact: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &reactFeed)
-	if reactFeed.Groups[0].Stories[0].ReactionsCount != 0 || reactFeed.Groups[0].Stories[0].MyReaction != nil {
+	cleared := onlyStory(t, rec.Body.String())
+	// Реакций не осталось — значит и рассказывать нечего: `views` не едет вовсе,
+	// а не приезжает объектом с нулями.
+	if cleared.Views != nil {
 		t.Fatalf("expected reactions cleared, got %s", rec.Body.String())
 	}
 
@@ -379,8 +441,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
-	if len(feed.Groups) != 0 {
+	if len(decodeFeed(t, rec.Body.String()).PeerStories) != 0 {
 		t.Fatalf("expected empty feed after delete, got %s", rec.Body.String())
 	}
 }
@@ -413,9 +474,19 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 
+	// Области едут КОНСТРУКТОРАМИ и в запросе тоже: форма одна на всём пути —
+	// тело запроса, колонка `stories.media_areas`, витрина.
 	areas := []map[string]any{
-		{"type": "reaction", "coordinates": map[string]any{"x": 50, "y": 50, "w": 10, "h": 10, "rotation": 0}, "reaction": "👍"},
-		{"type": "geo", "coordinates": map[string]any{"x": 1, "y": 2, "w": 5, "h": 5, "rotation": 0}, "lat": 55.75, "long": 37.61, "title": "Москва"},
+		{
+			"_":           "mediaAreaSuggestedReaction",
+			"coordinates": map[string]any{"_": "mediaAreaCoordinates", "x": 50, "y": 50, "w": 10, "h": 10, "rotation": 0},
+			"reaction":    map[string]any{"_": "reactionEmoji", "emoticon": "👍"},
+		},
+		{
+			"_":           "mediaAreaGeoPoint",
+			"coordinates": map[string]any{"_": "mediaAreaCoordinates", "x": 1, "y": 2, "w": 5, "h": 5, "rotation": 0},
+			"geo":         map[string]any{"_": "geoPoint", "lat": 55.75, "long": 37.61},
+		},
 	}
 	// "selected" allowing only B: B may repost/see it, C may not (contacts/everyone
 	// stories are visible to everyone by the Visible predicate, so they can't gate C).
@@ -433,28 +504,23 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// A's feed payload carries media_areas.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenA, nil)
-	var feed struct {
-		Groups []struct {
-			Stories []struct {
-				ID         int64 `json:"id"`
-				MediaAreas []struct {
-					Type        string   `json:"type"`
-					Reaction    string   `json:"reaction"`
-					Lat         *float64 `json:"lat"`
-					Coordinates struct {
-						X float64 `json:"x"`
-					} `json:"coordinates"`
-				} `json:"media_areas"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
-	if len(feed.Groups) != 1 || len(feed.Groups[0].Stories) != 1 {
-		t.Fatalf("A feed shape: %s", rec.Body.String())
-	}
-	fa := feed.Groups[0].Stories[0].MediaAreas
-	if len(fa) != 2 || fa[0].Type != "reaction" || fa[0].Reaction != "👍" || fa[1].Type != "geo" || fa[1].Lat == nil {
+	fa := onlyStory(t, rec.Body.String()).MediaAreas
+	// Вид области — ВЫБОР конструктора, а не строка `type`; эмодзи предложенной
+	// реакции — объединение `Reaction`, а точка — ступень `geoPoint`.
+	if len(fa) != 2 {
 		t.Fatalf("media_areas payload = %+v", fa)
+	}
+	if fa[0]["_"] != "mediaAreaSuggestedReaction" {
+		t.Fatalf("область реакции = %+v", fa[0])
+	}
+	if r, _ := fa[0]["reaction"].(map[string]any); r == nil || r["emoticon"] != "👍" {
+		t.Fatalf("реакция области = %+v", fa[0]["reaction"])
+	}
+	if fa[1]["_"] != "mediaAreaGeoPoint" {
+		t.Fatalf("гео-область = %+v", fa[1])
+	}
+	if g, _ := fa[1]["geo"].(map[string]any); g == nil || g["_"] != "geoPoint" {
+		t.Fatalf("точка не ступень: %+v", fa[1]["geo"])
 	}
 
 	// C (no chat with A) cannot repost A's contacts story.
@@ -479,27 +545,22 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// B's feed shows the repost with fwd_from{author_id:A}.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
-	var bfeed struct {
-		Groups []struct {
-			Stories []struct {
-				ID      int64 `json:"id"`
-				FwdFrom *struct {
-					AuthorID int64 `json:"author_id"`
-					StoryID  int64 `json:"story_id"`
-				} `json:"fwd_from"`
-			} `json:"stories"`
-		} `json:"groups"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &bfeed)
+	bfeed := decodeFeed(t, rec.Body.String())
 	var fwdSeen bool
-	for _, g := range bfeed.Groups {
+	for _, g := range bfeed.PeerStories {
 		for _, s := range g.Stories {
-			if s.ID == reposted.ID {
-				if s.FwdFrom == nil || s.FwdFrom.AuthorID != idA || s.FwdFrom.StoryID != posted.ID {
-					t.Fatalf("repost fwd_from payload = %+v", s.FwdFrom)
-				}
-				fwdSeen = true
+			if s.ID != reposted.ID {
+				continue
 			}
+			// Автор исходной истории — ССЫЛКА `peer`, а не число `author_id`.
+			from, _ := s.FwdFrom["from"].(map[string]any)
+			if from == nil || from["_"] != "peerUser" || int64(from["user_id"].(float64)) != idA {
+				t.Fatalf("repost fwd_from payload = %+v", s.FwdFrom)
+			}
+			if int64(s.FwdFrom["story_id"].(float64)) != posted.ID {
+				t.Fatalf("repost fwd_from story = %+v", s.FwdFrom)
+			}
+			fwdSeen = true
 		}
 	}
 	if !fwdSeen {

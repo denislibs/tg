@@ -15,7 +15,7 @@ import (
 
 // marshalMediaAreas encodes media areas as a jsonb string ("[]" for empty). Per
 // CLAUDE.md we pass string(json), not []byte, so pgx stores jsonb (not bytea).
-func marshalMediaAreas(areas []domain.StoryMediaArea) (string, error) {
+func marshalMediaAreas(areas domain.MediaAreas) (string, error) {
 	if len(areas) == 0 {
 		return "[]", nil
 	}
@@ -28,8 +28,8 @@ func marshalMediaAreas(areas []domain.StoryMediaArea) (string, error) {
 
 // unmarshalMediaAreas decodes the jsonb media_areas column into a slice; an
 // empty/NULL column yields a non-nil empty slice so payloads always carry an array.
-func unmarshalMediaAreas(raw []byte) ([]domain.StoryMediaArea, error) {
-	out := make([]domain.StoryMediaArea, 0)
+func unmarshalMediaAreas(raw []byte) (domain.MediaAreas, error) {
+	out := make(domain.MediaAreas, 0)
 	if len(raw) == 0 {
 		return out, nil
 	}
@@ -217,24 +217,39 @@ func (r *StoryRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) err
 	return err
 }
 
-func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserReal, error) {
+// Viewers отдаёт просмотры истории ВМЕСТЕ с карточками зрителей — форма
+// контейнера `stories.storyViewsList`.
+//
+// Дата просмотра и реакция зрителя приезжают тем же запросом: оба параметра
+// объявлены у `storyView`, предмет у обоих есть (`story_views.viewed_at` и
+// `story_reactions.reaction`), и терялись они только потому, что наружу ехали
+// голые карточки.
+func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userRealCols("u.")+`
+		`SELECT `+userRealCols("u.")+`, sv.viewed_at, COALESCE(sr.reaction,'')
 		   FROM story_views sv
 		   JOIN users u ON u.id = sv.viewer_id
+		   LEFT JOIN story_reactions sr ON sr.story_id = sv.story_id AND sr.user_id = sv.viewer_id
 		  WHERE sv.story_id = $1
 		  ORDER BY sv.viewed_at`, storyID)
 	if err != nil {
-		return nil, err
+		return domain.StoryViewers{}, err
 	}
 	defer rows.Close()
-	out := make([]domain.UserReal, 0)
+	out := domain.StoryViewers{Views: []domain.StoryView{}, Users: []domain.UserReal{}}
 	for rows.Next() {
-		u, err := scanUserReal(rows)
-		if err != nil {
-			return nil, err
+		var us userRealScan
+		var viewedAt time.Time
+		var reaction string
+		if err := rows.Scan(append(us.dest(), &viewedAt, &reaction)...); err != nil {
+			return domain.StoryViewers{}, err
 		}
-		out = append(out, u)
+		var r domain.Reaction
+		if reaction != "" {
+			r = domain.NewReactionEmoji(reaction)
+		}
+		out.Views = append(out.Views, domain.NewStoryView(us.id, viewedAt.Unix(), r))
+		out.Users = append(out.Users, us.user(true))
 	}
 	return out, rows.Err()
 }
@@ -473,7 +488,7 @@ func (r *StoryRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinn
 // Edit updates caption/privacy (COALESCE keeps unset fields), flags edited, and
 // re-syncs story_allow: for 'selected' it replaces the allowlist, for any other
 // explicit privacy it clears it; an unchanged privacy leaves the allowlist as-is.
-func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
+func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error {
 	q := querier(ctx, r.pool)
 	// media_areas: nil — не трогаем (COALESCE оставляет прежнее); иначе полностью
 	// заменяем набор областей (tweb editStory заменяет media_areas).

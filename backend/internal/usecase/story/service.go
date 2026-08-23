@@ -44,7 +44,7 @@ const (
 type Service struct {
 	repo      StoryRepo
 	partners  Partners
-	media     MediaOwner
+	media     MediaAccess
 	tx        TxManager
 	publisher EventPublisher
 	stealth   StealthStore
@@ -52,7 +52,7 @@ type Service struct {
 }
 
 // New constructs the story service from its ports.
-func New(repo StoryRepo, partners Partners, media MediaOwner, tx TxManager) *Service {
+func New(repo StoryRepo, partners Partners, media MediaAccess, tx TxManager) *Service {
 	return &Service{repo: repo, partners: partners, media: media, tx: tx}
 }
 
@@ -64,6 +64,33 @@ func (s *Service) SetPublisher(p EventPublisher) { s.publisher = p }
 // nil, stealth endpoints report domain.ErrUnavailable and View always records.
 func (s *Service) SetStealthStore(st StealthStore) { s.stealth = st }
 
+// attachMedia наполняет ступень вложения (`storyItem.media`) у пачки историй
+// ОДНИМ запросом на всю пачку — тем же батчем, каким это делает модель истории
+// сообщений.
+func (s *Service) attachMedia(ctx context.Context, items []*domain.StoryRecord) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(items))
+	seen := map[int64]bool{}
+	for _, it := range items {
+		if it.MediaID != 0 && !seen[it.MediaID] {
+			seen[it.MediaID] = true
+			ids = append(ids, it.MediaID)
+		}
+	}
+	dims, err := s.media.DimsByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		if src, ok := dims[it.MediaID]; ok {
+			it.Media = domain.BuildStoryMedia(it.MediaID, src)
+		}
+	}
+	return nil
+}
+
 // SetMessageSender attaches the chat message sender used by Share (optional).
 // When nil, Share reports domain.ErrUnavailable.
 func (s *Service) SetMessageSender(ms MessageSender) { s.sender = ms }
@@ -72,43 +99,53 @@ func (s *Service) SetMessageSender(ms MessageSender) { s.sender = ms }
 // bound; Telegram's editor stays well under this).
 const maxMediaAreas = 20
 
-// allowedAreaTypes — поддерживаемые типы media-area (tweb; без channel_post/weather).
-var allowedAreaTypes = map[string]bool{"geo": true, "venue": true, "reaction": true, "url": true}
-
-// validateMediaAreas checks the count bound, known type, coordinate ranges
-// (0..100) and per-type required fields. Returns domain.ErrInvalid on any
-// violation.
-func validateMediaAreas(areas []domain.StoryMediaArea) error {
+// validateMediaAreas проверяет число областей, диапазон координат (0..100) и
+// обязательные части каждого конструктора. Любое нарушение — domain.ErrInvalid.
+//
+// Списка «разрешённых типов» здесь больше нет: вид области — ВЫБОР
+// конструктора, и незнакомый конструктор до сюда не доезжает вовсе — его
+// отбрасывает разбор объединения (`domain.MediaAreas.UnmarshalJSON`). Проверять
+// осталось только содержимое.
+func validateMediaAreas(areas domain.MediaAreas) error {
 	if len(areas) > maxMediaAreas {
 		return domain.ErrInvalid
 	}
 	for _, a := range areas {
-		if !allowedAreaTypes[a.Type] {
-			return domain.ErrInvalid
-		}
-		c := a.Coordinates
+		c := a.Coords()
 		for _, v := range []float64{c.X, c.Y, c.W, c.H} {
 			if v < 0 || v > 100 {
 				return domain.ErrInvalid
 			}
 		}
-		switch a.Type {
-		case "reaction":
-			if a.Reaction == "" || len(a.Reaction) > maxReactionLen || !utf8.ValidString(a.Reaction) {
+		switch v := a.(type) {
+		case domain.MediaAreaSuggestedReaction:
+			e, ok := v.Reaction.(domain.ReactionEmoji)
+			if !ok || e.Emoticon == "" || len(e.Emoticon) > maxReactionLen || !utf8.ValidString(e.Emoticon) {
 				return domain.ErrInvalid
 			}
-		case "url":
-			if a.URL == "" {
+		case domain.MediaAreaURL:
+			if v.URL == "" {
 				return domain.ErrInvalid
 			}
-		case "geo", "venue":
-			if a.Lat == nil || a.Long == nil ||
-				*a.Lat < -90 || *a.Lat > 90 || *a.Long < -180 || *a.Long > 180 {
+		case domain.MediaAreaGeoPoint:
+			if !validGeo(v.Geo) {
+				return domain.ErrInvalid
+			}
+		case domain.MediaAreaVenue:
+			if !validGeo(v.Geo) {
 				return domain.ErrInvalid
 			}
 		}
 	}
 	return nil
+}
+
+// validGeo — точка в допустимых пределах. Отдельной проверки «координаты вообще
+// пришли» больше нет: `geo` у обоих конструкторов ОБЯЗАТЕЛЕН, и «их не дали»
+// выражается нулевой точкой, которая пределы проходит — ровно как у оригинала,
+// где нулевая широта/долгота это валидное место в Гвинейском заливе.
+func validGeo(g domain.GeoPoint) bool {
+	return g.Lat >= -90 && g.Lat <= 90 && g.Long >= -180 && g.Long <= 180
 }
 
 // ttlFor maps a requested lifetime (seconds) to a duration, falling back to 24h
@@ -126,7 +163,7 @@ func ttlFor(period int64) time.Duration {
 // persists within a transaction (so the story row and any story_allow rows
 // commit together). On success it broadcasts a story_new frame to the viewers
 // the story is visible to.
-func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, mediaAreas []domain.StoryMediaArea, period int64) (int64, error) {
+func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, mediaAreas domain.MediaAreas, period int64) (int64, error) {
 	owner, err := s.media.OwnerID(ctx, mediaID)
 	if err != nil {
 		return 0, err
@@ -295,6 +332,15 @@ func (s *Service) Feed(ctx context.Context, viewerID int64) ([]domain.StoryGroup
 			st.AllowIDs = ids
 		}
 	}
+	refs := make([]*domain.StoryRecord, 0, len(groups))
+	for gi := range groups {
+		for si := range groups[gi].Stories {
+			refs = append(refs, &groups[gi].Stories[si])
+		}
+	}
+	if err := s.attachMedia(ctx, refs); err != nil {
+		return nil, err
+	}
 	return groups, nil
 }
 
@@ -359,13 +405,13 @@ func (s *Service) RemoveReaction(ctx context.Context, storyID, userID int64) err
 
 // Viewers returns who has seen a story; only the story's author may read it
 // (domain.ErrForbidden otherwise).
-func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) ([]domain.UserReal, error) {
+func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) (domain.StoryViewers, error) {
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
-		return nil, err
+		return domain.StoryViewers{}, err
 	}
 	if author != requesterID {
-		return nil, domain.ErrForbidden
+		return domain.StoryViewers{}, domain.ErrForbidden
 	}
 	return s.repo.Viewers(ctx, storyID)
 }
@@ -490,7 +536,7 @@ func (s *Service) SetPinned(ctx context.Context, storyID, authorID int64, pinned
 // and/or privacy (+allowlist for selected); marks it edited. caption/privacy are
 // pointers so "" is distinguishable from "unset". Missing story → ErrNotFound,
 // non-owner → ErrForbidden, oversized caption → ErrTooLong, bad privacy → ErrInvalid.
-func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
+func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error {
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
 		return err
@@ -520,13 +566,31 @@ func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) (
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.repo.Archive(ctx, ownerID, limit, offsetID)
+	items, err := s.repo.Archive(ctx, ownerID, limit, offsetID)
+	if err != nil {
+		return nil, err
+	}
+	return items, s.attachMedia(ctx, refsOf(items))
+}
+
+// refsOf — указатели на элементы среза: ступень наполняется НА МЕСТЕ, копия
+// записи оставила бы вложение за бортом.
+func refsOf(items []domain.StoryRecord) []*domain.StoryRecord {
+	out := make([]*domain.StoryRecord, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out
 }
 
 // PinnedStories returns a peer's pinned stories (tweb stories.getPinnedStories),
 // including expired ones, filtered to what viewerID may see.
 func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
-	return s.repo.Pinned(ctx, peerID, viewerID)
+	items, err := s.repo.Pinned(ctx, peerID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	return items, s.attachMedia(ctx, refsOf(items))
 }
 
 // canSee reports whether viewerID may see storyID under the current privacy

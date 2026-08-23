@@ -442,50 +442,17 @@ type SavedTagRepo interface {
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)
-	// DimsByIDs batch-loads width/height/mime for media ids (history read model,
-	// so the client can reserve the media box before the bytes load). Missing ids
-	// are simply absent from the map.
-	DimsByIDs(ctx context.Context, ids []int64) (map[int64]MediaDims, error)
-}
-
-// MediaDims is the media metadata the message read model attaches so the client
-// can render a media bubble fully from the message — no per-media meta request.
-type MediaDims struct {
-	Width    int
-	Height   int
-	Mime     string
-	Blur     []byte // blur preview bytes (JSON-encoded as base64, LQIP placeholder)
-	HasThumb bool
-	Duration int
-	Size     int64
-	FileName string
-	// Waveform — 5-битно упакованные пики голосового (media.waveform), посчитанные
-	// отправителем при записи. Едут в самом сообщении, как
-	// documentAttributeAudio.waveform у telegram: получатель рисует волну сразу,
-	// без запроса меты файла. nil у не-голосовых.
-	Waveform []byte
-	// Title/Performer — теги аудиотрека (ID3), пустые если файл без тегов или это
-	// не аудио. Клиент строит из них подпись бабла (tweb audio.ts), а без них
-	// показывает размер файла.
-	Title     string
-	Performer string
-	// Animated — гифка (telegram documentAttributeAnimated → tweb doc.type ===
-	// 'gif'): бабл рисуется бейджем «GIF» и зацикленным автоплеем без кнопки
-	// play, а не таймкодом видео. См. domain.Media.Animated.
-	Animated bool
-	// PathThumb — векторный контур стикера (Telegram photoPathSize), которым
-	// клиент рисует SVG-силуэт мгновенно, пока летит сам файл. Лежит не в media,
-	// а в строке стикера (метаданные набора), поэтому приезжает джойном; в
-	// модели сообщения это просто ещё одна ступень thumbs. nil у не-стикеров.
-	PathThumb []byte
-	// StickerAlt — эмодзи стикера (documentAttributeSticker.alt), из той же
-	// строки стикера, что и контур. Пусто у не-стикеров.
-	StickerAlt string
-	// StickerSetID — набор стикера (documentAttributeSticker.stickerset), из той
-	// же строки. 0 — файл в наборах не числится: не стикер либо стикер
-	// удалённого набора. Без него клиенту приходилось спрашивать набор
-	// отдельной ручкой по media_id — у оригинала документ несёт его в себе.
-	StickerSetID int64
+	// DimsByIDs батчем поднимает метаданные файлов по их id (модель истории:
+	// клиент резервирует бокс медиа до загрузки байтов). Отсутствующие id просто
+	// не попадают в карту.
+	//
+	// Отдаёт `domain.MediaSource` — ТУ ЖЕ структуру, из которой собирается
+	// вложение (`BuildMessageMedia`). Прежде рядом жил её близнец `MediaDims`:
+	// те же пятнадцать полей под другим именем, и заполнялись они переписыванием
+	// поле-в-поле. Двух форм одного факта не осталось — вид вложения
+	// (`MediaID`/`Spoiler`/`Kind`) дописывает тот, кто знает МЕСТО файла:
+	// сообщение — из своей строки, история — из mime.
+	DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error)
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness

@@ -14,7 +14,7 @@ import (
 // вложением live-кадра. Обе витрины проверяются одним вызовом намеренно: у
 // расхождения между историей и кадром своя история дефектов (send_as), поэтому
 // каждый тип медиа сверяется в обеих.
-func sendWithMedia(t *testing.T, kind string, mediaID int64, dims MediaDims, in SendInput) (domain.Message, domain.MessageMedia) {
+func sendWithMedia(t *testing.T, kind string, mediaID int64, dims domain.MediaSource, in SendInput) (domain.Message, domain.MessageMedia) {
 	t.Helper()
 	s := newStore()
 	i := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
@@ -71,7 +71,7 @@ func assertSameMedia(t *testing.T, payload map[string]any, msg domain.Message) {
 // documentAttributeAudio — клиент подписывает музыкальный бабл ими, а не
 // размером файла (tweb audio.ts).
 func TestSend_AudioTagsInMessageAndFrame(t *testing.T) {
-	_, md := sendWithMedia(t, "audio", 77, MediaDims{
+	_, md := sendWithMedia(t, "audio", 77, domain.MediaSource{
 		Mime: "audio/mpeg", Duration: 139, Size: 3300000,
 		FileName: "track.mp3", Title: "Track One", Performer: "denis1488",
 	}, SendInput{})
@@ -84,7 +84,7 @@ func TestSend_AudioTagsInMessageAndFrame(t *testing.T) {
 // Файл без тегов: атрибут есть (длительность нужна), но тегов в нём нет —
 // клиент откатывается на размер файла.
 func TestSend_NoAudioTagsNoKeys(t *testing.T) {
-	_, md := sendWithMedia(t, "audio", 78, MediaDims{
+	_, md := sendWithMedia(t, "audio", 78, domain.MediaSource{
 		Mime: "audio/mpeg", Duration: 12, Size: 100500, FileName: "voice.ogg",
 	}, SendInput{})
 	a, ok := domain.MediaAudioAttr(md)
@@ -100,7 +100,7 @@ func TestSend_NoAudioTagsNoKeys(t *testing.T) {
 // pFlags.voice. Без них у ЖИВОГО голосового волны нет до перезагрузки истории.
 func TestSend_VoiceWaveformInMessageAndFrame(t *testing.T) {
 	peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
-	_, md := sendWithMedia(t, "voice", 83, MediaDims{
+	_, md := sendWithMedia(t, "voice", 83, domain.MediaSource{
 		Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks,
 	}, SendInput{})
 	a, ok := domain.MediaAudioAttr(md)
@@ -112,7 +112,7 @@ func TestSend_VoiceWaveformInMessageAndFrame(t *testing.T) {
 // Медиа без пиков: поля waveform в атрибуте нет вовсе — клиент отличает
 // «пиков нет» от «пустая волна».
 func TestSend_NoWaveformNoKey(t *testing.T) {
-	_, md := sendWithMedia(t, "voice", 84, MediaDims{
+	_, md := sendWithMedia(t, "voice", 84, domain.MediaSource{
 		Mime: "audio/ogg", Duration: 7, Size: 4200, FileName: "voice.ogg",
 	}, SendInput{})
 	if a, ok := domain.MediaAudioAttr(md); !ok || a.Waveform != nil {
@@ -124,7 +124,7 @@ func TestSend_NoWaveformNoKey(t *testing.T) {
 // оригинал выводит doc.type === 'gif' (бейдж «GIF» и зацикленный автоплей
 // вместо таймкода с кнопкой play, tweb video.ts:120-123,164-171).
 func TestSend_AnimatedGifInMessageAndFrame(t *testing.T) {
-	_, md := sendWithMedia(t, "video", 79, MediaDims{
+	_, md := sendWithMedia(t, "video", 79, domain.MediaSource{
 		Mime: "video/mp4", Width: 320, Height: 240, Duration: 3,
 		Size: 400000, FileName: "cat.mp4", Animated: true,
 	}, SendInput{})
@@ -135,7 +135,7 @@ func TestSend_AnimatedGifInMessageAndFrame(t *testing.T) {
 
 // Обычное видео со звуком: атрибута animated нет — клиент рисует таймкод и play.
 func TestSend_PlainVideoHasNoAnimatedKey(t *testing.T) {
-	_, md := sendWithMedia(t, "video", 80, MediaDims{
+	_, md := sendWithMedia(t, "video", 80, domain.MediaSource{
 		Mime: "video/mp4", Width: 1280, Height: 720, Duration: 61, Size: 9000000,
 	}, SendInput{})
 	if domain.MediaHasAttribute(md, domain.AttrAnimated) {
@@ -152,7 +152,7 @@ func TestSend_PlainVideoHasNoAnimatedKey(t *testing.T) {
 // стикер приезжал из набора.
 func TestSend_StickerPathThumbReachesMessage(t *testing.T) {
 	outline := []byte{'M', '1', '2', '3'}
-	_, md := sendWithMedia(t, "sticker", 85, MediaDims{
+	_, md := sendWithMedia(t, "sticker", 85, domain.MediaSource{
 		Mime: "image/webp", Width: 512, Height: 512, Size: 30000, PathThumb: outline,
 	}, SendInput{})
 	if !domain.MediaHasAttribute(md, domain.AttrSticker) {
@@ -167,7 +167,7 @@ func TestSend_StickerPathThumbReachesMessage(t *testing.T) {
 // у получателя показывается открытым до перезагрузки истории — то есть
 // раскрывает ровно то, что отправитель просил скрыть.
 func TestSend_SpoilerInMessageAndFrame(t *testing.T) {
-	msg, md := sendWithMedia(t, "photo", 81, MediaDims{
+	msg, md := sendWithMedia(t, "photo", 81, domain.MediaSource{
 		Mime: "image/jpeg", Width: 1280, Height: 960, Size: 250000, FileName: "secret.jpg",
 	}, SendInput{MediaSpoiler: true})
 	if !msg.MediaSpoiler {
@@ -180,7 +180,7 @@ func TestSend_SpoilerInMessageAndFrame(t *testing.T) {
 
 // Обычное медиа без спойлера: флага нет вовсе.
 func TestSend_NoSpoilerNoKey(t *testing.T) {
-	msg, md := sendWithMedia(t, "photo", 82, MediaDims{
+	msg, md := sendWithMedia(t, "photo", 82, domain.MediaSource{
 		Mime: "image/jpeg", Width: 800, Height: 600, Size: 90000,
 	}, SendInput{})
 	if msg.MediaSpoiler {
@@ -274,8 +274,8 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 	wide, tall := int64(81), int64(82)
 	s.seedMedia(wide, 1)
 	s.seedMedia(tall, 1)
-	s.seedMediaDims(wide, MediaDims{Mime: "image/jpeg", Width: 1600, Height: 900, Size: 500000, Blur: []byte("w")})
-	s.seedMediaDims(tall, MediaDims{Mime: "image/jpeg", Width: 900, Height: 1600, Size: 600000, Blur: []byte("t")})
+	s.seedMediaDims(wide, domain.MediaSource{Mime: "image/jpeg", Width: 1600, Height: 900, Size: 500000, Blur: []byte("w")})
+	s.seedMediaDims(tall, domain.MediaSource{Mime: "image/jpeg", Width: 900, Height: 1600, Size: 600000, Blur: []byte("t")})
 
 	first, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "photo", MediaID: &wide, GroupedID: 4242})
 	if err != nil {

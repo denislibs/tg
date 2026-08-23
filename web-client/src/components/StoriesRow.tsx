@@ -29,6 +29,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import useCollapsable, { STATE_UNFOLDED, type CollapsableOptions } from '../core/hooks/useCollapsable'
+import { isStoryViewed } from '../core/stories/story'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import s from './StoriesRow.module.scss'
 
@@ -69,7 +70,7 @@ export interface StoryItem {
   groupIndex: number | null
 }
 
-const hasUnseen = (g: StoryGroup) => g.stories.some((s) => !s.viewed)
+const hasUnseen = (g: StoryGroup) => g.stories.some((s) => !isStoryViewed(s))
 
 /**
  * Derive the avatar items from the real stories feed. The first item is always

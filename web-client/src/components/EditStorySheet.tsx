@@ -15,7 +15,8 @@ import type { UserReal } from '../core/peers/peer'
 import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
-import type { StoryItem, StoryPrivacy } from '../core/managers/storiesManager'
+import type { StoryItem, StoryPrivacy } from '../core/stories/story'
+import { storyAllowIds, storyCaption, storyPrivacy } from '../core/stories/story'
 import s from './AddStorySheet.module.scss'
 
 const MAX_CAPTION_LEN = 2048
@@ -52,11 +53,11 @@ export default function EditStorySheet({
     .map((d) => cachedUser(d.peerId))
     .filter((u): u is UserReal => !!u && u._ === 'user')
 
-  const [caption, setCaption] = useState(story.caption)
-  const [privacy, setPrivacy] = useState<StoryPrivacy>(story.privacy)
-  // Предзаполняем allow-лист текущей аудиторией истории (бэк отдаёт allowIds
-  // только для своих selected-историй).
-  const [allow, setAllow] = useState<Set<number>>(() => new Set(story.allowIds ?? []))
+  const [caption, setCaption] = useState(storyCaption(story))
+  // Вид аудитории ВЫВОДИТСЯ из флагов конструктора: строки `privacy` на проводе
+  // больше нет, а allow-лист — правило `privacyValueAllowUsers` внутри `privacy`.
+  const [privacy, setPrivacy] = useState<StoryPrivacy>(storyPrivacy(story))
+  const [allow, setAllow] = useState<Set<number>>(() => new Set(storyAllowIds(story)))
   const [busy, setBusy] = useState(false)
 
   const toggleContact = (id: number) =>
@@ -70,10 +71,10 @@ export default function EditStorySheet({
   const save = async () => {
     if (busy) return
     setBusy(true)
-    const privacyChanged = privacy !== story.privacy
+    const privacyChanged = privacy !== storyPrivacy(story)
     // Считаем allow-лист изменившимся по сравнению множеств, а не по смене
     // приватности: у уже-selected истории аудиторию можно править без смены режима.
-    const initialAllow = story.allowIds ?? []
+    const initialAllow = storyAllowIds(story)
     const allowChanged =
       privacy === 'selected' && (allow.size !== initialAllow.length || initialAllow.some((id) => !allow.has(id)))
     // Бэк пересобирает story_allow только когда privacy передана (Edit при

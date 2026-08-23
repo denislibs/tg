@@ -10,40 +10,10 @@ type Story struct {
 	// Pinned — история закреплена в профиле (показывается всегда, в т.ч. истёкшая).
 	// Edited — история редактировалась после публикации (флаг edited в tweb).
 	Pinned, Edited bool
-	// MediaAreas — интерактивные области поверх истории (tweb media_areas).
-	MediaAreas []StoryMediaArea
+	// MediaAreas — интерактивные области поверх истории (`Vector<MediaArea>`).
+	MediaAreas MediaAreas
 	// FwdFrom — ссылка на исходную историю при репосте (tweb fwd_from); nil у оригинала.
 	FwdFrom *StoryFwd
-}
-
-// StoryAreaCoordinates — положение области на истории в процентах (0..100),
-// как tweb mediaAreaCoordinates (rotation в градусах).
-type StoryAreaCoordinates struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	W        float64 `json:"w"`
-	H        float64 `json:"h"`
-	Rotation float64 `json:"rotation"`
-}
-
-// StoryMediaArea — интерактивная область поверх истории (tweb MediaArea).
-// Type: geo|venue|reaction|url. Поля заполняются по типу (omitempty), общий
-// блок — координаты. Сериализуется как элемент jsonb-массива stories.media_areas.
-type StoryMediaArea struct {
-	Type        string               `json:"type"`
-	Coordinates StoryAreaCoordinates `json:"coordinates"`
-	// geo/venue: координаты точки; venue дополнительно несёт title/address.
-	Lat  *float64 `json:"lat,omitempty"`
-	Long *float64 `json:"long,omitempty"`
-	// Title — geo/venue (подпись точки); Address — venue.
-	Title   string `json:"title,omitempty"`
-	Address string `json:"address,omitempty"`
-	// reaction (tweb mediaAreaSuggestedReaction): эмодзи + флаги оформления.
-	Reaction string `json:"reaction,omitempty"`
-	Dark     bool   `json:"dark,omitempty"`
-	Flipped  bool   `json:"flipped,omitempty"`
-	// url (tweb mediaAreaUrl).
-	URL string `json:"url,omitempty"`
 }
 
 // StoryFwd — ссылка репоста на исходную историю (tweb fwd_from): автор и id
@@ -87,10 +57,26 @@ type StoryRecord struct {
 	// только для собственных историй зрителя (автор==зритель), чтобы автор мог
 	// отредактировать аудиторию; для чужих историй остаётся nil (не раскрываем).
 	AllowIDs []int64
-	// MediaAreas — интерактивные области поверх истории (tweb media_areas).
-	MediaAreas []StoryMediaArea
+	// MediaAreas — интерактивные области поверх истории (`Vector<MediaArea>`).
+	MediaAreas MediaAreas
 	// FwdFrom — ссылка на исходную историю при репосте (tweb fwd_from); nil у оригинала.
 	FwdFrom *StoryFwd
+	// Media — ВЛОЖЕНИЕ истории ступенью (`storyItem.media`). В строке `stories`
+	// его нет: там лежит только номер файла, а метаданные — в `media`. Поле
+	// вычисляемое, наполняет его read-модель (usecase/story) тем же приёмом,
+	// каким `DialogRecord` получает последнее сообщение.
+	Media MessageMedia
+}
+
+// StoryViewers — просмотры истории вместе с карточками зрителей: ровно то, из
+// чего собирается контейнер `stories.storyViewsList`.
+//
+// Прежде наружу ехали ГОЛЫЕ карточки, и вместе с ними терялись оба параметра
+// `storyView`: когда посмотрел (предмет есть — `story_views.viewed_at`) и чем
+// отреагировал.
+type StoryViewers struct {
+	Views []StoryView
+	Users []UserReal
 }
 
 // StoryGroup bundles an author's active stories for the feed read model.

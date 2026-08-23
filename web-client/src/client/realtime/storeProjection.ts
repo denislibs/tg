@@ -20,10 +20,9 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryNewEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryReactionEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
-import { mapStory } from '../../core/managers/storiesManager'
 import type { Managers } from '../bootstrap'
 import { scheduleChatsReload } from './refetchSubscriber'
 
@@ -312,15 +311,17 @@ export function registerStoreProjection(managers: Managers): void {
   // Истории (Stories realtime) → storiesStore. Новая история известного автора
   // добавляется в его группу; для нового автора (группы ещё нет) — полный рефетч
   // ленты (нужны имя/аватар автора). Удаление и реакции правят стор точечно.
-  rootScope.addEventListener(RT.storyNew, (raw) => {
-    const e = raw as StoryNewEvt
-    const st = useStoriesStore.getState()
-    const hasGroup = st.groups.some((g) => g.author.id === e.author_id)
-    if (hasGroup) {
-      st.addStory(e.author_id, mapStory({ id: e.id, media_id: e.media_id, caption: e.caption, created_at: new Date().toISOString(), viewed: false }))
-    } else {
-      void loadStories(managers)
-    }
+  rootScope.addEventListener(RT.storyNew, () => {
+    // Кадр несёт ПЛОСКИЕ поля ({id, author_id, media_id, caption, expires_at}) и
+    // построить из них `storyItem` нельзя: у истории обязательна СТУПЕНЬ медиа,
+    // а в кадре только номер файла. Собрать её на витрине означало бы положить в
+    // зеркало историю с `media: null` — то есть завести вторую, урезанную форму
+    // того же предмета. Поэтому лента перечитывается целиком.
+    //
+    // Чинит это шаг D разбора (docs/readiness/tl-stories-analysis.md, Р9): кадр
+    // становится `updateStory{peer, story}` и несёт историю ЦЕЛИКОМ — тем же
+    // конструктором, что и витрина, — после чего точечное применение вернётся.
+    void loadStories(managers)
   })
   rootScope.addEventListener(RT.storyReaction, (raw) => {
     const e = raw as StoryReactionEvt

@@ -13,7 +13,8 @@ import type { UserReal } from '../core/peers/peer'
 import classNames from '../shared/lib/classNames'
 import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
-import type { StoryPrivacy, MediaArea } from '../core/managers/storiesManager'
+import type { StoryPrivacy } from '../core/managers/storiesManager'
+import type { MediaArea } from '../core/stories/story'
 
 export type { StoryPrivacy }
 
@@ -91,8 +92,15 @@ export default function AddStorySheet({
     if (busy) return
     setBusy(true)
     try {
+      // Область — КОНСТРУКТОР схемы: вид её больше не строка `type`, эмодзи —
+      // объединение `Reaction`, а «не тёмная/не отзеркалена» это ОТСУТСТВИЕ
+      // флага, а не `false` под тем же ключом.
       const mediaAreas: MediaArea[] = reactionSticker
-        ? [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: reactionSticker, dark: false, flipped: false }]
+        ? [{
+            _: 'mediaAreaSuggestedReaction',
+            coordinates: { _: 'mediaAreaCoordinates', x: 50, y: 78, w: 22, h: 12, rotation: 0 },
+            reaction: { _: 'reactionEmoji', emoticon: reactionSticker },
+          }]
         : []
       await onPublish({
         caption: caption.trim(),

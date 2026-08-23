@@ -71,8 +71,16 @@ func TestStoryRepo_FeedViewViewersDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Viewers: %v", err)
 	}
-	if len(viewers) != 1 || viewers[0].ID != u2 {
-		t.Fatalf("viewers = %+v; want [%d]", viewers, u2)
+	if len(viewers.Views) != 1 || viewers.Views[0].UserID != u2 {
+		t.Fatalf("views = %+v; want [%d]", viewers.Views, u2)
+	}
+	// Дата просмотра — предмет колонки story_views.viewed_at: до перевода на
+	// storyView она наружу не выходила вовсе.
+	if viewers.Views[0].Date == 0 {
+		t.Fatalf("дата просмотра не выехала: %+v", viewers.Views[0])
+	}
+	if len(viewers.Users) != 1 || viewers.Users[0].ID != u2 {
+		t.Fatalf("viewers = %+v; want [%d]", viewers.Users, u2)
 	}
 
 	// GetAuthor returns u1.
@@ -428,8 +436,8 @@ func TestStoryRepo_PurgeRecentViews(t *testing.T) {
 		t.Fatalf("PurgeRecentViews: %v", err)
 	}
 	viewers, _ := repo.Viewers(ctx, storyID)
-	if len(viewers) != 0 {
-		t.Fatalf("view should be purged, got %+v", viewers)
+	if len(viewers.Views) != 0 {
+		t.Fatalf("view should be purged, got %+v", viewers.Views)
 	}
 }
 
@@ -453,9 +461,11 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 
 	lat, long := 55.75, 37.61
-	areas := []domain.StoryMediaArea{
-		{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 50, Y: 50, W: 10, H: 10, Rotation: 5}, Reaction: "👍"},
-		{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1, Y: 2}, Lat: &lat, Long: &long, Title: "Москва"},
+	// Области хранятся ТЕМИ ЖЕ конструкторами, какими едут на провод: плоской
+	// записи с полем `type` больше нет ни в колонке, ни в теле запроса.
+	areas := domain.MediaAreas{
+		domain.NewMediaAreaSuggestedReaction(domain.NewMediaAreaCoordinates(50, 50, 10, 10, 5), "👍", false, false),
+		domain.NewMediaAreaGeoPoint(domain.NewMediaAreaCoordinates(1, 2, 0, 0, 0), lat, long),
 	}
 	srcID, err := repo.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: 500, Caption: "orig", Privacy: "everyone",
@@ -471,10 +481,18 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 		t.Fatalf("ActiveFeed: %v", err)
 	}
 	got := groups[0].Stories[0]
-	if len(got.MediaAreas) != 2 || got.MediaAreas[0].Type != "reaction" || got.MediaAreas[0].Reaction != "👍" {
+	if len(got.MediaAreas) != 2 {
 		t.Fatalf("media_areas not round-tripped: %+v", got.MediaAreas)
 	}
-	if got.MediaAreas[1].Lat == nil || *got.MediaAreas[1].Lat != lat {
+	react, ok := got.MediaAreas[0].(domain.MediaAreaSuggestedReaction)
+	if !ok {
+		t.Fatalf("первая область должна быть наклейкой реакции: %+v", got.MediaAreas[0])
+	}
+	if e, ok := react.Reaction.(domain.ReactionEmoji); !ok || e.Emoticon != "👍" {
+		t.Fatalf("реакция области не пережила круг: %+v", react.Reaction)
+	}
+	geo, ok := got.MediaAreas[1].(domain.MediaAreaGeoPoint)
+	if !ok || geo.Geo.Lat != lat {
 		t.Fatalf("geo lat not round-tripped: %+v", got.MediaAreas[1])
 	}
 	if got.FwdFrom != nil {
@@ -491,12 +509,16 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 	}
 
 	// Edit replaces media_areas.
-	newAreas := []domain.StoryMediaArea{{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 3}, URL: "https://t.me"}}
+	newAreas := domain.MediaAreas{domain.NewMediaAreaURL(domain.NewMediaAreaCoordinates(3, 0, 0, 0, 0), "https://t.me")}
 	if err := repo.Edit(ctx, srcID, author, nil, nil, nil, &newAreas); err != nil {
 		t.Fatalf("Edit: %v", err)
 	}
 	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
-	if a := groups[0].Stories[0].MediaAreas; len(a) != 1 || a[0].Type != "url" || a[0].URL != "https://t.me" {
+	a := groups[0].Stories[0].MediaAreas
+	if len(a) != 1 {
+		t.Fatalf("Edit did not replace media_areas: %+v", a)
+	}
+	if u, ok := a[0].(domain.MediaAreaURL); !ok || u.URL != "https://t.me" {
 		t.Fatalf("Edit did not replace media_areas: %+v", a)
 	}
 

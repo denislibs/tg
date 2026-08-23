@@ -1,12 +1,15 @@
-// StoryMediaAreas — интерактивные области поверх истории (4d, tweb StoryMediaArea).
+// StoryMediaAreas — интерактивные области поверх истории (tweb MediaArea).
 // Координаты в процентах бокса медиа: x/y — ЦЕНТР области, w/h — размер, rotation —
-// градусы. geo/venue → открыть карту; reaction → поставить реакцию; url → открыть
-// ссылку (через safeUrl-allow-list). Клик по области не должен мешать tap-навигации
-// вне её границ — поэтому слой pointer-events:none, а сами области — auto.
+// градусы. Ветвление идёт по КОНСТРУКТОРУ области, а не по строке `type`:
+// mediaAreaGeoPoint/mediaAreaVenue → открыть карту; mediaAreaSuggestedReaction →
+// поставить реакцию; mediaAreaUrl → открыть ссылку (через safeUrl-allow-list).
+// Клик по области не должен мешать tap-навигации вне её границ — поэтому слой
+// pointer-events:none, а сами области — auto.
 import Emoji from './emoji/Emoji'
 import Text from '../shared/ui/Text'
 import { safeUrl } from '../core/safeUrl'
-import type { MediaArea } from '../core/managers/storiesManager'
+import type { MediaArea } from '../core/stories/story'
+import type { GeoPoint } from '../core/media/messageMedia'
 
 function openExternal(url: string | undefined) {
   const u = safeUrl(url)
@@ -14,8 +17,9 @@ function openExternal(url: string | undefined) {
 }
 
 // Google Maps по координатам (https → безопасно, tweb makeGoogleMapsUrl).
-function mapsUrl(lat?: number, long?: number): string {
-  return `https://www.google.com/maps?q=${lat ?? 0},${long ?? 0}`
+// Точка приезжает СТУПЕНЬЮ `geoPoint` — той же, что у гео-вложения сообщения.
+function mapsUrl(geo: GeoPoint): string {
+  return `https://www.google.com/maps?q=${geo.lat},${geo.long}`
 }
 
 export default function StoryMediaAreas({
@@ -44,47 +48,53 @@ export default function StoryMediaAreas({
           justifyContent: 'center',
           cursor: 'pointer',
         }
-        if (a.type === 'reaction') {
+        if (a._ === 'mediaAreaSuggestedReaction') {
+          // Эмодзи наклейки — объединение `Reaction`; платная реакция наклейкой
+          // не бывает, поэтому спрашиваем именно эмодзи-конструктор.
+          const emoticon = a.reaction._ === 'reactionEmoji' ? a.reaction.emoticon : ''
+          const dark = a.pFlags?.dark === true
           return (
             <div
               key={i}
               style={style}
               role="button"
               aria-label="React"
-              onClick={(e) => { e.stopPropagation(); if (a.reaction) onReaction(a.reaction) }}
+              onClick={(e) => { e.stopPropagation(); if (emoticon) onReaction(emoticon) }}
             >
               <div
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
                   padding: '6px 10px', borderRadius: 999,
-                  background: a.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.9)',
-                  transform: a.flipped ? 'scaleX(-1)' : undefined,
+                  background: dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.9)',
+                  transform: a.pFlags?.flipped ? 'scaleX(-1)' : undefined,
                 }}
               >
-                <Emoji e={a.reaction ?? '❤'} size={26} />
+                <Emoji e={emoticon || '❤'} size={26} />
                 {reactionsCount > 0 && (
-                  <Text size={13} weight={700} color={a.dark ? '#fff' : '#000'}>{reactionsCount}</Text>
+                  <Text size={13} weight={700} color={dark ? '#fff' : '#000'}>{reactionsCount}</Text>
                 )}
               </div>
             </div>
           )
         }
-        if (a.type === 'geo' || a.type === 'venue') {
+        if (a._ === 'mediaAreaGeoPoint' || a._ === 'mediaAreaVenue') {
+          // Подпись есть только у места (`mediaAreaVenue`): у точки её в схеме нет.
+          const title = a._ === 'mediaAreaVenue' ? (a.title || a.address) : ''
           return (
             <div
               key={i}
               style={style}
               role="button"
-              aria-label={a.title || 'Location'}
-              onClick={(e) => { e.stopPropagation(); openExternal(mapsUrl(a.lat, a.long)) }}
+              aria-label={title || 'Location'}
+              onClick={(e) => { e.stopPropagation(); openExternal(mapsUrl(a.geo)) }}
             >
               <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>
-                <Text noWrap color="#fff" size={13} weight={600}>📍 {a.title || a.address || 'Location'}</Text>
+                <Text noWrap color="#fff" size={13} weight={600}>📍 {title || 'Location'}</Text>
               </div>
             </div>
           )
         }
-        // url
+        // mediaAreaUrl
         return (
           <div
             key={i}
@@ -94,7 +104,7 @@ export default function StoryMediaAreas({
             onClick={(e) => { e.stopPropagation(); openExternal(a.url) }}
           >
             <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>
-              <Text noWrap color="#fff" size={13} weight={600}>🔗 {a.title || a.url}</Text>
+              <Text noWrap color="#fff" size={13} weight={600}>🔗 {a.url}</Text>
             </div>
           </div>
         )

@@ -99,7 +99,7 @@ func TestSetPin_NoServerBuiltPreview(t *testing.T) {
 	ctx := context.Background()
 	const mediaID int64 = 42
 	s.seedMedia(mediaID, 7)
-	s.seedMediaDims(mediaID, MediaDims{
+	s.seedMediaDims(mediaID, domain.MediaSource{
 		FileName:  "track.mp3",
 		Title:     "Батырбек далбоеб",
 		Performer: "denis1488",

@@ -30,77 +30,56 @@ function fakeRest(getResult: unknown, postResult: unknown = {}) {
   return { rest, calls }
 }
 
-// Полный набор дефолтных полей истории после mapStory (для сравнения объектов).
 const ME = { _: 'user' as const, id: 7, first_name: 'Me', photo: { _: 'userProfilePhoto' as const, photo_id: 1 } }
 const BOB = { _: 'user' as const, id: 2, first_name: 'Bob', photo: { _: 'userProfilePhoto' as const, photo_id: 2 } }
 
-const dflt = { reactionsCount: 0, myReaction: null, reactions: [], privacy: 'contacts', pinned: false, edited: false, expiresAt: '', mediaAreas: [] }
+// История на проводе — КОНСТРУКТОР `storyItem`; маппера у менеджера нет, поэтому
+// сравнивать можно ровно то, что пришло.
+const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
+const story = (id: number, over: Record<string, unknown> = {}) => ({
+  _: 'storyItem' as const, id, date: 1787334148, expire_date: 1787420548, media, ...over,
+})
+
+// Контейнер `stories.allStories`: группы ССЫЛАЮТСЯ на автора, карточки едут
+// вектором `users`.
+const peerUser = (id: number) => ({ _: 'peerUser' as const, user_id: id })
 
 describe('StoriesManager', () => {
-  it('feed отдаёт группы с конструктором `user` в авторе (маппера имени нет)', async () => {
+  it('feed разрешает ССЫЛКУ на автора по вектору `users` контейнера', async () => {
     const { rest, calls } = fakeRest({
-      groups: [
-        {
-          author: ME,
-          stories: [{ id: 1, media_id: 11, caption: 'hi', created_at: 't0', viewed: false }],
-        },
-        {
-          author: BOB,
-          stories: [{ id: 2, media_id: 22, caption: '', created_at: 't1', viewed: true }],
-        },
+      _: 'stories.allStories',
+      peer_stories: [
+        { _: 'peerStories', peer: peerUser(7), stories: [story(1, { caption: 'hi' })] },
+        { _: 'peerStories', peer: peerUser(2), stories: [story(2, { viewed: true })] },
       ],
+      users: [ME, BOB],
+      chats: [],
     })
     const mgr = newStoriesManager({ rest })
     const groups = await mgr.feed()
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories' })
+    // Истории кладутся ВЕРБАТИМ: маппера у менеджера нет.
     expect(groups).toEqual([
-      {
-        author: ME,
-        stories: [{ id: 1, mediaId: 11, caption: 'hi', createdAt: 't0', viewed: false, ...dflt }],
-      },
-      {
-        author: BOB,
-        stories: [{ id: 2, mediaId: 22, caption: '', createdAt: 't1', viewed: true, ...dflt }],
-      },
+      { author: ME, stories: [story(1, { caption: 'hi' })] },
+      { author: BOB, stories: [story(2, { viewed: true })] },
     ])
   })
 
-  it('feed maps 4c fields (privacy/pinned/edited/expires_at)', async () => {
+  it('feed отбрасывает группу, чьей карточки в векторе `users` нет', async () => {
     const { rest } = fakeRest({
-      groups: [{
-        author: { id: 7, display_name: 'Me', avatar_url: '' },
-        stories: [{ id: 9, media_id: 90, caption: 'c', created_at: 't', viewed: false, privacy: 'close', pinned: true, edited: true, expires_at: 'tE' }],
-      }],
-    })
-    const mgr = newStoriesManager({ rest })
-    const groups = await mgr.feed()
-    expect(groups[0].stories[0]).toMatchObject({ privacy: 'close', pinned: true, edited: true, expiresAt: 'tE' })
-  })
-
-  it('feed maps reaction fields (reactions_count/my_reaction/reactions)', async () => {
-    const { rest } = fakeRest({
-      groups: [
-        {
-          author: { id: 2, display_name: 'Bob', avatar_url: '' },
-          stories: [{
-            id: 5, media_id: 50, caption: '', created_at: 't', viewed: false,
-            reactions_count: 3, my_reaction: '❤',
-            reactions: [{ emoji: '❤', count: 2, mine: true }, { emoji: '🔥', count: 1, mine: false }],
-          }],
-        },
+      peer_stories: [
+        { _: 'peerStories', peer: peerUser(7), stories: [story(1)] },
+        { _: 'peerStories', peer: peerUser(404), stories: [story(2)] },
       ],
+      users: [ME],
     })
     const mgr = newStoriesManager({ rest })
     const groups = await mgr.feed()
-    expect(groups[0].stories[0]).toEqual({
-      id: 5, mediaId: 50, caption: '', createdAt: 't', viewed: false,
-      reactionsCount: 3, myReaction: '❤',
-      reactions: [{ emoji: '❤', count: 2, mine: true }, { emoji: '🔥', count: 1, mine: false }],
-      privacy: 'contacts', pinned: false, edited: false, expiresAt: '', mediaAreas: [],
-    })
+    // Показать историю без автора хуже, чем не показать её вовсе.
+    expect(groups.map((g) => g.author.id)).toEqual([7])
   })
 
-  it('feed tolerates a missing groups array', async () => {
+  it('feed tolerates a missing peer_stories array', async () => {
     const { rest } = fakeRest({})
     const mgr = newStoriesManager({ rest })
     expect(await mgr.feed()).toEqual([])
@@ -141,12 +120,15 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({ method: 'POST', path: '/stories/42/view', body: {} })
   })
 
-  it('viewers кладёт карточки вербатим (конструкторы `user`)', async () => {
-    const { rest, calls } = fakeRest({ viewers: [BOB], count: 1 })
+  it('viewers отдаёт контейнер: просмотр и карточка — РАЗНЫМИ векторами', async () => {
+    const view = { _: 'storyView' as const, user_id: 2, date: 1787334148, reaction: { _: 'reactionEmoji' as const, emoticon: '❤' } }
+    const { rest, calls } = fakeRest({ _: 'stories.storyViewsList', count: 1, views: [view], users: [BOB] })
     const mgr = newStoriesManager({ rest })
-    const viewers = await mgr.viewers(42)
+    const list = await mgr.viewers(42)
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/viewers' })
-    expect(viewers).toEqual([BOB])
+    // Дата просмотра и реакция зрителя до порта терялись — витрина отдавала
+    // голые карточки.
+    expect(list).toEqual({ count: 1, views: [view], users: [BOB] })
   })
 
   it('del DELETEs /stories/:id', async () => {
@@ -185,25 +167,25 @@ describe('StoriesManager', () => {
     expect(calls[1]).toEqual({ method: 'PUT', path: '/me/close_friends', body: { user_ids: [4, 5] } })
   })
 
-  it('stealthState/activateStealth map snake->camel (null when unset)', async () => {
+  it('stealth-окно — конструктор с СЕКУНДАМИ; «окна нет» это отсутствие параметра', async () => {
     const { rest, calls } = fakeRest(
-      { active_until: null, cooldown_until: null },
-      { active_until: '2026-01-01T00:25:00Z', cooldown_until: '2026-01-01T01:00:00Z' },
+      { _: 'storiesStealthMode' },
+      { _: 'storiesStealthMode', active_until_date: 1787334148, cooldown_until_date: 1787337748 },
     )
     const mgr = newStoriesManager({ rest })
-    expect(await mgr.stealthState()).toEqual({ activeUntil: null, cooldownUntil: null })
+    expect(await mgr.stealthState()).toEqual({ _: 'storiesStealthMode' })
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories/stealth' })
-    const s = await mgr.activateStealth()
-    expect(s).toEqual({ activeUntil: '2026-01-01T00:25:00Z', cooldownUntil: '2026-01-01T01:00:00Z' })
+    const st = await mgr.activateStealth()
+    expect(st).toEqual({ _: 'storiesStealthMode', active_until_date: 1787334148, cooldown_until_date: 1787337748 })
     expect(calls[1]).toEqual({ method: 'POST', path: '/stories/stealth/activate', body: {} })
   })
 
-  it('archive GETs /stories/archive with query and maps items', async () => {
-    const { rest, calls } = fakeRest({ stories: [{ id: 1, media_id: 10, caption: '', created_at: 't', viewed: true }] })
+  it('archive GETs /stories/archive with query and returns the container list', async () => {
+    const { rest, calls } = fakeRest({ _: 'stories.stories', count: 1, stories: [story(1, { viewed: true })] })
     const mgr = newStoriesManager({ rest })
     const items = await mgr.archive(20, 5)
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories/archive?limit=20&offset_id=5' })
-    expect(items[0]).toMatchObject({ id: 1, mediaId: 10 })
+    expect(items[0]).toEqual(story(1, { viewed: true }))
     // no args → bare path
     await mgr.archive()
     expect(calls[1].path).toBe('/stories/archive')
@@ -228,28 +210,14 @@ describe('StoriesManager', () => {
     expect(calls[1].body).toEqual({ caption: 'only' })
   })
 
-  // 4d
-  it('feed maps media_areas and fwd_from', async () => {
-    const { rest } = fakeRest({
-      groups: [{
-        author: { id: 2, display_name: 'Bob', avatar_url: '' },
-        stories: [{
-          id: 5, media_id: 50, caption: '', created_at: 't', viewed: false,
-          media_areas: [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '❤' }],
-          fwd_from: { author_id: 9, story_id: 3 },
-        }],
-      }],
-    })
-    const mgr = newStoriesManager({ rest })
-    const groups = await mgr.feed()
-    expect(groups[0].stories[0].mediaAreas).toEqual([{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '❤' }])
-    expect(groups[0].stories[0].fwdFrom).toEqual({ authorId: 9, storyId: 3 })
-  })
-
-  it('post passes media_areas', async () => {
+  it('post отдаёт области КОНСТРУКТОРАМИ — та же форма, что и на витрине', async () => {
     const { rest, calls } = fakeRest({}, { id: 1 })
     const mgr = newStoriesManager({ rest })
-    const areas = [{ type: 'reaction' as const, coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '👍' }]
+    const areas = [{
+      _: 'mediaAreaSuggestedReaction' as const,
+      coordinates: { _: 'mediaAreaCoordinates' as const, x: 50, y: 78, w: 22, h: 12, rotation: 0 },
+      reaction: { _: 'reactionEmoji' as const, emoticon: '👍' },
+    }]
     await mgr.post({ mediaId: 5, mediaAreas: areas })
     expect(calls[0].body).toMatchObject({ media_areas: areas })
   })

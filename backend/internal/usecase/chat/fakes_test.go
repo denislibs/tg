@@ -54,7 +54,7 @@ type store struct {
 	members    map[int64]map[int64]*member         // chatID -> userID -> member
 	messages   map[int64][]domain.Message          // chatID -> messages (by seq order)
 	owners     map[int64]int64                     // mediaID -> ownerID
-	mediaDims  map[int64]MediaDims                 // mediaID -> мета медиа (read model)
+	mediaDims  map[int64]domain.MediaSource        // mediaID -> мета медиа (read model)
 	reactions  map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
 	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
@@ -90,7 +90,7 @@ func newStore() *store {
 		members:        map[int64]map[int64]*member{},
 		messages:       map[int64][]domain.Message{},
 		owners:         map[int64]int64{},
-		mediaDims:      map[int64]MediaDims{},
+		mediaDims:      map[int64]domain.MediaSource{},
 		reactions:      map[int64]map[int64]map[string]bool{},
 		viewed:         map[int64]map[int64]bool{},
 		pts:            map[int64]int64{},
@@ -131,7 +131,7 @@ func (s *store) seedMedia(mediaID, ownerID int64) {
 
 // seedMediaDims задаёт мету медиа, которую read-модель подмешивает в сообщение
 // (hydrateMedia). Без неё DimsByIDs ничего не возвращает — как для необработанного медиа.
-func (s *store) seedMediaDims(mediaID int64, d MediaDims) {
+func (s *store) seedMediaDims(mediaID int64, d domain.MediaSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mediaDims[mediaID] = d
@@ -1616,10 +1616,10 @@ func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]doma
 
 type fakeMedia struct{ s *store }
 
-func (r fakeMedia) DimsByIDs(_ context.Context, ids []int64) (map[int64]MediaDims, error) {
+func (r fakeMedia) DimsByIDs(_ context.Context, ids []int64) (map[int64]domain.MediaSource, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	out := map[int64]MediaDims{}
+	out := map[int64]domain.MediaSource{}
 	for _, id := range ids {
 		if d, ok := r.s.mediaDims[id]; ok {
 			out[id] = d

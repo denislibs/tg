@@ -19,8 +19,8 @@ var _ usecasechat.MediaAccessRepo = (*MediaAccessRepo)(nil)
 func NewMediaAccessRepo(pool *pgxpool.Pool) *MediaAccessRepo { return &MediaAccessRepo{pool: pool} }
 
 // DimsByIDs batch-loads width/height/mime for the given media ids in one query.
-func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64]usecasechat.MediaDims, error) {
-	out := make(map[int64]usecasechat.MediaDims, len(ids))
+func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error) {
+	out := make(map[int64]domain.MediaSource, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
@@ -46,7 +46,7 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		var d usecasechat.MediaDims
+		var d domain.MediaSource
 		var thumbKey string
 		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName,
 			&d.Title, &d.Performer, &d.Animated, &d.Waveform, &d.PathThumb, &d.StickerAlt, &d.StickerSetID); e != nil {

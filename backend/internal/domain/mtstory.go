@@ -1,5 +1,7 @@
 package domain
 
+import "encoding/json"
+
 // Истории в форме оригинала — конструкторы схемы TL. Правила фазы 0 (что такое
 // pFlags, куда девать свои поля, почему «выключено» это ОТСУТСТВИЕ ключа) — в
 // шапке mtmedia.go. Разбор расхождений и решения Р1–Р12 —
@@ -239,6 +241,8 @@ type MediaArea interface {
 	isMediaArea()
 	// Tag — дискриминатор `_` (predicate схемы).
 	Tag() string
+	// Coords — общий блок положения области.
+	Coords() MediaAreaCoordinates
 }
 
 // mediaAreaCoordinates#cfc9e002 flags:# x:double y:double w:double h:double
@@ -333,6 +337,33 @@ type MediaAreaSuggestedReaction struct {
 func (MediaAreaSuggestedReaction) isMediaArea()  {}
 func (a MediaAreaSuggestedReaction) Tag() string { return a.Underscore }
 
+// UnmarshalJSON нужен из-за одного параметра: `reaction` — ОБЪЕДИНЕНИЕ, а в
+// интерфейс encoding/json разбирать не умеет. Остальные поля читаются как есть
+// через теневой тип, чтобы не переписывать их руками.
+func (a *MediaAreaSuggestedReaction) UnmarshalJSON(raw []byte) error {
+	type shadow MediaAreaSuggestedReaction
+	var v struct {
+		shadow
+		Reaction json.RawMessage `json:"reaction"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return err
+	}
+	*a = MediaAreaSuggestedReaction(v.shadow)
+	tag, ok, err := peekTag(v.Reaction)
+	if err != nil {
+		return err
+	}
+	if ok && tag == ReactionEmojiTag {
+		e, err := unmarshalCtor[ReactionEmoji](v.Reaction)
+		if err != nil {
+			return err
+		}
+		a.Reaction = e
+	}
+	return nil
+}
+
 // NewMediaAreaSuggestedReaction — наклейка предложенной реакции.
 func NewMediaAreaSuggestedReaction(c MediaAreaCoordinates, emoticon string, dark, flipped bool) MediaAreaSuggestedReaction {
 	a := MediaAreaSuggestedReaction{
@@ -360,6 +391,66 @@ func (a MediaAreaURL) Tag() string { return a.Underscore }
 func NewMediaAreaURL(c MediaAreaCoordinates, url string) MediaAreaURL {
 	return MediaAreaURL{Underscore: MediaAreaURLTag, Coordinates: c, URL: url}
 }
+
+// MediaAreas — Vector<MediaArea>. Именованный тип нужен ради UnmarshalJSON: в
+// объединение по дискриминатору encoding/json сам не умеет.
+//
+// Разбор нужен ДВУМ читателям, и оба настоящие: тело запроса на публикацию
+// истории и колонка `stories.media_areas` (jsonb). Пока области хранились
+// плоской записью с полем `type`, это были две разные формы одного предмета —
+// вход и хранилище против витрины; теперь форма одна на всём пути.
+type MediaAreas []MediaArea
+
+// UnmarshalJSON разбирает вектор, ветвясь по дискриминатору `_`. Элемент с
+// неизвестным конструктором ОТБРАСЫВАЕТСЯ, а не роняет весь список — то же
+// правило и та же причина, что у Reactions: чужой слой может прислать область,
+// которой у нас нет, и терять из-за неё всю историю нельзя.
+func (as *MediaAreas) UnmarshalJSON(raw []byte) error {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return err
+	}
+	out := make(MediaAreas, 0, len(items))
+	for _, item := range items {
+		tag, ok, err := peekTag(item)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		var (
+			v MediaArea
+			e error
+		)
+		switch tag {
+		case MediaAreaGeoPointTag:
+			v, e = unmarshalCtor[MediaAreaGeoPoint](item)
+		case MediaAreaVenueTag:
+			v, e = unmarshalCtor[MediaAreaVenue](item)
+		case MediaAreaSuggestedReactionTag:
+			v, e = unmarshalCtor[MediaAreaSuggestedReaction](item)
+		case MediaAreaURLTag:
+			v, e = unmarshalCtor[MediaAreaURL](item)
+		default:
+			continue
+		}
+		if e != nil {
+			return e
+		}
+		out = append(out, v)
+	}
+	*as = out
+	return nil
+}
+
+// Coordinates — общий блок любой области. Метод, а не поле интерфейса: у
+// объединения нет общего носителя, а вопрос «где она лежит» задаётся всем
+// четырём конструкторам одинаково.
+func (a MediaAreaGeoPoint) Coords() MediaAreaCoordinates          { return a.Coordinates }
+func (a MediaAreaVenue) Coords() MediaAreaCoordinates             { return a.Coordinates }
+func (a MediaAreaSuggestedReaction) Coords() MediaAreaCoordinates { return a.Coordinates }
+func (a MediaAreaURL) Coords() MediaAreaCoordinates               { return a.Coordinates }
 
 // ── PrivacyRule: аудитория истории ──────────────────────────────────────────
 

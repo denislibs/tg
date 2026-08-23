@@ -730,35 +730,77 @@ before showing the notification; clicking it focuses/opens the chat.
 ## Stories
 
 24h ephemeral posts backed by a media object. Visibility is by privacy:
-`everyone` / `contacts` (chat partners) / `selected` (an explicit allow-list).
+`everyone` / `contacts` (chat partners) / `close` (close friends) / `selected`
+(an explicit allow-list) — на проводе это ФЛАГИ истории, а не строка.
 The feed shows the viewer's own active stories plus those of their chat
 partners; expired stories (created more than 24h ago) are filtered out on read.
 
 ### POST /stories  · auth
 Post a story from a media object the caller owns.
-- Request: `{ "media_id": 5, "caption": "hi", "privacy": "contacts", "allow_user_ids": [7] }`
+- Request: `{ "media_id": 5, "caption": "hi", "privacy": "contacts", "allow_user_ids": [7],
+  "media_areas": [ <MediaArea>, … ] }`
   (`caption` optional; `privacy` defaults to `contacts`; `allow_user_ids` used only when `privacy="selected"`)
 - 200: `{ "id": 1 }` · 400 missing `media_id` · 403 media not owned by caller
 
+Интерактивные области едут КОНСТРУКТОРАМИ объединения `MediaArea` —
+`mediaAreaGeoPoint` / `mediaAreaVenue` / `mediaAreaSuggestedReaction` /
+`mediaAreaUrl` — и в запросе, и в ответе, и в колонке. Область неизвестного
+конструктора отбрасывается, а не едет полупустой записью.
+
 ### GET /stories  · auth
-The viewer's active story feed (own group first), grouped by author.
-- 200 (`author` — конструктор `user`, как и везде):
+The viewer's active story feed (own group first). Ответ — КОНТЕЙНЕР
+`stories.allStories`: группы ссылаются на автора, а карточки авторов едут ОДИН
+раз вектором `users` — то же решение, что у контейнера `/chats`.
+- 200:
 ```json
-{ "groups": [
-  { "author": { "_": "user", "id": 1, "first_name": "Alice", "…": "…" },
-    "stories": [ { "id": 1, "media_id": 5, "caption": "hi", "created_at": "2026-06-24T…Z", "viewed": false } ] }
-] }
+{ "_": "stories.allStories", "count": 1,
+  "peer_stories": [
+    { "_": "peerStories", "peer": { "_": "peerUser", "user_id": 1 },
+      "stories": [ { "_": "storyItem", "pFlags": { "public": true }, "id": 1,
+                     "date": 1787334148, "expire_date": 1787420548, "caption": "hi",
+                     "media": { "_": "messageMediaPhoto", "photo": { "…": "…" } },
+                     "views": { "_": "storyViews", "views_count": 3, "reactions_count": 1,
+                                "reactions": [ { "_": "reactionCount", "…": "…" } ] },
+                     "sent_reaction": { "_": "reactionEmoji", "emoticon": "❤" } } ] }
+  ],
+  "chats": [], "users": [ { "_": "user", "id": 1, "…": "…" } ],
+  "stealth_mode": { "_": "storiesStealthMode" } }
 ```
-Сама история конструктора ещё не имеет — предмет `storyItem` не портирован
-(задача #52), поэтому её поля здесь плоские.
+Что стоит знать про историю:
+
+- **`media` обязателен и это СТУПЕНЬ** — та же, что у вложения сообщения.
+  Плоского `media_id` рядом больше нет: размеры, mime и длительность приезжают
+  вместе с историей, а не отдельным запросом на каждую;
+- **вид аудитории — ФЛАГИ** (`public`/`contacts`/`close_friends`/
+  `selected_contacts`), а сама аудитория — `privacy: Vector<PrivacyRule>`,
+  который едет ТОЛЬКО автору истории;
+- **«моя реакция» — `sent_reaction`**, отдельный параметр самой истории:
+  счётчики и разбивка общие на всех получателей и лежат в `views`;
+- **даты — секунды эпохи** (`date`/`expire_date`), как у сообщения;
+- `viewed` — НАШ параметр вне схемы (объявлен в
+  `schema/schema_additional_params.json`): у оригинала прочитанность историй
+  выражена горизонтом `peerStories.max_read_id`, а он требует пер-авторской
+  нумерации историй. Временная форма, разбор — `docs/readiness/tl-stories-analysis.md`.
+
+Архив и закреплённые (`GET /stories/archive`, `GET /stories/pinned`) отвечают
+контейнером `stories.stories` теми же конструкторами.
 
 ### POST /stories/{storyID}/view  · auth
 Mark a story as seen. Idempotent.
 - 200: `{ "ok": true }` · 403 story not visible to caller
 
 ### GET /stories/{storyID}/viewers  · auth · author only
-Who has seen the story (author-gated).
-- 200: `{ "viewers": [ <user>, … ], "count": 1 }` — конструкторы `user`
+Who has seen the story (author-gated). Ответ — контейнер
+`stories.storyViewsList`: сам просмотр и карточка зрителя едут РАЗНЫМИ
+векторами, поэтому дата просмотра и реакция зрителя больше не теряются.
+- 200:
+```json
+{ "_": "stories.storyViewsList", "count": 1, "views_count": 1,
+  "forwards_count": 0, "reactions_count": 1,
+  "views": [ { "_": "storyView", "user_id": 2, "date": 1787334148,
+               "reaction": { "_": "reactionEmoji", "emoticon": "❤" } } ],
+  "chats": [], "users": [ { "_": "user", "id": 2, "…": "…" } ] }
+```
 - 403 caller is not the author
 
 ### DELETE /stories/{storyID}  · auth · author only

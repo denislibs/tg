@@ -10,7 +10,12 @@ import { useStoriesStore } from '../../stores/storiesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import rootScope from '@lib/rootScope'
-import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
+import type { StoryGroup } from '../managers/storiesManager'
+import type { MediaArea, StoryItem } from '../stories/story'
+import {
+  isStoryEdited, isStoryPinned, isStoryViewed, storyFwdAuthorId, storyFwdStoryId,
+  storyMediaAreas, storyMyReaction, storyReactionsCount,
+} from '../stories/story'
 import type { UserReal } from '../peers/peer'
 import { getUserTitle } from '../peers/getPeerTitle'
 
@@ -33,7 +38,7 @@ interface UseStoryViewerArgs {
 // пира, иначе первая.
 export function initialStoryIndex(group: StoryGroup | undefined): number {
   if (!group) return 0
-  return Math.max(0, group.stories.findIndex((s) => !s.viewed))
+  return Math.max(0, group.stories.findIndex((s) => !isStoryViewed(s)))
 }
 
 export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: UseStoryViewerArgs): {
@@ -67,7 +72,9 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   togglePinned: () => void
   // 4d: media areas поверх истории, атрибуция репоста + имя автора оригинала.
   mediaAreas: MediaArea[]
-  fwdFrom: StoryFwd | undefined
+  // Ссылка репоста: автор оригинала — ключ пира (`fwd_from.from`), а не число
+  // рядом с ним. `undefined` — история не репост.
+  fwdFrom: { authorId: PeerId; storyId: number } | undefined
   fwdAuthorName: string | null
 } {
   const managers = useManagers()
@@ -149,28 +156,32 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   // store so the unseen ring clears. Skip own stories — the author isn't counted
   // among their own viewers.
   useEffect(() => {
-    if (!story || isMe || story.viewed) return
+    if (!story || isMe || isStoryViewed(story)) return
     void managers.stories.view(story.id)
     markViewed(group!.author.id, story.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id])
 
-  // 4d: резолв имени автора оригинала для плашки репоста (tweb repostInfo).
+  // Резолв имени автора оригинала для плашки репоста (tweb repostInfo).
+  const fwdAuthorId = storyFwdAuthorId(story)
   useEffect(() => {
-    const fwd = story?.fwdFrom
-    if (!fwd) { setFwdAuthorName(null); return }
+    if (fwdAuthorId == null) { setFwdAuthorName(null); return }
     let alive = true
     setFwdAuthorName(null)
-    void managers.peers.getUsers([fwd.authorId]).then((users) => {
+    void managers.peers.getUsers([Number(fwdAuthorId)]).then((users) => {
       if (alive) setFwdAuthorName(users[0] ? getUserTitle(users[0]) : null)
     }).catch(() => {})
     return () => { alive = false }
-  }, [story?.fwdFrom, managers])
+  }, [fwdAuthorId, managers])
 
   const openViewers = () => {
     if (!story) return
     setShowViewers(true)
-    void managers.stories.viewers(story.id).then(setViewers)
+    // Контейнер несёт и сам просмотр (когда, чем отреагировал), и карточки
+    // зрителей. Список рисует пока только карточки — дата и реакция приехали
+    // впервые (до порта их теряла витрина) и ждут своей вёрстки: у оригинала
+    // они в строке зрителя есть.
+    void managers.stories.viewers(story.id).then((list) => setViewers(list.users))
   }
 
   // Статистика ставит авто-прогресс на паузу через сам showStats (итоговый paused
@@ -187,7 +198,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   // меняет. Оптимистично правим стор, затем шлём на бэк; счётчик догонит story_reaction.
   const toggleReaction = (emoji: string) => {
     if (!story) return
-    const next = story.myReaction === emoji ? null : emoji
+    const next = storyMyReaction(story) === emoji ? null : emoji
     setMyReaction(story.id, next)
     if (next) void managers.stories.setReaction(story.id, next)
     else void managers.stories.removeReaction(story.id)
@@ -222,7 +233,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   // оптимистично правим стор, затем шлём на бэк; при сбое откатываем + тост.
   const togglePinned = () => {
     if (!story) return
-    const next = !story.pinned
+    const next = !isStoryPinned(story)
     setStoryPinned(story.id, next)
     void managers.stories.pin(story.id, next).catch(() => {
       setStoryPinned(story.id, !next)
@@ -247,16 +258,16 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     openViewers,
     manualPause,
     togglePause,
-    myReaction: story?.myReaction ?? null,
-    reactionsCount: story?.reactionsCount ?? 0,
+    myReaction: storyMyReaction(story),
+    reactionsCount: storyReactionsCount(story),
     toggleReaction,
     sendReply,
     del,
-    pinned: story?.pinned ?? false,
-    edited: story?.edited ?? false,
+    pinned: isStoryPinned(story),
+    edited: isStoryEdited(story),
     togglePinned,
-    mediaAreas: story?.mediaAreas ?? [],
-    fwdFrom: story?.fwdFrom,
+    mediaAreas: storyMediaAreas(story),
+    fwdFrom: fwdAuthorId == null ? undefined : { authorId: fwdAuthorId, storyId: storyFwdStoryId(story) ?? 0 },
     fwdAuthorName,
   }
 }

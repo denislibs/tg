@@ -28,7 +28,7 @@ type fakeRepo struct {
 	markErr       error
 	author        int64
 	authorErr     error
-	viewers       []domain.UserReal
+	viewers       domain.StoryViewers
 	viewersErr    error
 	stats         domain.StoryStats
 	statsErr      error
@@ -53,7 +53,7 @@ type fakeRepo struct {
 	editCaption     *string
 	editPrivacy     *string
 	editAllow       []int64
-	editAreas       *[]domain.StoryMediaArea
+	editAreas       *domain.MediaAreas
 	editErr         error
 	origin          domain.StoryOrigin
 	originErr       error
@@ -82,7 +82,7 @@ func (f *fakeRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) erro
 	f.marked = true
 	return f.markErr
 }
-func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserReal, error) {
+func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error) {
 	return f.viewers, f.viewersErr
 }
 func (f *fakeRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
@@ -122,7 +122,7 @@ func (f *fakeRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinne
 	f.pinnedArg = pinned
 	return f.pinnedErr
 }
-func (f *fakeRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
+func (f *fakeRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error {
 	f.editCalled = true
 	f.editCaption = caption
 	f.editPrivacy = privacy
@@ -190,10 +190,23 @@ func (f *fakePartners) ChatPartners(ctx context.Context, userID int64) ([]int64,
 type fakeMedia struct {
 	owner int64
 	err   error
+	dims  map[int64]domain.MediaSource
 }
 
 func (f *fakeMedia) OwnerID(ctx context.Context, mediaID int64) (int64, error) {
 	return f.owner, f.err
+}
+
+// dims — метаданные файлов по id; из них сервис строит СТУПЕНЬ вложения
+// истории. Пустая карта означает «файла нет», и тогда история едет без `media`.
+func (f *fakeMedia) DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error) {
+	out := map[int64]domain.MediaSource{}
+	for _, id := range ids {
+		if d, ok := f.dims[id]; ok {
+			out[id] = d
+		}
+	}
+	return out, nil
 }
 
 type fakeSender struct {
@@ -315,14 +328,21 @@ func TestViewers_NonAuthor_Forbidden(t *testing.T) {
 }
 
 func TestViewers_Author_ReturnsList(t *testing.T) {
-	repo := &fakeRepo{author: 1, viewers: []domain.UserReal{{ID: 2}}}
+	repo := &fakeRepo{author: 1, viewers: domain.StoryViewers{
+		Views: []domain.StoryView{domain.NewStoryView(2, 1787334148, nil)},
+		Users: []domain.UserReal{{ID: 2}},
+	}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	got, err := svc.Viewers(context.Background(), 5, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != 2 {
-		t.Fatalf("unexpected viewers: %+v", got)
+	// Просмотр и карточка едут РАЗНЫМИ векторами — форма stories.storyViewsList.
+	if len(got.Views) != 1 || got.Views[0].UserID != 2 {
+		t.Fatalf("unexpected views: %+v", got.Views)
+	}
+	if len(got.Users) != 1 || got.Users[0].ID != 2 {
+		t.Fatalf("unexpected viewers: %+v", got.Users)
 	}
 }
 
@@ -741,13 +761,15 @@ func TestPost_CaptionTooLong(t *testing.T) {
 
 // --- media areas / repost / share (4d) ---
 
-func f64(v float64) *float64 { return &v }
+func coords(x, y, w, h float64) domain.MediaAreaCoordinates {
+	return domain.NewMediaAreaCoordinates(x, y, w, h, 0)
+}
 
-func sampleAreas() []domain.StoryMediaArea {
-	return []domain.StoryMediaArea{
-		{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 50, Y: 50, W: 10, H: 10}, Reaction: "👍"},
-		{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 10, Y: 20}, URL: "https://t.me"},
-		{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1, Y: 2}, Lat: f64(55.75), Long: f64(37.61), Title: "Москва"},
+func sampleAreas() domain.MediaAreas {
+	return domain.MediaAreas{
+		domain.NewMediaAreaSuggestedReaction(coords(50, 50, 10, 10), "👍", false, false),
+		domain.NewMediaAreaURL(coords(10, 20, 0, 0), "https://t.me"),
+		domain.NewMediaAreaGeoPoint(coords(1, 2, 0, 0), 55.75, 37.61),
 	}
 }
 
@@ -764,13 +786,15 @@ func TestPost_MediaAreas_RoundTrip(t *testing.T) {
 }
 
 func TestPost_MediaAreas_Validation(t *testing.T) {
-	cases := map[string][]domain.StoryMediaArea{
-		"bad type":     {{Type: "weather", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
-		"coord over":   {{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 101}, URL: "x"}},
-		"coord neg":    {{Type: "url", Coordinates: domain.StoryAreaCoordinates{Y: -1}, URL: "x"}},
-		"empty react":  {{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
-		"empty url":    {{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
-		"geo no coord": {{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
+	// «Неизвестный тип» из этого списка ушёл, и это не ослабление проверки:
+	// вид области теперь ВЫБОР конструктора, и незнакомый до валидации не
+	// доезжает — его отбрасывает разбор объединения (см. MediaAreas.UnmarshalJSON).
+	cases := map[string]domain.MediaAreas{
+		"coord over":  {domain.NewMediaAreaURL(coords(101, 0, 0, 0), "x")},
+		"coord neg":   {domain.NewMediaAreaURL(coords(0, -1, 0, 0), "x")},
+		"empty react": {domain.NewMediaAreaSuggestedReaction(coords(1, 0, 0, 0), "", false, false)},
+		"empty url":   {domain.NewMediaAreaURL(coords(1, 0, 0, 0), "")},
+		"geo off map": {domain.NewMediaAreaGeoPoint(coords(1, 0, 0, 0), 95, 0)},
 	}
 	for name, areas := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -789,9 +813,9 @@ func TestPost_MediaAreas_Validation(t *testing.T) {
 func TestPost_MediaAreas_Overflow(t *testing.T) {
 	repo := &fakeRepo{createID: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
-	areas := make([]domain.StoryMediaArea, maxMediaAreas+1)
+	areas := make(domain.MediaAreas, maxMediaAreas+1)
 	for i := range areas {
-		areas[i] = domain.StoryMediaArea{Type: "url", URL: "x"}
+		areas[i] = domain.NewMediaAreaURL(coords(0, 0, 0, 0), "x")
 	}
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, areas, 0); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid on overflow, got %v", err)
@@ -811,7 +835,7 @@ func TestEditStory_MediaAreas(t *testing.T) {
 	// invalid areas rejected before touching the repo.
 	repo2 := &fakeRepo{author: 1}
 	svc2 := New(repo2, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	bad := []domain.StoryMediaArea{{Type: "nope"}}
+	bad := domain.MediaAreas{domain.NewMediaAreaURL(coords(0, 0, 0, 0), "")}
 	if err := svc2.EditStory(context.Background(), 5, 1, nil, nil, nil, &bad); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
@@ -918,5 +942,76 @@ func TestShare_SkipsNonMemberChats(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sender.calls, []int64{10, 30}) {
 		t.Fatalf("unexpected share targets: %v", sender.calls)
+	}
+}
+
+// Ступень вложения собирается ИЗ МЕТАДАННЫХ файла, а не остаётся его номером.
+//
+// До этого шага наружу ехал голый `media_id`, и клиент спрашивал mime, размеры
+// и длительность ОТДЕЛЬНЫМ запросом на каждую историю (`useStoryPreviewMedia`).
+// Вид вложения при этом выводится из mime: столбца `type` у истории нет — тот
+// же вывод, который клиент и делал.
+func TestFeed_AttachesMediaLadder(t *testing.T) {
+	repo := &fakeRepo{feedGroups: []domain.StoryGroup{{
+		Author:  domain.UserReal{ID: 1},
+		Stories: []domain.StoryRecord{{ID: 7, MediaID: 55}},
+	}}}
+	media := &fakeMedia{dims: map[int64]domain.MediaSource{
+		55: {Mime: "video/mp4", Width: 720, Height: 1280, Duration: 15, Size: 4096},
+	}}
+
+	groups, err := New(repo, &fakePartners{}, media, &fakeTx{}).Feed(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	md := groups[0].Stories[0].Media
+	if md == nil {
+		t.Fatalf("ступень не собрана: media = nil")
+	}
+	if md.Tag() != domain.MessageMediaDocumentTag {
+		t.Fatalf("видео должно ехать документом, а не %s", md.Tag())
+	}
+}
+
+// Файла нет — истории едут без `media`, и это НЕ паника: пропуск обязательного
+// параметра ловит сверка со схемой, а не пользователь.
+func TestFeed_MissingMediaLeavesLadderEmpty(t *testing.T) {
+	repo := &fakeRepo{feedGroups: []domain.StoryGroup{{
+		Author:  domain.UserReal{ID: 1},
+		Stories: []domain.StoryRecord{{ID: 7, MediaID: 55}},
+	}}}
+
+	groups, err := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{}).Feed(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if groups[0].Stories[0].Media != nil {
+		t.Fatalf("ступень собралась из ничего: %+v", groups[0].Stories[0].Media)
+	}
+}
+
+// Архив и закреплённые ходят тем же путём: ступень наполняется НА МЕСТЕ, иначе
+// вложение осталось бы в копии записи.
+func TestArchiveAndPinned_AttachMediaLadder(t *testing.T) {
+	media := &fakeMedia{dims: map[int64]domain.MediaSource{
+		55: {Mime: "image/jpeg", Width: 1080, Height: 1920, Size: 2048},
+	}}
+	repo := &fakeRepo{
+		archiveItems: []domain.StoryRecord{{ID: 7, MediaID: 55}},
+		pinnedItems:  []domain.StoryRecord{{ID: 8, MediaID: 55}},
+	}
+	svc := New(repo, &fakePartners{}, media, &fakeTx{})
+
+	arch, err := svc.Archive(context.Background(), 1, 10, 0)
+	if err != nil || len(arch) != 1 || arch[0].Media == nil {
+		t.Fatalf("архив без ступени: %+v (err %v)", arch, err)
+	}
+	pinned, err := svc.PinnedStories(context.Background(), 1, 1)
+	if err != nil || len(pinned) != 1 || pinned[0].Media == nil {
+		t.Fatalf("закреплённые без ступени: %+v (err %v)", pinned, err)
+	}
+	if arch[0].Media.Tag() != domain.MessageMediaPhotoTag {
+		t.Fatalf("картинка должна ехать фотографией, а не %s", arch[0].Media.Tag())
 	}
 }

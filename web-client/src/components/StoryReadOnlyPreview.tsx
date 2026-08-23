@@ -4,7 +4,8 @@ import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useStoryPreviewMedia } from '../core/hooks/useStoryPreviewMedia'
 import s from './StoryReadOnlyPreview.module.scss'
-import type { StoryItem } from '../core/managers/storiesManager'
+import type { StoryItem } from '../core/stories/story'
+import { isStoryEdited, realStory, storyCaption } from '../core/stories/story'
 
 /**
  * Полноэкранный read-only просмотр одной истории (архив/закреплённые в профиле):
@@ -13,7 +14,7 @@ import type { StoryItem } from '../core/managers/storiesManager'
  */
 export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryItem; onClose: () => void }) {
   const t = useT()
-  const { url, isVideo } = useStoryPreviewMedia(story.mediaId)
+  const { url, isVideo } = useStoryPreviewMedia(realStory(story)?.media)
 
   return (
     <div className={s.overlay}>
@@ -23,10 +24,10 @@ export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryI
       {url && (isVideo
         ? <video src={url} autoPlay muted playsInline loop style={{ maxWidth: '100%', maxHeight: '100%' }} />
         : <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />)}
-      {(story.caption || story.edited) && (
+      {(storyCaption(story) || isStoryEdited(story)) && (
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, background: 'linear-gradient(to top, rgba(0,0,0,.6), transparent)' }}>
-          {story.caption && <Text color="#fff" size={15}>{story.caption}</Text>}
-          {story.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
+          {storyCaption(story) && <Text color="#fff" size={15}>{storyCaption(story)}</Text>}
+          {isStoryEdited(story) && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
         </div>
       )}
     </div>
