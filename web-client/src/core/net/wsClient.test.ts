@@ -10,11 +10,13 @@ class FakeWS {
   onerror: (() => void) | null = null
   sent: string[] = []
   readyState = 0
+  binaryType = 'blob'
   constructor(public url: string, public protocols?: string | string[]) { FakeWS.instances.push(this) }
   send(s: string) { this.sent.push(s) }
   close() { this.readyState = 3; this.onclose?.() }
   open() { this.readyState = 1; this.onopen?.() }
   message(s: string) { this.onmessage?.({ data: s }) }
+  binary(bytes: Uint8Array) { this.onmessage?.({ data: bytes.buffer as unknown as string }) }
 }
 
 beforeEach(() => { FakeWS.instances = []; vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket) })
@@ -48,6 +50,41 @@ describe('WsClient', () => {
     const ws = FakeWS.instances[0]; ws.open()
     ws.message(JSON.stringify({ t: 'какой_то_новый_кадр', d: { x: 1 } }))
     expect(got).toHaveBeenCalledWith('какой_то_новый_кадр', { x: 1 }, undefined)
+  })
+
+  // Провод TL: формат просит КЛИЕНТ подпротоколом, и просит его ПЕРВЫМ — сервер
+  // выбирает первый совпавший из своего списка, где `tl.1` стоит раньше
+  // 'bearer'. Порядок здесь не косметика: перепутай его — и провод молча
+  // останется JSON.
+  it('флаг TL добавляет подпротокол tl.1 перед bearer', () => {
+    new WsClient('/ws', true).connect('tok')
+    expect(FakeWS.instances[0].protocols).toEqual(['tl.1', 'bearer', 'tok'])
+
+    new WsClient('/ws').connect('tok')
+    expect(FakeWS.instances[1].protocols).toEqual(['bearer', 'tok'])
+  })
+
+  // Бинарное сообщение — контейнер Updates: тип кадра это его КОНСТРУКТОР,
+  // поэтому наружу он и уезжает дискриминатором. Курсор приезжает из `seq`
+  // контейнера — у кадров без своего `pts` другого места у него нет.
+  it('бинарный кадр разбирается как контейнер Updates', () => {
+    const c = new WsClient('/ws', true)
+    const got = vi.fn(); c.onFrame(got)
+    c.connect('tok')
+    const ws = FakeWS.instances[0]
+    ws.open()
+    expect(ws.binaryType).toBe('arraybuffer')
+
+    // Тот же эталонный вектор, что читает неизменённый десериализатор tweb.
+    const hex = '4042ae7415c4b51c010000001ce56f6e0100000005bf6de522175159070000000000000015c4b51c0000000015c4b51c00000000048e886a2a000000'
+    const bytes = new Uint8Array(hex.length / 2)
+    for (let i = 0; i < bytes.length; ++i) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+    ws.binary(bytes)
+
+    expect(got).toHaveBeenCalledTimes(1)
+    expect(got.mock.calls[0][0]).toBe('updateDialogPinned')
+    expect((got.mock.calls[0][1] as { _: string })._).toBe('updateDialogPinned')
+    expect(got.mock.calls[0][2]).toBe(42)
   })
 
   it('fires onClose and reports not open', () => {

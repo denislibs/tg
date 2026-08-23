@@ -89,14 +89,6 @@ const (
 	UpdateBotCallbackAnswerTag        = "updateBotCallbackAnswer"
 )
 
-// Значения дискриминатора `_` объединения Updates — ОБОЛОЧКИ кадра на проводе
-// TL (см. mtupdates.go). В объединение Update они не входят: это контейнер, а
-// не апдейт.
-const (
-	UpdateShortTag = "updateShort"
-	UpdatesTag     = "updates"
-)
-
 // Значения дискриминатора `_` объединения SendMessageAction.
 const (
 	SendMessageTypingActionTag         = "sendMessageTypingAction"

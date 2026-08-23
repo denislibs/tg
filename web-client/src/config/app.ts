@@ -25,7 +25,16 @@ export function readVanillaFeed(env: ImportMetaEnv): boolean {
   return env.VITE_VANILLA_FEED === '1'
 }
 
+// Провод WS на TL вместо JSON. Build-time флаг VITE_TL_WIRE=1.
+// ПО УМОЛЧАНИЮ ВЫКЛЮЧЕН: формат просит КЛИЕНТ подпротоколом `tl.1`, сервер
+// умеет обе формы и собирает их из одной модели, поэтому переключение
+// обратимо и посоединенчески — соседняя вкладка остаётся на JSON.
+export function readTLWire(env: ImportMetaEnv): boolean {
+  return env.VITE_TL_WIRE === '1'
+}
+
 export const AppConfig = {
   dnp: readDnpConfig(import.meta.env),
   vanillaFeed: readVanillaFeed(import.meta.env),
+  tlWire: readTLWire(import.meta.env),
 }
