@@ -21,6 +21,28 @@ machine-readable source of truth is the OpenAPI spec:
   (each update carries `pts` and `pts_count`; the client tracks the latest `pts`).
 - IDs are int64.
 
+### Форма объектов — конструкторы схемы TL
+
+Предметные структуры один в один с оригиналом (`schema/schema.json`), и правила
+у них общие для ВСЕГО провода — REST и WS одинаково:
+
+- у объекта есть дискриминатор `_` со значением predicate схемы
+  (`message`, `user`, `peerUser`, `messageMediaPhoto`, `updateNewMessage`, …);
+- **вид сущности выражает ВЫБОР конструктора**, а не значение поля: служебное
+  сообщение это `messageService`, а не `type: "service"`; «черновик снят» —
+  `draftMessageEmpty`, а не `null`;
+- поля `flags` в объекте НЕТ (маска существует только на бинарном проводе);
+  булевы флаги собраны в под-объект `pFlags` и всегда несут `true` —
+  **«выключено» значит ОТСУТСТВИЕ ключа**, не `false` и не `null`;
+- остальные необязательные поля — на верхнем уровне, «нет значения» = ключа нет;
+- `bytes` схемы на JSON-проводе едут base64-строкой (`photoStrippedSize.bytes`,
+  `keyboardButtonCallback.data`) — на проводе TL это настоящие байты;
+- наши собственные поля объявлены штатным механизмом оригинала
+  (`schema/schema_additional_params.json`), а не дописаны рядом.
+
+Разбор и обоснования — `docs/readiness/tl-program.md`. WS умеет отдавать кадры
+и бинарным TL (подпротокол `tl.1`, см. раздел WebSocket); REST пока только JSON.
+
 ---
 
 ## Auth & sessions
@@ -36,7 +58,8 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 Verify the code, create the user (if new) + a device, return a session token.
 - Request: `{ "phone": "+79990000000", "code": "12345", "device": "web", "platform": "browser" }`
   (`device`, `platform` optional)
-- 200: `{ "token": "<opaque>", "user": { "id": 1, "phone": "+79990000000", "display_name": "+79990000000" } }`
+- 200: `{ "token": "<opaque>", "user": <как у GET /me> }` — та же пара
+  `users.userFull`, что отдаёт `/me`, а не третья форма карточки
 - 401: `{ "error": "invalid code" }`
 
 ### POST /auth/qr/new  · public
@@ -52,7 +75,7 @@ Poll the QR-login record. A confirmed record is single-use — it is deleted on
 read, so a second poll returns `expired`. Unknown/expired tokens return
 `expired` (never an error).
 - 200 pending: `{ "status": "pending" }`
-- 200 confirmed: `{ "status": "confirmed", "session_token": "<opaque>", "user": { "id": 1, "phone": "+79990000000", "display_name": "..." } }`
+- 200 confirmed: `{ "status": "confirmed", "session_token": "<opaque>", "user": <как у GET /me> }`
 - 200 expired: `{ "status": "expired" }`
 - 503: `{ "error": "qr login unavailable" }`
 
@@ -66,7 +89,18 @@ login. Mints a fresh session for the caller and attaches it to the record.
 - 503: `{ "error": "qr login unavailable" }`
 
 ### GET /me  · auth
-- 200: `{ "id": 1, "phone": "+79990000000", "display_name": "..." }`
+- 200 — та же ПАРА, что и `GET /users/{id}`: конструктор
+  `users.userFull{full_user, chats, users}` плюс наше поле `can_message` РЯДОМ с
+  ним (схемного места у него нет). Третьей формы «своей карточки» больше не
+  существует:
+```json
+{ "user_full": { "_": "users.userFull",
+                 "full_user": { "_": "userFull", "id": 1, "about": "" },
+                 "users": [ { "_": "user", "id": 1, "phone": "+79990000000",
+                              "first_name": "…", "pFlags": { "self": true } } ],
+                 "chats": [] },
+  "can_message": true }
+```
 - 401: `{ "error": "missing token" | "invalid token" }`
 
 ### GET /sessions  · auth
@@ -93,16 +127,22 @@ Create (or return the existing) private chat with another user.
 
 ### GET /chats  · auth
 List the user's dialogs, newest activity first.
-- 200:
+- 200 — КОНТЕЙНЕР `messages.dialogs` (или `messages.dialogsSlice`, когда список
+  не влез целиком):
 ```json
-{ "chats": [
-  { "chat_id": 1, "type": "private", "last_read_seq": 4, "unread": 0, "muted": false,
-    "peer": { "id": 2, "display_name": "Bob", "avatar_url": "" },
-    "last_message": { "seq": 4, "text": "hi", "sender_id": 2, "at": "2026-06-24T10:00:00Z" } }
-] }
+{ "_": "messages.dialogs",
+  "dialogs":  [ { "_": "dialog", "peer": { "_": "peerUser", "user_id": 2 },
+                  "top_message": 4, "read_inbox_max_id": 4, "read_outbox_max_id": 0,
+                  "unread_count": 0,
+                  "notify_settings": { "_": "peerNotifySettings" } } ],
+  "messages": [ { "_": "message", "id": 4, "…": "…" } ],
+  "chats":    [],
+  "users":    [ { "_": "user", "id": 2, "first_name": "Bob", "…": "…" } ] }
 ```
-`last_message` is omitted for empty chats. `peer` is the other participant of a
-private chat (its `id`/`display_name`/`avatar_url`); it is omitted for non-private chats.
+Строка диалога НЕ несёт ни имени, ни аватарки, ни последнего сообщения: объекты
+едут ОДИН раз векторами `users`/`chats`/`messages`, а внутри диалога стоят
+ссылки (`peer`, `top_message`). Имя собирает клиент из `first_name`/`last_name`
+(порт `PeerTitle`) — на проводе `display_name` не существует.
 
 ---
 
@@ -143,14 +183,26 @@ Create a group; the caller becomes its `creator` (with all rights) and first mem
 - 400: `{ "error": "title required" }`
 
 ### GET /chats/{chatID}/card  · auth
-Group/channel info screen, including the caller's own role/rights/mute.
+Карточка группы/канала. Ответ — конструктор `messages.chatFull`: полная
+карточка ВМЕСТЕ с краткой формой самого чата. Ровно тот же объект приезжает
+кадром `chat_update`, поэтому разбирать его вторым путём не нужно.
 - 200:
 ```json
-{ "id": 1, "type": "group", "title": "Team", "username": "", "about": "",
-  "photo_media_id": null, "creator_id": 7, "member_count": 3,
-  "is_public": false, "my_role": "creator", "my_rights": 255, "muted": false }
+{ "_": "messages.chatFull",
+  "full_chat": { "_": "channelFull", "id": 1, "about": "", "participants_count": 3,
+                 "read_inbox_max_id": 4, "read_outbox_max_id": 0, "unread_count": 0,
+                 "chat_photo": null },
+  "chats": [ { "_": "channel", "id": 1, "title": "Team", "date": 0,
+               "pFlags": { "megagroup": true, "creator": true },
+               "photo": { "_": "chatPhotoEmpty" } } ],
+  "users": [] }
 ```
-  `my_role` is empty and `my_rights` is `0` when the caller is not a member.
+  - `my_role` больше нет: creator это `pFlags.creator`, admin — НАЛИЧИЕ
+    `admin_rights` (решение №3 порта пиров);
+  - `is_public` выражено наличием `username`, `default_permissions` —
+    инвертированными `default_banned_rights`, `history_for_new` —
+    `pFlags.hidden_prehistory` с обратным знаком;
+  - наша группа — это тоже `channel` (+ `pFlags.megagroup`, решение №2).
 - 404: `{ "error": "not found" }` (no such chat)
 
 ### GET /chats/{chatID}/members  · auth
@@ -244,7 +296,17 @@ Decline (remove) a pending join request.
 Batch-resolve minimal public user cards (for member lists, sender names).
 - Query: `ids` — comma-separated int64 ids (e.g. `?ids=1,2,3`). Unknown ids are
   silently skipped; an empty/absent `ids` yields an empty list.
-- 200: `{ "users": [ { "id": 1, "username": "alice", "display_name": "Alice", "avatar_url": "" } ] }`
+- 200: `{ "users": [ <user>, … ] }` — конструкторы `user` целиком:
+```json
+{ "_": "user", "id": 1, "first_name": "Alice", "username": "alice",
+  "photo": { "_": "userProfilePhoto", "photo_id": 42 },
+  "status": { "_": "userStatusOnline", "expires": 1782237080 },
+  "pFlags": { "verified": true } }
+```
+  - `display_name` на проводе НЕ существует: имя собирает клиент из
+    `first_name`/`last_name` (порт `PeerTitle`);
+  - пять полей аватарки схлопнулись в одно (`photo`), присутствие — в
+    объединение `UserStatus` со сроком годности.
 
 ---
 
@@ -289,16 +351,21 @@ Membership-gated. The client stores the channel's last seen `pts` and passes it 
 ```json
 {
   "updates": [
-    { "chat_id": 1, "msg_id": 10, "seq": 5, "sender_id": 7, "type": "text",
-      "text": "hello world", "media_id": null, "created_at": "2026-06-24T10:00:00Z" }
+    { "t": "new_message", "pts": 6,
+      "d": { "_": "updateNewChannelMessage", "message": {"_":"message", "…":"…"}, "pts": 6, "pts_count": 1 } }
   ],
   "pts": 6,
   "slice": false
 }
 ```
-  - each entry of `updates` is a `new_message` payload (the post).
-  - `pts` is the highest channel pts in this batch (the new cursor).
-  - `slice: true` → the batch hit the page cap (100); call again with the new `pts`.
+  - конверт строки — ТОТ ЖЕ `{t, pts, d}`, что у живого канального кадра, так
+    что клиент прогоняет догон через ту же пер-канальную воронку;
+  - в журнале канала лежат три конструктора: `updateNewChannelMessage` (пост),
+    `updateChannelFullSnapshot` (снимок карточки) и `updateChannelBoostStatus`
+    (бусты). Все три несут ПЕР-КАНАЛЬНЫЙ `pts` — и канальный он потому, что
+    таков конструктор, а не потому, что ключ иначе называется;
+  - `pts` — наибольший канальный pts пачки (новый курсор);
+  - `slice: true` → пачка упёрлась в предел страницы (100); звать снова с новым `pts`.
 - 403: `{ "error": "forbidden" }` (caller is not a member/subscriber)
 
 ### POST /channels/join  · auth
@@ -328,11 +395,13 @@ Post a comment on the channel post `postId`. The comment is a message in the
 linked discussion group with `thread_root_id = postId`. The caller is auto-joined
 to the discussion group.
 - Request: `{ "text": "nice post", "client_msg_id": "uuid-from-client" }`
-- 200: a message object, e.g.
+- 200: сообщение — тот же конструктор `message`, что и везде; корень треда
+  едет ССЫЛКОЙ внутри `reply_to`:
 ```json
-{ "id": 99, "chat_id": 42, "seq": 1, "sender_id": 7, "type": "text",
-  "text": "nice post", "reply_to_id": null, "media_id": null,
-  "thread_root_id": 55, "created_at": "2026-06-24T00:00:00Z", "deleted": false }
+{ "_": "message", "id": 1, "peer_id": { "_": "peerChannel", "channel_id": 42 },
+  "from_id": { "_": "peerUser", "user_id": 7 }, "date": 1782237047,
+  "message": "nice post",
+  "reply_to": { "_": "messageReplyHeader", "reply_to_top_id": 55 } }
 ```
 - 404: `{ "error": "not found" }` (discussions not enabled)
 
@@ -340,12 +409,7 @@ to the discussion group.
 List the comment thread (ascending by `seq`) for a channel post, plus the total
 count.
 - Query: `offset` (default 0), `limit` (default 50, max 100).
-- 200:
-```json
-{ "messages": [ { "id": 99, "chat_id": 42, "seq": 1, "sender_id": 7,
-  "type": "text", "text": "nice post", "thread_root_id": 55,
-  "created_at": "2026-06-24T00:00:00Z", "deleted": false } ], "count": 1 }
-```
+- 200: `{ "messages": [ <message>, … ], "count": 1 }` — те же конструкторы.
 - 404: `{ "error": "not found" }` (discussions not enabled)
 
 ### GET /channels/{chatID}/comment_counts?ids=  · auth
@@ -434,7 +498,9 @@ and enters the chat history only at `send_at` (a background worker dispatches
 due entries through the normal Send fan-out every ~15s). Text or media
 required; `send_at` must be in the future; at most 100 pending per user.
 - Request: `{ "type": "text", "text": "hi", "entities": null, "reply_to_id": null, "media_id": null, "send_at": 1784350000 }`
-- 200: the scheduled entry `{id, chat_id, sender_id, type, text, entities?, reply_to_id, media_id, send_at, created_at}`
+- 200: отложенная запись — конструктор `message` с `pFlags.is_scheduled` и
+  параметром `send_at` (клиентское поле, объявленное штатным механизмом
+  `schema_additional_params.json`)
 - 400 invalid (empty/past/limit) · 403 not a member
 
 ### GET /chats/{chatID}/scheduled  · auth
@@ -450,15 +516,18 @@ Message; the queue entry is removed.
 
 ### GET /search?q=  · auth
 Global directory search: public chats (channels/public groups) by `@username` or
-title prefix, plus users by `username`/`display_name` prefix. Private chats are
+title prefix, plus users by `username`/имени (колонка `users.display_name`
+остаётся ПОИСКОВОЙ, на провод она не выходит). Private chats are
 never returned. Both lists are capped at 20 and ordered (chats by `member_count`).
 - Query: `q` — search prefix (empty `q` yields empty results).
-- 200:
+- 200 — конструктор `contacts.found`: найденное едет ССЫЛКАМИ (`results`), а
+  сами объекты — векторами `chats`/`users`, один раз каждый:
 ```json
-{
-  "chats": [ { "id": 1, "type": "channel", "title": "News", "username": "news", "member_count": 1234 } ],
-  "users": [ { "id": 2, "username": "alice", "display_name": "Alice", "avatar_url": "" } ]
-}
+{ "_": "contacts.found",
+  "my_results": [],
+  "results": [ { "_": "peerChannel", "channel_id": 1 }, { "_": "peerUser", "user_id": 2 } ],
+  "chats": [ { "_": "channel", "id": 1, "title": "News", "username": "news", "…": "…" } ],
+  "users": [ { "_": "user", "id": 2, "username": "alice", "…": "…" } ] }
 ```
 
 ### GET /search/messages?q=&filter=  · auth
@@ -491,11 +560,19 @@ Send a message. Also delivered live over WS (`new_message`) to all members.
     сам гидрирует снимок имени/телефона — в DTO приходит
     `contact: { user_id, name, phone }`. Те же поля принимает WS `send_message`
     и несёт фрейм `new_message`.
-- 200 (the created or deduplicated message):
+- 200 (the created or deduplicated message) — конструктор `message` схемы:
 ```json
-{ "id": 10, "chat_id": 1, "seq": 5, "sender_id": 1, "type": "text", "text": "hello",
-  "reply_to_id": null, "media_id": null, "created_at": "2026-06-24T10:00:00Z", "deleted": false }
+{ "_": "message", "id": 5, "peer_id": { "_": "peerUser", "user_id": 2 },
+  "from_id": { "_": "peerUser", "user_id": 1 }, "date": 1782237047,
+  "message": "hello", "pFlags": { "out": true } }
 ```
+  - `id` — номер сообщения ВНУТРИ пира (наш `seq`), а не ключ строки;
+  - вложение любого вида живёт в ОДНОМ параметре `media` (объединение
+    `MessageMedia`), ответ — ССЫЛКОЙ `reply_to`, а не снимком оригинала;
+  - булевы флаги — в `pFlags`, и «выключено» значит ОТСУТСТВИЕ ключа: `out`
+    пер-зрительский и приезжает только автору;
+  - служебное сообщение — ВТОРОЙ конструктор объединения (`messageService`
+    с параметром `action`), а не поле `type: "service"`.
 - 403: `{ "error": "not a member of this chat" }` (also when attaching media you don't own)
 
 ### GET /chats/{chatID}/history  · auth
@@ -550,13 +627,18 @@ getDifference-style catch-up of updates the client missed. The client stores
 - 200:
 ```json
 {
-  "new_messages":  [ { "chat_id":1,"msg_id":10,"seq":5,"sender_id":1,"type":"text","text":"hi","media_id":null,"created_at":"..." } ],
-  "other_updates": [ { "chat_id":1,"user_id":2,"up_to_seq":5 }, { "chat_id":1,"msg_id":10,"user_id":2,"emoji":"🔥","action":"add" } ],
+  "new_messages":  [ { "t":"new_message", "pts":6, "d": { "_":"updateNewMessage", "message": {"_":"message", "…": "…"}, "pts":6, "pts_count":1 } } ],
+  "other_updates": [ { "t":"read", "pts":7, "d": { "_":"updateReadHistoryInbox", "peer": {"_":"peerUser","user_id":2}, "max_id":10, "still_unread_count":0, "pts":7, "pts_count":1 } } ],
   "state": { "pts": 7, "date": 1782237047655 },
   "slice": false,
   "too_long": false
 }
 ```
+  - Тело строки (`d`) — ТОТ ЖЕ конструктор, что приезжает живым кадром: журнал
+    хранится в форме МОДЕЛИ, а провод собирается из неё на выходе. `t` — тип
+    строки журнала; клиент маршрутизирует по дискриминатору `d._`.
+  - `pts` строки лежит СНАРУЖИ у всех: у догона курсор задаёт сам журнал, а не
+    конструктор (у живого кадра он либо в теле, либо в конверте — см. раздел WS).
   - `slice: true` → more updates remain; call `/sync` again with the new `state.pts`.
   - `too_long: true` → the client is too far behind; discard local cache and do a full resync.
 
@@ -653,13 +735,15 @@ Post a story from a media object the caller owns.
 
 ### GET /stories  · auth
 The viewer's active story feed (own group first), grouped by author.
-- 200:
+- 200 (`author` — конструктор `user`, как и везде):
 ```json
 { "groups": [
-  { "author": { "id": 1, "display_name": "Alice", "avatar_url": "" },
+  { "author": { "_": "user", "id": 1, "first_name": "Alice", "…": "…" },
     "stories": [ { "id": 1, "media_id": 5, "caption": "hi", "created_at": "2026-06-24T…Z", "viewed": false } ] }
 ] }
 ```
+Сама история конструктора ещё не имеет — предмет `storyItem` не портирован
+(задача #52), поэтому её поля здесь плоские.
 
 ### POST /stories/{storyID}/view  · auth
 Mark a story as seen. Idempotent.
@@ -667,7 +751,7 @@ Mark a story as seen. Idempotent.
 
 ### GET /stories/{storyID}/viewers  · auth · author only
 Who has seen the story (author-gated).
-- 200: `{ "viewers": [ { "id": 7, "display_name": "Bob", "avatar_url": "" } ], "count": 1 }`
+- 200: `{ "viewers": [ <user>, … ], "count": 1 }` — конструкторы `user`
 - 403 caller is not the author
 
 ### DELETE /stories/{storyID}  · auth · author only
@@ -687,11 +771,29 @@ Delete the caller's own story.
 ## WebSocket — realtime
 
 ### Connect
-`GET /ws?token=<session-token>` → HTTP 101 (Upgrade). Browsers can't set headers
-on WS, so the token goes in the query string. Invalid/missing token → 401 (no upgrade).
+`GET /ws` → HTTP 101 (Upgrade). Токен едет ПОДПРОТОКОЛОМ, а не в query: строка
+запроса оседает в логах прокси и в истории браузера.
 
-### Frame envelope
-Every frame is JSON: `{ "t": "<type>", "d": { … }, "pts": <int>? }`.
+    Sec-WebSocket-Protocol: bearer, <session-token>
+
+Сервер обязан выбрать подпротокол и эхает `bearer` (без выбора браузер закроет
+соединение). Устаревший `?token=` пока принимается — для вкладок, открытых до
+раскатки. Невалидный/отсутствующий токен → 401 без апгрейда.
+
+Перед `bearer` клиент может попросить ФОРМАТ кадров:
+
+| подпротокол | что значит |
+|---|---|
+| `tl.1` | кадры-апдейты приезжают байтами TL (см. ниже). Сервер эхает `tl.1` |
+| `dnp.2` | Noise-канал (аутентификация внутри канала, токен не в подпротоколе) |
+| — | кадры приезжают JSON-текстом; умолчание |
+
+Формат — свойство СОЕДИНЕНИЯ: соседняя вкладка того же пользователя может
+остаться на JSON. Обе формы собираются из одной модели.
+
+### Формат кадра
+
+**JSON (умолчание).** Конверт: `{ "t": "<type>", "d": { … }, "pts": <int>? }`.
 
 `pts` в конверте — плотный пер-юзерный курсор кадра, и он появляется там ТОЛЬКО
 у кадров, чей конструктор схемы своего параметра `pts` не объявляет
@@ -701,31 +803,91 @@ Every frame is JSON: `{ "t": "<type>", "d": { … }, "pts": <int>? }`.
 `updateReadHistoryInbox`, …) курсор лежит ВНУТРИ `d`, и в конверте его нет —
 одно число в двух местах не дублируется.
 
-> Таблицы кадров ниже отстали от порта на TL (тела кадров стали конструкторами
-> схемы: `updateNewMessage`, `updateReadHistoryInbox/Outbox`,
-> `updatePinnedMessages`, `updateMessageReactions`, …). Долг назван отдельной
-> задачей и снимается вместе с остальной документацией провода.
+**TL (`tl.1`).** Конверта нет: поток начинается четырьмя байтами id
+конструктора. Оболочку даёт схема, и форм у неё две:
+
+| оболочка | когда | где курсор |
+|---|---|---|
+| `updateShort{update, date}` | конструктор апдейта объявляет `pts` | внутри апдейта |
+| `updates{updates, users, chats, date, seq}` | не объявляет | `seq` контейнера |
+
+Векторы `users`/`chats` контейнера пока пустые.
+
+Разделение форм на одном соединении не требует второго признака: **текстовое**
+сообщение WS — это JSON-конверт кадра, у которого конструктора нет; **бинарное**
+— оболочка `Updates`. Кадр без конструктора уезжает JSON-текстом даже на
+проводе TL.
 
 ### Client → server
 | `t` | `d` | Effect |
 |-----|-----|--------|
-| `send_message` | `{ chat_id, type?, text?, reply_to_id?, client_msg_id, media_id?, thread_root_id? }` | Same as `POST /chats/{id}/messages`; replies with `message_ack` and fans out `new_message` (несёт `thread_root_id` — клиент кладёт сообщение и в окно чата, и в окно треда). |
-| `read` | `{ chat_id, up_to_seq }` | Same as `POST /chats/{id}/read`; fans out `read`. |
-| `typing` | `{ chat_id }` | Ephemeral; fans out `typing` to other members (no persistence). |
-| `subscribe_channel` | `{ chat_id }` | Subscribe this connection to a channel's live posts. The Hub lazily joins the Redis `channel:{chat_id}` topic on the first local subscriber; subsequent posts arrive as `new_message`. |
-| `unsubscribe_channel` | `{ chat_id }` | Stop receiving live posts for the channel; the Hub leaves the `channel:{chat_id}` topic once no local connection is subscribed. Subscriptions are also dropped automatically on disconnect. |
-| `ping` | — | Server replies `{ "t": "pong" }`. |
+| `send_message` | `{ peer_id, type?, text?, entities?, reply_to_id?, reply_to_peer_id?, client_msg_id, media_id?, thread_root_id?, … }` | То же, что `POST /chats/{id}/messages`; отвечает `message_ack` и рассылает `new_message` |
+| `read` | `{ peer_id, up_to_seq }` | То же, что `POST /chats/{id}/read`; рассылает `read` |
+| `read_media` | `{ peer_id, id }` | Вложение прослушано; рассылает `media_read` |
+| `typing` | `{ peer_id, action: { _ } }` | Эфемерно; `action` — конструктор `SendMessageAction` (`sendMessageTypingAction`, `sendMessageRecordAudioAction`, …), а не строка |
+| `subscribe_channel` | `{ peer_id }` | Подписать это соединение на живые посты канала (Hub лениво входит в Redis-топик `channel:{id}`) |
+| `unsubscribe_channel` | `{ peer_id }` | Отписать; снимается и автоматически на разрыве |
+| `ping` | — | Сервер отвечает `{ "t": "pong" }` |
 
-### Server → client
+Направление клиент→сервер остаётся JSON на любом проводе: там МЕТОДЫ, а не
+апдейты, и их порт — отдельная работа.
+
+### Server → client: апдейты
+Тело кадра — КОНСТРУКТОР объединения `Update` схемы; `t` конверта существует
+только на JSON-проводе и дублирует дискриминатор. Клиент ветвится по `_`.
+
+| `t` | конструктор `d._` | что несёт |
+|-----|-----|-----|
+| `new_message` | `updateNewMessage` · `updateNewChannelMessage` | сообщение ЦЕЛИКОМ (`message`); второй конструктор — пост канала, у него пер-канальный курсор |
+| `edit_message` | `updateEditMessage` | сообщение целиком, а не патч полей |
+| `delete_message` | `updateDeletePeerMessages` | наш конструктор: схемный `updateDeleteMessages` пира не несёт, а у нас номер пер-чатный |
+| `read` | `updateReadHistoryInbox` · `updateReadHistoryOutbox` | «прочитал я» (со `still_unread_count`) и «прочитали меня» (только горизонт) — РАЗНЫЕ кадры |
+| `media_read` | `updateReadPeerMessagesContents` | наш конструктор, причина та же, что у удаления |
+| `pin_message` | `updatePinnedMessages` | «открепили» — ТОТ ЖЕ конструктор с опущенным битом `pFlags.pinned` |
+| `reaction` | `updateMessageReactions` | АБСОЛЮТНЫЙ агрегат с `pFlags.min`; платная ⭐-реакция — чип `reactionPaid` в том же векторе |
+| `draft_update` | `updateDraftMessage` | «черновик снят» — конструктор `draftMessageEmpty` внутри |
+| `dialog_pin` | `updateDialogPinned` | `peer: dialogPeer`; закрепление — бит |
+| `dialog_archive` | `updateFolderPeers` | вектор `folderPeer` с НОМЕРОМ папки; возврат из архива — папка 0 |
+| `dialog_mute` | `updateNotifySettings` | `peer: notifyPeer`, настройки ЦЕЛИКОМ (мьют это срок, а не флаг) |
+| `typing` | `updateUserTyping` · `updateChannelUserTyping` | в личном чате пир — сам печатающий; действие — конструктор `SendMessageAction` |
+| `presence` | `updateUserStatus` | объединение `UserStatus`; «онлайн» несёт `expires`, скрытое приватностью выражает сам конструктор |
+| `user_update` | `updateUserSnapshot` | наш конструктор: карточка внутри кадра, потому что контейнера с вектором `users` у нас ещё нет |
+| `poll_update` | `updateMessagePoll` | опрос адресуется своим id |
+| `checklist_update` | `updateMessageToDo` | наши конструкторы: апдейтов у предмета в схеме нет |
+| `giveaway_update` | `updateMessageGiveaway` | то же |
+| `web_page_update` | `updateMessageWebPage` | карточка тем же конструктором, что и внутри сообщения |
+| `factcheck_update` | `updateMessageFactCheck` | «проверку сняли» — ОТСУТСТВИЕ параметра |
+| `paid_media_unlock` | `updateMessageExtendedMedia` | ровно вектор позиций, ставших настоящими |
+| `chat_removed` | `updateChatRemoved` | наш конструктор; поле `removed: true` было константой и ушло |
+| `chat_theme_update` | `updateChatTheme` | пустой `theme_id` — сброс к умолчанию |
+| `chat_update` | `updateChatFullSnapshot` · `updateChannelFullSnapshot` | АБСОЛЮТНЫЙ снимок `messages.chatFull`; второй конструктор — журнал КАНАЛА (пер-канальный курсор) |
+| `boost_update` | `updateChannelBoostStatus` | `premium.boostsStatus` без пер-зрительской части |
+| `balance_update` | `updateStarsBalance` | `starsAmount{amount, nanos}` — звёзды дробные |
+| `bot_callback_answer` | `updateBotCallbackAnswer` | наш конструктор; «модалкой» — бит `pFlags.alert` |
+
+### Server → client: кадры БЕЗ конструктора
+Эти уезжают JSON-текстом всегда, и причин ровно две.
+
+**Транспорт** — апдейтами не становятся (у оригинала их роль играют слои
+MTProto, которых мы не портируем):
+
 | `t` | `d` |
 |-----|-----|
-| `message_ack` | `{ client_msg_id, msg_id, seq, created_at }` (to the sender) |
-| `new_message` | `{ chat_id, msg_id, seq, sender_id, type, text, media_id, created_at }` |
-| `read` | `{ chat_id, user_id, up_to_seq }` |
-| `typing` | `{ chat_id, user_id }` |
-| `presence` | `{ user_id, online, last_seen }` (`last_seen` epoch ms; sent to chat partners) |
-| `reaction` | `{ chat_id, msg_id, user_id, emoji, action }` (`action`: `add` \| `remove`) |
+| `hello` | `{ pts, date }` — первый кадр соединения (быстрый reconnect без REST) |
 | `pong` | — |
+| `message_ack` | `{ client_msg_id, id, created_at }` (отправителю) |
+| `message_error` | `{ client_msg_id, reason }` |
+| `secret_chat_request` · `secret_chat_accept` · `secret_chat_reject` | хендшейк E2E |
+| `call_*` · `group_call_*` · `livestream_*` | сигналинг (сервер — тупой ретранслятор) |
+
+**Предмет не портирован** — уйдут отсюда, когда появятся их объекты:
+
+| `t` | чего ждёт |
+|-----|-----|
+| `folder_update` | порта самой папки (`dialogFilter` несёт `TextWithEntities` и `Vector<InputPeer>`). Курсор кадр НЕСЁТ — это единственный логируемый кадр без конструктора |
+| `geo_live_update` | у оригинала кадра нет вовсе: движение точки это ПРАВКА сообщения |
+| `story_new` · `story_deleted` · `story_reaction` | порта `storyItem` |
+| `suggested_post_update` | порта `SuggestedPostInfo` |
 
 ### Delivery guarantees
 - WS is an accelerator, not the source of truth. Every `new_message`/`read`/
@@ -736,7 +898,7 @@ Every frame is JSON: `{ "t": "<type>", "d": { … }, "pts": <int>? }`.
 - **Channels** use a separate, **topic-based** delivery path that scales O(1) per
   post: each post is published **once** to the Redis topic `channel:{id}` (no
   per-subscriber fan-out, no per-subscriber `pts` rows). A client opts in per
-  channel via `subscribe_channel {chat_id}`; the Hub joins the `channel:{id}` topic
+  channel via `subscribe_channel {peer_id}`; the Hub joins the `channel:{id}` topic
   on the first local subscriber and routes incoming posts (`new_message`) only to
   the connections that subscribed it, leaving the topic once the last one drops.
   Missed channel posts are recovered per-channel via
