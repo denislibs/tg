@@ -13,6 +13,7 @@
     "lint:fix": "oxlint src --fix",
     "test": "vitest run",
     "generate-mtproto-types": "node scripts/generate_mtproto_types.mjs src/",
+    "generate-tl-schema": "node scripts/generate_tl_schema.mjs",
     "check-layer-types": "tsc -p scripts/tsconfig.layer-check.json --noEmit",
     "crosscheck": "vitest run --config scripts/crosscheck/vitest.config.ts"
   },
