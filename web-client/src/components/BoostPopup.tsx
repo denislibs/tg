@@ -6,23 +6,21 @@ import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useChannelBoosts } from '../core/hooks/useChannelBoosts'
-import { boostProgress } from '../core/models'
+import { boostedByMe, boostProgress } from '../core/boosts/boostsStatus'
 import { useT } from '../i18n'
 import s from './BoostPopup.module.scss'
 
 export default function BoostPopup({ chatId, onClose }: { chatId: number; onClose: () => void }) {
   const t = useT()
-  const { status, boost } = useChannelBoosts(chatId)
+  const { boosts: channelBoosts, boost } = useChannelBoosts(chatId)
+  const status = channelBoosts?.status
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
   const level = status?.level ?? 0
-  const boosts = status?.boostsCount ?? 0
-  const { progress, need } = boostProgress({
-    boostsCount: boosts,
-    currentLevelBoosts: status?.currentLevelBoosts ?? 0,
-    nextLevelBoosts: status?.nextLevelBoosts ?? 0,
-  })
+  const boosts = status?.boosts ?? 0
+  const { progress, need } = boostProgress(status)
+  const mine = boostedByMe(status)
 
   const doBoost = () => {
     if (busy) return
@@ -33,7 +31,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
       .finally(() => setBusy(false))
   }
 
-  const description = status?.boostedByMe
+  const description = mine
     ? t('You are boosting this channel.')
     : need > 0
       ? t('This channel needs {n} more boost(s) to reach the next level.').replace('{n}', String(need))
@@ -60,7 +58,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
 
         {err && <Text size={13} color="#e5484d" className={s.desc}>{err}</Text>}
 
-        {status && status.boostedByMe ? (
+        {mine ? (
           <div className={s.boosted}>✓ {t('You boosted this channel')}</div>
         ) : (
           <button className={s.btn} disabled={busy} onClick={doBoost}>

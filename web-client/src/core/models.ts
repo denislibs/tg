@@ -556,45 +556,15 @@ export type GiveawayState =
  * `slots`): в схеме на этом месте `my_boost_slots` — вектор идентификаторов
  * занятых слотов, то есть другой предмет под похожим именем.
  */
-export interface RawBoostStatus {
+export interface BoostsStatus {
   _: 'premium.boostsStatus'
   pFlags?: { my_boost?: true }
   level: number
   boosts: number
   current_level_boosts: number
+  /** ПОСЛЕДНИЙ УРОВЕНЬ — отсутствие параметра, а не ноль: порога дальше нет
+   *  вовсе. Операции над статусом — `core/boosts/boostsStatus.ts`. */
   next_level_boosts?: number
-}
-
-export interface BoostStatus {
-  level: number
-  boostsCount: number
-  currentLevelBoosts: number
-  nextLevelBoosts: number
-  boostedByMe: boolean
-  slots: number
-}
-
-export function mapBoostStatus(r: RawBoostStatus, slots = 0): BoostStatus {
-  return {
-    level: r.level ?? 0,
-    boostsCount: r.boosts ?? 0,
-    currentLevelBoosts: r.current_level_boosts ?? 0,
-    // «Последний уровень» — ОТСУТСТВИЕ следующего порога, а не ноль рядом.
-    nextLevelBoosts: r.next_level_boosts ?? 0,
-    boostedByMe: !!r.pFlags?.my_boost,
-    slots,
-  }
-}
-
-// boostProgress — доля заполнения полосы текущего уровня [0..1] и сколько бустов
-// осталось до следующего уровня (порог tweb: (boosts-current)/(next-current)).
-export function boostProgress(s: Pick<BoostStatus, 'boostsCount' | 'currentLevelBoosts' | 'nextLevelBoosts'>): {
-  progress: number
-  need: number
-} {
-  const span = s.nextLevelBoosts - s.currentLevelBoosts
-  const progress = span > 0 ? Math.min(Math.max((s.boostsCount - s.currentLevelBoosts) / span, 0), 1) : 1
-  return { progress, need: Math.max(s.nextLevelBoosts - s.boostsCount, 0) }
 }
 
 // Предложенный в канал пост (backend suggested_posts): статус pending|approved|

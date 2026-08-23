@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraftMessage, mapBoostStatus, mapSuggestedPost, mapMessage } from '../../core/models'
+import { mapDraftMessage, mapSuggestedPost, mapMessage } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -141,7 +141,7 @@ const APPLY: Projector = {
   // Кадр канала пер-зрительского не несёт (тело одно на всех подписчиков), и
   // число свободных слотов зрителя в нём тоже отсутствует — оно приезжает
   // ответом ручки статуса.
-  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(getPeerId(e.peer), mapBoostStatus(e.status)) },
+  [RT.boostUpdate]: (e) => { useBoostsStore.getState().applyStatus(getPeerId(e.peer), e.status) },
   [RT.suggestedPost]: (e) => { useSuggestedPostsStore.getState().apply(e.peer_id, mapSuggestedPost(e.post)) },
   // Task 4 (действия без оптимистики): пин / архив / mute диалога (с другого
   // устройства/вкладки) применяет владелец (workerCore.ts::dispatch →

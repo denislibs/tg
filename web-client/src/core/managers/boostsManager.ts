@@ -1,10 +1,10 @@
 import type { RestClient } from '../net/restClient'
 import {
-  mapBoostStatus, mapMyMessage,
-  type BoostStatus, type RawBoostStatus,
+  mapMyMessage,
   type GiveawayState,
   type MyMessage, type RawMyMessage,
 } from '../models'
+import type { ChannelBoosts } from '../boosts/boostsStatus'
 
 // Бусты каналов + розыгрыши. Буст доступен только premium-пользователю и тратит
 // его слот; розыгрыш создаётся владельцем канала как сообщение типа 'giveaway'.
@@ -30,14 +30,13 @@ export function newBoostsManager({ rest, getMeId }: {
     // Ответ ручки — КОНСТРУКТОР схемы плюс наше число свободных слотов рядом:
     // в схеме на этом месте `my_boost_slots` — вектор идентификаторов ЗАНЯТЫХ
     // слотов, то есть другой предмет под похожим именем.
-    async status(peerId: number): Promise<BoostStatus> {
-      const r = await rest.get<{ status: RawBoostStatus; slots: number }>(`/channels/${peerId}/boosts`)
-      return mapBoostStatus(r.status, r.slots)
+    async status(peerId: number): Promise<ChannelBoosts> {
+      // Маппера нет: форма провода и форма модели совпали.
+      return rest.get<ChannelBoosts>(`/channels/${peerId}/boosts`)
     },
     // Бустит канал (расходует слот premium): возвращает обновлённый статус.
-    async boost(peerId: number): Promise<BoostStatus> {
-      const r = await rest.post<{ status: RawBoostStatus; slots: number }>(`/channels/${peerId}/boost`, {})
-      return mapBoostStatus(r.status, r.slots)
+    async boost(peerId: number): Promise<ChannelBoosts> {
+      return rest.post<ChannelBoosts>(`/channels/${peerId}/boost`, {})
     },
     // Создаёт розыгрыш; возвращает сообщение-баббл розыгрыша.
     async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<MyMessage> {

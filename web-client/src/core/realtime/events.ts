@@ -524,7 +524,7 @@ export interface ReactionEvt {
 export interface BoostUpdateEvt {
   _: 'updateChannelBoostStatus'
   peer: Peer
-  status: import('../models').RawBoostStatus
+  status: import('../models').BoostsStatus
   pts?: number
 }
 /** Баланс звёзд — `updateStarsBalance{balance: StarsAmount}`. Число едет
