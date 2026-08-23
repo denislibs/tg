@@ -19,48 +19,57 @@ type PrivacyHandler struct{ uc *usecaseprivacy.Interactor }
 
 func NewPrivacyHandler(uc *usecaseprivacy.Interactor) *PrivacyHandler { return &PrivacyHandler{uc: uc} }
 
-func ruleJSON(r domain.PrivacyRule) map[string]any {
-	allow, deny := r.AllowUserIDs, r.DenyUserIDs
-	if allow == nil {
-		allow = []int64{}
+// ruleKey — ключ настройки из пути. На проводе он КОНСТРУКТОР схемы
+// (`privacyKeyStatusTimestamp`), а не наша строка: путь называет ровно то, что
+// у оригинала называет параметр метода `account.getPrivacy`.
+func ruleKey(w http.ResponseWriter, r *http.Request) (domain.PrivacyKey, bool) {
+	key, ok := domain.PrivacyKeyOf(chi.URLParam(r, "key"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "unknown privacy key")
+		return "", false
 	}
-	if deny == nil {
-		deny = []int64{}
-	}
-	return map[string]any{"key": string(r.Key), "value": r.Value, "allow_user_ids": allow, "deny_user_ids": deny}
+	return key, true
 }
 
-// Rules — GET /me/privacy: полный набор правил (с дефолтами).
-func (h *PrivacyHandler) Rules(w http.ResponseWriter, r *http.Request) {
+// Rule — GET /me/privacy/{key}: правила ОДНОГО ключа.
+//
+// Ручки «все правила разом» больше нет, и это не упрощение интерфейса, а форма
+// оригинала: `account.getPrivacy` спрашивает один ключ, а раздел настроек
+// спрашивает их по очереди (privacyAndSecurity.tsx:574). Ключа в ответе нет —
+// его знает спросивший.
+func (h *PrivacyHandler) Rule(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	rules, err := h.uc.Rules(r.Context(), user.ID)
+	key, ok := ruleKey(w, r)
+	if !ok {
+		return
+	}
+	rule, err := h.uc.Rule(r.Context(), user.ID, key)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	out := make([]map[string]any, 0, len(rules))
-	for _, rule := range rules {
-		out = append(out, ruleJSON(rule))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"rules": out})
+	writeJSON(w, http.StatusOK, domain.NewAccountPrivacyRules(domain.PrivacyRulesOf(rule), nil, nil))
 }
 
-// SetRule — PUT /me/privacy/{key}: правило одного ключа целиком.
+// SetRule — PUT /me/privacy/{key}: правила одного ключа целиком.
+//
+// Тело — тот же ВЕКТОР правил, что и в ответе: у оригинала вход и выход одного
+// метода описаны одним объединением (InputPrivacyRule против PrivacyRule
+// отличается только формой ссылки на пира, которой у нас нет).
 func (h *PrivacyHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	key, ok := ruleKey(w, r)
+	if !ok {
+		return
+	}
 	var b struct {
-		Value        string  `json:"value"`
-		AllowUserIDs []int64 `json:"allow_user_ids"`
-		DenyUserIDs  []int64 `json:"deny_user_ids"`
+		Rules domain.PrivacyRuleUnion `json:"rules"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	rule, err := h.uc.SetRule(r.Context(), user.ID, domain.PrivacyRule{
-		Key:   domain.PrivacyKey(chi.URLParam(r, "key")),
-		Value: b.Value, AllowUserIDs: b.AllowUserIDs, DenyUserIDs: b.DenyUserIDs,
-	})
+	rule, err := h.uc.SetRule(r.Context(), user.ID, domain.PrivacyRecordOf(key, b.Rules))
 	if errors.Is(err, usecaseprivacy.ErrBadRule) {
 		writeError(w, http.StatusBadRequest, "bad rule")
 		return
@@ -69,7 +78,7 @@ func (h *PrivacyHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, ruleJSON(rule))
+	writeJSON(w, http.StatusOK, domain.NewAccountPrivacyRules(domain.PrivacyRulesOf(rule), nil, nil))
 }
 
 // Blocked — GET /me/blocked?offset=&limit=: страница чёрного списка.

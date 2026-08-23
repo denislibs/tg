@@ -4845,7 +4845,7 @@ export namespace InputPrivacyKey {
 /**
  * @link https://core.telegram.org/type/PrivacyKey
  */
-export type PrivacyKey = PrivacyKey.privacyKeyStatusTimestamp | PrivacyKey.privacyKeyChatInvite | PrivacyKey.privacyKeyPhoneCall | PrivacyKey.privacyKeyPhoneP2P | PrivacyKey.privacyKeyForwards | PrivacyKey.privacyKeyProfilePhoto | PrivacyKey.privacyKeyPhoneNumber | PrivacyKey.privacyKeyAddedByPhone | PrivacyKey.privacyKeyVoiceMessages | PrivacyKey.privacyKeyAbout | PrivacyKey.privacyKeyBirthday | PrivacyKey.privacyKeyStarGiftsAutoSave | PrivacyKey.privacyKeyNoPaidMessages | PrivacyKey.privacyKeySavedMusic;
+export type PrivacyKey = PrivacyKey.privacyKeyStatusTimestamp | PrivacyKey.privacyKeyChatInvite | PrivacyKey.privacyKeyPhoneCall | PrivacyKey.privacyKeyPhoneP2P | PrivacyKey.privacyKeyForwards | PrivacyKey.privacyKeyProfilePhoto | PrivacyKey.privacyKeyPhoneNumber | PrivacyKey.privacyKeyAddedByPhone | PrivacyKey.privacyKeyVoiceMessages | PrivacyKey.privacyKeyAbout | PrivacyKey.privacyKeyBirthday | PrivacyKey.privacyKeyStarGiftsAutoSave | PrivacyKey.privacyKeyNoPaidMessages | PrivacyKey.privacyKeySavedMusic | PrivacyKey.privacyKeyMessages | PrivacyKey.privacyKeyReadTime;
 
 export namespace PrivacyKey {
   export type privacyKeyStatusTimestamp = {
@@ -4902,6 +4902,14 @@ export namespace PrivacyKey {
 
   export type privacyKeySavedMusic = {
     _: 'privacyKeySavedMusic'
+  };
+
+  export type privacyKeyMessages = {
+    _: 'privacyKeyMessages'
+  };
+
+  export type privacyKeyReadTime = {
+    _: 'privacyKeyReadTime'
   };
 }
 
@@ -18725,6 +18733,8 @@ export interface ConstructorDeclMap {
   'messageEntitySubscript': MessageEntity.messageEntitySubscript,
   'messageEntitySuperscript': MessageEntity.messageEntitySuperscript,
   'messageEntityAnchor': MessageEntity.messageEntityAnchor,
+  'privacyKeyMessages': PrivacyKey.privacyKeyMessages,
+  'privacyKeyReadTime': PrivacyKey.privacyKeyReadTime,
 }
 
 export type InvokeAfterMsg = {

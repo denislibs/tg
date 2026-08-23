@@ -14,9 +14,9 @@ import (
 
 // Repo — хранилище правил, блокировок и справок о контактах/пользователях.
 type Repo interface {
-	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) // только сохранённые
-	Upsert(ctx context.Context, userID int64, r domain.PrivacyRule) error
-	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRule, error) // domain.ErrNotFound → дефолт
+	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) // только сохранённые
+	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) error
+	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) // domain.ErrNotFound → дефолт
 
 	Block(ctx context.Context, blockerID, blockedID int64) error
 	Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error)
@@ -55,16 +55,16 @@ var ErrBadRule = errors.New("invalid privacy rule")
 var ErrSelfBlock = errors.New("cannot block yourself")
 
 // Rules возвращает полный набор правил пользователя (несохранённые — дефолты).
-func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) {
+func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) {
 	stored, err := i.repo.Rules(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	byKey := make(map[domain.PrivacyKey]domain.PrivacyRule, len(stored))
+	byKey := make(map[domain.PrivacyKey]domain.PrivacyRuleRecord, len(stored))
 	for _, r := range stored {
 		byKey[r.Key] = r
 	}
-	out := make([]domain.PrivacyRule, 0, len(domain.PrivacyKeys))
+	out := make([]domain.PrivacyRuleRecord, 0, len(domain.PrivacyKeys))
 	for _, k := range domain.PrivacyKeys {
 		if r, ok := byKey[k]; ok {
 			out = append(out, r)
@@ -75,16 +75,34 @@ func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyR
 	return out, nil
 }
 
+// Rule возвращает правило ОДНОГО ключа (несохранённое — дефолт).
+//
+// Спрашивают по одному ключу, как у оригинала (`account.getPrivacy`): ручки
+// «все разом» на проводе больше нет, потому что у ответа `account.privacyRules`
+// нет параметра ключа — его знает спросивший.
+func (i *Interactor) Rule(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) {
+	rules, err := i.Rules(ctx, userID)
+	if err != nil {
+		return domain.PrivacyRuleRecord{}, err
+	}
+	for _, r := range rules {
+		if r.Key == key {
+			return r, nil
+		}
+	}
+	return domain.DefaultPrivacyRule(key), nil
+}
+
 // SetRule валидирует и сохраняет правило одного ключа целиком.
-func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.PrivacyRule) (domain.PrivacyRule, error) {
+func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) (domain.PrivacyRuleRecord, error) {
 	if !domain.ValidPrivacyKey(r.Key) || !domain.ValidPrivacyValue(r.Key, r.Value) {
-		return domain.PrivacyRule{}, ErrBadRule
+		return domain.PrivacyRuleRecord{}, ErrBadRule
 	}
 	// Сам себе пользователь всегда «виден» — себя в списках не храним.
 	r.AllowUserIDs = dropID(r.AllowUserIDs, userID)
 	r.DenyUserIDs = dropID(r.DenyUserIDs, userID)
 	if err := i.repo.Upsert(ctx, userID, r); err != nil {
-		return domain.PrivacyRule{}, err
+		return domain.PrivacyRuleRecord{}, err
 	}
 	return r, nil
 }

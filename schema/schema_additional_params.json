@@ -1675,5 +1675,17 @@
         "type": "string"
       }
     ]
+  },
+  {
+    "id": "1367848849",
+    "predicate": "privacyKeyMessages",
+    "params": [],
+    "type": "PrivacyKey"
+  },
+  {
+    "id": "1884840837",
+    "predicate": "privacyKeyReadTime",
+    "params": [],
+    "type": "PrivacyKey"
   }
 ]

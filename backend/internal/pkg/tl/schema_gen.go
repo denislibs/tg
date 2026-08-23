@@ -8416,6 +8416,8 @@ var schemaConstructors = []Constructor{
 		{Name: "alert", Type: "true", Flags: "flags", Bit: 0},
 		{Name: "message", Type: "string"},
 	}},
+	{ID: 1367848849, Predicate: "privacyKeyMessages", Type: "PrivacyKey"},
+	{ID: 1884840837, Predicate: "privacyKeyReadTime", Type: "PrivacyKey"},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:

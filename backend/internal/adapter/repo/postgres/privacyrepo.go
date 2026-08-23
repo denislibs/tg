@@ -20,8 +20,8 @@ func NewPrivacyRepo(pool *pgxpool.Pool) *PrivacyRepo { return &PrivacyRepo{pool:
 
 var _ usecaseprivacy.Repo = (*PrivacyRepo)(nil)
 
-func scanRule(row pgx.Row) (domain.PrivacyRule, error) {
-	var r domain.PrivacyRule
+func scanRule(row pgx.Row) (domain.PrivacyRuleRecord, error) {
+	var r domain.PrivacyRuleRecord
 	var allowRaw, denyRaw []byte
 	err := row.Scan(&r.Key, &r.Value, &allowRaw, &denyRaw)
 	if err != nil {
@@ -32,14 +32,14 @@ func scanRule(row pgx.Row) (domain.PrivacyRule, error) {
 	return r, nil
 }
 
-func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) {
+func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT key, value, allow_user_ids, deny_user_ids FROM privacy_rules WHERE user_id=$1`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.PrivacyRule, 0)
+	out := make([]domain.PrivacyRuleRecord, 0)
 	for rows.Next() {
 		rule, err := scanRule(rows)
 		if err != nil {
@@ -50,17 +50,17 @@ func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.Privacy
 	return out, rows.Err()
 }
 
-func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRule, error) {
+func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) {
 	rule, err := scanRule(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT key, value, allow_user_ids, deny_user_ids FROM privacy_rules WHERE user_id=$1 AND key=$2`,
 		userID, key))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.PrivacyRule{}, domain.ErrNotFound
+		return domain.PrivacyRuleRecord{}, domain.ErrNotFound
 	}
 	return rule, err
 }
 
-func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRule) error {
+func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) error {
 	allow, err := json.Marshal(orEmpty(rule.AllowUserIDs))
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (r *PrivacyRepo) IsContact(ctx context.Context, ownerID, userID int64) (boo
 	return yes, err
 }
 
-// privacyAllowsSQL — SQL-эквивалент domain.PrivacyRule.Allows для правила из
+// privacyAllowsSQL — SQL-эквивалент domain.PrivacyRuleRecord.Allows для правила из
 // алиаса pr (может быть NULL — тогда дефолт ключа считает вызывающий запрос
 // через privacyDefaultSQL). owner/viewer — SQL-выражения с id сторон.
 // Порядок tweb: deny → allow → значение (contacts = owner сохранил viewer).

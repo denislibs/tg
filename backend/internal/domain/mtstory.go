@@ -65,7 +65,7 @@ type StoryItem interface {
 // out:flags.16?true id:int date:int from_id:flags.18?Peer
 // fwd_from:flags.17?StoryFwdHeader expire_date:int caption:flags.0?string
 // entities:flags.1?Vector<MessageEntity> media:MessageMedia
-// media_areas:flags.14?Vector<MediaArea> privacy:flags.2?Vector<PrivacyRule>
+// media_areas:flags.14?Vector<MediaArea> privacy:flags.2?Vector<PrivacyRuleRecord>
 // views:flags.3?StoryViews sent_reaction:flags.15?Reaction
 // albums:flags.19?Vector<int> music:flags.20?Document = StoryItem;
 //
@@ -112,8 +112,8 @@ type StoryItemReal struct {
 	Media MessageMedia `json:"media"`
 	// MediaAreas — flags.14?Vector<MediaArea>: интерактивные области.
 	MediaAreas []MediaArea `json:"media_areas,omitempty"`
-	// Privacy — flags.2?Vector<PrivacyRule>: аудитория. Едет ТОЛЬКО автору.
-	Privacy []MTPrivacyRule `json:"privacy,omitempty"`
+	// Privacy — flags.2?Vector<PrivacyRuleRecord>: аудитория. Едет ТОЛЬКО автору.
+	Privacy []PrivacyRule `json:"privacy,omitempty"`
 	// Views — flags.3?StoryViews: просмотры и агрегат реакций.
 	Views *StoryViews `json:"views,omitempty"`
 	// SentReaction — flags.15?Reaction: реакция ЗРИТЕЛЯ. «Не реагировал» —
@@ -445,15 +445,19 @@ func (a MediaAreaVenue) Coords() MediaAreaCoordinates             { return a.Coo
 func (a MediaAreaSuggestedReaction) Coords() MediaAreaCoordinates { return a.Coordinates }
 func (a MediaAreaURL) Coords() MediaAreaCoordinates               { return a.Coordinates }
 
-// ── PrivacyRule: аудитория истории ──────────────────────────────────────────
+// ── PrivacyRule: аудитория истории ─────────────────────────────────────────
 
-// MTPrivacyRule — объединение `PrivacyRule` схемы: одно правило аудитории.
+// PrivacyRule — объединение `PrivacyRule` схемы: одно правило аудитории.
 //
-// Префикс MT — тот же приём и та же причина, что у MTMessage и MTReactionCount:
-// имя `PrivacyRule` в пакете занято НАШИМ правилом настроек приватности
-// (domain/privacy.go — ключ + базовое значение + исключения), а это другая
-// подсистема, ещё не портированная. Когда её порт дойдёт, префикс уйдёт.
-type MTPrivacyRule interface {
+// Здесь объявлена РАЗРЕШАЮЩАЯ половина объединения (её производят истории);
+// запрещающая — в mtprivacy.go, вместе с ключами настроек приватности. Одно
+// объединение, один интерфейс: тот же предмет, а не два похожих.
+//
+// Префикса MT у типа больше нет. Он стоял, пока имя `PrivacyRule` в пакете
+// занимала НАША запись настроек (ключ + базовое значение + исключения) — и
+// уходит вместе с её портом: запись стала `PrivacyRuleRecord`, по приёму
+// UserRecord/ChatRecord/StoryRecord.
+type PrivacyRule interface {
 	isPrivacyRule()
 	// Tag — дискриминатор `_` (predicate схемы).
 	Tag() string
@@ -503,16 +507,16 @@ func (r PrivacyValueAllowUsers) Tag() string  { return r.Underscore }
 // StoryPrivacyRules переводит нашу строку приватности и allow-лист в вектор
 // правил схемы. Пустой результат означает «аудиторию не показываем» — так и
 // уезжает чужому зрителю, которому `privacy` не адресован вовсе.
-func StoryPrivacyRules(privacy string, allowIDs []int64) []MTPrivacyRule {
+func StoryPrivacyRules(privacy string, allowIDs []int64) []PrivacyRule {
 	switch privacy {
 	case "everyone":
-		return []MTPrivacyRule{PrivacyValueAllowAll{Underscore: PrivacyValueAllowAllTag}}
+		return []PrivacyRule{PrivacyValueAllowAll{Underscore: PrivacyValueAllowAllTag}}
 	case "contacts":
-		return []MTPrivacyRule{PrivacyValueAllowContacts{Underscore: PrivacyValueAllowContactsTag}}
+		return []PrivacyRule{PrivacyValueAllowContacts{Underscore: PrivacyValueAllowContactsTag}}
 	case "close":
-		return []MTPrivacyRule{PrivacyValueAllowCloseFriends{Underscore: PrivacyValueAllowCloseFriendsTag}}
+		return []PrivacyRule{PrivacyValueAllowCloseFriends{Underscore: PrivacyValueAllowCloseFriendsTag}}
 	case "selected":
-		return []MTPrivacyRule{PrivacyValueAllowUsers{
+		return []PrivacyRule{PrivacyValueAllowUsers{
 			Underscore: PrivacyValueAllowUsersTag, Users: orEmpty(allowIDs),
 		}}
 	}

@@ -34,9 +34,9 @@ const (
 	PrivacyNobody    = "nobody"
 )
 
-// PrivacyRule — правило одного ключа: базовое значение + точечные исключения.
+// PrivacyRuleRecord — правило одного ключа: базовое значение + точечные исключения.
 // Deny перекрывает Allow, оба перекрывают Value (tweb: exceptions override).
-type PrivacyRule struct {
+type PrivacyRuleRecord struct {
 	Key          PrivacyKey
 	Value        string
 	AllowUserIDs []int64
@@ -55,8 +55,8 @@ func DefaultPrivacyValue(key PrivacyKey) string {
 }
 
 // DefaultPrivacyRule — правило-дефолт для ключа (без исключений).
-func DefaultPrivacyRule(key PrivacyKey) PrivacyRule {
-	return PrivacyRule{Key: key, Value: DefaultPrivacyValue(key)}
+func DefaultPrivacyRule(key PrivacyKey) PrivacyRuleRecord {
+	return PrivacyRuleRecord{Key: key, Value: DefaultPrivacyValue(key)}
 }
 
 // ValidPrivacyKey сообщает, известен ли ключ.
@@ -77,7 +77,7 @@ func ValidPrivacyValue(key PrivacyKey, v string) bool {
 }
 
 // Allows решает, разрешает ли правило действие/видимость для viewer.
-func (r PrivacyRule) Allows(viewerID int64, viewerIsContact bool) bool {
+func (r PrivacyRuleRecord) Allows(viewerID int64, viewerIsContact bool) bool {
 	if slices.Contains(r.DenyUserIDs, viewerID) {
 		return false
 	}

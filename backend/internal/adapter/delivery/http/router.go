@@ -118,7 +118,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		if privacyUC != nil {
 			pvh := NewPrivacyHandler(privacyUC)
-			pr.Get("/me/privacy", pvh.Rules)
+			// Ключ адресуется КОНСТРУКТОРОМ схемы (`privacyKeyStatusTimestamp`),
+			// и спрашивают по одному — как `account.getPrivacy` у оригинала.
+			pr.Get("/me/privacy/{key}", pvh.Rule)
 			pr.Put("/me/privacy/{key}", pvh.SetRule)
 			pr.Get("/me/blocked", pvh.Blocked)
 			pr.Post("/me/blocked", pvh.Block)

@@ -832,6 +832,41 @@ Delete the caller's own story.
 
 ---
 
+## Конфиденциальность
+
+Настройка одного ключа — ВЕКТОР правил, а не запись «значение строкой плюс два
+списка исключений». Так устроено объединение `PrivacyRule` схемы, и так же
+выражается аудитория истории (тот же предмет, те же конструкторы).
+
+Ключ адресуется КОНСТРУКТОРОМ `PrivacyKey`, а спрашивается по одному — как
+`account.getPrivacy` у оригинала. Ручки «все правила разом» нет: у ответа
+`account.privacyRules` параметра ключа не бывает, его знает спросивший.
+
+### GET /me/privacy/{key} · auth
+`{key}` — конструктор: `privacyKeyPhoneNumber`, `privacyKeyAddedByPhone`,
+`privacyKeyStatusTimestamp`, `privacyKeyProfilePhoto`, `privacyKeyAbout`,
+`privacyKeyBirthday`, `privacyKeyPhoneCall`, `privacyKeyForwards`,
+`privacyKeyChatInvite`, `privacyKeyVoiceMessages` — плюс два НАШИХ:
+`privacyKeyMessages` и `privacyKeyReadTime` (у оригинала тот же предмет живёт
+двузначными флагами `globalPrivacySettings`, а наш экран предлагает им тот же
+выбор из трёх, что и остальным ключам).
+
+```json
+{ "_": "account.privacyRules",
+  "rules": [ { "_": "privacyValueAllowUsers", "users": [7] },
+             { "_": "privacyValueDisallowUsers", "users": [8] },
+             { "_": "privacyValueAllowContacts" } ],
+  "chats": [], "users": [] }
+```
+
+Порядок правил значим: исключения идут ПЕРЕД базовым значением — правило,
+поставленное после «всем», уже ничего не изменит.
+
+- 404 — ключ неизвестен.
+
+### PUT /me/privacy/{key} · auth
+Тело — тот же вектор: `{ "rules": [ … ] }`. Ответ — `account.privacyRules`.
+
 ## System / docs
 
 - `GET /health` → `{ "status": "ok" }`
