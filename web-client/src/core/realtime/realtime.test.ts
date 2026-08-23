@@ -105,7 +105,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
     return {
       client: {
         connect: vi.fn(), onOpen: (cb: () => void) => { openCb = cb }, onClose: (cb: () => void) => { closeCb = cb },
-        onError: () => {}, on: () => {}, send: () => {}, isOpen: () => true, close: vi.fn(() => closeCb()),
+        onError: () => {}, onFrame: () => {}, send: () => {}, isOpen: () => true, close: vi.fn(() => closeCb()),
       },
       fireOpen: () => openCb(), fireClose: () => closeCb(),
     }

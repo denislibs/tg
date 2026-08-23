@@ -2,7 +2,6 @@
 import type { Transport } from '../net/transport'
 import type { ConnState, SendMessageAction } from './events'
 import type { MessageEntity } from '../models'
-import { FRAME_TYPES } from './eventCatalog'
 
 export interface SendArgs { peerId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: number; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsPeerId?: number | null; /** медиа скрыто спойлером — tweb sendFile({spoiler}) → inputMedia.pFlags.spoiler */ mediaSpoiler?: boolean }
 
@@ -105,16 +104,20 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     })
     ws.onClose(() => { stopHeartbeat(); if (state !== 'offline') scheduleReconnect() })
     ws.onError(() => { /* onClose will follow */ })
-    for (const t of FRAME_TYPES) {
-      ws.on(t, (d, envPts) => {
-        if (t === 'pong') { missedPongs = 0; return }
-        if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-        // A rejected send (e.g. too long): drop it from the outbox so it isn't
-        // resent forever on every reconnect; the UI marks the bubble failed.
-        if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-        onFrame(t, d, envPts)
-      })
-    }
+    // Подписка ОДНА на все кадры: список типов, на которые «подписываемся», —
+    // не источник правды о кадрах, а способ их потерять (кадр незнакомого типа
+    // исчезал молча, так однажды и пропали тринадцать штук). Здесь остаются
+    // только транспортные заботы самого соединения — heartbeat и очередь
+    // неподтверждённой отправки; маршрутизацию делает тот, кто знает
+    // КОНСТРУКТОР.
+    ws.onFrame((t, d, envPts) => {
+      if (t === 'pong') { missedPongs = 0; return }
+      if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
+      // A rejected send (e.g. too long): drop it from the outbox so it isn't
+      // resent forever on every reconnect; the UI marks the bubble failed.
+      if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
+      onFrame(t, d, envPts)
+    })
   }
 
   function startHeartbeat() {

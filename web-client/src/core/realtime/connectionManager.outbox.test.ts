@@ -13,14 +13,14 @@ function fakeWs(initialOpen = true) {
   let open = initialOpen
   const frames: Array<{ t: string; d?: unknown }> = []
   let openCb = () => {}; let closeCb = () => {}
-  const onHandlers = new Map<string, (d: unknown) => void>()
+  let frameCb: ((t: string, d: unknown, pts?: number) => void) | null = null
   return {
     client: {
       connect: vi.fn(),
       onOpen: (cb: () => void) => { openCb = cb },
       onClose: (cb: () => void) => { closeCb = cb },
       onError: () => {},
-      on: (t: string, cb: (d: unknown) => void) => onHandlers.set(t, cb),
+      onFrame: (cb: (t: string, d: unknown, pts?: number) => void) => { frameCb = cb },
       send: (t: string, d?: unknown) => frames.push({ t, d }),
       isOpen: () => open,
       close: vi.fn(() => closeCb()),
@@ -29,7 +29,7 @@ function fakeWs(initialOpen = true) {
     setOpen: (v: boolean) => { open = v },
     fireOpen: () => { open = true; openCb() },
     fireClose: () => { open = false; closeCb() },
-    recv: (t: string, d: unknown) => onHandlers.get(t)?.(d),
+    recv: (t: string, d: unknown) => frameCb?.(t, d),
   }
 }
 

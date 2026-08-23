@@ -31,7 +31,9 @@ export function newFileDownload(transport: Transport) {
   })
 
   // Ошибка чанк-запроса: сервер шлёт file_err{req_id,error} — реджектим по req_id.
-  transport.on('file_err', (d) => {
+  // Кадр транспортный (решение Р6), поэтому опознаётся типом конверта.
+  transport.onFrame((t, d) => {
+    if (t !== 'file_err') return
     const r = d as { req_id?: number; error?: string }
     if (typeof r?.req_id !== 'number') return
     const p = pending.get(r.req_id)

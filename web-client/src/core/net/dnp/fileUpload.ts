@@ -23,17 +23,22 @@ export function newFileUpload(transport: Transport, chunk: number = UPLOAD_CHUNK
   const pending = new Map<number, Pending>()
   let seq = 0
 
-  transport.on('file_up_ok', (d) => {
-    const r = d as { req_id?: number }
-    if (typeof r?.req_id !== 'number') return
-    const p = pending.get(r.req_id); if (!p) return
-    clearTimeout(p.timer); pending.delete(r.req_id); p.resolve()
-  })
-  transport.on('file_up_err', (d) => {
-    const r = d as { req_id?: number; error?: string }
-    if (typeof r?.req_id !== 'number') return
-    const p = pending.get(r.req_id); if (!p) return
-    clearTimeout(p.timer); pending.delete(r.req_id); p.reject(new Error(r.error ?? 'file_up error'))
+  // Оба кадра — транспортные (решение Р6): апдейтами они не становятся, поэтому
+  // и опознаются типом конверта, а не конструктором.
+  transport.onFrame((t, d) => {
+    if (t === 'file_up_ok') {
+      const r = d as { req_id?: number }
+      if (typeof r?.req_id !== 'number') return
+      const p = pending.get(r.req_id); if (!p) return
+      clearTimeout(p.timer); pending.delete(r.req_id); p.resolve()
+      return
+    }
+    if (t === 'file_up_err') {
+      const r = d as { req_id?: number; error?: string }
+      if (typeof r?.req_id !== 'number') return
+      const p = pending.get(r.req_id); if (!p) return
+      clearTimeout(p.timer); pending.delete(r.req_id); p.reject(new Error(r.error ?? 'file_up error'))
+    }
   })
   transport.onClose(() => {
     for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('channel closed')) }

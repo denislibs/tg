@@ -20,7 +20,7 @@ function fakeTransport(serve: (req: { req_id: number; media_id: number; offset: 
   return {
     isOpen: () => true,
     onBinary: (cb: (d: Uint8Array) => void) => { binCb = cb },
-    on: (t: string, cb: (d: unknown) => void) => { if (t === 'file_err') errCb = cb },
+    onFrame: (cb: (t: string, d: unknown) => void) => { errCb = (d) => cb('file_err', d) },
     onClose: () => {},
     send: (t: string, d?: unknown) => {
       if (t === 'file_req') serve(d as never, binCb, (reqId, msg) => errCb({ req_id: reqId, error: msg }))

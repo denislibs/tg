@@ -5,20 +5,20 @@ import { newConnectionManager } from './connectionManager'
 function fakeWs() {
   const frames: Array<{ t: string; d?: unknown }> = []
   let openCb = () => {}; let closeCb = () => {}
-  const onHandlers = new Map<string, (d: unknown) => void>()
+  let frameCb: ((t: string, d: unknown, pts?: number) => void) | null = null
   return {
     client: {
       connect: vi.fn(),
       onOpen: (cb: () => void) => { openCb = cb },
       onClose: (cb: () => void) => { closeCb = cb },
       onError: () => {},
-      on: (t: string, cb: (d: unknown) => void) => onHandlers.set(t, cb),
+      onFrame: (cb: (t: string, d: unknown, pts?: number) => void) => { frameCb = cb },
       send: (t: string, d?: unknown) => frames.push({ t, d }),
       isOpen: () => true,
       close: vi.fn(() => closeCb()),
     },
     frames, fireOpen: () => openCb(), fireClose: () => closeCb(),
-    recv: (t: string, d: unknown) => onHandlers.get(t)?.(d),
+    recv: (t: string, d: unknown) => frameCb?.(t, d),
   }
 }
 

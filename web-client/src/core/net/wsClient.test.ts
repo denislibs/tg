@@ -20,10 +20,10 @@ class FakeWS {
 beforeEach(() => { FakeWS.instances = []; vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket) })
 
 describe('WsClient', () => {
-  it('fires onOpen, routes frames by type, exposes isOpen', () => {
+  it('fires onOpen, delivers every frame with its type, exposes isOpen', () => {
     const c = new WsClient('/ws')
     const opened = vi.fn(); const got = vi.fn()
-    c.onOpen(opened); c.on('new_message', got)
+    c.onOpen(opened); c.onFrame(got)
     c.connect('tok')
     const ws = FakeWS.instances[0]
     expect(ws.url).toBe('/ws')
@@ -32,11 +32,22 @@ describe('WsClient', () => {
     expect(opened).toHaveBeenCalled()
     expect(c.isOpen()).toBe(true)
     ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 5 } }))
-    expect(got).toHaveBeenCalledWith({ msg_id: 5 }, undefined)
+    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 5 }, undefined)
     // Курсор ИЗ КОНВЕРТА доезжает до подписчика: у кадров, чей конструктор
     // схемы своего `pts` не объявляет, он едет только здесь.
     ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 6 }, pts: 42 }))
-    expect(got).toHaveBeenCalledWith({ msg_id: 6 }, 42)
+    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 6 }, 42)
+  })
+
+  // Кадр НЕЗНАКОМОГО типа тоже доезжает — раньше он исчезал молча, потому что
+  // слушателя именно этого имени никто не завёл.
+  it('доставляет кадр, тип которого никому не известен', () => {
+    const c = new WsClient('/ws')
+    const got = vi.fn(); c.onFrame(got)
+    c.connect('tok')
+    const ws = FakeWS.instances[0]; ws.open()
+    ws.message(JSON.stringify({ t: 'какой_то_новый_кадр', d: { x: 1 } }))
+    expect(got).toHaveBeenCalledWith('какой_то_новый_кадр', { x: 1 }, undefined)
   })
 
   it('fires onClose and reports not open', () => {

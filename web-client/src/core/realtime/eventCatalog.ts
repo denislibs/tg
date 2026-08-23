@@ -1,16 +1,12 @@
 // src/core/realtime/eventCatalog.ts
 //
-// ЕДИНЫЙ каталог WS-типов realtime — единственный источник правды. Раньше их было
-// три рукописных списка, которые дрейфовали:
-//   • FRAME_TYPES (connectionManager) — на что подписываться;
-//   • PASS_THROUGH (worker) — эфемерные wsType → RT;
-//   • APPLY (worker) — логируемые wsType (через funnel курсора).
-// FRAME_TYPES отстал на 13 типов (dialog_mute/checklist_update/
-// chat_update/folder_update/paid_media_unlock/balance_update + geo_live_update/
-// suggested_post_update/bot_callback_answer/story_new/story_deleted/story_reaction) —
-// а WsClient шлёт кадр ТОЛЬКО слушателям своего типа, поэтому эти кадры молча
-// дропались. Теперь всё выводится отсюда:
-//   FRAME_TYPES  = все ключи каталога (полный, не дрейфует);
+// ЕДИНЫЙ каталог WS-типов realtime. Раньше отсюда же выводился список типов, на
+// которые подписывается транспорт (FRAME_TYPES): WsClient отдавал кадр ТОЛЬКО
+// слушателям своего типа, поэтому кадр вне списка исчезал молча — так однажды
+// потерялись тринадцать штук сразу. Списка больше нет: транспорт отдаёт КАЖДЫЙ
+// кадр одним обработчиком (Transport.onFrame), и потерять кадр нечем.
+//
+// Отсюда выводятся:
 //   PASS_THROUGH = {wsType: rt} для kind:'ephemeral';
 //   LoggedWsType = ключи kind:'logged' (worker APPLY сверяется типом → пропуск
 //                  логируемого типа = ошибка компиляции).
@@ -81,9 +77,6 @@ export const EVENT_CATALOG = {
 export type WsType = keyof typeof EVENT_CATALOG
 /** Типы, что идут через funnel курсора — worker APPLY обязан покрыть ровно их. */
 export type LoggedWsType = { [K in WsType]: typeof EVENT_CATALOG[K]['kind'] extends 'logged' ? K : never }[WsType]
-
-/** На что подписывается connectionManager (полный список — не дрейфует). */
-export const FRAME_TYPES: string[] = Object.keys(EVENT_CATALOG)
 
 /** Эфемерные wsType → RT-имя: worker транслирует как есть (без funnel). */
 export const PASS_THROUGH: Record<string, string> = Object.fromEntries(
