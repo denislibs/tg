@@ -28,9 +28,15 @@ type plainCodec struct{}
 
 func (plainCodec) decode(raw []byte) (byte, []byte, error) { return frameKindJSON, raw, nil }
 
-// kind игнорируется: plain-WS шлёт JSON-текст as-is; бинарные file-кадры на
-// plain-путь не попадают.
-func (plainCodec) encode(_ byte, frame []byte) (int, []byte) { return websocket.TextMessage, frame }
+// JSON едет текстом as-is, TL — бинарём: на проводе TL кадр это байты
+// контейнера Updates, а не строка. Бинарные file-кадры на plain-путь не
+// попадают, поэтому их kind здесь и не разбирается.
+func (plainCodec) encode(kind byte, frame []byte) (int, []byte) {
+	if kind == frameKindTL {
+		return websocket.BinaryMessage, frame
+	}
+	return websocket.TextMessage, frame
+}
 
 // dnpCodec — Noise-канал: binary + шифрование каждого кадра. send использует
 // только writePump, recv — только readPump (гонок нет).
@@ -49,6 +55,11 @@ const frameKindFile byte = 0x01
 
 // frameKindFileUp — бинарный upload-чанк клиент→сервер (DNP L5 upload).
 const frameKindFileUp byte = 0x02
+
+// frameKindTL — кадр реального времени, закодированный в TL (контейнер
+// Updates). Отдельный kind, а не «бинарь вообще»: file-чанк и апдейт — разные
+// предметы, и путать их по одному признаку «не текст» нельзя.
+const frameKindTL byte = 0x03
 
 func (c *dnpCodec) decode(raw []byte) (byte, []byte, error) {
 	plain, err := dnp.DecryptFrame(c.recv, raw)
@@ -148,6 +159,10 @@ type Conn struct {
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
+	// wireTL — соединение выбрало провод TL (подпротокол `tl.1` на
+	// рукопожатии). Свойство соединения, а не сервера: соседняя вкладка того же
+	// пользователя может остаться на JSON.
+	wireTL bool
 }
 
 func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.UserRecord, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
@@ -164,13 +179,30 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 // SetUploadDispatcher связывает upload-диспетчер после сборки роутера (как SetFileDispatcher).
 func (c *Conn) SetUploadDispatcher(u UploadDispatcher) { c.upload = u }
 
+// SetWireTL переводит соединение на провод TL. Зовётся ДО conn.run(), то есть
+// до запуска насосов, — гонок с writePump нет.
+func (c *Conn) SetWireTL(on bool) { c.wireTL = on }
+
 // Close force-closes the underlying socket (used by the hub on revoke). The
 // read pump then exits and run() cleans up.
 func (c *Conn) Close() { _ = c.ws.Close() }
 
-// Send queues a JSON frame (kind 0x00) for the writer. Drops the frame if the
-// buffer is full (a stuck client must not block fan-out).
-func (c *Conn) Send(frame []byte) { c.enqueue(outFrame{frameKindJSON, frame}) }
+// Send queues a frame for the writer. Drops the frame if the buffer is full (a
+// stuck client must not block fan-out).
+//
+// Формат провода — свойство СОЕДИНЕНИЯ (выбран подпротоколом на рукопожатии), а
+// не кадра: один и тот же апдейт уезжает JSON-текстом одной вкладке и байтами
+// TL другой. Кадр без конструктора кодировать нечем — он уезжает JSON-текстом
+// на любом проводе (см. tlEncodeUpdateFrame).
+func (c *Conn) Send(frame []byte) {
+	if c.wireTL {
+		if body, ok := tlEncodeUpdateFrame(frame); ok {
+			c.enqueue(outFrame{frameKindTL, body})
+			return
+		}
+	}
+	c.enqueue(outFrame{frameKindJSON, frame})
+}
 
 // SendBinary queues a raw binary payload (kind 0x01, media-чанк). Drop-if-full
 // как Send. Плейн-conn его не зовёт (file_req обслуживается лишь при c.file != nil).
