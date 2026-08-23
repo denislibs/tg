@@ -63,6 +63,14 @@ var OmittedWithoutSubject = map[string][]string{
 	"messages.foundStickerSets": {"hash"},
 	"messages.stickers":         {"hash"},
 	"messages.savedGifs":        {"hash"},
+
+	// ── Истории ─────────────────────────────────────────────────────────────
+	// Те же реквизиты СПРАВОЧНИКА мест, что у messageMediaVenue выше, и по той
+	// же причине: справочника у нас нет, точку с подписью присылает автор.
+	"mediaAreaVenue": {"provider", "venue_id", "venue_type"},
+	// Курсор ленты историй: лента отдаётся целиком, продолжать нечего
+	// (tl-stories-analysis.md, Р8).
+	"stories.allStories": {"state"},
 }
 
 // WireCodec — кодек TL, знающий наши заглушки.

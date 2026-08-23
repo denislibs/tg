@@ -13189,7 +13189,8 @@ export namespace StoryItem {
     sent_reaction?: Reaction,
     albums?: Array<number>,
     music?: Document,
-    pinnedIndex?: number
+    pinnedIndex?: number,
+    viewed?: boolean
   };
 }
 

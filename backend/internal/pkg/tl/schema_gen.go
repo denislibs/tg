@@ -8496,7 +8496,7 @@ var clientParams = map[string][]string{
 	"statsAbsValueAndPrev":               {"approximate"},
 	"payments.checkedGiftCode":           {"slug"},
 	"updateSavedReactionTags":            {"tags", "savedPeerId"},
-	"storyItem":                          {"pinnedIndex"},
+	"storyItem":                          {"pinnedIndex", "viewed"},
 	"storyItemSkipped":                   {"pinnedIndex"},
 	"messageEntityCustomEmoji":           {"w", "h"},
 	"messageReplyHeader":                 {"reply_to_msg_deleted"},

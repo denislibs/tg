@@ -516,7 +516,7 @@ func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, captio
 
 // Archive returns the caller's own expired stories, newest first (tweb
 // stories.getStoriesArchive), paginated by offsetID (0 = from the top).
-func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -525,7 +525,7 @@ func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) (
 
 // PinnedStories returns a peer's pinned stories (tweb stories.getPinnedStories),
 // including expired ones, filtered to what viewerID may see.
-func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	return s.repo.Pinned(ctx, peerID, viewerID)
 }
 

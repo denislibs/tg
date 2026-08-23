@@ -61,9 +61,14 @@ type StoryOrigin struct {
 	MediaID    int64
 }
 
-// StoryItem is one story in a feed group, with the viewer's seen state and its
-// reaction aggregate for the viewer (tweb story views.reactions / sent_reaction).
-type StoryItem struct {
+// StoryRecord — ПЛОСКАЯ строка выборки историй: то, что отдаёт SQL, вместе с
+// пер-зрительским состоянием (просмотрено, моя реакция).
+//
+// Суффикс Record — тот же приём и та же причина, что у DialogRecord/UserRecord/
+// ChatRecord: `StoryItem` это имя ОБЪЕДИНЕНИЯ схемы (mtstory.go), и плоская
+// строка выборки объединением не является. Разбор полей (что куда уезжает) —
+// docs/readiness/tl-stories-analysis.md, исполняется шагом B.
+type StoryRecord struct {
 	ID, MediaID int64
 	Caption     string
 	// Privacy отдаётся как есть, чтобы фронт показал иконку (close friends и т.п.).
@@ -91,7 +96,7 @@ type StoryItem struct {
 // StoryGroup bundles an author's active stories for the feed read model.
 type StoryGroup struct {
 	Author  UserReal
-	Stories []StoryItem
+	Stories []StoryRecord
 }
 
 // StealthMode — эфемерное состояние «невидимого просмотра» историй пользователя

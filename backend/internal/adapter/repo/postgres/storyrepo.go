@@ -124,13 +124,13 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	out := make([]domain.StoryGroup, 0)
 	// byID maps a story id to a pointer into the built groups, so the reactions
 	// breakdown (fetched in a second batched query) can be merged back in.
-	byID := make(map[int64]*domain.StoryItem)
+	byID := make(map[int64]*domain.StoryRecord)
 	storyIDs := make([]int64, 0)
 	var curAuthor int64
 	idx := -1
 	for rows.Next() {
 		var (
-			item                domain.StoryItem
+			item                domain.StoryRecord
 			au                  userRealScan
 			discard             int64 // s.author_id (== u.id via JOIN)
 			areasRaw            []byte
@@ -152,7 +152,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		item.FwdFrom = fwdFrom(fwdAuthor, fwdStory)
 		_ = discard
 		if idx < 0 || author.ID != curAuthor {
-			out = append(out, domain.StoryGroup{Author: author, Stories: []domain.StoryItem{}})
+			out = append(out, domain.StoryGroup{Author: author, Stories: []domain.StoryRecord{}})
 			idx++
 			curAuthor = author.ID
 		}
@@ -179,7 +179,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 // attachReactions loads the per-emoji reaction breakdown for the given stories
 // in one query and fills each item's Reactions (with Mine set for the viewer's
 // own emoji).
-func (r *StoryRepo) attachReactions(ctx context.Context, storyIDs []int64, viewerID int64, byID map[int64]*domain.StoryItem) error {
+func (r *StoryRepo) attachReactions(ctx context.Context, storyIDs []int64, viewerID int64, byID map[int64]*domain.StoryRecord) error {
 	if len(storyIDs) == 0 {
 		return nil
 	}
@@ -373,12 +373,12 @@ const storyItemCols = `s.id, s.media_id, s.caption, s.privacy, s.pinned, s.edite
 
 // scanStoryItems reads a flat story-item list (Archive/Pinned) and attaches the
 // per-emoji reaction breakdown for viewerID in one extra batched query.
-func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID int64) ([]domain.StoryRecord, error) {
 	defer rows.Close()
-	out := make([]domain.StoryItem, 0)
+	out := make([]domain.StoryRecord, 0)
 	for rows.Next() {
 		var (
-			it                  domain.StoryItem
+			it                  domain.StoryRecord
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
@@ -398,7 +398,7 @@ func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	byID := make(map[int64]*domain.StoryItem, len(out))
+	byID := make(map[int64]*domain.StoryRecord, len(out))
 	storyIDs := make([]int64, 0, len(out))
 	for i := range out {
 		byID[out[i].ID] = &out[i]
@@ -510,7 +510,7 @@ func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, 
 	return nil
 }
 
-func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+storyItemCols+`
 		   FROM stories s
@@ -527,7 +527,7 @@ func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64)
 	return r.scanStoryItems(ctx, rows, ownerID)
 }
 
-func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+storyItemCols+`
 		   FROM stories s

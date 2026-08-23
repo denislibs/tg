@@ -59,9 +59,9 @@ type fakeRepo struct {
 	originErr       error
 	allowIDsByStory map[int64][]int64
 	allowIDsErr     error
-	archiveItems    []domain.StoryItem
+	archiveItems    []domain.StoryRecord
 	archiveErr      error
-	pinnedItems     []domain.StoryItem
+	pinnedItems     []domain.StoryRecord
 	pinnedItemsErr  error
 	purgedSince     time.Time
 	purgeCalled     bool
@@ -136,10 +136,10 @@ func (f *fakeRepo) Origin(ctx context.Context, storyID int64) (domain.StoryOrigi
 func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error) {
 	return f.allowIDsByStory[storyID], f.allowIDsErr
 }
-func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	return f.archiveItems, f.archiveErr
 }
-func (f *fakeRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+func (f *fakeRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	return f.pinnedItems, f.pinnedItemsErr
 }
 func (f *fakeRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {
@@ -566,11 +566,11 @@ func TestFeed_AttachesAllowIDsForOwnSelectedOnly(t *testing.T) {
 	// allow must NOT be attached (we don't reveal others' audiences).
 	repo := &fakeRepo{
 		feedGroups: []domain.StoryGroup{
-			{Author: domain.UserReal{ID: 1}, Stories: []domain.StoryItem{
+			{Author: domain.UserReal{ID: 1}, Stories: []domain.StoryRecord{
 				{ID: 10, Privacy: "selected"},
 				{ID: 11, Privacy: "contacts"},
 			}},
-			{Author: domain.UserReal{ID: 2}, Stories: []domain.StoryItem{
+			{Author: domain.UserReal{ID: 2}, Stories: []domain.StoryRecord{
 				{ID: 20, Privacy: "selected"},
 			}},
 		},

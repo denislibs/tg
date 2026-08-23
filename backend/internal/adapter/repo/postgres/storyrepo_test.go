@@ -509,7 +509,7 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 		t.Fatalf("Create repost: %v", err)
 	}
 	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
-	var reposted domain.StoryItem
+	var reposted domain.StoryRecord
 	for _, s := range groups[0].Stories {
 		if s.ID == repostID {
 			reposted = s

@@ -55,7 +55,7 @@ func reactionsJSON(rcs []domain.ReactionCount) []map[string]any {
 
 // storyJSON is one story item in the feed, including its reaction aggregate.
 // my_reaction is null when the viewer hasn't reacted.
-func storyJSON(s domain.StoryItem) map[string]any {
+func storyJSON(s domain.StoryRecord) map[string]any {
 	var my any
 	if s.MyReaction != "" {
 		my = s.MyReaction
@@ -424,7 +424,7 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 }
 
 // storyItemsJSON serializes a flat story-item list (archive/pinned).
-func storyItemsJSON(items []domain.StoryItem) []map[string]any {
+func storyItemsJSON(items []domain.StoryRecord) []map[string]any {
 	out := make([]map[string]any, 0, len(items))
 	for _, it := range items {
 		out = append(out, storyJSON(it))

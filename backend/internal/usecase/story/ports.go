@@ -50,8 +50,8 @@ type StoryRepo interface {
 	// Archive — свои истёкшие истории (expires_at <= now), новые сверху, с
 	// пагинацией по id (offsetID>0 — только id < offsetID). Pinned — закреплённые
 	// истории peer'а (в т.ч. истёкшие), отфильтрованные по видимости для viewer.
-	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error)
-	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error)
+	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error)
+	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error)
 
 	// PurgeRecentViews удаляет просмотры зрителя за окно [since, now] — ретро-эффект
 	// stealth-режима (past): скрыть недавние просмотры при активации.
