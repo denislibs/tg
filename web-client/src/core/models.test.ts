@@ -190,41 +190,19 @@ describe('mapMessage', () => {
     expect(isMediaSpoiler(bare._ === 'message' ? bare : undefined)).toBe(false)
   })
 
-  // Плоская проекция объединения `MessageReactions` — единственное, что маппер
-  // ещё разбирает сверх номеров и ключей: подсистема реакций программой TL не
-  // пройдена, кадры `reaction` по-прежнему плоские.
-  it('агрегаты реакций приводятся из объединения MessageReactions', () => {
-    const m = mapMyMessage(raw({
-      reactions: {
-        _: 'messageReactions',
-        results: [
-          { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2, chosen_order: 0 },
-          { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '🔥' }, count: 1 },
-          { _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 50 },
-        ],
-        recent_reactions: [
-          { _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 8 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' } },
-        ],
-        top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 30 }],
-      },
-    }))
-    expect(m.reactions).toEqual([
-      { emoji: '👍', count: 2, mine: true, recent: [8] },
-      { emoji: '🔥', count: 1, mine: false },
-    ])
-    expect(m.starReaction).toEqual({ total: 50, mine: 30 })
-  })
-
-  // «Моя» реакция — это НАЛИЧИЕ chosen_order, а не его истинность: ноль там
-  // значит «моя первая», и склеивать его с «не моя» нельзя.
-  it('chosen_order = 0 это «моя», а не «не моя»', () => {
-    const m = mapMyMessage(raw({
-      reactions: {
-        _: 'messageReactions',
-        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1, chosen_order: 0 }],
-      },
-    }))
-    expect(m.reactions?.[0].mine).toBe(true)
+  // Агрегат реакций маппер НЕ РАЗБИРАЕТ: форма провода и форма модели совпали,
+  // и платная ⭐-реакция едет чипом того же вектора, а не отдельным полем.
+  // Операции над агрегатом — core/reactions/messageReactions.ts (свой тест).
+  it('агрегат реакций доезжает конструктором, без плоской проекции', () => {
+    const reactions = {
+      _: 'messageReactions' as const,
+      results: [
+        { _: 'reactionCount' as const, reaction: { _: 'reactionEmoji' as const, emoticon: '👍' }, count: 2, chosen_order: 0 },
+        { _: 'reactionCount' as const, reaction: { _: 'reactionPaid' as const }, count: 50 },
+      ],
+      top_reactors: [{ _: 'messageReactor' as const, pFlags: { my: true as const }, count: 30 }],
+    }
+    expect(mapMyMessage(raw({ reactions })).reactions).toBe(reactions)
   })
 })
 

@@ -4,9 +4,8 @@
 // Выделено из God-объекта messagesManager: зависит от rest, точечного патча SSOT
 // (patchMsg) и meId (для деривации `mine`) через ctx. Публичный API не меняется —
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
-import { reactionDelta } from '../../reactionDelta'
+import { mergeReactions, reactionDelta, setPaidReaction, totalReactions } from '../../reactions/messageReactions'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
-import { mapReactions } from '../../models'
 import { getPeerId } from '../../peers/peerId'
 import type { MyMessage } from '../../models'
 import type { ReactionEvt } from '../../realtime/events'
@@ -118,27 +117,21 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
   const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
     const peerId = getPeerId(evt.peer)
     const id = generateMessageId(evt.msg_id)
-    const { reactions, starReaction } = mapReactions(evt.reactions)
-    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
-      const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
-      const next = (reactions ?? []).map((r) => ({ ...r, mine: prevMine.has(r.emoji) }))
-      return {
-        ...m,
-        reactions: next.length ? next : undefined,
-        // Платная ⭐-реакция — чип ТОГО ЖЕ агрегата (reactionPaid), поэтому и
-        // применяется здесь же: отдельного кадра у неё нет. Свой вклад
-        // звёздами сохраняется из окна по той же причине, что и `mine` у
-        // эмодзи-чипа, — он пер-зрительский, а тело кадра одно на всех.
-        starReaction: starReaction && { total: starReaction.total, mine: m.starReaction?.mine ?? 0 },
-      }
-    })
+    // Платная ⭐-реакция применяется ЗДЕСЬ ЖЕ и отдельной строкой не требует:
+    // она чип того же вектора (`reactionPaid`), а мой вклад звёздами —
+    // `top_reactors` с `pFlags.my`, и он пер-зрительский ровно так же, как
+    // chosen_order. Оба сохраняет mergeReactions.
+    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => ({
+      ...m,
+      reactions: mergeReactions(m.reactions, evt.reactions),
+    }))
   }
 
   // Платная ⭐-реакция → SSOT из ОТВЕТА ручки: там и агрегат, и свой вклад
   // (кадр несёт только агрегат — свой вклад в общем теле не поедет никогда).
   const applyStarToCache = (peerId: number, serverMsgId: number, total: number, mine: number): void => {
     const id = generateMessageId(serverMsgId)
-    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => ({ ...m, starReaction: { total, mine } }))
+    patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => ({ ...m, reactions: setPaidReaction(m.reactions, total, mine) }))
   }
 
   return {
@@ -157,8 +150,7 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
     reactionsGrewOnMyMessage(peerId: number, serverMsgId: number, wire: ReactionEvt['reactions']): boolean {
       const m = readMsg(peerId, generateMessageId(serverMsgId))
       if (!m || m._ !== 'message' || !m.pFlags.out) return false
-      const total = (list: { count: number }[] | undefined) => (list ?? []).reduce((sum, r) => sum + r.count, 0)
-      return total(mapReactions(wire).reactions) > total(m.reactions)
+      return totalReactions(wire) > totalReactions(m.reactions)
     },
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)

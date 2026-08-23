@@ -150,7 +150,6 @@ export function messageToConvMsg(
     effect: real?.effect_name,
     replyMarkup: real?.reply_markup,
     reactions: m.reactions,
-    starReaction: m.starReaction,
     mediaId: getMediaId(m),
     // Вложение целиком, ОДНИМ полем — и гео, и визитка, и опрос, и чек-лист, и
     // розыгрыш, и карточка ссылки, и платное медиа лежат ЗДЕСЬ. Восьми копий

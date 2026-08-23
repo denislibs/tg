@@ -66,13 +66,13 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
  * `messageActionStarGift` (конструктора `messageMediaStarGift` в схеме нет
  * вовсе). Восемь строк allow-list'а ушли вместе с восемью полями.
  *
- * Остаётся плоская проекция агрегатов реакций: с провода объединение
- * `MessageReactions` приезжает и в сообщении, и в кадре, но чипы витрины читают
- * плоский срез — снимет его порт самой подсистемы реакций.
+ * Плоской проекции агрегатов реакций здесь БОЛЬШЕ НЕТ: `reactions` — тот же
+ * конструктор `messageReactions`, что и на проводе, а платная ⭐-реакция едет
+ * чипом того же вектора, а не отдельным полем рядом.
  */
 const OURS: Record<string, string[]> = {
-  message: ['failed', 'secret', 'secretMedia', 'localUrl', 'transcription', 'starReaction'],
-  messageService: ['failed', 'secret', 'secretMedia', 'starReaction'],
+  message: ['failed', 'secret', 'secretMedia', 'localUrl', 'transcription'],
+  messageService: ['failed', 'secret', 'secretMedia'],
 }
 
 interface Violation { path: string; predicate: string; key: string }
@@ -179,6 +179,25 @@ describe('модель сообщения совпадает со схемой T
         saved_id: 77,
       },
     }) as unknown],
+    // Агрегат реакций проверяется ТЕМ ЖЕ обходом, что и вложение: обход
+    // рекурсивный, и каждый вложенный конструктор (`reactionCount`,
+    // `reactionEmoji`, `reactionPaid`, `messagePeerReaction`, `messageReactor`)
+    // сверяется со схемой наравне с самим сообщением. До порта здесь была
+    // плоская проекция, которую сверять было не с чем.
+    ['message (с агрегатом реакций)', {
+      ...makeMessage({ id: 10, peerId: 1, fromId: 2, text: 'hi' }),
+      reactions: {
+        _: 'messageReactions',
+        results: [
+          { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2, chosen_order: 0 },
+          { _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 50 },
+        ],
+        recent_reactions: [
+          { _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 8 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' } },
+        ],
+        top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 30 }],
+      },
+    } as unknown],
   ])('%s: лишних ключей нет и обязательные на месте', (_name, value) => {
     const { unexpected, omitted } = check(value, 'message')
     expect(unexpected).toEqual([])

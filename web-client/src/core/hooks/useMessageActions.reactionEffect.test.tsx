@@ -72,7 +72,7 @@ describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
 
   it('пользователь ставит свою реакцию — триггерит эффект (add)', () => {
     const managers = mockManagers()
-    const { result } = renderActions(makeWin([rawMsg({ reactions: [] })]), managers)
+    const { result } = renderActions(makeWin([rawMsg({ reactions: { _: 'messageReactions', results: [] } })]), managers)
 
     act(() => result.current.toggleReaction(5, '❤'))
 
@@ -83,7 +83,11 @@ describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
   it('пользователь снимает свою реакцию — эффект НЕ триггерится (remove)', () => {
     const managers = mockManagers()
     const { result } = renderActions(
-      makeWin([rawMsg({ reactions: [{ emoji: '❤', count: 1, mine: true }] })]),
+      makeWin([rawMsg({ reactions: {
+        _: 'messageReactions',
+        // «Моя» — наличие chosen_order, а не булев флаг рядом.
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '❤' }, count: 1, chosen_order: 0 }],
+      } })]),
       managers,
     )
 
@@ -95,7 +99,7 @@ describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
 
   it('реакция на другое сообщение/эмодзи не отмечается — ключ строго msgId:emoji', () => {
     const managers = mockManagers()
-    const { result } = renderActions(makeWin([rawMsg({ reactions: [] })]), managers)
+    const { result } = renderActions(makeWin([rawMsg({ reactions: { _: 'messageReactions', results: [] } })]), managers)
 
     act(() => result.current.toggleReaction(5, '❤'))
 

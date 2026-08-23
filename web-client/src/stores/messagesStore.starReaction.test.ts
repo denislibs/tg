@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useMessagesStore } from './messagesStore'
 import type { MyMessage } from '../core/models'
 import { makeMessage } from '../core/messages/testMessage'
+import { myPaidStars, paidCount } from '../core/reactions/messageReactions'
 
 const CHAT = 7
 
@@ -11,8 +12,12 @@ function msg(id: number): MyMessage {
   return makeMessage({ id, peerId: CHAT, fromId: 1, text: 'hi' })
 }
 
+// Платная ⭐-реакция живёт В ТОМ ЖЕ агрегате: сумма — чип `reactionPaid`,
+// мой вклад — `top_reactors` с `pFlags.my`.
 function starOf(id: number) {
-  return useMessagesStore.getState().byKey[String(CHAT)].msgs.find((m) => m.id === id)?.starReaction
+  const agg = useMessagesStore.getState().byKey[String(CHAT)].msgs.find((m) => m.id === id)?.reactions
+  const paid = paidCount(agg)
+  return paid ? { total: paid.count, mine: myPaidStars(agg) } : undefined
 }
 
 describe('messagesStore.applyStarReaction', () => {

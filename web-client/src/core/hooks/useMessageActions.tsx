@@ -13,6 +13,7 @@ import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
+import { hasMyReaction, myEmoticons } from '../reactions/messageReactions'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useReactionEffectStore } from '../../stores/reactionEffectStore'
@@ -461,7 +462,7 @@ export function useMessageActions({
     if (!isRealChat) return
     const raw = win.msgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
-    const mine = raw.reactions?.find((r) => r.emoji === emoji)?.mine
+    const mine = hasMyReaction(raw.reactions, emoji)
     // Оптимистика в main-сторе (tweb sendReaction — мгновенно, ДО сети): дельта
     // ±1; серверное эхо reaction (с counts) реконсилит абсолютно, на ошибке сети —
     // откат обратной дельтой. Раньше это делал worker fake-broadcast.
@@ -481,15 +482,16 @@ export function useMessageActions({
       useReactionEffectStore.getState().trigger(msgId, emoji)
 
       // Снимаем свои прежние реакции, которые не помещаются в лимит вместе с новой.
-      // Порядок постановки (tweb chosen_order) сервер нам не отдаёт, поэтому
-      // старшинство берём по позиции в агрегате.
+      // Старшинство берёт `chosen_order` — тот самый порядковый номер, ради
+      // которого «моя» перестала быть булевой: первой снимается САМАЯ СТАРАЯ
+      // моя реакция, а не та, что случайно оказалась левее в агрегате.
       // Premium — ФЛАГ конструктора (`user.pFlags.premium`), а не поле витрины.
       const limit = me?.user.pFlags?.premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
-      const others = (raw.reactions ?? []).filter((r) => r.mine && r.emoji !== emoji)
+      const others = myEmoticons(raw.reactions).filter((e) => e !== emoji)
       for (const stale of others.slice(0, Math.max(0, others.length - limit + 1))) {
-        store.applyReactionOptimistic(numericChatId, msgId, stale.emoji, 'remove', meCard)
-        void managers.messages.unreact(numericChatId, msgId, stale.emoji).catch(() =>
-          store.applyReactionOptimistic(numericChatId, msgId, stale.emoji, 'add', meCard),
+        store.applyReactionOptimistic(numericChatId, msgId, stale, 'remove', meCard)
+        void managers.messages.unreact(numericChatId, msgId, stale).catch(() =>
+          store.applyReactionOptimistic(numericChatId, msgId, stale, 'add', meCard),
         )
       }
     }

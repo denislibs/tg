@@ -287,8 +287,7 @@ export default function MessageContent({
       <MessageReactions
         msgId={m.id!}
         inside={!!trailing}
-        reactions={m.reactions ?? []}
-        star={m.starReaction && m.starReaction.total > 0 ? m.starReaction : undefined}
+        reactions={m.reactions!}
         rowLive={rowLive}
         canSeeList={canSeeReactionList}
         trailing={trailing}

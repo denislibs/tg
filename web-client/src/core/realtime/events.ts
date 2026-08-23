@@ -1,5 +1,5 @@
 // src/core/realtime/events.ts
-import type { MessageEntity, RawMyMessage, WireMessageReactions } from '../models'
+import type { MessageEntity, RawMyMessage, MessageReactions } from '../models'
 import type { MessageMedia } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
@@ -514,7 +514,7 @@ export interface ReactionEvt {
   _: 'updateMessageReactions'
   peer: Peer
   msg_id: number
-  reactions: WireMessageReactions
+  reactions: MessageReactions
 }
 /** Бусты канала — НАШ конструктор (кадра бустов ЗРИТЕЛЮ в схеме нет:
  *  `updateBotChatBoost` про бота, следящего за чужим каналом). Сам статус —

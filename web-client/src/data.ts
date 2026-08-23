@@ -1,4 +1,4 @@
-import type { MessageEntity } from './core/models'
+import type { MessageEntity, MessageReactions } from './core/models'
 import type { MessageMedia } from './core/media/messageMedia'
 import type { MessageActionStarGift } from './core/messages/messageAction'
 
@@ -55,12 +55,12 @@ export interface ConvMsg {
   pinned?: boolean
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
-  // чипы реакций под сообщением; recent — КЛЮЧИ последних реагировавших
-  // (бэк отдаёт их только когда список доступен — tweb reactions.can_see_list).
-  // Имя и фото чип берёт из зеркала пиров: на проводе едет вектор `Peer`, а не
-  // мини-карточка (см. `core/models.ts::ReactionCount`).
-  reactions?: { emoji: string; count: number; mine: boolean; recent?: PeerId[] }[]
-  starReaction?: { total: number; mine: number } // платная ⭐-реакция (сумма звёзд + вклад зрителя)
+  /** Агрегат реакций — тот же конструктор, что на проводе (`messageReactions`).
+   *  Платная ⭐-реакция ОТДЕЛЬНЫМ полем не живёт: она чип того же вектора
+   *  (`reactionPaid`), а мой вклад звёздами — `top_reactors` с `pFlags.my`.
+   *  Имя и фото реагировавшего чип берёт из зеркала пиров: в
+   *  `recent_reactions` едет `Peer`, а не мини-карточка. */
+  reactions?: MessageReactions
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
   // Предложение фото профиля (service-сообщение suggest_photo): у получателя под

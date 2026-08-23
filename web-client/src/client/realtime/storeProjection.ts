@@ -9,7 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapDraftMessage, mapBoostStatus, mapSuggestedPost, mapMessage, mapReactions } from '../../core/models'
+import { mapDraftMessage, mapBoostStatus, mapSuggestedPost, mapMessage } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -261,9 +261,9 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as ReactionEvt
     // Платная ⭐-реакция приезжает ЭТИМ ЖЕ кадром — чипом reactionPaid того же
     // агрегата, а не своим типом: своего конструктора у неё в схеме нет.
-    const { reactions, starReaction } = mapReactions(e.reactions)
+    // Поэтому и применяется агрегат ЦЕЛИКОМ, одним вызовом.
     useMessagesStore.getState()
-      .applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), reactions ?? [], starReaction?.total ?? 0)
+      .applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), e.reactions)
   })
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его

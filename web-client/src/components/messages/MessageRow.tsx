@@ -152,9 +152,9 @@ function MessageRow({
   // у УЖЕ смонтированного ряда → анимируем вход.
   const rowLiveRef = useRef(false)
   useEffect(() => { rowLiveRef.current = true }, [])
-  const showReactions =
-    ((m.reactions?.length ?? 0) > 0 || (!!m.starReaction && m.starReaction.total > 0)) &&
-    m.id != null && !selecting
+  // Один вопрос вместо двух: платный чип лежит в том же векторе, поэтому
+  // «есть ли что рисовать» это непустой `results`.
+  const showReactions = (m.reactions?.results.length ?? 0) > 0 && m.id != null && !selecting
 
   // Что можно выделять — tweb ChatSelection.canSelectBubble (selection.ts:999-1006):
   // сервисные (у нас рендерятся не через MessageRow), неотправленные (is-outgoing)

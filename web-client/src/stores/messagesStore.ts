@@ -10,10 +10,10 @@
 // с peer_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type FactCheck, type ReactionCount } from '../core/models'
+import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type FactCheck, type MessageReactions } from '../core/models'
 import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '../core/media/messageMedia'
 import type { ReplyMarkup } from '../core/markup/replyMarkup'
-import { reactionDelta } from '../core/reactionDelta'
+import { mergeReactions, myPaidStars, reactionDelta, sameReactions, setPaidReaction } from '../core/reactions/messageReactions'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 import { winKey } from '../core/history/messagesMirror'
 
@@ -54,22 +54,6 @@ export const EMPTY_WINDOW: ChatWindow = {
 // `pFlags.min` — пер-зрительской части в общем теле нет, и «сервер не сообщил»
 // это не «я не ставил». Прежде сюда ехали ещё два внешних сигнала (мой эмодзи и
 // действие), которых в самом агрегате не было вовсе, — они ушли вместе с диффом.
-function setReactions(
-  prev: ReactionCount[] | undefined,
-  counts: ReactionCount[],
-): ReactionCount[] | undefined {
-  const prevMine = new Set((prev ?? []).filter((r) => r.mine).map((r) => r.emoji))
-  const next = counts.map((c) => ({ ...c, mine: prevMine.has(c.emoji) }))
-  return next.length ? next : undefined
-}
-function sameReactions(a: ReactionCount[] | undefined, b: ReactionCount[] | undefined): boolean {
-  if ((a?.length ?? 0) !== (b?.length ?? 0)) return false
-  if (!a || !b) return true
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].emoji !== b[i].emoji || a[i].count !== b[i].count || a[i].mine !== b[i].mine) return false
-  }
-  return true
-}
 
 interface MessagesState {
   byKey: Record<string, ChatWindow>
@@ -120,7 +104,10 @@ interface MessagesState {
    * «платных нет». Отдельного кадра у неё не существует, поэтому и отдельного
    * применения быть не должно: половина агрегата утверждала бы, что другой
    * половины нет. Свой вклад звёздами сохраняется по той же причине, что `mine`. */
-  applyReaction: (peerId: number, msgId: number, counts: ReactionCount[], starTotal: number) => void
+  /** Абсолютный агрегат из кадра. Мой выбор (`chosen_order`) и мой вклад
+   *  звёздами (`top_reactors` с `pFlags.my`) сохраняются из окна: тело кадра
+   *  одно на всех получателей и помечено `pFlags.min`. */
+  applyReaction: (peerId: number, msgId: number, agg: MessageReactions | undefined) => void
   /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
    * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
   applyReactionOptimistic: (
@@ -303,18 +290,17 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyReaction: (peerId, msgId, counts, starTotal) =>
+  applyReaction: (peerId, msgId, agg) =>
     set((s) =>
       patchChat(s, peerId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
           if (m.id !== msgId) return m
-          const next = setReactions(m.reactions, counts)
-          const star = starTotal > 0 ? { total: starTotal, mine: m.starReaction?.mine ?? 0 } : undefined
-          if (sameReactions(m.reactions, next) && (m.starReaction?.total ?? 0) === starTotal) return m
+          const next = mergeReactions(m.reactions, agg)
+          if (sameReactions(m.reactions, next)) return m
           changed = true
-          return { ...m, reactions: next, starReaction: star }
+          return { ...m, reactions: next }
         })
         return changed ? msgs : null
       })),
@@ -340,8 +326,7 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         if (!w.msgs.some((m) => m.id === msgId)) return null
         return w.msgs.map((m) => {
           if (m.id !== msgId) return m
-          const nextMine = mine !== undefined ? mine : (m.starReaction?.mine ?? 0)
-          return { ...m, starReaction: { total, mine: nextMine } }
+          return { ...m, reactions: setPaidReaction(m.reactions, total, mine ?? myPaidStars(m.reactions)) }
         })
       })),
 }))

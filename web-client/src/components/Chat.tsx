@@ -104,6 +104,7 @@ import ChatMsgActionPopups from './conversation/ChatMsgActionPopups'
 import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
+import { hasReactionEmoticon } from '../core/reactions/messageReactions'
 import classNames from '../shared/lib/classNames'
 import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -354,7 +355,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     const fm: typeof msgs = []
     const fw: typeof winV.msgs = []
     winV.msgs.forEach((wm, i) => {
-      if (wm.reactions?.some((r) => r.emoji === savedTagFilter)) { fm.push(msgs[i]); fw.push(wm) }
+      if (hasReactionEmoticon(wm.reactions, savedTagFilter)) { fm.push(msgs[i]); fw.push(wm) }
     })
     return [fm, fw] as const
   }, [msgs, winV.msgs, savedTagFilter])

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { ReactionChip, MessageReactions } from './MessageReactions'
 import { useReactionEffectStore } from '../../stores/reactionEffectStore'
+import type { MessageReactions as MessageReactionsAggregate } from '../../core/models'
 
 // ReactionIcon и StackedAvatars тянут контекст (managers/каталог реакций) —
 // мокаем: тестируем ветвление «аватары vs число» (tweb reaction.ts
@@ -37,18 +38,44 @@ afterEach(cleanup)
 const noop = () => {}
 const chipProps = { msgId: 1, live: false, isLast: true, onToggle: noop, onShow: noop }
 
+// Чип — элемент вектора `results`: вид реакции это КОНСТРУКТОР, «моя» — наличие
+// `chosen_order`, а последние реагировавшие лежат рядом с вектором, а не внутри
+// чипа (поэтому и приходят отдельным пропом).
+const chip = (emoticon: string, count: number, chosen?: number) => ({
+  _: 'reactionCount' as const,
+  reaction: { _: 'reactionEmoji' as const, emoticon },
+  count,
+  ...(chosen !== undefined ? { chosen_order: chosen } : {}),
+})
+const aggOf = (
+  results: ReturnType<typeof chip>[],
+  recentPeers: PeerId[] = [],
+): MessageReactionsAggregate => ({
+  _: 'messageReactions',
+  results,
+  recent_reactions: results.flatMap((c) =>
+    recentPeers.map((id) => ({
+      _: 'messagePeerReaction' as const,
+      peer_id: { _: 'peerUser' as const, user_id: id },
+      date: 0,
+      reaction: c.reaction,
+    })),
+  ),
+})
+
 describe('ReactionChip — аватары vs счётчик', () => {
-  // `recent` — ключи пиров, а не карточки (см. `core/models.ts::ReactionCount`).
+  // `recent` — ключи пиров, а не карточки: вектор `recent_reactions` несёт
+  // `Peer`, а имя и фото чип берёт из зеркала пиров.
   const recent = [2, 3]
 
   it('аватары показываются, когда это разрешено и реакций мало', () => {
-    render(<ReactionChip r={{ emoji: '👍', count: 2, mine: false, recent }} canRenderAvatars {...chipProps} />)
+    render(<ReactionChip c={chip('👍', 2)} recent={recent} canRenderAvatars {...chipProps} />)
     expect(screen.getByTestId('stacked').textContent).toBe('2')
   })
 
   it('count >= порога → число, даже если recent есть', () => {
     const { container } = render(
-      <ReactionChip r={{ emoji: '👍', count: 5, mine: false, recent }} canRenderAvatars {...chipProps} />,
+      <ReactionChip c={chip('👍', 5)} recent={recent} canRenderAvatars {...chipProps} />,
     )
     expect(screen.queryByTestId('stacked')).toBeNull()
     expect(container.textContent).toContain('5')
@@ -56,7 +83,7 @@ describe('ReactionChip — аватары vs счётчик', () => {
 
   it('аватары запрещены (список скрыт / реакций много) → число', () => {
     const { container } = render(
-      <ReactionChip r={{ emoji: '👍', count: 2, mine: false, recent }} canRenderAvatars={false} {...chipProps} />,
+      <ReactionChip c={chip('👍', 2)} recent={recent} canRenderAvatars={false} {...chipProps} />,
     )
     expect(screen.queryByTestId('stacked')).toBeNull()
     expect(container.textContent).toContain('2')
@@ -64,7 +91,7 @@ describe('ReactionChip — аватары vs счётчик', () => {
 
   it('нет recent → число', () => {
     const { container } = render(
-      <ReactionChip r={{ emoji: '❤️', count: 2, mine: false }} canRenderAvatars {...chipProps} />,
+      <ReactionChip c={chip('❤️', 2)} recent={[]} canRenderAvatars {...chipProps} />,
     )
     expect(screen.queryByTestId('stacked')).toBeNull()
     expect(container.textContent).toContain('2')
@@ -81,31 +108,31 @@ describe('ReactionChip — эффект вокруг + select-анимация �
     useReactionEffectStore.setState({ active: new Set() })
   })
 
-  const heart = { emoji: '❤', count: 1, mine: true }
+  const heart = chip('❤', 1, 0)
 
   it('без триггера в сторе — select-анимация не играет, эффекта вокруг нет', () => {
-    render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     expect(screen.getByTestId('icon').getAttribute('data-play')).toBe('false')
     expect(screen.queryByTestId('effect-media')).toBeNull()
   })
 
   it('своя только что поставленная реакция — play=true, эффект вокруг монтируется своим aroundMediaId', () => {
     useReactionEffectStore.getState().trigger(1, '❤')
-    render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     expect(screen.getByTestId('icon').getAttribute('data-play')).toBe('true')
     expect(screen.getByTestId('effect-media').getAttribute('data-media')).toBe('8')
   })
 
   it('триггер у ДРУГОГО сообщения не включает play/эффект у этого чипа (ключ msgId:emoji)', () => {
     useReactionEffectStore.getState().trigger(2, '❤') // другое сообщение, тот же эмодзи
-    render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     expect(screen.getByTestId('icon').getAttribute('data-play')).toBe('false')
     expect(screen.queryByTestId('effect-media')).toBeNull()
   })
 
   it('клик по эффекту (конец анимации) снимает play и сам эффект', () => {
     useReactionEffectStore.getState().trigger(1, '❤')
-    render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     fireEvent.click(screen.getByTestId('effect-media'))
 
     expect(screen.getByTestId('icon').getAttribute('data-play')).toBe('false')
@@ -115,14 +142,14 @@ describe('ReactionChip — эффект вокруг + select-анимация �
 
   it('размонтирование ДО завершения + повторный маунт того же чипа — эффект НЕ реплеится', () => {
     useReactionEffectStore.getState().trigger(1, '❤')
-    const first = render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    const first = render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     expect(first.getByTestId('effect-media')).toBeTruthy() // сыграл в первый раз
 
     // Ушли из чата / лента реконсилировалась ДО того, как анимация доиграла —
     // ReactionAroundEffect.onComplete здесь никогда не позовётся.
     first.unmount()
 
-    const second = render(<ReactionChip r={heart} canRenderAvatars={false} {...chipProps} />)
+    const second = render(<ReactionChip c={heart} recent={[]} canRenderAvatars={false} {...chipProps} />)
     expect(second.getByTestId('icon').getAttribute('data-play')).toBe('false')
     expect(second.queryByTestId('effect-media')).toBeNull()
   })
@@ -133,19 +160,13 @@ describe('MessageReactions — порог считается по сумме р�
   const recent: PeerId[] = [2]
 
   it('суммарно меньше порога → аватары', () => {
-    render(<MessageReactions reactions={[{ emoji: '👍', count: 2, mine: false, recent }]} {...rowProps} />)
+    render(<MessageReactions reactions={aggOf([chip('👍', 2)], recent)} {...rowProps} />)
     expect(screen.getByTestId('stacked')).toBeTruthy()
   })
 
   it('суммарно порог набран разными реакциями → у всех числа', () => {
     const { container } = render(
-      <MessageReactions
-        reactions={[
-          { emoji: '👍', count: 2, mine: false, recent },
-          { emoji: '❤️', count: 2, mine: false, recent },
-        ]}
-        {...rowProps}
-      />,
+      <MessageReactions reactions={aggOf([chip('👍', 2), chip('❤️', 2)], recent)} {...rowProps} />,
     )
     expect(screen.queryByTestId('stacked')).toBeNull()
     expect(container.textContent).toContain('2')
@@ -153,12 +174,36 @@ describe('MessageReactions — порог считается по сумме р�
 
   it('список реагировавших недоступен (группа без can_see_list) → числа', () => {
     render(
-      <MessageReactions
-        reactions={[{ emoji: '👍', count: 1, mine: false, recent }]}
-        {...rowProps}
-        canSeeList={false}
-      />,
+      <MessageReactions reactions={aggOf([chip('👍', 1)], recent)} {...rowProps} canSeeList={false} />,
     )
     expect(screen.queryByTestId('stacked')).toBeNull()
+  })
+})
+
+// Платная ⭐-реакция рисуется чипом ТОГО ЖЕ вектора, а не отдельным пропом:
+// своего кадра у неё нет, и порядок чипов задаёт сам агрегат.
+describe('MessageReactions — платный чип живёт в общем векторе', () => {
+  const rowProps = { msgId: 1, rowLive: false, canSeeList: true, onToggle: noop, onShow: noop, onStar: noop }
+
+  it('reactionPaid из results рисуется звёздным чипом вместе с эмодзи-чипами', () => {
+    const { container } = render(
+      <MessageReactions
+        reactions={{
+          _: 'messageReactions',
+          results: [
+            { _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 50 },
+            chip('👍', 2),
+          ],
+          top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 30 }],
+        }}
+        {...rowProps}
+      />,
+    )
+    const chips = container.querySelectorAll('reaction-element')
+    expect(chips).toHaveLength(2)
+    expect(chips[0].className).toContain('is-paid')
+    // Мой вклад звёздами подсвечивает чип — он берётся из top_reactors.
+    expect(chips[0].className).toContain('is-chosen')
+    expect(container.textContent).toContain('50')
   })
 })

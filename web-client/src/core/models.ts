@@ -205,6 +205,14 @@ interface MessageCommon {
   date: number
   /** самоуничтожение, секунды */
   ttl_period?: number
+  /** Агрегат реакций — тот же конструктор, что на проводе (`messageReactions`),
+   *  без плоской проекции.
+   *
+   *  Платная ⭐-реакция ОТДЕЛЬНЫМ полем не живёт: своего кадра у неё нет, а на
+   *  проводе она чип того же вектора `results` (второй конструктор объединения
+   *  `Reaction` — `reactionPaid`). Мой вклад звёздами — `top_reactors` с
+   *  `pFlags.my`, потому что в `reactionCount` помещается только «моя или нет». */
+  reactions?: MessageReactions
 
   // ── клиентские параметры (`schema_additional_params.json`) ────────────────
   /** знаковый ключ чата — выведен из `peer_id` один раз на границе разбора */
@@ -221,15 +229,6 @@ interface MessageCommon {
    *  удаления. У оригинала на этом месте `error: ApiError`, объекта ошибки у
    *  нас нет. */
   failed?: boolean
-  /** агрегаты реакций ПЛОСКОЙ проекцией. С провода — и в сообщении, и в кадре —
-   *  приезжает объединение `MessageReactions`; проекция живёт по эту сторону
-   *  границы, потому что чипы и оптимистичный клик читают плоский срез. Долг
-   *  подсистемы РЕАКЦИЙ: собрать их вокруг конструктора. */
-  reactions?: ReactionCount[]
-  /** платная ⭐-реакция: суммарно звёзд + личный вклад зрителя. Та же плоская
-   *  проекция того же объединения (`reactionPaid` + `messageReactor`), своего
-   *  кадра у неё нет — она чип того же агрегата. */
-  starReaction?: { total: number; mine: number }
   /** сообщение из секретного чата (после расшифровки `message` заполнен локально) */
   secret?: boolean
   /** E2E-медиа секретного чата — инжектит расшифровка воркера, не провод */
@@ -498,19 +497,6 @@ export interface FactCheck {
   text?: TextWithEntities
 }
 
-// Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
-export interface ReactionCount {
-  emoji: string
-  count: number
-  mine: boolean
-  /** до 3 последних реагировавших (свежие первыми) — ЗНАКОВЫЕ КЛЮЧИ пиров, а не
-   *  мини-карточки: чип рисует их аватары вместо числа при count<4 (порт tweb
-   *  `reaction.ts:1083` — `recentReactions.map((r) => getPeerId(r.peer_id))`),
-   *  а имя и фото берёт из зеркала пиров. Автором реакции может быть и канал,
-   *  поэтому ключ, а не id пользователя. */
-  recent?: PeerId[]
-}
-
 // E2E-медиа секретного чата. Файл шифруется своим AES-ключом; ciphertext лежит на
 // сервере как непрозрачный blob (media_id), а keyB64/ivB64 приезжают ВНУТРИ
 // зашифрованного payload сообщения. Заполняется только клиентской расшифровкой —
@@ -737,13 +723,10 @@ export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
 //     `reply_to_top_id` серверные; в модели — клиентские
 //     (`core/history/messageId.ts`).
 //  2. **Ссылки на пиров.** Знаковые ключи `peerId`/`fromId` выводит клиент.
-//  3. **Не пройденные программой подсистемы.** Реакции приезжают объединением
-//     `MessageReactions`, а модель держит плоскую проекцию.
-//
-// Всё остальное совпало — поэтому маппер и усох до этих трёх пунктов.
+// Всё остальное совпало — поэтому маппер и усох до этих двух пунктов.
 
 /** reactionEmoji#1b2286b8 emoticon:string | reactionPaid#523da4eb = Reaction; */
-export type WireReaction =
+export type Reaction =
   | { _: 'reactionEmoji'; emoticon: string }
   | { _: 'reactionPaid' }
 
@@ -752,24 +735,24 @@ export type WireReaction =
  *
  *  `chosen_order` — ПОРЯДКОВЫЙ НОМЕР среди моих реакций, а не булево «моя»:
  *  «не поставил» выражается отсутствием параметра, поэтому ноль это значение. */
-export interface WireReactionCount {
+export interface ReactionCount {
   _: 'reactionCount'
   chosen_order?: number
-  reaction: WireReaction
+  reaction: Reaction
   count: number
 }
 
 /** messagePeerReaction#8c79b63c … peer_id:Peer date:int reaction:Reaction; */
-export interface WireMessagePeerReaction {
+export interface MessagePeerReaction {
   _: 'messagePeerReaction'
   peer_id: Peer
   date: number
-  reaction: WireReaction
+  reaction: Reaction
 }
 
 /** messageReactor#4ba3a95a flags:# … my:flags.1?true anonymous:flags.2?true
  *  peer_id:flags.3?Peer count:int = MessageReactor; */
-export interface WireMessageReactor {
+export interface MessageReactor {
   _: 'messageReactor'
   pFlags?: Partial<{ my: true; anonymous: true }>
   peer_id?: Peer
@@ -779,11 +762,11 @@ export interface WireMessageReactor {
 /** messageReactions#0a339f0b flags:# … results:Vector<ReactionCount>
  *  recent_reactions:flags.1?Vector<MessagePeerReaction>
  *  top_reactors:flags.4?Vector<MessageReactor> = MessageReactions; */
-export interface WireMessageReactions {
+export interface MessageReactions {
   _: 'messageReactions'
-  results: WireReactionCount[]
-  recent_reactions?: WireMessagePeerReaction[]
-  top_reactors?: WireMessageReactor[]
+  results: ReactionCount[]
+  recent_reactions?: MessagePeerReaction[]
+  top_reactors?: MessageReactor[]
 }
 
 interface RawMessageCommon {
@@ -795,7 +778,7 @@ interface RawMessageCommon {
   reply_to?: MessageReplyHeader
   date: number
   ttl_period?: number
-  reactions?: WireMessageReactions
+  reactions?: MessageReactions
   random_id?: string
   /** НЕ проводные. Расшифровка секретного чата живёт в ВОРКЕРЕ (там ключи) и
    *  идёт ДО разбора — иначе кадр уехал бы мимо своего места в потоке pts.
@@ -846,44 +829,6 @@ export type RawMessage = RawMessageEmpty | RawMessageReal | RawMessageService
  */
 export type RawMyMessage = RawMessageReal | RawMessageService
 
-/**
- * Плоская проекция объединения `MessageReactions` — ЕДИНСТВЕННОЕ место, где
- * агрегаты реакций переводятся в форму, которую читают чипы и оптимистичный
- * клик. Провод теперь несёт конструктор ВЕЗДЕ (и в сообщении, и в кадре
- * `updateMessageReactions`), поэтому разбор один и тот же; плоский срез —
- * форма МОДЕЛИ, и снимет её порт самой подсистемы реакций.
- *
- * Платная ⭐-реакция разбирается здесь же: она не отдельная сущность, а второй
- * конструктор объединения `Reaction` в том же векторе `results`.
- */
-export function mapReactions(r: WireMessageReactions | undefined): { reactions?: ReactionCount[]; starReaction?: { total: number; mine: number } } {
-  if (!r) return {}
-  const flat: ReactionCount[] = []
-  let starTotal = 0
-  for (const c of r.results ?? []) {
-    if (c.reaction._ === 'reactionPaid') { starTotal = c.count; continue }
-    const emoji = c.reaction.emoticon
-    const recent = (r.recent_reactions ?? [])
-      .filter((x) => x.reaction._ === 'reactionEmoji' && x.reaction.emoticon === emoji)
-      .map((x) => getPeerId(x.peer_id))
-    flat.push({
-      emoji,
-      count: c.count,
-      // «Моя» — это НАЛИЧИЕ chosen_order, а не его истинность: ноль там значит
-      // «моя первая», и склеивать его с «не моя» нельзя.
-      mine: c.chosen_order !== undefined,
-      ...(recent.length ? { recent } : {}),
-    })
-  }
-  // Личный вклад в платную реакцию лежит в messageReactor с pFlags.my — рядом с
-  // чипом его нет, потому что в reactionCount помещается только «моя или нет».
-  const mine = (r.top_reactors ?? []).find((x) => x.pFlags?.my)?.count ?? 0
-  return {
-    reactions: flat.length ? flat : undefined,
-    starReaction: starTotal > 0 ? { total: starTotal, mine } : undefined,
-  }
-}
-
 /** Ссылка на отвечаемое: единственное, что меняется, — пространство номеров. */
 function mapReplyHeader(h: MessageReplyHeader | undefined): MessageReplyHeader | undefined {
   if (!h) return undefined
@@ -896,8 +841,7 @@ function mapReplyHeader(h: MessageReplyHeader | undefined): MessageReplyHeader |
 /**
  * Проводное сообщение → модель. Разбирать почти нечего: формы совпали, и
  * маппер остался ровно тем, чем должен, — ГРАНИЦЕЙ. Он переводит номера в
- * клиентское пространство, выводит знаковые ключи пиров и приводит ту
- * подсистему, которая программой TL ещё не пройдена, — реакции.
+ * клиентское пространство и выводит знаковые ключи пиров.
  *
  * `meId` нужен ровно одному: уточнению служебного действия до синтетического
  * конструктора («Вы присоединились» против «X присоединился»).
@@ -925,7 +869,8 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     random_id: r.random_id,
     secret: r.secret,
     secretMedia: r.secretMedia,
-    ...mapReactions(r.reactions),
+    // Агрегат реакций едет КАК ЕСТЬ: форма провода и форма модели совпали.
+    reactions: r.reactions,
   }
 
   if (r._ === 'messageService') {
