@@ -53,6 +53,18 @@
       "type": "Update",
       "hex": "fd0a2b1fd3b9007600000000000000000c000000221751590700000000000000048e886a0cd0bfd180d0b8d0b2d0b5d1820000002900000001000000",
       "note": "updateNewMessage#1f2b0afd message:Message pts:int pts_count:int — целый КАДР реального времени из нашей модели: сообщение id=12 в личном чате с peerUser{user_id=7}, текст 'привет' (UTF-8, выравнивание), курсор pts=41. Кадр у нас был конвертом {t: \"new_message\", d: {…}} с типом СТРОКОЙ и курсором, дописанным рядом с телом; здесь тип — четыре байта id конструктора, а pts — обычный параметр."
+    },
+    {
+      "name": "updateShortNewMessage",
+      "type": "Updates",
+      "hex": "c1ded478fd0a2b1fd3b9007600000000000000000c000000221751590700000000000000048e886a0cd0bfd180d0b8d0b2d0b5d1820000002900000001000000048e886a",
+      "note": "updateShort#78d4dec1 update:Update date:int = Updates; — ОБОЛОЧКА кадра на проводе TL. Конверта {t,d} в TL нет, и оболочку даёт схема: у кадра, чей конструктор объявляет pts (здесь updateNewMessage), курсор внутри тела, поэтому контейнеру добавить нечего."
+    },
+    {
+      "name": "updatesDialogPinned",
+      "type": "Updates",
+      "hex": "4042ae7415c4b51c010000001ce56f6e0100000005bf6de522175159070000000000000015c4b51c0000000015c4b51c00000000048e886a2a000000",
+      "note": "updates#74ae4240 updates:Vector<Update> users:Vector<User> chats:Vector<Chat> date:int seq:int = Updates; — вторая оболочка. У updateDialogPinned параметра pts нет вовсе, поэтому курсор кадра едет seq КОНТЕЙНЕРА: решение Р7 разбора. Векторы users/chats пока пустые."
     }
   ]
 }

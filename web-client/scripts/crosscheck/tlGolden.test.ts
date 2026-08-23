@@ -200,6 +200,46 @@ describe.skipIf(!hasTweb)('байты нашего кодека читает н�
     expect(result.message.peer_id._).toBe('peerUser')
     expect(+result.message.peer_id.user_id).toBe(7)
   })
+
+  // ОБОЛОЧКА кадра. Конверта `{t, d, pts}` на проводе TL нет вовсе, и оболочку
+  // даёт схема: `updateShort` для кадра, чей конструктор объявляет `pts`.
+  // Чужой разбор здесь отвечает на главный вопрос перехода — «понимает ли
+  // сторонняя реализация нашу оболочку», — а не только «сходится ли наш круг».
+  it('updateShort — оболочка кадра, курсор внутри самого апдейта', async () => {
+    const {TLDeserialization} = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('updateShortNewMessage')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('updateShort')
+    expect(result.update._).toBe('updateNewMessage')
+    expect(result.update.pts).toBe(41)
+    expect(result.update.message.message).toBe('привет')
+    expect(result.date).toBe(1787334148)
+  })
+
+  // Вторая оболочка — и ровно она решает задачу, из-за которой конверт вообще
+  // существовал: у `updateDialogPinned` параметра `pts` нет в схеме, а курсор
+  // кадру нужен. Он едет `seq` КОНТЕЙНЕРА (решение Р7), и чужой разбор достаёт
+  // его оттуда же.
+  it('updates — курсор кадра без своего pts едет seq контейнера', async () => {
+    const {TLDeserialization} = await import('@lib/mtproto/tl_utils')
+
+    const vector = vectorOf('updatesDialogPinned')
+    const result = new TLDeserialization(toBuffer(vector.hex)).fetchObject(vector.type, 'crosscheck')
+
+    expect(result._).toBe('updates')
+    expect(result.seq).toBe(42)
+    expect(result.updates).toHaveLength(1)
+    expect(result.updates[0]._).toBe('updateDialogPinned')
+    // «Закреплено» — бит маски, а не поле со значением.
+    expect(result.updates[0].pFlags?.pinned).toBe(true)
+    expect(result.updates[0].peer._).toBe('dialogPeer')
+    expect(+result.updates[0].peer.peer.user_id).toBe(7)
+    // Векторы объектов пока пустые — наполнить их отдельная работа.
+    expect(result.users).toEqual([])
+    expect(result.chats).toEqual([])
+  })
 })
 
 // Пропуск обязан быть ЗАМЕТНЫМ: молча зелёный прогон без предмета проверки —
