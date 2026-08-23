@@ -157,6 +157,13 @@ export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
  * — тоже пер-зритель и приезжает там же.
  */
 export interface NewMessageEvt {
+  /**
+   * ДВА конструктора с одинаковым телом: различает их курсор, который двигает
+   * кадр, — общий пер-юзерный у `updateNewMessage`, пер-канальный у
+   * `updateNewChannelMessage`. Ровно так же устроена схема, и ровно поэтому
+   * тела совпадают: предмет один.
+   */
+  _: 'updateNewMessage' | 'updateNewChannelMessage'
   message: import('../models').RawMessage
   /** плотный монотонный pts (funnel-дедуп/гейт/gap). */
   pts?: number
@@ -404,7 +411,9 @@ export interface DialogMuteEvt {
 // (core/models.ts:88-118); остальные (`about`, `is_public`, `settings`,
 // `signatures`, …) живут в карточке чата, которую грузит useChatInfoCard.
 export interface ChatUpdateEvt {
-  _: 'updateChatFullSnapshot'
+  /** Пара по КУРСОРУ, как у кадра сообщения: канальный снимок едет журналом
+   *  канала (`updateChannelFullSnapshot`), групповой — пер-юзерным веером. */
+  _: 'updateChatFullSnapshot' | 'updateChannelFullSnapshot'
   peer: Peer
   /** ТОТ ЖЕ объект, что отдаёт `GET /chats/{peerID}/card` — `messages.chatFull`
    *  с краткой формой чата внутри (`chats[0]`). Прежде одна карточка ехала
@@ -510,10 +519,68 @@ export interface ReactionEvt {
   msg_id: number
   reactions: WireMessageReactions
 }
+/** Бусты канала — НАШ конструктор (кадра бустов ЗРИТЕЛЮ в схеме нет:
+ *  `updateBotChatBoost` про бота, следящего за чужим каналом). Сам статус —
+ *  предмет схемный, `premium.boostsStatus`.
+ *
+ *  Курсор пер-КАНАЛЬНЫЙ: кадр едет журналом канала. */
+export interface BoostUpdateEvt {
+  _: 'updateChannelBoostStatus'
+  peer: Peer
+  status: import('../models').RawBoostStatus
+  pts?: number
+}
+/** Баланс звёзд — `updateStarsBalance{balance: StarsAmount}`. Число едет
+ *  конструктором, потому что у оригинала звёзды ДРОБНЫЕ (nanos), и целое —
+ *  частный случай, а не форма. */
+export interface BalanceUpdateEvt {
+  _: 'updateStarsBalance'
+  balance: { _: 'starsAmount'; amount: number; nanos: number }
+}
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
 export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
 export interface StoryDeletedEvt { story_id: number; author_id: number }
 export interface StoryReactionEvt { story_id: number; user_id: number; reaction: string | null; reactions_count: number }
+/**
+ * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
+ *
+ * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
+ * полным: пропущенный конструктор — ошибка компиляции, а не молчаливо
+ * проигнорированный кадр. Кадры БЕЗ конструктора (транспорт и непортированные
+ * предметы) сюда не входят и опознаются типом конверта — их список в
+ * `transportFrames.ts`.
+ */
+export type Update =
+  | NewMessageEvt
+  | EditMessageEvt
+  | DeleteMessageEvt
+  | PinMessageEvt
+  | ReadEvt
+  | MediaReadEvt
+  | ReactionEvt
+  | DraftUpdateEvt
+  | DialogPinEvt
+  | DialogArchiveEvt
+  | DialogMuteEvt
+  | TypingEvt
+  | PresenceEvt
+  | UserUpdateEvt
+  | PollUpdateEvt
+  | ChecklistUpdateEvt
+  | GiveawayUpdateEvt
+  | WebPageUpdateEvt
+  | FactCheckUpdateEvt
+  | PaidMediaUnlockEvt
+  | ChatRemovedEvt
+  | ChatThemeUpdateEvt
+  | ChatUpdateEvt
+  | BoostUpdateEvt
+  | BalanceUpdateEvt
+  | BotCallbackAnswerEvt
+
+/** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
+export type UpdatePredicate = Update['_']
+
 /** Сервер подтвердил отправку: у бабла появляется НАСТОЯЩИЙ номер в чате
  *  (серверное пространство — владелец переводит его в клиентское) и дата. */
 export interface AckEvt { client_msg_id: string; id: number; created_at: string }

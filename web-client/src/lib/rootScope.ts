@@ -16,10 +16,9 @@ import type {
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
+  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
 } from '@core/realtime/events'
-import type { MyMessage, RawBoostStatus } from '@core/models'
-import type { Peer } from '@core/peers/peerId'
-import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '@core/media/messageMedia'
+import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
@@ -74,11 +73,11 @@ export type BroadcastEvents = {
   // под ключом `media`: собственных ключей `poll`/`checklist`/`giveaway` на
   // проводе больше нет. Номера сообщения в кадре нет и не нужно — сообщение
   // находят по идентификатору внутри вложения.
-  [RT.pollUpdate]: [{ peer_id: PeerId; media: MessageMediaPoll }, EventMeta?]
-  [RT.checklistUpdate]: [{ peer_id: PeerId; media: MessageMediaToDo }, EventMeta?]
-  [RT.boostUpdate]: [{ _: 'updateChannelBoostStatus'; peer: Peer; status: RawBoostStatus }, EventMeta?]
-  [RT.giveawayUpdate]: [{ peer_id: PeerId; media: MessageMedia }, EventMeta?]
-  [RT.balanceUpdate]: [{ _: 'updateStarsBalance'; balance: { _: 'starsAmount'; amount: number; nanos: number } }, EventMeta?]
+  [RT.pollUpdate]: [PollUpdateEvt, EventMeta?]
+  [RT.checklistUpdate]: [ChecklistUpdateEvt, EventMeta?]
+  [RT.boostUpdate]: [BoostUpdateEvt, EventMeta?]
+  [RT.giveawayUpdate]: [GiveawayUpdateEvt, EventMeta?]
+  [RT.balanceUpdate]: [BalanceUpdateEvt, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]

@@ -107,6 +107,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — форма
     // `updateNewMessage` (решение Р5), плоских полей рядом больше нет.
     capturedConnDeps!.onFrame('new_message', {
+      _: 'updateNewMessage',
       message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'привет', createdAt: '2026-08-01T00:00:01Z' }),
     })
 
@@ -143,7 +144,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     const { dialogOps } = await bootWithSeededDialog()
 
     capturedConnDeps!.onFrame('chat_update', {
-      peer_id: 1,
+      _: 'updateChatFullSnapshot',
+      peer: { _: 'peerUser', user_id: 1 },
       chat_full: {
         _: 'messages.chatFull',
         full_chat: { _: 'channelFull', id: 1, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
@@ -177,7 +179,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     // ничего бы не объявил.
     const chat = { _: 'channel', id: 1, title: 'Имя только этого кейса', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } }
     capturedConnDeps!.onFrame('chat_update', {
-      peer_id: 1,
+      _: 'updateChatFullSnapshot',
+      peer: { _: 'peerUser', user_id: 1 },
       chat_full: {
         _: 'messages.chatFull',
         full_chat: { _: 'channelFull', id: 1, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null },
@@ -340,7 +343,8 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
   it('chat_theme_update (без pts) — строку диалога не патчит вовсе', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
-    capturedConnDeps!.onFrame('chat_theme_update', { peer_id: 1, theme_id: 'sunset' })
+    capturedConnDeps!.onFrame('chat_theme_update',
+      { _: 'updateChatTheme', peer: { _: 'peerUser', user_id: 1 }, theme_id: 'sunset' })
 
     expect(dialogOps).toEqual([])
   })

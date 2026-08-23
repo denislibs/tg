@@ -62,7 +62,7 @@ describe('единственный дебаунс /chats-рефетча (storePr
   // storeProjection.ts: единственным источником остался бы рефетчер, и итог
   // всё равно был бы «1 вызов», хоть и не тот, что проверяется.
   it('триггер только из зоны проектора (сообщение в неизвестный чат) → managers.dialogs.refresh вызван', () => {
-    const newMsg: NewMessageEvt = { message: makeRawMessage({ id: 1, peerId: 777, fromId: 2, text: 'hi' }) }
+    const newMsg: NewMessageEvt = { _: 'updateNewMessage', message: makeRawMessage({ id: 1, peerId: 777, fromId: 2, text: 'hi' }) }
     rootScope.dispatchEventSingle(RT.newMessage, newMsg)
     vi.advanceTimersByTime(300)
     expect(refresh).toHaveBeenCalledTimes(1)
@@ -70,7 +70,7 @@ describe('единственный дебаунс /chats-рефетча (storePr
 
   it('триггер из зоны проектора + зоны рефетчера в одном окне дебаунса → managers.dialogs.refresh вызван ровно один раз', () => {
     // Зона проектора: сообщение в неизвестный чат (storeProjection.ts, RT.newMessage).
-    const newMsg: NewMessageEvt = { message: makeRawMessage({ id: 1, peerId: 777, fromId: 2, text: 'hi' }) }
+    const newMsg: NewMessageEvt = { _: 'updateNewMessage', message: makeRawMessage({ id: 1, peerId: 777, fromId: 2, text: 'hi' }) }
     rootScope.dispatchEventSingle(RT.newMessage, newMsg)
 
     // Зона рефетчера: chat_update по чату, которого ещё нет в списке (refetchSubscriber.ts, RT.chatUpdate).

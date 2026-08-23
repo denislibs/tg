@@ -50,10 +50,11 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type UserUpdateEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type UserUpdateEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { getPeerId } from './peers/peerId'
-import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
+import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
 import { STATE_VERSION, initialState } from './state/state'
@@ -352,78 +353,75 @@ export function createWorkerCore() {
   const cursor = newCursor({ get: idbGet, set: idbSet })
   let cursorReady = false
 
-  // Единый реестр маршрутизации логируемых типов: cache (в SSOT воркера, ДО broadcast —
-  // иначе переоткрытие чата из кэша теряет апдейт) + rt (имя события для UI). Замена
-  // прежних CACHE_THEN_BROADCAST + CATCHUP. new_message — спец-обработка (E2E-расшифровка
-  // + cacheLive), см. routeNewMessage.
-  // Ключи APPLY типизированы как LoggedWsType (из eventCatalog) — пропуск/лишний
-  // логируемый тип ловит компилятор, реестры не дрейфуют.
-  // cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/web_page_update/
-  // factcheck_update/paid_media_unlock/delete_message; Task 4: poll_update/
-  // checklist_update/giveaway_update — по образцу cacheLive, см. dispatch ниже) —
-  // тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как routeNewMessage.
-  // edit_message/geo_live_update оставлены на прежнем пути (сырой кадр) — см.
-  // комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction —
-  // тоже НЕ переведена (Task 5), см. комментарий у newReactionMethods в
-  // messages/reactionMethods.ts.
-  const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => MessageOp[] | void }> = {
-    read:              { rt: RT.read },
-    media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
-    edit_message:      { rt: RT.editMessage,     cache: (p) => messages.cacheEdit(p) },
-    delete_message:    { rt: RT.deleteMessage,   cache: (p) => messages.cacheDelete(p) },
-    pin_message:       { rt: RT.pinMessage },
-    reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
-    factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
-    chat_removed:      { rt: RT.chatRemoved },
-    draft_update:      { rt: RT.draftUpdate },
-    dialog_pin:        { rt: RT.dialogPin },
-    dialog_archive:    { rt: RT.dialogArchive },
-    dialog_mute:       { rt: RT.dialogMute },
-    poll_update:       { rt: RT.pollUpdate,      cache: (p) => messages.cachePoll(p) },
-    checklist_update:  { rt: RT.checklistUpdate, cache: (p) => messages.cacheChecklist(p) },
-    giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
-    boost_update:      { rt: RT.boostUpdate },
-    chat_theme_update: { rt: RT.chatThemeUpdate },
-    chat_update:       { rt: RT.chatUpdate },
-    folder_update:     { rt: RT.folderUpdate },
-    web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
-    paid_media_unlock: { rt: RT.paidMediaUnlock, cache: (p) => messages.cachePaidUnlock(p) },
-    balance_update:    { rt: RT.balanceUpdate },
+  // Отражение кадра в SSOT воркера — ДО broadcast: иначе переоткрытие чата из
+  // кэша теряет апдейт. Ключ — КОНСТРУКТОР; имя события, которым кадр уезжает
+  // на вкладки, живёт рядом со списком конструкторов (UPDATE_RT в
+  // realtime/updateCatalog.ts), потому что менеджеров оно не знает и его же
+  // читает пин полноты.
+  //
+  // Реестр НЕПОЛНЫЙ намеренно (Partial): отражать в SSOT нужно не каждому
+  // кадру, и «здесь пусто» — это ответ, а не пропуск. Полноту держит UPDATE_RT.
+  //
+  // cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/
+  // web_page_update/factcheck_update/paid_media_unlock/delete_message; Task 4:
+  // poll_update/checklist_update/giveaway_update — по образцу cacheLive, см.
+  // dispatch ниже) — тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром
+  // RT.messageOp, как routeNewMessage. updateEditMessage оставлен на прежнем
+  // пути (сырой кадр) — см. комментарий у messages.cacheEdit; реакции тоже НЕ
+  // переведены (Task 5), см. newReactionMethods в messages/reactionMethods.ts.
+  //
+  // Сообщение (updateNewMessage/updateNewChannelMessage) сюда не попадает —
+  // у него спец-путь routeNewMessage (E2E-расшифровка + cacheLive).
+  const CACHE: Partial<Record<keyof typeof UPDATE_RT, (p: never) => MessageOp[] | void>> = {
+    updateReadPeerMessagesContents: (p) => messages.cacheMediaRead(p),
+    updateEditMessage:              (p) => messages.cacheEdit(p),
+    updateDeletePeerMessages:       (p) => messages.cacheDelete(p),
+    updateMessageReactions:         (p) => messages.cacheReaction(p),
+    updateMessageFactCheck:         (p) => messages.cacheFactCheck(p),
+    updateMessagePoll:              (p) => messages.cachePoll(p),
+    updateMessageToDo:              (p) => messages.cacheChecklist(p),
+    updateMessageGiveaway:          (p) => messages.cacheGiveaway(p),
+    updateMessageWebPage:           (p) => messages.cacheWebPage(p),
+    updateMessageExtendedMedia:     (p) => messages.cachePaidUnlock(p),
     // Юзер сменил профиль: кадр интерпретирует владелец карточек (peersManager) —
     // он правит свой кэш и публикует изменение операцией (rt:peer_op). Витрина
     // сырой rt:user_update не разбирает; кадр рассылается дальше как есть, чтобы
-    // не заводить исключение в общей проводке логируемых типов (потребителей у
-    // него на витрине сейчас нет).
-    user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate((p as UserUpdateEvt).user) },
+    // не заводить исключение в общей проводке (потребителей у него на витрине
+    // сейчас нет).
+    updateUserSnapshot:             (p) => peers.applyUserUpdate((p as UserUpdateEvt).user),
   }
-  // Эфемерные кадры (PASS_THROUGH) и логируемые (APPLY) выводятся из eventCatalog —
-  // единого реестра WS-типов. Bespoke-кадры (hello/секрет-handshake/обёртки звонков)
-  // обрабатываются явно в onFrame.
 
-  // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
-  // applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
-  // item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
+  // Отражение апдейта в SSOT + broadcast (без арифметики pts — её делает
+  // applyUpdate). `key` — КОНСТРУКТОР кадра (у единственного непортированного
+  // предмета, folder_update, — тип конверта: см. frameKey), `d` — тело.
+  // Сообщение (updateNewMessage/updateNewChannelMessage) идёт спец-путём
+  // routeNewMessage: E2E-расшифровка + cacheLive.
   // Stage 1B.3 (Task 3): если cache() вернул операции — рассылаем их ДО сырого кадра
   // (тот же порядок, что у routeNewMessage): проектор берёт окно операцией, сырой
   // кадр остаётся параллельно для того, что операциями не покрыто (переключение
   // обратимо одной строкой, как и было в 1B.2).
-  function dispatch(t: string, d: unknown, meta?: EventMeta): void {
-    if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, meta); return }
-    const h = APPLY[t as LoggedWsType]
-    if (!h) return
+  function dispatch(key: string, d: unknown, meta?: EventMeta): void {
+    // Непортированный предмет: конструктора нет, кадр опознан типом конверта
+    // (#51). Ветка исчезнет вместе с задачей — вместе с ней и это исключение.
+    if (key === LOGGED_WITHOUT_CONSTRUCTOR) { broadcast(RT.folderUpdate, d, meta); return }
+    const pred = updatePredicate(d)
+    if (!pred || pred !== key) return
+    if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
+      routeNewMessage(d as NewMessageEvt, meta); return
+    }
     // Вопрос «выросло ли число реакций на МОЁМ сообщении» задаётся ДО того, как
     // кадр ляжет в SSOT: после применения агрегата сравнивать было бы не с чем —
     // окно уже содержало бы новое состояние. Порядок здесь и есть ответ.
-    const reactionsGrew = t === 'reaction'
+    const reactionsGrew = pred === 'updateMessageReactions'
       && messages.reactionsGrewOnMyMessage(getPeerId((d as ReactionEvt).peer), (d as ReactionEvt).msg_id, (d as ReactionEvt).reactions)
-    const ops = h.cache?.(d as never)
+    const ops = CACHE[pred]?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
     // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
     // влияющие на список диалогов, применяет dialogsManager — публикует свой
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
-    if (t === 'read') dialogs.applyRead(d as ReadEvt)
-    else if (t === 'chat_update') {
+    if (pred === 'updateReadHistoryInbox' || pred === 'updateReadHistoryOutbox') dialogs.applyRead(d as ReadEvt)
+    else if (pred === 'updateChatFullSnapshot' || pred === 'updateChannelFullSnapshot') {
       // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
       // приехавшие ВМЕСТЕ с апдейтом, сохраняются ПЕРВЫМИ — до того, как
       // апдейт применят. Кадр `chat_update` несёт `messages.chatFull`, то есть
@@ -437,7 +435,7 @@ export function createWorkerCore() {
       // ровно то второе зеркало одного факта, которого этот шаг и лишает.
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
-    else if (t === 'chat_removed') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз
@@ -453,19 +451,19 @@ export function createWorkerCore() {
     // folderPeer, — потому что это разные пространства адресации: у folderPeer
     // рядом с пиром едет номер папки, а «вернуть из архива» это ноль, а не
     // второй кадр.
-    else if (t === 'dialog_mute') {
+    else if (pred === 'updateNotifySettings') {
       const e = d as DialogMuteEvt
       dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
-    } else if (t === 'dialog_pin') {
+    } else if (pred === 'updateDialogPinned') {
       const e = d as DialogPinEvt
       // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.
       dialogs.applyPinned(getPeerId(e.peer.peer), !!e.pFlags?.pinned)
-    } else if (t === 'dialog_archive') {
+    } else if (pred === 'updateFolderPeers') {
       for (const fp of (d as DialogArchiveEvt).folder_peers ?? []) {
         dialogs.applyFolder(getPeerId(fp.peer), fp.folder_id)
       }
     }
-    else if (t === 'reaction') {
+    else if (pred === 'updateMessageReactions') {
       // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
       // реакций диалога.
       //
@@ -476,7 +474,7 @@ export function createWorkerCore() {
       // строкой диалога, как и раньше.
       if (reactionsGrew) dialogs.bumpUnreadReactions(getPeerId((d as ReactionEvt).peer))
     }
-    broadcast(h.rt, d, meta)
+    broadcast(UPDATE_RT[pred], d, meta)
   }
 
   // Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate
@@ -509,7 +507,10 @@ export function createWorkerCore() {
 
   const sync = newSyncEngine({
     rest, cursor,
-    onUpdate: (item) => funnel.applyUpdate(item.t, item.pts, item.d, false),
+    // Строка журнала опознаётся тем же ключом, что живой кадр: КОНСТРУКТОРОМ
+    // из тела. Тип строки (`item.t`) остаётся ответом только для
+    // непортированного предмета — см. frameKey.
+    onUpdate: (item) => funnel.applyUpdate(frameKey(item.t, item.d), item.pts, item.d, false),
     // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
     // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
     // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
@@ -562,42 +563,29 @@ export function createWorkerCore() {
         }
         return
       }
-      // Канальный кадр (пост или метаданные канала: chat_update/boost_update) несёт
-      // channel_pts + peer_id → per-channel funnel (свой курсор, difference-catch-up).
-      // Раньше new_message-ветки: посты канала приходят как new_message, но с
-      // channel_pts и без E2E (каналы — публичный broadcast, enc_body не бывает).
-      // Пир у кадра лежит в РАЗНЫХ местах, и это не небрежность: кадр с
-      // сообщением несёт его ВНУТРИ конструктора (message.peer_id —
-      // объединение Peer), потому что там это параметр самого сообщения;
-      // кадр метаданных канала сообщения не несёт и держит ключ пира наверху
-      // числом. Читать надо оба: пока читался только верхний, посты канала
-      // молча проезжали мимо своей воронки — курсор канала от живых кадров не
-      // двигался, и каждый догон разрыва приносил их заново.
-      {
-        const cf = payload as {
-          _?: string
-          pts?: number
-          channel_pts?: number
-          peer_id?: number
-          message?: { peer_id?: Parameters<typeof getPeerId>[0] }
-        }
-        // Пост канала опознаётся ДИСКРИМИНАТОРОМ: updateNewChannelMessage — и
-        // есть ответ «курсор канальный», потому что своего имени у канального
-        // курсора в схеме нет, `pts` там обычный. Прежде вид кадра решало имя
-        // ключа (`channel_pts` против `pts`) — второе имя одного и того же поля.
-        const isChannelMessage = cf?._ === 'updateNewChannelMessage'
-        const channelPts = isChannelMessage ? cf.pts : cf?.channel_pts
-        if (typeof channelPts === 'number') {
-          const peerId = cf.message?.peer_id !== undefined ? getPeerId(cf.message.peer_id) : cf.peer_id
-          if (typeof peerId === 'number') {
-            channelFunnel.applyLive(peerId, type, channelPts, payload)
-            return
-          }
+      // Развилка воронок — по КОНСТРУКТОРУ. Канальными курсор делает не имя
+      // ключа (`channel_pts` больше не существует нигде), а сам кадр:
+      // updateNewChannelMessage, updateChannelFullSnapshot,
+      // updateChannelBoostStatus едут журналом канала, у которого свой плотный
+      // pts и свой догон через /difference.
+      //
+      // Ключ канала лежит в РАЗНЫХ местах, и это не небрежность: кадр с
+      // сообщением несёт его ВНУТРИ конструктора сообщения (там peer_id —
+      // параметр самого сообщения), а кадр метаданных сообщения не несёт вовсе
+      // и держит пир своим параметром `peer`.
+      const pred = updatePredicate(payload)
+      if (pred && CHANNEL_CURSOR.has(pred)) {
+        const u = payload as Update
+        const peerId = channelPeerId(u)
+        const channelPts = (payload as { pts?: number }).pts
+        if (typeof peerId === 'number' && typeof channelPts === 'number') {
+          channelFunnel.applyLive(peerId, pred, channelPts, payload)
+          return
         }
       }
-      // message_ack / message_error: кадры эфемерные (без pts — идут мимо funnel,
-      // в eventCatalog так и помечены), но реконсилить по ним нужно ВРЕМЕННЫЙ
-      // БАБЛ, а он живёт в SSOT воркера (messages/pending.ts). Поэтому владелец
+      // message_ack / message_error: кадры ТРАНСПОРТНЫЕ (решение Р6 — апдейтами
+      // они не становятся, конструктора не имеют), но реконсилить по ним нужно
+      // ВРЕМЕННЫЙ БАБЛ, а он живёт в SSOT воркера (messages/pending.ts). Владелец
       // применяет их РОВНО ОДИН РАЗ здесь и объявляет результат операциями —
       // раньше это делала каждая вкладка у себя из сырого кадра.
       // return НЕТ сознательно: сырой кадр летит дальше (PASS_THROUGH внизу) — у
@@ -609,8 +597,10 @@ export function createWorkerCore() {
           : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
-      // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
-      if (type === 'new_message') {
+      // Сообщение личного чата: возможна E2E-расшифровка enc_body перед воронкой.
+      // Пост канала сюда не доходит — он ушёл в канальную воронку выше, и
+      // шифртекста у него не бывает (канал это публичный broadcast).
+      if (pred === 'updateNewMessage') {
         const p = payload as NewMessageEvt
         // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message`, поэтому и шифртекст
         // лежит там же — на конструкторе, а не в конверте.
@@ -625,20 +615,30 @@ export function createWorkerCore() {
               m.secret = true
               if (dec.media) m.secretMedia = dec.media
             }
-            funnel.applyUpdate('new_message', p.pts, payload, true)
+            funnel.applyUpdate(pred, p.pts, payload, true)
           })
         } else {
-          funnel.applyUpdate('new_message', p.pts, payload, true)
+          funnel.applyUpdate(pred, p.pts, payload, true)
         }
         return
       }
-      // Логируемый кадр (несёт pts) → единый funnel: дедуп/gap/cache/broadcast.
+      // Кадр-АПДЕЙТ → единая воронка: дедуп/gap/cache/broadcast. Курсора у него
+      // может и не быть вовсе (updateUserTyping, updateUserStatus его не
+      // объявляют) — тогда воронка не гейтит, а просто отражает кадр. Делить
+      // кадры на «логируемые» и «эфемерные» рукописным списком больше не нужно:
+      // ответ даёт СТРУКТУРА конструктора.
       //
-      // Курсор лежит либо В ТЕЛЕ (конструктор объявляет параметр pts), либо в
-      // КОНВЕРТЕ (не объявляет — тогда у оригинала кадр едет в контейнере
+      // Сам курсор лежит либо В ТЕЛЕ (конструктор объявляет параметр pts), либо
+      // в КОНВЕРТЕ (не объявляет — тогда у оригинала кадр едет в контейнере
       // updates и порядок ему задаёт seq контейнера). Воронке безразлично,
       // откуда он: она гейтит по числу, а место выбирает схема.
-      if (APPLY[type as LoggedWsType]) {
+      if (pred) {
+        funnel.applyUpdate(pred, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        return
+      }
+      // Непортированный предмет с курсором (#51): конструктора нет, кадр
+      // опознаётся типом конверта, но воронку проходить обязан.
+      if (type === LOGGED_WITHOUT_CONSTRUCTOR) {
         funnel.applyUpdate(type, envPts ?? (payload as { pts?: number })?.pts, payload, true)
         return
       }

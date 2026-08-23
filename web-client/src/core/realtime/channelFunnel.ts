@@ -2,9 +2,9 @@
 //
 // Per-channel pts-конверт (Волна 5). Каналы не делят общий пер-юзерный курсор
 // (cursor.ts): у каждого канала свой плотный монотонный курсор, который сервер
-// шлёт и в живом кадре (у поста — параметром `pts` конструктора
-// updateNewChannelMessage; у кадров метаданных канала пока ключом channel_pts,
-// их порт на конструкторы — следующий шаг), и в типизированном
+// шлёт и в живом кадре — параметром `pts` канального КОНСТРУКТОРА
+// (updateNewChannelMessage у поста, updateChannelFullSnapshot и
+// updateChannelBoostStatus у метаданных), — и в типизированном
 // GET /channels/{id}/difference. Этот модуль — тот же funnel, что глобальный
 // applyUpdate (dup/next/gap + буфер придержанных кадров), но по ключу peerId:
 // живые кадры канала гейтятся против его курсора, а дыра добирается через
@@ -15,10 +15,12 @@
 // useChannelExtras мимо воркера.
 
 import { classifyPts } from './cursor'
+import { frameKey } from './updateCatalog'
 import { newPendingPts, type NewPendingPts } from './pendingPts'
 import type { EventMeta } from '../../rpc/superMessagePort'
 
-// Типизированный конверт канального апдейта — форма живого кадра и строки difference.
+// Типизированный конверт канального апдейта — строка difference. `t` — тип
+// строки журнала; маршрутизируется кадр по КОНСТРУКТОРУ из тела (frameKey).
 export interface ChannelUpdate { t: string; pts: number; d: unknown }
 export interface ChannelDiff { updates: ChannelUpdate[]; pts: number; slice: boolean }
 
@@ -34,7 +36,7 @@ export interface ChannelFunnelDeps {
   // Отражение апдейта в SSOT + broadcast (тот же dispatch, что и глобальный funnel).
   // meta — происхождение кадра (pts/catchUp); funnel — единственное место, которое
   // его знает, поэтому проставляет здесь, а не выше по стеку.
-  dispatch: (t: string, d: unknown, meta?: EventMeta) => void
+  dispatch: (key: string, d: unknown, meta?: EventMeta) => void
   // GET /channels/{id}/difference?pts=sincePts — типизированный конверт.
   getDifference: (peerId: number, sincePts: number) => Promise<ChannelDiff>
   loadPts: (peerId: number) => Promise<number | null>
@@ -71,7 +73,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
   function drainPending(peerId: number, st: ChannelState): void {
     if (!st.pending.has()) return
     st.pending.drain(() => st.pts, (item) => {
-      deps.dispatch(item.t, item.d, { pts: item.pts, catchUp: false })
+      deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
       advance(peerId, st, item.pts)
     })
     if (!st.pending.has()) clearTimer(st)
@@ -105,7 +107,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
         const r = await deps.getDifference(peerId, since)
         for (const u of r.updates) {
           if (u.pts <= st.pts) continue     // дубль (live уже применил)
-          deps.dispatch(u.t, u.d, { pts: u.pts, catchUp: true })
+          deps.dispatch(frameKey(u.t, u.d), u.d, { pts: u.pts, catchUp: true })
           advance(peerId, st, u.pts)
         }
         st.seeded = true
@@ -121,13 +123,13 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     // Живой канальный кадр (курсор канала выбран вызывающим по дискриминатору).
     // Та же арифметика dup/next/gap, что
     // и глобальный funnel, но против per-channel курсора.
-    applyLive(peerId: number, t: string, pts: number, d: unknown): void {
+    applyLive(peerId: number, key: string, pts: number, d: unknown): void {
       const st = state(peerId)
       // Первый живой кадр до сидирования курсора: принимаем его как базу (массовая
       // история — из REST-окна; funnel гейтит только живой хвост). Без реплея лога.
       if (!st.seeded) {
         st.seeded = true
-        deps.dispatch(t, d, { pts, catchUp: false })
+        deps.dispatch(key, d, { pts, catchUp: false })
         advance(peerId, st, pts)
         return
       }
@@ -135,11 +137,11 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       const cls = classifyPts(st.pts, pts)
       if (cls === 'dup') return
       if (cls === 'gap') {
-        if (!st.pending.push({ t, pts, d })) { st.pending.clear(); clearTimer(st); void catchUp(peerId); return }
+        if (!st.pending.push({ key, pts, d })) { st.pending.clear(); clearTimer(st); void catchUp(peerId); return }
         scheduleSync(peerId, st)
         return
       }
-      deps.dispatch(t, d, { pts, catchUp: false })
+      deps.dispatch(key, d, { pts, catchUp: false })
       advance(peerId, st, pts)
       drainPending(peerId, st)
     },

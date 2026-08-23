@@ -97,21 +97,48 @@ describe('createWorkerCore(): канальные кадры уходят в пе
     // peerId канала — ОТРИЦАТЕЛЬНЫЙ (знаковый PeerId: чат < 0), как его считает
     // getPeerId по конструктору peerChannel.
     expect(applyLive.mock.calls[0][0]).toBe(-42)
-    expect(applyLive.mock.calls[0][1]).toBe('new_message')
+    // Ключом маршрутизации едет КОНСТРУКТОР, а не тип конверта.
+    expect(applyLive.mock.calls[0][1]).toBe('updateNewChannelMessage')
     expect(applyLive.mock.calls[0][2]).toBe(7)
   })
 
-  // Кадр метаданных канала сообщения не несёт — ключ пира у него наверху и
-  // числом. Эта ветка работала и обязана продолжать: пин ловит починку,
-  // сделанную «в лоб» переносом чтения только внутрь сообщения.
-  it('chat_update канала → applyLive с пиром верхнего уровня', () => {
+  // Кадр метаданных канала сообщения не несёт — пир у него СВОЙ параметр
+  // конструктора (`peer`), а курсор пер-канальный, и говорит об этом сам
+  // конструктор: updateChannelFullSnapshot. Прежде на его месте ехал
+  // updateChatFullSnapshot (тот же, что у группы) плюс ключ `channel_pts` —
+  // второе имя курсора, по которому клиент и решал вид кадра.
+  it('снимок карточки канала → applyLive с пиром из параметра peer', () => {
     boot()
 
-    capturedConnDeps!.onFrame('chat_update', { channel_pts: 3, peer_id: -42, chat: { _: 'channel', id: 42 } })
+    capturedConnDeps!.onFrame('chat_update', {
+      _: 'updateChannelFullSnapshot',
+      peer: { _: 'peerChannel', channel_id: 42 },
+      chat_full: { _: 'messages.chatFull' },
+      pts: 3,
+      pts_count: 1,
+    })
 
     expect(applyLive).toHaveBeenCalledTimes(1)
     expect(applyLive.mock.calls[0][0]).toBe(-42)
+    expect(applyLive.mock.calls[0][1]).toBe('updateChannelFullSnapshot')
     expect(applyLive.mock.calls[0][2]).toBe(3)
+  })
+
+  // Тот же снимок, но ГРУППЫ, — другой конструктор и другой курсор: в
+  // пер-канальную воронку он попадать не должен. Это вторая половина пары:
+  // одним конструктором на оба журнала различить их было нечем.
+  it('снимок карточки ГРУППЫ мимо пер-канальной воронки', () => {
+    boot()
+
+    capturedConnDeps!.onFrame('chat_update', {
+      _: 'updateChatFullSnapshot',
+      peer: { _: 'peerChannel', channel_id: 42 },
+      chat_full: { _: 'messages.chatFull' },
+      pts: 3,
+      pts_count: 1,
+    })
+
+    expect(applyLive).not.toHaveBeenCalled()
   })
 
   // Обычное сообщение (не канал) в пер-канальную воронку попадать не должно —

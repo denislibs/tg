@@ -22,6 +22,7 @@ import { registerSoundSubscriber } from './soundSubscriber'
 // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` (форма `updateNewMessage`),
 // а эффект — НАШ параметр вне схемы у конструктора `message` (`effect_name`).
 const evt: NewMessageEvt = {
+  _: 'updateNewMessage',
   message: {
     ...makeRawMessage({ id: 1, peerId: 5, fromId: 2, text: 'привет' }),
     effect_name: 'hearts',

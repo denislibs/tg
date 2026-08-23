@@ -20,7 +20,7 @@ import { registerNotificationSubscriber } from './notificationSubscriber'
 // и уведомлению уходит РАЗОБРАННОЕ сообщение — тот же объект, что и ленте, а не
 // вторая выжимка из четырёх полей.
 const raw = makeRawMessage({ id: 1, peerId: 5, fromId: 2, text: 'привет' })
-const evt: NewMessageEvt = { message: raw }
+const evt: NewMessageEvt = { _: 'updateNewMessage', message: raw }
 
 describe('notificationSubscriber — RT.newMessage учитывает meta.catchUp', () => {
   beforeAll(() => registerNotificationSubscriber())

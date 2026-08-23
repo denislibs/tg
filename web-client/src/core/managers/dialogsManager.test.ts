@@ -223,7 +223,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 1, peerId: 99, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 1, peerId: 99, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
     mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 99 }, max_id: 1, still_unread_count: 0 })
     mgr.bumpUnreadReactions(99)
 
@@ -244,7 +244,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 7, text: 'hi', createdAt: '2026-08-01T00:00:01Z' }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 7, text: 'hi', createdAt: '2026-08-01T00:00:01Z' }) })
 
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
   })
@@ -262,11 +262,11 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     // server-authoritative unread=5 выигрывает у локального +1
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(5)
 
     ops.length = 0
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'b', createdAt: '2026-08-01T00:00:02Z' }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'b', createdAt: '2026-08-01T00:00:02Z' }) })
     // поля unread в кадре нет — fallback: текущий unread(5) + 1
     expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(6)
   })
@@ -287,7 +287,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     ops.length = 0
 
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 4, peerId: 2, fromId: 5, text: 'yo', createdAt: '2026-08-09T23:00:00Z' }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 4, peerId: 2, fromId: 5, text: 'yo', createdAt: '2026-08-09T23:00:00Z' }) })
 
     // закреплённые держатся своим порядком (pinnedOrders), а не датой
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
@@ -306,7 +306,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
       loadState: async () => ({ pinnedOrders: {}, drafts: [] }),
     })
     await mgr.fillMirror()
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }), unread: 5 })
     ops.length = 0
 
     mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 2, still_unread_count: 0 })
@@ -923,7 +923,7 @@ describe('dialogsManager: засеивание pinnedOrders из первого 
     // recompute дал бы peerId=2 БОЛЬШИЙ индекс, чем ещё не пересчитанные
     // соседи (те остались бы на старом «общем для всех неотслеженных»
     // значении), и он ошибочно прыгнул бы наверх пин-блока: [1,2,3] → [2,1,3].
-    mgr.applyNewMessage({ message: makeRawMessage({ id: 2, peerId: 2, fromId: 9, text: 'hi', createdAt: '2026-08-09T15:00:00Z' }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 2, fromId: 9, text: 'hi', createdAt: '2026-08-09T15:00:00Z' }) })
 
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
   })

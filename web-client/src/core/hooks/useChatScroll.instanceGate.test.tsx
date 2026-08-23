@@ -49,7 +49,7 @@ function msg(id: number): MyMessage {
 
 /** Кадр `new_message`: сообщение ЦЕЛИКОМ под ключом `message`, номер СЕРВЕРНЫЙ. */
 const newMessageEvt = (id: number): NewMessageEvt =>
-  ({ message: makeRawMessage({ id, peerId: 1, fromId: 1, text: `m${id}` }) })
+  ({ _: 'updateNewMessage', message: makeRawMessage({ id, peerId: 1, fromId: 1, text: `m${id}` }) })
 
 function makeWin(msgs: MyMessage[], overrides: Partial<MessageWindow> = {}): MessageWindow {
   return {

@@ -117,6 +117,7 @@ describe('storeProjection — RT.messageOp переигрывается пове
     useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
     const spy = vi.spyOn(useMessagesStore.getState(), 'applyIncoming')
     const evt: NewMessageEvt = {
+      _: 'updateNewMessage',
       message: {
         ...makeRawMessage({ id: 999, peerId: CHAT, fromId: OTHER, text: 'hello', date: 1_754_827_210 }),
       },

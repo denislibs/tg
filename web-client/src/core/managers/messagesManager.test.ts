@@ -157,7 +157,7 @@ describe('MessagesManager scheduled', () => {
  *  больше нет, поэтому и фикстура кадра строится той же фабрикой, что страница
  *  истории. */
 const liveEvt = (m: RawMessageReal, over: Partial<NewMessageEvt> = {}): NewMessageEvt =>
-  ({ message: m as RawMessage, ...over })
+  ({ _: 'updateNewMessage', message: m as RawMessage, ...over })
 
 describe('MessagesManager.cacheLive', () => {
   // Ссылка на кросс-чат ответ должна пережить кэш — иначе при переоткрытии чата

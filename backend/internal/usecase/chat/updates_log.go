@@ -271,12 +271,17 @@ func (i *Interactor) publishPeerFrame(ctx context.Context, chatID int64, recipie
 // idempotent. No-op without a channel log; publish skipped without a publisher.
 //
 // Ключ пира здесь один на всех подписчиков (-channelID) — асимметрии, как у
-// приватного диалога, у канала нет, поэтому payload по-прежнему маршалится один.
+// приватного диалога, у канала нет, поэтому payload маршалится один.
+//
+// Пира дописывает СТРОИТЕЛЬ тела, а не эта функция: у конструктора место пира
+// своё (`peer:Peer`), и общий `withPeer` клал рядом ВТОРОЙ ключ — `peer_id`
+// голым числом. Клиент из-за него решал вид кадра по имени ключа: ровно то
+// второе имя, которое шаг B вычистил у курсора.
 func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, typ string, base map[string]any) error {
 	if i.channels == nil {
 		return nil
 	}
-	d := withPeer(base, domain.ToPeerID(channelID, true), false)
+	d := base
 	payload, err := json.Marshal(d)
 	if err != nil {
 		return err
