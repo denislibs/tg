@@ -164,6 +164,18 @@ export const ALL_MEMBER_PERMS = 31
  * значение по умолчанию, что и у колонки `chats.default_permissions` (31), и
  * тот же оптимистичный ответ, что был у прежнего `?? 31`.
  */
+/**
+ * Битмаск «что участнику НЕЛЬЗЯ» — из `chatBannedRights` персонального
+ * ограничения. Та же таблица флагов, что и выше, но БЕЗ инверсии: выставленный
+ * флаг конструктора и есть запрет.
+ */
+export function deniedMask(pFlags: Record<string, true> | undefined): number {
+  if (!pFlags) return 0
+  let out = 0
+  for (const { bit, flag } of MEMBER_PERM_FLAGS) if (pFlags[flag]) out |= bit
+  return out
+}
+
 export function allowedMemberPerms(chat: Chat | undefined): number {
   const banned = chat && (chat._ === 'chat' || chat._ === 'channel') ? chat.default_banned_rights : undefined
   if (!banned) return ALL_MEMBER_PERMS

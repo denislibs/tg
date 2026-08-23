@@ -251,11 +251,15 @@ func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(bans))
+	// Выгнанный и ограниченный — ОДИН конструктор объединения
+	// (`channelParticipantBanned`): разницу выражает флаг `left`, а чем именно
+	// ограничен — маска `banned_rights`. Прежде это были два разных списка с
+	// разной формой строки.
+	out := make([]domain.ChannelParticipant, 0, len(bans))
 	for _, b := range bans {
-		out = append(out, map[string]any{"user_id": b.UserID, "banned_by": b.BannedBy})
+		out = append(out, domain.NewChannelParticipantBanned(b.UserID, b.BannedBy, 0, domain.AllMemberPerms, time.Time{}, true))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bans": out})
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
 }
 
 // Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
@@ -310,19 +314,23 @@ func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
-	// Ограничения едут конструктором chatBannedRights, а не сырым битмаском:
-	// срок (until_date) — обязательный параметр САМОГО конструктора, 0 значит
-	// «бессрочно». Перевод — MemberRestriction.ToChatBannedRights, и он
-	// единственный, кто знает про полярность (DeniedRights это уже запреты).
-	out := make([]map[string]any, 0, len(list))
+	// Ограниченный — ТОТ ЖЕ конструктор объединения, что и выгнанный
+	// (`channelParticipantBanned`), только без флага `left`: он остаётся в чате.
+	// Прежде это был отдельный список со своей формой строки — вторая форма
+	// одного предмета.
+	//
+	// Срок (until_date) — обязательный параметр самого `chatBannedRights`, 0
+	// значит «бессрочно»; про полярность знает MemberRestriction.ToChatBannedRights.
+	out := make([]domain.ChannelParticipant, 0, len(list))
 	for _, res := range list {
-		out = append(out, map[string]any{
-			"user_id":       res.UserID,
-			"banned_rights": res.ToChatBannedRights(),
-			"restricted_by": res.RestrictedBy,
+		out = append(out, domain.ChannelParticipantBanned{
+			Underscore:   domain.ChannelParticipantBannedTag,
+			Peer:         domain.NewPeerUser(res.UserID),
+			KickedBy:     res.RestrictedBy,
+			BannedRights: res.ToChatBannedRights(),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"restrictions": out})
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
 }
 
 // Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
@@ -649,32 +657,44 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	// Онлайн показывается только тем, кому участник разрешил видеть last seen
 	// (иначе — «был(а) недавно» на клиенте).
 	viewer, _ := UserFromContext(r.Context())
+	ids := make([]int64, 0, len(members))
+	for _, m := range members {
+		ids = append(ids, m.UserID)
+	}
 	seen := map[int64]bool{}
 	if h.privacy != nil {
-		ids := make([]int64, 0, len(members))
-		for _, m := range members {
-			ids = append(ids, m.UserID)
-		}
 		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyLastSeen); err == nil {
 			seen = v
 		}
 	}
-	out := make([]map[string]any, 0, len(members))
+	// РОЛЬ — это выбор конструктора, а не строка в строке участника; ПРИСУТСТВИЕ
+	// живёт на карточке пользователя (`user.status`), а карточки едут вектором
+	// `users` того же контейнера. Прежде статус висел на участнике — второй дом
+	// у одного факта.
+	participants := make([]domain.ChannelParticipant, 0, len(members))
 	for _, m := range members {
+		participants = append(participants, domain.NewChannelParticipant(m, 0))
+	}
+	cards, err := h.uc.UsersByIDs(r.Context(), ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	gatePhotos(r, h.privacy, cards)
+	for i := range cards {
 		// Скрытое правилом last_seen присутствие — это ДРУГОЙ конструктор
 		// (userStatusRecently), а не online:false: приватность выражена самим
 		// статусом, как в оригинале.
-		var status domain.UserStatus = domain.NewUserStatusEmpty()
 		switch {
 		case h.presence == nil:
-		case h.privacy != nil && !seen[m.UserID] && m.UserID != viewer.ID:
-			status = domain.NewUserStatusRecently(false)
+			cards[i].Status = domain.NewUserStatusEmpty()
+		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewer.ID:
+			cards[i].Status = domain.NewUserStatusRecently(false)
 		default:
-			status = domain.PresenceStatus(h.presence.Status(r.Context(), m.UserID))
+			cards[i].Status = domain.PresenceStatus(h.presence.Status(r.Context(), cards[i].ID))
 		}
-		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "status": status})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"members": out})
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(members), participants, cards))
 }
 
 func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
@@ -711,15 +731,6 @@ func isoOrNil(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// inviteJSON renders an invite link in the shape shared by Create/List/Edit.
-func inviteLinkJSON(l domain.InviteLink) map[string]any {
-	return map[string]any{
-		"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token,
-		"requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt),
-		"title": l.Title, "usage_limit": l.UsageLimit, "revoked": l.Revoked,
-	}
-}
-
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
@@ -744,7 +755,7 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvite(link))
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
@@ -759,11 +770,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(links))
-	for _, l := range links {
-		out = append(out, inviteLinkJSON(l))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links))
 }
 
 // EditInvite updates an invite link (PATCH /chats/{chatID}/invite_links/{token}).
@@ -824,7 +831,7 @@ func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvite(link))
 }
 
 // InviteImporters lists users who joined via a link
@@ -845,11 +852,13 @@ func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(importers))
+	// Вошедший и ждущий одобрения — ОДИН конструктор `chatInviteImporter`,
+	// разницу выражает `pFlags.requested`. У нас это были два разных списка.
+	out := make([]domain.ChatInviteImporter, 0, len(importers))
 	for _, im := range importers {
-		out = append(out, map[string]any{"user_id": im.UserID, "joined_at": im.JoinedAt.UTC().Format(time.RFC3339)})
+		out = append(out, domain.NewChatInviteImporter(im.UserID, im.JoinedAt, false, 0))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"importers": out, "count": count})
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, nil))
 }
 
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
@@ -860,11 +869,10 @@ func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	status := "joined"
-	if requested {
-		status = "requested"
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": status})
+	// «Вошёл» и «заявка отправлена» — ОДИН конструктор `chatInviteImporter` с
+	// флагом `requested`, а не строка состояния: тот же предмет, что в списке
+	// заявок, и та же форма.
+	writeJSON(w, http.StatusOK, domain.NewChatInviteImporter(user.ID, time.Now(), requested, 0))
 }
 
 func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
@@ -878,11 +886,14 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(reqs))
+	// Заявка — ТОТ ЖЕ конструктор `chatInviteImporter`, что и вошедший, с
+	// флагом `requested`: у оригинала это один список, отфильтрованный по
+	// флагу, а не два разных.
+	out := make([]domain.ChatInviteImporter, 0, len(reqs))
 	for _, rq := range reqs {
-		out = append(out, map[string]any{"user_id": rq.UserID})
+		out = append(out, domain.NewChatInviteImporter(rq.UserID, rq.CreatedAt, true, 0))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(len(out), out, nil))
 }
 
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {

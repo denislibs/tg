@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -87,26 +88,49 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
 	}
+	// Участники — конструкторы объединения ChannelParticipant: РОЛЬ выражена
+	// выбором конструктора, а присутствие живёт на карточке пользователя
+	// (`users[].status`), а не на строке участника.
 	var ml struct {
-		Members []struct {
-			UserID int64  `json:"user_id"`
-			Role   string `json:"role"`
+		Count        int `json:"count"`
+		Participants []struct {
+			Underscore string `json:"_"`
+			UserID     int64  `json:"user_id"`
+			Role       string `json:"role"`
+		} `json:"participants"`
+		Users []struct {
+			ID     int64 `json:"id"`
 			Status struct {
 				Underscore string `json:"_"`
 			} `json:"status"`
-		} `json:"members"`
+		} `json:"users"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &ml)
-	if len(ml.Members) != 2 {
-		t.Fatalf("members = %d; want 2 (%s)", len(ml.Members), rec.Body.String())
+	if len(ml.Participants) != 2 || ml.Count != 2 {
+		t.Fatalf("participants = %d (count=%d); want 2 (%s)", len(ml.Participants), ml.Count, rec.Body.String())
 	}
 	roleByUser := map[int64]string{}
-	for _, m := range ml.Members {
-		roleByUser[m.UserID] = m.Role
+	for _, m := range ml.Participants {
+		// Строки `role` в участнике больше НЕТ: роль это конструктор.
+		if m.Role != "" {
+			t.Fatalf("роль уехала строкой: %+v", m)
+		}
+		switch m.Underscore {
+		case "channelParticipantCreator":
+			roleByUser[m.UserID] = "creator"
+		case "channelParticipantAdmin":
+			roleByUser[m.UserID] = "admin"
+		case "channelParticipant":
+			roleByUser[m.UserID] = "member"
+		default:
+			t.Fatalf("неизвестный конструктор участника %q", m.Underscore)
+		}
+	}
+	for _, u := range ml.Users {
 		// Присутствие не подключено — о статусе НИЧЕГО не известно, и это
 		// userStatusEmpty, а не «офлайн с нулевым временем».
-		if m.Status.Underscore != "userStatusEmpty" {
-			t.Fatalf("member %d status = %q; want userStatusEmpty (no presence wired)", m.UserID, m.Status.Underscore)
+		if u.Status.Underscore != "userStatusEmpty" {
+			t.Fatalf("user %d status = %q; want userStatusEmpty (no presence wired)", u.ID, u.Status.Underscore)
 		}
 	}
 	if roleByUser[idA] != "creator" {
@@ -158,26 +182,32 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create invite: %d %s", rec.Code, rec.Body.String())
 	}
+	// «Нужно одобрение» — ФЛАГ конструктора, а не булево поле рядом.
 	var inv struct {
-		Token            string `json:"token"`
-		RequiresApproval bool   `json:"requires_approval"`
+		Invite struct {
+			PFlags map[string]bool `json:"pFlags"`
+		} `json:"invite"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
-	if inv.Token == "" || !inv.RequiresApproval {
-		t.Fatalf("expected token + requires_approval=true, got %s", rec.Body.String())
+	invToken := inviteToken(t, rec)
+	if invToken == "" || !inv.Invite.PFlags["request_needed"] {
+		t.Fatalf("expected link + pFlags.request_needed, got %s", rec.Body.String())
 	}
 
 	// B joins via token → requested (not yet a member).
-	rec = authedReq(t, h, http.MethodPost, "/join/"+inv.Token, tokenB, nil)
+	rec = authedReq(t, h, http.MethodPost, "/join/"+invToken, tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
 	}
+	// «Вошёл» и «заявка отправлена» — ОДИН конструктор chatInviteImporter,
+	// разницу выражает pFlags.requested, а не строка состояния.
 	var jr struct {
-		Status string `json:"status"`
+		Underscore string          `json:"_"`
+		PFlags     map[string]bool `json:"pFlags"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &jr)
-	if jr.Status != "requested" {
-		t.Fatalf("join status = %q; want requested", jr.Status)
+	if jr.Underscore != "chatInviteImporter" || !jr.PFlags["requested"] {
+		t.Fatalf("join = %s; ожидался chatInviteImporter с pFlags.requested", rec.Body.String())
 	}
 
 	// A lists join requests → contains B.
@@ -185,14 +215,15 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("join_requests: %d %s", rec.Code, rec.Body.String())
 	}
+	// Заявки — тот же контейнер импортёров.
 	var reqs struct {
-		Requests []struct {
+		Importers []struct {
 			UserID int64 `json:"user_id"`
-		} `json:"requests"`
+		} `json:"importers"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &reqs)
 	foundB := false
-	for _, rq := range reqs.Requests {
+	for _, rq := range reqs.Importers {
 		if rq.UserID == idB {
 			foundB = true
 		}
@@ -219,13 +250,13 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
 	}
 	var ml struct {
-		Members []struct {
+		Participants []struct {
 			UserID int64 `json:"user_id"`
-		} `json:"members"`
+		} `json:"participants"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &ml)
 	isMember := false
-	for _, m := range ml.Members {
+	for _, m := range ml.Participants {
 		if m.UserID == idB {
 			isMember = true
 		}
@@ -251,32 +282,35 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 		t.Fatalf("create invite: %d %s", rec.Code, rec.Body.String())
 	}
 	var inv struct {
-		Token      string `json:"token"`
-		Title      string `json:"title"`
-		UsageLimit *int   `json:"usage_limit"`
-		Revoked    bool   `json:"revoked"`
+		Invite struct {
+			Title      string `json:"title"`
+			UsageLimit *int   `json:"usage_limit"`
+		} `json:"invite"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
-	if inv.Token == "" || inv.Title != "Team link" || inv.UsageLimit == nil || *inv.UsageLimit != 10 {
+	invToken := inviteToken(t, rec)
+	if invToken == "" || inv.Invite.Title != "Team link" || inv.Invite.UsageLimit == nil || *inv.Invite.UsageLimit != 10 {
 		t.Fatalf("create invite fields = %s", rec.Body.String())
 	}
 
 	// PATCH renames the link and flips requires_approval.
-	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, map[string]any{"title": "Renamed", "requires_approval": true})
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+invToken, tokenA, map[string]any{"title": "Renamed", "requires_approval": true})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit invite: %d %s", rec.Code, rec.Body.String())
 	}
 	var edited struct {
-		Title            string `json:"title"`
-		RequiresApproval bool   `json:"requires_approval"`
+		Invite struct {
+			Title  string          `json:"title"`
+			PFlags map[string]bool `json:"pFlags"`
+		} `json:"invite"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
-	if edited.Title != "Renamed" || !edited.RequiresApproval {
+	if edited.Invite.Title != "Renamed" || !edited.Invite.PFlags["request_needed"] {
 		t.Fatalf("edited invite = %s", rec.Body.String())
 	}
 
 	// B joins via the (now approval-required) link → requested, then A approves.
-	rec = authedReq(t, h, http.MethodPost, "/join/"+inv.Token, tokenB, nil)
+	rec = authedReq(t, h, http.MethodPost, "/join/"+invToken, tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
 	}
@@ -286,13 +320,16 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 	}
 
 	// importers lists B.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/invite_links/"+inv.Token+"/importers", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/invite_links/"+invToken+"/importers", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("importers: %d %s", rec.Code, rec.Body.String())
 	}
+	// Импортёр — конструктор chatInviteImporter; вошедший и заявка это ОДИН
+	// конструктор, разницу выражает pFlags.requested.
 	var imp struct {
 		Importers []struct {
-			UserID int64 `json:"user_id"`
+			Underscore string `json:"_"`
+			UserID     int64  `json:"user_id"`
 		} `json:"importers"`
 		Count int `json:"count"`
 	}
@@ -312,13 +349,7 @@ func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 
 	// Create an extra link (the group is born with a primary one).
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra"})
-	var inv struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
-	if inv.Token == "" {
-		t.Fatalf("create invite: %s", rec.Body.String())
-	}
+	invToken := inviteToken(t, rec)
 
 	listTokens := func(revoked bool) []string {
 		url := "/chats/" + cid + "/invite_links"
@@ -329,51 +360,50 @@ func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("list (revoked=%v): %d %s", revoked, rec.Code, rec.Body.String())
 		}
+		// Признак отзыва — ФЛАГ конструктора, а не булево поле рядом; адрес
+		// один, токен это его хвост.
 		var out struct {
-			InviteLinks []struct {
-				Token   string `json:"token"`
-				Revoked bool   `json:"revoked"`
-			} `json:"invite_links"`
+			Invites []struct {
+				Link   string          `json:"link"`
+				PFlags map[string]bool `json:"pFlags"`
+			} `json:"invites"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
-		toks := make([]string, 0, len(out.InviteLinks))
-		for _, l := range out.InviteLinks {
-			if l.Revoked != revoked {
-				t.Fatalf("list(revoked=%v) returned link with revoked=%v", revoked, l.Revoked)
+		toks := make([]string, 0, len(out.Invites))
+		for _, l := range out.Invites {
+			if l.PFlags["revoked"] != revoked {
+				t.Fatalf("list(revoked=%v) returned link with revoked=%v", revoked, l.PFlags["revoked"])
 			}
-			toks = append(toks, l.Token)
+			toks = append(toks, l.Link[strings.LastIndexByte(l.Link, '/')+1:])
 		}
 		return toks
 	}
 
 	// Revoke via PATCH (revoked:true) → link leaves active list, joins revoked list.
-	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, map[string]any{"revoked": true})
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+invToken, tokenA, map[string]any{"revoked": true})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("revoke via patch: %d %s", rec.Code, rec.Body.String())
 	}
-	if contains(listTokens(false), inv.Token) {
+	if contains(listTokens(false), invToken) {
 		t.Fatal("revoked link still in active list")
 	}
-	if !contains(listTokens(true), inv.Token) {
+	if !contains(listTokens(true), invToken) {
 		t.Fatal("revoked link missing from revoked list")
 	}
 
 	// Hard-delete the revoked link → gone from the revoked list too.
-	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, nil)
+	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/invite_links/"+invToken, tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete invite: %d %s", rec.Code, rec.Body.String())
 	}
-	if contains(listTokens(true), inv.Token) {
+	if contains(listTokens(true), invToken) {
 		t.Fatal("hard-deleted link still in revoked list")
 	}
 
 	// DeleteAllRevoked clears the whole revoked list.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra2"})
-	var inv2 struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &inv2)
-	_ = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv2.Token, tokenA, map[string]any{"revoked": true})
+	inv2Token := inviteToken(t, rec)
+	_ = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv2Token, tokenA, map[string]any{"revoked": true})
 	if len(listTokens(true)) == 0 {
 		t.Fatal("expected a revoked link before delete-all")
 	}
@@ -412,4 +442,19 @@ func createdPeerID(t *testing.T, rec *httptest.ResponseRecorder) int64 {
 		t.Fatalf("создание чата не отдало карточку: %s", rec.Body.String())
 	}
 	return int64(domain.ToPeerID(out.Chats[0].ID, true))
+}
+
+// inviteToken — токен ссылки из ответа. Адрес на проводе ОДИН — параметр `link`
+// конструктора chatInviteExported; токен это его хвост.
+func inviteToken(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var out struct {
+		Invite struct {
+			Link string `json:"link"`
+		} `json:"invite"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.Invite.Link == "" {
+		t.Fatalf("ответ не messages.exportedChatInvite: %s", rec.Body.String())
+	}
+	return out.Invite.Link[strings.LastIndexByte(out.Invite.Link, '/')+1:]
 }

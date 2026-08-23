@@ -388,6 +388,10 @@ type InviteLink struct {
 	Title string
 	// ExpiresAt — срок действия ссылки; nil — бессрочная.
 	ExpiresAt *time.Time
+	// CreatedAt — когда ссылка создана (обязательный `date` конструктора
+	// chatInviteExported). Колонка была в таблице с самого начала, а до витрины
+	// не доходила.
+	CreatedAt time.Time
 }
 
 // InviteEdit carries the optional fields of an invite-link edit (PATCH). A nil

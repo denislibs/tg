@@ -29,6 +29,13 @@ const fakeDialogs = () => ({
 // в describe «card кормит зеркало пиров» ниже.
 const fakePeers = () => ({ saveApiPeers: vi.fn() })
 
+/** Ссылка-приглашение конструктором `chatInviteExported`: адрес один (`link`),
+ *  признаки в `pFlags`, сроки в секундах эпохи. */
+function invite(over: Record<string, unknown> = {}) {
+  return { _: 'chatInviteExported', link: '/join/abc', admin_id: 1, date: 100, ...over }
+}
+
+
 /** Ответ `GET /chats/{peerID}/card` — конструктор `messages.chatFull` В КОРНЕ,
  *  без обёртки: ключ пира выводим из краткой карточки, а `creator_id` был
  *  мёртвым полем, которое никто не читал. */
@@ -187,42 +194,54 @@ describe('GroupsManager', () => {
   })
 
   it('createInvite POSTs /chats/{id}/invite_links and maps requires_approval', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { token: 'abc', url: 'http://x/join/abc', requires_approval: true } })
+    const { rest, posts } = fakeRest({
+      postReturn: { _: 'messages.exportedChatInvite', invite: invite({ pFlags: { request_needed: true } }) },
+    })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const r = await mgr.createInvite(5, { usageLimit: 10, requiresApproval: true, expireSeconds: 3600 })
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/chats/5/invite_links')
     expect(posts[0].body).toEqual({ usage_limit: 10, requires_approval: true, expire_seconds: 3600 })
-    expect(r).toEqual({ token: 'abc', url: 'http://x/join/abc', uses: 0, requiresApproval: true, title: '', usageLimit: null, revoked: false })
+    // Токен — ХВОСТ адреса, а не отдельное поле провода.
+    expect(r).toEqual({ token: 'abc', url: '/join/abc', uses: 0, requiresApproval: true, title: '', usageLimit: null, revoked: false })
   })
 
   it('createInvite defaults usage_limit=null, requires_approval=false, expire_seconds=0', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { token: 't', url: 'u', requires_approval: false } })
+    const { rest, posts } = fakeRest({ postReturn: { _: 'messages.exportedChatInvite', invite: invite() } })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     await mgr.createInvite(5)
     expect(posts[0].body).toEqual({ usage_limit: null, requires_approval: false, expire_seconds: 0 })
   })
 
-  it('createInvite maps expires_at from the response', async () => {
-    const { rest } = fakeRest({ postReturn: { token: 'abc', url: 'u', requires_approval: false, expires_at: '2026-08-01T00:00:00Z' } })
+  // Срок в конструкторе — СЕКУНДЫ ЭПОХИ (`expire_date`), а не ISO-строка.
+  it('createInvite maps expire_date from the response', async () => {
+    const { rest } = fakeRest({
+      postReturn: { _: 'messages.exportedChatInvite', invite: invite({ expire_date: 1785542400 }) },
+    })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const r = await mgr.createInvite(5, { expireSeconds: 3600 })
-    expect(r.expiresAt).toBe('2026-08-01T00:00:00Z')
+    expect(r.expiresAt).toBe(new Date(1785542400 * 1000).toISOString())
   })
 
   it('listInvites GETs /chats/{id}/invite_links and maps requires_approval', async () => {
     const { rest, gets } = fakeRest({
-      getReturn: { invite_links: [{ token: 't', uses: 3, url: 'u', requires_approval: true }] },
+      getReturn: {
+        _: 'messages.exportedChatInvites', count: 1,
+        invites: [invite({ link: '/join/t', usage: 3, pFlags: { request_needed: true } })],
+      },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const links = await mgr.listInvites(5)
     expect(gets[0]).toBe('/chats/5/invite_links')
-    expect(links).toEqual([{ token: 't', uses: 3, url: 'u', requiresApproval: true, title: '', usageLimit: null, revoked: false }])
+    expect(links).toEqual([{ token: 't', uses: 3, url: '/join/t', requiresApproval: true, title: '', usageLimit: null, revoked: false }])
   })
 
   it('listInvites appends ?revoked=true when requesting revoked links', async () => {
     const { rest, gets } = fakeRest({
-      getReturn: { invite_links: [{ token: 'r', url: 'u', requires_approval: false, revoked: true }] },
+      getReturn: {
+        _: 'messages.exportedChatInvites', count: 1,
+        invites: [invite({ pFlags: { revoked: true } })],
+      },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const links = await mgr.listInvites(5, true)
@@ -247,32 +266,44 @@ describe('GroupsManager', () => {
   })
 
   it('editInvite PATCHes only present fields and maps the result', async () => {
-    const { rest, patches } = fakeRest({ patchReturn: { token: 't', uses: 5, url: 'u', requires_approval: true, title: 'Renamed', usage_limit: null, revoked: false } })
+    const { rest, patches } = fakeRest({
+      patchReturn: {
+        _: 'messages.exportedChatInvite',
+        invite: invite({ link: '/join/t', usage: 5, title: 'Renamed', pFlags: { request_needed: true } }),
+      },
+    })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const r = await mgr.editInvite(5, 't', { title: 'Renamed', requiresApproval: true })
     expect(patches).toHaveLength(1)
     expect(patches[0].path).toBe('/chats/5/invite_links/t')
     expect(patches[0].body).toEqual({ title: 'Renamed', requires_approval: true })
-    expect(r).toEqual({ token: 't', uses: 5, url: 'u', requiresApproval: true, title: 'Renamed', usageLimit: null, revoked: false })
+    expect(r).toEqual({ token: 't', uses: 5, url: '/join/t', requiresApproval: true, title: 'Renamed', usageLimit: null, revoked: false })
   })
 
   it('editInvite sends usage_limit:null for unlimited and revoked flag', async () => {
-    const { rest, patches } = fakeRest({ patchReturn: { token: 't', url: 'u', requires_approval: false, revoked: true } })
+    const { rest, patches } = fakeRest({ patchReturn: { _: 'messages.exportedChatInvite', invite: invite({ pFlags: { revoked: true } }) } })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     await mgr.editInvite(5, 't', { usageLimit: null, expireSeconds: 0, revoked: true })
     expect(patches[0].body).toEqual({ usage_limit: null, expire_seconds: 0, revoked: true })
   })
 
-  it('inviteImporters GETs importers and maps user_id/joined_at + count', async () => {
-    const { rest, gets } = fakeRest({ getReturn: { importers: [{ user_id: 11, joined_at: '2026-08-01T00:00:00Z' }], count: 1 } })
+  // Импортёр — конструктор `chatInviteImporter`; дата в СЕКУНДАХ эпохи.
+  it('inviteImporters GETs importers and maps user_id/date + count', async () => {
+    const { rest, gets } = fakeRest({
+      getReturn: {
+        _: 'messages.chatInviteImporters', count: 1,
+        importers: [{ _: 'chatInviteImporter', user_id: 11, date: 1785542400 }],
+      },
+    })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const r = await mgr.inviteImporters(5, 't')
     expect(gets[0]).toBe('/chats/5/invite_links/t/importers')
-    expect(r).toEqual({ importers: [{ userId: 11, joinedAt: '2026-08-01T00:00:00Z' }], count: 1 })
+    expect(r).toEqual({ importers: [{ userId: 11, joinedAt: new Date(1785542400 * 1000).toISOString() }], count: 1 })
   })
 
   it('joinByToken POSTs /join/{token} and returns status', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { status: 'requested' } })
+    // «Вошёл» и «заявка» — один конструктор с флагом, а не строка состояния.
+    const { rest, posts } = fakeRest({ postReturn: { _: 'chatInviteImporter', user_id: 1, date: 1, pFlags: { requested: true } } })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const r = await mgr.joinByToken('tok123')
     expect(posts).toHaveLength(1)
@@ -281,8 +312,17 @@ describe('GroupsManager', () => {
     expect(r).toEqual({ status: 'requested' })
   })
 
-  it('listJoinRequests maps {requests:[{user_id}]} to number[]', async () => {
-    const { rest, gets } = fakeRest({ getReturn: { requests: [{ user_id: 11 }, { user_id: 22 }] } })
+  // Заявки — тот же контейнер импортёров, отфильтрованный по флагу `requested`.
+  it('listJoinRequests читает импортёров контейнера', async () => {
+    const { rest, gets } = fakeRest({
+      getReturn: {
+        _: 'messages.chatInviteImporters', count: 2,
+        importers: [
+          { _: 'chatInviteImporter', user_id: 11, date: 1, pFlags: { requested: true } },
+          { _: 'chatInviteImporter', user_id: 22, date: 1, pFlags: { requested: true } },
+        ],
+      },
+    })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const ids = await mgr.listJoinRequests(5)
     expect(gets[0]).toBe('/chats/5/join_requests')
@@ -469,5 +509,77 @@ describe('card кормит зеркало пиров (иначе предика
     expect(hasRightsPeer(-5, 'send_messages')).toBe(false) // запрещено
     expect(hasRightsPeer(-5, 'send_media')).toBe(true)     // не запрещено
     expect(hasRightsPeer(-5, 'add_admins')).toBe(false)    // не админ
+  })
+})
+
+// Участник — КОНСТРУКТОР объединения, а не строка `role` в записи. Пины держат
+// именно это: подмена ветки роли или чтение статуса со строки участника вместо
+// карточки красят их.
+describe('GroupsManager: участники — объединение конструкторов', () => {
+  const participants = () => ({
+    _: 'channels.channelParticipants',
+    count: 3,
+    participants: [
+      { _: 'channelParticipantCreator', user_id: 7, admin_rights: { _: 'chatAdminRights' } },
+      { _: 'channelParticipantAdmin', user_id: 8, date: 1, admin_rights: { _: 'chatAdminRights' } },
+      { _: 'channelParticipant', user_id: 9, date: 2 },
+    ],
+    chats: [],
+    users: [{ _: 'user', id: 9, first_name: 'Аня', status: { _: 'userStatusRecently' } }],
+  })
+
+  it('роль выводится из КОНСТРУКТОРА, а присутствие — с карточки пользователя', async () => {
+    const { rest } = fakeRest({ getReturn: participants() })
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+
+    const mem = await mgr.members(-5)
+
+    expect(mem.map((m) => [m.userId, m.role])).toEqual([[7, 'creator'], [8, 'admin'], [9, 'member']])
+    // Статус пришёл с `users`, а не со строки участника: у оригинала он живёт
+    // на карточке, и второго дома у него нет.
+    expect(mem[2].status).toEqual({ _: 'userStatusRecently' })
+    expect(mem[0].status).toBeUndefined()
+  })
+
+  // Выгнанный и ограниченный — ОДИН конструктор, разница во флаге `left`.
+  it('бан и ограничение читаются из одного конструктора', async () => {
+    const banned = {
+      _: 'channels.channelParticipants',
+      count: 1,
+      participants: [{
+        _: 'channelParticipantBanned',
+        pFlags: { left: true },
+        peer: { _: 'peerUser', user_id: 11 },
+        kicked_by: 7,
+        date: 3,
+        banned_rights: { _: 'chatBannedRights', until_date: 0 },
+      }],
+      chats: [], users: [],
+    }
+    const bans = await newGroupsManager({
+      rest: fakeRest({ getReturn: banned }).rest, dialogs: fakeDialogs(), peers: fakePeers(),
+    }).listBans(-5)
+    expect(bans).toEqual([{ userId: 11, bannedBy: 7 }])
+
+    const limited = {
+      ...banned,
+      participants: [{
+        _: 'channelParticipantBanned',
+        peer: { _: 'peerUser', user_id: 12 },
+        kicked_by: 7,
+        date: 3,
+        // Запреты — маска ВНУТРИ конструктора: выставленный флаг это запрет.
+        banned_rights: { _: 'chatBannedRights', until_date: 1787420548, pFlags: { send_messages: true, invite_users: true } },
+      }],
+    }
+    const res = await newGroupsManager({
+      rest: fakeRest({ getReturn: limited }).rest, dialogs: fakeDialogs(), peers: fakePeers(),
+    }).listRestrictions(-5)
+    expect(res).toEqual([{
+      userId: 12,
+      deniedRights: 1 | 4,
+      untilDate: new Date(1787420548 * 1000).toISOString(),
+      restrictedBy: 7,
+    }])
   })
 })

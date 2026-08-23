@@ -2,8 +2,10 @@
 import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
-import type { Channel, ChannelFull, MessagesChatFull, UserStatus } from '../peers/peer'
+import type { Channel, ChannelFull, MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import { getPeerId } from '../peers/peerId'
+import type { Peer } from '../peers/peerId'
+import { deniedMask } from '../peers/rights'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import { WIRE_FOLDER_ARCHIVE } from '../models'
 
@@ -55,6 +57,56 @@ export interface ChatCard {
  * производит вовсе (решение №2), а `chatEmpty`/`*Forbidden` в этой ручке не
  * бывают (на них она отвечает ошибкой доступа).
  */
+/**
+ * Участник — КОНСТРУКТОР объединения `ChannelParticipant`: роль выражена
+ * выбором, а не строкой в записи. Права висят на том конструкторе, у которого
+ * они бывают; у обычного участника их нет вовсе.
+ *
+ * «Выгнан» и «ограничен, но в чате» — ОДИН конструктор
+ * (`channelParticipantBanned`), разницу выражает `pFlags.left`.
+ */
+export type ChannelParticipantWire =
+  | { _: 'channelParticipant'; user_id: number; date: number }
+  | { _: 'channelParticipantSelf'; user_id: number; date: number }
+  | { _: 'channelParticipantCreator'; user_id: number; admin_rights: unknown }
+  | { _: 'channelParticipantAdmin'; user_id: number; date: number; admin_rights: unknown }
+  | {
+      _: 'channelParticipantBanned'
+      pFlags?: { left?: true }
+      peer: Peer
+      kicked_by: number
+      date: number
+      banned_rights: { until_date: number; pFlags?: Record<string, true> }
+    }
+  | { _: 'channelParticipantLeft'; peer: Peer }
+
+/** channels.channelParticipants — контейнер списка. Присутствие живёт на
+ *  карточках `users`, а не на строке участника. */
+export interface ChannelsChannelParticipants {
+  _: 'channels.channelParticipants'
+  count: number
+  participants: ChannelParticipantWire[]
+  chats: unknown[]
+  users: UserReal[]
+}
+
+/** Роль по конструктору — обратный перевод для экранов, которые ей оперируют. */
+export function participantRole(p: ChannelParticipantWire): string {
+  switch (p._) {
+    case 'channelParticipantCreator': return 'creator'
+    case 'channelParticipantAdmin': return 'admin'
+    default: return 'member'
+  }
+}
+
+/** id участника: у забаненного и ушедшего он лежит в ссылке на пир. */
+export function participantUserId(p: ChannelParticipantWire): number {
+  if (p._ === 'channelParticipantBanned' || p._ === 'channelParticipantLeft') {
+    return p.peer._ === 'peerUser' ? p.peer.user_id : 0
+  }
+  return p.user_id
+}
+
 export function mapChatCard(r: MessagesChatFull): ChatCard | null {
   const chat = r?.chats?.[0]
   if (!chat || chat._ !== 'channel') return null
@@ -74,20 +126,53 @@ export interface InviteLink {
   revoked: boolean
 }
 
-interface RawInvite {
-  token: string; uses?: number; url: string; requires_approval: boolean
-  expires_at?: string | null; title?: string | null; usage_limit?: number | null; revoked?: boolean
+/**
+ * `chatInviteExported` — конструктор ссылки. Адрес ОДИН (`link`): токен из него
+ * выводится, а не едет рядом вторым именем того же значения. Признаки живут в
+ * `pFlags`, где «выключено» это отсутствие ключа; сроки — в секундах эпохи.
+ */
+export interface ChatInviteExported {
+  _: 'chatInviteExported'
+  pFlags?: { revoked?: true; request_needed?: true }
+  link: string
+  admin_id: number
+  date: number
+  expire_date?: number
+  usage_limit?: number
+  usage?: number
+  title?: string
 }
 
-const mapInvite = (l: RawInvite): InviteLink => ({
-  token: l.token,
-  url: l.url,
-  uses: l.uses ?? 0,
-  requiresApproval: l.requires_approval,
-  expiresAt: l.expires_at ?? undefined,
+/** Контейнеры ответа: одна ссылка и список. */
+export interface MessagesExportedChatInvite { _: 'messages.exportedChatInvite'; invite: ChatInviteExported }
+export interface MessagesExportedChatInvites { _: 'messages.exportedChatInvites'; count: number; invites: ChatInviteExported[] }
+
+/** `chatInviteImporter` — вошедший ИЛИ ждущий одобрения: разницу выражает
+ *  `pFlags.requested`, а не два разных списка. */
+export interface ChatInviteImporter {
+  _: 'chatInviteImporter'
+  pFlags?: { requested?: true }
+  user_id: number
+  date: number
+  approved_by?: number
+}
+
+export interface MessagesChatInviteImporters {
+  _: 'messages.chatInviteImporters'
+  count: number
+  importers: ChatInviteImporter[]
+}
+
+const mapInvite = (l: ChatInviteExported): InviteLink => ({
+  // Токен — хвост адреса, а не отдельное поле провода.
+  token: l.link.slice(l.link.lastIndexOf('/') + 1),
+  url: l.link,
+  uses: l.usage ?? 0,
+  requiresApproval: !!l.pFlags?.request_needed,
+  expiresAt: l.expire_date ? new Date(l.expire_date * 1000).toISOString() : undefined,
   title: l.title ?? '',
   usageLimit: l.usage_limit ?? null,
-  revoked: l.revoked ?? false,
+  revoked: !!l.pFlags?.revoked,
 })
 
 // Тема форум-группы (строка списка: тема + последнее сообщение треда).
@@ -270,8 +355,11 @@ export function newGroupsManager({ rest, dialogs, peers }: {
       await rest.put(`/chats/${peerId}/charge_stars`, { charge_stars: chargeStars })
     },
     async listBans(peerId: number): Promise<{ userId: number; bannedBy: number }[]> {
-      const r = await rest.get<{ bans: { user_id: number; banned_by: number }[] }>(`/chats/${peerId}/bans`)
-      return (r.bans ?? []).map((b) => ({ userId: b.user_id, bannedBy: b.banned_by }))
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/bans`)
+      return (r.participants ?? []).map((p) => ({
+        userId: participantUserId(p),
+        bannedBy: p._ === 'channelParticipantBanned' ? p.kicked_by : 0,
+      }))
     },
     async ban(peerId: number, userId: number): Promise<void> {
       await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
@@ -283,8 +371,19 @@ export function newGroupsManager({ rest, dialogs, peers }: {
     // deniedRights — битовая маска запрещённых прав (PERMS), untilSeconds — срок
     // (0/undefined — бессрочно).
     async listRestrictions(peerId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]> {
-      const r = await rest.get<{ restrictions: { user_id: number; denied_rights: number; until_date: string | null; restricted_by: number }[] }>(`/chats/${peerId}/restrictions`)
-      return (r.restrictions ?? []).map((x) => ({ userId: x.user_id, deniedRights: x.denied_rights, untilDate: x.until_date ?? undefined, restrictedBy: x.restricted_by }))
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
+      // Ограниченный — ТОТ ЖЕ конструктор, что и выгнанный, только без флага
+      // `left`. Чем именно ограничен — маска запретов внутри `banned_rights`;
+      // `until_date` в СЕКУНДАХ эпохи, 0 значит «бессрочно».
+      return (r.participants ?? []).flatMap((p) => {
+        if (p._ !== 'channelParticipantBanned') return []
+        return [{
+          userId: participantUserId(p),
+          deniedRights: deniedMask(p.banned_rights.pFlags),
+          untilDate: p.banned_rights.until_date ? new Date(p.banned_rights.until_date * 1000).toISOString() : undefined,
+          restrictedBy: p.kicked_by,
+        }]
+      })
     },
     async restrictMember(peerId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
       await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })
@@ -316,8 +415,14 @@ export function newGroupsManager({ rest, dialogs, peers }: {
     // Участники чата: id + роль + СТАТУС (объединение `UserStatus`, а не
     // булев `online` без срока годности — см. PresenceEvt).
     async members(peerId: PeerId): Promise<ChatMember[]> {
-      const r = await rest.get<{ members: { user_id: number; role: string; status?: UserStatus }[] }>(`/chats/${peerId}/members`)
-      return (r.members ?? []).map((m) => ({ userId: m.user_id, role: m.role, status: m.status }))
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`)
+      // Присутствие берётся с КАРТОЧКИ пользователя (`user.status`), а не со
+      // строки участника: у оригинала оно живёт там, и второго дома у него нет.
+      const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
+      return (r.participants ?? []).map((p) => {
+        const id = participantUserId(p)
+        return { userId: id, role: participantRole(p), status: byId.get(id)?.status }
+      })
     },
     async promoteAdmin(peerId: number, userId: number, rights: number): Promise<void> {
       await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights })
@@ -326,14 +431,14 @@ export function newGroupsManager({ rest, dialogs, peers }: {
       await rest.del(`/chats/${peerId}/admins/${userId}`)
     },
     async createInvite(peerId: number, opts?: { title?: string; usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<InviteLink> {
-      const r = await rest.post<RawInvite>(`/chats/${peerId}/invite_links`, { title: opts?.title, usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
-      return mapInvite(r)
+      const r = await rest.post<MessagesExportedChatInvite>(`/chats/${peerId}/invite_links`, { title: opts?.title, usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
+      return mapInvite(r.invite)
     },
     // revoked=true — список отозванных ссылок (Telegram getExportedChatInvites
     // revoked flag); по умолчанию — активные.
     async listInvites(peerId: number, revoked = false): Promise<InviteLink[]> {
-      const r = await rest.get<{ invite_links: RawInvite[] }>(`/chats/${peerId}/invite_links${revoked ? '?revoked=true' : ''}`)
-      return (r.invite_links ?? []).map(mapInvite)
+      const r = await rest.get<MessagesExportedChatInvites>(`/chats/${peerId}/invite_links${revoked ? '?revoked=true' : ''}`)
+      return (r.invites ?? []).map(mapInvite)
     },
     // Частичный PATCH ссылки (Telegram editExportedChatInvite): revoked:true — отзыв,
     // usageLimit:null — снять лимит, expireSeconds:0 — сделать бессрочной.
@@ -344,20 +449,29 @@ export function newGroupsManager({ rest, dialogs, peers }: {
       if (patch.requiresApproval !== undefined) body.requires_approval = patch.requiresApproval
       if (patch.expireSeconds !== undefined) body.expire_seconds = patch.expireSeconds
       if (patch.revoked !== undefined) body.revoked = patch.revoked
-      const r = await rest.patch<RawInvite>(`/chats/${peerId}/invite_links/${token}`, body)
-      return mapInvite(r)
+      const r = await rest.patch<MessagesExportedChatInvite>(`/chats/${peerId}/invite_links/${token}`, body)
+      return mapInvite(r.invite)
     },
     // Список вступивших по ссылке (Telegram chatInviteImporters).
     async inviteImporters(peerId: number, token: string): Promise<{ importers: { userId: number; joinedAt: string }[]; count: number }> {
-      const r = await rest.get<{ importers: { user_id: number; joined_at: string }[]; count: number }>(`/chats/${peerId}/invite_links/${token}/importers`)
-      return { importers: (r.importers ?? []).map((i) => ({ userId: i.user_id, joinedAt: i.joined_at })), count: r.count ?? 0 }
+      const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/invite_links/${token}/importers`)
+      return {
+        importers: (r.importers ?? []).map((i) => ({ userId: i.user_id, joinedAt: new Date(i.date * 1000).toISOString() })),
+        count: r.count ?? 0,
+      }
     },
+    /**
+     * Войти по ссылке. Ответ — конструктор `chatInviteImporter`: «вошёл» и
+     * «заявка отправлена» это ОДИН предмет с флагом `requested`, а не строка
+     * состояния. Тот же конструктор приезжает и в списке заявок.
+     */
     async joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }> {
-      return rest.post<{ status: 'requested' | 'joined' }>(`/join/${token}`, {})
+      const r = await rest.post<ChatInviteImporter>(`/join/${token}`, {})
+      return { status: r.pFlags?.requested ? 'requested' : 'joined' }
     },
     async listJoinRequests(peerId: number): Promise<number[]> {
-      const r = await rest.get<{ requests: { user_id: number }[] }>(`/chats/${peerId}/join_requests`)
-      return (r.requests ?? []).map((x) => x.user_id)
+      const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/join_requests`)
+      return (r.importers ?? []).map((x) => x.user_id)
     },
     async approveRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/approve`, {}) },
     async declineRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/decline`, {}) },

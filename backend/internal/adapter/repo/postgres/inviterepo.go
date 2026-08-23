@@ -26,11 +26,11 @@ var _ usecasechat.InviteRepo = (*InviteRepo)(nil)
 
 func NewInviteRepo(pool *pgxpool.Pool) *InviteRepo { return &InviteRepo{pool: pool} }
 
-const inviteCols = `id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval, expires_at, title`
+const inviteCols = `id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval, expires_at, title, created_at`
 
 func scanLink(row pgx.Row) (domain.InviteLink, error) {
 	var l domain.InviteLink
-	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked, &l.RequiresApproval, &l.ExpiresAt, &l.Title)
+	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked, &l.RequiresApproval, &l.ExpiresAt, &l.Title, &l.CreatedAt)
 	return l, err
 }
 
