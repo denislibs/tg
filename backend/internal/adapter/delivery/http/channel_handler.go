@@ -53,7 +53,14 @@ func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(id, true)})
+	// Ответ действия — СОЗДАННЫЙ объект, тем же конструктором, что у ручки
+	// карточки; адреса в безымянной обёртке больше нет (см. GroupHandler).
+	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {

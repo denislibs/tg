@@ -3,7 +3,10 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 func TestGroupFlow_HTTP(t *testing.T) {
@@ -17,14 +20,8 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.PeerID == 0 {
-		t.Fatalf("expected chat_id, got %s", rec.Body.String())
-	}
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// A adds B as a member.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/members", tokenA, map[string]int64{"user_id": idB})
@@ -56,25 +53,22 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	// отдельным полем не едет: creator это pFlags.creator, admin — наличие
 	// admin_rights (решение №3 разбора).
 	var card struct {
-		CreatorID int64 `json:"creator_id"`
-		ChatFull  struct {
-			Underscore string `json:"_"`
-			Chats      []struct {
-				Underscore        string          `json:"_"`
-				Title             string          `json:"title"`
-				ParticipantsCount int             `json:"participants_count"`
-				PFlags            map[string]bool `json:"pFlags"`
-				AdminRights       *struct {
-					Underscore string `json:"_"`
-				} `json:"admin_rights"`
-			} `json:"chats"`
-		} `json:"chat_full"`
+		Underscore string `json:"_"`
+		Chats      []struct {
+			Underscore        string          `json:"_"`
+			Title             string          `json:"title"`
+			ParticipantsCount int             `json:"participants_count"`
+			PFlags            map[string]bool `json:"pFlags"`
+			AdminRights       *struct {
+				Underscore string `json:"_"`
+			} `json:"admin_rights"`
+		} `json:"chats"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.ChatFull.Underscore != "messages.chatFull" || len(card.ChatFull.Chats) != 1 {
+	if card.Underscore != "messages.chatFull" || len(card.Chats) != 1 {
 		t.Fatalf("card = %s", rec.Body.String())
 	}
-	chat := card.ChatFull.Chats[0]
+	chat := card.Chats[0]
 	if chat.Underscore != "channel" || chat.Title != "Team" {
 		t.Fatalf("card chat = %+v (%s)", chat, rec.Body.String())
 	}
@@ -87,10 +81,6 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	if chat.ParticipantsCount != 2 {
 		t.Fatalf("participants_count = %d; want 2", chat.ParticipantsCount)
 	}
-	if card.CreatorID != idA {
-		t.Fatalf("card creator_id = %d; want %d", card.CreatorID, idA)
-	}
-
 	// GET /chats/{id}/members: 2 entries (A=creator, B=member), online=false
 	// since no presence is wired into the test router.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members", tokenA, nil)
@@ -160,11 +150,8 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// A creates an invite link that requires approval.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"requires_approval": true})
@@ -255,11 +242,8 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 
 	// A creates a group.
 	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// Create an invite link with a title + usage limit.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Team link", "usage_limit": 10})
@@ -323,11 +307,8 @@ func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 	tokenA, _ := signUp(t, h, pool, "+79990006001")
 
 	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// Create an extra link (the group is born with a primary one).
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra"})
@@ -412,4 +393,23 @@ func contains(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// createdPeerID — ключ пира СОЗДАННОГО чата из ответа `POST /groups`,
+// `POST /channels`.
+//
+// Ответ там — конструктор `messages.chatFull` (созданный объект целиком), а не
+// адрес в безымянной обёртке: ключ выводится из краткой карточки в `chats`,
+// ровно как его выводит клиент.
+func createdPeerID(t *testing.T, rec *httptest.ResponseRecorder) int64 {
+	t.Helper()
+	var out struct {
+		Chats []struct {
+			ID int64 `json:"id"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Chats) == 0 {
+		t.Fatalf("создание чата не отдало карточку: %s", rec.Body.String())
+	}
+	return int64(domain.ToPeerID(out.Chats[0].ID, true))
 }

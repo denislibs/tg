@@ -32,12 +32,9 @@ func TestListDialogs_Container_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var group struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &group)
+	groupPeerID := createdPeerID(t, rec)
 
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(group.PeerID)+"/messages", tokenB,
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(groupPeerID)+"/messages", tokenB,
 		map[string]any{"text": "привет всем"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
@@ -60,8 +57,8 @@ func TestListDialogs_Container_HTTP(t *testing.T) {
 		t.Errorf("строка списка = %q; want конструктор dialog", d.Underscore)
 	}
 	// Ссылка на пир — конструктор, а не плоское число.
-	if d.Peer.Underscore != "peerChannel" || -d.Peer.ChannelID != group.PeerID {
-		t.Errorf("peer = %+v; want peerChannel(%d)", d.Peer, -group.PeerID)
+	if d.Peer.Underscore != "peerChannel" || -d.Peer.ChannelID != groupPeerID {
+		t.Errorf("peer = %+v; want peerChannel(%d)", d.Peer, -groupPeerID)
 	}
 	// top_message адресует последнее сообщение ЧИСЛОМ — тем же, которым оно
 	// адресуется везде (номер в чате).

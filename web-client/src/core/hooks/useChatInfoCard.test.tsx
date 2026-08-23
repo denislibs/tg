@@ -55,7 +55,7 @@ function fullChat(peerId: PeerId): ChannelFull {
 }
 
 function card(peerId: PeerId, chat = channel(peerId)): ChatCard {
-  return { peerId, chat, fullChat: fullChat(peerId), creatorId: 0 }
+  return { peerId, chat, fullChat: fullChat(peerId) }
 }
 
 // Карточка отдаётся не сразу: её ожидание и есть окно, в котором раньше вставала

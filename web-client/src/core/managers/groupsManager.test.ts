@@ -29,31 +29,28 @@ const fakeDialogs = () => ({
 // в describe «card кормит зеркало пиров» ниже.
 const fakePeers = () => ({ saveApiPeers: vi.fn() })
 
-/** Ответ `GET /chats/{peerID}/card` в форме шага C: конструктор + свои поля рядом. */
+/** Ответ `GET /chats/{peerID}/card` — конструктор `messages.chatFull` В КОРНЕ,
+ *  без обёртки: ключ пира выводим из краткой карточки, а `creator_id` был
+ *  мёртвым полем, которое никто не читал. */
 function cardResponse() {
   return {
-    peer_id: -5 as PeerId,
-    chat_full: {
-      _: 'messages.chatFull' as const,
-      full_chat: {
-        _: 'channelFull' as const,
-        id: 5, about: 'a',
-        read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0,
-        chat_photo: null,
-        linked_chat_id: 0,
-      },
-      chats: [{
-        _: 'channel' as const,
-        id: 5, title: 'T', username: 'u',
-        photo: { _: 'chatPhotoEmpty' as const },
-        date: 0,
-        pFlags: { megagroup: true as const },
-        participants_count: 12,
-      }],
-      users: [],
+    _: 'messages.chatFull' as const,
+    full_chat: {
+      _: 'channelFull' as const,
+      id: 5, about: 'a',
+      read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0,
+      chat_photo: null,
+      linked_chat_id: 0,
     },
-    muted: false,
-    creator_id: 7,
+    chats: [{
+      _: 'channel' as const,
+      id: 5, title: 'T', username: 'u',
+      photo: { _: 'chatPhotoEmpty' as const },
+      date: 0,
+      pFlags: { megagroup: true as const },
+      participants_count: 12,
+    }],
+    users: [],
   }
 }
 
@@ -84,18 +81,23 @@ function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn
 }
 
 describe('GroupsManager', () => {
+  // Ответ создания — СОЗДАННЫЙ объект (messages.chatFull), а не адрес в
+  // обёртке: ключ пира выводится из краткой карточки, а сама карточка сразу
+  // уезжает в зеркало пиров.
   it('createGroup POSTs /groups with snake_case body and returns peer_id', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { peer_id: 42 } })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    const peers = fakePeers()
+    const { rest, posts } = fakeRest({ postReturn: cardResponse() })
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
     const id = await mgr.createGroup({ title: 'My Group', about: 'hi', username: 'mg', isPublic: true })
-    expect(id).toBe(42)
+    expect(id).toBe(-5)
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(cardResponse())
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/groups')
     expect(posts[0].body).toEqual({ title: 'My Group', about: 'hi', username: 'mg', is_public: true, member_ids: [] })
   })
 
   it('createGroup defaults about/username/is_public', async () => {
-    const { rest, posts } = fakeRest({ postReturn: { peer_id: 7 } })
+    const { rest, posts } = fakeRest({ postReturn: cardResponse() })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     await mgr.createGroup({ title: 'Solo' })
     expect(posts[0].body).toEqual({ title: 'Solo', about: '', username: '', is_public: false, member_ids: [] })
@@ -146,12 +148,12 @@ describe('GroupsManager', () => {
     expect(gets[0]).toBe('/chats/-5/card')
     expect(card).toEqual({
       peerId: -5,
-      chat: cardResponse().chat_full.chats[0],
-      fullChat: cardResponse().chat_full.full_chat,
-      // Плоского `muted` в карточке БОЛЬШЕ НЕТ ни на проводе, ни в модели:
-      // заглушённость это `channelFull.notify_settings`, параметр самой схемы,
-      // и мьют в нём выражен сроком (решение Р4). Читателей у поля не было.
-      creatorId: 7,
+      chat: cardResponse().chats[0],
+      fullChat: cardResponse().full_chat,
+      // Ни `muted`, ни `creator_id` в карточке БОЛЬШЕ НЕТ: заглушённость это
+      // `channelFull.notify_settings` (параметр самой схемы, мьют выражен
+      // СРОКОМ), а создатель — `pFlags.creator` краткой карточки. Читателей у
+      // обоих полей не было ни одного.
     })
   })
 
@@ -159,7 +161,7 @@ describe('GroupsManager', () => {
   // прочитать его как ключ значило бы открывать обсуждение по чужому номеру.
   it('обсуждение: сырой linked_chat_id становится ОТРИЦАТЕЛЬНЫМ ключом; нет поля — NULL_PEER_ID', async () => {
     const withLink = cardResponse()
-    withLink.chat_full.full_chat.linked_chat_id = 88
+    withLink.full_chat.linked_chat_id = 88
     const a = newGroupsManager({ rest: fakeRest({ getReturn: withLink }).rest, dialogs: fakeDialogs(), peers: fakePeers() })
     expect(getLinkedChatPeerId((await a.card(-5))!.fullChat)).toBe(-88)
 
@@ -420,7 +422,7 @@ describe('GroupsManager: действия без оптимистики (Task 4)
 // Здесь связка собрана целиком и по-настоящему: НАСТОЯЩИЙ владелец
 // (`newPeersManager`) + настоящее зеркало (`applyPeerOps` — ровно то, что
 // делает проектор по `rt:peer_op`). Удаление строки
-// `peers.saveApiPeers(r.chat_full)` из `groupsManager.card` красит этот describe.
+// `peers.saveApiPeers(r)` из `groupsManager.card` красит этот describe.
 describe('card кормит зеркало пиров (иначе предикаты по ключу мертвы)', () => {
   beforeEach(() => { resetPeerMirror() })
 
@@ -442,7 +444,7 @@ describe('card кормит зеркало пиров (иначе предика
 
     await mgr.card(-5)
 
-    expect(cachedChat(-5)).toEqual(cardResponse().chat_full.chats[0])
+    expect(cachedChat(-5)).toEqual(cardResponse().chats[0])
     expect(isChannelPeer(-5)).toBe(true)    // `channel` — да
     expect(isMegagroupPeer(-5)).toBe(true)  // pFlags.megagroup — да
     expect(isBroadcastPeer(-5)).toBe(false) // …и потому НЕ вещательный: «всегда true» тоже неверно
@@ -450,7 +452,7 @@ describe('card кормит зеркало пиров (иначе предика
 
   it('права зрителя приезжают той же карточкой: creator может всё, обычный участник — по запретам', async () => {
     const creatorCard = cardResponse()
-    creatorCard.chat_full.chats[0].pFlags = { megagroup: true, creator: true } as never
+    creatorCard.chats[0].pFlags = { megagroup: true, creator: true } as never
     const a = newGroupsManager({ rest: fakeRest({ getReturn: creatorCard }).rest, dialogs: fakeDialogs(), peers: wiredPeers() })
     await a.card(-5)
     expect(hasRightsPeer(-5, 'add_admins')).toBe(true)
@@ -460,7 +462,7 @@ describe('card кормит зеркало пиров (иначе предика
     // ⚠ ПОЛЯРНОСТЬ: выставленный флаг `default_banned_rights` — это ЗАПРЕТ.
     // Прочитать его как разрешение значит перевернуть права всей группы.
     const bannedCard = cardResponse()
-    ;(bannedCard.chat_full.chats[0] as Record<string, unknown>).default_banned_rights =
+    ;(bannedCard.chats[0] as Record<string, unknown>).default_banned_rights =
       { _: 'chatBannedRights', pFlags: { send_messages: true }, until_date: 0 }
     const b = newGroupsManager({ rest: fakeRest({ getReturn: bannedCard }).rest, dialogs: fakeDialogs(), peers: wiredPeers() })
     await b.card(-5)

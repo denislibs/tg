@@ -1,8 +1,9 @@
 import type { RestClient } from '../net/restClient'
 import type { PendingNewEvt } from '../realtime/events'
 import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
-import type { Chat, UserReal } from '../peers/peer'
+import type { Chat, MessagesChatFull, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
+import { getPeerId } from '../peers/peerId'
 import type { PeersManager } from './peersManager'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
@@ -48,11 +49,18 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
   peers: Pick<PeersManager, 'saveApiPeers'>
 }) {
   return {
+    /**
+     * Создать канал. Ответ — СОЗДАННЫЙ объект (`messages.chatFull`), тем же
+     * конструктором, что у карточки чата; адреса в безымянной обёртке больше
+     * нет. Карточка сразу уезжает в зеркало пиров.
+     */
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
-      const r = await rest.post<{ peer_id: number }>('/channels', {
+      const r = await rest.post<MessagesChatFull>('/channels', {
         title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
       })
-      return r.peer_id
+      peers.saveApiPeers(r)
+      const chat = r?.chats?.[0]
+      return chat ? getPeerId({ _: 'peerChannel', channel_id: chat.id }) : 0
     },
     // entities — разметка поста (bold/text_link/mention/hashtag…): тот же формат,
     // что у обычной отправки; на бэке проходит sanitizeEntities.

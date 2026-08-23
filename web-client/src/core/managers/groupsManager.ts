@@ -3,6 +3,7 @@ import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
 import type { Channel, ChannelFull, MessagesChatFull, UserStatus } from '../peers/peer'
+import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import { WIRE_FOLDER_ARCHIVE } from '../models'
 
@@ -39,36 +40,25 @@ export interface ChatCard {
   chat: Channel
   /** полная форма: экран информации о чате */
   fullChat: ChannelFull
-  /** наше, вне схемы: кто создал чат */
-  creatorId: number
-}
-
-/** Проводная форма ответа карточки: конструктор + поля рядом с ним (та же
- *  форма, что `RawPeerProfile` у профиля пользователя). */
-interface RawChatCard {
-  peer_id: PeerId
-  chat_full: MessagesChatFull
-  creator_id?: number
 }
 
 /**
- * Разбор ответа карточки. Маппера полей нет и быть не может — форма провода и
- * форма модели совпали; раскладываем только ответ на пару конструкторов
- * (`full_chat` + первый элемент `chats`) и свои поля рядом, как `mapPeerProfile`.
+ * Разбор ответа карточки. Ответ И ЕСТЬ конструктор `messages.chatFull` —
+ * обёртки вокруг него больше нет: раскладываем его на пару (`full_chat` +
+ * первый элемент `chats`).
+ *
+ * `peer_id` из ответа ушёл — он выводим из самой краткой карточки; `creator_id`
+ * ушёл как мёртвый: его никто не читал, только хранил. «Создатель ли я» —
+ * `pFlags.creator` краткой карточки.
  *
  * `chats[0]` не оказался `channel` — карточки нет: базовый `chat` бэкенд не
  * производит вовсе (решение №2), а `chatEmpty`/`*Forbidden` в этой ручке не
  * бывают (на них она отвечает ошибкой доступа).
  */
-export function mapChatCard(r: RawChatCard): ChatCard | null {
-  const chat = r.chat_full?.chats?.[0]
+export function mapChatCard(r: MessagesChatFull): ChatCard | null {
+  const chat = r?.chats?.[0]
   if (!chat || chat._ !== 'channel') return null
-  return {
-    peerId: r.peer_id,
-    chat,
-    fullChat: r.chat_full.full_chat,
-    creatorId: r.creator_id ?? 0,
-  }
+  return { peerId: getPeerId({ _: 'peerChannel', channel_id: chat.id }), chat, fullChat: r.full_chat }
 }
 
 // Пригласительная ссылка (Telegram exportedChatInvite). Единый JSON для
@@ -165,12 +155,21 @@ export function newGroupsManager({ rest, dialogs, peers }: {
   peers: Pick<PeersManager, 'saveApiPeers'>
 }) {
   return {
+    /**
+     * Создать группу. Ответ — СОЗДАННЫЙ объект (`messages.chatFull`), а не его
+     * адрес в безымянной обёртке: у оригинала `messages.createChat` отвечает
+     * пачкой с новым чатом внутри.
+     *
+     * Карточка сразу уезжает в зеркало пиров — иначе экран, открытый по
+     * возвращённому ключу, ждал бы отдельного запроса за тем, что уже пришло.
+     */
     async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
-      const r = await rest.post<{ peer_id: number }>('/groups', {
+      const r = await rest.post<MessagesChatFull>('/groups', {
         title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
         member_ids: args.memberIds ?? [],
       })
-      return r.peer_id
+      peers.saveApiPeers(r)
+      return mapChatCard(r)?.peerId ?? 0
     },
     async addMember(peerId: number, userId: number): Promise<void> {
       await rest.post(`/chats/${peerId}/members`, { user_id: userId })
@@ -247,8 +246,8 @@ export function newGroupsManager({ rest, dialogs, peers }: {
      * вида чата и права по ключу пира на главном потоке.
      */
     async card(peerId: PeerId): Promise<ChatCard | null> {
-      const r = await rest.get<RawChatCard>(`/chats/${peerId}/card`)
-      peers.saveApiPeers(r.chat_full)
+      const r = await rest.get<MessagesChatFull>(`/chats/${peerId}/card`)
+      peers.saveApiPeers(r)
       return mapChatCard(r)
     },
     async editInfo(peerId: number, args: { title: string; about?: string; username?: string }): Promise<void> {

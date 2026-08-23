@@ -143,13 +143,10 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var g struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &g)
+	gPeerID := createdPeerID(t, rec)
 
 	// B запрашивает историю G с thread_root, указывающим на ЧУЖОЕ (X↔Y) сообщение.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(g.PeerID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(gPeerID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history: %d %s", rec.Code, rec.Body.String())
 	}

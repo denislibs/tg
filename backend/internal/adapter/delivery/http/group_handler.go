@@ -67,7 +67,16 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(id, true)})
+	// Ответ действия — СОЗДАННЫЙ объект, а не его адрес в безымянной обёртке.
+	// У оригинала `messages.createChat` отвечает `Updates` с новым чатом
+	// внутри; контейнеров Updates мы не копируем (граница программы), поэтому
+	// отдаём ту же карточку тем же конструктором, что и ручка карточки.
+	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
@@ -589,15 +598,13 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	// выражено наличием username, `default_permissions` — инвертированными
 	// default_banned_rights, `history_for_new` — pFlags.hidden_prehistory с
 	// обратным знаком.
-	writeJSON(w, http.StatusOK, map[string]any{
-		"peer_id":   domain.ToPeerID(c.ID, true),
-		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
-		// Наше, вне схемы: кто создал чат (пока есть потребители). Плоское
-		// `muted` отсюда ушло — заглушённость зрителем это
-		// channelFull.notify_settings, параметр самой схемы, и мьют в нём
-		// выражен СРОКОМ, а не булевым.
-		"creator_id": c.CreatorID,
-	})
+	//
+	// Обёртки вокруг конструктора больше нет. `peer_id` был выводим из самого
+	// ответа (краткая карточка лежит в `chats`, ключ пира клиент и так строит
+	// из неё), а `creator_id` — мёртвым: его никто не читал, только хранил.
+	// «Создатель ли я» выражает `pFlags.creator` краткой карточки, а «кто
+	// создатель» — конструктор `channelParticipantCreator` в списке участников.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 // SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).

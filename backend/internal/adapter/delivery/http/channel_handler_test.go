@@ -19,14 +19,8 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.PeerID == 0 {
-		t.Fatalf("expected chat_id, got %s", rec.Body.String())
-	}
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// Creator posts → 200 + адрес поста (id = номер в канале).
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -46,8 +40,8 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	if strings.Contains(rec.Body.String(), `"seq"`) {
 		t.Fatalf("в ответе осталось второе число: %s", rec.Body.String())
 	}
-	if post.PeerID != created.PeerID {
-		t.Fatalf("post chat_id = %d; want %d", post.PeerID, created.PeerID)
+	if post.PeerID != createdPeerID {
+		t.Fatalf("post chat_id = %d; want %d", post.PeerID, createdPeerID)
 	}
 
 	// A second post so difference has more than one entry.
@@ -128,11 +122,8 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// A posts → capture the post message id.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -261,11 +252,8 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
 		"text": "discuss this too", "client_msg_id": "p1",
@@ -366,11 +354,8 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	const postText = "уникальный текст поста для проверки дубликата в треде"
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -445,11 +430,8 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
 		"text": "discuss via generic send", "client_msg_id": "p1",
@@ -548,11 +530,8 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	// Два поста ДО EnableDiscussion — зеркал ещё не существует ни у одного.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -689,11 +668,8 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	createdPeerID := createdPeerID(t, rec)
+	cid := itoa(createdPeerID)
 
 	const postText = "пост со скрываемым зеркалом"
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{
@@ -787,19 +763,13 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 
 	// A creates a channel.
 	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{"title": "Ch"})
-	var ch struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &ch)
-	cid := itoa(ch.PeerID)
+	chPeerID := createdPeerID(t, rec)
+	cid := itoa(chPeerID)
 
 	// A creates a plain group (discussion candidate).
 	rec = authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Talk"})
-	var grp struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &grp)
-	gid := grp.PeerID
+	grpPeerID := createdPeerID(t, rec)
+	gid := grpPeerID
 
 	// discussion_candidates lists the group.
 	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/discussion_candidates", tokenA, nil)
@@ -867,7 +837,7 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
 	card = decodeCard(t, rec)
 	if !card.chatFlag("signatures") || !card.chatFlag("signature_profiles") {
-		t.Fatalf("card signatures = %+v; want both true", card.ChatFull.Chats[0].PFlags)
+		t.Fatalf("card signatures = %+v; want both true", card.Chats[0].PFlags)
 	}
 
 	// signatures=false forces profiles off.
@@ -875,6 +845,6 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
 	card = decodeCard(t, rec)
 	if card.chatFlag("signatures") || card.chatFlag("signature_profiles") {
-		t.Fatalf("card signatures should be off: %+v", card.ChatFull.Chats[0].PFlags)
+		t.Fatalf("card signatures should be off: %+v", card.Chats[0].PFlags)
 	}
 }

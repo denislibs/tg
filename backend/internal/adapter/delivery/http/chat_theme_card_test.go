@@ -35,38 +35,37 @@ func TestChatTheme_LivesInFullCard_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var group struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &group)
+	groupPeerID := createdPeerID(t, rec)
 
-	if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(group.PeerID)+"/theme", tokenA,
+	if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(groupPeerID)+"/theme", tokenA,
 		map[string]any{"theme_id": "night"}); rec.Code != http.StatusOK {
 		t.Fatalf("set theme: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(group.PeerID)+"/card", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(groupPeerID)+"/card", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("card: %d %s", rec.Code, rec.Body.String())
 	}
+	// Ответ — конструктор messages.chatFull В КОРНЕ: обёртки с `muted` и
+	// `creator_id` рядом больше нет вовсе.
 	var card struct {
-		ChatFull struct {
-			FullChat map[string]any `json:"full_chat"`
-		} `json:"chat_full"`
-		Muted any `json:"muted"`
+		Underscore string         `json:"_"`
+		FullChat   map[string]any `json:"full_chat"`
+		Muted      any            `json:"muted"`
+		CreatorID  any            `json:"creator_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &card)
-	if card.ChatFull.FullChat["theme_emoticon"] != "night" {
-		t.Errorf("channelFull.theme_emoticon = %v; want night", card.ChatFull.FullChat["theme_emoticon"])
+	if card.FullChat["theme_emoticon"] != "night" {
+		t.Errorf("channelFull.theme_emoticon = %v; want night", card.FullChat["theme_emoticon"])
 	}
-	// Плоское `muted` рядом с карточкой ушло: заглушённость зрителем это
-	// notify_settings САМОЙ карточки, и мьют в нём выражен сроком.
-	if card.Muted != nil {
-		t.Errorf("плоское muted осталось рядом с карточкой: %v", card.Muted)
+	// Заглушённость зрителем — notify_settings САМОЙ карточки, и мьют в нём
+	// выражен сроком; создатель — pFlags.creator краткой формы.
+	if card.Muted != nil || card.CreatorID != nil {
+		t.Errorf("плоские поля остались рядом с карточкой: muted=%v creator_id=%v", card.Muted, card.CreatorID)
 	}
-	ns, _ := card.ChatFull.FullChat["notify_settings"].(map[string]any)
+	ns, _ := card.FullChat["notify_settings"].(map[string]any)
 	if ns == nil || ns["_"] != "peerNotifySettings" {
-		t.Errorf("карточка без notify_settings: %v", card.ChatFull.FullChat)
+		t.Errorf("карточка без notify_settings: %v", card.FullChat)
 	}
 
 	// ── Приватный чат: userFull.theme_emoticon ──────────────────────────────

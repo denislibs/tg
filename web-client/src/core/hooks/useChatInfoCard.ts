@@ -36,7 +36,6 @@ import { hasRights } from '../peers/rights'
  *  хранилось. */
 interface FullCard {
   fullChat: ChannelFull
-  creatorId: number
 }
 
 // Полные карточки уже открывавшихся чатов. Повторный вход отдаёт их СИНХРОННО,
@@ -49,11 +48,10 @@ interface FullCard {
 // нас пока не заведён: инвалидация приходит кадром `chat_update`).
 //
 // Сам конструктор `channelFull` при этом уезжает ЕЩЁ и в `core/chatFullCache.ts`
-// — общее зеркало полных карточек. Не второе хранилище того же факта, а его
-// единственный дом: здесь рядом лежит `creatorId`, поле уровня ОТВЕТА, которого
-// в конструкторе нет. Тема оформления (`theme_emoticon`) читается только из
-// зеркала: у неё есть второй, вне-экранный читатель (обои шелла), и кадр
-// `chat_theme_update` патчит именно его.
+// — общее зеркало полных карточек. Здесь он лежит ради СИНХРОННОГО первого
+// рендера (см. выше), а зеркало обслуживает вне-экранных читателей: тему
+// оформления (`theme_emoticon`) читают обои шелла, и кадр `chat_theme_update`
+// патчит именно зеркало.
 const fullCache = new Map<PeerId, FullCard>()
 
 /**
@@ -128,7 +126,7 @@ export function useChatInfoCard(args: {
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive || !c) return
-      const next: FullCard = { fullChat: c.fullChat, creatorId: c.creatorId }
+      const next: FullCard = { fullChat: c.fullChat }
       fullCache.set(numericChatId, next)
       // Полная карточка — в общее зеркало: её тема нужна и вне этого экрана
       // (колонка чата и обои шелла), а второго загрузчика карточки чата нет.

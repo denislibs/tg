@@ -22,12 +22,23 @@ function raw(id: number, threadRootId?: number): RawMessage {
 const real = (m: MyMessage): MessageReal | undefined => (m._ === 'message' ? m : undefined)
 
 describe('ChannelsManager.createChannel', () => {
+  // Ответ создания — СОЗДАННЫЙ объект (messages.chatFull), а не адрес в
+  // обёртке: ключ пира выводится из краткой карточки, и она же сразу уезжает
+  // в зеркало пиров.
   it('POSTs /channels and returns the new chat id', async () => {
-    const post = vi.fn(async () => ({ peer_id: 42 }))
+    const card = {
+      _: 'messages.chatFull',
+      full_chat: { _: 'channelFull', id: 42 },
+      chats: [{ _: 'channel', id: 42, title: 'News', pFlags: { broadcast: true } }],
+      users: [],
+    }
+    const post = vi.fn(async () => card)
     const rest = { post, get: vi.fn() } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
+    const peers = fakePeers()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers })
     const id = await mgr.createChannel({ title: 'News', isPublic: true })
-    expect(id).toBe(42)
+    expect(id).toBe(-42)
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(card)
     expect(post).toHaveBeenCalledWith('/channels', { title: 'News', about: '', username: '', is_public: true })
   })
 })
