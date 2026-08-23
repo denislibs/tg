@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
@@ -60,7 +61,7 @@ func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -74,5 +75,5 @@ func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "logout failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

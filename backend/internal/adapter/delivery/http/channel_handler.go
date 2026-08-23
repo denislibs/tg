@@ -207,7 +207,7 @@ func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DiscussionCandidates lists groups the actor may link as a discussion group
@@ -249,7 +249,7 @@ func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
@@ -431,7 +431,7 @@ func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Similar — похожие каналы (по пересечению аудитории). Формат строки канала

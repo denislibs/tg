@@ -8,8 +8,8 @@ export function newPushManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
       const r = await rest.get<{ public_key: string }>('/push/vapid_public_key')
       return r.public_key
     },
-    async subscribe(sub: PushSub): Promise<{ ok: boolean }> {
-      return rest.post<{ ok: boolean }>('/push/subscribe', sub)
+    async subscribe(sub: PushSub): Promise<void> {
+      await rest.post('/push/subscribe', sub)
     },
   }
 }

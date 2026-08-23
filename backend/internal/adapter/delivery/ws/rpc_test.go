@@ -85,14 +85,18 @@ func TestRpcRespFrame(t *testing.T) {
 		if tt != "rpc_resp" || reqID != "r1" || status != 404 {
 			t.Fatalf("bad envelope: t=%q req_id=%q status=%d", tt, reqID, status)
 		}
+		// Обёртка — конструктор `error{code, text}`, тот же, что у обычного
+		// ответа-ошибки: отказы разбирает одно место на клиенте.
 		var b struct {
-			Error string `json:"error"`
+			Underscore string `json:"_"`
+			Code       int    `json:"code"`
+			Text       string `json:"text"`
 		}
 		if err := json.Unmarshal(body, &b); err != nil {
 			t.Fatalf("body not decodable: %v (%s)", err, body)
 		}
-		if !strings.Contains(b.Error, "404 page not found") {
-			t.Fatalf("error field missing original text: %q", b.Error)
+		if b.Underscore != "error" || b.Code != 404 || !strings.Contains(b.Text, "404 page not found") {
+			t.Fatalf("обёртка не конструктор error: %s", body)
 		}
 	})
 

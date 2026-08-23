@@ -347,7 +347,10 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         return { emailPattern: res.email_pattern }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        if (e.message === 'resend_too_soon' || e.status === 429) return { error: 'resend_too_soon' }
+        // Код отказа несёт остаток секунд в хвосте (`RESEND_TOO_SOON_<N>`) —
+        // форма оригинала, где ожидание едет внутри типа ошибки
+        // (`FLOOD_WAIT_<N>`, tweb `password.tsx:40` сравнивает префиксом).
+        if (e.message.startsWith('RESEND_TOO_SOON_') || e.status === 429) return { error: 'resend_too_soon' }
         if (e.status === 401) return { error: 'password_token_expired' }
         if (e.status === 404) return { error: 'password_recovery_na' }
         if (e.status === 503) return { error: 'unavailable' }

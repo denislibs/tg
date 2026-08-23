@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -117,7 +118,10 @@ func rpcRespFrame(reqID string, status int, body []byte) []byte {
 		body = []byte("null")
 	case !json.Valid(body):
 		// chi's stock 404/500 handlers write plain text — wrap so the frame stays valid JSON.
-		if w, err := json.Marshal(map[string]string{"error": strings.TrimSpace(string(body))}); err == nil {
+		// Оболочка — тот же конструктор `error`, что у обычного ответа-ошибки:
+		// разбирает отказы на клиенте одно место (restClient), и двух форм у
+		// него быть не должно.
+		if w, err := json.Marshal(domain.NewError(status, strings.TrimSpace(string(body)))); err == nil {
 			body = w
 		} else {
 			body = []byte("null")
@@ -529,7 +533,8 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		select {
 		case c.rpcSem <- struct{}{}:
 		default:
-			c.Send(rpcRespFrame(d.ReqID, 503, []byte(`{"error":"rpc busy"}`)))
+			busy, _ := json.Marshal(domain.NewError(http.StatusServiceUnavailable, "rpc busy"))
+			c.Send(rpcRespFrame(d.ReqID, 503, busy))
 			return
 		}
 		rpc, user, deviceID := c.rpc, c.user, c.deviceID

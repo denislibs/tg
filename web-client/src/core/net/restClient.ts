@@ -2,6 +2,21 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
+/**
+ * Тело ответа-ошибки — конструктор `error{code, text}` (разбор:
+ * docs/readiness/tl-rest-analysis.md, Р3). Прежде это был безымянный
+ * `{error: "..."}`.
+ *
+ * Текст берётся ТОЛЬКО у своего конструктора: чужое тело (прокси, шлюз, чужой
+ * сервис) описания нашей ошибки не несёт, и подставлять оттуда произвольную
+ * строку значило бы показать пользователю чужой текст.
+ */
+function errorOf(status: number, body: unknown): HttpError {
+  const e = body as { _?: string; text?: string } | null | undefined
+  const text = e?._ === 'error' && typeof e.text === 'string' ? e.text : `HTTP ${status}`
+  return new HttpError(status, text)
+}
+
 // Structural-контракт канального RPC (реализуется ChannelRpc). Импортируем как тип-форму,
 // а не класс, чтобы не создавать цикл restClient↔channelRpc.
 export interface ChannelRpcLike {
@@ -116,10 +131,7 @@ export class RestClient {
     // При DNP-ON и готовом канале REST идёт через Noise-канал; иначе (логин/пре-канал) — fetch.
     if (this.channelRpc?.isReady()) {
       const { status, body: respBody } = await this.channelRpc.call(method, path, body)
-      if (status < 200 || status >= 300) {
-        const err = respBody as { error?: string } | null
-        throw new HttpError(status, err?.error ?? `HTTP ${status}`)
-      }
+      if (status < 200 || status >= 300) throw errorOf(status, respBody)
       return respBody as R
     }
     if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
@@ -130,7 +142,7 @@ export class RestClient {
     })
     const text = await res.text()
     const data = text ? JSON.parse(text) : undefined
-    if (!res.ok) throw new HttpError(res.status, (data && data.error) || `HTTP ${res.status}`)
+    if (!res.ok) throw errorOf(res.status, data)
     return data as R
   }
 }

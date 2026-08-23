@@ -15,8 +15,16 @@ machine-readable source of truth is the OpenAPI spec:
   epoch milliseconds (`date`, `last_seen`).
 - **Auth:** protected endpoints require `Authorization: Bearer <token>`, where
   `<token>` is the device session token from `/auth/sign_in`. Missing/invalid →
-  `401 {"error": "..."}`.
-- **Errors:** non-2xx responses are `{"error": "<message>"}`.
+  `401 {"_": "error", "code": 401, "text": "..."}`.
+- **Ошибки** — конструктор `error{code, text}` схемы. В оригинале ошибка не
+  витрина метода, а ЗАМЕНА результата в транспорте (`rpc_error`, секция
+  MTProto); у нас эту позицию занимает статус HTTP, а `code` дублирует его,
+  потому что по проводу DNP строки статуса нет вовсе. Где ответ несёт ожидание,
+  остаток секунд едет ВНУТРИ текста (`RESEND_TOO_SOON_<N>`,
+  `2FA_CONFIRM_WAIT_<N>`) — форма оригинала (`FLOOD_WAIT_<N>`), потому что у
+  конструктора параметров ровно два.
+- **«Получилось»** — конструктор `Bool` (`boolTrue`/`boolFalse`), а не ключ
+  `ok`. Так отвечают 212 из 790 методов оригинала.
 - `seq` — monotonic per-chat message sequence. `pts` — per-user update cursor
   (each update carries `pts` and `pts_count`; the client tracks the latest `pts`).
 - IDs are int64.
@@ -51,8 +59,8 @@ machine-readable source of truth is the OpenAPI spec:
 Request a login code. In dev the code is **not** sent — it is logged server-side
 (`DEV_OTP_CODE`, default `12345`).
 - Request: `{ "phone": "+79990000000" }`
-- 200: `{ "ok": true }`
-- 400: `{ "error": "phone is required" }`
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "phone is required" }`
 
 ### POST /auth/sign_in  · public
 Verify the code, create the user (if new) + a device, return a session token.
@@ -60,7 +68,7 @@ Verify the code, create the user (if new) + a device, return a session token.
   (`device`, `platform` optional)
 - 200: `{ "token": "<opaque>", "user": <как у GET /me> }` — та же пара
   `users.userFull`, что отдаёт `/me`, а не третья форма карточки
-- 401: `{ "error": "invalid code" }`
+- 401: `{ "_": "error", "code": 401, "text": "invalid code" }`
 
 ### POST /auth/qr/new  · public
 Start a QR login. Creates an ephemeral pending record (Redis, ~60s TTL) and
@@ -68,7 +76,7 @@ returns the raw token plus a scan URL (`<origin>/qr/{token}`, origin taken from
 the `Origin` header, falling back to the request host).
 - Request: `{ "platform": "web" }` (`platform` optional)
 - 200: `{ "token": "<opaque>", "url": "https://app.example/qr/<token>", "expires_at": "2026-06-24T10:01:00Z" }`
-- 503: `{ "error": "qr login unavailable" }` (no QRStore / Redis down)
+- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }` (no QRStore / Redis down)
 
 ### GET /auth/qr/{token}  · public
 Poll the QR-login record. A confirmed record is single-use — it is deleted on
@@ -77,16 +85,16 @@ read, so a second poll returns `expired`. Unknown/expired tokens return
 - 200 pending: `{ "status": "pending" }`
 - 200 confirmed: `{ "status": "confirmed", "session_token": "<opaque>", "user": <как у GET /me> }`
 - 200 expired: `{ "status": "expired" }`
-- 503: `{ "error": "qr login unavailable" }`
+- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }`
 
 ### POST /auth/qr/confirm  · auth
 Called by an already-authenticated device (the scanner) to approve a pending QR
 login. Mints a fresh session for the caller and attaches it to the record.
 - Request: `{ "token": "<opaque>" }`
-- 200: `{ "ok": true }`
-- 400: `{ "error": "token is required" }`
-- 404: `{ "error": "invalid or expired token" }` (unknown/expired/already used)
-- 503: `{ "error": "qr login unavailable" }`
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "token is required" }`
+- 404: `{ "_": "error", "code": 404, "text": "invalid or expired token" }` (unknown/expired/already used)
+- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }`
 
 ### GET /me  · auth
 - 200 — та же ПАРА, что и `GET /users/{id}`: конструктор
@@ -101,7 +109,7 @@ login. Mints a fresh session for the caller and attaches it to the record.
                  "chats": [] },
   "can_message": true }
 ```
-- 401: `{ "error": "missing token" | "invalid token" }`
+- 401: `{ "_": "error", "code": 401, "text": "missing token" | "invalid token" }`
 
 ### GET /sessions  · auth
 List the user's devices.
@@ -109,12 +117,12 @@ List the user's devices.
 
 ### DELETE /sessions/{deviceID}  · auth
 Revoke a session (deletes the device, evicts its cache, **closes its live WS socket**).
-- 200: `{ "ok": true }`
-- 404: `{ "error": "session not found" }`
+- 200: `{ "_": "boolTrue" }`
+- 404: `{ "_": "error", "code": 404, "text": "session not found" }`
 
 ### POST /auth/logout  · auth
 Revoke the current session (same effect as revoking the caller's own device).
-- 200: `{ "ok": true }`
+- 200: `{ "_": "boolTrue" }`
 
 ---
 
@@ -179,15 +187,15 @@ admins, a granular **rights** bitmask.
 - **`member_count`** is a denormalized counter on the chat, maintained on add/remove
   (re-adding an existing member or re-removing a non-member does not double-count).
 - **Errors:** an action the caller is not entitled to perform (or performs while
-  not a member) → `403 {"error": "forbidden"}`. A missing chat/member → `404
-  {"error": "not found"}`.
+  not a member) → `403 {"_": "error", "code": 403, "text": "forbidden"}`.
+  A missing chat/member → `404 {"_": "error", "code": 404, "text": "not found"}`.
 
 ### POST /groups  · auth
 Create a group; the caller becomes its `creator` (with all rights) and first member.
 - Request: `{ "title": "Team", "about": "", "username": "", "is_public": false }`
   (`title` required; `about`/`username` optional; `username` only meaningful when public)
 - 200: `{ "chat_id": 1 }`
-- 400: `{ "error": "title required" }`
+- 400: `{ "_": "error", "code": 400, "text": "title required" }`
 
 ### GET /chats/{chatID}/card  · auth
 Карточка группы/канала. Ответ — конструктор `messages.chatFull`: полная
@@ -210,7 +218,7 @@ Create a group; the caller becomes its `creator` (with all rights) and first mem
     инвертированными `default_banned_rights`, `history_for_new` —
     `pFlags.hidden_prehistory` с обратным знаком;
   - наша группа — это тоже `channel` (+ `pFlags.megagroup`, решение №2).
-- 404: `{ "error": "not found" }` (no such chat)
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (no such chat)
 
 ### GET /chats/{chatID}/members  · auth
 List the chat's members with their role and current online status. The caller
@@ -225,54 +233,54 @@ must be a member of the chat. Supports `?offset=` (default `0`) and `?limit=`
 ```
   `online` reflects realtime presence when enabled; when presence is disabled it
   is always `false` and clients should overlay their own presence store.
-- 403: `{ "error": "forbidden" }` (caller is not a member)
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }` (caller is not a member)
 
 ### PATCH /chats/{chatID}  · auth · needs `CHANGE_INFO`
 Edit group info.
 - Request: `{ "title": "New", "about": "desc", "username": "team" }`
-- 200: `{ "ok": true }`
-- 403: `{ "error": "forbidden" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /chats/{chatID}/members  · auth · needs `INVITE_USERS`
 Add a user as a plain `member`.
 - Request: `{ "user_id": 9 }`
-- 200: `{ "ok": true }`
-- 400: `{ "error": "user_id required" }`
-- 403: `{ "error": "forbidden" }`
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "user_id required" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### DELETE /chats/{chatID}/members/{userID}  · auth
 Remove a member. Kicking another user needs `BAN_USERS`; removing **yourself**
 (self-leave, `userID` == caller) is always allowed.
-- 200: `{ "ok": true }`
-- 403: `{ "error": "forbidden" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /chats/{chatID}/admins  · auth · needs `MANAGE_ADMINS`
 Promote a member to `admin` with the given rights bitmask.
 - Request: `{ "user_id": 9, "rights": 17 }`
-- 200: `{ "ok": true }`
-- 400: `{ "error": "user_id required" }`
-- 403: `{ "error": "forbidden" }`
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "user_id required" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### DELETE /chats/{chatID}/admins/{userID}  · auth · needs `MANAGE_ADMINS`
 Demote an admin back to `member` (clears rights).
-- 200: `{ "ok": true }`
-- 403: `{ "error": "forbidden" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /chats/{chatID}/mute  · auth
 Set the caller's own per-chat mute flag.
 - Request: `{ "muted": true }`
-- 200: `{ "ok": true }`
+- 200: `{ "_": "boolTrue" }`
 
 ### POST /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
 Create an invite link with a random token.
 - Request: `{ "usage_limit": 10, "requires_approval": false }`  (`usage_limit` optional/nullable = unlimited; `requires_approval` optional, default `false`)
 - 200: `{ "token": "<hex>", "url": "/join/<hex>", "requires_approval": false }`
-- 403: `{ "error": "forbidden" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### GET /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
 List the chat's active (non-revoked) invite links.
 - 200: `{ "invite_links": [ { "token": "<hex>", "uses": 3, "url": "/join/<hex>", "requires_approval": false } ] }`
-- 403: `{ "error": "forbidden" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /join/{token}  · auth
 Join a chat via an invite token. If the link does not require approval the caller
@@ -280,24 +288,24 @@ becomes a `member` immediately and the link's `uses` counter increments. If the
 link requires approval, a pending join request is recorded instead (idempotent).
 - 200: `{ "status": "joined" }` — joined immediately (no approval required)
 - 200: `{ "status": "requested" }` — pending admin approval (approval-required link)
-- 404: `{ "error": "not found" }` (unknown or revoked token)
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (unknown or revoked token)
 
 ### GET /chats/{chatID}/join_requests  · auth · needs `INVITE_USERS`
 List pending join requests for the chat.
 - 200: `{ "requests": [ { "user_id": 42 } ] }`
-- 403: `{ "error": "forbidden" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /chats/{chatID}/join_requests/{userID}/approve  · auth · needs `INVITE_USERS`
 Approve a pending join request; the user becomes a `member` and the request is removed.
-- 200: `{ "ok": true }`
-- 403: `{ "error": "forbidden" }`
-- 404: `{ "error": "not found" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
+- 404: `{ "_": "error", "code": 404, "text": "not found" }`
 
 ### POST /chats/{chatID}/join_requests/{userID}/decline  · auth · needs `INVITE_USERS`
 Decline (remove) a pending join request.
-- 200: `{ "ok": true }`
-- 403: `{ "error": "forbidden" }`
-- 404: `{ "error": "not found" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
+- 404: `{ "_": "error", "code": 404, "text": "not found" }`
 
 ### GET /users?ids=  · auth
 Batch-resolve minimal public user cards (for member lists, sender names).
@@ -340,7 +348,7 @@ Create a channel; the caller becomes its `creator` (with all rights) and first m
 - Request: `{ "title": "News", "about": "", "username": "news", "is_public": true }`
   (`title` required; `about`/`username` optional; `username` only meaningful when public)
 - 200: `{ "chat_id": 1 }`
-- 400: `{ "error": "title required" }`
+- 400: `{ "_": "error", "code": 400, "text": "title required" }`
 
 ### POST /channels/{chatID}/messages  · auth · needs `POST_MESSAGES`
 Post to a channel. O(1) delivery: insert message → bump `channel_pts` → append a
@@ -348,7 +356,7 @@ Post to a channel. O(1) delivery: insert message → bump `channel_pts` → appe
 - Request: `{ "text": "hello world", "client_msg_id": "uuid-from-client" }`
   (`client_msg_id` optional, makes the post idempotent)
 - 200: `{ "id": 10, "chat_id": 1, "seq": 5, "created_at": "2026-06-24T10:00:00Z" }`
-- 403: `{ "error": "forbidden" }` (caller lacks `POST_MESSAGES`)
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }` (caller lacks `POST_MESSAGES`)
 
 ### GET /channels/{chatID}/difference?pts=  · auth
 getDifference-style catch-up for a single channel, using the channel's own `pts`.
@@ -373,14 +381,14 @@ Membership-gated. The client stores the channel's last seen `pts` and passes it 
     таков конструктор, а не потому, что ключ иначе называется;
   - `pts` — наибольший канальный pts пачки (новый курсор);
   - `slice: true` → пачка упёрлась в предел страницы (100); звать снова с новым `pts`.
-- 403: `{ "error": "forbidden" }` (caller is not a member/subscriber)
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }` (caller is not a member/subscriber)
 
 ### POST /channels/join  · auth
 Join a public channel by its `@username`; the caller becomes a `subscriber`.
 - Request: `{ "username": "news" }`
-- 200: `{ "ok": true }`
-- 400: `{ "error": "username required" }`
-- 404: `{ "error": "not found" }` (no public chat with that username)
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "username required" }`
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (no public chat with that username)
 
 ### Discussions (channel-post comments)
 
@@ -394,8 +402,8 @@ Commenters auto-join the discussion group on first comment (idempotent).
 Enable discussions on a channel. Idempotent: returns the existing discussion
 group id if already enabled. The caller must be an admin (CHANGE_INFO right).
 - 200: `{ "discussion_chat_id": 42 }`
-- 403: `{ "error": "forbidden" }` (not allowed to change channel info)
-- 404: `{ "error": "not found" }` (channel does not exist)
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }` (not allowed to change channel info)
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (channel does not exist)
 
 ### POST /channels/{chatID}/posts/{postId}/comments  · auth
 Post a comment on the channel post `postId`. The comment is a message in the
@@ -410,14 +418,14 @@ to the discussion group.
   "message": "nice post",
   "reply_to": { "_": "messageReplyHeader", "reply_to_top_id": 55 } }
 ```
-- 404: `{ "error": "not found" }` (discussions not enabled)
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (discussions not enabled)
 
 ### GET /channels/{chatID}/posts/{postId}/comments  · auth
 List the comment thread (ascending by `seq`) for a channel post, plus the total
 count.
 - Query: `offset` (default 0), `limit` (default 50, max 100).
 - 200: `{ "messages": [ <message>, … ], "count": 1 }` — те же конструкторы.
-- 404: `{ "error": "not found" }` (discussions not enabled)
+- 404: `{ "_": "error", "code": 404, "text": "not found" }` (discussions not enabled)
 
 ### GET /channels/{chatID}/comment_counts?ids=  · auth
 Return comment counts for a batch of channel posts. Returns `0` (or omits) for
@@ -431,14 +439,14 @@ pinned dialogs in the main list (archive not counted) — exceeding returns 400
 `pin limit reached`. Pinning order: newest pin first. Fans out `dialog_pin`
 `{chat_id, pinned}` to the owner's devices over WS.
 - Request: `{ "pinned": true }`
-- 200: `{ "ok": true }`
+- 200: `{ "_": "boolTrue" }`
 
 ### POST /chats/{chatID}/archive  · auth
 Move the dialog to/from the archive (per-user, tweb folder_id 0↔1). Archiving
 clears the dialog's pin. Fans out `dialog_archive` `{chat_id, archived}` to the
 owner's devices over WS.
 - Request: `{ "archived": true }`
-- 200: `{ "ok": true }`
+- 200: `{ "_": "boolTrue" }`
 
 ### POST /chats/{chatID}/polls  · auth
 Send a poll (a message of type `poll`). Question ≤255 chars, 2..10 non-empty
@@ -462,7 +470,7 @@ answers are final). Fans out `poll_update` `{chat_id, poll}` (aggregates, no
 ### POST /polls/{pollID}/close  · auth
 Stop the poll (author of the poll message or chat admin/creator). Voting stops,
 a quiz reveals its answer. Fans out `poll_update`.
-- 200: `{ "ok": true }` · 403 not allowed
+- 200: `{ "_": "boolTrue" }` · 403 not allowed
 
 ### GET /chats/{chatID}/group_call  · auth
 Participants of the chat's active group call/video chat (empty when none).
@@ -479,7 +487,7 @@ on join, to know whom to send WebRTC offers to (mesh).
   with `from_user_id` stamped in.
 
 ### POST /chats/{chatID}/forum  · auth
-Enable/disable forum topics on a group (needs CHANGE_INFO). `{ "enabled": true }` → `{ "ok": true }`.
+Enable/disable forum topics on a group (needs CHANGE_INFO). `{ "enabled": true }` → `{ "_": "boolTrue" }`.
 Dialogs expose `is_forum`; a forum chat renders a topic list instead of the feed.
 
 ### POST /chats/{chatID}/topics  · auth
@@ -494,7 +502,7 @@ Topics with their thread's last message (`last_text/last_type/last_sender_name/l
 and `msg_count`, freshest first. → `{ "topics": [ … ] }`
 
 ### POST /chats/{chatID}/topics/{topicID}/close  · auth
-Close/reopen a topic (topic author or chat admin). `{ "closed": true }` → `{ "ok": true }`.
+Close/reopen a topic (topic author or chat admin). `{ "closed": true }` → `{ "_": "boolTrue" }`.
 
 ### GET /chats/{chatID}/threads/{rootID}  · auth
 Messages of a thread (forum topic) ascending: `?offset&limit` → `{ "messages": [...], "count": N }`.
@@ -580,7 +588,7 @@ Send a message. Also delivered live over WS (`new_message`) to all members.
     пер-зрительский и приезжает только автору;
   - служебное сообщение — ВТОРОЙ конструктор объединения (`messageService`
     с параметром `action`), а не поле `type: "service"`.
-- 403: `{ "error": "not a member of this chat" }` (also when attaching media you don't own)
+- 403: `{ "_": "error", "code": 403, "text": "not a member of this chat" }` (also when attaching media you don't own)
 
 ### GET /chats/{chatID}/history  · auth
 Paginated window, like Telegram `messages.getHistory`.
@@ -592,14 +600,14 @@ Paginated window, like Telegram `messages.getHistory`.
   (комментарии доступны без вступления, как `GET /channels/... /comments`);
   отправка в такой тред (`thread_root_id` в send) авто-вступает в группу.
 - 200: `{ "messages": [ <Message>, … ], "count": 5 }`  (messages newest-first when paging from the end)
-- 403: `{ "error": "not a member of this chat" }`
+- 403: `{ "_": "error", "code": 403, "text": "not a member of this chat" }`
 
 ### POST /chats/{chatID}/read  · auth
 Mark read up to a sequence; fans out a read receipt. The marker never moves
 backwards (a stale lower `up_to_seq` is a no-op).
 - Request: `{ "up_to_seq": 5 }`
-- 200: `{ "ok": true }`
-- 403: `{ "error": "not a member of this chat" }`
+- 200: `{ "_": "boolTrue" }`
+- 403: `{ "_": "error", "code": 403, "text": "not a member of this chat" }`
 
 ---
 
@@ -607,17 +615,17 @@ backwards (a stale lower `up_to_seq` is a no-op).
 
 ### POST /chats/{chatID}/messages/{msgID}/reactions  · auth
 - Request: `{ "emoji": "🔥" }`  (non-empty, ≤32 bytes, valid UTF-8)
-- 200: `{ "ok": true }`
-- 400: `{ "error": "invalid reaction" }`
-- 404: `{ "error": "message not found" }` (also when the message isn't in this chat / no access)
+- 200: `{ "_": "boolTrue" }`
+- 400: `{ "_": "error", "code": 400, "text": "invalid reaction" }`
+- 404: `{ "_": "error", "code": 404, "text": "message not found" }` (also when the message isn't in this chat / no access)
 
 ### DELETE /chats/{chatID}/messages/{msgID}/reactions/{emoji}  · auth
 `{emoji}` is URL-escaped (e.g. `%F0%9F%94%A5`).
-- 200: `{ "ok": true }` · 400 invalid · 404 not found
+- 200: `{ "_": "boolTrue" }` · 400 invalid · 404 not found
 
 ### GET /chats/{chatID}/messages/{msgID}/reactions  · auth
 - 200: `{ "reactions": [ { "emoji": "🔥", "count": 2, "mine": true }, { "emoji": "❤️", "count": 1 } ] }` (most popular first; `mine` — зритель тоже поставил эту реакцию, omitted when false)
-- 404: `{ "error": "message not found" }`
+- 404: `{ "_": "error", "code": 404, "text": "message not found" }`
 
 Message DTO истории (`GET /chats/{chatID}/messages`, `/messages/around`) несёт те же
 агрегаты полем `reactions` (omitted, когда реакций нет) — клиент рендерит чипы без
@@ -665,7 +673,7 @@ Register metadata and get a presigned PUT URL; then PUT the bytes to it directly
 ```
   - `size` in bytes, `1..104857600` (100 MiB).
 - 200: `{ "media_id": 1, "object_key": "1/ab12…", "upload_url": "https://minio/…?X-Amz-…" }`
-- 400: `{ "error": "invalid size" }`  · 413: `{ "error": "file too large" }`
+- 400: `{ "_": "error", "code": 400, "text": "invalid size" }`  · 413: `{ "_": "error", "code": 413, "text": "file too large" }`
 - Then: `PUT <upload_url>` with the raw bytes (direct to storage). Then send a
   message with `media_id`.
 
@@ -677,7 +685,7 @@ caller **owns** the media or **shares a chat** with a message referencing it.
 { "id": 1, "mime": "image/jpeg", "size": 20480, "width": 800, "height": 600,
   "duration": 0, "blur_preview": "<base64>", "download_url": "https://minio/…?X-Amz-…" }
 ```
-- 404: `{ "error": "media not found" }` (also when not authorized — no enumeration leak)
+- 404: `{ "_": "error", "code": 404, "text": "media not found" }` (also when not authorized — no enumeration leak)
 - The `download_url` honors `Range: bytes=…` → `206 Partial Content` (streaming).
 
 ### PUT /media/{mediaID}/content  · auth (Bearer, owner)
@@ -686,8 +694,8 @@ raw file bytes; `Content-Type` should be the media's mime. Only the **owner**
 may upload; the body is capped at 100 MiB.
 - Request: raw bytes (not JSON).
 - 204: success (no body).
-- 403: `{ "error": "not your media" }` (caller is not the owner).
-- 404: `{ "error": "media not found" }`.
+- 403: `{ "_": "error", "code": 403, "text": "not your media" }` (caller is not the owner).
+- 404: `{ "_": "error", "code": 404, "text": "media not found" }`.
 
 ### GET /media/{mediaID}/content?token=<session-token>  · token-query auth
 Stream the object bytes back through the backend. Browser `<img>`/`<video>`
@@ -699,8 +707,8 @@ worker); the UI drops the string into `src`. Access is checked exactly like
 - Streams bytes and honors `Range: bytes=…` → `206 Partial Content` (via
   `http.ServeContent`); sets `Content-Type` (declared mime) and a long
   `Cache-Control: private, max-age=31536000, immutable`.
-- 401: `{ "error": "invalid token" }` (missing/invalid `token`).
-- 404: `{ "error": "media not found" }` (no access — no enumeration leak).
+- 401: `{ "_": "error", "code": 401, "text": "invalid token" }` (missing/invalid `token`).
+- 404: `{ "_": "error", "code": 404, "text": "media not found" }` (no access — no enumeration leak).
 
 ---
 
@@ -715,7 +723,7 @@ the chat. Subscriptions are per device. Requires the server to have VAPID keys s
 ### POST /push/subscribe  · auth
 Register the current device's browser push subscription.
 - Request: `{ "endpoint": "https://fcm…", "p256dh": "<key>", "auth": "<key>" }`
-- 200: `{ "ok": true }` · 400 missing fields
+- 200: `{ "_": "boolTrue" }` · 400 missing fields
 
 ### Push payload (delivered to the Service Worker)
 ```json
@@ -795,7 +803,7 @@ The viewer's active story feed (own group first). Ответ — КОНТЕЙН�
 названное упрощение: интерфейс всё равно зовёт их вместе.
 
 Сдвиг горизонта уезжает кадром `updateReadStories` на ДРУГИЕ устройства зрителя.
-- 200: `{ "ok": true }` · 403 story not visible to caller
+- 200: `{ "_": "boolTrue" }` · 403 story not visible to caller
 
 ### GET /stories/{peerID}/{storySeq}/viewers  · auth · author only
 Who has seen the story (author-gated). Ответ — контейнер
@@ -813,7 +821,7 @@ Who has seen the story (author-gated). Ответ — контейнер
 
 ### DELETE /stories/{peerID}/{storySeq}  · auth · author only
 Delete the caller's own story.
-- 200: `{ "ok": true }`
+- 200: `{ "_": "boolTrue" }`
 
 ---
 

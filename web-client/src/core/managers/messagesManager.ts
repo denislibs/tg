@@ -463,17 +463,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     },
 
     // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит SSOT + эхо.
-    async removeFactCheck(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`)
+    async removeFactCheck(peerId: number, msgId: number): Promise<void> {
+      await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`)
       patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, factCheck: undefined }))
       // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
-      return r
     },
 
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
     // messages are never shown, so evict from the SSOT (+ all window slices) too,
     // or a later cache hit would resurrect it.
-    async deleteMessage(peerId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }> {
+    async deleteMessage(peerId: number, msgId: number, revoke: boolean): Promise<void> {
       // После УСПЕХА сети: eviction из SSOT + рассылка remove-операций остальным
       // вкладкам (Regression 2, финальное ревью feat/remaining-ops: [RT.deleteMessage]
       // убран из реестра APPLY проектора — окно правит только applyOps, а WS
@@ -483,10 +482,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       // оптимистично до REST: сервер может отклонить удаление (напр. «для всех»
       // после окна времени), а откат eviction+persist сложен и рисковен —
       // мгновенность удаления тут не критична (tweb-компромисс).
-      const r = await rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}?revoke=${revoke ? 'true' : 'false'}`)
+      await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}?revoke=${revoke ? 'true' : 'false'}`)
       const ops = evictAndBuildRemoveOps(peerId, msgId)
       if (ops.length) broadcast?.(RT.messageOp, { ops })
-      return r
     },
 
     // Forward messages from one chat into another; returns the created copies.
@@ -509,12 +507,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       return msgs
     },
 
-    async pin(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      return rest.post<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`, {})
+    async pin(peerId: number, msgId: number): Promise<void> {
+      await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`, {})
     },
 
-    async unpin(peerId: number, msgId: number): Promise<{ ok: boolean }> {
-      return rest.del<{ ok: boolean }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
+    async unpin(peerId: number, msgId: number): Promise<void> {
+      await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
     },
 
     async listPins(peerId: number): Promise<MyMessage[]> {

@@ -206,7 +206,7 @@ func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *StoryHandler) Viewers(w http.ResponseWriter, r *http.Request) {
@@ -285,7 +285,7 @@ func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // RemoveReaction serves DELETE /stories/{storyID}/reaction — clear the caller's
@@ -300,7 +300,7 @@ func (h *StoryHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +313,7 @@ func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // CloseFriends serves GET /me/close_friends → {user_ids:[...]}.
@@ -342,7 +342,7 @@ func (h *StoryHandler) SetCloseFriends(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // stealthMode переводит окно stealth-режима в конструктор схемы.
@@ -432,7 +432,7 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Edit serves PATCH /stories/{storyID} body {caption?, privacy?, allow_user_ids?}
@@ -458,5 +458,5 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

@@ -128,7 +128,7 @@ func (h *FoldersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // --- Ссылки-приглашения в папку (chatlist invites) ---
@@ -192,7 +192,7 @@ func (h *FoldersHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // PreviewInvite: GET /folder_invites/{slug} → {title, chats:[{id,title,type,members}]}.
@@ -231,5 +231,5 @@ func (h *FoldersHandler) JoinInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

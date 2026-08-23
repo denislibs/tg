@@ -155,7 +155,7 @@ func (h *ChatHandler) BotWebAppData(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "webapp_data failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // BotCloudGet — POST /bots/{botID}/cloud/get {keys}: чтение CloudStorage mini-app.
@@ -198,7 +198,7 @@ func (h *ChatHandler) BotCloudSet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "cloud set failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // BotCloudRemove — POST /bots/{botID}/cloud/remove {keys}.
@@ -215,7 +215,7 @@ func (h *ChatHandler) BotCloudRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "cloud remove failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // BotCloudKeys — GET /bots/{botID}/cloud/keys.

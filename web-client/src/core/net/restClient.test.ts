@@ -16,9 +16,18 @@ describe('RestClient', () => {
   })
 
   it('throws on non-2xx with the error body', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'invalid code' }), { status: 401 })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ _: 'error', code: 401, text: 'invalid code' }), { status: 401 })))
     const rest = new RestClient('/api', () => null)
     await expect(rest.post('/auth/sign_in', {})).rejects.toThrow('invalid code')
+  })
+
+  it('чужое тело отказа НЕ подставляется как текст ошибки', async () => {
+    // Прокси/шлюз отвечает своей страницей: описания ошибки в ней нет, и
+    // показать её пользователю значило бы показать чужой HTML. Текст берётся
+    // только у своего конструктора `error`.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'gateway is down' }), { status: 502 })))
+    const rest = new RestClient('/api', () => null)
+    await expect(rest.get('/me')).rejects.toThrow('HTTP 502')
   })
 
   it('ждёт готовности токена перед запросом (нет гонки missing-token на старте)', async () => {
@@ -89,7 +98,7 @@ describe('RestClient routing', () => {
   })
 
   it('maps a non-2xx channel status to HttpError', async () => {
-    const ch = channelRpc(true, { status: 403, body: { error: 'forbidden' } })
+    const ch = channelRpc(true, { status: 403, body: { _: 'error', code: 403, text: 'forbidden' } })
     const rc = new RestClient('/api', () => 'tok', undefined, ch)
     const err = await rc.get('/x').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(HttpError)

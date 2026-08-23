@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -109,7 +110,7 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not request code")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 type signInBody struct {
@@ -236,10 +237,12 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 	res, err := h.svc.RequestPasswordRecovery(r.Context(), body.PasswordToken)
 	switch {
 	case errors.Is(err, usecaseauth.ErrResendTooSoon):
-		writeJSON(w, http.StatusTooManyRequests, map[string]any{
-			"error":       "resend_too_soon",
-			"retry_after": res.ResendAfter,
-		})
+		// Остаток секунд едет ВНУТРИ кода ошибки, а не соседним ключом:
+		// у конструктора `error` параметров ровно два (`code`, `text`), и
+		// оригинал выражает ожидание так же — `FLOOD_WAIT_<N>`,
+		// `2FA_CONFIRM_WAIT_<N>` (клиент вынимает число регуляркой,
+		// tweb `getFloodWaitTime.ts`).
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("RESEND_TOO_SOON_%d", res.ResendAfter))
 		return
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
@@ -324,10 +327,8 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
 		return
 	case errors.Is(err, usecaseauth.ErrResetPending):
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":       "2fa_confirm_wait",
-			"retry_after": retryAfter,
-		})
+		// Форма оригинала названа прямо в докблоке ручки: `2FA_CONFIRM_WAIT_<N>`.
+		writeError(w, http.StatusConflict, fmt.Sprintf("2FA_CONFIRM_WAIT_%d", retryAfter))
 		return
 	case errors.Is(err, usecaseauth.ErrResetRecentConfirm):
 		writeError(w, http.StatusConflict, "2fa_recent_confirm")
@@ -342,7 +343,7 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "account reset failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // NearestCountry — страна клиента по его IP (Telegram help.getNearestDc): экран
@@ -547,7 +548,7 @@ func (h *AuthHandler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "qr confirm failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -556,6 +557,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeError — тело ответа-ошибки.
+//
+// В оригинале ошибка заменяет результат в ТРАНСПОРТЕ (`rpc_error`, секция
+// MTProto, ловится в `networker.ts:1948`), а не приезжает витриной метода. У нас
+// эту позицию занимает статус HTTP; телу остаётся объявленный конструктор
+// `error{code, text}` — разбор в docs/readiness/tl-rest-analysis.md, Р3.
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	writeJSON(w, status, domain.NewError(status, msg))
 }

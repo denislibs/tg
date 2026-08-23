@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -250,12 +251,8 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("qr/confirm status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	var conf struct {
-		OK bool `json:"ok"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &conf)
-	if !conf.OK {
-		t.Fatalf("expected ok=true, body=%s", rec.Body.String())
+	if !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("ожидался boolTrue, body=%s", rec.Body.String())
 	}
 
 	// GET /auth/qr/{token} → confirmed with session_token + user.id.
@@ -403,12 +400,11 @@ func TestPasswordRecovery_HTTP(t *testing.T) {
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("повторная отправка: %d %s", rec.Code, rec.Body.String())
 	}
-	var retry struct {
-		Error      string `json:"error"`
-		RetryAfter int    `json:"retry_after"`
-	}
+	// Остаток секунд едет ВНУТРИ кода (форма оригинала: FLOOD_WAIT_<N>), а не
+	// соседним ключом: у конструктора `error` параметров ровно два.
+	var retry wireError
 	_ = json.Unmarshal(rec.Body.Bytes(), &retry)
-	if retry.Error != "resend_too_soon" || retry.RetryAfter <= 0 {
+	if !strings.HasPrefix(retry.Text, "RESEND_TOO_SOON_") || waitSeconds(retry.Text) <= 0 {
 		t.Fatalf("429 тело = %s", rec.Body.String())
 	}
 
@@ -490,17 +486,42 @@ func TestSignImport_HTTP(t *testing.T) {
 	}
 }
 
-// resetError — тело отказа ручки сброса: код и (для 2fa_confirm_wait) остаток
-// секунд.
-type resetError struct {
-	Error      string `json:"error"`
-	RetryAfter int    `json:"retry_after"`
+// wireError — тело отказа: конструктор `error{code, text}` (см. разбор
+// docs/readiness/tl-rest-analysis.md, Р3). Остаток секунд, где он есть, лежит
+// ВНУТРИ текста — параметра под него у конструктора нет.
+type wireError struct {
+	Underscore string `json:"_"`
+	Code       int    `json:"code"`
+	Text       string `json:"text"`
 }
 
-func postReset(t *testing.T, h http.Handler, pwToken string) (*httptest.ResponseRecorder, resetError) {
+// isBoolTrue — ответ действия это конструктор, а не ключ `ok`.
+func isBoolTrue(body []byte) bool {
+	var b struct {
+		Underscore string `json:"_"`
+	}
+	_ = json.Unmarshal(body, &b)
+	return b.Underscore == "boolTrue"
+}
+
+// waitSeconds вынимает число из хвоста кода ошибки — порт tweb
+// `getFloodWaitTime.ts` (`error.type.match(/^FLOOD_WAIT_(\d+)/)`).
+func waitSeconds(code string) int {
+	i := strings.LastIndexByte(code, '_')
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(code[i+1:])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func postReset(t *testing.T, h http.Handler, pwToken string) (*httptest.ResponseRecorder, wireError) {
 	t.Helper()
 	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
-	var out resetError
+	var out wireError
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec, out
 }
@@ -518,8 +539,8 @@ func enableCloudPassword(t *testing.T, h http.Handler, token, email string) {
 }
 
 // HTTP-контракт сброса аккаунта: «забыли пароль?» при облачном пароле БЕЗ
-// привязанной почты. Удаление отложенное: 409 2fa_confirm_wait с остатком
-// секунд, и только вызов после истечения окна отвечает 200 {"ok":true}.
+// привязанной почты. Удаление отложенное: 409 2FA_CONFIRM_WAIT_<N> с остатком
+// секунд, и только вызов после истечения окна отвечает 200 boolTrue.
 func TestAccountReset_HTTP(t *testing.T) {
 	const window = 300 * time.Millisecond
 	h := newResetRouter(t, window)
@@ -530,7 +551,7 @@ func TestAccountReset_HTTP(t *testing.T) {
 
 	pwToken := passwordStep(t, h, "+79990040010")
 	rec, wait := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" || wait.RetryAfter <= 0 {
+	if rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") || waitSeconds(wait.Text) <= 0 {
 		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
 	}
 	// Аккаунт цел, сессия жива: удаление только запланировано.
@@ -539,8 +560,9 @@ func TestAccountReset_HTTP(t *testing.T) {
 	}
 	// Повтор внутри окна — тот же ответ, окно не продлевается и не обнуляется.
 	rec, again := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || again.Error != "2fa_confirm_wait" || again.RetryAfter > wait.RetryAfter {
-		t.Fatalf("повтор внутри окна: %d %s (было retry_after=%d)", rec.Code, rec.Body.String(), wait.RetryAfter)
+	if rec.Code != http.StatusConflict || !strings.HasPrefix(again.Text, "2FA_CONFIRM_WAIT_") ||
+		waitSeconds(again.Text) > waitSeconds(wait.Text) {
+		t.Fatalf("повтор внутри окна: %d %s (было %s)", rec.Code, rec.Body.String(), wait.Text)
 	}
 
 	time.Sleep(window + 100*time.Millisecond) // окно укорочено, а не выжидается неделю
@@ -549,11 +571,7 @@ func TestAccountReset_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("исполнение сброса: %d %s", rec.Code, rec.Body.String())
 	}
-	var ok struct {
-		OK bool `json:"ok"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &ok)
-	if !ok.OK {
+	if !isBoolTrue(rec.Body.Bytes()) {
 		t.Fatalf("reset тело = %s", rec.Body.String())
 	}
 
@@ -563,7 +581,7 @@ func TestAccountReset_HTTP(t *testing.T) {
 	}
 	// Токен шага пароля одноразовый → 401 password_token_expired.
 	rec, e := postReset(t, h, pwToken)
-	if rec.Code != http.StatusUnauthorized || e.Error != "password_token_expired" {
+	if rec.Code != http.StatusUnauthorized || e.Text != "password_token_expired" {
 		t.Fatalf("повторный сброс: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -583,12 +601,12 @@ func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
 	enableCloudPassword(t, h, token, "")
 
 	pwToken := passwordStep(t, h, "+79990040012")
-	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
 		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
 	}
 	// Повторный вход по SMS-коду сессии не даёт — сброс в силе.
 	smsToken := passwordStep(t, h, "+79990040012")
-	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
 		t.Fatalf("после входа по SMS-коду: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -601,7 +619,7 @@ func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
 	}
 
 	rec, e := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || e.Error != "2fa_recent_confirm" {
+	if rec.Code != http.StatusConflict || e.Text != "2fa_recent_confirm" {
 		t.Fatalf("после входа владельца: %d %s", rec.Code, rec.Body.String())
 	}
 	// Аккаунт на месте: вход по номеру ведёт к тому же пользователю.
@@ -625,7 +643,7 @@ func TestAccountReset_RecoveryAvailable_HTTP(t *testing.T) {
 
 	pwToken := passwordStep(t, h, "+79990040011")
 	rec, e := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || e.Error != "recovery_available" {
+	if rec.Code != http.StatusConflict || e.Text != "recovery_available" {
 		t.Fatalf("reset с почтой: %d %s", rec.Code, rec.Body.String())
 	}
 	// Отказ не тронул аккаунт: шаг пароля жив, восстановление по почте доступно.

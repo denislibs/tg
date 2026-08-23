@@ -87,7 +87,7 @@ func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +104,7 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPhoto points the chat's photo at an uploaded media object (PUT
@@ -126,7 +126,7 @@ func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
@@ -158,7 +158,7 @@ func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPermissions stores default member permissions + slowmode (PUT /chats/{chatID}/permissions).
@@ -180,7 +180,7 @@ func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetReactions stores the reaction policy (PUT /chats/{chatID}/reactions).
@@ -206,7 +206,7 @@ func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetHistory toggles chat history visibility for new members (PUT /chats/{chatID}/history).
@@ -227,7 +227,7 @@ func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ListBans returns the removed-users list (GET /chats/{chatID}/bans).
@@ -267,7 +267,7 @@ func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Unban removes a user from the removed-users list (DELETE /chats/{chatID}/bans/{userID}).
@@ -285,7 +285,7 @@ func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ListRestrictions returns the chat's granularly-restricted members
@@ -336,7 +336,7 @@ func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Unrestrict lifts a member's granular restriction
@@ -355,7 +355,7 @@ func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteInvite hard-deletes an invite link
@@ -376,7 +376,7 @@ func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteAllRevoked hard-deletes every revoked link of the chat
@@ -391,7 +391,7 @@ func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteGroup deletes the group for everyone (DELETE /chats/{chatID}; creator only).
@@ -405,7 +405,7 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
@@ -426,7 +426,7 @@ func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
@@ -443,7 +443,7 @@ func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +465,7 @@ func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
@@ -491,7 +491,7 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetNotify — PUT /chats/{chatID}/notify_settings: per-chat превью/звук.
@@ -519,7 +519,7 @@ func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPin — POST /chats/{chatID}/pin {pinned}: закрепить/открепить диалог.
@@ -544,7 +544,7 @@ func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetArchive — POST /chats/{chatID}/archive {archived}: в архив / из архива.
@@ -565,7 +565,7 @@ func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
@@ -618,7 +618,7 @@ func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
@@ -892,7 +892,7 @@ func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request) {
@@ -909,5 +909,5 @@ func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

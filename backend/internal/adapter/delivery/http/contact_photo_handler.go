@@ -76,7 +76,7 @@ func (h *ContactPhotoHandler) ClearCustomPhoto(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "clear contact photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SuggestPhoto suggests a new profile photo to a contact
@@ -149,5 +149,5 @@ func (h *ContactPhotoHandler) AcceptSuggestion(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "accept suggestion failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

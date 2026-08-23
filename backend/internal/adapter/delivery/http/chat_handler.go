@@ -101,7 +101,7 @@ func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.RejectSecretChat(r.Context(), chatID, h.meID(r)); h.writeSecretErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // writeSecretErr maps handshake errors to HTTP; returns true if it wrote a response.
@@ -607,7 +607,7 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ReadDate — GET /chats/{chatID}/messages/{msgID}/read_date: когда получатель
@@ -656,7 +656,7 @@ func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read reactions failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ClearHistory clears the caller's copy of the chat history (POST
@@ -676,7 +676,7 @@ func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "clear failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 type editBody struct {
@@ -787,7 +787,7 @@ func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "remove fact check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // TranscribeMessage — POST /chats/{chatID}/messages/{msgID}/transcribe: расшифровка
@@ -846,7 +846,7 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 type forwardBody struct {
@@ -924,7 +924,7 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 		writeError(w, http.StatusInternalServerError, "pin failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
@@ -1271,7 +1271,7 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not close poll")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SendChecklist — POST /chats/{chatID}/checklists: отправить чек-лист
@@ -1482,7 +1482,7 @@ func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SendScheduledNow — POST /chats/{chatID}/scheduled/{schedID}/send_now.
@@ -1529,7 +1529,7 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func topicJSON(row domain.TopicRow) map[string]any {
@@ -1610,7 +1610,7 @@ func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // EditTopic — PATCH /chats/{chatID}/topics/{topicID} {title, icon_emoji, icon_color}.
@@ -1636,7 +1636,7 @@ func (h *ChatHandler) EditTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // HideTopic — POST /chats/{chatID}/topics/{topicID}/hide {hidden}.
@@ -1656,7 +1656,7 @@ func (h *ChatHandler) HideTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // PinTopic — POST /chats/{chatID}/topics/{topicID}/pin {pinned}.
@@ -1676,7 +1676,7 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ReadTopic — POST /chats/{chatID}/topics/{topicID}/read {up_to_seq}.
@@ -1703,7 +1703,7 @@ func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // MuteTopic — POST /chats/{chatID}/topics/{topicID}/mute {muted}.
@@ -1730,7 +1730,7 @@ func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ThreadMessages — GET /chats/{peerID}/threads/{rootSeq}: сообщения треда.
@@ -1821,7 +1821,7 @@ func (h *ChatHandler) StopLivestream(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // LivestreamStatus — GET /chats/{chatID}/livestream: статус эфира для участника
@@ -1916,7 +1916,7 @@ func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgI
 		writeError(w, http.StatusInternalServerError, "reaction failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
@@ -2055,7 +2055,7 @@ func (h *ChatHandler) SetSavedTagName(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update tag")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SendStarReaction — POST /chats/{chatID}/messages/{msgID}/star_reaction
@@ -2352,7 +2352,7 @@ func (h *ChatHandler) DeleteDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ClearAllDrafts — DELETE /drafts («Удалить все черновики»).
@@ -2361,5 +2361,5 @@ func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
