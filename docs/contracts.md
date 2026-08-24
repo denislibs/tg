@@ -69,28 +69,44 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 - 400: `{ "_": "error", "code": 400, "text": "phone is required" }`
 
 ### POST /auth/sign_in  · public
-Verify the code, create the user (if new) + a device, return a session token.
+Проверяет код и отвечает ИСХОДОМ шага — конструктором объединения
+`auth.Authorization`. Ветку называет `_`, а не наличие ключей рядом.
 - Request: `{ "phone": "+79990000000", "code": "12345", "device": "web", "platform": "browser" }`
   (`device`, `platform` optional)
-- 200: `{ "token": "<opaque>", "user": <как у GET /me> }` — та же пара
-  `users.userFull`, что отдаёт `/me`, а не третья форма карточки
+- 200 сессия выдана: `{ "_": "auth.authorization", "token": "<opaque>", "user": { "_": "user", "id": 1, … } }`
+  — карточка КРАТКАЯ: полной формы (`bio`, день рождения) вход не отдаёт, её
+  приносит первый же `GET /me`
+- 200 нужна регистрация: `{ "_": "auth.authorizationSignUpRequired", "signup_token": "<opaque>" }`
+- 200 включён облачный пароль: `{ "_": "auth.passwordNeeded", "password_token": "<opaque>", "hint": "…" }`
 - 401: `{ "_": "error", "code": 401, "text": "invalid code" }`
 
+`token` и `signup_token` — наши параметры, объявленные клиентскими у
+конструкторов схемы; `auth.passwordNeeded` — наш конструктор целиком (у
+оригинала это ошибка `SESSION_PASSWORD_NEEDED` плюс состояние сессии MTProto,
+которого у REST нет).
+
+Тем же исходом отвечают `POST /auth/sign_up`, `POST /auth/sign_import`,
+`POST /auth/check_password`, `POST /auth/password/recover/confirm` и
+`POST /auth/passkey/finish`.
+
 ### POST /auth/qr/new  · public
-Start a QR login. Creates an ephemeral pending record (Redis, ~60s TTL) and
-returns the raw token plus a scan URL (`<origin>/qr/{token}`, origin taken from
-the `Origin` header, falling back to the request host).
+Заводит эфемерную запись входа по коду (Redis, ~60s TTL) и отдаёт сам код.
+Ссылки для сканера в ответе НЕТ: её строит клиент от своего origin (серверная
+выводилась из заголовков прокси и теряла порт — адрес ехал дважды).
 - Request: `{ "platform": "web" }` (`platform` optional)
-- 200: `{ "token": "<opaque>", "url": "https://app.example/qr/<token>", "expires_at": "2026-06-24T10:01:00Z" }`
+- 200: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
+  — `token` в схеме БАЙТЫ; маршрут `/auth/qr/{token}` берёт ту же величину
+  шестнадцатеричной записью
 - 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }` (no QRStore / Redis down)
 
 ### GET /auth/qr/{token}  · public
-Poll the QR-login record. A confirmed record is single-use — it is deleted on
-read, so a second poll returns `expired`. Unknown/expired tokens return
-`expired` (never an error).
-- 200 pending: `{ "status": "pending" }`
-- 200 confirmed: `{ "status": "confirmed", "session_token": "<opaque>", "user": <как у GET /me> }`
-- 200 expired: `{ "status": "expired" }`
+Опрос записи. Подтверждённая запись одноразовая — читается один раз.
+- 200 ждёт подтверждения: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
+- 200 подтверждено: `{ "_": "auth.loginTokenSuccess", "authorization": { "_": "auth.authorization", "token": "<opaque>", "user": { "_": "user", … } } }`
+  — ТОТ ЖЕ исход входа, что у обычного шага
+- 404: `{ "_": "error", "code": 404, "text": "AUTH_TOKEN_EXPIRED" }` — код протух,
+  уже прочитан либо неизвестен. Это ОТКАЗ, а не третий конструктор объединения
+  (форма оригинала); прежде тут ехало `{"status":"expired"}` со статусом 200
 - 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }`
 
 ### POST /auth/qr/confirm  · auth
@@ -104,22 +120,32 @@ login. Mints a fresh session for the caller and attaches it to the record.
 
 ### GET /me  · auth
 - 200 — та же ПАРА, что и `GET /users/{id}`: конструктор
-  `users.userFull{full_user, chats, users}` плюс наше поле `can_message` РЯДОМ с
-  ним (схемного места у него нет). Третьей формы «своей карточки» больше не
-  существует:
+  `users.userFull{full_user, chats, users}` В КОРНЕ, без обёртки. `can_message`
+  лежит ВНУТРИ него — это наш клиентский параметр
+  (`schema_additional_params.json`), схемного места у него нет. Третьей формы
+  «своей карточки» больше не существует:
 ```json
-{ "user_full": { "_": "users.userFull",
-                 "full_user": { "_": "userFull", "id": 1, "about": "" },
-                 "users": [ { "_": "user", "id": 1, "phone": "+79990000000",
-                              "first_name": "…", "pFlags": { "self": true } } ],
-                 "chats": [] },
+{ "_": "users.userFull",
+  "full_user": { "_": "userFull", "id": 1, "about": "" },
+  "users": [ { "_": "user", "id": 1, "phone": "+79990000000",
+               "first_name": "…", "pFlags": { "self": true } } ],
+  "chats": [],
   "can_message": true }
 ```
 - 401: `{ "_": "error", "code": 401, "text": "missing token" | "invalid token" }`
 
 ### GET /sessions  · auth
-List the user's devices.
-- 200: `{ "sessions": [ { "id": 3, "name": "web", "platform": "browser", "last_active": "2026-06-24T10:00:00Z", "current": true } ] }`
+Список устройств владельца — контейнер `account.authorizations`. «Текущая» это
+ФЛАГ: его ОТСУТСТВИЕ и есть «не текущая». Адрес сессии зовётся `hash` (имя
+схемы), даты — в секундах эпохи.
+- 200:
+```json
+{ "_": "account.authorizations", "authorization_ttl_days": 0,
+  "authorizations": [ { "_": "authorization", "pFlags": { "current": true },
+                        "hash": 3, "device_model": "web", "platform": "browser",
+                        "date_created": 1787334148, "date_active": 1787334148,
+                        "ip": "1.2.3.4", "country": "Москва" } ] }
+```
 
 ### DELETE /sessions/{deviceID}  · auth
 Revoke a session (deletes the device, evicts its cache, **closes its live WS socket**).

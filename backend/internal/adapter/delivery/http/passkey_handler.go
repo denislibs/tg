@@ -221,7 +221,8 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // FinishLogin — POST /auth/passkey/finish?session=...&device=...&platform=...
-// (тело — assertion) → {token, user}.
+// (тело — assertion) → тот же исход входа, что у остальных путей
+// (`auth.Authorization`).
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	session := h.takeSession(r.URL.Query().Get("session"))
 	if session == nil {
@@ -256,5 +257,5 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": res.Token, "user": userJSON(res.User)})
+	writeSignInResult(w, res)
 }

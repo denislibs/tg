@@ -75,9 +75,12 @@ beforeEach(() => {
     }
     if (u.endsWith('/auth/logout')) return new Response('{}', { status: 200 })
     if (u.endsWith('/auth/sign_in')) {
+      // Исход шага входа — конструктор `auth.authorization` с КРАТКОЙ
+      // карточкой: полной формы вход не отдаёт, её приносит первый /me.
       return new Response(JSON.stringify({
+        _: 'auth.authorization',
         token: 'session-b',
-        user: { _: 'users.userFull', full_user: { _: 'userFull', id: 5 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' }], can_message: true },
+        user: { _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' },
       }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u + ' ' + String(init?.method ?? 'GET'))

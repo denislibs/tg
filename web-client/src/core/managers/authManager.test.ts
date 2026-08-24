@@ -27,9 +27,13 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
     post: async (path: string, body: unknown) => {
       calls.push([path, body])
       if (path === '/auth/request_code') return { ok: true }
-      if (path === '/auth/sign_in') return { token: 'TOK', user: profileWire(1, '+700') }
+      // Исход шага входа — КОНСТРУКТОР объединения auth.Authorization, а
+      // карточка внутри него КРАТКАЯ: полной формы вход не отдаёт.
+      if (path === '/auth/sign_in') return { _: 'auth.authorization', token: 'TOK', user: briefWire(1, '+700') }
       if (path === '/auth/logout') return { ok: true }
-      if (path === '/auth/qr/new') return { token: 'tok123', url: 'http://h/qr/tok123', expires_at: '2026-06-24T00:01:00Z' }
+      // Выпуск кода — auth.loginToken; `token` это БАЙТЫ, на JSON-проводе
+      // base64 (0x01 0x02 → 'AQI=' → адрес маршрута '0102').
+      if (path === '/auth/qr/new') return { _: 'auth.loginToken', expires: 1787334148, token: 'AQI=' }
       if (path === '/auth/qr/confirm') return { ok: true }
       throw new Error('unexpected ' + path)
     },
@@ -38,13 +42,15 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
         if (!token) throw Object.assign(new Error('missing token'), { status: 401 })
         return profileWire(1, '+700')
       }
-      if (path === '/auth/qr/tok123') {
+      if (path === '/auth/qr/0102') {
         return qrConfirmed
-          // Подтверждённый QR отдаёт ГОЛЫЙ конструктор `user`, а не пару
-          // `users.userFull`: полной формы у этого ответа нет.
-          ? { status: 'confirmed', session_token: 'sess999', user: { _: 'user', id: 7, phone: '+7' } }
-          : { status: 'pending' }
+          // Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг, —
+          // вложенным конструктором, а не соседними ключами.
+          ? { _: 'auth.loginTokenSuccess', authorization: { _: 'auth.authorization', token: 'sess999', user: { _: 'user', id: 7, phone: '+7' } } }
+          : { _: 'auth.loginToken', expires: 1787334148, token: 'AQI=' }
       }
+      // Протухший (или чужой) код — ОТКАЗ, а не третий конструктор.
+      if (path === '/auth/qr/dead') throw new HttpError(404, 'AUTH_TOKEN_EXPIRED')
       throw new Error('unexpected ' + path)
     },
   }
@@ -55,6 +61,12 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
 // плюс наше поле `can_message` РЯДОМ с конструктором (схемного места у него
 // нет). Трёх разных витрин пользователя больше нет — `/me`, `/users/{id}` и
 // шаги входа отдают один и тот же объект.
+// Краткая карточка `user` — то, что едет исходом входа. Полная форма там не
+// приезжает вовсе: её приносит первый же `/me`.
+function briefWire(id: number, phone: string) {
+  return { _: 'user', pFlags: { self: true }, id, phone }
+}
+
 function profileWire(id: number, phone: string) {
   return {
     _: 'users.userFull',
@@ -238,7 +250,7 @@ describe('AuthManager', () => {
     const onMeChanged = vi.fn()
     const { d } = deps({ qrConfirmed: true })
     const auth = newAuthManager({ ...d, onMeChanged })
-    await auth.qrStatus('tok123')
+    await auth.qrStatus('0102')
     expect(onMeChanged).toHaveBeenCalledTimes(1)
     expect(onMeChanged).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 7 }) }))
   })
@@ -249,19 +261,18 @@ describe('AuthManager', () => {
     await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { user: { id: 1 } } })
   })
 
-  it('qrNew returns the token + url + expiresAt', async () => {
+  // Адрес кода: base64 конструктора → шестнадцатеричная запись маршрута.
+  // Ссылки для сканера в ответе больше нет — её строит экран входа сам.
+  it('qrNew отдаёт адрес кода шестнадцатеричной записью', async () => {
     const { d } = deps()
     const auth = newAuthManager(d)
-    const r = await auth.qrNew('web')
-    expect(r.token).toBe('tok123')
-    expect(r.url).toBe('http://h/qr/tok123')
-    expect(r.expiresAt).toBe('2026-06-24T00:01:00Z')
+    await expect(auth.qrNew('web')).resolves.toBe('0102')
   })
 
   it('qrStatus stores the session token when confirmed', async () => {
     const { d, token } = deps({ qrConfirmed: true })
     const auth = newAuthManager(d)
-    const r = await auth.qrStatus('tok123')
+    const r = await auth.qrStatus('0102')
     expect(r.status).toBe('confirmed')
     expect(r.user?.user.id).toBe(7)
     expect(token()).toBe('sess999')
@@ -270,8 +281,17 @@ describe('AuthManager', () => {
   it('qrStatus pending does not store a token', async () => {
     const { d, token } = deps({ qrConfirmed: false })
     const auth = newAuthManager(d)
-    const r = await auth.qrStatus('tok123')
+    const r = await auth.qrStatus('0102')
     expect(r.status).toBe('pending')
+    expect(token()).toBeNull()
+  })
+
+  // Протухший код — отказ 404, а наружу тот же дискриминированный результат:
+  // HttpError не переживает границу worker-RPC.
+  it('qrStatus: отказ AUTH_TOKEN_EXPIRED становится статусом expired', async () => {
+    const { d, token } = deps()
+    const r = await newAuthManager(d).qrStatus('dead')
+    expect(r.status).toBe('expired')
     expect(token()).toBeNull()
   })
 
@@ -427,7 +447,7 @@ describe('AuthManager: rt:logging_out — намерение перехода а
   it('qrStatus(confirmed) объявляет вход тем же кадром (другой вызывающий, та же persist)', async () => {
     const onLoggedIn = vi.fn()
     const { d } = deps({ qrConfirmed: true })
-    await newAuthManager({ ...d, onLoggedIn }).qrStatus('tok123')
+    await newAuthManager({ ...d, onLoggedIn }).qrStatus('0102')
     expect(onLoggedIn).toHaveBeenCalledWith({ userId: 7 })
   })
 

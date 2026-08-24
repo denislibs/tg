@@ -1696,5 +1696,53 @@
         "type": "boolean"
       }
     ]
+  },
+  {
+    "predicate": "auth.authorization",
+    "params": [
+      {
+        "name": "token",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "predicate": "auth.authorizationSignUpRequired",
+    "params": [
+      {
+        "name": "signup_token",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "977940787",
+    "predicate": "auth.passwordNeeded",
+    "params": [
+      {
+        "name": "password_token",
+        "type": "string"
+      },
+      {
+        "name": "hint",
+        "type": "string"
+      }
+    ],
+    "type": "auth.Authorization"
+  },
+  {
+    "id": "75047290",
+    "predicate": "auth.webAuthToken",
+    "params": [
+      {
+        "name": "token",
+        "type": "string"
+      },
+      {
+        "name": "expires",
+        "type": "int"
+      }
+    ],
+    "type": "auth.WebAuthToken"
   }
 ]

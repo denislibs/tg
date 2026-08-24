@@ -2148,7 +2148,7 @@ export namespace AuthSentCode {
 /**
  * @link https://core.telegram.org/type/auth.Authorization
  */
-export type AuthAuthorization = AuthAuthorization.authAuthorization | AuthAuthorization.authAuthorizationSignUpRequired;
+export type AuthAuthorization = AuthAuthorization.authAuthorization | AuthAuthorization.authAuthorizationSignUpRequired | AuthAuthorization.authPasswordNeeded;
 
 export namespace AuthAuthorization {
   export type authAuthorization = {
@@ -2160,13 +2160,21 @@ export namespace AuthAuthorization {
     otherwise_relogin_days?: number,
     tmp_sessions?: number,
     future_auth_token?: Uint8Array,
-    user: User
+    user: User,
+    token?: string
   };
 
   export type authAuthorizationSignUpRequired = {
     _: 'auth.authorizationSignUpRequired',
     flags?: number,
-    terms_of_service?: HelpTermsOfService
+    terms_of_service?: HelpTermsOfService,
+    signup_token?: string
+  };
+
+  export type authPasswordNeeded = {
+    _: 'auth.passwordNeeded',
+    password_token: string,
+    hint: string
   };
 }
 
@@ -17075,6 +17083,19 @@ export namespace RichMessage {
   };
 }
 
+/**
+ * @link https://core.telegram.org/type/auth.WebAuthToken
+ */
+export type AuthWebAuthToken = AuthWebAuthToken.authWebAuthToken;
+
+export namespace AuthWebAuthToken {
+  export type authWebAuthToken = {
+    _: 'auth.webAuthToken',
+    token: string,
+    expires: number
+  };
+}
+
 export interface ConstructorDeclMap {
   'error': Error.error,
   'inputPeerEmpty': InputPeer.inputPeerEmpty,
@@ -18736,6 +18757,8 @@ export interface ConstructorDeclMap {
   'messageEntityAnchor': MessageEntity.messageEntityAnchor,
   'privacyKeyMessages': PrivacyKey.privacyKeyMessages,
   'privacyKeyReadTime': PrivacyKey.privacyKeyReadTime,
+  'auth.passwordNeeded': AuthAuthorization.authPasswordNeeded,
+  'auth.webAuthToken': AuthWebAuthToken.authWebAuthToken,
 }
 
 export type InvokeAfterMsg = {

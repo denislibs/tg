@@ -89,9 +89,10 @@ export type SignUpResult =
   | { user: PeerProfile }
   | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
 
-// «Забыли пароль»: маска привязанной почты. Паузу повторной отправки держит
-// сервер (`resend_after` / 429 `resend_too_soon`) — клиент своего таймера не
-// заводит и потому это число не читает.
+// «Забыли пароль»: маска привязанной почты (`auth.passwordRecovery`). Паузу
+// повторной отправки держит СЕРВЕР и выражает отказом `RESEND_TOO_SOON_<N>` —
+// клиент своего таймера не заводит, поэтому соседнего числа в ответе больше
+// нет: его не читал никто.
 export type RecoveryRequestResult =
   | { emailPattern: string }
   | { error: 'password_token_expired' | 'password_recovery_na' | 'resend_too_soon' | 'unavailable' | 'failed' }
@@ -169,15 +170,55 @@ export interface AuthDeps {
   onLoggedIn?: (e: { userId: number }) => void
 }
 
-// Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
-interface SignInWire {
-  token?: string
-  user?: RawPeerProfile
-  password_needed?: boolean
-  password_token?: string
-  hint?: string
-  signup_required?: boolean
-  signup_token?: string
+/**
+ * `auth.Authorization` — исход шага входа ОДНИМ объединением: выдана сессия,
+ * нужен облачный пароль либо нужна регистрация.
+ *
+ * Прежде ветку называло НАЛИЧИЕ ключей (`password_needed`, `signup_required`):
+ * «выключено» имело значение, а третья ветка не имела имени вовсе.
+ *
+ * Карточка едет КРАТКИМ конструктором `user`, а не парой `users.userFull`: так
+ * у оригинала — полной формы (`bio`, день рождения, ttl) вход не отдаёт вовсе,
+ * её приносит первый же `/me`.
+ *
+ * `token` и `signup_token` — наши параметры, объявленные клиентскими у
+ * конструкторов схемы: у оригинала ключ сессии выдаёт транспорт MTProto, а
+ * продолжение шага авторизует состояние сессии на сервере — у REST нет ни
+ * того, ни другого. `auth.passwordNeeded` — наш конструктор целиком: оригинал
+ * выражает этот случай ошибкой `SESSION_PASSWORD_NEEDED` плюс тем же
+ * состоянием сессии.
+ */
+export type AuthAuthorizationWire =
+  | { _: 'auth.authorization'; token: string; user: UserReal }
+  | { _: 'auth.authorizationSignUpRequired'; signup_token: string }
+  | { _: 'auth.passwordNeeded'; password_token: string; hint: string }
+
+/**
+ * `auth.LoginToken` — состояние входа по QR-коду: код ждёт подтверждения либо
+ * подтверждён и несёт ТОТ ЖЕ исход входа, что обычный шаг (прежде сессия и
+ * карточка ехали соседними ключами — второй формой одного предмета).
+ *
+ * Третьего состояния, «протух», в объединении нет: у оригинала это ОШИБКА
+ * (`AUTH_TOKEN_EXPIRED`), а прежде ехало `{status:'expired'}` со статусом 200,
+ * то есть «не получилось» витриной успеха.
+ */
+export type AuthLoginTokenWire =
+  | { _: 'auth.loginToken'; expires: number; token: string }
+  | { _: 'auth.loginTokenSuccess'; authorization: AuthAuthorizationWire }
+
+/**
+ * Адрес выпущенного кода для маршрута `/auth/qr/{token}`.
+ *
+ * `token` в схеме — БАЙТЫ, на JSON-проводе фазы 0 это base64-строка (та же
+ * договорённость, что у `stripped_thumb`), а маршрут берёт ту же величину
+ * шестнадцатеричной записью.
+ */
+const qrToken = (r: AuthLoginTokenWire): string => {
+  if (r._ !== 'auth.loginToken') throw new Error(`неожиданный ответ выпуска кода: ${r._}`)
+  const bin = atob(r.token)
+  let out = ''
+  for (let i = 0; i < bin.length; i++) out += bin.charCodeAt(i).toString(16).padStart(2, '0')
+  return out
 }
 
 export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLoggedIn }: AuthDeps) {
@@ -280,19 +321,27 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       throw e
     }
   }
-  // Разбор общего ответа шагов входа (`writeSignInResult` на бэке): сессия |
-  // облачный пароль | регистрация. Общий для sign_in, sign_up, recover/confirm и
-  // sign_import — держим в одном месте, чтобы ветки не разъезжались.
-  const toOutcome = async (res: SignInWire): Promise<SignInOutcome> => {
-    if (res.password_needed && res.password_token) {
+  // Шаг закончился ВЫДАННОЙ сессией. Отдельно от toOutcome, потому что у
+  // половины путей входа другого исхода не бывает по построению: sign_up,
+  // check_password, подтверждение кода с почты и вход по ключу доступа — все
+  // они идут ПОСЛЕ того, как ветка уже выбрана.
+  const toSession = async (res: AuthAuthorizationWire): Promise<PeerProfile> => {
+    if (res._ !== 'auth.authorization') throw new Error(`неожиданный исход входа: ${res._}`)
+    const u = briefProfile(res.user)
+    await persist(res.token, u)
+    return u
+  }
+  // Разбор общего ответа шагов входа: сессия | облачный пароль | регистрация.
+  // Общий для sign_in и sign_import — ветку называет конструктор, а не набор
+  // признаков рядом.
+  const toOutcome = async (res: AuthAuthorizationWire): Promise<SignInOutcome> => {
+    if (res._ === 'auth.passwordNeeded') {
       return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
     }
-    if (res.signup_required && res.signup_token) {
+    if (res._ === 'auth.authorizationSignUpRequired') {
       return { signUpRequired: true, signUpToken: res.signup_token }
     }
-    const u = mapPeerProfile(res.user!)
-    await persist(res.token!, u)
-    return { user: u }
+    return { user: await toSession(res) }
   }
   return {
     // Страна по умолчанию для поля номера. Аналог tweb `help.getNearestDc`
@@ -300,7 +349,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // штатный ответ, а не ошибка, и экран входа просто остаётся на своём фолбэке.
     async nearestCountry(): Promise<string> {
       try {
-        const r = await rest.get<{ country_code?: string }>('/auth/nearest_country')
+        const r = await rest.get<{ _: 'help.countryCode'; country_code?: string }>('/auth/nearest_country')
         return r.country_code ?? ''
       } catch {
         return ''
@@ -316,7 +365,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // SESSION_PASSWORD_NEEDED). Если номер подтверждён, но аккаунта нет —
     // signup_token и шаг signUp (Telegram auth.authorizationSignUpRequired).
     async signIn(phone: string, code: string, device: string, platform: string): Promise<SignInOutcome> {
-      return toOutcome(await rest.post<SignInWire>('/auth/sign_in', { phone, code, device, platform }))
+      return toOutcome(await rest.post<AuthAuthorizationWire>('/auth/sign_in', { phone, code, device, platform }))
     },
 
     // Регистрация нового номера. Аватар сюда НЕ передаётся: как и в tweb
@@ -324,12 +373,9 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // выданной сессией обычными ручками профиля.
     async signUp(signUpToken: string, firstName: string, lastName: string, device: string, platform: string): Promise<SignUpResult> {
       try {
-        const res = await rest.post<SignInWire>('/auth/sign_up', {
+        return { user: await toSession(await rest.post<AuthAuthorizationWire>('/auth/sign_up', {
           signup_token: signUpToken, first_name: firstName, last_name: lastName, device, platform,
-        })
-        const u = mapPeerProfile(res.user!)
-        await persist(res.token!, u)
-        return { user: u }
+        })) }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
         if (e.message === 'first_name_required') return { error: 'first_name_required' }
@@ -346,7 +392,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // паузу повторной отправки держит сервер, а не клиентский таймер.
     async requestPasswordRecovery(passwordToken: string): Promise<RecoveryRequestResult> {
       try {
-        const res = await rest.post<{ email_pattern: string }>(
+        const res = await rest.post<{ _: 'auth.passwordRecovery'; email_pattern: string }>(
           '/auth/password/recover', { password_token: passwordToken },
         )
         return { emailPattern: res.email_pattern }
@@ -381,12 +427,9 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // Код с почты снимает облачный пароль и сразу выдаёт сессию.
     async confirmPasswordRecovery(passwordToken: string, code: string, device: string, platform: string): Promise<RecoveryConfirmResult> {
       try {
-        const res = await rest.post<SignInWire>('/auth/password/recover/confirm', {
+        return { user: await toSession(await rest.post<AuthAuthorizationWire>('/auth/password/recover/confirm', {
           password_token: passwordToken, code, device, platform,
-        })
-        const u = mapPeerProfile(res.user!)
-        await persist(res.token!, u)
-        return { user: u }
+        })) }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
         if (e.message === 'recovery_expired') return { error: 'recovery_expired' }
@@ -401,7 +444,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // с SESSION_PASSWORD_NEEDED в tweb.
     async signImport(webAuthToken: string, device: string, platform: string): Promise<SignImportResult> {
       try {
-        return await toOutcome(await rest.post<SignInWire>('/auth/sign_import', {
+        return await toOutcome(await rest.post<AuthAuthorizationWire>('/auth/sign_import', {
           web_auth_token: webAuthToken, device, platform,
         }))
       } catch (e) {
@@ -413,12 +456,9 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     },
 
     async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: PeerProfile }> {
-      const res = await rest.post<{ token: string; user: RawPeerProfile }>('/auth/check_password', {
+      return { user: await toSession(await rest.post<AuthAuthorizationWire>('/auth/check_password', {
         password_token: passwordToken, password, device, platform,
-      })
-      const u = mapPeerProfile(res.user)
-      await persist(res.token, u)
-      return { user: u }
+      })) }
     },
 
     // Облачный пароль (экран Two-Step Verification).
@@ -459,29 +499,34 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       return rest.post('/auth/passkey/begin', {})
     },
     async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: PeerProfile }> {
-      const res = await rest.post<{ token: string; user: RawPeerProfile }>(
+      return { user: await toSession(await rest.post<AuthAuthorizationWire>(
         `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
         assertion,
-      )
-      const u = mapPeerProfile(res.user)
-      await persist(res.token, u)
-      return { user: u }
+      )) }
     },
 
-    async qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }> {
-      const r = await rest.post<{ token: string; url: string; expires_at: string }>('/auth/qr/new', { platform })
-      return { token: r.token, url: r.url, expiresAt: r.expires_at }
+    // Выпуск QR-кода: конструктор `auth.loginToken`. Ссылка для сканера в
+    // ответе не едет — её строит экран входа от своего origin (серверную он и
+    // раньше игнорировал: за прокси она теряла порт).
+    async qrNew(platform: string): Promise<string> {
+      return qrToken(await rest.post<AuthLoginTokenWire>('/auth/qr/new', { platform }))
     },
 
     async qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: PeerProfile }> {
-      // Подтверждённый QR отдаёт голый конструктор `user`, а не пару
-      // `users.userFull`: полной формы у этого ответа нет и никогда не было —
-      // bio/birthday подтянет первый же `/me`.
-      const r = await rest.get<{ status: 'pending' | 'confirmed' | 'expired'; session_token?: string; user?: UserReal }>(`/auth/qr/${token}`)
-      if (r.status === 'confirmed' && r.session_token && r.user) {
-        await persist(r.session_token, briefProfile(r.user))
+      let r: AuthLoginTokenWire
+      try {
+        r = await rest.get<AuthLoginTokenWire>(`/auth/qr/${token}`)
+      } catch (e) {
+        // Протухший (или чужой) код — ОТКАЗ, а не третий конструктор
+        // объединения: так у оригинала (`AUTH_TOKEN_EXPIRED`). Наружу отдаём
+        // тем же дискриминированным результатом — HttpError не переживает
+        // границу worker-RPC.
+        if (e instanceof HttpError && e.status === 404) return { status: 'expired' }
+        throw e
       }
-      return { status: r.status, user: r.user ? briefProfile(r.user) : undefined }
+      if (r._ === 'auth.loginToken') return { status: 'pending' }
+      // Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг.
+      return { status: 'confirmed', user: await toSession(r.authorization) }
     },
 
     async qrConfirm(token: string): Promise<void> {

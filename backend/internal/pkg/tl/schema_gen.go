@@ -8418,6 +8418,14 @@ var schemaConstructors = []Constructor{
 	}},
 	{ID: 1367848849, Predicate: "privacyKeyMessages", Type: "PrivacyKey"},
 	{ID: 1884840837, Predicate: "privacyKeyReadTime", Type: "PrivacyKey"},
+	{ID: 977940787, Predicate: "auth.passwordNeeded", Type: "auth.Authorization", Params: []Param{
+		{Name: "password_token", Type: "string"},
+		{Name: "hint", Type: "string"},
+	}},
+	{ID: 75047290, Predicate: "auth.webAuthToken", Type: "auth.WebAuthToken", Params: []Param{
+		{Name: "token", Type: "string"},
+		{Name: "expires", Type: "int"},
+	}},
 }
 
 // clientOnlyPredicates — конструкторы, объявленные только для клиента:
@@ -8511,4 +8519,6 @@ var clientParams = map[string][]string{
 	"payments.giveawayInfoResults":       {"participants"},
 	"starGift":                           {"emoji"},
 	"users.userFull":                     {"can_message"},
+	"auth.authorization":                 {"token"},
+	"auth.authorizationSignUpRequired":   {"signup_token"},
 }

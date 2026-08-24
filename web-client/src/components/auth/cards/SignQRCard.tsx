@@ -42,12 +42,12 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
 
     const regen = async () => {
       try {
-        const { token } = await managers.auth.qrNew('web')
+        const token = await managers.auth.qrNew('web')
         if (!alive) return
         qrTokenRef.current = token
-        // URL для сканера строим от реального origin: `url` с бэка выводится из
-        // Host-заголовков прокси и может потерять порт (за nginx →
-        // «http://localhost/qr/...»), поэтому ему не доверяем.
+        // URL для сканера строим от реального origin. С бэка он больше не едет
+        // вовсе: там он выводился из Host-заголовков прокси и мог потерять порт
+        // (за nginx → «http://localhost/qr/...»), поэтому ему и не доверяли.
         setQrUrl(`${location.origin}/qr/${token}`)
       } catch {
         /* следующая ротация повторит попытку — прелоадер остаётся на месте */

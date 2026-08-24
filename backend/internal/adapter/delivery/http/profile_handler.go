@@ -26,6 +26,15 @@ func NewProfileHandler(uc *usecaseauth.Interactor) *ProfileHandler { return &Pro
 // тот же человек, и Check для такой пары всегда пропускает. Форма ответа при
 // этом совпадает с чужим профилем (privacy.Profile) буква в букву: клиенту
 // нечего разбирать двумя путями.
+// selfUser — КРАТКАЯ карточка владельца: тот же конструктор `user`, что едет в
+// любом списке и с каждым сообщением. Свой номер виден всегда, поэтому он тут
+// проставляется прямо, а не спрашивается у правил приватности.
+func selfUser(u domain.UserRecord) domain.UserReal {
+	brief := u.ToUser(domain.UserFlags{Self: true}, nil, true)
+	brief.Phone = u.Phone
+	return brief
+}
+
 func userJSON(u domain.UserRecord) domain.UsersUserFull {
 	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
 		PhoneCallsAvailable: true,
@@ -39,12 +48,10 @@ func userJSON(u domain.UserRecord) domain.UsersUserFull {
 		b := domain.NewBirthday(*u.Birthday)
 		full.Birthday = &b
 	}
-	brief := u.ToUser(domain.UserFlags{Self: true}, nil, true)
-	brief.Phone = u.Phone
 	// can_message — НАШ параметр, объявленный клиентским у `users.userFull`
 	// (schema_additional_params.json). Себе написать можно всегда — это
 	// «Избранное».
-	return domain.NewUsersUserFull(full, brief, true)
+	return domain.NewUsersUserFull(full, selfUser(u), true)
 }
 
 type birthdayBody struct {

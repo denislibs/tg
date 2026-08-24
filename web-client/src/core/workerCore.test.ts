@@ -398,8 +398,12 @@ describe('createWorkerCore(): намерение перехода сессии �
     // persist() (общая точка всех путей входа) объявляет кадр.
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).endsWith('/auth/sign_in')) {
+        // Исход шага входа — конструктор `auth.authorization` с КРАТКОЙ
+        // карточкой: полной формы вход не отдаёт, её приносит первый /me.
         return new Response(JSON.stringify({
-          token: 'TOK', user: { _: 'users.userFull', full_user: { _: 'userFull', id: 42 }, chats: [], users: [{ _: 'user', pFlags: { self: true }, id: 42, phone: '+7' }], can_message: true },
+          _: 'auth.authorization',
+          token: 'TOK',
+          user: { _: 'user', pFlags: { self: true }, id: 42, phone: '+7' },
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))

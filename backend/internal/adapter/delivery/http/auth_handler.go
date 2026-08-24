@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,32 +145,30 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	writeSignInResult(w, res)
 }
 
-// writeSignInResult сериализует исход входа: сессия, шаг облачного пароля или
-// шаг регистрации. Общий ответ для sign_in и sign_import.
-func writeSignInResult(w http.ResponseWriter, res usecaseauth.SignInResult) {
+// signInOutcome — исход шага входа КОНСТРУКТОРОМ объединения
+// `auth.Authorization`. Прежде исход выяснялся наличием ключей
+// (`password_needed`, `signup_required`), то есть «выключено» имело значение, а
+// третья ветка не имела имени вовсе.
+func signInOutcome(res usecaseauth.SignInResult) domain.AuthAuthorization {
+	switch {
 	// Включён облачный пароль — сессии нет, клиент идёт на шаг
 	// POST /auth/check_password с одноразовым password_token.
-	if res.PasswordNeeded {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"password_needed": true,
-			"password_token":  res.PasswordToken,
-			"hint":            res.Hint,
-		})
-		return
-	}
+	case res.PasswordNeeded:
+		return domain.NewAuthPasswordNeeded(res.PasswordToken, res.Hint)
 	// Номер подтверждён, аккаунта нет — клиент показывает форму имени и идёт на
-	// POST /auth/sign_up (Telegram auth.authorizationSignUpRequired).
-	if res.SignUpRequired {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"signup_required": true,
-			"signup_token":    res.SignUpToken,
-		})
-		return
+	// POST /auth/sign_up.
+	case res.SignUpRequired:
+		return domain.NewAuthAuthorizationSignUpRequired(res.SignUpToken)
+	default:
+		// Карточка КРАТКАЯ: полной формы вход не отдаёт, её приносит первый /me.
+		return domain.NewAuthAuthorization(res.Token, selfUser(res.User))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token": res.Token,
-		"user":  userJSON(res.User),
-	})
+}
+
+// writeSignInResult — общий ответ всех путей входа: sign_in, sign_up,
+// sign_import, check_password, восстановление пароля и вход по ключу доступа.
+func writeSignInResult(w http.ResponseWriter, res usecaseauth.SignInResult) {
+	writeJSON(w, http.StatusOK, signInOutcome(res))
 }
 
 type signUpBody struct {
@@ -257,10 +256,10 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusInternalServerError, "password recovery failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"email_pattern": res.EmailPattern,
-		"resend_after":  res.ResendAfter,
-	})
+	// `resend_after` рядом больше нет: паузу повторной отправки держит сервер
+	// (отказ `RESEND_TOO_SOON_<N>` выше), своего таймера клиент не заводит и
+	// это число не читал.
+	writeJSON(w, http.StatusOK, domain.NewAuthPasswordRecovery(res.EmailPattern))
 }
 
 type recoverConfirmBody struct {
@@ -358,7 +357,7 @@ func (h *AuthHandler) NearestCountry(w http.ResponseWriter, r *http.Request) {
 	}
 	// Тот же путь IP → GeoIP, что наполняет местоположение активных сессий.
 	ctx := usecaseauth.WithClientInfo(r.Context(), usecaseauth.ClientInfo{IP: clientIP(r)})
-	writeJSON(w, http.StatusOK, map[string]string{"country_code": h.svc.NearestCountry(ctx)})
+	writeJSON(w, http.StatusOK, domain.NewHelpCountryCode(h.svc.NearestCountry(ctx)))
 }
 
 type signImportBody struct {
@@ -416,10 +415,7 @@ func (h *AuthHandler) NewWebAuthToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not issue web token")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token":      token,
-		"expires_at": expiresAt.UTC().Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusOK, domain.NewAuthWebAuthToken(token, expiresAt))
 }
 
 type checkPasswordBody struct {
@@ -456,10 +452,7 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "check password failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token": res.Token,
-		"user":  userJSON(res.User),
-	})
+	writeSignInResult(w, res)
 }
 
 type qrNewBody struct {
@@ -478,28 +471,36 @@ func (h *AuthHandler) QRNew(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not start qr login")
 		return
 	}
-	// Build the scan URL from the request origin so a confirming device lands on
-	// the SPA's /qr/{token} route. Fall back to Host when Origin is absent.
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		scheme := "https"
-		if r.TLS == nil {
-			scheme = "http"
-		}
-		origin = scheme + "://" + r.Host
+	// Ссылку для сканера строит клиент от своего origin: серверную он и раньше
+	// игнорировал (за прокси она теряла порт), так что адрес ехал дважды, а
+	// читали его один раз.
+	out, err := qrLoginToken(token, expiresAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not start qr login")
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"token":      token,
-		"url":        origin + "/qr/" + token,
-		"expires_at": expiresAt.UTC().Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusOK, out)
+}
+
+// qrLoginToken — конструктор выпущенного кода. `token` у схемы БАЙТЫ, а
+// маршрут `/auth/qr/{token}` берёт ту же величину шестнадцатеричной записью
+// (domain.GenerateToken).
+func qrLoginToken(token string, expiresAt time.Time) (domain.AuthLoginTokenReal, error) {
+	raw, err := hex.DecodeString(token)
+	if err != nil {
+		return domain.AuthLoginTokenReal{}, err
+	}
+	return domain.NewAuthLoginToken(raw, expiresAt), nil
 }
 
 func (h *AuthHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	rec, err := h.svc.QRStatus(r.Context(), token)
 	if errors.Is(err, domain.ErrNotFound) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "expired"})
+		// Протухший код — ОТКАЗ, а не третий конструктор объединения: так у
+		// оригинала (`AUTH_TOKEN_EXPIRED`). Прежде ехало `{"status":"expired"}`
+		// со статусом 200, то есть «не получилось» витриной успеха.
+		writeError(w, http.StatusNotFound, "AUTH_TOKEN_EXPIRED")
 		return
 	}
 	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
@@ -510,14 +511,20 @@ func (h *AuthHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "qr status failed")
 		return
 	}
-	resp := map[string]any{"status": rec.Status}
 	if rec.Status == domain.QRConfirmed {
-		resp["session_token"] = rec.SessionToken
-		// Подтверждённый QR отдаёт того же пользователя тем же конструктором,
-		// что и остальные витрины: своей формы у этого ответа больше нет.
-		resp["user"] = rec.User.ToUser(domain.UserFlags{Self: true}, nil, true)
+		// Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг:
+		// прежде сессия и карточка ехали соседними ключами — второй формой
+		// одного предмета.
+		writeJSON(w, http.StatusOK, domain.NewAuthLoginTokenSuccess(
+			domain.NewAuthAuthorization(rec.SessionToken, selfUser(rec.User))))
+		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	out, err := qrLoginToken(token, rec.CreatedAt.Add(usecaseauth.QRLoginTTL))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "qr status failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 type qrConfirmBody struct {
