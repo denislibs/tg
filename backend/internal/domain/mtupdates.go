@@ -103,13 +103,14 @@ type UpdatesReal struct {
 //
 // `seq` нулевой: порядок пачек мы не ведём вовсе (у оригинала им клиент
 // склеивает поток), а витрина отвечает на прямой запрос — порядок в ней задаёт
-// сам ответ. Векторы объектов пустые по той же причине, что и у оболочки
-// кадра: пир едет внутри каждого апдейта.
-func NewUpdates(list []Update, date time.Time) UpdatesReal {
+// сам ответ. Вектор `users` несёт карточки тех, на кого апдейты СОСЛАЛИСЬ:
+// ссылка внутри апдейта и карточка рядом — та же раскладка, что у контейнеров
+// диалогов и сообщений. Вектор `chats` пока пуст (задача про пиров кадров).
+func NewUpdates(list []Update, users []UserReal, date time.Time) UpdatesReal {
 	return UpdatesReal{
 		Underscore: UpdatesTag,
 		Updates:    orEmpty(list),
-		Users:      []UserReal{},
+		Users:      orEmpty(users),
 		Chats:      []Chat{},
 		Date:       unixSeconds(date),
 	}

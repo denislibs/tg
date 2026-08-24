@@ -50,10 +50,51 @@ export interface SavedTag {
  * `user` плюс наши поля рядом. Анонимный — без личности (`user` пустой,
  * `anonymous: true`): рисуется как «Anonymous». Прежняя тройка {userId, name,
  * avatarUrl} была снимком пользователя рядом с настоящим. */
+/**
+ * Один отправитель платной ⭐-реакции — СТРОКА `messageReactor` схемы: ССЫЛКА
+ * на пира плюс число звёзд. Ссылка, а не карточка: карточки едут вектором
+ * `users` того же контейнера и уезжают в зеркало пиров.
+ *
+ * У анонимного ссылки нет вовсе (`pFlags.anonymous`): личность затёрта на
+ * сервере, и подставлять вместо неё пустую карточку нечем.
+ */
 export interface StarSender {
-  user: UserReal
+  peerId: number | null
   stars: number
   anonymous: boolean
+}
+
+/** `messageReactor` на проводе. */
+interface MessageReactorWire {
+  _: 'messageReactor'
+  pFlags?: { top?: true; my?: true; anonymous?: true }
+  peer_id?: Peer
+  count: number
+}
+
+/**
+ * Витрина ⭐-реакции — КАДР `updateMessageReactions` в контейнере `updates`.
+ *
+ * Прежде она отдавала безымянную тройку: пару `{total, mine}` под ключом
+ * `star_reaction`, список отправителей с ВКЛЕЕННОЙ карточкой в каждой строке и
+ * баланс. У оригинала всё это ОДИН предмет — агрегат реакций сообщения, где
+ * платная реакция это чип `reactionPaid`, а доска отправителей —
+ * `top_reactors`. Баланс уехал своему владельцу: кадру `updateStarsBalance`.
+ */
+interface StarReactionWire {
+  _: 'updates'
+  updates: {
+    _: 'updateMessageReactions'
+    peer: Peer
+    msg_id: number
+    reactions: {
+      _: 'messageReactions'
+      results: { _: 'reactionCount'; reaction: { _: string }; count: number; chosen_order?: number }[]
+      top_reactors?: MessageReactorWire[]
+    }
+  }[]
+  users: UserReal[]
+  chats: unknown[]
 }
 
 /** Агрегат платной ⭐-реакции сообщения: сумма звёзд, мой вклад, топ-отправители. */
@@ -63,14 +104,33 @@ export interface StarReactionInfo {
   top: StarSender[]
 }
 
-/** Результат отправки платной ⭐-реакции: новый агрегат + мой новый баланс. */
-export interface StarReactionResult extends StarReactionInfo {
-  balance: number
-}
+/** Результат отправки платной ⭐-реакции — тот же агрегат: баланс приезжает
+ *  своим кадром `updateStarsBalance`, а не вторым значением в этом ответе. */
+export type StarReactionResult = StarReactionInfo
 
-// Маппера нет: форма провода и форма модели совпали.
-function mapStarSenders(rows: StarSender[] | undefined): StarSender[] {
-  return rows ?? []
+/**
+ * Кадр витрины → агрегат для попапа.
+ *
+ * `total` это count чипа `reactionPaid`, `mine` — count МОЕЙ строки доски
+ * (`pFlags.my`): у оригинала личный вклад живёт именно там, а в чипе только
+ * «моя или не моя». Прежде обе величины ехали отдельной парой рядом с чипами.
+ */
+function mapStarReaction(r: StarReactionWire): StarReactionInfo {
+  const reactions = r.updates?.[0]?.reactions
+  const paid = reactions?.results?.find((c) => c.reaction?._ === 'reactionPaid')
+  const reactors = reactions?.top_reactors ?? []
+  const mine = reactors.find((x) => x.pFlags?.my)
+  return {
+    total: paid?.count ?? 0,
+    mine: mine?.count ?? 0,
+    top: reactors
+      .filter((x) => !x.pFlags?.my)
+      .map((x) => ({
+        peerId: x.peer_id ? getPeerId(x.peer_id) : null,
+        stars: x.count,
+        anonymous: !!x.pFlags?.anonymous,
+      })),
+  }
 }
 
 // Stage 1B.3 (Task 5): cacheReaction ниже СОЗНАТЕЛЬНО НЕ переведена на операцию
@@ -104,7 +164,7 @@ function mapStarSenders(rows: StarSender[] | undefined): StarSender[] {
 // Эталон семантики — messagesStore.reactions.test.ts (не менять, только
 // сверяться). Если решение по poll/giveaway (Task 4) когда-нибудь расширят на
 // массивы через отдельный тип операции — тогда стоит вернуться и сюда.
-export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: MessagesCtx) {
+export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: MessagesCtx) {
   // Дельта СВОЕГО клика (count±1 по emoji) → SSOT: оптимистика до сети.
   //
   // Кадром это больше не притворяется. Прежде функция принимала ReactionEvt и
@@ -225,20 +285,22 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
     },
 
     // Платная ⭐-реакция: списать count звёзд, начислить автору, накопить вклад.
-    // Возвращает агрегат + топ-отправителей + мой баланс. Живое эхо придёт тем
-    // же кадром, что у обычной реакции (updateMessageReactions с чипом
-    // reactionPaid), и своего вклада не тронет: в общем теле его нет.
-    async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
-      const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: StarSender[]; balance: number }>(
+    // Ответ — тот же КАДР, что приходит живым (updateMessageReactions с чипом
+    // reactionPaid); баланс приезжает своим кадром updateStarsBalance.
+    async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionInfo> {
+      const r = await rest.post<StarReactionWire>(
         `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`, { count, anonymous })
-      applyStarToCache(peerId, getServerMessageId(msgId), r.star_reaction.total, r.star_reaction.mine)
-      return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
+      peers?.saveApiPeers({ users: r.users })
+      const info = mapStarReaction(r)
+      applyStarToCache(peerId, getServerMessageId(msgId), info.total, info.mine)
+      return info
     },
     // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
     async getStarReaction(peerId: number, msgId: number): Promise<StarReactionInfo> {
-      const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: StarSender[] }>(
+      const r = await rest.get<StarReactionWire>(
         `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`)
-      return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
+      peers?.saveApiPeers({ users: r.users })
+      return mapStarReaction(r)
     },
   }
 }

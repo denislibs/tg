@@ -274,7 +274,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
   // абсолютный агрегат без пер-зрительской части, и «выросло ли число реакций
   // на МОЁМ сообщении» отвечает только владелец окна.
   const readMsg = (peerId: number, msgId: number): MyMessage | undefined => msgsByChat.get(peerId)?.get(msgId)
-  const ctx = { rest, patchMsg, getMeId, opWindowsFor, readMsg }
+  const ctx = { rest, patchMsg, getMeId, opWindowsFor, readMsg, peers }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({

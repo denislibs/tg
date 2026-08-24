@@ -14,7 +14,7 @@ func TestUpdatesContainer_MatchesSchema(t *testing.T) {
 	value := NewUpdates([]Update{
 		NewUpdateDraftMessage(NewPeerUser(7), NewDraftMessage("привет", nil, nil, time.Unix(1787334148, 0))),
 		NewUpdateDraftMessage(NewPeerUser(8), NewDraftMessageEmpty()),
-	}, time.Unix(1787334148, 0))
+	}, []UserReal{{Underscore: UserTag, ID: 7}}, time.Unix(1787334148, 0))
 
 	c := &schemaChecker{
 		constructors: loadSchemaConstructors(t),
@@ -36,7 +36,7 @@ func TestUpdatesContainer_MatchesSchema(t *testing.T) {
 // Пустая пачка остаётся ВЕКТОРОМ, а не null: у обязательного параметра схемы
 // «пусто» это пустой вектор, а не отсутствие значения.
 func TestUpdatesContainer_EmptyStaysVector(t *testing.T) {
-	decoded, ok := roundTripJSON(t, NewUpdates(nil, time.Unix(1, 0))).(map[string]any)
+	decoded, ok := roundTripJSON(t, NewUpdates(nil, nil, time.Unix(1, 0))).(map[string]any)
 	if !ok {
 		t.Fatal("пачка не разобралась в объект")
 	}

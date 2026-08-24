@@ -13,13 +13,22 @@ import StarIcon from './StarIcon'
 import StarsPopup from './StarsPopup'
 import UserAvatar from '../UserAvatar'
 import { getPeerPhotoId } from '../../core/peers/peer'
-import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { getPeerTitle } from '../../core/peers/getPeerTitle'
+import { cachedPeer } from '../../core/peerCache'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
+import { useStarsBalance } from '../../stores/starsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useT } from '../../i18n'
 import type { StarSender } from '../../core/managers/messagesManager'
 import s from './starReaction.module.scss'
+
+// Имя и фото отправителя — из ЗЕРКАЛА пиров: строка доски несёт только ссылку,
+// а карточки приехали вектором `users` того же контейнера.
+const senderName = (peerId: number) => getPeerTitle({ peerId, peer: cachedPeer(peerId) })
+const senderPhotoId = (peerId: number) => {
+  const peer = cachedPeer(peerId)
+  return getPeerPhotoId(peer?._ === 'user' ? peer.photo : undefined) || undefined
+}
 
 // Верхняя граница одной порции звёзд (backend maxStarReaction). Слайдер 1..MAX.
 const MAX_STARS = 2500
@@ -62,7 +71,8 @@ export default function StarReactionPopup({
       // Воркер пишет свой SSOT; агрегат сообщения (total + мой вклад) ставим в
       // main-стор здесь; WS star_reaction затем реконсилит. Баланс — в State.
       useMessagesStore.getState().applyStarReaction(peerId, msgId, res.total, res.mine)
-      setStarsBalance(res.balance)
+      // Баланс после списания приезжает своим кадром `updateStarsBalance` —
+      // вторым значением в этом ответе он больше не едет.
       onClose()
     } catch {
       // Нехватка звёзд на сервере (гонка баланса) → предложить пополнение.
@@ -113,16 +123,18 @@ export default function StarReactionPopup({
                 {top.map((snd, i) => (
                   <div key={i} className={s.sender}>
                     <div className={s.senderAvatar}>
-                      {snd.anonymous
+                      {/* Строка доски несёт ССЫЛКУ на пира; имя и фото берутся
+                          из зеркала — карточки приехали вектором `users`. */}
+                      {snd.anonymous || snd.peerId == null
                         ? <Avatar background="var(--secondary-text-color)" text="?" size={56} />
-                        : <UserAvatar id={snd.user.id} name={getUserTitle(snd.user)} photoId={getPeerPhotoId(snd.user.photo)} size={56} />}
+                        : <UserAvatar id={snd.peerId} name={senderName(snd.peerId)} photoId={senderPhotoId(snd.peerId)} size={56} />}
                       <span className={s.senderAmount}>
                         <StarIcon size={12} />
                         {snd.stars}
                       </span>
                     </div>
                     <Text noWrap size={12.5} color="var(--primary-text-color)" className={s.senderName}>
-                      {snd.anonymous ? t('Anonymous') : getUserTitle(snd.user)}
+                      {snd.anonymous || snd.peerId == null ? t('Anonymous') : senderName(snd.peerId)}
                     </Text>
                   </div>
                 ))}

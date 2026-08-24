@@ -2103,11 +2103,9 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "star reaction failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
-		"top":           starSendersJSON(top),
-		"balance":       bal,
-	})
+	// Баланса рядом больше нет: его владелец — кадр `updateStarsBalance`.
+	_ = bal
+	writeStarReaction(w, r, h.svc, chatID, agg, top)
 }
 
 // GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
@@ -2130,22 +2128,56 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load star reaction")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
-		"top":           starSendersJSON(top),
-	})
+	writeStarReaction(w, r, h.svc, chatID, agg, top)
 }
 
-// starSendersJSON сериализует топ-отправителей звёзд. Анонимные приходят с
-// пустой карточкой (usecase затёр личность) — клиент рисует их как «Anonymous».
-func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
-	out := make([]map[string]any, 0, len(top))
-	for _, s := range top {
-		out = append(out, map[string]any{
-			"user": s.User, "stars": s.Stars, "anonymous": s.Anonymous,
-		})
+// writeStarReaction — витрина ⭐-реакции сообщения.
+//
+// Прежде она отдавала безымянную тройку: пару `{total, mine}` под ключом
+// `star_reaction`, список отправителей с ВКЛЕЕННОЙ карточкой в каждой строке и
+// баланс. У оригинала всё это ОДИН предмет — агрегат реакций сообщения:
+// платная реакция это `reactionPaid` среди обычных чипов, а доска
+// отправителей — `top_reactors`, где строка несёт ССЫЛКУ на пира.
+//
+// Едет агрегат кадром `updateMessageReactions` в контейнере `updates`: сам по
+// себе `messageReactions` вектора карточек не имеет, а ссылкам нужен адресат.
+func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor,
+	chatID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender) {
+	results := []domain.MTReactionCount{
+		domain.NewReactionCount(domain.NewReactionPaid(), int(agg.Total), agg.Mine > 0),
 	}
-	return out
+	reactors := make([]domain.MessageReactor, 0, len(top)+1)
+	users := make([]domain.UserReal, 0, len(top))
+	for _, s := range top {
+		// Анонимный отправитель едет БЕЗ ссылки на пира: личность затёрта в
+		// usecase, и подставлять пустую карточку вместо неё нельзя.
+		if s.Anonymous || s.User.ID == 0 {
+			reactors = append(reactors, domain.NewMessageReactor(nil, int(s.Stars), false))
+			continue
+		}
+		reactors = append(reactors, domain.NewMessageReactor(domain.NewPeer(domain.PeerID(s.User.ID)), int(s.Stars), false))
+		users = append(users, s.User)
+	}
+	if agg.Mine > 0 {
+		reactors = append(reactors, domain.NewMyMessageReactor(int(agg.Mine)))
+	}
+	reactions := domain.NewMessageReactions(results, nil)
+	reactions.TopReactors = reactors
+
+	me, _ := UserFromContext(r.Context())
+	peer, err := svc.ChatIDToPeer(r.Context(), me.ID, chatID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render star reaction")
+		return
+	}
+	// Номер сообщения берётся из САМОГО адреса запроса: снаружи сообщение
+	// адресуется парой «пир + номер», и второй раз выяснять его незачем.
+	seq, ok := pathMsgSeq(w, r, "msgSeq")
+	if !ok {
+		return
+	}
+	update := domain.NewUpdateMessageReactions(domain.NewPeer(peer), seq, reactions)
+	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, users, time.Now()))
 }
 
 // messagesJSON — витрина списка сообщений: КОНСТРУКТОРЫ схемы, собранные тем
@@ -2334,7 +2366,7 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 	for _, d := range drafts {
 		out = append(out, draftJSON(d, peerOf(r, h.svc, d.ChatID)))
 	}
-	writeJSON(w, http.StatusOK, domain.NewUpdates(out, time.Now()))
+	writeJSON(w, http.StatusOK, domain.NewUpdates(out, nil, time.Now()))
 }
 
 // SaveDraft — PUT /chats/{chatID}/draft {text, entities, reply_to_id}.
