@@ -176,11 +176,8 @@ func TestMedia_AccessControl_HTTP(t *testing.T) {
 
 	// A creates a chat with B and sends the media; now B can resolve it.
 	rec = authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var chat struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &chat)
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(chat.PeerID)+"/messages", tokenA,
+	chat := createdPeerFrom(t, rec)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(chat)+"/messages", tokenA,
 		map[string]any{"type": "photo", "media_id": created.MediaID})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send with media: %d %s", rec.Code, rec.Body.String())

@@ -82,3 +82,21 @@ func NewMessagesTranslateResult(text string) MessagesTranslateResult {
 		Result:     []TextWithEntities{*NewTextWithEntities(text, nil)},
 	}
 }
+
+// readParticipantDate#4a4ff172 user_id:long date:int = ReadParticipantDate;
+//
+// СТРОКА списка «кто прочитал сообщение». Прежде витрина отдавала голые числа
+// под именем поля (`{"user_ids": […]}`) — форма без объявленного типа.
+//
+// `date` — когда прочитал. Времени прочтения мы не храним вовсе (колонки нет),
+// поэтому параметр назван в OmittedWithoutSubject: у нас есть ФАКТ прочтения,
+// но не его момент.
+type ReadParticipantDate struct {
+	Underscore string `json:"_"`
+	UserID     int64  `json:"user_id"`
+}
+
+// NewReadParticipantDate — строка списка прочитавших.
+func NewReadParticipantDate(userID int64) ReadParticipantDate {
+	return ReadParticipantDate{Underscore: "readParticipantDate", UserID: userID}
+}

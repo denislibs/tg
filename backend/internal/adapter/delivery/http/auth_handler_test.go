@@ -125,6 +125,7 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 	uc.SetScheduled(pgadapter.NewScheduledRepo(pool))
 	uc.SetTopics(pgadapter.NewTopicsRepo(pool))
 	uc.SetStars(pgadapter.NewStarsRepo(pool))
+	uc.SetPolls(pgadapter.NewPollsRepo(pool))
 	return uc
 }
 

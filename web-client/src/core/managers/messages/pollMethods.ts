@@ -79,9 +79,10 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // SSOT воркера; main-стор обновляет вызыватель результатом (setPollMedia, не
     // merge), иначе WS-merge стёр бы chosen.
     async votePoll(peerId: number, pollId: number, options: number[]): Promise<MessageMediaPoll> {
-      const r = await rest.post<{ media: MessageMediaPoll }>(`/polls/${pollId}/vote`, { options })
-      setMedia(peerId, byPollId(pollId), r.media)
-      return r.media
+      // Опрос приезжает САМИМ конструктором: обёртки `{media: …}` больше нет.
+      const r = await rest.post<MessageMediaPoll>(`/polls/${pollId}/vote`, { options })
+      setMedia(peerId, byPollId(pollId), r)
+      return r
     },
     async closePoll(pollId: number): Promise<void> {
       await rest.post(`/polls/${pollId}/close`, {})
@@ -99,15 +100,15 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
     // отметку) → пушим в SSOT; main-стор обновляет вызыватель (storeProjection чист).
     async toggleChecklistItem(peerId: number, checklistId: number, itemId: number): Promise<MessageMediaToDo> {
-      const r = await rest.post<{ media: MessageMediaToDo }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      setMedia(peerId, byTodoId(checklistId), r.media)
-      return r.media
+      const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
+      setMedia(peerId, byTodoId(checklistId), r)
+      return r
     },
     // Добавить пункты; ответ авторитетен → пуш в SSOT.
     async addChecklistItems(peerId: number, checklistId: number, items: string[]): Promise<MessageMediaToDo> {
-      const r = await rest.post<{ media: MessageMediaToDo }>(`/checklists/${checklistId}/items`, { items })
-      setMedia(peerId, byTodoId(checklistId), r.media)
-      return r.media
+      const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items`, { items })
+      setMedia(peerId, byTodoId(checklistId), r)
+      return r
     },
 
     // Участвовать в розыгрыше. Ответ — ЛИЧНОЕ состояние зрителя

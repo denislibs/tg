@@ -40,19 +40,16 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("создание чата: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	created := createdPeerFrom(t, rec)
 	// Приватный чат заводится первым сообщением — до него членства нет.
-	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/messages", tokenA,
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA,
 		map[string]any{"text": "привет", "client_msg_id": "d1"}); rec.Code != http.StatusOK {
 		t.Fatalf("первое сообщение: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Сохранение отвечает ТЕМ ЖЕ кадром, что приезжает живым и что едет
 	// списком: третьей формы одного черновика больше нет.
-	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created.PeerID)+"/draft", tokenA,
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created)+"/draft", tokenA,
 		map[string]any{"text": "недописанное"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("сохранение черновика: %d %s", rec.Code, rec.Body.String())
@@ -91,7 +88,7 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 	}
 
 	// Пустой текст снимает черновик — КОНСТРУКТОРОМ, а не null.
-	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created.PeerID)+"/draft", tokenA,
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created)+"/draft", tokenA,
 		map[string]any{"text": ""})
 	_ = json.Unmarshal(rec.Body.Bytes(), &saved)
 	if saved.Underscore != "updateDraftMessage" || saved.Draft.Underscore != "draftMessageEmpty" {
@@ -105,24 +102,21 @@ func TestScheduled_ListIsAMessagesContainer(t *testing.T) {
 	_, idB := signUp(t, h, pool, "+79990070004")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	created := createdPeerFrom(t, rec)
 	// Приватный чат заводится первым сообщением — до него членства нет.
-	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/messages", tokenA,
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA,
 		map[string]any{"text": "привет", "client_msg_id": "s1"}); rec.Code != http.StatusOK {
 		t.Fatalf("первое сообщение: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/scheduled", tokenA, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/scheduled", tokenA, map[string]any{
 		"type": "text", "text": "завтра", "send_at": time.Now().Add(time.Hour).Unix(),
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("планирование: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created.PeerID)+"/scheduled", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/scheduled", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("список отложенных: %d %s", rec.Code, rec.Body.String())
 	}

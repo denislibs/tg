@@ -497,10 +497,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var chat struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &chat)
+	chat := createdPeerFrom(t, rec)
 
 	// A uploads media and posts a story with media_areas.
 	rec = authedReq(t, h, http.MethodPost, "/media/upload", tokenA, map[string]any{"mime": "image/jpeg", "size": 2048})
@@ -611,7 +608,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// A shares the story into the A↔B chat: sent count 1, a media message lands.
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/share", tokenA, map[string]any{
-		"peer_ids": []int64{chat.PeerID},
+		"peer_ids": []int64{chat},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("share: %d %s", rec.Code, rec.Body.String())
@@ -623,7 +620,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	if shareResp.Sent != 1 {
 		t.Fatalf("share sent = %d; want 1", shareResp.Sent)
 	}
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat.PeerID)+"/history?limit=10", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat)+"/history?limit=10", tokenA, nil)
 	// Id медиа живёт ВНУТРИ вложения (document.id / photo.id), плоского
 	// media_id рядом с ним больше нет.
 	var hist struct {
@@ -651,7 +648,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// C cannot share a story it cannot see.
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/share", tokenC, map[string]any{
-		"peer_ids": []int64{chat.PeerID},
+		"peer_ids": []int64{chat},
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C share: want 403, got %d %s", rec.Code, rec.Body.String())

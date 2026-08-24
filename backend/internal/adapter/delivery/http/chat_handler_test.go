@@ -54,20 +54,17 @@ func TestChatFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	created := createdPeerFrom(t, rec)
 
 	// A sends a message.
-	path := "/chats/" + itoa(created.PeerID) + "/messages"
+	path := "/chats/" + itoa(created) + "/messages"
 	rec = authedReq(t, h, http.MethodPost, path, tokenA, map[string]any{"text": "hello", "client_msg_id": "c1"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// History shows it.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created.PeerID)+"/history?limit=10", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/history?limit=10", tokenA, nil)
 	var hist struct {
 		Count    int `json:"count"`
 		Messages []struct {
@@ -119,13 +116,10 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create private chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var xy struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &xy)
+	xy := createdPeerFrom(t, rec)
 
 	const secretText = "совершенно секретный текст X и Y"
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy.PeerID)+"/messages", tokenX, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy)+"/messages", tokenX, map[string]any{
 		"text": secretText, "client_msg_id": "s1",
 	})
 	if rec.Code != http.StatusOK {
@@ -303,11 +297,8 @@ func TestListDialogsFolderID(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 		}
-		var created struct {
-			PeerID int64 `json:"peer_id"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &created)
-		chatIDs = append(chatIDs, created.PeerID)
+		created := createdPeerFrom(t, rec)
+		chatIDs = append(chatIDs, created)
 	}
 
 	// Архивируем третий чат — фикстура: 2 обычных + 1 архивный.
@@ -356,11 +347,8 @@ func TestSync_HTTP(t *testing.T) {
 	tokenB, idB := signUp(t, h, pool, "+79990000004")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/messages", tokenA, map[string]any{"text": "hi"})
+	created := createdPeerFrom(t, rec)
+	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA, map[string]any{"text": "hi"})
 
 	// B syncs from pts=0 and sees one new_message.
 	rec = authedReq(t, h, http.MethodGet, "/sync?pts=0", tokenB, nil)
@@ -388,11 +376,8 @@ func TestReactions_HTTP(t *testing.T) {
 	_, idB := signUp(t, h, pool, "+79990000021")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	created := createdPeerFrom(t, rec)
+	cid := itoa(created)
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenA, map[string]any{"text": "hi"})
 	var msg struct {
@@ -681,4 +666,24 @@ func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
 	if _, ok := bare["media"]; ok {
 		t.Fatalf("ключ media у сообщения без медиа: %v", bare["media"])
 	}
+}
+
+// createdPeerFrom — ключ пира из ответа `POST /chats`.
+//
+// Ответ этих ручек — КОНСТРУКТОР ключа (`peerUser`/`peerChannel`), а не число
+// под именем поля: адрес у оригинала это `Peer`, и обёртки вокруг него нет.
+func createdPeerFrom(t *testing.T, rec *httptest.ResponseRecorder) int64 {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("создание чата: %d %s", rec.Code, rec.Body.String())
+	}
+	p, err := domain.UnmarshalPeer(rec.Body.Bytes())
+	if err != nil {
+		t.Fatalf("ключ пира не разбирается: %v (%s)", err, rec.Body.String())
+	}
+	id := p.PeerID()
+	if id == 0 {
+		t.Fatalf("ключ пира пуст: %s", rec.Body.String())
+	}
+	return int64(id)
 }

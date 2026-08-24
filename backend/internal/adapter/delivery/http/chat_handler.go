@@ -41,7 +41,9 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Наружу — ключ пира, а не id строки в chats: для приватного диалога это id
 	// СОБЕСЕДНИКА (см. usecase/chat/peeraddr.go).
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.PeerID(body.UserID)})
+	// Ответ — КОНСТРУКТОР ключа (`peerUser`/`peerChannel`), а не число под
+	// именем поля: адрес у оригинала это `Peer`, и обёртки вокруг него нет.
+	writeJSON(w, http.StatusOK, domain.NewPeer(domain.PeerID(body.UserID)))
 }
 
 type secretCreateBody struct {
@@ -226,7 +228,7 @@ func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not open saved messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.PeerID(h.meID(r))})
+	writeJSON(w, http.StatusOK, domain.NewPeer(domain.PeerID(h.meID(r))))
 }
 
 // SavedDialogs returns the grouped «Чаты»-tab rows of the caller's Saved Messages.
@@ -950,10 +952,14 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load viewers")
 		return
 	}
-	if ids == nil {
-		ids = []int64{}
+	// Ответ — ВЕКТОР объявленных строк (`readParticipantDate`), а не список
+	// голых чисел под именем поля. Дату прочтения мы не храним, и это
+	// названный пропуск (OmittedWithoutSubject).
+	out := make([]domain.ReadParticipantDate, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.NewReadParticipantDate(id))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+	writeJSON(w, http.StatusOK, out)
 }
 
 // NextMention serves «jump to next @»: GET /chats/{peerID}/mentions/next?after_seq=
@@ -974,7 +980,9 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load mention")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": seq})
+	// Ответ — САМ номер: обёртка `{"id": …}` конструктора не имеет, а `int`
+	// это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, seq)
 }
 
 // MediaHistory serves the profile's shared-media tabs:
@@ -1042,8 +1050,9 @@ func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
-	// Ответ — АДРЕС сообщения этой даты, то есть его id (номер в чате).
-	writeJSON(w, http.StatusOK, map[string]any{"id": seq})
+	// Ответ — АДРЕС сообщения этой даты, то есть его номер в чате, и едет он
+	// САМ: обёртки вокруг числа у оригинала нет.
+	writeJSON(w, http.StatusOK, seq)
 }
 
 // Calendar — GET /chats/{chatID}/calendar?month=<unix>: по одному медиа-сообщению
@@ -1217,9 +1226,10 @@ func (h *ChatHandler) VotePoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not vote")
 		return
 	}
-	// Опрос уезжает ТЕМ ЖЕ конструктором, что и внутри сообщения: второй формы
-	// опроса на проводе быть не должно.
-	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
+	// Опрос уезжает ТЕМ ЖЕ конструктором, что и внутри сообщения, и БЕЗ
+	// обёртки: второй формы опроса на проводе быть не должно, а безымянная
+	// пара `{"media": …}` конструктора не имеет.
+	writeJSON(w, http.StatusOK, info.ToMedia())
 }
 
 // ClosePoll — POST /polls/{pollID}/close: остановить опрос (автор/админ).
@@ -1307,7 +1317,7 @@ func (h *ChatHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "could not toggle item")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
+	writeJSON(w, http.StatusOK, info.ToMedia())
 }
 
 // AddChecklistItems — POST /checklists/{id}/items {items:[...]}: добавить пункты
@@ -1341,7 +1351,7 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not add items")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"media": info.ToMedia()})
+	writeJSON(w, http.StatusOK, info.ToMedia())
 }
 
 // scheduledJSON — отложенное сообщение ТЕМ ЖЕ конструктором `message`
@@ -1763,7 +1773,9 @@ func (h *ChatHandler) GroupCallParticipants(w http.ResponseWriter, r *http.Reque
 	if ids == nil {
 		ids = []int64{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"participants": ids})
+	// Ответ — ВЕКТОР ключей: обёртка `{"participants": …}` конструктора не
+	// имеет, а `Vector<long>` это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, orEmptyIDs(ids))
 }
 
 // ── RTMP-трансляции (Telegram livestream) ──
@@ -2284,7 +2296,9 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"theme_id": b.ThemeID})
+	// Эхо запроса ответом не является: тему прислал сам клиент, и второй раз
+	// она ему не нужна. Изменение уезжает участникам кадром `updateChatTheme`.
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // draftJSON — черновик витрины: КОНСТРУКТОР кадра updateDraftMessage с ключом
@@ -2385,4 +2399,13 @@ func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// orEmptyIDs — вектор ключей, который на проводе остаётся вектором: «пусто» у
+// обязательного вектора это `[]`, а не null.
+func orEmptyIDs(ids []int64) []int64 {
+	if ids == nil {
+		return []int64{}
+	}
+	return ids
 }

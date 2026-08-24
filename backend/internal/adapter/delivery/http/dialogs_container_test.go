@@ -167,11 +167,8 @@ func TestListDialogs_MuteCarriesDeadline_HTTP(t *testing.T) {
 	_, idB := signUp(t, h, pool, "+79990000221")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	peer := itoa(created.PeerID)
+	created := createdPeerFrom(t, rec)
+	peer := itoa(created)
 
 	until := time.Now().Add(time.Hour).Unix()
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+peer+"/mute", tokenA,
@@ -221,11 +218,8 @@ func TestListDialogs_ClearedHistoryStaysCleared_HTTP(t *testing.T) {
 	tokenB, idB := signUp(t, h, pool, "+79990000231")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	peerA := itoa(created.PeerID)
+	created := createdPeerFrom(t, rec)
+	peerA := itoa(created)
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+peerA+"/messages", tokenA, map[string]any{"text": "видно"})
 	if rec.Code != http.StatusOK {
@@ -257,11 +251,8 @@ func TestListDialogs_MessagesOnlyForPage_HTTP(t *testing.T) {
 	for _, phone := range []string{"+79990000241", "+79990000242", "+79990000243"} {
 		_, id := signUp(t, h, pool, phone)
 		rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": id})
-		var created struct {
-			PeerID int64 `json:"peer_id"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &created)
-		if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.PeerID)+"/messages", tokenA,
+		created := createdPeerFrom(t, rec)
+		if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA,
 			map[string]any{"text": "привет"}); rec.Code != http.StatusOK {
 			t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 		}

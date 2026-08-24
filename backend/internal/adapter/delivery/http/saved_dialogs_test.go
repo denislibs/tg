@@ -22,11 +22,8 @@ func TestSavedDialogs_ContainerCarriesReferences(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("создание чата: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	fromB := itoa(created.PeerID)
+	created := createdPeerFrom(t, rec)
+	fromB := itoa(created)
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+fromB+"/messages", tokenB,
 		map[string]any{"text": "исходник", "client_msg_id": "s1"})
 	if rec.Code != http.StatusOK {
@@ -42,11 +39,8 @@ func TestSavedDialogs_ContainerCarriesReferences(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("создание Избранного: %d %s", rec.Code, rec.Body.String())
 	}
-	created = struct {
-		PeerID int64 `json:"peer_id"`
-	}{}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	saved := itoa(created.PeerID)
+	created = createdPeerFrom(t, rec)
+	saved := itoa(created)
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+saved+"/forward", tokenA, map[string]any{
 		"from_peer_id": idB, "ids": []int64{sent.ID},
 	})

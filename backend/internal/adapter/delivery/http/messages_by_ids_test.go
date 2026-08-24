@@ -22,11 +22,8 @@ func TestMessagesByIDs_ProducesHoleForDeleted(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.PeerID)
+	created := createdPeerFrom(t, rec)
+	cid := itoa(created)
 
 	send := func(text string) int64 {
 		t.Helper()

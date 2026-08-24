@@ -36,14 +36,14 @@ export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
     // Resolve (creating if needed) the private chat with a user; returns its id.
     // Idempotent server-side — repeated calls return the same chat.
     async createPrivate(userId: number): Promise<number> {
-      const r = await rest.post<{ peer_id: number }>('/chats', { user_id: userId })
-      return r.peer_id
+      // Ответ — КОНСТРУКТОР ключа (`peerUser`/`peerChannel`), а не число под
+      // именем поля: адрес у оригинала это `Peer`, обёртки вокруг него нет.
+      return getPeerId(await rest.post<Peer>('/chats', { user_id: userId }))
     },
 
     // Resolve (creating on first access) the "Saved Messages" self-chat; returns its id.
     async saved(): Promise<number> {
-      const r = await rest.post<{ peer_id: number }>('/saved', {})
-      return r.peer_id
+      return getPeerId(await rest.post<Peer>('/saved', {}))
     },
 
     // «Очистить историю» у себя (Telegram deleteHistory just_clear): сообщения

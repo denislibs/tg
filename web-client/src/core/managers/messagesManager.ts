@@ -617,8 +617,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // если сообщений в чате нет (404). Ответ серверный — переводим на границе.
     async messageByDate(peerId: number, date: number): Promise<number | null> {
       try {
-        const r = await rest.get<{ id: number }>(`/chats/${peerId}/message_by_date`, { date })
-        return generateMessageId(r.id)
+        // Ответ — САМ номер: обёртки `{id: …}` у него больше нет.
+        const r = await rest.get<number>(`/chats/${peerId}/message_by_date`, { date })
+        return generateMessageId(r)
       } catch {
         return null
       }
@@ -695,13 +696,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
 
     // Кто сейчас в видеочате группы (для баннера Join).
     async groupCallParticipants(peerId: number): Promise<number[]> {
-      const r = await rest.get<{ participants: number[] }>(`/chats/${peerId}/group_call`)
-      return r.participants ?? []
+      // Ответ — сам ВЕКТОР ключей (`Vector<long>`), а не список под именем поля.
+      return (await rest.get<number[]>(`/chats/${peerId}/group_call`)) ?? []
     },
 
     async viewers(peerId: number, msgId: number): Promise<number[]> {
-      const r = await rest.get<{ user_ids: number[] }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/viewers`)
-      return r.user_ids ?? []
+      // Ответ — ВЕКТОР объявленных строк `readParticipantDate`, а не голые
+      // числа под именем поля. Даты прочтения сервер не хранит (задача #59).
+      const r = await rest.get<{ _: 'readParticipantDate'; user_id: number }[]>(
+        `/chats/${peerId}/messages/${getServerMessageId(msgId)}/viewers`)
+      return (r ?? []).map((v) => v.user_id)
     },
 
     // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,

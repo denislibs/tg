@@ -20,6 +20,7 @@ func chatMiscCases() []struct {
 		value any
 	}{
 		{"период автоудаления", NewDefaultHistoryTTL(86400)},
+		{"кто прочитал", NewReadParticipantDate(9)},
 		{"когда прочитали моё", NewOutboxReadDate(time.Unix(1787334148, 0))},
 		{"расшифровка готова", NewMessagesTranscribedAudio("раз два", false)},
 		{"расшифровка идёт", NewMessagesTranscribedAudio("", true)},

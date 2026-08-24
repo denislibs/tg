@@ -70,11 +70,8 @@ func TestChatTheme_LivesInFullCard_HTTP(t *testing.T) {
 
 	// ── Приватный чат: userFull.theme_emoticon ──────────────────────────────
 	rec = authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var priv struct {
-		PeerID int64 `json:"peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &priv)
-	if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(priv.PeerID)+"/theme", tokenA,
+	priv := createdPeerFrom(t, rec)
+	if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(priv)+"/theme", tokenA,
 		map[string]any{"theme_id": "day"}); rec.Code != http.StatusOK {
 		t.Fatalf("set private theme: %d %s", rec.Code, rec.Body.String())
 	}
