@@ -112,7 +112,8 @@ describe('ProfileManager.setEmojiStatus', () => {
 })
 
 describe('ProfileManager.addPhoto', () => {
-  const RAW_PHOTO = { id: 9, media_id: 9, video_media_id: null, created_at: '2026-08-09T00:00:00Z' }
+  // photos.photo: адрес ОДИН — id самого файла; ключа строки таблицы нет.
+  const RAW_PHOTO = { _: 'photos.photo', photo: { _: 'photo', id: 9, sizes: [] } }
 
   // Stage 1C.2 (Task 1): сервер отдаёт только фото, не всего пользователя —
   // addPhoto обязан смерджить его с кэшем воркера (getMe) и опубликовать

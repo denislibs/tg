@@ -12,24 +12,38 @@ export interface Session {
   location: string // GeoIP place, may be empty
 }
 
-interface RawSession {
-  id: number
-  name: string
+/**
+ * `authorization` — сессия устройства конструктором схемы.
+ *
+ * «Текущая» — ФЛАГ, а не булево поле рядом: его ОТСУТСТВИЕ и есть «не текущая».
+ * Даты в СЕКУНДАХ эпохи. Адрес сессии зовётся `hash` — имя схемы.
+ */
+export interface AuthorizationWire {
+  _: 'authorization'
+  pFlags?: { current?: true }
+  hash: number
+  device_model: string
   platform: string
-  last_active: string
-  current: boolean
+  date_created: number
+  date_active: number
   ip: string
-  location: string
+  country: string
 }
 
-const mapSession = (s: RawSession): Session => ({
-  id: s.id,
-  name: s.name,
+export interface AccountAuthorizations {
+  _: 'account.authorizations'
+  authorization_ttl_days: number
+  authorizations: AuthorizationWire[]
+}
+
+const mapSession = (s: AuthorizationWire): Session => ({
+  id: s.hash,
+  name: s.device_model,
   platform: s.platform,
-  lastActive: s.last_active,
-  current: s.current,
+  lastActive: new Date(s.date_active * 1000).toISOString(),
+  current: !!s.pFlags?.current,
   ip: s.ip,
-  location: s.location,
+  location: s.country,
 })
 
 interface SessionsDeps {
@@ -39,8 +53,8 @@ interface SessionsDeps {
 export function newSessionsManager({ rest }: SessionsDeps) {
   return {
     async list(): Promise<Session[]> {
-      const r = await rest.get<{ sessions: RawSession[] }>('/sessions')
-      return (r.sessions ?? []).map(mapSession)
+      const r = await rest.get<AccountAuthorizations>('/sessions')
+      return (r.authorizations ?? []).map(mapSession)
     },
 
     /** Terminate one session; its token dies and its sockets are force-closed. */

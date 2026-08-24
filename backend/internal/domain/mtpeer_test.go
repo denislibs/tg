@@ -75,7 +75,7 @@ func TestUser_Unmarshal(t *testing.T) {
 	}
 	// premium:false — это ОТСУТСТВИЕ флага; выдуманный и не поддержанный нами
 	// scam в модель попасть не должны вовсе.
-	if len(user.PFlags) != 1 || !user.Contact() {
+	if len(user.PFlags) != 1 || !user.ContactRecord() {
 		t.Errorf("pFlags = %#v, ждали ровно {contact:true}", user.PFlags)
 	}
 	photo, ok := user.Photo.(UserProfilePhotoReal)

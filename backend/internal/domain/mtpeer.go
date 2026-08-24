@@ -266,7 +266,7 @@ func NewUserEmpty(id int64) UserEmpty {
 // только выставленные. Перечислены ровно те, у которых есть предмет.
 //
 //	Self           — это сам зритель (у нас витрина знает по session.User.ID)
-//	Contact        — есть строка contacts(owner=зритель, user=этот)
+//	ContactRecord        — есть строка contacts(owner=зритель, user=этот)
 //	MutualContact  — строки contacts есть в ОБЕ стороны
 //	Deleted        — users.deleted_at не пуст
 //	Bot            — users.is_bot
@@ -280,7 +280,7 @@ func NewUserEmpty(id int64) UserEmpty {
 // выставляются наугад.
 type UserFlags struct {
 	Self          bool
-	Contact       bool
+	ContactRecord bool
 	MutualContact bool
 	Deleted       bool
 	Bot           bool
@@ -340,7 +340,7 @@ func (u UserReal) PeerID() PeerID { return PeerID(u.ID) }
 
 // Флаги пользователя: выставлен = ключ присутствует в pFlags.
 func (u UserReal) Self() bool          { return u.PFlags["self"] }
-func (u UserReal) Contact() bool       { return u.PFlags["contact"] }
+func (u UserReal) ContactRecord() bool { return u.PFlags["contact"] }
 func (u UserReal) MutualContact() bool { return u.PFlags["mutual_contact"] }
 func (u UserReal) Deleted() bool       { return u.PFlags["deleted"] }
 func (u UserReal) Bot() bool           { return u.PFlags["bot"] }
@@ -371,7 +371,7 @@ func (u UserReal) ShortName() string {
 func NewUser(id int64, f UserFlags) UserReal {
 	u := UserReal{Underscore: UserTag, ID: id}
 	setPFlag(&u.PFlags, "self", f.Self)
-	setPFlag(&u.PFlags, "contact", f.Contact)
+	setPFlag(&u.PFlags, "contact", f.ContactRecord)
 	setPFlag(&u.PFlags, "mutual_contact", f.MutualContact)
 	setPFlag(&u.PFlags, "deleted", f.Deleted)
 	setPFlag(&u.PFlags, "bot", f.Bot)

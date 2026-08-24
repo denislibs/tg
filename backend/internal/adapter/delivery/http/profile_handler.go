@@ -383,17 +383,19 @@ func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
 // profilePhotoJSON is the wire shape for one gallery photo. Фото адресуется id
 // медиа — тем же числом, которого ждёт клиентский downloadMediaURL; строку
 // «/media/N/content» больше никто не строит и не разбирает обратно.
-func profilePhotoJSON(p domain.ProfilePhoto) map[string]any {
-	var video any
-	if p.VideoMediaID != nil {
-		video = *p.VideoMediaID
-	}
-	return map[string]any{
-		"id":             p.ID,
-		"media_id":       p.MediaID,
-		"video_media_id": video, // null when absent
-		"created_at":     p.CreatedAt.Format(time.RFC3339),
-	}
+// galleryPhoto — фотография галереи конструктором `photo`.
+//
+// Адрес у конструктора ОДИН — id самого файла; наш ключ строки таблицы
+// (`profile_photos.id`) наружу не выходит, как и ключи остальных строк.
+//
+// Ступени превью здесь не собираются: галерея показывает те же файлы, что уже
+// приезжали карточкой пира, и клиент качает их по номеру. Пустой обязательный
+// вектор — это `[]`, а не отсутствие параметра.
+//
+// Видео-аватарка (`VideoMediaID`) у конструктора живёт в `video_sizes` —
+// ступенями, которых мы не собираем; названо задачей.
+func galleryPhoto(p domain.ProfilePhoto) domain.Photo {
+	return *domain.NewPhoto(p.MediaID, []domain.PhotoSize{})
 }
 
 type addPhotoBody struct {
@@ -423,7 +425,7 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "add photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, profilePhotoJSON(photo))
+	writeJSON(w, http.StatusOK, domain.NewPhotosPhoto(galleryPhoto(photo)))
 }
 
 // ListPhotos returns a user's profile-photo gallery, newest first
@@ -444,11 +446,11 @@ func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list photos failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(photos))
+	out := make([]domain.Photo, 0, len(photos))
 	for _, p := range photos {
-		out = append(out, profilePhotoJSON(p))
+		out = append(out, galleryPhoto(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"photos": out})
+	writeJSON(w, http.StatusOK, domain.NewPhotosPhotos(out))
 }
 
 // DeletePhoto removes a photo from the current user's gallery

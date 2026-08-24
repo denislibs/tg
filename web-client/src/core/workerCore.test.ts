@@ -293,7 +293,7 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       const u = String(url)
       if (u.endsWith('/me/photos')) {
-        return new Response(JSON.stringify({ id: 9, media_id: 9, video_media_id: null, created_at: 'x' }), { status: 200 })
+        return new Response(JSON.stringify({ _: 'photos.photo', photo: { _: 'photo', id: 9, sizes: [] } }), { status: 200 })
       }
       if (u.endsWith('/me/premium/checkout')) {
         // Сырой ответ с проволоки — менеджер сам его разбирает

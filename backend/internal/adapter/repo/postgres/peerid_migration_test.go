@@ -225,7 +225,7 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 		FwdFrom       json.RawMessage `json:"fwd_from"`
 		ReplyToPeerID json.RawMessage `json:"reply_to_peer_id"`
 		SendAs        map[string]any  `json:"send_as"`
-		Contact       map[string]any  `json:"contact"`
+		ContactRecord map[string]any  `json:"contact"`
 	}
 	if err := json.Unmarshal(userFrame(t, pool, userA, 1), &msg); err != nil {
 		t.Fatalf("разбор кадра сообщения: %v", err)
@@ -247,7 +247,7 @@ func TestMigration0102_ConvertsFrozenFramesToPeerID(t *testing.T) {
 	}
 	// contact несёт user_id — это УЖЕ валидный ключ пира (у пользователя peerId
 	// совпадает с id), переводить нечего и трогать его миграция не должна.
-	if got := asFloat(t, msg.Contact["user_id"]); int64(got) != userB {
+	if got := asFloat(t, msg.ContactRecord["user_id"]); int64(got) != userB {
 		t.Errorf("contact.user_id = %v; миграция не должна его трогать (want %d)", got, userB)
 	}
 

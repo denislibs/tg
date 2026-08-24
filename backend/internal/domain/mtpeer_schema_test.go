@@ -96,7 +96,7 @@ func allPeerConstructors() []any {
 		// ── User ─────────────────────────────────────────────────────────────
 		NewUserEmpty(13),
 		func() UserReal {
-			u := NewUser(42, UserFlags{Self: true, Contact: true, MutualContact: true, Bot: true, Verified: true, Premium: true})
+			u := NewUser(42, UserFlags{Self: true, ContactRecord: true, MutualContact: true, Bot: true, Verified: true, Premium: true})
 			u.FirstName = "Денис"
 			u.LastName = "Уревич"
 			u.Username = "denis"

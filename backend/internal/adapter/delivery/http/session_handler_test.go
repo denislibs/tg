@@ -15,15 +15,12 @@ func TestSessions_ListAndLogout(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
 	}
-	var listed struct {
-		Sessions []struct {
-			ID      int64 `json:"id"`
-			Current bool  `json:"current"`
-		} `json:"sessions"`
-	}
+	// account.authorizations: адрес сессии зовётся `hash`, а «текущая» это
+	// ФЛАГ — его отсутствие и есть «не текущая».
+	var listed sessionList
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Sessions) != 1 || !listed.Sessions[0].Current {
-		t.Fatalf("sessions = %+v", listed.Sessions)
+	if len(listed.Authorizations) != 1 || !listed.Authorizations[0].PFlags["current"] {
+		t.Fatalf("sessions = %+v", listed.Authorizations)
 	}
 
 	// Logout, then the token is rejected.
@@ -44,21 +41,18 @@ func TestSessions_RevokeOther(t *testing.T) {
 	tokenB, _ := signUp(t, h, pool, "+79990000011")
 
 	rec := authedReq(t, h, http.MethodGet, "/sessions", tokenA, nil)
-	var listed struct {
-		Sessions []struct {
-			ID      int64 `json:"id"`
-			Current bool  `json:"current"`
-		} `json:"sessions"`
-	}
+	// account.authorizations: адрес сессии зовётся `hash`, а «текущая» это
+	// ФЛАГ — его отсутствие и есть «не текущая».
+	var listed sessionList
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Sessions) != 2 {
-		t.Fatalf("expected 2 sessions, got %d", len(listed.Sessions))
+	if len(listed.Authorizations) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(listed.Authorizations))
 	}
 	// Find the non-current (session B) and revoke it from A.
 	var other int64
-	for _, s := range listed.Sessions {
-		if !s.Current {
-			other = s.ID
+	for _, s := range listed.Authorizations {
+		if !s.PFlags["current"] {
+			other = s.Hash
 		}
 	}
 	rec = authedReq(t, h, http.MethodDelete, "/sessions/"+itoa(other), tokenA, nil)
@@ -98,13 +92,18 @@ func TestSessions_RevokeOthers(t *testing.T) {
 		}
 	}
 	rec = authedReq(t, h, http.MethodGet, "/sessions", tokenA, nil)
-	var listed struct {
-		Sessions []struct {
-			Current bool `json:"current"`
-		} `json:"sessions"`
-	}
+	var listed sessionList
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Sessions) != 1 || !listed.Sessions[0].Current {
-		t.Fatalf("sessions after revoke-others = %+v", listed.Sessions)
+	if len(listed.Authorizations) != 1 || !listed.Authorizations[0].PFlags["current"] {
+		t.Fatalf("sessions after revoke-others = %+v", listed.Authorizations)
 	}
+}
+
+// sessionList — ответ `GET /sessions`: контейнер account.authorizations, где
+// каждая сессия это конструктор `authorization`.
+type sessionList struct {
+	Authorizations []struct {
+		Hash   int64           `json:"hash"`
+		PFlags map[string]bool `json:"pFlags"`
+	} `json:"authorizations"`
 }

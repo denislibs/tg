@@ -29,15 +29,15 @@ var contactSelect = `
 	       ` + userRealCols("u.") + `, u.phone
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
-func scanContact(row pgx.Row) (domain.Contact, error) {
-	var c domain.Contact
+func scanContact(row pgx.Row) (domain.ContactRecord, error) {
+	var c domain.ContactRecord
 	var u userRealScan
 	var phone string
 	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &c.Note, &c.SharePhone, &c.CreatedAt}
 	dest = append(dest, u.dest()...)
 	dest = append(dest, &phone)
 	if err := row.Scan(dest...); err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	c.IsBot = u.isBot
 	c.User = u.user(true)
@@ -54,7 +54,7 @@ func isForeignKeyViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-func (r *ContactsRepo) Add(ctx context.Context, c domain.Contact) (domain.Contact, error) {
+func (r *ContactsRepo) Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO contacts (owner_id, user_id, first_name, last_name, note, share_phone)
 		 VALUES ($1,$2,$3,$4,$5,$6)
@@ -62,22 +62,22 @@ func (r *ContactsRepo) Add(ctx context.Context, c domain.Contact) (domain.Contac
 		 DO UPDATE SET first_name=$3, last_name=$4, note=$5, share_phone=$6`,
 		c.OwnerID, c.UserID, c.FirstName, c.LastName, c.Note, c.SharePhone)
 	if isForeignKeyViolation(err) {
-		return domain.Contact{}, domain.ErrNotFound // the contact user doesn't exist
+		return domain.ContactRecord{}, domain.ErrNotFound // the contact user doesn't exist
 	}
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	// Re-read with the user join so the response carries the enriched fields.
 	return scanContact(r.pool.QueryRow(ctx, contactSelect+` WHERE c.owner_id=$1 AND c.user_id=$2`, c.OwnerID, c.UserID))
 }
 
-func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
+func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error) {
 	rows, err := r.pool.Query(ctx, contactSelect+` WHERE c.owner_id=$1 ORDER BY c.first_name, c.last_name, c.user_id`, ownerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.Contact, 0)
+	out := make([]domain.ContactRecord, 0)
 	for rows.Next() {
 		c, err := scanContact(rows)
 		if err != nil {

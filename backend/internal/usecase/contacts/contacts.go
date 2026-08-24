@@ -72,15 +72,15 @@ type AddInput struct {
 // Add saves a contact in ownerID's address book. Re-adding the same user edits the
 // existing entry (upsert). Returns the stored contact enriched with the peer's
 // profile fields.
-func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domain.Contact, error) {
+func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domain.ContactRecord, error) {
 	if in.UserID == ownerID {
-		return domain.Contact{}, ErrSelfContact
+		return domain.ContactRecord{}, ErrSelfContact
 	}
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
-		return domain.Contact{}, ErrNameRequired
+		return domain.ContactRecord{}, ErrNameRequired
 	}
-	c, err := i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
 		UserID:     in.UserID,
 		FirstName:  first,
@@ -89,13 +89,13 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	// Бот в контактах недопустим (Telegram). Upsert уже вернул обогащённый is_bot —
 	// откатываем запись и отдаём ошибку (defense-in-depth к фронт-фильтру).
 	if c.IsBot {
 		_, _ = i.repo.Delete(ctx, ownerID, in.UserID)
-		return domain.Contact{}, ErrCannotAddBot
+		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return c, nil
 }
@@ -114,33 +114,33 @@ type AddByPhoneInput struct {
 // адресную книгу ownerID. domain.ErrNotFound — номер не зарегистрирован (как
 // tweb NO_USER); domain.ErrPrivacy — цель запрещает добавление по номеру
 // (правило added_by_phone). first_name обязателен.
-func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhoneInput) (domain.Contact, error) {
+func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhoneInput) (domain.ContactRecord, error) {
 	phone := domain.NormalizePhone(in.Phone)
 	if phone == "" {
-		return domain.Contact{}, ErrPhoneRequired
+		return domain.ContactRecord{}, ErrPhoneRequired
 	}
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
-		return domain.Contact{}, ErrNameRequired
+		return domain.ContactRecord{}, ErrNameRequired
 	}
 	userID, err := i.repo.ResolveByPhone(ctx, phone)
 	if err != nil {
-		return domain.Contact{}, err // domain.ErrNotFound → «номер не зарегистрирован»
+		return domain.ContactRecord{}, err // domain.ErrNotFound → «номер не зарегистрирован»
 	}
 	if userID == ownerID {
-		return domain.Contact{}, ErrSelfContact
+		return domain.ContactRecord{}, ErrSelfContact
 	}
 	// Enforcement added_by_phone: цель может ограничить, кто добавляет её по номеру.
 	if i.privacy != nil {
 		ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyAddedByPhone)
 		if err != nil {
-			return domain.Contact{}, err
+			return domain.ContactRecord{}, err
 		}
 		if !ok {
-			return domain.Contact{}, domain.ErrPrivacy
+			return domain.ContactRecord{}, domain.ErrPrivacy
 		}
 	}
-	c, err := i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
 		UserID:     userID,
 		FirstName:  first,
@@ -149,18 +149,18 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	if c.IsBot {
 		_, _ = i.repo.Delete(ctx, ownerID, userID)
-		return domain.Contact{}, ErrCannotAddBot
+		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return c, nil
 }
 
 // List returns ownerID's address book, ordered by saved name. Телефон контакта
 // скрывается, когда его правило «кто видит мой номер» не разрешает показ.
-func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
+func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error) {
 	list, err := i.repo.List(ctx, ownerID)
 	if err != nil || len(list) == 0 {
 		return list, err

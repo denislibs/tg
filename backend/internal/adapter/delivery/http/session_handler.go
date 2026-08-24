@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
@@ -19,15 +20,15 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list sessions")
 		return
 	}
-	out := make([]map[string]any, 0, len(devices))
+	// «Текущая» — ФЛАГ конструктора, а не булево поле рядом: прежде ехало
+	// `current: false`, то есть «выключено» имело значение.
+	out := make([]domain.Authorization, 0, len(devices))
 	for _, d := range devices {
-		out = append(out, map[string]any{
-			"id": d.ID, "name": d.Name, "platform": d.Platform,
-			"last_active": d.LastActive, "current": d.ID == current,
-			"ip": d.IP, "location": d.Location,
-		})
+		out = append(out, // Даты создания у строки устройства нет — только последняя активность;
+			// названо в OmittedWithoutSubject.
+			domain.NewAuthorization(d.ID, d.Name, d.Platform, d.IP, d.Location, time.Time{}, d.LastActive, d.ID == current))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+	writeJSON(w, http.StatusOK, domain.NewAccountAuthorizations(out))
 }
 
 // RevokeOthers terminates every session except the current one.

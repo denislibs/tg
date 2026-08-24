@@ -2,11 +2,11 @@ package domain
 
 import "time"
 
-// Contact is one entry in a user's address book: the owner (OwnerID) saved another
+// ContactRecord is one entry in a user's address book: the owner (OwnerID) saved another
 // user (UserID) under a name of their own choosing, optionally with a note and a
 // "let them see my phone number" flag. The saved name is the owner's — it does not
 // change the contact's own profile name.
-type Contact struct {
+type ContactRecord struct {
 	OwnerID    int64
 	UserID     int64
 	FirstName  string

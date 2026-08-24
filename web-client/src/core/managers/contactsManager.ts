@@ -17,23 +17,32 @@ export interface Contact {
   user: UserReal
 }
 
-interface RawContact {
-  user_id: number
-  note: string
-  share_phone: boolean
-  has_custom_photo?: boolean
-  created_at: string
-  user: UserReal
+/**
+ * `contacts.contacts` — адресная книга контейнером.
+ *
+ * СТРОКА книги это ССЫЛКА (`contact{user_id, mutual}`), а карточки едут
+ * вектором `users`: прежде карточка была вклеена в каждую строку рядом со
+ * ссылкой — тот же снимок-вместо-ссылки, что убирался у диалогов.
+ *
+ * Наших полей строки (`note`, `share_phone`, `has_custom_photo`, `created_at`)
+ * у конструктора нет: у оригинала заметок к контакту не бывает вовсе, а
+ * номером делятся правилом приватности. Экраны, которым они нужны, названы
+ * задачей.
+ */
+export interface ContactsContacts {
+  _: 'contacts.contacts'
+  contacts: { _: 'contact'; user_id: number; mutual: { _: 'boolTrue' | 'boolFalse' } }[]
+  saved_count: number
+  users: UserReal[]
 }
 
-const mapContact = (c: RawContact): Contact => ({
-  userId: c.user_id,
-  note: c.note,
-  sharePhone: c.share_phone,
-  hasCustomPhoto: !!c.has_custom_photo,
-  createdAt: c.created_at,
-  user: c.user,
-})
+const mapContacts = (r: ContactsContacts): Contact[] => {
+  const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
+  return (r.contacts ?? []).flatMap((c) => {
+    const user = byId.get(c.user_id)
+    return user ? [{ userId: c.user_id, note: '', sharePhone: false, hasCustomPhoto: false, createdAt: '', user }] : []
+  })
+}
 
 export interface AddContactInput {
   /** id существующего пользователя (0/пусто → добавление по номеру) */
@@ -52,22 +61,22 @@ export interface ContactsDeps {
 
 export function newContactsManager({ rest }: ContactsDeps) {
   return {
+    // Ответ добавления — тот же контейнер книги с одной строкой: у оригинала
+    // добавление отвечает тем же, чем чтение.
     async add(input: AddContactInput): Promise<Contact> {
-      return mapContact(
-        await rest.post<RawContact>('/contacts', {
-          contact_id: input.contactId ?? 0,
-          phone: input.phone ?? '',
-          first_name: input.firstName,
-          last_name: input.lastName ?? '',
-          note: input.note ?? '',
-          share_phone: input.sharePhone ?? false,
-        }),
-      )
+      const r = await rest.post<ContactsContacts>('/contacts', {
+        contact_id: input.contactId ?? 0,
+        phone: input.phone ?? '',
+        first_name: input.firstName,
+        last_name: input.lastName ?? '',
+        note: input.note ?? '',
+        share_phone: input.sharePhone ?? false,
+      })
+      return mapContacts(r)[0]
     },
 
     async list(): Promise<Contact[]> {
-      const r = await rest.get<{ contacts: RawContact[] }>('/contacts')
-      return r.contacts.map(mapContact)
+      return mapContacts(await rest.get<ContactsContacts>('/contacts'))
     },
 
     async del(contactId: number): Promise<void> {

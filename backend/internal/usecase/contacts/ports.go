@@ -11,8 +11,8 @@ import (
 // (owner, user); List/Delete are scoped to the owner so a user only ever touches
 // their own address book.
 type ContactsRepo interface {
-	Add(ctx context.Context, c domain.Contact) (domain.Contact, error)
-	List(ctx context.Context, ownerID int64) ([]domain.Contact, error)
+	Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error)
+	List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error)
 	Delete(ctx context.Context, ownerID, userID int64) (found bool, err error)
 	// ResolveByPhone ищет зарегистрированного пользователя по нормализованному
 	// номеру; domain.ErrNotFound, если номер не зарегистрирован.

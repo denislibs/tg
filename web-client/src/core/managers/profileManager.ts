@@ -92,7 +92,7 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
     async addPhoto(mediaId: number, videoMediaId?: number): Promise<ProfilePhoto> {
       const body: Record<string, unknown> = { media_id: mediaId }
       if (videoMediaId) body.video_media_id = videoMediaId
-      const photo = mapProfilePhoto(await rest.post<RawProfilePhoto>('/me/photos', body))
+      const photo = mapProfilePhoto((await rest.post<PhotosPhoto>('/me/photos', body)).photo)
       // Сервер возвращает только фото (id медиа), не всего пользователя —
       // merge поверх кэша воркера. Пишем в `user.photo` КОНСТРУКТОР, а не URL:
       // прежняя строка `/media/N/content` была тем самым вторым видом одного
@@ -108,7 +108,7 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
 
     // listPhotos returns a user's profile-photo gallery, newest first.
     async listPhotos(userId: number): Promise<ProfilePhoto[]> {
-      const res = await rest.get<{ photos: RawProfilePhoto[] }>(`/users/${userId}/photos`)
+      const res = await rest.get<PhotosPhotos>(`/users/${userId}/photos`)
       return (res.photos ?? []).map(mapProfilePhoto)
     },
 
@@ -128,15 +128,19 @@ export interface ProfilePhoto {
   createdAt: string
 }
 
-interface RawProfilePhoto {
-  id: number
-  media_id: number
-  video_media_id: number | null
-  created_at: string
-}
+/**
+ * Фотогалерея — конструкторы `photos.photo` / `photos.photos`.
+ *
+ * Адрес у `photo` ОДИН — id самого файла; наш ключ строки таблицы наружу
+ * больше не выходит, как и ключи остальных строк. Ступени превью здесь не
+ * приезжают: галерея показывает те же файлы, что уже были в карточке пира.
+ */
+interface PhotoWire { _: 'photo'; id: number; sizes: unknown[] }
+interface PhotosPhoto { _: 'photos.photo'; photo: PhotoWire }
+interface PhotosPhotos { _: 'photos.photos'; photos: PhotoWire[] }
 
-function mapProfilePhoto(p: RawProfilePhoto): ProfilePhoto {
-  return { id: p.id, mediaId: p.media_id, videoMediaId: p.video_media_id ?? undefined, createdAt: p.created_at }
+function mapProfilePhoto(p: PhotoWire): ProfilePhoto {
+  return { id: p.id, mediaId: p.id, videoMediaId: undefined, createdAt: '' }
 }
 
 export type ProfileManager = ReturnType<typeof newProfileManager>
