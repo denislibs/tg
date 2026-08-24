@@ -11,7 +11,13 @@ beforeEach(() => { indexedDB = new IDBFactory() })
 
 interface RestCall { url: string; body: unknown }
 // Настраиваемый ответ GET /secret_chats/{id} для sync-тестов.
-type Handshake = { peer_id: number; initiator_id: number; responder_id: number; state: string; initiator_pub?: string; responder_pub?: string }
+// Стадия handshake — КОНСТРУКТОР объединения `EncryptedChat`: вместе с ней
+// меняется и набор полей. Прежде ехала пара {peer_id, state} с нашим
+// перечислением из четырёх строк.
+type Handshake =
+  | { _: 'encryptedChatRequested'; id: number; date: number; admin_id: number; participant_id: number; g_a: string }
+  | { _: 'encryptedChat'; id: number; date: number; admin_id: number; participant_id: number; g_a_or_b: string }
+  | { _: 'encryptedChatDiscarded'; id: number }
 
 function makeDeps() {
   const restCalls: RestCall[] = []
@@ -36,7 +42,9 @@ function makeDeps() {
       },
       post: async <T>(url: string, body: unknown): Promise<T> => {
         restCalls.push({ url, body })
-        if (url === '/secret_chats') return { peer_id: 1, state: 'requested' } as unknown as T
+        if (url === '/secret_chats') {
+          return { _: 'encryptedChatRequested', id: 1, date: 1, admin_id: 5, participant_id: 9, g_a: 'x' } as unknown as T // ключ пира: -1
+        }
         return {} as T
       },
     },
@@ -54,15 +62,17 @@ describe('secretManager', () => {
     const { deps, restCalls } = makeDeps()
     const mgr = createSecretManager(deps)
     const { peerId } = await mgr.start(2)
-    expect(peerId).toBe(1)
+    // Ключ пира ЗНАКОВЫЙ: у чата он отрицательный. Прежде фейк отдавал
+    // положительное число, хотя сервер всегда слал ToPeerID(chatID, true).
+    expect(peerId).toBe(-1)
     expect(restCalls).toHaveLength(1)
     expect(restCalls[0].url).toBe('/secret_chats')
     const body = restCalls[0].body as { peer_id: number; pub: string }
     expect(body.peer_id).toBe(2)
     expect(typeof body.pub).toBe('string')
     expect(body.pub.length).toBeGreaterThan(0)
-    // приватный ключ инициатора сохранён локально до accept
-    expect(await loadPending(1)).not.toBeNull()
+    // приватный ключ инициатора сохранён локально до accept — по ЗНАКОВОМУ ключу
+    expect(await loadPending(-1)).not.toBeNull()
   })
 
   it('accept: выводит ключ из pub инициатора, постит свой pub, отдаёт 12 эмодзи', async () => {
@@ -224,15 +234,15 @@ describe('secretManager', () => {
   it('complete: с pending выводит ключ, чистит pending и бродкастит secretAccept', async () => {
     const { deps, events } = makeDeps()
     const mgr = createSecretManager(deps)
-    await mgr.start(2) // savePending(1)
+    await mgr.start(2) // savePending(-1)
     const responderKp = await generateKeyPair()
     const responderPub = b64FromBytes(await exportPublicKey(responderKp.publicKey))
-    await mgr.complete(1, responderPub)
-    expect(await loadPending(1)).toBeNull()
+    await mgr.complete(-1, responderPub)
+    expect(await loadPending(-1)).toBeNull()
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretAccept)
     const p = events[0].payload as { peer_id: number; state: string; fingerprint: string[] }
-    expect(p.peer_id).toBe(1)
+    expect(p.peer_id).toBe(-1)
     expect(p.state).toBe('established')
     expect(p.fingerprint).toHaveLength(12)
   })
@@ -242,7 +252,7 @@ describe('secretManager', () => {
     const mgr = createSecretManager(deps)
     const initiatorKp = await generateKeyPair()
     const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
-    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: initiatorPub }
+    getState.handshake = { _: 'encryptedChatRequested', id: 1, date: 1, admin_id: 2, participant_id: 3, g_a: initiatorPub }
     await mgr.sync(1, 3) // meId = responder
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretRequest)
@@ -254,7 +264,7 @@ describe('secretManager', () => {
   it('sync (initiator, requested): бродкастит secretRequest (bridge смапит в awaiting), pub не трогает', async () => {
     const { deps, events, getState } = makeDeps()
     const mgr = createSecretManager(deps)
-    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: 'x' }
+    getState.handshake = { _: 'encryptedChatRequested', id: 1, date: 1, admin_id: 2, participant_id: 3, g_a: 'x' }
     await mgr.sync(1, 2) // meId = initiator
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretRequest)
@@ -266,12 +276,12 @@ describe('secretManager', () => {
   it('sync (initiator, accepted, ключа нет): доводит ключ из responder_pub и бродкастит established', async () => {
     const { deps, events, getState } = makeDeps()
     const mgr = createSecretManager(deps)
-    await mgr.start(3) // savePending(1) — инициатор
+    await mgr.start(3) // savePending(-1) — инициатор
     const responderKp = await generateKeyPair()
     const responderPub = b64FromBytes(await exportPublicKey(responderKp.publicKey))
-    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: responderPub }
-    await mgr.sync(1, 2)
-    expect(await loadPending(1)).toBeNull() // ключ доведён, pending очищен
+    getState.handshake = { _: 'encryptedChat', id: 1, date: 1, admin_id: 2, participant_id: 3, g_a_or_b: responderPub }
+    await mgr.sync(-1, 2)
+    expect(await loadPending(-1)).toBeNull() // ключ доведён, pending очищен
     const accept = events.find((e) => e.event === RT.secretAccept)!
     expect(accept).toBeDefined()
     const p = accept.payload as { state: string; fingerprint: string[] }
@@ -287,7 +297,7 @@ describe('secretManager', () => {
     const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
     mgr.stashRequest(1, initiatorPub)
     await mgr.accept(1)
-    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: 'z' }
+    getState.handshake = { _: 'encryptedChat', id: 1, date: 1, admin_id: 2, participant_id: 3, g_a_or_b: 'z' }
     await mgr.sync(1, 3) // meId = responder (ключ есть)
     const accept = events.find((e) => e.event === RT.secretAccept)!
     expect(accept).toBeDefined()
@@ -297,7 +307,8 @@ describe('secretManager', () => {
   it('sync (rejected): бродкастит secretReject', async () => {
     const { deps, events, getState } = makeDeps()
     const mgr = createSecretManager(deps)
-    getState.handshake = { peer_id: 1, initiator_id: 2, responder_id: 3, state: 'rejected' }
+    // Отказ и разрыв сошлись в ОДИН конструктор.
+    getState.handshake = { _: 'encryptedChatDiscarded', id: 1 }
     await mgr.sync(1, 3)
     expect(events).toHaveLength(1)
     expect(events[0].event).toBe(RT.secretReject)

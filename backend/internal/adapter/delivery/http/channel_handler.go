@@ -176,7 +176,9 @@ func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_peer_id": discussionPeer(disc)})
+	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
+	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
+	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
 }
 
 // LinkDiscussion links an existing group as the channel's discussion group
@@ -199,7 +201,9 @@ func (h *ChannelHandler) LinkDiscussion(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_peer_id": discussionPeer(disc)})
+	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
+	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
+	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
 }
 
 // UnlinkDiscussion detaches the channel's discussion group

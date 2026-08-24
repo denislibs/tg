@@ -36,6 +36,11 @@ var OmittedWithoutSubject = map[string][]string{
 	// Времени прочтения мы не храним вовсе: есть ФАКТ прочтения, но не его
 	// момент (колонки под него нет).
 	"readParticipantDate": {"date"},
+	// Транспортный токен MTProto (тот же случай, что у фото и документа) и
+	// отпечаток общего ключа: ключ считает КЛИЕНТ (ECDH в воркере), сервер
+	// приватных ключей не видит и отпечаток вычислить не может.
+	"encryptedChatRequested": {"access_hash"},
+	"encryptedChat":          {"access_hash", "key_fingerprint"},
 	// Ссылка-приглашение «бустнуть канал»: deep-link'ов (t.me/...?boost) у нас
 	// нет вовсе, буст ставится из своего интерфейса.
 	"premium.boostsStatus": {"boost_url"},

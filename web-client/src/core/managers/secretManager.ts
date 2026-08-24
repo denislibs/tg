@@ -9,6 +9,25 @@ import { RT } from '../realtime/events'
 import type { PendingMedia, PendingNewEvt } from '../realtime/events'
 import type { SecretMedia } from '../models'
 import { sendingParamsToWire, type MessageSendingParams, type SendingParamsWireFields } from './messages/sendingParams'
+import { getPeerId } from '../peers/peerId'
+
+/**
+ * `EncryptedChat` — стадия handshake КОНСТРУКТОРОМ, а не строкой рядом с
+ * ключом. Вместе со стадией меняется и НАБОР полей: у запрошенного есть ключ
+ * инициатора (`g_a`), у установленного — ключ второй стороны (`g_a_or_b`), у
+ * отменённого нет ни того ни другого. Прежде ехала пара `{peer_id, state}` с
+ * нашим перечислением из четырёх строк.
+ *
+ * `id` — ключ чата; наружу секретный чат адресуется тем же знаковым ключом
+ * пира, что и любая группа.
+ */
+export type EncryptedChat =
+  | { _: 'encryptedChatRequested'; id: number; date: number; admin_id: number; participant_id: number; g_a: string }
+  | { _: 'encryptedChat'; id: number; date: number; admin_id: number; participant_id: number; g_a_or_b: string }
+  | { _: 'encryptedChatDiscarded'; id: number }
+
+/** Ключ пира секретного чата из его конструктора. */
+const secretPeerId = (c: EncryptedChat): number => getPeerId({ _: 'peerChannel', channel_id: c.id })
 
 /**
  * Какая часть пакета параметров отправки уезжает в секретный чат — и почему не
@@ -88,9 +107,12 @@ export function createSecretManager(deps: SecretDeps) {
     async start(peerId: number): Promise<{ peerId: number }> {
       const kp = await generateKeyPair()
       const pub = await exportPublicKey(kp.publicKey)
-      const { peer_id } = await deps.rest.post<{ peer_id: number; state: string }>('/secret_chats', { peer_id: peerId, pub: b64FromBytes(pub) })
-      await savePending(peer_id, kp.privateKey)
-      return { peerId: peer_id }
+      // Стадия handshake — КОНСТРУКТОР объединения `EncryptedChat`, а не
+      // строка рядом с ключом: вместе со стадией меняется и набор полей.
+      const chat = await deps.rest.post<EncryptedChat>('/secret_chats', { peer_id: peerId, pub: b64FromBytes(pub) })
+      const created = secretPeerId(chat)
+      await savePending(created, kp.privateKey)
+      return { peerId: created }
     },
 
     // Воркер зовёт это, приняв кадр secret_chat_request (запоминаем pub инициатора).
@@ -124,36 +146,30 @@ export function createSecretManager(deps: SecretDeps) {
     // глотаем — это не должно всплыть в UI.
     async sync(peerId: number, meId: number): Promise<void> {
       try {
-        const hs = await deps.rest.get<{
-          peer_id: number
-          initiator_id: number
-          responder_id: number
-          state: 'requested' | 'accepted' | 'rejected' | 'discarded'
-          initiator_pub?: string
-          responder_pub?: string
-        }>(`/secret_chats/${peerId}`)
-        if (hs.state === 'accepted') {
+        const hs = await deps.rest.get<EncryptedChat>(`/secret_chats/${peerId}`)
+        if (hs._ === 'encryptedChat') {
           const stored = await loadKey(peerId)
-          if (meId === hs.initiator_id && !stored && hs.responder_pub) {
+          if (meId === hs.admin_id && !stored && hs.g_a_or_b) {
             // Инициатор перезагрузился до завершения ключа → доводим из responder_pub
             // (complete сам броадкастит established+fingerprint).
-            await complete(peerId, hs.responder_pub)
+            await complete(peerId, hs.g_a_or_b)
           } else if (stored) {
             // Ключ уже есть (в т.ч. получатель, выведший его на accept) → показать established.
             deps.broadcast(RT.secretAccept, { peer_id: peerId, state: 'established', fingerprint: fingerprintEmoji(stored.fingerprint) })
           }
-        } else if (hs.state === 'requested') {
-          if (meId === hs.responder_id && hs.initiator_pub) {
-            incomingPub.set(peerId, hs.initiator_pub)
-            deps.broadcast(RT.secretRequest, { peer_id: peerId, initiator_id: hs.initiator_id, responder_id: hs.responder_id })
-          } else if (meId === hs.initiator_id) {
+        } else if (hs._ === 'encryptedChatRequested') {
+          if (meId === hs.participant_id && hs.g_a) {
+            incomingPub.set(peerId, hs.g_a)
+            deps.broadcast(RT.secretRequest, { peer_id: peerId, initiator_id: hs.admin_id, responder_id: hs.participant_id })
+          } else if (meId === hs.admin_id) {
             // Инициатор ждёт: bridge смапит RT.secretRequest по роли в 'awaiting'.
-            deps.broadcast(RT.secretRequest, { peer_id: peerId, initiator_id: hs.initiator_id, responder_id: hs.responder_id })
+            deps.broadcast(RT.secretRequest, { peer_id: peerId, initiator_id: hs.admin_id, responder_id: hs.participant_id })
           }
-        } else if (hs.state === 'rejected') {
+        } else if (hs._ === 'encryptedChatDiscarded') {
+          // Отказ и разрыв сошлись в ОДИН конструктор: разница между ними была
+          // только в том, кто нажал, а состояние чата одно.
           deps.broadcast(RT.secretReject, { peer_id: peerId })
         }
-        // 'discarded' — no-op.
       } catch {
         // 404 / нет доступа / сеть — no-op, не бросаем в UI.
       }

@@ -155,11 +155,8 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	if disc.DiscussionPeerID == 0 {
+	disc := createdPeerFrom(t, rec)
+	if disc == 0 {
 		t.Fatalf("expected discussion_peer_id, got %s", rec.Body.String())
 	}
 
@@ -322,11 +319,8 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionPeerID)
+	disc := createdPeerFrom(t, rec)
+	discCid := itoa(disc)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
 		"text": "nice", "client_msg_id": "k1",
@@ -425,11 +419,8 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionPeerID)
+	disc := createdPeerFrom(t, rec)
+	discCid := itoa(disc)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
 		"text": "первый комментарий", "client_msg_id": "k1",
@@ -500,11 +491,8 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionPeerID)
+	disc := createdPeerFrom(t, rec)
+	discCid := itoa(disc)
 
 	// Сперва штатный /comments — заводит зеркало поста и оставляет "эталонный"
 	// комментарий, с которым сравниваем thread_root_id ниже.
@@ -614,11 +602,8 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionPeerID)
+	disc := createdPeerFrom(t, rec)
+	discCid := itoa(disc)
 
 	// generic-send к ОБОИМ домиграционным постам — зеркала дозаводятся лениво.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
@@ -738,11 +723,8 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var disc struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &disc)
-	discCid := itoa(disc.DiscussionPeerID)
+	disc := createdPeerFrom(t, rec)
+	discCid := itoa(disc)
 
 	// B комментирует — заводит зеркало и авто-вступает в группу обсуждения.
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(post.ID)+"/comments", tokenB, map[string]any{
@@ -859,12 +841,9 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("link discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	var linked struct {
-		DiscussionPeerID int64 `json:"discussion_peer_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &linked)
-	if linked.DiscussionPeerID != gid {
-		t.Fatalf("linked discussion = %d; want %d", linked.DiscussionPeerID, gid)
+	linked := createdPeerFrom(t, rec)
+	if linked != gid {
+		t.Fatalf("linked discussion = %d; want %d", linked, gid)
 	}
 
 	// Card reflects the link and the now-linked group is no longer a candidate.

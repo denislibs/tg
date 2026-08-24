@@ -66,7 +66,9 @@ func (h *ChatHandler) CreateSecretChat(w http.ResponseWriter, r *http.Request) {
 	if h.writeSecretErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(sc.ChatID, true), "state": sc.State})
+	// Стадия handshake — КОНСТРУКТОР объединения `EncryptedChat`, а не строка
+	// рядом с ключом: вместе со стадией меняется и набор полей.
+	writeJSON(w, http.StatusOK, domain.NewEncryptedChat(sc))
 }
 
 type secretAcceptBody struct {
@@ -92,7 +94,9 @@ func (h *ChatHandler) AcceptSecretChat(w http.ResponseWriter, r *http.Request) {
 	if h.writeSecretErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": domain.ToPeerID(sc.ChatID, true), "state": sc.State})
+	// Стадия handshake — КОНСТРУКТОР объединения `EncryptedChat`, а не строка
+	// рядом с ключом: вместе со стадией меняется и набор полей.
+	writeJSON(w, http.StatusOK, domain.NewEncryptedChat(sc))
 }
 
 func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
@@ -118,19 +122,10 @@ func (h *ChatHandler) GetSecretChat(w http.ResponseWriter, r *http.Request) {
 	if h.writeSecretErr(w, err) {
 		return
 	}
-	resp := map[string]any{
-		"peer_id":      domain.ToPeerID(sc.ChatID, true),
-		"initiator_id": sc.InitiatorID,
-		"responder_id": sc.ResponderID,
-		"state":        sc.State,
-	}
-	if len(sc.InitiatorPub) > 0 {
-		resp["initiator_pub"] = base64.StdEncoding.EncodeToString(sc.InitiatorPub)
-	}
-	if len(sc.ResponderPub) > 0 {
-		resp["responder_pub"] = base64.StdEncoding.EncodeToString(sc.ResponderPub)
-	}
-	writeJSON(w, http.StatusOK, resp)
+	// Тот же конструктор, что у создания и принятия: стадию называет он сам, а
+	// ключ стороны едет там, где его объявляет схема (`g_a` у запроса,
+	// `g_a_or_b` у установленного).
+	writeJSON(w, http.StatusOK, domain.NewEncryptedChat(sc))
 }
 
 func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
