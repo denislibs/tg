@@ -11,6 +11,7 @@ import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { useT, useLang } from '../../i18n'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
+import { messageDateISO } from '../../core/messageToConvMsg'
 import type { StarTransaction } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
 import s from './stars.module.scss'
@@ -18,15 +19,19 @@ import w from './WalletView.module.scss'
 
 const TOPUP_OPTIONS = [100, 250, 500, 1000, 2500, 5000]
 
-// Иконка и метка по типу транзакции (fallback на title с бэка).
+// Иконка и метка строки истории.
+//
+// Вид операции ВЫВОДИТСЯ: «это подарок» говорит флаг конструктора, «отправлен
+// или обменян» — знак суммы. Прежде здесь ветвились по строковому `kind` с
+// провода, и одна из его веток (`paid_media`) не производилась сервером вовсе.
 function txMeta(tx: StarTransaction, t: (s: string) => string): { icon: import('../TgIcon').IconName; label: string } {
-  switch (tx.kind) {
-    case 'topup': return { icon: 'add', label: t('Top-Up') }
-    case 'gift_sent': return { icon: 'gift', label: tx.title || t('Gift') }
-    case 'gift_converted': return { icon: 'star_filled', label: t('Gift converted') }
-    case 'paid_media': return { icon: 'lock', label: t('Paid media') }
-    default: return { icon: 'star_filled', label: tx.title || t('Transaction') }
+  if (tx.gift) {
+    return tx.amount < 0
+      ? { icon: 'gift', label: tx.title || t('Gift') }
+      : { icon: 'star_filled', label: t('Gift converted') }
   }
+  if (tx.amount > 0) return { icon: 'add', label: t('Top-Up') }
+  return { icon: 'star_filled', label: tx.title || t('Transaction') }
 }
 
 export default function WalletView({ onBack }: { onBack: () => void }) {
@@ -94,7 +99,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className={w.txBody}>
                   <Text noWrap size={15.5} color="var(--primary-text-color)">{m.label}</Text>
-                  <Text noWrap size={13} color="var(--secondary-text-color)">{friendlyMsgTime(tx.date, lang)}</Text>
+                  <Text noWrap size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(tx.date), lang)}</Text>
                 </div>
                 <div className={w.txAmount} style={{ color: positive ? 'var(--green-color)' : 'var(--primary-text-color)' }}>
                   {positive ? '+' : '−'}{Math.abs(tx.amount)}

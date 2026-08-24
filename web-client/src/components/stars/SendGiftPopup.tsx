@@ -10,7 +10,7 @@ import Text from '../../shared/ui/Text'
 import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
+import { useStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import type { StarGift } from '../../core/messages/messageAction'
@@ -64,8 +64,9 @@ export default function SendGiftPopup({
     if (!enough) { setTopupOpen(true); return }
     setBusy(true)
     try {
-      const { balance: bal } = await managers.stars.send(toUserId, chosen.id, message.trim(), anonymous)
-      setStarsBalance(bal)
+      // Баланс после списания приезжает кадром `updateStarsBalance` — своего
+      // значения ответ больше не несёт (второй источник одного факта).
+      await managers.stars.send(toUserId, chosen.id, message.trim(), anonymous)
       onSent?.()
       onClose()
     } finally {

@@ -909,8 +909,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // раскрытие бабла приезжают кадром paid_media_unlock (store), баланс —
   // balance_update. Нехватка звёзд → тост.
   const unlockPaidE = useEvent(async (msgId: number) => {
+    if (!isRealChat) return
     try {
-      await managers.stars.unlockPaidMedia(msgId)
+      // Адрес — ПАРА «пир + номер», как у любого другого сообщения.
+      await managers.stars.unlockPaidMedia(numericChatId, msgId)
     } catch {
       rootScope.dispatchEvent('ui:toast', t('Not enough Stars to unlock'))
     }

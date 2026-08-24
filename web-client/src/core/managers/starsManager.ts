@@ -1,8 +1,8 @@
 import type { RestClient } from '../net/restClient'
 import type { TextWithEntities } from '../media/messageMedia'
 import type { MessageActionStarGift, StarGift } from '../messages/messageAction'
-import { mapMessage, type Message, type RawMessage } from '../models'
-import type { Peer } from '../peers/peerId'
+import { getPeerId, type Peer } from '../peers/peerId'
+import { getServerMessageId } from '../history/messageId'
 
 // Telegram Stars + Star Gifts. Реального провайдера нет: пополнение (topUp) —
 // dev-операция.
@@ -55,77 +55,113 @@ export function isGiftConverted(g: AnyStarGift): boolean {
   return g._ === 'messageActionStarGift' && !!g.pFlags?.converted
 }
 
-// Транзакция звёзд (история кошелька). amount со знаком: + начисление, − списание.
+/**
+ * Строка истории кошелька — конструктор `starsTransaction`.
+ *
+ * Вида операции строкой (`kind`) здесь БОЛЬШЕ НЕТ: «это подарок» говорит ФЛАГ,
+ * вторую сторону — конструктор (`starsTransactionPeer` либо
+ * `starsTransactionPeerUnsupported`), а «начисление или списание» — знак
+ * суммы. Прежнее перечисление из четырёх значений включало одно
+ * (`paid_media`), которое сервер не производил вовсе.
+ *
+ * Сумма — тоже конструктор (`starsAmount{amount, nanos}`): дробных звёзд мы не
+ * начисляем, поэтому наружу отдаётся целая часть.
+ */
 export interface StarTransaction {
-  id: number
+  id: string
   amount: number
-  kind: string
+  /** движение по подарку — отправка либо обмен */
+  gift: boolean
   title: string
   peerId: number | null
-  date: string
+  /** секунды эпохи, как у любой другой даты схемы */
+  date: number
 }
-interface RawStarTx {
-  id: number
-  amount: number
-  kind: string
+
+export interface StarsTransactionWire {
+  _: 'starsTransaction'
+  pFlags?: { gift?: true }
+  id: string
+  amount: { _: 'starsAmount'; amount: number; nanos: number }
+  date: number
+  peer: { _: 'starsTransactionPeer'; peer: Peer } | { _: 'starsTransactionPeerUnsupported' }
   title?: string
-  peer_id?: number | null
-  date: string
 }
-const mapTx = (t: RawStarTx): StarTransaction => ({
-  id: t.id, amount: t.amount, kind: t.kind,
-  title: t.title ?? '', peerId: t.peer_id ?? null, date: t.date,
+
+/** `payments.starsStatus` — ответ ЛЮБОЙ операции с балансом. `history` едет
+ *  только там, где её спрашивали: отсутствие ключа значит «не просили». */
+export interface PaymentsStarsStatus {
+  _: 'payments.starsStatus'
+  balance: { _: 'starsAmount'; amount: number; nanos: number }
+  history?: StarsTransactionWire[]
+  chats: unknown[]
+  users: unknown[]
+}
+
+const mapTx = (t: StarsTransactionWire): StarTransaction => ({
+  id: t.id,
+  amount: t.amount.amount,
+  gift: !!t.pFlags?.gift,
+  title: t.title ?? '',
+  peerId: t.peer._ === 'starsTransactionPeer' ? getPeerId(t.peer.peer) : null,
+  date: t.date,
 })
 
 export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
   return {
     async balance(): Promise<number> {
-      const r = await rest.get<{ balance: number }>('/stars/balance')
-      return r.balance
+      return (await rest.get<PaymentsStarsStatus>('/stars/balance')).balance.amount
     },
+    // История едет ТЕМ ЖЕ конструктором, что и остаток: у оригинала это один
+    // ответ `payments.starsStatus`, где `history` — необязательный параметр.
     async transactions(offset = 0, limit = 30): Promise<StarTransaction[]> {
-      const r = await rest.get<{ transactions: RawStarTx[] }>(`/stars/transactions?offset=${offset}&limit=${limit}`)
-      return (r.transactions ?? []).map(mapTx)
+      const r = await rest.get<PaymentsStarsStatus>(`/stars/transactions?offset=${offset}&limit=${limit}`)
+      return (r.history ?? []).map(mapTx)
     },
     // dev-пополнение (без реальной оплаты): возвращает новый баланс.
     async topUp(amount: number): Promise<number> {
-      const r = await rest.post<{ balance: number }>('/stars/topup', { amount })
-      return r.balance
+      return (await rest.post<PaymentsStarsStatus>('/stars/topup', { amount })).balance.amount
     },
     // Каталог едет конструкторами схемы — маппера у него больше нет, как и у
     // витрины профиля: позиция каталога это `starGift`, ТОТ ЖЕ объект, который
     // лежит внутри `savedStarGift` и `messageActionStarGift`. Плоская вторая
     // форма (`price_stars`/`sold_out`/`total`/`remains`) с провода ушла.
     async catalog(): Promise<StarGift[]> {
-      const r = await rest.get<{ gifts: StarGift[] }>('/gifts/catalog')
+      const r = await rest.get<{ _: 'payments.starGifts'; gifts: StarGift[] }>('/gifts/catalog')
       return r.gifts ?? []
     },
-    // Дарит подарок: возвращает новый баланс отправителя.
-    async send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<{ balance: number }> {
-      const r = await rest.post<{ balance: number }>('/gifts/send', {
-        to_user_id: toUserId, gift_id: giftId, message, anonymous,
-      })
-      return { balance: r.balance }
+    // Дарит подарок. Баланса в ответе НЕТ: его владелец — кадр
+    // `updateStarsBalance`, и второе значение того же факта в теле ответа
+    // расходилось бы с ним. Ответ — созданное сообщение-пилюля.
+    async send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<void> {
+      await rest.post('/gifts/send', { to_user_id: toUserId, gift_id: giftId, message, anonymous })
     },
     // Витрина профиля едет конструкторами схемы — маппера у неё больше нет
     // вовсе: форма провода и форма модели совпали (тот же исход, что у `peer`,
     // `dialog` и `reply_markup`).
     async profileGifts(userId: number): Promise<SavedStarGift[]> {
-      const r = await rest.get<{ gifts: SavedStarGift[] }>(`/users/${userId}/gifts`)
+      const r = await rest.get<{ _: 'payments.savedStarGifts'; count: number; gifts: SavedStarGift[] }>(`/users/${userId}/gifts`)
       return r.gifts ?? []
     },
     async convert(giftId: number): Promise<number> {
-      const r = await rest.post<{ balance: number }>(`/gifts/${giftId}/convert`, {})
-      return r.balance
+      return (await rest.post<PaymentsStarsStatus>(`/gifts/${giftId}/convert`, {})).balance.amount
     },
     async setHidden(giftId: number, hidden: boolean): Promise<void> {
       await rest.post(`/gifts/${giftId}/hidden`, { hidden })
     },
-    // Разблокировка платного медиа (Telegram paid media): списывает цену в звёздах,
-    // возвращает разблокированное сообщение (полное медиа) и новый баланс покупателя.
-    async unlockPaidMedia(msgId: number): Promise<{ message: Message; balance: number }> {
-      const r = await rest.post<{ message: RawMessage; balance: number }>(`/messages/${msgId}/unlock`, {})
-      return { message: mapMessage(r.message), balance: r.balance }
+    /**
+     * Разблокировка платного медиа (Telegram paid media): списывает цену в
+     * звёздах и отдаёт разблокированное сообщение.
+     *
+     * Адрес — ПАРА «пир + номер», как у любого другого сообщения. Прежде здесь
+     * стоял путь `/messages/{id}/unlock`, которого на сервере не существует
+     * вовсе: маршрут всегда был `/chats/{peerID}/messages/{msgSeq}/unlock`, и
+     * разблокировка отвечала 404 на каждый клик.
+     *
+     * Баланса в ответе нет: его владелец — кадр `updateStarsBalance`.
+     */
+    async unlockPaidMedia(peerId: number, msgId: number): Promise<void> {
+      await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/unlock`, {})
     },
   }
 }
