@@ -473,13 +473,18 @@ func (r MemberRestriction) ToChatBannedRights() ChatBannedRights {
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):
 // all saved messages attributed to one source peer (tweb saved dialogs).
 // Kind 'self' («Мои заметки») groups the user's own non-forwarded notes.
-type SavedDialog struct {
-	Kind    string // 'self' | 'user' | 'chat'
-	PeerID  PeerID // знаковый ключ источника; NullPeerID для 'self'
-	Title   string // resolved peer title ('' for 'self' — client names it)
-	PhotoID *int64 // media id аватарки источника; nil — фото нет
-	Count   int
-	Last    Message
+type SavedDialogRecord struct {
+	// PeerID — знаковый ключ ИСТОЧНИКА пересылки. У «Моих заметок» (ничего не
+	// переслано либо переслано у себя) это сам зритель: вида строкой
+	// (`kind: 'self'|'user'|'chat'`) больше нет — его отвечает знак ключа и
+	// сравнение с собой.
+	PeerID PeerID
+	// LastMsgID — КЛЮЧ СТРОКИ последнего сохранённого сообщения источника,
+	// LastMsgSeq — тот же последний НОМЕРОМ (top_message конструктора).
+	// Ни заголовка, ни аватарки, ни счётчика здесь нет: карточки едут
+	// векторами контейнера, а счётчика у оригинала не бывает вовсе.
+	LastMsgID  int64
+	LastMsgSeq int64
 }
 
 // ChannelUpdate is one entry in a channel's per-channel updates log

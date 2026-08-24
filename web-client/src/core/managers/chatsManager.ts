@@ -2,9 +2,21 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { clearPersistedChat } from '../store/persist'
 import type { Chat, UserReal } from '../peers/peer'
-import type { Peer } from '../peers/peerId'
+import { getPeerId, type Peer } from '../peers/peerId'
+import { generateMessageId } from '../history/messageId'
+import type { MyMessage, RawMyMessage } from '../models'
+import type { MessagesManager } from './messagesManager'
+import type { PeersManager } from './peersManager'
 
-export interface ChatsDeps { rest: RestClient }
+export interface ChatsDeps {
+  rest: RestClient
+  // Владельцы карточек и сообщений: контейнер «Избранного» несёт векторы
+  // `chats`/`users`/`messages`, и они обязаны доехать до своих хранилищ —
+  // строка списка держит только ССЫЛКИ. Оба опциональны по той же причине,
+  // что у диалогов: тесты, которых контейнер не касается, их не задают.
+  peers?: Pick<PeersManager, 'saveApiPeers'>
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
+}
 
 // Результат read-date исходящего сообщения (tweb getOutboxReadDate):
 //  { readAt } — прочитано, время в ISO;
@@ -19,7 +31,7 @@ export type ReadDateResult = { readAt: string } | { restricted: true } | null
 // напрямую, свой собственный офлайн-фолбэк — `loadCache()`/`persist.loadDialogs`,
 // см. dialogsManager.ts). Осиротевший метод + его тест (`chatsManager.test.ts`,
 // целиком про listDialogs) удалены вместе.
-export function newChatsManager({ rest }: ChatsDeps) {
+export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
   return {
     // Resolve (creating if needed) the private chat with a user; returns its id.
     // Idempotent server-side — repeated calls return the same chat.
@@ -68,36 +80,43 @@ export function newChatsManager({ rest }: ChatsDeps) {
       }
     },
 
-    // «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
-    // источнику пересылки (tweb saved dialogs); 'self' — «Мои заметки».
+    /**
+     * «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
+     * источнику пересылки — контейнер `messages.savedDialogs`.
+     *
+     * Порядок обязателен и он же — порядок оригинала: сначала в хранилища
+     * втекают ПИРЫ и СООБЩЕНИЯ, и только потом разрешаются ссылки на них.
+     * Прежде строка везла снимок источника (`title`, `photo_id`) и выжимку
+     * последнего сообщения; теперь имя и аватарку даёт карточка пира, а превью
+     * — само сообщение.
+     */
     async savedDialogs(): Promise<SavedDialog[]> {
-      const r = await rest.get<{ dialogs: RawSavedDialog[] }>('/saved/dialogs')
-      return (r.dialogs ?? []).map((d) => ({
-        kind: d.kind,
-        peerId: d.peer_id,
-        title: d.title,
-        photoId: d.photo_id || undefined,
-        count: d.count,
-        last: {
-          type: d.last_message.type,
-          text: d.last_message.text,
-          mediaId: d.last_message.media_id || undefined,
-          at: d.last_message.at,
-        },
-      }))
+      const r = await rest.get<MessagesSavedDialogs>('/saved/dialogs')
+      peers?.saveApiPeers({ chats: r.chats, users: r.users })
+      await messages?.saveApiMessages(r.messages)
+      return (r.dialogs ?? []).map((d) => {
+        const peerId = getPeerId(d.peer)
+        const topMessage = generateMessageId(d.top_message)
+        return { peerId, lastMessage: messages?.getMessageByPeer(peerId, topMessage) }
+      })
     },
   }
 }
 
-interface RawSavedDialog {
-  kind: 'self' | 'user' | 'chat'
-  peer_id: PeerId
-  title: string
-  /** id медиа фото источника; 0 — фото нет (прежний `photo_url` был строкой,
-   *  собранной из этого же числа) */
-  photo_id: number
-  count: number
-  last_message: { type: string; text: string; media_id: number; at: string }
+/**
+ * `messages.savedDialogs` — контейнер «Избранного».
+ *
+ * СТРОКА несёт только ссылки (`savedDialog{peer, top_message}`): вида
+ * источника строкой (`kind`), его заголовка с аватаркой и счётчика сообщений
+ * на проводе больше нет. Вид отвечает знак ключа, «мои заметки» — совпадение
+ * ключа с собой, имя и фото — карточка пира, превью — само сообщение.
+ */
+export interface MessagesSavedDialogs {
+  _: 'messages.savedDialogs'
+  dialogs: { _: 'savedDialog'; peer: Peer; top_message: number }[]
+  messages: RawMyMessage[]
+  chats: Chat[]
+  users: UserReal[]
 }
 
 /**
@@ -118,15 +137,16 @@ export interface ChannelsSendAsPeers {
   users: UserReal[]
 }
 
-// One grouped row of Saved Messages (source peer + its newest saved message).
+/**
+ * Строка «Избранного»: ИСТОЧНИК плюс его последнее сохранённое сообщение.
+ *
+ * Ни заголовка, ни аватарки, ни счётчика здесь нет — имя и фото берутся из
+ * карточки пира (зеркало `core/peerCache.ts`), превью и время из самого
+ * сообщения. «Мои заметки» — строка, чей источник совпадает со зрителем.
+ */
 export interface SavedDialog {
-  kind: 'self' | 'user' | 'chat'
   peerId: PeerId
-  title: string
-  /** id медиа фото источника; undefined — фото нет */
-  photoId?: number
-  count: number
-  last: { type: string; text: string; mediaId?: number; at: string }
+  lastMessage?: MyMessage
 }
 
 export type ChatsManager = ReturnType<typeof newChatsManager>

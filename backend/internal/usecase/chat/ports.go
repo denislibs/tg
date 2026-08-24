@@ -258,7 +258,7 @@ type MessageRepo interface {
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
 	// SavedDialogs groups the saved-messages chat by forward origin
 	// («Избранное» → таб «Чаты»), newest group first.
-	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
+	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
 	// UpdateAction заменяет служебное действие сообщения (messages.action).
 	UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error)

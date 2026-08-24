@@ -268,10 +268,10 @@ func (i *Interactor) GetOrCreateSaved(ctx context.Context, userID int64) (int64,
 
 // SavedDialogs is the grouped «Чаты»-tab of Saved Messages: saved messages
 // clustered by forward origin. Empty when the saved chat doesn't exist yet.
-func (i *Interactor) SavedDialogs(ctx context.Context, userID int64) ([]domain.SavedDialog, error) {
+func (i *Interactor) SavedDialogs(ctx context.Context, userID int64) ([]domain.SavedDialogRecord, error) {
 	chatID, err := i.chats.FindSaved(ctx, userID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return []domain.SavedDialog{}, nil
+		return []domain.SavedDialogRecord{}, nil
 	}
 	if err != nil {
 		return nil, err

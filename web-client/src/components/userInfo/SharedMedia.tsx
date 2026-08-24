@@ -24,13 +24,15 @@ import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
-import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
+import { fmtWhen, previewOf } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
 import { isGiftHidden, type SavedStarGift } from '../../core/managers/starsManager'
-import { getPeerId } from '../../core/peers/peerId'
+import { getPeerId, isUser } from '../../core/peers/peerId'
+import { getPeerPhotoId } from '../../core/peers/peer'
+import { getChatPhoto } from '../../core/peers/predicates'
 import { getMessageText, type MyMessage } from '../../core/models'
-import { getMediaId, getMessageKind, type MessageKind } from '../../core/messages/messageKind'
+import { getMediaId, getMessageKind } from '../../core/messages/messageKind'
 import { messageDateISO } from '../../core/messageToConvMsg'
 import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
@@ -685,7 +687,7 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   // Обновление набора приходит только новым ответом RPC, где новы и сами
   // `SavedDialog` — кэш по id всё равно промахнулся бы на каждой строке.
   const items = useMemo<readonly DeferredSortedVirtualListItem<SavedDialog>[]>(
-    () => dialogs.map((d) => ({ id: `${d.kind}:${d.peerId}`, value: d })),
+    () => dialogs.map((d) => ({ id: String(d.peerId), value: d })),
     [dialogs],
   )
 
@@ -729,8 +731,16 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   itemRef: (el: HTMLElement | null) => void
 }) {
   const t = useT()
-  const isSelf = dialog.kind === 'self'
-  const title = isSelf ? t('My Notes') : dialog.title
+  const meId = useChatsStore((st) => st.meId)
+  // «Мои заметки» — строка, чей ИСТОЧНИК это сам зритель: вида строкой
+  // (`kind`) на проводе больше нет, его отвечает сам ключ.
+  const isSelf = dialog.peerId === meId
+  const peer = cachedPeer(dialog.peerId)
+  // Имя и аватарку даёт КАРТОЧКА пира (она приезжает векторами того же
+  // контейнера), а не снимок, подклеенный сервером в строку.
+  const title = isSelf ? t('My Notes') : getPeerTitle({ peerId: dialog.peerId, peer })
+  const photoId = getPeerPhotoId(isUser(dialog.peerId) && peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)) || undefined
+  const lm = dialog.lastMessage
 
   return (
     // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
@@ -747,20 +757,22 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
         if (isSelf) return
         // Ключ ЗНАКОВЫЙ и уже посчитан на проводе — различать «человек это или
         // чат» вторым полем рядом больше не нужно: знак и есть ответ.
-        onOpenPeer({ id: dialog.peerId, title: dialog.title, photoId: dialog.photoId })
+        onOpenPeer({ id: dialog.peerId, title, photoId })
       }}
     >
       <div className="row-row row-title-row dialog-title">
         <div className="row-title">{title}</div>
-        <div className="row-title row-title-right row-title-right-secondary">{fmtWhen(dialog.last.at)}</div>
+        <div className="row-title row-title-right row-title-right-secondary">
+          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+        </div>
       </div>
       <div className="row-row row-subtitle-row dialog-subtitle">
-        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type as MessageKind)}</div>
+        <div className="row-subtitle">{previewOf(lm).text}</div>
       </div>
       {isSelf ? (
         <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />
       ) : (
-        <UserAvatar id={dialog.peerId} name={title} photoId={dialog.photoId} className="dialog-avatar row-media row-media-abitbigger" />
+        <UserAvatar id={dialog.peerId} name={title} photoId={photoId} className="dialog-avatar row-media row-media-abitbigger" />
       )}
     </div>
   )

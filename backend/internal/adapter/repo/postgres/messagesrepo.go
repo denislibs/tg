@@ -832,10 +832,10 @@ func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64
 // таб «Чаты», tweb saved dialogs): origin group/channel → that chat, origin
 // private → that user, own non-forwarded notes (или пересланное от себя) → 'self'.
 // One row per group: the newest message + total count, newest group first.
-func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error) {
+func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, `
 		WITH src AS (
-			SELECT m.id, m.seq, m.type, m.text, m.media_id, m.created_at,
+			SELECT m.id, m.seq, m.created_at,
 				CASE
 					WHEN m.fwd_from_chat_id IS NULL THEN 'self'
 					WHEN fc.type IN ('group','channel') THEN 'chat'
@@ -857,35 +857,30 @@ func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) (
 		),
 		grouped AS (
 			SELECT DISTINCT ON (kind, peer_id)
-				kind, peer_id, id, type, text, media_id, created_at,
-				count(*) OVER (PARTITION BY kind, peer_id) AS cnt
+				kind, peer_id, id, seq, created_at
 			FROM src ORDER BY kind, peer_id, seq DESC
 		)
-		SELECT g.kind, g.peer_id, g.id, g.type, g.text, g.media_id, g.created_at, g.cnt,
-			CASE WHEN g.kind='chat' THEN c.title
-			     WHEN g.kind='user' THEN COALESCE(NULLIF(u.first_name,''), u.display_name)
-			     ELSE '' END,
-			CASE WHEN g.kind='chat' THEN c.photo_media_id
-			     WHEN g.kind='user' THEN u.avatar_media_id
-			     END
+		-- Наружу едут ССЫЛКИ: ключ источника и адрес его последнего
+		-- сохранённого сообщения. Заголовок и аватарка источника, которые
+		-- прежде подклеивались здесь JOIN-ами, ушли в векторы контейнера
+		-- (chats/users), а счётчик сообщений — у оригинала его не бывает и
+		-- не читал никто — вместе с оконной функцией count(*).
+		SELECT g.kind, g.peer_id, g.id, g.seq
 		FROM grouped g
-		LEFT JOIN chats c ON g.kind='chat' AND c.id = -g.peer_id
-		LEFT JOIN users u ON g.kind='user' AND u.id = g.peer_id
 		ORDER BY g.created_at DESC`, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []domain.SavedDialog{}
+	out := []domain.SavedDialogRecord{}
 	for rows.Next() {
-		var d domain.SavedDialog
-		var title *string
-		if err := rows.Scan(&d.Kind, &d.PeerID, &d.Last.ID, &d.Last.Type, &d.Last.Text,
-			&d.Last.MediaID, &d.Last.CreatedAt, &d.Count, &title, &d.PhotoID); err != nil {
+		var d domain.SavedDialogRecord
+		// `kind` остаётся ключом ГРУППИРОВКИ внутри запроса (self/user/chat
+		// разводят пересылки от себя и от источника), но наружу не идёт: вид
+		// источника отвечает знак ключа, а «мои заметки» — совпадение с собой.
+		var kind string
+		if err := rows.Scan(&kind, &d.PeerID, &d.LastMsgID, &d.LastMsgSeq); err != nil {
 			return nil, err
-		}
-		if title != nil {
-			d.Title = *title
 		}
 		out = append(out, d)
 	}

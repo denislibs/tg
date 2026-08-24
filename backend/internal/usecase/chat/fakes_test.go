@@ -630,8 +630,8 @@ func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time
 	return time.Time{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) SavedDialogs(_ context.Context, _, _ int64) ([]domain.SavedDialog, error) {
-	return []domain.SavedDialog{}, nil
+func (r fakeMsgs) SavedDialogs(_ context.Context, _, _ int64) ([]domain.SavedDialogRecord, error) {
+	return []domain.SavedDialogRecord{}, nil
 }
 
 func (r fakeMsgs) FindByClientMsgID(_ context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {

@@ -161,7 +161,19 @@ export function createWorkerCore() {
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
-  const chats = newChatsManager({ rest })
+  const chats = newChatsManager({
+    rest,
+    // Контейнер «Избранного» несёт векторы `chats`/`users`/`messages`: строка
+    // держит только ССЫЛКИ, и разрешаются они тем же порядком, что у
+    // контейнера диалогов. `peers`/`messages` объявлены НИЖЕ — та же ленивая
+    // forward-ссылка, что у соседних менеджеров: стрелка вызывается только на
+    // сам запрос.
+    peers: { saveApiPeers: (r) => peers.saveApiPeers(r) },
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
+  })
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
