@@ -719,7 +719,8 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	// свою пятёрку полей и теряла на этом `verified` (дефект 5 разбора): поле
 	// в базе было, в выдачу не попадало.
 	gatePhotos(r, h.privacy, cards)
-	writeJSON(w, http.StatusOK, map[string]any{"users": cards})
+	// Ответ — сам ВЕКТОР карточек: обёртка `{"users": …}` конструктора не имеет.
+	writeJSON(w, http.StatusOK, orEmptyUsers(cards))
 }
 
 // isoOrNil renders a nullable timestamp as an ISO-8601 string, or nil in JSON
@@ -928,4 +929,13 @@ func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// orEmptyUsers — вектор карточек, который на проводе остаётся вектором:
+// «пусто» у обязательного вектора это `[]`, а не null.
+func orEmptyUsers(cards []domain.UserReal) []domain.UserReal {
+	if cards == nil {
+		return []domain.UserReal{}
+	}
+	return cards
 }

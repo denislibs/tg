@@ -145,17 +145,22 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("users: %d %s", rec.Code, rec.Body.String())
 	}
-	var users struct {
-		Users []struct {
-			ID int64 `json:"id"`
-		} `json:"users"`
+	// Ответ — сам ВЕКТОР карточек: обёртки `{"users": …}` у него больше нет.
+	var users []struct {
+		Underscore string `json:"_"`
+		ID         int64  `json:"id"`
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &users)
-	if len(users.Users) != 2 {
-		t.Fatalf("users = %d; want 2 (%s)", len(users.Users), rec.Body.String())
+	if err := json.Unmarshal(rec.Body.Bytes(), &users); err != nil {
+		t.Fatalf("карточки не вектор: %v (%s)", err, rec.Body.String())
+	}
+	if len(users) != 2 {
+		t.Fatalf("users = %d; want 2 (%s)", len(users), rec.Body.String())
 	}
 	got := map[int64]bool{}
-	for _, u := range users.Users {
+	for _, u := range users {
+		if u.Underscore != "user" {
+			t.Fatalf("карточка не конструктором: %s", rec.Body.String())
+		}
 		got[u.ID] = true
 	}
 	if !got[idA] || !got[idB] {

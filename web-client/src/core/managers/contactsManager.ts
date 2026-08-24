@@ -84,12 +84,13 @@ export function newContactsManager({ rest }: ContactsDeps) {
     },
 
     // Личное фото контакта (Telegram personal_photo, save=true): владелец видит
-    // это фото вместо настоящего аватара контакта. Возвращает id медиа для
-    // оптимистичного обновления сторов — не строку `/media/N/content`, из
-    // которой это же число потом выпарсивали регуляркой.
-    async setPhoto(contactId: number, mediaId: number): Promise<{ photoId: number }> {
-      const r = await rest.put<{ photo_id: number }>(`/contacts/${contactId}/photo`, { media_id: mediaId })
-      return { photoId: r.photo_id }
+    // это фото вместо настоящего аватара контакта.
+    //
+    // Номер фото в ответе больше не едет: он был ЭХОМ запроса — тем же
+    // `mediaId`, который клиент только что прислал, — и оптимистичное
+    // обновление сторов делается из своего же аргумента.
+    async setPhoto(contactId: number, mediaId: number): Promise<void> {
+      await rest.put(`/contacts/${contactId}/photo`, { media_id: mediaId })
     },
 
     // Сброс личного фото — снова показывается настоящий аватар контакта.

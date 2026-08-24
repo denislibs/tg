@@ -44,7 +44,10 @@ func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not revoke sessions")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "revoked": n})
+	// Ответ — «получилось». Число отозванных не читал никто: экран показывает
+	// список сессий, а он перезапрашивается.
+	_ = n
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {

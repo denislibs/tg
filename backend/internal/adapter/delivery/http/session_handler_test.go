@@ -78,12 +78,10 @@ func TestSessions_RevokeOthers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("revoke others: %d %s", rec.Code, rec.Body.String())
 	}
-	var res struct {
-		Revoked int `json:"revoked"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &res)
-	if res.Revoked != 2 {
-		t.Fatalf("revoked = %d, want 2", res.Revoked)
+	// Ответ — «получилось»: числа отозванных не читал никто, а результат
+	// виден по самому списку сессий ниже.
+	if !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("отзыв остальных = %s; ожидался boolTrue", rec.Body.String())
 	}
 	// B and C are dead, A still works and is the only session left.
 	for _, tok := range []string{tokenB, tokenC} {

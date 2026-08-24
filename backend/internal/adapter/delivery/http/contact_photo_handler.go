@@ -53,7 +53,9 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, "set contact photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "photo_id": body.MediaID})
+	// Ответ — «получилось». Номер фото был ЭХОМ запроса: клиент прислал его
+	// сам, и второй раз он ему не нужен.
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ClearCustomPhoto removes the owner's personal photo for a contact
@@ -106,7 +108,9 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "suggest photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "peer_id": peerOf(r, h.chat, msg.ChatID), "id": msg.Seq})
+	// Ответ — САМО созданное сервисное сообщение, тем же конструктором, что и
+	// любое другое: адрес тройкой полей у него больше нет.
+	writeMessage(w, r, h.chat, msg)
 }
 
 // AcceptSuggestion accepts a suggested profile photo

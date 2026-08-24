@@ -222,7 +222,8 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	// Тем же конструктором, что и выборки набора: добавленный стикер клиент
 	// показывает сразу, и это ТОТ ЖЕ документ, что приедет при следующей
 	// загрузке набора.
-	writeJSON(w, http.StatusOK, map[string]any{"document": domain.StickerDocument(s)})
+	// Ответ — САМ конструктор документа: обёртки `{"document": …}` у него нет.
+	writeJSON(w, http.StatusOK, domain.StickerDocument(s))
 }
 
 // Recent — GET /stickers/recent.

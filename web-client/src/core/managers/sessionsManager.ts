@@ -63,9 +63,10 @@ export function newSessionsManager({ rest }: SessionsDeps) {
     },
 
     /** «Terminate All Other Sessions» — everything except the current one. */
-    async terminateOthers(): Promise<number> {
-      const r = await rest.del<{ ok: boolean; revoked: number }>('/sessions/others')
-      return r.revoked
+    async terminateOthers(): Promise<void> {
+      // Числа отозванных в ответе нет: его не читал никто, а список сессий
+      // экран перезапрашивает.
+      await rest.del('/sessions/others')
     },
   }
 }

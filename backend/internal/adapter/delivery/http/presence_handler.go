@@ -49,7 +49,7 @@ func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 			visible = v
 		}
 	}
-	out := make([]map[string]any, 0, len(ids))
+	out := make([]domain.ContactStatus, 0, len(ids))
 	for _, id := range ids {
 		allowed := true
 		if h.privacy != nil {
@@ -65,7 +65,9 @@ func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 		default:
 			status = domain.PresenceStatus(h.presence.Status(r.Context(), id))
 		}
-		out = append(out, map[string]any{"user_id": id, "status": status})
+		out = append(out, domain.NewContactStatus(id, status))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"presence": out})
+	// Ответ — сам ВЕКТОР объявленных строк (`contactStatus`), а не список
+	// безымянных пар под ключом `presence`.
+	writeJSON(w, http.StatusOK, out)
 }

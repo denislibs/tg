@@ -100,3 +100,19 @@ type ReadParticipantDate struct {
 func NewReadParticipantDate(userID int64) ReadParticipantDate {
 	return ReadParticipantDate{Underscore: "readParticipantDate", UserID: userID}
 }
+
+// contactStatus#16d9703b user_id:long status:UserStatus = ContactStatus;
+//
+// СТРОКА снимка присутствия: ссылка на пользователя плюс его статус
+// объединением. Прежде та же пара ехала безымянным словарём внутри обёртки
+// `{"presence": […]}` — форма без объявленного типа.
+type ContactStatus struct {
+	Underscore string     `json:"_"`
+	UserID     int64      `json:"user_id"`
+	Status     UserStatus `json:"status"`
+}
+
+// NewContactStatus — строка снимка присутствия.
+func NewContactStatus(userID int64, status UserStatus) ContactStatus {
+	return ContactStatus{Underscore: "contactStatus", UserID: userID, Status: status}
+}
