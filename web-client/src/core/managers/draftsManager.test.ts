@@ -5,10 +5,11 @@
 // Прежде отсутствие выражалось `null` под тем же ключом, и различие «нет
 // черновика» / «поле не заполнено» стиралось.
 //
-// Витрина `/drafts` при этом отвечает ТЕМИ ЖЕ кадрами, что приезжают живыми
-// (у оригинала `messages.getAllDrafts` — контейнер `Updates`), поэтому разбор
-// у списка и у кадра один — и своей проекции у менеджера НЕТ: форма провода и
-// форма модели совпали, черновик едет в диалог как есть.
+// Витрина `/drafts` при этом отвечает ТЕМИ ЖЕ кадрами, что приезжают живыми, и
+// КОНТЕЙНЕРОМ `updates` (у оригинала `messages.getAllDrafts` объявлен
+// возвращающим `Updates`), поэтому разбор у списка и у кадра один — и своей
+// проекции у менеджера НЕТ: форма провода и форма модели совпали, черновик
+// едет в диалог как есть. Сохранение отвечает тем же кадром.
 import { describe, it, expect, vi } from 'vitest'
 import { newDraftsManager } from './draftsManager'
 import type { RestClient } from '../net/restClient'
@@ -27,7 +28,7 @@ const FRAME = {
 
 describe('DraftsManager', () => {
   it('list отдаёт кадры витрины как есть — своего маппера у менеджера нет', async () => {
-    const rest = { get: vi.fn(async () => ({ drafts: [FRAME] })) } as unknown as RestClient
+    const rest = { get: vi.fn(async () => ({ _: 'updates', updates: [FRAME], users: [], chats: [] })) } as unknown as RestClient
 
     expect(await newDraftsManager({ rest }).list()).toEqual([FRAME])
   })
@@ -39,7 +40,9 @@ describe('DraftsManager', () => {
   })
 
   it('save с пустым текстом получает draftMessageEmpty — «снят», а не null', async () => {
-    const put = vi.fn(async () => ({ draft: { _: 'draftMessageEmpty' } }))
+    // Ответ сохранения — тот же КАДР, что едет списком: конструктор черновика
+    // лежит внутри него, а не под голым ключом `draft`.
+    const put = vi.fn(async () => ({ ...FRAME, draft: { _: 'draftMessageEmpty' } }))
     const rest = { put } as unknown as RestClient
 
     expect(await newDraftsManager({ rest }).save(7, '')).toEqual({ _: 'draftMessageEmpty' })
@@ -48,7 +51,7 @@ describe('DraftsManager', () => {
 
   it('save возвращает конструктор черновика с датой в СЕКУНДАХ — тех же единицах, что у сообщения', async () => {
     const rest = {
-      put: vi.fn(async () => ({ draft: { _: 'draftMessage', message: 'x', date: 1785578400 } })),
+      put: vi.fn(async () => ({ ...FRAME, draft: { _: 'draftMessage', message: 'x', date: 1785578400 } })),
     } as unknown as RestClient
 
     expect(await newDraftsManager({ rest }).save(7, 'x')).toEqual({

@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Оболочка кадра на проводе TL — объединение `Updates`.
 //
 // На JSON-проводе фазы 0 кадр едет конвертом `{t, d, pts}`. Конверта в TL нет:
@@ -71,4 +73,44 @@ func NewUpdatesEnvelope(body map[string]any, envSeq *int64, date int64) map[stri
 		return NewUpdateShortPayload(body, date)
 	}
 	return NewUpdatesPayload([]map[string]any{body}, date, *envSeq)
+}
+
+// ── Та же пачка витриной REST ──────────────────────────────────────────────
+
+// updates#74ae4240 updates:Vector<Update> users:Vector<User> chats:Vector<Chat>
+// date:int seq:int = Updates;
+//
+// UpdatesReal — тот же контейнер, собранный из ОБЪЯВЛЕННЫХ конструкторов, а не
+// из готовых словарей кадра. Так отвечает витрина, которой оригинал предписал
+// контейнер `Updates`: `messages.getAllDrafts` — список тех же кадров, что
+// приезжают живыми.
+//
+// Две сборки одного конструктора рядом — не второе имя предмета, а разница
+// МАТЕРИАЛА: тело кадра WS приходит в оболочку уже словарём (его лепит общий
+// строитель кадров — NewUpdatesPayload выше), а список черновиков собирается из
+// доменных значений. Сойдутся они, когда кадры станут типизированными; это
+// названо задачей.
+type UpdatesReal struct {
+	Underscore string     `json:"_"`
+	Updates    []Update   `json:"updates"`
+	Users      []UserReal `json:"users"`
+	Chats      []Chat     `json:"chats"`
+	Date       int        `json:"date"`
+	Seq        int        `json:"seq"`
+}
+
+// NewUpdates — пачка апдейтов витриной.
+//
+// `seq` нулевой: порядок пачек мы не ведём вовсе (у оригинала им клиент
+// склеивает поток), а витрина отвечает на прямой запрос — порядок в ней задаёт
+// сам ответ. Векторы объектов пустые по той же причине, что и у оболочки
+// кадра: пир едет внутри каждого апдейта.
+func NewUpdates(list []Update, date time.Time) UpdatesReal {
+	return UpdatesReal{
+		Underscore: UpdatesTag,
+		Updates:    orEmpty(list),
+		Users:      []UserReal{},
+		Chats:      []Chat{},
+		Date:       unixSeconds(date),
+	}
 }

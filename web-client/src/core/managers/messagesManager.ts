@@ -672,9 +672,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       })
       return mapNet(r)
     },
+    // Отложенные едут ТЕМ ЖЕ контейнером, что история: набор отдан целиком,
+    // поэтому `messages.messages`. Карточка автора приезжает вектором `users`
+    // и публикуется до отдачи страницы — как у любого другого контейнера.
     async listScheduled(peerId: number): Promise<MyMessage[]> {
-      const r = await rest.get<{ scheduled: RawMyMessage[] }>(`/chats/${peerId}/scheduled`)
-      return mapPage(r.scheduled)
+      return mapContainer(await rest.get<MessagesContainer>(`/chats/${peerId}/scheduled`))
     },
     async deleteScheduled(peerId: number, id: number): Promise<void> {
       await rest.del(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`)

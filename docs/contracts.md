@@ -188,8 +188,10 @@ List the user's dialogs, newest activity first.
 «черновика нет» это отсутствие ключа. Отдельным списком он не едет: от даты
 черновика зависит место строки в списке, и собирать дату активности из двух
 источников значило бы держать порядок в двух местах. Ручка `/drafts` при этом
-остаётся — она отдаёт КАДРЫ `updateDraftMessage` (как `messages.getAllDrafts`
-у оригинала), которыми клиент заполняет те же диалоги.
+остаётся — она отдаёт КОНТЕЙНЕР `updates` из кадров `updateDraftMessage` (как
+`messages.getAllDrafts` у оригинала, объявленный возвращающим `Updates`),
+которыми клиент заполняет те же диалоги. Тем же кадром отвечает и сохранение
+(`PUT /chats/{chatID}/draft`): третьей формы одного черновика нет.
 
 ---
 
@@ -553,7 +555,9 @@ required; `send_at` must be in the future; at most 100 pending per user.
 
 ### GET /chats/{chatID}/scheduled  · auth
 The caller's OWN scheduled messages in the chat, soonest first.
-- 200: `{ "scheduled": [ … ] }`
+- 200: контейнер `messages.messages` — тот же, что у истории (набор отдан
+  ЦЕЛИКОМ, поэтому без `count`). Карточка автора едет вектором `users`:
+  `{ "_": "messages.messages", "messages": [ … ], "chats": [], "users": [ … ] }`
 
 ### DELETE /chats/{chatID}/scheduled/{schedID}  · auth
 Remove own scheduled message. 403 when not the author.
