@@ -151,22 +151,37 @@ describe('ChannelsManager.listComments', () => {
 })
 
 describe('ChannelsManager.commentCounts', () => {
-  it('GETs comment_counts and maps string keys to numbers', async () => {
-    const get = vi.fn(async () => ({ counts: { '5': 2, '6': 0 } }))
+  // Ответ — контейнер `messages.messageViews`, вектор в нём ПОЗИЦИОННЫЙ:
+  // i-й элемент отвечает i-му номеру запроса. «Про этот пост сказать нечего» —
+  // конструктор БЕЗ параметров, а не ноль: у поста без комментариев треда не
+  // существует вовсе, и счётчика для него в модели быть не должно.
+  it('разбирает позиционный вектор счётчиков, а пробел не становится нулём', async () => {
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [
+        { _: 'messageViews', replies: { _: 'messageReplies', replies: 2 } },
+        { _: 'messageViews' },
+      ],
+      chats: [], users: [],
+    }))
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
     const r = await mgr.commentCounts(7, [5, 6])
     expect(get).toHaveBeenCalledWith('/channels/7/comment_counts', { ids: '5,6' })
-    expect(r.counts).toEqual({ 5: 2, 6: 0 })
+    expect(r.counts).toEqual({ 5: 2 })
   })
 
-  // Комментаторы приезжают КОНСТРУКТОРАМИ `user` и кладутся вербатим: имя
-  // собирает клиент, аватарка это `photo.photo_id` — плоского снимка
-  // пользователя рядом с настоящим больше нет.
-  it('карточки комментаторов для стека аватаров кладутся вербатим', async () => {
-    const bob = { _: 'user', id: 8, first_name: 'Боб', photo: { _: 'userProfilePhotoEmpty' } }
-    const alice = { _: 'user', id: 9, first_name: 'Алиса', photo: { _: 'userProfilePhoto', photo_id: 3 } }
-    const get = vi.fn(async () => ({ counts: { '5': 2 }, recent_repliers: { '5': [bob, alice] } }))
+  // Комментаторы приезжают ССЫЛКАМИ на пиров и кладутся вербатим: стек
+  // аватаров рисует их по ключу, а имя и фото берёт из зеркала. Карточка в
+  // каждом посте больше не дублируется — она едет ОДНИМ вектором `users`.
+  it('ссылки на комментаторов для стека аватаров кладутся вербатим', async () => {
+    const bob = { _: 'peerUser', user_id: 8 }
+    const alice = { _: 'peerUser', user_id: 9 }
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 2, recent_repliers: [bob, alice] } }],
+      chats: [], users: [],
+    }))
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).commentCounts(7, [5])
     expect(r.recent[5]).toEqual([bob, alice])
@@ -178,7 +193,11 @@ describe('ChannelsManager.commentCounts', () => {
   // `peers.saveApiPeers({ users: … })` из `commentCounts` красит этот кейс.
   it('карточки комментаторов уезжают владельцу пиров (saveApiPeers)', async () => {
     const bob = { _: 'user', id: 8, first_name: 'Боб' }
-    const get = vi.fn(async () => ({ counts: { '5': 1 }, recent_repliers: { '5': [bob] } }))
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 1, recent_repliers: [{ _: 'peerUser', user_id: 8 }] } }],
+      chats: [], users: [bob],
+    }))
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const peers = fakePeers()
     await newChannelsManager({ rest, beforeSending: () => {}, peers }).commentCounts(7, [5])
@@ -186,10 +205,29 @@ describe('ChannelsManager.commentCounts', () => {
   })
 
   it('без recent_repliers в ответе стек пустой', async () => {
-    const get = vi.fn(async () => ({ counts: { '5': 1 } }))
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 1 } }],
+      chats: [], users: [],
+    }))
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).commentCounts(7, [5])
-    expect(r.recent).toEqual({})
+    expect(r.recent).toEqual({ 5: [] })
+  })
+
+  // Просмотры едут ТЕМ ЖЕ контейнером: у оригинала это параметр того же
+  // конструктора `messageViews`, потому что и просмотры, и тред — счётчики
+  // одного предмета. Пробел вектора нулём не становится.
+  it('viewCounts разбирает тот же контейнер позиционно', async () => {
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [{ _: 'messageViews', views: 9200 }, { _: 'messageViews' }],
+      chats: [], users: [],
+    }))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).viewCounts(7, [5, 6])
+    expect(get).toHaveBeenCalledWith('/channels/7/view_counts', { ids: '5,6' })
+    expect(r).toEqual({ 5: 9200 })
   })
 
   it('short-circuits empty ids without hitting REST', async () => {

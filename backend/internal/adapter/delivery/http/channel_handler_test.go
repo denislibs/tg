@@ -3,8 +3,11 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 func TestChannelFlow_HTTP(t *testing.T) {
@@ -30,18 +33,24 @@ func TestChannelFlow_HTTP(t *testing.T) {
 		t.Fatalf("creator post: %d %s", rec.Code, rec.Body.String())
 	}
 	var post struct {
-		ID     int64 `json:"id"`
-		PeerID int64 `json:"peer_id"`
+		Underscore string `json:"_"`
+		ID         int64  `json:"id"`
+		PeerID     struct {
+			Underscore string `json:"_"`
+			ChannelID  int64  `json:"channel_id"`
+		} `json:"peer_id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &post)
-	if post.ID == 0 {
-		t.Fatalf("expected non-zero id, got %s", rec.Body.String())
+	// Созданный пост — тот же конструктор `message`, что и любое сообщение:
+	// своей формы («адрес тройкой полей») у него больше нет.
+	if post.Underscore != "message" || post.ID == 0 {
+		t.Fatalf("пост = %s", rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), `"seq"`) {
 		t.Fatalf("в ответе осталось второе число: %s", rec.Body.String())
 	}
-	if post.PeerID != createdPeerID {
-		t.Fatalf("post chat_id = %d; want %d", post.PeerID, createdPeerID)
+	if domain.ToPeerID(post.PeerID.ChannelID, true) != domain.PeerID(createdPeerID) {
+		t.Fatalf("post chat_id = %+v; want %d", post.PeerID, createdPeerID)
 	}
 
 	// A second post so difference has more than one entry.
@@ -187,31 +196,73 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("comment_counts: %d %s", rec.Code, rec.Body.String())
 	}
-	// Тред каждого поста — конструктором messageReplies; карточки авторов едут
-	// ОДНИМ вектором users, а не вклеенными в каждый пост.
-	var cc struct {
-		Replies map[string]struct {
+	// Контейнер `messages.messageViews`: вектор ПОЗИЦИОННЫЙ (i-й элемент —
+	// i-му номеру запроса), тред внутри конструктором messageReplies, карточки
+	// авторов ОДНИМ вектором users, а не вклеенными в каждый пост.
+	cc := decodeViews(t, rec)
+	if cc.Underscore != "messages.messageViews" || len(cc.Views) != 1 {
+		t.Fatalf("comment_counts = %s", rec.Body.String())
+	}
+	first := cc.Views[0]
+	if first.Underscore != "messageViews" || first.Replies == nil || first.Replies.Replies != 1 {
+		t.Fatalf("тред поста = %s", rec.Body.String())
+	}
+	if len(first.Replies.RecentRepliers) != 1 || len(cc.Users) != 1 {
+		t.Fatalf("recent_repliers = %+v, users = %+v; ждали ссылку + карточку один раз",
+			first.Replies.RecentRepliers, cc.Users)
+	}
+	if first.Replies.RecentRepliers[0].UserID != cc.Users[0].ID {
+		t.Fatalf("ссылка %d не подкреплена карточкой %d", first.Replies.RecentRepliers[0].UserID, cc.Users[0].ID)
+	}
+	// Просмотры едут ТЕМ ЖЕ контейнером: у оригинала и просмотры, и тред это
+	// параметры одного конструктора `messageViews`.
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/view_counts?ids="+pid, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("view_counts: %d %s", rec.Code, rec.Body.String())
+	}
+	vc := decodeViews(t, rec)
+	if vc.Underscore != "messages.messageViews" || len(vc.Views) != 1 || vc.Views[0].Views == nil {
+		t.Fatalf("view_counts = %s", rec.Body.String())
+	}
+	// Ключом номер поста больше не служит: карты в теле нет.
+	if strings.Contains(rec.Body.String(), `"counts"`) {
+		t.Fatalf("карта счётчиков осталась на проводе: %s", rec.Body.String())
+	}
+	// Неизвестный номер — конструктор БЕЗ параметров, а не ноль: пробел
+	// позиционного вектора выражается отсутствием значений.
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/view_counts?ids=999999", tokenB, nil)
+	gap := decodeViews(t, rec)
+	if len(gap.Views) != 1 || gap.Views[0].Views != nil || gap.Views[0].Replies != nil {
+		t.Fatalf("пробел вектора = %s", rec.Body.String())
+	}
+}
+
+// viewsWire — контейнер счётчиков поста: `messages.messageViews`.
+type viewsWire struct {
+	Underscore string `json:"_"`
+	Views      []struct {
+		Underscore string `json:"_"`
+		Views      *int64 `json:"views"`
+		Replies    *struct {
 			Underscore     string `json:"_"`
 			Replies        int    `json:"replies"`
 			RecentRepliers []struct {
 				UserID int64 `json:"user_id"`
 			} `json:"recent_repliers"`
 		} `json:"replies"`
-		Users []struct {
-			ID int64 `json:"id"`
-		} `json:"users"`
+	} `json:"views"`
+	Users []struct {
+		ID int64 `json:"id"`
+	} `json:"users"`
+}
+
+func decodeViews(t *testing.T, rec *httptest.ResponseRecorder) viewsWire {
+	t.Helper()
+	var out viewsWire
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("счётчики не разбираются: %v (%s)", err, rec.Body.String())
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &cc)
-	if cc.Replies[pid].Underscore != "messageReplies" || cc.Replies[pid].Replies != 1 {
-		t.Fatalf("comment_counts[%s] = %+v; want messageReplies с одним комментарием (%s)", pid, cc.Replies[pid], rec.Body.String())
-	}
-	if len(cc.Replies[pid].RecentRepliers) != 1 || len(cc.Users) != 1 {
-		t.Fatalf("recent_repliers = %+v, users = %+v; ждали ссылку + карточку один раз",
-			cc.Replies[pid].RecentRepliers, cc.Users)
-	}
-	if cc.Replies[pid].RecentRepliers[0].UserID != cc.Users[0].ID {
-		t.Fatalf("ссылка %d не подкреплена карточкой %d", cc.Replies[pid].RecentRepliers[0].UserID, cc.Users[0].ID)
-	}
+	return out
 }
 
 // threadTop — корень треда, как он реально уезжает: messageReplyHeader.
@@ -776,16 +827,27 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("candidates: %d %s", rec.Code, rec.Body.String())
 	}
+	// Кандидаты — КАРТОЧКИ чатов в контейнере `messages.chats`, а не выжимка
+	// из четырёх полей: ключ выводится из самого конструктора.
 	var cands struct {
-		Chats []struct {
-			PeerID int64 `json:"peer_id"`
+		Underscore string `json:"_"`
+		Chats      []struct {
+			Underscore string `json:"_"`
+			ID         int64  `json:"id"`
+			Title      string `json:"title"`
 		} `json:"chats"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &cands)
+	if cands.Underscore != "messages.chats" {
+		t.Fatalf("кандидаты не контейнером: %s", rec.Body.String())
+	}
 	found := false
 	for _, c := range cands.Chats {
-		if c.PeerID == gid {
+		if domain.ToPeerID(c.ID, true) == domain.PeerID(gid) {
 			found = true
+			if c.Title == "" {
+				t.Fatalf("карточка кандидата без имени: %s", rec.Body.String())
+			}
 		}
 	}
 	if !found {

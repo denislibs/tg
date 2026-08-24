@@ -1,6 +1,6 @@
 import TgIcon from './TgIcon'
 import StackedAvatars from './messages/StackedAvatars'
-import type { UserReal } from '../core/peers/peer'
+import { getPeerId, type Peer } from '../core/peers/peerId'
 import classNames from '../shared/lib/classNames'
 import { useT, useLang } from '../i18n'
 import { commentsLabel } from '../core/format/commentsLabel'
@@ -18,9 +18,9 @@ import s from './CommentsBar.module.scss'
 export default function CommentsBar({ onOpen, count, recent }: {
   onOpen?: () => void
   count?: number
-  /** последние ответившие — конструкторы `user` из ответа; стеку аватаров
-   *  отдаются КЛЮЧАМИ (имя и фото он берёт из зеркала пиров, как tweb). */
-  recent?: UserReal[]
+  /** последние ответившие — ССЫЛКИ на пиров (`Vector<Peer>` треда); стеку
+   *  аватаров отдаются КЛЮЧАМИ, имя и фото он берёт из зеркала, как tweb. */
+  recent?: Peer[]
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -29,7 +29,7 @@ export default function CommentsBar({ onOpen, count, recent }: {
     <replies-element class={classNames('replies', 'replies-footer', s.footer)} onClick={onOpen}>
       {!!recent?.length && (
         <div className={classNames('replies-footer-avatars', s.avatars)}>
-          <StackedAvatars peerIds={recent.map((u) => u.id)} size={30} />
+          <StackedAvatars peerIds={recent.map(getPeerId)} size={30} />
         </div>
       )}
       <span className={classNames('replies-footer-text', s.label)}>

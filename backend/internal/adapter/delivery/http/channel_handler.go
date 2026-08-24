@@ -80,9 +80,9 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": msg.Seq, "peer_id": domain.ToPeerID(msg.ChatID, true), "created_at": msg.CreatedAt,
-	})
+	// Созданный пост — тот же конструктор `message`, что и любое другое
+	// сообщение: своей формы («адрес тройкой полей») у него больше нет.
+	writeMessage(w, r, h.uc, msg)
 }
 
 // Suggest — участник предлагает пост в канал (текст/медиа + опц. время публикации).
@@ -229,11 +229,9 @@ func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Req
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(cands))
-	for _, c := range cands {
-		out = append(out, map[string]any{"peer_id": domain.ToPeerID(c.ID, true), "title": c.Title, "username": c.Username, "member_count": c.MemberCount})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": out})
+	// Кандидаты — КАРТОЧКИ чатов, а не выжимка из четырёх полей: имя,
+	// username и число участников живут в самом конструкторе `channel`.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChats(channelsOf(cands)))
 }
 
 // SetSignatures toggles channel post signatures
@@ -335,22 +333,24 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	seqByID := make(map[int64]int64, len(bySeq))
-	for seq, id := range bySeq {
-		seqByID[id] = seq
-	}
-	// Тред каждого поста — конструктором messageReplies; авторы последних
-	// комментариев внутри него это ССЫЛКИ на пиров, а карточки едут ОДНИМ
-	// вектором users, как в контейнере диалогов. Прежде карточка дублировалась
-	// в каждом посте.
-	out := make(map[string]domain.MessageReplies, len(replies))
+	// Тред каждого поста — конструктором messageReplies внутри `messageViews`;
+	// авторы последних комментариев это ССЫЛКИ, а карточки едут ОДНИМ вектором
+	// users. Вектор ПОЗИЦИОННЫЙ: i-й элемент отвечает i-му номеру из запроса —
+	// прежде ответ был картой, ключом которой служил номер поста строкой.
+	byID := make(map[int64]domain.MessageReplies, len(replies))
 	for id, rep := range replies {
-		out[strconv.FormatInt(seqByID[id], 10)] = rep
+		byID[id] = rep
 	}
-	if users == nil {
-		users = []domain.UserReal{}
+	out := make([]domain.MessageViews, 0, len(ids))
+	for _, seq := range ids {
+		id, ok := bySeq[seq]
+		if rep, has := byID[id]; ok && has {
+			out = append(out, domain.NewMessageViewsReplies(rep))
+			continue
+		}
+		out = append(out, domain.NewMessageViewsEmpty())
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"replies": out, "users": users})
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, users))
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
@@ -384,15 +384,18 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	seqByID := make(map[int64]int64, len(bySeq))
-	for seq, id := range bySeq {
-		seqByID[id] = seq
+	// Тот же контейнер, что у комментариев: у оригинала просмотры и тред это
+	// параметры ОДНОГО конструктора `messageViews`, потому что оба — счётчики
+	// одного предмета. Вектор позиционный.
+	out := make([]domain.MessageViews, 0, len(ids))
+	for _, seq := range ids {
+		if id, ok := bySeq[seq]; ok {
+			out = append(out, domain.NewMessageViewsCount(counts[id]))
+			continue
+		}
+		out = append(out, domain.NewMessageViewsEmpty())
 	}
-	out := make(map[string]int64, len(counts))
-	for id, n := range counts {
-		out[strconv.FormatInt(seqByID[id], 10)] = n
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
 }
 
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
@@ -449,9 +452,9 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"chats": channelsOf(chats), "count": count,
-	})
+	// Отдан КУСОК (лимит 30), поэтому конструктор со счётчиком полного
+	// набора — по нему рисуется «+N» под Premium.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatsSlice(count, channelsOf(chats)))
 }
 
 func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
