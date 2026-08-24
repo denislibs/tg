@@ -116,8 +116,8 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     // одно на всех получателей, а «участвую ли я» у каждого своё. Раньше этот
     // ответ патчил вложение — ровно та ловушка, что уже поймана у `pFlags.out`.
     async participateGiveaway(giveawayId: number): Promise<GiveawayState> {
-      const r = await rest.post<{ giveaway_info: GiveawayState }>(`/giveaways/${giveawayId}/participate`, {})
-      return r.giveaway_info
+      // Ответ — САМ конструктор объединения `payments.GiveawayInfo`.
+      return rest.post<GiveawayState>(`/giveaways/${giveawayId}/participate`, {})
     },
 
     // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT + операции ──

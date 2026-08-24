@@ -92,7 +92,8 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       return out
     },
     async post(args: { mediaId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number; mediaAreas?: MediaArea[] }): Promise<number> {
-      const r = await rest.post<{ id: number }>('/stories', {
+      // Ответ — САМ номер созданной истории: обёртки `{id: …}` у него больше нет.
+      const r = await rest.post<number>('/stories', {
         media_id: args.mediaId,
         caption: args.caption ?? '',
         privacy: args.privacy ?? 'contacts',
@@ -100,12 +101,12 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
         period: args.period ?? DEFAULT_STORY_PERIOD,
         media_areas: args.mediaAreas ?? [],
       })
-      return r.id
+      return r
     },
     // Репост чужой истории (tweb fwd_from): создаёт свою историю со ссылкой на
     // оригинал; media берётся с бэка от источника. Возвращает id новой истории.
     async repost(args: { sourceAuthorId: number; sourceStoryId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number }): Promise<number> {
-      const r = await rest.post<{ id: number }>('/stories/repost', {
+      const r = await rest.post<number>('/stories/repost', {
         source_author_id: args.sourceAuthorId,
         source_story_id: args.sourceStoryId,
         caption: args.caption ?? '',
@@ -113,21 +114,22 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
         allow_user_ids: args.allowIds ?? [],
         period: args.period ?? DEFAULT_STORY_PERIOD,
       })
-      return r.id
+      return r
     },
     // Поделиться историей в чаты: в каждый чат уходит медиа-сообщение с
     // атрибуцией. Возвращает число успешно отправленных.
     // История адресуется ПАРОЙ «пир автора + номер внутри него»: сам по себе
     // номер историю не адресует — у разных авторов они совпадают.
     async share(authorId: number, id: number, peerIds: number[]): Promise<number> {
-      const r = await rest.post<{ sent: number }>(`/stories/${authorId}/${id}/share`, { peer_ids: peerIds })
-      return r.sent ?? 0
+      const r = await rest.post<number>(`/stories/${authorId}/${id}/share`, { peer_ids: peerIds })
+      return r ?? 0
     },
     async view(authorId: number, id: number): Promise<void> { await rest.post(`/stories/${authorId}/${id}/view`, {}) },
     // Close friends: список id близких друзей + его полная замена.
     async closeFriends(): Promise<number[]> {
-      const r = await rest.get<{ user_ids: number[] }>('/me/close_friends')
-      return r.user_ids ?? []
+      // Ответ — сам ВЕКТОР ключей, а не список под именем поля.
+      const r = await rest.get<number[]>('/me/close_friends')
+      return r ?? []
     },
     async setCloseFriends(ids: number[]): Promise<void> { await rest.put('/me/close_friends', { user_ids: ids }) },
     // Stealth mode: текущее окно + активация. Ошибки (409 cooldown / 503

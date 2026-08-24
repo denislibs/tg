@@ -87,7 +87,7 @@ describe('StoriesManager', () => {
   })
 
   it('post POSTs /stories with snake_case body (incl. period) and returns id', async () => {
-    const { rest, calls } = fakeRest({}, { id: 99 })
+    const { rest, calls } = fakeRest({}, 99)
     const mgr = newStoriesManager({ rest })
     const id = await mgr.post({ mediaId: 11, caption: 'cap', privacy: 'contacts', allowIds: [2, 3], period: 43200 })
     expect(id).toBe(99)
@@ -99,7 +99,7 @@ describe('StoriesManager', () => {
   })
 
   it('post applies defaults for caption/privacy/allowIds/period (24h)', async () => {
-    const { rest, calls } = fakeRest({}, { id: 1 })
+    const { rest, calls } = fakeRest({}, 1)
     const mgr = newStoriesManager({ rest })
     await mgr.post({ mediaId: 5 })
     expect(calls[0].body).toEqual({ media_id: 5, caption: '', privacy: 'contacts', allow_user_ids: [], period: 86400, media_areas: [] })
@@ -160,7 +160,7 @@ describe('StoriesManager', () => {
   })
 
   it('closeFriends GETs /me/close_friends → ids; setCloseFriends PUTs body', async () => {
-    const { rest, calls } = fakeRest({ user_ids: [2, 3] }, { ok: true })
+    const { rest, calls } = fakeRest([2, 3], { ok: true })
     const mgr = newStoriesManager({ rest })
     expect(await mgr.closeFriends()).toEqual([2, 3])
     expect(calls[0]).toEqual({ method: 'GET', path: '/me/close_friends' })
@@ -224,7 +224,7 @@ describe('StoriesManager', () => {
   })
 
   it('repost POSTs /stories/repost with source + returns id', async () => {
-    const { rest, calls } = fakeRest({}, { id: 77 })
+    const { rest, calls } = fakeRest({}, 77)
     const mgr = newStoriesManager({ rest })
     const id = await mgr.repost({ sourceAuthorId: 2, sourceStoryId: 5, caption: 'c', privacy: 'contacts', period: 43200 })
     expect(id).toBe(77)
@@ -235,7 +235,7 @@ describe('StoriesManager', () => {
   })
 
   it('share POSTs /stories/{peer}/{id}/share and returns sent count', async () => {
-    const { rest, calls } = fakeRest({}, { sent: 2 })
+    const { rest, calls } = fakeRest({}, 2)
     const mgr = newStoriesManager({ rest })
     const n = await mgr.share(2, 7, [10, 11])
     expect(n).toBe(2)

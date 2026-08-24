@@ -107,7 +107,9 @@ func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	// Ответ — САМ номер созданной истории: обёртка `{"id": …}` конструктора
+	// не имеет, а `int` это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, id)
 }
 
 // Repost serves POST /stories/repost — republish an existing story as a new one
@@ -135,7 +137,9 @@ func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	// Ответ — САМ номер созданной истории: обёртка `{"id": …}` конструктора
+	// не имеет, а `int` это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, id)
 }
 
 // Share serves POST /stories/{storyID}/share — post the story into the given
@@ -166,7 +170,8 @@ func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
+	// Ответ — САМО число чатов, куда история ушла.
+	writeJSON(w, http.StatusOK, sent)
 }
 
 func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +329,8 @@ func (h *StoryHandler) CloseFriends(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+	// Ответ — сам ВЕКТОР ключей (`Vector<long>`), а не список под именем поля.
+	writeJSON(w, http.StatusOK, orEmptyIDs(ids))
 }
 
 // SetCloseFriends serves PUT /me/close_friends body {user_ids:[...]} — full

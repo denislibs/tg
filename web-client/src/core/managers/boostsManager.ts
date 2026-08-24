@@ -58,8 +58,9 @@ export function newBoostsManager({ rest, getMeId }: {
     // Участие (`participateGiveaway`) живёт в messagesManager и возвращает ЭТО
     // ЖЕ состояние: сообщение оно больше не трогает.
     async getGiveaway(id: number): Promise<GiveawayState> {
-      const r = await rest.get<{ giveaway_info: GiveawayState }>(`/giveaways/${id}`)
-      return r.giveaway_info
+      // Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+      // вокруг него у оригинала нет.
+      return rest.get<GiveawayState>(`/giveaways/${id}`)
     },
   }
 }

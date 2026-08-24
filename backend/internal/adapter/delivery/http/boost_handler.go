@@ -104,7 +104,9 @@ func (h *ChatHandler) ParticipateGiveaway(w http.ResponseWriter, r *http.Request
 	if h.giveawayErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"giveaway_info": info.ToState()})
+	// Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+	// вокруг него у оригинала нет.
+	writeJSON(w, http.StatusOK, info.ToState())
 }
 
 // GetGiveaway — GET /giveaways/{id}: статус розыгрыша для зрителя.
@@ -120,7 +122,9 @@ func (h *ChatHandler) GetGiveaway(w http.ResponseWriter, r *http.Request) {
 	// Наружу уходит ЛИЧНОЕ состояние зрителя (payments.giveawayInfo), а не
 	// розыгрыш целиком: сами условия и победители едут вложением сообщения, и
 	// повторять их здесь значило бы завести вторую форму розыгрыша.
-	writeJSON(w, http.StatusOK, map[string]any{"giveaway_info": info.ToState()})
+	// Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+	// вокруг него у оригинала нет.
+	writeJSON(w, http.StatusOK, info.ToState())
 }
 
 func (h *ChatHandler) giveawayErr(w http.ResponseWriter, err error) bool {

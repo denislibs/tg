@@ -113,12 +113,11 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 		t.Fatalf("set close_friends: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/me/close_friends", tokenA, nil)
-	var cf struct {
-		UserIDs []int64 `json:"user_ids"`
-	}
+	// Ответ — сам ВЕКТОР ключей, а не список под именем поля.
+	var cf []int64
 	_ = json.Unmarshal(rec.Body.Bytes(), &cf)
-	if len(cf.UserIDs) != 1 || cf.UserIDs[0] != idB {
-		t.Fatalf("close_friends = %v; want [%d]", cf.UserIDs, idB)
+	if len(cf) != 1 || cf[0] != idB {
+		t.Fatalf("close_friends = %v; want [%d]", cf, idB)
 	}
 
 	// A uploads media and posts a "close" story.
@@ -133,34 +132,32 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post close story: %d %s", rec.Code, rec.Body.String())
 	}
-	var posted struct {
-		ID int64 `json:"id"`
-	}
+	var posted int64
 	_ = json.Unmarshal(rec.Body.Bytes(), &posted)
 
 	// Close friend B can view; stranger C is forbidden from viewing and reacting.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/view", tokenB, nil)
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/view", tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("B view close story: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/view", tokenC, nil)
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/view", tokenC, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C view close story: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/reaction", tokenC, map[string]any{"reaction": "👍"})
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/reaction", tokenC, map[string]any{"reaction": "👍"})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C react close story: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// A edits the story: new caption + widen to everyone; payload shows edited=true.
-	rec = authedReq(t, h, http.MethodPatch, "/stories/"+itoa(idA)+"/"+itoa(posted.ID), tokenA, map[string]any{
+	rec = authedReq(t, h, http.MethodPatch, "/stories/"+itoa(idA)+"/"+itoa(posted), tokenA, map[string]any{
 		"caption": "edited", "privacy": "everyone",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit story: %d %s", rec.Code, rec.Body.String())
 	}
 	// C (non-owner) cannot edit.
-	rec = authedReq(t, h, http.MethodPatch, "/stories/"+itoa(idA)+"/"+itoa(posted.ID), tokenC, map[string]any{"caption": "hax"})
+	rec = authedReq(t, h, http.MethodPatch, "/stories/"+itoa(idA)+"/"+itoa(posted), tokenC, map[string]any{"caption": "hax"})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C edit: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
@@ -179,11 +176,11 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 	}
 
 	// A pins the story; non-owner C cannot.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/pin", tokenA, map[string]any{"pinned": true})
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/pin", tokenA, map[string]any{"pinned": true})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("pin: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/pin", tokenC, map[string]any{"pinned": false})
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/pin", tokenC, map[string]any{"pinned": false})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C pin: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
@@ -196,7 +193,7 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 		Stories []wireStory `json:"stories"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &pinned)
-	if pinned.Count != 1 || len(pinned.Stories) != 1 || pinned.Stories[0].ID != posted.ID {
+	if pinned.Count != 1 || len(pinned.Stories) != 1 || pinned.Stories[0].ID != posted {
 		t.Fatalf("pinned = %s", rec.Body.String())
 	}
 	if !pinned.Stories[0].PFlags["pinned"] {
@@ -287,11 +284,9 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post story: %d %s", rec.Code, rec.Body.String())
 	}
-	var posted struct {
-		ID int64 `json:"id"`
-	}
+	var posted int64
 	_ = json.Unmarshal(rec.Body.Bytes(), &posted)
-	if posted.ID == 0 {
+	if posted == 0 {
 		t.Fatalf("no story id: %s", rec.Body.String())
 	}
 
@@ -316,7 +311,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	if story.Media == nil || story.Media["_"] == nil {
 		t.Fatalf("медиа истории не ступень: %+v", story.Media)
 	}
-	if story.ID != posted.ID {
+	if story.ID != posted {
 		t.Fatalf("unexpected feed: %s", rec.Body.String())
 	}
 	// Прочитанность — ГОРИЗОНТ группы, а не признак истории: до просмотра он
@@ -330,7 +325,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// B views the story.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/view", tokenB, nil)
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/view", tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("view: %d %s", rec.Code, rec.Body.String())
 	}
@@ -338,12 +333,12 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	// Просмотр сдвинул горизонт — один номер на автора вместо признака на
 	// каждой истории.
 	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
-	if got := decodeFeed(t, rec.Body.String()).PeerStories[0].MaxReadID; got != posted.ID {
-		t.Fatalf("горизонт после просмотра = %d; ожидался %d", got, posted.ID)
+	if got := decodeFeed(t, rec.Body.String()).PeerStories[0].MaxReadID; got != posted {
+		t.Fatalf("горизонт после просмотра = %d; ожидался %d", got, posted)
 	}
 
 	// A (author) sees B in the viewers list.
-	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/viewers", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/viewers", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("viewers: %d %s", rec.Code, rec.Body.String())
 	}
@@ -371,13 +366,13 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// B (non-author) is forbidden from the viewers list.
-	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/viewers", tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/viewers", tokenB, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for non-author viewers, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// A (author) reads story stats: 1 view + a per-day views series.
-	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/stats", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/stats", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stats: %d %s", rec.Code, rec.Body.String())
 	}
@@ -394,13 +389,13 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// B (non-author) is forbidden from story stats.
-	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/stats", tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/stats", tokenB, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for non-author stats, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// B reacts to the story; A's feed reflects the aggregate; B's my_reaction set.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/reaction", tokenB, map[string]any{"reaction": "👍"})
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/reaction", tokenB, map[string]any{"reaction": "👍"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("react: %d %s", rec.Code, rec.Body.String())
 	}
@@ -444,7 +439,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// A's stats include the reaction.
-	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/stats", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/stats", tokenA, nil)
 	var rstats struct {
 		ReactionsTotal int64 `json:"reactions_total"`
 		Reactions      []struct {
@@ -458,7 +453,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// B removes the reaction; count drops to 0.
-	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/reaction", tokenB, nil)
+	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/reaction", tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unreact: %d %s", rec.Code, rec.Body.String())
 	}
@@ -471,7 +466,7 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	}
 
 	// A deletes the story; it disappears from B's feed.
-	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(idA)+"/"+itoa(posted.ID), tokenA, nil)
+	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(idA)+"/"+itoa(posted), tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
@@ -529,9 +524,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post story: %d %s", rec.Code, rec.Body.String())
 	}
-	var posted struct {
-		ID int64 `json:"id"`
-	}
+	var posted int64
 	_ = json.Unmarshal(rec.Body.Bytes(), &posted)
 
 	// A's feed payload carries media_areas.
@@ -557,7 +550,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// C (no chat with A) cannot repost A's contacts story.
 	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenC, map[string]any{
-		"source_author_id": idA, "source_story_id": posted.ID,
+		"source_author_id": idA, "source_story_id": posted,
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C repost: want 403, got %d %s", rec.Code, rec.Body.String())
@@ -565,14 +558,12 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 
 	// B (partner) reposts; the new story references A via fwd_from.
 	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenB, map[string]any{
-		"source_author_id": idA, "source_story_id": posted.ID, "caption": "look", "privacy": "everyone",
+		"source_author_id": idA, "source_story_id": posted, "caption": "look", "privacy": "everyone",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("B repost: %d %s", rec.Code, rec.Body.String())
 	}
-	var reposted struct {
-		ID int64 `json:"id"`
-	}
+	var reposted int64
 	_ = json.Unmarshal(rec.Body.Bytes(), &reposted)
 
 	// B's feed shows the repost with fwd_from → A.
@@ -588,7 +579,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 			continue
 		}
 		for _, s := range g.Stories {
-			if s.ID != reposted.ID {
+			if s.ID != reposted {
 				continue
 			}
 			// Автор исходной истории — ССЫЛКА `peer`, а не число `author_id`.
@@ -596,7 +587,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 			if from == nil || from["_"] != "peerUser" || int64(from["user_id"].(float64)) != idA {
 				t.Fatalf("repost fwd_from payload = %+v", s.FwdFrom)
 			}
-			if int64(s.FwdFrom["story_id"].(float64)) != posted.ID {
+			if int64(s.FwdFrom["story_id"].(float64)) != posted {
 				t.Fatalf("repost fwd_from story = %+v", s.FwdFrom)
 			}
 			fwdSeen = true
@@ -607,18 +598,17 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	}
 
 	// A shares the story into the A↔B chat: sent count 1, a media message lands.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/share", tokenA, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/share", tokenA, map[string]any{
 		"peer_ids": []int64{chat},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("share: %d %s", rec.Code, rec.Body.String())
 	}
-	var shareResp struct {
-		Sent int `json:"sent"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &shareResp)
-	if shareResp.Sent != 1 {
-		t.Fatalf("share sent = %d; want 1", shareResp.Sent)
+	// Ответ — САМО число чатов, куда история ушла.
+	var sent int
+	_ = json.Unmarshal(rec.Body.Bytes(), &sent)
+	if sent != 1 {
+		t.Fatalf("share sent = %d; want 1", sent)
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat)+"/history?limit=10", tokenA, nil)
 	// Id медиа живёт ВНУТРИ вложения (document.id / photo.id), плоского
@@ -647,7 +637,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	}
 
 	// C cannot share a story it cannot see.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted.ID)+"/share", tokenC, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/share", tokenC, map[string]any{
 		"peer_ids": []int64{chat},
 	})
 	if rec.Code != http.StatusForbidden {
