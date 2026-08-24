@@ -41,11 +41,11 @@ func (b ChatBrief) ChatPhoto() ChatPhoto {
 	return NewChatPhoto(*b.PhotoID, b.PhotoPreview, false)
 }
 
-// SendAsPeer — доступная «личность отправителя» (Telegram channels.getSendAs):
+// SendAsPeerRecord — доступная «личность отправителя» (Telegram channels.getSendAs):
 // сам пользователь, канал (где он владелец/админ) или сама супергруппа
 // (анонимный админ). Peer — ссылка на пир (peerUser | peerChannel), User/Chat —
 // её тело: ровно раскладка channels.sendAsPeers{peers, chats, users}.
-type SendAsPeer struct {
+type SendAsPeerRecord struct {
 	Peer Peer
 	User *UserReal
 	Chat *Channel

@@ -56,14 +56,17 @@ func storyViewsOf(r StoryRecord) *StoryViews {
 	if r.ReactionsCount == 0 && len(r.Reactions) == 0 {
 		return nil
 	}
-	v := NewStoryViews(0, reactionCountsOf(r.Reactions), r.ReactionsCount)
+	v := NewStoryViews(0, ReactionCountsOf(r.Reactions), r.ReactionsCount)
 	return &v
 }
 
-// reactionCountsOf переводит плоскую разбивку репозитория в чипы схемы — те же
+// ReactionCountsOf переводит плоскую разбивку репозитория в чипы схемы — те же
 // `reactionCount` с `chosen_order`, которыми едут реакции сообщения. Второй
 // формы одного предмета на проводе не остаётся.
-func reactionCountsOf(in []ReactionCount) []MTReactionCount {
+//
+// Экспортирована, потому что тот же перевод нужен витрине реакций сообщения:
+// иначе рядом завелась бы вторая копия того же соответствия.
+func ReactionCountsOf(in []ReactionCount) []MTReactionCount {
 	if len(in) == 0 {
 		return nil
 	}

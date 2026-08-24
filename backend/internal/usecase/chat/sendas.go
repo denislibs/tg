@@ -27,7 +27,7 @@ func (i *Interactor) isChatAdmin(ctx context.Context, chatID, userID int64) bool
 //
 // Упрощение vs tweb: Telegram различает анонимных админов отдельным флагом права;
 // у нас анонимный постинг от имени группы доступен любому её админу/владельцу.
-func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]domain.SendAsPeer, error) {
+func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]domain.SendAsPeerRecord, error) {
 	if i.groups == nil {
 		return nil, domain.ErrForbidden
 	}
@@ -43,7 +43,7 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 	// пира (user против channel), а не строкой kind: раскладка sendAsPeer +
 	// векторов users/chats из channels.sendAsPeers.
 	uc := i.userCard(ctx, userID)
-	out := []domain.SendAsPeer{{Peer: domain.NewPeerUser(userID), User: &uc}}
+	out := []domain.SendAsPeerRecord{{Peer: domain.NewPeerUser(userID), User: &uc}}
 
 	// Дополнительные личности есть только в группах (супергруппах-обсуждениях).
 	if typ, e := i.chats.ChatType(ctx, chatID); e != nil || typ != domain.ChatTypeGroup {
@@ -69,7 +69,7 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 	for _, id := range extra {
 		b := briefs[id]
 		ch := b.ToChannel()
-		out = append(out, domain.SendAsPeer{Peer: domain.NewPeerChannel(id), Chat: &ch})
+		out = append(out, domain.SendAsPeerRecord{Peer: domain.NewPeerChannel(id), Chat: &ch})
 	}
 	return out, nil
 }

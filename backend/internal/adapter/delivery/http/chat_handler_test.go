@@ -409,15 +409,21 @@ func TestReactions_HTTP(t *testing.T) {
 
 	// List shows 🔥:1.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	// Агрегат — конструктор messageReactions, тот же, что едет ВНУТРИ самого
+	// сообщения: чип это `reactionCount` с объединением `Reaction` внутри.
 	var listed struct {
-		Reactions []struct {
-			Emoji string `json:"emoji"`
-			Count int    `json:"count"`
-		} `json:"reactions"`
+		Underscore string `json:"_"`
+		Results    []struct {
+			Reaction struct {
+				Emoticon string `json:"emoticon"`
+			} `json:"reaction"`
+			Count int `json:"count"`
+		} `json:"results"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Reactions) != 1 || listed.Reactions[0].Emoji != "🔥" || listed.Reactions[0].Count != 1 {
-		t.Fatalf("reactions = %+v", listed.Reactions)
+	if listed.Underscore != "messageReactions" || len(listed.Results) != 1 ||
+		listed.Results[0].Reaction.Emoticon != "🔥" || listed.Results[0].Count != 1 {
+		t.Fatalf("reactions = %s", rec.Body.String())
 	}
 
 	// Remove it (emoji is URL-escaped by the client).
@@ -426,9 +432,10 @@ func TestReactions_HTTP(t *testing.T) {
 		t.Fatalf("remove reaction: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	listed.Results = nil
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Reactions) != 0 {
-		t.Fatalf("expected no reactions after remove, got %+v", listed.Reactions)
+	if len(listed.Results) != 0 {
+		t.Fatalf("expected no reactions after remove, got %s", rec.Body.String())
 	}
 }
 

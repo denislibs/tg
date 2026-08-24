@@ -52,7 +52,7 @@ func TestGetSendAs_ChannelAdminSeesChannel(t *testing.T) {
 	}
 	// Вид личности читается из ТЕЛА пира (user против channel), а не из
 	// строкового kind: строки kind больше нет.
-	has := func(peer domain.PeerID) *domain.SendAsPeer {
+	has := func(peer domain.PeerID) *domain.SendAsPeerRecord {
 		for k := range peers {
 			if domain.GetPeerID(peers[k].Peer) == peer {
 				return &peers[k]

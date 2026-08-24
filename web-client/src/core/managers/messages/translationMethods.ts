@@ -7,19 +7,27 @@ import type { MessagesCtx } from './ctx'
 
 export function newTranslationMethods({ rest, patchMsg }: MessagesCtx) {
   return {
-    // Перевод произвольного текста на toLang (ISO-код). source — определённый
-    // сервером исходный язык. 503 при отключённом провайдере (пробрасывается).
+    /**
+     * Перевод текста на toLang (ISO-код). 503 при отключённом провайдере.
+     *
+     * Ответ — конструктор `messages.translateResult`: ВЕКТОР строк с разметкой
+     * (оригинал переводит пачку сообщений одним вызовом; мы просим по одной).
+     * Языка-источника у конструктора нет вовсе — перевод просят НА язык.
+     */
     async translate(text: string, toLang: string): Promise<{ text: string; source: string }> {
-      return rest.post<{ text: string; source: string }>('/translate', { text, to_lang: toLang })
+      const r = await rest.post<{ _: 'messages.translateResult'; result: { text: string }[] }>('/translate', { text, to_lang: toLang })
+      return { text: r.result?.[0]?.text ?? '', source: '' }
     },
 
     // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
     // на бэке нет — возвращается детерминированный стаб и кэшируется в SSOT, чтобы
     // блок остался развёрнутым при перерисовке.
+    //
+    // «Ещё расшифровывается» — ФЛАГ конструктора: его отсутствие и есть «готово».
     async transcribe(peerId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
-      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${peerId}/messages/${msgId}/transcribe`, {})
+      const r = await rest.post<{ _: 'messages.transcribedAudio'; text: string; pFlags?: { pending?: true } }>(`/chats/${peerId}/messages/${msgId}/transcribe`, {})
       patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
-      return r
+      return { text: r.text, pending: !!r.pFlags?.pending }
     },
   }
 }

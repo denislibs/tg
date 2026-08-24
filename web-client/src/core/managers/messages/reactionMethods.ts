@@ -11,11 +11,29 @@ import type { MyMessage } from '../../models'
 import type { ReactionEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
 import type { UserReal } from '../../peers/peer'
+import type { Peer } from '../../peers/peerId'
+import type { Reaction } from '../../models'
 
 /** Кто отреагировал (для попапа who-reacted): КОНСТРУКТОР `user` плюс реакция
  *  рядом с ним. Прежняя плоская четвёрка {userId, name, username, avatarUrl}
  *  была снимком пользователя рядом с настоящим — имя теперь собирает клиент,
  *  аватарка это `photo.photo_id`. */
+/** messages.messageReactionsList — «кто отреагировал»: строки-ссылки плюс
+ *  карточки вектором `users`. */
+export interface MessagesMessageReactionsList {
+  _: 'messages.messageReactionsList'
+  count: number
+  reactions: { _: 'messagePeerReaction'; peer_id: Peer; date: number; reaction: Reaction }[]
+  chats: unknown[]
+  users: UserReal[]
+}
+
+/** messages.savedReactionTags — теги «Избранного»; реакция это объединение. */
+export interface MessagesSavedReactionTags {
+  _: 'messages.savedReactionTags'
+  tags: { _: 'savedReactionTag'; reaction: Reaction; title?: string; count: number }[]
+}
+
 export interface ReactionUser {
   user: UserReal
   emoji: string
@@ -25,12 +43,6 @@ export interface ReactionUser {
 export interface SavedTag {
   reaction: string
   title: string
-  count: number
-}
-
-interface RawSavedTag {
-  reaction: string
-  title?: string
   count: number
 }
 
@@ -178,17 +190,34 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg }: Message
       }
     },
 
-    // Кто отреагировал (who-reacted попап). Член чата — проверяет бэк.
+    /**
+     * Кто отреагировал (who-reacted попап). Член чата — проверяет бэк.
+     *
+     * Ответ — контейнер `messages.messageReactionsList`: строки это
+     * `messagePeerReaction` (ссылка на пир + реакция), а КАРТОЧКИ едут вектором
+     * `users`. Прежде карточка была вклеена в каждую строку — снимок вместо
+     * ссылки, тот же дефект, что уже убирался у диалогов и чёрного списка.
+     */
     async reactionUsers(peerId: number, msgId: number): Promise<ReactionUser[]> {
-      // Маппера нет: форма провода и форма модели совпали.
-      const r = await rest.get<{ users: ReactionUser[] }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/users`)
-      return r.users ?? []
+      const r = await rest.get<MessagesMessageReactionsList>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/users`)
+      const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
+      return (r.reactions ?? []).flatMap((row) => {
+        const user = row.peer_id._ === 'peerUser' ? byId.get(row.peer_id.user_id) : undefined
+        if (!user || row.reaction._ !== 'reactionEmoji') return []
+        return [{ user, emoji: row.reaction.emoticon }]
+      })
     },
 
-    // Теги-реакции «Избранного» (Telegram saved reaction tags): список тегов и имена.
+    /**
+     * Теги-реакции «Избранного». Реакция тега — ОБЪЕДИНЕНИЕ `Reaction`, а не
+     * строка эмодзи: тот же предмет, что в агрегате сообщения.
+     */
     async getSavedTags(): Promise<SavedTag[]> {
-      const r = await rest.get<{ tags: RawSavedTag[] }>('/saved/tags')
-      return (r.tags ?? []).map((t) => ({ reaction: t.reaction, title: t.title ?? '', count: t.count }))
+      const r = await rest.get<MessagesSavedReactionTags>('/saved/tags')
+      return (r.tags ?? []).flatMap((t) =>
+        t.reaction._ === 'reactionEmoji'
+          ? [{ reaction: t.reaction.emoticon, title: t.title ?? '', count: t.count }]
+          : [])
     },
     // Задать/переименовать/очистить (пустой title) имя тега (updateSavedReactionTag).
     async renameSavedTag(reaction: string, title: string): Promise<void> {

@@ -45,8 +45,9 @@ export function newChatsManager({ rest }: ChatsDeps) {
     // (tweb getOutboxReadDate). Ленивая подгрузка при открытии меню.
     async getReadDate(peerId: number, msgId: number): Promise<ReadDateResult> {
       try {
-        const r = await rest.get<{ read_at: string }>(`/chats/${peerId}/messages/${msgId}/read_date`)
-        return { readAt: r.read_at }
+        // Конструктор `outboxReadDate`: дата в СЕКУНДАХ эпохи, как у всех дат схемы.
+        const r = await rest.get<{ _: 'outboxReadDate'; date: number }>(`/chats/${peerId}/messages/${msgId}/read_date`)
+        return { readAt: new Date(r.date * 1000).toISOString() }
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) return { restricted: true }
         return null

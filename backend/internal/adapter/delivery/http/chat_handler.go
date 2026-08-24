@@ -177,7 +177,9 @@ func (h *ChatHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "translation failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"text": res.Text, "source": res.Source})
+	// Язык-источник у конструктора не предусмотрен вовсе: перевод просят НА
+	// язык, а не С языка, и оригинал источник не возвращает.
+	writeJSON(w, http.StatusOK, domain.NewMessagesTranslateResult(res.Text))
 }
 
 type geoLiveBody struct {
@@ -626,7 +628,8 @@ func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read date failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"read_at": at.UTC().Format(time.RFC3339)})
+	// Дата в СЕКУНДАХ эпохи — как у всех дат схемы; строка RFC 3339 ушла.
+	writeJSON(w, http.StatusOK, domain.NewOutboxReadDate(at))
 }
 
 // ReadReactions clears the caller's unread-reactions badge for a chat
@@ -810,7 +813,8 @@ func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "transcribe failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"text": text, "pending": false})
+	// «Ещё расшифровывается» — ФЛАГ конструктора: его отсутствие и есть «готово».
+	writeJSON(w, http.StatusOK, domain.NewMessagesTranscribedAudio(text, false))
 }
 
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
@@ -1899,10 +1903,9 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load reactions")
 		return
 	}
-	if counts == nil {
-		counts = []domain.ReactionCount{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"reactions": counts})
+	// Агрегат реакций сообщения — конструктор `messageReactions`, тот же, что
+	// едет ВНУТРИ самого сообщения: один предмет, одна форма.
+	writeJSON(w, http.StatusOK, domain.NewMessageReactions(domain.ReactionCountsOf(counts), nil))
 }
 
 // ReactionUsers — GET /chats/{chatID}/messages/{msgID}/reactions/users: кто
@@ -1925,11 +1928,17 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load reactions")
 		return
 	}
-	out := make([]map[string]any, 0, len(users))
+	// Строки — конструкторы `messagePeerReaction` (пир + дата + реакция), а
+	// карточки едут вектором `users`. Прежде витрина клеила карточку в КАЖДУЮ
+	// строку рядом со строкой-эмодзи: тот же снимок вместо ссылки, что уже
+	// убирался у диалогов и чёрного списка.
+	rows := make([]domain.MessagePeerReaction, 0, len(users))
+	cards := make([]domain.UserReal, 0, len(users))
 	for _, ru := range users {
-		out = append(out, map[string]any{"user": ru.User, "emoji": ru.Emoji})
+		rows = append(rows, domain.NewMessagePeerReaction(domain.NewPeerUser(ru.User.ID), time.Time{}, domain.NewReactionEmoji(ru.Emoji)))
+		cards = append(cards, ru.User)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageReactionsList(rows, cards))
 }
 
 // SavedTags — GET /saved/tags: теги-реакции «Избранного» вызывающего (реакция +
@@ -1958,11 +1967,11 @@ func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
 	// Раскладка channels.sendAsPeers: ССЫЛКИ на пиры отдельно, их тела —
 	// векторами users/chats. Вид личности («это канал, а это я сам») читается
 	// из конструктора тела, а не из строкового kind рядом.
-	refs := make([]map[string]any, 0, len(peers))
+	refs := make([]domain.SendAsPeer, 0, len(peers))
 	users := make([]domain.UserReal, 0, len(peers))
 	chats := make([]domain.Chat, 0, len(peers))
 	for _, p := range peers {
-		refs = append(refs, map[string]any{"_": "sendAsPeer", "peer": p.Peer})
+		refs = append(refs, domain.NewSendAsPeer(p.Peer))
 		if p.User != nil {
 			users = append(users, *p.User)
 		}
@@ -1970,9 +1979,10 @@ func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
 			chats = append(chats, *p.Chat)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"_": "channels.sendAsPeers", "peers": refs, "chats": chats, "users": users,
-	})
+	// Конструктор перестал быть строковым ЛИТЕРАЛОМ внутри карты: форма была
+	// угадана верно, но держалась на аккуратности автора — сверка со схемой
+	// работает по типам и до карты не доходила.
+	writeJSON(w, http.StatusOK, domain.NewChannelsSendAsPeers(refs, chats, users))
 }
 
 func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
@@ -1981,10 +1991,9 @@ func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load saved tags")
 		return
 	}
-	if tags == nil {
-		tags = []domain.SavedTag{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+	// Реакция тега — ОБЪЕДИНЕНИЕ `Reaction`, а не строка эмодзи: тот же
+	// предмет, что в агрегате сообщения, и та же форма.
+	writeJSON(w, http.StatusOK, domain.NewMessagesSavedReactionTags(tags))
 }
 
 type savedTagBody struct {
@@ -2178,7 +2187,7 @@ func (h *ChatHandler) MyAutoDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"period": period})
+	writeJSON(w, http.StatusOK, domain.NewDefaultHistoryTTL(period))
 }
 
 // SetMyAutoDelete — PUT /me/auto_delete {period}: применяется к новым чатам.
@@ -2194,7 +2203,7 @@ func (h *ChatHandler) SetMyAutoDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad period")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
+	writeJSON(w, http.StatusOK, domain.NewDefaultHistoryTTL(b.Period))
 }
 
 // SetChatAutoDelete — PUT /chats/{chatID}/auto_delete {period}.
@@ -2223,7 +2232,7 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
+	writeJSON(w, http.StatusOK, domain.NewDefaultHistoryTTL(b.Period))
 }
 
 // SetChatTheme — PUT /chats/{chatID}/theme {theme_id}. Пустой theme_id (или

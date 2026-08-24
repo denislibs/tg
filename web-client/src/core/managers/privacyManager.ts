@@ -174,7 +174,8 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
     },
     // Автоудаление сообщений: глобальный период (новые чаты) и период чата.
     async autoDelete(): Promise<number> {
-      return (await rest.get<{ period: number }>('/me/auto_delete')).period
+      // Ответ — конструктор `defaultHistoryTTL`, а не обёртка вокруг числа.
+      return (await rest.get<{ _: 'defaultHistoryTTL'; period: number }>('/me/auto_delete')).period
     },
     async setAutoDelete(period: number): Promise<void> {
       await rest.put('/me/auto_delete', { period })
