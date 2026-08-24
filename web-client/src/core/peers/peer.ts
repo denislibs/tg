@@ -210,6 +210,10 @@ export interface UserReal {
   photo?: UserProfilePhoto
   status?: UserStatus
   emoji_status_emoticon?: string
+  /** flags.19?string — подсказка поля ввода в inline-режиме ЭТОГО бота.
+   *  Живёт она у самого бота: прежде её везла витрина inline-выдачи вторым
+   *  ключом рядом с результатами. */
+  bot_inline_placeholder?: string
 }
 
 export type User = UserEmpty | UserReal

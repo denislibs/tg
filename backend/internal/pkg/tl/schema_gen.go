@@ -8521,4 +8521,5 @@ var clientParams = map[string][]string{
 	"users.userFull":                     {"can_message"},
 	"auth.authorization":                 {"token"},
 	"auth.authorizationSignUpRequired":   {"signup_token"},
+	"botInlineResult":                    {"emoji"},
 }

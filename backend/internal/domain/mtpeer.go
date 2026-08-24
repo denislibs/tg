@@ -332,6 +332,10 @@ type UserReal struct {
 	// поле, которое на фазе 2 станет long, нельзя: кодек сломается молча.
 	// Вернуться сюда в подсистеме кастом-эмодзи (решение №6).
 	EmojiStatus string `json:"emoji_status_emoticon,omitempty"`
+	// BotInlinePlaceholder — flags.19?string: подсказка поля ввода в
+	// inline-режиме этого бота. Живёт она ИМЕННО ЗДЕСЬ, у самого бота: прежде
+	// её везла витрина inline-выдачи вторым ключом рядом с результатами.
+	BotInlinePlaceholder string `json:"bot_inline_placeholder,omitempty"`
 }
 
 func (UserReal) isUser()          {}

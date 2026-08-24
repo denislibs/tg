@@ -1756,5 +1756,14 @@
       }
     ],
     "type": "auth.WebAuthToken"
+  },
+  {
+    "predicate": "botInlineResult",
+    "params": [
+      {
+        "name": "emoji",
+        "type": "string"
+      }
+    ]
   }
 ]

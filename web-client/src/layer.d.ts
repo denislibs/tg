@@ -6648,7 +6648,8 @@ export namespace BotInlineResult {
     url?: string,
     thumb?: WebDocument,
     content?: WebDocument,
-    send_message: BotInlineMessage
+    send_message: BotInlineMessage,
+    emoji?: string
   };
 
   export type botInlineMediaResult = {

@@ -25,10 +25,13 @@ func (h *ChatHandler) BotCommands(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load commands")
 		return
 	}
-	if cmds == nil {
-		cmds = []domain.BotCommand{}
+	// Ответ — сам ВЕКТОР объявленных строк `botCommand`: обёртка
+	// `{"commands": …}` конструктора не имеет.
+	out := make([]domain.MTBotCommand, 0, len(cmds))
+	for _, c := range cmds {
+		out = append(out, domain.NewBotCommand(c))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"commands": cmds})
+	writeJSON(w, http.StatusOK, out)
 }
 
 // BotInline — GET /bots/{botID}/inline?q=...: выдача inline-режима (@bot query).
@@ -46,13 +49,18 @@ func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "inline failed")
 		return
 	}
-	if results == nil {
-		results = []domain.InlineResult{}
+	out := make([]domain.BotInlineResult, 0, len(results))
+	for _, it := range results {
+		out = append(out, domain.NewBotInlineResult(it))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"results":     results,
-		"placeholder": h.svc.BotInlinePlaceholder(r.Context(), botID),
-	})
+	// Подсказка поля ввода рядом больше не едет: у оригинала это параметр
+	// САМОГО бота (`user.bot_inline_placeholder`), и карточка бота уезжает
+	// здесь же — вектором `users` контейнера.
+	cards, _ := h.svc.UsersByIDs(r.Context(), []int64{botID})
+	for i := range cards {
+		cards[i].BotInlinePlaceholder = h.svc.BotInlinePlaceholder(r.Context(), botID)
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesBotResults(out, cards))
 }
 
 // BotMenuButton — GET /bots/{botID}/menu_button: кнопка-меню mini-app бота.
@@ -62,7 +70,7 @@ func (h *ChatHandler) BotMenuButton(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	text, url := h.svc.BotMenuButton(r.Context(), botID)
-	writeJSON(w, http.StatusOK, map[string]any{"text": text, "url": url})
+	writeJSON(w, http.StatusOK, domain.NewBotMenuButton(text, url))
 }
 
 // BotCallback — POST /bots/{botID}/callback {chat_id, data}: нажатие
@@ -110,7 +118,9 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "callback failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"text": ans.Text, "alert": ans.Alert})
+	// «Показать плашкой» — ФЛАГ: прежде ехало булево поле `alert: false`, то
+	// есть «выключено» имело значение.
+	writeJSON(w, http.StatusOK, domain.NewBotCallbackAnswer(ans.Text, ans.Alert))
 }
 
 // BotStart — POST /bots/{botID}/start {payload}: deep link t.me/<bot>?start=<payload>.
@@ -133,7 +143,8 @@ func (h *ChatHandler) BotStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "start failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"peer_id": peerOf(r, h.svc, chatID)})
+	// Ответ — КОНСТРУКТОР ключа, как у создания приватного чата.
+	writeJSON(w, http.StatusOK, domain.NewPeer(peerOf(r, h.svc, chatID)))
 }
 
 // BotWebAppData — POST /bots/{botID}/webapp_data {data, button_text}: sendData
