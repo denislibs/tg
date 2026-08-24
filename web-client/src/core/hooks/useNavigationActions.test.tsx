@@ -81,9 +81,8 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
 
 const topic: TopicRow = {
   id: 9, peerId: -100, rootMsgId: 55, title: 'Тема', iconColor: 1, iconEmoji: '',
-  closed: false, hidden: false, pinned: false, pos: 0, isGeneral: false, createdBy: 1,
-  msgCount: 0, lastText: '', lastType: '', lastSenderName: '',
-  unread: 0, unreadMentions: 0, muted: false, lastOut: false, lastMsgSeq: 0,
+  closed: false, hidden: false, pinned: false, isGeneral: false, createdBy: 1,
+  unread: 0, unreadMentions: 0, muted: false, lastMsgSeq: 0,
 }
 
 // (Fix ревью Task 5, Critical.) `useForumPanel.handleSelect` зовёт openTopicThread

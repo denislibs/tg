@@ -7,6 +7,7 @@ import { NULL_PEER_ID } from '../peers/peerId'
 import { newPeersManager } from './peersManager'
 import { applyPeerOps, cachedChat, hasRightsPeer, isBroadcastPeer, isChannelPeer, isMegagroupPeer, resetPeerMirror } from '../peerCache'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
+import { generateMessageId } from '../history/messageId'
 
 type PostCall = { path: string; body: unknown }
 
@@ -347,31 +348,61 @@ describe('GroupsManager', () => {
     expect(posts[0].body).toEqual({})
   })
 
-  it('listTopics maps per-topic dialog-состояние (unread/muted/last_out/last_seq)', async () => {
+  // Список тем — КОНТЕЙНЕР `messages.forumTopics`: строка несёт состояние
+  // чтения и ССЫЛКУ на последнее сообщение, а само сообщение и карточки едут
+  // векторами. Заглушённость при этом ВЫЧИСЛЯЕТСЯ по сроку, а не приезжает
+  // булевым полем.
+  it('listTopics: контейнер, состояние чтения и разрешённая ссылка на последнее', async () => {
     const { rest, gets } = fakeRest({
       getReturn: {
+        _: 'messages.forumTopics',
+        count: 1,
         topics: [{
-          id: 1, peer_id: 5, root_msg_id: 10, title: 'T', icon_color: 2,
-          closed: false, created_by: 7, msg_count: 4,
-          unread: 3, unread_mentions: 1, muted: true, last_out: true, last_seq: 42,
+          _: 'forumTopic',
+          pFlags: { closed: true, pinned: true },
+          id: 1, date: 1787334148, peer: { _: 'peerChannel', channel_id: 5 },
+          title: 'T', icon_color: 2, icon_emoji_emoticon: '🐞', root_msg_id: 10,
+          from_id: { _: 'peerUser', user_id: 7 },
+          top_message: 42, read_inbox_max_id: 40,
+          unread_count: 3, unread_mentions_count: 1,
+          notify_settings: { _: 'peerNotifySettings', mute_until: 0x7FFFFFFF },
         }],
+        messages: [], chats: [], users: [],
       },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const topics = await mgr.listTopics(5)
     expect(gets[0]).toBe('/chats/5/topics')
     expect(topics[0]).toMatchObject({
-      id: 1, peerId: 5, rootMsgId: 10, unread: 3, unreadMentions: 1, muted: true, lastOut: true, lastMsgSeq: 42,
+      id: 1, peerId: -5, rootMsgId: 10, iconEmoji: '🐞', createdBy: 7,
+      closed: true, pinned: true, hidden: false, isGeneral: false,
+      unread: 3, unreadMentions: 1, muted: true,
     })
+    // Номер последнего переводится в КЛИЕНТСКОЕ пространство — им сравнивают
+    // с `message.id` при пометке «прочитано».
+    expect(topics[0].lastMsgSeq).toBe(generateMessageId(42))
   })
 
-  it('listTopics defaults new fields to 0/false when absent', async () => {
+  it('listTopics: у строки без флагов и без счётчиков всё нулевое, а не undefined', async () => {
     const { rest } = fakeRest({
-      getReturn: { topics: [{ id: 1, peer_id: 5, root_msg_id: 0, title: 'G', icon_color: 0, closed: false, created_by: 7, msg_count: 0 }] },
+      getReturn: {
+        _: 'messages.forumTopics',
+        count: 1,
+        topics: [{
+          _: 'forumTopic', id: 1, date: 1, peer: { _: 'peerChannel', channel_id: 5 },
+          title: 'G', icon_color: 0, from_id: { _: 'peerUser', user_id: 7 },
+          top_message: 0, read_inbox_max_id: 0, unread_count: 0, unread_mentions_count: 0,
+          notify_settings: { _: 'peerNotifySettings' },
+        }],
+        messages: [], chats: [], users: [],
+      },
     })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     const topics = await mgr.listTopics(5)
-    expect(topics[0]).toMatchObject({ unread: 0, unreadMentions: 0, muted: false, lastOut: false, lastMsgSeq: 0 })
+    expect(topics[0]).toMatchObject({
+      unread: 0, unreadMentions: 0, muted: false, closed: false, pinned: false,
+      hidden: false, isGeneral: false, rootMsgId: 0, iconEmoji: '',
+    })
   })
 
   it('readTopic POSTs /chats/{id}/topics/{rootMsgId}/read with up_to_seq', async () => {

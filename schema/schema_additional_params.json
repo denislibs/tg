@@ -1315,6 +1315,18 @@
       {
         "name": "peer",
         "type": "Peer"
+      },
+      {
+        "name": "root_msg_id",
+        "type": "number"
+      },
+      {
+        "name": "icon_emoji_emoticon",
+        "type": "string"
+      },
+      {
+        "name": "is_general",
+        "type": "true"
       }
     ]
   },

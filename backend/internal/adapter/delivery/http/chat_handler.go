@@ -1507,20 +1507,33 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-func topicJSON(row domain.TopicRow) map[string]any {
-	return map[string]any{
-		// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
-		"id": row.Topic.ID, "peer_id": domain.ToPeerID(row.Topic.ChatID, true), "root_msg_id": row.Topic.RootMsgSeq,
-		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "icon_emoji": row.Topic.IconEmoji,
-		"closed": row.Topic.Closed, "hidden": row.Topic.Hidden, "pinned": row.Topic.Pinned,
-		"pos": row.Topic.Pos, "is_general": row.Topic.IsGeneral,
-		"created_by": row.Topic.CreatedBy, "created_at": row.Topic.CreatedAt,
-		"msg_count": row.MsgCount, "last_text": row.LastText, "last_type": row.LastType,
-		"last_sender_name": row.LastSenderName, "last_at": row.LastAt,
-		// per-topic dialog-состояние (как обычный ряд диалога)
-		"unread": row.UnreadCount, "unread_mentions": row.UnreadMentions,
-		"muted": row.Muted, "last_out": row.LastOut, "last_seq": row.LastMsgSeq,
+// topicJSON — СТРОКА списка тем конструктором `forumTopic`.
+//
+// Выжимок последнего сообщения (`last_text`, `last_type`, `last_at`,
+// `last_sender_name`) здесь больше нет: само сообщение едет вектором
+// `messages` контейнера, а строка адресует его числом `top_message` — тот же
+// ход, что сделан у диалогов. Ушли и `msg_count` с `pos`: у оригинала счётчика
+// сообщений темы не бывает вовсе, а порядок задаёт сам вектор.
+func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
+	// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
+	peer := domain.NewPeer(domain.ToPeerID(row.Topic.ChatID, true))
+	// Заглушённость это СРОК, а не булево поле рядом: тот же предикат, что у
+	// диалога. Своего срока у темы мы не храним — «замьючено навсегда» либо
+	// «не замьючено вовсе».
+	notify := domain.PeerNotifySettings{Underscore: domain.PeerNotifySettingsTag}
+	if row.Muted {
+		forever := domain.MuteUntilForever
+		notify.MuteUntil = &forever
 	}
+	return domain.NewForumTopic(row.Topic, peer, domain.NewPeer(domain.PeerID(row.Topic.CreatedBy)),
+		row.LastMsgSeq, row.LastReadSeq, row.UnreadCount, row.UnreadMentions, notify,
+		domain.ForumTopicFlags{
+			My:        row.Topic.CreatedBy == viewerID,
+			Closed:    row.Topic.Closed,
+			Pinned:    row.Topic.Pinned,
+			Hidden:    row.Topic.Hidden,
+			IsGeneral: row.Topic.IsGeneral,
+		})
 }
 
 // CreateTopic — POST /chats/{chatID}/topics {title, icon_color}.
@@ -1547,7 +1560,9 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, topicJSON(domain.TopicRow{Topic: t}))
+	// Созданная тема — та же СТРОКА, что едет в списке: своей формы у этого
+	// ответа нет.
+	writeJSON(w, http.StatusOK, topicJSON(domain.TopicRow{Topic: t}, h.meID(r)))
 }
 
 // ListTopics — GET /chats/{chatID}/topics.
@@ -1556,16 +1571,22 @@ func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rowsT, err := h.svc.ListTopics(r.Context(), chatID, h.meID(r))
+	me := h.meID(r)
+	page, err := h.svc.TopicsPage(r.Context(), chatID, me)
 	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(rowsT))
-	for _, t := range rowsT {
-		out = append(out, topicJSON(t))
+	topics := make([]domain.ForumTopic, 0, len(page.Topics))
+	for _, t := range page.Topics {
+		topics = append(topics, topicJSON(t, me))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"topics": out})
+	msgs, err := h.svc.MessagesWire(r.Context(), me, page.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render topics")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesForumTopics(topics, msgs, nil, page.Users))
 }
 
 // CloseTopic — POST /chats/{chatID}/topics/{topicID}/close {closed}.

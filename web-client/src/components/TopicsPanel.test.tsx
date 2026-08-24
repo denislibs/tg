@@ -74,8 +74,21 @@ const CHAT_ID = -42 // ключ чата ЗНАКОВЫЙ: у группы он 
 /** Тем заведомо больше окна. */
 const TOPICS = 200
 
-/** У каждой темы свой `lastAt` — по нему считаются рендеры её строки. */
+/** У каждой темы своё последнее сообщение — по его дате считаются рендеры
+ *  строки. Превью, время и «моё ли» строка выводит ИЗ НЕГО: выжимок
+ *  (`lastText`/`lastAt`/`lastSenderName`) на проводе больше нет. */
 const whenOf = (i: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, 0) + i * 1000).toISOString()
+
+const lastMessageOf = (i: number): Topic['lastMessage'] => ({
+  _: 'message',
+  pFlags: {},
+  id: 1,
+  peerId: CHAT_ID,
+  peer_id: { _: 'peerChannel', channel_id: -CHAT_ID },
+  fromId: 1,
+  date: Math.floor(new Date(whenOf(i)).getTime() / 1000),
+  message: 'text-' + i,
+})
 
 const topic = (i: number, over: Partial<Topic> = {}): Topic => ({
   id: i,
@@ -87,19 +100,13 @@ const topic = (i: number, over: Partial<Topic> = {}): Topic => ({
   closed: false,
   hidden: false,
   pinned: false,
-  pos: i,
   isGeneral: false,
   createdBy: 1,
-  msgCount: 0,
-  lastText: 'text-' + i,
-  lastType: '',
-  lastSenderName: '',
-  lastAt: whenOf(i),
   unread: 0,
   unreadMentions: 0,
   muted: false,
-  lastOut: false,
   lastMsgSeq: 0,
+  lastMessage: lastMessageOf(i),
   ...over,
 })
 

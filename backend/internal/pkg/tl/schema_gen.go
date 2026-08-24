@@ -8494,7 +8494,7 @@ var clientParams = map[string][]string{
 	"webDocument":                        {"h", "w"},
 	"webDocumentNoProxy":                 {"h", "w"},
 	"chatForbidden":                      {"pFlags"},
-	"forumTopic":                         {"peerId", "index_0"},
+	"forumTopic":                         {"peerId", "index_0", "root_msg_id", "icon_emoji_emoticon", "is_general"},
 	"savedDialog":                        {"peerId", "index_0", "savedPeerId"},
 	"monoForumDialog":                    {"peerId", "parentPeerId", "index_0", "stableIndex"},
 	"channelParticipantsAdmins":          {"q"},

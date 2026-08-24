@@ -7,7 +7,12 @@ import { getPeerId } from '../peers/peerId'
 import type { Peer } from '../peers/peerId'
 import { deniedMask } from '../peers/rights'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
-import { WIRE_FOLDER_ARCHIVE } from '../models'
+import { WIRE_FOLDER_ARCHIVE, type MyMessage, type RawMyMessage } from '../models'
+import { generateMessageId } from '../history/messageId'
+import type { MessagesManager } from './messagesManager'
+import type { Chat } from '../peers/peer'
+import type { PeerNotifySettings } from '../dialogs/notifySettings'
+import { isPeerMuted } from '../dialogs/notifySettings'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
@@ -175,7 +180,18 @@ const mapInvite = (l: ChatInviteExported): InviteLink => ({
   revoked: !!l.pFlags?.revoked,
 })
 
-// Тема форум-группы (строка списка: тема + последнее сообщение треда).
+/**
+ * Тема форум-группы — СТРОКА списка: состояние чтения, место в списке и
+ * разрешённое последнее сообщение.
+ *
+ * Выжимок последнего сообщения (`lastText`, `lastType`, `lastAt` и склеенное
+ * СЕРВЕРОМ `lastSenderName`) здесь больше нет: сообщение приезжает вектором
+ * `messages` контейнера, строка адресует его числом `top_message`, а имя
+ * автора собирает клиент из карточки пира — тот же ход, что сделан у диалогов.
+ *
+ * Ушли и `msgCount` с `pos`: счётчика сообщений темы у оригинала не бывает
+ * вовсе, а порядок задаёт сам вектор.
+ */
 export interface TopicRow {
   id: number
   peerId: number
@@ -186,46 +202,92 @@ export interface TopicRow {
   closed: boolean
   hidden: boolean
   pinned: boolean
-  pos: number
   isGeneral: boolean
   createdBy: number
-  msgCount: number
-  lastText: string
-  lastType: string
-  lastSenderName: string
-  lastAt?: string
   /** непрочитанные сообщения темы (чужие, как у диалога) */
   unread: number
   /** непрочитанные упоминания зрителя в теме */
   unreadMentions: number
   /** тема заглушена этим пользователем */
   muted: boolean
-  /** последнее сообщение темы отправлено мной (для галочек) */
-  lastOut: boolean
   /** seq последнего сообщения темы (для пометки «прочитано») */
   lastMsgSeq: number
+  /** последнее сообщение темы ЦЕЛИКОМ — разрешено по `top_message` */
+  lastMessage?: MyMessage
 }
 
-interface RawTopic {
-  id: number; peer_id: number; root_msg_id: number; title: string; icon_color: number
-  icon_emoji?: string | null; closed: boolean; hidden?: boolean; pinned?: boolean; pos?: number
-  is_general?: boolean; created_by: number; msg_count: number
-  last_text?: string | null; last_type?: string | null; last_sender_name?: string | null; last_at?: string | null
-  unread?: number; unread_mentions?: number; muted?: boolean; last_out?: boolean; last_seq?: number
+/**
+ * `forumTopic` — строка на проводе. Наших параметров у неё три, и все три
+ * объявлены клиентскими в `schema/schema_additional_params.json`:
+ * `root_msg_id` (у оригинала id темы И ЕСТЬ номер её корня),
+ * `icon_emoji_emoticon` (у схемы это номер документа кастомного эмодзи) и флаг
+ * `is_general` (у оригинала General узнают по id == 1).
+ */
+export interface ForumTopicWire {
+  _: 'forumTopic'
+  pFlags?: { my?: true; closed?: true; pinned?: true; hidden?: true; is_general?: true }
+  id: number
+  date: number
+  peer: Peer
+  title: string
+  icon_color: number
+  icon_emoji_emoticon?: string
+  root_msg_id?: number
+  from_id: Peer
+  top_message: number
+  read_inbox_max_id: number
+  unread_count: number
+  unread_mentions_count: number
+  notify_settings: PeerNotifySettings
 }
 
-const mapTopic = (r: RawTopic): TopicRow => ({
-  id: r.id, peerId: r.peer_id, rootMsgId: r.root_msg_id, title: r.title, iconColor: r.icon_color,
-  iconEmoji: r.icon_emoji ?? '', closed: r.closed, hidden: r.hidden ?? false, pinned: r.pinned ?? false,
-  pos: r.pos ?? 0, isGeneral: r.is_general ?? false,
-  createdBy: r.created_by, msgCount: r.msg_count ?? 0,
-  lastText: r.last_text ?? '', lastType: r.last_type ?? '', lastSenderName: r.last_sender_name ?? '',
-  lastAt: r.last_at ?? undefined,
-  unread: r.unread ?? 0, unreadMentions: r.unread_mentions ?? 0, muted: r.muted ?? false,
-  lastOut: r.last_out ?? false, lastMsgSeq: r.last_seq ?? 0,
-})
+/** `messages.forumTopics` — контейнер списка тем. */
+export interface MessagesForumTopics {
+  _: 'messages.forumTopics'
+  count: number
+  topics: ForumTopicWire[]
+  messages: RawMyMessage[]
+  chats: Chat[]
+  users: UserReal[]
+}
 
-export function newGroupsManager({ rest, dialogs, peers }: {
+/**
+ * Строка провода → строка модели. Переводится ровно одно — ПРОСТРАНСТВО
+ * НОМЕРОВ: `top_message` сравнивается с `message.id`, и оставить его серверным
+ * значило бы сравнивать числа из разных пространств (то же делает оригинал в
+ * `saveConversation`).
+ *
+ * Заглушённость ВЫЧИСЛЯЕТСЯ по сроку (`notify_settings.mute_until`), а не
+ * приезжает булевым полем: тот же предикат, что у диалога.
+ */
+const mapTopic = (
+  r: ForumTopicWire,
+  messages?: Pick<MessagesManager, 'getMessageByPeer'>,
+  now = Math.floor(Date.now() / 1000),
+): TopicRow => {
+  const peerId = getPeerId(r.peer)
+  const topMessage = generateMessageId(r.top_message)
+  return {
+    id: r.id,
+    peerId,
+    rootMsgId: r.root_msg_id ?? 0,
+    title: r.title,
+    iconColor: r.icon_color,
+    iconEmoji: r.icon_emoji_emoticon ?? '',
+    closed: !!r.pFlags?.closed,
+    hidden: !!r.pFlags?.hidden,
+    pinned: !!r.pFlags?.pinned,
+    isGeneral: !!r.pFlags?.is_general,
+    createdBy: getPeerId(r.from_id),
+    unread: r.unread_count ?? 0,
+    unreadMentions: r.unread_mentions_count ?? 0,
+    muted: isPeerMuted(r.notify_settings, now),
+    lastMsgSeq: topMessage,
+    lastMessage: messages?.getMessageByPeer(peerId, topMessage),
+  }
+}
+
+export function newGroupsManager({ rest, dialogs, peers, messages }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
   // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
@@ -238,6 +300,12 @@ export function newGroupsManager({ rest, dialogs, peers }: {
   // попадает в зеркало главного потока вовсе, и предикаты вида чата вместе с
   // правами отвечают «нет» на всё.
   peers: Pick<PeersManager, 'saveApiPeers'>
+  // Владелец сообщений: контейнер списка тем несёт вектор `messages`, и
+  // последнее сообщение темы разрешается по ссылке `top_message` — тем же
+  // порядком, что у контейнера диалогов. Опционален по той же причине, что у
+  // диалогов: тесты, которых контейнер не касается, его не задают, и тогда
+  // строка просто остаётся без превью, а не падает.
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
 }) {
   return {
     /**
@@ -283,13 +351,25 @@ export function newGroupsManager({ rest, dialogs, peers }: {
     async setForum(peerId: number, enabled: boolean): Promise<void> {
       await rest.post(`/chats/${peerId}/forum`, { enabled })
     },
+    // Созданная тема — та же СТРОКА, что едет в списке: своей формы у ответа
+    // нет. Наружу отдаём пару адресов, которой пользуется вызывающий.
     async createTopic(peerId: number, title: string, iconColor: number, iconEmoji = ''): Promise<{ id: number; rootMsgId: number }> {
-      const r = await rest.post<{ id: number; root_msg_id: number }>(`/chats/${peerId}/topics`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
-      return { id: r.id, rootMsgId: r.root_msg_id }
+      const r = await rest.post<ForumTopicWire>(`/chats/${peerId}/topics`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
+      return { id: r.id, rootMsgId: r.root_msg_id ?? 0 }
     },
+    /**
+     * Список тем контейнером `messages.forumTopics`.
+     *
+     * Порядок обязателен и он же — порядок оригинала: сначала в хранилища
+     * втекают ПИРЫ и СООБЩЕНИЯ, и только потом разрешаются ссылки на них.
+     * Иначе `getMessageByPeer(peerId, top_message)` не нашёл бы ничего, а имя
+     * автора превью собирать было бы не из кого.
+     */
     async listTopics(peerId: number): Promise<TopicRow[]> {
-      const r = await rest.get<{ topics: RawTopic[] }>(`/chats/${peerId}/topics`)
-      return (r.topics ?? []).map(mapTopic)
+      const r = await rest.get<MessagesForumTopics>(`/chats/${peerId}/topics`)
+      peers?.saveApiPeers({ chats: r.chats, users: r.users })
+      await messages?.saveApiMessages(r.messages)
+      return (r.topics ?? []).map((t) => mapTopic(t, messages))
     },
     async closeTopic(peerId: number, topicId: number, closed: boolean): Promise<void> {
       await rest.post(`/chats/${peerId}/topics/${topicId}/close`, { closed })

@@ -128,7 +128,7 @@ export function dialogChatType(
  * портирован вовсе. Этот шаг даёт ему ПРЕДМЕТ (целое сообщение), сам порт —
  * отдельная задача следом.
  */
-function previewOf(lm: MyMessage | undefined): { text: string; isService: boolean } {
+export function previewOf(lm: MyMessage | undefined): { text: string; isService: boolean } {
   if (!lm) return { text: '', isService: false }
   const kind = getMessageKind(lm)
   // «Служебное ли» — ВЫБОР КОНСТРУКТОРА (messageService), а не значение поля

@@ -30,6 +30,9 @@ var OmittedWithoutSubject = map[string][]string{
 	"messageMediaVenue": {"provider", "venue_id", "venue_type"},
 	// Хэш для кэширования запроса; хэш-кэширования запросов у нас нет вовсе.
 	"poll": {"hash"},
+	// Голосов в опросах мы не считаем нигде — ни колонки, ни запроса (тот же
+	// пропуск назван у диалога).
+	"forumTopic": {"unread_poll_votes_count"},
 	// Ссылка-приглашение «бустнуть канал»: deep-link'ов (t.me/...?boost) у нас
 	// нет вовсе, буст ставится из своего интерфейса.
 	"premium.boostsStatus": {"boost_url"},

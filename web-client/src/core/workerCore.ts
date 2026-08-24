@@ -298,7 +298,17 @@ export function createWorkerCore() {
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
-  const groups = newGroupsManager({ rest, dialogs, peers })
+  const groups = newGroupsManager({
+    rest,
+    dialogs,
+    peers,
+    // Контейнер списка тем несёт вектор `messages`: последнее сообщение темы
+    // разрешается по ссылке `top_message` тем же порядком, что у диалогов.
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
+  })
   const channels = newChannelsManager({ rest, beforeSending, peers })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })

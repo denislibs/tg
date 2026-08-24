@@ -117,11 +117,13 @@ func hexOfBase64(t *testing.T, s string) string {
 // newChatUC builds the chat usecase from the postgres adapters for delivery tests.
 func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 	uc := newChatUCBase(pool)
-	// Черновики и очередь отложенных — необязательные зависимости
-	// (SetDrafts/SetScheduled): без них ручки `/drafts` и `/scheduled`
-	// отвечают «нет такого», и витрину проверить нечем.
+	// Черновики, очередь отложенных и темы форума — необязательные зависимости
+	// (SetDrafts/SetScheduled/SetTopics): без них ручки `/drafts`,
+	// `/scheduled` и `/topics` отвечают «нет такого», и витрину проверить
+	// нечем.
 	uc.SetDrafts(pgadapter.NewDraftsRepo(pool))
 	uc.SetScheduled(pgadapter.NewScheduledRepo(pool))
+	uc.SetTopics(pgadapter.NewTopicsRepo(pool))
 	return uc
 }
 

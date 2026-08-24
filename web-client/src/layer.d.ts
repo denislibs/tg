@@ -12643,6 +12643,7 @@ export namespace ForumTopic {
       short?: true,
       hidden?: true,
       title_missing?: true,
+      is_general?: true,
     }>,
     id: number,
     date: number,
@@ -12661,7 +12662,9 @@ export namespace ForumTopic {
     draft?: DraftMessage,
     peerId?: PeerId,
     index_0?: number,
-    peer?: Peer
+    peer?: Peer,
+    root_msg_id?: number,
+    icon_emoji_emoticon?: string
   };
 }
 

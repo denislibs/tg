@@ -529,11 +529,33 @@ Create a topic (any member): a service root message + a `forum_topics` row.
 Topic messages are thread messages (`thread_root_id` = the topic's `root_msg_id`)
 sent through the normal POST /chats/{id}/messages.
 - Request: `{ "title": "Ideas", "icon_color": 2 }` (title ≤128; color = index into the tweb TOPIC_COLORS palette)
-- 200: `{ id, chat_id, root_msg_id, title, icon_color, closed, created_by, created_at, … }`
+- 200: конструктор `forumTopic` — та же СТРОКА, что едет в списке ниже
 
 ### GET /chats/{chatID}/topics  · auth
-Topics with their thread's last message (`last_text/last_type/last_sender_name/last_at`)
-and `msg_count`, freshest first. → `{ "topics": [ … ] }`
+Темы контейнером `messages.forumTopics`, свежие сверху. Строка несёт состояние
+чтения и ССЫЛКУ на последнее сообщение (`top_message`); само сообщение едет
+вектором `messages`, карточки авторов — вектором `users`. Выжимок
+(`last_text`/`last_type`/`last_at`), склеенного сервером `last_sender_name`,
+`msg_count` и `pos` на проводе НЕТ: превью и подпись собирает клиент.
+```json
+{ "_": "messages.forumTopics", "count": 1, "pts": 0,
+  "topics": [ { "_": "forumTopic", "pFlags": { "my": true, "pinned": true },
+                "id": 2, "date": 1787334148,
+                "peer": { "_": "peerChannel", "channel_id": 1 },
+                "title": "Баги", "icon_color": 3, "icon_emoji_emoticon": "🐞",
+                "root_msg_id": 3, "top_message": 4,
+                "read_inbox_max_id": 3, "read_outbox_max_id": 0,
+                "unread_count": 1, "unread_mentions_count": 0,
+                "unread_reactions_count": 0,
+                "from_id": { "_": "peerUser", "user_id": 777001 },
+                "notify_settings": { "_": "peerNotifySettings" } } ],
+  "messages": [ … ], "chats": [], "users": [ … ] }
+```
+Наших параметров у строки три, и все объявлены клиентскими
+(`schema_additional_params.json`): `root_msg_id` (у оригинала id темы И ЕСТЬ
+номер её корня), `icon_emoji_emoticon` (у схемы это номер документа кастомного
+эмодзи) и флаг `is_general` (у оригинала General узнают по id == 1).
+Заглушённость — СРОК внутри `notify_settings`, а не булево поле рядом.
 
 ### POST /chats/{chatID}/topics/{topicID}/close  · auth
 Close/reopen a topic (topic author or chat admin). `{ "closed": true }` → `{ "_": "boolTrue" }`.

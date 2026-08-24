@@ -2,9 +2,13 @@ package domain
 
 import "time"
 
-// ForumTopic — тема форум-группы (Telegram forum topic). Сообщения темы —
-// тред: thread_root_id = RootMsgID (сервисное сообщение о создании темы).
-type ForumTopic struct {
+// ForumTopicRecord — тема форум-группы ВЫБОРКОЙ: наш набор колонок, а не объект
+// провода. Имя схемы `forumTopic` занял конструктор (mtforumtopic.go) — тот же
+// приём, что у UserRecord/ChatRecord/PrivacyRuleRecord.
+//
+// Сообщения темы — тред: thread_root_id = RootMsgID (сервисное сообщение о
+// создании темы).
+type ForumTopicRecord struct {
 	ID     int64
 	ChatID int64
 	// RootMsgID — ключ строки корневого сообщения (внутренний: по нему
@@ -26,23 +30,24 @@ type ForumTopic struct {
 	CreatedAt  time.Time
 }
 
-// TopicRow — строка списка тем: тема + последнее сообщение + счётчики,
-// как обычный dialog-ряд (Telegram forumTopic несёт unread/mute/read-state).
+// TopicRow — строка списка тем: тема плюс состояние чтения зрителя, и ничего
+// больше. Выжимок последнего сообщения (`last_text`, `last_type`,
+// `last_sender_name`, `last_at`) здесь нет: само сообщение едет вектором
+// `messages` контейнера и адресуется числом `top_message` — тот же ход, что
+// сделан у диалогов.
 type TopicRow struct {
-	Topic          ForumTopic
-	MsgCount       int
-	LastText       string
-	LastType       string
-	LastSenderName string
-	LastAt         *time.Time
-	// UnreadCount — непрочитанные сообщения темы (чужие, seq > last_read_seq).
+	Topic ForumTopicRecord
+	// LastMsgID — КЛЮЧ СТРОКИ последнего сообщения темы: по нему контейнер
+	// достаёт само сообщение одним запросом на страницу.
+	LastMsgID int64
+	// LastMsgSeq — тот же последний НОМЕРОМ в чате (top_message конструктора).
+	LastMsgSeq int64
+	// LastReadSeq — горизонт чтения зрителя в этой теме (read_inbox_max_id).
+	LastReadSeq int64
+	// UnreadCount — непрочитанные сообщения темы (чужие, seq > LastReadSeq).
 	UnreadCount int
 	// UnreadMentions — непрочитанные упоминания зрителя в этой теме.
 	UnreadMentions int
 	// Muted — тема заглушена этим пользователем (topic_user_state.muted).
 	Muted bool
-	// LastOut — последнее сообщение темы отправлено этим пользователем (для галочек).
-	LastOut bool
-	// LastMsgSeq — seq последнего сообщения темы (для пометки «прочитано»).
-	LastMsgSeq int64
 }

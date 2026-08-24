@@ -611,13 +611,13 @@ type LivestreamRepo interface {
 
 // TopicRepo хранит темы форум-групп.
 type TopicRepo interface {
-	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)
-	ByID(ctx context.Context, id int64) (domain.ForumTopic, error)
+	Create(ctx context.Context, t domain.ForumTopicRecord) (domain.ForumTopicRecord, error)
+	ByID(ctx context.Context, id int64) (domain.ForumTopicRecord, error)
 	SetClosed(ctx context.Context, id int64, closed bool) error
 	EditTopic(ctx context.Context, id int64, title, iconEmoji string, iconColor int) error
 	SetHidden(ctx context.Context, id int64, hidden bool) error
 	SetPinned(ctx context.Context, id int64, pinned bool) error
-	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopic, error)
+	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
 	// ListByChat — темы чата с per-topic состоянием для зрителя userID
 	// (unread/mentions/mute/last_out считаются относительно него).
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
