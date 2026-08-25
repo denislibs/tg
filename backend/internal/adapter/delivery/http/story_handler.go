@@ -321,17 +321,11 @@ func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// CloseFriends serves GET /me/close_friends → {user_ids:[...]}.
-func (h *StoryHandler) CloseFriends(w http.ResponseWriter, r *http.Request) {
-	user, _ := UserFromContext(r.Context())
-	ids, err := h.svc.CloseFriends(r.Context(), user.ID)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
-	// Ответ — сам ВЕКТОР ключей (`Vector<long>`), а не список под именем поля.
-	writeJSON(w, http.StatusOK, orEmptyIDs(ids))
-}
+// Витрины чтения списка близких друзей здесь НЕТ, и это форма оригинала:
+// список пишет `contacts.editCloseFriends`, а читается признак с карточки
+// контакта (`user.pFlags.close_friend`) — метода чтения схема не объявляет
+// вовсе. Прежде такая ручка была и отдавала голый `Vector<long>`, который на
+// проводе TL не разбирается: тип элемента из потока не восстановить.
 
 // SetCloseFriends serves PUT /me/close_friends body {user_ids:[...]} — full
 // replacement of the caller's close-friends list.

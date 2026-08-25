@@ -159,13 +159,15 @@ describe('StoriesManager', () => {
     expect(await mgr.stats(2, 1)).toEqual({ views: 0, viewsByDay: [], reactionsTotal: 0, reactions: [] })
   })
 
-  it('closeFriends GETs /me/close_friends → ids; setCloseFriends PUTs body', async () => {
-    const { rest, calls } = fakeRest([2, 3], { ok: true })
+  // Список близких друзей только ПИШЕТСЯ. Читать его отдельной ручкой было
+  // нашей выдумкой: у оригинала есть `contacts.editCloseFriends`, а метода
+  // чтения нет — признак едет флагом карточки (`user.pFlags.close_friend`).
+  it('setCloseFriends PUTs body; ручки чтения списка нет вовсе', async () => {
+    const { rest, calls } = fakeRest({ ok: true })
     const mgr = newStoriesManager({ rest })
-    expect(await mgr.closeFriends()).toEqual([2, 3])
-    expect(calls[0]).toEqual({ method: 'GET', path: '/me/close_friends' })
+    expect('closeFriends' in mgr).toBe(false)
     await mgr.setCloseFriends([4, 5])
-    expect(calls[1]).toEqual({ method: 'PUT', path: '/me/close_friends', body: { user_ids: [4, 5] } })
+    expect(calls[0]).toEqual({ method: 'PUT', path: '/me/close_friends', body: { user_ids: [4, 5] } })
   })
 
   it('stealth-окно — конструктор с СЕКУНДАМИ; «окна нет» это отсутствие параметра', async () => {

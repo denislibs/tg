@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
+	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 )
@@ -29,7 +30,12 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	)
 	storySvc.SetMessageSender(chatUC)
 	storyH := NewStoryHandler(storySvc, chatUC)
-	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
+	// Адресная книга подключена не для полноты: близость к другу читается
+	// именно оттуда — флагом карточки (`user.pFlags.close_friend`). Без неё
+	// связка «поставил близким → видно на карточке» была бы непроверяема.
+	contactsUC := usecasecontacts.New(pgadapter.NewContactsRepo(pool))
+	contactsUC.SetCloseFriends(storySvc)
+	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
 // ── форма ответа: контейнеры схемы ──────────────────────────────────────────
@@ -107,17 +113,41 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 	tokenB, idB := signUp(t, h, pool, "+79990000071")
 	tokenC, _ := signUp(t, h, pool, "+79990000072")
 
-	// A sets B as a close friend; GET reflects it.
+	// A ставит B близким другом. Читается это НЕ отдельной ручкой — её нет ни
+	// у нас, ни в схеме, — а флагом на карточке контакта.
 	rec := authedReq(t, h, http.MethodPut, "/me/close_friends", tokenA, map[string]any{"user_ids": []int64{idB}})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("set close_friends: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = authedReq(t, h, http.MethodGet, "/me/close_friends", tokenA, nil)
-	// Ответ — сам ВЕКТОР ключей, а не список под именем поля.
-	var cf []int64
-	_ = json.Unmarshal(rec.Body.Bytes(), &cf)
-	if len(cf) != 1 || cf[0] != idB {
-		t.Fatalf("close_friends = %v; want [%d]", cf, idB)
+	rec = authedReq(t, h, http.MethodPost, "/contacts", tokenA,
+		map[string]any{"contact_id": idB, "first_name": "Близкий"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/contacts", tokenA, nil)
+	var book struct {
+		Users []struct {
+			ID     int64           `json:"id"`
+			PFlags map[string]bool `json:"pFlags"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &book); err != nil {
+		t.Fatalf("адресная книга не разбирается: %v (%s)", err, rec.Body.String())
+	}
+	var friendCard *struct {
+		ID     int64           `json:"id"`
+		PFlags map[string]bool `json:"pFlags"`
+	}
+	for i := range book.Users {
+		if book.Users[i].ID == idB {
+			friendCard = &book.Users[i]
+		}
+	}
+	if friendCard == nil {
+		t.Fatalf("карточки %d нет в книге: %s", idB, rec.Body.String())
+	}
+	if !friendCard.PFlags["close_friend"] {
+		t.Fatalf("close_friend не поднят: pFlags = %v", friendCard.PFlags)
 	}
 
 	// A uploads media and posts a "close" story.

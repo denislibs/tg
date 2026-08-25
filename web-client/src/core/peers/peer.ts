@@ -199,6 +199,10 @@ export interface UserReal {
     bot: true
     verified: true
     premium: true
+    /** этот человек у ЗРИТЕЛЯ в близких друзьях (список правит `PUT
+     *  /me/close_friends`, а читается он отсюда — ручки чтения нет, как и
+     *  метода чтения в схеме) */
+    close_friend: true
   }>
   id: number
   first_name?: string

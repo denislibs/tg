@@ -90,6 +90,53 @@ func TestWireTL_ResponsesTravelAsSchemaBytes(t *testing.T) {
 	}
 }
 
+// Витрина-ВЕКТОР едет тем же проводом. `/presence` — это буквально
+// `contacts.getStatuses = Vector<ContactStatus>` оригинала: у голого вектора
+// собственный id, поэтому он боксирован не меньше конструктора, и объявления
+// метода разбору не нужно.
+func TestWireTL_VectorViewTravelsAsSchemaBytes(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	token, meID := signUp(t, h, pool, "+79990130004")
+	_, otherID := signUp(t, h, pool, "+79990130005")
+
+	path := "/presence?ids=" + itoa(meID) + "," + itoa(otherID)
+	rec := tlReq(t, h, http.MethodGet, path, token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("присутствие: %d %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != WireTLContentType {
+		t.Fatalf("Content-Type = %q, ожидался провод TL", ct)
+	}
+
+	var got []struct {
+		Underscore string `json:"_"`
+		UserID     int64  `json:"user_id"`
+		Status     struct {
+			Underscore string `json:"_"`
+		} `json:"status"`
+	}
+	if err := domain.WireCodec.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("вектор не разбирается кодеком: %v (% x)", err, rec.Body.Bytes())
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("строк %d, ожидали 2: %+v", len(got), got)
+	}
+	for i, row := range got {
+		if row.Underscore != "contactStatus" {
+			t.Fatalf("строка %d = %q, ожидался contactStatus", i, row.Underscore)
+		}
+		// Присутствие в тестовом роутере не подключено, поэтому о статусе
+		// ничего не известно — и это ЧЕСТНЫЙ userStatusEmpty, а не «оффлайн».
+		if row.Status.Underscore != "userStatusEmpty" {
+			t.Fatalf("строка %d несёт статус %q", i, row.Status.Underscore)
+		}
+	}
+	if got[0].UserID != meID || got[1].UserID != otherID {
+		t.Fatalf("порядок строк не сохранён: %+v", got)
+	}
+}
+
 // Тот же запрос БЕЗ заголовка остаётся на JSON: договорённость о проводе
 // заключает клиент, и старый её не заключает вовсе.
 func TestWireTL_WithoutHeaderStaysJSON(t *testing.T) {

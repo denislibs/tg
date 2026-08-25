@@ -30,6 +30,18 @@ type CustomPhotoRepo interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
+// CloseFriendsRepo отвечает на вопрос «кто из этих людей у владельца в близких
+// друзьях». Признак зависит от ЗРИТЕЛЯ и потому едет флагом карточки
+// (`user.pFlags.close_friend`), а не отдельной витриной-списком: у оригинала
+// список пишется методом `contacts.editCloseFriends`, а читается именно
+// отсюда — метода чтения в схеме нет вовсе.
+//
+// Опционален, как и остальные обогатители списка: без него флаг просто не
+// проставляется, а адресная книга работает.
+type CloseFriendsRepo interface {
+	CloseFriends(ctx context.Context, ownerID int64) ([]int64, error)
+}
+
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): батчем —
 // видимость аспекта key (телефоны в списке), точечно — может ли viewer добавить
 // owner по номеру. Опционален: без него фильтры/ограничения не применяются.

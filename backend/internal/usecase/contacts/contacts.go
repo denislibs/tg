@@ -27,6 +27,7 @@ type Interactor struct {
 	repo    ContactsRepo
 	privacy PrivacyChecker
 	photos  CustomPhotoRepo
+	close   CloseFriendsRepo
 }
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
@@ -36,6 +37,10 @@ func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
 
 // SetCustomPhotos подключает хранилище личных фото контактов (optional).
 func (i *Interactor) SetCustomPhotos(p CustomPhotoRepo) { i.photos = p }
+
+// SetCloseFriends подключает список близких друзей (optional): признак едет
+// флагом карточки контакта, как у оригинала.
+func (i *Interactor) SetCloseFriends(p CloseFriendsRepo) { i.close = p }
 
 // SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
 // аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
@@ -204,6 +209,23 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 				list[idx].User.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 				list[idx].HasCustomPhoto = true
 			}
+		}
+	}
+	// Близкие друзья — ФЛАГ КАРТОЧКИ, а не отдельная витрина-список: у
+	// оригинала метода чтения нет вовсе, признак читается с самого `user`
+	// (`pFlags.close_friend`). Один запрос на весь список, как у фото и
+	// приватности выше.
+	if i.close != nil {
+		friends, err := i.close.CloseFriends(ctx, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		inList := make(map[int64]bool, len(friends))
+		for _, id := range friends {
+			inList[id] = true
+		}
+		for idx := range list {
+			list[idx].User.MarkCloseFriend(inList[list[idx].UserID])
 		}
 	}
 	return list, nil

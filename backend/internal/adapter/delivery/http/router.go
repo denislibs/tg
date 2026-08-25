@@ -405,7 +405,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/stories/{peerID}/{storySeq}/stats", storyH.Stats)
 			pr.Patch("/stories/{peerID}/{storySeq}", storyH.Edit)
 			pr.Delete("/stories/{peerID}/{storySeq}", storyH.Delete)
-			pr.Get("/me/close_friends", storyH.CloseFriends)
+			// Только запись: у оригинала список близких друзей ПИШЕТ
+			// `contacts.editCloseFriends`, а читается признак с карточки
+			// контакта (`user.pFlags.close_friend`) — метода чтения в схеме
+			// нет вовсе.
 			pr.Put("/me/close_friends", storyH.SetCloseFriends)
 		}
 

@@ -272,12 +272,19 @@ func NewUserEmpty(id int64) UserEmpty {
 //	Bot            — users.is_bot
 //	Verified       — users.is_verified (defect 5 разбора: в батче терялся)
 //	Premium        — users.is_premium
+//	CloseFriend    — есть строка close_friends(owner=зритель, user=этот)
 //
 // Остальные булевы флаги схемы (support, scam, fake, bot_chat_history,
 // bot_nochats, bot_inline_geo, apply_min_photo, attach_menu_enabled,
-// close_friend, stories_*, contact_require_premium, bot_*) предмета у нас не
-// имеют: ни колонки, ни механики за ними нет. Они не объявляются вовсе, а не
+// stories_*, contact_require_premium, bot_*) предмета у нас не имеют: ни
+// колонки, ни механики за ними нет. Они не объявляются вовсе, а не
 // выставляются наугад.
+//
+// `close_friend` в этом списке был ОШИБОЧНО: механика есть — таблица
+// `close_friends` и ручка её правки. Не было только места на карточке, и
+// потому список близких ездил отдельной ручкой-вектором ключей. У оригинала
+// такой ручки нет вовсе: пишет `contacts.editCloseFriends`, а ЧИТАЕТСЯ признак
+// отсюда, с самой карточки.
 type UserFlags struct {
 	Self          bool
 	ContactRecord bool
@@ -286,11 +293,14 @@ type UserFlags struct {
 	Bot           bool
 	Verified      bool
 	Premium       bool
+	// CloseFriend — зависит от ЗРИТЕЛЯ, как self/contact: «этот человек в моём
+	// списке близких», а не свойство самого пользователя.
+	CloseFriend bool
 }
 
 // userFlagNames — что keepPFlags пропускает в модель на разборе. Флаг, которого
 // здесь нет, из чужого кадра в модель не попадёт.
-var userFlagNames = []string{"self", "contact", "mutual_contact", "deleted", "bot", "verified", "premium"}
+var userFlagNames = []string{"self", "contact", "mutual_contact", "deleted", "bot", "verified", "premium", "close_friend"}
 
 // user#31774388 flags:# self:flags.10?true contact:flags.11?true
 // mutual_contact:flags.12?true deleted:flags.13?true bot:flags.14?true
@@ -381,8 +391,16 @@ func NewUser(id int64, f UserFlags) UserReal {
 	setPFlag(&u.PFlags, "bot", f.Bot)
 	setPFlag(&u.PFlags, "verified", f.Verified)
 	setPFlag(&u.PFlags, "premium", f.Premium)
+	setPFlag(&u.PFlags, "close_friend", f.CloseFriend)
 	return u
 }
+
+// MarkCloseFriend поднимает `pFlags.close_friend` на уже собранной карточке.
+//
+// Отдельный метод, а не поле в UserFlags при сборке: список близких друзей
+// известен ПАЧКОЙ (один запрос на весь список контактов), а карточки к тому
+// моменту уже собраны read-моделью. Тот же приём, что у личного фото контакта.
+func (u *UserReal) MarkCloseFriend(v bool) { setPFlag(&u.PFlags, "close_friend", v) }
 
 func (u *UserReal) UnmarshalJSON(b []byte) error {
 	type plain UserReal

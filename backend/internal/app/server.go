@@ -87,6 +87,12 @@ func registerServer(p serverParams) {
 	// галерею получателя через auth-usecase.
 	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
 	p.ContactsUC.SetCustomPhotos(contactPhotos)
+
+	// Близкие друзья: признак едет ФЛАГОМ карточки контакта
+	// (`user.pFlags.close_friend`), как у оригинала — метода чтения списка в
+	// схеме нет вовсе. Владелец списка — подсистема историй, она же его и
+	// правит, поэтому источник здесь она, а не второй репозиторий.
+	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
 	p.ChatUC.SetProfilePhotos(p.AuthUC)
 

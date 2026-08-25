@@ -76,7 +76,12 @@ export default function AddStorySheet({
   const [closeCount, setCloseCount] = useState<number | null>(null)
   useEffect(() => {
     let alive = true
-    managers.stories.closeFriends().then((ids) => { if (alive) setCloseCount(ids.length) }).catch(() => {})
+    // Считаем по КАРТОЧКАМ адресной книги: близость — флаг контакта
+    // (`pFlags.close_friend`), отдельного списка на проводе нет.
+    managers.contacts
+      .list()
+      .then((cs) => { if (alive) setCloseCount(cs.filter((c) => c.user.pFlags?.close_friend).length) })
+      .catch(() => {})
     return () => { alive = false }
   }, [managers])
 

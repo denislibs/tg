@@ -125,12 +125,11 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       return r ?? 0
     },
     async view(authorId: number, id: number): Promise<void> { await rest.post(`/stories/${authorId}/${id}/view`, {}) },
-    // Close friends: список id близких друзей + его полная замена.
-    async closeFriends(): Promise<number[]> {
-      // Ответ — сам ВЕКТОР ключей, а не список под именем поля.
-      const r = await rest.get<number[]>('/me/close_friends')
-      return r ?? []
-    },
+    // Close friends: только ЗАМЕНА списка. Чтения здесь нет и у оригинала: он
+    // пишет `contacts.editCloseFriends`, а признак читается с карточки
+    // контакта (`user.pFlags.close_friend`) — метода чтения схема не
+    // объявляет. Прежняя ручка отдавала голый вектор ключей, который на
+    // проводе TL не разбирается: тип элемента из потока не восстановить.
     async setCloseFriends(ids: number[]): Promise<void> { await rest.put('/me/close_friends', { user_ids: ids }) },
     // Stealth mode: текущее окно + активация. Ошибки (409 cooldown / 503
     // недоступно) прокидываются наружу как HttpError — обрабатывает вызывающий.
