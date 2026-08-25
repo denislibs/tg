@@ -2,6 +2,7 @@ package tl
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -114,6 +115,59 @@ func TestUnmarshal_IntoValue(t *testing.T) {
 	if got.Underscore != "messageEntityTextUrl" || got.Offset != 3 || got.Length != 4 ||
 		got.URL != "https://example.org" {
 		t.Fatalf("разобрано как %#v", got)
+	}
+}
+
+// Круг для вектора верхнего уровня: собрали срез — разобрали в срез. Форма
+// `contacts.getStatuses = Vector<ContactStatus>` у оригинала, и вложенное
+// объединение (`UserStatus`) внутри элемента разбирается тем же ходом.
+func TestUnmarshal_TopLevelVectorRoundTrip(t *testing.T) {
+	value := []any{
+		map[string]any{"_": "contactStatus", "user_id": 7,
+			"status": map[string]any{"_": "userStatusOnline", "expires": 1750000000}},
+		map[string]any{"_": "contactStatus", "user_id": 9,
+			"status": map[string]any{"_": "userStatusRecently", "pFlags": map[string]bool{}}},
+	}
+
+	body, err := Marshal(value)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var got []struct {
+		Underscore string `json:"_"`
+		UserID     int64  `json:"user_id"`
+		Status     struct {
+			Underscore string `json:"_"`
+			Expires    int    `json:"expires"`
+		} `json:"status"`
+	}
+	if err := bare.Unmarshal(body, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("разобрано %d элементов, ожидали 2", len(got))
+	}
+	if got[0].UserID != 7 || got[0].Status.Underscore != "userStatusOnline" ||
+		got[0].Status.Expires != 1750000000 {
+		t.Fatalf("первый элемент = %#v", got[0])
+	}
+	if got[1].UserID != 9 || got[1].Status.Underscore != "userStatusRecently" {
+		t.Fatalf("второй элемент = %#v", got[1])
+	}
+}
+
+// Вектор верхнего уровня опознаётся ПО ПОТОКУ, а не по ожиданию вызывающего:
+// `UnmarshalTree` просят конструктор, а приехал вектор — это ошибка, а не
+// молча взятый первый элемент.
+func TestUnmarshal_TopLevelVectorIsNotAConstructor(t *testing.T) {
+	body, _ := Marshal([]any{map[string]any{"_": "messageEntityBold", "offset": 0, "length": 1}})
+
+	if _, err := bare.UnmarshalTree(body); err == nil {
+		t.Fatal("вектор принят за конструктор")
+	} else if !strings.Contains(err.Error(), "ожидался конструктор") {
+		t.Fatalf("ошибка %q", err)
 	}
 }
 

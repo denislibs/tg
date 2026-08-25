@@ -18,7 +18,7 @@ import (
 // Отдельного разборщика на каждый конструктор нет и не будет по той же
 // причине, по какой его нет у записи: раскладку знает схема.
 func (codec *Codec) Unmarshal(body []byte, v any) error {
-	node, err := codec.UnmarshalTree(body)
+	node, err := codec.UnmarshalValue(body)
 	if err != nil {
 		return err
 	}
@@ -38,15 +38,63 @@ func (codec *Codec) Unmarshal(body []byte, v any) error {
 // сравнивался механически: собрали значение, разобрали обратно — расхождение
 // видно как разница двух JSON, а не как «где-то поехало».
 func (codec *Codec) UnmarshalTree(body []byte) (map[string]any, error) {
-	r := NewReader(body)
-	obj, err := codec.decodeBoxed(r, "")
+	node, err := codec.UnmarshalValue(body)
 	if err != nil {
 		return nil, err
 	}
+	obj, ok := node.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("tl: на верхнем уровне %T, а ожидался конструктор", node)
+	}
+	return obj, nil
+}
+
+// UnmarshalValue разбирает тело TL в дерево, допуская вектор верхним уровнем.
+//
+// Что там лежит, читающая сторона узнаёт ИЗ ПОТОКА: у вектора собственный id
+// (`0x1cb5c415`), у конструктора — свой. Поэтому объявление метода нужно
+// только тому, кто кодирует голые примитивы, — разбору боксированного оно не
+// требуется вовсе (`fetchObject` у оригинала работает так же).
+func (codec *Codec) UnmarshalValue(body []byte) (any, error) {
+	r := NewReader(body)
+
+	id, err := r.PeekID()
+	if err != nil {
+		return nil, err
+	}
+
+	var node any
+	if id == IDVector {
+		node, err = codec.decodeTopVector(r)
+	} else {
+		node, err = codec.decodeBoxed(r, "")
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	if r.Remaining() != 0 {
 		return nil, fmt.Errorf("tl: после разбора осталось %d байт", r.Remaining())
 	}
-	return obj, nil
+	return node, nil
+}
+
+// decodeTopVector читает вектор верхнего уровня. Элементы боксированы — иначе
+// их тип неоткуда взять (см. encodeTopVector).
+func (codec *Codec) decodeTopVector(r *Reader) ([]any, error) {
+	n, err := r.VectorHeader()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]any, 0, n)
+	for i := 0; i < n; i++ {
+		item, err := codec.decodeBoxed(r, "")
+		if err != nil {
+			return nil, fmt.Errorf("элемент %d: %w", i, err)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // decodeBoxed читает конструктор вместе с его числовым id.

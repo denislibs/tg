@@ -66,10 +66,62 @@ func (codec *Codec) Marshal(v any) ([]byte, error) {
 		return nil, err
 	}
 	w := NewWriter(256)
-	if err := codec.encodeBoxed(w, node, ""); err != nil {
+	if err := codec.encodeTop(w, node); err != nil {
 		return nil, err
 	}
 	return w.Result(), nil
+}
+
+// encodeTop пишет ЗНАЧЕНИЕ верхнего уровня: конструктор либо вектор.
+//
+// Вектор здесь не поблажка, а форма самого оригинала: голым `Vector<t>`
+// отвечают 39 его методов (`contacts.getStatuses = Vector<ContactStatus>`,
+// `users.getUsers = Vector<User>`). Читающая сторона узнаёт вектор по его
+// собственному id (`0x1cb5c415`), поэтому объявления метода для РАЗБОРА не
+// требуется — ровно как в `fetchObject`.
+func (codec *Codec) encodeTop(w *Writer, node any) error {
+	switch n := node.(type) {
+	case map[string]any:
+		return codec.encodeBoxed(w, n, "")
+	case []any:
+		return codec.encodeTopVector(w, n)
+	default:
+		return fmt.Errorf("tl: на верхнем уровне значение %T — там бывает конструктор или вектор", node)
+	}
+}
+
+// encodeTopVector пишет вектор верхнего уровня.
+//
+// Элементы обязаны быть БОКСИРОВАННЫМИ, и это не наше ограничение, а граница
+// самого формата: тип элемента `Vector<int>` из потока не восстановить —
+// голое число не несёт id. У оригинала его берут из объявления метода в схеме
+// (`storeMethod` возвращает `methodData.type`), и пока наши ручки методами не
+// объявлены (задача #67), такую витрину честнее не выпускать на провод, чем
+// отдать байты, которые читающая сторона разберёт наугад.
+//
+// Однородность требуется по той же причине, по которой её требует тип
+// `Vector<t>`: разбор идёт по объявлению места, а не по каждому элементу.
+func (codec *Codec) encodeTopVector(w *Writer, items []any) error {
+	w.VectorHeader(len(items))
+
+	want := ""
+	for i, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			return fmt.Errorf("tl: элемент %d вектора — %T; на проводе он не несёт своего типа, "+
+				"а объявления метода у ручки пока нет", i, item)
+		}
+		if err := codec.encodeBoxed(w, obj, want); err != nil {
+			return fmt.Errorf("элемент %d: %w", i, err)
+		}
+		if want == "" {
+			predicate, _ := obj["_"].(string)
+			if c, ok := ConstructorByPredicate(predicate); ok {
+				want = c.Type
+			}
+		}
+	}
+	return nil
 }
 
 // isStubbed — параметр объявлен заглушкой для этого конструктора.

@@ -201,6 +201,57 @@ func TestMarshal_ClientOnlyConstructorIsRefused(t *testing.T) {
 	assertError(t, err, "нет в схеме")
 }
 
+// Вектор — законное ЗНАЧЕНИЕ ВЕРХНЕГО УРОВНЯ, а не только тип параметра: голым
+// `Vector<t>` отвечают 39 методов оригинала (`contacts.getStatuses =
+// Vector<ContactStatus>`, `users.getUsers = Vector<User>`). Читающая сторона
+// узнаёт его по собственному id, поэтому объявления метода разбору не нужно.
+func TestMarshal_TopLevelVector(t *testing.T) {
+	bold := map[string]any{"_": "messageEntityBold", "offset": 5, "length": 11}
+
+	body, err := Marshal([]any{bold, bold})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	item := goldenHex(t, "messageEntityBold")
+	want := "15c4b51c" + "02000000" + item + item
+	if got := hex.EncodeToString(body); got != want {
+		t.Fatalf("байты вектора разошлись\n получили %s\n ожидали  %s", got, want)
+	}
+}
+
+// Пустой вектор — это шапка со счётчиком 0, а не пустое тело: читающая сторона
+// всё равно снимает с потока восемь байт.
+func TestMarshal_TopLevelVectorEmpty(t *testing.T) {
+	body, err := Marshal([]any{})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if got, want := hex.EncodeToString(body), "15c4b51c00000000"; got != want {
+		t.Fatalf("пустой вектор = %s, ожидали %s", got, want)
+	}
+}
+
+// Голые примитивы вектором верхнего уровня не выпускаются. Это не придирка
+// кодека: тип элемента `Vector<int>` из потока не восстановить — число не
+// несёт id, и у оригинала его берут из объявления метода в схеме. Пока наши
+// ручки методами не объявлены (#67), отдать такие байты значило бы отдать их
+// наугад.
+func TestMarshal_TopLevelVectorRefusesNakedItems(t *testing.T) {
+	_, err := Marshal([]any{1, 2, 3})
+	assertError(t, err, "не несёт своего типа")
+}
+
+// Вектор ОДНОРОДЕН — по той же причине, по какой однороден тип `Vector<t>`:
+// разбор идёт по объявлению места, а не по каждому элементу.
+func TestMarshal_TopLevelVectorRefusesMixedUnions(t *testing.T) {
+	_, err := Marshal([]any{
+		map[string]any{"_": "messageEntityBold", "offset": 0, "length": 1},
+		map[string]any{"_": "keyboardButton", "text": "ok"},
+	})
+	assertError(t, err, "стоит keyboardButton из объединения KeyboardButton")
+}
+
 func assertError(t *testing.T, err error, want string) {
 	t.Helper()
 	if err == nil {

@@ -221,6 +221,19 @@ func (r *Reader) Double() (float64, error) {
 // ConstructorID читает числовой id конструктора.
 func (r *Reader) ConstructorID() (int32, error) { return r.Int() }
 
+// PeekID подглядывает числовой id, НЕ сдвигая позицию.
+//
+// Нужен ровно там, где место может занимать и конструктор, и вектор: у
+// оригинала это делает `fetchObject`, сравнивая прочитанный id с id вектора
+// (`tl_utils.ts:696`). Разница в том, что у него провод уже прочитан на 4
+// байта вперёд, а мы возвращаем решение вызывающему.
+func (r *Reader) PeekID() (int32, error) {
+	if r.Remaining() < 4 {
+		return 0, fmt.Errorf("%w: нужно 4 байта, осталось %d", ErrShortBuffer, r.Remaining())
+	}
+	return int32(binary.LittleEndian.Uint32(r.buf[r.offset : r.offset+4])), nil
+}
+
 // Bool читает конструктор boolTrue/boolFalse.
 func (r *Reader) Bool() (bool, error) {
 	id, err := r.Int()
