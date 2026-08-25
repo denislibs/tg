@@ -13,7 +13,7 @@ export interface CalendarDay {
   has_thumb: boolean
 }
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
-import { getPeerId } from '../peers/peerId'
+import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, Chat } from '../peers/peer'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
@@ -695,9 +695,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     },
 
     // Кто сейчас в видеочате группы (для баннера Join).
+    //
+    // Участник приезжает ССЫЛКОЙ `peerUser`, а не голым ключом: контейнера
+    // `phone.groupCall` у нас нет и быть не может (звонок — P2P-mesh без
+    // объекта звонка и без SSRC, см. хендлер), но адресация перенимается у
+    // оригинала. Знаковый ключ выводится из конструктора, как везде.
     async groupCallParticipants(peerId: number): Promise<number[]> {
-      // Ответ — сам ВЕКТОР ключей (`Vector<long>`), а не список под именем поля.
-      return (await rest.get<number[]>(`/chats/${peerId}/group_call`)) ?? []
+      const r = (await rest.get<Peer[]>(`/chats/${peerId}/group_call`)) ?? []
+      return r.map(getPeerId)
     },
 
     async viewers(peerId: number, msgId: number): Promise<number[]> {

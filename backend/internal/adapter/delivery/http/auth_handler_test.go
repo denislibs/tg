@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,8 +128,55 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 	uc.SetStars(pgadapter.NewStarsRepo(pool))
 	uc.SetPolls(pgadapter.NewPollsRepo(pool))
 	uc.SetStarReactions(pgadapter.NewStarReactionsRepo(pool))
+	// Участники видеочата живут эфемерно (в производстве — Redis). Без стора
+	// ручка всегда отвечала пустым вектором, и её витрину нельзя было
+	// проверить ВООБЩЕ — ни форму участника, ни доступ.
+	uc.SetGroupCalls(testGroupCalls)
 	return uc
 }
+
+// memGroupCalls — стор участников звонка в памяти процесса. Эфемерность здесь
+// не упрощение, а сама природа предмета: список живёт, пока идёт звонок.
+type memGroupCalls struct {
+	mu   sync.Mutex
+	byID map[int64][]int64
+}
+
+func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, id := range m.byID[chatID] {
+		if id == userID {
+			return nil
+		}
+	}
+	m.byID[chatID] = append(m.byID[chatID], userID)
+	return nil
+}
+
+func (m *memGroupCalls) Leave(_ context.Context, chatID, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.byID[chatID][:0]
+	for _, id := range m.byID[chatID] {
+		if id != userID {
+			kept = append(kept, id)
+		}
+	}
+	m.byID[chatID] = kept
+	return nil
+}
+
+func (m *memGroupCalls) Participants(_ context.Context, chatID int64) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]int64(nil), m.byID[chatID]...), nil
+}
+
+// testGroupCalls — общий стор для роутеров теста: тесту нужен доступ к нему,
+// чтобы посадить кого-то в звонок, а через HTTP это не делается (вход в
+// звонок — кадр сокета).
+var testGroupCalls = &memGroupCalls{byID: map[int64][]int64{}}
 
 func newChatUCBase(pool *pgxpool.Pool) *usecasechat.Interactor {
 	return usecasechat.New(

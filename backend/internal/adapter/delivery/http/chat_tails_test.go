@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Хвостовые витрины чата: у каждой был безымянный ключ-обёртка вокруг значения
@@ -57,14 +59,36 @@ func TestChatTails_ValuesTravelWithoutWrappers(t *testing.T) {
 		t.Fatalf("номер приехал не числом: %v (%s)", err, rec.Body.String())
 	}
 
-	// Участники видеочата — сам ВЕКТОР ключей.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/group_call", tokenA, nil)
+	// Участники видеочата — вектор ССЫЛОК `peerUser`, а не голых ключей.
+	// Контейнера `phone.groupCall` тут нет намеренно: у оригинала звонок —
+	// серверная конференция со своим объектом и SSRC участника, у нас
+	// P2P-mesh. Перенимается адресация, а не выдуманный объект.
+	// Видеочат бывает у ГРУППЫ, и адресуется она отрицательным ключом, из
+	// которого id строки чата выводится напрямую. В звонок сажаем без HTTP:
+	// вход — кадр сокета.
+	rec = authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{
+		"title": "Видеочат", "member_ids": []int64{idB},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("создание группы: %d %s", rec.Code, rec.Body.String())
+	}
+	groupPeer := createdPeerID(t, rec)
+	if err := testGroupCalls.Join(t.Context(), domain.PeerID(groupPeer).ToChatID(), idA); err != nil {
+		t.Fatalf("вход в звонок: %v", err)
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(groupPeer)+"/group_call", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("видеочат: %d %s", rec.Code, rec.Body.String())
 	}
-	var ids []int64
-	if err := json.Unmarshal(rec.Body.Bytes(), &ids); err != nil {
+	var peers []struct {
+		Underscore string `json:"_"`
+		UserID     int64  `json:"user_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &peers); err != nil {
 		t.Fatalf("участники не вектор: %v (%s)", err, rec.Body.String())
+	}
+	if len(peers) != 1 || peers[0].Underscore != "peerUser" || peers[0].UserID != idA {
+		t.Fatalf("участники = %+v; ожидался один peerUser с ключом %d", peers, idA)
 	}
 
 	// Тема чата: эхо запроса ответом не является — «получилось» конструктором.

@@ -1765,12 +1765,24 @@ func (h *ChatHandler) GroupCallParticipants(w http.ResponseWriter, r *http.Reque
 		h.mapScheduledErr(w, err)
 		return
 	}
-	if ids == nil {
-		ids = []int64{}
+	// Ответ — вектор ССЫЛОК на участников (`Vector<Peer>`), а не голых ключей.
+	//
+	// Контейнера `phone.groupCall` здесь НЕ будет, и это решение, а не
+	// упущение: у оригинала звонок — серверная конференция с собственным
+	// объектом (`groupCall{id, access_hash, participants_count, version}`) и
+	// участником, у которого обязателен `source` — SSRC потока в микшере. У
+	// нас звонок это P2P-mesh: сервер только реле сигналинга, объекта звонка
+	// не существует, SSRC никто не назначает. Заполнить обязательные
+	// параметры было бы нечем — пришлось бы выдумать id и версию.
+	//
+	// Что перенимается — адресация: участник это `Peer`, а не число. Заодно
+	// вектор становится разбираемым на проводе TL: у `peerUser` есть свой id,
+	// у голого long — нет.
+	peers := make([]domain.Peer, 0, len(ids))
+	for _, id := range ids {
+		peers = append(peers, domain.NewPeerUser(id))
 	}
-	// Ответ — ВЕКТОР ключей: обёртка `{"participants": …}` конструктора не
-	// имеет, а `Vector<long>` это объявленный тип схемы.
-	writeJSON(w, http.StatusOK, orEmptyIDs(ids))
+	writeJSON(w, http.StatusOK, peers)
 }
 
 // ── RTMP-трансляции (Telegram livestream) ──
@@ -2426,13 +2438,4 @@ func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// orEmptyIDs — вектор ключей, который на проводе остаётся вектором: «пусто» у
-// обязательного вектора это `[]`, а не null.
-func orEmptyIDs(ids []int64) []int64 {
-	if ids == nil {
-		return []int64{}
-	}
-	return ids
 }
