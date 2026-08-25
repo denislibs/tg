@@ -93,6 +93,7 @@ import BubbleGroups, {
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
+import { createMessageTime } from './messageTime'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -877,6 +878,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.renderMedia(message, bubbleContainer, messageDiv)
 
     this.renderReply(message, bubbleContainer, messageDiv)
+
+    // Время — В КОНЕЦ ТЕЛА сообщения (tweb :7630-7631
+    // `messageDiv.append(timeSpan, clearfix())`). Точка вставки у оригинала
+    // меняется (подпись документа, floating, внутрь реакций), но базовая
+    // именно эта; остальные приедут вместе со своими подсистемами.
+    messageDiv.append(createMessageTime(message))
 
     // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
     // её вставки (:9567-9590); `nameContainer` в оригинале — тот же

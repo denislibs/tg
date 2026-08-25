@@ -104,6 +104,16 @@ const peerCard = (id: number, firstName: string): UserReal =>
 /** Отрисованные баблы СООБЩЕНИЙ в порядке DOM. `.service` исключены: дата-бабл
  *  секции дня (и его `is-fake`-дубль) — тоже `.bubble`, но сообщения за ними не
  *  стоит (порт tweb `createDateBubble`). */
+/** Текст бабла БЕЗ времени. Время лежит внутри `.message` (порт tweb
+ *  `messageDiv.append(timeSpan)`, bubbles.ts:7630) и в `textContent` попадает
+ *  дважды — сам `span.time` и его дубль в `.time-inner`. Тесты здесь про ТЕКСТ
+ *  сообщения, поэтому время из сравнения снимается. */
+function textOf(el: Element): string {
+  const clone = el.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('.time').forEach((t) => { t.remove() })
+  return clone.textContent ?? ''
+}
+
 const rendered = (b: ChatBubbles) =>
   Array.from(b.chatInner.querySelectorAll<HTMLElement>('.bubble:not(.service)'))
 
@@ -246,7 +256,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
 
     expect(mirrorWindow(String(CHAT))).toEqual(page)
     expect(rendered(bubbles).map((el) => el.dataset.mid)).toEqual(['1', '2'])
-    expect(rendered(bubbles)[1].querySelector('.bubble-content')!.textContent).toBe('привет')
+    expect(textOf(rendered(bubbles)[1].querySelector('.bubble-content')!)).toBe('привет')
   })
 
   it('бабл — .bubble > .bubble-content-wrapper > .bubble-content с текстом', async () => {
@@ -260,7 +270,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
     expect(wrapper.className).toBe('bubble-content-wrapper')
     expect(wrapper.children).toHaveLength(1)
     expect(wrapper.firstElementChild!.className).toBe('bubble-content')
-    expect(wrapper.firstElementChild!.textContent).toBe('ок')
+    expect(textOf(wrapper.firstElementChild!)).toBe('ок')
   })
 
   it('запрашивает окно ТРЕДА, когда лента открыта на треде', async () => {
@@ -299,7 +309,7 @@ describe('ChatBubbles — подписки на события истории', 
       await settle()
 
       expect(rendered(bubbles!).map((el) => el.dataset.mid)).toEqual(['1', '2', '3'])
-      expect(rendered(bubbles!)[2].querySelector('.bubble-content')!.textContent).toBe('новое')
+      expect(textOf(rendered(bubbles!)[2].querySelector('.bubble-content')!)).toBe('новое')
       expect(bubbles!.getBubble(makeFullMid(CHAT, 3))).toBe(rendered(bubbles!)[2])
     })
 
@@ -355,8 +365,8 @@ describe('ChatBubbles — подписки на события истории', 
       })
 
       expect(bubbles!.getBubble(makeFullMid(CHAT, 2))).toBe(before)
-      expect(before!.querySelector('.bubble-content')!.textContent).toBe('правка')
-      expect(rendered(bubbles!)[0].querySelector('.bubble-content')!.textContent).toBe('m1')
+      expect(textOf(before!.querySelector('.bubble-content')!)).toBe('правка')
+      expect(textOf(rendered(bubbles!)[0].querySelector('.bubble-content')!)).toBe('m1')
       expect(rendered(bubbles!)).toHaveLength(2)
     })
 
@@ -364,7 +374,7 @@ describe('ChatBubbles — подписки на события истории', 
       rootScope.dispatchEventSingle('message_edit', {
         storageKey: String(OTHER_CHAT), peerId: OTHER_CHAT, mid: 2, message: msg({ id: 2, text: 'правка' }),
       })
-      expect(bubbles!.getBubble(makeFullMid(CHAT, 2))!.querySelector('.bubble-content')!.textContent).toBe('m2')
+      expect(textOf(bubbles!.getBubble(makeFullMid(CHAT, 2))!.querySelector('.bubble-content')!)).toBe('m2')
     })
   })
 
@@ -398,7 +408,7 @@ describe('ChatBubbles.destroy/cleanup', () => {
     await settle()
 
     expect(rendered(b).map((el) => el.dataset.mid)).toEqual(['1'])
-    expect(rendered(b)[0].querySelector('.bubble-content')!.textContent).toBe('m1')
+    expect(textOf(rendered(b)[0].querySelector('.bubble-content')!)).toBe('m1')
     expect(b.getBubble(makeFullMid(CHAT, 1))).toBeDefined()
   })
 
@@ -429,7 +439,7 @@ describe('ChatBubbles — текст сообщения проходит чер�
     const messageDiv = contentOf(bubbles, 1)
     expect(messageDiv.className).toBe('message spoilers-container')
     expect(messageDiv.parentElement!.className).toBe('bubble-content')
-    expect(messageDiv.textContent).toBe('привет')
+    expect(textOf(messageDiv)).toBe('привет')
   })
 
   it('bold/ссылка/спойлер приезжают УЗЛАМИ, а не текстом', async () => {
@@ -451,7 +461,7 @@ describe('ChatBubbles — текст сообщения проходит чер�
     expect(anchor.href).toBe('https://example.com/page')
     expect(messageDiv.querySelector('.spoiler > .spoiler-text')!.textContent).toBe('секрет')
     // текст целиком на месте — сущности его не съели
-    expect(messageDiv.textContent).toBe(text)
+    expect(textOf(messageDiv)).toBe(text)
   })
 
   it('правка (message_edit) перерисовывает тело тем же конвейером', async () => {

@@ -90,7 +90,10 @@ describe('VanillaFeed — проводка императивной ленты �
     await vi.waitFor(() => {
       expect(bubblesIn(container)).toHaveLength(2)
     })
-    expect(container.querySelectorAll('.message')[1].textContent).toBe('привет')
+    // Время лежит внутри `.message` (порт tweb :7630) и в `textContent`
+    // попадает дважды — сам `span.time` и его дубль `.time-inner`; тест здесь
+    // про ТЕКСТ сообщения, поэтому сверяется его начало.
+    expect(container.querySelectorAll('.message')[1].textContent).toContain('привет')
   })
 
   it('ключ окна берётся из winKey — на треде лента открывает окно ТРЕДА', async () => {
