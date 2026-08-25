@@ -94,6 +94,7 @@ import BubbleGroups, {
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime } from './messageTime'
+import { createReactionsElement } from './reactions'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -881,9 +882,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     // Время — В КОНЕЦ ТЕЛА сообщения (tweb :7630-7631
     // `messageDiv.append(timeSpan, clearfix())`). Точка вставки у оригинала
-    // меняется (подпись документа, floating, внутрь реакций), но базовая
-    // именно эта; остальные приедут вместе со своими подсистемами.
-    messageDiv.append(createMessageTime(message))
+    // меняется (подпись документа, floating), но базовая именно эта;
+    // остальные приедут вместе со своими подсистемами.
+    const timeSpan = createMessageTime(message)
+    messageDiv.append(timeSpan)
+
+    // Реакции — ПОСЛЕ времени, и это не порядок строк, а зависимость: время
+    // ПЕРЕЕЗЖАЕТ внутрь контейнера реакций (:9855 `reactionsElement.append(
+    // timeSpan)`), чтобы чипы и время встали одной строкой-обёрткой.
+    const reactionsElement = createReactionsElement(
+      message._ === 'message' ? message.reactions : undefined,
+    )
+    if (reactionsElement) {
+      reactionsElement.append(timeSpan)
+      messageDiv.append(reactionsElement)
+    }
 
     // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
     // её вставки (:9567-9590); `nameContainer` в оригинале — тот же

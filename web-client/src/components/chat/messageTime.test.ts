@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import { createMessageTime } from './messageTime'
+import { createReactionsElement } from './reactions'
 
 const at = (iso: string, over: Partial<{ editedAt: string; views: number }> = {}): MyMessage => {
   const m = makeMessage({ peerId: 7, fromId: 2, id: 1, text: 'привет', createdAt: iso })
@@ -44,6 +45,22 @@ describe('createMessageTime', () => {
   it('неправленое метки не несёт', () => {
     const el = createMessageTime(at('2026-08-15T12:34:00'))
     expect(el.querySelector('.time-edited')).toBeNull()
+  })
+
+  it('время ПЕРЕЕЗЖАЕТ внутрь реакций, а не остаётся рядом с ними', () => {
+    // tweb :9855 `reactionsElement.append(timeSpan)` — чипы и время образуют
+    // одну строку-обёртку. Если время останется соседом, оно уедет на свою
+    // строку под чипами.
+    const reactions = createReactionsElement({
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+    })!
+    const time = createMessageTime(at('2026-08-15T12:34:00'))
+
+    reactions.append(time)
+
+    expect(reactions.lastElementChild).toBe(time)
+    expect(time.parentElement!.classList.contains('reactions')).toBe(true)
   })
 
   it('просмотры поста идут ПЕРЕД временем (порядок частей оригинала)', () => {
