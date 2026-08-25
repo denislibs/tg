@@ -21,6 +21,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	r := chi.NewRouter()
 	r.Use(requestLogger) // вместо middleware.Logger: не пишет токены в логи
 	r.Use(middleware.Recoverer)
+	// Договорённость о проводе — заголовком запроса, до всех витрин: тот же
+	// приём, что подпротокол `tl.1` у сокета (см. wiretl.go).
+	r.Use(WireTL)
 
 	// Privacy как read-model-шов для хендлеров (аватар/онлайн с учётом правил);
 	// typed-nil не заворачиваем в интерфейс, чтобы nil-проверки работали.

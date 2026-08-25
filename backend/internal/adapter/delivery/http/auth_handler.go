@@ -558,7 +558,14 @@ func (h *AuthHandler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
+// writeJSON — витрина на проводе. Имя осталось прежним, но формат теперь
+// выбирает не она: если запрос попросил TL заголовком `Accept`, тело уезжает
+// байтами схемы (см. wiretl.go). Витрине об этом знать нечего — она отдаёт
+// ЗНАЧЕНИЕ, а не текст.
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	if encodeTL(w, status, v) {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
