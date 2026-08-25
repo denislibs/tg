@@ -80,7 +80,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@li
 import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
-import { getMessageText, isOurMessage, isOutMessage, type MyMessage, type OurMessageChat } from '@core/models'
+import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MyMessage, type OurMessageChat } from '@core/models'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -96,6 +96,7 @@ import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
 import wrapDocument from '@components/wrappers/document'
+import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
@@ -464,6 +465,33 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return mirrorWindow(this.chat.messagesStorageKey)?.find((m) => m.id === mid)
   }
 
+  /**
+   * Сообщения одной группы `grouped_id` по возрастанию номера — порт
+   * `appMessagesManager.getMessagesByGroupedId` (:4909-4913).
+   *
+   * У оригинала группа лежит отдельным хранилищем (`groupedMessagesStorage`),
+   * у нас источник один — окно зеркала. Разница только в месте хранения:
+   * порядок тот же (`asc`), и на нём стоит выбор главного сообщения.
+   */
+  private groupedMessages(groupedId: number): MyMessage[] {
+    const window = mirrorWindow(this.chat.messagesStorageKey)
+    if (!window) return []
+    return window
+      .filter((m) => m._ === 'message' && m.grouped_id === groupedId)
+      .sort((a, b) => a.id - b.id)
+  }
+
+  /**
+   * Главное сообщение группы — порт `getMainGroupedMessage`: ПЕРВОЕ по
+   * возрастанию номера. Именно оно получает бабл, остальные не рисуются вовсе
+   * (tweb bubbles.ts:6600-6605).
+   */
+  private mainGroupedMessage(message: MyMessage): MyMessage | undefined {
+    const groupedId = message._ === 'message' ? message.grouped_id : undefined
+    if (!groupedId) return undefined
+    return this.groupedMessages(groupedId)[0]
+  }
+
   private classesFor(message: MyMessage): string[] {
     // `out` — поле самого сообщения (порт tweb `pFlags.out`), его выводит
     // владелец в воркере; лента только читает. `rootScope.myId` (порт tweb
@@ -588,6 +616,28 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const middleware = this.getMiddleware()
     // Подпись есть — бокс расширяется (tweb `hasMessageBlock`).
     const hasMessageBlock = !!getMessageText(message)
+
+    // Альбом: ≥2 медиа одной группы рисуются ОДНОЙ раскладкой внутри того же
+    // вложения (tweb :7891-7906 для фото, :8531-8544 для видео). Группа из
+    // одного сообщения альбомом не считается — у оригинала тот же гейт
+    // (`groupedMids.length !== 1`).
+    const groupedId = message.grouped_id
+    const groupMessages = groupedId ? this.groupedMessages(groupedId) : []
+    if (groupMessages.length > 1) {
+      bubble?.classList.add('is-album', 'is-grouped')
+      wrapAlbum({
+        messages: groupMessages.filter((m): m is MessageReal => m._ === 'message'),
+        attachmentDiv,
+        middleware,
+        animationGroup: 'chat',
+        spoilered: isMediaSpoiler(message),
+      })
+      messageDiv.before(attachmentDiv)
+      attachmentDiv.classList.add('no-brb')
+      messageDiv.classList.add('mt-shorter')
+      return
+    }
+
     const promise = (isVideo && doc
       ? wrapVideo({
         doc,
@@ -965,11 +1015,37 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  не нужен (в tweb он тоже отбрасывается — :6360), а необработанное
    *  отвержение шумело бы в консоли. */
   private safeRenderMessage(message: MyMessage, reverse: boolean): RenderedMessage | undefined {
+    // Альбом рисуется ОДНИМ баблом: бабл получает главное сообщение группы,
+    // остальные не рисуются вовсе (tweb :6600-6605 — `renderMessage` уходит
+    // `return` до создания узла). Адресуется такой бабл по mid ЛЮБОГО
+    // сообщения группы, поэтому ключи прочих её сообщений ведут на тот же
+    // узел (см. ниже).
+    const main = this.mainGroupedMessage(message)
+    if (main && main.id !== message.id) {
+      const mainBubble = this.bubbles[makeFullMid(this.peerId, main.id)]
+      if (mainBubble) {
+        this.bubbles[makeFullMid(this.peerId, message.id)] = mainBubble
+      }
+      return undefined
+    }
+
     const fullMid = makeFullMid(this.peerId, message.id)
     if (this.bubbles[fullMid]) return undefined
 
     const bubble = this.renderMessage(message)
     this.bubbles[fullMid] = bubble
+
+    // Прочие сообщения группы адресуют ТОТ ЖЕ узел: правка, удаление и ре-кей
+    // после ack приходят по СВОЕМУ номеру, и без этих ключей бабл альбома
+    // нашёлся бы только по главному. `maxBubbleMid` (tweb :6608-6609) —
+    // старший номер группы: по нему лента считает горизонт прочтения.
+    const grouped = message._ === 'message' && message.grouped_id
+      ? this.groupedMessages(message.grouped_id)
+      : []
+    for (const m of grouped) {
+      if (m.id !== message.id) this.bubbles[makeFullMid(this.peerId, m.id)] = bubble
+    }
+    bubble.dataset.maxBubbleMid = String(grouped.length ? grouped[grouped.length - 1].id : message.id)
 
     const details: RenderedMessage = { message, bubble, reverse }
     this.renderMessagesQueue(details).catch(noop)

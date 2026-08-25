@@ -12,7 +12,7 @@ import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedi
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
 
 const CHAT = 60
 
@@ -220,6 +220,77 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
     expect(messageDiv.querySelector('audio-element')).not.toBeNull()
+  })
+
+  // Альбом: группа `grouped_id` рисуется ОДНИМ баблом (tweb :6600-6605), а
+  // прочие её сообщения своих баблов не получают вовсе.
+  describe('альбом', () => {
+    const album = (ids: number[], groupedId = 900): MyMessage[] =>
+      ids.map((id) => makeMessage({
+        peerId: CHAT, fromId: 2, id, text: id === ids[0] ? 'подпись' : '',
+        createdAt: '2026-08-15T12:00:00Z', media: photoMedia(), groupedId,
+      }))
+
+    it('группа из трёх сообщений даёт ОДИН бабл с is-album', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      const rendered = bubbles.chatInner.querySelectorAll('.bubble:not(.service)')
+      expect(rendered).toHaveLength(1)
+      const bubble = rendered[0] as HTMLElement
+      expect(bubble.classList.contains('is-album')).toBe(true)
+      expect(bubble.classList.contains('is-grouped')).toBe(true)
+      // Бабл принадлежит ГЛАВНОМУ сообщению — первому по номеру.
+      expect(bubble.dataset.mid).toBe('1')
+    })
+
+    it('бабл альбома адресуется по номеру ЛЮБОГО сообщения группы', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      const main = bubbles.getBubble(makeFullMid(CHAT, 1))
+      expect(main).toBeDefined()
+      // Правка и удаление приходят по СВОЕМУ номеру — они обязаны найти тот же
+      // узел, иначе изменение уехало бы в пустоту.
+      expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBe(main)
+      expect(bubbles.getBubble(makeFullMid(CHAT, 3))).toBe(main)
+    })
+
+    it('maxBubbleMid — СТАРШИЙ номер группы (tweb :6608)', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      const bubble = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
+      expect(bubble.dataset.maxBubbleMid).toBe('3')
+    })
+
+    // Порядок прихода — НЕ гарантия: история идёт от новых к старым, поэтому
+    // первым в очередь рендера попадает СТАРШЕЕ сообщение группы. Без явного
+    // пропуска не-главных бабл достался бы ему, а не главному.
+    it('бабл достаётся главному, даже если группа пришла от старших к младшим', async () => {
+      const group = album([1, 2, 3])
+      bubbles = new ChatBubbles(chatContext(), managersWith([...group].reverse()))
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      const rendered = bubbles.chatInner.querySelectorAll('.bubble:not(.service)')
+      expect(rendered).toHaveLength(1)
+      expect((rendered[0] as HTMLElement).dataset.mid).toBe('1')
+    })
+
+    it('группа из ОДНОГО сообщения альбомом не считается', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith(album([1])))
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      const bubble = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
+      expect(bubble.classList.contains('is-album')).toBe(false)
+      // Одиночное медиа группы — обычное фото (тот же гейт `length !== 1`).
+      expect(bubble.classList.contains('photo')).toBe(true)
+    })
   })
 
   it('бокс стикера держит минимум бабла (tweb :6116-6117)', async () => {
