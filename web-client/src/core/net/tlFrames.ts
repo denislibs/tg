@@ -2,7 +2,10 @@
 //
 // Разбор кадра, приехавшего по проводу TL: байты → апдейты с курсором.
 //
-// Конверта `{t, d, pts}` в TL нет — оболочку даёт схема, и форм у неё две
+// Конверта `{t, d, pts}` в TL нет — оболочку даёт схема. Конструкторов у
+// объединения `Updates` семь (`updatesTooLong`, `updateShortMessage`,
+// `updateShortChatMessage`, `updateShort`, `updatesCombined`, `updates`,
+// `updateShortSentMessage`); наш сервер производит две
 // (см. backend/internal/domain/mtupdates.go, решение Р7 разбора):
 //
 //   updateShort{update, date}                     — курсор внутри апдейта;
@@ -53,6 +56,11 @@ function bytesToBase64(value: unknown): unknown {
  * умозрительная, — но правило названо здесь, а не выведено из этого факта.
  */
 export function decodeTLFrame(raw: Uint8Array): TLUpdate[] {
+  // Имя типа на разбор НЕ влияет: оболочка боксирована, конструктор ищется по
+  // id из потока, и соответствия переданному типу `fetchObject` не проверяет
+  // (у оригинала на этом месте и стоит `'Object'` — `networker.ts:1503`).
+  // Оно здесь только как запись ожидания; несоответствие ловит явная проверка
+  // `_` ниже.
   const envelope = new TLDeserialization(raw).fetchObject('Updates', 'ws') as {
     _: string
     update?: unknown

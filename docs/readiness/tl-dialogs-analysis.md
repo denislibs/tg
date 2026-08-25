@@ -155,7 +155,7 @@ sender_name, enc_body}` — девять полей вместо `Message`. Зн
 
 Клиент оригинала читает именно так: `const count = (result as
 …dialogsSlice).count;` и дальше `isEnd = !count || dialogsLength >= count ||
-!items.length` (`appMessagesManager.ts:3614,3629`). То есть **отсутствие `count`
+!items.length` (`appMessagesManager.ts:3615,3633-3636`). То есть **отсутствие `count`
 и есть «это всё»** — отдельного булева `is_end` в оригинале нет, и наш уходит.
 
 ## Что это чинит и чего стоит
