@@ -5,7 +5,7 @@
 // нормой ЧЕТЫРЕ строки layout-эффекта `VanillaFeed`:
 //   `new ChatBubbles(...)`      — поднять ленту;
 //   `host.append(container)`    — вставить её дерево в React-хост;
-//   `void bubbles.loadFirstHistory()` — попросить у неё первую страницу;
+//   `void bubbles.setPeer()`     — набрать окно чата (порт `Chat.setPeer`);
 //   `bubbles.destroy()` в cleanup — снять подписки на размонтировании.
 // Каждая покрыта отдельным `it` ниже. Пятая — проброс `isMegagroup` в
 // `ChatContext`: без него сообщение от лица канала уезжает не на ту сторону
@@ -37,7 +37,13 @@ function managersWith(messages: MyMessage[]) {
   )
   const fillMirror = vi.fn(async () => {})
   const dialogs = { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 }
-  return { managers: { messages: { getHistory }, peers: { fillMirror }, dialogs } as unknown as Managers, getHistory }
+  const getAround = vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true }))
+  const messageByDate = vi.fn(async (): Promise<number | null> => null)
+  return {
+    managers: { messages: { getHistory, getAround, messageByDate }, peers: { fillMirror }, dialogs } as unknown as Managers,
+    getHistory,
+    messageByDate,
+  }
 }
 
 /** Колонка чата (`.chat`) вокруг хоста — как в проде (`Chat.tsx`). Без неё
@@ -45,9 +51,14 @@ function managersWith(messages: MyMessage[]) {
  *  `is-go-down-visible` (порт tweb `chat.container`), и не поднимется. */
 function mount(
   messages: MyMessage[],
-  props: { peerId: PeerId; threadRootId?: number; isMegagroup?: boolean } = { peerId: CHAT },
+  props: {
+    peerId: PeerId
+    threadRootId?: number
+    isMegagroup?: boolean
+    onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
+  } = { peerId: CHAT },
 ) {
-  const { managers, getHistory } = managersWith(messages)
+  const { managers, getHistory, messageByDate } = managersWith(messages)
   const view = render(
     <ManagersProvider managers={managers}>
       <div className="chat">
@@ -55,7 +66,7 @@ function mount(
       </div>
     </ManagersProvider>,
   )
-  return { ...view, getHistory }
+  return { ...view, getHistory, messageByDate }
 }
 
 afterEach(() => {
@@ -83,10 +94,15 @@ describe('VanillaFeed — проводка императивной ленты �
     expect(bubbles!.querySelector('.bubbles-scrollable > .bubbles-inner')).not.toBeNull()
   })
 
-  it('просит у ленты первую страницу и рисует её (`void bubbles.loadFirstHistory()`)', async () => {
+  it('просит у ленты окно чата и рисует его (`void bubbles.setPeer()`)', async () => {
     const { container, getHistory } = mount([msg(cid(1)), msg(cid(2), { message: 'привет' })])
 
-    expect(getHistory).toHaveBeenCalledTimes(1)
+    // Страница запрашивается не синхронно: `setPeer` сначала спрашивает у
+    // владельца диалога последнее сообщение чата (`topMessageFullMid`, порт
+    // tweb bubbles.ts:5079-5081).
+    await vi.waitFor(() => {
+      expect(getHistory).toHaveBeenCalledTimes(1)
+    })
     await vi.waitFor(() => {
       expect(bubblesIn(container)).toHaveLength(2)
     })
@@ -99,11 +115,10 @@ describe('VanillaFeed — проводка императивной ленты �
   it('ключ окна берётся из winKey — на треде лента открывает окно ТРЕДА', async () => {
     const { container, getHistory } = mount([], { peerId: CHAT, threadRootId: 60 })
 
-    expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ peerId: CHAT, threadRoot: 60 }))
     // Ждём доезда первой страницы: новое сообщение лента рисует, только когда
     // низ окна сведён с концом истории (tweb `_renderNewMessage`, :4538).
     await vi.waitFor(() => {
-      expect(getHistory).toHaveBeenCalled()
+      expect(getHistory).toHaveBeenCalledWith(expect.objectContaining({ peerId: CHAT, threadRoot: 60 }))
     })
     await new Promise((resolve) => setTimeout(resolve, 0))
     // Подписки сверяют событие по этому же ключу: событие окна треда доезжает,
@@ -120,6 +135,23 @@ describe('VanillaFeed — проводка императивной ленты �
     })
     // ...и это бабл ИМЕННО окна треда
     expect(container.querySelector('.bubble:not(.service)')!.getAttribute('data-mid')).toBe(String(cid(2)))
+  })
+
+  // Пятая строка проводки — `navigation.openDatePicker`: показ попапа принадлежит
+  // владельцу слоя попапов (`Chat.tsx`), а лента лишь объявляет «кликнули по
+  // дате этой секции» (порт роли `Chat` в tweb bubbles.ts:3075-3078).
+  it('проводит календарь наверх: клик по дата-баблу зовёт onOpenDatePicker', async () => {
+    const onOpenDatePicker = vi.fn<(initDate: number, onPick: (timestamp: number) => void) => void>()
+    const { container } = mount([msg(cid(1))], { peerId: CHAT, onOpenDatePicker })
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.bubble.is-date')).not.toBeNull()
+    })
+
+    const dateContent = container.querySelector<HTMLElement>('.bubble.is-date:not(.is-fake) .bubble-content')!
+    dateContent.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(onOpenDatePicker).toHaveBeenCalledWith(expect.any(Number), expect.any(Function))
   })
 
   // Вид чата лента сама не знает (сторов ей нельзя) — он приезжает пропом и

@@ -15,6 +15,14 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import * as viewer from '@components/mediaViewer/openMediaViewer'
 import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
 
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 const CHAT = 60
 
 const chatContext = (): ChatContext => ({
@@ -25,9 +33,15 @@ const chatContext = (): ChatContext => ({
 })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
-  messages: { getHistory: vi.fn(async (): Promise<HistoryResult> => ({
-    messages, count: messages.length, reachedTop: true, reachedBottom: true,
-  })) },
+  messages: {
+    getHistory: vi.fn(async (): Promise<HistoryResult> => ({
+      messages, count: messages.length, reachedTop: true, reachedBottom: true,
+    })),
+    // Прыжок к сообщению и календарь этот файл не проверяет, но обе ручки
+    // обязательны в `BubblesManagers`: лента умеет и то и другое всегда.
+    getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
+    messageByDate: vi.fn(async () => null),
+  },
   peers: { fillMirror: vi.fn(async () => {}) },
   dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
 })
@@ -77,7 +91,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 describe('ChatBubbles — медиа в бабле', () => {
   it('фото заводит .attachment в бабл и класс photo', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([withPhoto({ id: 1, text: 'подпись' })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -91,7 +105,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
   it('стык вложения с подписью обнуляет радиусы: no-brb у вложения, mt-shorter у текста', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([withPhoto({ id: 1, text: 'подпись' })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -101,7 +115,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
   it('сообщение БЕЗ вложения вложения не получает', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([textOnly(1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -111,7 +125,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
   it('спойлер кладёт крышку ПОВЕРХ вложения, а не вместо него', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([withPhoto({ id: 1, spoiler: true })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -133,7 +147,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       attributes: [{ _: 'documentAttributeVideo', duration: 5, w: 640, h: 480 }],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -148,7 +162,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       attributes: [{ _: 'documentAttributeVideo', duration: 3, w: 384, h: 384, pFlags: { round_message: true } }],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -168,7 +182,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       ],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     expect(bubbleOf(bubbles, 1).classList.contains('video')).toBe(true)
@@ -185,7 +199,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       ],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -202,7 +216,7 @@ describe('ChatBubbles — медиа в бабле', () => {
   it('документ встаёт в тело сообщения, а не в attachment', async () => {
     const media = docMedia({ mime: 'application/pdf', attributes: [{ _: 'documentAttributeFilename', file_name: 'смета.pdf' }] })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
@@ -219,7 +233,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       attributes: [{ _: 'documentAttributeAudio', duration: 4, pFlags: { voice: true } }],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
@@ -237,7 +251,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     it('группа из трёх сообщений даёт ОДИН бабл с is-album', async () => {
       bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       const rendered = bubbles.chatInner.querySelectorAll('.bubble:not(.service)')
@@ -251,7 +265,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     it('бабл альбома адресуется по номеру ЛЮБОГО сообщения группы', async () => {
       bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       const main = bubbles.getBubble(makeFullMid(CHAT, 1))
@@ -264,7 +278,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     it('maxBubbleMid — СТАРШИЙ номер группы (tweb :6608)', async () => {
       bubbles = new ChatBubbles(chatContext(), managersWith(album([1, 2, 3])))
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       const bubble = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
@@ -277,7 +291,7 @@ describe('ChatBubbles — медиа в бабле', () => {
     it('бабл достаётся главному, даже если группа пришла от старших к младшим', async () => {
       const group = album([1, 2, 3])
       bubbles = new ChatBubbles(chatContext(), managersWith([...group].reverse()))
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       const rendered = bubbles.chatInner.querySelectorAll('.bubble:not(.service)')
@@ -287,7 +301,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
       bubbles = new ChatBubbles(chatContext(), managersWith(album([1])))
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       const bubble = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
@@ -302,7 +316,7 @@ describe('ChatBubbles — медиа в бабле', () => {
   // :3360), потому что крышка лежит поверх вложения.
   it('клик по крышке спойлера раскрывает её, а не уходит под неё', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([withPhoto({ id: 1, spoiler: true })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const attachment = bubbleOf(bubbles, 1).querySelector('.attachment')!
@@ -333,7 +347,7 @@ describe('ChatBubbles — медиа в бабле', () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
       withPhoto({ id: 1 }), textOnly(2), withPhoto({ id: 3 }),
     ]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     document.body.append(bubbles.container)
@@ -356,7 +370,7 @@ describe('ChatBubbles — медиа в бабле', () => {
 
     const media = docMedia({ mime: 'application/pdf', attributes: [{ _: 'documentAttributeFilename', file_name: 'смета.pdf' }] })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     document.body.append(bubbles.container)
@@ -378,7 +392,7 @@ describe('ChatBubbles — медиа в бабле', () => {
       ],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const content = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.bubble-content')!

@@ -20,6 +20,14 @@ import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
 
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 const CHAT = 50
 const VIEWPORT_H = 500
 const BUBBLE_H = 100
@@ -58,7 +66,7 @@ const page = (ids: number[], reachedTop: boolean, reachedBottom: boolean): Histo
 /** Менеджеры с ТРЁХСТОРОННЕЙ историей: первая страница (offsetSeq 0), «старее»
  *  (addOffset > 0) и «новее» (addOffset < 0) — ровно три формы запроса, которые
  *  умеет строить `requestHistory`. */
-function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, newer?: HistoryResult }) {
+function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, newer?: HistoryResult, around?: HistoryResult }) {
   const calls: HistoryArgs[] = []
   const getHistory = vi.fn(async (args: HistoryArgs): Promise<HistoryResult> => {
     calls.push(args)
@@ -66,14 +74,23 @@ function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, ne
     if ((args.addOffset ?? 0) > 0) return pages.older ?? page([], true, false)
     return pages.newer ?? page([], false, true)
   })
+  // Четвёртая форма страницы — окно ВОКРУГ номера (`?around=`): ею отвечает
+  // `requestHistory` на `backLimit` прыжка, см. её докблок.
+  const aroundCalls: { centerId: number, limit?: number }[] = []
+  const getAround = vi.fn(async (_peerId: number, centerId: number, limit?: number) => {
+    aroundCalls.push({ centerId, limit })
+    const p = pages.around ?? page([], false, false)
+    return { messages: p.messages, reachedTop: p.reachedTop, reachedBottom: p.reachedBottom }
+  })
+  const messageByDate = vi.fn(async (): Promise<number | null> => null)
   const getReadMaxSeqIfUnread = vi.fn(async () => 0)
   const getHistoryMaxSeq = vi.fn(async () => 0)
   const managers: BubblesManagers = {
-    messages: { getHistory },
+    messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror: vi.fn(async () => {}) },
     dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
   }
-  return Object.assign(managers, { calls, getHistory, getReadMaxSeqIfUnread, getHistoryMaxSeq })
+  return Object.assign(managers, { calls, aroundCalls, getHistory, getAround, messageByDate, getReadMaxSeqIfUnread, getHistoryMaxSeq })
 }
 
 /** Троттлинг Scrollable в этой среде — `setTimeout(24)`
@@ -101,7 +118,12 @@ function installFakeLayout(container: HTMLElement) {
   Object.defineProperty(container, 'scrollTop', {
     configurable: true,
     get: () => scrollTop,
-    set: (v: number) => { scrollTop = v },
+    // Как настоящий элемент: позиция ЗАЖИМАЕТСЯ в [0, scrollHeight −
+    // clientHeight]. Без зажима `setScrollPositionSilently(99999)` из
+    // `setPeer` (порт tweb bubbles.ts:5442/5489 — «уйти в самый низ») оставил
+    // бы здесь буквальные 99999, и вся лента оказалась бы «выше вьюпорта» для
+    // `getViewportSlice`.
+    set: (v: number) => { scrollTop = Math.max(0, Math.min(v, container.scrollHeight - container.clientHeight)) },
   })
   Object.defineProperty(container, 'clientHeight', { configurable: true, get: () => VIEWPORT_H })
   Object.defineProperty(container, 'offsetHeight', { configurable: true, get: () => VIEWPORT_H })
@@ -180,7 +202,7 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
       older: page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], true, false),
     })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     // Предзагрузка соседней страницы (tweb getHistory1 :11346) уже сходила за
@@ -209,12 +231,18 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
     })
 
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
-    // Первая страница легла и лента встала у низа НЕсведённого окна — этого
-    // достаточно, чтобы `checkForTriggers` позвал `onScrolledBottom` (тот же
-    // путь, что и у ручного докручивания вниз).
+    // Окно открыто и стоит у низа, но с концом истории НЕ сведено. Первый
+    // триггер `onScrolledBottom` даёт уже докручивание: `setPeer` увёл ленту
+    // вниз ТИХОЙ записью (`setScrollPositionSilently(99999)`, порт tweb
+    // bubbles.ts:5489), а она оставляет `lastScrollPosition` больше реальной
+    // позиции — то есть направление читается как «вверх», и нижний триггер
+    // (`lastScrollDirection >= 0`) не срабатывает сам собой.
+    await scrollTo(b, b.scrollable.container.scrollHeight)
+    await settle()
+
     expect(managers.calls.some((c) => (c.addOffset ?? 0) < 0)).toBe(true)
     expect(rendered(b).map((el) => el.dataset.mid)).toContain('16')
 
@@ -238,7 +266,7 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
     })
 
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const afterFirst = managers.calls.filter((c) => (c.addOffset ?? 0) > 0).length
@@ -256,7 +284,7 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
   it('край истории закрывает свою сторону: у сведённого верха вверх не ходим вовсе', async () => {
     const managers = pagingManagers({ first: page([11, 12, 13], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     b.loadMoreHistory(true)
@@ -276,7 +304,7 @@ describe('ChatBubbles — ScrollSaver вокруг вставки сверху',
       older: page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], true, false),
     })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     // Пользователь стоит в середине истории.
@@ -331,7 +359,7 @@ describe('ChatBubbles — липкая дата ставится наблюда�
   it('sentinel секции ставит наблюдатель — он же третий узел секции (STICKY_OFFSET)', async () => {
     const managers = pagingManagers({ first: page([1, 2], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const section = b.chatInner.querySelector('.bubbles-date-group')!
@@ -345,7 +373,7 @@ describe('ChatBubbles — липкая дата ставится наблюда�
   it('класс is-sticky пишется ПРЯМО на узел даты, лента при этом не перерисовывается', async () => {
     const managers = pagingManagers({ first: page([1, 2], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const section = b.chatInner.querySelector('.bubbles-date-group')!
@@ -375,7 +403,7 @@ describe('ChatBubbles — липкая дата ставится наблюда�
       },
     })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const sections = Array.from(b.chatInner.querySelectorAll('.bubbles-date-group'))
@@ -396,7 +424,7 @@ describe('ChatBubbles — кнопка «вниз»', () => {
   it('появляется по порогу SCROLLED_DOWN_THRESHOLD и гаснет у низа', async () => {
     const managers = pagingManagers({ first: page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], true, true) })
     const { b, chatColumn } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     // Открытие чата: лента прижата к низу — кнопки нет.
@@ -414,7 +442,7 @@ describe('ChatBubbles — кнопка «вниз»', () => {
   it('уводит в конец: scrollToEnd → scrollIntoViewNew(chatInner, «end»)', async () => {
     const managers = pagingManagers({ first: page([1, 2, 3], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
@@ -431,7 +459,7 @@ describe('ChatBubbles — переход к сообщению', () => {
   it('центрирование идёт через scrollIntoViewNew с position «center»', async () => {
     const managers = pagingManagers({ first: page([1, 2, 3, 4, 5], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     const target = b.getBubble(makeFullMid(CHAT, 3))!
@@ -439,6 +467,138 @@ describe('ChatBubbles — переход к сообщению', () => {
     void b.scrollToBubble(target, 'center')
 
     expect(spy.mock.calls[0][0]).toMatchObject({ element: target, position: 'center', axis: 'y' })
+  })
+
+  // Прыжок ВНЕ окна — то, ради чего порт `setPeer` и делался: до него
+  // сообщение за пределами загруженной страницы просто не находилось.
+  it('цель вне окна: окно пересобирается ВОКРУГ неё (getAround), цель подсвечена и отцентрирована', async () => {
+    const managers = pagingManagers({
+      first: page([11, 12, 13], false, true),
+      around: page([5, 6, 7, 8, 9], false, false),
+    })
+    // Последнее сообщение чата (порт `historyStorage.maxId`, tweb
+    // bubbles.ts:5079): без него цель не отличить от «идём в самый низ».
+    managers.getHistoryMaxSeq.mockResolvedValue(13)
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    await (await b.setMessageId({ lastMsgId: 7 }))?.promise
+    await settle()
+
+    // Страница взята ОКНОМ вокруг номера, а не «от него вверх».
+    expect(managers.aroundCalls.map((c) => c.centerId)).toEqual([7])
+    expect(rendered(b).map((el) => el.dataset.mid)).toEqual(['5', '6', '7', '8', '9'])
+
+    const target = b.getBubble(makeFullMid(CHAT, 7))!
+    expect(target.classList.contains('is-highlighted')).toBe(true)
+    expect(spy.mock.calls[0][0]).toMatchObject({ element: target, position: 'center' })
+  })
+
+  // `has-groups` на ленте включает отступы секций дня; владелец класса после
+  // пересборки окна — сам `setPeer` (tweb bubbles.ts:5420), потому что
+  // `cleanup()` реестр секций опустошает, но класс не трогает.
+  it('пересобранное окно без сообщений снимает has-groups', async () => {
+    const managers = pagingManagers({ first: page([11, 12, 13], false, true) })
+    managers.getHistoryMaxSeq.mockResolvedValue(13)
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+    expect(b.container.classList.contains('has-groups')).toBe(true)
+
+    // Окно вокруг цели пустое (её удалили, пока летел запрос) — секций дня в
+    // новом дереве нет.
+    await (await b.setMessageId({ lastMsgId: 7 }))?.promise
+    await settle()
+
+    expect(rendered(b)).toHaveLength(0)
+    expect(b.container.classList.contains('has-groups')).toBe(false)
+  })
+
+  // Кэш-ветка оригинала (tweb bubbles.ts:5156-5200): цель уже показана —
+  // трогать ленту нечем, иначе прыжок к соседнему сообщению перерисовывал бы
+  // всё окно.
+  it('цель уже в окне: страница не запрашивается и узел ленты остаётся тем же', async () => {
+    const managers = pagingManagers({ first: page([1, 2, 3, 4, 5], true, true) })
+    managers.getHistoryMaxSeq.mockResolvedValue(5)
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+
+    const chatInnerBefore = b.chatInner
+    const historyCalls = managers.getHistory.mock.calls.length
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+
+    const result = await b.setMessageId({ lastMsgId: 2 })
+
+    // `null` — сигнал оригинала «окно не перерисовывалось» (:5200).
+    expect(result).toBeNull()
+    expect(b.chatInner).toBe(chatInnerBefore)
+    expect(managers.getHistory.mock.calls).toHaveLength(historyCalls)
+    expect(managers.aroundCalls).toHaveLength(0)
+
+    const target = b.getBubble(makeFullMid(CHAT, 2))!
+    expect(target.classList.contains('is-highlighted')).toBe(true)
+    expect(spy.mock.calls[0][0]).toMatchObject({ element: target, position: 'center' })
+  })
+
+  // Поколение окна (`setPeerTempId`, tweb bubbles.ts:5039-5055): без него
+  // страница вытесненного прыжка дорисовалась бы в чужое окно.
+  it('второй прыжок вытесняет первый: тот отвергнут PEER_CHANGED_ERROR, окно — вокруг ПОСЛЕДНЕЙ цели', async () => {
+    const managers = pagingManagers({ first: page([11, 12, 13], false, true) })
+    managers.getHistoryMaxSeq.mockResolvedValue(13)
+    managers.getAround.mockImplementation(async (_peerId: number, centerId: number) => {
+      const ids = centerId === 3 ? [2, 3, 4] : [6, 7, 8]
+      return { messages: ids.map((id) => msg(id)), reachedTop: false, reachedBottom: false }
+    })
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+
+    vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    const first = b.setMessageId({ lastMsgId: 3 })
+    const second = b.setMessageId({ lastMsgId: 7 })
+
+    await expect(first).rejects.toThrow('peer changed')
+    await (await second)?.promise
+    await settle()
+
+    expect(rendered(b).map((el) => el.dataset.mid)).toEqual(['6', '7', '8'])
+    expect(b.getBubble(makeFullMid(CHAT, 7))!.classList.contains('is-highlighted')).toBe(true)
+  })
+
+  // Календарь: клик по дата-баблу отдаёт хосту день секции и КОЛБЭК выбора
+  // (порт tweb bubbles.ts:3075-3078 `showDatePickerPopup({initDate, onPick:
+  // this.onDatePick})`), а выбранный день лента сама превращает в прыжок
+  // (:10205).
+  it('клик по дата-баблу открывает календарь, а выбранный день уводит прыжком', async () => {
+    const openDatePicker = vi.fn<(initDate: number, onPick: (timestamp: number) => void) => void>()
+    const managers = pagingManagers({ first: page([1, 2, 3], true, true) })
+    managers.getHistoryMaxSeq.mockResolvedValue(3)
+    const { b } = mount(managers, { navigation: { openDatePicker } })
+    await openFeed(b)
+    await settle()
+
+    document.body.append(b.container)
+    vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+
+    const dateContent = b.chatInner.querySelector<HTMLElement>('.bubble.is-date:not(.is-fake) .bubble-content')!
+    dateContent.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    // Первый аргумент — ЛОКАЛЬНАЯ полночь дня секции (порт
+    // `getDateForDateContainer`, tweb bubbles.ts:4815).
+    const day = new Date(msg(1).date * 1000).setHours(0, 0, 0, 0)
+    expect(openDatePicker).toHaveBeenCalledWith(day, expect.any(Function))
+
+    // Выбор дня: «день → номер» спрашивается у владельца, дальше — обычный прыжок.
+    managers.messageByDate.mockResolvedValue(2)
+    openDatePicker.mock.calls[0][1](1_755_216_000)
+    await settle()
+
+    expect(managers.messageByDate).toHaveBeenCalledWith(CHAT, 1_755_216_000)
+    expect(b.getBubble(makeFullMid(CHAT, 2))!.classList.contains('is-highlighted')).toBe(true)
+    b.container.remove()
   })
 
   it('подсветка: is-highlighted на 2 секунды, повторный прыжок перезапускает её', async () => {
@@ -480,7 +640,7 @@ describe('ChatBubbles — граница непрочитанных', () => {
     managers.getHistoryMaxSeq.mockResolvedValue(15)
 
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     expect(b.chatInner.querySelectorAll('.is-first-unread')).toHaveLength(1)
@@ -501,7 +661,7 @@ describe('ChatBubbles — граница непрочитанных', () => {
     managers.getHistoryMaxSeq.mockResolvedValue(15)
 
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     expect(b.getBubble(makeFullMid(CHAT, 13))!.classList.contains('is-first-unread')).toBe(false)
@@ -511,7 +671,7 @@ describe('ChatBubbles — граница непрочитанных', () => {
   it('прочитанный чат черты не получает (горизонт 0)', async () => {
     const managers = pagingManagers({ first: page([11, 12, 13], true, true) })
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     expect(b.chatInner.querySelectorAll('.is-first-unread')).toHaveLength(0)
@@ -523,7 +683,7 @@ describe('ChatBubbles — граница непрочитанных', () => {
     managers.getHistoryMaxSeq.mockResolvedValue(13)
 
     const { b } = mount(managers)
-    await b.loadFirstHistory()
+    await openFeed(b)
     await settle()
 
     expect(b.chatInner.querySelectorAll('.is-first-unread')).toHaveLength(0)

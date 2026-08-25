@@ -15,8 +15,9 @@ import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
 import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
+import noop from '@helpers/noop'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onSelection }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onSelection, onOpenDatePicker }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -48,11 +49,20 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
    * рисует плашку хост (`conversation/SelectionBar.tsx`).
    */
   onSelection?: (state: { mids: number[], selecting: boolean, cancel: () => void }) => void
+  /**
+   * Показать календарь — порт роли `Chat` в ветке клика по дата-баблу
+   * (tweb bubbles.ts:3075-3078: `showDatePickerPopup({initDate, onPick:
+   * this.onDatePick})`). Попап у нас React-компонент
+   * (`components/DatePickerPopup.tsx`), монтирует его владелец слоя попапов —
+   * `Chat.tsx`; лента отдаёт наверх день секции и колбэк выбора, а «день →
+   * номер → прыжок» остаётся у неё (`bubbles.onDatePick`).
+   */
+  onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
-  const gesture = useRef({ canSend, canSendPlain, onReply, onSelection })
-  gesture.current = { canSend, canSendPlain, onReply, onSelection }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onSelection, onOpenDatePicker })
+  gesture.current = { canSend, canSendPlain, onReply, onSelection, onOpenDatePicker }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -81,14 +91,14 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
     const bubblesViewport = document.createElement('div')
     bubblesViewport.classList.add('bubbles-viewport', 'disable-hover')
 
-    // `navigation` (адресат кликов по ссылкам/именам, см. `BubblesNavigation`)
-    // сюда сознательно НЕ передаётся: открыть пир умеет
-    // `useNavigationActions().openPeer`, но ему нужна карточка пира
+    // `navigation` (адресат кликов, см. `BubblesNavigation`) заполнен ОДНИМ
+    // полем — календарём. Два других сознательно не передаются: открыть пир
+    // умеет `useNavigationActions().openPeer`, но ему нужна карточка пира
     // (`OpenPeer.title`), которой у ленты нет, а разбора внутренних
     // t.me-ссылок (tweb `internalLinkProcessor`) в приложении пока нет вовсе.
-    // Без адресата поведение ровно то же, что у React-ленты сегодня: ссылка
+    // Без них поведение ровно то же, что у React-ленты сегодня: ссылка
     // открывается новой вкладкой (`target="_blank"`), клик по имени ничего не
-    // делает. Придёт навигация — пробрасывается одним полем здесь.
+    // делает. Придёт навигация — пробрасывается тем же полем здесь.
     const bubbles = new ChatBubbles(
       {
         peerId,
@@ -99,6 +109,11 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         isMegagroup,
         container: chatColumn,
         bubblesViewport,
+        // Колбэк читается ЧЕРЕЗ РЕФ по той же причине, что права ниже: сменился
+        // обработчик — лента не пересобирается.
+        navigation: {
+          openDatePicker: (initDate, onPick) => gesture.current.onOpenDatePicker?.(initDate, onPick),
+        },
         // Владелец выделения — хост, как `Chat` в оригинале: это он знает про
         // плашку действий. Менеджер прав не передаётся: факта «нельзя
         // переслать/удалить» на клиенте нет вовсе (задача #73) — порт объявлен
@@ -123,7 +138,13 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
       managers,
     )
     host.append(bubbles.container, bubblesViewport)
-    void bubbles.loadFirstHistory()
+    // Порт `Chat.setPeer` (tweb chat.ts:1119) в единственной применимой здесь
+    // форме: пир только что открыт, значит `samePeer: false` — лента набирает
+    // окно от низа истории и уводит скролл вниз без анимации. Цепочка до
+    // ВТОРОГО промиса и `.catch(noop)` — 1:1 оригинал (chat.ts:1120-1126):
+    // окно, вытесненное следующим `setPeer` (у нас — размонтированием ленты),
+    // отвергается `PEER_CHANGED_ERROR`, и это не сбой.
+    void bubbles.setPeer().then((result) => result?.promise).catch(noop)
 
     // Узел `bubbles.container` отдельно не снимаем: он лежит ВНУТРИ хоста,
     // который React убирает из документа сам. `remove()` здесь был бы строкой,

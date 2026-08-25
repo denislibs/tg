@@ -10,6 +10,14 @@ import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
 
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 const CHAT = 70
 const AUTHOR = 2
 
@@ -21,9 +29,15 @@ const chatContext = (): ChatContext => ({
 })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
-  messages: { getHistory: vi.fn(async (): Promise<HistoryResult> => ({
-    messages, count: messages.length, reachedTop: true, reachedBottom: true,
-  })) },
+  messages: {
+    getHistory: vi.fn(async (): Promise<HistoryResult> => ({
+      messages, count: messages.length, reachedTop: true, reachedBottom: true,
+    })),
+    // Прыжок к сообщению и календарь этот файл не проверяет, но обе ручки
+    // обязательны в `BubblesManagers`: лента умеет и то и другое всегда.
+    getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
+    messageByDate: vi.fn(async () => null),
+  },
   peers: { fillMirror: vi.fn(async () => {}) },
   dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
 })
@@ -65,7 +79,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 describe('ChatBubbles — reply-заголовок', () => {
   it('ответ несёт шапку с именем автора и превью оригинала', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
@@ -79,7 +93,7 @@ describe('ChatBubbles — reply-заголовок', () => {
 
   it('шапка встаёт ПЕРЕД телом сообщения', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const content = bubbleOf(bubbles, 2).querySelector('.bubble-content')!
@@ -90,7 +104,7 @@ describe('ChatBubbles — reply-заголовок', () => {
     // Иначе каждое сообщение комментариев несло бы ссылку на сам пост, который
     // пользователь и так видит сверху.
     bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'пост'), replying(2, 1, { topId: 1 })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     expect(bubbleOf(bubbles, 2).querySelector('.reply')).toBeNull()
@@ -101,7 +115,7 @@ describe('ChatBubbles — reply-заголовок', () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([
       plain(1, 'длинный оригинал целиком'), replying(2, 1, { quote: 'оригинал' }),
     ]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
@@ -111,7 +125,7 @@ describe('ChatBubbles — reply-заголовок', () => {
 
   it('оригинала нет в окне — шапка честно говорит об этом, а не молчит', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([replying(2, 999)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
@@ -120,12 +134,17 @@ describe('ChatBubbles — reply-заголовок', () => {
 
   it('клик по шапке прыгает к оригиналу и подсвечивает его', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     document.body.append(bubbles.container)
     const reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
     reply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    // Прыжок асинхронен, как и в оригинале: клик уходит в `setMessageId` →
+    // `setPeer`, а тот сначала спрашивает у владельца диалога последнее
+    // сообщение чата (`topMessageFullMid`, tweb bubbles.ts:5079) и только потом
+    // решает, доскроллить до уже показанного бабла или пересобрать окно.
+    await settle()
 
     expect(bubbleOf(bubbles, 1).classList.contains('is-highlighted')).toBe(true)
     bubbles.container.remove()

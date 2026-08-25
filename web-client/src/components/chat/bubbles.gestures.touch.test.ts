@@ -36,13 +36,29 @@ vi.mock('./replySwipe', async (importOriginal) => ({
 const ChatBubbles = (await import('./bubbles')).default
 type BubblesManagers = import('./bubbles').BubblesManagers
 type ChatContext = import('./bubbles').ChatContext
+type ChatBubbles = InstanceType<typeof ChatBubbles>
+
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 
 const CHAT = 91
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
-  messages: { getHistory: vi.fn(async (): Promise<HistoryResult> => ({
-    messages, count: messages.length, reachedTop: true, reachedBottom: true,
-  })) },
+  messages: {
+    getHistory: vi.fn(async (): Promise<HistoryResult> => ({
+      messages, count: messages.length, reachedTop: true, reachedBottom: true,
+    })),
+    // Прыжок к сообщению и календарь этот файл не проверяет, но обе ручки
+    // обязательны в `BubblesManagers`: лента умеет и то и другое всегда.
+    getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
+    messageByDate: vi.fn(async () => null),
+  },
   peers: { fillMirror: vi.fn(async () => {}) },
   dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
 })
@@ -82,7 +98,7 @@ describe('ChatBubbles — свайп-ответ на таче', () => {
     const chat = chatContext()
     chat.canSendPlain = () => true
     feed = new ChatBubbles(chat, managersWith([message]))
-    await feed.loadFirstHistory()
+    await openFeed(feed)
     await new Promise((resolve) => setTimeout(resolve, 0))
     document.body.append(feed.container)
 

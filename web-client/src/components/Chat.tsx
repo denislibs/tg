@@ -787,10 +787,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
   })
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
-  // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3058-3090 →
-  // showDatePickerPopup с onPick = onDatePick). Выбор дня резолвится в seq
-  // (ручка message_by_date) и отдаётся той же машинерии прыжка.
-  const openDatePickerE = useEvent((dayMs: number) => {
+  // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3057-3078 →
+  // `showDatePickerPopup({initDate, onPick: this.onDatePick})`). ПОКАЗ попапа —
+  // роль владельца слоя попапов, то есть этого экрана; что делать с выбранным
+  // днём — роль ленты, и у двух наших лент она разная: React-лента резолвит
+  // день в номер здесь (`openDatePickerE` ниже), ванильная — своим
+  // `bubbles.onDatePick` (порт tweb bubbles.ts:10205), который сам зовёт
+  // `setMessageId`.
+  const showDatePicker = useEvent((dayMs: number, onPick: (timestamp: number) => void) => {
     openPopup((p) => (
       <DatePickerPopup
         open={p.open}
@@ -798,13 +802,16 @@ export default function Chat({ chat, onBack, thread }: Props) {
         onExitComplete={p.onExitComplete}
         initDate={dayMs}
         chatId={numericChatId}
-        onPick={(timestamp) => {
-          void managers.messages.messageByDate(numericChatId, timestamp).then((seq) => {
-            if (seq != null) jumpToSeqE(seq)
-          })
-        }}
+        onPick={onPick}
       />
     ), DATE_PICKER_POPUP_KIND)
+  })
+  const openDatePickerE = useEvent((dayMs: number) => {
+    showDatePicker(dayMs, (timestamp) => {
+      void managers.messages.messageByDate(numericChatId, timestamp).then((seq) => {
+        if (seq != null) jumpToSeqE(seq)
+      })
+    })
   })
   // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
   const pendingJump = useSearchStore((s) => s.pendingJump)
@@ -1408,7 +1415,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onSelection={onFeedSelection} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} />
         ) : (
         <div
           ref={bubblesRef}

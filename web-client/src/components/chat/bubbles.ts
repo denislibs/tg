@@ -24,14 +24,18 @@
 //    (`navigation`), — поэтому конструктор берёт узкий структурный тип. Полный
 //    `Chat` — этап 7, когда лента заберёт себе и остальное окружение; узлы
 //    окружения до тех пор создаёт хост (`VanillaFeed`, порт `chat.ts:640-643`).
-//  • `BubblesManagers` вместо всего `AppManagers`: ленте нужны ровно четыре
-//    метода — `messages.getHistory`, `peers.fillMirror` (объявить пробел
-//    зеркала карточек, см. `peerTitle.ts`) и пара `dialogs.*` под границу
-//    непрочитанных. Узкий тип позволяет поднять ленту в тесте без RPC-моста.
-//  • `setPeer` не портирован (этап 7), поэтому первую страницу окна
-//    запрашивает `loadFirstHistory()` — извлечённый фрагмент его тела
-//    (bubbles.ts:5337-5344). Всё остальное в пагинации 1:1: `loadMoreHistory`
-//    → `getHistory1` (гейт стороны + предзагрузка) → `getHistory`.
+//  • `BubblesManagers` вместо всего `AppManagers`: ленте нужен узкий набор
+//    методов — три формы страницы (`messages.getHistory`/`getAround`),
+//    `messages.messageByDate` под календарь, `peers.fillMirror` (объявить
+//    пробел зеркала карточек, см. `peerTitle.ts`) и пара `dialogs.*` под
+//    границу непрочитанных и последнее сообщение чата. Узкий тип позволяет
+//    поднять ленту в тесте без RPC-моста.
+//  • `setPeer` портирован БЕЗ ветки смены пира: у нас пир меняет хост,
+//    пересоздавая ленту эффектом по `peerId` (`VanillaFeed.tsx`), поэтому «тот
+//    же инстанс на новый пир» предмета не имеет — построчный разбор того, что
+//    из ветки `!samePeer` перенесено, а что нет, лежит у самого метода. Всё
+//    остальное в пагинации 1:1: `loadMoreHistory` → `getHistory1` (гейт стороны
+//    + предзагрузка) → `getHistory`.
 //  • `attachContainerListeners()` портирован ЧАСТИЧНО — ровно тем составом, у
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
 //    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
@@ -62,6 +66,7 @@ import Scrollable, { type SliceSides } from '@components/scrollable'
 import StickyIntersector from '@components/stickyIntersector'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware } from '@helpers/middleware'
+import middlewarePromise from '@helpers/middlewarePromise'
 import BatchProcessor, { type MiddlewareAwaiter } from '@helpers/batchProcessor'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import noop from '@helpers/noop'
@@ -170,6 +175,20 @@ export interface BubblesNavigation {
   openInternalLink?(action: AnchorAction, anchor: HTMLElement): boolean
   /** peerId из `.peer-title[data-peer-id]` / `a.follow[data-follow]` */
   openPeer?(peerId: number, element: HTMLElement): boolean
+  /**
+   * Показать календарь — порт `showDatePickerPopup({initDate, onPick:
+   * this.onDatePick})` из ветки клика по ДАТА-баблу (tweb bubbles.ts:3075-3078).
+   *
+   * Здесь, а не внутри ленты, потому что попап у нас React-компонент
+   * (`components/DatePickerPopup.tsx`), а монтирует его владелец слоя попапов —
+   * то есть хост. Лента отдаёт ровно то, что отдаёт оригинал: день секции
+   * (`initDate`, мс) и ЧТО ДЕЛАТЬ с выбранным днём — `onDatePick`. Решение «день
+   * → номер → прыжок» остаётся у ленты, как в tweb (bubbles.ts:10205).
+   *
+   * Не переносятся `canMultiSelect`/`multiSelectAction` (:3081-3105) — выбор
+   * диапазона дней ради «Очистить историю»: наш попап такого режима не знает.
+   */
+  openDatePicker?(initDate: number, onPick: (timestamp: number) => void): void
 }
 
 /** Срез `Chat`, которым пользуется лента (см. расхождения в шапке). */
@@ -242,6 +261,24 @@ export interface ChatContext {
 export interface BubblesManagers extends PeerTitleManagers {
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>
+    /** Окно ВОКРУГ сообщения — вторая форма страницы, которой лента отвечает на
+     *  `backLimit` (`requestHistory`, см. расхождение в его докблоке).
+     *
+     *  У tweb метод один: `appMessagesManager.getHistory` с полем `backLimit`,
+     *  которое `processRequestHistoryOptions` (appMessagesManager.ts:9319-9322)
+     *  разворачивает в арифметику MTProto — `addOffset = -backLimit`,
+     *  `limit += backLimit`. Наш бэкенд этой арифметики не знает: отрицательный
+     *  `add_offset` он читает только как знак «новее» (`chat_handler.go:496` →
+     *  `GetHistory`), а окно вокруг номера отдаёт отдельным параметром
+     *  (`?around=`, `chat_handler.go:480-489`). Поэтому вторая форма — второй
+     *  метод, а не второе поле. */
+    getAround(peerId: number, centerId: number, limit?: number, threadRoot?: number):
+      Promise<{ messages: MyMessage[], reachedTop: boolean, reachedBottom: boolean }>
+    /** Номер сообщения по дню — порт запроса `onDatePick`
+     *  (tweb bubbles.ts:10207-10213: `requestHistory({offsetDate, limit: 2,
+     *  addOffset: -1})` и `messages[0].mid` из ответа). У нас тот же вопрос
+     *  задаётся ручкой `message_by_date`, поэтому ответ — сразу номер. */
+    messageByDate(peerId: number, date: number): Promise<number | null>
     /** Порт `Chat.sendReaction` (tweb chat.ts:1457) в объёме тоггла: у
      *  оригинала это ОДИН метод, который сам решает, ставить или снимать; у
      *  нашего владельца операций две, потому что каждая несёт свою
@@ -367,6 +404,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // tweb bubbles.ts:604 — «лента короче вьюпорта, поэтому ей подставлена
   // верхняя распорка».
   private isTopPaddingSet = false
+  // tweb bubbles.ts:649 — поколение окна. Каждый `setPeer` взводит своё, и
+  // единственный смысл поля — middleware «моя ли ещё лента»: всё, что летело в
+  // прошлое окно, отвергается `PEER_CHANGED_ERROR`.
+  private setPeerTempId = 0
+  // tweb bubbles.ts:622 — «этот `setPeer` сам уведёт скролл». Читает поле
+  // `onRenderScrollSet`: когда скролл всё равно поедет, липкие даты можно
+  // включать сразу, без задержки в 600мс (bubbles.ts:10192).
+  private willScrollOnLoad?: boolean
   // Отписка от шины тяжёлых анимаций (в tweb её снимает `listenerSetter`,
   // которому `useHeavyAnimationCheck` передан третьим аргументом).
   private removeHeavyAnimationListener?: () => void
@@ -1417,10 +1462,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  (:3236) стоит раньше имени автора (:3360) — крышка лежит поверх вложения,
    *  и клик по ней не должен доходить до того, что под ней.
    *
-   *  Контекстное меню, выделение, dblclick, свайпы и медиавьювер не
-   *  портированы: у первых четырёх поведения ещё нет, а вьювер требует сбора
-   *  списка медиа окна и окружения `Chat` (прыжок к сообщению, пересылка,
-   *  удаление) — отдельный срез. */
+   *  ЧТО РАЗБИРАЕТ ЭТОТ СЛУШАТЕЛЬ (по веткам `onBubblesClick`): календарь по
+   *  дата-баблу (:3057), вход в выделение кликом по времени (:3118), тоггл
+   *  выбора в режиме выделения (:3156), крышку спойлера (:3236), чип реакции
+   *  (:3245), прыжок к оригиналу по reply-заголовку (:3520), медиавьювер
+   *  (:3479) и имя автора/упоминание (:3360). Рядом с ним лента вешает свои
+   *  слушатели: выделение (:1479), даблклик-ответ (:1497) и свайп-ответ (:1543).
+   *
+   *  Не портировано КОНТЕКСТНОЕ МЕНЮ — в tweb его вешает первая же строка тела
+   *  (`this.chat.contextMenu.attachTo(container)`, :1478); поведения ещё нет. */
   private attachContainerListeners() {
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
 
@@ -1497,11 +1547,42 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    const bubble = target.closest<HTMLElement>('.bubble')
+
+    // Дата-разделитель — календарь (tweb :3057-3110). Ветка стоит ПЕРВОЙ среди
+    // «по баблу», как у оригинала (:3057 против :3118 у времени и :3156 у
+    // выделения).
+    //
+    // Три проверки оригинала перенесены дословно:
+    //  • клик засчитывается только по `.bubble-content` (:3057) — не по всей
+    //    полосе секции;
+    //  • `is-fake`-двойник (:3058-3060) уступает НАСТОЯЩЕМУ дата-баблу: реестр
+    //    `dateMessages` знает только его;
+    //  • по ЗАЛИПШЕЙ дате (:3062-3064) календарь открывается лишь во время
+    //    скролла — иначе пилюля, висящая над лентой, перехватывала бы клики по
+    //    сообщениям под собой.
+    if (bubble?.classList.contains('is-date') && findUpClassName(target, 'bubble-content')) {
+      const dateBubble = bubble.classList.contains('is-fake')
+        ? bubble.previousElementSibling as HTMLElement | null
+        : bubble
+      if (!dateBubble || (dateBubble.classList.contains('is-sticky') && !this.chatInner.classList.contains('is-scrolling'))) {
+        return
+      }
+
+      for (const timestamp in this.dateMessages) {
+        if (this.dateMessages[timestamp].div === dateBubble) {
+          navigation?.openDatePicker?.(+timestamp, this.onDatePick)
+          break
+        }
+      }
+
+      return
+    }
+
     // Клик по времени на десктопе — вход в выделение (tweb :3118-3121).
     // Ветка стоит ПЕРЕД спойлером и реакциями, как у оригинала: время лежит в
     // теле сообщения, и на таче по нему открывается меню, а не выделение —
     // поэтому гейт по `IS_TOUCH_SUPPORTED` тоже оригинала.
-    const bubble = target.closest<HTMLElement>('.bubble')
     if (this.selection && bubble) {
       if (!IS_TOUCH_SUPPORTED && findUpClassName(target, 'time')) {
         this.selection.toggleByElement(bubble)
@@ -1621,25 +1702,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
-   * Прыжок к сообщению окна — часть ветки reply оригинала
-   * (bubbles.ts:3520-3616).
+   * Прыжок к сообщению — хвост ветки reply оригинала (bubbles.ts:3604-3612:
+   * `setInnerPeer({peerId: replyToPeerId, lastMsgId: replyToMid, …})`).
    *
-   * Оригинал ведёт СТЕК возврата (`followStack`) и умеет прыгать в чужой чат
-   * (`setInnerPeer` по `reply_to_peer_id`); у нас пока ни того, ни другого:
-   * стек — часть окружения `Chat` (кнопка «вернуться» живёт в нём), а чужой
-   * чат лента открыть не может — она владеет ОДНИМ окном. Поэтому прыжок
-   * ограничен своим окном, а сообщение вне его просто не находится: догрузка
-   * (`fetchMessageReplyTo`) приедет вместе с окружением.
+   * У оригинала это ОДИН вход и для «оригинал в окне», и для «оригинал за его
+   * пределами»: `setInnerPeer` доходит до `bubbles.setPeer`, а тот сам решает,
+   * доскроллить до уже показанного бабла (кэш-ветка, :5156-5200) или пересобрать
+   * окно вокруг номера. У нас ровно так же — `setMessageId`.
    *
-   * Подсветку цели даёт уже портированный `highlightBubble` (:4771) — второй
-   * такой же здесь был бы дублем.
+   * ОГРАНИЧЕНИЕ, которое остаётся: чужой чат. Оригинал прыгает и в него (по
+   * `reply_to_peer_id`), а лента владеет ОДНИМ окном — открыть другой чат может
+   * только хост. Стека возврата (`followStack`, :3585) тоже нет: кнопка
+   * «вернуться» живёт в окружении `Chat`.
+   *
+   * `.catch(noop)` — как `Chat.setPeer` у оригинала (chat.ts:1122): прыжок,
+   * вытесненный следующим прыжком, отвергается `PEER_CHANGED_ERROR`, и это не
+   * сбой.
    */
   private jumpToMessage(mid: number): void {
-    const bubble = this.getBubble(makeFullMid(this.peerId, mid))
-    if (!bubble) return
-
-    void this.scrollToBubble(bubble, 'center')
-    this.highlightBubble(bubble)
+    void this.setMessageId({ lastMsgId: mid }).catch(noop)
   }
 
   /**
@@ -1790,20 +1871,39 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  bubbles.ts:11457) — единственное место, где адрес бабла (`FullMid`)
    *  превращается в аргументы страницы.
    *
-   *  РАСХОЖДЕНИЕ, которое нельзя обойти: в tweb `mid` — И идентификатор, И
-   *  порядковый ключ, поэтому `offset_id` там буквально `maxId`. У нас это два
-   *  разных поля (`MyMessage.id` — адрес, `MyMessage.seq` — порядок, см. докблок
-   *  `FullMid`), а страницу бэкенд отдаёт по `offset_seq`. Поэтому seq берётся
-   *  из зеркала по адресу.
+   *  Номер у сообщения ОДИН и он же адрес бабла (см. докблок `FullMid`),
+   *  поэтому `offsetId` — буквально `mid` из адреса, как `offset_id` в
+   *  оригинале. Через зеркало он НЕ разрешается: цель прыжка по определению
+   *  может лежать вне загруженного окна, и «нет в зеркале» означало бы
+   *  `offsetId: 0`, то есть молчаливую подмену страницы прыжка страницей от
+   *  низа истории.
    *
-   *  Форма `(maxId, loadCount, backLimit)` — оригинальная; отображение на нашу
-   *  ручку такое же, как у React-ленты (`core/hooks/useMessageWindow.ts`):
-   *  «старее» — `addOffset: 1` (наш бэкенд включает сам `offset_seq`, менеджер
-   *  срезает пересечение), «новее» — `addOffset: -backLimit`, первая страница —
-   *  `offsetSeq: 0`. */
+   *  ФОРМА `(maxId, loadCount, backLimit)` — оригинальная, отображений у неё
+   *  ТРИ, и последнее — расхождение:
+   *   • первая страница — `offsetId: 0`;
+   *   • «старее» — `addOffset: 1` (наш бэкенд включает сам `offset_id`,
+   *     менеджер срезает пересечение);
+   *   • «новее» (`backLimit` БЕЗ `loadCount` — так `getHistory` зовёт пагинацию
+   *     вниз, обнулив `loadCount`, bubbles.ts:11416-11422) — `addOffset:
+   *     -backLimit`;
+   *   • ОКНО ВОКРУГ номера (`backLimit` ВМЕСТЕ с `loadCount` — так его зовёт
+   *     прыжок из `setPeer`) — отдельная ручка `getAround`, а не арифметика
+   *     `addOffset`. Причина — в докблоке `BubblesManagers.messages.getAround`:
+   *     tweb разворачивает `backLimit` в `addOffset = -backLimit, limit +=
+   *     backLimit` (appMessagesManager.ts:9319-9322) и получает окно по обе
+   *     стороны от номера; наш бэкенд из отрицательного `add_offset` читает
+   *     только знак («новее»), а окно вокруг номера отдаёт по `?around=`.
+   *     Размер окна тот же, что у оригинала после разворота, — `loadCount +
+   *     backLimit`. */
   private requestHistory(maxId: FullMid, loadCount: number, backLimit: number): Promise<HistoryResult> {
     const { mid } = splitFullMid(maxId)
-    const offsetId = mid ? (this.getMessage(mid)?.id ?? 0) : 0
+    const offsetId = mid || 0
+
+    if(backLimit && loadCount) {
+      return this.managers.messages
+        .getAround(this.chat.peerId, offsetId, loadCount + backLimit, this.chat.threadId)
+        .then((around) => ({ ...around, count: around.messages.length }))
+    }
 
     return this.managers.messages.getHistory({
       peerId: this.chat.peerId,
@@ -1892,19 +1992,288 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return { cached: !!historyResult.cached, promise, waitPromise: promise }
   }
 
-  /** Порт фрагмента tweb `setPeer` (bubbles.ts:5337-5344 + ожидание `promise`
-   *  ниже по телу), которым лента запрашивает ПЕРВУЮ страницу окна:
-   *  `getHistory1(EMPTY_FULL_MID, true)` — «от самого низа истории и вверх».
-   *  Остальной `setPeer` (смена пира, сохранённая позиция, прыжок к сообщению,
-   *  лесенка) — этап 7; сюда вынесен ровно тот его кусок, у которого уже есть
-   *  предмет, чтобы у хоста (`VanillaFeed`) был один честный вход. */
-  public async loadFirstHistory(): Promise<void> {
-    const result = await this.getHistory1(EMPTY_FULL_MID, true)
-    // `.catch(noop)` — та же причина, что у `safeRenderMessage`: страницу
-    // отвергает `PEER_CHANGED_ERROR`, когда поколение ленты умерло за время
-    // полёта запроса; для ждущего это не сбой, а «дальше не работаем». В tweb
-    // ту же роль играет `m(...)` вокруг `getHistory1` внутри `setPeer`.
-    await result?.promise.catch(noop)
+  /**
+   * Порт tweb `ChatBubbles.setPeer` (bubbles.ts:5036) — ЕДИНСТВЕННЫЙ вход, через
+   * который лента набирает окно: и первая страница чата, и прыжок к сообщению.
+   *
+   * ЧТО ПОРТИРОВАНО:
+   *  • поколение окна (`setPeerTempId` → `middleware` → `middlewarePromise`,
+   *    :5039-5056): всё, что летит в старое окно, отвергается
+   *    `PEER_CHANGED_ERROR` — в том числе страница, доехавшая после нового
+   *    прыжка;
+   *  • разбор цели (:5070-5141): `lastMsgFullMid`/`topMessageFullMid` →
+   *    `isTarget`/`isJump`/`isGoingToBottomEnd`, включая правку «уходим в самый
+   *    низ, а сообщения нет» (:5143-5149);
+   *  • КЭШ-ВЕТКА (:5156-5200): цель уже показана — лента НЕ перерисовывается,
+   *    только доводится скроллом и подсвечивается;
+   *  • пересборка окна (:5241-5250, :5339-5344, :5386-5420): `cleanup()`,
+   *    НОВЫЙ `chatInner` (страница собирается в оторванном узле, поэтому
+   *    `prepareToSaveScroll` её не якорит — см. его гейт `isMounted`), запрос
+   *    страницы, подмена детей `Scrollable` уже готовым деревом;
+   *  • доводка (:5439-5498): `scrollFromDown`/`scrollFromUp`, поиск ближайшего
+   *    смонтированного бабла, позиция `center`/`end`, подсветка цели.
+   *
+   * ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ (каждый пункт — с предметом, а не «потом»):
+   *  • СМЕНА ПИРА. Ветка `!samePeer` портирована ровно в тех строках, которые
+   *    ничего не требуют от окружения (класс нового `chatInner` :5249,
+   *    мгновенный скролл `FocusDirection.Static` :5468). Всё остальное в ней —
+   *    `chat.onChangePeer` (:5061), `chat.finishPeerChange` (:5372/:5389),
+   *    прелоадер (:5379), фон чата `revealPreparedBackground` (:5377/:5407),
+   *    ранги админов (:5282-5335), `sharedMediaTab` — это окружение `Chat`, которого
+   *    у ленты нет. У нас пир меняет ХОСТ, пересоздавая ленту эффектом по
+   *    `peerId` (`VanillaFeed.tsx`), поэтому «тот же инстанс на новый пир»
+   *    предмета пока не имеет.
+   *  • `savedPosition` (:5100-5103, :5437-5438) — сохранённая позиция чата живёт в
+   *    `appImManager.getChatSavedPosition`, у нас такого хранилища нет.
+   *  • `followingUnread` (:5121-5133, :5453/:5463/:5471) — открытие чата на первом
+   *    непрочитанном.
+   *    Требует `!samePeer` И `dialog.unread_count !== 1`; счётчика диалога
+   *    ленте никто не отдаёт (`BubblesManagers.dialogs` знает только горизонт
+   *    чтения). Сама черта непрочитанных при этом работает и здесь — её ставит
+   *    `setUnreadDelimiter` на любой отрисованной странице.
+   *  • `additionalFullMid` (:5219-5220) — дорисовать последнее сообщение поверх
+   *    страницы прыжка; ветка его обработки не портирована и в `getHistory`
+   *    (см. её докблок).
+   *  • `followStack` (:5157-5159) — стек возврата: кнопка «вернуться» живёт в
+   *    окружении `Chat`.
+   *  • sponsored (:5279), лесенка (`resolveLadderAnimation` :5395-5397),
+   *    плейсхолдеры (:5410-5414), `mediaTimestamp`/`startParam`/`pollOption`,
+   *    `ChatType.Search/Pinned/Scheduled/Logs`, `lazyLoadQueue`,
+   *    `dispatchEvent('setPeer')`, `setFetchHistoryInterval` — подсистем нет.
+   *
+   * Возвращает то же, что оригинал: `null`, если окно перерисовывать не
+   * пришлось (кэш-ветка), иначе `{cached, promise}` — промис доводки.
+   */
+  public async setPeer(options: {
+    /** порт `ChatSetPeerOptions.lastMsgId` — номер, ВОКРУГ которого собирается
+     *  окно; без него лента уходит в самый низ истории */
+    lastMsgId?: number,
+    /** порт вычисленного `Chat.setPeer` признака (chat.ts:1032
+     *  `appImManager.isSamePeer`): «этот же чат уже показан». У нас его знает
+     *  ХОСТ — первый вызов после создания ленты идёт с `false`, прыжок внутри
+     *  открытого чата (`setMessageId`) — с `true`. */
+    samePeer?: boolean,
+  } = {}): Promise<{ cached: boolean, promise: Promise<void> } | null> {
+    const { lastMsgId, samePeer = false } = options
+    const peerId = this.peerId
+    const tempId = ++this.setPeerTempId
+
+    const middleware = () => {
+      return this.setPeerTempId === tempId
+    }
+
+    const m = middlewarePromise(middleware, PEER_CHANGED_ERROR)
+
+    let lastMsgFullMid: FullMid = lastMsgId ? makeFullMid(peerId, lastMsgId) : EMPTY_FULL_MID
+
+    // tweb :5079-5081 берёт `historyStorage.maxId` синхронно; у нас последнее
+    // сообщение чата знает воркерный `dialogsManager` (`dialog.lastMessage.id`),
+    // поэтому вопрос задаётся RPC — как и горизонт чтения в `setUnreadDelimiter`.
+    const historyMaxId = await m(this.managers.dialogs.getHistoryMaxSeq(peerId))
+    const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
+    const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
+
+    // tweb :5135 (ветка `else` разбора цели без прыжка): цели нет — идём к
+    // последнему сообщению чата.
+    if(!isTarget && topMessageFullMid !== EMPTY_FULL_MID) {
+      lastMsgFullMid = topMessageFullMid
+    }
+
+    // tweb :5137-5138. `followingUnread` в формуле нет — ветки, которая его
+    // взводит, здесь тоже нет (см. докблок).
+    const isGoingToBottomEnd = lastMsgFullMid === topMessageFullMid || lastMsgFullMid === EMPTY_FULL_MID
+    const isJump = lastMsgFullMid !== topMessageFullMid
+
+    // tweb :5140-5147: «уходим в самый низ, но такого сообщения у нас нет» —
+    // тогда цели нет вовсе, и страница берётся от низа истории.
+    if(isGoingToBottomEnd && lastMsgFullMid !== EMPTY_FULL_MID && !this.getMessage(splitFullMid(lastMsgFullMid).mid)) {
+      lastMsgFullMid = EMPTY_FULL_MID
+    }
+
+    // tweb :5156-5200 — цель УЖЕ в окне. Ленту не трогаем: только скролл и
+    // подсветка. Ветка `skippedMids` (:5161-5164) не портирована — пропущенных
+    // при рендере сообщений у нас не бывает.
+    if(samePeer) {
+      const mounted = await m(this.getMountedBubble(lastMsgFullMid))
+      const bubble = mounted?.bubble
+      if(bubble) {
+        if(isTarget) {
+          void this.scrollToBubble(bubble, 'center')
+          this.highlightBubble(bubble)
+        } else if(topMessageFullMid !== EMPTY_FULL_MID && !isJump) {
+          void this.scrollToEnd()
+        }
+
+        return null
+      }
+    }
+
+    // tweb :5222-5234 — с какого бабла лента сейчас смотрит вниз: по нему
+    // ниже решается, ехать скроллу сверху или снизу.
+    let maxBubbleFullMid: FullMid = EMPTY_FULL_MID
+    if(samePeer) {
+      const el = this.getBubbleByPoint('bottom')
+      if(el?.dataset.mid) {
+        maxBubbleFullMid = makeFullMid(peerId, +el.dataset.mid)
+      }
+
+      if(maxBubbleFullMid === EMPTY_FULL_MID) {
+        maxBubbleFullMid = this.getRenderedHistory('desc', true)[0] ?? EMPTY_FULL_MID
+      }
+    }
+
+    // tweb :5241-5250. Новое окно собирается в ОТОРВАННОМ узле и въезжает в
+    // документ уже целиком (`scrollable.replaceChildren` ниже) — поэтому старое
+    // окно видно всё время полёта запроса, а `prepareToSaveScroll` не якорит
+    // рендер (его гейт `isMounted`).
+    const oldChatInner = this.chatInner
+    this.cleanup()
+    const chatInner = this.chatInner = document.createElement('div')
+    if(samePeer) {
+      chatInner.className = oldChatInner.className
+      chatInner.classList.remove('disable-hover', 'is-scrolling')
+    } else {
+      chatInner.classList.add('bubbles-inner')
+    }
+
+    // tweb :5254-5270. `sameSearch` в множителе нет — поиска по чату у ленты
+    // нет как понятия.
+    const canScroll = samePeer
+    const haveToScrollToBubble = canScroll || (topMessageFullMid !== EMPTY_FULL_MID && isJump) || isTarget
+    const fromUp = maxBubbleFullMid !== EMPTY_FULL_MID && (
+      lastMsgFullMid === EMPTY_FULL_MID ||
+      splitFullMid(maxBubbleFullMid).mid < splitFullMid(lastMsgFullMid).mid
+    )
+    const scrollFromDown = !fromUp && canScroll
+    const scrollFromUp = !scrollFromDown && fromUp && canScroll
+    this.willScrollOnLoad = scrollFromDown || scrollFromUp
+
+    // tweb :5339-5344 (без `additionalFullMid`, см. докблок). `isJump` едет
+    // третьим аргументом — это и есть `isBackLimit`: страница берётся ВОКРУГ
+    // номера, а не от него вверх.
+    const result = await m(this.getHistory1(
+      !isJump && lastMsgFullMid === topMessageFullMid ? EMPTY_FULL_MID : lastMsgFullMid,
+      true,
+      isJump,
+    ))
+
+    // `getHistory` отдаёт `null` только под `justLoad` (:11525), которого здесь
+    // нет; ветка нужна тайпчекеру, а не рантайму.
+    if(!result) {
+      return null
+    }
+
+    const { promise, cached } = result
+
+    const setPeerPromise: Promise<void> = m(promise).then(async() => {
+      // tweb :5386. Бабл цели ищется ПОСЛЕ отрисовки страницы — до неё его нет.
+      const mountedByLastMsgId = haveToScrollToBubble ?
+        await m(lastMsgFullMid !== EMPTY_FULL_MID ? this.getMountedBubble(lastMsgFullMid) : { bubble: this.getLastBubble() }) :
+        undefined
+
+      const scrollable = this.scrollable
+      scrollable.lastScrollDirection = 0
+      scrollable.lastScrollPosition = 0
+      scrollable.replaceChildren(this.paddingTop, chatInner, this.paddingBottom)
+
+      // tweb :5420.
+      this.container.classList.toggle('has-groups', !!Object.keys(this.dateMessages).length)
+
+      if(haveToScrollToBubble) {
+        let unsetPadding: (() => void) | undefined
+        if(scrollFromDown) {
+          scrollable.setScrollPositionSilently(99999)
+        } else if(scrollFromUp) {
+          const set = this.setTopPadding()
+          if(set.isPaddingNeeded) {
+            unsetPadding = set.unsetPadding
+          }
+
+          scrollable.setScrollPositionSilently(0)
+        }
+
+        let bubble = mountedByLastMsgId?.bubble
+        const foundTarget = !!bubble?.parentElement
+        if(!foundTarget) {
+          bubble = this.findNextMountedBubbleByMsgId(lastMsgFullMid, false) || this.findNextMountedBubbleByMsgId(lastMsgFullMid, true)
+        }
+
+        let scrollPromise: Promise<void> | undefined
+        // ! sometimes there can be no bubble
+        if(bubble) {
+          const lastBubble = this.getLastBubble()
+          // `followingUnread ? 'start' : ...` (:5463) свёрнуто: ветки, которая
+          // его взводит, здесь нет.
+          const position: ScrollLogicalPosition = !isJump && !isTarget && lastBubble === bubble ? 'end' : 'center'
+
+          if(position === 'end' && lastBubble === bubble && samePeer) {
+            scrollPromise = this.scrollToEnd()
+          } else {
+            scrollPromise = this.scrollToBubble(bubble, position, !samePeer ? FocusDirection.Static : undefined)
+          }
+
+          if(isTarget && foundTarget) {
+            this.highlightBubble(bubble)
+          }
+        }
+
+        // tweb :5483-5487. Тост «Сообщение не найдено» (:5477-5481) не
+        // портирован — тостов у ленты нет.
+        if(unsetPadding) {
+          void (scrollPromise ?? Promise.resolve()).then(unsetPadding)
+        }
+      } else {
+        scrollable.setScrollPositionSilently(99999)
+      }
+
+      scrollable.updateThumb(scrollable.lastScrollPosition)
+      this.onRenderScrollSet()
+      this.onScroll()
+
+      // tweb :5431-5434 + :5500-5505 — окно доехало, но список мог оказаться короче
+      // вьюпорта: позицию скролла надо пересчитать, а не сверять с прошлой.
+      void Promise.all([setPeerPromise, getHeavyAnimationPromise()]).then(() => {
+        if(!middleware()) {
+          return
+        }
+
+        scrollable.onScroll()
+      })
+    })
+
+    return { cached, promise: setPeerPromise }
+  }
+
+  /** Порт tweb `Chat.setMessageId` (chat.ts:1164-1177) — «тот же чат, другая
+   *  цель». В оригинале обёртка досыпает в `setPeer` координаты чата
+   *  (`peerId`/`threadId`), у нас лента владеет ОДНИМ окном и досыпать нечего,
+   *  кроме `samePeer: true`, — но входом обёртка остаётся: прыжок зовут и клик
+   *  по reply-заголовку, и календарь, и (придёт с окружением) поиск. */
+  public setMessageId(options: { lastMsgId?: number } = {}) {
+    const promise = this.setPeer({ ...options, samePeer: true })
+    // Порт chat.ts:1119-1126: `Chat` заводит СВОЮ цепочку до второго промиса и
+    // гасит её `.catch(noop)`, а наружу отдаёт исходный. Без этой строки
+    // вытесненное окно отвергалось бы `PEER_CHANGED_ERROR` в никуда — то есть
+    // необработанным отказом промиса.
+    void promise.then((result) => result?.promise).catch(noop)
+    return promise
+  }
+
+  /** Порт tweb `onDatePick` (bubbles.ts:10205-10222) — выбранный в календаре
+   *  день превращается в номер сообщения и отдаётся прыжку.
+   *
+   *  Запрос другой (одна ручка вместо `requestHistory` с `offsetDate`, см.
+   *  `BubblesManagers.messages.messageByDate`), сверка пира после ответа — та же
+   *  (:10218): пока летел запрос, лента могла уехать в другой чат. */
+  public onDatePick = (timestamp: number) => {
+    const peerId = this.peerId
+    void this.managers.messages.messageByDate(peerId, timestamp).then((mid) => {
+      if(!mid || this.peerId !== peerId) {
+        return
+      }
+
+      void this.setMessageId({ lastMsgId: mid }).catch(noop)
+    })
   }
 
   // ─── скролл, пагинация, липкие даты ──────────────────────────────────────
@@ -1976,6 +2345,36 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const bubble = this.getBubble(fullMid)
     return bubble && { bubble, peerId, mid }
+  }
+
+  /**
+   * Порт tweb `findNextMountedBubbleByMsgId` (bubbles.ts:3958-3979) — «цели в
+   * окне нет; какой из отрисованных баблов к ней ближе». Им `setPeer` спасает
+   * прыжок, когда сама цель не доехала (её удалили, она вне выданной страницы),
+   * — иначе окно доехало бы, а скролл остался бы стоять.
+   *
+   * `prev` переворачивает и порядок обхода, и сравнение: назад ищем ближайший
+   * СТАРШЕ цели по убыванию, вперёд — ближайший МЛАДШЕ по возрастанию.
+   * Условие `parentElement` — оригинала: бабл может лежать в карте адресов, но
+   * ещё не быть смонтированным в серию.
+   *
+   * Ветка `ChatType.Search` (:3959-3965) не портирована — типа чата «поиск» у
+   * ленты нет как понятия.
+   */
+  private findNextMountedBubbleByMsgId(fullMid: FullMid, prev?: boolean): HTMLElement | undefined {
+    const fullMids = this.getRenderedHistory(prev ? 'desc' : 'asc')
+    const { mid } = splitFullMid(fullMid)
+
+    const filterCallback: (_mid: FullMid) => boolean = prev ?
+      (_mid) => splitFullMid(_mid).mid < mid :
+      (_mid) => mid < splitFullMid(_mid).mid
+
+    const foundMid = fullMids.find((_mid) => {
+      if(!filterCallback(_mid)) return false
+      return !!this.getBubble(_mid)?.parentElement
+    })
+
+    return foundMid ? this.getBubble(foundMid) : undefined
   }
 
   /** Порт tweb bubbles.ts:2910. */
@@ -2157,29 +2556,39 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  включает липкие даты (`_chatBubble.scss:513-517`) и ставится с задержкой
    *  600мс — ровно чтобы дата не мигнула на первом кадре открытия чата.
    *
-   *  Не портированы: гейт `isLoading` (`!this.preloader.detached` — прелоадер
-   *  первой загрузки у нас живёт в `Chat.tsx`, не в ленте) и ветка
-   *  `willScrollOnLoad` (её взводит `setPeer`). */
+   *  Задержки НЕТ, когда `setPeer` и так уведёт скролл (`willScrollOnLoad`,
+   *  :10192-10196): мигать нечему — дата встанет на своё место тем же движением.
+   *  Поле гасится в конце (:10202), как в оригинале: признак живёт ровно один
+   *  проход.
+   *
+   *  Не портирован гейт `isLoading` (`!this.preloader.detached`) — прелоадер
+   *  первой загрузки у нас живёт в `Chat.tsx`, не в ленте. */
   private onRenderScrollSet(state?: { scrollHeight: number, clientHeight: number }) {
     const className = 'has-sticky-dates'
-    if(this.container.classList.contains(className)) {
-      return
+    if(!this.container.classList.contains(className)) {
+      state ??= {
+        scrollHeight: this.scrollable.scrollSize,
+        clientHeight: this.scrollable.clientSize,
+      }
+
+      if(state.scrollHeight !== state.clientHeight) {
+        const middleware = this.getMiddleware()
+        const callback = () => {
+          if(!middleware()) return
+          this.container.classList.add(className)
+        }
+
+        if(this.willScrollOnLoad) {
+          callback()
+        } else {
+          setTimeout(callback, 600)
+        }
+
+        return
+      }
     }
 
-    state ??= {
-      scrollHeight: this.scrollable.scrollSize,
-      clientHeight: this.scrollable.clientSize,
-    }
-
-    if(state.scrollHeight === state.clientHeight) {
-      return
-    }
-
-    const middleware = this.getMiddleware()
-    setTimeout(() => {
-      if(!middleware()) return
-      this.container.classList.add(className)
-    }, 600)
+    this.willScrollOnLoad = undefined
   }
 
   /** Порт tweb bubbles.ts:10988. */
@@ -2726,10 +3135,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.chatInner.replaceChildren()
     }
 
-    // tweb делает это следом, уже в `setPeer` (bubbles.ts:5420) — у нас
-    // `setPeer` не портирован, а реестр секций опустел прямо здесь.
-    this.container.classList.remove('has-groups')
-
     this.middlewareHelper.clean()
   }
 
@@ -2739,6 +3144,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  (`VanillaFeed` зовёт только его). Без этой строки уже стартовавшая пачка
    *  домонтировала бы серии в оторванное от документа дерево. */
   public destroy() {
+    // Поколение окна — НАША строка, по той же причине, что `batchProcessor
+    // .clear()` ниже: в tweb `setPeerTempId` вытесняет следующий `setPeer`,
+    // который его лента обязательно проходит на смене пира, а у нас лента
+    // умирает целиком. Без строки страница, доехавшая после `destroy()`,
+    // прошла бы `middleware()` (`middlewareHelper` после `destroy()` выдаёт
+    // ЖИВОЙ токен — см. `MiddlewareHelper.clean`, где `details` пересоздаются)
+    // и дописала бы окно в оторванное дерево.
+    ++this.setPeerTempId
     this.destroyScrollable()
     this.listenerSetter.removeAll()
     // Свайп вешает слушатели СВОИМ хендлером, мимо `listenerSetter`, — снимать

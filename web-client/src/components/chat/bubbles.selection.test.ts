@@ -14,12 +14,26 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
 import ChatSelection from './selection'
 
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 const CHAT = 92
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
-  messages: { getHistory: vi.fn(async (): Promise<HistoryResult> => ({
-    messages, count: messages.length, reachedTop: true, reachedBottom: true,
-  })) },
+  messages: {
+    getHistory: vi.fn(async (): Promise<HistoryResult> => ({
+      messages, count: messages.length, reachedTop: true, reachedBottom: true,
+    })),
+    // Прыжок к сообщению и календарь этот файл не проверяет, но обе ручки
+    // обязательны в `BubblesManagers`: лента умеет и то и другое всегда.
+    getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
+    messageByDate: vi.fn(async () => null),
+  },
   peers: { fillMirror: vi.fn(async () => {}) },
   dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
 })
@@ -58,7 +72,7 @@ async function feedWithSelection(messages: MyMessage[], plateSpy?: (call: { even
   }
   const feed = new ChatBubbles(chat, managersWith(messages))
   bubbles = feed
-  await feed.loadFirstHistory()
+  await openFeed(feed)
   await settle()
   document.body.append(feed.container)
   return feed

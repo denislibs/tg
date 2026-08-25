@@ -15,6 +15,14 @@ import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
 
+/** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
+ *  возвращает управление, едва отправив запрос: рендер и доводка живут во
+ *  ВТОРОМ промисе результата — `{cached, promise}`, и ждёт его `Chat.setPeer`
+ *  (tweb chat.ts:1119-1122). */
+async function openFeed(feed: ChatBubbles) {
+  await (await feed.setPeer())?.promise
+}
+
 const CHAT = 80
 
 const chatContext = (): ChatContext => ({
@@ -25,9 +33,15 @@ const chatContext = (): ChatContext => ({
 })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
-  messages: { getHistory: vi.fn(async (): Promise<HistoryResult> => ({
-    messages, count: messages.length, reachedTop: true, reachedBottom: true,
-  })) },
+  messages: {
+    getHistory: vi.fn(async (): Promise<HistoryResult> => ({
+      messages, count: messages.length, reachedTop: true, reachedBottom: true,
+    })),
+    // Прыжок к сообщению и календарь этот файл не проверяет, но обе ручки
+    // обязательны в `BubblesManagers`: лента умеет и то и другое всегда.
+    getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
+    messageByDate: vi.fn(async () => null),
+  },
   peers: { fillMirror: vi.fn(async () => {}) },
   dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
 })
@@ -62,7 +76,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 describe('ChatBubbles — время и реакции в бабле', () => {
   it('лента заводит время в конце тела сообщения', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
@@ -76,7 +90,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     // tweb :9855 — чипы и время образуют одну строку-обёртку. Останься время
     // соседом реакций, оно уехало бы на свою строку под чипами.
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
@@ -99,7 +113,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       createdAt: '2026-08-15T12:34:00',
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([pending]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, tempId)
@@ -109,7 +123,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
 
   it('ЧУЖОЕ сообщение значка отправки не несёт', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     expect(bubbleOf(bubbles, 1).querySelector('.time-sending-status')).toBeNull()
@@ -139,7 +153,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     it('чужая реакция — СТАВИТСЯ', async () => {
       const { managers, react, unreact } = withToggle([msg(1, { reactions })])
       bubbles = new ChatBubbles(chatContext(), managers)
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       document.body.append(bubbles.container)
@@ -154,7 +168,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     it('СВОЯ реакция (is-chosen) — СНИМАЕТСЯ', async () => {
       const { managers, react, unreact } = withToggle([msg(1, { reactions: mine })])
       bubbles = new ChatBubbles(chatContext(), managers)
-      await bubbles.loadFirstHistory()
+      await openFeed(bubbles)
       await settle()
 
       document.body.append(bubbles.container)
@@ -169,7 +183,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
 
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
-    await bubbles.loadFirstHistory()
+    await openFeed(bubbles)
     await settle()
 
     expect(bubbleOf(bubbles, 1).querySelector('.reactions')).toBeNull()
