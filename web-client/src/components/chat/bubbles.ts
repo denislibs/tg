@@ -99,7 +99,11 @@ import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
+import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
+import { collectLightboxItems } from '@components/mediaViewer/collectLightboxItems'
+import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
+import { getMediaId } from '@core/messages/messageKind'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { useI18nStore } from '../../i18n'
 
@@ -1312,6 +1316,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    // Медиа — tweb bubbles.ts:3479-3482 (`checkTargetForMediaViewer`). Ветка
+    // стоит после спойлера и перед именем: у оригинала тот же порядок, и он
+    // существен — у медиа с крышкой первым обязан сработать спойлер.
+    const attachment = target.closest<HTMLElement>('.attachment')
+    if (attachment && this.openMediaViewerFor(attachment)) {
+      cancelEvent(e)
+      return
+    }
+
     // Имя автора / упоминание — tweb bubbles.ts:3360-3364: peerId берётся из
     // `data-peer-id` у `.peer-title` либо из `data-follow` у упоминания
     // (`a.follow`, wrapRichText.ts:408-409).
@@ -1328,6 +1341,61 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (navigation?.openPeer?.(peerId, nameDiv)) {
       cancelEvent(e)
     }
+  }
+
+  /**
+   * Открыть медиавьювер по кликнутому вложению — порт
+   * `checkTargetForMediaViewer` (tweb bubbles.ts:3641+) в применимом объёме.
+   *
+   * Список для листания собирается ИЗ ОКНА, как у оригинала (:3843
+   * `reverse: true` — порядок по возрастанию номера): вьювер листает то, что
+   * уже загружено, а не ходит за медиа отдельно. Сбор общий с React-лентой
+   * (`collectLightboxItems`) — второй такой же был бы вторым ответом на вопрос
+   * «что считается просматриваемым медиа».
+   *
+   * ЧЕГО ЗДЕСЬ НЕТ и почему: прыжок к сообщению, пересылка, удаление и
+   * догрузка медиа (`jumpToMessage`/`onForward`/`onDelete`/`loadMoreMedia`) —
+   * это окружение `Chat`, которого у ленты ещё нет (`ChatContext` узкий, см.
+   * шапку файла). Все четыре у вьювера ОПЦИОНАЛЬНЫ: без них он открывается,
+   * листает и закрывается, а действия приедут вместе с окружением на этапе 7.
+   */
+  private openMediaViewerFor(attachment: HTMLElement): boolean {
+    const bubble = attachment.closest<HTMLElement>('.bubble')
+    const mid = Number(bubble?.dataset.mid)
+    if (!mid) return false
+
+    const message = this.getMessage(mid)
+    const mediaId = message && getMediaId(message)
+    if (mediaId == null) return false
+
+    const msgs = mirrorWindow(this.chat.messagesStorageKey)
+    if (!msgs) return false
+
+    // Карточки авторов — точечно из зеркала, а не выгрузкой его целиком:
+    // подписи вьюверу нужны только у тех, чьи сообщения он листает.
+    const peers = new Map<number, NonNullable<ReturnType<typeof cachedPeer>>>()
+    for (const m of msgs) {
+      const fromId = m.fromId
+      if (fromId == null || peers.has(fromId)) continue
+      const peer = cachedPeer(fromId)
+      if (peer) peers.set(fromId, peer)
+    }
+
+    const { items, index } = collectLightboxItems({
+      msgs: [...msgs],
+      mediaId,
+      ctx: {
+        meId: rootScope.myId,
+        peers,
+        lang: useI18nStore.getState().lang,
+      },
+      findElement: (m) => this.getBubble(makeFullMid(this.peerId, m.id))?.querySelector('.attachment') ?? null,
+    })
+    if (!items[index]) return false
+
+    items[index].element = attachment // источник полёта — кликнутая миниатюра
+    void openMediaViewer({ items, index, target: attachment, reverse: true })
+    return true
   }
 
   /** Порт tweb bubbles.ts:10037. Порядок тела — как в оригинале: сначала края

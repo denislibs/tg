@@ -12,6 +12,7 @@ import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedi
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
+import * as viewer from '@components/mediaViewer/openMediaViewer'
 import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
 
 const CHAT = 60
@@ -68,7 +69,7 @@ async function settle() {
 
 let bubbles: ChatBubbles | undefined
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
-beforeEach(() => { resetMessagesMirror(); resetPeerMirror() })
+beforeEach(() => { resetMessagesMirror(); resetPeerMirror(); vi.restoreAllMocks() })
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
   b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
@@ -316,6 +317,52 @@ describe('ChatBubbles — медиа в бабле', () => {
     // `toggleMediaSpoiler` помечает крышку раскрывающейся — либо классом
     // перехода, либо флагом анимации.
     expect(cover.classList.contains('is-revealing') || cover.dataset.isRevealing === 'true').toBe(true)
+    bubbles.container.remove()
+  })
+
+  // Клик по вложению открывает медиавьювер (tweb :3479-3482
+  // `checkTargetForMediaViewer`). Список для листания собирается ИЗ ОКНА —
+  // вьювер листает уже загруженное, а не ходит за медиа отдельно.
+  it('клик по фото открывает вьювер со списком медиа ОКНА', async () => {
+    const opened = vi.fn()
+    vi.spyOn(viewer, 'openMediaViewer').mockImplementation((args) => { opened(args); return undefined })
+
+    bubbles = new ChatBubbles(chatContext(), managersWith([
+      withPhoto({ id: 1 }), textOnly(2), withPhoto({ id: 3 }),
+    ]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    document.body.append(bubbles.container)
+    const attachment = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.attachment')!
+    attachment.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(opened).toHaveBeenCalledTimes(1)
+    const args = opened.mock.calls[0][0] as { items: unknown[]; index: number; reverse?: boolean }
+    // В списке ровно два медиа-сообщения окна; текстовое между ними не в счёт.
+    expect(args.items).toHaveLength(2)
+    expect(args.index).toBe(0)
+    // Порядок окна — по возрастанию номера (tweb :3843).
+    expect(args.reverse).toBe(true)
+    bubbles.container.remove()
+  })
+
+  it('клик по вложению документа вьювер НЕ открывает', async () => {
+    const opened = vi.fn()
+    vi.spyOn(viewer, 'openMediaViewer').mockImplementation((args) => { opened(args); return undefined })
+
+    const media = docMedia({ mime: 'application/pdf', attributes: [{ _: 'documentAttributeFilename', file_name: 'смета.pdf' }] })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    document.body.append(bubbles.container)
+    // У документа вложения нет вовсе — строка живёт в теле сообщения, и
+    // квалификацию просматриваемого медиа она не проходит.
+    bubbleOf(bubbles, 1).querySelector<HTMLElement>('.document')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(opened).not.toHaveBeenCalled()
     bubbles.container.remove()
   })
 
