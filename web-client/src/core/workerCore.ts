@@ -75,6 +75,12 @@ export function createWorkerCore() {
   // fileUpload активен только при DNP-ON: загрузка медиа чанками через канал (media.upload).
   const fileUpload = AppConfig.dnp.enabled ? newFileUpload(ws) : undefined
   const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
+  // Провод TL у REST — тем же флагом, что у сокета: формат просит КЛИЕНТ, а
+  // сервер умеет обе формы (заголовок `Accept`). Разбор грузится динамически,
+  // чтобы схема не попадала в бандл при выключенном флаге.
+  if (AppConfig.tlWire) {
+    void import('./net/tlFrames').then((m) => { rest.useTLWire(m.decodeTLValue) })
+  }
   // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
   // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
   // «мои» реакций) — теперь кэшируем профиль целиком и рассылаем его вкладкам

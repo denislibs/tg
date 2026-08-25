@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 
 import golden from '../../../../schema/testdata/tl-golden.json'
-import { decodeTLFrame } from './tlFrames'
+import { decodeTLFrame, decodeTLValue } from './tlFrames'
 
 interface GoldenVector { name: string; type: string; hex: string }
 const vectorOf = (name: string) => {
@@ -58,5 +58,27 @@ describe('decodeTLFrame', () => {
     // updatesTooLong#e317af7e — конструктор объединения Updates, которого наш
     // сервер не производит: догон у нас свой.
     expect(() => decodeTLFrame(toBytes('7eaf17e3'))).toThrow(/оболочк/)
+  })
+})
+
+// Витрина REST разбирается тем же кодеком и БЕЗ подсказки о типе: конструктор
+// опознаётся по id из потока — так же, как у оригинала, где на этом месте
+// стоит фолбэк `'Object'` (`networker.ts:1503`).
+describe('decodeTLValue', () => {
+  it('разбирает конструктор витрины по id из потока', () => {
+    const got = decodeTLValue(toBytes(vectorOf('documentSticker').hex)) as { _: string; id: number }
+
+    expect(got._).toBe('document')
+    expect(got.id).toBe(77)
+  })
+
+  it('байты витрины доезжают base64-строкой, а не Uint8Array', () => {
+    // Тот же переходник, что у кадров: модель фазы 0 держит `bytes` строкой, и
+    // формы не должно быть две — иначе одна витрина приезжала бы по-разному в
+    // зависимости от флага провода.
+    const got = decodeTLValue(toBytes(vectorOf('photoStrippedSize').hex)) as { _: string; bytes: unknown }
+
+    expect(got._).toBe('photoStrippedSize')
+    expect(got.bytes).toBe(btoa('\x01\x02\x03'))
   })
 })

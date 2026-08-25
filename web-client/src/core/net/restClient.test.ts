@@ -122,4 +122,63 @@ describe('RestClient routing', () => {
     await expect(rc.post('/z', { a: 1 })).resolves.toEqual({ ok: 1 })
     expect(fetchMock).toHaveBeenCalled()
   })
+
+  // ── провод TL ──────────────────────────────────────────────────────────────
+  //
+  // Формат просит КЛИЕНТ заголовком `Accept` — так же, как у сокета
+  // подпротоколом `tl.1`. Витрина при этом одна: сервер собирает её из той же
+  // модели, поэтому переключение обратимо.
+
+  it('без включённого провода TL заголовок Accept не просит байтов', async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ ok: 1 }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const rc = new RestClient('/api', () => 'tok')
+
+    await rc.get('/me')
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>
+    expect(headers.Accept).toBeUndefined()
+  })
+
+  it('провод TL: просит байты заголовком и разбирает их по Content-Type', async () => {
+    const body = new Uint8Array([1, 2, 3, 4])
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(body, { status: 200, headers: { 'Content-Type': 'application/x-tl' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const decode = vi.fn((_raw: Uint8Array) => ({ _: 'peerUser', user_id: 7 }))
+    const rc = new RestClient('/api', () => 'tok')
+    rc.useTLWire(decode)
+
+    await expect(rc.get('/saved')).resolves.toEqual({ _: 'peerUser', user_id: 7 })
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>
+    expect(headers.Accept).toContain('application/x-tl')
+    expect(Array.from(decode.mock.calls[0][0])).toEqual([1, 2, 3, 4])
+  })
+
+  it('витрина БЕЗ конструктора остаётся JSON-ом даже на проводе TL', async () => {
+    // Границы шага A/B названы явно: чужие протоколы, транспорт медиа и наши
+    // подсистемы без предмета в схеме кодировать нечем. Клиент узнаёт это по
+    // Content-Type ответа, а не по своей просьбе.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ has_password: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const decode = vi.fn((_raw: Uint8Array) => ({ _: 'НЕ ДОЛЖНО ВЫЗЫВАТЬСЯ' }))
+    const rc = new RestClient('/api', () => 'tok')
+    rc.useTLWire(decode)
+
+    await expect(rc.get('/me/password')).resolves.toEqual({ has_password: true })
+    expect(decode).not.toHaveBeenCalled()
+  })
+
+  it('отказ на проводе TL тоже разбирается — и текст берётся у конструктора', async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([9]), {
+      status: 400, headers: { 'Content-Type': 'application/x-tl' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const rc = new RestClient('/api', () => 'tok')
+    rc.useTLWire(() => ({ _: 'error', code: 400, text: 'PHONE_INVALID' }))
+
+    await expect(rc.post('/auth/sign_in', {})).rejects.toThrow('PHONE_INVALID')
+  })
 })
