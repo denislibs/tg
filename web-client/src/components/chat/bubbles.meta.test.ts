@@ -115,6 +115,58 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     expect(bubbleOf(bubbles, 1).querySelector('.time-sending-status')).toBeNull()
   })
 
+  // Тоггл реакции — порт `Chat.sendReaction` (:3245-3279). Что делать, лента
+  // решает по КЛИКНУТОМУ ЧИПУ, а не перечитыванием сообщения.
+  describe('клик по чипу реакции', () => {
+    const withToggle = (messages: MyMessage[]) => {
+      const react = vi.fn(async () => {})
+      const unreact = vi.fn(async () => {})
+      const managers = managersWith(messages)
+      Object.assign(managers.messages, { react, unreact })
+      return { managers, react, unreact }
+    }
+
+    const mine: MessageReactions = {
+      _: 'messageReactions',
+      results: [{
+        _: 'reactionCount',
+        reaction: { _: 'reactionEmoji', emoticon: '👍' },
+        count: 1,
+        chosen_order: 0,
+      }],
+    }
+
+    it('чужая реакция — СТАВИТСЯ', async () => {
+      const { managers, react, unreact } = withToggle([msg(1, { reactions })])
+      bubbles = new ChatBubbles(chatContext(), managers)
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      document.body.append(bubbles.container)
+      bubbleOf(bubbles, 1).querySelector<HTMLElement>('.reaction')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+      expect(react).toHaveBeenCalledWith(CHAT, 1, '👍')
+      expect(unreact).not.toHaveBeenCalled()
+      bubbles.container.remove()
+    })
+
+    it('СВОЯ реакция (is-chosen) — СНИМАЕТСЯ', async () => {
+      const { managers, react, unreact } = withToggle([msg(1, { reactions: mine })])
+      bubbles = new ChatBubbles(chatContext(), managers)
+      await bubbles.loadFirstHistory()
+      await settle()
+
+      document.body.append(bubbles.container)
+      bubbleOf(bubbles, 1).querySelector<HTMLElement>('.reaction')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+      expect(unreact).toHaveBeenCalledWith(CHAT, 1, '👍')
+      expect(react).not.toHaveBeenCalled()
+      bubbles.container.remove()
+    })
+  })
+
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
     await bubbles.loadFirstHistory()

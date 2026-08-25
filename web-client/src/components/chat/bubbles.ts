@@ -207,7 +207,19 @@ export interface ChatContext {
 
 /** Срез менеджеров, которым пользуется лента (см. расхождения в шапке). */
 export interface BubblesManagers extends PeerTitleManagers {
-  messages: { getHistory(args: HistoryArgs): Promise<HistoryResult> }
+  messages: {
+    getHistory(args: HistoryArgs): Promise<HistoryResult>
+    /** Порт `Chat.sendReaction` (tweb chat.ts:1457) в объёме тоггла: у
+     *  оригинала это ОДИН метод, который сам решает, ставить или снимать; у
+     *  нашего владельца операций две, потому что каждая несёт свою
+     *  оптимистичную дельту и свой откат. Решение остаётся за лентой — она
+     *  знает `is-chosen` кликнутого чипа.
+     *
+     *  Опциональны: без них лента рисует реакции, но не переключает их — так
+     *  поднимается тест, которому реакции нужны только как разметка. */
+    react?(peerId: number, msgId: number, emoji: string): Promise<void>
+    unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+  }
   /** Порт двух источников границы непрочитанных: `appMessagesManager
    *  .getReadMaxIdIfUnread` и `Chat.getHistoryMaxId` (tweb bubbles.ts:11570-11572).
    *  Владелец обоих фактов у нас — воркерный `dialogsManager` (запись диалога),
@@ -1395,6 +1407,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    // Чип реакции — tweb bubbles.ts:3245-3279: тоггл своей реакции. Ветка
+    // стоит РАНЬШЕ reply и медиа: чипы лежат внутри тела сообщения, и клик по
+    // ним не должен доставаться ни вложению, ни шапке.
+    const chip = target.closest<HTMLElement>('.reaction[data-reaction]')
+    if (chip) {
+      cancelEvent(e)
+      this.toggleReaction(chip)
+      return
+    }
+
     // Reply-заголовок — tweb bubbles.ts:3520-3616: прыжок к оригиналу. Ветка
     // стоит ПЕРЕД медиа: у бабла с вложением заголовок лежит над ним, и клик
     // по нему не должен открывать вьювер.
@@ -1430,6 +1452,37 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (navigation?.openPeer?.(peerId, nameDiv)) {
       cancelEvent(e)
     }
+  }
+
+  /**
+   * Тоггл своей реакции по клику на чип — порт `Chat.sendReaction`
+   * (tweb chat.ts:1457) в объёме, который есть у нашего владельца.
+   *
+   * ЧТО ДЕЛАТЬ — ставить или снимать — лента решает по КЛИКНУТОМУ ЧИПУ
+   * (`is-chosen`), а не по перечитыванию сообщения: у оригинала тот же
+   * источник (`reactionsElement.getReactionCount(reactionElement)` даёт
+   * `chosen_order` именно этого чипа). Иначе быстрый повторный клик успел бы
+   * прочитать ещё не обновлённое состояние.
+   *
+   * Оптимистика и откат живут у ВЛАДЕЛЬЦА (воркерный менеджер применяет дельту
+   * до сети и откатывает её на ошибке) — лента их не дублирует и результата не
+   * ждёт: обновление приедет операцией, как и всякое изменение сообщения.
+   *
+   * Кастом-эмодзи реакции пропускаются: у чипа тогда нет эмодзи, а адресовать
+   * реакцию документом наш владелец не умеет (задача #47).
+   */
+  private toggleReaction(chip: HTMLElement): void {
+    const { react, unreact } = this.managers.messages
+    if (!react || !unreact) return
+
+    const mid = Number(chip.closest<HTMLElement>('.bubble')?.dataset.mid)
+    const emoji = chip.querySelector('.reaction-sticker')?.textContent ?? ''
+    if (!mid || !emoji) return
+
+    const promise = chip.classList.contains('is-chosen')
+      ? unreact(this.peerId, mid, emoji)
+      : react(this.peerId, mid, emoji)
+    promise.catch(noop)
   }
 
   /**
