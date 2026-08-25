@@ -702,6 +702,14 @@ const de: Dict = {
     'Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet.',
+  Album: 'Album',
+  Photo: 'Foto',
+  Video: 'Video',
+  GIF: 'GIF',
+  Sticker: 'Sticker',
+  Giveaway: 'Verlosung',
+  'Live location': 'Live-Standort',
+  'Unsupported message': 'Nicht unterstützte Nachricht',
 }
 
 export default de

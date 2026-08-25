@@ -704,6 +704,14 @@ const uk: Dict = {
     'Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом».',
+  Album: 'Альбом',
+  Photo: 'Фото',
+  Video: 'Відео',
+  GIF: 'GIF',
+  Sticker: 'Стікер',
+  Giveaway: 'Розіграш',
+  'Live location': 'Трансляція геопозиції',
+  'Unsupported message': 'Непідтримуване повідомлення',
 }
 
 export default uk

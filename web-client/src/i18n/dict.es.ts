@@ -700,6 +700,14 @@ const es: Dict = {
     '¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada».',
+  Album: 'Álbum',
+  Photo: 'Foto',
+  Video: 'Vídeo',
+  GIF: 'GIF',
+  Sticker: 'Sticker',
+  Giveaway: 'Sorteo',
+  'Live location': 'Ubicación en tiempo real',
+  'Unsupported message': 'Mensaje no compatible',
 }
 
 export default es

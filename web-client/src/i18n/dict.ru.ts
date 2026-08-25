@@ -1278,6 +1278,14 @@ const ru: Dict = {
     'Вы уверены, что хотите удалить аккаунт? Это действие необратимо.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом».',
+  Album: 'Альбом',
+  Photo: 'Фото',
+  Video: 'Видео',
+  GIF: 'GIF',
+  Sticker: 'Стикер',
+  Giveaway: 'Розыгрыш',
+  'Live location': 'Трансляция геопозиции',
+  'Unsupported message': 'Неподдерживаемое сообщение',
 }
 
 export default ru

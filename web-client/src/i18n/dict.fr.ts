@@ -702,6 +702,14 @@ const fr: Dict = {
     'Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé ».',
+  Album: 'Album',
+  Photo: 'Photo',
+  Video: 'Vidéo',
+  GIF: 'GIF',
+  Sticker: 'Sticker',
+  Giveaway: 'Tirage au sort',
+  'Live location': 'Position en direct',
+  'Unsupported message': 'Message non pris en charge',
 }
 
 export default fr

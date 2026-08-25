@@ -159,9 +159,12 @@ describe('ChatBubbles — медиа в бабле', () => {
   it('gif идёт той же веткой, что видео', async () => {
     const media = docMedia({
       mime: 'video/mp4',
+      // `documentAttributeAnimated` уточняет тип до `gif` только ПОСЛЕ
+      // `documentAttributeVideo` — иначе последний перезапишет его обратно в
+      // `video` (tweb appDocsManager.ts:161-218).
       attributes: [
-        { _: 'documentAttributeAnimated' },
         { _: 'documentAttributeVideo', duration: 2, w: 320, h: 240 },
+        { _: 'documentAttributeAnimated' },
       ],
     })
     bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
