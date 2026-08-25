@@ -93,8 +93,11 @@ import BubbleGroups, {
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import wrapPhoto from '@components/wrappers/photo'
+import wrapVideo from '@components/wrappers/video'
+import wrapSticker from '@components/wrappers/sticker'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
-import { getBubbleMedia, isMediaSpoiler } from '@core/media/messageMedia'
+import { setAttachmentSize } from '@core/dom/mediaSizes'
+import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { useI18nStore } from '../../i18n'
 
@@ -537,45 +540,85 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ветка синхронна, а ошибка загрузки гасится (превью просто не появится,
    * бабл с текстом останется целым).
    *
-   * Пока портирована ОДНА ветка switch'а — фото. Видео, альбом, стикер,
-   * документы и голосовые приезжают следующими срезами: у каждого свой набор
-   * классов бабла и свой враппер, и валить их в один заход значило бы отдать
-   * непроверяемый кусок.
+   * Портированы ветки ФОТО (:7878-7935) и ВИДЕО/GIF/КРУЖКА (:8511-8587).
+   * Альбом, стикер, документы и голосовые приезжают следующими срезами: у
+   * каждого свой набор классов бабла и свой враппер, и валить их в один заход
+   * значило бы отдать непроверяемый кусок.
+   *
+   * Хвост медиа (`with-media-tail`, :7908/:8548) не ставится: он гейтится
+   * `USE_MEDIA_TAILS` и `canHaveTail`, а хвостов у нашего бабла ещё нет вовсе
+   * (этап 6). Ставить класс, под который нет ни SVG-хвоста, ни его CSS, значило
+   * бы объявить наличие того, чего нет.
    */
   private renderMedia(message: MyMessage, bubbleContainer: HTMLElement, messageDiv: HTMLElement): void {
     if (message._ !== 'message') return
 
     const media = message.media
-    if (media?._ !== 'messageMediaPhoto') return
+    const mediaObject = getBubbleMedia(message)
+    if (!mediaObject) return
 
-    const photo = getBubbleMedia(message)
-    if (!photo) return
+    const isPhoto = media?._ === 'messageMediaPhoto'
+    const doc = media?._ === 'messageMediaDocument' ? media.document : undefined
+    // Порядок веток — как в оригинале: сначала стикер (:8510), потом видео
+    // (:8511). Стикер это тоже документ, и без первой проверки он ушёл бы в
+    // видео-ветку.
+    if (doc?.sticker) {
+      this.renderStickerMedia(doc, bubbleContainer)
+      return
+    }
+    const isVideo = !!doc && (doc.type === 'video' || doc.type === 'gif' || doc.type === 'round')
+    if (!isPhoto && !isVideo) return
 
+    const isRound = doc?.type === 'round'
     const bubble = bubbleContainer.parentElement?.parentElement
-    // tweb :7890 — `bubble.classList.add('photo')`.
-    bubble?.classList.add('photo')
+    // tweb :7890 (`photo`) и :8530 (`round` либо `video`).
+    bubble?.classList.add(isPhoto ? 'photo' : isRound ? 'round' : 'video')
 
     const attachmentDiv = document.createElement('div')
     attachmentDiv.classList.add('attachment')
 
     const middleware = this.getMiddleware()
-    const promise = wrapPhoto({
-      photo,
-      container: attachmentDiv,
-      middleware,
-      boxWidth: mediaSizes.active.regular.width,
-      boxHeight: mediaSizes.active.regular.height,
-      hasMessage: true,
-      // Подпись есть — бокс расширяется до 320 (tweb `hasMessageBlock`).
-      hasMessageBlock: !!getMessageText(message),
-    }).catch(noop)
+    // Подпись есть — бокс расширяется (tweb `hasMessageBlock`).
+    const hasMessageBlock = !!getMessageText(message)
+    const promise = (isVideo && doc
+      ? wrapVideo({
+        doc,
+        container: attachmentDiv,
+        middleware,
+        boxWidth: mediaSizes.active.regular.width,
+        boxHeight: mediaSizes.active.regular.height,
+        group: 'chat',
+        hasMessageBlock,
+        message: {
+          mid: message.id,
+          peerId: this.peerId,
+          mediaUnread: !!message.pFlags?.media_unread,
+          // tweb `noInfo: message.mid <= 0` (:8571) — у неотправленного нет ни
+          // времени, ни счётчика просмотров, показывать нечего.
+          isOutgoing: message.id <= 0,
+        },
+        noInfo: message.id <= 0,
+        // tweb :8572 — у спойлера автоплей не заводится: иначе видео играло бы
+        // под крышкой.
+        noAutoplayAttribute: isMediaSpoiler(message),
+      })
+      : wrapPhoto({
+        photo: mediaObject,
+        container: attachmentDiv,
+        middleware,
+        boxWidth: mediaSizes.active.regular.width,
+        boxHeight: mediaSizes.active.regular.height,
+        hasMessage: true,
+        hasMessageBlock,
+      })
+    ).catch(noop)
 
     // tweb :7922-7930 — крышка спойлера поверх вложения. Узел строит враппер,
     // а вставляет ВЫЗЫВАЮЩИЙ (у оригинала это `wrapMediaSpoiler` самой ленты,
     // bubbles.ts:6034-6058): крышка живёт поверх того же attachment.
     if (isMediaSpoiler(message)) {
       void promise
-        .then(() => wrapMediaSpoiler({ media: photo, middleware, animationGroup: 'chat' }))
+        .then(() => wrapMediaSpoiler({ media: mediaObject, middleware, animationGroup: 'chat' }))
         .then((cover) => {
           if (cover && middleware()) attachmentDiv.append(cover)
         })
@@ -587,6 +630,66 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv.before(attachmentDiv)
     attachmentDiv.classList.add('no-brb')
     messageDiv.classList.add('mt-shorter')
+  }
+
+  /**
+   * Стикер — порт `ChatBubbles.wrapSticker` (tweb bubbles.ts:6069-6119) в
+   * применимом объёме.
+   *
+   * Стикер это НЕ обычное вложение: бабл получает `sticker` (и
+   * `sticker-animated` у анимированного), становится standalone-медиа — то
+   * есть `just-media`, без фона и паддингов, — а размер бокса берётся из
+   * лестницы `mediaSizes.active` и переносится в `min-width`/`min-height`
+   * самого `bubble-content` (:6110-6119), чтобы бабл не схлопывался, пока
+   * стикер грузится.
+   *
+   * НЕ портировано (нет предмета): `boxSize` для emoji-big (ветка больших
+   * эмодзи ещё не заведена), премиум-эффекты и `nopremium` (:6120-6161 —
+   * подсистемы эффектов у нас нет).
+   */
+  private renderStickerMedia(doc: MyDocument, bubbleContainer: HTMLElement): void {
+    const bubble = bubbleContainer.parentElement?.parentElement
+    bubble?.classList.add('sticker')
+    // tweb :6101-6104 — анимированный отличается классом, и по нему же CSS
+    // снимает фон у бабла.
+    const isAnimated = !!doc.animated
+    if (isAnimated) bubble?.classList.add('sticker-animated')
+    // `just-media` в оригинале ставит `isStandaloneMedia` уже после switch'а
+    // (:9660); у нас поля контекста нет, поэтому класс ставится здесь — по
+    // тому же признаку и с тем же смыслом.
+    bubble?.classList.add('just-media')
+
+    const attachmentDiv = document.createElement('div')
+    attachmentDiv.classList.add('attachment')
+
+    const boxSize = isAnimated ? mediaSizes.active.animatedSticker : mediaSizes.active.staticSticker
+    setAttachmentSize({
+      width: doc.w ?? boxSize.width,
+      height: doc.h ?? boxSize.height,
+      element: attachmentDiv,
+      boxWidth: boxSize.width,
+      boxHeight: boxSize.height,
+      noMinSize: true,
+    })
+    // tweb :6116-6117 — бокс стикера держит МИНИМУМ бабла.
+    bubbleContainer.style.minWidth = attachmentDiv.style.width
+    bubbleContainer.style.minHeight = attachmentDiv.style.height
+
+    wrapSticker({
+      mediaId: doc.id,
+      div: attachmentDiv,
+      group: 'chat',
+      middleware: this.getMiddleware(),
+      width: parseInt(attachmentDiv.style.width, 10) || boxSize.width,
+      height: parseInt(attachmentDiv.style.height, 10) || boxSize.height,
+      emoji: doc.stickerEmojiRaw,
+      liteModeKey: 'stickers_chat',
+      thumb: getStrippedThumb(doc),
+      docWidth: doc.w,
+      docHeight: doc.h,
+    }).render.catch(noop)
+
+    bubbleContainer.prepend(attachmentDiv)
   }
 
   // Каркас бабла: `.bubble > .bubble-content-wrapper > .bubble-content >

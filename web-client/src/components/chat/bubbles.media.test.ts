@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
+import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
@@ -45,6 +45,19 @@ const withPhoto = (over: { id: number; text?: string; spoiler?: boolean }): MyMe
 
 const textOnly = (id: number): MyMessage =>
   makeMessage({ peerId: CHAT, fromId: 2, id, text: 'просто текст', createdAt: '2026-08-15T12:00:00Z' })
+
+/** Документ-вложение: тип выводит `saveDocument` из атрибутов, как у оригинала
+ *  (`doc.type` — `video` при `documentAttributeVideo`, `round` при
+ *  `round_message`, `gif` при `documentAttributeAnimated`). */
+const docMedia = (over: { mime: string; attributes: DocumentAttribute[] }): MessageMedia => ({
+  _: 'messageMediaDocument',
+  document: saveDocument({
+    _: 'document', id: 22, mime_type: over.mime, size: 2048, attributes: over.attributes,
+  }),
+})
+
+const withDoc = (id: number, media: MessageMedia): MyMessage =>
+  makeMessage({ peerId: CHAT, fromId: 2, id, text: '', createdAt: '2026-08-15T12:00:00Z', media })
 
 /** Дать очереди рендера и промисам враппера разобраться. */
 async function settle() {
@@ -109,5 +122,93 @@ describe('ChatBubbles — медиа в бабле', () => {
     // документа, пока лентой не владеет хост).
     expect(bubble.contains(attachment)).toBe(true)
     expect(attachment.parentElement?.classList.contains('bubble-content')).toBe(true)
+  })
+
+  // Ветка видео (tweb :8511-8587): класс бабла выбирается по `doc.type`, и
+  // кружок отличается от обычного видео именно им — `round` против `video`.
+  it('видео заводит .attachment и класс video', async () => {
+    const media = docMedia({
+      mime: 'video/mp4',
+      attributes: [{ _: 'documentAttributeVideo', duration: 5, w: 640, h: 480 }],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('video')).toBe(true)
+    expect(bubble.classList.contains('round')).toBe(false)
+    expect(bubble.querySelector('.attachment')).not.toBeNull()
+  })
+
+  it('кружок получает класс round, а не video (tweb :8530)', async () => {
+    const media = docMedia({
+      mime: 'video/mp4',
+      attributes: [{ _: 'documentAttributeVideo', duration: 3, w: 384, h: 384, pFlags: { round_message: true } }],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('round')).toBe(true)
+    expect(bubble.classList.contains('video')).toBe(false)
+  })
+
+  it('gif идёт той же веткой, что видео', async () => {
+    const media = docMedia({
+      mime: 'video/mp4',
+      attributes: [
+        { _: 'documentAttributeAnimated' },
+        { _: 'documentAttributeVideo', duration: 2, w: 320, h: 240 },
+      ],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    expect(bubbleOf(bubbles, 1).classList.contains('video')).toBe(true)
+  })
+
+  // Ветка стикера (:8510) идёт ПЕРЕД видео: стикер — тоже документ, и без
+  // проверки порядка он ушёл бы в видео-ветку с чужим набором классов.
+  it('стикер получает свои классы, а не видео-ветку', async () => {
+    const media = docMedia({
+      mime: 'image/webp',
+      attributes: [
+        { _: 'documentAttributeSticker', alt: '🙂', stickerset: { _: 'inputStickerSetEmpty' } },
+        { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      ],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('sticker')).toBe(true)
+    // Стикер — standalone-медиа: бабл без фона и паддингов (tweb :9660).
+    expect(bubble.classList.contains('just-media')).toBe(true)
+    expect(bubble.classList.contains('video')).toBe(false)
+    expect(bubble.classList.contains('round')).toBe(false)
+    expect(bubble.querySelector('.attachment')).not.toBeNull()
+  })
+
+  it('бокс стикера держит минимум бабла (tweb :6116-6117)', async () => {
+    const media = docMedia({
+      mime: 'image/webp',
+      attributes: [
+        { _: 'documentAttributeSticker', alt: '🙂', stickerset: { _: 'inputStickerSetEmpty' } },
+        { _: 'documentAttributeImageSize', w: 512, h: 512 },
+      ],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const content = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.bubble-content')!
+    const attachment = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.attachment')!
+    expect(attachment.style.width).not.toBe('')
+    expect(content.style.minWidth).toBe(attachment.style.width)
+    expect(content.style.minHeight).toBe(attachment.style.height)
   })
 })
