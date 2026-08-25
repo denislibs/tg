@@ -93,7 +93,7 @@ import BubbleGroups, {
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
-import { createMessageTime } from './messageTime'
+import { createMessageTime, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
@@ -885,6 +885,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // меняется (подпись документа, floating), но базовая именно эта;
     // остальные приедут вместе со своими подсистемами.
     const timeSpan = createMessageTime(message)
+    // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). САМ статус
+    // считает общий с React-лентой `messageToConvMsg` по правилу оригинала
+    // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
+    // вычислителя того же здесь нет намеренно.
+    //
+    // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
+    // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
+    // `BubblesManagers` есть только горизонт входящих, под границу
+    // непрочитанных. Названо задачей.
+    setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
+      isMegagroup: this.chat.isMegagroup,
+    }).status)
     messageDiv.append(timeSpan)
 
     // Реакции — ПОСЛЕ времени, и это не порядок строк, а зависимость: время

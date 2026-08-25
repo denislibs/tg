@@ -6,8 +6,10 @@
 // лента их СОЗДАЁТ и складывает в том порядке, который требует оригинал —
 // время ПЕРЕЕЗЖАЕТ внутрь контейнера реакций (tweb bubbles.ts:9855).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
+import { generateTempMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
@@ -46,7 +48,13 @@ async function settle() {
 
 let bubbles: ChatBubbles | undefined
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
-beforeEach(() => { resetMessagesMirror(); resetPeerMirror() })
+beforeEach(() => {
+  resetMessagesMirror()
+  resetPeerMirror()
+  // Личность зрителя: `out` выводит `isOutMessage` из неё, а не из поля
+  // (`rootScope.myId` пишет проектор на rt:me).
+  rootScope.myId = 1
+})
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
   b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
@@ -78,6 +86,33 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     const time = messageDiv.querySelector<HTMLElement>('.time')!
     expect(time.parentElement).toBe(reactionsEl)
     expect(reactionsEl.lastElementChild).toBe(time)
+  })
+
+  // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). Он стоит в
+  // ОБОИХ узлах времени, потому что обе копии занимают место.
+  it('своё неотправленное сообщение несёт значок «отправляется» в обеих копиях времени', async () => {
+    // Номер до ack — ДРОБНЫЙ, а не отрицательный: клиентское пространство
+    // отличается именно этим (`isLocalMessageId` = «не целое»).
+    const tempId = generateTempMessageId(0)
+    const pending = makeMessage({
+      peerId: CHAT, fromId: 1, id: tempId, out: true, text: 'привет',
+      createdAt: '2026-08-15T12:34:00',
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([pending]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const bubble = bubbleOf(bubbles, tempId)
+    expect(bubble.querySelectorAll('.time-sending-status')).toHaveLength(2)
+    expect(bubble.classList.contains('is-sending')).toBe(true)
+  })
+
+  it('ЧУЖОЕ сообщение значка отправки не несёт', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    expect(bubbleOf(bubbles, 1).querySelector('.time-sending-status')).toBeNull()
   })
 
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {

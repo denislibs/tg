@@ -17,6 +17,8 @@
 //    настройка приложения, которой у нас нет; показываем метку «edited», как
 //    делает оригинал без этой настройки.
 import type { MyMessage } from '@core/models'
+import Icon from '@components/icon'
+import type { IconName } from '@core/tgico-icons'
 import { useI18nStore } from '../../i18n'
 
 /** «HH:MM» — тот же формат, что у витрины списка (`messageToConvMsg.hhmm`). */
@@ -86,4 +88,52 @@ export function createMessageTime(message: MyMessage): HTMLElement {
 
   timeSpan.append(inner)
   return timeSpan
+}
+
+/** Иконка статуса по его имени — тот же выбор, что у оригинала (:6394-6398). */
+function statusIcon(status: SendingStatus): IconName {
+  switch (status) {
+    case 'error': return 'sendingerror'
+    case 'sending': return 'sending'
+    case 'sent': return 'check'
+    case 'read': return 'checks'
+  }
+}
+
+/** Статусы отправки своего сообщения — имена оригинала. */
+export type SendingStatus = 'sending' | 'error' | 'sent' | 'read'
+
+/**
+ * Значок отправки — порт `setBubbleSendingStatus` (tweb bubbles.ts:6382-6408).
+ *
+ * Значок ставится в ОБА узла (`.time` и `.time-inner`) — по той же причине, по
+ * которой части времени дублируются: видимая копия одна, но занимать место
+ * должны обе. Оригинал ищет их запросом `bubble.querySelectorAll('.time,
+ * .time-inner')`, и здесь то же самое.
+ *
+ * ЗАМЕНА, А НЕ ДОБАВЛЕНИЕ: если значок уже стоит первым, он заменяется
+ * (:6402-6406). Иначе смена «отправляется» → «доставлено» оставила бы оба.
+ *
+ * Классы бабла (`is-sending`/`is-sent`/`is-read`/`is-error`) здесь НЕ ставятся:
+ * их считает общий с React-лентой `bubbleClasses` по тому же правилу
+ * оригинала (:6384). Второй ответ на тот же вопрос разъехался бы с первым.
+ */
+export function setSendingStatus(timeSpan: HTMLElement, status: SendingStatus | undefined): void {
+  const targets: HTMLElement[] = [timeSpan]
+  const inner = timeSpan.querySelector<HTMLElement>('.time-inner')
+  if (inner) targets.push(inner)
+
+  for (const target of targets) {
+    const existing = target.querySelector('.time-sending-status')
+    const isReplacingFirst = !!existing && target.firstElementChild === existing
+
+    if (!status) {
+      if (isReplacingFirst) existing.remove()
+      continue
+    }
+
+    const icon = Icon(statusIcon(status), 'time-sending-status')
+    if (isReplacingFirst) existing.replaceWith(icon)
+    else target.prepend(icon)
+  }
 }
