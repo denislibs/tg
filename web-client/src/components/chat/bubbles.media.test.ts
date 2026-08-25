@@ -193,6 +193,35 @@ describe('ChatBubbles — медиа в бабле', () => {
     expect(bubble.querySelector('.attachment')).not.toBeNull()
   })
 
+  // Ветка документа (:8588-8646) — единственная, у которой узел встаёт В ТЕЛО
+  // сообщения, а не в attachment (`noAttachmentDivNeeded` оригинала).
+  it('документ встаёт в тело сообщения, а не в attachment', async () => {
+    const media = docMedia({ mime: 'application/pdf', attributes: [{ _: 'documentAttributeFilename', file_name: 'смета.pdf' }] })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.querySelector('.attachment')).toBeNull()
+    const messageDiv = bubble.querySelector('.message')!
+    expect(messageDiv.querySelector('.document')).not.toBeNull()
+    // Подложка бабла (tweb :8616-8618).
+    expect(bubble.querySelector('.bubble-content-background')).not.toBeNull()
+  })
+
+  it('голосовое рисуется той же веткой — плеером, а не строкой файла', async () => {
+    const media = docMedia({
+      mime: 'audio/ogg',
+      attributes: [{ _: 'documentAttributeAudio', duration: 4, pFlags: { voice: true } }],
+    })
+    bubbles = new ChatBubbles(chatContext(), managersWith([withDoc(1, media)]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
+    expect(messageDiv.querySelector('audio-element')).not.toBeNull()
+  })
+
   it('бокс стикера держит минимум бабла (tweb :6116-6117)', async () => {
     const media = docMedia({
       mime: 'image/webp',

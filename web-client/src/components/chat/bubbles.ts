@@ -95,6 +95,7 @@ import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
+import wrapDocument from '@components/wrappers/document'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
@@ -567,6 +568,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
     const isVideo = !!doc && (doc.type === 'video' || doc.type === 'gif' || doc.type === 'round')
+    // Прочие документы (файл, голосовое, музыка) — своя ветка оригинала
+    // (:8588-8646): узел встаёт В ТЕЛО сообщения, а не в attachment, поэтому
+    // `attachmentDiv` у неё не заводится вовсе (`noAttachmentDivNeeded`).
+    if (doc && !isVideo) {
+      this.renderDocumentMedia(message, doc, bubbleContainer, messageDiv)
+      return
+    }
     if (!isPhoto && !isVideo) return
 
     const isRound = doc?.type === 'round'
@@ -630,6 +638,51 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv.before(attachmentDiv)
     attachmentDiv.classList.add('no-brb')
     messageDiv.classList.add('mt-shorter')
+  }
+
+  /**
+   * Документ, голосовое, музыка — порт ветки tweb :8588-8646 в применимом
+   * объёме.
+   *
+   * Отличие от фото и видео принципиальное: строка документа встаёт В ТЕЛО
+   * сообщения (`messageDiv`), а не в `attachment`, — у оригинала эта ветка
+   * помечена `noAttachmentDivNeeded`. Подпись при этом остаётся под строкой,
+   * потому что тело у бабла одно.
+   *
+   * `bubble-content-background` (:8616-8618) — подложка бабла: у документов
+   * фон рисует она, а не сам `bubble-content`.
+   *
+   * Классы бабла (`document-message`/`voice-message`/`audio-message` плюс
+   * `min-content`) здесь НЕ ставятся — их считает общий с React-лентой
+   * `bubbleClasses` по тому же правилу оригинала (:8632-8642). Второй
+   * вычислитель того же был бы вторым ответом на один вопрос.
+   *
+   * АЛЬБОМ ДОКУМЕНТОВ не портирован (задача #68): у оригинала эту ветку ведёт
+   * `wrapGroupedDocuments` с `albumMustBeRenderedFull`, а группировки у нашей
+   * ленты нет вовсе. Одиночный документ от этого не страдает — он и в
+   * оригинале идёт тем же путём.
+   */
+  private renderDocumentMedia(
+    message: MyMessage,
+    doc: MyDocument,
+    bubbleContainer: HTMLElement,
+    messageDiv: HTMLElement,
+  ): void {
+    const node = wrapDocument({
+      doc,
+      middleware: this.getMiddleware(),
+      message: { mid: message.id, peerId: this.peerId },
+      sizeType: 'documentName',
+    })
+
+    // tweb :8616-8618 — подложка перед содержимым.
+    const background = document.createElement('div')
+    background.classList.add('bubble-content-background')
+    bubbleContainer.prepend(background)
+
+    // Строка документа идёт ПЕРЕД подписью: у оригинала `wrapGroupedDocuments`
+    // кладёт её в начало того же `messageDiv`, а текст остаётся ниже.
+    messageDiv.prepend(node)
   }
 
   /**
