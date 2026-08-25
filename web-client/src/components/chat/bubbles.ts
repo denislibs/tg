@@ -92,6 +92,7 @@ import BubbleGroups, {
   type GroupAvatar,
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
+import { createReplyContainer } from './replyContainer'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -695,6 +696,50 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
+   * Reply-заголовок бабла — порт `MessageRender.setReply` (tweb
+   * messageRender.ts:418-593) вместе с условием его показа
+   * (bubbles.ts:9372-9405).
+   *
+   * УСЛОВИЕ ПОКАЗА — не «есть reply_to», а точнее: ответ на КОРЕНЬ треда
+   * заголовка не даёт (:9377-9378 сравнивает `reply_to_mid` с `threadId` и
+   * `reply_to_top_id`). Иначе каждое сообщение комментариев несло бы шапку с
+   * ссылкой на сам пост, которую пользователь и так видит сверху.
+   *
+   * Заголовок встаёт ПЕРЕД телом и получает `mb-shorter`, когда снизу от него
+   * идёт текст (:9391-9393); вложение при этом теряет верхние радиусы —
+   * `no-brt` (:9395-9397): reply лежит НАД вложением, и стык между ними
+   * такой же, как стык вложения с подписью снизу.
+   *
+   * Класс `is-reply` ставит `bubbleClasses` (общий с React-лентой вычислитель),
+   * а не эта ветка: второй ответ на вопрос «есть ли у бабла ответ» разъехался
+   * бы с первым.
+   */
+  private renderReply(
+    message: MyMessage,
+    bubbleContainer: HTMLElement,
+    messageDiv: HTMLElement,
+  ): void {
+    if (message._ !== 'message') return
+
+    const replyTo = message.reply_to
+    const replyToMid = replyTo?.reply_to_msg_id
+    if (!replyTo || !replyToMid) return
+    // Ответ на корень треда шапки не даёт (:9377-9378).
+    if (replyToMid === replyTo.reply_to_top_id) return
+
+    const container = createReplyContainer({ replyTo, original: this.getMessage(replyToMid) })
+    // Адрес оригинала — на самом узле: по нему прыгает клик, и он же нужен
+    // догрузке (tweb хранит его в `bubble.dataset.replyToPeerId`/`mid`).
+    container.dataset.replyToMid = String(replyToMid)
+
+    bubbleContainer.prepend(container)
+
+    const attachment = bubbleContainer.querySelector<HTMLElement>('.attachment')
+    if (!attachment && messageDiv.textContent) container.classList.add('mb-shorter')
+    attachment?.classList.add('no-brt')
+  }
+
+  /**
    * Документ, голосовое, музыка — порт ветки tweb :8588-8646 в применимом
    * объёме.
    *
@@ -830,6 +875,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
     // встаёт вложение), и сам `bubble` (классы `photo`/`video`/`round`).
     this.renderMedia(message, bubbleContainer, messageDiv)
+
+    this.renderReply(message, bubbleContainer, messageDiv)
 
     // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
     // её вставки (:9567-9590); `nameContainer` в оригинале — тот же
@@ -1316,6 +1363,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    // Reply-заголовок — tweb bubbles.ts:3520-3616: прыжок к оригиналу. Ветка
+    // стоит ПЕРЕД медиа: у бабла с вложением заголовок лежит над ним, и клик
+    // по нему не должен открывать вьювер.
+    const replyEl = target.closest<HTMLElement>('.reply[data-reply-to-mid]')
+    if (replyEl) {
+      cancelEvent(e)
+      this.jumpToMessage(Number(replyEl.dataset.replyToMid))
+      return
+    }
+
     // Медиа — tweb bubbles.ts:3479-3482 (`checkTargetForMediaViewer`). Ветка
     // стоит после спойлера и перед именем: у оригинала тот же порядок, и он
     // существен — у медиа с крышкой первым обязан сработать спойлер.
@@ -1341,6 +1398,28 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (navigation?.openPeer?.(peerId, nameDiv)) {
       cancelEvent(e)
     }
+  }
+
+  /**
+   * Прыжок к сообщению окна — часть ветки reply оригинала
+   * (bubbles.ts:3520-3616).
+   *
+   * Оригинал ведёт СТЕК возврата (`followStack`) и умеет прыгать в чужой чат
+   * (`setInnerPeer` по `reply_to_peer_id`); у нас пока ни того, ни другого:
+   * стек — часть окружения `Chat` (кнопка «вернуться» живёт в нём), а чужой
+   * чат лента открыть не может — она владеет ОДНИМ окном. Поэтому прыжок
+   * ограничен своим окном, а сообщение вне его просто не находится: догрузка
+   * (`fetchMessageReplyTo`) приедет вместе с окружением.
+   *
+   * Подсветку цели даёт уже портированный `highlightBubble` (:4771) — второй
+   * такой же здесь был бы дублем.
+   */
+  private jumpToMessage(mid: number): void {
+    const bubble = this.getBubble(makeFullMid(this.peerId, mid))
+    if (!bubble) return
+
+    void this.scrollToBubble(bubble, 'center')
+    this.highlightBubble(bubble)
   }
 
   /**
