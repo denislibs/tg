@@ -34,10 +34,11 @@
 //    → `getHistory1` (гейт стороны + предзагрузка) → `getHistory`.
 //  • `attachContainerListeners()` портирован ЧАСТИЧНО — ровно тем составом, у
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
-//    rich-text. Контекстное меню, выделение, dblclick-ответ и свайпы —
-//    поведение, которого ещё нет; пустые ветки под них = мёртвый код
-//    (CLAUDE.md). Зовёт его конструктор: в tweb это делает `Chat`
-//    (`chat.ts:638`), а у нас `Chat`-хоста нет.
+//    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
+//    bubbles.ts:1496-1572). Контекстное меню и выделение — поведение, которого
+//    ещё нет; пустые ветки под них = мёртвый код (CLAUDE.md). Зовёт его
+//    конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
+//    `Chat`-хоста нет.
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
 //    → `reverse` → `prepareToSaveScroll`/`restoreScroll`) и ожиданиями
 //    (`getHeavyAnimationPromise`, `setUnreadDelimiter`, `fastRafPromise`). Вне
@@ -73,11 +74,13 @@ import { fastRafPromise } from '@helpers/schedulers'
 import { FocusDirection, type ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
 import windowSize from '@helpers/windowSize'
 import mediaSizes from '@helpers/mediaSizes'
-import { IS_SAFARI } from '@environment/userAgent'
+import { IS_MOBILE, IS_SAFARI } from '@environment/userAgent'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
 import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
+import { isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MyMessage, type OurMessageChat } from '@core/models'
@@ -95,6 +98,7 @@ import { createDateBubble as createServiceDateBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
+import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -203,6 +207,21 @@ export interface ChatContext {
   bubblesViewport: HTMLElement
   /** адресат кликов по ссылкам/именам — аналог tweb `chat.appImManager` */
   navigation?: BubblesNavigation
+  /** Порт tweb `chat.canSend()` (chat.ts, без аргумента — действие
+   *  `send_messages`): гейт СВАЙП-ответа (bubbles.ts:1548). Асинхронный, как в
+   *  оригинале. Не передан — жест не начинается вовсе. */
+  canSend?(): boolean | Promise<boolean>
+  /** Порт tweb `chat.input.canSendPlain()` — гейт ДАБЛКЛИК-ответа
+   *  (bubbles.ts:1503). У оригинала это отдельное право (`send_plain`), не то
+   *  же самое, что `canSend()`: в чате можно быть вправе слать медиа, но не
+   *  текст. Не передан — даблклик ничего не делает. */
+  canSendPlain?(): boolean
+  /** Порт tweb `chat.input.initMessageReply(chat.input
+   *  .getChatInputReplyToFromMessage(message))` (bubbles.ts:1539, :1699) — вход
+   *  в reply-флоу композера. Композер — окружение `Chat`, которого у ленты
+   *  нет, поэтому сюда едет только номер: собрать по нему плашку умеет
+   *  владелец композера (`Chat.tsx` через `draftReplyState`). */
+  initMessageReply?(mid: number): void
 }
 
 /** Срез менеджеров, которым пользуется лента (см. расхождения в шапке). */
@@ -337,6 +356,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // Отписка от шины тяжёлых анимаций (в tweb её снимает `listenerSetter`,
   // которому `useHeavyAnimationCheck` передан третьим аргументом).
   private removeHeavyAnimationListener?: () => void
+
+  /** Порт поля tweb `this.replySwipeHandler` (bubbles.ts:1543) — слушатели
+   *  жеста висят на контейнере и снимаются на `destroy`. */
+  private replySwipeHandler?: { removeListeners(): void }
 
   private listenerSetter = new ListenerSetter()
   public middlewareHelper = getMiddleware()
@@ -1375,6 +1398,54 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  удаление) — отдельный срез. */
   private attachContainerListeners() {
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
+
+    // Ответ жестом — tweb bubbles.ts:1496-1572. Развилка ровно оригинала и
+    // ВЗАИМОИСКЛЮЧАЮЩАЯ: на десктопе ответ даёт даблклик, на таче — свайп.
+    // Держать оба сразу нельзя: на таче даблклик стрелял бы по концу свайпа.
+    //
+    // Гейт `TEST_BUBBLES_DELETION` оригинала не переносится — это его
+    // отладочная константа, а не поведение (в tweb она же выключает половину
+    // ленты).
+    if (!IS_MOBILE) {
+      this.listenerSetter.add(this.container)('dblclick', this.onContainerDoubleClick)
+    } else if (IS_TOUCH_SUPPORTED) {
+      this.replySwipeHandler = attachReplySwipe(this.container, {
+        // `isSelecting` сюда ещё не приходит: режим выделения портируется
+        // отдельно (`selection.ts`) и в ленту не заведён. Пока его нет, гейт
+        // `chat.selection.isSelecting` (:1547) предмета не имеет — вернуть
+        // вместе с выделением.
+        canSend: () => this.chat.canSend?.() ?? false,
+        initMessageReply: (mid) => this.chat.initMessageReply?.(mid),
+      })
+    }
+  }
+
+  /**
+   * Даблклик-ответ (десктоп) — порт обработчика tweb bubbles.ts:1497-1542.
+   *
+   * Решение «этот даблклик — ответ?» целиком в `findDoubleClickReplyBubble`:
+   * в tweb оно перемешано с телом обработчика, у нас вынесено предикатом,
+   * потому что тем же правилом пользуется тач-путь.
+   */
+  private onContainerDoubleClick = (e: Event) => {
+    const bubble = findDoubleClickReplyBubble(e, {
+      // `ChatType.Pinned`/`ChatType.Logs` и режим выделения у ленты пока не
+      // существуют как понятия — вернуть вместе с ними.
+      isPinnedOrLogs: false,
+      isSelecting: false,
+      canSendPlain: this.chat.canSendPlain?.() ?? false,
+      isRepliable: (b) => {
+        // Отрицание tweb `message.pFlags.is_outgoing || message.peerId !==
+        // this.peerId` (:1535-1538). Проверки пира здесь нет: лента владеет
+        // ОДНИМ окном, чужой бабл в ней не появляется. «Ещё не отправлено» у
+        // нас — дробный номер (`isLocalMessageId`), а не флаг.
+        const mid = Number(b.dataset.mid)
+        return !!mid && !isLocalMessageId(mid)
+      },
+    })
+    if (!bubble) return
+
+    this.chat.initMessageReply?.(Number(bubble.dataset.mid))
   }
 
   private onContainerClick = (e: Event) => {
@@ -2561,6 +2632,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
   public destroy() {
     this.destroyScrollable()
     this.listenerSetter.removeAll()
+    // Свайп вешает слушатели СВОИМ хендлером, мимо `listenerSetter`, — снимать
+    // их надо отдельно. Это НАША строка, а не порт: tweb хендлер не снимает
+    // никогда (поле публично ради `selection.ts:817` — сброса жеста при входе
+    // в выделение), потому что его лента живёт столько же, сколько приложение.
+    // У нас лента умирает на каждой смене чата, а `SwipeHandler` вешает
+    // move/end на `element.ownerDocument` (`core/dom/swipeHandler.ts:350,401`),
+    // который её переживает, — без снятия это утечка на каждый открытый чат.
+    this.replySwipeHandler?.removeListeners()
+    this.replySwipeHandler = undefined
     this.removeHeavyAnimationListener?.()
     this.sliceViewportDebounced?.clearTimeout()
     // tweb bubbles.ts:4893-4897.

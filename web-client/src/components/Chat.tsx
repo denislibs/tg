@@ -1130,6 +1130,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   )
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
+  // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
+  // tweb bubbles.ts:1497-1542 и :1699). Лента отдаёт только НОМЕР — плашку
+  // собирает владелец композера, тем же путём, которым её восстанавливает
+  // черновик (`draftReplyState`). В tweb эта граница ровно такая же:
+  // `chat.input.getChatInputReplyToFromMessage(message)` — дело инпута.
+  const onFeedReply = useEvent((mid: number) => {
+    const rs = draftReplyState(msgs, mid, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
+    if (rs) { setReply(rs); setEditing(null) }
+  })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   // Плашка форварда: отмена, тоггл опций меню (скрыть отправителя/подпись),
@@ -1389,7 +1398,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} />
         ) : (
         <div
           ref={bubblesRef}

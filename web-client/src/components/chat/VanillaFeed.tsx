@@ -15,7 +15,7 @@ import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
 import { useManagers } from '@core/hooks/useManagers'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -29,9 +29,21 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
    *  лица канала (`isOurMessage`, chat.ts:1375). Считает его тот же хост, что и
    *  `isLikeGroup`: вид чата знает React-экран, а не лента. */
   isMegagroup?: boolean
+  /** Порт tweb `chat.canSend()` — гейт свайп-ответа на таче. Право знает
+   *  хост (`canType`), лента про права не знает. */
+  canSend?: boolean
+  /** Порт tweb `chat.input.canSendPlain()` — гейт даблклик-ответа на
+   *  десктопе. У оригинала это ОТДЕЛЬНОЕ право: слать медиа можно быть вправе,
+   *  а текст — нет. */
+  canSendPlain?: boolean
+  /** Порт tweb `chat.input.initMessageReply(...)`: жест ответа отдаёт хосту
+   *  номер, плашку над композером собирает владелец композера. */
+  onReply?: (mid: number) => void
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
+  const gesture = useRef({ canSend, canSendPlain, onReply })
+  gesture.current = { canSend, canSendPlain, onReply }
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -67,6 +79,14 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         isMegagroup,
         container: chatColumn,
         bubblesViewport,
+        // Права и вход в reply читаются ЧЕРЕЗ РЕФ, а не захватываются
+        // значением: у оригинала это тоже живое чтение в момент жеста
+        // (`this.chat.canSend()`, bubbles.ts:1548). Положи их в зависимости
+        // эффекта — смена права пересобирала бы ленту целиком, с потерей
+        // позиции скролла.
+        canSend: () => gesture.current.canSend ?? false,
+        canSendPlain: () => gesture.current.canSendPlain ?? false,
+        initMessageReply: (mid) => gesture.current.onReply?.(mid),
       },
       managers,
     )
