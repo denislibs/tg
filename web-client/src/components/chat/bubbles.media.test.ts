@@ -293,6 +293,32 @@ describe('ChatBubbles — медиа в бабле', () => {
     })
   })
 
+  // Клик по крышке спойлера — первая ветка `onBubblesClick`, которую можно
+  // портировать: у оригинала она стоит ПЕРЕД именем автора (:3236 против
+  // :3360), потому что крышка лежит поверх вложения.
+  it('клик по крышке спойлера раскрывает её, а не уходит под неё', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([withPhoto({ id: 1, spoiler: true })]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    const attachment = bubbleOf(bubbles, 1).querySelector('.attachment')!
+    // Крышку в фикстуре строит не враппер (stripped-превью нет), а сам тест —
+    // проверяется РОУТИНГ клика, а не сборка канвасов: она покрыта своим
+    // тестом (`mediaSpoiler.test.ts`).
+    const cover = document.createElement('div')
+    cover.classList.add('media-spoiler-container')
+    attachment.append(cover)
+
+    // Контейнер ленты слушает делегатом — событие должно всплыть до него.
+    document.body.append(bubbles.container)
+    cover.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    // `toggleMediaSpoiler` помечает крышку раскрывающейся — либо классом
+    // перехода, либо флагом анимации.
+    expect(cover.classList.contains('is-revealing') || cover.dataset.isRevealing === 'true').toBe(true)
+    bubbles.container.remove()
+  })
+
   it('бокс стикера держит минимум бабла (tweb :6116-6117)', async () => {
     const media = docMedia({
       mime: 'image/webp',

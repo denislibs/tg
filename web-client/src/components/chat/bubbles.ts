@@ -97,7 +97,7 @@ import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
 import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
-import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
+import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
@@ -1267,8 +1267,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb `attachContainerListeners` (bubbles.ts:1460) в применимом
    *  объёме — ОДИН делегированный слушатель на контейнере ленты. Разбирает
    *  разметку, которую оставляет rich-text вместо inline-обработчиков tweb
-   *  (см. докблок `BubblesNavigation`). Контекстное меню, выделение, dblclick
-   *  и свайпы не портированы: их поведения ещё нет. */
+   *  (см. докблок `BubblesNavigation`), и крышку спойлера медиа.
+   *
+   *  ПОРЯДОК ВЕТОК ЗНАЧИМ, и он взят у оригинала (`onBubblesClick`,
+   *  bubbles.ts:3014-3627): первый совпавший выигрывает. Поэтому спойлер
+   *  (:3236) стоит раньше имени автора (:3360) — крышка лежит поверх вложения,
+   *  и клик по ней не должен доходить до того, что под ней.
+   *
+   *  Контекстное меню, выделение, dblclick, свайпы и медиавьювер не
+   *  портированы: у первых четырёх поведения ещё нет, а вьювер требует сбора
+   *  списка медиа окна и окружения `Chat` (прыжок к сообщению, пересылка,
+   *  удаление) — отдельный срез. */
   private attachContainerListeners() {
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
   }
@@ -1290,6 +1299,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
         cancelEvent(e)
       }
 
+      return
+    }
+
+    // Крышка спойлера — tweb bubbles.ts:3236-3243. Ветка стоит ЗДЕСЬ, а не
+    // ниже, потому что у оригинала она раньше имени (:3236 против :3360):
+    // крышка лежит ПОВЕРХ вложения, и клик по ней не должен доходить до того,
+    // что под ней.
+    const mediaSpoiler = target.closest<HTMLElement>('.media-spoiler-container')
+    if (mediaSpoiler) {
+      onMediaSpoilerClick({ event: e, mediaSpoiler })
       return
     }
 
