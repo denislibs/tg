@@ -311,15 +311,19 @@ func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from 
 // Latest message of the day wins; days without such media are simply absent.
 func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	q := querier(ctx, r.pool)
+	// Агрегат по дню, а не одна строка: отрезку оригинала нужны ОБЕ границы
+	// номеров и счётчик, а ячейке — номер сообщения-превью (последнее за
+	// день). Само медиа отсюда не выпаривается: сообщение поедет целиком.
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT ON (date_trunc('day', m.created_at))
-		        date_trunc('day', m.created_at) AS day, m.seq, m.media_id, m.type,
-		        COALESCE(md.thumb_key, '') <> '' AS has_thumb
+		`SELECT date_trunc('day', m.created_at) AS day,
+		        min(m.seq) AS min_seq, max(m.seq) AS max_seq, count(*) AS cnt,
+		        (array_agg(m.seq ORDER BY m.created_at DESC))[1] AS top_seq
 		 FROM messages m JOIN media md ON md.id = m.media_id
 		 WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.media_id IS NOT NULL
 		       AND m.type IN ('photo','video')
 		       AND m.created_at >= $2 AND m.created_at < $3
-		 ORDER BY date_trunc('day', m.created_at), m.created_at DESC`,
+		 GROUP BY date_trunc('day', m.created_at)
+		 ORDER BY day`,
 		chatID, from, to)
 	if err != nil {
 		return nil, err
@@ -328,7 +332,7 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 	out := make([]domain.CalendarDay, 0, 31)
 	for rows.Next() {
 		var d domain.CalendarDay
-		if err := rows.Scan(&d.Day, &d.Seq, &d.MediaID, &d.Type, &d.HasThumb); err != nil {
+		if err := rows.Scan(&d.Day, &d.MinSeq, &d.MaxSeq, &d.Count, &d.TopSeq); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

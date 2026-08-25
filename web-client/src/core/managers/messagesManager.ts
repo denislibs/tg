@@ -1,16 +1,26 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 
-/** День месяца с медиа — превью в ячейке пикера даты (tweb getSearchResultsCalendar). */
-export interface CalendarDay {
-  /** полночь дня, unix-секунды (UTC) */
-  day: number
-  /** НОМЕР сообщения этого дня (серверное пространство — как приехало) */
-  id: number
-  media_id: number
-  type: string
-  /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
-  has_thumb: boolean
+/**
+ * `messages.searchResultsCalendar` — календарь медиа контейнером.
+ *
+ * Ячейку дня наполняет САМО СООБЩЕНИЕ из `messages`, а превью рисуется из его
+ * `media` — так делает оригинал (`datePicker.tsx:437-444`), и `periods` он не
+ * читает вовсе. Прежде здесь был тип `CalendarDay` с выжимкой
+ * `{media_id, type, has_thumb}` — вторым снимком того же медиа.
+ *
+ * `periods` объявлены, потому что они есть на проводе (обязательный вектор
+ * конструктора), а не потому что нужны экрану: границы дней пригодятся, когда
+ * появится листание календаря назад.
+ */
+export interface MessagesSearchResultsCalendar {
+  _: 'messages.searchResultsCalendar'
+  count: number
+  min_date: number
+  min_msg_id: number
+  periods: { _: 'searchResultsCalendarPeriod'; date: number; min_msg_id: number; max_msg_id: number; count: number }[]
+  messages: RawMyMessage[]
+  users: UserReal[]
 }
 import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId, type Peer } from '../peers/peerId'
@@ -626,11 +636,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     },
 
     // Медиа-превью по дням месяца для пикера даты (tweb
-    // getSearchResultsCalendar): по одному сообщению на день, дни без медиа
-    // просто отсутствуют. month — любой unix-момент внутри нужного месяца.
-    async calendarMonth(peerId: number, month: number): Promise<CalendarDay[]> {
+    // getSearchResultsCalendar): month — любой unix-момент внутри месяца.
+    //
+    // Возвращаются САМИ сообщения, а не выжимка медиа: ячейку дня оригинал
+    // наполняет объектом сообщения и рисует превью из `message.media`
+    // (`datePicker.tsx:437-444`), вектор `periods` не читая. Прежде сервер
+    // отдавал `{media_id, type, has_thumb}` — второй, урезанный снимок того же
+    // медиа рядом с настоящим.
+    async calendarMonth(peerId: number, month: number): Promise<MyMessage[]> {
       try {
-        return await rest.get<CalendarDay[]>(`/chats/${peerId}/calendar`, { month })
+        const r = await rest.get<MessagesSearchResultsCalendar>(`/chats/${peerId}/calendar`, { month })
+        return (r?.messages ?? []).map(mapOne)
       } catch {
         return [] // календарь работает и без миниатюр
       }

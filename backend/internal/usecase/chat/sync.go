@@ -369,19 +369,6 @@ func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64,
 	return i.msgs.MessageSeqByDate(ctx, chatID, from)
 }
 
-// CalendarMonth — медиа-превью по дням месяца для пикера даты (tweb
-// getSearchResultsCalendar). Полуинтервал [from, to). Не участник — ErrNotFound.
-func (i *Interactor) CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	return i.msgs.CalendarMonth(ctx, chatID, from, to)
-}
-
 // GlobalSearchMessages searches messages across every chat the user belongs to
 // (tweb global search). filter ∈ {"", media, files, links, music, voice}; with
 // an empty q AND empty filter there is nothing to search — returns empty.

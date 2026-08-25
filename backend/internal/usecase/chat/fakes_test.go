@@ -906,19 +906,34 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f Se
 func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.CalendarDay
-	seen := map[string]bool{}
+	// Агрегат по дню, как у настоящего запроса: границы номеров, счётчик и
+	// номер сообщения-превью. Превью — ПОСЛЕДНЕЕ сообщение дня.
+	byDay := map[string]*domain.CalendarDay{}
+	order := []string{}
 	for _, m := range r.s.messages[chatID] {
 		if m.Deleted || m.MediaID == nil || m.CreatedAt.Before(from) || !m.CreatedAt.Before(to) {
 			continue
 		}
 		day := m.CreatedAt.UTC().Truncate(24 * time.Hour)
 		key := day.Format("2006-01-02")
-		if seen[key] {
+		d, ok := byDay[key]
+		if !ok {
+			byDay[key] = &domain.CalendarDay{Day: day, MinSeq: m.Seq, MaxSeq: m.Seq, Count: 1, TopSeq: m.Seq}
+			order = append(order, key)
 			continue
 		}
-		seen[key] = true
-		out = append(out, domain.CalendarDay{Day: day, Seq: m.Seq, MediaID: *m.MediaID, Type: m.Type})
+		d.Count++
+		if m.Seq < d.MinSeq {
+			d.MinSeq = m.Seq
+		}
+		if m.Seq > d.MaxSeq {
+			d.MaxSeq = m.Seq
+			d.TopSeq = m.Seq
+		}
+	}
+	out := make([]domain.CalendarDay, 0, len(order))
+	for _, key := range order {
+		out = append(out, *byDay[key])
 	}
 	return out, nil
 }
