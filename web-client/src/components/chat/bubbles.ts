@@ -1913,10 +1913,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  СЕРИИ, а не карта адресов: `this.bubbles` не упорядочен, а группы лежат от
    *  нижней к верхней, элементы внутри — от нового к старому.
    *
-   *  `clearOutgoing` в оригинале отсекает ещё не подтверждённые сообщения по
-   *  битовой разметке mid (`clearMessageId`) — у нас неотправленный бабл несёт
-   *  ОТРИЦАТЕЛЬНЫЙ `id` (см. докблок `FullMid`), то есть отсекается тем же
-   *  условием, что и `clearLocal`; отдельного параметра для него нет. */
+   *  У оригинала здесь ДВА РАЗНЫХ вопроса и два фильтра (:3994-3998):
+   *  `clearLocal` — `mid > 0`, отсекает сообщения, ПОРОЖДЁННЫЕ КЛИЕНТОМ
+   *  (у tweb это спонсорские и плейсхолдеры, они несут отрицательный номер);
+   *  `clearOutgoing` — `clearMessageId(mid, false) === mid`, отсекает ЕЩЁ НЕ
+   *  ПОДТВЕРЖДЁННЫЕ отправки, у tweb размеченные битами в том же числе.
+   *
+   *  У нас предмет есть только у второго: клиентское пространство номеров —
+   *  ДРОБИ (`isLocalMessageId` = «не целое», `core/history/messageId.ts`), а
+   *  отрицательных номеров не порождает никто. Поэтому параметр один и
+   *  спрашивает он именно дробность.
+   *
+   *  Раньше здесь стояло `mid > 0` с обоснованием «неотправленный бабл несёт
+   *  отрицательный id». Это было НЕВЕРНО, и фильтр молча не отсекал ничего:
+   *  временный номер вида `5.0001` больше нуля. */
   public getRenderedHistory(sort: 'asc' | 'desc' = 'desc', clearLocal?: boolean): FullMid[] {
     let history = this.bubbleGroups.groups
       .map((group) => group.items.map((item) => makeFullMid(this.peerId, item.mid)))
@@ -1927,7 +1937,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     if (clearLocal) {
-      history = history.filter((fullMid) => splitFullMid(fullMid).mid > 0)
+      history = history.filter((fullMid) => !isLocalMessageId(splitFullMid(fullMid).mid))
     }
 
     return history

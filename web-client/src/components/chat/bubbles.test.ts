@@ -1047,3 +1047,27 @@ describe('ChatBubbles — имя автора', () => {
     expect(title.textContent).toBe('Пётр')
   })
 })
+
+// ── getRenderedHistory: отсев клиентских номеров ────────────────────────────
+//
+// Порт `getRenderedHistory(sort, clearLocal)` (tweb bubbles.ts:3981-4002).
+// У оригинала два фильтра на два разных вопроса; у нас предмет есть только у
+// «ещё не подтверждено», и признак этого — ДРОБНОСТЬ номера, а не знак. Пока
+// фильтр стоял на `mid > 0`, он не отсекал НИЧЕГО: временный номер вида
+// `2.0001` больше нуля.
+describe('ChatBubbles.getRenderedHistory — clearLocal', () => {
+  it('отсеивает ещё не отправленное — номер дробный, а не отрицательный', async () => {
+    const tempId = generateTempMessageId(2)
+    bubbles = new ChatBubbles(chatContext(), managersWith([
+      msg({ id: 1 }),
+      msg({ id: 2 }),
+      msg({ id: tempId, out: true }),
+    ]))
+    await bubbles.loadFirstHistory()
+    await settle()
+
+    expect(bubbles.getRenderedHistory('asc')).toHaveLength(3)
+    expect(bubbles.getRenderedHistory('asc', true).map((fullMid) => +fullMid.split('_')[1]))
+      .toEqual([1, 2])
+  })
+})
