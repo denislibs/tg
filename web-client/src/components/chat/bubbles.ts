@@ -92,6 +92,9 @@ import BubbleGroups, {
   type GroupAvatar,
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble } from './serviceMessage'
+import wrapPhoto from '@components/wrappers/photo'
+import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
+import { getBubbleMedia, isMediaSpoiler } from '@core/media/messageMedia'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { useI18nStore } from '../../i18n'
 
@@ -518,9 +521,77 @@ export default class ChatBubbles implements BubbleGroupsHost {
     })
   }
 
+  /**
+   * Медиа-ветка бабла — порт медиа-switch tweb (bubbles.ts:7878-7935 для фото).
+   *
+   * Здесь и только здесь создаётся `attachmentDiv` (:7874-7875) и вставляется
+   * ПЕРЕД телом сообщения (:9247-9268), а классы стыка (`no-brb` у вложения,
+   * `mt-shorter` у текста) обнуляют радиусы там, где вложение и подпись
+   * срастаются в один блок.
+   *
+   * ПОЧЕМУ РЕЗУЛЬТАТ ВРАППЕРА НЕ ЖДЁТСЯ. У оригинала `renderMessage`
+   * асинхронен, и `loadPromises` копятся, чтобы пачка баблов показалась уже с
+   * готовыми превью. У нас этого ожидания нет по причине, названной в
+   * `processBatch`: очередь не ждёт промисы единицы. Вставленный контейнер
+   * враппер наполняет сам, как и в tweb, — он владеет своим узлом; поэтому
+   * ветка синхронна, а ошибка загрузки гасится (превью просто не появится,
+   * бабл с текстом останется целым).
+   *
+   * Пока портирована ОДНА ветка switch'а — фото. Видео, альбом, стикер,
+   * документы и голосовые приезжают следующими срезами: у каждого свой набор
+   * классов бабла и свой враппер, и валить их в один заход значило бы отдать
+   * непроверяемый кусок.
+   */
+  private renderMedia(message: MyMessage, bubbleContainer: HTMLElement, messageDiv: HTMLElement): void {
+    if (message._ !== 'message') return
+
+    const media = message.media
+    if (media?._ !== 'messageMediaPhoto') return
+
+    const photo = getBubbleMedia(message)
+    if (!photo) return
+
+    const bubble = bubbleContainer.parentElement?.parentElement
+    // tweb :7890 — `bubble.classList.add('photo')`.
+    bubble?.classList.add('photo')
+
+    const attachmentDiv = document.createElement('div')
+    attachmentDiv.classList.add('attachment')
+
+    const middleware = this.getMiddleware()
+    const promise = wrapPhoto({
+      photo,
+      container: attachmentDiv,
+      middleware,
+      boxWidth: mediaSizes.active.regular.width,
+      boxHeight: mediaSizes.active.regular.height,
+      hasMessage: true,
+      // Подпись есть — бокс расширяется до 320 (tweb `hasMessageBlock`).
+      hasMessageBlock: !!getMessageText(message),
+    }).catch(noop)
+
+    // tweb :7922-7930 — крышка спойлера поверх вложения. Узел строит враппер,
+    // а вставляет ВЫЗЫВАЮЩИЙ (у оригинала это `wrapMediaSpoiler` самой ленты,
+    // bubbles.ts:6034-6058): крышка живёт поверх того же attachment.
+    if (isMediaSpoiler(message)) {
+      void promise
+        .then(() => wrapMediaSpoiler({ media: photo, middleware, animationGroup: 'chat' }))
+        .then((cover) => {
+          if (cover && middleware()) attachmentDiv.append(cover)
+        })
+        .catch(noop)
+    }
+
+    // tweb :9247-9268: вложение встаёт ПЕРЕД телом, и стык между ними теряет
+    // радиусы с обеих сторон.
+    messageDiv.before(attachmentDiv)
+    attachmentDiv.classList.add('no-brb')
+    messageDiv.classList.add('mt-shorter')
+  }
+
   // Каркас бабла: `.bubble > .bubble-content-wrapper > .bubble-content >
-  // .message.spoilers-container` (tweb bubbles.ts:6618-6629). Медиа, время,
-  // реакции и прочий состав `.bubble-content` — следующие этапы.
+  // .message.spoilers-container` (tweb bubbles.ts:6618-6629). Время и реакции —
+  // следующие этапы; медиа заводит `renderMedia`.
   private renderMessage(message: MyMessage): HTMLElement {
     const bubble = document.createElement('div')
     bubble.dataset.mid = '' + message.id
@@ -542,6 +613,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv.append(this.wrapMessageContent(message))
 
     bubbleContainer.append(messageDiv)
+
+    contentWrapper.append(bubbleContainer)
+    bubble.append(contentWrapper)
+
+    // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
+    // встаёт вложение), и сам `bubble` (классы `photo`/`video`/`round`).
+    this.renderMedia(message, bubbleContainer, messageDiv)
 
     // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
     // её вставки (:9567-9590); `nameContainer` в оригинале — тот же
@@ -577,9 +655,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
         nameDiv.classList.add('next-is-message')
       }
     }
-
-    contentWrapper.append(bubbleContainer)
-    bubble.append(contentWrapper)
 
     return bubble
   }
