@@ -99,6 +99,8 @@ import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
+import type ChatSelection from './selection'
+import type { SelectionBubbles } from './selection'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -207,6 +209,18 @@ export interface ChatContext {
   bubblesViewport: HTMLElement
   /** адресат кликов по ссылкам/именам — аналог tweb `chat.appImManager` */
   navigation?: BubblesNavigation
+  /**
+   * Порт tweb `Chat.selection` (chat.ts:615 `new ChatSelection(this,
+   * this.bubbles, this.input, this.managers)`) — режим выделения сообщений.
+   *
+   * ФАБРИКА, а не готовый объект, потому что связь двусторонняя: выделению
+   * нужна лента (её баблы), а ленте — выделение (гейты кликов). В tweb узел
+   * разрубает `Chat`, который держит обоих; у нас роль `Chat` исполняет хост
+   * (`VanillaFeed`), и он отдаёт сюда СПОСОБ создать выделение — лента зовёт
+   * его, передав себя. Так владельцем остаётся хост: это он знает про плашку
+   * действий и попапы.
+   */
+  createSelection?(bubbles: SelectionBubbles): ChatSelection
   /** Порт tweb `chat.canSend()` (chat.ts, без аргумента — действие
    *  `send_messages`): гейт СВАЙП-ответа (bubbles.ts:1548). Асинхронный, как в
    *  оригинале. Не передан — жест не начинается вовсе. */
@@ -356,6 +370,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // Отписка от шины тяжёлых анимаций (в tweb её снимает `listenerSetter`,
   // которому `useHeavyAnimationCheck` передан третьим аргументом).
   private removeHeavyAnimationListener?: () => void
+
+  /** Порт tweb `this.chat.selection` — им лента гейтит клики и жесты.
+   *  Живёт здесь, а не в `ChatContext`, потому что создаётся уже с готовой
+   *  лентой (см. `createSelection`). */
+  public selection?: ChatSelection
 
   /** Порт поля tweb `this.replySwipeHandler` (bubbles.ts:1543) — слушатели
    *  жеста висят на контейнере и снимаются на `destroy`. */
@@ -1064,6 +1083,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const queue = filterQueue(loadQueue)
 
+    // Догрузка в режиме выделения: новым баблам сразу нужен чекбокс, иначе
+    // подгруженная страница приехала бы без него (tweb bubbles.ts:5931-5935).
+    if (this.selection?.isSelecting) {
+      queue.forEach(({ bubble }) => this.selection!.toggleElementCheckbox(bubble, true))
+    }
+
     const firstGroup: BubbleGroup | undefined = this.bubbleGroups.firstGroup
     const lastGroup: BubbleGroup | undefined = this.bubbleGroups.lastGroup
     const firstMid = firstGroup?.firstMid
@@ -1399,6 +1424,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private attachContainerListeners() {
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
 
+    // Выделение — tweb bubbles.ts:1479. Слушатели ему лента вешает на СВОЙ
+    // контейнер, но своим `ListenerSetter`: их снимает сам режим, когда его
+    // отвязывают, — у оригинала ровно так же (`new ListenerSetter()` прямо в
+    // аргументе).
+    this.selection = this.chat.createSelection?.(this)
+    this.selection?.attachListeners(this.container, new ListenerSetter())
+
     // Ответ жестом — tweb bubbles.ts:1496-1572. Развилка ровно оригинала и
     // ВЗАИМОИСКЛЮЧАЮЩАЯ: на десктопе ответ даёт даблклик, на таче — свайп.
     // Держать оба сразу нельзя: на таче даблклик стрелял бы по концу свайпа.
@@ -1410,10 +1442,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.listenerSetter.add(this.container)('dblclick', this.onContainerDoubleClick)
     } else if (IS_TOUCH_SUPPORTED) {
       this.replySwipeHandler = attachReplySwipe(this.container, {
-        // `isSelecting` сюда ещё не приходит: режим выделения портируется
-        // отдельно (`selection.ts`) и в ленту не заведён. Пока его нет, гейт
-        // `chat.selection.isSelecting` (:1547) предмета не имеет — вернуть
-        // вместе с выделением.
+        isSelecting: () => !!this.selection?.isSelecting, // tweb :1547
         canSend: () => this.chat.canSend?.() ?? false,
         initMessageReply: (mid) => this.chat.initMessageReply?.(mid),
       })
@@ -1429,10 +1458,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    */
   private onContainerDoubleClick = (e: Event) => {
     const bubble = findDoubleClickReplyBubble(e, {
-      // `ChatType.Pinned`/`ChatType.Logs` и режим выделения у ленты пока не
-      // существуют как понятия — вернуть вместе с ними.
+      // `ChatType.Pinned`/`ChatType.Logs` у ленты пока не существуют как
+      // понятия — вернуть вместе с ними.
       isPinnedOrLogs: false,
-      isSelecting: false,
+      isSelecting: !!this.selection?.isSelecting, // tweb :1502
       canSendPlain: this.chat.canSendPlain?.() ?? false,
       isRepliable: (b) => {
         // Отрицание tweb `message.pFlags.is_outgoing || message.peerId !==
@@ -1466,6 +1495,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
 
       return
+    }
+
+    // Клик по времени на десктопе — вход в выделение (tweb :3118-3121).
+    // Ветка стоит ПЕРЕД спойлером и реакциями, как у оригинала: время лежит в
+    // теле сообщения, и на таче по нему открывается меню, а не выделение —
+    // поэтому гейт по `IS_TOUCH_SUPPORTED` тоже оригинала.
+    const bubble = target.closest<HTMLElement>('.bubble')
+    if (this.selection && bubble) {
+      if (!IS_TOUCH_SUPPORTED && findUpClassName(target, 'time')) {
+        this.selection.toggleByElement(bubble)
+        return
+      }
+
+      // В режиме выделения ЛЮБОЙ клик по баблу тогглит выбор (tweb :3156-3172)
+      // — и перебивает все ветки ниже: ни вьювер, ни прыжок к оригиналу в этом
+      // режиме не срабатывают. `isTrusted` — страховка оригинала от
+      // автокликов аудио-элемента.
+      if (this.selection.isSelecting && e.isTrusted) {
+        // Служебный бабл без номера выбирать нечем.
+        if (bubble.classList.contains('service') && !bubble.dataset.mid) {
+          return
+        }
+
+        cancelEvent(e)
+
+        // На таче выделение текста заканчивается тем же кликом — он не должен
+        // ещё и переключать выбор (tweb :3164-3167).
+        if (IS_TOUCH_SUPPORTED && this.selection.selectedText) {
+          this.selection.selectedText = undefined
+          return
+        }
+
+        this.selection.toggleByElement(findUpClassName(target, 'grouped-item') || bubble)
+        return
+      }
     }
 
     // Крышка спойлера — tweb bubbles.ts:3236-3243. Ветка стоит ЗДЕСЬ, а не
@@ -1867,6 +1931,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     return history
+  }
+
+  /** Порт tweb `getBubbleGroupedItems` (bubbles.ts:3921) — ячейки альбома
+   *  внутри бабла. Наш альбом их даёт: `prepareAlbum` вешает `.grouped-item`
+   *  с `data-mid` на каждую (`components/prepareAlbum.ts:60`). */
+  public getBubbleGroupedItems(bubble: HTMLElement): HTMLElement[] {
+    return Array.from(bubble.querySelectorAll<HTMLElement>('.grouped-item'))
+  }
+
+  /**
+   * Порт tweb `getMountedBubble` (bubbles.ts:3925-3956) — «в каком узле
+   * ПОКАЗАН этот номер». Не то же самое, что `getBubble`: у сообщения из
+   * альбома своего бабла нет, оно живёт ячейкой внутри бабла главного.
+   *
+   * Асинхронность — оригинала: там разрешение альбома идёт через менеджер
+   * (`getGroupedBubble`), у нас группа собирается из зеркала синхронно, но
+   * сигнатуру порта это менять не должно — иначе вызывающий разъедется с tweb.
+   *
+   * Уточнение `.document-container[data-mid]` (:3946) не переносится: оно про
+   * группу ДОКУМЕНТОВ, которую наша лента ещё не рисует (задача #69).
+   */
+  public async getMountedBubble(fullMid: FullMid): Promise<{ bubble: HTMLElement, peerId: number, mid: number } | undefined> {
+    const { peerId, mid } = splitFullMid(fullMid)
+    const message = this.getMessage(mid)
+    if (!message) return
+
+    const groupedId = message._ === 'message' ? message.grouped_id : undefined
+    if (groupedId) {
+      const main = this.mainGroupedMessage(message)
+      const bubble = main && this.getBubble(makeFullMid(peerId, main.id))
+      if (bubble) return { bubble, peerId, mid }
+    }
+
+    const bubble = this.getBubble(fullMid)
+    return bubble && { bubble, peerId, mid }
   }
 
   /** Порт tweb bubbles.ts:2910. */
@@ -2641,6 +2740,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // который её переживает, — без снятия это утечка на каждый открытый чат.
     this.replySwipeHandler?.removeListeners()
     this.replySwipeHandler = undefined
+    // tweb отвязывает выделение через `Chat.destroy` → `selection.cleanup()`;
+    // у нас владелец связки — лента, она же её и рвёт.
+    this.selection?.attachListeners(undefined, undefined)
+    this.selection?.cleanup()
     this.removeHeavyAnimationListener?.()
     this.sliceViewportDebounced?.clearTimeout()
     // tweb bubbles.ts:4893-4897.

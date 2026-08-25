@@ -1139,6 +1139,16 @@ export default function Chat({ chat, onBack, thread }: Props) {
     const rs = draftReplyState(msgs, mid, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
     if (rs) { setReply(rs); setEditing(null) }
   })
+  // Выделение в императивной ленте. Владелец режима — сама лента (порт
+  // `ChatSelection`), хост лишь рисует плашку: получает выбранные номера,
+  // признак режима и способ его снять. Второго источника правды нет —
+  // React-стейт здесь ВИТРИНА плашки, а не хранилище выбора.
+  const feedCancelSelection = useRef<(() => void) | undefined>(undefined)
+  const onFeedSelection = useEvent((state: { mids: number[], selecting: boolean, cancel: () => void }) => {
+    feedCancelSelection.current = state.cancel
+    setSelected(new Set(state.mids))
+    setSelectionMode(state.selecting)
+  })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   // Плашка форварда: отмена, тоггл опций меню (скрыть отправителя/подпись),
@@ -1398,7 +1408,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onSelection={onFeedSelection} />
         ) : (
         <div
           ref={bubblesRef}
@@ -1537,7 +1547,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {selecting && (
               <SelectionBar
                 count={selected.size}
-                onClear={clearSelection}
+                onClear={() => {
+                  // Под ванильной лентой выбор держит ОНА — снимать надо у неё,
+                  // иначе чекбоксы в баблах остались бы стоять (tweb: клик по
+                  // счётчику зовёт `cancelSelection`, selection.ts:1080-1082).
+                  feedCancelSelection.current?.()
+                  clearSelection()
+                }}
                 onForward={() => openForwardFor([...selected])}
                 onDelete={() => openDeleteFor([...selected])}
                 canForward={!isSecret}

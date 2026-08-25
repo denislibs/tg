@@ -13,9 +13,10 @@
 import { useLayoutEffect, useRef } from 'react'
 import { winKey } from '@core/history/messagesMirror'
 import ChatBubbles from './bubbles'
+import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onSelection }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -39,11 +40,30 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
   /** Порт tweb `chat.input.initMessageReply(...)`: жест ответа отдаёт хосту
    *  номер, плашку над композером собирает владелец композера. */
   onReply?: (mid: number) => void
+  /**
+   * Режим выделения — порт роли `Chat` (tweb chat.ts:615 создаёт
+   * `ChatSelection`, а `selection.ts:1008-1173` рисует плашку вместо
+   * композера). Плашка — окружение чата, поэтому её владелец здесь: лента
+   * отдаёт наверх выбранные номера, признак режима и способ его снять, а
+   * рисует плашку хост (`conversation/SelectionBar.tsx`).
+   */
+  onSelection?: (state: { mids: number[], selecting: boolean, cancel: () => void }) => void
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
-  const gesture = useRef({ canSend, canSendPlain, onReply })
-  gesture.current = { canSend, canSendPlain, onReply }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onSelection })
+  gesture.current = { canSend, canSendPlain, onReply, onSelection }
+
+  // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
+  // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
+  // tweb selection.ts:1080-1082).
+  const report = (selection: ChatSelection, selecting: boolean) => {
+    gesture.current.onSelection?.({
+      mids: selection.getSelectedMids(),
+      selecting,
+      cancel: () => selection.cancelSelection(),
+    })
+  }
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -79,6 +99,18 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         isMegagroup,
         container: chatColumn,
         bubblesViewport,
+        // Владелец выделения — хост, как `Chat` в оригинале: это он знает про
+        // плашку действий. Менеджер прав не передаётся: факта «нельзя
+        // переслать/удалить» на клиенте нет вовсе (задача #73) — порт объявлен
+        // опциональным именно поэтому.
+        createSelection: (bubblesPort) => {
+          const selection: ChatSelection = new ChatSelection(bubblesPort, { messages: {} }, {
+            toggle: (forwards) => report(selection, forwards),
+            update: () => report(selection, selection.isSelecting),
+            remove: () => report(selection, false),
+          })
+          return selection
+        },
         // Права и вход в reply читаются ЧЕРЕЗ РЕФ, а не захватываются
         // значением: у оригинала это тоже живое чтение в момент жеста
         // (`this.chat.canSend()`, bubbles.ts:1548). Положи их в зависимости
