@@ -722,55 +722,33 @@ export interface MessageReactions {
   top_reactors?: MessageReactor[]
 }
 
-interface RawMessageCommon {
-  id: number
-  from_id?: Peer
-  peer_id: Peer
-  pFlags?: MessagePFlags
-  /** та же форма, что в модели, но номера СЕРВЕРНЫЕ */
-  reply_to?: MessageReplyHeader
-  date: number
-  ttl_period?: number
-  reactions?: MessageReactions
-  random_id?: string
-  /** НЕ проводные. Расшифровка секретного чата живёт в ВОРКЕРЕ (там ключи) и
-   *  идёт ДО разбора — иначе кадр уехал бы мимо своего места в потоке pts.
-   *  Поэтому её результат кладётся сюда, на проводной объект, и подхватывается
-   *  маппером как клиентские параметры (те же поля, что у REST-пути ставит
-   *  `decryptPage`). */
-  secret?: boolean
-  secretMedia?: SecretMedia
-}
+/**
+ * КЛИЕНТСКИЕ параметры сообщения: их ставит ГРАНИЦА разбора, на проводе их нет.
+ * `peerId`/`fromId` — знаковые ключи (объявлены клиентскими у самого
+ * оригинала, `schema/schema_additional_params.json`); остальные три наши.
+ */
+type MessageClientKeys = 'peerId' | 'fromId' | 'failed' | 'localUrl' | 'transcription'
 
-export interface RawMessageReal extends RawMessageCommon {
-  _: 'message'
-  fwd_from?: MessageFwdHeader
-  message: string
-  media?: MessageMedia
-  reply_markup?: ReplyMarkup
-  entities?: MessageEntity[]
-  views?: number
-  forwards?: number
-  edit_date?: number
-  grouped_id?: number
-  effect_name?: string
-  factcheck?: FactCheck
-  send_at?: number
-  when_online?: boolean
-  enc_body?: string
-  destruct_at?: string
-}
+/**
+ * Проводное сообщение — ТОТ ЖЕ тип, что модель, минус клиентские параметры и с
+ * двумя послаблениями границы: `pFlags` может не приехать вовсе, а
+ * `effect_name` на проводе просто строка (в пресет-имя его сужает `mapEffect`).
+ *
+ * Прежде здесь стояла ВТОРАЯ, рукописная декларация тех же полей — и она уже
+ * разошлась с моделью: в ней не было ни `localUrl`, ни `transcription`, ни
+ * `failed`. Ровно это фаза 3 и называет: умирает не функция-маппер, а ПАРА
+ * независимо поддерживаемых деклараций одного объекта. Теперь расходиться
+ * нечему — декларация одна, вторая выведена из неё.
+ */
+export type RawMessageReal =
+  Omit<MessageReal, MessageClientKeys | 'pFlags' | 'effect_name'>
+  & { pFlags?: MessagePFlags; effect_name?: string }
 
-export interface RawMessageService extends RawMessageCommon {
-  _: 'messageService'
-  action: MessageAction
-}
+export type RawMessageService =
+  Omit<MessageService, MessageClientKeys | 'pFlags'>
+  & { pFlags?: MessagePFlags }
 
-export interface RawMessageEmpty {
-  _: 'messageEmpty'
-  id: number
-  peer_id?: Peer
-}
+export type RawMessageEmpty = Omit<MessageEmpty, 'peerId'>
 
 export type RawMessage = RawMessageEmpty | RawMessageReal | RawMessageService
 
