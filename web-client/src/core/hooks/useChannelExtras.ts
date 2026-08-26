@@ -7,23 +7,29 @@
 // chatStackStore.setInnerPeer, см. Chat.tsx onOpenThread.)
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import type { MessageWindow } from './useMessageWindow'
+import { useMirrorWindow } from './useMirrorWindow'
 import type { CommentReplier } from '../managers/channelsManager'
 
 interface UseChannelExtrasArgs {
   isRealChat: boolean
   isChannel: boolean
   numericChatId: number
-  win: MessageWindow
+  /** ключ окна (`winKey(peerId, threadRootId)`) — по нему хук читает ЗЕРКАЛО
+   *  окон, а не zustand-копию: номера постов ему нужны те же, что рисует живая
+   *  лента, а живой лентой под флагом `VITE_VANILLA_FEED` работает
+   *  `chat/bubbles.ts`, у которой zustand-копии нет вовсе. `null` — читать
+   *  нечего. */
+  windowKey: string | null
   discussionsEnabled: boolean
 }
 
-export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, discussionsEnabled }: UseChannelExtrasArgs): {
+export function useChannelExtras({ isRealChat, isChannel, numericChatId, windowKey, discussionsEnabled }: UseChannelExtrasArgs): {
   commentCounts: Map<number, number>
   /** авторы последних комментариев по посту — стек аватаров в футере */
   commentRepliers: Map<number, CommentReplier[]>
 } {
   const managers = useManagers()
+  const msgs = useMirrorWindow(windowKey)
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
   const [commentRepliers, setCommentRepliers] = useState<Map<number, CommentReplier[]>>(new Map())
 
@@ -42,7 +48,7 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
   // msgs change). Only real channel posts with discussions enabled get a count.
   useEffect(() => {
     if (!discussionsEnabled) { setCommentCounts(new Map()); setCommentRepliers(new Map()); return }
-    const ids = win.msgs.map((m) => m.id).filter((id) => id > 0)
+    const ids = msgs.map((m) => m.id).filter((id) => id > 0)
     if (ids.length === 0) return
     let alive = true
     const timer = window.setTimeout(() => {
@@ -54,7 +60,7 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
     }, 300)
     return () => { alive = false; window.clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discussionsEnabled, numericChatId, win.msgs.length, managers])
+  }, [discussionsEnabled, numericChatId, msgs.length, managers])
 
   // Channel post view counts ("9.2K 👁"): просим свежие числа на каждое открытие
   // для загруженных постов (дебаунс по изменению окна). В ОКНО их кладёт не этот
@@ -65,12 +71,12 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
   // которого счётчик не доезжал до зеркала императивной ленты.
   useEffect(() => {
     if (!isRealChat || !isChannel) return
-    const ids = win.msgs.map((m) => m.id).filter((id) => id > 0)
+    const ids = msgs.map((m) => m.id).filter((id) => id > 0)
     if (ids.length === 0) return
     const timer = window.setTimeout(() => { void managers.channels.viewCounts(numericChatId, ids) }, 300)
     return () => { window.clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRealChat, isChannel, numericChatId, win.msgs.length, managers])
+  }, [isRealChat, isChannel, numericChatId, msgs.length, managers])
 
   return { commentCounts, commentRepliers }
 }

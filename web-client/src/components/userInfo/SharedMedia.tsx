@@ -17,7 +17,8 @@ import classNames from '../../shared/lib/classNames'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
+import { useMirrorWindow } from '../../core/hooks/useMirrorWindow'
+import { winKey } from '../../core/history/messagesMirror'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
 import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../../core/media/messageMedia'
@@ -157,7 +158,14 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
-  const winLen = useMessagesStore((st) => (chatId != null ? st.byKey[String(chatId)]?.msgs.length ?? 0 : 0))
+  //
+  // Сигнал — ДЛИНА окна из зеркала (`core/history/messagesMirror.ts`), а не из
+  // zustand-копии: копия живёт только у React-ленты и уходит вместе с ней
+  // (этап 7), а панель к рисованию баблов отношения не имеет. Молчаливая цена
+  // ошибки здесь выше обычного: потеря сигнала не роняет ничего — вкладки
+  // просто перестают обновляться, поэтому её ловит отдельный тест
+  // (`SharedMedia.invalidate.test.tsx`).
+  const winLen = useMirrorWindow(chatId != null ? winKey(chatId) : null).length
   useEffect(() => {
     genRef.current++
     loadingRef.current.clear()

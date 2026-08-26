@@ -7,7 +7,7 @@ import rootScope, { type BroadcastEvents } from '@lib/rootScope'
 import type { MessageReal, MyMessage } from '../models'
 import { makeMessage } from '../messages/testMessage'
 import type { MessageOp } from '../realtime/messageOps'
-import { applyOpsToMirror, mirrorWindow, putMirrorPage, resetMessagesMirror, winKey } from './messagesMirror'
+import { applyOpsToMirror, mirrorVersion, mirrorWindow, putMirrorPage, resetMessagesMirror, subscribeMirror, winKey } from './messagesMirror'
 import { winKey as winKeyFromStore } from '@stores/messagesStore'
 
 const CHAT = 50
@@ -314,5 +314,70 @@ describe('putMirrorPage — страница истории', () => {
     putMirrorPage(winKey(CHAT, THREAD), [msg({ id: 2 }, THREAD)])
     expect(ids(winKey(CHAT))).toEqual([1])
     expect(ids(winKey(CHAT, THREAD))).toEqual([2])
+  })
+})
+
+// ── Мост в React ───────────────────────────────────────────────────────────
+//
+// Счётчик версии + подписки, поверх которых живёт ЕДИНСТВЕННЫЙ React-хук
+// `core/hooks/useMirrorWindow.ts` (контракт самого хука — в его тесте).
+// Здесь проверяется то, что изнутри `useSyncExternalStore` не наблюдаемо:
+// кого и когда зовёт зеркало.
+describe('messagesMirror — мост в React (версия + подписки)', () => {
+  it('операция, изменившая окно, поднимает версию и зовёт подписчиков РОВНО раз на пачку', () => {
+    const calls: number[] = []
+    const off = subscribeMirror(() => calls.push(mirrorVersion()))
+    const before = mirrorVersion()
+    applyOpsToMirror([
+      { op: 'insert', key: winKey(CHAT), msg: msg({ id: 1 }) },
+      { op: 'insert', key: winKey(CHAT), msg: msg({ id: 2 }) },
+    ])
+    expect(calls).toEqual([before + 1])
+    off()
+  })
+
+  it('операция, НИЧЕГО не изменившая, подписчиков не будит', () => {
+    seed(winKey(CHAT), [msg({ id: 10 })])
+    const calls: number[] = []
+    const off = subscribeMirror(() => calls.push(mirrorVersion()))
+    // remove по отсутствующему номеру: `applyOp` вернул ту же ссылку.
+    applyOpsToMirror([{ op: 'remove', key: winKey(CHAT), msgId: 999 }])
+    expect(calls).toEqual([])
+    off()
+  })
+
+  it('страница истории будит подписчиков, хотя событий каталога не шлёт', () => {
+    let calls = 0
+    const off = subscribeMirror(() => { calls++ })
+    const before = mirrorVersion()
+    putMirrorPage(winKey(CHAT), [msg({ id: 1 })])
+    // Ни `history_append`, ни любое другое событие каталога — страницу рисует
+    // сам загрузивший (докблок `putMirrorPage`). А вот React-потребитель окна
+    // ничего не грузил и узнать обязан — отсюда отдельный канал версии.
+    expect(captured).toEqual([])
+    expect(calls).toBe(1)
+    expect(mirrorVersion()).toBe(before + 1)
+    off()
+  })
+
+  it('сброс зеркала будит подписчиков; повторный сброс пустого — нет', () => {
+    seed(winKey(CHAT), [msg({ id: 1 })])
+    let calls = 0
+    const off = subscribeMirror(() => { calls++ })
+    resetMessagesMirror()
+    expect(calls).toBe(1)
+    resetMessagesMirror()
+    expect(calls).toBe(1)
+    off()
+  })
+
+  it('отписка перестаёт звать колбэк', () => {
+    let calls = 0
+    const off = subscribeMirror(() => { calls++ })
+    putMirrorPage(winKey(CHAT), [msg({ id: 1 })])
+    expect(calls).toBe(1)
+    off()
+    putMirrorPage(winKey(CHAT), [msg({ id: 2 })])
+    expect(calls).toBe(1)
   })
 })

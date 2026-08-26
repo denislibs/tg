@@ -28,6 +28,8 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
+import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
+import { winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
 import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
@@ -68,7 +70,7 @@ import { AppConfig } from '../config/app'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import SimilarChannels from './messages/SimilarChannels'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
-import { draftReplyState, convMsgReplyState } from '../core/draftReply'
+import { windowReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import { useGroupCallStore } from '../stores/groupCallStore'
@@ -105,6 +107,7 @@ import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
 import { hasReactionEmoticon } from '../core/reactions/messageReactions'
 import { draftReplyToId as draftReplyOf } from '../core/dialogs/draft'
+import { messageToConvMsg } from '../core/messageToConvMsg'
 import classNames from '../shared/lib/classNames'
 import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -298,6 +301,26 @@ export default function Chat({ chat, onBack, thread }: Props) {
   })
   const threadRootId = thread?.rootMsgId
   const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
+  // Окно из ЗЕРКАЛА (`core/history/messagesMirror.ts`) — источник для
+  // НЕленточных потребителей окна: плашка ответа над композером (восстановление
+  // из черновика, ответ жестом ленты, Ctrl/Cmd+↑), правка последнего своего
+  // сообщения. Именно его читает императивная лента, поэтому по обе стороны
+  // флага `VITE_VANILLA_FEED` композер и лента говорят об ОДНОМ окне; zustand-
+  // копия остаётся только у самой React-ленты и уходит вместе с ней (этап 7).
+  const mirrorMsgs = useMirrorWindow(isRealChat ? winKey(numericChatId, threadRootId) : null)
+  // Плашка ответа по НОМЕРУ сообщения — общий путь для черновика, жеста ленты и
+  // Ctrl/Cmd+↑ (в tweb это тоже одно место — `chat.input.
+  // getChatInputReplyToFromMessage`).
+  //
+  // Проводка этого узла (как и всего файла) тестом не покрыта — `Chat.tsx` в
+  // тесте не рендерится (см. «Тесты» в web-client/CLAUDE.md). Покрыты обе её
+  // половины по отдельности: сборка плашки из окна — `core/draftReply.test.ts`
+  // (`windowReplyState`), доставка окна из зеркала — `core/hooks/
+  // useMirrorWindow.test.tsx` и `core/hooks/useMessageWindow.mirror.test.ts`.
+  const replyStateFor = useEvent((mid: number) =>
+    windowReplyState(mirrorMsgs, mid, chat.name, accentColor, {
+      meId: meId ?? undefined, peerId: numericChatId, isGroup,
+    }))
   // Тред комментариев: после корневого поста канала (подшит бэком с seq=0)
   // вставляем клиентскую сервис-плашку «Обсуждение началось» (tweb
   // generateThreadServiceStartMessage — messageActionDiscussionStarted).
@@ -600,7 +623,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     getMessageSendingParams, onMessageSent,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, threadRootId, sendAsPeerId, atBottomRef, userScrolledUpRef,
+    meId, threadRootId, sendAsPeerId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -616,12 +639,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
     : null))
   const replyRestoredRef = useRef(false)
   useEffect(() => {
-    if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return
+    if (replyRestoredRef.current || draftReplyToId == null || mirrorMsgs.length === 0) return
     replyRestoredRef.current = true
     if (reply) return
-    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
+    const rs = replyStateFor(draftReplyToId)
     if (rs) setReply(rs)
-  }, [draftReplyToId, msgs, reply, chat.name, numericChatId, meId, accentColor, setReply])
+  }, [draftReplyToId, mirrorMsgs, reply, replyStateFor, setReply])
 
   // Кросс-чат ответ (tweb ReplyToAnotherChat): целевой чат открыт → ставим
   // reply-плашку из pending-reply (исходный чат + снимок оригинала) и чистим стор.
@@ -761,7 +784,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
   const { commentCounts, commentRepliers } = useChannelExtras({
-    isRealChat, isChannel, numericChatId, win, discussionsEnabled,
+    isRealChat, isChannel, numericChatId, windowKey: isRealChat ? winKey(numericChatId, threadRootId) : null, discussionsEnabled,
   })
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
   // колонке (tweb: setPeer(discussion group, threadId=postId)).
@@ -1141,10 +1164,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
   // tweb bubbles.ts:1497-1542 и :1699). Лента отдаёт только НОМЕР — плашку
   // собирает владелец композера, тем же путём, которым её восстанавливает
-  // черновик (`draftReplyState`). В tweb эта граница ровно такая же:
+  // черновик (`replyStateFor` → `windowReplyState`). В tweb граница ровно та же:
   // `chat.input.getChatInputReplyToFromMessage(message)` — дело инпута.
   const onFeedReply = useEvent((mid: number) => {
-    const rs = draftReplyState(msgs, mid, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
+    const rs = replyStateFor(mid)
     if (rs) { setReply(rs); setEditing(null) }
   })
   // Выделение в императивной ленте. Владелец режима — сама лента (порт
@@ -1209,12 +1232,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // ищем с конца окна первое своё редактируемое сообщение и ставим editing тем же
   // путём, что «Изменить» из меню (setEditing).
   const onComposerEditLast = useEvent(() => {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (!m.out || m.type === 'date' || m.type === 'service') continue
-      const raw = winV.msgs[i]
-      if (raw?.id == null) continue
-      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
+    for (let i = mirrorMsgs.length - 1; i >= 0; i--) {
+      const raw = mirrorMsgs[i]
+      // Пилюля (`messageService`) не правится — у неё нет ни текста, ни сущностей.
+      if (raw._ !== 'message') continue
+      // «Своё» — то же правило стороны бабла, что у ленты (`isOutMessage`:
+      // send-as в мегагруппе исходящий, пост вещательного канала — нет).
+      const conv = messageToConvMsg(raw, meId, { isMegagroup: isGroup })
+      if (!conv.out) continue
+      setEditing({ msgId: raw.id, text: conv.text ?? '', entities: raw.entities })
       setReply(null)
       return
     }
@@ -1222,10 +1248,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Ctrl/Cmd+↑ — ответ на последнее подходящее сообщение окна (tweb): с конца
   // ищем первое несервисное/неудалённое сообщение и ставим reply как из меню.
   const onComposerReplyPrev = useEvent(() => {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (m.type === 'date' || m.type === 'service') continue
-      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor, { meId: meId ?? undefined, peerId: numericChatId })
+    for (let i = mirrorMsgs.length - 1; i >= 0; i--) {
+      const raw = mirrorMsgs[i]
+      if (raw._ !== 'message') continue
+      const rs = replyStateFor(raw.id)
       if (rs) { setReply(rs); setEditing(null); return }
     }
   })

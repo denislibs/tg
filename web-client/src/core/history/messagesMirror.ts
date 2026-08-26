@@ -52,6 +52,39 @@ const windows = new Map<string, MyMessage[]>()
 // расхождение копий, см. storeProjection.mirror.test.ts.
 const EMPTY: MyMessage[] = []
 
+// ── Мост в React ────────────────────────────────────────────────────────────
+//
+// Зеркало НЕреактивно: императивный потребитель (`chat/bubbles.ts`) читает его
+// синхронно и перерисовывает то, о чём ему сказали события `rootScope`.
+// React-потребителю (плашка ответа над композером, счётчики канала, «Общие
+// медиа») нужно другое — «перерисуйся, когда окно изменилось».
+//
+// Мост здесь ОДИН на приложение и устроен как у двух соседних зеркал витрины
+// (`core/peerCache.ts`, `core/chatFullCache.ts`): счётчик версии + набор
+// подписчиков, поверх которых React-сторона держит единственный хук
+// `core/hooks/useMirrorWindow.ts` (`useSyncExternalStore`). Снимок — ЧИСЛО, а не
+// коллекция: `getSnapshot` обязан возвращать стабильное значение, а окно —
+// массив, который пересобирается на каждой правке.
+//
+// Почему не по одному мосту на компонент: подписка на `rootScope`
+// (`history_append`/`message_edit`/…) в каждом хуке — это N независимых выводов
+// одного факта «окно изменилось», каждый со своим фильтром по peerId и своим
+// шансом промахнуться мимо типа события (правка молча не доехала бы, ровно как
+// в разборе `history_update` в шапке ниже).
+let version = 0
+const subs = new Set<() => void>()
+
+export function subscribeMirror(cb: () => void): () => void {
+  subs.add(cb)
+  return () => { subs.delete(cb) }
+}
+
+export function mirrorVersion(): number {
+  return version
+}
+
+const bump = (): void => { ++version; subs.forEach((f) => f()) }
+
 /** Синхронное чтение окна (аналог `historyStorage.history` в tweb).
  *  undefined — про это окно зеркало ещё ничего не знает. */
 export function mirrorWindow(key: string): readonly MyMessage[] | undefined {
@@ -82,6 +115,7 @@ export function mirrorWindow(key: string): readonly MyMessage[] | undefined {
 export function putMirrorPage(key: string, msgs: readonly MyMessage[]): void {
   const prev = windows.get(key) ?? EMPTY
   windows.set(key, dedupAsc([...prev, ...msgs]))
+  bump()
 }
 
 /** Кадр rt:logging_out: окна прошлой сессии обязаны исчезнуть — зеркало отдаёт
@@ -89,7 +123,9 @@ export function putMirrorPage(key: string, msgs: readonly MyMessage[]): void {
  *  прочитала бы чужую историю (та же причина, что у
  *  `core/mediaCache.ts::resetMediaUrlMirror`). */
 export function resetMessagesMirror(): void {
+  if (!windows.size) return
   windows.clear()
+  bump()
 }
 
 // Чат окна: и у основного ключа ("50"), и у ключа треда ("50:60") это первый
@@ -126,6 +162,11 @@ const peerIdOf = (key: string): number => Number(key.split(':')[0])
 // (инвариант rootScope, см. web-client/CLAUDE.md).
 export function applyOpsToMirror(ops: MessageOp[]): void {
   const callbacks: (() => void)[] = []
+  // Изменилось ли хоть одно окно. Считаем ОТДЕЛЬНО от `callbacks`: применённая
+  // операция не всегда рождает событие (insert, чьего сообщения после слияния в
+  // окне не оказалось, — `continue` ниже), а React-потребителю зеркала менять
+  // ему нечего только тогда, когда не изменилось САМО окно.
+  let changed = false
   for (const op of ops) {
     const prev = windows.get(op.key) ?? EMPTY
     const next = applyOp(prev, op)
@@ -134,6 +175,7 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
     // объявлять нечего.
     if (next === prev) continue
     windows.set(op.key, next)
+    changed = true
 
     const peerId = peerIdOf(op.key)
     if (op.op === 'remove') {
@@ -159,5 +201,9 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
     if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id, sequential: op.sequential }))
     else callbacks.push(() => rootScope.dispatchEventSingle('history_append', { storageKey: op.key, message }))
   }
+  // Версию поднимаем ОДИН раз на пачку и до событий `rootScope` — по той же
+  // причине, по которой события собирались в `callbacks`: подписчик обязан
+  // увидеть пачку применённой целиком.
+  if (changed) bump()
   for (const fire of callbacks) fire()
 }

@@ -17,7 +17,6 @@ import { playEmojiEffect, sendEffectForText, type EmojiEffectKind } from '../eff
 import type { MessageEntity } from '../models'
 import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
-import type { MessageWindow } from './useMessageWindow'
 import { useManagers } from './useManagers'
 import { startLiveShare } from '../liveShareEngine'
 import { scaleImageForSend } from '../media/scaleImageForSend'
@@ -75,7 +74,6 @@ interface UseChatSendArgs {
   /** Секретный чат ещё не установлен (handshake не завершён) → отправка запрещена. */
   secretLocked?: boolean
   meId: number | null
-  win: MessageWindow
   /** тред (форум-топик/комментарии): отправка идёт с thread_root_id */
   threadRootId?: number
   /** send-as (Telegram send_as): id канала/группы, от имени которых слать; null —
