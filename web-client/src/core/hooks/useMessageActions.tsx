@@ -15,10 +15,20 @@
 // этом нет — оно приходит ровно в эти функции (проводка: `Chat.tsx` →
 // `components/chat/VanillaFeed.tsx`), а пункты React-меню стали их тонкими
 // обёртками, подставляющими `menuRawMsg()`.
+//
+// АДРЕС ЦЕЛИ — НОМЕР (`msgMenu.mid`), а источник сообщения — ЗЕРКАЛО ОКНА
+// (`core/history/messagesMirror.ts` через единственный мост
+// `core/hooks/useMirrorWindow.ts`). Индекса ряда здесь больше нет: он был
+// свойством React-ленты (ряд существует потому, что лента рисует массив), у
+// ванильного меню его не существует вовсе, а у самой React-ленты он ехал
+// параллельными массивами `msgs`/`win.msgs` и сдвигался целиком, стоило
+// подгрузиться странице сверху — открытое меню начинало действовать на соседа.
+// Тем же номером и тем же зеркалом адресует цель ванильное меню
+// (`contextMenu.ts::getMessageByPeer`, порт tweb `chat.getMessageByPeer`).
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
-import { convMsgReplyState } from '../draftReply'
+import { windowReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
@@ -37,21 +47,26 @@ import rootScope from '@lib/rootScope'
 import { getDocumentFromMessage } from '../media/messageMedia'
 import { buildMessageLink } from '../messageLink'
 import { parseMarkdown } from '../richtext/markdown'
-import { getReplyToMsgId, getThreadRootId, type FactCheck } from '../models'
-import { getMediaId, getMessageKind, type MessageKind } from '../messages/messageKind'
+import { getMessageText, getReplyToMsgId, getThreadRootId, isOutMessage, type FactCheck, type MyMessage } from '../models'
+import { getMediaId, getMessageKind } from '../messages/messageKind'
 import { getServerMessageId } from '../history/messageId'
 import { friendlyMsgTime } from '../format/friendlyTime'
 import { useT, useLang } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
 import { useManagers } from './useManagers'
-import type { MessageWindow } from './useMessageWindow'
+import { useMirrorWindow } from './useMirrorWindow'
+import { winKey } from '../history/messagesMirror'
+import { cachedPeer } from '../peerCache'
 import type { ReplyState, EditState } from './useChatSend'
-import { getUserTitle } from '../peers/getPeerTitle'
+import { getPeerTitle, getUserTitle } from '../peers/getPeerTitle'
 import { getPeerPhotoId } from '../peers/peer'
 
 // closing — меню играет exit-анимацию ui-kit Menu; из стейта убирается только
 // по onExitComplete (destroyMsgMenu), иначе размонтирование срезало бы анимацию.
-type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
+// mid — НОМЕР сообщения-цели (клиентское пространство), а не индекс ряда:
+// адрес обязан пережить сдвиг окна (подгрузка страницы сверху, вставка нового
+// сообщения), пока меню открыто.
+type MsgMenu = { x: number; y: number; mid: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
 // peerId — адресат удаления: действие приходит парой «пир + номера» (её же
 // передаёт ванильное меню, tweb contextMenu.ts:2056 `PopupDeleteMessages(
 // peerId, mids, chatType)`).
@@ -75,8 +90,12 @@ interface UseMessageActionsArgs {
   canViewPostStats?: boolean
   // Канал + зритель автор/админ: показывать пункты «проверки фактов» (tweb canUpdateFactCheck).
   canEditFactCheck?: boolean
-  win: MessageWindow
-  msgs: ConvMsg[]
+  /** Тред (форум-топик / комментарии) — второй сегмент ключа окна в зеркале. */
+  threadRootId?: number
+  /** Порт `chat.isMegagroup`: от него зависит и СТОРОНА бабла (`isOutMessage`,
+   *  на ней стоят пункты «Изменить»/«Пожаловаться»/read-date), и то, подписан ли
+   *  входящий именем автора в плашке ответа. */
+  isGroup: boolean
   meId: number | null
   pins: { id?: number }[]
   accent: string
@@ -89,10 +108,16 @@ interface UseMessageActionsArgs {
 }
 
 export function useMessageActions({
-  chat, numericChatId, isRealChat, canViewPostStats, canEditFactCheck, win, msgs, meId, pins, accent,
+  chat, numericChatId, isRealChat, canViewPostStats, canEditFactCheck, threadRootId, isGroup, meId, pins, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const managers = useManagers()
+  // Окно чата из ЗЕРКАЛА — тот же источник, из которого цель берёт ванильное
+  // меню (`contextMenu.ts::getMessageByPeer`) и из которого рисует императивная
+  // лента. Мост в React ОДИН на приложение (`useMirrorWindow`), поэтому пункты
+  // пересобираются на каждое изменение окна: пока меню открыто, сообщение может
+  // быть отредактировано, а его реакции — измениться.
+  const winMsgs = useMirrorWindow(isRealChat ? winKey(numericChatId, threadRootId) : null)
   const t = useT()
   const [lang] = useLang()
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
@@ -128,16 +153,20 @@ export function useMessageActions({
   // обычный reply, удаление и реакции.
   const isSecret = chat.type === 'secret'
 
-  // Takes the message itself (not its index) so MessageRow needs no `index` prop —
-  // that prop shifts on every loadOlder prepend and would re-render every row. We
-  // resolve the index here, at click time, against the current msgs.
+  // Сторона бабла — порт `Chat.isOutMessage` (tweb chat.ts:1392): именно ею
+  // гейтятся «Изменить», «Пожаловаться» и строка read-date. Спрашиваем у
+  // сообщения, а не у вью-модельного ряда: ряд — свойство одной из двух лент.
+  const isOut = (m: MyMessage): boolean => isOutMessage(m, { myId: meId, isMegagroup: isGroup })
+
+  // Вход React-ленты: ряд отдаёт себя (не свой индекс — тот сдвигается на каждой
+  // подгрузке сверху и заставлял бы перерисовываться все ряды). Из ряда берётся
+  // ровно АДРЕС — его номер; сводный ряд альбома синтезируется лентой и несёт
+  // номер первого элемента группы, на него меню и действует (порт tweb
+  // `getMainGroupedMessage`).
   const openMsgMenu = useEvent((e: React.MouseEvent, m: ConvMsg) => {
     e.preventDefault()
-    // Сводный ConvMsg альбома синтезируется в ChatFeed и в msgs отсутствует —
-    // ищем по id (меню действует на первый элемент группы).
-    let idx = msgs.indexOf(m)
-    if (idx < 0 && m.id != null) idx = msgs.findIndex((x) => x.id === m.id)
-    if (idx < 0) return
+    const mid = m.id
+    if (mid == null) return
     // Захватываем выделенный фрагмент этого сообщения для «ответа с цитатой»
     // (best-effort: текст выделения + его offset как indexOf в тексте сообщения).
     pendingQuoteRef.current = null
@@ -152,16 +181,20 @@ export function useMessageActions({
     const MW = 256, MH = 440
     const openLeft = e.clientX + MW > window.innerWidth
     const openUp = e.clientY + MH > window.innerHeight
-    setMsgMenu({ x: e.clientX, y: e.clientY, idx, originX: openLeft ? 'right' : 'left', originY: openUp ? 'bottom' : 'top' })
+    setMsgMenu({ x: e.clientX, y: e.clientY, mid, originX: openLeft ? 'right' : 'left', originY: openUp ? 'bottom' : 'top' })
 
     // «Прочитано в HH:MM» для исходящего сообщения приватного чата (tweb
     // getOutboxReadDate): ленивая подгрузка при открытии меню.
     const req = ++readDateReqRef.current
     setReadDate(null)
-    const rawId = win.msgs[idx]?.id
-    if (isRealChat && chat.type === 'private' && m.out && rawId != null && rawId > 0) {
+    // Сторона бабла — вопрос к САМОМУ сообщению (`isOutMessage`), а не к ряду:
+    // отвечает на него зеркало, из которого рисуют обе ленты.
+    const raw = winMsgs.find((x) => x.id === mid)
+    // `mid > 0` — номер уже СЕРВЕРНЫЙ: у неотправленного бабла он клиентский
+    // (дробный), спрашивать по нему дату прочтения не у кого.
+    if (isRealChat && chat.type === 'private' && raw != null && isOut(raw) && mid > 0) {
       setReadDate({ state: 'loading' })
-      void managers.chats.getReadDate(numericChatId, rawId).then((res) => {
+      void managers.chats.getReadDate(numericChatId, mid).then((res) => {
         if (req !== readDateReqRef.current) return // открыли другое меню — игнор
         if (!res) setReadDate(null)
         else if ('restricted' in res) setReadDate({ state: 'restricted' })
@@ -175,22 +208,26 @@ export function useMessageActions({
   const closeMsgMenu = () => setMsgMenu((m) => (m ? { ...m, closing: true } : m))
   const destroyMsgMenu = () => setMsgMenu(null)
 
-  // The selected message's raw window entry (real id/seq) for actions.
-  const menuRawMsg = () => (msgMenu && isRealChat ? win.msgs[msgMenu.idx] : undefined)
+  // Сообщение-цель меню: НОМЕР из состояния меню → зеркало окна. Порт tweb
+  // `chat.getMessageByPeer(peerId, mid)`.
+  const menuRawMsg = () => (msgMenu && isRealChat ? winMsgs.find((m) => m.id === msgMenu.mid) : undefined)
+  // Признаки цели, на которых стоят гейты пунктов: сторона бабла и текст.
+  const menuOut = () => { const r = menuRawMsg(); return r ? isOut(r) : false }
+  const menuText = () => { const r = menuRawMsg(); return r ? getMessageText(r) : '' }
   // Вид и адрес вложения СПРАШИВАЮТСЯ у модели (`core/messages/messageKind.ts`),
   // а не читаются полями `type`/`media_id`: обоих на проводе больше нет.
   const menuRawMsgKind = () => { const r = menuRawMsg(); return r ? getMessageKind(r) : undefined }
   const getMenuMediaId = () => { const r = menuRawMsg(); return r ? getMediaId(r) : undefined }
   const menuRawFactCheck = () => { const r = menuRawMsg(); return r?._ === 'message' ? r.factcheck : undefined }
-  /** Вид вью-модельной строки → `MessageKind` для таблицы лейблов. Совпадают
-   *  везде, кроме синтетических рядов ленты (`date`, `album`), которых у самого
-   *  сообщения нет. */
-  const convKindLabel = (t: ConvMsg['type']): MessageKind | undefined =>
-    t === 'date' ? undefined : t === 'album' ? 'photo' : t
+
+  // Плашка ответа собирается по НОМЕРУ из того же окна зеркала, что и у
+  // композера (`Chat.tsx::replyStateFor`) и у жеста ленты — один расчёт на
+  // приложение (`core/draftReply.ts::windowReplyState`).
+  const menuReplyState = () =>
+    msgMenu ? windowReplyState(winMsgs, msgMenu.mid, chat.name, accent, { meId: meId ?? undefined, peerId: numericChatId, isGroup }) : null
 
   const startReply = () => {
-    const m = msgMenu && msgs[msgMenu.idx]
-    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent, { meId: meId ?? undefined, peerId: Number(chat.id) }) : null
+    const rs = menuReplyState()
     if (rs) {
       setReply({ ...rs, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
@@ -202,11 +239,10 @@ export function useMessageActions({
   // «Ответить в другом чате» (tweb ReplyToAnotherChat): снимаем превью оригинала
   // (имя автора + текст/медиа-лейбл) и открываем пикер целевого чата.
   const startReplyAnother = () => {
-    const m = msgMenu && msgs[msgMenu.idx]
     const raw = menuRawMsg()
-    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent, { meId: meId ?? undefined, peerId: Number(chat.id) }) : null
-    if (rs && raw?.id != null) {
-      setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(convKindLabel(m!.type)), color: rs.color })
+    const rs = menuReplyState()
+    if (rs && raw != null) {
+      setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(getMessageKind(raw)), color: rs.color })
     }
     closeMsgMenu()
   }
@@ -229,21 +265,18 @@ export function useMessageActions({
   }
   // Правка по ЯВНОМУ номеру — форма tweb `chat.input.initMessageEditing(mid)`
   // (contextMenu.ts:1912). Текст и сущности достаём из окна сами: композеру
-  // нужен исходник, а не только адрес. Ряды витрины (`msgs`) и окна (`win.msgs`)
-  // выровнены по индексу — на этом же стоит `openMsgMenu`.
+  // нужен исходник, а не только адрес.
   const startEditFor = (mid: number) => {
-    const idx = win.msgs.findIndex((m) => m.id === mid)
-    const m = idx >= 0 ? msgs[idx] : undefined
-    const raw = idx >= 0 ? win.msgs[idx] : undefined
-    if (!m || raw?.id == null) return
+    const raw = winMsgs.find((m) => m.id === mid)
+    if (!raw) return
     // Composer prefills its draft + focuses when `editing` becomes set.
-    setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
+    setEditing({ msgId: raw.id, text: getMessageText(raw), entities: raw._ === 'message' ? raw.entities : undefined })
     setReply(null)
   }
 
   const copyMsg = () => {
-    const m = msgMenu && msgs[msgMenu.idx]
-    if (m?.text) void navigator.clipboard?.writeText(m.text).catch(() => {})
+    const text = menuText()
+    if (text) void navigator.clipboard?.writeText(text).catch(() => {})
     closeMsgMenu()
   }
 
@@ -302,15 +335,15 @@ export function useMessageActions({
   }
 
   const startTranslate = () => {
-    const m = msgMenu && msgs[msgMenu.idx]
-    if (m?.text) setTranslateText(m.text)
+    const text = menuText()
+    if (text) setTranslateText(text)
     closeMsgMenu()
   }
 
   // "Delete for everyone" is offered when every target is the author's own or the
   // chat is private (Telegram). Backend re-checks; group admins handled server-side.
   const canRevokeAll = (ids: number[]) =>
-    chat.type === 'private' || ids.every((id) => win.msgs.find((m) => m.id === id)?.fromId === meId)
+    chat.type === 'private' || ids.every((id) => winMsgs.find((m) => m.id === id)?.fromId === meId)
   const openDelete = () => {
     const raw = menuRawMsg()
     if (raw?.id != null) openDeleteFor(numericChatId, [raw.id])
@@ -369,25 +402,35 @@ export function useMessageActions({
     forwardPreviewRef.current = preview
     setForwardIds(ids)
   }
-  // Метка отправителя для превью плашки форварда (tweb senderTitles): «Вы» для
-  // своих, иначе имя автора / скрытая атрибуция форварда / имя чата-источника.
-  const fwdSenderLabel = (m: ConvMsg): string => (m.out ? t('You') : (m.sender ?? m.forwardFrom?.name ?? chat.name))
+  // Метка отправителя для превью плашки форварда — порт `initMessagesForward`
+  // (tweb input.ts:4471-4505): вопрос задаётся САМОМУ сообщению, а имя берётся
+  // из карточки пира (`PeerTitle`), а не из вью-модельного ряда ленты. «Вы» —
+  // когда автор это я (tweb: `peerId === rootScope.myId`, :4500); скрытая
+  // атрибуция пересылки (`from_name` без `from_id`) — вместо имени (:4473-4476).
+  const fwdSenderLabel = (m: MyMessage): string => {
+    if (m.fromId != null && m.fromId === meId) return t('You')
+    const hidden = m._ === 'message' ? m.fwd_from?.from_name : undefined
+    if (hidden && m.fromId == null) return hidden
+    const title = m.fromId != null ? getPeerTitle({ peerId: m.fromId, peer: cachedPeer(m.fromId) }) : ''
+    return title || hidden || chat.name
+  }
   // Превью плашки форварда (tweb setTopInfo forward): «Отправитель: текст» для
-  // одного сообщения, иначе «Переслано от: имена». Строится из текущего msgs.
+  // одного сообщения, иначе «Переслано от: имена». Строится из окна зеркала.
   const buildForwardPreview = (ids: number[]) => {
-    const picked = ids.map((id) => msgs.find((m) => m.id === id)).filter((m): m is ConvMsg => !!m)
+    const picked = ids.map((id) => winMsgs.find((m) => m.id === id)).filter((m): m is MyMessage => !!m)
     const count = ids.length
     const senders = [...new Set(picked.map(fwdSenderLabel))]
     let text: string
     if (count === 1 && picked[0]) {
       const m = picked[0]
-      const body = m.text || mediaLabel(convKindLabel(m.type)) || ''
+      const body = getMessageText(m) || mediaLabel(getMessageKind(m)) || ''
       text = body ? `${senders[0]}: ${body}` : senders[0]
     } else {
       const names = senders.length <= 2 ? senders.join(', ') : `${senders.slice(0, 2).join(', ')} …`
       text = `${t('Forwarded from')}: ${names}`
     }
-    const hasCaption = picked.some((m) => m.mediaId != null && !!m.text)
+    // tweb messagesWithCaptionsLength (:4477-4486) — вложение + подпись.
+    const hasCaption = picked.some((m) => getMediaId(m) != null && !!getMessageText(m))
     return { count, text, hasCaption }
   }
   // Выбор адресата(ов) в пикере. Один чат → tweb-флоу: открываем чат и показываем
@@ -507,7 +550,7 @@ export function useMessageActions({
   // (appReactionsManager.sendReaction: unsetReactions), а не копит их.
   const toggleReaction = useEvent((msgId: number, emoji: string) => {
     if (!isRealChat) return
-    const raw = win.msgs.find((m) => m.id === msgId)
+    const raw = winMsgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
     const mine = hasMyReaction(raw.reactions, emoji)
     // Оптимистика в main-сторе (tweb sendReaction — мгновенно, ДО сети): дельта
@@ -559,7 +602,7 @@ export function useMessageActions({
   // «аватар + имя + его эмодзи». Тап по чипу остаётся тогглом своей реакции.
   const showReactedUsers = useEvent(async (msgId: number, x: number, y: number) => {
     if (!isRealChat) return
-    const raw = win.msgs.find((m) => m.id === msgId)
+    const raw = winMsgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return
     const users = await managers.messages.reactionUsers(numericChatId, msgId)
     // Имя и аватарка живут в КАРТОЧКЕ (`u.user`), а не плоскими полями рядом.
@@ -604,7 +647,7 @@ export function useMessageActions({
   // поэтому пир сверяется, как и у статистики.
   const openFactCheckEditorFor = (peerId: number, mid: number) => {
     if (!isRealChat || peerId !== numericChatId) return
-    const raw = win.msgs.find((m) => m.id === mid)
+    const raw = winMsgs.find((m) => m.id === mid)
     if (!raw) return
     setFactCheckEdit({ msgId: raw.id, initial: raw._ === 'message' ? raw.factcheck : undefined })
   }
@@ -679,8 +722,7 @@ export function useMessageActions({
     // Группа/канал: «Кто просмотрел» (без разделителя — tweb вешает `hr` только
     // в ветке isUser).
     ...(() => {
-      const isOut = isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
-      if (!isOut) return []
+      if (!isRealChat || !menuOut()) return []
       const icon = <TgIcon name="checks" size={20} />
       if (chat.type !== 'private') return [{ icon, label: 'Viewers', onClick: showViewers }]
       if (!readDate) return []
@@ -704,7 +746,7 @@ export function useMessageActions({
     // «Ответить в другом чате» (tweb ReplyToAnotherChat, icon replace) — рядом с
     // «Ответить». Не в секретном чате (кросс-чат перенос там неприменим).
     ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="replace" size={20} />, label: 'Reply in Another Chat', onClick: startReplyAnother }] : []),
-    ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
+    ...(isRealChat && menuOut()
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
       : []),
     ...(!isSecret ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg }] : []),
@@ -718,7 +760,7 @@ export function useMessageActions({
     ...(isRealChat && chat.type === 'channel' && menuRawMsg() != null
       ? [{ icon: <TgIcon name="link" size={20} />, label: 'Copy Message Link', onClick: copyMsgLink }]
       : []),
-    ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
+    ...(showTranslate && menuText()
       ? [{ icon: <TgIcon name="language" size={20} />, label: 'Translate', onClick: startTranslate }]
       : []),
     ...(isRealChat
@@ -783,7 +825,7 @@ export function useMessageActions({
         ]
       : []),
     // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
-    ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
+    ...(isRealChat && !menuOut()
       ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
       : []),
     ...(isRealChat ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: openDelete }] : []),

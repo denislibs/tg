@@ -695,7 +695,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
     canViewPostStats: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
     // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
     canEditFactCheck: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
-    win: winV, msgs, meId, pins, accent: accentColor,
+    // Окно и цель меню читаются из ЗЕРКАЛА по НОМЕРУ — ни витрины ленты
+    // (`msgs`), ни zustand-окна (`winV`) слою действий больше не нужно; ключ
+    // окна он собирает сам из пары «пир + тред».
+    threadRootId, isGroup, meId, pins, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
   const { openMsgMenu, toggleReaction, showReactedUsers, openStarReaction, openDeleteFor, openForwardFor, openForwardFrom } = msgActions

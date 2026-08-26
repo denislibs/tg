@@ -11,10 +11,10 @@ import { renderHook, act } from '@testing-library/react'
 import { useMessageActions } from './useMessageActions'
 import { ManagersProvider } from './useManagers'
 import { useReactionEffectStore } from '../../stores/reactionEffectStore'
-import type { Chat, ConvMsg } from '../../data'
-import type { MessageWindow } from './useMessageWindow'
+import type { Chat } from '../../data'
 import type { MyMessage } from '../models'
 import { makeMessage } from '../messages/testMessage'
+import { putMirrorPage, resetMessagesMirror, winKey } from '../history/messagesMirror'
 
 function wrapper(managers: unknown) {
   return ({ children }: { children: ReactNode }) => (
@@ -37,26 +37,15 @@ function rawMsg(over: Partial<MyMessage> = {}): MyMessage {
   return { ...makeMessage({ id: 5, peerId: 1, fromId: 2, text: 'hi' }), reactions: [], ...over } as MyMessage
 }
 
-function makeWin(msgs: MyMessage[]): MessageWindow {
-  return {
-    msgs, reachedTop: true, reachedBottom: true, loadingOlder: false, loadingNewer: false,
-    loading: false, loadedFromCache: true,
-    loadOlder: async () => {}, loadNewer: async () => {},
-    appendLocal: () => {}, applyIncoming: () => {}, applyEdit: () => {},
-    jumpTo: async () => {}, reloadNewest: async () => {}, applyDelete: () => {},
-  }
-}
-
-function convMsg(over: Partial<ConvMsg> = {}): ConvMsg {
-  return { id: 5, type: 'text', text: 'hi', at: '', out: false, ...over } as ConvMsg
-}
-
-function renderActions(win: MessageWindow, managers: ReturnType<typeof mockManagers>) {
+// Окно приходит из ЗЕРКАЛА (`core/history/messagesMirror.ts`) — единственного
+// источника сообщений слоя действий.
+function renderActions(msgs: MyMessage[], managers: ReturnType<typeof mockManagers>) {
+  putMirrorPage(winKey(1), msgs)
   return renderHook(
     () =>
       useMessageActions({
         chat, numericChatId: 1, isRealChat: true,
-        win, msgs: [convMsg()], meId: 10, pins: [], accent: '#000',
+        isGroup: false, meId: 10, pins: [], accent: '#000',
         setReply: () => {}, setEditing: () => {}, setSelectionMode: () => {},
         setSelected: () => {}, clearSelection: () => {},
       }),
@@ -66,13 +55,15 @@ function renderActions(win: MessageWindow, managers: ReturnType<typeof mockManag
 
 describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
   beforeEach(() => {
-    // Стор модульный (переживает тесты) — без сброса прошлый прогон протекает в этот.
+    // Стор и зеркало модульные (переживают тесты) — без сброса прошлый прогон
+    // протекает в этот.
     useReactionEffectStore.setState({ active: new Set() })
+    resetMessagesMirror()
   })
 
   it('пользователь ставит свою реакцию — триггерит эффект (add)', () => {
     const managers = mockManagers()
-    const { result } = renderActions(makeWin([rawMsg({ reactions: { _: 'messageReactions', results: [] } })]), managers)
+    const { result } = renderActions([rawMsg({ reactions: { _: 'messageReactions', results: [] } })], managers)
 
     act(() => result.current.toggleReaction(5, '❤'))
 
@@ -83,11 +74,11 @@ describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
   it('пользователь снимает свою реакцию — эффект НЕ триггерится (remove)', () => {
     const managers = mockManagers()
     const { result } = renderActions(
-      makeWin([rawMsg({ reactions: {
+      [rawMsg({ reactions: {
         _: 'messageReactions',
         // «Моя» — наличие chosen_order, а не булев флаг рядом.
         results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '❤' }, count: 1, chosen_order: 0 }],
-      } })]),
+      } })],
       managers,
     )
 
@@ -99,7 +90,7 @@ describe('useMessageActions.toggleReaction → reactionEffectStore', () => {
 
   it('реакция на другое сообщение/эмодзи не отмечается — ключ строго msgId:emoji', () => {
     const managers = mockManagers()
-    const { result } = renderActions(makeWin([rawMsg({ reactions: { _: 'messageReactions', results: [] } })]), managers)
+    const { result } = renderActions([rawMsg({ reactions: { _: 'messageReactions', results: [] } })], managers)
 
     act(() => result.current.toggleReaction(5, '❤'))
 

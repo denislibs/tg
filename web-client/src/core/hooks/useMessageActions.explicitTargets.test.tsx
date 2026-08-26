@@ -19,9 +19,9 @@ import { useMessageActions } from './useMessageActions'
 import { ManagersProvider } from './useManagers'
 import { useReportStore } from '../../stores/reportStore'
 import type { Chat, ConvMsg } from '../../data'
-import type { MessageWindow } from './useMessageWindow'
 import type { MyMessage } from '../models'
 import { makeMessage } from '../messages/testMessage'
+import { putMirrorPage, resetMessagesMirror, winKey } from '../history/messagesMirror'
 
 const CHAT = 1
 const MID = 5
@@ -48,24 +48,18 @@ const chat: Chat = { id: String(CHAT), name: 'Test', avatar: '', date: '', previ
 const rawMsg = (): MyMessage => makeMessage({ id: MID, peerId: CHAT, fromId: 2, text: 'hi' })
 const convMsg = (): ConvMsg => ({ id: MID, type: 'text', text: 'hi', at: '', out: false }) as ConvMsg
 
-function makeWin(msgs: MyMessage[]): MessageWindow {
-  return {
-    msgs, reachedTop: true, reachedBottom: true, loadingOlder: false, loadingNewer: false,
-    loading: false, loadedFromCache: true,
-    loadOlder: async () => {}, loadNewer: async () => {},
-    appendLocal: () => {}, applyIncoming: () => {}, applyEdit: () => {},
-    jumpTo: async () => {}, reloadNewest: async () => {}, applyDelete: () => {},
-  }
-}
-
+/** Единственный источник сообщений слоя действий — ЗЕРКАЛО окна
+ *  (`core/history/messagesMirror.ts`), тот же, из которого цель берёт ванильное
+ *  меню. Стор сообщений сюда больше не участвует. */
 function renderActions(managers: ReturnType<typeof mockManagers>, over: { pins?: { id?: number }[] } = {}) {
+  putMirrorPage(winKey(CHAT), [rawMsg()])
   const rows = [convMsg()]
   const setEditing = vi.fn()
   const view = renderHook(
     () =>
       useMessageActions({
         chat, numericChatId: CHAT, isRealChat: true,
-        win: makeWin([rawMsg()]), msgs: rows, meId: 10, pins: over.pins ?? [], accent: '#000',
+        isGroup: false, meId: 10, pins: over.pins ?? [], accent: '#000',
         setReply: () => {}, setEditing, setSelectionMode: () => {}, setSelected: () => {},
         clearSelection: () => {},
       }),
@@ -74,7 +68,7 @@ function renderActions(managers: ReturnType<typeof mockManagers>, over: { pins?:
   return { ...view, rows, setEditing }
 }
 
-/** Открыть React-меню на единственном сообщении окна (ставит `msgMenu.idx`). */
+/** Открыть React-меню на единственном сообщении окна (ставит `msgMenu.mid`). */
 function openMenu(view: ReturnType<typeof renderActions>) {
   act(() => {
     view.result.current.openMsgMenu(
@@ -95,6 +89,8 @@ function clickItem(view: ReturnType<typeof renderActions>, label: string) {
 
 beforeEach(() => {
   useReportStore.getState().close()
+  // Зеркало модульное (переживает тесты) — без сброса прошлый прогон протекает в этот.
+  resetMessagesMirror()
 })
 
 describe('useMessageActions — закрепление (`pinMessage`)', () => {
