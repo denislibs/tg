@@ -551,6 +551,66 @@ func TestMessagesRepo_Thread(t *testing.T) {
 	}
 }
 
+// ThreadReplyCounts — тот же счёт, что у CountThread, но ОДНИМ запросом на
+// пачку корней: страница истории спрашивает счётчик сразу про все свои
+// сообщения, и поштучный CountThread был бы запросом на сообщение.
+func TestMessagesRepo_ThreadReplyCounts(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+830")
+	b := seedUser(t, pool, "+831")
+	chatID := createPrivate(t, pool, a, b)
+	other := createPrivate(t, pool, a, seedUser(t, pool, "+832"))
+
+	insert := func(chat int64, root *int64) domain.Message {
+		t.Helper()
+		seq, _ := msgs.NextSeq(ctx, chat)
+		m, err := msgs.Insert(ctx, domain.Message{ChatID: chat, Seq: seq, SenderID: a, Type: "text", Text: "c", ThreadRootID: root})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+		return m
+	}
+
+	root1, root2, empty := int64(100), int64(200), int64(300)
+	insert(chatID, &root1)
+	insert(chatID, &root1)
+	insert(chatID, &root2)
+	gone := insert(chatID, &root2)
+	if err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+		t.Fatalf("SoftDelete: %v", err)
+	}
+	// тот же корень в ДРУГОМ чате не должен подмешаться в счёт
+	insert(other, &root1)
+
+	got, err := msgs.ThreadReplyCounts(ctx, chatID, []int64{root1, root2, empty})
+	if err != nil {
+		t.Fatalf("ThreadReplyCounts: %v", err)
+	}
+	if got[root1] != 2 {
+		t.Fatalf("ThreadReplyCounts[root1] = %d, want 2 (счёт утёк из чужого чата?): %v", got[root1], got)
+	}
+	if got[root2] != 1 {
+		t.Fatalf("ThreadReplyCounts[root2] = %d, want 1 (удалённое сообщение сосчитано?): %v", got[root2], got)
+	}
+	if _, has := got[empty]; has {
+		t.Fatalf("корень без ответов попал в карту: %v", got)
+	}
+
+	// Пустой вход — пустая, но не nil карта и НИ ОДНОГО запроса: контекст
+	// отменён, и любой поход в БД вернул бы ошибку.
+	dead, cancel := context.WithCancel(ctx)
+	cancel()
+	none, err := msgs.ThreadReplyCounts(dead, chatID, nil)
+	if err != nil {
+		t.Fatalf("ThreadReplyCounts(nil) с отменённым контекстом = %v — запрос всё же пошёл в БД", err)
+	}
+	if none == nil || len(none) != 0 {
+		t.Fatalf("ThreadReplyCounts(nil) = %v, ждали пустую карту", none)
+	}
+}
+
 func TestUpdatesRepo_AppendAndSince(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewUpdatesRepo(pool)

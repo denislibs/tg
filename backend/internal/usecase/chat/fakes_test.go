@@ -1381,6 +1381,25 @@ func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (in
 	return n, nil
 }
 
+// ThreadReplyCounts — батч CountThread: корни без ответов в карту НЕ попадают
+// (как GROUP BY в Postgres-версии), иначе «тред пуст» стало бы неотличимо от
+// «треда нет».
+func (r fakeMsgs) ThreadReplyCounts(_ context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range rootIDs {
+		want[id] = true
+	}
+	out := map[int64]int{}
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID != nil && want[*m.ThreadRootID] && !m.Deleted {
+			out[*m.ThreadRootID]++
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) CountMessages(_ context.Context, chatID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

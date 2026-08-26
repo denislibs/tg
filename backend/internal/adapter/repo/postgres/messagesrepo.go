@@ -924,6 +924,36 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
+// ThreadReplyCounts — батч CountThread: один запрос на всю пачку корней.
+// Корни без ответов в карту не попадают (GROUP BY просто не даёт по ним
+// строки) — вызывающий отличает «ответов нет» по отсутствию ключа.
+//
+// Запрос ложится на idx_messages_thread (chat_id, thread_root_id) WHERE
+// thread_root_id IS NOT NULL из миграции 0008.
+func (r *MessagesRepo) ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
+	out := map[int64]int{}
+	if len(rootIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT thread_root_id, count(*) FROM messages
+		 WHERE chat_id=$1 AND thread_root_id = ANY($2) AND deleted_at IS NULL
+		 GROUP BY thread_root_id`, chatID, rootIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var root int64
+		var n int
+		if err := rows.Scan(&root, &n); err != nil {
+			return nil, err
+		}
+		out[root] = n
+	}
+	return out, rows.Err()
+}
+
 // MirrorByPost возвращает id зеркала поста канала в его ТЕКУЩЕЙ группе
 // обсуждения (0 — зеркала нет). Ограничение chat_id=discussion_chat_id
 // обязательно: канал можно перепривязать на другую группу (LinkDiscussion/

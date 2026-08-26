@@ -462,10 +462,22 @@ count.
 - 404: `{ "_": "error", "code": 404, "text": "not found" }` (discussions not enabled)
 
 ### GET /channels/{chatID}/comment_counts?ids=  · auth
-Return comment counts for a batch of channel posts. Returns `0` (or omits) for
-posts with no comments and `{}` when discussions are not enabled.
-- Query: `ids` — CSV of post message ids, e.g. `?ids=55,56,57`.
-- 200: `{ "counts": { "55": 1, "56": 0 } }` (JSON object keys are post id strings)
+### GET /channels/{chatID}/view_counts?ids=  · auth
+Счётчики пачки постов канала: тред комментариев и просмотры.
+- Query: `ids` — CSV номеров постов, например `?ids=55,56,57`.
+- 200: контейнер `messages.messageViews` — вектор `views` ПОЗИЦИОННЫЙ (i-й
+  элемент отвечает i-му номеру запроса), плюс вектор `users` с карточками
+  последних комментаторов, на которых ссылается `messageReplies.recent_repliers`.
+  Про пост, о котором сказать нечего, едет `messageViews` без единого параметра.
+
+**Обе ручки — ДУБЛИКАТ истории и подлежат снятию.** Пачка сообщений
+(`messages.messages`/`messagesSlice`) с тех пор несёт оба предмета внутри самого
+конструктора `message`: `views:flags.10?int` приезжает прямо из строки
+(`messages.views` — та же колонка, из которой читает `view_counts`), а
+`replies:flags.23?MessageReplies` доводится батчем в
+`usecase/chat/messagescontainer.go`. Отдельный поход клиента за счётчиками
+нужен теперь только для ОБНОВЛЕНИЯ уже показанной ленты, и правильная форма
+этого обновления — кадр, а не опрос.
 
 ### POST /chats/{chatID}/pin  · auth
 Pin/unpin the dialog at the top of the chat list (per-user). At most **5**

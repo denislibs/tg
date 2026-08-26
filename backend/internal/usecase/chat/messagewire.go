@@ -35,14 +35,29 @@ import (
 // пространстве чисел, поэтому утёкший ключ почти наверняка попадёт в
 // существующее сообщение другого чата — молчаливая подмена вместо промаха.
 func (i *Interactor) MessagesWire(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, error) {
+	out, _, err := i.messagesWire(ctx, viewerID, msgs)
+	return out, err
+}
+
+// messagesWire — тот же перевод, но отдающий ВТОРЫМ значением вид каждого чата
+// пачки (chatID -> 'private'|'group'|'channel'|'saved').
+//
+// Вид уже читается здесь по одному разу на чат — ради «это пост канала». Тому,
+// кто доделывает пачку дальше (MessagesContainer со счётчиками треда), он нужен
+// ровно за тем же: спросить его ВТОРОЙ раз значило бы добавить запрос на каждый
+// чат страницы, в том числе на личный, где считать нечего вовсе.
+//
+// Длина результата равна длине входа, и порядок сохранён: доводчики пачки
+// адресуют сообщения по позиции.
+func (i *Interactor) messagesWire(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, map[int64]string, error) {
 	ext, err := i.ExternalizeThreadRoots(ctx, msgs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ext = i.HydrateMessagePeers(ctx, ext)
 
 	peers := make(map[int64]domain.PeerID, 1)
-	posts := make(map[int64]bool, 1)
+	kinds := make(map[int64]string, 1)
 	out := make([]domain.MTMessage, 0, len(ext))
 	for _, m := range ext {
 		peer, ok := peers[m.ChatID]
@@ -51,22 +66,21 @@ func (i *Interactor) MessagesWire(ctx context.Context, viewerID int64, msgs []do
 			// форма адреса, и клиент отнёс бы сообщение к чужому пиру.
 			peer, err = i.ChatIDToPeer(ctx, viewerID, m.ChatID)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			peers[m.ChatID] = peer
-			typ, _ := i.chats.ChatType(ctx, m.ChatID)
-			posts[m.ChatID] = typ == domain.ChatTypeChannel
+			kinds[m.ChatID], _ = i.chats.ChatType(ctx, m.ChatID)
 		}
 		out = append(out, m.ToWire(domain.MessageContext{
 			Peer: domain.NewPeer(peer),
-			Post: posts[m.ChatID],
+			Post: kinds[m.ChatID] == domain.ChatTypeChannel,
 			// Автор строки — ЗРИТЕЛЬ. Именно строки, а не проводного from_id: у
 			// сообщения от лица канала автором на проводе становится канал, но
 			// отправил его всё равно человек.
 			Out: m.SenderID == viewerID,
 		}))
 	}
-	return out, nil
+	return out, kinds, nil
 }
 
 // EmptyMessages — конструкторы «дыры» для номеров, у которых сообщения нет

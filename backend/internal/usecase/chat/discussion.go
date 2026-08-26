@@ -294,8 +294,14 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 			cards = append(cards, domain.NewUser(u, domain.UserFlags{}))
 		}
 	}
+	// Счёт — ОДНИМ запросом на все треды пачки: поштучный CountThread в этом
+	// цикле давал запрос на каждый пост страницы.
+	counts, err := i.msgs.ThreadReplyCounts(ctx, disc, roots)
+	if err != nil {
+		return out, nil, err
+	}
 	for postID, root := range mirrors {
-		c, _ := i.msgs.CountThread(ctx, disc, root)
+		c := counts[root]
 		peers := make([]domain.Peer, 0, RecentRepliersLimit)
 		for _, u := range recent[root] {
 			peers = append(peers, domain.NewPeerUser(u))

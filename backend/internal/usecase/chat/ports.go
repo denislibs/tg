@@ -273,6 +273,16 @@ type MessageRepo interface {
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// ThreadReplyCounts — БАТЧ того же счёта, что и CountThread: rootID ->
+	// число живых сообщений треда. Корни без единого ответа в карту не
+	// попадают («треда нет» и «тред пуст» на проводе неразличимы только для
+	// поста канала, где тред объявлен привязкой обсуждения, — см.
+	// Interactor.CommentCounts).
+	//
+	// Нужен там, где счёт спрашивают СРАЗУ ПРО ПАЧКУ: страница истории и
+	// счётчики постов. Поштучный CountThread в цикле по странице — ровно тот
+	// N+1, из-за которого счётчики и уехали когда-то в отдельную ручку.
+	ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error)
 	// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
 	// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
 	// считается: она без флага is_discussion_mirror.
