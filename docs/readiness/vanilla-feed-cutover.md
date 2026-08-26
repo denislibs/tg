@@ -32,6 +32,15 @@
 Флаг читается в `web-client/src/config/app.ts:38` (`readVanillaFeed`), по умолчанию
 `false` — пин `web-client/src/components/Chat.vanillaFeed.test.ts:69`.
 
+> **ВНИМАНИЕ, ЧИТАТЕЛЮ.** Этот документ — РАЗВЕДКА, снятая до работ, и часть
+> его утверждений уже опровергнута проверкой по коду. Найдено четыре ошибки:
+> «удаление не доходит до вкладки-инициатора» (§11 ниже, неверно), оптимистика
+> созданного опроса как пробел зеркала (неверно — бэк фанит автору тоже),
+> `useVoiceQueue` как потребитель вне ленты (неверно — он часть ленты), номер
+> строки :2992 у tweb (это канал `content`, а не `media_unread`). Номера строк
+> в `useMessageActions.tsx` устарели целиком: адресация переведена с индекса
+> ряда на номер сообщения. Сверяйся с кодом, а не с этим файлом.
+
 ## 1.1 Компоненты, у которых потребитель — ТОЛЬКО лента (можно сносить)
 
 Проверка — обратный поиск импортов:
@@ -133,7 +142,7 @@ $ grep -rln "useMessagesStore" web-client/src | grep -v '\.test\.' | wc -l
 | 8 | `core/hooks/useMessageActions.tsx:557,566` | `applyFactCheck` — оптимистика set/remove | **НЕТ** (WS-кадр — да: `messagesManager.ts:832` `cacheFactCheck` → patch) |
 | 9 | `core/hooks/useMessageActions.tsx:694`, `components/messages/PollBubble.tsx:59` | `setPollMedia` — ОТВЕТ ручки голосования (несёт мой `chosen`) | **НЕТ** (WS `poll_update` — да: `core/managers/messages/pollMethods.ts:54`) |
 | 10 | `components/messages/ChecklistBubble.tsx:61,71` | `setChecklistMedia` — ответ ручки отметки | **НЕТ** |
-| 11 | `core/hooks/useMessageActions.tsx:305-307` | `applyDelete` после успеха REST | **НЕТ у вкладки-инициатора.** `core/managers/messagesManager.ts:522-535` рассылает remove-ops **всем, кроме себя** — «Вкладка-инициатор чинит своё окно сама (useMessageActions → applyDelete)» |
+| 11 | `core/hooks/useMessageActions.tsx` | `applyDelete` после успеха REST | ~~НЕТ у вкладки-инициатора~~ — **УТВЕРЖДЕНИЕ БЫЛО НЕВЕРНЫМ.** Веер владельца источник НЕ исключает: `core/realtime/workerScope.ts::broadcast` → `lib/rootScope.ts:258-264`, исключает только `receiveFrom`. Врал КОММЕНТАРИЙ у метода (`messagesManager.ts`), а не код; комментарий исправлен, поведение закреплено тестом «deleteMessage() убирает сообщение из зеркала ТОЙ ЖЕ вкладки» |
 | 12 | `core/hooks/useChatPopups.tsx:197,219,231` | `applyIncoming` — только что созданные розыгрыш/опрос/чек-лист | **НЕТ** |
 | 13 | `core/hooks/useScheduledMessages.ts:45` | `applyIncoming` — «отправить запланированное сейчас» | **НЕТ** |
 | 14 | `core/hooks/useMessageWindow.ts:80,95,117,140,148` | `setWindow`/`prepend`/`append` — страницы истории | эквивалент есть (`putMirrorPage`), но **зовёт его лента сама** |
