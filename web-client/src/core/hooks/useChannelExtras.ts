@@ -6,7 +6,6 @@
 // тред комментариев — обычный Chat в thread-режиме; открытие — через
 // chatStackStore.setInnerPeer, см. Chat.tsx onOpenThread.)
 import { useEffect, useState } from 'react'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 import type { CommentReplier } from '../managers/channelsManager'
@@ -57,22 +56,19 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discussionsEnabled, numericChatId, win.msgs.length, managers])
 
-  // Channel post view counts ("9.2K 👁"): fetch fresh per open for the loaded post
-  // ids (debounced on msgs change) and patch them onto the messages in the store, so
-  // the meta line renders a current count. Any channel post has views (independent of
-  // discussions). Mirrors the comment-counts fetch above.
+  // Channel post view counts ("9.2K 👁"): просим свежие числа на каждое открытие
+  // для загруженных постов (дебаунс по изменению окна). В ОКНО их кладёт не этот
+  // хук, а владелец: `channels.viewCounts` в воркере отдаёт разобранный ответ
+  // `messages.cacheViews`, тот патчит SSOT и объявляет операцию `rt:message_op`
+  // (см. web-client/CLAUDE.md, «один писатель окна — операции»). Прежде здесь
+  // стоял `messagesStore.patchViews` — второй писатель окна мимо операций, из-за
+  // которого счётчик не доезжал до зеркала императивной ленты.
   useEffect(() => {
     if (!isRealChat || !isChannel) return
     const ids = win.msgs.map((m) => m.id).filter((id) => id > 0)
     if (ids.length === 0) return
-    let alive = true
-    const timer = window.setTimeout(() => {
-      void managers.channels.viewCounts(numericChatId, ids).then((counts) => {
-        if (!alive) return
-        useMessagesStore.getState().patchViews(numericChatId, new Map(Object.entries(counts).map(([k, v]) => [Number(k), v])))
-      })
-    }, 300)
-    return () => { alive = false; window.clearTimeout(timer) }
+    const timer = window.setTimeout(() => { void managers.channels.viewCounts(numericChatId, ids) }, 300)
+    return () => { window.clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRealChat, isChannel, numericChatId, win.msgs.length, managers])
 

@@ -230,6 +230,23 @@ describe('ChannelsManager.commentCounts', () => {
     expect(r).toEqual({ 5: 9200 })
   })
 
+  // Владение фактом: число просмотров живёт в СООБЩЕНИИ, поэтому положить его в
+  // окно обязан владелец окна (`messages.cacheViews` → операция `rt:message_op`),
+  // а не вызыватель ответа. Что ломается без этой строки: счётчик «9.2K 👁»
+  // правит витрина мимо операций, и до зеркала главного потока (из которого
+  // рисует императивная лента) он не доезжает вовсе.
+  it('viewCounts отдаёт разобранные числа владельцу окна', async () => {
+    const get = vi.fn(async () => ({
+      _: 'messages.messageViews',
+      views: [{ _: 'messageViews', views: 9200 }, { _: 'messageViews' }],
+      chats: [], users: [],
+    }))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const cacheViews = vi.fn()
+    await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews }).viewCounts(7, [5, 6])
+    expect(cacheViews).toHaveBeenCalledWith(7, new Map([[5, 9200]]))
+  })
+
   it('short-circuits empty ids without hitting REST', async () => {
     const get = vi.fn()
     const rest = { post: vi.fn(), get } as unknown as RestClient

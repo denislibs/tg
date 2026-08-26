@@ -37,7 +37,7 @@ function giveawayIdOf(media: MessageMedia): number | undefined {
   return media._ === 'messageMediaGiveaway' || media._ === 'messageMediaGiveawayResults' ? media.id : undefined
 }
 
-export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps }: MessagesCtx) {
   // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
   // сервер, здесь остаются перевод номеров и уточнение служебного действия.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
@@ -75,13 +75,18 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
     },
     // Голос (пустой список — отзыв). Ответ АВТОРИТЕТЕН и несёт мой выбор —
     // `results.results[].pFlags.chosen` — которого нет в общем WS-кадре
-    // poll_update (он собирается для «зрителя 0»). Ставим вложение ПОЛНОСТЬЮ в
-    // SSOT воркера; main-стор обновляет вызыватель результатом (setPollMedia, не
-    // merge), иначе WS-merge стёр бы chosen.
+    // poll_update (он собирается для «зрителя 0»). Ставим вложение ПОЛНОСТЬЮ и в
+    // SSOT воркера, и в окно — операцией.
     async votePoll(peerId: number, pollId: number, options: number[]): Promise<MessageMediaPoll> {
       // Опрос приезжает САМИМ конструктором: обёртки `{media: …}` больше нет.
       const r = await rest.post<MessageMediaPoll>(`/polls/${pollId}/vote`, { options })
-      setMedia(peerId, byPollId(pollId), r)
+      // Окно правит операция, а не вызыватель ответа. Ответ авторитетен и несёт
+      // МОЙ выбор (`results.results[].pFlags.chosen`), которого в общем кадре
+      // poll_update нет и быть не может — значит этот путь единственный, кто
+      // может объявить окну персональные итоги. `patch()` в messageOps сохраняет
+      // выбор окна только у УРЕЗАННЫХ итогов (`pFlags.min`), а здесь итоги
+      // полные — они и лягут как есть.
+      emitOps(ops(peerId, setMedia(peerId, byPollId(pollId), r), r))
       return r
     },
     async closePoll(pollId: number): Promise<void> {
@@ -98,16 +103,16 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor }: Messag
       return mapOne(r)
     },
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
-    // отметку) → пушим в SSOT; main-стор обновляет вызыватель (storeProjection чист).
+    // отметку) → пушим в SSOT и объявляем окну операцией: окно правят только они.
     async toggleChecklistItem(peerId: number, checklistId: number, itemId: number): Promise<MessageMediaToDo> {
       const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      setMedia(peerId, byTodoId(checklistId), r)
+      emitOps(ops(peerId, setMedia(peerId, byTodoId(checklistId), r), r))
       return r
     },
-    // Добавить пункты; ответ авторитетен → пуш в SSOT.
+    // Добавить пункты; ответ авторитетен → пуш в SSOT + операция окну.
     async addChecklistItems(peerId: number, checklistId: number, items: string[]): Promise<MessageMediaToDo> {
       const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items`, { items })
-      setMedia(peerId, byTodoId(checklistId), r)
+      emitOps(ops(peerId, setMedia(peerId, byTodoId(checklistId), r), r))
       return r
     },
 

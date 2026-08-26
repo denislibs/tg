@@ -50,7 +50,7 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { getPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
@@ -327,7 +327,11 @@ export function createWorkerCore() {
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
     },
   })
-  const channels = newChannelsManager({ rest, beforeSending, peers })
+  // Просмотры поста канала — число, которое запрашивает воркер, а живёт оно в
+  // сообщении: владелец окна (messages) обязан объявить его операцией, иначе
+  // счётчик правит витрину мимо операций и до зеркала не доезжает. `messages`
+  // объявлен ВЫШЕ, поэтому ссылка прямая, без ленивой стрелки.
+  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => messages.cacheViews(peerId, views) })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
@@ -634,6 +638,18 @@ export function createWorkerCore() {
         const ops = type === 'message_ack'
           ? messages.ackPendingMessage(payload as AckEvt)
           : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
+        if (ops.length) broadcast(RT.messageOp, { ops })
+      }
+      // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без
+      // pts, `transportFrames.ts:35`, предмет не портирован #52), поэтому в
+      // воронку и в реестр CACHE не попадает. Владельца это не отменяет:
+      // координаты живут в сообщении, а сообщением владеет messages —
+      // применяем РОВНО ОДИН РАЗ здесь и объявляем операцией. Прежде окно правил
+      // сырой кадр на витрине (storeProjection → applyGeoLive), то есть мимо
+      // операций и мимо зеркала, а `messages.cacheGeoLive` не звался ниоткуда.
+      // return НЕТ по той же причине, что и выше: сырой кадр летит дальше.
+      if (type === 'geo_live_update') {
+        const ops = messages.cacheGeoLive(payload as GeoLiveUpdateEvt)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
       // Сообщение личного чата: возможна E2E-расшифровка enc_body перед воронкой.

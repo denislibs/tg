@@ -9,8 +9,7 @@ import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapSuggestedPost, mapMessage } from '../../core/models'
-import { generateMessageId } from '../../core/history/messageId'
+import { mapSuggestedPost } from '../../core/models'
 import { getPeerId } from '../../core/peers/peerId'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
@@ -20,7 +19,7 @@ import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type ReactionEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -96,9 +95,15 @@ const APPLY: Projector = {
   // cacheGiveaway, pollMethods.ts); их прежние 1:1-строки [RT.pollUpdate]/
   // [RT.checklistUpdate]/[RT.giveawayUpdate] тоже убраны отсюда — иначе вышло бы
   // двойное применение (patch операцией ЗДЕСЬ + applyXUpdate той же строкой).
-  // edit_message/geo_live_update НЕ переведены — см. комментарии у
-  // messages.cacheEdit/cacheGeoLive (messagesManager.ts). reaction/star_reaction —
-  // тоже НЕ переведены (Stage 1B.3, Task 5), обработчики ниже остаются на сыром кадре.
+  // Этап «один писатель окна»: на эту же операцию переведено ВСЁ остальное, что
+  // раньше правило окно из сырого кадра или из ответа ручки, —
+  // `edit_message` (messages.cacheEdit), `geo_live_update`
+  // (messages.cacheGeoLive, перехват эфемерного кадра в workerCore::onFrame),
+  // `reaction` вместе с платной ⭐-реакцией (messages.cacheReaction /
+  // react/unreact / sendStarReaction), свой голос в опросе и отметка в
+  // чек-листе (votePoll / toggleChecklistItem / addChecklistItems), «проверка
+  // фактов» своим действием (setFactCheck / removeFactCheck), просмотры поста
+  // канала (messages.cacheViews). Исключений в этом реестре больше нет.
   // Этап «оптимистика в воркере»: этой же операцией приезжает и временный бабл
   // своей отправки (insert), и его ack (insert финального), и ошибка (patch
   // {failed}), и отмена (remove) — пяти кадров rt:pending_* больше нет, окно
@@ -154,18 +159,14 @@ const APPLY: Projector = {
   // `core/chatFullCache.ts` здесь, на главном потоке. Патчим ту же карточку, а
   // не заводим рядом второе хранилище тем.
   [RT.chatThemeUpdate]: (e) => { applyChatTheme(getPeerId(e.peer), e.theme_id) },
-  // Edit/гео-трансляция — НЕ переведены на операции (см. комментарий у RT.messageOp
-  // выше), окно правят из сырого кадра, как раньше.
-  // Номер в кадре СЕРВЕРНЫЙ, в окне — клиентский: перевод на границе, как везде
-  // (`core/history/messageId.ts`).
-  // Правка приезжает сообщением ЦЕЛИКОМ — разбирает его тот же маппер, что и
-  // историю; стор получает уже значения полей, а не россыпь ключей конверта.
-  [RT.editMessage]: (e) => {
-    const m = mapMessage(e.message, useChatsStore.getState().me?.user.id ?? null)
-    if (m._ !== 'message') return
-    useMessagesStore.getState().applyEdit(getPeerId(e.message.peer_id), m.id, m.message ?? '', m.edit_date, m.entities, m.reply_markup ?? null)
-  },
-  [RT.geoLiveUpdate]: (e) => { useMessagesStore.getState().applyGeoLive(e.peer_id, generateMessageId(e.id), e.media, e.edit_date) },
+  // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
+  // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
+  // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки
+  // здесь были вторым, main-side применением тех же кадров — и вдобавок
+  // единственным: до зеркала главного потока (`core/history/messagesMirror.ts`)
+  // они не доезжали вовсе, поэтому императивная лента правки не видела.
+  // Гео-кадр эфемерный (без pts) и в реестр CACHE не попадает — владелец
+  // перехватывает его в `workerCore.ts::onFrame` рядом с `message_ack`.
   // Новый баланс звёзд; удаление истории.
   // Баланс едет КОНСТРУКТОРОМ starsAmount: у оригинала звёзды дробные (nanos),
   // и «целое число звёзд» — частный случай, а не форма. Дробную часть витрина
@@ -246,19 +247,17 @@ export function registerStoreProjection(managers: Managers): void {
       }, TYPING_TTL),
     )
   })
-  // Реакция → окно сообщений. Кадр несёт АБСОЛЮТНОЕ состояние агрегата тем же
-  // конструктором, что едет внутри сообщения, и помечен `pFlags.min`: моего
-  // выбора в общем теле нет и быть не может, поэтому `mine` сохраняется из
-  // окна, а не берётся из кадра. Оптимистику клика двигает хук
-  // (applyReactionOptimistic) — здесь только серверное состояние.
-  rootScope.addEventListener(RT.reaction, (raw) => {
-    const e = raw as ReactionEvt
-    // Платная ⭐-реакция приезжает ЭТИМ ЖЕ кадром — чипом reactionPaid того же
-    // агрегата, а не своим типом: своего конструктора у неё в схеме нет.
-    // Поэтому и применяется агрегат ЦЕЛИКОМ, одним вызовом.
-    useMessagesStore.getState()
-      .applyReaction(getPeerId(e.peer), generateMessageId(e.msg_id), e.reactions)
-  })
+  // Подписки на RT.reaction здесь БОЛЬШЕ НЕТ. Слияние абсолютного агрегата кадра
+  // со своим выбором (`chosen_order`, вклад звёздами) делает ВЛАДЕЛЕЦ —
+  // `mergeReactions` внутри `messages.cacheReaction` (воркер), и наружу уезжает
+  // готовое значение поля `reactions` операцией `rt:message_op`. Так же устроен
+  // оригинал: `appReactionsManager.sendReaction` считает весь агрегат у себя и
+  // объявляет его абсолютным `updateMessageReactions`
+  // (tweb appReactionsManager.ts:895-901), а применяющий делает голое
+  // присваивание `message.reactions = reactions`
+  // (tweb appMessagesManager.ts:7807-7810) — никакого слияния на стороне
+  // потребителя. Прежняя строка здесь и была таким вторым слиянием, из-за
+  // которого реакции не доезжали до зеркала главного потока.
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его
   // операция. У кадра остался ровно один потребитель на витрине — звук

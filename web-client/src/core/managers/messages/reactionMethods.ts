@@ -8,6 +8,7 @@ import { mergeReactions, reactionDelta, setPaidReaction, totalReactions } from '
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
 import { getPeerId } from '../../peers/peerId'
 import type { MyMessage } from '../../models'
+import type { MessageOp } from '../../realtime/messageOps'
 import type { ReactionEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
 import type { UserReal } from '../../peers/peer'
@@ -133,38 +134,42 @@ function mapStarReaction(r: StarReactionWire): StarReactionInfo {
   }
 }
 
-// Stage 1B.3 (Task 5): cacheReaction ниже СОЗНАТЕЛЬНО НЕ переведена на операцию
-// patch (workerCore.ts: тип reaction остаётся без cache в APPLY-реестре, окно
-// правит storeProjection.ts из сырого кадра — RT.reaction → applyReaction/
-// applyReactionOptimistic). Карта обогащений (docs/research/2026-08-10-message-
-// enrichments.md, §3.3) формально относит оба к «patch» — но «воркер знает
-// mine» и «операция может это безопасно нести» оказались РАЗНЫМИ вопросами:
+// Реакции ЕДУТ ОПЕРАЦИЕЙ — и живой абсолютный агрегат кадра (cacheReaction), и
+// свой клик (react/unreact), и ⭐-реакция (sendStarReaction). Прежде здесь
+// стояло обратное решение (Stage 1B.3, Task 5) с двумя доводами; оба разобраны:
 //
-// 1) `mine` реакции (в отличие от `pFlags.chosen` у варианта опроса, Task 4) —
-//    не единственный вложенный скаляр, который можно безусловно
-//    подставить из окна поверх любого значения из кадра. applyReaction
-//    (messagesStore.ts) делает ПОЭЛЕМЕНТНОЕ слияние МАССИВА по ключу emoji:
-//    сохраняет mine для НЕЗАТРОНУТЫХ эмодзи И БЕРЁТ его из кадра для эмодзи
-//    своего действия — обе ветки нужны одновременно, а какая сработает,
-//    решают два внешних сигнала (свой ли user_id, add или remove), которых
-//    нет в самом агрегате counts. Патч как протокол умеет нести только
-//    готовое значение поля, а не алгоритм с внешними по отношению к полю
-//    параметрами — воспроизвести это значило бы протащить в общий
-//    messageOps.ts копию reactionDelta/setReactions под видом «просто patch».
-// 2) Реакции (в отличие от опроса/розыгрыша) имеют НЕЗАВИСИМЫЙ клиентский
-//    оптимистичный путь: хук (useMessageActions) сам зовёт
-//    store.applyReactionOptimistic() СРАЗУ, а managers.messages.react/unreact
-//    (эта секция) параллельно и НЕЗАВИСИМО применяет свою оптимистику к SSOT
-//    воркера. Это две раздельные копии; SSOT воркера не видит оптимистичных
-//    кликов ДРУГИХ вкладок по ДРУГИМ эмодзи того же сообщения — операция,
-//    построенная из воркерной копии, рисковала бы навязать вкладке чужую
-//    версию массива реакций поверх её собственной, ещё не подтверждённой
-//    оптимистики (тот самый риск, от которого предостерегает бриф задачи).
+// 1) «`mine` — не значение поля, а поэлементное слияние массива двумя внешними
+//    сигналами (свой ли user_id, add или remove)». Это было верно, пока слияние
+//    делала ВИТРИНА: `messagesStore.applyReaction` получала кадр и досчитывала
+//    `mine` у себя. Сегодня слияние делает ВЛАДЕЛЕЦ — `mergeReactions`
+//    (core/reactions/messageReactions.ts) прямо здесь, в воркере, и наружу
+//    уезжает уже ГОТОВЫЙ агрегат, включая `chosen_order`. Патч несёт значение
+//    поля `reactions`, а не алгоритм: то, что алгоритм существует, не мешает
+//    операции нести его результат.
+// 2) «У реакций независимый оптимистичный путь вкладки, операция навяжет ей
+//    чужую версию массива». Оптимистика вкладки идёт НЕ мимо воркера: клик
+//    зовёт `messages.react/unreact` (ниже), а они двигают тот же SSOT воркера,
+//    что и кадр. Воркер один на все вкладки одного пользователя, поэтому его
+//    копия и есть та, где сведены клики всех вкладок; «своё» в ней — своё по
+//    построению (`chosen_order` пер-зрительский, а зритель один). Второго
+//    вычислителя операция не заводит — наоборот, снимает: main-сторный
+//    `applyReaction` вместе с подпиской `RT.reaction` в storeProjection убран.
 //
-// Эталон семантики — messagesStore.reactions.test.ts (не менять, только
-// сверяться). Если решение по poll/giveaway (Task 4) когда-нибудь расширят на
-// массивы через отдельный тип операции — тогда стоит вернуться и сюда.
-export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: MessagesCtx) {
+// Что кадр по-прежнему НЕ несёт — это `chosen_order` и мой вклад звёздами: тело
+// одно на всех получателей (`pFlags.min`). Их сохраняет `mergeReactions` из
+// предыдущего состояния SSOT — то есть ровно владелец, до порождения операции.
+//
+// Эталон семантики слияния — core/reactions/messageReactions.test.ts.
+export function newReactionMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, readMsg, peers }: MessagesCtx) {
+  /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
+   *  читается ИЗ SSOT после применения — операция несёт то же значение, что
+   *  лежит у владельца, а не отдельно пересчитанное. */
+  const reactionOps = (peerId: number, id: number): MessageOp[] => {
+    const cur = readMsg(peerId, id)
+    if (!cur) return []
+    return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: { reactions: cur.reactions } }))
+  }
+
   // Дельта СВОЕГО клика (count±1 по emoji) → SSOT: оптимистика до сети.
   //
   // Кадром это больше не притворяется. Прежде функция принимала ReactionEvt и
@@ -174,10 +179,18 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: 
   // осмысленна.
   const applyLocalDelta = (peerId: number, msgId: number, emoji: string, action: 'add' | 'remove'): void => {
     const id = generateMessageId(msgId)
+    let applied = false
     patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
       const next = reactionDelta(m.reactions, emoji, action, true)
-      return next === null ? null : { ...m, reactions: next }
+      if (next === null) return null // эхо своего уже применённого действия
+      applied = true
+      return { ...m, reactions: next }
     })
+    // Объявляем ТОЛЬКО состоявшееся изменение: окно правит операция, и «ничего
+    // не изменилось» — не событие. Без этой строки клик по чипу двигал бы
+    // только SSOT воркера, а окно (и зеркало, из которого рисует императивная
+    // лента) не узнавало бы о нём вовсе.
+    if (applied) emitOps(reactionOps(peerId, id))
   }
   // АБСОЛЮТНЫЙ агрегат кадра → SSOT. Свой выбор (`mine`) СОХРАНЯЕТСЯ: тело
   // кадра одно на всех получателей и потому помечено `pFlags.min` — моего
@@ -186,7 +199,7 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: 
   // агрегате нет, — вместе с диффом они из кадра ушли.
   //
   // Идемпотентно на реплей (catch-up), поэтому дедуп по pts тут не нужен.
-  const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
+  const applyAbsoluteReactionToCache = (evt: ReactionEvt): MessageOp[] => {
     const peerId = getPeerId(evt.peer)
     const id = generateMessageId(evt.msg_id)
     // Платная ⭐-реакция применяется ЗДЕСЬ ЖЕ и отдельной строкой не требует:
@@ -197,6 +210,7 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: 
       ...m,
       reactions: mergeReactions(m.reactions, evt.reactions),
     }))
+    return reactionOps(peerId, id)
   }
 
   // Платная ⭐-реакция → SSOT из ОТВЕТА ручки: там и агрегат, и свой вклад
@@ -204,14 +218,17 @@ export function newReactionMethods({ rest, patchMsg, getMeId, readMsg, peers }: 
   const applyStarToCache = (peerId: number, serverMsgId: number, total: number, mine: number): void => {
     const id = generateMessageId(serverMsgId)
     patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => ({ ...m, reactions: setPaidReaction(m.reactions, total, mine) }))
+    // Свой вклад звёздами приезжает ТОЛЬКО ответом ручки (в кадре его нет и быть
+    // не может), поэтому объявить окну изменение обязан этот путь — второго нет.
+    emitOps(reactionOps(peerId, id))
   }
 
   return {
     // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT ──
     // С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без counts (оптимистичный
     // клик до эха) — дельта.
-    cacheReaction(evt: ReactionEvt): void {
-      applyAbsoluteReactionToCache(evt)
+    cacheReaction(evt: ReactionEvt): MessageOp[] {
+      return applyAbsoluteReactionToCache(evt)
     },
 
     // Выросло ли число реакций на МОЁМ сообщении — вопрос, на который отвечает

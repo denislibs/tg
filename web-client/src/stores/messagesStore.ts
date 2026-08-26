@@ -10,10 +10,10 @@
 // с peer_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type FactCheck, type MessageReactions } from '../core/models'
+import { getThreadRootId, type MyMessage, type MessageReal, type MessageEntity, type FactCheck } from '../core/models'
 import type { MessageMedia, MessageMediaPoll, MessageMediaToDo } from '../core/media/messageMedia'
 import type { ReplyMarkup } from '../core/markup/replyMarkup'
-import { mergeReactions, myPaidStars, reactionDelta, sameReactions, setPaidReaction } from '../core/reactions/messageReactions'
+import { myPaidStars, reactionDelta, setPaidReaction } from '../core/reactions/messageReactions'
 import { dedupAsc, applyOp, type MessageOp } from '../core/realtime/messageOps'
 import { winKey } from '../core/history/messagesMirror'
 
@@ -74,16 +74,16 @@ interface MessagesState {
    * (`!byKey[op.key]`), пропускается — та же гарантия, что и у applyIncoming
    * (иначе окно завелось бы «на лету» с одним сообщением вместо честного fetch). */
   applyOps: (ops: MessageOp[]) => void
+  /** МЁРТВЫЙ ПОСЛЕ ПЕРЕВОДА ПРАВКИ НА ОПЕРАЦИИ — производственного вызывателя
+   * нет. Правку применяет владелец (`messages.cacheEdit` в воркере) и объявляет
+   * её операцией `patch`; здесь метод остаётся только потому, что его сигнатуру
+   * пинит мок `MessageWindow` в `components/chat/ChatsContainer.positions.test.tsx`
+   * — файл ленты, правится другим владельцем. Снимается вместе с React-лентой
+   * (этап 7), одновременно с `useMessageWindow.applyEdit`. */
   applyEdit: (peerId: number, msgId: number, message: string, editDate: number | undefined, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
-  /** Живая трансляция подвинулась: вложение целиком (`messageMediaGeoLive`) плюс
-   *  время обновления — оно же `edit_date` сообщения, своего времени у гео в
-   *  схеме нет. */
-  applyGeoLive: (peerId: number, msgId: number, media: MessageMedia, editDate: number | undefined) => void
   /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
   applyFactCheck: (peerId: number, msgId: number, factcheck: FactCheck | undefined) => void
   applyDelete: (peerId: number, msgId: number) => void
-  /** Patch channel-post view counts from a per-open view_counts fetch. */
-  patchViews: (peerId: number, views: Map<number, number>) => void
   /** Полная замена вложения-опроса (ответ на свой голос — он несёт мой
    * `pFlags.chosen`, которого нет в общем кадре poll_update). Live-агрегат сюда
    * не идёт — окно правит операция patch (cachePoll → RT.messageOp → applyOps),
@@ -96,20 +96,15 @@ interface MessagesState {
   /** Обновление вложения-чек-листа (ответ на toggle/add): отметки глобальны
    * (видно, кто отметил) — локального состояния нет, полная замена. */
   setChecklistMedia: (peerId: number, media: MessageMediaToDo) => void
-  /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction / catch-up): ставим counts verbatim,
-   * `mine` сохраняем из окна — кадр помечен `pFlags.min`, пер-зрительской части
-   * в нём нет. Идемпотентно на реплей (тот же агрегат → no-op).
+  /** Оптимистичный клик React-ленты (дельта до эха, всегда моё действие):
+   * count±1 по emoji + mine.
    *
-   * starTotal — платная ⭐-реакция ТОГО ЖЕ агрегата (чип reactionPaid), 0 значит
-   * «платных нет». Отдельного кадра у неё не существует, поэтому и отдельного
-   * применения быть не должно: половина агрегата утверждала бы, что другой
-   * половины нет. Свой вклад звёздами сохраняется по той же причине, что `mine`. */
-  /** Абсолютный агрегат из кадра. Мой выбор (`chosen_order`) и мой вклад
-   *  звёздами (`top_reactors` с `pFlags.my`) сохраняются из окна: тело кадра
-   *  одно на всех получателей и помечено `pFlags.min`. */
-  applyReaction: (peerId: number, msgId: number, agg: MessageReactions | undefined) => void
-  /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
-   * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
+   * Живой агрегат сюда НЕ идёт: и кадр `reaction`, и ответ ручки `react`/
+   * `unreact` применяет владелец (`messages.cacheReaction`, воркер) и объявляет
+   * готовое значение поля операцией `patch {reactions}` — она же и перезапишет
+   * эту оптимистику авторитетно. Строка живёт ровно до сноса React-ленты
+   * (`core/hooks/useMessageActions.tsx` — единственный вызыватель); у
+   * императивной ленты своего вывода реакций нет, она читает зеркало. */
   applyReactionOptimistic: (
     peerId: number,
     msgId: number,
@@ -258,14 +253,6 @@ export const useMessagesStore = create<MessagesState>((set) => ({
           : null,
       )),
 
-  applyGeoLive: (peerId, msgId, media, editDate) =>
-    set((s) =>
-      patchChat(s, peerId, (w) =>
-        w.msgs.some((m) => isReal(m) && m.id === msgId)
-          ? w.msgs.map((m) => (isReal(m) && m.id === msgId ? { ...m, media, edit_date: editDate } : m))
-          : null,
-      )),
-
   applyFactCheck: (peerId, msgId, factcheck) =>
     set((s) =>
       patchChat(s, peerId, (w) =>
@@ -279,31 +266,6 @@ export const useMessagesStore = create<MessagesState>((set) => ({
       patchChat(s, peerId, (w) =>
         w.msgs.some((m) => m.id === msgId) ? w.msgs.filter((m) => m.id !== msgId) : null,
       )),
-
-  patchViews: (peerId, views) =>
-    set((s) =>
-      patchChat(s, peerId, (w) =>
-        // Only rebuild rows whose count actually changed, so unaffected bubbles keep
-        // their reference (memoized rows don't re-render).
-        w.msgs.some((m) => isReal(m) && views.has(m.id) && views.get(m.id) !== m.views)
-          ? w.msgs.map((m) => (isReal(m) && views.has(m.id) && views.get(m.id) !== m.views ? { ...m, views: views.get(m.id) } : m))
-          : null,
-      )),
-
-  applyReaction: (peerId, msgId, agg) =>
-    set((s) =>
-      patchChat(s, peerId, (w) => {
-        if (!w.msgs.some((m) => m.id === msgId)) return null
-        let changed = false
-        const msgs = w.msgs.map((m) => {
-          if (m.id !== msgId) return m
-          const next = mergeReactions(m.reactions, agg)
-          if (sameReactions(m.reactions, next)) return m
-          changed = true
-          return { ...m, reactions: next }
-        })
-        return changed ? msgs : null
-      })),
 
   applyReactionOptimistic: (peerId, msgId, emoji, action, me) =>
     set((s) =>

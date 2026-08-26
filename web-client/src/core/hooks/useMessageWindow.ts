@@ -28,7 +28,11 @@ export interface MessageWindow {
   loadNewer: () => Promise<void>
   appendLocal: (m: MyMessage) => void
   applyIncoming: (m: MyMessage) => void
-  /** A message was edited (live or via /sync): patch its text + entities + editedAt in place. */
+  /** МЁРТВЫЙ: правку окна применяет владелец операцией `patch`
+   *  (`messages.cacheEdit`), производственного вызывателя у этого метода нет.
+   *  Держится ради мока `MessageWindow` в
+   *  `components/chat/ChatsContainer.positions.test.tsx` (файл ленты, чужой
+   *  периметр) — уходит вместе с React-лентой, этап 7. */
   applyEdit: (msgId: number, message: string, editDate: number | undefined, entities?: MessageEntity[]) => void
   /** Jump-to-message: replace the window with one centered on centerId. */
   jumpTo: (centerId: number) => Promise<void>

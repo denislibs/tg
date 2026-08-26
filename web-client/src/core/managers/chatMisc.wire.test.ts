@@ -40,11 +40,11 @@ describe('мелкие витрины чата — конструкторы, а 
 
   it('«ещё расшифровывается» — ФЛАГ конструктора, а не булево поле', async () => {
     const done = vi.fn(async () => ({ _: 'messages.transcribedAudio', text: 'раз' }))
-    const m1 = newTranslationMethods({ rest: { post: done } as unknown as RestClient, patchMsg: () => {} } as unknown as MessagesCtx)
+    const m1 = newTranslationMethods({ rest: { post: done } as unknown as RestClient, patchMsg: () => {}, opWindowsFor: () => [], emitOps: () => {} } as unknown as MessagesCtx)
     expect(await m1.transcribe(5, 7)).toEqual({ text: 'раз', pending: false })
 
     const pending = vi.fn(async () => ({ _: 'messages.transcribedAudio', text: '', pFlags: { pending: true } }))
-    const m2 = newTranslationMethods({ rest: { post: pending } as unknown as RestClient, patchMsg: () => {} } as unknown as MessagesCtx)
+    const m2 = newTranslationMethods({ rest: { post: pending } as unknown as RestClient, patchMsg: () => {}, opWindowsFor: () => [], emitOps: () => {} } as unknown as MessagesCtx)
     expect(await m2.transcribe(5, 7)).toEqual({ text: '', pending: true })
   })
 

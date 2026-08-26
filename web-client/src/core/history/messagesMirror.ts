@@ -19,9 +19,10 @@
 // * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
 //   tweb — у нас нет источника (наш поток операций per-окно, а multiappend в
 //   tweb per-сообщение);
-// * применения кадров, которые ещё НЕ переведены на операции (edit_message,
-//   geo_live_update, reaction/star_reaction — таблица в web-client/CLAUDE.md):
-//   их правит только стор, зеркало узнает о них, когда они станут операциями.
+// * применения кадров мимо операций — их больше нет вовсе: правка, координаты
+//   гео-трансляции, реакции (включая платную ⭐), свой голос/отметка,
+//   «проверка фактов» и просмотры поста канала едут той же операцией, что и
+//   всё остальное (таблица в web-client/CLAUDE.md).
 import type { MyMessage } from '../models'
 import { applyOp, dedupAsc, type MessageOp } from '../realtime/messageOps'
 import rootScope from '@lib/rootScope'

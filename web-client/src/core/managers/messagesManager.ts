@@ -22,7 +22,7 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type RawMyMessage, type SecretMedia } from '../models'
+import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, Chat } from '../peers/peer'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
@@ -33,6 +33,7 @@ import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessageMedia } from '../media/messageMedia'
+import { mergeReactions } from '../reactions/messageReactions'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
@@ -60,6 +61,19 @@ export interface MessagesContainer {
   users: UserReal[]
   chats: Chat[]
   count?: number
+}
+
+/**
+ * Параметры сообщения БЕЗ дискриминатора — набор для операции `patch`.
+ *
+ * `_` выкидывается намеренно: патч по построению меняет содержимое, а не вид
+ * сообщения (`MessageFields`, core/models.ts) — пилюля не может стать
+ * сообщением сквозь патч. Всё остальное берётся с самого объекта, поэтому
+ * второго перечисления «что бывает у сообщения» здесь не заводится.
+ */
+function messageFields(m: MyMessage): MessageFields {
+  const { _: _kind, ...rest } = m
+  return rest as MessageFields
 }
 
 export interface HistoryArgs {
@@ -284,14 +298,25 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
   // абсолютный агрегат без пер-зрительской части, и «выросло ли число реакций
   // на МОЁМ сообщении» отвечает только владелец окна.
   const readMsg = (peerId: number, msgId: number): MyMessage | undefined => msgsByChat.get(peerId)?.get(msgId)
-  const ctx = { rest, patchMsg, getMeId, opWindowsFor, readMsg, peers }
+  // Единственная точка объявления операций окна наружу. Кадры воронки возвращают
+  // ops в `dispatch` (workerCore), а пути, идущие мимо кадра (ответ ручки: своё
+  // удаление, свой голос, своя реакция, ⭐-реакция, «проверка фактов»), обязаны
+  // объявить их сами — иначе окно правится мимо операций и до зеркала
+  // (`core/history/messagesMirror.ts`) изменение не доезжает вовсе.
+  const emitOps = (ops: MessageOp[]): void => { if (ops.length) broadcast?.(RT.messageOp, { ops }) }
+  // «Проверка фактов» своим действием (ответ ручки, не кадр): тот же набор
+  // параметров, что и у cacheFactCheck, — один вид патча на оба пути.
+  const emitFactCheckOps = (peerId: number, msgId: number, factcheck: MessageReal['factcheck']): void => {
+    emitOps(opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { factcheck } })))
+  }
+  const ctx = { rest, patchMsg, getMeId, opWindowsFor, emitOps, readMsg, peers }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
     hkey, slices, msgsFor,
     getMeId: () => getMeId?.() ?? null,
     isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
-    emit: (ops) => { if (ops.length) broadcast?.(RT.messageOp, { ops }) },
+    emit: emitOps,
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
     // (пин проводки — core/workerCore.send.test.ts).
@@ -505,33 +530,49 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       })
       const m = await mapNet(updated)
       if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
-      // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
+      // Окно правит операция, а не вызыватель. Кадр `factcheck_update` фанится
+      // и АВТОРУ тоже (backend/internal/usecase/chat/factcheck.go:100 —
+      // logAndPublishPerPeer по `members`), так что следом придёт та же правка
+      // операцией из cacheFactCheck; здесь она объявляется раньше — ровно тот
+      // отклик на своё действие, который прежде делал main-сторный applyFactCheck.
+      // Патч абсолютный, поэтому повтор идемпотентен.
+      emitFactCheckOps(peerId, m.id, m._ === 'message' ? m.factcheck : undefined)
       return m
     },
 
-    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит SSOT + эхо.
+    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит SSOT + операции.
     async removeFactCheck(peerId: number, msgId: number): Promise<void> {
       await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`)
-      patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, factCheck: undefined }))
-      // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
+      // «Снято» — ОТСУТСТВИЕ параметра; в модели окна это undefined. Прежде
+      // здесь патчился несуществующий ключ `factCheck` (camelCase), то есть SSOT
+      // воркера снятие вообще не видел — модельное имя параметра `factcheck`.
+      patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, factcheck: undefined }))
+      emitFactCheckOps(peerId, msgId, undefined)
     },
 
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
     // messages are never shown, so evict from the SSOT (+ all window slices) too,
     // or a later cache hit would resurrect it.
     async deleteMessage(peerId: number, msgId: number, revoke: boolean): Promise<void> {
-      // После УСПЕХА сети: eviction из SSOT + рассылка remove-операций остальным
-      // вкладкам (Regression 2, финальное ревью feat/remaining-ops: [RT.deleteMessage]
+      // После УСПЕХА сети: eviction из SSOT + объявление remove-операций
+      // (Regression 2, финальное ревью feat/remaining-ops: [RT.deleteMessage]
       // убран из реестра APPLY проектора — окно правит только applyOps, а WS
       // delete_message придёт по уже опустевшему SSOT воркера и cacheDelete отдаст
-      // пустой список, если не разослать ops здесь). Вкладка-инициатор чинит своё
-      // окно сама (useMessageActions → applyDelete), поэтому себе не шлём. Не
-      // оптимистично до REST: сервер может отклонить удаление (напр. «для всех»
-      // после окна времени), а откат eviction+persist сложен и рисковен —
+      // пустой список, если не объявить ops здесь).
+      //
+      // Объявляем ВСЕМ вкладкам, включая инициатора: веер (`workerScope.broadcast`
+      // → `RootScope.dispatchEvent` → `port.emit` по всем портам) источник не
+      // исключает — исключает только `receiveFrom`, а это другой путь. Прежний
+      // комментарий здесь утверждал обратное («вкладка-инициатор чинит своё окно
+      // сама, поэтому себе не шлём») и описывал не код, а React-путь
+      // `useMessageActions → applyDelete`, который лежит РЯДОМ с операцией, а не
+      // вместо неё.
+      //
+      // Не оптимистично до REST: сервер может отклонить удаление (напр. «для
+      // всех» после окна времени), а откат eviction+persist сложен и рисковен —
       // мгновенность удаления тут не критична (tweb-компромисс).
       await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}?revoke=${revoke ? 'true' : 'false'}`)
-      const ops = evictAndBuildRemoveOps(peerId, msgId)
-      if (ops.length) broadcast?.(RT.messageOp, { ops })
+      emitOps(evictAndBuildRemoveOps(peerId, msgId))
     },
 
     // Forward messages from one chat into another; returns the created copies.
@@ -769,42 +810,95 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       return ops
     },
 
-    // Live-правка от любого участника → единый объект в SSOT.
-    // Stage 1B.3 (Task 3): НЕ переведено на операции — но уже не из-за пробела в
-    // cacheEdit (тот чинили отдельно: reply_markup теперь кладётся сюда же тем же
-    // правилом, что и на витрине — значение кадра при наличии поля, снятие
-    // клавиатуры при его отсутствии, backend/internal/usecase/chat/frame.go:243
-    // шлёт поле абсолютным значением). Других обогащений у edit_message нет, так что
-    // структурных препятствий к переводу на patch не осталось — перевод остаётся
-    // отдельной задачей (вне объёма этой), а не решением проблемы с данными.
+    /**
+     * Свежие счётчики просмотров постов канала («9.2K 👁») → SSOT + операции.
+     *
+     * Владелец числа — воркер: он его и запрашивает (`channels.viewCounts`,
+     * который зовёт этот метод сразу после разбора ответа). Прежде ответ ручки
+     * писала в окно ВИТРИНА (`useChannelExtras` → `messagesStore.patchViews`),
+     * то есть мимо операций — и до зеркала (`core/history/messagesMirror.ts`),
+     * из которого рисует императивная лента, счётчик не доезжал вовсе.
+     *
+     * Патчатся только РЕАЛЬНО изменившиеся: одинаковое значение не событие, а
+     * лишний патч разорвал бы ссылку сообщения в окне (мемоизированные баблы
+     * перерисовались бы на ровном месте — та же причина, что у `sameFields`
+     * в `core/realtime/messageOps.ts`).
+     */
+    cacheViews(peerId: number, views: Map<number, number>): void {
+      const ops: MessageOp[] = []
+      for (const [id, count] of views) {
+        let changed = false
+        patchMsg(peerId, (m) => m.id === id && m._ === 'message' && m.views !== count, (m) => { changed = true; return { ...m, views: count } })
+        if (!changed) continue
+        for (const key of opWindowsFor(peerId, id)) ops.push({ op: 'patch', key, msgId: id, fields: { views: count } })
+      }
+      emitOps(ops)
+    },
+
+    // Live-правка от любого участника → единый объект в SSOT + операции по всем
+    // окнам, где сообщение видно.
+    //
     // Кадр несёт сообщение ЦЕЛИКОМ (форма updateEditMessage), поэтому и в SSOT
     // кладётся целое — тем же маппером, что и у живого кадра с новым
     // сообщением. Прежде здесь собирался патч из россыпи полей конверта, и
     // список этих полей был вторым описанием того, что вообще может меняться
     // правкой.
-    cacheEdit(evt: EditMessageEvt): void {
-      const mapped = mapOne(evt.message)
+    //
+    // Наружу едет `patch` ВСЕМИ параметрами сообщения, а не `replace` целым
+    // объектом, и это не осторожность, а разница копий: SSOT воркера правку
+    // знает целиком, а ОКНО держит поверх неё то, чего в SSOT нет вовсе —
+    // `localUrl` слитого оптимистичного бабла, его `random_id`, пометку
+    // `failed`. `replace` подменяет объект и стирает их, `patch` не трогает
+    // ключи, которых нет в наборе (см. `patch()` в core/realtime/messageOps.ts).
+    // Список параметров при этом не выдумывается: он снимается с самого
+    // сообщения, поэтому вторым описанием «что может меняться правкой» не
+    // становится.
+    cacheEdit(evt: EditMessageEvt): MessageOp[] {
+      const raw = mapOne(evt.message)
       const peerId = getPeerId(evt.message.peer_id)
+      // Агрегат реакций в кадре правки — снимок БЕЗ ЗРИТЕЛЯ: тело собирается
+      // один раз на всех получателей (`newMessagePayload` зовёт
+      // `messageContext(ctx, m, domain.NullPeerID)`,
+      // backend/internal/usecase/chat/frame.go:161-174), поэтому ни моего
+      // `chosen_order`, ни моего вклада звёздами в нём нет. Это тот же класс,
+      // что и `pFlags.min` у кадра реакций, — и сводится он ТЕМ ЖЕ
+      // `mergeReactions`, вторая копия правила не заводится. Прежде правка
+      // клала снимок в SSOT воркера целиком и молча гасила мой чип; наружу это
+      // не выходило только потому, что окно правку получало четырьмя полями.
+      const prev = readMsg(peerId, raw.id)
+      const mapped: MyMessage = prev?.reactions || raw.reactions
+        ? { ...raw, reactions: mergeReactions(prev?.reactions, raw.reactions) }
+        : raw
       patchMsg(peerId, (m) => m.id === mapped.id, () => mapped)
+      const fields = messageFields(mapped)
+      return opWindowsFor(peerId, mapped.id).map((key): MessageOp => ({ op: 'patch', key, msgId: mapped.id, fields }))
     },
 
-    // Live-обновление координат гео-трансляции → SSOT.
-    // Stage 1B.3 (Task 3): НЕ переведено на операции — сознательно. geo_live_update
-    // классифицирован в eventCatalog.ts как 'ephemeral' (без pts), поэтому идёт
-    // мимо funnel/APPLY воркера напрямую в PASS_THROUGH — cacheGeoLive НИКОГДА не
-    // вызывается (мёртвый код уже сегодня, независимо от этой задачи). Единственный
-    // применяющий путь — сырой кадр в storeProjection (RT.geoLiveUpdate → applyGeoLive).
-    // Перевод на операции потребовал бы структурного решения за рамками этой
-    // задачи (переклассифицировать тип в 'logged', завести pts на бэке) — оставлено
-    // как есть; и cache, и проекция не тронуты.
-    cacheGeoLive(evt: GeoLiveUpdateEvt): void {
+    // Live-обновление координат гео-трансляции → SSOT + операции по всем окнам.
+    //
+    // Кадр эфемерный (без pts, `transportFrames.ts:35` — предмет не портирован,
+    // #52), поэтому воронку он не проходит и в реестре CACHE его нет. Владельца
+    // это не отменяет: `workerCore.ts::onFrame` зовёт cacheGeoLive до
+    // PASS_THROUGH-трансляции и объявляет вернувшиеся операции — тем же приёмом,
+    // каким там уже применяются эфемерные `message_ack`/`message_error`.
+    // Раньше этот метод не вызывался ниоткуда (мёртвый код), а окно правил сырой
+    // кадр на витрине — то есть мимо операций и мимо зеркала.
+    cacheGeoLive(evt: GeoLiveUpdateEvt): MessageOp[] {
       const id = generateMessageId(evt.id)
       // Координаты приезжают ТЕМ ЖЕ конструктором, что и в сообщении, — кладём
       // вложение целиком. Время обновления едет рядом (edit_date) и ложится в
       // то же поле, что и у обычной правки: своего времени у гео в схеме нет.
       const media = saveMessageMedia(evt.media)
+      let fields: MessageFields | null = null
       patchMsg(evt.peer_id, (m) => m.id === id,
-        (m) => (m._ !== 'message' ? m : { ...m, media, edit_date: evt.edit_date }))
+        (m) => {
+          if (m._ !== 'message') return m
+          fields = { media, edit_date: evt.edit_date }
+          return { ...m, ...fields }
+        })
+      const f = fields
+      if (!f) return []
+      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: f }))
     },
 
     // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной

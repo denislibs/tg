@@ -106,15 +106,68 @@ npx vite build --outDir ../client-build
   `giveaway_update` → `patch` (для poll/giveaway — с исключением в `patch()`
   из `core/realtime/messageOps.ts`, которое безусловно подставляет вложенный
   локальный выбор ОКНА — `poll.myVotes`, `giveaway.participating`/`iWon` —
-  поверх значения из операции, а не наоборот). Карта того, что осталось
-  применяться из сырого кадра (не операцией), и почему:
+  поверх значения из операции, а не наоборот).
 
-  | Кадр | Применяется через | Почему не операция |
+  **Этап «один писатель окна» закрыл остаток: применений мимо операций больше
+  НЕТ ВОВСЕ, и таблицы исключений тоже нет.** Переведено:
+
+  | Факт | Кто объявляет операцию | Что правило окно раньше |
   |---|---|---|
-  | `edit_message` | `APPLY[RT.editMessage]` → `applyEdit` | `cacheEdit` мапит `reply_markup` тем же правилом, что и витрина, — SSOT воркера полон; перевод на операции структурно ничем не блокирован, но остаётся отдельной задачей — здесь не сделан просто пока не взят в работу |
-  | `geo_live_update` | `APPLY[RT.geoLiveUpdate]` → `applyGeoLive` | тип помечен в `eventCatalog.ts` как `ephemeral` (кадр без `pts`) — идёт мимо funnel/`APPLY` воркера напрямую в `PASS_THROUGH`; `cacheGeoLive` никогда не вызывается, применение из сырого кадра здесь — единственный путь, а не альтернатива операции |
-  | `reaction` | отдельный `rootScope.addEventListener(RT.reaction)` → `applyReaction`/`applyReactionOptimistic` | деривация `mine` — поэлементное слияние массива `ReactionCount[]` по emoji двумя сигналами вне самого агрегата (`myEmoji`/`myAction`), не выражается как значение поля `patch`; плюс независимый оптимистичный путь клика и риск затереть его чужой копией с другой вкладки (разбор — `docs/research/2026-08-10-message-enrichments.md`, задача 5) |
-  | `star_reaction` | отдельный `rootScope.addEventListener(RT.starReaction)` → `applyStarReaction` | тот же класс причин, что у `reaction` — `mine` обновляется только у отправителя, деривация не сводится к готовому полю |
+  | `edit_message` | `messages.cacheEdit` → `patch` всеми параметрами сообщения (`patch`, а не `replace`: у окна поверх правки живёт `localUrl`/`random_id`/`failed`, которых у SSOT воркера нет) | `APPLY[RT.editMessage]` → `applyEdit` на витрине |
+  | `geo_live_update` | `messages.cacheGeoLive` → `patch {media, edit_date}`; кадр эфемерный (без `pts`, `core/realtime/transportFrames.ts:35`), поэтому владелец перехватывает его в `workerCore.ts::onFrame` рядом с `message_ack` | `APPLY[RT.geoLiveUpdate]` → `applyGeoLive`; сам `cacheGeoLive` не звался НИОТКУДА |
+  | `reaction` (вместе с платным чипом `reactionPaid` — своего кадра у него нет) | `messages.cacheReaction` → `patch {reactions}` | отдельный `addEventListener(RT.reaction)` → `applyReaction` |
+  | свой клик по реакции | `messages.react`/`unreact` → `patch {reactions}`, включая откат на ошибке сети | НИЧЕГО не объявляли вовсе — двигали только SSOT воркера |
+  | ⭐-реакция | `messages.sendStarReaction` → `patch {reactions}` | `components/stars/StarReactionPopup.tsx` → `applyStarReaction` (события `RT.starReaction` не существует — прежняя строка таблицы описывала несуществующую подписку) |
+  | свой голос в опросе | `messages.votePoll` → `patch {media}` | вызыватель → `setPollMedia` |
+  | своя отметка в чек-листе | `messages.toggleChecklistItem`/`addChecklistItems` → `patch {media}` | вызыватель → `setChecklistMedia` |
+  | «проверка фактов» своим действием | `messages.setFactCheck`/`removeFactCheck` → `patch {factcheck}` | вызыватель → `applyFactCheck` |
+  | просмотры поста канала | `messages.cacheViews`, которую зовёт `channels.viewCounts` в воркере → `patch {views}` | `core/hooks/useChannelExtras.ts` → `patchViews` |
+  | расшифровка голосового/кружка | `messages.transcribe` → `patch {transcription}` | НИЧЕГО не объявляли: параметр ложился только в SSOT воркера и доезжал до окна лишь перезагрузкой чата, хотя бабл рисует именно его (`components/messages/Transcription.tsx:20-21`) |
+
+  Удаление своего сообщения в эту таблицу не попало: `messages.deleteMessage`
+  объявлял `remove` и раньше, и веер владельца (`core/realtime/workerScope.ts`
+  → `RootScope.dispatchEvent` → `port.emit` по ВСЕМ портам) источник не
+  исключает — исключает только `receiveFrom`, а это другой путь. Комментарий у
+  метода утверждал обратное («вкладка-инициатор чинит своё окно сама, поэтому
+  себе не шлём») и был неверен; он исправлен, а поведение закреплено тестом.
+
+  Про реакции отдельно, потому что прежняя причина «не операцией» звучала
+  структурно и оказалась неверной. Она говорила: деривация `mine` — это
+  поэлементное слияние массива двумя сигналами ВНЕ агрегата, значением поля не
+  выражается. Верно это было ровно пока слияние делала ВИТРИНА. В оригинале его
+  делает ВЛАДЕЛЕЦ: `appReactionsManager.sendReaction` считает весь агрегат у
+  себя и объявляет его абсолютным `updateMessageReactions`
+  (tweb `src/lib/appManagers/appReactionsManager.ts:895-901`), а применяющий
+  делает голое присваивание `message.reactions = reactions`
+  (tweb `src/lib/appManagers/appMessagesManager.ts:7807-7810`) — ни слияния на
+  стороне потребителя, ни дельты на проводе. У нас теперь так же:
+  `mergeReactions` (`core/reactions/messageReactions.ts`) вызывается в воркере, и
+  в операцию уезжает ГОТОВОЕ значение поля вместе с `chosen_order`. Второй довод
+  («операция навяжет вкладке чужую версию поверх её оптимистики») отпал по
+  факту: клик ЛЮБОЙ вкладки идёт ЧЕРЕЗ воркер (`managers.messages.react`),
+  поэтому его SSOT и есть та копия, где сведены клики всех вкладок. Заводить
+  свой тип операции с семантикой дельты было бы отступлением от оригинала, а не
+  портом.
+
+  Пин на всё перечисленное — `client/realtime/storeProjection.windowWriters.test.ts`:
+  настоящий менеджер воркера, настоящий проектор, проверяется ЗЕРКАЛО
+  (`core/history/messagesMirror.ts`), потому что именно из него рисует
+  императивная лента — факт, доехавший до zustand-копии, но не до зеркала, для
+  неё не существует. Проводка эфемерного гео-кадра —
+  `core/workerCore.geoLiveFrame.test.ts`, проводка просмотров —
+  `core/managers/channelsManager.test.ts`.
+
+  **Долг, а не исключение:** в React-ленте остались ПОВТОРНЫЕ применения тех же
+  уже объявленных фактов — `core/hooks/useMessageActions.tsx`
+  (`applyReactionOptimistic`/`applyDelete`/`applyFactCheck`/`setPollMedia`),
+  `components/messages/PollBubble.tsx`, `components/messages/ChecklistBubble.tsx`,
+  `components/stars/StarReactionPopup.tsx`, `core/hooks/useChatPopups.tsx` и
+  `core/hooks/useScheduledMessages.ts` (`applyIncoming` поверх приходящего
+  WS-эха `new_message` — бэкенд фанит его и автору,
+  `backend/internal/usecase/chat/fanout.go:163`). С владельцем они не
+  расходятся (значение абсолютное и то же самое), но это лишние писатели
+  zustand-копии, и уходят они вместе с React-лентой (этап 7). В ЗЕРКАЛО не
+  пишет никто, кроме проектора и `putMirrorPage`.
 
   **Исключения для оптимистичной отправки больше нет.** Жизненный цикл
   неотправленного («отправляется…») сообщения живёт в менеджере воркера —

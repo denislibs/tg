@@ -58,7 +58,7 @@ export interface DiscussionCandidate { peerId: PeerId; title: string; username: 
 // {id, display_name, avatar_url}.
 export type CommentReplier = Peer
 
-export function newChannelsManager({ rest, beforeSending, peers }: {
+export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
   /** Временный бабл поста — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
@@ -68,6 +68,12 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
    *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
    *  оригинала «каждый ответ прогоняется через saveApiPeers». */
   peers: Pick<PeersManager, 'saveApiPeers'>
+  /** Владелец окна сообщений: просмотры это ПАРАМЕТР сообщения (`views`), а не
+   *  свой предмет, поэтому свежее число обязан объявить он — операцией
+   *  `rt:message_op`. Здесь только запрос: канал знает, где число взять, но не
+   *  владеет тем, во что оно кладётся. Опционален по той же причине, что
+   *  остальные инъекции: тесты канальных ручек собирают менеджер одним `rest`. */
+  cacheViews?: (peerId: number, views: Map<number, number>) => void
 }) {
   return {
     /**
@@ -187,6 +193,11 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
         const views = r.views?.[i]?.views
         if (views != null) out[id] = views
       })
+      // Свежее число — сразу владельцу окна: он положит его в сообщение и
+      // объявит операцией. Прежде это делала витрина (`useChannelExtras` →
+      // `messagesStore.patchViews`) — второй писатель окна мимо операций, из-за
+      // которого счётчик не доезжал до зеркала императивной ленты.
+      cacheViews?.(channelId, new Map(Object.entries(out).map(([id, v]) => [Number(id), v])))
       return out
     },
     // Предложка постов (Telegram suggested posts).

@@ -120,6 +120,9 @@ describe('useMessageWindow', () => {
     expect(merged[0]!.id).toBe(cid(500))
   })
 
+  // Метод МЁРТВЫЙ в продакшне (правку окна применяет владелец операцией `patch`),
+  // но пока живёт ради мока в components/chat — тест держит его поведение, чтобы
+  // шим не разъехался молча до сноса React-ленты (этап 7).
   it('applyEdit patches text + editedAt in place', async () => {
     const managers = fakeManagers(() => ({ messages: [msg(3)], count: 1, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
