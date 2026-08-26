@@ -602,3 +602,40 @@ big-emoji, ховер-реакция, чипы реакций, размеры а
   не покрыт ничем;
 * пин «`isBroadcast` доезжает от `Chat.tsx` до `ChatBubbles`» (#75) — сегодня проп
   просто не передаётся и это ничем не ловится.
+
+
+---
+
+## Приложение. Точный удаляемый набор (пересчитано)
+
+Снято автоматическим обходом импортов: для каждого модуля `components/messages/`
+искались импортёры ВНЕ этой папки (тесты исключены). Скан, который делался
+глазами, ошибался — первая его версия молча искала пути с расширением и нашла
+один потребитель вместо десяти. Числа ниже получены разбором всех строк
+`from '...'` в `src`.
+
+**Модули с потребителем вне ленты — сносить нельзя (10 из 28):**
+
+| Модуль | Кто держит | Что это значит |
+|---|---|---|
+| `bubbleClasses` | `components/chat/bubbles.ts` | общий вычислитель модификаторов бабла, им пользуется ИМПЕРАТИВНАЯ лента |
+| `videoPlayback` | `components/audio.ts`, `mediaProgressLine.ts`, `wrappers/video.ts`, `lib/mediaPlayer/index.ts` | подсистема плеера, к ленте отношения не имеет |
+| `MessageSpoilerOverlay` | `components/RichText.tsx` | спойлер текста, нужен везде, где есть rich-text |
+| `ChatDialogs` | `StoryViewer.tsx`, `conversation/ChatMsgActionPopups.tsx`, `core/hooks/useChatPopups.tsx` | пикер чатов, лежит в папке ленты по историческим причинам |
+| `SendMediaPopup`, `TranslatePopup`, `StackedAvatars` | `Chat.tsx`, `ChatMsgActionPopups.tsx`, `CommentsBar.tsx` | попапы и мелкие узлы окружения |
+| `EmptyChatGreeting`, `SimilarChannels` | `Chat.tsx` | **это ПОРТ, а не снос**: в tweb владелец обоих — `bubbles.ts` |
+| `ChatFeed` | `Chat.tsx` | сама лента, единственный импортёр |
+
+**Модули только ленты — удаляются вместе с ней (18 из 28):**
+`AlbumGrid`, `AudioPlayIcon`, `ChecklistBubble`, `GiftBubble`, `GiveawayBubble`,
+`InlineKeyboard`, `MessageBubbles`, `MessageContent`, `MessageReactions`,
+`MessageRow`, `PollBubble`, `ReactionAroundEffect`, `ReactionIcon`,
+`RealMediaBubble`, `SecretMediaBubble`, `Transcription`, `VoiceMessage`,
+`useBlurThumb`.
+
+**Важное следствие.** У `ChatFeed` ровно ОДИН настоящий импортёр — `Chat.tsx`.
+Упоминания `messages/ChatFeed` в `components/chat/bubbles.ts`,
+`serviceMessage.ts`, `bubbleGroups.ts` — это ссылки в комментариях на адрес
+разметки, а не импорты; поиск по подстроке их считает, поиск по `from '...'` —
+нет. При сносе они станут ссылками в никуда, и их надо переписать, а не
+оставить.
