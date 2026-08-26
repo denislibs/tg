@@ -103,6 +103,7 @@ const managers: BubblesManagers = {
   },
   peers: { fillMirror: async () => {} },
   dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 },
+  realtime: { markRead: async () => ({ ok: true }) },
 }
 
 async function settle() {

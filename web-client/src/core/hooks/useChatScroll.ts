@@ -31,6 +31,27 @@ import type { MessageWindow } from './useMessageWindow'
 import ScrollSaver, { type ScrollSaverTarget } from '@helpers/scrollSaver'
 import Scrollable from '@components/scrollable'
 import { getChatPosition, saveChatPosition } from '../chat/chatPositions'
+import { AppConfig } from '@config/app'
+
+/**
+ * Владеет ли ОТМЕТКОЙ ПРОЧТЕНИЯ этот хук.
+ *
+ * Под флагом `VITE_VANILLA_FEED=1` — НЕТ: отметку ведёт сама императивная лента
+ * наблюдателем за непрочитанными баблами (`components/chat/bubbles.ts`, порт
+ * tweb bubbles.ts:2941-3012), потому что «прочитано» это «увидено», а видимость
+ * бабла знает только владелец бабла. Здешние эффекты отвечают на другой вопрос
+ * («прижат ли вьюпорт к низу») и отмечают прочитанным ВСЁ ЗАГРУЖЕННОЕ окно.
+ *
+ * Гейт нужен именно здесь, а не в `Chat.tsx`: хук зовётся из тела `Chat`
+ * БЕЗУСЛОВНО (`Chat.tsx:512`), в том числе когда ленту рисует `VanillaFeed`, —
+ * а свой узел (`scrollRef`) в этом режиме ему не достаётся вовсе, и «прижат к
+ * низу» у него тривиально истинно. Без гейта две отметки уходили бы в одну и ту
+ * же ручку, и более грубая (эта) забивала бы точную.
+ *
+ * Умирает вместе с хуком на шаге 4 сноса React-ленты
+ * (`docs/readiness/vanilla-feed-cutover.md`).
+ */
+const OWNS_READ_MARKER = !AppConfig.vanillaFeed
 
 interface UseChatScrollArgs {
   numericChatId: number
@@ -229,7 +250,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
       if (hasLayout) atBottomRef.current = !userScrolledUpRef.current || atRealBottom
       // markRead at the real bottom advances lastReadSeq → the derived
       // unread-below badge falls to 0 (no manual reset needed).
-      if (hasLayout && atRealBottom && document.hasFocus() && isActive) {
+      if (OWNS_READ_MARKER && hasLayout && atRealBottom && document.hasFocus() && isActive) {
         void managers.realtime.markRead({ peerId: numericChatId, upToId: win.msgs[win.msgs.length - 1].id })
       }
     }
@@ -620,7 +641,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   useEffect(() => {
     // Гейт активности: фоновый (скрытый) инстанс не должен отмечать чужой для
     // пользователя чат прочитанным на входящее сообщение.
-    if (!isRealChat || !isActive) return
+    if (!OWNS_READ_MARKER || !isRealChat || !isActive) return
     // Подписка на rootScope напрямую (типизированный payload). storeProjection
     // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
     // моменту этого обработчика окно/диалог уже обновлены.
@@ -646,7 +667,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   // atBottomRef тривиально true (нулевая геометрия), без гейта она читала бы
   // чат при каждом обновлении окна, даже пока пользователь смотрит другой чат.
   useEffect(() => {
-    if (!isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
+    if (!OWNS_READ_MARKER || !isRealChat || !isActive || !win.reachedBottom || win.msgs.length === 0) return
     if (!atBottomRef.current || !document.hasFocus()) return
     const maxId = win.msgs[win.msgs.length - 1].id
     void managers.realtime.markRead({ peerId: numericChatId, upToId: maxId })
@@ -656,7 +677,7 @@ export function useChatScroll({ numericChatId, threadId, isRealChat, win, paddin
   // Гейт активности: window 'focus' — глобальное событие, слышат ВСЕ смонтированные
   // инстансы разом; без гейта фоновая копия тоже отмечала бы чат прочитанным.
   useEffect(() => {
-    if (!isRealChat || !isActive) return
+    if (!OWNS_READ_MARKER || !isRealChat || !isActive) return
     const onFocus = () => {
       const el = scrollRef.current
       if (!el || win.msgs.length === 0) return

@@ -230,7 +230,7 @@ tweb, не React-версия.
 | Кнопка расшифровки голосового | `Transcription.tsx` через `VoiceMessage.tsx:12` | — |
 | Кнопка сбоку поста канала «переслать» | `MessageRow` + `feedFns.forwardMsg` (`MessageRow.tsx:74`) | `docs/tweb/bubbles.md:288` `.bubble-beside-button` |
 
-## 3.3 Сервисные сообщения — самый неожиданный пробел
+## 3.3 Сервисные сообщения — ЗАКРЫТО (2026-08-26)
 
 `components/chat/serviceMessage.ts` **уже содержит** порт экшен-бабла:
 `createServiceBubble` (`serviceMessage.ts:149`) и `wrapMessageActionText`
@@ -242,11 +242,24 @@ $ grep -rn "createServiceBubble\|wrapMessageActionText" web-client/src
 # вне serviceMessage.ts и его теста — НОЛЬ вызывающих
 ```
 
-`renderMessage` не различает `message`/`messageService` вовсе (`chat/bubbles.ts:947`
-не проверяет `_`), а `wrapMessageContent` (`chat/bubbles.ts:1064`) для сервисного
-отдаёт пустой текст. Итог: **всякая пилюля «X добавил(а) Y», «закреплено», «фото
-чата изменено» рисуется в ванильной ленте пустым обычным баблом.** Порт готов —
-не хватает одной развилки в `renderMessage` и передачи `pinnedPreview`.
+Разведка подтвердилась: до правки `renderMessage` не различал
+`message`/`messageService` вовсе, и всякая пилюля рисовалась пустым обычным
+баблом (мутационная проверка показывала `bubble is-in is-group-first
+is-group-last` с одним лишь временем внутри).
+
+**Сделано:** развилка в `renderMessage` (порт tweb :6708-6712 → :7293-7301) →
+`renderServiceMessage` → `createServiceBubble`; превью закреплённого лента
+разрешает сама по `reply_to` (`wrapMessageForReply`, порт
+`messageActionTextNewUnsafe.ts:400-419`). Роль tweb `SERVICE_AS_REGULAR` играет
+`getMessageKind`: звонок (`call`) и подарок (`gift`) по ветке пилюли не идут.
+Правка пилюли (`onMessageEdit`) пересобирает фразу, а не стирает класс `service`.
+Тесты — `components/chat/bubbles.service.test.ts`.
+
+**Осталось долгом:** `messageActionStarGift` — бэкенд его производит, фразы у
+`serviceMsgSegs` для него нет, своего бабла в ванильной ленте тоже нет (пустой
+обычный бабл, как и было); медиа сервисного бабла (`wrapServiceMediaBubble`:
+аватар нового фото чата, кнопка «Установить фото» у `suggest_photo`) не
+портировано — см. шапку `serviceMessage.ts`.
 
 Отдельно: клиентская плашка «Обсуждение началось» собирается в `Chat.tsx:304-330`
 (`messageActionDiscussionStarted`, порт tweb `generateThreadServiceStartMessage`) —
@@ -312,16 +325,33 @@ const STUB_CTX = { firstInGroup: true, lastInGroup: true, isChannel: false,
 `onOpenDatePicker` (сегодня не передаёт — тот же класс пропуска, что и
 `isBroadcast`, §3.1/#75).
 
-## 3.9 Отметка о прочтении — у нас не там, где в tweb
+## 3.9 Отметка о прочтении — ЗАКРЫТО (2026-08-26)
 
 `markRead` зовётся только из `core/hooks/useChatScroll.ts:233,651,665`. В
 `chat/bubbles.ts` его нет вовсе (`grep -n markRead` → пусто), а `BubblesManagers`
 (`chat/bubbles.ts:257`) вообще не содержит `realtime.markRead`.
 
-В tweb это работа **самой ленты**: `tweb bubbles.ts:2978`
-(`this.managers.appMessagesManager.readHistory({peerId, maxId, threadId, …})`),
-`tweb bubbles.ts:2992` (`readMessages` для media_unread) и `tweb bubbles.ts:5752`.
-То есть прочтение обязано переехать в `bubbles.ts`, а не остаться в React-хосте.
+Адреса разведки перепроверены и верны: `tweb bubbles.ts:2978`
+(`readHistory({peerId, maxId, threadId, monoforumThreadId})` внутри `readUnreaded`),
+`:2992` (`readMessages` — ВТОРОЙ канал, mention/unread-reaction, а не media_unread)
+и `:5752` (`onScrolledAllDown`).
+
+**Сделано:** в `bubbles.ts` портирован наблюдатель за непрочитанными —
+`unreadedObserverCallback` (:2289-2295), `onUnreadedInViewport` (:2914-2926),
+`readUnreaded` (:2941-3012), `setUnreadObserver` (:6433-6443) и точки постановки
+в `renderMessage` (:7291-7307 и :7638-7640 — у поста канала наблюдается ВРЕМЯ, а
+не бабл). Ручка — та же `realtime.markRead`, второго пути отметки не заведено;
+эффекты `useChatScroll` под флагом выключены гейтом `OWNS_READ_MARKER` (иначе
+грубая отметка забивала бы точную). Гейт фокуса — `idleController.getFocusPromise()`
+(порт tweb :71-73, у нас его не было). Тесты — `components/chat/bubbles.read.test.ts`
+и `core/hooks/useChatScroll.vanillaFeedGate.test.tsx`.
+
+**Не портировано:** канал `'content'` (:2297-2303, :2979-2992) — упоминаний и
+непрочитанных реакций в модели нет, а `media_unread` ведёт плеер
+(`core/mediaRead.ts`); `unreadedChat`-снимок (:2928-2939) — пир ленты не
+меняется никогда; `onScrolledAllDown` (:5746-5760) — его условие
+`!this.unreaded.size` у нас недостижимо (без `pFlags.unread` наблюдается
+каждый бабл), и порт был бы мёртвым кодом.
 
 ## 3.10 Лестница появления и спиннер первой загрузки
 
@@ -417,9 +447,8 @@ secret, paid) пишутся **параллельно** отдельными м�
 и подключаются по одному.
 
 Порядок по риску «молча сломается»:
-1. сервисные баблы (§3.3) — порт уже написан, нужен один `if` в `renderMessage`;
-2. `markRead` в ленту (§3.9) — иначе после сноса `useChatScroll` чаты перестанут
-   отмечаться прочитанными;
+1. ~~сервисные баблы (§3.3)~~ — СДЕЛАНО;
+2. ~~`markRead` в ленту (§3.9)~~ — СДЕЛАНО;
 3. `isBroadcast` + `channel-post` + просмотры + replies-футер (#75/#71);
 4. аватар серии (#74);
 5. шапка пересылки (§3.4);

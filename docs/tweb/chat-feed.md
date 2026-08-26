@@ -689,10 +689,20 @@ DOM-лента vs React-окно) разобрана в
    одним `mountUnmountGroups` под ScrollSaver. Следствия у нас: подгруженные сверху картинки
    доезжают ПОСЛЕ restore → нужен ResizeObserver-цикл повторных `restore()`
    (`useChatScroll:489-502`) — это компенсация отсутствия «ждать перед mount».
-3. **Read-модель грубее (tweb §5.4).** У нас markRead = «прижат к низу + фокус + активный
-   инстанс» (`useChatScroll:618-666`), maxSeq всего окна; у tweb — per-bubble
-   IntersectionObserver «прочитано то, что реально показалось» + `idleController.getFocusPromise`
-   (фон копит, читает по фокусу) + отдельный канал read-content (mention/reaction).
+3. **Read-модель: у ванильной ленты ПОРТИРОВАНА, у React-ленты грубее (tweb §5.4).**
+   *Императивная лента* (`components/chat/bubbles.ts`, флаг `VITE_VANILLA_FEED=1`): per-bubble
+   наблюдатель «прочитано то, что реально показалось» + `idleController.getFocusPromise()`
+   (фон копит, читает по фокусу) + подъём рубежа до `getHistoryMaxSeq` у низа окна —
+   `unreadedObserverCallback`/`onUnreadedInViewport`/`readUnreaded`/`setUnreadObserver`.
+   Мультиплексора `SuperIntersectionObserver` нет: потребитель у наблюдателя один.
+   Гейт `isInUnread` считается по горизонту прочтения (`dialogs.getReadMaxSeqIfUnread`) —
+   флага `pFlags.unread` на сообщении в нашей модели нет вовсе.
+   *React-лента* (флаг выключен): markRead = «прижат к низу + фокус + активный инстанс»
+   (`useChatScroll`), maxSeq всего загруженного окна; под флагом эти эффекты выключены
+   гейтом `OWNS_READ_MARKER` — двух отметок в одну ручку быть не должно.
+   Не портирован отдельный канал read-content (mention/unread-reaction): непрочитанной
+   реакции на сообщении в модели нет, а `media_unread` («прослушано») ведёт плеер
+   (`core/mediaRead.ts`), как в tweb его ведёт `AudioElement`.
    Исходящих тиков через `unreadOut`/`readOutboxMaxId` у нас нет в этом слое (статусы
    sending/sent несёт ConvMsg).
 4. **Открытие чата с непрочитанными.** tweb: до рендера вычисляет `readMaxId`, грузит окно
@@ -725,8 +735,7 @@ DOM-лента vs React-окно) разобрана в
 Порядок, согласованный с divergence-доком («Вариант 3», Волна 4): сначала §3 (прюнинг:
 `getViewportSlice` — самодостаточный хелпер; `deleteViewportSlice` требует «разгружаемых»
 `reachedTop/Bottom` в `messagesStore`), затем §5.2 (батч + ScrollSaver вокруг ЛЮБОЙ мутации
-высоты), затем §5.4 (per-bubble read через один SuperIntersectionObserver — хелпер
-`helpers/dom/superIntersectionObserver.ts` портируется без изменений).
+высоты). §5.4 (per-bubble read) в императивной ленте уже сделан — см. §9.2/3.
 
 ---
 

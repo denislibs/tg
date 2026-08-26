@@ -5,9 +5,10 @@
 // отрисованных баблов, подписками на события истории, группировкой серий
 // (`bubbleGroups.ts`), секциями дней, очередью рендера, именем автора,
 // пагинацией с обеих сторон, сохранением позиции при вставке над вьюпортом
-// (`ScrollSaver`), липкими датами (`StickyIntersector`), подрезкой вьюпорта и
-// границей непрочитанных. Реакции, время, превью ответа и шапка пересылки
-// приезжают следующими этапами.
+// (`ScrollSaver`), липкими датами (`StickyIntersector`), подрезкой вьюпорта,
+// границей непрочитанных и САМОЙ ОТМЕТКОЙ ПРОЧТЕНИЯ (наблюдатель пересечения по
+// непрочитанным баблам — см. секцию «отметка о прочтении»). Шапка пересылки
+// приезжает следующим этапом.
 //
 // Источник данных — НЕреактивное зеркало окон `core/history/messagesMirror.ts`
 // (порт `apiManagerProxy.mirrors`): страницу истории лента кладёт туда сама
@@ -58,6 +59,11 @@
 //    `history_update` вместе с `tempId` (см. докблок `lib/rootScope.ts` и
 //    `core/history/messagesMirror.ts`), поэтому ре-кей выполняет он —
 //    строки тела перенесены дословно.
+//  • Сервисное сообщение уходит по своей ветке `renderMessage`
+//    (порт bubbles.ts:6708-6712 → :7293-7301), но САМ узел пилюли строит
+//    `serviceMessage.ts` — там же, где дата-разделитель: у tweb оба каркаса
+//    тоже лежат в одном файле (ленте), просто у нас лента разрезана на модули.
+//    Роль `SERVICE_AS_REGULAR` играет `getMessageKind` — см. саму ветку.
 //  • Ветка `hide-name` живёт не здесь, а в `bubbleClasses` (общий с React-лентой
 //    вычислитель модификаторов бабла): в tweb класс ставится прямо по ходу
 //    сборки имени (bubbles.ts:9516/9648), у нас — по тому же признаку
@@ -81,6 +87,7 @@ import windowSize from '@helpers/windowSize'
 import mediaSizes from '@helpers/mediaSizes'
 import { IS_MOBILE, IS_SAFARI } from '@environment/userAgent'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import idleController from '@helpers/idleController'
 import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
@@ -88,7 +95,7 @@ import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
 import { isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
-import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MyMessage, type OurMessageChat } from '@core/models'
+import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -99,7 +106,7 @@ import BubbleGroups, {
   type DateContainer,
   type GroupAvatar,
 } from './bubbleGroups'
-import { createDateBubble as createServiceDateBubble } from './serviceMessage'
+import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
@@ -114,12 +121,13 @@ import wrapSticker from '@components/wrappers/sticker'
 import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
+import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
 import { collectLightboxItems } from '@components/mediaViewer/collectLightboxItems'
 import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
-import { getMediaId } from '@core/messages/messageKind'
+import { getMediaId, getMessageKind } from '@core/messages/messageKind'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { avatarNew } from '@components/avatar'
 import { useI18nStore } from '../../i18n'
@@ -313,6 +321,29 @@ export interface BubblesManagers extends PeerTitleManagers {
     getReadMaxSeqIfUnread(chatId: number): Promise<number>
     getHistoryMaxSeq(chatId: number): Promise<number>
   }
+  /** Порт `appMessagesManager.readHistory({peerId, maxId, threadId,
+   *  monoforumThreadId})` — единственной ручки отметки прочтения, которую зовёт
+   *  лента tweb (bubbles.ts:2978 из `readUnreaded`, :5752 из
+   *  `onScrolledAllDown`).
+   *
+   *  Ручка НЕ НОВАЯ: это та же `realtime.markRead`, которой сегодня отмечает
+   *  чат React-лента (`core/hooks/useChatScroll.ts:233,652,665`) —
+   *  `core/realtime/realtime.ts:95`. Второго пути отметки этот порт не заводит:
+   *  после сноса React-ленты у ручки останется ровно один вызыватель — этот.
+   *
+   *  Расхождения с оригиналом:
+   *   • `upToId` вместо `maxId` — имя нашей ручки; номер КЛИЕНТСКИЙ, в
+   *     серверный его переводит сама ручка (`getServerMessageId`, граница
+   *     `core/history/messageId.ts`);
+   *   • нет `threadId`/`monoforumThreadId`: горизонт чтения у нас один на чат
+   *     (`connectionManager.markRead(peerId, upToSeq)`), отдельного горизонта
+   *     треда владелец не держит;
+   *   • нет `force` (tweb им обходит собственную проверку «уже прочитано»,
+   *     :5757): у нашей ручки такой проверки нет вовсе — дедуп стоит ниже, по
+   *     уже отправленному рубежу (`connectionManager.ts:178`). */
+  realtime: {
+    markRead(args: { peerId: number, upToId: number }): Promise<unknown>
+  }
 }
 
 /** Порт tweb bubbles.ts:308. Ошибка, которой `BatchProcessor` отвергает пачку,
@@ -416,6 +447,37 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // tweb bubbles.ts:597-598 — граница непрочитанных ставится один раз за окно.
   private firstUnreadBubble?: HTMLElement
   private attachedUnreadBubble = false
+
+  // ─── отметка о прочтении (tweb bubbles.ts:551-561) ────────────────────────
+  // Наблюдатель за непрочитанными баблами. В tweb на его месте
+  // `SuperIntersectionObserver` (bubbles.ts:2127) — мультиплексор, который
+  // раздаёт ОДИН `IntersectionObserver` восьми разным колбэкам ленты
+  // (непрочитанные, непрочитанное содержимое, просмотры, метрики чтения,
+  // эффекты стикера и сообщения, подсказка guest-chat). У нас потребитель
+  // ОДИН, поэтому мультиплексора нет: он был бы механизмом без второго
+  // клиента. Корень — тот же (`scrollable.container`).
+  private observer?: IntersectionObserver
+  // tweb :551/553. Карта «наблюдаемый узел → номер, до которого он читает» и
+  // набор УВИДЕННЫХ номеров, ждущих отправки.
+  private unreaded = new Map<HTMLElement, number>()
+  private unreadedSeen = new Set<number>()
+  // tweb :561 — «отметка уже летит»; пока летит, вторую не начинаем. У
+  // оригинала поле объявлено `Promise<void>`, у нас — `unknown`: ответ нашей
+  // ручки не пустой (`{ok: true}`), а гасить его лишним `.then(noop)` значило
+  // бы завести строку ради типа.
+  private readPromise?: Promise<unknown>
+  /**
+   * Горизонт прочтения окна — порт tweb `getRenderReadMaxId`
+   * (bubbles.ts:664-669, `memoizeAsyncWithTTL(getReadMaxIdIfUnread, …, 0)`).
+   *
+   * У оригинала это ЗАПРОС НА КАЖДЫЙ бабл, склеенный мемоизацией на один
+   * проход рендера; наш `renderMessage` синхронен (см. `renderMedia`), поэтому
+   * горизонт снимается СНИМКОМ в `setPeer` — там он и так спрашивается тем же
+   * RPC, что `getHistoryMaxSeq`. Снимок устаревает только В СТОРОНУ БОЛЬШЕГО
+   * числа наблюдаемых баблов (горизонт двигается вперёд), то есть даёт лишнюю
+   * отметку, а не пропущенную.
+   */
+  private renderReadMaxSeq = 0
   // tweb bubbles.ts:604 — «лента короче вьюпорта, поэтому ей подставлена
   // верхняя распорка».
   private isTopPaddingSet = false
@@ -965,10 +1027,98 @@ export default class ChatBubbles implements BubbleGroupsHost {
     bubbleContainer.prepend(attachmentDiv)
   }
 
+  /** Старший номер, который читает этот бабл, — порт tweb bubbles.ts:6608-6609
+   *  (`maxBubbleMid`). У альбома бабл ОДИН на всю группу, поэтому и рубеж
+   *  прочтения у него — старший номер группы, а не номер главного сообщения. */
+  private maxBubbleMid(message: MyMessage): number {
+    const grouped = message._ === 'message' && message.grouped_id
+      ? this.groupedMessages(message.grouped_id)
+      : []
+    return grouped.length ? grouped[grouped.length - 1].id : message.id
+  }
+
+  /**
+   * Сервисный бабл — порт ветки tweb bubbles.ts:6708-7277 (`bubble.className =
+   * 'bubble service'` → `bubbleContainer.replaceChildren()` → `.service-msg`).
+   *
+   * Сам каркас и фразу строит `serviceMessage.ts::createServiceBubble` — там же,
+   * где живёт дата-разделитель; здесь остаётся то, чем владеет лента: адрес
+   * чата и РАЗРЕШЁННОЕ превью закреплённого.
+   *
+   * Превью: у `messageActionPinMessage` параметров нет вовсе, цель лежит в
+   * `reply_to` самого служебного сообщения — 1:1 с оригиналом
+   * (`messageActionTextNewUnsafe.ts:400-419`: `getMessageByPeer(peerId,
+   * reply_to_mid)` → `wrapLinkToMessage`, а без сообщения — ключ
+   * `ActionPinnedNoText`). Догрузка отсутствующего оригинала
+   * (`fetchMessageReplyTo`, :411-413) не портирована: этой ручки у ленты нет —
+   * тот же пробел, что у превью ответа (`renderReply` берёт оригинал из окна).
+   *
+   * `is-group-first`/`is-group-last` не вешаются здесь (в tweb `is-group-last`
+   * ставит сама ветка по `pFlags.is_single`, :7272-7274): у нас «пилюля не
+   * группируется ни с чем» уже выражена `GroupItem.single`
+   * (`bubbleGroups.ts:489` по `isServicePill`), а классы краёв ставит
+   * `BubbleGroup.updateClassNames` — одиночной серии оба.
+   *
+   * Не портированы `wrapServiceMediaBubble` (аватар нового фото чата, кнопка
+   * «Установить фото» у `suggest_photo`) и solid-компоненты подарков/розыгрышей
+   * — см. шапку `serviceMessage.ts`.
+   */
+  private renderServiceMessage(message: MessageService): HTMLElement {
+    const pinnedToMid = message.action._ === 'messageActionPinMessage'
+      ? message.reply_to?.reply_to_msg_id
+      : undefined
+    const pinnedTarget = pinnedToMid !== undefined ? this.getMessage(pinnedToMid) : undefined
+
+    return createServiceBubble({
+      message,
+      pinnedPreview: pinnedTarget ? wrapMessageForReply({ message: pinnedTarget }) : undefined,
+      peerId: this.peerId,
+      mid: message.id,
+      timestamp: message.date,
+      middleware: this.getMiddleware(),
+      managers: this.managers,
+    })
+  }
+
   // Каркас бабла: `.bubble > .bubble-content-wrapper > .bubble-content >
   // .message.spoilers-container` (tweb bubbles.ts:6618-6629). Время и реакции —
   // следующие этапы; медиа заводит `renderMedia`.
   private renderMessage(message: MyMessage): HTMLElement {
+    // Порт tweb :6667-6679 — «этот бабл ещё не прочитан», единственный гейт
+    // наблюдения. Первое слагаемое оригинала (:6667-6669,
+    // `!our && !pFlags.out && !!pFlags.unread`) предмета не имеет: флага
+    // `unread` НА СООБЩЕНИИ у нас нет вовсе (`MessagePFlags`, `core/models.ts`).
+    // Остаётся второе (:6674-6679) — сравнение с горизонтом прочтения, и гейт
+    // `peerId.isAnyChat()` с него снят по той же причине: без флага у личного
+    // чата не было бы наблюдения ВООБЩЕ. Ноль горизонта («непрочитанного нет»,
+    // `dialogsManager.getReadMaxSeqIfUnread`) при этом наблюдает всё — ровно как
+    // у оригинала, где `readMaxId` тоже возвращается нулём и тоже проходит
+    // сравнение (:6676, `readMaxId !== undefined && readMaxId < maxBubbleMid`).
+    // Лишняя отметка безвредна: рубеж дедуплится ниже
+    // (`connectionManager.ts:178`), а пропущенная стоила бы непогасшего бейджа.
+    const maxBubbleMid = this.maxBubbleMid(message)
+    const setUnreadObserver = this.renderReadMaxSeq < maxBubbleMid
+      ? (element: HTMLElement) => this.setUnreadObserver(element, maxBubbleMid)
+      : undefined
+
+    // Порт tweb :6708-6712 (`!isMessage && !SERVICE_AS_REGULAR.has(action._)`)
+    // и :7293-7301 (`returnService` — ветка возвращает бабл СРАЗУ, до медиа,
+    // ответа, времени и имени).
+    //
+    // Роль `SERVICE_AS_REGULAR` (там — только `messageActionPhoneCall`) у нас
+    // играет `getMessageKind`: он и есть ответ «какой бабл у этого служебного
+    // сообщения». Кроме звонка (`call`) он уводит из пилюли ПОДАРОК
+    // (`messageActionStarGift` → `gift`) — расхождение с tweb, где подарок это
+    // сервисный бабл с solid-компонентом `PremiumGiftBubble` (:7128). Своего
+    // бабла у подарка в ванильной ленте пока нет вовсе; пилюлей его рисовать
+    // нельзя — фразы для него у `serviceMsgSegs` нет, и он читался бы «действие
+    // не поддерживается».
+    if(message._ === 'messageService' && getMessageKind(message) === 'service') {
+      const serviceBubble = this.renderServiceMessage(message)
+      setUnreadObserver?.(serviceBubble)
+      return serviceBubble
+    }
+
     const bubble = document.createElement('div')
     bubble.dataset.mid = '' + message.id
     bubble.dataset.peerId = '' + this.peerId
@@ -992,6 +1142,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     contentWrapper.append(bubbleContainer)
     bubble.append(contentWrapper)
+
+    // tweb :7305-7307: у обычного бабла читающий узел — САМ бабл. У поста
+    // канала он другой (см. ниже, у времени).
+    if(!this.chat.isBroadcast) {
+      setUnreadObserver?.(bubble)
+    }
 
     // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
     // встаёт вложение), и сам `bubble` (классы `photo`/`video`/`round`).
@@ -1017,6 +1173,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
       isMegagroup: this.chat.isMegagroup,
     }).status)
     messageDiv.append(timeSpan)
+
+    // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
+    // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
+    // его конца. Время стоит в конце тела, поэтому целью наблюдения оригинал
+    // берёт именно его.
+    if(this.chat.isBroadcast) {
+      setUnreadObserver?.(timeSpan)
+    }
 
     // Реакции — ПОСЛЕ времени, и это не порядок строк, а зависимость: время
     // ПЕРЕЕЗЖАЕТ внутрь контейнера реакций (:9855 `reactionsElement.append(
@@ -1287,7 +1451,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     for (const m of grouped) {
       if (m.id !== message.id) this.bubbles[makeFullMid(this.peerId, m.id)] = bubble
     }
-    bubble.dataset.maxBubbleMid = String(grouped.length ? grouped[grouped.length - 1].id : message.id)
+    bubble.dataset.maxBubbleMid = String(this.maxBubbleMid(message))
 
     const details: RenderedMessage = { message, bubble, reverse }
     this.renderMessagesQueue(details).catch(noop)
@@ -2141,7 +2305,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // tweb :5079-5081 берёт `historyStorage.maxId` синхронно; у нас последнее
     // сообщение чата знает воркерный `dialogsManager` (`dialog.lastMessage.id`),
     // поэтому вопрос задаётся RPC — как и горизонт чтения в `setUnreadDelimiter`.
-    const historyMaxId = await m(this.managers.dialogs.getHistoryMaxSeq(peerId))
+    //
+    // Вторым числом здесь едет ГОРИЗОНТ ПРОЧТЕНИЯ — снимок под наблюдатель
+    // непрочитанных (см. поле `renderReadMaxSeq`; в оригинале его спрашивает
+    // сам `renderMessage`, :6675). Тем же вызовом, что у границы непрочитанных:
+    // владелец факта один.
+    const [historyMaxId, readMaxSeq] = await m(Promise.all([
+      this.managers.dialogs.getHistoryMaxSeq(peerId),
+      this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
+    ]))
     const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
     const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
 
@@ -2200,6 +2372,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // рендер (его гейт `isMounted`).
     const oldChatInner = this.chatInner
     this.cleanup()
+    // ПОСЛЕ `cleanup()`: он сбрасывает снимок вместе с картой наблюдения.
+    this.renderReadMaxSeq = readMaxSeq
     const chatInner = this.chatInner = document.createElement('div')
     if(samePeer) {
       chatInner.className = oldChatInner.className
@@ -2452,6 +2626,128 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb bubbles.ts:2910. */
   public getRenderedLength(): number {
     return this.getRenderedHistory().length
+  }
+
+  // ─── отметка о прочтении ──────────────────────────────────────────────────
+  //
+  // ГДЕ ЭТО ЖИВЁТ В ОРИГИНАЛЕ — В САМОЙ ЛЕНТЕ, и по-другому быть не может:
+  // «прочитано» это «увидено», а видимость бабла знает только тот, кто им
+  // владеет. Скролл-обработчик хоста («прижат к низу — читаем всё») отвечает на
+  // другой вопрос и врёт в обе стороны: длинный пост канала он считает
+  // прочитанным, едва тот коснулся низа, а сообщение, до которого пользователь
+  // домотал в середине истории, не считает вовсе.
+  //
+  // Порт: bubbles.ts:2289-2295 (колбэк), :2914-2926 (`onUnreadedInViewport`),
+  // :2941-3012 (`readUnreaded`), :6433-6443 (`setUnreadObserver`).
+  //
+  // НЕ ПОРТИРОВАН наблюдатель ВТОРОГО типа — `'content'`
+  // (`unreadedContent`/`unreadedContentSeen`/`readContentPromise`,
+  // :2297-2303, :2979-2992). Он отмечает прочитанными УПОМИНАНИЯ и
+  // НЕПРОЧИТАННЫЕ РЕАКЦИИ (`isMentionUnread(message) ||
+  // getUnreadReactions(message)`), а у нас нет ни того факта, ни другого:
+  // непрочитанная реакция на конкретном сообщении в модели отсутствует, а
+  // `pFlags.media_unread` («прослушано») уже принадлежит другому владельцу —
+  // плееру (`core/mediaRead.ts::markMediaPlayed` ← `components/audio.ts`), ровно
+  // как в tweb, где ту же точку гасит `AudioElement`. Заводить здесь второй путь
+  // к тому же факту нельзя.
+  //
+  // НЕ ПОРТИРОВАН `unreadedChat`/`isUnreadedChatChanged` (:2928-2939): он
+  // закрывает окно между синхронной сменой пира в `Chat.setPeer` и `cleanup()`,
+  // а у нас пир ленты не меняется никогда — новый пир это новый инстанс
+  // (`VanillaFeed`), см. шапку файла.
+
+  /** Порт tweb :2289-2295. */
+  private unreadedObserverCallback = (entry: IntersectionObserverEntry) => {
+    if(!entry.isIntersecting) return
+    const target = entry.target as HTMLElement
+    const mid = this.unreaded.get(target)
+    // У оригинала проверки нет (`strictNullChecks` он не включает): там узел
+    // без записи в карте отсекается самим мультиплексором.
+    if(mid === undefined) return
+    this.onUnreadedInViewport(target, mid)
+  }
+
+  /** Порт tweb `onUnreadedInViewport` (:2914-2926) в объёме типа `'history'`. */
+  private onUnreadedInViewport(target: HTMLElement, mid: number) {
+    this.unreadedSeen.add(mid)
+    this.observer?.unobserve(target)
+    this.unreaded.delete(target)
+    this.readUnreaded()
+  }
+
+  /**
+   * Порт tweb `readUnreaded` (:2941-3012) в объёме типа `'history'`.
+   *
+   * Ветка «увиденное дотянулось до низа окна» (:2958-2966) — не оптимизация:
+   * пока лента внизу, прочитанным считается ВЕСЬ чат, включая то, что ещё не
+   * отрисовано (`getHistoryMaxSeq`), иначе бейдж чата не гас бы до конца.
+   *
+   * Ветка `this.unreaded.forEach` (:2968-2972) снимает наблюдение со всего, что
+   * рубеж уже накрыл: узел ниже увиденного читать отдельным кругом незачем.
+   *
+   * Расхождения: гейт `chat.isPreview` (:2942) и лог (:2974-2975, :3001)
+   * предмета не имеют; ветка `'content'` — см. комментарий секции выше.
+   */
+  private readUnreaded() {
+    if(this.readPromise) return
+
+    const middleware = this.getMiddleware()
+    this.readPromise = idleController.getFocusPromise().then(async() => {
+      if(!middleware()) return
+
+      const peerId = this.peerId
+
+      let maxId = Math.max(...Array.from(this.unreadedSeen))
+
+      if(this.scrollable.loadedAll.bottom) {
+        const rendered = this.getRenderedHistory('desc', true)
+        const bubblesMaxId = rendered.length ? splitFullMid(rendered[0]).mid : -1
+        if(maxId >= bubblesMaxId) {
+          maxId = Math.max(await this.managers.dialogs.getHistoryMaxSeq(peerId), maxId)
+          if(!middleware()) return
+        }
+      }
+
+      this.unreaded.forEach((mid, target) => {
+        if(mid <= maxId) {
+          this.onUnreadedInViewport(target, mid)
+        }
+      })
+
+      this.unreadedSeen.clear()
+
+      const callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId })
+
+      // tweb :2997-3009: отказ — один повтор, и в любом исходе замок снимается,
+      // а накопившееся за время полёта уходит следующим кругом. `.catch(noop)`
+      // на повторе — НАША строка: `markRead` у нас RPC-промис, и его
+      // необработанный отказ шумел бы в консоли.
+      return callback().catch(() => {
+        void callback().catch(noop)
+      }).finally(() => {
+        if(!middleware()) return
+
+        this.readPromise = undefined
+
+        if(this.unreadedSeen.size) {
+          this.readUnreaded()
+        }
+      })
+    })
+  }
+
+  /**
+   * Порт tweb `setUnreadObserver` (:6433-6443) в объёме типа `'history'`.
+   *
+   * Аргумента `bubble` рядом с `element` здесь нет: в оригинале он нужен только
+   * ради `mid ??= bubble.maxBubbleMid` (:6435), а единственный оставшийся у нас
+   * вызыватель номер знает и передаёт сам.
+   */
+  private setUnreadObserver(element: HTMLElement, mid: number) {
+    if(!this.observer) return
+
+    this.observer.observe(element)
+    this.unreaded.set(element, mid)
   }
 
   /** Порт tweb `loadMoreHistory` (bubbles.ts:4004).
@@ -2990,6 +3286,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
     })
 
+    // Наблюдатель за непрочитанными — tweb bubbles.ts:2127
+    // (`new SuperIntersectionObserver({root: this.scrollable.container})`).
+    // Корень тот же, мультиплексора нет (см. поле `observer`).
+    this.observer = new IntersectionObserver((entries) => {
+      for(const entry of entries) {
+        this.unreadedObserverCallback(entry)
+      }
+    }, { root: this.scrollable.container })
+
     // tweb bubbles.ts:1411-1413.
     if(!DO_NOT_SLICE_VIEWPORT_ON_SCROLL) {
       this.sliceViewportDebounced = debounce(this.sliceViewport.bind(this), 3000, false, true)
@@ -3123,6 +3428,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const bubble = this.getBubble(makeFullMid(this.peerId, message.id))
     if (!bubble) return
 
+    // ПИЛЮЛЯ: у неё нет ни тела `.message`, ни классов от `bubbleClasses`, и
+    // `classesFor` ниже стёр бы `service`, превратив её в пустой обычный бабл.
+    // tweb этой ловушки не знает: там правка ПЕРЕСОЗДАЁТ бабл целиком
+    // (`bubblesToReplace`/`changeBubbleByBubble`, :6338), а у нас узел тот же.
+    // Содержимое собирается тем же, чем собиралось на рендере: фраза целиком
+    // выводится из `action`, поэтому её надо пересобрать, а не подправить.
+    if (message._ === 'messageService' && bubble.classList.contains('service')) {
+      bubble.replaceChildren(...Array.from(this.renderServiceMessage(message).childNodes))
+      return
+    }
+
     // `className` пишется целиком — значит, стираются и `is-group-first`/
     // `is-group-last`, которыми владеет серия. Возвращает их владелец, а не
     // мы: `updateClassNames` — единственное место, где эти классы считаются.
@@ -3158,6 +3474,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
 
       this.bubbleGroups.removeAndUnmountBubble(bubble)
+
+      // tweb :4314-4316 снимает наблюдение с САМОГО бабла. У поста канала
+      // наблюдаемый узел не бабл, а время внутри него (:7639), поэтому здесь
+      // обход по вхождению: иначе подрезка вьюпорта оставляла бы в карте
+      // оторванный от документа узел на каждый удалённый пост.
+      if (this.observer) {
+        // Удаление ТЕКУЩЕГО ключа по ходу обхода `Map` определено спецификацией
+        // (пропускается только запись, удалённая ДО того, как её посетили), —
+        // копию делать не за чем.
+        for (const element of this.unreaded.keys()) {
+          if (element === bubble || bubble.contains(element)) {
+            this.observer.unobserve(element)
+            this.unreaded.delete(element)
+          }
+        }
+      }
     }
 
     this.scrollable.ignoreNextScrollEvent()
@@ -3187,6 +3519,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.previousStickyDate = undefined
     this.firstUnreadBubble = undefined
     this.attachedUnreadBubble = false
+    // tweb bubbles.ts:4971-4980: наблюдатель непрочитанных смотрел на баблы
+    // ПРОШЛОГО окна. `disconnect()` не убивает сам объект — наблюдать им
+    // дальше можно, как и `stickyIntersector` строкой выше.
+    this.observer?.disconnect()
+    this.unreaded.clear()
+    this.unreadedSeen.clear()
+    this.readPromise = undefined
+    this.renderReadMaxSeq = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
     this.scrolledDown = true
 
@@ -3244,7 +3584,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.selection?.cleanup()
     this.removeHeavyAnimationListener?.()
     this.sliceViewportDebounced?.clearTimeout()
-    // tweb bubbles.ts:4893-4897.
+    // tweb bubbles.ts:4891-4897.
+    this.observer?.disconnect()
+    this.observer = undefined
     this.stickyIntersector?.disconnect()
     this.stickyIntersector = undefined
     if (this.isScrollingTimeout) {

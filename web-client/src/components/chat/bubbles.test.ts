@@ -78,14 +78,18 @@ function managersWith(messages: MyMessage[]) {
   // Окно ВОКРУГ номера (прыжок) и «день → номер» (календарь): в этом файле их
   // никто не зовёт, но в `BubblesManagers` они обязательны — лента умеет
   // прыгать всегда.
+  const markRead = vi.fn(async () => ({ ok: true }))
   const getAround = vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true }))
   const messageByDate = vi.fn(async (): Promise<number | null> => null)
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror },
     dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
+    // (порт tweb bubbles.ts:2941-3012).
+    realtime: { markRead },
   }
-  return Object.assign(managers, { getHistory, fillMirror, getReadMaxSeqIfUnread, getHistoryMaxSeq, getAround, messageByDate })
+  return Object.assign(managers, { getHistory, fillMirror, getReadMaxSeqIfUnread, getHistoryMaxSeq, getAround, messageByDate, markRead })
 }
 
 /** Дать очереди рендера (`BatchProcessor`, `pause(0)` + микрозадачи) разобраться.
@@ -304,6 +308,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
       },
       peers: { fillMirror: async () => {} },
       dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 },
+      realtime: { markRead: async () => ({ ok: true }) },
     })
 
     const promise = b.setPeer()

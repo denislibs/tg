@@ -12,9 +12,9 @@
 //   • нет `getAppWindow`/`onAppWindowChange` (Document PiP, куда tweb
 //     переносит весь DOM): подсистемы PiP-окна у нас нет, слушатели вешаются
 //     на единственное окно вкладки;
-//   • нет `getFocusPromise` (tweb ждёт им фокуса перед отметкой прочтения,
-//     bubbles.ts:2948) — у нас потребителя нет, а заводить его ради полноты
-//     API значило бы завести мёртвый код.
+//   • `getFocusPromise` портирован (tweb :71-73 + подписка `change` в
+//     конструкторе, :123-131): им лента ждёт фокуса перед отметкой прочтения
+//     (`components/chat/bubbles.ts::readUnreaded`, порт bubbles.ts:2948).
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import EventListenerBase from '@helpers/eventListenerBase'
 import { IS_PREVIEW } from '@config/debug'
@@ -27,6 +27,12 @@ export class IdleController extends EventListenerBase<{
   change: (idle: boolean) => void
 }> {
   private _isIdle: boolean
+
+  /** tweb :14-15 — «окно снова в фокусе». Стартует РАЗРЕШЁННЫМ, хотя
+   *  `_isIdle` стартует `true`: после перезагрузки страница ещё никем не
+   *  «покидалась», и ждать нечего (1:1 с оригиналом, :29-30). */
+  private focusPromise: Promise<void> = Promise.resolve()
+  private focusResolve: () => void = () => {}
 
   private onBlur = () => {
     this.isIdle = true
@@ -47,6 +53,23 @@ export class IdleController extends EventListenerBase<{
       // * Prevent setting online after reloading page (комментарий tweb :61)
       window.addEventListener(FOCUS_EVENT_NAME, this.onActive, { once: true, passive: true })
     }
+
+    // tweb :123-131. Ушли в простой — заводим новое ожидание; вернулись —
+    // разрешаем текущее.
+    this.addEventListener('change', (idle) => {
+      if(idle) {
+        this.focusPromise = new Promise((resolve) => {
+          this.focusResolve = resolve
+        })
+      } else {
+        this.focusResolve()
+      }
+    })
+  }
+
+  /** tweb :71-73 — дождаться, пока окно снова окажется в фокусе. */
+  public getFocusPromise() {
+    return this.focusPromise
   }
 
   public get isIdle() {

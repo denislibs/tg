@@ -84,13 +84,17 @@ function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, ne
   })
   const messageByDate = vi.fn(async (): Promise<number | null> => null)
   const getReadMaxSeqIfUnread = vi.fn(async () => 0)
+  const markRead = vi.fn(async () => ({ ok: true }))
   const getHistoryMaxSeq = vi.fn(async () => 0)
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror: vi.fn(async () => {}) },
     dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
+    // (порт tweb bubbles.ts:2941-3012).
+    realtime: { markRead },
   }
-  return Object.assign(managers, { calls, aroundCalls, getHistory, getAround, messageByDate, getReadMaxSeqIfUnread, getHistoryMaxSeq })
+  return Object.assign(managers, { calls, aroundCalls, getHistory, getAround, messageByDate, getReadMaxSeqIfUnread, getHistoryMaxSeq, markRead })
 }
 
 /** Троттлинг Scrollable в этой среде — `setTimeout(24)`
