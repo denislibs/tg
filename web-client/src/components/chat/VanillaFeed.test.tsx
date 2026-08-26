@@ -13,13 +13,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import rootScope from '@lib/rootScope'
+import contextMenuController from '@helpers/contextMenuController'
 import { ManagersProvider } from '@core/hooks/useManagers'
-import { resetMessagesMirror, winKey } from '@core/history/messagesMirror'
+import { putMirrorPage, resetMessagesMirror, winKey } from '@core/history/messagesMirror'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageReal, MyMessage } from '@core/models'
 import { generateMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
+import type { ContextMenuPopups } from './contextMenu'
 import VanillaFeed from './VanillaFeed'
 
 const CHAT = 50
@@ -55,6 +57,7 @@ function mount(
     peerId: PeerId
     threadRootId?: number
     isMegagroup?: boolean
+    menuPopups?: ContextMenuPopups
     onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
   } = { peerId: CHAT },
 ) {
@@ -196,5 +199,114 @@ describe('VanillaFeed — проводка императивной ленты �
     rootScope.dispatchEventSingle('history_append', { storageKey: winKey(CHAT), message: msg(cid(2)) })
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(bubblesIn(detached)).toHaveLength(1)
+  })
+})
+
+// ── Контекстное меню сообщения ──────────────────────────────────────────────
+//
+// Шестая строка проводки — `createContextMenu` в `ChatContext`: лента поднимает
+// им порт `chat/contextMenu.ts` и вешает на свой контейнер (порт tweb
+// bubbles.ts:1478 `this.chat.contextMenu.attachTo(container)`), а гасит в
+// `destroy()` (порт chat.ts:845 `this.contextMenu?.destroy()`). Состав пунктов и
+// их условия проверяет `contextMenu.test.ts`; здесь — ровно ПРОВОДКА.
+
+/** Правый клик — десктопный путь `attachContextMenuListener` (как в
+ *  `contextMenu.test.ts`). */
+function rightClick(target: HTMLElement) {
+  const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+  Object.defineProperty(e, 'pageX', { value: 10 })
+  Object.defineProperty(e, 'pageY', { value: 10 })
+  target.dispatchEvent(e)
+}
+
+const menuElement = () => document.getElementById('bubble-contextmenu')
+
+/** Дать отработать `verify()`/`ButtonMenu` — меню строится асинхронно. */
+const flushMenu = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+function makeMenuPopups() {
+  return {
+    showPinMessage: vi.fn(),
+    showDeleteMessages: vi.fn(),
+    showForward: vi.fn(),
+    showMessageReport: vi.fn(),
+    showReactedList: vi.fn(),
+    showStatistics: vi.fn(),
+    showFactCheckEditor: vi.fn(),
+  } satisfies ContextMenuPopups
+}
+
+/** Цель сообщений у меню — ЗЕРКАЛО окна (`messagesMirror`), а не дерево ленты:
+ *  наполняем его тем же, что отдаёт `getHistory`. */
+async function mountWithMenu(messages: MyMessage[]) {
+  const popups = makeMenuPopups()
+  putMirrorPage(winKey(CHAT), messages)
+  const view = mount(messages, { peerId: CHAT, menuPopups: popups })
+  await vi.waitFor(() => {
+    expect(bubblesIn(view.container)).toHaveLength(messages.length)
+  })
+  return { ...view, popups }
+}
+
+describe('VanillaFeed — контекстное меню сообщения в ленте', () => {
+  afterEach(() => {
+    contextMenuController.close()
+    // Закрытие только СНИМАЕТ `active`, а узел `destroy()` убирает через 300мс
+    // (порт tweb contextMenu.ts:466-476). В следующем тесте он бы ещё лежал в
+    // body и врал, что меню открылось.
+    document.querySelectorAll('#bubble-contextmenu').forEach((el) => el.remove())
+  })
+
+  it('правый клик по баблу ленты открывает меню (`createContextMenu` + attachTo, tweb :1478)', async () => {
+    const { container } = await mountWithMenu([msg(cid(1))])
+
+    rightClick(container.querySelector<HTMLElement>('.bubble:not(.service) .bubble-content')!)
+    await flushMenu()
+
+    const element = menuElement()
+    expect(element).not.toBeNull()
+    // openBtnMenu — меню именно ОТКРЫТО, а не просто построено.
+    expect(element!.classList.contains('active')).toBe(true)
+  })
+
+  it('по плейсхолдеру пустого чата (`bubble-first`) меню не открывается', async () => {
+    // `renderEmptyPlaceholder` (tweb bubbles.ts:10785) лента ещё не портировала,
+    // поэтому класс ставится на настоящий бабл — тем же приёмом, каким этот же
+    // отсев пинают `selection.test.ts:110` и `replySwipe.test.ts:445-447`.
+    const { container } = await mountWithMenu([msg(cid(1))])
+    const bubble = container.querySelector<HTMLElement>('.bubble:not(.service)')!
+    bubble.classList.add('bubble-first')
+
+    rightClick(bubble.querySelector<HTMLElement>('.bubble-content')!)
+    await flushMenu()
+
+    expect(menuElement()).toBeNull()
+  })
+
+  it('пункт меню доезжает до попапа хоста парой «пир + номера»', async () => {
+    const { container, popups } = await mountWithMenu([msg(cid(1))])
+
+    rightClick(container.querySelector<HTMLElement>('.bubble:not(.service) .bubble-content')!)
+    await flushMenu()
+
+    const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === 'Delete')
+    expect(item, 'пункт «Delete» не найден').toBeTruthy()
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(popups.showDeleteMessages).toHaveBeenCalledWith(CHAT, [cid(1)])
+  })
+
+  it('размонтирование отвязывает меню (`contextMenu.destroy()` в bubbles.destroy)', async () => {
+    const { container, unmount } = await mountWithMenu([msg(cid(1))])
+    // Дерево уходит из документа вместе с хостом — держим ссылку, иначе после
+    // размонтирования кликать будет некуда.
+    const bubble = container.querySelector<HTMLElement>('.bubble:not(.service) .bubble-content')!
+
+    unmount()
+    rightClick(bubble)
+    await flushMenu()
+
+    expect(menuElement()).toBeNull()
   })
 })

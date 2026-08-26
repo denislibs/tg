@@ -39,9 +39,9 @@
 //  • `attachContainerListeners()` портирован ЧАСТИЧНО — ровно тем составом, у
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
 //    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
-//    bubbles.ts:1496-1572). Контекстное меню и выделение — поведение, которого
-//    ещё нет; пустые ветки под них = мёртвый код (CLAUDE.md). Зовёт его
-//    конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
+//    bubbles.ts:1496-1572), плюс контекстное меню (:1478) и выделение (:1479) —
+//    оба лента поднимает фабрикой хоста (`createContextMenu`/`createSelection`).
+//    Зовёт его конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
 //    `Chat`-хоста нет.
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
 //    → `reverse` → `prepareToSaveScroll`/`restoreScroll`) и ожиданиями
@@ -104,6 +104,8 @@ import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
+import type ChatContextMenu from './contextMenu'
+import type { ContextMenuBubbles } from './contextMenu'
 import type ChatSelection from './selection'
 import type { SelectionBubbles } from './selection'
 import wrapPhoto from '@components/wrappers/photo'
@@ -241,6 +243,18 @@ export interface ChatContext {
    * действий и попапы.
    */
   createSelection?(bubbles: SelectionBubbles): ChatSelection
+  /**
+   * Порт tweb `Chat.contextMenu` (chat.ts:614 `new ChatContextMenu(this,
+   * this.managers)`, лента вешает его в `attachContainerListeners`,
+   * bubbles.ts:1478) — контекстное меню сообщения.
+   *
+   * ФАБРИКА по той же причине, что `createSelection`: связь двусторонняя —
+   * меню читает у ленты живой режим выделения (`ContextMenuBubbles.selection`),
+   * а лента отдаёт меню свой контейнер. Узел разрубает тот, кто держит обоих:
+   * в tweb `Chat`, у нас хост (`VanillaFeed`). Он же владелец попапов, которые
+   * открывают пункты, — поэтому собрать меню может только он.
+   */
+  createContextMenu?(bubbles: ContextMenuBubbles): ChatContextMenu
   /** Порт tweb `chat.canSend()` (chat.ts, без аргумента — действие
    *  `send_messages`): гейт СВАЙП-ответа (bubbles.ts:1548). Асинхронный, как в
    *  оригинале. Не передан — жест не начинается вовсе. */
@@ -421,6 +435,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  Живёт здесь, а не в `ChatContext`, потому что создаётся уже с готовой
    *  лентой (см. `createSelection`). */
   public selection?: ChatSelection
+
+  /** Порт tweb `this.chat.contextMenu` (bubbles.ts:1478). Живёт здесь, а не в
+   *  `ChatContext`, по той же причине, что `selection`: создаётся уже с готовой
+   *  лентой (см. `createContextMenu`). */
+  private contextMenu?: ChatContextMenu
 
   /** Порт поля tweb `this.replySwipeHandler` (bubbles.ts:1543) — слушатели
    *  жеста висят на контейнере и снимаются на `destroy`. */
@@ -1516,9 +1535,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  (:3479) и имя автора/упоминание (:3360). Рядом с ним лента вешает свои
    *  слушатели: выделение (:1479), даблклик-ответ (:1497) и свайп-ответ (:1543).
    *
-   *  Не портировано КОНТЕКСТНОЕ МЕНЮ — в tweb его вешает первая же строка тела
-   *  (`this.chat.contextMenu.attachTo(container)`, :1478); поведения ещё нет. */
+   *  Контекстное меню и выделение вешаются ПЕРЕД ним и в этом же порядке —
+   *  тем же, что у оригинала (:1478 `contextMenu.attachTo`, :1479
+   *  `selection.attachListeners`). */
   private attachContainerListeners() {
+    // Контекстное меню — tweb bubbles.ts:1478. Слушатели оно вешает себе само
+    // (внутри `attachTo` собственный `ListenerSetter`), лента отдаёт только узел.
+    this.contextMenu = this.chat.createContextMenu?.(this)
+    this.contextMenu?.attachTo(this.container)
+
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
 
     // Выделение — tweb bubbles.ts:1479. Слушатели ему лента вешает на СВОЙ
@@ -3210,8 +3235,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // который её переживает, — без снятия это утечка на каждый открытый чат.
     this.replySwipeHandler?.removeListeners()
     this.replySwipeHandler = undefined
-    // tweb отвязывает выделение через `Chat.destroy` → `selection.cleanup()`;
-    // у нас владелец связки — лента, она же её и рвёт.
+    // tweb отвязывает меню и выделение через `Chat.destroy` (chat.ts:845-846:
+    // `this.contextMenu?.destroy()`, затем `selection?.attachListeners(undefined,
+    // undefined)`); у нас владелец обеих связок — лента, она же их и рвёт.
+    this.contextMenu?.destroy()
+    this.contextMenu = undefined
     this.selection?.attachListeners(undefined, undefined)
     this.selection?.cleanup()
     this.removeHeavyAnimationListener?.()

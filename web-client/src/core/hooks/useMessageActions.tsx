@@ -6,6 +6,15 @@
 // list (gated by chat kind and the target message). The View renders the menu /
 // dialogs from the returned state and wires the feed's context-menu open to
 // `openMsgMenu`.
+//
+// ДВА ВЫЗЫВАЮЩИХ. Действия бывают двух видов: те, что читают цель из состояния
+// React-меню (`menuRawMsg()`), и те, что принимают адрес ЯВНО — `(peerId,
+// mid[s])`. Явные нужны потому, что второе меню сообщения — ванильное
+// (`components/chat/contextMenu.ts`, порт tweb `ChatContextMenu`): цель оно
+// держит своей и `openMsgMenu` не зовёт. Второго НАБОРА действий у него при
+// этом нет — оно приходит ровно в эти функции (проводка: `Chat.tsx` →
+// `components/chat/VanillaFeed.tsx`), а пункты React-меню стали их тонкими
+// обёртками, подставляющими `menuRawMsg()`.
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
@@ -43,7 +52,10 @@ import { getPeerPhotoId } from '../peers/peer'
 // closing — меню играет exit-анимацию ui-kit Menu; из стейта убирается только
 // по onExitComplete (destroyMsgMenu), иначе размонтирование срезало бы анимацию.
 type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
-type DelState = { ids: number[]; canRevoke: boolean }
+// peerId — адресат удаления: действие приходит парой «пир + номера» (её же
+// передаёт ванильное меню, tweb contextMenu.ts:2056 `PopupDeleteMessages(
+// peerId, mids, chatType)`).
+type DelState = { peerId: number; ids: number[]; canRevoke: boolean }
 type ViewersState = { x: number; y: number; names: string[] }
 type ReactedRow = { name: string; photoId?: number; emoji: string }
 type ReactedState = { x: number; y: number; rows: ReactedRow[] }
@@ -211,14 +223,22 @@ export function useMessageActions({
   }
 
   const startEdit = () => {
-    const m = msgMenu && msgs[msgMenu.idx]
     const raw = menuRawMsg()
-    if (m && raw?.id != null) {
-      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
-      setReply(null)
-      // Composer prefills its draft + focuses when `editing` becomes set.
-    }
+    if (raw?.id != null) startEditFor(raw.id)
     closeMsgMenu()
+  }
+  // Правка по ЯВНОМУ номеру — форма tweb `chat.input.initMessageEditing(mid)`
+  // (contextMenu.ts:1912). Текст и сущности достаём из окна сами: композеру
+  // нужен исходник, а не только адрес. Ряды витрины (`msgs`) и окна (`win.msgs`)
+  // выровнены по индексу — на этом же стоит `openMsgMenu`.
+  const startEditFor = (mid: number) => {
+    const idx = win.msgs.findIndex((m) => m.id === mid)
+    const m = idx >= 0 ? msgs[idx] : undefined
+    const raw = idx >= 0 ? win.msgs[idx] : undefined
+    if (!m || raw?.id == null) return
+    // Composer prefills its draft + focuses when `editing` becomes set.
+    setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw._ === 'message' ? raw.entities : undefined })
+    setReply(null)
   }
 
   const copyMsg = () => {
@@ -293,18 +313,21 @@ export function useMessageActions({
     chat.type === 'private' || ids.every((id) => win.msgs.find((m) => m.id === id)?.fromId === meId)
   const openDelete = () => {
     const raw = menuRawMsg()
-    if (raw?.id != null) setDelIds({ ids: [raw.id], canRevoke: canRevokeAll([raw.id]) })
+    if (raw?.id != null) openDeleteFor(numericChatId, [raw.id])
     closeMsgMenu()
   }
-  // Open the delete-confirm for an arbitrary id set (the selection bar's bulk delete).
-  const openDeleteFor = (ids: number[]) => setDelIds({ ids, canRevoke: canRevokeAll(ids) })
+  // Подтверждение удаления по ЯВНОЙ паре «пир + номера»: так его зовут плашка
+  // выделения, медиавьювер и ванильное меню (tweb contextMenu.ts:2056).
+  const openDeleteFor = (peerId: number, ids: number[]) =>
+    setDelIds({ peerId, ids, canRevoke: canRevokeAll(ids) })
   const doDelete = (revoke: boolean) => {
     if (!delIds || !isRealChat) return setDelIds(null)
     // deleteMessage после успеха REST удаляет из SSOT воркера; main-стор убираем
     // здесь (applyDelete), а WS delete_message затем реконсилит (идемпотентно).
     const store = useMessagesStore.getState()
+    const peerId = delIds.peerId
     for (const id of delIds.ids) {
-      void managers.messages.deleteMessage(numericChatId, id, revoke).then(() => store.applyDelete(numericChatId, id))
+      void managers.messages.deleteMessage(peerId, id, revoke).then(() => store.applyDelete(peerId, id))
     }
     setDelIds(null)
     clearSelection()
@@ -315,16 +338,30 @@ export function useMessageActions({
   const openReport = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.id != null && isRealChat) useReportStore.getState().open({ peerId: numericChatId, msgId: raw.id })
+    if (raw?.id != null) openReportFor(numericChatId, [raw.id])
+  }
+  // Явная пара «пир + номера» — форма tweb `showMessageReport(peerId, mids)`
+  // (contextMenu.ts:1216-1220), которой пользуется ванильное меню. Наш
+  // ReportPopup адресует ОДНО сообщение (`ReportTarget.msgId`), поэтому из
+  // набора берётся первое: жалобы на пачку у нас нет.
+  const openReportFor = (peerId: number, mids: number[]) => {
+    if (!isRealChat || !mids.length) return
+    useReportStore.getState().open({ peerId, msgId: mids[0] })
   }
 
   const openForward = () => {
     const raw = menuRawMsg()
-    if (raw?.id != null) { forwardSourceRef.current = null; forwardPreviewRef.current = null; setForwardIds([raw.id]) }
+    if (raw?.id != null) openForwardFor(numericChatId, [raw.id])
     closeMsgMenu()
   }
-  // Open the forward picker for an arbitrary id set (the selection bar's bulk forward).
-  const openForwardFor = (ids: number[]) => { forwardSourceRef.current = null; forwardPreviewRef.current = null; setForwardIds(ids) }
+  // Пикер пересылки по ЯВНОЙ паре «пир-источник + номера» — форма tweb
+  // `showForwardPopup({[peerId]: mids})` (contextMenu.ts:2028). Источник кладём
+  // в реф, откуда его читает doForward; превью там же считается лениво.
+  const openForwardFor = (peerId: number, ids: number[]) => {
+    forwardSourceRef.current = peerId
+    forwardPreviewRef.current = null
+    setForwardIds(ids)
+  }
   // «Переслать в другой чат» из плашки форварда: источник и превью переносим явно
   // (мы не в исходном чате, его сообщений нет в текущем msgs).
   const openForwardFrom = (sourceChatId: number, ids: number[], preview: { count: number; text: string; hasCaption: boolean }) => {
@@ -398,21 +435,31 @@ export function useMessageActions({
 
   const togglePin = () => {
     const raw = menuRawMsg()
-    if (raw?.id != null && isRealChat) {
-      const pinned = pins.some((p) => p.id === raw.id)
-      void (pinned ? managers.messages.unpin(numericChatId, raw.id) : managers.messages.pin(numericChatId, raw.id))
-    }
+    if (raw?.id != null) pinMessage(numericChatId, raw.id, pins.some((p) => p.id === raw.id))
     closeMsgMenu()
+  }
+  // Явная тройка — форма tweb `PopupPinMessage(peerId, mid)` / `(…, true)`
+  // (contextMenu.ts:1994-2000): «закрепить» и «открепить» там ДВА пункта с
+  // разными обработчиками, поэтому направление приезжает аргументом, а не
+  // выводится из `pins` — своего списка закреплённых у ванильного меню нет.
+  const pinMessage = (peerId: number, mid: number, unpin?: boolean) => {
+    if (!isRealChat) return
+    void (unpin ? managers.messages.unpin(peerId, mid) : managers.messages.pin(peerId, mid))
   }
 
   // Download the original media bytes (the context-menu "Загрузить" action). The
   // content endpoint is same-origin, so the <a download> forces a save.
   // Токен-URL сознательно (Task 7): это БАЙТОВОЕ скачивание файла браузером,
   // категория «МОЖНО: bytes прямым fetch», не картинка для <img>.
-  const downloadMsg = async () => {
+  const downloadMsg = () => {
     const mediaId = getMenuMediaId()
     closeMsgMenu()
-    if (mediaId == null) return
+    if (mediaId != null) void downloadMedia(mediaId)
+  }
+  // Скачивание по ЯВНОМУ адресу вложения — сюда же приходит пункт «Download»
+  // ванильного меню (tweb `appDownloadManager.downloadToDisc({media})`,
+  // contextMenu.ts:2189).
+  const downloadMedia = async (mediaId: number) => {
     const [meta, url] = await Promise.all([
       managers.media.meta(mediaId),
       managers.media.contentUrl(mediaId),
@@ -535,14 +582,31 @@ export function useMessageActions({
   const openPostStats = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.id != null) setPostStats({ msgId: raw.id })
+    if (raw?.id != null) openPostStatsFor(numericChatId, raw.id)
+  }
+  // Явная пара — форма tweb «таб `AppStatisticsTab` правой колонки»
+  // (contextMenu.ts:2108-2112). Оверлей `PostStats` смонтирован на ОТКРЫТЫЙ чат
+  // (`ChatMsgActionPopups` отдаёт ему `chatId={numericChatId}`), поэтому пир
+  // сверяется, а не запоминается: с чужим адресом открылся бы не тот пост.
+  const openPostStatsFor = (peerId: number, mid: number) => {
+    if (peerId !== numericChatId) return
+    setPostStats({ msgId: mid })
   }
 
   // «Проверка фактов» (tweb onEditFactCheckClick): открыть редактор (add/edit).
   const openFactCheckEditor = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw != null && isRealChat) setFactCheckEdit({ msgId: raw.id, initial: raw._ === 'message' ? raw.factcheck : undefined })
+    if (raw != null) openFactCheckEditorFor(numericChatId, raw.id)
+  }
+  // Явная пара — форма tweb `onEditFactCheckClick` (contextMenu.ts:1916-1992).
+  // Сохраняет редактор через `submitFactCheck`, а тот адресует открытый чат —
+  // поэтому пир сверяется, как и у статистики.
+  const openFactCheckEditorFor = (peerId: number, mid: number) => {
+    if (!isRealChat || peerId !== numericChatId) return
+    const raw = win.msgs.find((m) => m.id === mid)
+    if (!raw) return
+    setFactCheckEdit({ msgId: raw.id, initial: raw._ === 'message' ? raw.factcheck : undefined })
   }
   // Сохранить проверку: разбор markdown (сущности как при отправке), REST + оптимистичный патч стора.
   const submitFactCheck = async (text: string, country: string) => {
@@ -735,6 +799,8 @@ export function useMessageActions({
     factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor, openForwardFrom,
+    // Действия с ЯВНЫМ адресом — их зовёт ванильное меню (см. шапку файла).
+    pinMessage, openReportFor, openPostStatsFor, openFactCheckEditorFor, startEditFor, downloadMedia,
     replyAnother, pickReplyAnotherChat, closeReplyAnother: () => setReplyAnother(null),
     viewers, closeViewers: () => setViewers(null),
     reacted, closeReacted: () => setReacted(null),

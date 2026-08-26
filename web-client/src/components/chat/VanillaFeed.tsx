@@ -12,12 +12,15 @@
 // `.bubbles` остаётся flex-ребёнком `.chat`, как в оригинале.
 import { useLayoutEffect, useRef } from 'react'
 import { winKey } from '@core/history/messagesMirror'
+import { getMediaId } from '@core/messages/messageKind'
 import ChatBubbles from './bubbles'
+import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
+import { useSearchStore } from '../../stores/searchStore'
 import noop from '@helpers/noop'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onSelection, onOpenDatePicker }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -41,6 +44,21 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
   /** Порт tweb `chat.input.initMessageReply(...)`: жест ответа отдаёт хосту
    *  номер, плашку над композером собирает владелец композера. */
   onReply?: (mid: number) => void
+  /** Порт tweb `chat.input.initMessageEditing(mid)` (contextMenu.ts:1912) —
+   *  пункт «Изменить». Как и ответ, наружу едет ТОЛЬКО номер: черновик правки
+   *  наполняет владелец композера (`Chat.tsx` через `startEditFor`). */
+  onEdit?: (mid: number) => void
+  /** Порт tweb `appDownloadManager.downloadToDisc({media})` (contextMenu.ts:2189)
+   *  в нашей адресации медиа: меню знает сообщение, хост — как достать байты по
+   *  `mediaId` (тот же вызов делает пункт «Download» React-меню). */
+  onDownload?: (mediaId: number) => void
+  /**
+   * Носители попапов контекстного меню — порт `ContextMenuPopups`
+   * (`chat/contextMenu.ts`). В tweb пункты меню сами зовут
+   * `PopupElement.createPopup(...)`; ни одного из этих попапов в ванильном виде
+   * у нас нет, их владелец React-хост — та же граница, что у плашки выделения.
+   */
+  menuPopups?: ContextMenuPopups
   /**
    * Режим выделения — порт роли `Chat` (tweb chat.ts:615 создаёт
    * `ChatSelection`, а `selection.ts:1008-1173` рисует плашку вместо
@@ -61,8 +79,8 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
-  const gesture = useRef({ canSend, canSendPlain, onReply, onSelection, onOpenDatePicker })
-  gesture.current = { canSend, canSendPlain, onReply, onSelection, onOpenDatePicker }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker })
+  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -114,6 +132,54 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         navigation: {
           openDatePicker: (initDate, onPick) => gesture.current.onOpenDatePicker?.(initDate, onPick),
         },
+        // Меню сообщения — владелец хост, как `Chat` в оригинале: пункты
+        // открывают попапы, а попапы наши React-овские. ВСЁ, что меню зовёт
+        // наружу, читается ЧЕРЕЗ РЕФ (по той же причине, что права ниже): ни
+        // один из этих колбэков не стабилен между рендерами хоста, а меню
+        // создаётся один раз на жизнь ленты.
+        createContextMenu: (bubblesPort) => new ChatContextMenu(
+          {
+            peerId,
+            messagesStorageKey: winKey(peerId, threadRootId),
+            canSend: () => gesture.current.canSend ?? false,
+            // Порт tweb `!!chat.input.messageInput` (contextMenu.ts:944, 961,
+            // 1012, 1393) — БУКВАЛЬНО «узел ввода существует»: в оригинале его
+            // заводит `input.constructPeerHelpers()` (chat.ts:630 →
+            // input.ts:1396). У нас это `.input-message-input` композера
+            // (`components/composer/MessageInput.tsx`), сосед ленты внутри
+            // `.chat`. Спрашиваем ДОМ, а не право: право в том же `verify` —
+            // отдельное слагаемое (`canSend()`).
+            hasMessageInput: () => !!chatColumn.querySelector('.input-message-input'),
+            initMessageReply: (mid) => gesture.current.onReply?.(mid),
+            initMessageEditing: (mid) => gesture.current.onEdit?.(mid),
+            // Порт `chat.initSearch({query, filterPeerId})` (contextMenu.ts:1046).
+            // Поиск по чату у нас живёт в сторе с той же сигнатурой
+            // (`stores/searchStore.ts:82`), поэтому хосту его проксировать нечего.
+            initSearch: (options) => useSearchStore.getState().initSearch(peerId, options),
+            // `canForward` не передаётся: факта `pFlags.noforwards` в модели нет
+            // вовсе — см. докблок самого поля в `contextMenu.ts`.
+          },
+          bubblesPort,
+          {
+            messages: managers.messages,
+            chats: managers.chats,
+            media: {
+              downloadToDisc: (message) => {
+                const mediaId = getMediaId(message)
+                if (mediaId != null) gesture.current.onDownload?.(mediaId)
+              },
+            },
+          },
+          {
+            showPinMessage: (p, mid, unpin) => gesture.current.menuPopups?.showPinMessage(p, mid, unpin),
+            showDeleteMessages: (p, mids) => gesture.current.menuPopups?.showDeleteMessages(p, mids),
+            showForward: (fromPeerIdsMids) => gesture.current.menuPopups?.showForward(fromPeerIdsMids),
+            showMessageReport: (p, mids, onSuccess) => gesture.current.menuPopups?.showMessageReport(p, mids, onSuccess),
+            showReactedList: (p, mid, at) => gesture.current.menuPopups?.showReactedList(p, mid, at),
+            showStatistics: (p, mid) => gesture.current.menuPopups?.showStatistics(p, mid),
+            showFactCheckEditor: (p, mid) => gesture.current.menuPopups?.showFactCheckEditor(p, mid),
+          },
+        ),
         // Владелец выделения — хост, как `Chat` в оригинале: это он знает про
         // плашку действий. Менеджер прав не передаётся: факта «нельзя
         // переслать/удалить» на клиенте нет вовсе (задача #73) — порт объявлен

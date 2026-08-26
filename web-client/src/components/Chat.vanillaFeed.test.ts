@@ -50,6 +50,42 @@ describe('Chat.tsx — монтирование императивной лен�
     expect(jsx).toContain('isMegagroup={isGroup}')
   })
 
+  // Размер страницы истории у канала свой — 20 против общего pageCount (порт
+  // tweb bubbles.ts:11389-11391 `isBroadcast ? 20 : ...`). Признак ленте
+  // неоткуда взять самой, а без него канал грузил бы страницу вдвое больше.
+  it('лента получает `isBroadcast` — иначе у канала не тот размер страницы', () => {
+    const jsx = CHAT_TSX.match(/<VanillaFeed[^/>]*\/>/)?.[0] ?? ''
+    expect(jsx).toContain('isBroadcast={isChannel}')
+  })
+
+  // Контекстное меню сообщения — порт `chat/contextMenu.ts`; его носители
+  // (попапы + вход в правку + скачивание) принадлежат хосту, лента только
+  // объявляет намерение. Без этих трёх пропов меню поднимается пустым — все
+  // семь попапов проваливаются в `undefined`.
+  it('лента получает носителей контекстного меню: menuPopups, onEdit, onDownload', () => {
+    const jsx = CHAT_TSX.match(/<VanillaFeed[^/>]*\/>/)?.[0] ?? ''
+    expect(jsx).toContain('menuPopups={feedMenuPopups}')
+    expect(jsx).toContain('onEdit={startEditFor}')
+    expect(jsx).toContain('onDownload={downloadMedia}')
+  })
+
+  // Ключевое: второго НАБОРА действий у ванильного меню нет — все семь попапов
+  // ведут в те же функции `useMessageActions`, что и пункты React-меню.
+  it('носители попапов — действия useMessageActions, а не собственные', () => {
+    const table = CHAT_TSX.match(/const feedMenuPopups = \{[\s\S]*?\n  \}/)?.[0] ?? ''
+    expect(table).toContain('showPinMessage: pinMessage')
+    expect(table).toContain('showDeleteMessages: openDeleteFor')
+    expect(table).toContain('showMessageReport: openReportFor')
+    expect(table).toContain('showStatistics: openPostStatsFor')
+    expect(table).toContain('showFactCheckEditor: openFactCheckEditorFor')
+    // Две записи — адаптеры формы (запись `{[peerId]: mids}` и якорь попапа),
+    // но и они зовут те же действия; см. onFeedForward / onFeedReactedList.
+    expect(table).toContain('showForward: onFeedForward')
+    expect(table).toContain('showReactedList: onFeedReactedList')
+    expect(CHAT_TSX).toContain('openForwardFor(Number(fromPeerId), mids)')
+    expect(CHAT_TSX).toContain('void showReactedUsers(mid, at.x, at.y)')
+  })
+
   it('React-лента — ровно ВТОРАЯ ветка той же развилки (обе не живут одновременно)', () => {
     // Один гейт на весь блок: два независимых условия рано или поздно разъедутся
     // и дали бы две ленты в одном .chat сразу.

@@ -676,6 +676,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
   const { openMsgMenu, toggleReaction, showReactedUsers, openStarReaction, openDeleteFor, openForwardFor, openForwardFrom } = msgActions
+  const { pinMessage, openReportFor, openPostStatsFor, openFactCheckEditorFor, startEditFor, downloadMedia } = msgActions
 
   // First-load reveal policy: grace-delayed spinner (no flash on cache hits),
   // `feedLoading` to gate the list, and the open-chat ladder arming.
@@ -881,11 +882,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
       jumpToMessage: (it) => { if (it.seq != null) jumpToSeqE(it.seq) },
       onForward: (mid, close) => {
         viewerActionCloseRef.current = () => { void close() }
-        openForwardFor([mid])
+        openForwardFor(numericChatId, [mid])
       },
       onDelete: (mid, closeFromMedia) => {
         viewerActionCloseRef.current = closeFromMedia
-        openDeleteFor([mid])
+        openDeleteFor(numericChatId, [mid])
       },
       loadMoreMedia,
     })
@@ -925,7 +926,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     }
   })
   // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).
-  const forwardMsgE = useEvent((msgId: number) => openForwardFor([msgId]))
+  const forwardMsgE = useEvent((msgId: number) => openForwardFor(numericChatId, [msgId]))
   // feedFns строится НИЖЕ (после onComposerPickSticker — см. sendSticker в
   // объекте), т.к. ей нужен slowmodeMarkSent из useSlowmode, объявленного
   // дальше по функции.
@@ -1156,6 +1157,38 @@ export default function Chat({ chat, onBack, thread }: Props) {
     setSelected(new Set(state.mids))
     setSelectionMode(state.selecting)
   })
+  // Пересылка из ванильного меню — порт `showForwardPopup({[peerId]: mids})`
+  // (tweb contextMenu.ts:2028). У ленты ОДНО окно, поэтому пара в записи ровно
+  // одна; разбираем её и зовём то же действие, что и пункт React-меню.
+  const onFeedForward = useEvent((fromPeerIdsMids: Record<number, number[]>) => {
+    for (const [fromPeerId, mids] of Object.entries(fromPeerIdsMids)) {
+      if (mids.length) openForwardFor(Number(fromPeerId), mids)
+    }
+  })
+  // «Кто отреагировал / просмотрел» из ванильного меню. tweb открывает
+  // модальный `PopupReactedList` (contextMenu.ts:1251), а наш список —
+  // позиционируемый попап, поэтому у пункта берётся точка клика (см. докблок
+  // `ContextMenuPopups.showReactedList`).
+  const onFeedReactedList = useEvent((peerId: number, mid: number, at: { x: number; y: number }) => {
+    if (peerId !== numericChatId) return
+    void showReactedUsers(mid, at.x, at.y)
+  })
+  // Носители попапов и вызовы композера для ванильного меню — ТЕ ЖЕ действия,
+  // которыми пользуются пункты React-меню (`useMessageActions`). Объект новый на
+  // каждый рендер, и это осознанно: лента читает его через реф, не пересобираясь.
+  const feedMenuPopups = {
+    showPinMessage: pinMessage,
+    showDeleteMessages: openDeleteFor,
+    showForward: onFeedForward,
+    // ТРЕТИЙ аргумент порта (`onSuccess` — снять выделение после отправки
+    // жалобы, tweb contextMenu.ts:1216-1220) сюда не доезжает: наш ReportPopup
+    // завершения не объявляет вовсе, объявить его некому. Выделение после
+    // жалобы останется — долг, не адаптация.
+    showMessageReport: openReportFor,
+    showReactedList: onFeedReactedList,
+    showStatistics: openPostStatsFor,
+    showFactCheckEditor: openFactCheckEditorFor,
+  }
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   // Плашка форварда: отмена, тоггл опций меню (скрыть отправителя/подпись),
@@ -1415,7 +1448,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} />
         ) : (
         <div
           ref={bubblesRef}
@@ -1561,8 +1594,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
                   feedCancelSelection.current?.()
                   clearSelection()
                 }}
-                onForward={() => openForwardFor([...selected])}
-                onDelete={() => openDeleteFor([...selected])}
+                onForward={() => openForwardFor(numericChatId, [...selected])}
+                onDelete={() => openDeleteFor(numericChatId, [...selected])}
                 canForward={!isSecret}
               />
             )}
