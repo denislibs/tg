@@ -119,6 +119,7 @@ import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId } from '@core/messages/messageKind'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
+import { avatarNew } from '@components/avatar'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -1080,7 +1081,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.bubbleGroups.prepareForGrouping(bubble, message)
     })
 
-    return [...this.bubbleGroups.groupUngrouped()]
+    const groups = [...this.bubbleGroups.groupUngrouped()]
+
+    // Аватарка серии — порт tweb bubbles.ts:6002-6016. Заводится по ПЕРВОМУ
+    // элементу серии.
+    //
+    // Проверки «у серии уже есть аватарка» здесь НЕТ, хотя у оригинала она
+    // стоит (:6010-6012): у нас тот же сторож живёт уровнем ниже, в самом
+    // `BubbleGroup.createAvatar` (`bubbleGroups.ts:249-250`), и стоит он там
+    // по своей причине — хост вправе отдать аватар без промиса, и сторож tweb
+    // такой случай пропустил бы. Второй такой же здесь был бы вторым ответом
+    // на тот же вопрос: мутация его снятия ничего не красит.
+    //
+    // Оригинал собирает промисы (`avatarPromises`) и ждёт их перед вставкой
+    // серий, чтобы аватарка не проявлялась рывком после появления баблов. Здесь
+    // ожидания нет: `readyThumbPromise` у нашей аватарки уже разрешён к этому
+    // моменту во всех ветках, кроме загрузки фотографии, а её оригинал тоже не
+    // ждёт — ждёт он только stripped-подложку, которая у нас ставится
+    // синхронно (`components/avatar.ts`).
+    for(const group of groups) {
+      const firstItem = group.firstItem
+      if(firstItem && this.isAvatarNeeded(firstItem.message)) {
+        void group.createAvatar(firstItem.message)
+      }
+    }
+
+    return groups
+  }
+
+  /** Порт tweb `isAvatarNeeded` (bubbles.ts:11689-11707) в применимом объёме.
+   *
+   *  Из трёх веток оригинала остаётся последняя (:11706): бот верификации и
+   *  гостевой чат — подсистемы, которых у нас нет, а журнал админ-действий
+   *  (`channelAdminLogEvent`) наша модель не производит. */
+  public isAvatarNeeded(message: MyMessage): boolean {
+    return !!this.chat.isLikeGroup && !this.isOutMessage(message)
   }
 
   /**
@@ -1436,18 +1471,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return this.middlewareHelper.get(additionalCallback)
   }
 
-  /** Порт связки tweb `avatarNew` + `chat.bubbles.lazyLoadQueue`
-   *  (bubbleGroups.ts:140).
+  /** Порт связки tweb `avatarNew` + серия баблов (bubbleGroups.ts:140-146).
    *
-   *  Пока НЕ ЗОВЁТСЯ и заведомо возвращает пустой узел: аватар серии — это
-   *  карточка пира (фото/инициалы/градиент), а её знает стор пиров, куда ленте
-   *  ходить нельзя, и гейт `isAvatarNeeded` (tweb bubbles.ts:11689) требует
-   *  `chat.isLikeGroup`, которого в `ChatContext` тоже ещё нет. Метод
-   *  реализован потому, что его требует контракт `BubbleGroupsHost`, и служит
-   *  точкой подключения: ванильный порт `avatarNew` встанет ровно сюда, а
-   *  вызов — в `groupBubbles` (tweb bubbles.ts:6005-6015). */
-  public createAvatar(_message: MyMessage, _middleware: Middleware): GroupAvatar {
-    return { node: document.createElement('div') }
+   *  Зовёт его `BubbleGroup.createAvatar`, а решает о вызове `groupBubbles` по
+   *  гейту `isAvatarNeeded` — как в оригинале (bubbles.ts:6008-6014).
+   *
+   *  `lazyLoadQueue` оригинала (:143) не передаётся: очереди ленивой загрузки у
+   *  ленты нет, и аватарка грузит фотографию сама, тем же путём, что медиа
+   *  бабла. */
+  public createAvatar(message: MyMessage, middleware: Middleware): GroupAvatar {
+    // tweb bubbleGroups.ts:140-145 — размер 40 и автор из `getAvatarOptions`
+    // (:83-88). Ветка «переслано из канала» там подменяет пира на источник
+    // пересылки; у нас предмета нет. `fwdFromId` — ПРОИЗВОДНОЕ поле tweb: в
+    // сгенерированном типе оно есть (`layer.d.ts:1059`), но на провод не
+    // выводится (значится в списке невыводимых полей конструктора `message`,
+    // `backend/internal/pkg/tl/schema_gen.go:8477`) и не заполняется ни бэком,
+    // ни клиентом. Поэтому автор берётся тем же способом, что и для имени в
+    // шапке бабла (`needName` → `getMessageFromId`), — второго правила «кто
+    // автор» не заводим.
+    return avatarNew({
+      peerId: this.bubbleGroups.getMessageFromId(message),
+      size: 40,
+      middleware,
+      managers: this.managers,
+    })
   }
 
   // ─── клики ────────────────────────────────────────────────────────────────

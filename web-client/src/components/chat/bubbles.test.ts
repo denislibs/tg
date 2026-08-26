@@ -1094,3 +1094,62 @@ describe('ChatBubbles.getRenderedHistory — clearLocal', () => {
       .toEqual([1, 2])
   })
 })
+
+// ── Аватарка автора серии ───────────────────────────────────────────────────
+//
+// Порт tweb bubbles.ts:6002-6016 (решение о вызове) + `isAvatarNeeded`
+// (:11689-11707) + `bubbleGroups.ts:140-146` (сам узел). Проверяется стыковка:
+// лента заводит аватарку ТОЛЬКО там, где её заводит оригинал.
+describe('ChatBubbles — аватарка серии', () => {
+  const avatarOf = (b: ChatBubbles) =>
+    b.chatInner.querySelector('.bubbles-group-avatar')
+
+  it('в группе у ЧУЖОЙ серии аватарка есть', async () => {
+    bubbles = new ChatBubbles({ ...chatContext(), isLikeGroup: true }, managersWith([
+      msg({ id: 1, fromId: 2 }),
+    ]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(avatarOf(bubbles)).not.toBeNull()
+  })
+
+  it('у СВОЕЙ серии аватарки нет — tweb :11706 гейтит по isOutMessage', async () => {
+    rootScope.myId = 1
+    bubbles = new ChatBubbles({ ...chatContext(), isLikeGroup: true }, managersWith([
+      msg({ id: 1, fromId: 1, out: true }),
+    ]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(avatarOf(bubbles)).toBeNull()
+  })
+
+  it('серия из двух сообщений несёт РОВНО ОДНУ аватарку', async () => {
+    // Сторож живёт в `BubbleGroup.createAvatar` (bubbleGroups.ts:249-250):
+    // серия дорастает вторым сообщением, а узел аватарки остаётся один.
+    bubbles = new ChatBubbles({ ...chatContext(), isLikeGroup: true }, managersWith([
+      msg({ id: 1, fromId: 2, createdAt: '2026-08-15T12:00:00Z' }),
+    ]))
+    await openFeed(bubbles)
+    await settle()
+
+    // ВТОРАЯ пачка в ту же серию: серия уже с аватаркой, и `groupBubbles`
+    // зовёт `createAvatar` повторно — сторож обязан вернуть прежний узел.
+    rootScope.dispatchEventSingle('history_append', {
+      storageKey: String(CHAT),
+      message: msg({ id: 2, fromId: 2, createdAt: '2026-08-15T12:00:10Z' }),
+    })
+    await settle()
+
+    expect(bubbles.chatInner.querySelectorAll('.bubbles-group-avatar')).toHaveLength(1)
+  })
+
+  it('в ЛС аватарок нет вовсе — гейт chat.isLikeGroup', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1, fromId: 2 })]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(avatarOf(bubbles)).toBeNull()
+  })
+})

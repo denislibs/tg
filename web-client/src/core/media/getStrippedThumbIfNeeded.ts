@@ -43,9 +43,21 @@ export interface StrippedThumb {
   loadPromise: Promise<void>
 }
 
+/**
+ * Порт tweb `helpers/bytes/getPreviewURLFromBytes` в нашей форме входа: там
+ * stripped-превью приезжает `Uint8Array` и заворачивается в blob-URL, у нас
+ * bytes-канал отдаёт его СРАЗУ base64-строкой (см. шапку файла), поэтому
+ * промежуточного blob'а нет. Экспортируется, потому что тот же URL строит
+ * аватарка — `components/avatar.ts` (порт `avatarNew.tsx:576`), а третья копия
+ * строки-префикса в дереве не нужна.
+ */
+export function getPreviewURLFromStrippedThumb(strippedThumb: string): string {
+  return `data:image/jpeg;base64,${strippedThumb}`
+}
+
 // Порт tweb `getImageFromStrippedThumb`: канвас с блюром либо голый <img>.
 export function getImageFromStrippedThumb(strippedThumb: string, useBlur: boolean | number): StrippedThumb {
-  const url = `data:image/jpeg;base64,${strippedThumb}`
+  const url = getPreviewURLFromStrippedThumb(strippedThumb)
 
   let image: HTMLImageElement | HTMLCanvasElement
   let loadPromise: Promise<void>
