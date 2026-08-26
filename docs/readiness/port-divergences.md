@@ -406,11 +406,11 @@
     оригинале это делает `appPeersManager.isBroadcast(peerId)`.
 
     Пины: `core/models.test.ts` (обе ветки + `!post` + фолбэк автора),
-    `core/messageToConvMsg.test.ts`, новый `core/hooks/useConvMessages.test.tsx`
-    (React-лента — живая при выключенном `VITE_VANILLA_FEED`),
+    `core/messageToConvMsg.test.ts`,
     `components/chat/bubbles.test.ts` (класс `is-out`/`is-in` у send-as и
     `colored-name`), `components/chat/VanillaFeed.test.tsx` и
-    `components/Chat.vanillaFeed.test.ts` (проброс признака); по временному
+    `components/Chat.feedMount.test.ts` (проброс признака; пин на React-ленту —
+    `core/hooks/useConvMessages.test.tsx` — умер вместе с ней, этап 7); по временному
     баблу — `core/managers/messages/pending.test.ts`,
     `core/managers/messagesManager.test.ts` и новый
     `core/workerCore.pendingPost.test.ts`. Каждая строка маршрута проверена

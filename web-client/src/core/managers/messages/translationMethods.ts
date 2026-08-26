@@ -29,10 +29,9 @@ export function newTranslationMethods({ rest, patchMsg, opWindowsFor, emitOps }:
       const r = await rest.post<{ _: 'messages.transcribedAudio'; text: string; pFlags?: { pending?: true } }>(`/chats/${peerId}/messages/${msgId}/transcribe`, {})
       patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
       // Расшифровка — ПАРАМЕТР сообщения, и бабл рисует именно его (кэш
-      // сообщения приоритетнее локально полученного текста,
-      // `components/messages/Transcription.tsx:20-21`). Значит объявить её окну
-      // обязан владелец операцией: прежде она ложилась только в SSOT воркера и
-      // доезжала до окна лишь перезагрузкой чата.
+      // сообщения приоритетнее локально полученного текста). Значит объявить её
+      // окну обязан владелец операцией: прежде она ложилась только в SSOT
+      // воркера и доезжала до окна лишь перезагрузкой чата.
       emitOps(opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { transcription: r.text } })))
       return { text: r.text, pending: !!r.pFlags?.pending }
     },

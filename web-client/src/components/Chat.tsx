@@ -9,17 +9,13 @@ import { cachedPeerTheme, chatFullMirrorVersion, saveChatFull, subscribeChatFull
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import { useChatStickyDates } from '@core/hooks/useChatStickyDates'
-import { useImperativeIsland } from '@core/hooks/useImperativeIsland'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { applyChatTheme, clearChatTheme } from '../core/theme/themeController'
 import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
-import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
-import ProgressivePreloader from './preloader'
 import type { Chat } from '../data'
 import { useT, useLang } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -27,49 +23,32 @@ import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
-import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
 import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
-import rootScope from '@lib/rootScope'
-import { markMediaPlayed } from '../core/mediaRead'
 import { findReplyKeyboardRows } from '../core/markup/replyMarkup'
 import type { GifItem } from '../core/gifs'
-import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { hasRights } from '../core/peers/rights'
 import { isBroadcast, isMegagroup } from '../core/peers/predicates'
-import { NULL_PEER_ID, getOutputPeer } from '../core/peers/peerId'
-import { generateTempMessageId } from '../core/history/messageId'
-import { getPeerPhoto, getPeerPhotoId, isUserStatusOnline, userStatusWasOnline } from '../core/peers/peer'
-import { getPeerTitle, getUserTitle } from '../core/peers/getPeerTitle'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
 import { useSendAs } from '../core/hooks/useSendAs'
 import { useSlowmode } from '../core/hooks/useSlowmode'
-import { useChatScroll } from '../core/hooks/useChatScroll'
-import { useConvMessages } from '../core/hooks/useConvMessages'
-import { useVoiceQueue } from '../core/hooks/useVoiceQueue'
-import { collectLightboxItems, messageToViewerItem } from './mediaViewer/collectLightboxItems'
-import { closeMediaViewer, openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelLive } from '../core/hooks/useChannelLive'
-import { useMountTransition } from '../core/hooks/useMountTransition'
-import { useFeedReveal } from '../core/hooks/useFeedReveal'
-import { animateLadder, type LadderStep } from '../core/dom/ladder'
-import { shiftGradientWithScroll } from '../core/chat/activeGradient'
-import liteMode from '../helpers/liteMode'
 import Composer from './Composer'
-import ChatFeed from './messages/ChatFeed'
-import VanillaFeed from './chat/VanillaFeed'
-import { AppConfig } from '../config/app'
-import EmptyChatGreeting from './messages/EmptyChatGreeting'
-import SimilarChannels from './messages/SimilarChannels'
-import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
+import VanillaFeed, { type ChatFeedApi } from './chat/VanillaFeed'
+import { messageToViewerItem, type LightboxCtx } from './mediaViewer/collectLightboxItems'
+import { closeMediaViewer } from './mediaViewer/openMediaViewer'
+import { cachedPeer } from '../core/peerCache'
+import { isUserStatusOnline, userStatusWasOnline } from '../core/peers/peer'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { NULL_PEER_ID } from '../core/peers/peerId'
 import { windowReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
@@ -105,7 +84,6 @@ import ChatMsgActionPopups from './conversation/ChatMsgActionPopups'
 import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
-import { hasReactionEmoticon } from '../core/reactions/messageReactions'
 import { draftReplyToId as draftReplyOf } from '../core/dialogs/draft'
 import { messageToConvMsg } from '../core/messageToConvMsg'
 import classNames from '../shared/lib/classNames'
@@ -171,7 +149,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
-  const { openPeer: onOpenPeer, onChatCreated, openPublicChannel: onOpenChannel } = useNavigationActions()
+  const { openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
   const onCloseThread = useCallback(() => { useChatStackStore.getState().closeTop() }, [])
   // Ветка комментариев под постом канала (tweb setPeer({peerId, threadId})) —
   // кладём поверх стека (tweb setInnerPeer).
@@ -209,8 +187,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const isSaved = chat.type === 'saved'
   // Активный фильтр по тегу-реакции «Избранного».
   const [savedTagFilter, setSavedTagFilter] = useState<string | null>(null)
-  // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
-  const autoDownload = useChatAutoDownload(chat.type, numericChatId)
+  // ДОЛГ этапа 7: настройки автозагрузки медиа (`useChatAutoDownload`, порт
+  // tweb `chat.autoDownload`) читала React-лента и раздавала их баблам.
+  // Императивная лента их не спрашивает — врапперы качают всегда.
 
   // Сброс фильтра тегов «Избранного» при смене чата.
   useEffect(() => { setSavedTagFilter(null) }, [numericChatId])
@@ -300,7 +279,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
     }
   })
   const threadRootId = thread?.rootMsgId
-  const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
   // Окно из ЗЕРКАЛА (`core/history/messagesMirror.ts`) — источник для
   // НЕленточных потребителей окна: плашка ответа над композером (восстановление
   // из черновика, ответ жестом ленты, Ctrl/Cmd+↑), правка последнего своего
@@ -316,41 +294,18 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // тесте не рендерится (см. «Тесты» в web-client/CLAUDE.md). Покрыты обе её
   // половины по отдельности: сборка плашки из окна — `core/draftReply.test.ts`
   // (`windowReplyState`), доставка окна из зеркала — `core/hooks/
-  // useMirrorWindow.test.tsx` и `core/hooks/useMessageWindow.mirror.test.ts`.
+  // useMirrorWindow.test.tsx`.
   const replyStateFor = useEvent((mid: number) =>
     windowReplyState(mirrorMsgs, mid, chat.name, accentColor, {
       meId: meId ?? undefined, peerId: numericChatId, isGroup,
     }))
-  // Тред комментариев: после корневого поста канала (подшит бэком с seq=0)
-  // вставляем клиентскую сервис-плашку «Обсуждение началось» (tweb
-  // generateThreadServiceStartMessage — messageActionDiscussionStarted).
-  const winV = useMemo(() => {
-    if (!thread) return win
-    // Корневой пост подшит бэком из ДРУГОГО чата (канала) — его и ищем по пиру;
-    // прежнего сентинела `seq === 0` больше нет.
-    const idx = win.msgs.findIndex((m) => m.peerId !== numericChatId)
-    if (idx < 0) return win
-    const root = win.msgs[idx]
-    // Плашка — настоящее СЛУЖЕБНОЕ сообщение с клиентским конструктором
-    // `messageActionDiscussionStarted` (порт tweb
-    // `generateThreadServiceStartMessage`), а не подделка с `type: 'service'`.
-    // Номер у неё КЛИЕНТСКИЙ — дробь поверх корневого поста
-    // (`core/history/messageId.ts`), поэтому она встаёт сразу за ним и заведомо
-    // не может уехать на сервер: прежний `seq: 0.5` жил в том же поле, что и
-    // настоящие номера.
-    const svc: (typeof win.msgs)[number] = {
-      _: 'messageService',
-      pFlags: {},
-      id: generateTempMessageId(root.id),
-      peer_id: getOutputPeer(numericChatId),
-      peerId: numericChatId,
-      date: root.date,
-      action: { _: 'messageActionDiscussionStarted' },
-    }
-    const msgs = [...win.msgs]
-    msgs.splice(idx + 1, 0, svc)
-    return { ...win, msgs }
-  }, [win, thread, numericChatId])
+  // ДОЛГ этапа 7: клиентская сервис-плашка «Обсуждение началось» (порт tweb
+  // `generateThreadServiceStartMessage` — `messageActionDiscussionStarted`)
+  // собиралась здесь, поверх zustand-окна React-ленты, и в зеркало не
+  // попадала. Императивная лента её не рисует: её место — в разборе страницы
+  // истории самой ленты (`chat/bubbles.ts::performHistoryResult`), как в tweb
+  // это место менеджера сообщений. Фраза и конструктор уже есть
+  // (`core/serviceMsg.ts:110`, `core/messages/messageAction.ts:249`).
 
   // Register the active chat so chatsStore suppresses unread bumps while it's open.
   const setActiveChat = useChatsStore((s) => s.setActiveChat)
@@ -365,39 +320,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // права зрителя. `full` — полная карточка (`channelFull`) с about/slowmode/
   // обсуждением. Поля `type`/`my_role`/`my_rights` исчезли с провода вместе с
   // плоской витриной — их вопросы задаются предикатами и `hasRights`.
-  const { full: chatFull, chat: chatPeer, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount } =
+  const { full: chatFull, chat: chatPeer, permissionsKnown, canType, canSendText, canSendMedia, onlineCount } =
     useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId })
-  // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
-  // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
-  const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win: winV, meId, foreignRootName: thread?.kind === 'comments' ? thread.subtitle : undefined })
-  // Фильтр «Избранного» по тегу-реакции: клиентская выборка по загруженному окну
-  // (реакции в самочате = теги). msgs и winV.msgs идут параллельно — фильтруем по
-  // общим индексам, чтобы ChatFeed не рассинхронизировал ряды.
-  const [feedMsgs, feedWinMsgs] = useMemo(() => {
-    if (!savedTagFilter || msgs.length !== winV.msgs.length) return [msgs, winV.msgs] as const
-    const fm: typeof msgs = []
-    const fw: typeof winV.msgs = []
-    winV.msgs.forEach((wm, i) => {
-      if (hasReactionEmoticon(wm.reactions, savedTagFilter)) { fm.push(msgs[i]); fw.push(wm) }
-    })
-    return [fm, fw] as const
-  }, [msgs, winV.msgs, savedTagFilter])
-  // Open a private chat with a group message's sender (avatar/name click).
-  const openSender = (senderId: PeerId, fallbackName: string) => {
-    const p = peers.get(senderId)
-    onOpenPeer?.({
-      id: senderId,
-      // Имя собирает клиент (`display_name` с провода убран); фолбэк остаётся
-      // прежним — им подписан бабл, у которого карточки может ещё не быть.
-      title: getPeerTitle({ peerId: senderId, peer: p }) || fallbackName,
-      username: p && (p._ === 'user' || p._ === 'channel') ? p.username : undefined,
-      photoId: getPeerPhotoId(getPeerPhoto(p)),
-    })
-  }
-  // Voice/audio play queue for the global player + the player plate offset.
-  const { playVoice, attachRound } = useVoiceQueue({
-    win, isRealChat, meId, meName: getUserTitle(me?.user), peers, chatName: chat.name, numericChatId, lang,
-  })
+  // Окно рисует ИМПЕРАТИВНАЯ лента, витрины `ConvMsg[]` в React больше нет:
+  // вью-модель бабла собирает сама лента (`chat/bubbles.ts` через
+  // `core/messageToConvMsg.ts`), а окно она читает из зеркала.
   // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
   // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
   const [infoOpen, setInfoOpen] = useState(false)
@@ -492,23 +419,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
   // + jump-to-message + scroll-to-bottom + read-marker) — extracted view-model hook.
   // Owns atBottomRef/userScrolledUpRef (passed into useChatSend so a send pins to bottom).
-  // Плашка «Непрочитанные сообщения» (tweb is-first-unread): горизонт чтения
-  // снимается ОДИН раз на маунте (markRead на открытии тут же сдвигает
-  // lastReadSeq в сторе), первый входящий с seq выше горизонта фиксируется и
-  // больше не пересчитывается (tweb attachedUnreadBubble) — live-сообщения и
-  // прочтение плашку не двигают. Компонент ремаунтится на смену чата (key).
-  const openReadRef = useRef<{ lastReadSeq: number; unread: number } | null>(null)
-  if (openReadRef.current === null) {
-    const d = useChatsStore.getState().dialogs.find((x) => x.peerId === numericChatId)
-    openReadRef.current = { lastReadSeq: d?.read_inbox_max_id ?? 0, unread: d?.unread_count ?? 0 }
-  }
-  const unreadDividerRef = useRef<number | null>(null)
-  if (unreadDividerRef.current === null && isRealChat && !thread && meId != null && openReadRef.current.unread > 0) {
-    const horizon = openReadRef.current.lastReadSeq
-    const first = win.msgs.find((m) => m.id > horizon && m.fromId !== meId)
-    if (first) unreadDividerRef.current = first.id
-  }
-  const unreadDividerSeq = unreadDividerRef.current
+  // Плашку «Непрочитанные сообщения» ставит сама лента — порт
+  // `setUnreadDelimiter` (`chat/bubbles.ts:3338`), как и в tweb.
 
   // Высота стека плавающих плейтов под топбаром (tweb topbar.setFloating):
   // измеряем контейнер .topbar-floating-plates — он уже включает 1px-разделители
@@ -526,23 +438,45 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const audioPlateShown = useAudioStore((st) => st.track != null)
   const floatingHeight = platesHeight + (audioPlateShown ? AUDIO_PLATE_FLOATING_HEIGHT : 0)
 
+  // Распорки ленты — порт tweb `Chat.recomputePaddings` (chat.ts:345): числа
+  // считает окружение чата, применяет их сама лента (`ChatBubbles.setPaddings`).
   const padTopPx = padTop(narrow, floatingHeight)
   const padBottomPx = padBottom(narrow, inputSurplus)
 
-  const {
-    scrollRef, contentRef, atBottomRef, userScrolledUpRef,
-    highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
-  } = useChatScroll({ numericChatId, threadId: thread?.rootMsgId, isRealChat, win, paddingTop: padTopPx, unreadDividerSeq, unreadStickyTop: padTopPx })
+  // Ручки императивной ленты (`chat/bubbles.ts`) — прыжок к сообщению и кнопка
+  // «вниз». В tweb их зовёт `Chat`/`ChatTopbar` прямо в `chat.bubbles`, у нас
+  // роль `Chat` исполняет этот экран, а мост — `VanillaFeed` (см. ChatFeedApi).
+  const feedApi = useRef<ChatFeedApi | null>(null)
+  // Скролл-контейнер ленты — им владеет лента, наружу отдаётся тем же способом,
+  // что React отдаёт свои узлы.
+  const feedScrollRef = useRef<HTMLElement | null>(null)
+  // Значок «непрочитано ниже» на кнопке «вниз» (tweb .bubbles-go-down count):
+  // ВЫВОДИТСЯ из стора, а не накапливается из потока событий. newestSeq (последнее
+  // сообщение диалога) минус lastReadSeq (горизонт чтения зрителя) — это и есть
+  // число сообщений ниже точки прочтения. Store-derived ⇒ переживает
+  // ремаунт/ресинк без дрейфа. Саму кнопку показывает лента классом
+  // `is-go-down-visible` на колонке чата (`bubbles.updateGoDownVisibility`).
+  const unreadBelow = useChatsStore((s) => {
+    const d = s.dialogs.find((x) => x.peerId === numericChatId)
+    if (!d) return 0
+    return Math.max(0, (d.lastMessage?.id ?? 0) - d.read_inbox_max_id)
+  })
   // Pinned messages in this chat (newest pin first) + индекс показанного пина
   // (tweb pinnedMessage: перелистывание кликом + выбор по скроллу ленты).
-  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, scrollRef)
-  // Контейнер ленты tweb (.bubbles): класс has-sticky-dates ставится по замеру, см. эффект ниже.
-  const bubblesRef = useRef<HTMLDivElement>(null)
-  // Multi-select state + press-and-drag selection (extracted view-model hook).
-  const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
-    useChatSelection(scrollRef)
-  // Enter selection mode from the header menu with nothing selected yet.
-  const startSelectMode = () => setSelectionMode(true)
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, feedScrollRef)
+  // Выделение сообщений ведёт САМА лента (порт tweb `ChatSelection`,
+  // `chat/selection.ts`); сюда оно приезжает одним отчётом — `onFeedSelection`
+  // ниже. Здешний стейт — ВИТРИНА плашки действий, а не второй источник правды:
+  // снять выбор можно только у ленты (`ChatFeedApi.cancelSelection`), как в
+  // оригинале клик по счётчику зовёт `selection.cancelSelection`
+  // (tweb selection.ts:1080-1082).
+  const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const [selecting, setSelecting] = useState(false)
+  const clearSelection = useEvent(() => { feedApi.current?.cancelSelection() })
+  // Вход в режим выделения из меню шапки — порт tweb topbar.ts:560
+  // (`selection.toggleSelection(true, true)`): режим включает ЛЕНТА, иначе в
+  // баблах не появились бы чекбоксы.
+  const startSelectMode = useEvent(() => { feedApi.current?.startSelection() })
   // Классы режима выделения на `.bubbles` — ровно как tweb SetTransition в
   // ChatSelection.onToggleSelection (selection.ts:1019-1030): `is-selecting` +
   // `forwards`/`backwards` + `animating` на 200 мс. От `forwards` зависят сдвиг
@@ -577,7 +511,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const doClearHistory = () => {
     if (!isRealChat) return
     void managers.chats.clearHistory(numericChatId)
-      .then(() => win.reloadNewest())
+      .then(() => feedApi.current?.reload())
       .then(() => managers.dialogs.refresh())
       .catch(() => {})
   }
@@ -592,12 +526,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
       : { title: 'Leave Group', text: 'Are you sure you want to leave this group?', action: 'Leave' }
   })()
 
-  // (Scroll state machine — pagination, scroll-restore, pin-to-bottom, jump-to-message,
-  // read-marker — lives in useChatScroll; see the hook call above.)
-
   // No chat-switch reset effect needed: App renders <Chat key={selectedId}>,
   // so switching chats fully remounts this component and every useState/useRef (here and
-  // in useChatSend/useChatSelection/useChatSearch) re-initialises to its default. A manual
+  // in useChatSend/useChatSearch) re-initialises to its default. A manual
   // reset effect keyed on `chat` was not only redundant but harmful — `chat` gets a new
   // object identity on every dialog update (e.g. a message arriving in the open chat),
   // which would wipe the reply draft / selection / open discussion mid-session.
@@ -623,7 +554,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     getMessageSendingParams, onMessageSent,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, threadRootId, sendAsPeerId, atBottomRef, userScrolledUpRef,
+    meId, threadRootId, sendAsPeerId,
     onChatCreated,
   })
 
@@ -691,142 +622,46 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (feedFns + панель выделения + «переслать из…»).
   const msgActions = useMessageActions({
     chat, numericChatId, isRealChat,
-    // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
-    canViewPostStats: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
-    // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
-    canEditFactCheck: isChannel && isRealChat && hasRights(chatPeer, 'just_admin'),
-    // Окно и цель меню читаются из ЗЕРКАЛА по НОМЕРУ — ни витрины ленты
-    // (`msgs`), ни zustand-окна (`winV`) слою действий больше не нужно; ключ
-    // окна он собирает сам из пары «пир + тред».
-    threadRootId, isGroup, meId, pins, accent: accentColor,
-    setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
+    // Окно и цель действия читаются из ЗЕРКАЛА по НОМЕРУ; ключ окна слой
+    // действий собирает сам из пары «пир + тред». Права на пункты меню сюда
+    // больше не едут: пункты рисует ванильное меню и гейтит их само
+    // (`chat/contextMenu.ts::verify`).
+    threadRootId, meId,
+    setReply, setEditing, clearSelection, onChatCreated,
   })
-  const { openMsgMenu, toggleReaction, showReactedUsers, openStarReaction, openDeleteFor, openForwardFor, openForwardFrom } = msgActions
+  const { showReactedUsers, openDeleteFor, openForwardFor, openForwardFrom } = msgActions
   const { pinMessage, openReportFor, openPostStatsFor, openFactCheckEditorFor, startEditFor, downloadMedia } = msgActions
 
-  // First-load reveal policy: grace-delayed spinner (no flash on cache hits),
-  // `feedLoading` to gate the list, and the open-chat ladder arming.
-  const { showSpinner, feedLoading, ladderActive } = useFeedReveal({ isRealChat, win, numericChatId })
-  // Спиннер держится в DOM до конца обратного перехода — tweb снимает узел в
-  // onTransitionEnd у SetTransition (preloader.ts:248-256).
-  const { mounted: spinnerMount, cls: spinnerCls } = useMountTransition(showSpinner, 'is-visible', 200)
-  // Кольцо в оверлей спиннера — vanilla ProgressivePreloader (порт tweb).
-  // Островом, а не голым ref-колбэком: инстанс должен сниматься явным detach,
-  // иначе при ремаунте узла (StrictMode, смена чата) их накладывается два.
-  const chatSpinnerHost = useImperativeIsland<HTMLDivElement>((el) => {
-    const preloader = new ProgressivePreloader({ cancelable: false })
-    preloader.attach(el)
-    return () => preloader.detach()
-  }, [])
+  // Спиннер первой загрузки и лестница появления баблов — роль ленты (в tweb
+  // это `ChatBubbles`: прелоадер bubbles.ts:752, `animateAsLadder` :10363).
+  // React-обвязки под них больше нет.
 
-  // Лестница появления баблов при открытии чата — порт tweb
-  // `bubbles.ts:10363-10460` (animateAsLadder), см. `core/dom/ladder.ts`.
-  // Анимируются НЕ ряды `.bubble`, а их обёртки `.bubble-content-wrapper`
-  // (tweb `bubble.lastElementChild`) плюс аватар группы у последнего сообщения
-  // серии (bubbles.ts:10386-10390). Порядок — снизу вверх: у tweb это `topIds`,
-  // список сообщений «выше целевого», отсортированный от целевого к старым
-  // (bubbles.ts:10347), а при открытии чата целевое — самое новое.
-  // Аналог tweb-овского `chatInner` — `.bubbles-inner`, он же `contentRef`.
-  useLayoutEffect(() => {
-    if (!ladderActive) return
-    const inner = contentRef.current
-    if (!inner) return
-    const steps: LadderStep[] = []
-    for (const bubble of inner.querySelectorAll<HTMLElement>('.bubble')) {
-      const wrapper = bubble.lastElementChild as HTMLElement | null
-      // у дата-разделителя обёртки нет (последний ребёнок — сразу .bubble-content),
-      // в tweb он тоже не участвует в лестнице
-      if (!wrapper?.classList.contains('bubble-content-wrapper')) continue
-      const group = bubble.parentElement
-      const avatar = group?.classList.contains('bubbles-group') && group.lastElementChild === bubble
-        ? group.querySelector<HTMLElement>('.bubbles-group-avatar')
-        : null
-      steps.push(avatar ? [wrapper, avatar] : wrapper)
-    }
-    steps.reverse()
-    void animateLadder(inner, steps)
-  }, [ladderActive, contentRef])
-
-  // Сдвиг градиента обоев. В tweb он привязан НЕ к отправке, а к появлению нового
-  // сообщения, и едет вместе с прокруткой к нему:
-  //   • флаг ставится в обработчике `history_append` (bubbles.ts:1859-1864) — любое
-  //     новое сообщение в этом чате, входящее тоже, и только если
-  //     `liteMode.isAvailable('chat_background')`;
-  //   • применяется в `startCallback` прокрутки (bubbles.ts:4710-4714):
-  //     `gradientRenderer?.toNextPosition(dimensions.getProgress)` — прогресс
-  //     градиента равен прогрессу прокрутки, свободной самоанимации нет;
-  //   • флаг одноразовый (bubbles.ts:4713 `updateGradient = undefined`): если
-  //     прокрутки не было (мы не у низа ленты), сдвиг просто не случается.
-  // До этого мы слали событие `tg-send` из 13 точек отправки, а обои по нему звали
-  // `toNextPosition()` БЕЗ аргумента — ветку самоанимации (gradientRenderer.ts:258-288);
-  // отсюда и жалоба «много нажимаешь — фон сам меняется».
-  const updateGradientRef = useRef(false)
-  const lastFeedKeyRef = useRef<string | null>(null)
-  useLayoutEffect(() => {
-    // 1. tweb history_append — взвести флаг на новое сообщение в открытом чате.
-    const last = feedMsgs[feedMsgs.length - 1]
-    const key = last ? last.clientId ?? (last.id != null ? `m-${last.id}` : null) : null
-    const prev = lastFeedKeyRef.current
-    lastFeedKeyRef.current = key
-    // первый коммит ленты (открытие чата) и подгрузка истории вверх новым
-    // сообщением не считаются — там хвост ленты не меняется
-    if (prev != null && key != null && key !== prev && liteMode.isAvailable('chat_background')) {
-      updateGradientRef.current = true
-    }
-
-    // 2. tweb startCallback — применить флаг, если лента реально едет к низу.
-    // Не у низа (пользователь ушёл в историю) — прокрутки не будет, флаг ждёт.
-    if (!updateGradientRef.current || !atBottomRef.current) return
-    const sc = scrollRef.current
-    if (sc && shiftGradientWithScroll(sc)) updateGradientRef.current = false
-  }, [feedMsgs, scrollRef, atBottomRef])
-
-  // (Scroll correction, prepend-restore, jump-scroll, down-arrow pin, and player-offset
-  // compensation all live in useChatScroll.)
+  // Скролл-механика ленты (пагинация, восстановление позиции, прыжок, пин к
+  // низу, отметка прочтения) — целиком в `chat/bubbles.ts`, как в tweb.
 
   // Channel-only wiring: live subscribe + catch-up, pts persistence, and the open
   // discussion-thread overlay. Счётчики поста (просмотры, комментарии) сюда
   // больше не приезжают: они параметры самого сообщения и читаются из окна.
   useChannelLive({ isRealChat, isChannel, numericChatId })
-  // Клик по «N комментариев» под постом канала — тред комментариев в этой же
-  // колонке (tweb: setPeer(discussion group, threadId=postId)).
-  const openDiscussionThread = useEvent((postId: number) => {
-    // Ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ — сравнивать с `NULL_PEER_ID`, а не «> 0».
-    if (discussionPeerId !== NULL_PEER_ID) onOpenThread?.({ chatId: discussionPeerId, rootMsgId: postId, title: t('Comments'), subtitle: chat.name })
-  })
-  // То же самое для ванильной ленты, но ключ группы обсуждения приезжает СНИЗУ:
-  // лента берёт его из самого поста (`replies.channel_id`), как tweb
-  // (bubbles.ts:3335 `replies.channel_id.toPeerId(true)`), а не из карточки
-  // канала. Данные per-post и авторитетнее: карточка приезжает позже поста.
+  // Клик по футеру «N комментариев» под постом канала — тред комментариев в
+  // этой же колонке (tweb: setPeer(discussion group, threadId=postId)). Ключ
+  // группы обсуждения приезжает СНИЗУ: лента берёт его из самого поста
+  // (`replies.channel_id`), как tweb (bubbles.ts:3335
+  // `replies.channel_id.toPeerId(true)`), а не из карточки канала. Данные
+  // per-post и авторитетнее: карточка приезжает позже поста.
   const openFeedDiscussion = useEvent(({ peerId: groupPeerId, postMid }: { peerId: PeerId; postMid: number }) => {
     onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Comments'), subtitle: chat.name })
   })
 
-  // Stable handler identities for the memoized feed: the feed closes over
-  // `feedFns`, whose members never change reference, so toggling transient state
-  // (context menu, viewer, composer text, hover) doesn't bust the feed's useMemo —
-  // while each handler still reads fresh state via useEvent.
-  const openSenderE = useEvent(openSender)
-  const playVoiceE = useEvent(playVoice)
-  const toggleSelectE = useEvent(toggleSelect)
-  // Клик по баблу-контейнеру альбома выделяет/снимает всю группу разом
-  // (tweb selection.ts:906-920).
-  const selectAlbumE = useEvent((ids: number[], select: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      for (const id of ids) select ? next.add(id) : next.delete(id)
-      return next
-    })
-  })
-  const openMsgMenuE = useEvent(openMsgMenu)
-  const jumpToSeqE = useEvent(jumpToSeq)
+  // Прыжок к сообщению — ручка ленты (порт `chat.setMessageId`). Зовут его
+  // поиск, закреплённые, упоминания и медиавьювер; сама лента прыгает к
+  // reply-оригиналу и к дате своими силами.
+  const jumpToSeqE = useEvent((mid: number) => { feedApi.current?.jumpToMessage(mid) })
   // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3057-3078 →
   // `showDatePickerPopup({initDate, onPick: this.onDatePick})`). ПОКАЗ попапа —
   // роль владельца слоя попапов, то есть этого экрана; что делать с выбранным
-  // днём — роль ленты, и у двух наших лент она разная: React-лента резолвит
-  // день в номер здесь (`openDatePickerE` ниже), ванильная — своим
-  // `bubbles.onDatePick` (порт tweb bubbles.ts:10205), который сам зовёт
-  // `setMessageId`.
+  // днём — роль ленты: `bubbles.onDatePick` (порт tweb bubbles.ts:10205) сам
+  // резолвит день в номер и зовёт `setMessageId`.
   const showDatePicker = useEvent((dayMs: number, onPick: (timestamp: number) => void) => {
     openPopup((p) => (
       <DatePickerPopup
@@ -838,13 +673,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
         onPick={onPick}
       />
     ), DATE_PICKER_POPUP_KIND)
-  })
-  const openDatePickerE = useEvent((dayMs: number) => {
-    showDatePicker(dayMs, (timestamp) => {
-      void managers.messages.messageByDate(numericChatId, timestamp).then((seq) => {
-        if (seq != null) jumpToSeqE(seq)
-      })
-    })
   })
   // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
   const pendingJump = useSearchStore((s) => s.pendingJump)
@@ -864,12 +692,26 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // showForwardPopup зовут this.close() по действию), отмена — снимает колбэк
   // (проводка — обёртка msgActions у <ChatMsgActionPopups> ниже).
   const viewerActionCloseRef = useRef<(() => void) | null>(null)
-  const lightboxCtx = () => ({ meId, meName: getUserTitle(me?.user), peers, chatName: chat.name, lang })
+  // Контекст подписи автора для вьювера. Карточки берутся точечно из зеркала
+  // пиров (`cachedPeer`) — тем же способом, что их берёт лента
+  // (`chat/bubbles.ts::openMediaViewerFor`): плоской витрины `peers` из
+  // снесённой React-ленты больше нет.
+  const lightboxCtx = (source: MyMessage[]): LightboxCtx => {
+    const peers = new Map<PeerId, NonNullable<ReturnType<typeof cachedPeer>>>()
+    for (const m of source) {
+      const fromId = m.fromId
+      if (fromId == null || peers.has(fromId)) continue
+      const peer = cachedPeer(fromId)
+      if (peer) peers.set(fromId, peer)
+    }
+    return { meId, meName: getUserTitle(me?.user), peers, chatName: chat.name, lang }
+  }
   // Миниатюра сообщения в отрендеренных баблах (tweb собирает targets из
-  // баблов селектором '.attachment', bubbles.ts:3744-3800; у нас строки ленты
-  // адресуются data-mid, у секретных медиа контейнер без .attachment — img).
+  // баблов селектором '.attachment', bubbles.ts:3744-3800; у секретных медиа
+  // контейнер без .attachment — img). Узлы ленты императивные, поэтому спрашиваем
+  // её скролл-контейнер.
   const findBubbleMedia = (id: number): HTMLElement | null =>
-    bubblesRef.current?.querySelector<HTMLElement>(
+    feedScrollRef.current?.querySelector<HTMLElement>(
       `[data-mid="${id}"] .attachment, [data-mid="${id}"] img, [data-mid="${id}"] video`,
     ) ?? null
   // Дозагрузка соседей листания (наш источник вместо tweb SearchListLoader):
@@ -891,82 +733,45 @@ export default function Chat({ chat, onBack, thread }: Props) {
       if (older) {
         while (cache.msgs.length - i - 1 < loadCount && !cache.complete) await fetchNext()
       }
-      const ctx = lightboxCtx()
       const slice = older
         ? cache.msgs.slice(i + 1, i + 1 + loadCount)
         : cache.msgs.slice(Math.max(0, i - loadCount), i)
+      const ctx = lightboxCtx(slice)
       // порядок newest-first сохраняем — ListLoader (reverse: true) сам разложит
       return slice.map((m) => messageToViewerItem(m, ctx, findBubbleMedia(m.id)))
     } catch {
       return [] // ошибка сети = край списка: вьювер листает уже загруженное
     }
   }
-  const openLightboxE = useEvent((mediaId: number, el: HTMLElement) => {
-    if (!isRealChat) return
-    const { items, index } = collectLightboxItems({
-      msgs: winV.msgs, mediaId, ctx: lightboxCtx(), findElement: (m) => findBubbleMedia(m.id),
-    })
-    if (!items[index]) return
-    items[index].element = el // источник полёта — сама кликнутая миниатюра
-    mediaPagesRef.current = null
-    void openMediaViewer({
-      items, index, target: el, reverse: true, // порядок окна по возрастанию — tweb bubbles.ts:3843
-      jumpToMessage: (it) => { if (it.seq != null) jumpToSeqE(it.seq) },
-      onForward: (mid, close) => {
-        viewerActionCloseRef.current = () => { void close() }
-        openForwardFor(numericChatId, [mid])
-      },
-      onDelete: (mid, closeFromMedia) => {
-        viewerActionCloseRef.current = closeFromMedia
-        openDeleteFor(numericChatId, [mid])
-      },
-      loadMoreMedia,
-    })
-  })
+  // Сам вьювер открывает ЛЕНТА (порт `checkTargetForMediaViewer`,
+  // `chat/bubbles.ts::openMediaViewerFor`); сюда остаётся то, чего у ленты быть
+  // не может, — действия окружения `Chat`.
+  // Пересоздаётся каждый рендер сознательно: лента читает эти ручки ЧЕРЕЗ РЕФ
+  // (`VanillaFeed.gesture`), который обновляется тем же рендером, — мемоизация
+  // ничего бы не сэкономила и только законсервировала бы устаревшее замыкание.
+  const mediaViewerActions = {
+    jumpToMessage: (it: ViewerItem) => { if (it.seq != null) jumpToSeqE(it.seq) },
+    onForward: (mid: number, close: () => Promise<void> | null) => {
+      viewerActionCloseRef.current = () => { void close() }
+      openForwardFor(numericChatId, [mid])
+    },
+    onDelete: (mid: number, closeFromMedia: () => void) => {
+      viewerActionCloseRef.current = closeFromMedia
+      openDeleteFor(numericChatId, [mid])
+    },
+    loadMoreMedia,
+  }
   // Смена чата / unmount: vanilla-вьювер живёт в body — закрываем сами.
   useEffect(() => () => closeMediaViewer(), [numericChatId])
-  const roundPlayingE = useEvent(attachRound)
-  // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)
-  const recallE = useEvent((video: boolean) => {
-    if (chat.type !== 'private' || !isRealChat) return
-    startOutgoing(
-      { id: numericChatId, name: chat.name, avatar: chat.avatar, avatarText: chat.avatarText, photoId: chat.photoId },
-      video,
-      isRealChat ? numericChatId : null,
-    )
-  })
-  // Кружок воспроизведён со звуком → снять media_unread (сервер разошлёт media_read)
-  const mediaPlayedE = useEvent((msgId: number) => {
-    if (isRealChat) markMediaPlayed(numericChatId, msgId)
-  })
-  // Отмена аплоада с бабла (tweb ProgressivePreloader cancel) — ОДИН вызов
-  // владельца: он и рвёт аплоад (аплоад теперь его, внутри messages.sendFile),
-  // и убирает бабл операцией remove, и гасит кольцо прогресса.
-  const cancelUploadE = useEvent((clientId: string) => {
-    void managers.messages.cancelPending({ clientMsgId: clientId })
-  })
-  // Разблокировать платное медиа за звёзды (Telegram paid media): списание +
-  // раскрытие бабла приезжают кадром paid_media_unlock (store), баланс —
-  // balance_update. Нехватка звёзд → тост.
-  const unlockPaidE = useEvent(async (msgId: number) => {
-    if (!isRealChat) return
-    try {
-      // Адрес — ПАРА «пир + номер», как у любого другого сообщения.
-      await managers.stars.unlockPaidMedia(numericChatId, msgId)
-    } catch {
-      rootScope.dispatchEvent('ui:toast', t('Not enough Stars to unlock'))
-    }
-  })
-  // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).
-  const forwardMsgE = useEvent((msgId: number) => openForwardFor(numericChatId, [msgId]))
-  // feedFns строится НИЖЕ (после onComposerPickSticker — см. sendSticker в
-  // объекте), т.к. ей нужен slowmodeMarkSent из useSlowmode, объявленного
-  // дальше по функции.
+  // Голосовая очередь плеера, перезвон по баблу звонка, отметка «кружок
+  // прослушан», отмена аплоада и разблокировка платного медиа жили на
+  // React-ленте и уходят вместе с ней — в tweb владелец каждого из этих
+  // действий сам бабл (`ChatBubbles`), см. долги этапа 7 в web-client/CLAUDE.md.
 
-  // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
-  // edit/delete keyed by chat_id; pinned-bar state in usePinnedBar. The read-marker
-  // for a live/open chat — markRead vs unread-below pill — and mark-read-on-open /
-  // on-refocus all live in useChatScroll (they need scroll/focus state).)
+  // (Ack reconcile + send-rejection run in realtimeBridge → зеркало окна; live
+  // edit/delete keyed by chat_id; pinned-bar state in usePinnedBar. Отметка
+  // прочтения — наблюдатель непрочитанных баблов в самой ленте
+  // (`chat/bubbles.ts`, порт tweb bubbles.ts:2941-3012).)
 
   // Incoming typing is centralized in the store (see realtimeBridge + useTypingLabel).
 
@@ -1047,15 +852,21 @@ export default function Chat({ chat, onBack, thread }: Props) {
   }, [chat.type, isRealChat, numericChatId, managers])
   // reply-клавиатура над композером — ряды последней подходящей разметки окна
   // (порт mergeReplyKeyboard + checkAvailability, core/markup/replyMarkup.ts).
-  const replyKeyboard = useMemo(() => findReplyKeyboardRows(msgs), [msgs])
+  // Окно берётся из ЗЕРКАЛА — того же, что читает лента; поле разметки в сыром
+  // сообщении зовётся `reply_markup` (в снесённой витрине `ConvMsg` оно было
+  // переименовано, `core/messageToConvMsg.ts:151`).
+  const replyKeyboard = useMemo(
+    () => findReplyKeyboardRows(mirrorMsgs.map((m) => ({ replyMarkup: m._ === 'message' ? m.reply_markup : undefined }))),
+    [mirrorMsgs],
+  )
   // Бот без истории → кнопка «Начать» вместо композера (шлёт /start).
-  const botStart = isBotChat && isRealChat && msgs.length === 0
-  // Пустой приватный чат (не бот, не группа) → плейсхолдер-приветствие (tweb).
-  const emptyGreeting = isRealChat && msgs.length === 0 && chat.type === 'private' && !isBotChat
+  const botStart = isBotChat && isRealChat && mirrorMsgs.length === 0
 
-  // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the composer.
-  // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
-  const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={onScrollDownClick} />
+  // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the
+  // composer. Показ кнопки — класс `is-go-down-visible` на колонке чата, его
+  // ставит сама лента (`bubbles.updateGoDownVisibility`); клик — порт
+  // `onGoDownClick`.
+  const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={() => feedApi.current?.goDown()} />
 
   // ── Плашка вместо строки ввода (tweb .chat-input-control) ──
   // Цепочка условий — в computeControlPlates (порт haveSomethingInControl).
@@ -1145,29 +956,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // держим оба входа (композер/поиск и клик по стикеру в бабле — попап
   // StickerSetModal из StickerRealBubble) идентичными по правам отправки.
   const canSendStickers = canType && canSendMedia && !isChannel && chat.type !== 'secret'
-  const feedFns = useMemo(
-    () => ({
-      openSender: openSenderE,
-      playVoice: playVoiceE,
-      toggleSelect: toggleSelectE,
-      selectAlbum: selectAlbumE,
-      openMsgMenu: openMsgMenuE,
-      jumpToSeq: jumpToSeqE,
-      openDatePicker: openDatePickerE,
-      openLightbox: openLightboxE,
-      recall: recallE,
-      mediaPlayed: mediaPlayedE,
-      roundPlaying: roundPlayingE,
-      toggleReaction,
-      showReactedUsers,
-      openStarReaction,
-      cancelUpload: cancelUploadE,
-      unlockPaid: unlockPaidE,
-      forwardMsg: forwardMsgE,
-      sendSticker: canSendStickers ? onComposerPickSticker : undefined,
-    }),
-    [openSenderE, playVoiceE, toggleSelectE, selectAlbumE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE, canSendStickers, onComposerPickSticker],
-  )
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
@@ -1183,11 +971,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // `ChatSelection`), хост лишь рисует плашку: получает выбранные номера,
   // признак режима и способ его снять. Второго источника правды нет —
   // React-стейт здесь ВИТРИНА плашки, а не хранилище выбора.
-  const feedCancelSelection = useRef<(() => void) | undefined>(undefined)
-  const onFeedSelection = useEvent((state: { mids: number[], selecting: boolean, cancel: () => void }) => {
-    feedCancelSelection.current = state.cancel
+  const onFeedSelection = useEvent((state: { mids: number[], selecting: boolean }) => {
     setSelected(new Set(state.mids))
-    setSelectionMode(state.selecting)
+    setSelecting(state.selecting)
   })
   // Пересылка из ванильного меню — порт `showForwardPopup({[peerId]: mids})`
   // (tweb contextMenu.ts:2028). У ленты ОДНО окно, поэтому пара в записи ровно
@@ -1271,46 +1057,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // инстансов чата смонтировано несколько копий одновременно (см. Chat.tsx выше).
   useFeedPageHotkeys({
     enabled: isRealChat,
-    onPageUp: useEvent(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })),
-    onPageDown: useEvent(() => onScrollDownClick()),
+    onPageUp: useEvent(() => feedScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })),
+    onPageDown: useEvent(() => feedApi.current?.goDown()),
   })
 
-  // tweb bubbles.ts:10166-10180 (onRenderScrollSet): `has-sticky-dates` на
-  // контейнере ленты появляется, когда история прокручиваема — без него
-  // _chatBubble.scss прячет липкий дата-разделитель (`.bubbles:not(.has-sticky-dates)
-  // .bubble.is-date { visibility: hidden }`) и показывает его is-fake-двойник.
-  useEffect(() => {
-    const box = bubblesRef.current
-    const sc = scrollRef.current
-    if (!box || !sc) return
-    box.classList.toggle('has-sticky-dates', sc.scrollHeight > sc.clientHeight)
-  })
-
-  // tweb bubbles.ts:4207-4230 — во время скролла на `.bubbles-inner` висит
-  // `is-scrolling`, и только тогда липкая дата видна (_chat.scss:1345:
-  // `.is-scrolling .is-sticky { opacity: .99999 }`); через 1.35s после
-  // последнего события класс снимается и дата плавно гаснет. Само прилипание
-  // (какая дата is-sticky) считает отдельный эффект ниже, на StickyIntersector.
-  useEffect(() => {
-    const sc = scrollRef.current
-    const inner = contentRef.current
-    if (!sc || !inner) return
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const onScroll = () => {
-      inner.classList.add('is-scrolling')
-      clearTimeout(timer)
-      timer = setTimeout(() => inner.classList.remove('is-scrolling'), 1350)
-    }
-    sc.addEventListener('scroll', onScroll, { passive: true })
-    return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
-  }, [scrollRef, contentRef])
-
-  // Липкая дата: вся проводка поверх StickyIntersector — в useChatStickyDates
-  // (там же комментарии про идемпотентность и уборку сентинелов). Вынесена из
-  // Chat, потому что здесь она не покрывалась ничем: Chat не рендерится в vitest.
-  const stickyDateKey = useChatStickyDates({
-    scrollRef, contentRef, feedRevision: feedMsgs, feedLoading, padTopPx, padBottomPx,
-  })
+  // Липкие даты целиком у ленты: класс `has-sticky-dates` (порт
+  // `onRenderScrollSet`, `chat/bubbles.ts:3087`), класс `is-scrolling` на
+  // `.bubbles-inner` (`chat/bubbles.ts:3003-3008`) и сам `StickyIntersector`
+  // (`chat/bubbles.ts:3427`) — как в tweb, где всё это тоже роль `ChatBubbles`.
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
@@ -1324,7 +1078,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     activeThemeId, muted, owned, thread, canManageTopic,
     canAddMember, canCreateGiveaway, canUnpinAll, pins, deleteLabels, livestreamActive,
     setInfoOpen,
-    applyMute, toggleMute, startSelectMode, setSelectionMode,
+    applyMute, toggleMute, startSelectMode,
     doDeleteChat, doClearHistory, openPicker, sendGeo, sendContact, setPendingMedia,
     getMessageSendingParams, onMessageSent,
     slowmodeMarkSent, jumpToSeq: jumpToSeqE, setScheduledCount,
@@ -1376,8 +1130,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
         className={classNames(
           'chat', 'active',
           isRealChat ? 'can-click-date' : '',
-          // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
-          showScrollDown ? 'is-go-down-visible' : '',
+          // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на
+          // колонке; ставит его сама лента (`bubbles.updateGoDownVisibility`).
           searchReactionsShown ? 'is-search-active' : '',
         )}
         style={{
@@ -1458,85 +1212,24 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
         )}
 
-        {/* Спиннер первой загрузки (только после grace-задержки, на попадании в
-            кэш пропускается). Кольцо — vanilla ProgressivePreloader (Task 16
-            снёс React-стенд-ин SpinnerArc; в tweb история грузится под тем же
-            прелоадером — bubbles.ts:752 `new ProgressivePreloader(...)`). */}
-        {spinnerMount && (
-          <div className={classNames(s.spinnerOverlay, spinnerCls)} ref={chatSpinnerHost} />
-        )}
+        {/* ДОЛГ этапа 7: спиннера первой загрузки здесь больше нет. В tweb им
+            владеет сама лента (bubbles.ts:752 `new ProgressivePreloader(...)`),
+            а React-обвязка вокруг него держалась на флагах zustand-окна, которых
+            у зеркала нет. Порт — в `chat/bubbles.ts`. */}
 
-        {/* Лента — дерево tweb: .bubbles > .scrollable.bubbles-scrollable >
-            .bubbles-padding-top + .bubbles-inner + .bubbles-padding-bottom
-            (bubbles.ts:4178-4186). Распорки заменяют паддинги контента: их высота
-            меняется вместе с плейтами, и скролл компенсируется по дельте. */}
-        {/* `no-select` — как в tweb (selection.ts:433): гасит `user-select: text`
-            у .bubble-content, чтобы drag-выделение не красило текст. */}
-        {/* Перенос ленты на императивный DOM идёт под флагом VITE_VANILLA_FEED
-            (по умолчанию ВЫКЛЮЧЕН): под ним React-лента не рендерится вовсе, всё
-            дерево `.bubbles` строит vanilla-порт `chat/bubbles.ts`. Пин на эту
-            развилку — `Chat.vanillaFeed.test.ts` (Chat.tsx нельзя отрендерить в
-            тесте, см. «Тесты» в web-client/CLAUDE.md).
+        {/* Лента целиком императивная — порт tweb `chat/bubbles.ts`. Дерево
+            (`.bubbles > .scrollable.bubbles-scrollable > .bubbles-padding-top +
+            .bubbles-inner + .bubbles-padding-bottom`, tweb bubbles.ts:4178-4186)
+            строит сама лента; React-хост `VanillaFeed` лишь подвешивает её узлы
+            в колонку чата. Точка монтирования закреплена
+            `Chat.feedMount.test.ts` (Chat.tsx нельзя отрендерить в тесте, см.
+            «Тесты» в web-client/CLAUDE.md).
 
             `isMegagroup` — тот же признак «открыт групповой чат»: любая наша
             группа это `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
-        {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
-        ) : (
-        <div
-          ref={bubblesRef}
-          className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'no-select' : '', selectingCls)}
-        >
-        <div
-          ref={scrollRef}
-          onMouseDown={dragSelect.onMouseDown}
-          className={classNames(s.scroll, 'scrollable', 'scrollable-y', 'bubbles-scrollable')}
-        >
-          <div className="bubbles-padding bubbles-padding-top" style={{ height: `${padTopPx}px` }} />
-          <div
-            ref={contentRef}
-            className={classNames(s.content, 'bubbles-inner', isGroup ? 'is-chat' : '', feedMsgs.length ? '' : 'no-messages')}
-            // fade messages in once the first page has loaded (tweb-like)
-            style={{ opacity: feedLoading ? 0 : 1 }}
-          >
-            {/* Render the list only once revealed, so rows mount at reveal time
-                and the ladder is seen (not played hidden behind the spinner). */}
-            {!feedLoading && (
-              <ChatFeed
-                msgs={feedMsgs}
-                winMsgs={feedWinMsgs}
-                autoDownload={autoDownload}
-                isRealChat={isRealChat}
-                isGroup={isGroup}
-                // Быстрая реакция по ховеру: в «Избранном» её нет (tweb
-                // onBubblesMouseMove: `this.peerId !== rootScope.myId`), в
-                // секретных чатах реакций нет вовсе.
-                canQuickReact={isRealChat && chat.type !== 'saved' && chat.type !== 'secret'}
-                discussionsEnabled={discussionsEnabled}
-                highlightSeq={highlightSeq}
-                unreadDividerSeq={unreadDividerSeq}
-                selecting={selecting}
-                selected={selected}
-                stickyDateKey={stickyDateKey}
-                feedFns={feedFns}
-                onOpenDiscussion={openDiscussionThread}
-              />
-            )}
-
-            {/* Похожие каналы под лентой канала (tweb chat/similarChannels). */}
-            {!feedLoading && isChannel && isRealChat && !thread && (
-              <SimilarChannels peerId={numericChatId} onOpen={onOpenChannel} />
-            )}
-          </div>
-          <div className="bubbles-padding bubbles-padding-bottom" style={{ height: `${padBottomPx}px` }} />
-          {!feedLoading && emptyGreeting && (
-            <EmptyChatGreeting onGreet={() => onComposerSend('👋')} />
-          )}
-        </div>
-        </div>
-        )}
+        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
 
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width
@@ -1620,13 +1313,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {selecting && (
               <SelectionBar
                 count={selected.size}
-                onClear={() => {
-                  // Под ванильной лентой выбор держит ОНА — снимать надо у неё,
-                  // иначе чекбоксы в баблах остались бы стоять (tweb: клик по
-                  // счётчику зовёт `cancelSelection`, selection.ts:1080-1082).
-                  feedCancelSelection.current?.()
-                  clearSelection()
-                }}
+                onClear={clearSelection}
                 onForward={() => openForwardFor(numericChatId, [...selected])}
                 onDelete={() => openDeleteFor(numericChatId, [...selected])}
                 canForward={!isSecret}
@@ -1748,7 +1435,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           closeForward: () => { viewerActionCloseRef.current = null; msgActions.closeForward() },
         }}
         numericChatId={numericChatId}
-        isRealChat={isRealChat}
       />
     </CallProvider>
   )

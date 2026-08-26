@@ -1,5 +1,20 @@
 # Этап 7: снос React-ленты и `messagesStore` — карта перед работой
 
+> **СТАТУС: ВЫПОЛНЕНО.** Снос сделан; этот файл остаётся ИСТОРИЕЙ разведки, а не
+> описанием текущего состояния. Что получилось на самом деле и какие долги
+> обнажил снос — «Лента чата — императивная, и что за это ещё не заплачено» в
+> [`web-client/CLAUDE.md`](../../web-client/CLAUDE.md). Расхождения разведки с
+> кодом, найденные при исполнении: `StackedAvatars`/`CommentsBar` держались
+> ТОЛЬКО ленточными модулями (в §Приложении они ошибочно в списке «сносить
+> нельзя»); `messagesStore.reactions.test.ts` перестал быть эталоном слияния
+> реакций (эталон — `core/reactions/messageReactions.test.ts`, см. шапку самого
+> файла теста); вместе с React-лентой умерли не названные здесь узлы —
+> `core/dom/smoothScrollToElement.ts`, `core/reactions.ts`,
+> `core/hooks/useReactions.ts`, `core/hooks/useAnimatedEmoji.ts`,
+> `stores/reactionEffectStore.ts`, React-меню сообщения
+> (`useMessageActions` + `conversation/MessageContextMenu.tsx`) и его попапы
+> (`TranslatePopup`, `StarReactionPopup`).
+
 Разведка от 2026-08-26, ветка `worktree-chat-vanilla`. Документ отвечает на четыре
 вопроса: **что можно удалить**, **что придётся пересадить**, **чего императивной
 ленте не хватает до паритета с tweb** и **в каком порядке это делать, чтобы каждый

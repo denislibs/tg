@@ -3,7 +3,6 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
 import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
@@ -110,14 +109,13 @@ const APPLY: Projector = {
   // правит ТОЛЬКО applyOps без исключений. Вкладочных обогащений здесь тоже
   // больше НЕТ: blob-URL локального превью (`localUrl`) минтит воркер внутри
   // messages.sendFile, поэтому он приезжает обычным полем операции.
-  // Этап «лента на императивном DOM» (шаг 1): та же пачка операций едет во
-  // ВТОРУЮ копию окна — НЕреактивное зеркало главного потока
-  // (core/history/messagesMirror.ts, порт apiManagerProxy.mirrors), которое
-  // читает синхронно императивная лента и которое объявляет изменения
-  // событиями history_append/history_update/message_edit/history_delete.
-  // Обе копии правит одна точка (эта строка) одной и той же чистой applyOp —
-  // заводить второй вход в зеркало нельзя, копии разъедутся.
-  [RT.messageOp]: (e) => { useMessagesStore.getState().applyOps(e.ops); applyOpsToMirror(e.ops) },
+  // Копия окна на главном потоке ОДНА — НЕреактивное зеркало
+  // (core/history/messagesMirror.ts, порт apiManagerProxy.mirrors): его читает
+  // синхронно императивная лента, а изменения объявляет событиями
+  // history_append/history_update/message_edit/history_delete. Реактивная копия
+  // (zustand `messagesStore`) жила рядом ради React-ленты и снесена вместе с ней
+  // (этап 7) — второго входа в окно заводить нельзя, копии разъедутся.
+  [RT.messageOp]: (e) => { applyOpsToMirror(e.ops) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
   // проектор — ЕДИНСТВЕННЫЙ писатель зеркала (пин — core/noDuplicatePeers.test.ts).
@@ -214,9 +212,9 @@ export function registerStoreProjection(managers: Managers): void {
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
     if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(peerId, getPeerId(msg.from_id))
-    // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
-    // звук, нотификация) — отдельные подписчики rootScope напрямую, без
-    // дублирующего тоста.
+    // UI-реакции на новое сообщение (отметка прочтения — в самой ленте
+    // `chat/bubbles.ts`, звук, нотификация) — отдельные подписчики rootScope
+    // напрямую, без дублирующего тоста.
   })
   // Task 3: rt:read теперь применяет владелец (workerCore.ts::dispatch →
   // dialogs.applyRead → rt:dialog_op) — строка store.applyRead здесь была

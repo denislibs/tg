@@ -90,7 +90,7 @@ async function setup(opts: { dnp?: boolean } = {}) {
   vi.resetModules()
   if (opts.dnp) {
     vi.doMock('@config/app', () => ({
-      AppConfig: { dnp: { enabled: true, serverStaticPublicKeys: [] }, vanillaFeed: false },
+      AppConfig: { dnp: { enabled: true, serverStaticPublicKeys: [] } },
     }))
   } else {
     vi.doUnmock('@config/app')

@@ -6,10 +6,12 @@
 // composer state (set here on send, by the context menu via the returned setters,
 // and read by the Composer).
 //
-// It does NOT own scroll intent — `atBottomRef`/`userScrolledUpRef` are passed in
-// (they belong to the scroll state machine); sending just pins them to the bottom.
+// Пином к низу при отправке он не занимается: «следить ли за низом» — состояние
+// самой ленты (`chat/bubbles.ts::scrolledDown`, порт tweb), и она сама доводит
+// скролл к новому сообщению (`_renderNewMessage`). Пара рефов
+// `atBottomRef`/`userScrolledUpRef` жила здесь, пока владельцем скролла был
+// React-хук `useChatScroll`; вместе с ним она и ушла.
 import { useRef, useState } from 'react'
-import type { MutableRefObject } from 'react'
 import { useEvent } from './useEvent'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import { splitRich } from '../richtext/markdown'
@@ -81,9 +83,6 @@ interface UseChatSendArgs {
   sendAsPeerId?: PeerId | null
   /** Заголовок выбранной send-as личности — чтобы оптимистичный бабл сразу
    * отрисовался от её имени (иначе показывался бы «от себя» до reconcile). */
-  // Scroll intent (owned elsewhere): sending pins to the bottom.
-  atBottomRef: MutableRefObject<boolean>
-  userScrolledUpRef: MutableRefObject<boolean>
   onChatCreated?: (peerId: PeerId) => void
 }
 
@@ -98,8 +97,6 @@ export function useChatSend({
   meId,
   threadRootId,
   sendAsPeerId = null,
-  atBottomRef,
-  userScrolledUpRef,
   onChatCreated,
 }: UseChatSendArgs) {
   const managers = useManagers()
@@ -174,7 +171,6 @@ export function useChatSend({
       // `onMessageSent(false, true)` сразу после неё).
       const sendingParams = getMessageSendingParams()
       onMessageSent()
-      atBottomRef.current = true; userScrolledUpRef.current = false
       // Секретный чат (E2E): голос шифруем своим ключом файла и шлём как secret-медиа
       // (иначе он уходил ПЛЕЙНТЕКСТОМ — дыра E2E). Без оптимистичного бабла — приедет
       // расшифрованным echo new_message (как секретные документы). Кружок (round)
@@ -209,7 +205,6 @@ export function useChatSend({
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
   const sendReal = (text: string, sendingParams: MessageSendingParams, entities?: MessageEntity[], ttlSeconds: number | null = null, playFx = true) => {
     const clientMsgId = mkClientMsgId()
-    atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
     // Ровно один эффект-эмодзи (❤️/🎉/👍/…) → полноэкранный canvas-эффект сразу
     // после отправки; у получателя эффект играет только по клику на бабл.
     // Явно выбранный эффект сообщения (из send-меню) имеет приоритет и едет полем.
@@ -239,7 +234,6 @@ export function useChatSend({
   const sendGeo = (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => {
     const sendingParams = getMessageSendingParams()
     onMessageSent()
-    atBottomRef.current = true; userScrolledUpRef.current = false
     // Live location: шлём по REST (нужен msgId для последующих обновлений) и
     // запускаем трансляцию; бабл появится WS-эхом. Обычная точка/venue — как было,
     // оптимистичным WS-путём.
@@ -264,7 +258,6 @@ export function useChatSend({
     // ДО отправки, `onMessageSent(clearDraft, true)` — сразу после неё.
     const sendingParams = getMessageSendingParams()
     onMessageSent()
-    atBottomRef.current = true; userScrolledUpRef.current = false
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
@@ -288,7 +281,6 @@ export function useChatSend({
     // Тот же порядок, что у стикера (tweb `sendMessageWithDocument`).
     const sendingParams = getMessageSendingParams()
     onMessageSent()
-    atBottomRef.current = true; userScrolledUpRef.current = false
     if (g.mediaId != null) {
       const mediaId = g.mediaId
       void (async () => {
@@ -334,7 +326,6 @@ export function useChatSend({
     const clientMsgId = mkClientMsgId()
     const sendingParams = getMessageSendingParams()
     onMessageSent()
-    atBottomRef.current = true; userScrolledUpRef.current = false
     void managers.messages.sendText({ peerId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, ...sendingParams, optimistic: { senderId: meId ?? -1, contactName: name } })
   }
 
@@ -396,7 +387,6 @@ export function useChatSend({
     // Фото/видео как медиа (tweb isMedia): бабл появляется СРАЗУ с локальным
     // превью и кольцом прогресса (tweb is_outgoing + ProgressivePreloader).
     const isVisual = (type === 'photo' || type === 'video') && !asFile
-    atBottomRef.current = true; userScrolledUpRef.current = false
     // Секретный чат (E2E): шифруем байты своим ключом файла, грузим ciphertext как
     // непрозрачный blob, key/iv кладём в зашифрованный payload (secret.sendMedia).
     // Шифрование и локальное превью — тоже в воркере (ключи живут там), см.
@@ -477,7 +467,6 @@ export function useChatSend({
       const fwd = forward
       setForward(null)
       onMessageSent()
-      atBottomRef.current = true; userScrolledUpRef.current = false
       void (async () => {
         try {
           await managers.messages.forwardMessages(numericChatId, fwd.sourcePeerId, fwd.msgIds, { dropAuthor: fwd.dropAuthor, dropCaption: fwd.dropCaption })
@@ -525,7 +514,6 @@ export function useChatSend({
       // Форматирование идёт тем же путём, что и в обычных чатах: разметка из
       // композера (entOf) — и в оптимистичный бабл, и в REST-тело поста.
       onMessageSent()
-      atBottomRef.current = true; userScrolledUpRef.current = false
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
         const entities = entOf(parts[k])

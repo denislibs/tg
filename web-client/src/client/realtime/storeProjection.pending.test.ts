@@ -1,5 +1,7 @@
 // Пины пути «неотправленное сообщение → экран» ПОСЛЕ переноса жизненного цикла в
-// менеджер воркера. Пяти кадров rt:pending_* больше нет: бабл появляется,
+// менеджер воркера. Окно на главном потоке одно — зеркало
+// (`core/history/messagesMirror.ts`), из которого рисует императивная лента;
+// zustand-копия жила ради React-ленты и снесена вместе с ней (этап 7). Пяти кадров rt:pending_* больше нет: бабл появляется,
 // патчится и исчезает теми же MessageOp, что и любое другое изменение окна,
 // поэтому здесь гоняется НАСТОЯЩАЯ механика воркера (newPendingMethods) и её
 // операции переигрываются проектором — раньше эти же гарантии держались на
@@ -12,7 +14,7 @@ import rootScope from '@lib/rootScope'
 import { RT, type PendingNewEvt } from '../../core/realtime/events'
 import { newPendingMethods } from '../../core/managers/messages/pending'
 import SlicedArray, { SliceEnd } from '../../core/history/slicedArray'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import { mirrorWindow, resetMessagesMirror, winKey } from '../../core/history/messagesMirror'
 import type { MessageReal, MyMessage } from '../../core/models'
 import { generateMessageId, isLocalMessageId } from '../../core/history/messageId'
 import { getMediaFromMessage } from '../../core/media/messageMedia'
@@ -24,8 +26,8 @@ const CHAT = 30
 const THREAD = 40
 const SENDER = 7
 
-function bubbles(key: string) {
-  return useMessagesStore.getState().byKey[key]?.msgs ?? []
+function bubbles(key: string): MyMessage[] {
+  return [...(mirrorWindow(key) ?? [])]
 }
 
 /** Воркерная сторона: SSOT + срезы окон, как в messagesManager. */
@@ -77,8 +79,7 @@ describe('storeProjection — жизненный цикл неотправлен
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   beforeEach(() => {
-    useMessagesStore.setState({ byKey: {} })
-    useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
+    resetMessagesMirror()
   })
 
   // Что ломается, если гарантия нарушена: если бы insert-операция бабла не
@@ -100,7 +101,6 @@ describe('storeProjection — жизненный цикл неотправлен
   // треда, бабл ответа в форум-топике/комментариях попал бы в основную ленту
   // чата — либо продублировался бы там, где его быть не должно.
   it('бабл треда попадает в окно треда (и в основное — оба ключа несёт сама операция)', () => {
-    useMessagesStore.getState().setWindow(winKey(CHAT, THREAD), { msgs: [], reachedTop: true, reachedBottom: true })
     const w = worker([winKey(CHAT), winKey(CHAT, THREAD)])
 
     emit(w.beforeMessageSending(evt({ client_msg_id: 'c2', thread_root_id: THREAD })))
@@ -181,8 +181,7 @@ describe('storeProjection — локальное превью приезжает
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   beforeEach(() => {
-    useMessagesStore.setState({ byKey: {} })
-    useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: [], reachedTop: true, reachedBottom: true })
+    resetMessagesMirror()
   })
 
   // Что ломается: не доедь превью до окна — мгновенного показа отправляемого

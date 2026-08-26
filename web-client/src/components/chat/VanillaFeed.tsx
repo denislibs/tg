@@ -10,17 +10,59 @@
 // ребёнок `.chat` и участвует в его flex-раскладке, а лишний узел-обёртка эту
 // раскладку сломал бы. `display: contents` убирает обёртку из бокс-дерева, и
 // `.bubbles` остаётся flex-ребёнком `.chat`, как в оригинале.
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { winKey } from '@core/history/messagesMirror'
 import { getMediaId } from '@core/messages/messageKind'
-import ChatBubbles from './bubbles'
+import ChatBubbles, { type ChatContext } from './bubbles'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
 import { useSearchStore } from '../../stores/searchStore'
 import noop from '@helpers/noop'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion }: {
+/**
+ * Ручки ленты для её ОКРУЖЕНИЯ — ровно те роли, которые в tweb исполняет
+ * `Chat`/`ChatTopbar` поверх `ChatBubbles`, а у нас исполняет `Chat.tsx`:
+ * прыжок к сообщению (поиск, закреплённые, упоминания, вьювер), кнопка «вниз»
+ * и выбор актуального закрепа по видимой истории.
+ *
+ * Ручки, а не React-состояние: у оригинала это тоже прямые вызовы в ленту
+ * (`chat.setMessageId(...)`, `chat.bubbles.onGoDownClick()`), а окно ленты
+ * React не рисует и перерисовывать по ним нечего.
+ */
+export interface ChatFeedApi {
+  /** Порт tweb `Chat.setMessageId({lastMsgId})` (chat.ts:1164) — «тот же чат,
+   *  другая цель»: окно пересобирается вокруг номера, бабл подсвечивается. */
+  jumpToMessage(mid: number): void
+  /** Порт tweb `ChatBubbles.onGoDownClick` (bubbles.ts:3852) в применимом
+   *  объёме: стека возврата (`followStack`) у ленты нет (см. bubbles.ts:2437),
+   *  значит остаётся ровно первая ветка оригинала — `chat.setMessageId()`. */
+  goDown(): void
+  /** Порт tweb `ChatTopbar` (topbar.ts:560) — пункт «Выбрать сообщения»:
+   *  `selection.toggleSelection(true, true)`. Режимом владеет лента. */
+  startSelection(): void
+  /** Порт tweb `selection.cancelSelection` (selection.ts:475) — клик по
+   *  счётчику плашки выделения. */
+  cancelSelection(): void
+  /** Полная пересборка окна от низа истории — тот же `setPeer`, что на
+   *  открытии чата. Нужна там, где история изменилась ЦЕЛИКОМ, а события об
+   *  этом нет: «Очистить историю» (`chats.clearHistory` апдейта не порождает). */
+  reload(): void
+}
+
+export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
+  /** Ручки ленты наружу — заполняются на маунте, гасятся на размонтировании. */
+  api?: RefObject<ChatFeedApi | null>
+  /** Скролл-контейнер ленты (`Scrollable.container`) — тем же способом, что
+   *  React отдаёт наружу свои узлы. Нужен закреплённым: tweb выбирает
+   *  показанный закреп по нижнему видимому баблу
+   *  (`pinnedMessage.setCorrectIndex` из `bubbles.onScroll`). */
+  scrollerRef?: RefObject<HTMLElement | null>
+  /** Высоты распорок `.bubbles-padding-top/-bottom` в px — порт «ленточной»
+   *  половины tweb `Chat.recomputePaddings` (chat.ts:345): числа считает
+   *  окружение чата, лента лишь применяет (`ChatBubbles.setPaddings`). */
+  paddingTopPx: number
+  paddingBottomPx: number
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -60,6 +102,12 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
    */
   menuPopups?: ContextMenuPopups
   /**
+   * Действия медиавьювера — прыжок к сообщению, пересылка, удаление, догрузка
+   * соседей. Владелец тот же, что у попапов меню: окружение чата (см.
+   * `ChatContext.mediaViewerActions`).
+   */
+  mediaViewerActions?: ChatContext['mediaViewerActions']
+  /**
    * Режим выделения — порт роли `Chat` (tweb chat.ts:615 создаёт
    * `ChatSelection`, а `selection.ts:1008-1173` рисует плашку вместо
    * композера). Плашка — окружение чата, поэтому её владелец здесь: лента
@@ -87,8 +135,14 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
-  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion })
-  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion }
+  // Инстанс ленты и последние распорки — через рефы: смена высоты плейтов или
+  // композера НЕ должна пересобирать ленту (это потеря позиции скролла), она
+  // лишь двигает распорки эффектом ниже.
+  const bubblesRef = useRef<ChatBubbles | null>(null)
+  const paddingRef = useRef({ top: paddingTopPx, bottom: paddingBottomPx })
+  paddingRef.current = { top: paddingTopPx, bottom: paddingBottomPx }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
+  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -125,6 +179,9 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
     // Без них поведение ровно то же, что у React-ленты сегодня: ссылка
     // открывается новой вкладкой (`target="_blank"`), клик по имени ничего не
     // делает. Придёт навигация — пробрасывается тем же полем здесь.
+    // Инстанс выделения заводит сама лента через фабрику ниже; ссылка нужна
+    // ручкам наружу (вход в режим из меню шапки, снятие с плашки).
+    let feedSelection: ChatSelection | undefined
     const bubbles = new ChatBubbles(
       {
         peerId,
@@ -199,6 +256,7 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
             update: () => report(selection, selection.isSelecting),
             remove: () => report(selection, false),
           })
+          feedSelection = selection
           return selection
         },
         // Права и вход в reply читаются ЧЕРЕЗ РЕФ, а не захватываются
@@ -209,10 +267,32 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         canSend: () => gesture.current.canSend ?? false,
         canSendPlain: () => gesture.current.canSendPlain ?? false,
         initMessageReply: (mid) => gesture.current.onReply?.(mid),
+        // Через реф — по той же причине, что попапы меню: ни один из колбэков
+        // не стабилен между рендерами хоста, а лента создаётся один раз.
+        mediaViewerActions: {
+          jumpToMessage: (item) => gesture.current.mediaViewerActions?.jumpToMessage?.(item),
+          onForward: (mid, close) => gesture.current.mediaViewerActions?.onForward?.(mid, close),
+          onDelete: (mid, close) => gesture.current.mediaViewerActions?.onDelete?.(mid, close),
+          loadMoreMedia: (older, anchor, count) => gesture.current.mediaViewerActions?.loadMoreMedia?.(older, anchor, count) ?? Promise.resolve([]),
+        },
       },
       managers,
     )
     host.append(bubbles.container, bubblesViewport)
+    if (api) {
+      api.current = {
+        jumpToMessage: (mid) => { void bubbles.setMessageId({ lastMsgId: mid }).catch(noop) },
+        goDown: () => { void bubbles.setMessageId().catch(noop) },
+        startSelection: () => { feedSelection?.toggleSelection(true, true) },
+        cancelSelection: () => { feedSelection?.cancelSelection() },
+        reload: () => { void bubbles.setPeer().then((result) => result?.promise).catch(noop) },
+      }
+    }
+    if (scrollerRef) scrollerRef.current = bubbles.scrollable.container
+    // Распорки — до первого `setPeer`: иначе первая страница встала бы под
+    // топбаром и под композером.
+    bubbles.setPaddings(paddingRef.current.top, paddingRef.current.bottom)
+    bubblesRef.current = bubbles
     // Порт `Chat.setPeer` (tweb chat.ts:1119) в единственной применимой здесь
     // форме: пир только что открыт, значит `samePeer: false` — лента набирает
     // окно от низа истории и уводит скролл вниз без анимации. Цепочка до
@@ -228,10 +308,19 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
     // чата, tweb `updateGoDownVisibility`) — его снимать надо руками, узел
     // переживает размонтирование ленты.
     return () => {
+      if (api) api.current = null
+      if (scrollerRef) scrollerRef.current = null
+      bubblesRef.current = null
       bubbles.destroy()
       chatColumn.classList.remove('is-go-down-visible')
     }
-  }, [peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, managers])
+  }, [api, scrollerRef, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, managers])
+
+  // Плейты топбара и излишек композера меняют распорки на живой ленте — тот же
+  // вызов, что в tweb делает `Chat.recomputePaddings` на каждое изменение.
+  useLayoutEffect(() => {
+    bubblesRef.current?.setPaddings(paddingTopPx, paddingBottomPx)
+  }, [paddingTopPx, paddingBottomPx])
 
   return <div ref={hostRef} style={{ display: 'contents' }} />
 }

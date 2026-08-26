@@ -31,8 +31,8 @@ export function convMsgReplyState(m: ConvMsg, msgId: number | undefined, chatNam
 // ReplyState по НОМЕРУ сообщения в загруженном окне. Окно приходит сырым
 // (`MyMessage[]` из зеркала `core/history/messagesMirror.ts`), а не read-model'ю
 // ленты: плашку ответа собирает владелец композера, и он обязан говорить о том
-// же окне, что рисует лента, — иначе под флагом `VITE_VANILLA_FEED` (лента
-// читает зеркало) плашка собиралась бы из другой копии окна.
+// же окне, что рисует лента (`components/chat/bubbles.ts` читает то же
+// зеркало), — иначе плашка собиралась бы из другой копии окна.
 //
 // Вне окна — null, восстановление/жест скипается (ручки «дай сообщение по id» у
 // бэка нет, ровно как в tweb `getMessageByPeer` возвращает пустое).
@@ -43,8 +43,7 @@ export function windowReplyState(
   accent: string,
   authors?: ReplyAuthors & {
     /** открыт групповой чат — тогда у ВХОДЯЩЕГО в плашке стоит имя автора, а не
-     *  имя чата. Тот же гейт, что у ленты (`useConvMessages.resolveSenders`,
-     *  `bubbles.ts` — `chat.isMegagroup`). */
+     *  имя чата. Тот же гейт, что у ленты (`bubbles.ts` — `chat.isMegagroup`). */
     isGroup?: boolean
   },
 ): NonNullable<ReplyState> | null {

@@ -6,14 +6,13 @@
 // типизированными событиями `rootScope` (`history_append`/`history_update`/
 // `message_edit`/`history_delete`, tweb lib/rootScope.ts:77-88).
 //
-// Зачем оно рядом с `stores/messagesStore`: zustand-копия окна существует ради
-// React (подписка на срез → перерисовка). Императивной ленте (порт
-// `chat/bubbles.ts`, этап 2) нужно другое — синхронное чтение окна и точечное
-// «изменилось вот это». Обе копии кормит ОДИН поток операций
+// Почему НЕ zustand: ленте (`chat/bubbles.ts`) нужно не «подписка на срез →
+// перерисовка», а синхронное чтение окна и точечное «изменилось вот это».
+// Реактивная копия окна существовала рядом ради React-ленты и снесена вместе с
+// ней (этап 7) — теперь копия одна, и кормит её ОДИН поток операций
 // (`core/realtime/messageOps.ts`) из ОДНОЙ точки — `client/realtime/
-// storeProjection.ts` — и переигрывает их ТА ЖЕ чистая `applyOp`: второй
-// независимый вывод того же факта развёл бы копии (см. «Владение фактами» в
-// web-client/CLAUDE.md).
+// storeProjection.ts`. Второй независимый вход сюда заводить нельзя (см.
+// «Владение фактами» в web-client/CLAUDE.md).
 //
 // Чего здесь нет и почему:
 // * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
@@ -31,10 +30,9 @@ import rootScope from '@lib/rootScope'
  *  комментарии ("50:60"). Аналог tweb `chat.messagesStorageKey`, которым
  *  подписки `bubbles.ts` отсеивают события чужого окна.
  *
- *  Живёт здесь, а не в `stores/messagesStore`: ключ — свойство САМОГО окна, а не
- *  его zustand-копии, и потребитель у него теперь не один (императивная лента
- *  зеркала и React-лента стора). `stores/messagesStore` реэкспортирует его
- *  отсюда — лента не имеет права зависеть от стора (см. этап 7). */
+ *  Живёт здесь, а не в сторе: ключ — свойство САМОГО окна. Прежде его держал
+ *  `stores/messagesStore` и реэкспортировал отсюда; стор снесён вместе с
+ *  React-лентой (этап 7). */
 export const winKey = (peerId: number, threadRootId?: number | null): string =>
   threadRootId ? `${peerId}:${threadRootId}` : String(peerId)
 

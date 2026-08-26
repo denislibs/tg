@@ -25,7 +25,7 @@
 // TODO(scroll-parity): НИ `custom-scroll`, НИ `overlay-scroll` не ставятся —
 // весь переключатель отложен до задачи «Scrollable для остальных скроллеров».
 // Причина едина для обоих классов: `Scrollable` инстанцирован только в одном
-// месте (`useChatScroll.ts`, лента чата) — класс `.scrollable` без своего
+// месте (`chat/bubbles.ts`, лента чата) — класс `.scrollable` без своего
 // инстанса висит ещё примерно на 15 других скроллерах (`ChatList`,
 // `EmojiDropdown`/`EmoticonsTab`/`StickersTab`/`GifsTab`, `MentionsHelper`,
 // `StickersHelper`, `InlineResultsHelper`, `CountryInput`, медиавьювер,

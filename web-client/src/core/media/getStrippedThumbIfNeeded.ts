@@ -22,8 +22,7 @@
 //     приезжает полем `blurPreview`/`blur_preview`);
 //   • `getPreviewURLFromThumb` → `data:image/jpeg;base64,…`: наш bytes-канал
 //     отдаёт превью уже base64-строкой, промежуточный blob-URL строить не из
-//     чего и незачем (тот же приём — `mediaViewer/base.ts` и
-//     `components/messages/useBlurThumb.ts`).
+//     чего и незачем (тот же приём — `mediaViewer/base.ts`).
 //
 // Что портировано БЕЗ изменений и почему это важно:
 //   • `isVideo` продолжает требовать превью даже при `downloaded` — у видео

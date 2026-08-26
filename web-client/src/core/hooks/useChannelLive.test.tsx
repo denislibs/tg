@@ -7,7 +7,7 @@
 //
 // Счётчиков поста здесь больше нет: просмотры и тред приезжают внутри самого
 // сообщения (`views`/`replies`), и проверяются они там, где рисуются, —
-// components/messages/ChatFeed.commentsFooter.test.tsx.
+// снесённом components/messages/ChatFeed.commentsFooter.test.tsx.
 import { renderHook, cleanup } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createElement, type ReactNode } from 'react'

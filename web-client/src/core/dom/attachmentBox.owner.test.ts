@@ -71,8 +71,8 @@ describe('бокс вложения: единственный расчёт — s
 // Гейт наблюдателя звука — портирован как МЕХАНИЗМ: значение
 // (`USE_VIDEO_OBSERVER = false`) совпадает с оригиналом, но флаг
 // `willObserveSound` считается и раздаётся ровно так же, как там. Здесь пиним
-// форму (значение проверяют поведенческие кейсы `wrappers/video.test.ts` и пара
-// `RealMediaBubble.fitted` / `RealMediaBubble.videoObserver`): любой «порт
+// форму (значение проверяют поведенческие кейсы `wrappers/video.test.ts`):
+// любой «порт
 // намерения» — `canHaveVideoPlayer: doc.type === 'video'`, `isVideoWithPlayer:
 // isVideo && ...` — красит этот кейс.
 describe('canHaveVideoPlayer: только willObserveSound под USE_VIDEO_OBSERVER', () => {
@@ -89,12 +89,6 @@ describe('canHaveVideoPlayer: только willObserveSound под USE_VIDEO_OBS
     // и в двух других потребителей оригинала (video.ts:217 и :654)
     expect(src).toMatch(/pip:\s*willObserveSound/)
     expect(src).toMatch(/locked:\s*willObserveSound/)
-  })
-
-  it('RealMediaBubble: тот же флаг, тот же рубильник', () => {
-    const src = read('components/messages/RealMediaBubble.tsx')
-    expect(src).toMatch(/const willObserveSound = USE_VIDEO_OBSERVER &&/)
-    expect(src).toMatch(/isVideoWithPlayer:\s*willObserveSound/)
   })
 
   it('никто не выводит флаг плеера из типа медиа', () => {

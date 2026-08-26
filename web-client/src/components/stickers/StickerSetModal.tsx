@@ -5,11 +5,11 @@
 // же пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
 //
 // Открытие по клику на стикер В ЧАТЕ (tweb wrapSticker → showStickersPopup) —
-// в `StickerRealBubble` (`components/messages/MessageContent.tsx`). Адрес
-// набора берётся ИЗ САМОГО ДОКУМЕНТА (`doc.stickerSetInput`, порт
-// `saveDocument`), поэтому клик в сеть не ходит вовсе; прежде на его месте был
-// обратный поиск `GET /stickers/by-media/{mediaID}`, которого у оригинала не
-// существует. `onPickSticker` там — `feedFns.sendSticker` (проводка через
+// в бабле стикера (`chat/bubbles.ts`). Адрес набора берётся ИЗ САМОГО
+// ДОКУМЕНТА (`doc.stickerSetInput`, порт `saveDocument`), поэтому клик в сеть
+// не ходит вовсе; прежде на его месте был обратный поиск
+// `GET /stickers/by-media/{mediaID}`, которого у оригинала не
+// существует. `onPickSticker` там — отправка стикера (проводка через
 // `Chat.tsx`, тот же `sendSticker` из `useChatSend`, что и у композера):
 // клик по стикеру ВНУТРИ попапа отправляет его в текущий чат, ровно как в
 // tweb `onStickersClick` (там нет read-only режима в зависимости от точки

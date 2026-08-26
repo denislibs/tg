@@ -1,7 +1,7 @@
 // Слоение медиа в бабле: превью-подложка и само медиа обязаны быть в ОДНОМ
 // классе позиционирования.
 //
-// Канвас stripped-превью (`components/messages/useBlurThumb.ts`) — absolute
+// Канвас stripped-превью (`core/media/getStrippedThumbIfNeeded.ts`) — absolute
 // (`.canvas-thumbnail`, порт tweb base.scss:1244-1248), и лежит он в DOM ПЕРЕД
 // медиа. Если `.media-photo` останется static, порядок отрисовки CSS покрасит
 // позиционированный канвас ПОВЕРХ непозиционированного содержимого — загруженное

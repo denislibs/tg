@@ -41,7 +41,7 @@ import { newPendingMethods } from './messages/pending'
 import { sendingParamsToWire, type MessageSendingParams } from './messages/sendingParams'
 import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
-// импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
+// импортов (`SavedTagsPanel` и др. берут их отсюда).
 export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
 
 /**
@@ -815,9 +815,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
      *
      * Владелец числа — воркер: он его и запрашивает (`channels.viewCounts`,
      * который зовёт этот метод сразу после разбора ответа). Прежде ответ ручки
-     * писала в окно ВИТРИНА (`useChannelExtras` → `messagesStore.patchViews`),
-     * то есть мимо операций — и до зеркала (`core/history/messagesMirror.ts`),
-     * из которого рисует императивная лента, счётчик не доезжал вовсе.
+     * писала в окно ВИТРИНА (`useChannelExtras` → zustand-копия окна), то есть
+     * мимо операций — и до зеркала (`core/history/messagesMirror.ts`), из
+     * которого рисует лента, счётчик не доезжал вовсе.
      *
      * Патчатся только РЕАЛЬНО изменившиеся: одинаковое значение не событие, а
      * лишний патч разорвал бы ссылку сообщения в окне (мемоизированные баблы

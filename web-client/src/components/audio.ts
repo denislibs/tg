@@ -30,8 +30,8 @@
  *     блок текста `.audio-transcribed-text` создаёт НЕ audio.ts, а бабл
  *     (`chat/bubbles.ts`), а кнопка ищет его подъёмом до `.document-wrapper`.
  *     Бабл — следующий этап и вне периметра этой задачи, поэтому кнопка здесь
- *     была бы мёртвой ручкой. У React-ленты транскрибация работает как работала
- *     (`components/messages/Transcription.tsx`);
+ *     была бы мёртвой ручкой. Кнопки расшифровки в клиенте сейчас нет вовсе:
+ *     она жила в снесённой React-ленте — долг этапа 7;
  *   • `voiceAsMusic`, `showSender`, `withTime`-подпись отправителя
  *     (`wrapSenderToPeer`/`wrapSentTime`) — это режимы поиска/shared-media
  *     (tweb `searchContext`), а не ленты; враппера `senderToPeer` у нас нет;

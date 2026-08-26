@@ -4,7 +4,7 @@
 // правку и мотивировали:
 //   1. панель реально получает переданный класс-угол (а не теряет его при сборке classNames);
 //   2. `cornerFrom` — хелпер для рантайм-флипа у края экрана (ChatListItem,
-//      MessageContextMenu) — переводит origin в класс строго по соответствию из
+//      снесённое React-меню сообщения) — переводит origin в класс строго по соответствию из
 //      `_button.scss:228-262` (инверсия «класс → origin»).
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'

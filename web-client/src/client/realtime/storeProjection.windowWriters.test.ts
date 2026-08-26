@@ -2,10 +2,10 @@
 //
 // Пин сквозной: настоящий менеджер воркера (`newMessagesManager`) объявляет
 // изменение веером `rt:message_op`, вееру подставлен `rootScope`, а на нём сидит
-// настоящий проектор — единственный, кто пишет обе копии окна. Проверяется
-// ЗЕРКАЛО (`core/history/messagesMirror.ts`), потому что именно из него рисует
-// императивная лента (`components/chat/bubbles.ts`): факт, доехавший до
-// zustand-стора, но не до зеркала, для ленты не существует.
+// настоящий проектор — единственный, кто пишет окно. Проверяется ЗЕРКАЛО
+// (`core/history/messagesMirror.ts`): из него рисует императивная лента
+// (`components/chat/bubbles.ts`), и другой копии окна на главном потоке больше
+// нет — zustand-копия жила ради React-ленты и снесена вместе с ней (этап 7).
 //
 // Почему именно так, а не «менеджер вернул ops»: проверка ops глазами теста
 // пропускает ровно тот класс дефекта, ради которого задача и делалась —
@@ -16,8 +16,7 @@ import { newMessagesManager } from '../../core/managers/messagesManager'
 import type { RestClient } from '../../core/net/restClient'
 import { generateMessageId, getServerMessageId } from '../../core/history/messageId'
 import { makeRawMessage } from '../../core/messages/testMessage'
-import { mirrorWindow, putMirrorPage, resetMessagesMirror } from '../../core/history/messagesMirror'
-import { winKey, useMessagesStore } from '../../stores/messagesStore'
+import { mirrorWindow, putMirrorPage, resetMessagesMirror, winKey } from '../../core/history/messagesMirror'
 import { isChosen, myPaidStars } from '../../core/reactions/messageReactions'
 import type { MessageReal, MyMessage, RawMessage } from '../../core/models'
 import type { MessageMediaPoll, MessageMediaToDo } from '../../core/media/messageMedia'
@@ -89,7 +88,6 @@ const emitToTab = (event: string, payload: unknown): void =>
 
 async function setup() {
   ensureProjection()
-  useMessagesStore.setState({ byKey: {} })
   resetMessagesMirror()
 
   const rest = fakeRest()
@@ -102,10 +100,9 @@ async function setup() {
   // Окно у ВЛАДЕЛЬЦА (SSOT + срез): без него `opWindowsFor` не найдёт ни одного
   // окна и операций не будет вовсе.
   const r = await mgr.getHistory({ peerId: CHAT, offsetId: 0, addOffset: 0, limit: 40 })
-  // Окно у ВИТРИНЫ: страницу в зеркало кладёт сама лента (`putMirrorPage`), в
-  // zustand-копию — React-лента. Дальше их правит только поток операций.
+  // Окно у ВИТРИНЫ: страницу в зеркало кладёт сама лента (`putMirrorPage`).
+  // Дальше его правит только поток операций.
   putMirrorPage(winKey(CHAT), r.messages)
-  useMessagesStore.getState().setWindow(winKey(CHAT), { msgs: r.messages, reachedTop: true, reachedBottom: true })
   return { mgr, rest }
 }
 
@@ -321,7 +318,7 @@ describe('окно сообщений: своё действие доезжае�
   })
 
   // Расшифровка голосового: бабл рисует ПАРАМЕТР сообщения (кэш приоритетнее
-  // локального текста, `components/messages/Transcription.tsx:20-21`), поэтому
+  // локального текста), поэтому
   // и объявлять её обязан владелец. Прежде она ложилась только в SSOT воркера.
   it('transcribe() кладёт расшифровку в зеркало', async () => {
     const { mgr, rest } = await setup()

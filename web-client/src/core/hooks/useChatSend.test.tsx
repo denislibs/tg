@@ -75,8 +75,6 @@ function setup(over: Record<string, unknown> = {}) {
       draftPeerId: null,
       canType: true,
       meId: ME,
-      atBottomRef: { current: true },
-      userScrolledUpRef: { current: false },
       ...over,
     }),
     { wrapper },

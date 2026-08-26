@@ -1,15 +1,19 @@
-// Проводка зеркала окон (этап «лента на императивном DOM», шаг 1): проектор
-// применяет ОДНУ пачку операций к обеим копиям окна — реактивной (zustand, для
-// React) и синхронной (core/history/messagesMirror, для императивной ленты).
-// Главный пин — схождение копий: он краснеет раньше, чем на зеркало сядет лента.
+// Проводка зеркала окон: проектор применяет пачку операций `RT.messageOp` к
+// ЕДИНСТВЕННОЙ копии окна на главном потоке — `core/history/messagesMirror`,
+// которую синхронно читает императивная лента.
+//
+// Раньше копий было две (zustand `messagesStore` для React-ленты + зеркало), и
+// главным пином здесь было их СХОЖДЕНИЕ. Реактивная копия снесена вместе с
+// React-лентой (этап 7), сверять больше не с чем — поэтому те же
+// последовательности операций проверяются теперь по ожидаемому содержимому
+// зеркала. Предмет остался: одна пачка операций → одно предсказуемое окно.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { RT } from '../../core/realtime/events'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import { mirrorWindow, resetMessagesMirror } from '../../core/history/messagesMirror'
+import { RT, type NewMessageEvt } from '../../core/realtime/events'
+import { mirrorWindow, resetMessagesMirror, winKey } from '../../core/history/messagesMirror'
 import type { MessageReal, MyMessage } from '../../core/models'
 import { generateMessageId, generateTempMessageId } from '../../core/history/messageId'
-import { makeMessage } from '../../core/messages/testMessage'
+import { makeMessage, makeRawMessage } from '../../core/messages/testMessage'
 import type { MessageOp } from '../../core/realtime/messageOps'
 import type { Managers } from '../bootstrap'
 
@@ -30,38 +34,26 @@ function msg(id: number, over: Partial<MessageReal> = {}): MyMessage {
   return { ...makeMessage({ id, peerId: CHAT, fromId: OTHER, text: `m${id}`, date: 1_755_259_200 }), ...over }
 }
 
-// Открыть окно в zustand-копии: React-лента заводит его до фетча страницы
-// (beginLoad). Зеркало окно не заводит заранее — оно кормится ТОЛЬКО потоком
-// операций и заводит окно первым же insert'ом. Чтобы копии были сравнимы,
-// содержимое обеим даёт один и тот же поток операций (ниже).
-const openWindow = (key: string) => useMessagesStore.getState().beginLoad(key)
+const mirrorMsgs = (key: string): MyMessage[] => [...(mirrorWindow(key) ?? [])]
 
-const storeMsgs = (key: string) => useMessagesStore.getState().byKey[key]?.msgs ?? []
-
-describe('storeProjection — RT.messageOp едет и в зеркало главного потока', () => {
+describe('storeProjection — RT.messageOp едет в зеркало главного потока', () => {
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   beforeEach(() => {
-    useMessagesStore.setState({ byKey: {} })
     resetMessagesMirror()
   })
 
   // Что ломается, если проводки нет: зеркало не видит ни одного изменения окна —
-  // императивная лента (этап 2) молча перестаёт показывать новые сообщения.
-  it('операция доезжает до зеркала, а не только до стора', () => {
-    openWindow(winKey(CHAT))
+  // императивная лента молча перестаёт показывать новые сообщения.
+  it('операция доезжает до зеркала', () => {
     rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(CHAT), msg: msg(cid(501)) }] })
-    expect((mirrorWindow(winKey(CHAT)) ?? []).map((m) => m.id)).toEqual([cid(501)])
+    expect(mirrorMsgs(winKey(CHAT)).map((m) => m.id)).toEqual([cid(501)])
   })
 
-  // ГЛАВНЫЙ ПИН этапа: одна и та же последовательность операций обязана дать
-  // одинаковое содержимое в обеих копиях. Разъезд копий — тот самый класс
-  // дефекта, про который «Владение фактами» в web-client/CLAUDE.md (второй
-  // независимый вывод одного факта).
-  it('копии сходятся на всей последовательности операций (insert/merge/patch/replace/remove)', () => {
-    openWindow(winKey(CHAT))
-    openWindow(winKey(CHAT, THREAD))
-
+  // Вся последовательность видов операций разом: наполнение, неотправленный
+  // бабл, ошибка, ack (слияние по random_id), ack-then-echo дубль, правка,
+  // патч поля, удаление — и то же сообщение во ВТОРОМ окне (тред).
+  it('последовательность операций (insert/merge/patch/replace/remove) даёт предсказуемое окно', () => {
     const pending = tmp(cid(3))
     const ops: MessageOp[] = [
       // наполнение окна: обычные входящие
@@ -88,40 +80,64 @@ describe('storeProjection — RT.messageOp едет и в зеркало гла�
     ]
     rootScope.dispatchEventSingle(RT.messageOp, { ops })
 
-    expect(mirrorWindow(winKey(CHAT))).toEqual(storeMsgs(winKey(CHAT)))
-    expect(mirrorWindow(winKey(CHAT, THREAD))).toEqual(storeMsgs(winKey(CHAT, THREAD)))
-    // Осмысленность сверки: копии не «сошлись пустыми».
-    expect(storeMsgs(winKey(CHAT)).map((m) => m.id)).toEqual([cid(2), cid(3), cid(900)])
-    expect((storeMsgs(winKey(CHAT)).find((m) => m.id === cid(900)) as MessageReal | undefined)?.localUrl).toBe('blob:local-1')
+    const main = mirrorMsgs(winKey(CHAT))
+    expect(main.map((m) => m.id)).toEqual([cid(2), cid(3), cid(900)])
+    // ack слил серверное сообщение с баблом: локальное превью пережило слияние.
+    expect((main.find((m) => m.id === cid(900)) as MessageReal | undefined)?.localUrl).toBe('blob:local-1')
+    expect((main.find((m) => m.id === cid(3)) as MessageReal | undefined)?.message).toBe('изменено')
+    expect((main.find((m) => m.id === cid(2)) as MessageReal | undefined)?.views).toBe(17)
+    // Окно треда — своя копия того же сообщения, патч доехал и туда.
+    const thread = mirrorMsgs(winKey(CHAT, THREAD))
+    expect(thread.map((m) => m.id)).toEqual([cid(2)])
+    expect((thread[0] as MessageReal).views).toBe(17)
   })
 
-  it('копии сходятся и при пооперационной доставке (кадр за кадром)', () => {
-    openWindow(winKey(CHAT))
+  it('пооперационная доставка (кадр за кадром) даёт тот же результат', () => {
     const ops: MessageOp[] = [
       { op: 'insert', key: winKey(CHAT), msg: msg(cid(1)) },
       { op: 'insert', key: winKey(CHAT), msg: msg(tmp(cid(1)), { fromId: ME, random_id: 'c-2' }) },
       { op: 'insert', key: winKey(CHAT), msg: msg(cid(950), { fromId: ME, random_id: 'c-2' }) },
       { op: 'remove', key: winKey(CHAT), msgId: cid(1) },
     ]
-    for (const op of ops) {
-      rootScope.dispatchEventSingle(RT.messageOp, { ops: [op] })
-      expect(mirrorWindow(winKey(CHAT))).toEqual(storeMsgs(winKey(CHAT)))
-    }
-    expect(storeMsgs(winKey(CHAT)).map((m) => m.id)).toEqual([cid(950)])
+    for (const op of ops) rootScope.dispatchEventSingle(RT.messageOp, { ops: [op] })
+    expect(mirrorMsgs(winKey(CHAT)).map((m) => m.id)).toEqual([cid(950)])
   })
 
-  // Единственное СТРУКТУРНОЕ расхождение копий, и оно намеренное: zustand-копия
-  // существует ради React и держит только окна, которые React открыл (гейт
-  // `!byKey[op.key]` в messagesStore.applyOps), а зеркало — порт
-  // apiManagerProxy.mirrors, которое в tweb отражает всё объявленное владельцем
-  // независимо от открытого чата (фильтрует подписчик: bubbles.ts сверяет
-  // storageKey/peerId со своим). Пин держит именно эту границу: если её
-  // случайно «выровняют» гейтом, зеркало перестанет знать про чаты, которые
-  // лента ещё не открыла, — и этап 2 получит пустое окно на переключении чата.
-  it('окно, не открытое React-лентой: стор его игнорирует, зеркало — заводит', () => {
+  // Что ломается: если бы обработчик применял ВСЕ операции к одному (неверному)
+  // ключу, а не к `op.key`, сообщение треда попало бы в основное окно чата.
+  it('операция с ключом окна треда → в окно треда, основное не заведено', () => {
+    rootScope.dispatchEventSingle(RT.messageOp, {
+      ops: [{ op: 'insert', key: winKey(CHAT, THREAD), msg: msg(cid(800), {
+        reply_to: { _: 'messageReplyHeader', reply_to_top_id: THREAD },
+      }) }],
+    })
+    expect(mirrorMsgs(winKey(CHAT, THREAD)).map((m) => m.id)).toEqual([cid(800)])
+    expect(mirrorWindow(winKey(CHAT))).toBeUndefined()
+  })
+
+  // Правило «окно правят ТОЛЬКО операции воркера»: сырой кадр `RT.newMessage`
+  // едет рядом (звук, уведомление, счётчики), но окна не касается. Раньше здесь
+  // же стоял пин «RT.newMessage докладывает превью ответа» — его предмет исчез:
+  // `reply_to` стало ССЫЛКОЙ (`messageReplyHeader`), превью строит рендерер.
+  it('сырой RT.newMessage окно не правит', () => {
+    const evt: NewMessageEvt = {
+      _: 'updateNewMessage',
+      message: makeRawMessage({ id: 999, peerId: CHAT, fromId: OTHER, text: 'hello', date: 1_755_259_210 }),
+    }
+    // В реальности RT.messageOp летит первым (см. workerCore.ts:routeNewMessage) —
+    // воспроизводим тот же порядок.
+    rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(CHAT), msg: msg(cid(1)) }] })
+    rootScope.dispatchEventSingle(RT.newMessage, evt)
+    expect(mirrorMsgs(winKey(CHAT)).map((m) => m.id)).toEqual([cid(1)])
+  })
+
+  // Зеркало — порт `apiManagerProxy.mirrors`: в tweb оно отражает всё, что
+  // объявил владелец, независимо от открытого чата (фильтрует подписчик —
+  // `bubbles.ts` сверяет storageKey/peerId со своим). Пин держит эту границу:
+  // окно заводится первым же insert'ом, никакого «сначала откройте чат».
+  it('окно заводится первым insert’ом, даже если чат не открыт', () => {
     rootScope.dispatchEventSingle(RT.messageOp, { ops: [{ op: 'insert', key: winKey(999), msg: msg(cid(7), { peerId: 999 }) }] })
-    expect(useMessagesStore.getState().byKey[winKey(999)]).toBeUndefined()
-    expect((mirrorWindow(winKey(999)) ?? []).map((m) => m.id)).toEqual([cid(7)])
+    expect(mirrorMsgs(winKey(999)).map((m) => m.id)).toEqual([cid(7)])
   })
 
   // Что ломается без строки сброса: окна прошлой сессии остаются в зеркале, и

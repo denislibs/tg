@@ -123,7 +123,7 @@ const StickerMedia = memo(function StickerMedia({
   /**
    * ГОЛЫЙ id файла — для подсистем, которые до документов ещё не доведены и
    * знают о файле только его номер:
-   *   • каталог реакций (`ReactionIcon`, `ReactionAroundEffect`);
+   *   • каталог реакций (пикер и чипы);
    *   • обложка набора в панели (`stickerSet.thumb_document_id`);
    *   • кастомное эмодзи в тексте (`RichText`).
    *
@@ -156,7 +156,7 @@ const StickerMedia = memo(function StickerMedia({
   /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
    * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
    * Нужен потребителям, которые снимают себя по завершении одноразовой
-   * анимации (эффект вокруг реакции — ReactionAroundEffect). */
+   * анимации (эффект вокруг реакции). */
   onComplete?: () => void
 }) {
   // Ступени и натуральные размеры читаются ЗДЕСЬ — ровно как wrapSticker

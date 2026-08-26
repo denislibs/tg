@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
-import { useMessagesStore } from '../../stores/messagesStore'
 import type { MyMessage } from '../models'
 
 // Запланированные сообщения чата (tweb ChatType.Scheduled): список + действия
@@ -41,10 +40,11 @@ export function useScheduledMessages(chatId: number, onChanged: (count: number) 
     void managers.messages.editScheduled(chatId, r.id, sendAtUnix).then(reload)
   }
   const sendNow = (id: number) => {
-    void managers.messages.sendScheduledNow(chatId, id).then((msg) => {
-      useMessagesStore.getState().applyIncoming(chatId, msg)
-      reload()
-    })
+    // Само сообщение в окно кладёт ВЕЕР сервера (`send_message` → операция
+    // `rt:message_op` insert): бэкенд шлёт его и автору тоже, поэтому второй
+    // вставки с ответа ручки не нужно. Здесь только обновление списка
+    // запланированных.
+    void managers.messages.sendScheduledNow(chatId, id).then(() => reload())
   }
   const remove = (id: number) => {
     void managers.messages.deleteScheduled(chatId, id).then(reload)

@@ -65,7 +65,7 @@ function mount(
   const view = render(
     <ManagersProvider managers={managers}>
       <div className="chat">
-        <VanillaFeed {...props} />
+        <VanillaFeed paddingTopPx={0} paddingBottomPx={0} {...props} />
       </div>
     </ManagersProvider>,
   )

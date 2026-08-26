@@ -7,9 +7,8 @@
 // объявления здесь их не описывают — это только JSX-имена для React:
 //   • `audio-element` → `components/audio.ts` (порт tweb `AudioElement`);
 //   • `middle-ellipsis-element` → `components/middleEllipsis.ts`.
-// Регистрация происходит при импорте этих модулей, то есть только в
-// императивной ленте (`VITE_VANILLA_FEED`); React-ветка их не импортирует и
-// работает с теми же тегами как раньше. Остальные три тега здесь по-прежнему
+// Регистрация происходит при импорте этих модулей — их тянет императивная
+// лента (`components/chat/bubbles.ts`). Остальные три тега здесь по-прежнему
 // поведения не несут.
 import type { DetailedHTMLProps, HTMLAttributes } from 'react'
 

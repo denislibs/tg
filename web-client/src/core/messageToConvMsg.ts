@@ -87,7 +87,7 @@ export function messageToConvMsg(
     /** закреплённое сообщение (цель `messageActionPinMessage`), тоже разрешённое */
     pinnedTarget?: MyMessage
     /** порт `chat.isMegagroup` — вид ОТКРЫТОГО чата; знает его вызывающий
-     *  (`useConvMessages` ← `Chat.tsx`, `ChatBubbles` ← `ChatContext`). */
+     *  (`ChatBubbles` ← `ChatContext` ← `Chat.tsx`). */
     isMegagroup?: boolean
   },
 ): ConvMsg {
@@ -95,7 +95,7 @@ export function messageToConvMsg(
   const kind = getMessageKind(m)
   // Секретное медиа приходит шифртекстом (`enc_body`); вид ('photo'|'video'|
   // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType — он и
-  // решает ветку рендера (SecretMediaBubble вместо RealMediaBubble).
+  // решает ветку рендера медиа.
   const secretType = m.secretMedia?.mediaType as MessageKind | undefined
   const convType: ConvMsg['type'] =
     kind === 'encrypted' && secretType ? convKind(secretType) : convKind(kind)

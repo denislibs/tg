@@ -11,7 +11,7 @@
 // Классы scrolled-start/scrolled-end на контейнере — порт
 // Scrollable.attachBorderListeners (components/scrollable.ts:465-473): ставятся
 // оба сразу, дальше — по scroll-событию. Сам Scrollable здесь не инстанцируем:
-// его единственный владелец — лента (useChatScroll), перевод остальных
+// его единственный владелец — лента (`chat/bubbles.ts`), перевод остальных
 // скроллеров — отдельная задача (см. web-client/CLAUDE.md «Скролл»); паттерн
 // ручного scrolled-start — как DatePickerPopup.
 // Позиция панели — модуль (см. RightSearchTab.module.scss); портал в

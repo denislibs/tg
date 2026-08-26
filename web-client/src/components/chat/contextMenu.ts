@@ -224,7 +224,7 @@ export interface ContextMenuPopups {
    * позиционируемый (`ReactedUsersPopup` в `components/messages/ChatDialogs`,
    * его открывает `useMessageActions.showReactedUsers(msgId, x, y)`). Ровно тот
    * же якорь React-меню добывает перехватом последнего `MouseEvent` на
-   * `.btn-menu-items` ради «Кто просмотрел» (`MessageContextMenu.tsx:70-74`);
+   * `.btn-menu-items` ради «Кто просмотрел» (в снесённом React-меню);
    * здесь событие приезжает прямо в `onClick` пункта (`buttonMenu.ts`
    * `ButtonMenuItemOptions.onClick`), перехватывать нечего.
    */

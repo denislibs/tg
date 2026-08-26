@@ -8,7 +8,6 @@ import type { MessageReal, MyMessage } from '../models'
 import { makeMessage } from '../messages/testMessage'
 import type { MessageOp } from '../realtime/messageOps'
 import { applyOpsToMirror, mirrorVersion, mirrorWindow, putMirrorPage, resetMessagesMirror, subscribeMirror, winKey } from './messagesMirror'
-import { winKey as winKeyFromStore } from '@stores/messagesStore'
 
 const CHAT = 50
 const THREAD = 60
@@ -252,8 +251,9 @@ describe('messagesMirror — операции объявляются событ�
 })
 
 // Ключ окна переехал сюда из `stores/messagesStore` (этап 2): он принадлежит
-// САМОМУ окну, а не его zustand-копии, и стор уходит вместе с React-лентой
-// (этап 7) — императивная лента не имеет права на него ссылаться.
+// САМОМУ окну, а не его zustand-копии. Копии больше нет — стор снесён вместе с
+// React-лентой (этап 7), поэтому пина «реэкспорт — ТА ЖЕ функция» здесь тоже
+// больше нет: сверять не с чем.
 describe('winKey — ключ окна живёт в зеркале', () => {
   it('основное окно чата и окно треда', () => {
     expect(winKey(CHAT)).toBe('50')
@@ -261,12 +261,6 @@ describe('winKey — ключ окна живёт в зеркале', () => {
     // null/undefined треда — основное окно, а не "50:null".
     expect(winKey(CHAT, null)).toBe('50')
     expect(winKey(CHAT, undefined)).toBe('50')
-  })
-
-  it('stores/messagesStore реэкспортирует ТУ ЖЕ функцию, а не свою копию', () => {
-    // Две независимые реализации ключа развели бы окно стора и окно зеркала:
-    // проектор кормит обе копии одним и тем же `op.key`.
-    expect(winKeyFromStore).toBe(winKey)
   })
 })
 

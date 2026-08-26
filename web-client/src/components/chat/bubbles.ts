@@ -125,7 +125,7 @@ import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
-import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
+import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
 import { collectLightboxItems } from '@components/mediaViewer/collectLightboxItems'
 import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
@@ -298,6 +298,18 @@ export interface ChatContext {
    *  нет, поэтому сюда едет только номер: собрать по нему плашку умеет
    *  владелец композера (`Chat.tsx` через `draftReplyState`). */
   initMessageReply?(mid: number): void
+  /**
+   * Действия МЕДИАВЬЮВЕРА, которых у самой ленты быть не может: прыжок к
+   * сообщению, пересылка, удаление и догрузка соседей за пределами окна.
+   *
+   * В tweb это роль `AppMediaViewer`, собранного вокруг `SearchListLoader` и
+   * `appImManager` (`mediaViewer.ts`); у нас вьювер общий на весь клиент
+   * (`components/mediaViewer/*`), а перечисленные четыре ручки знает окружение
+   * чата — попапы пересылки/удаления, стек колонки и REST-пагинация
+   * `/chats/{id}/media`. Поэтому их отдаёт хост, как и попапы контекстного
+   * меню. Не переданы — вьювер открывается, листает загруженное и закрывается.
+   */
+  mediaViewerActions?: Pick<OpenMediaViewerArgs, 'jumpToMessage' | 'onForward' | 'onDelete' | 'loadMoreMedia'>
 }
 
 /** Срез менеджеров, которым пользуется лента (см. расхождения в шапке). */
@@ -346,10 +358,10 @@ export interface BubblesManagers extends PeerTitleManagers {
    *  лента tweb (bubbles.ts:2978 из `readUnreaded`, :5752 из
    *  `onScrolledAllDown`).
    *
-   *  Ручка НЕ НОВАЯ: это та же `realtime.markRead`, которой сегодня отмечает
-   *  чат React-лента (`core/hooks/useChatScroll.ts:233,652,665`) —
-   *  `core/realtime/realtime.ts:95`. Второго пути отметки этот порт не заводит:
-   *  после сноса React-ленты у ручки останется ровно один вызыватель — этот.
+   *  Ручка НЕ НОВАЯ: это та же `realtime.markRead`
+   *  (`core/realtime/realtime.ts:95`), которой чат отмечала снесённая
+   *  React-лента. Второго пути отметки нет: у ручки ровно один вызыватель —
+   *  этот.
    *
    *  Расхождения с оригиналом:
    *   • `upToId` вместо `maxId` — имя нашей ручки; номер КЛИЕНТСКИЙ, в
@@ -454,6 +466,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private scrolledDown = true
   private isScrollingTimeout = 0
   private stickyIntersector?: StickyIntersector
+  /** Последние распорки, выданные окружением (`setPaddings`). Хранятся, потому
+   *  что `StickyIntersector` заводится заново на каждый `setPeer`, а его
+   *  `rootMargin` — та же величина. */
+  private paddings = { top: 0, bottom: 0 }
   // tweb bubbles.ts:559 (`previousStickyDate`) — какой дата-пилюле сейчас
   // принадлежит `is-sticky`.
   private previousStickyDate?: HTMLElement
@@ -601,6 +617,26 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // Порт tweb bubbles.ts:4169-4187. Высоты распорок в tweb приезжают из
   // `chat.chatPaddingTop/Bottom` (плейты топбара и высота композера) — этого
   // окружения у ленты на этапе 2 нет, поэтому узлы создаются без высоты.
+  /**
+   * Порт «ленточной» половины tweb `Chat.recomputePaddings` (chat.ts:345-365):
+   * высоты распорок `.bubbles-padding-top/-bottom` и `rootMargin` наблюдателя
+   * липких дат. САМИ ЧИСЛА считает окружение — в оригинале это `Chat`, у нас
+   * `Chat.tsx` (там же, где `--pinned-floating-height` и излишек композера):
+   * лента не знает ни про топбар, ни про плейты, ни про высоту композера.
+   */
+  public setPaddings(top: number, bottom: number) {
+    this.paddings = { top, bottom }
+    this.paddingTop.style.height = `${top}px`
+    this.paddingBottom.style.height = `${bottom}px`
+    this.applyStickyRootMargin()
+  }
+
+  /** tweb `updateStickyIntersectorRootMargin` (зовётся из `recomputePaddings`):
+   *  дата «прилипает» под шапкой, а не под верхней кромкой скролл-контейнера. */
+  private applyStickyRootMargin() {
+    this.stickyIntersector?.setRootMargin(`-${this.paddings.top}px 0px -${this.paddings.bottom}px 0px`)
+  }
+
   public setScroll() {
     if (this.scrollable) {
       this.destroyScrollable()
@@ -1692,9 +1728,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  у нас её отдаёт вызывающий (`core/format/dayLabel`), а язык берётся из
    *  стора i18n на момент постройки узла — как в других ванильных портах
    *  (`connectionStatus.ts`, `mediaViewer/appMediaViewer.ts`).
-   *  `data-date` — ключ дня в той же форме, что рисует React-лента
-   *  (`components/messages/ChatFeed.tsx:82-96`): на него смотрит
-   *  `components/chatStickyDates.ts`. */
+   *  `data-date` — ключ дня в форме `day-<timestamp>`: по нему секция дня
+   *  адресуется в реестре `dateMessages` и в наблюдателе липких дат
+   *  (`constructPeerHelpers`). */
   private createDateBubble(dateTimestamp: number): HTMLElement {
     const bubble = createServiceDateBubble(
       dayLabel(new Date(dateTimestamp).toISOString(), useI18nStore.getState().lang),
@@ -1712,9 +1748,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  стоит арифметика позиций: `STICKY_OFFSET === 3` — АБСОЛЮТНЫЙ индекс первой
    *  серии внутри секции (`positionElementByIndex` в `bubbleGroups.ts`).
    *  Этап 3 создавал sentinel руками (наблюдателя ещё не было) — теперь эту
-   *  строку заменил ЕЁ ОРИГИНАЛ: узел ставит наблюдатель, второй sentinel в ту
-   *  же секцию не попадает (та же ловушка разобрана в
-   *  `components/chatStickyDates.ts::observeNewSections`). */
+   *  строку заменил ЕЁ ОРИГИНАЛ: узел ставит наблюдатель, и второй sentinel в
+   *  ту же секцию не попадает (иначе `STICKY_OFFSET` сдвинул бы все серии). */
   public getDateContainerByTimestamp(timestamp: number): DateContainer {
     const dateTimestamp = this.getDateForDateContainer(timestamp)
     const found = this.dateMessages[dateTimestamp]
@@ -2133,11 +2168,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * (`collectLightboxItems`) — второй такой же был бы вторым ответом на вопрос
    * «что считается просматриваемым медиа».
    *
-   * ЧЕГО ЗДЕСЬ НЕТ и почему: прыжок к сообщению, пересылка, удаление и
-   * догрузка медиа (`jumpToMessage`/`onForward`/`onDelete`/`loadMoreMedia`) —
-   * это окружение `Chat`, которого у ленты ещё нет (`ChatContext` узкий, см.
-   * шапку файла). Все четыре у вьювера ОПЦИОНАЛЬНЫ: без них он открывается,
-   * листает и закрывается, а действия приедут вместе с окружением на этапе 7.
+   * Прыжок к сообщению, пересылка, удаление и догрузка медиа
+   * (`jumpToMessage`/`onForward`/`onDelete`/`loadMoreMedia`) — это окружение
+   * `Chat`: попапы, стек колонки и REST-пагинация. Оно отдаёт их одним полем
+   * `ChatContext.mediaViewerActions`, и они расстилаются в аргументы вьювера
+   * ниже. Все четыре у вьювера ОПЦИОНАЛЬНЫ: не переданы — он открывается,
+   * листает загруженное и закрывается.
    */
   private openMediaViewerFor(attachment: HTMLElement): boolean {
     const bubble = attachment.closest<HTMLElement>('.bubble')
@@ -2174,7 +2210,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (!items[index]) return false
 
     items[index].element = attachment // источник полёта — кликнутая миниатюра
-    void openMediaViewer({ items, index, target: attachment, reverse: true })
+    void openMediaViewer({ items, index, target: attachment, reverse: true, ...this.chat.mediaViewerActions })
     return true
   }
 
@@ -3449,6 +3485,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
         this.previousStickyDate = newStickyDate
       }
     })
+    // Наблюдатель пересоздаётся на каждый `setPeer`, а распорки живут дольше —
+    // возвращаем ему актуальный `rootMargin` (tweb делает то же из
+    // `recomputePaddings`).
+    this.applyStickyRootMargin()
 
     // Наблюдатель за непрочитанными — tweb bubbles.ts:2127
     // (`new SuperIntersectionObserver({root: this.scrollable.container})`).

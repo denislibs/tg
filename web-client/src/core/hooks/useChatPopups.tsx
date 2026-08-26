@@ -11,7 +11,6 @@ import { openPopup } from '../../stores/popupStore'
 import { useT } from '../../i18n'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, OpenPeer } from '../../data'
 import type { MyMessage } from '../models'
 import type { ThreadInfo } from '../../components/Chat'
@@ -65,8 +64,9 @@ export interface ChatPopupDeps {
   setInfoOpen: (v: boolean | ((o: boolean) => boolean)) => void
   applyMute: (next: boolean, seconds?: number | null) => void
   toggleMute: () => void
+  /** Вход в режим выделения — порт tweb topbar.ts:560
+   *  (`selection.toggleSelection(true, true)`): режимом владеет лента. */
   startSelectMode: () => void
-  setSelectionMode: (v: boolean) => void
   doDeleteChat: () => void
   doClearHistory: () => void
   openPicker: (accept: string, asFile: boolean) => void
@@ -194,7 +194,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         p.destroy()
         void managers.boosts
           .createGiveaway(numericChatId, { ...a, clientMsgId: crypto.randomUUID() })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .then(() => {})
       }}
     />
   ))
@@ -216,7 +216,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         d.onMessageSent()
         void managers.messages
           .sendPoll(numericChatId, { ...poll, clientMsgId: crypto.randomUUID(), ...sendingParams })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .then(() => {})
       }}
     />
   ))
@@ -228,7 +228,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         p.destroy()
         void managers.messages
           .sendChecklist(numericChatId, { ...c, clientMsgId: crypto.randomUUID() })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .then(() => {})
       }}
     />
   ))
@@ -292,7 +292,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         <MenuItem
           icon={<TgIcon name="checkround" size={20} />}
           label={t('Select Messages')}
-          onClick={() => { p.requestClose(); d.setSelectionMode(true) }}
+          onClick={() => { p.requestClose(); d.startSelectMode() }}
         />
         <MenuItem
           icon={<TgIcon name={d.muted ? 'unmute' : 'mute'} size={20} />}

@@ -1,7 +1,6 @@
 // src/components/chat/serviceMessage.ts
 //
-// Сервисные сообщения ленты УЗЛАМИ (ванильная замена React-веток
-// `components/messages/ChatFeed.tsx`). Порт трёх мест tweb:
+// Сервисные сообщения ленты УЗЛАМИ. Порт трёх мест tweb:
 //   • фраза  — `components/wrappers/messageActionTextNewUnsafe.ts`
 //     (`wrapLinkToMessage`, `wrapSomeText`, `getNameDivHTML` → `PeerTitle`)
 //     плюс сборка результата в `span.i18n` (`lib/langPack.ts::IntlElement`);

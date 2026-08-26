@@ -11,32 +11,25 @@
 //     этого этапа — Задача 4, `components/scrollable.ts`, см. task-4-report.md) —
 //     заведён локальный `ScrollSaverTarget`, ровно то подмножество полей
 //     `ScrollableContextValue` (tweb `components/scrollable2.tsx`), которым
-//     реально пользуется код ниже. Тонкий адаптер поверх `scrollRef` собирает
-//     `useChatScroll.ts` на месте использования. Задача 4 портировала
-//     `Scrollable` и завела РЕАЛЬНЫЙ его инстанс поверх ТОГО ЖЕ `scrollRef`-дива
-//     (`useChatScroll.ts`) — но `ScrollSaverTarget` остался нужен: этот файл не
-//     знает про класс `Scrollable`, ему достаточно узкого интерфейса, а не
-//     самого класса;
-//   • `onSizeChange` в tweb перерисовывает кастомный скроллбар-thumb — у
-//     адаптера `useChatScroll.ts` это по-прежнему no-op: собственный
-//     скроллбар-thumb, если он есть (`!IS_OVERLAY_SCROLL_SUPPORTED()`),
-//     перерисовывает РЕАЛЬНЫЙ `Scrollable`-инстанс через свой собственный
-//     `onSizeChange`/`onScroll` — независимо от этого адаптера, который знает
+//     реально пользуется код ниже. `ScrollSaverTarget` нужен и сейчас: этот
+//     файл не знает про класс `Scrollable`, ему достаточно узкого интерфейса, а
+//     не самого класса — сегодня его реализует сама лента
+//     (`chat/bubbles.ts::createScrollSaver`);
+//   • `onSizeChange` в tweb перерисовывает кастомный скроллбар-thumb — здесь
+//     это no-op: собственный скроллбар-thumb, если он есть
+//     (`!IS_OVERLAY_SCROLL_SUPPORTED()`), перерисовывает сам `Scrollable` через
+//     свои `onSizeChange`/`onScroll`, независимо от этого файла, который знает
 //     только про восстановление позиции, не про скроллбар;
 //   • `setScrollPositionSilently` в tweb ещё и глушит ближайшее нативное
 //     `scroll`-событие (`ignoreNextScrollEvent`), чтобы обработчик скролла
 //     Scrollable не среагировал на программную запись. НА МОМЕНТ ПОРТА этого
 //     файла (Задача 3) `Scrollable` ещё не существовал — глушить было нечем,
 //     адаптер писал `scrollTop` напрямую (задокументированный тогда пробел).
-//     Задача 4 его закрыла: `useChatScroll.ts`'s `setScrollTopSilently` (он же
-//     реализация `setScrollPositionSilently` этого адаптера) теперь делегирует
-//     в РЕАЛЬНЫЙ `Scrollable.setScrollPositionSilently` — глушение работает
-//     как в tweb, и не только для восстановления после `loadOlder`: то же
-//     делегирование покрывает пин к низу, компенсацию `paddingTop` и
-//     jump-to-message — единой точкой, не только эту. Единственное оставшееся
-//     расхождение — один кадр гонки между монтированием React-узла и коммитом
-//     эффекта, который создаёт `Scrollable` (см. `useChatScroll.ts:95`,
-//     обоснованное исключение в `core/scrollWriters.test.ts`);
+//     Задача 4 его закрыла: цель `ScrollSaver` — сам `Scrollable` ленты, и
+//     `setScrollPositionSilently` у него настоящий, с `ignoreNextScrollEvent`.
+//     Глушение работает как в tweb, и не только для восстановления после
+//     `loadOlder`: та же точка обслуживает пин к низу, компенсацию `paddingTop`
+//     и jump-to-message;
 //   • `useReflow` в приватном `onRestore` в tweb не используется даже в живом
 //     коде (только в закомментированном блоке `USE_REFLOW`) — под нашим
 //     `noUnusedParameters` это ошибка компиляции, параметр переименован в

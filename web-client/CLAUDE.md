@@ -43,7 +43,10 @@ npx vite build --outDir ../client-build
   партиала — `animation: fade-in-opacity` внутри `*.module.scss` станет `_fade-in-opacity_xxx` и молча
   ничего не сыграет (ни сборка, ни тайпчек не поймают). Нужен локальный `@keyframes`-дубль;
   `animation: :global(name)` не компилируется.
-- Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.
+- Лента сообщений — НЕ React: это императивный порт tweb `ChatBubbles`
+  (`components/chat/bubbles.ts`), смонтированный хостом `components/chat/VanillaFeed.tsx`.
+  Мемоизация рядов к ней неприменима; из React в ленту едут только пропы среды
+  (пир/тред/вид чата/распорки) и ручки наружу (`ChatFeedApi`).
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
   @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
   `shared/lib` — чистые переиспользуемые утилиты; `lib` — толстые вендор-подсистемы (lottie,
@@ -151,23 +154,24 @@ npx vite build --outDir ../client-build
 
   Пин на всё перечисленное — `client/realtime/storeProjection.windowWriters.test.ts`:
   настоящий менеджер воркера, настоящий проектор, проверяется ЗЕРКАЛО
-  (`core/history/messagesMirror.ts`), потому что именно из него рисует
-  императивная лента — факт, доехавший до zustand-копии, но не до зеркала, для
-  неё не существует. Проводка эфемерного гео-кадра —
+  (`core/history/messagesMirror.ts`) — единственная копия окна на главном потоке
+  и то, из чего рисует императивная лента. Проводка эфемерного гео-кадра —
   `core/workerCore.geoLiveFrame.test.ts`, проводка просмотров —
   `core/managers/channelsManager.test.ts`.
 
-  **Долг, а не исключение:** в React-ленте остались ПОВТОРНЫЕ применения тех же
-  уже объявленных фактов — `core/hooks/useMessageActions.tsx`
-  (`applyReactionOptimistic`/`applyDelete`/`applyFactCheck`/`setPollMedia`),
-  `components/messages/PollBubble.tsx`, `components/messages/ChecklistBubble.tsx`,
-  `components/stars/StarReactionPopup.tsx`, `core/hooks/useChatPopups.tsx` и
-  `core/hooks/useScheduledMessages.ts` (`applyIncoming` поверх приходящего
-  WS-эха `new_message` — бэкенд фанит его и автору,
-  `backend/internal/usecase/chat/fanout.go:163`). С владельцем они не
-  расходятся (значение абсолютное и то же самое), но это лишние писатели
-  zustand-копии, и уходят они вместе с React-лентой (этап 7). В ЗЕРКАЛО не
-  пишет никто, кроме проектора и `putMirrorPage`.
+  **Второй копии окна больше нет.** zustand-стор `stores/messagesStore.ts`
+  существовал ради React-ленты и снесён вместе с ней (этап 7), а с ним — все
+  ПОВТОРНЫЕ применения уже объявленных фактов, которые в него писали
+  (`applyReactionOptimistic`/`applyDelete`/`applyFactCheck`/`setPollMedia`/
+  `applyStarReaction`/`applyIncoming` в `useMessageActions`, `PollBubble`,
+  `ChecklistBubble`, `StarReactionPopup`, `useChatPopups`,
+  `useScheduledMessages`). Каждое из них дублировало факт, который владелец и
+  так объявляет операцией: WS-эхо `new_message` бэкенд фанит и автору
+  (`backend/internal/usecase/chat/fanout.go:163`), реакции/удаление/просмотры
+  едут `patch`/`remove`. Единственное, что ушло вместе с ними, — ОПТИМИСТИКА
+  «показать до эха» у двух путей (`setFactCheck`, и она названа долгом прямо у
+  строки в `useMessageActions.tsx`). В ЗЕРКАЛО не пишет никто, кроме проектора и
+  `putMirrorPage` (страницу истории кладёт сама лента).
 
   **Исключения для оптимистичной отправки больше нет.** Жизненный цикл
   неотправленного («отправляется…») сообщения живёт в менеджере воркера —
@@ -238,7 +242,7 @@ npx vite build --outDir ../client-build
 **МОЖНО:**
 - Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
-- Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatSelection`/`useChatInfoCard`/`usePinnedBar`).
+- Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatInfoCard`/`usePinnedBar`/`useChatSend`).
 - **Грузить медиа-bytes НЕ-картинок прямым `fetch` к аутентифицированному media-эндпоинту**
   (токен-URL строит `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`.
   Бинарь идёт на main-thread, а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb
@@ -270,10 +274,13 @@ npx vite build --outDir ../client-build
 - Примитивы (`helpers/middleware.ts`, `helpers/middlewarePromise.ts`) — дословный
   tweb, не форкать; расширения — только тонкими адаптерами поверх.
 
-**Известное исключение (не копировать):** `useChatScroll` слушает `RT.newMessage` ради UI read-marker —
-markRead живого сообщения, когда вьюпорт прижат к низу и вкладка в фокусе (это решение зависит от
-scroll/focus, которых нет в сторе). Счётчик unread-below при этом **производный из стора**
-(`newestSeq − lastReadSeq`), а не накапливается из потока событий. Осознанный трейд-офф — новый код так не делает.
+**Прежнее исключение снято.** Хук `useChatScroll` слушал `RT.newMessage` ради UI
+read-marker (markRead живого сообщения при вьюпорте у низа и вкладке в фокусе) —
+хук снесён вместе с React-лентой (этап 7). Отметку прочтения ведёт сама лента
+наблюдателем за непрочитанными баблами (`components/chat/bubbles.ts`, порт tweb
+bubbles.ts:2941-3012): «прочитано» это «увидено», а видимость бабла знает только
+его владелец. Счётчик unread-below остался **производным из стора**
+(`newestSeq − lastReadSeq`, `Chat.tsx`), а не накапливается из потока событий.
 
 ## Владение фактами (воркер публикует, витрина зеркалит)
 
@@ -315,6 +322,40 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   ВСЕГДА, включая попадание в свой кэш. «Публиковать только изменения» без этого канала = карточка
   не доезжает никогда.
 
+## Лента чата — императивная, и что за это ещё не заплачено
+
+Лента (`components/chat/bubbles.ts`, порт tweb `ChatBubbles`) целиком владеет
+`.bubbles`: окном, скроллом, пагинацией, липкими датами, отметкой прочтения,
+контекстным меню (`chat/contextMenu.ts`) и выделением (`chat/selection.ts`).
+React-хост — `components/chat/VanillaFeed.tsx`, единственная точка монтирования —
+`Chat.tsx` (пин: `components/Chat.feedMount.test.ts`). Роль tweb-овского `Chat`
+поверх ленты исполняет `Chat.tsx`: он считает распорки
+(`Chat.recomputePaddings` → `ChatBubbles.setPaddings`), держит попапы, которые
+открывают пункты меню, и зовёт ручки `ChatFeedApi` (прыжок к сообщению, кнопка
+«вниз», вход/выход из режима выделения, перезагрузка окна).
+
+React-лента (`components/messages/ChatFeed` и её ~18 модулей), флаг
+`VITE_VANILLA_FEED`, zustand-копия окна `stores/messagesStore` и ленточные хуки
+(`useChatScroll`/`useConvMessages`/`useVoiceQueue`/`useFeedReveal`/
+`useChatStickyDates`/`useDragSelect`/`useChatSelection`/`useMessageWindow`)
+снесены. **Долги, которые снос обнажил** — их место в ленте, а не в React:
+
+| Долг | Где был | Куда портировать |
+|---|---|---|
+| спиннер первой загрузки | `useFeedReveal` + оверлей в `Chat.tsx` | `chat/bubbles.ts` (tweb bubbles.ts:752 `new ProgressivePreloader`) |
+| «лестница» появления баблов при открытии чата | `useFeedReveal` + `core/dom/ladder.ts` | `chat/bubbles.ts` (tweb `animateAsLadder`, :10363) |
+| сдвиг градиента обоев вместе с прокруткой к новому сообщению | эффект в `Chat.tsx` + `core/chat/activeGradient.ts` | `chat/bubbles.ts::scrollToBubble` startCallback (tweb :4710-4714) |
+| восстановление позиции чата между открытиями | `useChatScroll` + `core/chat/chatPositions.ts` | `chat/bubbles.ts::setPeer` (tweb `savedPosition`) |
+| плашка «Обсуждение началось» в треде комментариев | `winV` в `Chat.tsx` | `chat/bubbles.ts::performHistoryResult` (tweb `generateThreadServiceStartMessage`) |
+| очередь голосовых/кружков для глобального плеера | `useVoiceQueue` | `chat/bubbles.ts` — владелец аудио-бабла |
+| «кружок прослушан» (`media_unread`), отмена аплоада с бабла, разблокировка платного медиа, перезвон по баблу звонка | обработчики в `Chat.tsx` | сами баблы в `chat/bubbles.ts` |
+| фильтр «Избранного» по тегу-реакции | `feedMsgs` в `Chat.tsx` (панель `SavedTagsPanel` осталась) | `chat/bubbles.ts` (tweb `savedReaction` в `setPeer`) |
+| автозагрузка медиа по настройкам чата | `useChatAutoDownload` → пропы React-ленты | `chat/bubbles.ts` → `wrappers/video.ts`/`album.ts` (параметр `autoDownload` у них уже есть) |
+| «Переотправить» упавшее сообщение, «Перевести», ⭐-реакция, «Ответить в другом чате», «Кто просмотрел», «Сохранить GIF», «Copy Media» | пункты React-меню сообщения | `chat/contextMenu.ts` (у ванильного меню этих пунктов нет — см. его шапку) |
+| эффект вокруг чипа реакции (`fireAroundAnimation`), аватары реагировавших | `ReactionAroundEffect`/`StackedAvatars` | `chat/reactions.ts` + порт tweb `stackedAvatars.ts` |
+| приветствие пустого чата и «Похожие каналы» | `messages/EmptyChatGreeting.tsx`, `messages/SimilarChannels.tsx` — **файлы оставлены** и сейчас никем не импортируются | `chat/bubbles.ts` (tweb `renderEmptyPlaceholder('greeting')` :10516, `SimilarChannels` :7083) |
+| оптимистика «проверки фактов» до серверного эха | `useMessageActions::submitFactCheck` | операция владельца (`messages.setFactCheck` → `patch`) |
+
 ## Безопасность (критично)
 
 - **НИКОГДА не рендерить пользовательский контент как сырую HTML-строку** (ни raw-HTML React-пропами,
@@ -345,23 +386,15 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован
-  РОВНО в двух местах — и оба это ОДНА И ТА ЖЕ лента сообщений в двух её
-  реализациях**, живущих под взаимоисключающим флагом сборки
-  `VITE_VANILLA_FEED` (`config/app.ts::readVanillaFeed`, по умолчанию ВЫКЛЮЧЕН;
-  развилка — `Chat.tsx`, пин — `components/Chat.vanillaFeed.test.ts`):
-  - `core/hooks/useChatScroll.ts` — React-лента (`ChatFeed`), живая при
-    выключенном флаге;
-  - `components/chat/bubbles.ts::setScroll` — императивная лента (порт tweb
-    `ChatBubbles`, этапы 2-7), живая при включённом.
-
-  Обоснование правила от этого не изменилось и остаётся прежним: у ленты
-  сообщений ОДИН владелец позиции скролла, второго конкурирующего писателя в
-  ней нет. Два инстанса не сосуществуют в рантайме — флаг рендерит ровно одну
-  ветку, и когда этап 7 снесёт React-ленту вместе с `useChatScroll.ts`, число
-  вернётся к одному. `grep -rn "new Scrollable(" src` держит это число: **два**
-  вхождения в продакшн-коде (плюс `components/scrollable.test.ts` — сам тест
-  вендорного класса). Рост числа = новый владелец скролла, это осознанное
-  решение, а не побочный эффект — правь правило руками.
+  РОВНО в одном месте** — `components/chat/bubbles.ts::setScroll` (императивная
+  лента, порт tweb `ChatBubbles`). У ленты сообщений ОДИН владелец позиции
+  скролла, второго конкурирующего писателя в ней нет. Прежде инстансов было два
+  (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
+  взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **одно** вхождение в
+  продакшн-коде (плюс `components/scrollable.test.ts` — сам тест вендорного
+  класса). Рост числа = новый владелец скролла, это осознанное решение, а не
+  побочный эффект — правь правило руками.
 
   `MessageInput.tsx` несёт
   только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
@@ -376,21 +409,18 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
   (`loadOlder`): якорится по `DOMRect` первого видимого сообщения, а не по
   дельте `scrollHeight` — остаётся верным, если во время доводки резайзится
   что-то, кроме самого добавленного чанка (например, media ниже по ленте).
-  Подключён в обеих реализациях ленты — и по обе стороны флага это ОДНА и та же
-  лента: `useChatScroll.ts` (React: `onScrolledTop` → `save()`, коммит нового
-  окна → `restore()`) и `components/chat/bubbles.ts` (императивная:
+  Подключён в ленте: `components/chat/bubbles.ts` —
   `createScrollSaver(reverse)` → `prepareToSaveScroll` внутри `processBatch`,
-  порт tweb 1:1 — `save()` до `mountUnmountGroups`, `restore()` сразу после).
+  порт tweb 1:1 (`save()` до `mountUnmountGroups`, `restore()` сразу после).
   Параметр `reverse` — направление якоря: `true` = «контент дописывается
   сверху» (якорь — первый видимый бабл, держим его верх), `false` = снизу.
 - **`components/stickyIntersector.ts`** (порт `TWEB/src/components/stickyIntersector.ts`)
   — sticky-даты в ленте, на IntersectionObserver, не на ручном скролл-листенере.
-  Два владельца по обе стороны флага `VITE_VANILLA_FEED`:
-  `components/chatStickyDates.ts` (обвязка React-ленты: класс считается наверху
-  и едет пропом, потому что React затирает императивную запись) и
-  `components/chat/bubbles.ts` (императивная лента — как в tweb: наблюдатель
-  пишет `is-sticky` ПРЯМО на узел дата-бабла, лента при этом не
-  перерисовывается). Секцию наблюдает `observeStickyHeaderChanges`, и он же
+  Владелец один — `components/chat/bubbles.ts`, как в tweb: наблюдатель пишет
+  `is-sticky` ПРЯМО на узел дата-бабла, лента при этом не перерисовывается.
+  `rootMargin` наблюдателя задаёт окружение вместе с распорками —
+  `ChatBubbles.setPaddings` (порт «ленточной» половины tweb
+  `Chat.recomputePaddings`, chat.ts:345). Секцию наблюдает `observeStickyHeaderChanges`, и он же
   кладёт в неё третий узел — `.sticky_sentinel--top`; на этом стоит
   `STICKY_OFFSET === 3` (абсолютный индекс первой серии внутри секции), поэтому
   второй вызов на ту же секцию сдвинул бы все серии.
@@ -410,8 +440,6 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 
 | Файл | Что делает | Почему не через Scrollable/ScrollSaver |
 |---|---|---|
-| `core/hooks/useChatScroll.ts:95` | Фолбэк `setScrollTopSilently` в единственном кадре между монтированием React-узла и коммитом эффекта, создающего `Scrollable` | Как только `scrollableRef.current` появляется, вся корректирующая запись уходит в `Scrollable.setScrollPositionSilently` |
-| `core/dom/smoothScrollToElement.ts:15` | Cap-прыжок перед нативным `scrollTo({behavior:'smooth'})` при центрировании бабла (jump-to-message) | Одноразовая анимация к цели, не хранение/восстановление позиции; свести к `fastSmoothScroll` — отдельная работа (см. выше) |
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
 | `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
@@ -426,7 +454,7 @@ scroll/focus, которых нет в сторе). Счётчик unread-below 
 которые сами рождают настоящие `scroll`-события по ходу анимации, поэтому
 `Scrollable.onScroll` видит их как обычный скролл (throttled
 `onAdditionalScroll`/`checkForTriggers` отрабатывают штатно, в т.ч. в самой
-ленте — `useChatScroll.ts`'s `scrollToBottom`/`smoothCenterToSeq`). Они не
+ленте — `components/chat/bubbles.ts::scrollToBubble`/`scrollToEnd`). Они не
 тихие и не конкурируют за корректирующую запись с
 `setScrollPositionSilently`/`ScrollSaver.restore()`, которые тихие по
 построению, — поэтому не тот класс писателя, который держит этот пин.
@@ -583,4 +611,8 @@ CacheStorage-корзину `cachedFiles` (`core/files/cacheStorage.ts`; сох�
   тест её не импортирует. Не переписывать ради самой нормы прямо сейчас; при
   следующем содержательном касании файла — приводить затронутую проводку в
   соответствие (тест либо пометка с причиной), а не расширять непокрытую площадь
-  дальше.
+  дальше. Точка монтирования ленты и её пропы при этом ПОКРЫТЫ — сканом
+  исходника (`src/components/Chat.feedMount.test.ts`, тот же приём, что у
+  `core/scrollWriters.test.ts` / `stores/noManualOrder.test.ts`): удаление
+  `<VanillaFeed …>`, любого из его пропов среды или ручек `ChatFeedApi` красит
+  этот тест.

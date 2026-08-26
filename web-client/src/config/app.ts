@@ -17,14 +17,6 @@ export function readDnpConfig(env: ImportMetaEnv): DnpConfig {
   }
 }
 
-// Императивная лента (порт tweb `chat/bubbles.ts`) вместо React-ленты
-// (`components/messages/ChatFeed`). Build-time флаг VITE_VANILLA_FEED=1.
-// ПО УМОЛЧАНИЮ ВЫКЛЮЧЕН: перенос идёт этапами, и до последнего из них живой
-// лентой остаётся React-версия.
-export function readVanillaFeed(env: ImportMetaEnv): boolean {
-  return env.VITE_VANILLA_FEED === '1'
-}
-
 // Провод WS на TL вместо JSON. Build-time флаг VITE_TL_WIRE=1.
 // ПО УМОЛЧАНИЮ ВЫКЛЮЧЕН: формат просит КЛИЕНТ подпротоколом `tl.1`, сервер
 // умеет обе формы и собирает их из одной модели, поэтому переключение
@@ -35,6 +27,5 @@ export function readTLWire(env: ImportMetaEnv): boolean {
 
 export const AppConfig = {
   dnp: readDnpConfig(import.meta.env),
-  vanillaFeed: readVanillaFeed(import.meta.env),
   tlWire: readTLWire(import.meta.env),
 }
