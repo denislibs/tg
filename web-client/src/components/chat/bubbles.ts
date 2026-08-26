@@ -95,7 +95,8 @@ import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
 import { isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
-import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
+import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
+import { isAnyChat, toPeerId } from '@core/peers/peerId'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -108,8 +109,9 @@ import BubbleGroups, {
 } from './bubbleGroups'
 import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
-import { createMessageTime, setSendingStatus } from './messageTime'
+import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
+import { renderReplies } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
 import type { ContextMenuBubbles } from './contextMenu'
@@ -200,6 +202,24 @@ export interface BubblesNavigation {
    * диапазона дней ради «Очистить историю»: наш попап такого режима не знает.
    */
   openDatePicker?(initDate: number, onPick: (timestamp: number) => void): void
+  /**
+   * Открыть тред комментариев поста канала — порт ветки клика по футеру
+   * (tweb bubbles.ts:3315-3343): `setInnerPeer({peerId: replies.channel_id
+   * .toPeerId(true), type: ChatType.Discussion, threadId})`.
+   *
+   * Здесь, а не внутри ленты, по той же причине, что календарь: тред у нас
+   * открывается стеком колонки чата (`stores/chatStackStore.setInnerPeer` через
+   * `Chat.tsx::onOpenThread`), а стеком владеет хост. Лента отдаёт то же, что
+   * отдаёт оригинал: КЛЮЧ ГРУППЫ ОБСУЖДЕНИЯ (не канала — :3335) и номер поста.
+   *
+   * Расхождение одно: у оригинала `threadId` — номер ЗЕРКАЛА поста в группе,
+   * который приезжает ответом `getDiscussionMessage` (:3332); у нас корнем
+   * треда служит номер САМОГО ПОСТА (`Chat.tsx::onOpenThread` → `rootMsgId`), и
+   * зеркало остаётся деталью бэкенда (`usecase/chat/discussion.go::CommentCounts`
+   * — «ключи результата остаются НОМЕРАМИ ПОСТОВ»). Поэтому лишнего запроса
+   * перед открытием нет.
+   */
+  openDiscussion?(args: { peerId: PeerId, postMid: number }): void
 }
 
 /** Срез `Chat`, которым пользуется лента (см. расхождения в шапке). */
@@ -1155,43 +1175,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     this.renderReply(message, bubbleContainer, messageDiv)
 
-    // Время — В КОНЕЦ ТЕЛА сообщения (tweb :7630-7631
-    // `messageDiv.append(timeSpan, clearfix())`). Точка вставки у оригинала
-    // меняется (подпись документа, floating), но базовая именно эта;
-    // остальные приедут вместе со своими подсистемами.
-    const timeSpan = createMessageTime(message)
-    // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). САМ статус
-    // считает общий с React-лентой `messageToConvMsg` по правилу оригинала
-    // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
-    // вычислителя того же здесь нет намеренно.
-    //
-    // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
-    // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
-    // `BubblesManagers` есть только горизонт входящих, под границу
-    // непрочитанных. Названо задачей.
-    setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
-      isMegagroup: this.chat.isMegagroup,
-    }).status)
-    messageDiv.append(timeSpan)
-
-    // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
-    // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
-    // его конца. Время стоит в конце тела, поэтому целью наблюдения оригинал
-    // берёт именно его.
-    if(this.chat.isBroadcast) {
-      setUnreadObserver?.(timeSpan)
-    }
-
-    // Реакции — ПОСЛЕ времени, и это не порядок строк, а зависимость: время
-    // ПЕРЕЕЗЖАЕТ внутрь контейнера реакций (:9855 `reactionsElement.append(
-    // timeSpan)`), чтобы чипы и время встали одной строкой-обёрткой.
-    const reactionsElement = createReactionsElement(
-      message._ === 'message' ? message.reactions : undefined,
-    )
-    if (reactionsElement) {
-      reactionsElement.append(timeSpan)
-      messageDiv.append(reactionsElement)
-    }
+    this.renderMessageMeta(message, bubble, bubbleContainer, messageDiv, setUnreadObserver)
 
     // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
     // её вставки (:9567-9590); `nameContainer` в оригинале — тот же
@@ -1229,6 +1213,152 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     return bubble
+  }
+
+  /**
+   * МЕТА-ХВОСТ тела сообщения: время, значок отправки, тред и реакции.
+   *
+   * Отдельный метод, потому что вызывателей у него ДВА — сборка бабла и правка
+   * (`onMessageEdit`). В tweb второго вызывателя нет: там правка ПЕРЕСОЗДАЁТ
+   * бабл целиком (:6338 `changeBubbleByBubble`), и весь хвост собирается заново
+   * тем же проходом. Почему мы не пересоздаём — см. докблок `onMessageEdit`.
+   *
+   * Порядок внутри — оригинала, и он не косметический:
+   *  • время в КОНЕЦ тела (:7630-7631 `messageDiv.append(timeSpan, clearfix())`);
+   *  • тред (:9682-9701) — ДО реакций, как в оригинале (:9703);
+   *  • реакции последними, потому что время ПЕРЕЕЗЖАЕТ внутрь их контейнера
+   *    (:9855 `reactionsElement.append(timeSpan)`), чтобы чипы и время встали
+   *    одной строкой-обёрткой.
+   */
+  private renderMessageMeta(
+    message: MyMessage,
+    bubble: HTMLElement,
+    bubbleContainer: HTMLElement,
+    messageDiv: HTMLElement,
+    setUnreadObserver?: (element: HTMLElement) => void,
+  ): void {
+    // Точка вставки у оригинала меняется (подпись документа, floating), но
+    // базовая именно эта; остальные приедут вместе со своими подсистемами.
+    const timeSpan = createMessageTime(message)
+    // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). САМ статус
+    // считает общий с React-лентой `messageToConvMsg` по правилу оригинала
+    // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
+    // вычислителя того же здесь нет намеренно.
+    //
+    // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
+    // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
+    // `BubblesManagers` есть только горизонт входящих, под границу
+    // непрочитанных. Названо задачей.
+    setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
+      isMegagroup: this.chat.isMegagroup,
+    }).status)
+    messageDiv.append(timeSpan)
+
+    // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
+    // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
+    // его конца. Время стоит в конце тела, поэтому целью наблюдения оригинал
+    // берёт именно его.
+    if(this.chat.isBroadcast) {
+      setUnreadObserver?.(timeSpan)
+    }
+
+    this.renderMessageReplies(message, bubble, bubbleContainer)
+
+    const reactionsElement = createReactionsElement(
+      message._ === 'message' ? message.reactions : undefined,
+    )
+    if (reactionsElement) {
+      reactionsElement.append(timeSpan)
+      messageDiv.append(reactionsElement)
+    }
+  }
+
+  /**
+   * Тред сообщения — РАЗВИЛКА оригинала (tweb bubbles.ts:9682-9701), и обе её
+   * ветки рисуют РАЗНОЕ:
+   *  • пост канала с привязанным обсуждением (`replies.pFlags.comments` +
+   *    `channel_id`, гейт `getMessageWithCommentReplies`,
+   *    appMessagesManager.ts:9237-9247) → футер `replies-element` под баблом
+   *    (:9683 `MessageRender.renderReplies`);
+   *  • сообщение ГРУППЫ с ответами, у которого этих двух ключей нет
+   *    (:9698 `else if(isMessage && message.replies && this.chat.isAnyGroup)`)
+   *    → число у времени (`setBubbleRepliesCount`, :6410-6431).
+   * Данные обеих веток производит `hydrateThreads`
+   * (`backend/internal/usecase/chat/messagescontainer.go:97-154`): каналу —
+   * `NewMessageReplies(count, discussionChatId, repliers)`, группе —
+   * `NewMessageReplies(count, 0, nil)`, то есть без флага и без `channel_id`.
+   *
+   * Метод ИДЕМПОТЕНТЕН: старый футер снимается перед сборкой нового, а
+   * `setRepliesCount(…, 0)` сам убирает число. Это цена второго вызывателя
+   * (правка): у оригинала он один, потому что бабл там новый.
+   *
+   * `bubble.classList.add('with-replies')` (:7775) ставится ЗДЕСЬ, а не в
+   * `bubbleClasses`: общий с React-лентой вычислитель модификаторов о треде не
+   * знает, а класс обязан сниматься вместе с исчезнувшим футером.
+   */
+  private renderMessageReplies(message: MyMessage, bubble: HTMLElement, bubbleContainer: HTMLElement): void {
+    bubbleContainer.querySelector(':scope > .replies')?.remove()
+    bubble.classList.remove('with-replies', 'with-beside-replies')
+
+    const replies = message._ === 'message' ? message.replies : undefined
+
+    const commentReplies = this.getMessageWithCommentReplies(message)
+    if (commentReplies) {
+      // tweb :7775 — класс объявляет наличие футера, по нему CSS убирает хвост
+      // бабла и растягивает нижние углы.
+      bubble.classList.add('with-replies')
+      const isFooter = renderReplies({
+        bubble,
+        bubbleContainer,
+        replies: commentReplies.replies,
+        peerId: this.peerId,
+        mid: commentReplies.mid,
+        middleware: this.getMiddleware(),
+        managers: this.managers,
+      })
+      // tweb :9692-9697. Хвост бабла (`context.canHaveTail = true`) у нас не
+      // ставится — хвостов у ванильного бабла ещё нет вовсе (этап 6, см.
+      // `renderMedia`); beside-вариант свой класс получает.
+      if (!isFooter) bubble.classList.add('with-beside-replies')
+      return
+    }
+
+    // tweb :6411 — внутри треда счётчика нет: там ответы и есть содержимое окна.
+    if (this.chat.threadId) return
+    // tweb :9698 `this.chat.isAnyGroup` — порт `appPeersManager.isAnyGroup`
+    // (:117-119): чат, который не канал. Пост канала сюда не попадает даже без
+    // обсуждения — у него ветка одна, футерная.
+    if (!replies || !isAnyChat(this.peerId) || this.chat.isBroadcast) return
+    setRepliesCount(bubble, replies.replies)
+  }
+
+  /**
+   * Порт `appMessagesManager.getMessageWithCommentReplies`
+   * (tweb appMessagesManager.ts:9237-9247): «у этого сообщения есть тред
+   * КОММЕНТАРИЕВ», то есть пост канала с привязанной группой обсуждения.
+   *
+   * Внутри — `getMessageWithReplies` (:9233-9235): у АЛЬБОМА тред лежит на
+   * ОДНОМ сообщении группы, и футер рисуется один на альбом
+   * (docs/tweb/comments.md:160). Поэтому возвращается пара «тред + номер
+   * НЕСУЩЕГО его сообщения»: номер уезжает в `data-post-key` футера, как в
+   * оригинале (replies.ts:43).
+   *
+   * Ветка `message.peerId === REPLIES_PEER_ID` (:9238) и проверка
+   * `channel_id.toChatId() !== REPLIES_HIDDEN_CHANNEL_ID` (:9241) не портируются:
+   * чата `Replies` у нас нет как пира вовсе.
+   */
+  private getMessageWithCommentReplies(message: MyMessage): { replies: MessageReplies, mid: number } | undefined {
+    if (message._ !== 'message') return undefined
+
+    const carrier = message.grouped_id
+      ? this.groupedMessages(message.grouped_id).find((m) => m._ === 'message' && !!m.replies)
+      : message
+    if (carrier?._ !== 'message') return undefined
+
+    const replies = carrier.replies
+    if (!replies?.pFlags?.comments || !replies.channel_id) return undefined
+
+    return { replies, mid: carrier.id }
   }
 
   /** Текст сообщения → DOM. Порт вызова tweb bubbles.ts:7497
@@ -1869,6 +1999,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    // Футер комментариев — tweb bubbles.ts:3315-3343. У оригинала эта ветка
+    // стоит РАНЬШЕ всех оставшихся ниже (имя :3360, медиа :3479, reply :3520),
+    // и порядок значим: футер лежит под телом бабла, но `.replies-footer .rp`
+    // растянут на всю его площадь, так что клик по нему обязан выиграть.
+    const commentsDiv = findUpClassName(target, 'replies')
+    if (commentsDiv && bubble) {
+      cancelEvent(e)
+      this.openDiscussion(bubble)
+      return
+    }
+
     // Reply-заголовок — tweb bubbles.ts:3520-3616: прыжок к оригиналу. Ветка
     // стоит ПЕРЕД медиа: у бабла с вложением заголовок лежит над ним, и клик
     // по нему не должен открывать вьювер.
@@ -1904,6 +2045,29 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (navigation?.openPeer?.(peerId, nameDiv)) {
       cancelEvent(e)
     }
+  }
+
+  /**
+   * Открыть тред комментариев кликнутого поста — тело ветки tweb
+   * bubbles.ts:3327-3341 (не-`REPLIES_PEER_ID`).
+   *
+   * Тред берётся тем же гейтом, что рисовал футер
+   * (`getMessageWithCommentReplies` — у оригинала на этом месте
+   * `getMessageWithReplies`, :3329): у альбома он живёт на ОДНОМ сообщении
+   * группы, а бабл у альбома один.
+   */
+  private openDiscussion(bubble: HTMLElement): void {
+    const message = this.getMessage(Number(bubble.dataset.mid))
+    const found = message && this.getMessageWithCommentReplies(message)
+    // `channel_id` уже гарантирован гейтом — повтор нужен только типу
+    // (в схеме параметр опционален, делит бит с `comments`).
+    if (!found?.replies.channel_id) return
+
+    // tweb :3335 — пир треда это ГРУППА ОБСУЖДЕНИЯ, а не канал.
+    this.chat.navigation?.openDiscussion?.({
+      peerId: toPeerId(found.replies.channel_id, true),
+      postMid: found.mid,
+    })
   }
 
   /**
@@ -3415,15 +3579,50 @@ export default class ChatBubbles implements BubbleGroupsHost {
     })
   }
 
-  /** Правка содержимого одного бабла. В tweb это перерендер (новый узел
-   *  въезжает на место старого через `bubblesToReplace`/`changeBubbleByBubble`,
-   *  bubbles.ts:6338); у нас состав бабла — текст, поэтому обновляются
-   *  модификаторы и тело сообщения поверх ТОГО ЖЕ узла, и карта адресов не
-   *  трогается.
+  /**
+   * Правка одного бабла.
    *
-   *  `item.message` в группах при этом не обновляется — как и в tweb, где
-   *  `prepareForGrouping` на правке находит существующий элемент и выходит
-   *  (bubbleGroups.ts:619, «should happen only on edit»). */
+   * ─── ПОЧЕМУ НЕ ПУТЬ ОРИГИНАЛА ───────────────────────────────────────────
+   * В tweb правка ПЕРЕСОЗДАЁТ бабл: `onMessageEdit` (bubbles.ts:1072-1102)
+   * зовёт `safeRenderMessage({message, bubble})`, тот строит НОВЫЙ узел и
+   * меняет его на старый (:6336-6338 `bubblesToReplace` +
+   * `changeBubbleByBubble`). Поэтому у оригинала и нет проблемы «что ещё живёт
+   * внутри бабла»: заново собирается всё.
+   *
+   * У нас это было бы не то же самое, потому что СОБЫТИЕ ДРУГОЕ. `message_edit`
+   * в tweb значит ровно «сообщение отредактировали»: реакции там приезжают
+   * своим событием `messages_reactions` (:1247), и оно перерисовывает ТОЛЬКО
+   * контейнер реакций, аккуратно сохраняя узел времени (`bubble.timeSpan`,
+   * :9852-9855, и возврат времени на место при исчезновении реакций, :1294-1298).
+   * У нас же `message_edit` — единственная воронка ЛЮБОГО изменения сообщения:
+   * `core/history/messagesMirror.ts:192` объявляет им и `replace`, и КАЖДЫЙ
+   * `patch` — реакцию, `media_read`, опрос, factcheck. Пересоздание бабла на
+   * каждый клик по реакции заново собирало бы вложение: перезапуск лотти,
+   * повторный `wrapVideo`, мигание превью.
+   *
+   * Поэтому узел бабла остаётся ТЕМ ЖЕ, а пересобирается его содержимое —
+   * тем же методом, которым его собирает рендер (`renderMessageMeta`), чтобы
+   * второго ответа на вопрос «что лежит в конце тела» не появилось.
+   *
+   * ─── ЧТО ИМЕННО ТЕРЯЛОСЬ ────────────────────────────────────────────────
+   * Прежняя строка `bubble.querySelector('.message')?.replaceChildren(...)`
+   * считала `.message` контейнером ОДНОГО ТОЛЬКО содержимого. Внутри него живут
+   * ещё три узла, и все три сносились: время (`createMessageTime`), контейнер
+   * реакций (внутрь которого время переезжает, tweb :9855) и — у ПОСТА КАНАЛА —
+   * наблюдаемый узел отметки прочтения, которым служит именно время
+   * (tweb :7638-7640, порт в `renderMessageMeta`). Последнее ломало не показ, а
+   * механику: пост переставал отмечаться прочитанным вовсе.
+   *
+   * Наблюдение поэтому ПЕРЕВЕШИВАЕТСЯ на новый узел времени, а не сохраняется
+   * вместе со старым: у оригинала оно тоже регистрируется заново, потому что
+   * бабл новый. Узел, который наблюдатель уже отпустил (сообщение прочитано,
+   * `onUnreadedInViewport` вычистил его из `unreaded`), не перевешивается — иначе
+   * прочитанное вернулось бы в непрочитанные.
+   *
+   * `item.message` в группах при этом не обновляется — как и в tweb, где
+   * `prepareForGrouping` на правке находит существующий элемент и выходит
+   * (bubbleGroups.ts:619, «should happen only on edit»).
+   */
   private onMessageEdit(message: MyMessage) {
     const bubble = this.getBubble(makeFullMid(this.peerId, message.id))
     if (!bubble) return
@@ -3439,13 +3638,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    const messageDiv = bubble.querySelector<HTMLElement>('.message')
+    const bubbleContainer = bubble.querySelector<HTMLElement>('.bubble-content')
+    if (!messageDiv || !bubbleContainer) return
+
+    // Снять наблюдение со СТАРОГО времени, запомнив рубеж. `unreaded` не
+    // содержит узла, который наблюдатель уже отпустил (`onUnreadedInViewport`),
+    // — значит и перевешивать нечего.
+    const oldTime = messageDiv.querySelector<HTMLElement>('.time')
+    const observedMid = oldTime ? this.unreaded.get(oldTime) : undefined
+    if (oldTime && observedMid !== undefined) {
+      this.observer?.unobserve(oldTime)
+      this.unreaded.delete(oldTime)
+    }
+
     // `className` пишется целиком — значит, стираются и `is-group-first`/
     // `is-group-last`, которыми владеет серия. Возвращает их владелец, а не
     // мы: `updateClassNames` — единственное место, где эти классы считаются.
     bubble.className = this.classesFor(message).join(' ')
     this.bubbleGroups.getItemByBubble(bubble)?.group?.updateClassNames()
 
-    bubble.querySelector('.message')?.replaceChildren(this.wrapMessageContent(message))
+    messageDiv.replaceChildren(this.wrapMessageContent(message))
+    this.renderMessageMeta(
+      message,
+      bubble,
+      bubbleContainer,
+      messageDiv,
+      observedMid === undefined ? undefined : (element) => this.setUnreadObserver(element, observedMid),
+    )
   }
 
   /** Порт tweb `deleteMessagesByIds` (bubbles.ts:4302-4313/4470-4478): забыть

@@ -194,6 +194,55 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     expect(observerOf(time)).toBeDefined()
   })
 
+  // Правка пересобирает конец тела бабла, а вместе с ним и узел времени. У
+  // поста канала это НАБЛЮДАЕМЫЙ узел (:7638-7640), поэтому наблюдение обязано
+  // переехать на новый: иначе правка (в нашей воронке — любой `patch`, включая
+  // чужую реакцию) навсегда снимала бы пост с отметки прочтения.
+  it('правка поста канала ПЕРЕВЕШИВАЕТ наблюдение на новое время', async () => {
+    const managers = managersWith([msg(11)])
+    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 11)
+    const timeBefore = bubble.querySelector<HTMLElement>('.time')!
+
+    rootScope.dispatchEventSingle('message_edit', {
+      storageKey: String(CHAT), peerId: CHAT, mid: 11, message: msg(11),
+    })
+
+    const timeAfter = bubble.querySelector<HTMLElement>('.time')!
+    expect(timeAfter).not.toBe(timeBefore)
+    expect(observerOf(timeBefore)).toBeUndefined()
+    expect(observerOf(timeAfter)).toBeDefined()
+
+    // И рубеж переехал вместе с наблюдением — увиденное отмечается тем же номером.
+    intersect(timeAfter)
+    await settle()
+    expect(managers.markRead).toHaveBeenCalledWith({ peerId: CHAT, upToId: 11 })
+  })
+
+  // Обратная сторона того же: узел, который наблюдатель уже отпустил, правка не
+  // возвращает в непрочитанные.
+  it('правка УЖЕ ПРОЧИТАННОГО поста наблюдение не заводит заново', async () => {
+    const managers = managersWith([msg(11)])
+    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 11)
+    intersect(bubble.querySelector<HTMLElement>('.time')!)
+    await settle()
+
+    rootScope.dispatchEventSingle('message_edit', {
+      storageKey: String(CHAT), peerId: CHAT, mid: 11, message: msg(11),
+    })
+
+    expect(observerOf(bubble.querySelector<HTMLElement>('.time')!)).toBeUndefined()
+  })
+
   it('отметка ждёт фокуса окна', async () => {
     const managers = managersWith([msg(11), msg(12)])
     managers.getReadMaxSeqIfUnread.mockResolvedValue(10)

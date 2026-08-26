@@ -20,7 +20,7 @@ import { useManagers } from '@core/hooks/useManagers'
 import { useSearchStore } from '../../stores/searchStore'
 import noop from '@helpers/noop'
 
-export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker }: {
+export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion }: {
   /** знаковый ключ открытого чата (порт tweb `chat.peerId`) */
   peerId: PeerId
   threadRootId?: number
@@ -76,11 +76,19 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
    * номер → прыжок» остаётся у неё (`bubbles.onDatePick`).
    */
   onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
+  /**
+   * Клик по футеру «N комментариев» — порт роли `Chat` в ветке tweb
+   * bubbles.ts:3315-3343 (`chat.appImManager.setInnerPeer({peerId, type:
+   * ChatType.Discussion, threadId})`). Стеком колонки чата владеет хост
+   * (`chatStackStore` через `Chat.tsx::onOpenThread`), поэтому лента отдаёт
+   * наверх ровно то же, что оригинал: ключ ГРУППЫ ОБСУЖДЕНИЯ и номер поста.
+   */
+  onOpenDiscussion?: (args: { peerId: PeerId, postMid: number }) => void
 }) {
   const managers = useManagers()
   const hostRef = useRef<HTMLDivElement>(null)
-  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker })
-  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion })
+  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, onSelection, onOpenDatePicker, onOpenDiscussion }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -109,8 +117,8 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
     const bubblesViewport = document.createElement('div')
     bubblesViewport.classList.add('bubbles-viewport', 'disable-hover')
 
-    // `navigation` (адресат кликов, см. `BubblesNavigation`) заполнен ОДНИМ
-    // полем — календарём. Два других сознательно не передаются: открыть пир
+    // `navigation` (адресат кликов, см. `BubblesNavigation`) заполнен ДВУМЯ
+    // полями — календарём и тредом. Два других сознательно не передаются: открыть пир
     // умеет `useNavigationActions().openPeer`, но ему нужна карточка пира
     // (`OpenPeer.title`), которой у ленты нет, а разбора внутренних
     // t.me-ссылок (tweb `internalLinkProcessor`) в приложении пока нет вовсе.
@@ -131,6 +139,7 @@ export default function VanillaFeed({ peerId, threadRootId, isLikeGroup, isBroad
         // обработчик — лента не пересобирается.
         navigation: {
           openDatePicker: (initDate, onPick) => gesture.current.onOpenDatePicker?.(initDate, onPick),
+          openDiscussion: (args) => gesture.current.onOpenDiscussion?.(args),
         },
         // Меню сообщения — владелец хост, как `Chat` в оригинале: пункты
         // открывают попапы, а попапы наши React-овские. ВСЁ, что меню зовёт

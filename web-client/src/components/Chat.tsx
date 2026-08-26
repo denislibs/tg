@@ -57,7 +57,7 @@ import { collectLightboxItems, messageToViewerItem } from './mediaViewer/collect
 import { closeMediaViewer, openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { useMessageActions } from '../core/hooks/useMessageActions'
-import { useChannelExtras } from '../core/hooks/useChannelExtras'
+import { useChannelLive } from '../core/hooks/useChannelLive'
 import { useMountTransition } from '../core/hooks/useMountTransition'
 import { useFeedReveal } from '../core/hooks/useFeedReveal'
 import { animateLadder, type LadderStep } from '../core/dom/ladder'
@@ -784,16 +784,22 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (Scroll correction, prepend-restore, jump-scroll, down-arrow pin, and player-offset
   // compensation all live in useChatScroll.)
 
-  // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
-  // discussion-thread overlay, and per-post comment counts.
-  const { commentCounts, commentRepliers } = useChannelExtras({
-    isRealChat, isChannel, numericChatId, windowKey: isRealChat ? winKey(numericChatId, threadRootId) : null, discussionsEnabled,
-  })
+  // Channel-only wiring: live subscribe + catch-up, pts persistence, and the open
+  // discussion-thread overlay. Счётчики поста (просмотры, комментарии) сюда
+  // больше не приезжают: они параметры самого сообщения и читаются из окна.
+  useChannelLive({ isRealChat, isChannel, numericChatId })
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
   // колонке (tweb: setPeer(discussion group, threadId=postId)).
   const openDiscussionThread = useEvent((postId: number) => {
     // Ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ — сравнивать с `NULL_PEER_ID`, а не «> 0».
     if (discussionPeerId !== NULL_PEER_ID) onOpenThread?.({ chatId: discussionPeerId, rootMsgId: postId, title: t('Comments'), subtitle: chat.name })
+  })
+  // То же самое для ванильной ленты, но ключ группы обсуждения приезжает СНИЗУ:
+  // лента берёт его из самого поста (`replies.channel_id`), как tweb
+  // (bubbles.ts:3335 `replies.channel_id.toPeerId(true)`), а не из карточки
+  // канала. Данные per-post и авторитетнее: карточка приезжает позже поста.
+  const openFeedDiscussion = useEvent(({ peerId: groupPeerId, postMid }: { peerId: PeerId; postMid: number }) => {
+    onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Comments'), subtitle: chat.name })
   })
 
   // Stable handler identities for the memoized feed: the feed closes over
@@ -1477,7 +1483,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
         {AppConfig.vanillaFeed ? (
-          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} />
+          <VanillaFeed peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
         ) : (
         <div
           ref={bubblesRef}
@@ -1509,8 +1515,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 // секретных чатах реакций нет вовсе.
                 canQuickReact={isRealChat && chat.type !== 'saved' && chat.type !== 'secret'}
                 discussionsEnabled={discussionsEnabled}
-                commentCounts={commentCounts}
-                commentRepliers={commentRepliers}
                 highlightSeq={highlightSeq}
                 unreadDividerSeq={unreadDividerSeq}
                 selecting={selecting}

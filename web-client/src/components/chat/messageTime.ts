@@ -9,8 +9,9 @@
 // ─── Чего здесь нет и почему ────────────────────────────────────────────────
 //  • статус отправки (галочки) и счётчик ответов — оригинал добавляет их ПОЗЖЕ
 //    и в оба узла (`setBubbleSendingStatus` :6382-6408, `setBubbleRepliesCount`
-//    :6410-6431), потому что они меняются у уже отрисованного бабла. Их место —
-//    вместе с подпиской на ack и на кадр комментариев.
+//    :6410-6431), потому что они меняются у уже отрисованного бабла; поэтому
+//    оба живут отдельными функциями ниже (`setSendingStatus`,
+//    `setRepliesCount`), а не внутри сборки времени.
 //  • дайс, подпись автора поста, эффект сообщения, платные сообщения,
 //    расписание повтора — таких сообщений наша модель не производит.
 //  • `message_primary_edited_date` (время правки ВМЕСТО времени отправки) —
@@ -135,5 +136,51 @@ export function setSendingStatus(timeSpan: HTMLElement, status: SendingStatus | 
     const icon = Icon(statusIcon(status), 'time-sending-status')
     if (isReplacingFirst) existing.replaceWith(icon)
     else target.prepend(icon)
+  }
+}
+
+/** Порт `numberThousandSplitter` (tweb `helpers/number/numberThousandSplitter.ts`)
+ *  с разделителем по умолчанию — неразрывным он в оригинале не делается.
+ *  Копия локальная: ванильный потребитель у него ровно один — счётчик ниже. */
+function numberThousandSplitter(x: number): string {
+  return String(x).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
+/**
+ * Счётчик ответов В ВРЕМЕНИ — порт `setBubbleRepliesCount`
+ * (tweb bubbles.ts:6410-6431).
+ *
+ * Это ДРУГАЯ ветка, чем футер «N комментариев»: футер рисуется у поста канала с
+ * привязанным обсуждением (`replies.pFlags.comments` + `channel_id`), а этот
+ * счётчик — у сообщения ГРУППЫ, у которого есть ответы и ничего из этих двух
+ * ключей нет (гейт развилки — bubbles.ts:9682/9698, данные —
+ * `usecase/chat/messagescontainer.go::hydrateThreads`).
+ *
+ * Ставится в ОБА узла времени (`.time` и `.time-inner`) — по той же причине,
+ * что значок отправки: видимая копия одна, но занимать место должны обе.
+ * `count === 0` СНИМАЕТ счётчик (:6415-6418): ответы можно удалить.
+ *
+ * Гейт `if(this.chat.threadId) return` (:6411) живёт у вызывающего — внутри
+ * треда счётчик не показывается, а знание «мы в треде» принадлежит ленте.
+ */
+export function setRepliesCount(bubble: HTMLElement, count: number): void {
+  for (const element of bubble.querySelectorAll<HTMLElement>('.time, .time-inner')) {
+    const previous = element.querySelector<HTMLElement>('.time-replies')
+    if (!count) {
+      previous?.remove()
+      continue
+    }
+
+    const span = previous ?? document.createElement('span')
+    if (!previous) {
+      span.classList.add('time-replies')
+      // tweb :6422 — текстовый узел ПЕРВЫМ, иконка за ним: число пишется в
+      // `firstChild`, не переписывая иконку.
+      span.append(document.createTextNode(''), Icon('reply_filled', 'time-replies-icon', 'time-icon'))
+    }
+
+    span.firstChild!.textContent = numberThousandSplitter(count)
+
+    if (!span.parentElement) element.prepend(span)
   }
 }

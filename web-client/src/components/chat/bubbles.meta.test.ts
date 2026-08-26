@@ -184,6 +184,86 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
   })
 
+  // ПРАВКА. `message_edit` у нас — воронка ЛЮБОГО изменения сообщения
+  // (`core/history/messagesMirror.ts:192`: и `replace`, и каждый `patch` —
+  // реакция, `media_read`, опрос). Пересобирая тело, лента обязана заново
+  // выложить и конец тела: время, значок отправки и реакции. Прежняя реализация
+  // сносила их `replaceChildren` и не возвращала.
+  describe('правка сообщения', () => {
+    const editTo = (message: MyMessage) => {
+      rootScope.dispatchEventSingle('message_edit', {
+        storageKey: String(CHAT), peerId: CHAT, mid: message.id, message,
+      })
+    }
+
+    it('время остаётся в конце тела', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(msg(1))
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
+      const time = messageDiv.querySelector<HTMLElement>('.time')!
+      expect(time).not.toBeNull()
+      expect(time.textContent).toContain('12:34')
+      expect(messageDiv.lastElementChild).toBe(time)
+    })
+
+    it('чипы реакций остаются, и время лежит ВНУТРИ их контейнера', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(msg(1, { reactions }))
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
+      const reactionsEl = messageDiv.querySelector<HTMLElement>('.reactions')!
+      expect(reactionsEl).not.toBeNull()
+      expect(reactionsEl.querySelectorAll('.reaction')).toHaveLength(1)
+      // tweb :9855 — время переезжает внутрь контейнера реакций.
+      expect(messageDiv.querySelector<HTMLElement>('.time')!.parentElement).toBe(reactionsEl)
+    })
+
+    it('приехавшая с правкой реакция ПОЯВЛЯЕТСЯ (её и объявляет `patch {reactions}`)', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      await openFeed(bubbles)
+      await settle()
+      expect(bubbleOf(bubbles, 1).querySelector('.reactions')).toBeNull()
+
+      editTo(msg(1, { reactions }))
+
+      expect(bubbleOf(bubbles, 1).querySelectorAll('.reaction')).toHaveLength(1)
+    })
+
+    it('исчезнувшая реакция УБИРАЕТСЯ, а время возвращается в тело', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(msg(1))
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
+      expect(messageDiv.querySelector('.reactions')).toBeNull()
+      expect(messageDiv.lastElementChild).toBe(messageDiv.querySelector('.time'))
+    })
+
+    it('значок отправки своего неотправленного бабла переживает правку', async () => {
+      const tempId = generateTempMessageId(0)
+      const pending = makeMessage({
+        peerId: CHAT, fromId: 1, id: tempId, out: true, text: 'привет',
+        createdAt: '2026-08-15T12:34:00',
+      })
+      bubbles = new ChatBubbles(chatContext(), managersWith([pending]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(pending)
+
+      expect(bubbleOf(bubbles, tempId).querySelectorAll('.time-sending-status')).toHaveLength(2)
+    })
+  })
+
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
