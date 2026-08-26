@@ -6,8 +6,8 @@ import type { MessageReal, MyMessage, RawMessage } from '../models'
 import { generateMessageId } from '../history/messageId'
 import { makeRawMessage } from '../messages/testMessage'
 
-// Владелец карточек пиров: авторы последних комментариев приезжают попутно и
-// обязаны доехать до зеркала (`saveApiPeers`) — см. commentCounts.
+// Владелец карточек пиров: карточки чатов из ответа обязаны доехать до зеркала
+// (`saveApiPeers`) — см. createChannel/discussionCandidates.
 const fakePeers = () => ({ saveApiPeers: vi.fn() })
 
 /** Номер в КЛИЕНТСКОМ пространстве. */
@@ -147,113 +147,6 @@ describe('ChannelsManager.listComments', () => {
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
     const r = await mgr.listComments(7, 3)
     expect(r.messages).toEqual([])
-  })
-})
-
-describe('ChannelsManager.commentCounts', () => {
-  // Ответ — контейнер `messages.messageViews`, вектор в нём ПОЗИЦИОННЫЙ:
-  // i-й элемент отвечает i-му номеру запроса. «Про этот пост сказать нечего» —
-  // конструктор БЕЗ параметров, а не ноль: у поста без комментариев треда не
-  // существует вовсе, и счётчика для него в модели быть не должно.
-  it('разбирает позиционный вектор счётчиков, а пробел не становится нулём', async () => {
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [
-        { _: 'messageViews', replies: { _: 'messageReplies', replies: 2 } },
-        { _: 'messageViews' },
-      ],
-      chats: [], users: [],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
-    const r = await mgr.commentCounts(7, [5, 6])
-    expect(get).toHaveBeenCalledWith('/channels/7/comment_counts', { ids: '5,6' })
-    expect(r.counts).toEqual({ 5: 2 })
-  })
-
-  // Комментаторы приезжают ССЫЛКАМИ на пиров и кладутся вербатим: стек
-  // аватаров рисует их по ключу, а имя и фото берёт из зеркала. Карточка в
-  // каждом посте больше не дублируется — она едет ОДНИМ вектором `users`.
-  it('ссылки на комментаторов для стека аватаров кладутся вербатим', async () => {
-    const bob = { _: 'peerUser', user_id: 8 }
-    const alice = { _: 'peerUser', user_id: 9 }
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 2, recent_repliers: [bob, alice] } }],
-      chats: [], users: [],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).commentCounts(7, [5])
-    expect(r.recent[5]).toEqual([bob, alice])
-  })
-
-  // Пин той же строки проводки, что у карточки чата: авторы приезжают попутно и
-  // обязаны доехать до зеркала, иначе стек аватаров рисует их фолбэком «Удалённый
-  // аккаунт» и ходит за теми же карточками вторым запросом. Удаление
-  // `peers.saveApiPeers({ users: … })` из `commentCounts` красит этот кейс.
-  it('карточки комментаторов уезжают владельцу пиров (saveApiPeers)', async () => {
-    const bob = { _: 'user', id: 8, first_name: 'Боб' }
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 1, recent_repliers: [{ _: 'peerUser', user_id: 8 }] } }],
-      chats: [], users: [bob],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const peers = fakePeers()
-    await newChannelsManager({ rest, beforeSending: () => {}, peers }).commentCounts(7, [5])
-    expect(peers.saveApiPeers).toHaveBeenCalledWith({ users: [bob] })
-  })
-
-  it('без recent_repliers в ответе стек пустой', async () => {
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [{ _: 'messageViews', replies: { _: 'messageReplies', replies: 1 } }],
-      chats: [], users: [],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).commentCounts(7, [5])
-    expect(r.recent).toEqual({ 5: [] })
-  })
-
-  // Просмотры едут ТЕМ ЖЕ контейнером: у оригинала это параметр того же
-  // конструктора `messageViews`, потому что и просмотры, и тред — счётчики
-  // одного предмета. Пробел вектора нулём не становится.
-  it('viewCounts разбирает тот же контейнер позиционно', async () => {
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [{ _: 'messageViews', views: 9200 }, { _: 'messageViews' }],
-      chats: [], users: [],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const r = await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() }).viewCounts(7, [5, 6])
-    expect(get).toHaveBeenCalledWith('/channels/7/view_counts', { ids: '5,6' })
-    expect(r).toEqual({ 5: 9200 })
-  })
-
-  // Владение фактом: число просмотров живёт в СООБЩЕНИИ, поэтому положить его в
-  // окно обязан владелец окна (`messages.cacheViews` → операция `rt:message_op`),
-  // а не вызыватель ответа. Что ломается без этой строки: счётчик «9.2K 👁»
-  // правит витрина мимо операций, и до зеркала главного потока (из которого
-  // рисует императивная лента) он не доезжает вовсе.
-  it('viewCounts отдаёт разобранные числа владельцу окна', async () => {
-    const get = vi.fn(async () => ({
-      _: 'messages.messageViews',
-      views: [{ _: 'messageViews', views: 9200 }, { _: 'messageViews' }],
-      chats: [], users: [],
-    }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const cacheViews = vi.fn()
-    await newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews }).viewCounts(7, [5, 6])
-    expect(cacheViews).toHaveBeenCalledWith(7, new Map([[5, 9200]]))
-  })
-
-  it('short-circuits empty ids without hitting REST', async () => {
-    const get = vi.fn()
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers() })
-    const r = await mgr.commentCounts(7, [])
-    expect(r).toEqual({ counts: {}, recent: {} })
-    expect(get).not.toHaveBeenCalled()
   })
 })
 

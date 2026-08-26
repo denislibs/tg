@@ -12,7 +12,7 @@
 import type { MessageMedia } from '../media/messageMedia'
 import type { ReplyMarkup } from '../markup/replyMarkup'
 import type { MessageAction } from './messageAction'
-import type { MessageEntity, MessageReal, MessageReplyHeader, MessageService, MyMessage, RawMessageReal, RawMessageService } from '../models'
+import type { MessageEntity, MessageReal, MessageReplies, MessageReplyHeader, MessageService, MyMessage, RawMessageReal, RawMessageService } from '../models'
 import { getOutputPeer } from '../peers/peerId'
 
 export interface MessageFixture {
@@ -39,6 +39,9 @@ export interface MessageFixture {
   failed?: boolean
   editDate?: number
   mediaUnread?: boolean
+  /** Тред под сообщением (`messageReplies`): комментарии поста канала —
+   *  с `pFlags.comments` и `channel_id`, ответы в группе — голым счётом. */
+  replies?: MessageReplies
   /** Клавиатура сообщения. Нужна кадру правки: он несёт сообщение ЦЕЛИКОМ, а
    *  значит и разметку — прежде она ехала отдельным ключом конверта. */
   replyMarkup?: ReplyMarkup
@@ -75,6 +78,7 @@ export function makeMessage(f: MessageFixture): MessageReal {
     ...(f.failed ? { failed: true } : {}),
     ...(f.editDate != null ? { edit_date: f.editDate } : {}),
     ...(f.replyMarkup ? { reply_markup: f.replyMarkup } : {}),
+    ...(f.replies ? { replies: f.replies } : {}),
   }
 }
 

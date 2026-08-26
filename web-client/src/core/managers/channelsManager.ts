@@ -11,25 +11,6 @@ import type { PeersManager } from './peersManager'
 export interface SuggestPostArgs { text: string; entities?: MessageEntity[]; mediaId?: number | null; publishAt?: number }
 
 /**
- * `messages.messageViews` — счётчики пачки постов ОДНИМ контейнером.
- *
- * У оригинала просмотры и тред это параметры одного конструктора
- * `messageViews`, потому что оба — счётчики одного предмета; вектор
- * ПОЗИЦИОННЫЙ (i-й элемент отвечает i-му номеру запроса). Прежде обе витрины
- * ехали картами, ключом которых служил номер поста строкой, — форма, которую
- * на проводе TL записать нечем.
- *
- * «Про этот пост сказать нечего» — конструктор БЕЗ параметров, а не ноль: у
- * поста без комментариев треда не существует вовсе.
- */
-export interface MessagesMessageViews {
-  _: 'messages.messageViews'
-  views: { _: 'messageViews'; views?: number; replies?: { _: 'messageReplies'; replies: number; recent_repliers?: Peer[] } }[]
-  chats: Chat[]
-  users: UserReal[]
-}
-
-/**
  * Ответ поиска — конструктор `contacts.found` схемы В КОРНЕ ответа (без нашей
  * обёртки): `results` это вектор `Peer`, а сами карточки лежат в `chats`/
  * `users`. Прежние плоские снимки ({id, display_name, avatar_url} у юзеров,
@@ -50,15 +31,18 @@ export interface ContactsFound {
 // Кандидат в группу-обсуждение канала (Telegram getGroupsForDiscussion).
 export interface DiscussionCandidate { peerId: PeerId; title: string; username: string; memberCount: number }
 
-// Последний комментатор поста — ССЫЛКА на пира под стек аватаров в футере
-// «N комментариев». Ссылка, а не карточка: `messageReplies.recent_repliers`
-// это `Vector<Peer>`, а сами карточки едут вектором `users` того же
-// контейнера и уезжают в зеркало. Прежде здесь ехал КОНСТРУКТОР `user`,
-// продублированный в каждом посте, а до него — плоская тройка
-// {id, display_name, avatar_url}.
-export type CommentReplier = Peer
+// Счётчиков поста (просмотры, тред комментариев) здесь БОЛЬШЕ НЕТ, и это не
+// перенос кода, а исчезновение предмета: оба — параметры самого сообщения
+// (`views`, `replies`) и приезжают внутри пачки истории. Ручки
+// `/channels/{id}/view_counts` и `/channels/{id}/comment_counts` читали ТЕ ЖЕ
+// данные вторым запросом (docs/contracts.md:473, docs/readiness/
+// tl-message-analysis.md:473). У оригинала отдельный запрос за просмотрами
+// существует, но он про другое — `messages.getMessagesViews` с `increment: true`
+// РЕГИСТРИРУЕТ просмотр видимого поста (tweb bubbles.ts:2127-2147 →
+// appMessagesManager.ts:9136), а не опрашивает счётчик; наш опрос порождал
+// только трафик.
 
-export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
+export function newChannelsManager({ rest, beforeSending, peers }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
   /** Временный бабл поста — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
@@ -68,12 +52,6 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
    *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
    *  оригинала «каждый ответ прогоняется через saveApiPeers». */
   peers: Pick<PeersManager, 'saveApiPeers'>
-  /** Владелец окна сообщений: просмотры это ПАРАМЕТР сообщения (`views`), а не
-   *  свой предмет, поэтому свежее число обязан объявить он — операцией
-   *  `rt:message_op`. Здесь только запрос: канал знает, где число взять, но не
-   *  владеет тем, во что оно кладётся. Опционален по той же причине, что
-   *  остальные инъекции: тесты канальных ручек собирают менеджер одним `rest`. */
-  cacheViews?: (peerId: number, views: Map<number, number>) => void
 }) {
   return {
     /**
@@ -153,52 +131,6 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
     async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
       const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
       return { messages: (r.messages ?? []).map((m) => mapMyMessage(m)), count: r.count }
-    },
-    /**
-     * Счётчики комментариев + авторы последних комментариев по каждому посту
-     * (стек аватаров в футере «N комментариев», как в Telegram).
-     *
-     * Ответ — контейнер `messages.messageViews`, и вектор в нём ПОЗИЦИОННЫЙ:
-     * i-й элемент отвечает i-му номеру из запроса. Прежде ответ был картой,
-     * ключом которой служил номер поста строкой.
-     */
-    async commentCounts(channelId: number, postIds: number[]): Promise<{ counts: Record<number, number>; recent: Record<number, CommentReplier[]> }> {
-      if (!postIds.length) return { counts: {}, recent: {} }
-      const r = await rest.get<MessagesMessageViews>(
-        `/channels/${channelId}/comment_counts`, { ids: postIds.join(',') })
-      // Пиры ответа — владельцу (порт `saveApiPeers`): футер рисует их по
-      // КЛЮЧУ, а имя и фото берёт из зеркала.
-      if (r.users?.length) peers.saveApiPeers({ users: r.users })
-      const counts: Record<number, number> = {}
-      const recent: Record<number, CommentReplier[]> = {}
-      postIds.forEach((id, i) => {
-        const replies = r.views?.[i]?.replies
-        if (!replies) return
-        counts[id] = replies.replies
-        // Маппера нет: ССЫЛКИ на пиров кладутся вербатим — форма провода и
-        // форма модели совпали.
-        recent[id] = replies.recent_repliers ?? []
-      })
-      return { counts, recent }
-    },
-    // Current view counts per channel post ("9.2K 👁"), fetched per open to stay
-    // fresh (mirrors commentCounts — channel posts are cached by pts, so a snapshot
-    // field would go stale). Тот же контейнер: у оригинала просмотры и тред это
-    // параметры ОДНОГО конструктора `messageViews`.
-    async viewCounts(channelId: number, postIds: number[]): Promise<Record<number, number>> {
-      if (!postIds.length) return {}
-      const r = await rest.get<MessagesMessageViews>(`/channels/${channelId}/view_counts`, { ids: postIds.join(',') })
-      const out: Record<number, number> = {}
-      postIds.forEach((id, i) => {
-        const views = r.views?.[i]?.views
-        if (views != null) out[id] = views
-      })
-      // Свежее число — сразу владельцу окна: он положит его в сообщение и
-      // объявит операцией. Прежде это делала витрина (`useChannelExtras` →
-      // `messagesStore.patchViews`) — второй писатель окна мимо операций, из-за
-      // которого счётчик не доезжал до зеркала императивной ленты.
-      cacheViews?.(channelId, new Map(Object.entries(out).map(([id, v]) => [Number(id), v])))
-      return out
     },
     // Предложка постов (Telegram suggested posts).
     async suggestPost(peerId: number, args: SuggestPostArgs): Promise<SuggestedPost> {

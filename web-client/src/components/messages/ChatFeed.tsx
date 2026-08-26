@@ -20,7 +20,6 @@ import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
 import type { MyMessage } from '../../core/models'
 import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
-import type { CommentReplier } from '../../core/managers/channelsManager'
 import classNames from '../../shared/lib/classNames'
 import s from './ChatFeed.module.scss'
 
@@ -32,9 +31,6 @@ export interface ChatFeedProps {
   /** можно ли ставить быструю реакцию по ховеру бабла (tweb: не в «Избранном») */
   canQuickReact: boolean
   discussionsEnabled: boolean
-  commentCounts: Map<number, number>
-  /** авторы последних комментариев по посту — стек аватаров в футере */
-  commentRepliers: Map<number, CommentReplier[]>
   highlightSeq: number | null
   /** seq первого непрочитанного входящего — перед ним рисуется плашка
    * «Непрочитанные сообщения» (tweb is-first-unread); null — плашки нет */
@@ -50,7 +46,7 @@ export interface ChatFeedProps {
 }
 
 function ChatFeed({
-  msgs, winMsgs, isRealChat, isGroup, canQuickReact, discussionsEnabled, commentCounts, commentRepliers,
+  msgs, winMsgs, isRealChat, isGroup, canQuickReact, discussionsEnabled,
   highlightSeq, unreadDividerSeq, selecting, selected, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
@@ -274,12 +270,30 @@ function ChatFeed({
     // Channel post with discussions on: the "N комментариев" replies-footer is
     // attached to the bottom of the post bubble (tweb .replies-footer), not a
     // detached card — so it's passed as a footer slot into the bubble itself.
-    const postId = discussionsEnabled && lastInGroup ? (winMsgs[i]?.id ?? 0) : 0
+    //
+    // Число комментариев и стек аватаров — ПАРАМЕТР самого поста (`replies`,
+    // конструктор `messageReplies`), как у оригинала: тот читает
+    // `message.replies.replies` и `recent_repliers` прямо из сообщения
+    // (tweb bubbles.ts:9699, appMessagesManager.ts:9237-9247). Прежде их возила
+    // отдельная карта из ручки `/channels/{id}/comment_counts`.
+    //
+    // Сам ПРИЗНАК «под постом можно комментировать» берётся при этом не из
+    // сообщения, а из карточки чата (`discussionsEnabled`), и это тот же факт:
+    // `pFlags.comments`/`channel_id` сервер ставит ровно тогда, когда каналу
+    // привязана группа обсуждения (`usecase/chat/discussion.go` CommentCounts →
+    // `domain.NewMessageReplies`), а `discussionsEnabled` — она же со стороны
+    // чата (`core/hooks/useChatInfoCard.ts:156`). Читать признак из сообщения
+    // нельзя, пока `replies` не едет в кадре `new_message`: у только что
+    // пришедшего поста футер тогда не появился бы до перезагрузки истории (см.
+    // долг в отчёте задачи).
+    const post = winMsgs[i]
+    const replies = post?._ === 'message' ? post.replies : undefined
+    const postId = discussionsEnabled && lastInGroup ? (post?.id ?? 0) : 0
     const footer =
       postId > 0 ? (
         <CommentsBar
-          count={commentCounts.get(postId) ?? 0}
-          recent={commentRepliers.get(postId)}
+          count={replies?.replies ?? 0}
+          recent={replies?.recent_repliers}
           onOpen={() => onOpenDiscussion(postId, m.text)}
         />
       ) : undefined

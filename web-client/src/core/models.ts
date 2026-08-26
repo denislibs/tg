@@ -177,6 +177,42 @@ export interface MessageReplyHeader {
   quote_offset?: number
 }
 
+/**
+ * messageReplies#83d60fc2 flags:# comments:flags.0?true replies:int
+ * replies_pts:int recent_repliers:flags.1?Vector<Peer> channel_id:flags.0?long
+ * max_id:flags.2?int read_max_id:flags.3?int = MessageReplies;
+ *
+ * ТРЕД под сообщением — параметр самого сообщения, а не отдельный предмет.
+ * Схема одним конструктором выражает два разных случая, и различает их
+ * `pFlags.comments` (в схеме он делит бит с `channel_id`):
+ *  • ПОСТ КАНАЛА с привязанным обсуждением — `comments` + `channel_id` (ключ
+ *    группы обсуждения). По нему рисуется футер «N комментариев»
+ *    (tweb `appMessagesManager.getMessageWithCommentReplies`, :9237-9247);
+ *  • ОТВЕТЫ В ГРУППЕ — голый счёт без флага и без `channel_id`; его оригинал
+ *    показывает числом у времени (tweb `bubbles.ts::setBubbleRepliesCount`,
+ *    :6410, ветка `message.replies && this.chat.isAnyGroup`, :9699).
+ *
+ * Прежде счёт комментариев и авторов возила отдельная ручка
+ * `GET /channels/{id}/comment_counts` в свою карту рядом с сообщением — форма,
+ * у которой в схеме нет предмета. Теперь тред доводится внутри пачки
+ * (`usecase/chat/messagescontainer.go::hydrateThreads`).
+ *
+ * `replies_pts` и `max_id`/`read_max_id` сервер не производит (журнала и
+ * горизонта чтения У ТРЕДА у нас нет) — названо в `domain/mtmessage.go` и в
+ * `core/messages/message.schema.test.ts`.
+ */
+export interface MessageReplies {
+  _: 'messageReplies'
+  pFlags?: Partial<{ comments: true }>
+  /** счёт комментариев/ответов; едет и нулевым — «комментировать можно» */
+  replies: number
+  /** до трёх последних комментаторов — ССЫЛКИ на пиров (стек аватаров футера);
+   *  карточки едут вектором `users` того же контейнера */
+  recent_repliers?: Peer[]
+  /** ключ ГРУППЫ ОБСУЖДЕНИЯ, где живёт тред (только у поста канала) */
+  channel_id?: number
+}
+
 /** Булевы флаги схемы у обоих конструкторов сообщения. «Выключено» — ОТСУТСТВИЕ
  *  ключа, а не `false` (правило фазы 0, см. `core/peers/peer.ts`).
  *
@@ -272,6 +308,8 @@ export interface MessageReal extends MessageCommon {
   entities?: MessageEntity[]
   views?: number
   forwards?: number
+  /** тред под сообщением: комментарии поста канала либо ответы в группе */
+  replies?: MessageReplies
   /** время правки, секунды эпохи. У живой геолокации этим же полем едет время
    *  последнего обновления координат — два смысла на одну колонку, названный
    *  остаток шага витрин бэкенда. */
@@ -823,6 +861,9 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     entities: r.entities,
     views: r.views,
     forwards: r.forwards,
+    // Тред кладётся вербатим: номеров сообщений внутри него нет (`max_id`/
+    // `read_max_id` мы не производим), поэтому переводить нечего.
+    replies: r.replies,
     edit_date: r.edit_date,
     grouped_id: r.grouped_id,
     effect_name: mapEffect(r.effect_name),

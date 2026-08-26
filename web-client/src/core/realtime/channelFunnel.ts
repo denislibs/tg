@@ -12,7 +12,8 @@
 // живой хвост, поэтому первый кадр «сидирует» курсор без реплея всего лога.
 //
 // Заменяет наивное приближение pts≈maxSeq, которое раньше вёл React-хук
-// useChannelExtras мимо воркера.
+// канальной обвязки (`core/hooks/useChannelLive.ts`, прежнее имя
+// `useChannelExtras`) мимо воркера.
 
 import { classifyPts } from './cursor'
 import { frameKey } from './updateCatalog'

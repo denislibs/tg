@@ -12,9 +12,12 @@ import s from './CommentsBar.module.scss'
 // .replies-footer-icon-next.tgico. Клик открывает тред обсуждения.
 //
 // Аватары комментаторов рисуются ТОЛЬКО по реальным данным: раньше здесь стоял
-// хардкод из трёх выдуманных градиентов (P0 №11 аудита). Реальных отдаёт бэкенд
-// в `recent_repliers` ответа /channels/{id}/comment_counts — до трёх последних
-// комментаторов, новейшие первыми (usecase/chat/discussion.go CommentCounts).
+// хардкод из трёх выдуманных градиентов (P0 №11 аудита). Реальные едут в САМОМ
+// ПОСТЕ — `replies.recent_repliers` конструктора `messageReplies`, до трёх
+// последних комментаторов, новейшие первыми (usecase/chat/discussion.go
+// CommentCounts → messagescontainer.go hydrateThreads). Оригинал берёт их
+// оттуда же (tweb appMessagesManager.ts:9237-9247); отдельной ручки со своей
+// картой счётчиков больше нет.
 export default function CommentsBar({ onOpen, count, recent }: {
   onOpen?: () => void
   count?: number

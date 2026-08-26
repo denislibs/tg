@@ -204,6 +204,23 @@ describe('mapMessage', () => {
     }
     expect(mapMyMessage(raw({ reactions })).reactions).toBe(reactions)
   })
+
+  // ТРЕД поста канала — параметр самого сообщения, и переводить в нём нечего:
+  // номеров внутри (`max_id`/`read_max_id`) сервер не производит. Что ломается
+  // без этой строки маппера: счётчик комментариев и стек аватаров в футере
+  // поста пропадают вовсе — витрина читает их из сообщения
+  // (components/messages/ChatFeed.tsx), а карты из отдельной ручки больше нет.
+  it('тред комментариев доезжает конструктором и не разбирается', () => {
+    const replies = {
+      _: 'messageReplies' as const,
+      pFlags: { comments: true as const },
+      replies: 3,
+      recent_repliers: [{ _: 'peerUser' as const, user_id: 8 }],
+      channel_id: 77,
+    }
+    const m = mapMyMessage(raw({ replies }))
+    expect(m._ === 'message' ? m.replies : undefined).toBe(replies)
+  })
 })
 
 // Служебное действие: сервер производит НАСТОЯЩИЕ конструкторы схемы, клиент

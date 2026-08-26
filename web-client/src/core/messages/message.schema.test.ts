@@ -47,6 +47,11 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
   // `core/media/messageMedia.schema.test.ts`).
   photo: ['access_hash', 'file_reference', 'date', 'dc_id'],
   document: ['access_hash', 'file_reference', 'date', 'dc_id'],
+  // Журнала апдейтов У ТРЕДА у нас нет (pts на чат, а не на тред), горизонта
+  // чтения внутри треда — тоже: прочитанность считается по чату обсуждения
+  // целиком. То же названо на бэкенде — `domain/mtmessage.go`, докблок
+  // MessageReplies.
+  messageReplies: ['replies_pts'],
   // Внешность подарка в схеме — АНИМИРОВАННЫЙ СТИКЕР, у нас unicode-символ;
   // класть символ в поле документа нельзя, он едет клиентским `emoji`
   // (`schema_additional_params.json`, предикат `starGift`).
@@ -143,6 +148,25 @@ describe('модель сообщения совпадает со схемой T
         pFlags: { spoiler: true },
         document: { _: 'document', id: 42, mime_type: 'video/mp4', size: 10, attributes: [], thumbs: [] },
       },
+    }) as unknown],
+    // ТРЕД поста канала — параметр самого сообщения (`replies`), а не своя
+    // карта рядом: обход спускается в `messageReplies` и сверяет его наравне с
+    // сообщением, включая ССЫЛКИ `recent_repliers` (Vector<Peer>).
+    ['message (пост канала с тредом комментариев)', makeMessage({
+      id: 11, peerId: -100, text: 'пост',
+      replies: {
+        _: 'messageReplies',
+        pFlags: { comments: true },
+        replies: 3,
+        recent_repliers: [{ _: 'peerUser', user_id: 8 }, { _: 'peerUser', user_id: 9 }],
+        channel_id: 77,
+      },
+    }) as unknown],
+    // ОТВЕТЫ В ГРУППЕ — тот же конструктор без флага и без группы обсуждения:
+    // комментарии канала это другой предмет (bubbles.ts:9699).
+    ['message (ответы в группе)', makeMessage({
+      id: 12, peerId: -42, fromId: 7, text: 'вопрос',
+      replies: { _: 'messageReplies', replies: 2 },
     }) as unknown],
     ['messageService (пилюля закрепления)', makeServiceMessage({
       id: 6, peerId: -42, fromId: 7, replyToMsgId: 4, action: { _: 'messageActionPinMessage' },

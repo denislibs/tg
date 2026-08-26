@@ -327,11 +327,7 @@ export function createWorkerCore() {
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
     },
   })
-  // Просмотры поста канала — число, которое запрашивает воркер, а живёт оно в
-  // сообщении: владелец окна (messages) обязан объявить его операцией, иначе
-  // счётчик правит витрину мимо операций и до зеркала не доезжает. `messages`
-  // объявлен ВЫШЕ, поэтому ссылка прямая, без ленивой стрелки.
-  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => messages.cacheViews(peerId, views) })
+  const channels = newChannelsManager({ rest, beforeSending, peers })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
