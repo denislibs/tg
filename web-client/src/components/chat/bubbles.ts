@@ -1018,8 +1018,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
     background.classList.add('bubble-content-background')
     bubbleContainer.prepend(background)
 
-    // Строка документа идёт ПЕРЕД подписью: у оригинала `wrapGroupedDocuments`
-    // кладёт её в начало того же `messageDiv`, а текст остаётся ниже.
+    // Строка документа идёт ПЕРЕД подписью — в начало того же `messageDiv`.
+    //
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, названное явно: у tweb подпись документа не
+    // сосед строки, а её ПОТОМОК — `wrapGroupedDocuments` кладёт текст в
+    // `.document-message` внутри `.document-container > .document-wrapper`
+    // (groupedDocuments.ts:100-127,145-147) и в тело добавляет уже весь
+    // контейнер (:151); в самом теле текста нет вовсе, потому что для
+    // документа `needToSetHTML = false` (bubbles.ts:7337-7341, гейт
+    // `setInnerHTML(messageDiv, richText)` на :7540-7541). Эта обёртка
+    // приедет вместе с альбомом документов (задача #68) — она же его несущая
+    // конструкция. Пока подпись остаётся соседом, тело знает о строке
+    // документа: `BODY_NOT_CONTENT`.
     messageDiv.prepend(node)
   }
 
@@ -1192,7 +1202,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // `.bubble-content` (фолбэк `parentElement`).
     const messageDiv = document.createElement('div')
     messageDiv.classList.add('message', 'spoilers-container')
-    messageDiv.append(this.wrapMessageContent(message))
+    this.renderMessageContent(message, messageDiv)
 
     bubbleContainer.append(messageDiv)
 
@@ -1273,6 +1283,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv: HTMLElement,
     setUnreadObserver?: (element: HTMLElement) => void,
   ): void {
+    // Метод ИДЕМПОТЕНТЕН, как и `renderMessageReplies` ниже, и по той же
+    // причине: вызывателей два, и правка застаёт прошлый хвост на месте.
+    // Снимает его ВЛАДЕЛЕЦ — иначе «что здесь лежит» пришлось бы знать ещё и
+    // вызывателю. Время у сообщения с реакциями лежит внутри `.reactions`
+    // (:9855) и уходит вместе с контейнером, поэтому обход — по прямым детям.
+    messageDiv.querySelectorAll(':scope > .time, :scope > .reactions').forEach((node) => node.remove())
+
     // Точка вставки у оригинала меняется (подпись документа, floating), но
     // базовая именно эта; остальные приедут вместе со своими подсистемами.
     const timeSpan = createMessageTime(message)
@@ -1417,6 +1434,53 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *     портированы (см. шапку `lib/richtext/wrapRichText.ts`). */
   private wrapMessageContent(message: MyMessage): DocumentFragment {
     return wrapMessageText(getMessageText(message), message._ === 'message' ? message.entities : undefined, { middleware: this.getMiddleware() })
+  }
+
+  /**
+   * ЧТО ЛЕЖИТ В ТЕЛЕ БАБЛА (`.message`) ПОМИМО СОДЕРЖИМОГО — один список, и
+   * он здесь один нарочно. Порознь этот вопрос знали бы `renderDocumentMedia`
+   * (строка файла/плеера) и `renderMessageMeta` (время, реакции), а правка,
+   * пересобирающая содержимое, сносила бы то, о чём не вспомнили: так и
+   * пропадала строка документа.
+   *
+   * Пара `.document, .audio` — не наша выдумка: ровно ею оригинал ищет строку
+   * документа ВНУТРИ ТЕЛА, когда пристраивает к ней время
+   * (tweb bubbles.ts:8624 `messageDiv.lastElementChild.querySelector(
+   * '.document, .audio')`). Первый класс ставит `wrapDocument`
+   * (`wrappers/document.ts` — `docDiv.classList.add('document', …)`), второй —
+   * `AudioElement.render` (`components/audio.ts:446`).
+   *
+   * Хвост (`.time`, `.reactions`) в списке потому, что он тоже НЕ содержимое.
+   * Снимает и выкладывает его заново свой владелец — `renderMessageMeta`.
+   */
+  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions'
+
+  /**
+   * СОДЕРЖИМОЕ тела — текст сообщения с разметкой.
+   *
+   * Вызывателей два (сборка бабла и `onMessageEdit`), и второй застаёт тело
+   * НЕПУСТЫМ, поэтому здесь не `replaceChildren`: он считал бы `.message`
+   * контейнером одного только текста и уносил всё остальное. Снимается ровно
+   * содержимое — то, что не перечислено в `BODY_NOT_CONTENT`.
+   *
+   * Строка документа переживает правку, а не пересобирается, по той же
+   * причине, по которой её не пересобирает и вложение: узел живой — кольцо
+   * загрузки, `ProgressivePreloader`, играющий `AudioElement`. У оригинала
+   * вопроса нет вовсе, там правка строит бабл заново (:1097 →
+   * `safeRenderMessage({message, bubble})`); почему мы так не делаем — в
+   * докблоке `onMessageEdit`.
+   *
+   * Новый текст встаёт В КОНЕЦ: строка документа стоит перед подписью
+   * (`renderDocumentMedia`), а хвост выкладывается после — уже
+   * `renderMessageMeta`.
+   */
+  private renderMessageContent(message: MyMessage, messageDiv: HTMLElement): void {
+    for (const node of Array.from(messageDiv.childNodes)) {
+      if (node instanceof Element && node.matches(ChatBubbles.BODY_NOT_CONTENT)) continue
+      node.remove()
+    }
+
+    messageDiv.append(this.wrapMessageContent(message))
   }
 
   /** Порт tweb `groupBubbles` (bubbles.ts:5984-6028) в применимом объёме: ветка
@@ -3641,17 +3705,24 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * повторный `wrapVideo`, мигание превью.
    *
    * Поэтому узел бабла остаётся ТЕМ ЖЕ, а пересобирается его содержимое —
-   * тем же методом, которым его собирает рендер (`renderMessageMeta`), чтобы
-   * второго ответа на вопрос «что лежит в конце тела» не появилось.
+   * теми же методами, которыми его собирает рендер (`renderMessageContent` и
+   * `renderMessageMeta`), чтобы второго ответа на вопрос «что лежит в теле» не
+   * появилось. Сам ответ — один список, `BODY_NOT_CONTENT`.
    *
    * ─── ЧТО ИМЕННО ТЕРЯЛОСЬ ────────────────────────────────────────────────
-   * Прежняя строка `bubble.querySelector('.message')?.replaceChildren(...)`
-   * считала `.message` контейнером ОДНОГО ТОЛЬКО содержимого. Внутри него живут
-   * ещё три узла, и все три сносились: время (`createMessageTime`), контейнер
-   * реакций (внутрь которого время переезжает, tweb :9855) и — у ПОСТА КАНАЛА —
-   * наблюдаемый узел отметки прочтения, которым служит именно время
-   * (tweb :7638-7640, порт в `renderMessageMeta`). Последнее ломало не показ, а
-   * механику: пост переставал отмечаться прочитанным вовсе.
+   * Прежняя строка `messageDiv.replaceChildren(...)` считала `.message`
+   * контейнером ОДНОГО ТОЛЬКО содержимого. Живут в нём ещё:
+   *  • время (`createMessageTime`) — и у ПОСТА КАНАЛА это наблюдаемый узел
+   *    отметки прочтения (tweb :7638-7640, порт в `renderMessageMeta`);
+   *    ломался не показ, а механика: пост переставал отмечаться прочитанным;
+   *  • контейнер реакций, внутрь которого время переезжает (tweb :9855);
+   *  • СТРОКА ДОКУМЕНТА — файл, голосовое, музыка (`renderDocumentMedia`):
+   *    у этой ветки оригинала узел встаёт в тело, а не во вложение
+   *    (`noAttachmentDivNeeded`, tweb :8645). Её сносил КАЖДЫЙ `message_edit`,
+   *    то есть и чужой клик по реакции, и `media_read`: от документа
+   *    оставалась одна подпись.
+   * Первые два выкладывает заново их владелец, третий переживает правку —
+   * узел живой, у него кольцо загрузки и проигрывание.
    *
    * Наблюдение поэтому ПЕРЕВЕШИВАЕТСЯ на новый узел времени, а не сохраняется
    * вместе со старым: у оригинала оно тоже регистрируется заново, потому что
@@ -3698,7 +3769,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     bubble.className = this.classesFor(message).join(' ')
     this.bubbleGroups.getItemByBubble(bubble)?.group?.updateClassNames()
 
-    messageDiv.replaceChildren(this.wrapMessageContent(message))
+    this.renderMessageContent(message, messageDiv)
     this.renderMessageMeta(
       message,
       bubble,

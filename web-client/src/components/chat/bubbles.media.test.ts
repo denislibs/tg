@@ -10,7 +10,8 @@ import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
 import { makeMessage } from '@core/messages/testMessage'
-import type { MyMessage } from '@core/models'
+import rootScope from '@lib/rootScope'
+import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import * as viewer from '@components/mediaViewer/openMediaViewer'
 import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
@@ -403,5 +404,96 @@ describe('ChatBubbles — медиа в бабле', () => {
     expect(attachment.style.width).not.toBe('')
     expect(content.style.minWidth).toBe(attachment.style.width)
     expect(content.style.minHeight).toBe(attachment.style.height)
+  })
+
+  // ПРАВКА И МЕДИА В ТЕЛЕ. У документа узел стоит В ТЕЛЕ сообщения
+  // (`noAttachmentDivNeeded`, tweb :8645), а не во вложении, — и потому
+  // попадал под пересборку тела. `message_edit` у нас при этом воронка ЛЮБОГО
+  // патча (`core/history/messagesMirror.ts:191-192`: реакция, `media_read`,
+  // опрос), так что строка файла пропадала от чужого клика по реакции.
+  //
+  // Вложение (фото/видео) той же беды не знало — оно лежит рядом с телом,
+  // поэтому здесь проверяется именно тело.
+  describe('правка сообщения с документом', () => {
+    const docFile = () => docMedia({
+      mime: 'application/pdf',
+      attributes: [{ _: 'documentAttributeFilename', file_name: 'смета.pdf' }],
+    })
+
+    const withCaption = (media: MessageMedia, over: { reactions?: MessageReactions } = {}): MyMessage => ({
+      ...makeMessage({
+        peerId: CHAT, fromId: 2, id: 1, text: 'подпись', createdAt: '2026-08-15T12:00:00Z', media,
+      }),
+      ...(over.reactions ? { reactions: over.reactions } : {}),
+    } as MyMessage)
+
+    const reactions: MessageReactions = {
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2 }],
+    }
+
+    const editTo = (message: MyMessage) => {
+      rootScope.dispatchEventSingle('message_edit', {
+        storageKey: String(CHAT), peerId: CHAT, mid: message.id, message,
+      })
+    }
+
+    it('чужая реакция (патч, а не правка текста) не уносит строку документа и подпись', async () => {
+      const media = docFile()
+      bubbles = new ChatBubbles(chatContext(), managersWith([withCaption(media)]))
+      await openFeed(bubbles)
+      await settle()
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
+      const before = messageDiv.querySelector<HTMLElement>('.document')!
+      expect(before).not.toBeNull()
+
+      editTo(withCaption(media, { reactions }))
+
+      const after = messageDiv.querySelector<HTMLElement>('.document')
+      expect(after).not.toBeNull()
+      // Узел ТОТ ЖЕ: он живой (кольцо загрузки, `ProgressivePreloader`), и
+      // пересобирать его на каждый чужой клик нельзя.
+      expect(after).toBe(before)
+      expect(messageDiv.textContent).toContain('подпись')
+      // Реакция — то, ради чего патч и приехал.
+      expect(messageDiv.querySelectorAll('.reaction')).toHaveLength(1)
+    })
+
+    it('строка документа остаётся ПЕРЕД подписью, а время — в конце тела', async () => {
+      const media = docFile()
+      bubbles = new ChatBubbles(chatContext(), managersWith([withCaption(media)]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(withCaption(media))
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
+      expect(messageDiv.firstElementChild).toBe(messageDiv.querySelector('.document'))
+      expect(messageDiv.lastElementChild).toBe(messageDiv.querySelector('.time'))
+      // Подпись — между ними, и она ОДНА: правка не должна её дублировать.
+      expect(messageDiv.textContent!.match(/подпись/g)).toHaveLength(1)
+      // Подложка бабла (:8616-8618) тоже одна — её кладёт только рендер медиа.
+      expect(bubbleOf(bubbles, 1).querySelectorAll('.bubble-content-background')).toHaveLength(1)
+    })
+
+    it('плеер голосового переживает правку тем же списком', async () => {
+      const media = docMedia({
+        mime: 'audio/ogg',
+        attributes: [{ _: 'documentAttributeAudio', duration: 4, pFlags: { voice: true } }],
+      })
+      bubbles = new ChatBubbles(chatContext(), managersWith([withCaption(media)]))
+      await openFeed(bubbles)
+      await settle()
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
+      const before = messageDiv.querySelector<HTMLElement>('audio-element')!
+      expect(before).not.toBeNull()
+
+      editTo(withCaption(media, { reactions }))
+
+      expect(messageDiv.querySelector('audio-element')).toBe(before)
+      expect(messageDiv.textContent).toContain('подпись')
+    })
   })
 })
