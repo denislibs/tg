@@ -14,7 +14,9 @@
 // и бэкендом — `usecase/chat/sanitize.go`, и `@core/safeUrl`), то есть отправитель
 // управляет тем, что лежит в `?url=`.
 import { describe, it, expect } from 'vitest'
-import { safeWrapUrl, wrapUrl } from './url'
+import type { MessageEntity } from '@core/models'
+import { KNOWN_ANCHOR_ACTIONS, safeWrapUrl, wrapUrl } from './url'
+import { wrapMessageText } from './index'
 
 // Каждый payload — то, куда увела бы ссылка, если бы подмену портировали.
 const EVIL_PAYLOADS = {
@@ -77,12 +79,95 @@ describe('allow-list схем — второй рубеж, если адрес �
   })
 })
 
-describe('остальные ветки wrapUrl не задеты', () => {
-  it('прочие tg-ссылки сохраняют действие', () => {
-    expect(wrapUrl('tg://resolve?domain=durov').action).toBe('tg_resolve')
-    expect(wrapUrl('tg://settings').action).toBe('tg_settings')
+// ─────────────────────────────────────────────────────────────────────────────
+// Задача #95. Порт tweb `wrapUrl.ts:86-88`:
+//   `if(!(window as any)[onclick]) { onclick = undefined; }`
+// Оригинал снимает действие, для которого нет зарегистрированного обработчика
+// (`addAnchorListener` кладёт его в `window[protocol_ + name]`,
+// `helpers/addAnchorListener.ts:58`). Без этой проверки имя действия для
+// `tg:`-ссылок целиком под контролем ОТПРАВИТЕЛЯ: оно собирается конкатенацией
+// (`wrapUrl.ts:65`), а схема `tg:` разрешена и бэком, и `@core/safeUrl`.
+
+/** По одному адресу на каждое действие, которое эмитит сам `wrapUrl`. */
+const EMITTED_BY_WRAP_URL: Record<string, string> = {
+  im: 'https://t.me/durov',
+  invoice: 't.me/invoice/abc',
+  joinchat: 't.me/joinchat/abc',
+  m: 't.me/m/abc',
+  addlist: 't.me/addlist/abc',
+  addstickers: 't.me/addstickers/abc',
+  addemoji: 't.me/addemoji/abc',
+  call: 't.me/call/abc',
+  boost: 't.me/boost/abc',
+  giftcode: 't.me/giftcode/abc',
+  share: 't.me/share/url?url=https%3A%2F%2Fexample.com',
+  nft: 't.me/nft/abc',
+  addstyle: 't.me/addstyle/abc',
+}
+
+/** Оба оставшихся имени ставит `wrapRichText`, минуя `wrapUrl`, — берём их с готового DOM. */
+const anchorActionsInDom = (text: string, entities?: MessageEntity[]) => {
+  const host = document.createElement('div')
+  host.append(wrapMessageText(text, entities))
+  return [...host.querySelectorAll('[data-anchor-action]')]
+    .map((el) => el.getAttribute('data-anchor-action')!)
+}
+
+describe('#95 действие — только из реестра, а не из самой ссылки', () => {
+  for (const [action, url] of Object.entries(EMITTED_BY_WRAP_URL)) {
+    it(`известное действие проходит: ${url} → ${action}`, () => {
+      expect(wrapUrl(url).action).toBe(action)
+    })
+  }
+
+  const SENDER_INVENTED = [
+    'tg://evilaction?url=https%3A%2F%2Fevil.example',
+    'tg://evilaction/sub?x=1',
+    'tg://EVILACTION', // регистр имени тоже не спасает
+    'tg://resolve?domain=durov', // зарегистрировано у tweb (`internalLinkProcessor.ts:404-405`), но исполнителя нет у нас
+    'tg://settings', // то же самое (`:717-718`)
+    'tg://iv?url=' + encodeURIComponent('javascript:alert(1)'), // задача #33 — теперь под общим гейтом
+  ]
+
+  for (const url of SENDER_INVENTED) {
+    it(`выдуманное отправителем действие отбрасывается, адрес остаётся: ${url}`, () => {
+      const wrapped = wrapUrl(url)
+
+      expect(wrapped.action).toBeUndefined()
+      // ссылка остаётся ссылкой: адрес не тронут и не подменён
+      expect(wrapped.url).toBe(url)
+    })
+  }
+
+  it('`t.me/voicechat/…` действия не получает — его снимает и гейт ОРИГИНАЛА', () => {
+    // `voicechat` есть в `switch` оригинала (`wrapUrl.ts:41`) и в нашем
+    // `T_ME_ACTION_PATHS`, но обработчик у tweb зарегистрирован ТОЛЬКО с
+    // протоколом — `tg://voicechat` (`internalLinkProcessor.ts:216-217`).
+    // Значит `window.voicechat` не существует и `wrapUrl.ts:86-88` действие
+    // снимает. Наш реестр повторяет это: имени в нём нет.
+    expect(wrapUrl('t.me/voicechat/abc').action).toBeUndefined()
   })
 
+  it('в реестре нет мёртвых записей: он равен множеству имён, которые эмитит наш код', () => {
+    const emitted = new Set<string>()
+
+    for (const url of Object.values(EMITTED_BY_WRAP_URL)) {
+      const { action } = wrapUrl(url)
+      if (action) emitted.add(action)
+    }
+
+    // `searchByHashtag` — `wrapRichText.ts:417`
+    for (const action of anchorActionsInDom('#tag')) emitted.add(action)
+    // `showMaskedAlert` — `wrapRichText.ts:377` (адрес не совпал с текстом)
+    for (const action of anchorActionsInDom('статья', [
+      { _: 'messageEntityTextUrl', offset: 0, length: 6, url: 'https://example.com/a' },
+    ])) emitted.add(action)
+
+    expect([...emitted].sort()).toEqual([...KNOWN_ANCHOR_ACTIONS].sort())
+  })
+})
+
+describe('остальные ветки wrapUrl не задеты', () => {
   it('t.me и обычный https — как раньше', () => {
     expect(wrapUrl('https://t.me/durov').action).toBe('im')
     expect(wrapUrl('t.me/joinchat/abc').action).toBe('joinchat')

@@ -19,6 +19,9 @@ export const ANCHOR_ACTION_ATTRIBUTE = 'data-anchor-action'
 /**
  * Действия внутренних ссылок Telegram (имена — 1:1 tweb `addAnchorListener.ts`,
  * там это имена глобальных функций). Кто их исполняет — забота ленты.
+ * Строка, а не объединение литералов: читатель берёт значение из DOM-атрибута
+ * (`components/chat/bubbles.ts:2364`). Какие имена допустимы — держит реестр
+ * `KNOWN_ANCHOR_ACTIONS` ниже.
  */
 export type AnchorAction = string
 
@@ -29,6 +32,77 @@ const PHONE_NUMBER_REG_EXP = /^\+\d+$/
 const T_ME_ACTION_PATHS = new Set([
   'm', 'addlist', 'joinchat', 'addstickers', 'addemoji', 'voicechat', 'call',
   'invoice', 'boost', 'giftcode', 'share', 'nft', 'addstyle',
+])
+
+/**
+ * РЕЕСТР ИЗВЕСТНЫХ ДЕЙСТВИЙ — порт tweb `wrapUrl.ts:86-88`:
+ *
+ * ```js
+ * if(!(window as any)[onclick]) {
+ *   onclick = undefined;
+ * }
+ * ```
+ *
+ * У оригинала реестр НЕЯВНЫЙ: `addAnchorListener` кладёт обработчик в
+ * `window[(protocol ? protocol + '_' : '') + name]`
+ * (`helpers/addAnchorListener.ts:58`), а `wrapUrl` в конце снимает действие,
+ * для которого такой глобали нет. Проверка обязательна, потому что имя действия
+ * ветка `tg:` собирает КОНКАТЕНАЦИЕЙ из адреса (`wrapUrl.ts:65`, у нас — ниже),
+ * а схема `tg:` разрешена и бэкендом (`backend/internal/usecase/chat/sanitize.go`),
+ * и `@core/safeUrl`: без реестра любой `tg://чтоугодно` из ЧУЖОГО сообщения
+ * получал бы `data-anchor-action="tg_чтоугодно"` — имя действия целиком под
+ * контролем отправителя.
+ *
+ * Глобалей у нас нет (inline-обработчики запрещены — см. шапку файла), поэтому
+ * реестр перечислен явно. В нём РОВНО те имена, которые наш собственный код
+ * кладёт в `data-anchor-action`; записей «на будущее» нет — действие без
+ * потребителя было бы мёртвым. Что реестр не разъехался с разметкой — РАВЕН
+ * множеству имён, которые эмитит наш код, — держит `url.test.ts`
+ * (it «в реестре нет мёртвых записей…»: краснеет и на лишней записи, и на
+ * пропавшей).
+ *
+ * НЕ включены, каждое осознанно:
+ *  • `voicechat`. `T_ME_ACTION_PATHS` его эмитит (он есть в `switch` оригинала —
+ *    `wrapUrl.ts:41`), но регистрации БЕЗ протокола у tweb нет — только
+ *    `tg://voicechat` (`internalLinkProcessor.ts:216-217`). То есть
+ *    `window.voicechat` не существует никогда и гейт ОРИГИНАЛА это действие
+ *    снимает. Снимаем и мы.
+ *  • Всё семейство `tg_*` — у tweb для него зарегистрирован 21 обработчик
+ *    (`tg_resolve` :404-405, `tg_settings` :717-718, `tg_iv` :676-677, …), у нас
+ *    исполнителя нет НИ ОДНОГО: единственный читатель атрибута — делегирование
+ *    ленты (`components/chat/bubbles.ts:2362`), а `openInternalLink` не
+ *    реализована и даже не прокидывается хостом (`components/chat/VanillaFeed.tsx:204`
+ *    передаёт другие ручки). Сюда же попадает `tg_iv` из задачи #33 — см. ниже.
+ *  • `execBotCommand` (tweb `internalLinkProcessor.ts:90`, ставится в
+ *    `wrapRichText.ts:393`) и `setMediaTimestamp` (:119 / `wrapRichText.ts:725`):
+ *    сущностей `messageEntityBotCommand`/`messageEntityTimestamp` наш
+ *    `wrapRichText` не портировал (перечислены в его шапке), этих имён мы не
+ *    эмитим вовсе.
+ */
+export const KNOWN_ANCHOR_ACTIONS: ReadonlySet<string> = new Set([
+  // Ставит `wrapUrl` ниже по t.me-пути. Строки — регистрация обработчика в tweb
+  // `lib/internalLinkProcessor.ts`, то есть доказательство, что `window[имя]`
+  // у оригинала есть и его гейт эти действия пропускает.
+  'im', //          :271 — t.me/<username>, t.me/c/…, telesco.pe/…
+  'invoice', //     :175 — t.me/$slug, t.me/invoice/<slug>
+  'joinchat', //    :201 — t.me/+hash, t.me/joinchat/<hash>
+  'm', //           :570
+  'addlist', //     :188
+  'addstickers', // :142 (цикл по ['addstickers','addemoji'] :136-141)
+  'addemoji', //    :142 (тот же цикл)
+  'call', //        :230 — внутри `if(IS_GROUP_CALL_SUPPORTED)` :212; в браузере с WebRTC истинно
+  'boost', //       :514
+  'giftcode', //    :541
+  'share', //       :612
+  'nft', //         :645
+  'addstyle', //    :781
+  // Ставит `wrapRichText` (`:377`, `:417`), МИМО `wrapUrl` — ровно как в tweb:
+  // там оба имени присваиваются уже после возврата `wrapUrl`
+  // (`wrapRichText.ts:590` и `:637`), так что гейт оригинала их тоже не видит.
+  // В реестре они потому, что это реестр ВСЕХ имён, которые наша разметка
+  // отдаёт в DOM, — за совпадением следит тест.
+  'showMaskedAlert', //  tweb `internalLinkProcessor.ts:63`
+  'searchByHashtag', //  tweb `internalLinkProcessor.ts:107`
 ])
 
 /** Порт tweb `matchUrlProtocol.ts`; отличие — allow-list вместо запрета одной схемы. */
@@ -59,8 +133,9 @@ export function setBlankToAnchor(anchor: HTMLAnchorElement) {
 /**
  * Порт tweb `wrapUrl.ts` — дописывает схему и распознаёт внутренние t.me-ссылки.
  *
- * Не портированы: проверка `window[onclick]` (у нас исполнителя решает лента)
- * и `MOUNT_CLASS_TO`. Про `tg://iv` и флаг `safe` — см. ниже по коду.
+ * Проверка `window[onclick]` (`wrapUrl.ts:86-88`) портирована реестром
+ * `KNOWN_ANCHOR_ACTIONS`. Не портирован `MOUNT_CLASS_TO`.
+ * Про `tg://iv` и флаг `safe` — см. ниже по коду.
  */
 export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
   if (!matchUrlProtocol(url)) {
@@ -121,13 +196,19 @@ export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
     // сообщения (`tg:` в allow-list и на бэке, и в `@core/safeUrl`).
     //
     // Поэтому подмену адреса не портируем вовсе — она разворачивала бы
-    // подконтрольный отправителю адрес, — а действие снимаем: это ровно то, что
-    // оригинал отдаёт на любом возможном у нас вводе. Снимаем по имени действия,
-    // а не по `tgMatch[1] === 'iv'` как в `switch` оригинала: так под гейт
-    // попадает и `tg://iv/…` (у tweb там остаётся живой `tg_iv`).
-    if (action === 'tg_iv') {
-      action = undefined
-    }
+    // подконтрольный отправителю адрес. Кода у этой ветки нет: `out.url`
+    // остаётся исходным `tg:`-адресом. Действие (`tg_iv`) снимает общий реестр
+    // ниже — вместе со всем семейством `tg_*`, у которого исполнителя нет;
+    // отдельная проверка по имени, стоявшая здесь по задаче #33, стала
+    // недостижимой и удалена, а поведение держат её же тесты (`url.test.ts`).
+  }
+
+  // Порт `wrapUrl.ts:86-88`: действие остаётся только если оно из реестра —
+  // у оригинала это «есть ли `window[onclick]`», у нас `KNOWN_ANCHOR_ACTIONS`.
+  // Стоит ПОСЛЕ всей цепочки, как в оригинале (:86 против конца цепочки :84):
+  // проверяются и t.me-действия, и `tg_*`.
+  if (action !== undefined && !KNOWN_ANCHOR_ACTIONS.has(action)) {
+    action = undefined
   }
 
   out.action = action
