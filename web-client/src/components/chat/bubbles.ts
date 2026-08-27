@@ -11,8 +11,10 @@
 // приезжает следующим этапом.
 //
 // Источник данных — НЕреактивное зеркало окон `core/history/messagesMirror.ts`
-// (порт `apiManagerProxy.mirrors`): страницу истории лента кладёт туда сама
-// (`getHistory` → `putMirrorPage`), точечные изменения приезжают событиями
+// (порт `apiManagerProxy.mirrors`): страницу истории лента кладёт туда сама —
+// `getHistory` → `putMirrorPage` (догрузка ДОПОЛНЯЕТ окно) или
+// `replaceMirrorWindow` (страница `setPeer` НАЧИНАЕТ его заново, как `cleanup()`
+// начинает заново отрисованное), точечные изменения приезжают событиями
 // каталога tweb (`history_append`/`history_update`/`message_edit`/
 // `history_delete`).
 //
@@ -91,7 +93,7 @@ import idleController from '@helpers/idleController'
 import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
-import { mirrorWindow, putMirrorPage } from '@core/history/messagesMirror'
+import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
@@ -2332,13 +2334,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  Предзагрузка следующей страницы (`justLoad`, :11346-11358) перенесена как
    *  есть: она и делает пагинацию бесшовной — пока пользователь смотрит на
    *  доехавшую страницу, следующая уже в кэше. `ChatType.Chat`-гейт снят: типов
-   *  чата (`Scheduled`/`Pinned`/`Search`) у ленты нет. */
-  public getHistory1(maxId?: FullMid, reverse?: boolean, isBackLimit?: boolean, justLoad?: boolean) {
+   *  чата (`Scheduled`/`Pinned`/`Search`) у ленты нет.
+   *
+   *  `replaceWindow` — наш параметр, у оригинала его нет (см. докблок
+   *  `getHistory`): «эта страница НАЧИНАЕТ окно, а не продолжает его». Едет
+   *  сквозь обёртку нетронутым — решает вызывающий, а не она. */
+  public getHistory1(maxId?: FullMid, reverse?: boolean, isBackLimit?: boolean, justLoad?: boolean, replaceWindow?: boolean) {
     const middleware = this.getMiddleware(justLoad ? undefined : () => {
       return (reverse ? this.getHistoryTopPromise : this.getHistoryBottomPromise) === waitPromise
     })
 
-    const result = this.getHistory(maxId, reverse, isBackLimit, justLoad, middleware)
+    const result = this.getHistory(maxId, reverse, isBackLimit, justLoad, middleware, replaceWindow)
     const waitPromise: Promise<unknown> = result.then((res) => res && (res.waitPromise || res.promise))
 
     if (reverse) this.getHistoryTopPromise = waitPromise
@@ -2420,6 +2426,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * @param reverse 'true' means up
    * @param isBackLimit is search
    * @param justLoad do not render
+   * @param replaceWindow страница НАЧИНАЕТ окно (`setPeer`), а не продолжает
+   *        его (пагинация) — см. докблок `sup()` ниже
    */
   public async getHistory(
     maxId: FullMid = EMPTY_FULL_MID,
@@ -2427,6 +2435,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     isBackLimit = false,
     justLoad = false,
     middleware?: () => boolean,
+    replaceWindow = false,
   ): Promise<{ cached: boolean, promise: Promise<void>, waitPromise: Promise<unknown> } | null> {
     // Размер страницы — 1:1 (:11389-11391). `Math.max(35, pageCount)` для уже
     // непустой ленты: подгружаемая страница не должна быть заметно меньше
@@ -2447,11 +2456,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const historyResult = await this.requestHistory(maxId, loadCount, backLimit)
 
-    // Ветка `additionalFullMid` (:11425-11453 — дорисовать последнее сообщение
-    // поверх страницы прыжка) не портирована: её единственный вызывающий —
-    // `setPeer`, которого у ленты ещё нет. Вместе с ней отпадают `isAdditionRender`
-    // и второй, «догоняющий», промис `waitPromise` — он остаётся самим `promise`,
-    // ровно как в оригинале при `isAdditionRender === false` (:11538).
+    // Ветка `additionalFullMid` (:11425-11453) не портирована, и причина у неё
+    // НЕ «`setPeer` ещё нет» — он есть (:5219-5220 его и вычисляют). Причина в
+    // том, что оба дела этой ветки здесь беспредметны.
+    //
+    // Дело первое — вернуть последнее сообщение чата, срезанное запросом
+    // `< max_id` (комментарий оригинала на :5218). Оно возникает потому, что
+    // БЕЗ прыжка tweb шлёт `maxId = topMessageFullMid`: тернарник :5340 берёт
+    // `EMPTY_FULL_MID` только при `!additionalFullMid`, а тот при `!isJump`
+    // как раз определён. Наш `setPeer` в этом случае шлёт `EMPTY_FULL_MID`
+    // всегда (`!isJump && lastMsgFullMid === topMessageFullMid` — это одно и то
+    // же условие: `isJump` и есть их неравенство), то есть страница берётся ОТ
+    // САМОГО НИЗА и последнее сообщение приезжает в ней самой. Второй источник
+    // `additionalMid` — `overrideAdditionMsgId` — приходит из непортированной
+    // ветки `followingUnread` (:5121-5133, см. докблок `setPeer`).
+    //
+    // Дело второе — `isAdditionRender` (:11465): нарисовать УЖЕ ИЗВЕСТНЫЙ хвост
+    // мгновенно (:11470-11474 подменяют `result` на готовый список), а сетевую
+    // страницу догнать вторым промисом (`waitPromise`, :11538). Хвост берётся
+    // из СЛАЙСА зеркала и только если нижний слайс сведён с низом истории и не
+    // сведён с верхом (:11433-11437). У нас границ слайсов на главном потоке
+    // нет: `SlicedArray` живёт в воркерном `messagesManager`, а зеркало окна —
+    // плоский список без ответа на вопрос «сведён ли низ». Пока этого ответа
+    // нет, `waitPromise` остаётся самим `promise` — ровно как в оригинале при
+    // `isAdditionRender === false` (:11538).
     const sup = async () => {
       await getHeavyAnimationPromise()
 
@@ -2459,7 +2487,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // `putMirrorPage`); в tweb это делает сам менеджер, поэтому здесь у
       // оригинала строки нет — но `performHistoryResult` там точно так же
       // читает УЖЕ ЛЕЖАЩЕЕ, а не ответ сети.
-      putMirrorPage(this.chat.messagesStorageKey, historyResult.messages)
+      //
+      // ДОСЛИТЬ или НАЧАТЬ ЗАНОВО — объявляет ВЫЗЫВАЮЩИЙ (`replaceWindow`), и
+      // угадать здесь нечего: обе стороны ходят одной дорогой. В оригинале это
+      // различие проведено дважды, на двух разных этажах.
+      //  • Этаж хранилища: страница ложится в `SlicedArray.insertSlice`
+      //    (appMessagesManager.ts:9603), а та приклеивает её к слайсу, ТОЛЬКО
+      //    если та стыкуется с ним по границам (slicedArray.ts:207-224);
+      //    страница вокруг далёкого номера ни с чем не стыкуется и становится
+      //    ОТДЕЛЬНЫМ слайсом (slicedArray.ts:225-235).
+      //  • Этаж окна: `setPeer` выкидывает прежнее окно целиком — `cleanup()`
+      //    (bubbles.ts:5243) обнуляет `this.bubbles` (:4920), и следом заводится
+      //    НОВЫЙ `chatInner` (:5244). Именно этот этаж играет наше зеркало:
+      //    источник пагинации у оригинала — отрисованное (`getRenderedHistory`,
+      //    :3981, из `loadMoreHistory` :4017), а у нас лента и React читают
+      //    окно (`useMirrorWindow`).
+      // Отсюда замена НА ПРИХОДЕ страницы, а не заранее: у оригинала прежнее
+      // окно видно всё время полёта запроса (новое дерево собирается в
+      // оторванном `chatInner` и въезжает целиком), и очистка зеркала до
+      // ответа дала бы React пустое окно — мигание приветствием бота и
+      // клавиатурой ответа в `Chat.tsx`.
+      if (replaceWindow) {
+        replaceMirrorWindow(this.chat.messagesStorageKey, historyResult.messages)
+      } else {
+        putMirrorPage(this.chat.messagesStorageKey, historyResult.messages)
+      }
 
       return this.performHistoryResult(
         historyResult.messages.map((m) => m.id),
@@ -2661,10 +2713,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // tweb :5339-5344 (без `additionalFullMid`, см. докблок). `isJump` едет
     // третьим аргументом — это и есть `isBackLimit`: страница берётся ВОКРУГ
     // номера, а не от него вверх.
+    //
+    // Последним аргументом — `replaceWindow`: страница `setPeer` НАЧИНАЕТ окно,
+    // а не продолжает его. Это тот же `cleanup()` строкой выше, но для зеркала:
+    // отрисованное оригинал выкидывает целиком (:5243 → `this.bubbles = {}`
+    // :4920, новый `chatInner` :5244), и окно, собранное вокруг далёкого
+    // номера, не имеет со старым ни одного общего бабла. Без этого аргумента
+    // страница прыжка СЛИВАЛАСЬ бы с прежним окном у низа истории: между ними
+    // дыра, а лента и React читали бы их как одно непрерывное окно.
     const result = await m(this.getHistory1(
       !isJump && lastMsgFullMid === topMessageFullMid ? EMPTY_FULL_MID : lastMsgFullMid,
       true,
       isJump,
+      undefined,
+      true,
     ))
 
     // `getHistory` отдаёт `null` только под `justLoad` (:11525), которого здесь

@@ -13,7 +13,7 @@
 // ровно эти четыре величины, никакой другой информации о раскладке у них нет.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { resetMessagesMirror } from '@core/history/messagesMirror'
+import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import type { MyMessage } from '@core/models'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
@@ -296,6 +296,87 @@ describe('ChatBubbles — пагинация (loadMoreHistory + getHistory1)', (
     await settle()
 
     expect(managers.calls).toHaveLength(1)
+  })
+})
+
+// ─── Кто ДОПОЛНЯЕТ окно зеркала, а кто НАЧИНАЕТ его заново ──────────────────
+//
+// Единственная точка, где страница попадает в зеркало, — `sup()` внутри
+// `getHistory`, и ходят через неё ОБА сценария. Различает их вызывающий
+// (`replaceWindow`), потому что в оригинале различие проведено на двух этажах:
+//  • хранилище — `SlicedArray.insertSlice` (appMessagesManager.ts:9603)
+//    приклеивает страницу к слайсу, только если та стыкуется с ним по границам
+//    (slicedArray.ts:207-224); окно вокруг далёкого номера ни с чем не
+//    стыкуется и становится ОТДЕЛЬНЫМ слайсом (slicedArray.ts:225-235);
+//  • отрисованное — `setPeer` выкидывает его целиком: `cleanup()`
+//    (bubbles.ts:5243) обнуляет `this.bubbles` (:4920) и заводит новый
+//    `chatInner` (:5244). Этот этаж и играет наше плоское зеркало: из него
+//    лента берёт сообщения на рендер, а `Chat.tsx` — приветствие бота и
+//    клавиатуру ответа.
+describe('ChatBubbles — окно зеркала: догрузка ДОПОЛНЯЕТ, setPeer ЗАМЕНЯЕТ', () => {
+  it('догрузка страницы вверх ДОПОЛНЯЕТ окно — прежние сообщения остаются', async () => {
+    const managers = pagingManagers({
+      first: page([11, 12, 13, 14, 15, 16, 17, 18, 19, 20], false, true),
+      older: page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], true, false),
+    })
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+
+    await scrollTo(b, 900) // сначала вниз — иначе lastScrollDirection === 0
+    await scrollTo(b, 100) // и к верхнему краю: сработает onScrolledTop
+    await settle()
+
+    expect(mirrorWindow(String(CHAT))?.map((m) => m.id)).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    )
+  })
+
+  // Тот самый дефект: окно, собранное вокруг далёкого номера, склеивалось с
+  // прежним окном у низа истории — между ними дыра, а лента и React читали их
+  // как одно непрерывное окно.
+  it('прыжок к сообщению ВНЕ окна ЗАМЕНЯЕТ его — прежних сообщений в зеркале нет', async () => {
+    const managers = pagingManagers({
+      first: page([11, 12, 13], false, true),
+      around: page([5, 6, 7, 8, 9], false, false),
+    })
+    managers.getHistoryMaxSeq.mockResolvedValue(13)
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+    expect(mirrorWindow(String(CHAT))?.map((m) => m.id)).toEqual([11, 12, 13])
+
+    vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    await (await b.setMessageId({ lastMsgId: 7 }))?.promise
+    await settle()
+
+    // Ровно окно прыжка: ни одного бабла прежнего окна.
+    expect(mirrorWindow(String(CHAT))?.map((m) => m.id)).toEqual([5, 6, 7, 8, 9])
+    // И зеркало сходится с отрисованным — тем самым, ради чего замена и нужна.
+    expect(rendered(b).map((el) => el.dataset.mid)).toEqual(['5', '6', '7', '8', '9'])
+  })
+
+  // Повтор `setPeer` того же чата. Одинаковой страницей это не проверить:
+  // `putMirrorPage` дедуплицирует по ключу сообщения (`s:${id}`), и слияние
+  // страницы с самой собой окна не удвоило бы. Разницу видно, когда вторая
+  // страница ДРУГАЯ, — так «Очистить историю» и удаление сообщений и выглядят.
+  it('повторный setPeer того же чата окно не накапливает: остаётся ровно новая страница', async () => {
+    const pages = [page([11, 12, 13], false, true), page([12, 13], false, true)]
+    const managers = pagingManagers({ first: pages[0] })
+    managers.getHistory.mockImplementation(async (args: HistoryArgs) => {
+      managers.calls.push(args)
+      if (args.offsetId) return page([], true, false)
+      return pages.shift() ?? page([], true, true)
+    })
+    const { b } = mount(managers)
+    await openFeed(b)
+    await settle()
+    expect(mirrorWindow(String(CHAT))?.map((m) => m.id)).toEqual([11, 12, 13])
+
+    await openFeed(b)
+    await settle()
+
+    expect(mirrorWindow(String(CHAT))?.map((m) => m.id)).toEqual([12, 13])
   })
 })
 
